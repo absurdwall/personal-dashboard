@@ -1,0 +1,276 @@
+{
+  "departure_decision": null,
+  "routine": {
+    "fallback": [
+      {
+        "day": "Saturday",
+        "departure_time": "16:00",
+        "order": 1,
+        "weekday": 5
+      },
+      {
+        "day": "Sunday",
+        "departure_time": "16:00",
+        "order": 2,
+        "weekday": 6
+      }
+    ],
+    "primary": [
+      {
+        "day": "Tuesday",
+        "departure_time": "15:30",
+        "order": 1,
+        "weekday": 1
+      },
+      {
+        "day": "Wednesday",
+        "departure_time": "16:00",
+        "order": 2,
+        "weekday": 2
+      },
+      {
+        "day": "Friday",
+        "departure_time": "16:00",
+        "order": 3,
+        "weekday": 4
+      }
+    ],
+    "weekly_goal": 3
+  },
+  "schema_version": 5,
+  "weeks": {
+    "2026-08-10": {
+      "completed_count": 1,
+      "fallback_slots": [
+        {
+          "assigned_from_slot_id": null,
+          "day": "Saturday",
+          "departure_at": "2026-08-15T16:00:00-04:00",
+          "departure_response": null,
+          "follow_up_sent_at": null,
+          "id": "2026-08-10-fallback-1",
+          "kind": "fallback",
+          "order": 1,
+          "record_workout_prompt_due_at": null,
+          "record_workout_prompt_sent_at": null,
+          "reminder_sent_at": null,
+          "status": "available",
+          "weekday": 5
+        },
+        {
+          "assigned_from_slot_id": "2026-08-10-primary-1",
+          "day": "Sunday",
+          "departure_at": "2026-08-16T16:00:00-04:00",
+          "departure_response": null,
+          "follow_up_sent_at": null,
+          "id": "2026-08-10-fallback-2",
+          "kind": "fallback",
+          "order": 2,
+          "record_workout_prompt_due_at": null,
+          "record_workout_prompt_sent_at": null,
+          "reminder_sent_at": null,
+          "status": "missed",
+          "weekday": 6
+        }
+      ],
+      "primary_slots": [
+        {
+          "assigned_from_slot_id": null,
+          "day": "Monday",
+          "departure_at": "2026-08-10T16:00:00-04:00",
+          "departure_response": {
+            "fallback_slot_id": "2026-08-10-fallback-2",
+            "outcome": "move-to-fallback",
+            "reason": "Work ran late",
+            "recorded_at": "2026-08-10T16:00:00-04:00"
+          },
+          "follow_up_sent_at": null,
+          "id": "2026-08-10-primary-1",
+          "kind": "primary",
+          "order": 1,
+          "record_workout_prompt_due_at": null,
+          "record_workout_prompt_sent_at": null,
+          "reminder_sent_at": "2026-08-10T16:00:00-04:00",
+          "status": "moved",
+          "weekday": 0
+        },
+        {
+          "assigned_from_slot_id": null,
+          "day": "Wednesday",
+          "departure_at": "2026-08-12T16:00:00-04:00",
+          "departure_response": {
+            "fallback_slot_id": null,
+            "outcome": "skip",
+            "reason": "Too tired",
+            "recorded_at": "2026-08-12T16:00:00-04:00"
+          },
+          "follow_up_sent_at": null,
+          "id": "2026-08-10-primary-2",
+          "kind": "primary",
+          "order": 2,
+          "record_workout_prompt_due_at": null,
+          "record_workout_prompt_sent_at": null,
+          "reminder_sent_at": "2026-08-12T16:00:00-04:00",
+          "status": "skipped",
+          "weekday": 2
+        },
+        {
+          "assigned_from_slot_id": null,
+          "day": "Saturday",
+          "departure_at": "2026-08-15T17:30:00-04:00",
+          "departure_response": null,
+          "follow_up_sent_at": "2026-08-15T17:45:00-04:00",
+          "id": "2026-08-10-primary-3",
+          "kind": "primary",
+          "order": 3,
+          "record_workout_prompt_due_at": null,
+          "record_workout_prompt_sent_at": null,
+          "reminder_sent_at": "2026-08-15T17:30:00-04:00",
+          "status": "missed",
+          "weekday": 5
+        }
+      ],
+      "week_end": "2026-08-16",
+      "week_start": "2026-08-10",
+      "workout_records": [
+        {
+          "activity": "Weight training",
+          "duration": "30",
+          "effort": "Moderate",
+          "id": "2026-08-10-unscheduled-7b3f8dd803bd4512b116ebdf6cbd9927",
+          "qualifies": true,
+          "recorded_at": "2026-08-10T09:00:00-04:00",
+          "source": "unscheduled",
+          "source_slot_id": null
+        }
+      ]
+    },
+    "2026-08-17": {
+      "completed_count": 3,
+      "fallback_slots": [
+        {
+          "assigned_from_slot_id": null,
+          "day": "Saturday",
+          "departure_at": "2026-08-22T16:00:00-04:00",
+          "departure_response": null,
+          "follow_up_sent_at": null,
+          "id": "2026-08-17-fallback-1",
+          "kind": "fallback",
+          "order": 1,
+          "record_workout_prompt_due_at": null,
+          "record_workout_prompt_sent_at": null,
+          "reminder_sent_at": null,
+          "status": "available",
+          "weekday": 5
+        },
+        {
+          "assigned_from_slot_id": null,
+          "day": "Sunday",
+          "departure_at": "2026-08-23T16:00:00-04:00",
+          "departure_response": null,
+          "follow_up_sent_at": null,
+          "id": "2026-08-17-fallback-2",
+          "kind": "fallback",
+          "order": 2,
+          "record_workout_prompt_due_at": null,
+          "record_workout_prompt_sent_at": null,
+          "reminder_sent_at": null,
+          "status": "available",
+          "weekday": 6
+        }
+      ],
+      "primary_slots": [
+        {
+          "assigned_from_slot_id": null,
+          "day": "Tuesday",
+          "departure_at": "2026-08-18T15:30:00-04:00",
+          "departure_response": null,
+          "follow_up_sent_at": null,
+          "id": "2026-08-17-primary-1",
+          "kind": "primary",
+          "order": 1,
+          "record_workout_prompt_due_at": null,
+          "record_workout_prompt_sent_at": null,
+          "reminder_sent_at": null,
+          "status": "scheduled",
+          "weekday": 1
+        },
+        {
+          "assigned_from_slot_id": null,
+          "day": "Wednesday",
+          "departure_at": "2026-08-19T16:00:00-04:00",
+          "departure_response": null,
+          "follow_up_sent_at": null,
+          "id": "2026-08-17-primary-2",
+          "kind": "primary",
+          "order": 2,
+          "record_workout_prompt_due_at": null,
+          "record_workout_prompt_sent_at": null,
+          "reminder_sent_at": null,
+          "status": "scheduled",
+          "weekday": 2
+        },
+        {
+          "assigned_from_slot_id": null,
+          "day": "Friday",
+          "departure_at": "2026-08-21T16:00:00-04:00",
+          "departure_response": null,
+          "follow_up_sent_at": null,
+          "id": "2026-08-17-primary-3",
+          "kind": "primary",
+          "order": 3,
+          "record_workout_prompt_due_at": null,
+          "record_workout_prompt_sent_at": null,
+          "reminder_sent_at": null,
+          "status": "scheduled",
+          "weekday": 4
+        }
+      ],
+      "week_end": "2026-08-23",
+      "week_start": "2026-08-17",
+      "workout_records": [
+        {
+          "activity": "Other exercise",
+          "duration": "Under 20",
+          "effort": "Hard",
+          "id": "2026-08-17-unscheduled-c0b1fdc6a08b4e8d936a62b54f559ce6",
+          "qualifies": false,
+          "recorded_at": "2026-08-17T09:00:00-04:00",
+          "source": "unscheduled",
+          "source_slot_id": null
+        },
+        {
+          "activity": "Elliptical",
+          "duration": "20",
+          "effort": "Easy",
+          "id": "2026-08-17-unscheduled-33f1d4cfea2947b49f33a54b35d3785f",
+          "qualifies": true,
+          "recorded_at": "2026-08-17T10:00:00-04:00",
+          "source": "unscheduled",
+          "source_slot_id": null
+        },
+        {
+          "activity": "Weight training",
+          "duration": "45",
+          "effort": "Moderate",
+          "id": "2026-08-17-unscheduled-4e64f6a563ed4be2b0a565af2fe7af90",
+          "qualifies": true,
+          "recorded_at": "2026-08-17T11:00:00-04:00",
+          "source": "unscheduled",
+          "source_slot_id": null
+        },
+        {
+          "activity": "Other exercise",
+          "duration": "60+ minutes",
+          "effort": "Very hard",
+          "id": "2026-08-17-unscheduled-1c62cf18ae954efe94e6217f776f94b9",
+          "qualifies": true,
+          "recorded_at": "2026-08-17T12:00:00-04:00",
+          "source": "unscheduled",
+          "source_slot_id": null
+        }
+      ]
+    }
+  },
+  "workout_draft": null
+}

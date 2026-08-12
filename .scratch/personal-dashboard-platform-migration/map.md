@@ -2,11 +2,11 @@
 
 ## Current frontier
 
-- [01 — Preserve the completed baseline](issues/01-preserve-completed-baseline.md) — ready-for-agent
+- [01 — Preserve the completed baseline](issues/01-preserve-completed-baseline.md) — resolved
+- [02 — Launch Personal Dashboard as a Mac app](issues/02-launch-personal-dashboard-mac-app.md) — ready-for-agent
 
 ## Blocked tickets
 
-- [02 — Launch Personal Dashboard as a Mac app](issues/02-launch-personal-dashboard-mac-app.md) — blocked by 01
 - [03 — Persist and exchange a minimal Mac profile](issues/03-persist-exchange-minimal-mac-profile.md) — blocked by 02
 - [04 — Deliver a notification with the Mac window closed](issues/04-notify-with-mac-window-closed.md) — blocked by 02
 - [05 — Install the minimal shell on the target iPad](issues/05-install-minimal-ipad-shell.md) — blocked by 03, 04

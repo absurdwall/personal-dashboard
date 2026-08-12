@@ -68,3 +68,8 @@ adapter (this displays one acceptance notification):
 ```sh
 EXERCISE_TRACKER_MACOS_ACCEPTANCE=1 python3 -m unittest discover -s tests -v
 ```
+
+The completed pre-Tauri application is preserved by the annotated Git tag
+`python-exercise-tracker-complete`. Its behavior, data contract, synthetic
+migration fixture, and recovery procedure are recorded in
+[`docs/migration/completed-python-baseline.md`](docs/migration/completed-python-baseline.md).
