@@ -38,6 +38,23 @@ The acceptance check relocates a copy, launches it through macOS Launch
 Services, verifies the arm64 application identity, and confirms that the app
 uses neither Python nor a listening TCP socket.
 
+## Minimal Mac profile
+
+The packaged app keeps its current minimal profile as versioned JSON at:
+
+```text
+~/Library/Application Support/com.tortillaflat.personal-dashboard/profile.json
+```
+
+Use **Save label** to persist a visible profile change. **Export profile…** and
+**Import profile…** use the native macOS file panels; a selected import is
+fully decoded and validated before it can replace the active profile. These
+operations are local and do not require an account or network connection.
+
+The packaged acceptance procedure for persistence and file exchange is
+recorded in
+[`docs/acceptance/macos-minimal-profile.md`](docs/acceptance/macos-minimal-profile.md).
+
 ## Completed Python baseline
 
 The completed Python exercise tracker remains available as migration evidence

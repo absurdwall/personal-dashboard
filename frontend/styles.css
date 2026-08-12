@@ -155,6 +155,124 @@ h1 {
   line-height: 1.65;
 }
 
+.profile-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(20rem, 1.1fr);
+  gap: clamp(2rem, 5vw, 4rem);
+  padding: clamp(2rem, 5vw, 3.5rem);
+  border-bottom: 1px solid rgb(24 32 29 / 11%);
+}
+
+.profile-copy h3 {
+  max-width: 18ch;
+  margin-bottom: 0.9rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(1.7rem, 3vw, 2.5rem);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+
+.profile-copy > p:not(.section-label, .schema-chip) {
+  color: #64716b;
+  line-height: 1.6;
+}
+
+.schema-chip {
+  display: inline-flex;
+  gap: 0.4rem;
+  margin-bottom: 0;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  background: #e3eadf;
+  color: #355342;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.profile-form {
+  align-self: center;
+  padding: 1.5rem;
+  border: 1px solid rgb(24 32 29 / 13%);
+  border-radius: 1rem;
+  background: #fffef9;
+}
+
+.profile-form label {
+  display: block;
+  margin-bottom: 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.profile-field-row,
+.exchange-actions {
+  display: flex;
+  gap: 0.7rem;
+}
+
+.profile-field-row input {
+  min-width: 0;
+  flex: 1;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #a6afa9;
+  border-radius: 0.6rem;
+  background: white;
+  color: inherit;
+  font: inherit;
+}
+
+button {
+  padding: 0.75rem 1rem;
+  border: 1px solid #214c37;
+  border-radius: 0.6rem;
+  background: #214c37;
+  color: #fffef9;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid #87a995;
+  outline-offset: 2px;
+}
+
+.saved-value {
+  margin: 0.7rem 0 1.3rem;
+  color: #64716b;
+  font-size: 0.8rem;
+}
+
+.saved-value output {
+  color: #263e31;
+  font-weight: 700;
+}
+
+.secondary-button {
+  border-color: #9eaaa2;
+  background: transparent;
+  color: #294b38;
+}
+
+.profile-status {
+  min-height: 1.3rem;
+  margin: 1rem 0 0;
+  color: #356047;
+  font-size: 0.82rem;
+}
+
+.profile-status[data-state="error"] {
+  color: #8a3428;
+}
+
 .boundary-list {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -192,6 +310,16 @@ h1 {
 
   .boundary-list {
     grid-template-columns: 1fr;
+  }
+
+  .profile-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-field-row,
+  .exchange-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .boundary-list div + div {

@@ -4,7 +4,7 @@
 
 - [01 — Preserve the completed baseline](issues/01-preserve-completed-baseline.md) — resolved
 - [02 — Launch Personal Dashboard as a Mac app](issues/02-launch-personal-dashboard-mac-app.md) — resolved
-- [03 — Persist and exchange a minimal Mac profile](issues/03-persist-exchange-minimal-mac-profile.md) — ready-for-agent
+- [03 — Persist and exchange a minimal Mac profile](issues/03-persist-exchange-minimal-mac-profile.md) — resolved
 - [04 — Deliver a notification with the Mac window closed](issues/04-notify-with-mac-window-closed.md) — ready-for-agent
 
 ## Blocked tickets

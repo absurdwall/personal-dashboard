@@ -44,6 +44,45 @@
           </p>
         </div>
 
+        <section class="profile-panel" aria-labelledby="profile-heading">
+          <div class="profile-copy">
+            <p class="section-label">Local profile capability</p>
+            <h3 id="profile-heading">This Mac keeps one versioned profile.</h3>
+            <p>
+              The label below is saved as app-owned JSON. Export creates a
+              portable copy; import validates a selected copy before replacing
+              local state.
+            </p>
+            <p class="schema-chip">Schema version <span id="schema-version">—</span></p>
+          </div>
+
+          <form id="profile-form" class="profile-form">
+            <label for="profile-label">Profile label</label>
+            <div class="profile-field-row">
+              <input
+                id="profile-label"
+                name="profile-label"
+                autocomplete="off"
+              />
+              <button type="submit">Save label</button>
+            </div>
+            <p class="saved-value">
+              Saved locally as <output id="profile-label-display">Loading…</output>
+            </p>
+            <div class="exchange-actions" aria-label="Profile file actions">
+              <button id="export-profile" type="button" class="secondary-button">
+                Export profile…
+              </button>
+              <button id="import-profile" type="button" class="secondary-button">
+                Import profile…
+              </button>
+            </div>
+            <p id="profile-status" class="profile-status" role="status" aria-live="polite">
+              Loading the local profile…
+            </p>
+          </form>
+        </section>
+
         <dl class="boundary-list">
           <div>
             <dt>Privacy</dt>
