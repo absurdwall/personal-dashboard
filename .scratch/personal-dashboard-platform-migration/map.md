@@ -6,8 +6,8 @@
 - [02 — Launch Personal Dashboard as a Mac app](issues/02-launch-personal-dashboard-mac-app.md) — resolved
 - [03 — Persist and exchange a minimal Mac profile](issues/03-persist-exchange-minimal-mac-profile.md) — resolved
 - [04 — Deliver a notification with the Mac window closed](issues/04-notify-with-mac-window-closed.md) — resolved
-- [05 — Install the minimal shell on the target iPad](issues/05-install-minimal-ipad-shell.md) — ready-for-agent
-- [06 — Install the minimal shell on the target Samsung phone](issues/06-install-minimal-samsung-shell.md) — ready-for-agent
+- [05 — Install the minimal shell on the target iPad](issues/05-install-minimal-ipad-shell.md) — resolved
+- [06 — Install the minimal shell on the target Samsung phone](issues/06-install-minimal-samsung-shell.md) — claimed
 
 ## Blocked tickets
 
