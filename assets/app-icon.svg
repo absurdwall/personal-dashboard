@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">Personal Dashboard application icon</title>
+  <desc id="description">A cream path crossing a deep green rounded square.</desc>
+  <defs>
+    <linearGradient id="background" x1="120" y1="96" x2="904" y2="928" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2d664a" />
+      <stop offset="1" stop-color="#143c29" />
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="224" fill="url(#background)" />
+  <path d="M286 716V308h190c135 0 218 65 218 174 0 111-84 178-218 178h-74v56H286Zm116-158h68c67 0 106-27 106-76 0-47-39-72-106-72h-68v148Z" fill="#f4eedf" />
+  <circle cx="733" cy="716" r="58" fill="#a9cab5" />
+</svg>

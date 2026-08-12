@@ -1,0 +1,17 @@
+{
+  "name": "personal-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/prepare-frontend.mjs && tsc",
+    "check": "npm run build && cargo check --manifest-path src-tauri/Cargo.toml",
+    "build:mac": "tauri build --bundles app",
+    "accept:mac": "scripts/acceptance/macos-packaged-launch.sh",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
+    "typescript": "7.0.2"
+  }
+}

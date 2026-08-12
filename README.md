@@ -1,10 +1,51 @@
-# Exercise Habit Tracker
+# Personal Dashboard
 
-A private, single-user exercise dashboard for macOS. It uses only Python's
-standard library and built-in macOS facilities; there is no account, network
-service, cloud sync, deployment, or third-party dependency.
+Personal Dashboard is a private, offline, local-first application. Exercise
+tracking is its current feature area.
 
-## Run the dashboard
+## Build the Mac application
+
+The current tracer bullet uses Tauri 2, Rust, plain TypeScript, semantic HTML,
+and CSS. Install the JavaScript and Rust build prerequisites, then run:
+
+```sh
+npm install
+. "$HOME/.cargo/env"
+npm run check
+npm run build:mac
+```
+
+The release application bundle is produced at:
+
+```text
+src-tauri/target/release/bundle/macos/Personal Dashboard.app
+```
+
+It can be copied into Applications or opened directly through macOS Launch
+Services:
+
+```sh
+open "src-tauri/target/release/bundle/macos/Personal Dashboard.app"
+```
+
+Verify the packaged bundle rather than a development process:
+
+```sh
+npm run accept:mac
+```
+
+The acceptance check relocates a copy, launches it through macOS Launch
+Services, verifies the arm64 application identity, and confirms that the app
+uses neither Python nor a listening TCP socket.
+
+## Completed Python baseline
+
+The completed Python exercise tracker remains available as migration evidence
+while behavior is moved incrementally. It uses only Python's standard library
+and built-in macOS facilities; there is no account, network service, cloud
+sync, deployment, or third-party dependency.
+
+### Run the baseline dashboard
 
 From this directory:
 
@@ -19,7 +60,7 @@ state remains at:
 ~/Library/Application Support/Exercise Habit Tracker/state.json
 ```
 
-## Run reminders while the dashboard is closed
+### Run baseline reminders while the dashboard is closed
 
 Start the reminder runner once per logged-in Mac session:
 
@@ -38,7 +79,7 @@ To stop it:
 PYTHONPATH=src python3 -m exercise_tracker stop-reminders
 ```
 
-## Back up and restore
+### Back up and restore baseline data
 
 Export the complete local exercise plan and history to a file you choose:
 
@@ -56,7 +97,7 @@ Both operations stay on this Mac and require no account, network connection,
 cloud service, or synchronization. Restore replaces the app's complete local
 state with the selected backup.
 
-## Verify
+### Verify baseline behavior
 
 ```sh
 python3 -m unittest discover -s tests -v

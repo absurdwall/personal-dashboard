@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Personal Dashboard, a private and offline exercise tracker."
+    />
+    <title>Personal Dashboard</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="product-header">
+        <div>
+          <p class="eyebrow" data-product-name>Personal Dashboard</p>
+          <h1 data-feature-area>Exercise tracking</h1>
+          <p class="introduction">
+            Your private, offline place for exercise plans, reminders, and
+            progress.
+          </p>
+        </div>
+        <div id="runtime-status" class="runtime-status" role="status" aria-live="polite">
+          Connecting to the local application…
+        </div>
+      </header>
+
+      <section class="feature-card" aria-labelledby="exercise-heading">
+        <div class="feature-heading">
+          <div class="feature-mark" aria-hidden="true">PD</div>
+          <div>
+            <p class="section-label">Current feature area</p>
+            <h2 id="exercise-heading" data-feature-area>Exercise tracking</h2>
+          </div>
+        </div>
+
+        <div class="readiness-panel">
+          <p class="readiness-kicker">Native Mac foundation</p>
+          <h3>The Personal Dashboard shell is ready.</h3>
+          <p>
+            Established exercise workflows will move here incrementally while
+            the completed baseline remains recoverable.
+          </p>
+        </div>
+
+        <dl class="boundary-list">
+          <div>
+            <dt>Privacy</dt>
+            <dd>Local to this device</dd>
+          </div>
+          <div>
+            <dt>Connection</dt>
+            <dd>No account or network required</dd>
+          </div>
+          <div>
+            <dt>Application</dt>
+            <dd>Native Mac window</dd>
+          </div>
+        </dl>
+      </section>
+    </main>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>
