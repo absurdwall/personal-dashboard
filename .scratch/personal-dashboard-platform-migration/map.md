@@ -7,11 +7,11 @@
 - [03 — Persist and exchange a minimal Mac profile](issues/03-persist-exchange-minimal-mac-profile.md) — resolved
 - [04 — Deliver a notification with the Mac window closed](issues/04-notify-with-mac-window-closed.md) — resolved
 - [05 — Install the minimal shell on the target iPad](issues/05-install-minimal-ipad-shell.md) — resolved
-- [06 — Install the minimal shell on the target Samsung phone](issues/06-install-minimal-samsung-shell.md) — claimed
+- [06 — Install the minimal shell on the target Samsung phone](issues/06-install-minimal-samsung-shell.md) — resolved
+- [07 — Show the persistent exercise week and first departure reminder](issues/07-show-exercise-week-first-reminder.md) — ready-for-agent
 
 ## Blocked tickets
 
-- [07 — Show the persistent exercise week and first departure reminder](issues/07-show-exercise-week-first-reminder.md) — blocked by 05, 06
 - [08 — Respond to departure or receive one follow-up](issues/08-respond-or-receive-follow-up.md) — blocked by 07
 - [09 — Record a workout through the established flow](issues/09-record-workout-established-flow.md) — blocked by 08
 - [10 — Recover or skip a planned workout](issues/10-recover-or-skip-workout.md) — blocked by 09

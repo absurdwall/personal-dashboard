@@ -4,16 +4,37 @@
 
 **Blocked by:** 03 — Persist and exchange a minimal Mac profile; 04 — Deliver a notification with the Mac window closed.
 
-**Status:** claimed
+**Status:** resolved
 
-- [ ] The target Samsung model and current Android version are recorded before the gate runs.
+- [x] The target Samsung model and current Android version are recorded before the gate runs.
 - [x] The project initializes and builds the Android target without creating a second product implementation.
-- [ ] A minimal Personal Dashboard shell installs and launches on the actual target Samsung phone.
-- [ ] The shell identifies Personal Dashboard and renders through the shared interface foundation.
-- [ ] The result proves toolchain and device reachability only and does not claim exercise-feature or notification parity.
+- [x] A minimal Personal Dashboard shell installs and launches on the actual target Samsung phone.
+- [x] The shell identifies Personal Dashboard and renders through the shared interface foundation.
+- [x] The result proves toolchain and device reachability only and does not claim exercise-feature or notification parity.
 - [x] Any platform limitation, developer-mode step, permission issue, or unresolved risk is recorded as a gate result.
 - [x] Failure stops dependent migration work without modifying or bypassing the completed baseline.
 - [x] No Play Store distribution, production mobile design, profile transfer, tablet support, or full mobile behavior is added.
+
+## Answer
+
+The accepted Tauri foundation reaches the actual target Samsung phone.
+Personal Dashboard 0.1.0 was installed from the existing ARM64 debug APK,
+cold-launched, and observed running in the foreground on a Samsung Galaxy S24
+(`SM-S921U`) with Android 16, API level 36, One UI 8.0, and the `arm64-v8a`
+ABI. A physical-device screenshot shows the shared Personal Dashboard exercise
+shell rendering offline, and the launch produced no Android runtime crash
+signal.
+
+The device initially enumerated in macOS but did not expose an ADB interface.
+Enabling Developer mode and USB debugging, then authorizing the Mac's debugging
+key, changed the device from absent to `unauthorized` and finally to an
+authorized ADB device. Samsung Auto Blocker did not need to be changed.
+
+This result proves only Android toolchain, installation, launch, and shared
+interface reachability. It does not claim exercise behavior, profile exchange,
+notification parity, or production mobile presentation. The shared capability
+copy still includes Mac-specific phrases such as “Native Mac foundation” and
+“This Mac”; later mobile presentation work must make that copy platform-aware.
 
 ## Comments
 
@@ -66,3 +87,22 @@ debugging enabled, approval of the Mac's debugging key, recording the model and
 Android version, installing and launching the APK, and visually confirming the
 shared shell. The ticket stays claimed and ticket 07 remains blocked until
 those criteria are completed.
+
+### 2026-08-12 — Physical Samsung gate passed
+
+The target Samsung Galaxy S24 (`SM-S921U`) was connected by USB. Device
+inspection recorded Android 16, API level 36, One UI 8.0, the `e1q` device
+family, and the `arm64-v8a` ABI before installation. macOS initially enumerated
+the phone while ADB reported no device. After Developer mode and USB debugging
+were enabled, ADB reported `unauthorized`; approving the Mac's debugging key on
+the unlocked phone completed authorization. Auto Blocker did not need to be
+changed.
+
+ADB installed Personal Dashboard 0.1.0 from the compiled universal debug APK
+and cold-launched `com.tortillaflat.personal_dashboard/.MainActivity`. The app
+process remained running, Android reported that activity as the focused window,
+and no app runtime crash signal was present. A physical-device screenshot
+visibly confirms the shared offline exercise shell renders on the target
+phone. The gate is resolved; no Play Store distribution, production mobile
+design, profile transfer, notification behavior, or exercise-feature parity was
+added or claimed.
