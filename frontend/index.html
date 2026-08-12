@@ -83,6 +83,52 @@
           </form>
         </section>
 
+        <section class="notification-panel" aria-labelledby="notification-heading">
+          <div class="notification-copy">
+            <p class="section-label">Mac lifecycle capability</p>
+            <h3 id="notification-heading">Prove delivery with this window closed.</h3>
+            <p>
+              Grant notification permission, schedule one bounded capability
+              message, then close this window with the red window control. The
+              app stays available in the Dock and delivers through macOS.
+            </p>
+          </div>
+
+          <div class="notification-controls">
+            <dl class="capability-status-list">
+              <div>
+                <dt>Permission</dt>
+                <dd id="notification-permission">Checking…</dd>
+              </div>
+              <div>
+                <dt>Scheduled delivery</dt>
+                <dd id="notification-scheduled-time">Not scheduled</dd>
+              </div>
+            </dl>
+            <div class="notification-actions">
+              <button id="request-notification-permission" type="button">
+                Allow notifications
+              </button>
+              <button
+                id="schedule-capability-notification"
+                type="button"
+                class="secondary-button"
+                disabled
+              >
+                Schedule for 10 seconds
+              </button>
+            </div>
+            <p
+              id="notification-status"
+              class="profile-status"
+              role="status"
+              aria-live="polite"
+            >
+              Checking notification permission…
+            </p>
+          </div>
+        </section>
+
         <dl class="boundary-list">
           <div>
             <dt>Privacy</dt>

@@ -55,6 +55,18 @@ The packaged acceptance procedure for persistence and file exchange is
 recorded in
 [`docs/acceptance/macos-minimal-profile.md`](docs/acceptance/macos-minimal-profile.md).
 
+## Mac notification capability
+
+The packaged app can request macOS notification permission and schedule one
+bounded capability notification for ten seconds later. Closing the red window
+control hides the window without quitting, so macOS can deliver the scheduled
+notification; choosing **Personal Dashboard → Quit Personal Dashboard** still
+performs a normal Quit.
+
+The packaged acceptance procedure and the observed closed-window and
+normal-Quit results are recorded in
+[`docs/acceptance/macos-notification-capability.md`](docs/acceptance/macos-notification-capability.md).
+
 ## Completed Python baseline
 
 The completed Python exercise tracker remains available as migration evidence

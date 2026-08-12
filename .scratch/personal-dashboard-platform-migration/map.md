@@ -5,12 +5,12 @@
 - [01 — Preserve the completed baseline](issues/01-preserve-completed-baseline.md) — resolved
 - [02 — Launch Personal Dashboard as a Mac app](issues/02-launch-personal-dashboard-mac-app.md) — resolved
 - [03 — Persist and exchange a minimal Mac profile](issues/03-persist-exchange-minimal-mac-profile.md) — resolved
-- [04 — Deliver a notification with the Mac window closed](issues/04-notify-with-mac-window-closed.md) — ready-for-agent
+- [04 — Deliver a notification with the Mac window closed](issues/04-notify-with-mac-window-closed.md) — resolved
+- [05 — Install the minimal shell on the target iPad](issues/05-install-minimal-ipad-shell.md) — ready-for-agent
+- [06 — Install the minimal shell on the target Samsung phone](issues/06-install-minimal-samsung-shell.md) — ready-for-agent
 
 ## Blocked tickets
 
-- [05 — Install the minimal shell on the target iPad](issues/05-install-minimal-ipad-shell.md) — blocked by 03, 04
-- [06 — Install the minimal shell on the target Samsung phone](issues/06-install-minimal-samsung-shell.md) — blocked by 03, 04
 - [07 — Show the persistent exercise week and first departure reminder](issues/07-show-exercise-week-first-reminder.md) — blocked by 05, 06
 - [08 — Respond to departure or receive one follow-up](issues/08-respond-or-receive-follow-up.md) — blocked by 07
 - [09 — Record a workout through the established flow](issues/09-record-workout-established-flow.md) — blocked by 08
