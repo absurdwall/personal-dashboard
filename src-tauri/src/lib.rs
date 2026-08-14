@@ -119,6 +119,25 @@ fn respond_to_departure(
 }
 
 #[tauri::command]
+fn start_departure_decision(
+    application: State<'_, DesktopExerciseApplication>,
+    slot_id: String,
+    outcome: String,
+) -> Result<ExerciseDashboardView, String> {
+    application.start_departure_decision(&slot_id, &outcome)
+}
+
+#[tauri::command]
+fn confirm_departure_decision(
+    application: State<'_, DesktopExerciseApplication>,
+    slot_id: String,
+    outcome: String,
+    reason: String,
+) -> Result<ExerciseDashboardView, String> {
+    application.confirm_departure_decision(&slot_id, &outcome, &reason)
+}
+
+#[tauri::command]
 fn start_workout_record(
     application: State<'_, DesktopExerciseApplication>,
     slot_id: String,
@@ -225,6 +244,8 @@ pub fn run() {
             import_profile,
             exercise_dashboard,
             respond_to_departure,
+            start_departure_decision,
+            confirm_departure_decision,
             start_workout_record,
             choose_workout_activity,
             choose_workout_duration,
@@ -243,6 +264,8 @@ pub fn run() {
         import_profile,
         exercise_dashboard,
         respond_to_departure,
+        start_departure_decision,
+        confirm_departure_decision,
         start_workout_record,
         choose_workout_activity,
         choose_workout_duration,

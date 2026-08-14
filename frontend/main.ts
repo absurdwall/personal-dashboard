@@ -20,6 +20,14 @@ type DepartureTiming = Readonly<{
   time: string;
 }>;
 
+type DepartureDecisionOutcome = "move-to-fallback" | "skip";
+type DepartureReason =
+  | "Work ran late"
+  | "Too tired"
+  | "Sick or injured"
+  | "Another commitment"
+  | "Other";
+
 type PrimaryDeparture = DepartureTiming & Readonly<{
   status: string;
 }>;
@@ -66,6 +74,12 @@ type ExerciseDashboardView = Readonly<{
     heading: string;
     actions: readonly string[];
     status: string | null;
+  }> | null;
+  departureReasonPrompt: Readonly<{
+    slotId: string;
+    outcome: DepartureDecisionOutcome;
+    heading: string;
+    reasons: readonly DepartureReason[];
   }> | null;
   departureConfirmation: Readonly<{
     message: string;
@@ -115,6 +129,16 @@ const departureResponseStatus = document.querySelector<HTMLElement>(
   "#departure-response-status",
 );
 const departureActions = document.querySelector<HTMLElement>("#departure-actions");
+const departureReasonPrompt = document.querySelector<HTMLElement>(
+  "#departure-reason-prompt",
+);
+const departureReasonHeading = document.querySelector<HTMLElement>(
+  "#departure-reason-heading",
+);
+const departureReasons = document.querySelector<HTMLElement>("#departure-reasons");
+const cancelDepartureReason = document.querySelector<HTMLButtonElement>(
+  "#cancel-departure-reason",
+);
 const departureConfirmation = document.querySelector<HTMLElement>(
   "#departure-confirmation",
 );
@@ -257,6 +281,24 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
       );
     }
   }
+  if (departureReasonPrompt && departureReasonHeading && departureReasons) {
+    departureReasonPrompt.hidden = view.departureReasonPrompt === null;
+    departureReasons.replaceChildren();
+    if (view.departureReasonPrompt) {
+      departureReasonHeading.textContent = view.departureReasonPrompt.heading;
+      departureReasons.replaceChildren(
+        ...view.departureReasonPrompt.reasons.map((reason) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = reason;
+          button.dataset.slotId = view.departureReasonPrompt?.slotId;
+          button.dataset.outcome = view.departureReasonPrompt?.outcome;
+          button.dataset.reason = reason;
+          return button;
+        }),
+      );
+    }
+  }
   if (departureConfirmation) {
     departureConfirmation.hidden = view.departureConfirmation === null;
     if (view.departureConfirmation) {
@@ -318,28 +360,57 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
   }
 }
 
-async function respondToDeparture(slotId: string, action: string): Promise<void> {
-  departureActions?.querySelectorAll("button").forEach((button) => {
+async function runDepartureCommand(
+  controls: HTMLElement | null,
+  command: "respond_to_departure" | "start_departure_decision" | "confirm_departure_decision",
+  arguments_: Record<string, string>,
+  fallbackError: string,
+): Promise<void> {
+  controls?.querySelectorAll("button").forEach((button) => {
     button.setAttribute("disabled", "");
   });
   try {
     const dashboard = await window.__TAURI__.core.invoke<ExerciseDashboardView>(
-      "respond_to_departure",
-      { slotId, action },
+      command,
+      arguments_,
     );
     renderExerciseDashboard(dashboard);
   } catch (error) {
     if (exerciseReminderStatus) {
-      exerciseReminderStatus.textContent = errorMessage(
-        error,
-        "The departure response could not be saved.",
-      );
+      exerciseReminderStatus.textContent = errorMessage(error, fallbackError);
       exerciseReminderStatus.dataset.state = "error";
     }
-    departureActions?.querySelectorAll("button").forEach((button) => {
+    controls?.querySelectorAll("button").forEach((button) => {
       button.removeAttribute("disabled");
     });
   }
+}
+
+async function respondToDeparture(slotId: string, action: string): Promise<void> {
+  const command =
+    action === "leaving-for-gym" ? "respond_to_departure" : "start_departure_decision";
+  await runDepartureCommand(
+    departureActions,
+    command,
+    {
+      slotId,
+      ...(action === "leaving-for-gym" ? { action } : { outcome: action }),
+    },
+    "The departure response could not be saved.",
+  );
+}
+
+async function confirmDepartureDecision(
+  slotId: string,
+  outcome: DepartureDecisionOutcome,
+  reason: DepartureReason,
+): Promise<void> {
+  await runDepartureCommand(
+    departureReasons,
+    "confirm_departure_decision",
+    { slotId, outcome, reason },
+    "The departure decision could not be saved.",
+  );
 }
 
 function setWorkoutActionsDisabled(disabled: boolean): void {
@@ -589,6 +660,31 @@ departureActions?.addEventListener("click", (event) => {
   if (button?.dataset.slotId && button.dataset.action) {
     void respondToDeparture(button.dataset.slotId, button.dataset.action);
   }
+});
+
+departureReasons?.addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
+  const outcome = button?.dataset.outcome;
+  const reason = button?.dataset.reason;
+  if (
+    button?.dataset.slotId &&
+    (outcome === "move-to-fallback" || outcome === "skip") &&
+    (reason === "Work ran late" ||
+      reason === "Too tired" ||
+      reason === "Sick or injured" ||
+      reason === "Another commitment" ||
+      reason === "Other")
+  ) {
+    void confirmDepartureDecision(
+      button.dataset.slotId,
+      outcome,
+      reason,
+    );
+  }
+});
+
+cancelDepartureReason?.addEventListener("click", () => {
+  void refreshExerciseDashboard();
 });
 
 function handleWorkoutChoice(event: Event): void {

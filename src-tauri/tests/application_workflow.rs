@@ -106,7 +106,7 @@ fn fresh_exercise_week_survives_relaunch_and_emits_the_first_departure_reminder(
 
     assert_eq!("Personal Dashboard", dashboard.product_name);
     assert_eq!("Exercise tracking", dashboard.feature_area);
-    assert_eq!(3, dashboard.schema_version);
+    assert_eq!(4, dashboard.schema_version);
     assert_eq!(
         "Monday, August 10 – Sunday, August 16",
         dashboard.week_label
@@ -224,6 +224,305 @@ fn confirming_departure_persists_the_response_and_one_record_workout_reminder() 
             .respond_to_departure("2026-08-10-primary-1", "leaving-for-gym")
             .unwrap_err()
     );
+}
+
+#[test]
+fn departures_move_to_ordered_fallbacks_or_skip_with_the_complete_preset_reason_set() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    let moving = application
+        .start_departure_decision("2026-08-10-primary-1", "move-to-fallback")
+        .unwrap();
+    let reason_prompt = moving.departure_reason_prompt.as_ref().unwrap();
+    assert_eq!("Why are you moving this workout?", reason_prompt.heading);
+    assert_eq!(
+        vec![
+            "Work ran late",
+            "Too tired",
+            "Sick or injured",
+            "Another commitment",
+            "Other"
+        ],
+        reason_prompt.reasons
+    );
+    assert_eq!(None, application.open().unwrap().departure_reason_prompt);
+    assert_eq!(
+        "That departure reason is not available.",
+        application
+            .confirm_departure_decision("2026-08-10-primary-1", "move-to-fallback", "Traffic")
+            .unwrap_err()
+    );
+
+    let saturday = application
+        .confirm_departure_decision("2026-08-10-primary-1", "move-to-fallback", "Work ran late")
+        .unwrap();
+    assert_eq!(
+        "Moved to Saturday · Work ran late",
+        saturday.primary_departures[0].status
+    );
+    assert_eq!(
+        "Assigned from Monday",
+        saturday.fallback_departures[0].availability
+    );
+    assert_eq!(1, saturday.fallback_available_count);
+
+    clock.advance_to(1_786_564_800_000);
+    application.open().unwrap();
+    let sunday = application
+        .confirm_departure_decision("2026-08-10-primary-2", "move-to-fallback", "Too tired")
+        .unwrap();
+    assert_eq!(
+        "Moved to Sunday · Too tired",
+        sunday.primary_departures[1].status
+    );
+    assert_eq!(
+        "Assigned from Wednesday",
+        sunday.fallback_departures[1].availability
+    );
+    assert_eq!(0, sunday.fallback_available_count);
+
+    clock.advance_to(1_786_737_600_000);
+    application.open().unwrap();
+    assert_eq!(
+        "No fallback slot remains available.",
+        application
+            .start_departure_decision("2026-08-10-primary-3", "move-to-fallback")
+            .unwrap_err()
+    );
+    let skipping = application
+        .start_departure_decision("2026-08-10-primary-3", "skip")
+        .unwrap();
+    assert_eq!(
+        "Why are you skipping this workout?",
+        skipping.departure_reason_prompt.as_ref().unwrap().heading
+    );
+    assert_eq!(
+        vec![
+            "Work ran late",
+            "Too tired",
+            "Sick or injured",
+            "Another commitment",
+            "Other"
+        ],
+        skipping.departure_reason_prompt.as_ref().unwrap().reasons
+    );
+    let skipped = application
+        .confirm_departure_decision("2026-08-10-primary-3", "skip", "Sick or injured")
+        .unwrap();
+    assert_eq!(
+        "Skipped · Sick or injured",
+        skipped.primary_departures[2].status
+    );
+
+    let relaunched = ExerciseApplication::new(profile, reminders, clock);
+    assert_eq!(skipped, relaunched.open().unwrap());
+}
+
+#[test]
+fn assigned_fallback_uses_the_established_reminder_recording_and_progress_flow() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    application
+        .confirm_departure_decision(
+            "2026-08-10-primary-1",
+            "move-to-fallback",
+            "Another commitment",
+        )
+        .unwrap();
+
+    clock.advance_to(1_786_824_000_000);
+    let fallback_due = application.open().unwrap();
+    assert_eq!(
+        "2026-08-10-fallback-1",
+        fallback_due.departure_prompt.as_ref().unwrap().slot_id
+    );
+    assert_eq!(
+        vec![
+            NotificationIntent {
+                id: "exercise-departure-2026-08-10-fallback-1".into(),
+                deliver_at_epoch_millis: 1_786_824_000_000,
+                title: "Personal Dashboard".into(),
+                body: "Time to leave for the gym.".into(),
+                detail: "Saturday, August 15 at 4:00 PM".into(),
+            },
+            NotificationIntent {
+                id: "exercise-follow-up-2026-08-10-fallback-1".into(),
+                deliver_at_epoch_millis: 1_786_824_900_000,
+                title: "Personal Dashboard".into(),
+                body: "A gentle follow-up: are you leaving for the gym?".into(),
+                detail: "Saturday, August 15 at 4:00 PM".into(),
+            }
+        ],
+        reminders
+            .scheduled
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|intent| intent.id.contains("fallback-1"))
+            .cloned()
+            .collect::<Vec<_>>()
+    );
+
+    let confirmed = application
+        .respond_to_departure("2026-08-10-fallback-1", "leaving-for-gym")
+        .unwrap();
+    assert_eq!(
+        "Leaving for gym confirmed",
+        confirmed.departure_confirmation.as_ref().unwrap().message
+    );
+    assert_eq!(
+        "Record workout reminder at 5:30 PM",
+        confirmed
+            .departure_confirmation
+            .as_ref()
+            .unwrap()
+            .next_prompt
+    );
+    assert_eq!(
+        vec![
+            "exercise-follow-up-2026-08-10-primary-1",
+            "exercise-follow-up-2026-08-10-fallback-1"
+        ],
+        *reminders.cancelled.lock().unwrap()
+    );
+    assert_eq!(
+        Some(NotificationIntent {
+            id: "exercise-record-workout-2026-08-10-fallback-1".into(),
+            deliver_at_epoch_millis: 1_786_829_400_000,
+            title: "Personal Dashboard".into(),
+            body: "Record workout.".into(),
+            detail: "Leaving confirmed Saturday, August 15 at 4:00 PM".into(),
+        }),
+        reminders
+            .scheduled
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|intent| intent.id == "exercise-record-workout-2026-08-10-fallback-1")
+            .cloned()
+    );
+
+    clock.advance_to(1_786_829_400_000);
+    assert_eq!(
+        "2026-08-10-fallback-1",
+        application
+            .open()
+            .unwrap()
+            .workout_prompt
+            .as_ref()
+            .unwrap()
+            .slot_id
+    );
+    application
+        .start_workout_record("2026-08-10-fallback-1")
+        .unwrap();
+    application
+        .choose_workout_activity("2026-08-10-fallback-1", "Weight training")
+        .unwrap();
+    application
+        .choose_workout_duration("2026-08-10-fallback-1", "30")
+        .unwrap();
+    let completed = application
+        .complete_workout_record("2026-08-10-fallback-1", "Hard")
+        .unwrap();
+    assert_eq!("1 of 3 completed", completed.progress);
+    assert_eq!("Weight training", completed.workout_records[0].activity);
+    assert_eq!(
+        "Counts toward weekly progress",
+        completed.workout_records[0].outcome
+    );
+
+    let relaunched = ExerciseApplication::new(profile, reminders, clock);
+    assert_eq!(completed, relaunched.open().unwrap());
+}
+
+#[test]
+fn recovery_ignores_expired_fallbacks_and_abandoned_reason_selection() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_737_600_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    clock.advance_to(1_786_827_600_000);
+    let moved = application
+        .confirm_departure_decision(
+            "2026-08-10-primary-3",
+            "move-to-fallback",
+            "Another commitment",
+        )
+        .unwrap();
+    assert_eq!(
+        "No longer available",
+        moved.fallback_departures[0].availability
+    );
+    assert_eq!(
+        "Assigned from Friday",
+        moved.fallback_departures[1].availability
+    );
+    assert_eq!(0, moved.fallback_available_count);
+
+    let exhausted_profile = IsolatedProfile::default();
+    let exhausted_clock = FixedNewYorkClock::at(1_786_917_600_000);
+    let exhausted = ExerciseApplication::new(
+        exhausted_profile,
+        ReminderOutbox::default(),
+        exhausted_clock,
+    );
+    let exhausted_view = exhausted.open().unwrap();
+    assert_eq!(
+        vec!["No longer available", "No longer available"],
+        exhausted_view
+            .fallback_departures
+            .iter()
+            .map(|departure| departure.availability.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(0, exhausted_view.fallback_available_count);
+    assert_eq!(
+        "No fallback slot remains available.",
+        exhausted
+            .start_departure_decision("2026-08-10-primary-3", "move-to-fallback")
+            .unwrap_err()
+    );
+
+    let abandoned_profile = IsolatedProfile::default();
+    let abandoned_clock = FixedNewYorkClock::at(1_786_737_600_000);
+    let abandoned = ExerciseApplication::new(
+        abandoned_profile.clone(),
+        ReminderOutbox::default(),
+        abandoned_clock.clone(),
+    );
+    abandoned.open().unwrap();
+    assert!(abandoned
+        .start_departure_decision("2026-08-10-primary-3", "skip")
+        .unwrap()
+        .departure_reason_prompt
+        .is_some());
+
+    abandoned_clock.advance_to(1_786_996_800_000);
+    let next_week = ExerciseApplication::new(
+        abandoned_profile,
+        ReminderOutbox::default(),
+        abandoned_clock,
+    );
+    let recovered = next_week.open().unwrap();
+    assert_eq!(None, recovered.departure_reason_prompt);
+    assert_eq!(
+        "2026-08-17-primary-1",
+        recovered.departure_prompt.as_ref().unwrap().slot_id
+    );
+    assert!(next_week
+        .respond_to_departure("2026-08-17-primary-1", "leaving-for-gym")
+        .is_ok());
 }
 
 #[test]

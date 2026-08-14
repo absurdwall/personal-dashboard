@@ -273,6 +273,10 @@ h1 {
   gap: 0.7rem;
 }
 
+#cancel-departure-reason {
+  margin-top: 0.9rem;
+}
+
 .workout-choices {
   display: flex;
   flex-wrap: wrap;
@@ -313,6 +317,7 @@ h1 {
   gap: 0.3rem;
 }
 
+.departure-response[hidden],
 .departure-confirmation[hidden],
 .workout-flow[hidden],
 .workout-history[hidden] {
