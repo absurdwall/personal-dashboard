@@ -521,24 +521,94 @@ pub struct ExerciseDashboardView {
     pub routine_settings: RoutineSettingsView,
 }
 
-pub struct ExerciseApplication<P, N, C> {
+pub trait ExerciseAuthority: Send + Sync {
+    fn is_active(&self) -> Result<bool, String>;
+}
+
+pub trait NotificationCancellationJournal: Send + Sync {
+    fn pending_notification_cancellations(&self) -> Result<Vec<String>, String>;
+    fn notification_cancellation_completed(&self, notification_id: &str) -> Result<(), String>;
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct AlwaysActiveExerciseAuthority;
+
+#[derive(Clone, Copy, Default)]
+pub struct NoPendingNotificationCancellations;
+
+impl ExerciseAuthority for AlwaysActiveExerciseAuthority {
+    fn is_active(&self) -> Result<bool, String> {
+        Ok(true)
+    }
+}
+
+impl NotificationCancellationJournal for NoPendingNotificationCancellations {
+    fn pending_notification_cancellations(&self) -> Result<Vec<String>, String> {
+        Ok(Vec::new())
+    }
+
+    fn notification_cancellation_completed(&self, _notification_id: &str) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+pub struct ExerciseApplication<
+    P,
+    N,
+    C,
+    A = AlwaysActiveExerciseAuthority,
+    J = NoPendingNotificationCancellations,
+> {
     persistence: P,
     notifications: N,
     clock: C,
+    authority: A,
+    cancellation_journal: J,
 }
 
 impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
-    ExerciseApplication<P, N, C>
+    ExerciseApplication<P, N, C, AlwaysActiveExerciseAuthority, NoPendingNotificationCancellations>
 {
     pub fn new(persistence: P, notifications: N, clock: C) -> Self {
         Self {
             persistence,
             notifications,
             clock,
+            authority: AlwaysActiveExerciseAuthority,
+            cancellation_journal: NoPendingNotificationCancellations,
+        }
+    }
+}
+
+impl<
+        P: ExercisePersistence,
+        N: NotificationPlatform,
+        C: ExerciseClock,
+        A: ExerciseAuthority,
+        J: NotificationCancellationJournal,
+    > ExerciseApplication<P, N, C, A, J>
+{
+    pub fn with_authority(
+        persistence: P,
+        notifications: N,
+        clock: C,
+        authority: A,
+        cancellation_journal: J,
+    ) -> Self {
+        Self {
+            persistence,
+            notifications,
+            clock,
+            authority,
+            cancellation_journal,
         }
     }
 
     pub fn open(&self) -> Result<ExerciseDashboardView, String> {
+        self.retry_pending_notification_cancellations()?;
+        if !self.authority.is_active()? {
+            return self.open_inactive();
+        }
         let now = self.clock.now_epoch_millis();
         let (mut state, mut changed) = self.current_state()?;
         let week_start_day = local_day_number(&self.clock, now) - local_weekday(&self.clock, now);
@@ -655,12 +725,47 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         ))
     }
 
+    fn retry_pending_notification_cancellations(&self) -> Result<(), String> {
+        for notification_id in self
+            .cancellation_journal
+            .pending_notification_cancellations()?
+        {
+            if self.notifications.cancel(&notification_id).is_ok() {
+                self.cancellation_journal
+                    .notification_cancellation_completed(&notification_id)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn open_inactive(&self) -> Result<ExerciseDashboardView, String> {
+        let now = self.clock.now_epoch_millis();
+        let (state, _) = self.current_state()?;
+        let week_key = current_week_key(&self.clock, now);
+        let week = state
+            .weeks
+            .iter()
+            .find(|week| week.week_start == week_key)
+            .or_else(|| state.weeks.last())
+            .ok_or_else(|| "The inactive exercise profile has no saved week.".to_string())?;
+        Ok(dashboard_view(
+            &state,
+            week,
+            &self.clock,
+            now,
+            None,
+            None,
+            String::new(),
+        ))
+    }
+
     pub fn adjust_current_week_departure(
         &self,
         slot_id: &str,
         day: &str,
         departure_time: &str,
     ) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
         let schedule = ScheduleSelection::parse(day, departure_time)
             .map_err(ScheduleSelectionError::message)?;
         let now = self.clock.now_epoch_millis();
@@ -706,6 +811,7 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         day: &str,
         departure_time: &str,
     ) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
         let schedule = ScheduleSelection::parse(day, departure_time)
             .map_err(ScheduleSelectionError::message)?;
         let (mut state, _) = self.current_state()?;
@@ -725,6 +831,7 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         slot_id: &str,
         action: &str,
     ) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
         if action != "leaving-for-gym" {
             return Err("That departure response is not available yet.".into());
         }
@@ -766,6 +873,7 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         slot_id: &str,
         outcome: &str,
     ) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
         let outcome = departure_decision_outcome(outcome)?;
         let now = self.clock.now_epoch_millis();
         let (state, _) = self.current_state()?;
@@ -802,6 +910,7 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         outcome: &str,
         reason: &str,
     ) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
         let outcome = departure_decision_outcome(outcome)?;
         let reason = DepartureReason::from_label(reason)
             .ok_or_else(|| "That departure reason is not available.".to_string())?;
@@ -845,6 +954,7 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
     }
 
     pub fn start_workout_record(&self, slot_id: &str) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
         let now = self.clock.now_epoch_millis();
         let (mut state, _) = self.current_state()?;
         if state.workout_draft.is_some() {
@@ -865,6 +975,7 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
     }
 
     pub fn start_unscheduled_workout_record(&self) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
         let (mut state, _) = self.current_state()?;
         if state.workout_draft.is_some() {
             return Err("A workout record is already in progress.".into());
@@ -884,6 +995,7 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         slot_id: &str,
         activity: &str,
     ) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
         let activity = WorkoutActivity::from_label(activity)
             .ok_or_else(|| "That workout activity is not available.".to_string())?;
         let (mut state, _) = self.current_state()?;
@@ -901,6 +1013,7 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         slot_id: &str,
         duration: &str,
     ) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
         let duration = WorkoutDuration::from_label(duration)
             .ok_or_else(|| "That workout duration is not available.".to_string())?;
         let (mut state, _) = self.current_state()?;
@@ -918,6 +1031,7 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         slot_id: &str,
         effort: &str,
     ) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
         let effort = PerceivedEffort::from_label(effort)
             .ok_or_else(|| "That perceived effort is not available.".to_string())?;
         let now = self.clock.now_epoch_millis();
@@ -971,6 +1085,7 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         duration: &str,
         effort: &str,
     ) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
         let activity = WorkoutActivity::from_label(activity)
             .ok_or_else(|| "That workout correction is not available.".to_string())?;
         let duration = WorkoutDuration::from_label(duration)
@@ -996,6 +1111,7 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         &self,
         record_id: &str,
     ) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
         let now = self.clock.now_epoch_millis();
         let current_week_key = current_week_key(&self.clock, now);
         let (mut state, _) = self.current_state()?;
@@ -1006,6 +1122,14 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         recompute_week_progress(week, weekly_goal, now, is_current);
         self.save_state(&state)?;
         self.open()
+    }
+
+    fn require_active(&self) -> Result<(), String> {
+        if self.authority.is_active()? {
+            Ok(())
+        } else {
+            Err("This profile is inactive. Reactivate it only if the move failed.".into())
+        }
     }
 
     fn current_state(&self) -> Result<(ExerciseState, bool), String> {

@@ -35,7 +35,8 @@
           </div>
         </div>
 
-        <section class="exercise-dashboard" aria-labelledby="exercise-progress">
+        <section id="exercise-dashboard" class="exercise-dashboard" aria-labelledby="exercise-progress">
+          <p id="inactive-profile-notice" class="inactive-profile-notice" role="status" hidden></p>
           <div class="progress-copy">
             <p id="exercise-week" class="readiness-kicker">Loading this week…</p>
             <h3 id="exercise-progress">Loading exercise progress…</h3>
@@ -126,6 +127,10 @@
               device's active profile.
             </p>
             <p class="schema-chip">Schema version <span id="schema-version">—</span></p>
+            <p class="authority-chip">
+              Authority: <strong id="profile-authority">Loading…</strong>
+            </p>
+            <p id="profile-authority-message" class="authority-message"></p>
           </div>
 
           <form id="profile-form" class="profile-form">
@@ -136,7 +141,7 @@
                 name="profile-label"
                 autocomplete="off"
               />
-              <button type="submit">Save label</button>
+              <button id="save-profile-label" type="submit">Save label</button>
             </div>
             <p class="saved-value">
               Saved locally as <output id="profile-label-display">Loading…</output>
@@ -149,6 +154,76 @@
                 Restore profile…
               </button>
             </div>
+            <div class="move-actions" aria-label="Profile move actions">
+              <button id="prepare-profile-move" type="button">Move profile…</button>
+              <button
+                id="select-profile-move-import"
+                type="button"
+                class="secondary-button"
+              >
+                Import moved profile…
+              </button>
+            </div>
+            <section
+              id="profile-move-export-confirmation"
+              class="profile-restore-confirmation"
+              aria-labelledby="profile-move-export-prompt"
+              hidden
+            >
+              <p id="profile-move-export-prompt">
+                Move this profile and make this device inactive? Exercise activity and
+                reminders will pause here after the move file is saved.
+              </p>
+              <div class="exchange-actions">
+                <button id="confirm-profile-move" type="button">Save move and deactivate</button>
+                <button id="cancel-profile-move" type="button" class="secondary-button">
+                  Cancel
+                </button>
+              </div>
+            </section>
+            <section
+              id="profile-move-import-confirmation"
+              class="profile-restore-confirmation"
+              aria-labelledby="profile-move-import-prompt"
+              hidden
+            >
+              <p id="profile-move-import-prompt">
+                Activate this moved profile here? It will replace this device's profile.
+                Histories will not be merged.
+              </p>
+              <div class="exchange-actions">
+                <button id="confirm-profile-move-import" type="button">Replace and activate</button>
+                <button
+                  id="cancel-profile-move-import"
+                  type="button"
+                  class="secondary-button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </section>
+            <section id="profile-reactivation" class="profile-reactivation" hidden>
+              <p>
+                Reactivate only if the transfer failed. Using both copies after
+                reactivation can create conflicting histories that cannot be merged.
+              </p>
+              <button id="prepare-profile-reactivation" type="button">
+                Reactivate this profile…
+              </button>
+              <div id="profile-reactivation-confirmation" hidden>
+                <p>Confirm that the moved profile was not activated on another device.</p>
+                <div class="exchange-actions">
+                  <button id="confirm-profile-reactivation" type="button">Reactivate here</button>
+                  <button
+                    id="cancel-profile-reactivation"
+                    type="button"
+                    class="secondary-button"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </section>
             <section
               id="profile-restore-confirmation"
               class="profile-restore-confirmation"

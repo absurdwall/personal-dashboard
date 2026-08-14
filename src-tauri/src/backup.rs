@@ -126,6 +126,14 @@ where
         let mut restored = pending
             .take()
             .ok_or_else(|| "No validated profile restore is awaiting confirmation.".to_string())?;
+        let current_profile_document = self.current_profile_document()?;
+        let current_profile = crate::profile::parse_profile(&current_profile_document)?;
+        restored.profile = restored.profile.with_local_authority(
+            current_profile.authority(),
+            current_profile
+                .pending_notification_cancellations()
+                .to_vec(),
+        );
         let current_exercise_document = self.current_exercise_document()?;
         let (active_exercise, _) = crate::exercise::parse_state(&current_exercise_document)?;
         let notification_ids = active_exercise.scheduled_notification_ids();
@@ -145,12 +153,16 @@ where
         for notification_id in notification_ids {
             self.notifications.cancel(&notification_id)?;
         }
-        let dashboard = ExerciseApplication::new(
+        let exercise_application = ExerciseApplication::new(
             self.exercise_persistence.clone(),
             self.notifications.clone(),
             self.clock.clone(),
-        )
-        .open()?;
+        );
+        let dashboard = if restored.profile.is_active() {
+            exercise_application.open()?
+        } else {
+            exercise_application.open_inactive()?
+        };
         Ok(ProfileRestoreAction {
             profile: restored.profile.view(),
             dashboard,

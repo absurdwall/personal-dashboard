@@ -625,6 +625,35 @@ h1 {
   font-weight: 700;
 }
 
+.authority-chip {
+  margin: 0.8rem 0 0;
+  color: #355342;
+  font-size: 0.82rem;
+}
+
+.authority-message {
+  margin: 0.35rem 0 0;
+  color: #64716b;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.inactive-profile-notice {
+  margin: 0 0 1rem;
+  padding: 1rem;
+  border: 1px solid rgb(122 48 36 / 25%);
+  border-radius: 0.8rem;
+  background: rgb(122 48 36 / 7%);
+  color: #7a3024;
+  font-weight: 700;
+}
+
+.inactive-profile-notice[hidden],
+.profile-reactivation[hidden],
+#profile-reactivation-confirmation[hidden] {
+  display: none;
+}
+
 .profile-form {
   align-self: center;
   padding: 1.5rem;
@@ -641,9 +670,16 @@ h1 {
 }
 
 .profile-field-row,
-.exchange-actions {
+.exchange-actions,
+.move-actions {
   display: flex;
   gap: 0.7rem;
+}
+
+.move-actions {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgb(24 32 29 / 11%);
 }
 
 .profile-field-row input {
@@ -715,6 +751,25 @@ select:focus-visible {
   color: #7a3024;
   font-weight: 700;
   line-height: 1.45;
+}
+
+.profile-reactivation {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid rgb(122 48 36 / 22%);
+  border-radius: 0.8rem;
+  background: rgb(122 48 36 / 5%);
+}
+
+.profile-reactivation p {
+  margin: 0 0 0.8rem;
+  color: #7a3024;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+#profile-reactivation-confirmation {
+  margin-top: 1rem;
 }
 
 .profile-status {

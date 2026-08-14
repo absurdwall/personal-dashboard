@@ -1,5 +1,6 @@
 use crate::backup::CompleteProfileReplacement;
 use crate::exercise::ExercisePersistence;
+use crate::move_profile::ProfileMoveExchange;
 use crate::profile::{ProfileExchange, ProfilePersistence};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -91,6 +92,7 @@ fn temporary_file_for(profile_file: &Path) -> PathBuf {
     profile_file.with_extension(format!("json.tmp-{}", std::process::id()))
 }
 
+#[derive(Clone)]
 pub struct FileProfileReplacement {
     profile_file: PathBuf,
     exercise_file: PathBuf,
@@ -200,54 +202,146 @@ pub struct NativeFileExchange<R: Runtime> {
     app: AppHandle<R>,
 }
 
+#[derive(Clone, Copy)]
+enum ProfileFilePurpose {
+    Backup,
+    Move,
+}
+
+struct ProfileFileConfiguration {
+    export_title: &'static str,
+    import_title: &'static str,
+    file_name: &'static str,
+    filter_name: &'static str,
+    subject: &'static str,
+}
+
+impl ProfileFilePurpose {
+    fn configuration(self) -> ProfileFileConfiguration {
+        match self {
+            Self::Backup => ProfileFileConfiguration {
+                export_title: "Back up Personal Dashboard profile",
+                import_title: "Restore Personal Dashboard profile",
+                file_name: "personal-dashboard-backup.json",
+                filter_name: "Personal Dashboard backup",
+                subject: "backup",
+            },
+            Self::Move => ProfileFileConfiguration {
+                export_title: "Move Personal Dashboard profile",
+                import_title: "Import moved Personal Dashboard profile",
+                file_name: "personal-dashboard-move.json",
+                filter_name: "Personal Dashboard move",
+                subject: "profile move",
+            },
+        }
+    }
+}
+
 impl<R: Runtime> NativeFileExchange<R> {
     pub fn new(app: AppHandle<R>) -> Self {
         Self { app }
+    }
+
+    fn export_document(
+        &self,
+        purpose: ProfileFilePurpose,
+        document: &[u8],
+    ) -> Result<bool, String> {
+        let Some(selected_path) = self.select_export_path(purpose)? else {
+            return Ok(false);
+        };
+        atomic_save(&selected_path, document, purpose.configuration().subject)?;
+        Ok(true)
+    }
+
+    fn select_export_path(&self, purpose: ProfileFilePurpose) -> Result<Option<PathBuf>, String> {
+        let configuration = purpose.configuration();
+        let Some(selected_file) = self
+            .app
+            .dialog()
+            .file()
+            .set_title(configuration.export_title)
+            .set_file_name(configuration.file_name)
+            .add_filter(configuration.filter_name, &["json"])
+            .blocking_save_file()
+        else {
+            return Ok(None);
+        };
+        let selected_path = selected_file.into_path().map_err(|_| {
+            format!(
+                "The selected {} destination is unavailable.",
+                configuration.subject
+            )
+        })?;
+        Ok(Some(selected_path))
+    }
+
+    fn import_document(&self, purpose: ProfileFilePurpose) -> Result<Option<Vec<u8>>, String> {
+        let configuration = purpose.configuration();
+        let Some(selected_file) = self
+            .app
+            .dialog()
+            .file()
+            .set_title(configuration.import_title)
+            .add_filter(configuration.filter_name, &["json"])
+            .blocking_pick_file()
+        else {
+            return Ok(None);
+        };
+        let selected_path = selected_file.into_path().map_err(|_| {
+            format!(
+                "The selected {} file is unavailable.",
+                configuration.subject
+            )
+        })?;
+        let metadata = fs::metadata(&selected_path).map_err(|error| {
+            format!(
+                "Could not inspect the selected {}: {error}",
+                configuration.subject
+            )
+        })?;
+        if metadata.len() > MAX_BACKUP_BYTES {
+            return Err(format!(
+                "The selected {} is too large.",
+                configuration.subject
+            ));
+        }
+        fs::read(selected_path).map(Some).map_err(|error| {
+            format!(
+                "Could not read the selected {}: {error}",
+                configuration.subject
+            )
+        })
     }
 }
 
 impl<R: Runtime> ProfileExchange for NativeFileExchange<R> {
     fn export(&self, document: &[u8]) -> Result<bool, String> {
-        let Some(selected_file) = self
-            .app
-            .dialog()
-            .file()
-            .set_title("Back up Personal Dashboard profile")
-            .set_file_name("personal-dashboard-backup.json")
-            .add_filter("Personal Dashboard backup", &["json"])
-            .blocking_save_file()
-        else {
-            return Ok(false);
-        };
-        let selected_path = selected_file
-            .into_path()
-            .map_err(|_| "The selected backup destination is unavailable.".to_string())?;
-        atomic_save(&selected_path, document, "profile backup")?;
-        Ok(true)
+        self.export_document(ProfileFilePurpose::Backup, document)
     }
 
     fn import(&self) -> Result<Option<Vec<u8>>, String> {
-        let Some(selected_file) = self
-            .app
-            .dialog()
-            .file()
-            .set_title("Restore Personal Dashboard profile")
-            .add_filter("Personal Dashboard backup", &["json"])
-            .blocking_pick_file()
-        else {
-            return Ok(None);
-        };
-        let selected_path = selected_file
-            .into_path()
-            .map_err(|_| "The selected backup file is unavailable.".to_string())?;
-        let metadata = fs::metadata(&selected_path)
-            .map_err(|error| format!("Could not inspect the selected backup: {error}"))?;
-        if metadata.len() > MAX_BACKUP_BYTES {
-            return Err("The selected backup is too large.".into());
-        }
-        fs::read(selected_path)
-            .map(Some)
-            .map_err(|error| format!("Could not read the selected backup: {error}"))
+        self.import_document(ProfileFilePurpose::Backup)
+    }
+}
+
+impl<R: Runtime> ProfileMoveExchange for NativeFileExchange<R> {
+    type ExportTarget = PathBuf;
+
+    fn select_move_export(&self) -> Result<Option<Self::ExportTarget>, String> {
+        self.select_export_path(ProfileFilePurpose::Move)
+    }
+
+    fn export_move(&self, target: &Self::ExportTarget, document: &[u8]) -> Result<(), String> {
+        atomic_save(
+            target,
+            document,
+            ProfileFilePurpose::Move.configuration().subject,
+        )
+    }
+
+    fn import_move(&self) -> Result<Option<Vec<u8>>, String> {
+        self.import_document(ProfileFilePurpose::Move)
     }
 }
 

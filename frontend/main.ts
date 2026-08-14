@@ -7,6 +7,7 @@ type ApplicationIdentity = Readonly<{
 type ProfileView = Readonly<{
   schemaVersion: number;
   profileLabel: string;
+  authority: "active" | "inactive";
 }>;
 
 type ProfileBackupAction = Readonly<{
@@ -23,6 +24,13 @@ type ProfileRestoreAction = Readonly<{
   dashboard: ExerciseDashboardView;
   message: string;
 }>;
+
+type ProfileMoveAction = ProfileRestoreAction &
+  Readonly<{ reminderTransitionPending: boolean }>;
+type ProfileMoveSelection = ProfileRestoreSelection;
+
+const INACTIVE_PROFILE_MESSAGE =
+  "This profile is inactive. Exercise activity and reminders are paused.";
 
 type DepartureTiming = Readonly<{
   id: string;
@@ -183,6 +191,10 @@ declare global {
 }
 
 const runtimeStatus = document.querySelector<HTMLElement>("#runtime-status");
+const exerciseDashboard = document.querySelector<HTMLElement>("#exercise-dashboard");
+const inactiveProfileNotice = document.querySelector<HTMLElement>(
+  "#inactive-profile-notice",
+);
 const exerciseWeek = document.querySelector<HTMLElement>("#exercise-week");
 const exerciseProgress = document.querySelector<HTMLElement>("#exercise-progress");
 const nextDeparture = document.querySelector<HTMLElement>("#next-departure");
@@ -259,7 +271,14 @@ const profileLabelDisplay = document.querySelector<HTMLOutputElement>(
   "#profile-label-display",
 );
 const schemaVersion = document.querySelector<HTMLElement>("#schema-version");
+const profileAuthority = document.querySelector<HTMLElement>("#profile-authority");
+const profileAuthorityMessage = document.querySelector<HTMLElement>(
+  "#profile-authority-message",
+);
 const profileStatus = document.querySelector<HTMLElement>("#profile-status");
+const saveProfileLabelButton = document.querySelector<HTMLButtonElement>(
+  "#save-profile-label",
+);
 const backupProfileButton = document.querySelector<HTMLButtonElement>("#backup-profile");
 const selectProfileRestoreButton = document.querySelector<HTMLButtonElement>(
   "#select-profile-restore",
@@ -272,6 +291,43 @@ const confirmProfileRestoreButton = document.querySelector<HTMLButtonElement>(
 );
 const cancelProfileRestoreButton = document.querySelector<HTMLButtonElement>(
   "#cancel-profile-restore",
+);
+const prepareProfileMoveButton = document.querySelector<HTMLButtonElement>(
+  "#prepare-profile-move",
+);
+const selectProfileMoveImportButton = document.querySelector<HTMLButtonElement>(
+  "#select-profile-move-import",
+);
+const profileMoveExportConfirmation = document.querySelector<HTMLElement>(
+  "#profile-move-export-confirmation",
+);
+const confirmProfileMoveButton = document.querySelector<HTMLButtonElement>(
+  "#confirm-profile-move",
+);
+const cancelProfileMoveButton = document.querySelector<HTMLButtonElement>(
+  "#cancel-profile-move",
+);
+const profileMoveImportConfirmation = document.querySelector<HTMLElement>(
+  "#profile-move-import-confirmation",
+);
+const confirmProfileMoveImportButton = document.querySelector<HTMLButtonElement>(
+  "#confirm-profile-move-import",
+);
+const cancelProfileMoveImportButton = document.querySelector<HTMLButtonElement>(
+  "#cancel-profile-move-import",
+);
+const profileReactivation = document.querySelector<HTMLElement>("#profile-reactivation");
+const prepareProfileReactivationButton = document.querySelector<HTMLButtonElement>(
+  "#prepare-profile-reactivation",
+);
+const profileReactivationConfirmation = document.querySelector<HTMLElement>(
+  "#profile-reactivation-confirmation",
+);
+const confirmProfileReactivationButton = document.querySelector<HTMLButtonElement>(
+  "#confirm-profile-reactivation",
+);
+const cancelProfileReactivationButton = document.querySelector<HTMLButtonElement>(
+  "#cancel-profile-reactivation",
 );
 const notificationPermission = document.querySelector<HTMLElement>(
   "#notification-permission",
@@ -286,6 +342,7 @@ const requestNotificationPermissionButton = document.querySelector<HTMLButtonEle
 const scheduleCapabilityNotificationButton = document.querySelector<HTMLButtonElement>(
   "#schedule-capability-notification",
 );
+let currentProfileAuthority: ProfileView["authority"] = "active";
 
 function departureItem(
   departure: DepartureTiming,
@@ -600,7 +657,10 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
     fallbackCount.textContent = `${view.fallbackAvailableCount} available`;
   }
   if (exerciseReminderStatus) {
-    exerciseReminderStatus.textContent = view.reminderMessage;
+    exerciseReminderStatus.textContent =
+      currentProfileAuthority === "inactive"
+        ? INACTIVE_PROFILE_MESSAGE
+        : view.reminderMessage;
     delete exerciseReminderStatus.dataset.state;
   }
   if (weeklyGoalStatus) {
@@ -729,6 +789,7 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
       ),
     );
   }
+  applyAuthorityState();
 }
 
 function scheduleEditorFromEvent(
@@ -988,6 +1049,7 @@ async function handleRoutineScheduleSave(event: Event): Promise<void> {
 }
 
 function renderProfile(profile: ProfileView): void {
+  currentProfileAuthority = profile.authority;
   if (profileLabel) {
     profileLabel.value = profile.profileLabel;
   }
@@ -996,6 +1058,43 @@ function renderProfile(profile: ProfileView): void {
   }
   if (schemaVersion) {
     schemaVersion.textContent = String(profile.schemaVersion);
+  }
+  if (profileAuthority) {
+    profileAuthority.textContent = profile.authority === "active" ? "Active" : "Inactive";
+  }
+  if (profileAuthorityMessage) {
+    profileAuthorityMessage.textContent =
+      profile.authority === "active"
+        ? "This device is authoritative for this profile."
+        : INACTIVE_PROFILE_MESSAGE;
+  }
+  applyAuthorityState();
+}
+
+function applyAuthorityState(): void {
+  const inactive = currentProfileAuthority === "inactive";
+  if (inactiveProfileNotice) {
+    inactiveProfileNotice.textContent = INACTIVE_PROFILE_MESSAGE;
+  }
+  inactiveProfileNotice?.toggleAttribute("hidden", !inactive);
+  exerciseDashboard?.setAttribute("aria-disabled", String(inactive));
+  exerciseDashboard?.querySelectorAll("button, select").forEach((control) => {
+    control.toggleAttribute("disabled", inactive);
+  });
+  if (profileLabel) {
+    profileLabel.disabled = inactive;
+  }
+  if (saveProfileLabelButton) {
+    saveProfileLabelButton.disabled = inactive;
+  }
+  if (prepareProfileMoveButton) {
+    prepareProfileMoveButton.disabled = inactive;
+  }
+  if (profileReactivation) {
+    profileReactivation.hidden = !inactive;
+  }
+  if (!inactive && profileReactivationConfirmation) {
+    profileReactivationConfirmation.hidden = true;
   }
 }
 
@@ -1091,6 +1190,11 @@ function setProfileFileActionsDisabled(disabled: boolean): void {
     selectProfileRestoreButton,
     confirmProfileRestoreButton,
     cancelProfileRestoreButton,
+    confirmProfileMoveButton,
+    selectProfileMoveImportButton,
+    confirmProfileMoveImportButton,
+    cancelProfileMoveImportButton,
+    confirmProfileReactivationButton,
   ].forEach((button) => button?.toggleAttribute("disabled", disabled));
 }
 
@@ -1113,8 +1217,16 @@ async function runProfileFileAction<T>(
   } catch (error) {
     handleError?.();
     showProfileStatus(profileErrorMessage(error), "error");
+    try {
+      const profile = await window.__TAURI__.core.invoke<ProfileView>("profile_state");
+      renderProfile(profile);
+      await refreshExerciseDashboard();
+    } catch {
+      // Keep the original operation error visible when recovery state cannot be read.
+    }
   } finally {
     setProfileFileActionsDisabled(false);
+    applyAuthorityState();
   }
 }
 
@@ -1158,6 +1270,73 @@ function confirmProfileRestore(): Promise<void> {
   );
 }
 
+function completeProfileMoveAction(action: ProfileMoveAction): Promise<void> {
+  renderProfile(action.profile);
+  renderExerciseDashboard(action.dashboard);
+  if (profileMoveExportConfirmation) {
+    profileMoveExportConfirmation.hidden = true;
+  }
+  if (profileMoveImportConfirmation) {
+    profileMoveImportConfirmation.hidden = true;
+  }
+  if (profileReactivationConfirmation) {
+    profileReactivationConfirmation.hidden = true;
+  }
+  showProfileStatus(
+    action.reminderTransitionPending
+      ? `${action.message} Reminder setup will retry automatically.`
+      : action.message,
+  );
+  return refreshNotificationCapability();
+}
+
+function moveProfile(): Promise<void> {
+  return runProfileFileAction<ProfileMoveAction>(
+    "move_profile",
+    completeProfileMoveAction,
+  );
+}
+
+function renderProfileMoveSelection(selection: ProfileMoveSelection): void {
+  if (profileMoveImportConfirmation) {
+    profileMoveImportConfirmation.hidden = !selection.confirmationRequired;
+  }
+  showProfileStatus(selection.message);
+}
+
+function selectProfileMoveImport(): Promise<void> {
+  return runProfileFileAction<ProfileMoveSelection>(
+    "select_profile_move_import",
+    renderProfileMoveSelection,
+    () => {
+      if (profileMoveImportConfirmation) {
+        profileMoveImportConfirmation.hidden = true;
+      }
+    },
+  );
+}
+
+function cancelProfileMoveImport(): Promise<void> {
+  return runProfileFileAction<ProfileMoveSelection>(
+    "cancel_profile_move_import",
+    renderProfileMoveSelection,
+  );
+}
+
+function confirmProfileMoveImport(): Promise<void> {
+  return runProfileFileAction<ProfileMoveAction>(
+    "confirm_profile_move_import",
+    completeProfileMoveAction,
+  );
+}
+
+function reactivateProfile(): Promise<void> {
+  return runProfileFileAction<ProfileMoveAction>(
+    "reactivate_profile",
+    completeProfileMoveAction,
+  );
+}
+
 async function connectToApplication(): Promise<void> {
   if (!runtimeStatus) {
     return;
@@ -1183,10 +1362,9 @@ async function connectToApplication(): Promise<void> {
   }
 
   try {
-    await refreshExerciseDashboard();
-
     const profile = await window.__TAURI__.core.invoke<ProfileView>("profile_state");
     renderProfile(profile);
+    await refreshExerciseDashboard();
     showProfileStatus("Profile loaded from this device.");
   } catch (error) {
     showProfileStatus(profileErrorMessage(error), "error");
@@ -1228,6 +1406,50 @@ confirmProfileRestoreButton?.addEventListener("click", () => {
 
 cancelProfileRestoreButton?.addEventListener("click", () => {
   void cancelProfileRestore();
+});
+
+prepareProfileMoveButton?.addEventListener("click", () => {
+  if (profileMoveExportConfirmation) {
+    profileMoveExportConfirmation.hidden = false;
+  }
+});
+
+cancelProfileMoveButton?.addEventListener("click", () => {
+  if (profileMoveExportConfirmation) {
+    profileMoveExportConfirmation.hidden = true;
+  }
+});
+
+confirmProfileMoveButton?.addEventListener("click", () => {
+  void moveProfile();
+});
+
+selectProfileMoveImportButton?.addEventListener("click", () => {
+  void selectProfileMoveImport();
+});
+
+confirmProfileMoveImportButton?.addEventListener("click", () => {
+  void confirmProfileMoveImport();
+});
+
+cancelProfileMoveImportButton?.addEventListener("click", () => {
+  void cancelProfileMoveImport();
+});
+
+prepareProfileReactivationButton?.addEventListener("click", () => {
+  if (profileReactivationConfirmation) {
+    profileReactivationConfirmation.hidden = false;
+  }
+});
+
+cancelProfileReactivationButton?.addEventListener("click", () => {
+  if (profileReactivationConfirmation) {
+    profileReactivationConfirmation.hidden = true;
+  }
+});
+
+confirmProfileReactivationButton?.addEventListener("click", () => {
+  void reactivateProfile();
 });
 
 requestNotificationPermissionButton?.addEventListener("click", () => {

@@ -6,6 +6,7 @@ use tauri::{RunEvent, WindowEvent};
 pub mod backup;
 mod clock;
 pub mod exercise;
+pub mod move_profile;
 pub mod notification;
 #[cfg(target_os = "macos")]
 mod notification_platform;
@@ -17,6 +18,10 @@ use backup::{
 };
 use clock::SystemClock;
 use exercise::{ExerciseApplication, ExerciseDashboardView};
+use move_profile::{
+    ProfileExerciseAuthority, ProfileMoveAction, ProfileMoveApplication, ProfileMoveSelection,
+    ProfileNotificationCancellationJournal,
+};
 #[cfg(target_os = "macos")]
 use notification::{NotificationApplication, NotificationCapabilityView};
 #[cfg(target_os = "macos")]
@@ -33,10 +38,24 @@ type DesktopProfileApplication =
 type DesktopNotificationApplication =
     NotificationApplication<NativeNotificationPlatform, SystemClock>;
 #[cfg(target_os = "macos")]
-type DesktopExerciseApplication =
-    ExerciseApplication<FileExercisePersistence, NativeNotificationPlatform, SystemClock>;
+type DesktopExerciseApplication = ExerciseApplication<
+    FileExercisePersistence,
+    NativeNotificationPlatform,
+    SystemClock,
+    ProfileExerciseAuthority<FileProfilePersistence>,
+    ProfileNotificationCancellationJournal<FileProfilePersistence>,
+>;
 #[cfg(target_os = "macos")]
 type DesktopProfileBackupApplication = ProfileBackupApplication<
+    FileProfilePersistence,
+    FileExercisePersistence,
+    NativeFileExchange<tauri::Wry>,
+    NativeNotificationPlatform,
+    SystemClock,
+    FileProfileReplacement,
+>;
+#[cfg(target_os = "macos")]
+type DesktopProfileMoveApplication = ProfileMoveApplication<
     FileProfilePersistence,
     FileExercisePersistence,
     NativeFileExchange<tauri::Wry>,
@@ -69,10 +88,24 @@ impl notification::NotificationPlatform for UnavailableNotificationPlatform {
 }
 
 #[cfg(not(target_os = "macos"))]
-type DesktopExerciseApplication =
-    ExerciseApplication<FileExercisePersistence, UnavailableNotificationPlatform, SystemClock>;
+type DesktopExerciseApplication = ExerciseApplication<
+    FileExercisePersistence,
+    UnavailableNotificationPlatform,
+    SystemClock,
+    ProfileExerciseAuthority<FileProfilePersistence>,
+    ProfileNotificationCancellationJournal<FileProfilePersistence>,
+>;
 #[cfg(not(target_os = "macos"))]
 type DesktopProfileBackupApplication = ProfileBackupApplication<
+    FileProfilePersistence,
+    FileExercisePersistence,
+    NativeFileExchange<tauri::Wry>,
+    UnavailableNotificationPlatform,
+    SystemClock,
+    FileProfileReplacement,
+>;
+#[cfg(not(target_os = "macos"))]
+type DesktopProfileMoveApplication = ProfileMoveApplication<
     FileProfilePersistence,
     FileExercisePersistence,
     NativeFileExchange<tauri::Wry>,
@@ -137,6 +170,41 @@ fn confirm_profile_restore(
     application: State<'_, DesktopProfileBackupApplication>,
 ) -> Result<ProfileRestoreAction, String> {
     application.confirm_profile_restore()
+}
+
+#[tauri::command]
+async fn move_profile(
+    application: State<'_, DesktopProfileMoveApplication>,
+) -> Result<ProfileMoveAction, String> {
+    application.move_profile()
+}
+
+#[tauri::command]
+async fn select_profile_move_import(
+    application: State<'_, DesktopProfileMoveApplication>,
+) -> Result<ProfileMoveSelection, String> {
+    application.select_profile_move_import()
+}
+
+#[tauri::command]
+fn cancel_profile_move_import(
+    application: State<'_, DesktopProfileMoveApplication>,
+) -> Result<ProfileMoveSelection, String> {
+    application.cancel_profile_move_import()
+}
+
+#[tauri::command]
+fn confirm_profile_move_import(
+    application: State<'_, DesktopProfileMoveApplication>,
+) -> Result<ProfileMoveAction, String> {
+    application.confirm_profile_move_import()
+}
+
+#[tauri::command]
+fn reactivate_profile(
+    application: State<'_, DesktopProfileMoveApplication>,
+) -> Result<ProfileMoveAction, String> {
+    application.reactivate_profile()
 }
 
 #[tauri::command]
@@ -296,34 +364,56 @@ pub fn run() {
             ));
             let exercise_persistence = FileExercisePersistence::new(exercise_file);
             #[cfg(target_os = "macos")]
-            app.manage(ExerciseApplication::new(
+            app.manage(ExerciseApplication::with_authority(
                 exercise_persistence.clone(),
                 NativeNotificationPlatform::new(),
                 SystemClock,
+                ProfileExerciseAuthority::new(profile_persistence.clone()),
+                ProfileNotificationCancellationJournal::new(profile_persistence.clone()),
             ));
             #[cfg(not(target_os = "macos"))]
-            app.manage(ExerciseApplication::new(
+            app.manage(ExerciseApplication::with_authority(
                 exercise_persistence.clone(),
                 UnavailableNotificationPlatform,
                 SystemClock,
+                ProfileExerciseAuthority::new(profile_persistence.clone()),
+                ProfileNotificationCancellationJournal::new(profile_persistence.clone()),
             ));
             #[cfg(target_os = "macos")]
             app.manage(ProfileBackupApplication::new(
-                profile_persistence,
-                exercise_persistence,
+                profile_persistence.clone(),
+                exercise_persistence.clone(),
                 NativeFileExchange::new(app_handle.clone()),
                 NativeNotificationPlatform::new(),
                 SystemClock,
-                profile_replacement,
+                profile_replacement.clone(),
+            ));
+            #[cfg(target_os = "macos")]
+            app.manage(ProfileMoveApplication::new(
+                profile_persistence.clone(),
+                exercise_persistence.clone(),
+                NativeFileExchange::new(app_handle.clone()),
+                NativeNotificationPlatform::new(),
+                SystemClock,
+                profile_replacement.clone(),
             ));
             #[cfg(not(target_os = "macos"))]
-            app.manage(ProfileBackupApplication::new(
-                profile_persistence,
-                exercise_persistence,
+            app.manage(ProfileMoveApplication::new(
+                profile_persistence.clone(),
+                exercise_persistence.clone(),
                 NativeFileExchange::new(app_handle.clone()),
                 UnavailableNotificationPlatform,
                 SystemClock,
-                profile_replacement,
+                profile_replacement.clone(),
+            ));
+            #[cfg(not(target_os = "macos"))]
+            app.manage(ProfileBackupApplication::new(
+                profile_persistence.clone(),
+                exercise_persistence.clone(),
+                NativeFileExchange::new(app_handle.clone()),
+                UnavailableNotificationPlatform,
+                SystemClock,
+                profile_replacement.clone(),
             ));
             #[cfg(target_os = "macos")]
             app.manage(NotificationApplication::new(
@@ -349,6 +439,11 @@ pub fn run() {
             select_profile_restore,
             cancel_profile_restore,
             confirm_profile_restore,
+            move_profile,
+            select_profile_move_import,
+            cancel_profile_move_import,
+            confirm_profile_move_import,
+            reactivate_profile,
             exercise_dashboard,
             adjust_current_week_departure,
             change_repeating_primary_departure,
@@ -376,6 +471,11 @@ pub fn run() {
         select_profile_restore,
         cancel_profile_restore,
         confirm_profile_restore,
+        move_profile,
+        select_profile_move_import,
+        cancel_profile_move_import,
+        confirm_profile_move_import,
+        reactivate_profile,
         exercise_dashboard,
         adjust_current_week_departure,
         change_repeating_primary_departure,

@@ -1,13 +1,25 @@
 use serde::{Deserialize, Serialize};
 
-const PROFILE_SCHEMA_VERSION: u32 = 1;
+const PROFILE_SCHEMA_VERSION: u32 = 2;
 const DEFAULT_PROFILE_LABEL: &str = "My Personal Dashboard";
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ProfileAuthority {
+    #[default]
+    Active,
+    Inactive,
+}
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Profile {
     schema_version: u32,
     profile_label: String,
+    #[serde(default)]
+    authority: ProfileAuthority,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pending_notification_cancellations: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -15,6 +27,7 @@ pub(crate) struct Profile {
 pub struct ProfileView {
     pub schema_version: u32,
     pub profile_label: String,
+    pub authority: String,
 }
 
 pub trait ProfilePersistence: Send + Sync {
@@ -44,11 +57,13 @@ impl Profile {
         Self {
             schema_version: PROFILE_SCHEMA_VERSION,
             profile_label: DEFAULT_PROFILE_LABEL.into(),
+            authority: ProfileAuthority::Active,
+            pending_notification_cancellations: Vec::new(),
         }
     }
 
     pub(crate) fn validate(self) -> Result<Self, String> {
-        if self.schema_version != PROFILE_SCHEMA_VERSION {
+        if ![1, PROFILE_SCHEMA_VERSION].contains(&self.schema_version) {
             return Err(format!(
                 "Unsupported profile schema version: {}",
                 self.schema_version
@@ -64,6 +79,7 @@ impl Profile {
         }
 
         Ok(Self {
+            schema_version: PROFILE_SCHEMA_VERSION,
             profile_label: profile_label.into(),
             ..self
         })
@@ -73,6 +89,43 @@ impl Profile {
         ProfileView {
             schema_version: self.schema_version,
             profile_label: self.profile_label.clone(),
+            authority: self.authority.label().into(),
+        }
+    }
+
+    pub(crate) fn is_active(&self) -> bool {
+        self.authority == ProfileAuthority::Active
+    }
+
+    pub(crate) fn authority(&self) -> ProfileAuthority {
+        self.authority
+    }
+
+    pub(crate) fn with_local_authority(
+        mut self,
+        authority: ProfileAuthority,
+        pending_notification_cancellations: Vec<String>,
+    ) -> Self {
+        self.authority = authority;
+        self.pending_notification_cancellations = pending_notification_cancellations;
+        self
+    }
+
+    pub(crate) fn pending_notification_cancellations(&self) -> &[String] {
+        &self.pending_notification_cancellations
+    }
+
+    pub(crate) fn notification_cancellation_completed(&mut self, notification_id: &str) {
+        self.pending_notification_cancellations
+            .retain(|pending| pending != notification_id);
+    }
+}
+
+impl ProfileAuthority {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Inactive => "inactive",
         }
     }
 }
@@ -94,6 +147,7 @@ impl<P: ProfilePersistence, E: ProfileExchange> ProfileApplication<P, E> {
             Some(document) => parse_profile(&document)?,
             None => Profile::new(),
         };
+        require_active_profile(&current)?;
         let updated = Profile {
             profile_label,
             ..current
@@ -101,6 +155,10 @@ impl<P: ProfilePersistence, E: ProfileExchange> ProfileApplication<P, E> {
         .validate()?;
         self.save_profile(&updated)?;
         Ok(updated.view())
+    }
+
+    pub fn require_active(&self) -> Result<(), String> {
+        require_active_profile(&self.current_profile()?)
     }
 
     pub fn export_profile(&self) -> Result<ProfileAction, String> {
@@ -140,7 +198,15 @@ impl<P: ProfilePersistence, E: ProfileExchange> ProfileApplication<P, E> {
 
     fn current_profile(&self) -> Result<Profile, String> {
         match self.persistence.load()? {
-            Some(document) => parse_profile(&document),
+            Some(document) => {
+                let decoded = decode_profile(&document)?;
+                let migration_required = decoded.schema_version != PROFILE_SCHEMA_VERSION;
+                let profile = decoded.validate()?;
+                if migration_required {
+                    self.save_profile(&profile)?;
+                }
+                Ok(profile)
+            }
             None => {
                 let profile = Profile::new();
                 self.save_profile(&profile)?;
@@ -150,15 +216,26 @@ impl<P: ProfilePersistence, E: ProfileExchange> ProfileApplication<P, E> {
     }
 }
 
+fn require_active_profile(profile: &Profile) -> Result<(), String> {
+    if profile.is_active() {
+        Ok(())
+    } else {
+        Err("This profile is inactive. Reactivate it only if the move failed.".into())
+    }
+}
+
 pub(crate) fn encode_profile(profile: &Profile) -> Result<Vec<u8>, String> {
     serde_json::to_vec_pretty(profile)
         .map_err(|error| format!("Could not encode the local profile: {error}"))
 }
 
 pub(crate) fn parse_profile(document: &[u8]) -> Result<Profile, String> {
+    decode_profile(document)?.validate()
+}
+
+fn decode_profile(document: &[u8]) -> Result<Profile, String> {
     serde_json::from_slice::<Profile>(document)
-        .map_err(|_| "The selected file is not a valid Personal Dashboard profile.".to_string())?
-        .validate()
+        .map_err(|_| "The selected file is not a valid Personal Dashboard profile.".to_string())
 }
 
 #[cfg(test)]
@@ -224,6 +301,24 @@ mod tests {
     }
 
     #[test]
+    fn version_one_profile_migrates_to_active_authority_state() {
+        let persistence = MemoryPersistence::default();
+        *persistence.document.lock().unwrap() =
+            Some(br#"{"schema_version":1,"profile_label":"Existing profile"}"#.to_vec());
+        let application = ProfileApplication::new(persistence.clone(), MemoryExchange::default());
+
+        let profile = application.open().unwrap();
+
+        assert_eq!(PROFILE_SCHEMA_VERSION, profile.schema_version);
+        assert_eq!("active", profile.authority);
+        let saved: serde_json::Value =
+            serde_json::from_slice(persistence.document.lock().unwrap().as_deref().unwrap())
+                .unwrap();
+        assert_eq!(PROFILE_SCHEMA_VERSION, saved["schema_version"]);
+        assert_eq!("active", saved["authority"]);
+    }
+
+    #[test]
     fn exported_profile_can_replace_changed_state_after_complete_validation() {
         let persistence = MemoryPersistence::default();
         let exchange = MemoryExchange::default();
@@ -259,7 +354,7 @@ mod tests {
     fn invalid_or_unsupported_import_keeps_active_profile_unchanged() {
         let invalid_documents = [
             b"not json".to_vec(),
-            br#"{"schema_version":2,"profile_label":"Unsupported"}"#.to_vec(),
+            br#"{"schema_version":3,"profile_label":"Unsupported"}"#.to_vec(),
             br#"{"schema_version":1,"profile_label":"","extra":true}"#.to_vec(),
         ];
 
