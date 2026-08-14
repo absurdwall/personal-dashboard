@@ -52,6 +52,7 @@ type WorkoutRecording = Readonly<{
 
 type WorkoutRecord = Readonly<{
   id: string;
+  source: string;
   activity: string;
   duration: string;
   effort: string;
@@ -64,6 +65,8 @@ type ExerciseDashboardView = Readonly<{
   schemaVersion: number;
   weekLabel: string;
   progress: string;
+  manualWorkoutAction: string;
+  weeklyGoalStatus: string | null;
   nextDeparture: string | null;
   primaryDepartures: readonly PrimaryDeparture[];
   fallbackDepartures: readonly FallbackDeparture[];
@@ -121,6 +124,8 @@ const fallbackCount = document.querySelector<HTMLElement>("#fallback-count");
 const exerciseReminderStatus = document.querySelector<HTMLElement>(
   "#exercise-reminder-status",
 );
+const weeklyGoalStatus = document.querySelector<HTMLElement>("#weekly-goal-status");
+const logWorkoutNow = document.querySelector<HTMLButtonElement>("#log-workout-now");
 const departurePrompt = document.querySelector<HTMLElement>("#departure-prompt");
 const departurePromptHeading = document.querySelector<HTMLElement>(
   "#departure-prompt-heading",
@@ -234,7 +239,10 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
   }
   if (nextDeparture) {
     nextDeparture.textContent =
-      view.nextDeparture ?? "No primary departures remaining this week";
+      view.nextDeparture ??
+      (view.weeklyGoalStatus
+        ? "Weekly goal complete — optional workouts welcome"
+        : "No primary departures remaining this week");
   }
   if (primaryDepartures) {
     primaryDepartures.replaceChildren(
@@ -256,6 +264,14 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
   if (exerciseReminderStatus) {
     exerciseReminderStatus.textContent = view.reminderMessage;
     delete exerciseReminderStatus.dataset.state;
+  }
+  if (weeklyGoalStatus) {
+    weeklyGoalStatus.hidden = view.weeklyGoalStatus === null;
+    weeklyGoalStatus.textContent = view.weeklyGoalStatus ?? "";
+  }
+  if (logWorkoutNow) {
+    logWorkoutNow.textContent = view.manualWorkoutAction;
+    logWorkoutNow.disabled = view.workoutRecording !== null;
   }
   if (notificationScheduledTime) {
     notificationScheduledTime.textContent = view.nextDeparture ?? "None this week";
@@ -351,7 +367,7 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
         const details = document.createElement("span");
         const outcome = document.createElement("span");
         activity.textContent = record.activity;
-        details.textContent = `${record.duration} · ${record.effort}`;
+        details.textContent = `${record.source} · ${record.duration} · ${record.effort}`;
         outcome.textContent = record.outcome;
         item.append(activity, details, outcome);
         return item;
@@ -414,6 +430,9 @@ async function confirmDepartureDecision(
 }
 
 function setWorkoutActionsDisabled(disabled: boolean): void {
+  if (logWorkoutNow) {
+    logWorkoutNow.disabled = disabled || workoutRecording?.hidden === false;
+  }
   [workoutPromptAction, workoutRecordingChoices].forEach((container) => {
     container?.querySelectorAll("button").forEach((button) => {
       button.toggleAttribute("disabled", disabled);
@@ -424,6 +443,7 @@ function setWorkoutActionsDisabled(disabled: boolean): void {
 async function runWorkoutAction(
   command:
     | "start_workout_record"
+    | "start_unscheduled_workout_record"
     | "choose_workout_activity"
     | "choose_workout_duration"
     | "complete_workout_record",
@@ -708,6 +728,9 @@ function handleWorkoutChoice(event: Event): void {
 
 workoutPromptAction?.addEventListener("click", handleWorkoutChoice);
 workoutRecordingChoices?.addEventListener("click", handleWorkoutChoice);
+logWorkoutNow?.addEventListener("click", () => {
+  void runWorkoutAction("start_unscheduled_workout_record", {});
+});
 
 window.addEventListener("focus", () => {
   void refreshExerciseDashboard();

@@ -1,4 +1,6 @@
-use personal_dashboard_lib::exercise::{ExerciseApplication, ExerciseClock, ExercisePersistence};
+use personal_dashboard_lib::exercise::{
+    ExerciseApplication, ExerciseClock, ExerciseDashboardView, ExercisePersistence,
+};
 use personal_dashboard_lib::notification::{
     NotificationIntent, NotificationPermission, NotificationPlatform,
 };
@@ -94,6 +96,33 @@ impl NotificationPlatform for ReminderOutbox {
     }
 }
 
+fn finish_unscheduled_workout(
+    application: &ExerciseApplication<IsolatedProfile, ReminderOutbox, FixedNewYorkClock>,
+    activity: &str,
+    duration: &str,
+    effort: &str,
+) -> ExerciseDashboardView {
+    application
+        .choose_workout_activity("unscheduled", activity)
+        .unwrap();
+    application
+        .choose_workout_duration("unscheduled", duration)
+        .unwrap();
+    application
+        .complete_workout_record("unscheduled", effort)
+        .unwrap()
+}
+
+fn record_unscheduled_workout(
+    application: &ExerciseApplication<IsolatedProfile, ReminderOutbox, FixedNewYorkClock>,
+    activity: &str,
+    duration: &str,
+    effort: &str,
+) -> ExerciseDashboardView {
+    application.start_unscheduled_workout_record().unwrap();
+    finish_unscheduled_workout(application, activity, duration, effort)
+}
+
 #[test]
 fn fresh_exercise_week_survives_relaunch_and_emits_the_first_departure_reminder() {
     let profile = IsolatedProfile::default();
@@ -106,7 +135,7 @@ fn fresh_exercise_week_survives_relaunch_and_emits_the_first_departure_reminder(
 
     assert_eq!("Personal Dashboard", dashboard.product_name);
     assert_eq!("Exercise tracking", dashboard.feature_area);
-    assert_eq!(4, dashboard.schema_version);
+    assert_eq!(5, dashboard.schema_version);
     assert_eq!(
         "Monday, August 10 – Sunday, August 16",
         dashboard.week_label
@@ -442,6 +471,232 @@ fn assigned_fallback_uses_the_established_reminder_recording_and_progress_flow()
 
     let relaunched = ExerciseApplication::new(profile, reminders, clock);
     assert_eq!(completed, relaunched.open().unwrap());
+}
+
+#[test]
+fn unscheduled_workouts_use_the_click_only_flow_and_share_progress_rules() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    let ready = application.open().unwrap();
+    assert_eq!("Log workout now", ready.manual_workout_action);
+    let activity = application.start_unscheduled_workout_record().unwrap();
+    assert_eq!(
+        vec!["Elliptical", "Weight training", "Other exercise"],
+        activity.workout_recording.as_ref().unwrap().choices
+    );
+    let qualifying = finish_unscheduled_workout(&application, "Weight training", "30", "Moderate");
+    assert_eq!("1 of 3 completed", qualifying.progress);
+    assert_eq!("Unscheduled workout", qualifying.workout_records[0].source);
+    assert_eq!(
+        "Counts toward weekly progress",
+        qualifying.workout_records[0].outcome
+    );
+
+    clock.advance_to(1_786_370_400_000);
+    let short = record_unscheduled_workout(&application, "Other exercise", "Under 20", "Easy");
+    assert_eq!("1 of 3 completed", short.progress);
+    assert_eq!(2, short.workout_records.len());
+    assert_eq!("Unscheduled workout", short.workout_records[1].source);
+    assert_eq!(
+        "Short effort — does not count toward weekly progress",
+        short.workout_records[1].outcome
+    );
+
+    let relaunched = ExerciseApplication::new(profile, reminders, clock);
+    assert_eq!(short, relaunched.open().unwrap());
+}
+
+#[test]
+fn mixed_sources_complete_the_goal_and_allow_an_optional_extra_workout() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    record_unscheduled_workout(&application, "Weight training", "30", "Moderate");
+
+    clock.advance_to(1_786_392_000_000);
+    application.open().unwrap();
+    application
+        .respond_to_departure("2026-08-10-primary-1", "leaving-for-gym")
+        .unwrap();
+    clock.advance_to(1_786_397_400_000);
+    application
+        .start_workout_record("2026-08-10-primary-1")
+        .unwrap();
+    application
+        .choose_workout_activity("2026-08-10-primary-1", "Elliptical")
+        .unwrap();
+    application
+        .choose_workout_duration("2026-08-10-primary-1", "20")
+        .unwrap();
+    application
+        .complete_workout_record("2026-08-10-primary-1", "Easy")
+        .unwrap();
+
+    clock.advance_to(1_786_564_800_000);
+    application.open().unwrap();
+    application
+        .confirm_departure_decision(
+            "2026-08-10-primary-2",
+            "move-to-fallback",
+            "Another commitment",
+        )
+        .unwrap();
+    clock.advance_to(1_786_737_600_000);
+    application.open().unwrap();
+    application
+        .confirm_departure_decision("2026-08-10-primary-3", "move-to-fallback", "Work ran late")
+        .unwrap();
+
+    clock.advance_to(1_786_824_000_000);
+    application.open().unwrap();
+    application
+        .respond_to_departure("2026-08-10-fallback-1", "leaving-for-gym")
+        .unwrap();
+    clock.advance_to(1_786_829_400_000);
+    application
+        .start_workout_record("2026-08-10-fallback-1")
+        .unwrap();
+    application
+        .choose_workout_activity("2026-08-10-fallback-1", "Other exercise")
+        .unwrap();
+    application
+        .choose_workout_duration("2026-08-10-fallback-1", "45")
+        .unwrap();
+    let success = application
+        .complete_workout_record("2026-08-10-fallback-1", "Hard")
+        .unwrap();
+
+    assert_eq!("3 of 3 completed", success.progress);
+    assert_eq!(
+        Some("Weekly goal complete"),
+        success.weekly_goal_status.as_deref()
+    );
+    assert_eq!(None, success.next_departure);
+    assert_eq!(None, success.departure_prompt);
+    assert_eq!(
+        vec!["Unscheduled workout", "Primary workout", "Fallback workout"],
+        success
+            .workout_records
+            .iter()
+            .map(|record| record.source.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        "Assigned from Friday · Weekly goal met — no workout needed",
+        success.fallback_departures[1].availability
+    );
+
+    clock.advance_to(1_786_831_200_000);
+    let optional = application.start_unscheduled_workout_record().unwrap();
+    assert_eq!(
+        "Weekly goal complete — optional workouts welcome",
+        optional.reminder_message
+    );
+    let extra = finish_unscheduled_workout(&application, "Elliptical", "60+ minutes", "Very hard");
+    assert_eq!("4 of 3 completed", extra.progress);
+    assert_eq!(
+        Some("Weekly goal complete"),
+        extra.weekly_goal_status.as_deref()
+    );
+    assert_eq!(None, extra.next_departure);
+    assert_eq!(None, extra.departure_prompt);
+
+    let relaunched = ExerciseApplication::new(profile, reminders, clock);
+    assert_eq!(extra, relaunched.open().unwrap());
+}
+
+#[test]
+fn reaching_the_goal_cancels_and_suppresses_remaining_planned_obligations() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    application
+        .confirm_departure_decision("2026-08-10-primary-1", "move-to-fallback", "Work ran late")
+        .unwrap();
+    clock.advance_to(1_786_395_600_000);
+    for effort in ["Easy", "Moderate", "Hard"] {
+        record_unscheduled_workout(&application, "Other exercise", "20", effort);
+    }
+
+    let success = application.open().unwrap();
+    assert_eq!("3 of 3 completed", success.progress);
+    assert_eq!(
+        "Moved to Saturday · Work ran late",
+        success.primary_departures[0].status
+    );
+    assert_eq!(
+        "Weekly goal met — no workout needed",
+        success.primary_departures[1].status
+    );
+    assert_eq!(
+        "Weekly goal met — no workout needed",
+        success.primary_departures[2].status
+    );
+    assert_eq!(
+        "Assigned from Monday · Weekly goal met — no workout needed",
+        success.fallback_departures[0].availability
+    );
+    assert_eq!(None, success.reminder_intent);
+    assert_eq!(
+        vec![
+            "exercise-follow-up-2026-08-10-primary-1",
+            "exercise-departure-2026-08-10-primary-2",
+            "exercise-follow-up-2026-08-10-primary-2"
+        ],
+        *reminders.cancelled.lock().unwrap()
+    );
+    let scheduled_before_relaunch = reminders.scheduled.lock().unwrap().len();
+
+    clock.advance_to(1_786_824_000_000);
+    let relaunched = ExerciseApplication::new(profile, reminders.clone(), clock);
+    let saturday = relaunched.open().unwrap();
+    assert_eq!(
+        "Weekly goal complete — optional workouts welcome",
+        saturday.reminder_message
+    );
+    assert_eq!(None, saturday.departure_prompt);
+    assert_eq!(
+        scheduled_before_relaunch,
+        reminders.scheduled.lock().unwrap().len()
+    );
+}
+
+#[test]
+fn reaching_the_goal_suppresses_an_unrecorded_leaving_slot_without_promising_a_reminder() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile, reminders.clone(), clock);
+
+    application.open().unwrap();
+    application
+        .respond_to_departure("2026-08-10-primary-1", "leaving-for-gym")
+        .unwrap();
+    for effort in ["Easy", "Moderate", "Hard"] {
+        record_unscheduled_workout(&application, "Other exercise", "20", effort);
+    }
+
+    let success = application.open().unwrap();
+    assert_eq!("3 of 3 completed", success.progress);
+    assert_eq!(
+        "Weekly goal met — no workout needed",
+        success.primary_departures[0].status
+    );
+    assert_eq!(None, success.departure_confirmation);
+    assert!(reminders
+        .cancelled
+        .lock()
+        .unwrap()
+        .contains(&"exercise-record-workout-2026-08-10-primary-1".to_string()));
 }
 
 #[test]

@@ -146,6 +146,13 @@ fn start_workout_record(
 }
 
 #[tauri::command]
+fn start_unscheduled_workout_record(
+    application: State<'_, DesktopExerciseApplication>,
+) -> Result<ExerciseDashboardView, String> {
+    application.start_unscheduled_workout_record()
+}
+
+#[tauri::command]
 fn choose_workout_activity(
     application: State<'_, DesktopExerciseApplication>,
     slot_id: String,
@@ -247,6 +254,7 @@ pub fn run() {
             start_departure_decision,
             confirm_departure_decision,
             start_workout_record,
+            start_unscheduled_workout_record,
             choose_workout_activity,
             choose_workout_duration,
             complete_workout_record,
@@ -267,6 +275,7 @@ pub fn run() {
         start_departure_decision,
         confirm_departure_decision,
         start_workout_record,
+        start_unscheduled_workout_record,
         choose_workout_activity,
         choose_workout_duration,
         complete_workout_record

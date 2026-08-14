@@ -2,8 +2,9 @@ use crate::notification::{NotificationIntent, NotificationPermission, Notificati
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-const EXERCISE_SCHEMA_VERSION: u32 = 4;
+const EXERCISE_SCHEMA_VERSION: u32 = 5;
 const WEEKLY_GOAL: u32 = 3;
+const UNSCHEDULED_WORKOUT_SLOT_ID: &str = "unscheduled";
 const DEPARTURE_HOUR: i64 = 16;
 const FOLLOW_UP_DELAY_MILLIS: i64 = 15 * 60 * 1_000;
 const RECORD_WORKOUT_DELAY_MILLIS: i64 = 90 * 60 * 1_000;
@@ -41,6 +42,8 @@ struct ExerciseState {
     weeks: Vec<ExerciseWeek>,
     #[serde(default)]
     workout_draft: Option<WorkoutDraft>,
+    #[serde(default = "first_unscheduled_sequence")]
+    next_unscheduled_sequence: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -76,6 +79,8 @@ struct ExerciseWeek {
 #[serde(deny_unknown_fields)]
 struct WorkoutDraft {
     slot_id: String,
+    #[serde(default)]
+    source: Option<WorkoutSource>,
     activity: Option<WorkoutActivity>,
     duration: Option<WorkoutDuration>,
 }
@@ -84,11 +89,35 @@ struct WorkoutDraft {
 #[serde(deny_unknown_fields)]
 struct WorkoutRecord {
     id: String,
-    source_slot_id: String,
+    #[serde(default)]
+    source: Option<WorkoutSource>,
+    source_slot_id: Option<String>,
     recorded_at_epoch_millis: i64,
     activity: WorkoutActivity,
     duration: WorkoutDuration,
     effort: PerceivedEffort,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum WorkoutSource {
+    Primary,
+    Fallback,
+    Unscheduled,
+}
+
+impl WorkoutSource {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Primary => "Primary workout",
+            Self::Fallback => "Fallback workout",
+            Self::Unscheduled => "Unscheduled workout",
+        }
+    }
+}
+
+fn first_unscheduled_sequence() -> u64 {
+    1
 }
 
 trait WorkoutChoice: Copy + Sized + 'static {
@@ -237,6 +266,7 @@ enum DepartureStatus {
     Leaving,
     Moved,
     Skipped,
+    NotNeeded,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -373,6 +403,7 @@ pub struct WorkoutRecordingView {
 #[serde(rename_all = "camelCase")]
 pub struct WorkoutRecordView {
     pub id: String,
+    pub source: String,
     pub activity: String,
     pub duration: String,
     pub effort: String,
@@ -387,6 +418,8 @@ pub struct ExerciseDashboardView {
     pub schema_version: u32,
     pub week_label: String,
     pub progress: String,
+    pub manual_workout_action: String,
+    pub weekly_goal_status: Option<String>,
     pub next_departure: Option<String>,
     pub primary_departures: Vec<PrimaryDepartureView>,
     pub fallback_departures: Vec<FallbackDepartureView>,
@@ -430,16 +463,33 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
             changed = true;
         }
 
+        let weekly_goal = state.routine.weekly_goal;
         let week = state
             .weeks
             .iter_mut()
             .find(|week| week.week_start == week_key)
             .expect("the current week was just ensured");
-        let next_id =
-            next_scheduled_departure(week, &self.clock, now).map(|departure| departure.id.clone());
-        let visible_reminder_intent =
-            next_scheduled_departure(week, &self.clock, now).map(reminder_intent);
-        let mut reminder_message = "No departure reminder remains this week.".to_string();
+        let goal_reached = weekly_goal_reached_at(week, weekly_goal).is_some();
+        if let Some(goal_reached_at) = weekly_goal_reached_at(week, weekly_goal) {
+            let (suppressed, reminder_ids) = suppress_remaining_obligations(week, goal_reached_at);
+            changed |= suppressed;
+            for reminder_id in reminder_ids {
+                self.notifications.cancel(&reminder_id)?;
+            }
+        }
+        let next_id = (!goal_reached)
+            .then(|| next_scheduled_departure(week, &self.clock, now))
+            .flatten()
+            .map(|departure| departure.id.clone());
+        let visible_reminder_intent = (!goal_reached)
+            .then(|| next_scheduled_departure(week, &self.clock, now))
+            .flatten()
+            .map(reminder_intent);
+        let mut reminder_message = if goal_reached {
+            "Weekly goal complete — optional workouts welcome".into()
+        } else {
+            "No departure reminder remains this week.".into()
+        };
 
         if let Some(next_id) = next_id {
             let departure = all_departures_mut(week)
@@ -476,7 +526,7 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
             };
         }
 
-        if self.notifications.permission() == Ok(NotificationPermission::Granted) {
+        if !goal_reached && self.notifications.permission() == Ok(NotificationPermission::Granted) {
             for departure in all_departures_mut(week) {
                 if departure.status == DepartureStatus::Leaving
                     && departure
@@ -507,7 +557,9 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
             week,
             &self.clock,
             now,
-            next_scheduled_departure(week, &self.clock, now),
+            (!goal_reached)
+                .then(|| next_scheduled_departure(week, &self.clock, now))
+                .flatten(),
             visible_reminder_intent,
             reminder_message,
         ))
@@ -644,9 +696,27 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
             return Err("A workout record is already in progress.".into());
         }
         let week = current_week(&state, &self.clock, now)?;
-        recordable_departure(week, slot_id, now)?;
+        let departure = recordable_departure(week, slot_id, now)?;
+        let source = workout_source_for_departure(week, departure)
+            .ok_or_else(|| "That workout source is not available.".to_string())?;
         state.workout_draft = Some(WorkoutDraft {
             slot_id: slot_id.into(),
+            source: Some(source),
+            activity: None,
+            duration: None,
+        });
+        self.save_state(&state)?;
+        self.open()
+    }
+
+    pub fn start_unscheduled_workout_record(&self) -> Result<ExerciseDashboardView, String> {
+        let (mut state, _) = self.current_state()?;
+        if state.workout_draft.is_some() {
+            return Err("A workout record is already in progress.".into());
+        }
+        state.workout_draft = Some(WorkoutDraft {
+            slot_id: UNSCHEDULED_WORKOUT_SLOT_ID.into(),
+            source: Some(WorkoutSource::Unscheduled),
             activity: None,
             duration: None,
         });
@@ -708,11 +778,25 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         let duration = draft
             .duration
             .ok_or_else(|| "The workout duration has not been selected.".to_string())?;
+        let source = draft
+            .source
+            .ok_or_else(|| "The workout source is not available.".to_string())?;
+        let unscheduled_sequence = state.next_unscheduled_sequence;
+        if source == WorkoutSource::Unscheduled {
+            state.next_unscheduled_sequence += 1;
+        }
         let week = current_week_mut(&mut state, &self.clock, now)?;
-        recordable_departure(week, slot_id, now)?;
+        if source != WorkoutSource::Unscheduled {
+            recordable_departure(week, slot_id, now)?;
+        }
         week.workout_records.push(WorkoutRecord {
-            id: format!("{slot_id}-workout"),
-            source_slot_id: slot_id.into(),
+            id: if source == WorkoutSource::Unscheduled {
+                format!("{}-unscheduled-{unscheduled_sequence}", week.week_start)
+            } else {
+                format!("{slot_id}-workout")
+            },
+            source: Some(source),
+            source_slot_id: (source != WorkoutSource::Unscheduled).then(|| slot_id.into()),
             recorded_at_epoch_millis: now,
             activity,
             duration,
@@ -753,6 +837,7 @@ impl ExerciseState {
             },
             weeks: Vec::new(),
             workout_draft: None,
+            next_unscheduled_sequence: first_unscheduled_sequence(),
         }
     }
 
@@ -768,9 +853,28 @@ impl ExerciseState {
         if self.routine != ExerciseState::new().routine {
             return Err("The saved exercise routine is not supported yet.".into());
         }
+        self.migrate_workout_sources();
         self.validate_departures()?;
         self.validate_workouts()?;
         Ok(self)
+    }
+
+    fn migrate_workout_sources(&mut self) {
+        for week in &mut self.weeks {
+            for record in &mut week.workout_records {
+                if record.source.is_none() {
+                    record.source = record
+                        .source_slot_id
+                        .as_deref()
+                        .map(source_from_legacy_slot_id);
+                }
+            }
+        }
+        if let Some(draft) = &mut self.workout_draft {
+            if draft.source.is_none() {
+                draft.source = Some(source_from_legacy_slot_id(&draft.slot_id));
+            }
+        }
     }
 
     fn validate_departures(&self) -> Result<(), String> {
@@ -784,6 +888,22 @@ impl ExerciseState {
                     match departure.status {
                         DepartureStatus::Available | DepartureStatus::Scheduled => {
                             departure.departure_response.is_none()
+                                && departure
+                                    .record_workout_prompt_due_at_epoch_millis
+                                    .is_none()
+                                && departure
+                                    .record_workout_reminder_scheduled_at_epoch_millis
+                                    .is_none()
+                        }
+                        DepartureStatus::NotNeeded => {
+                            departure
+                                .departure_response
+                                .as_ref()
+                                .is_none_or(|response| {
+                                    response.outcome == DepartureOutcome::LeavingForGym
+                                        && response.reason.is_none()
+                                        && response.fallback_slot_id.is_none()
+                                })
                                 && departure
                                     .record_workout_prompt_due_at_epoch_millis
                                     .is_none()
@@ -850,22 +970,38 @@ impl ExerciseState {
             let mut record_ids = HashSet::new();
             let mut source_slot_ids = HashSet::new();
             for record in &week.workout_records {
-                let source =
-                    all_departures(week).find(|departure| departure.id == record.source_slot_id);
-                let valid_source = source.is_some_and(|departure| {
-                    departure.status == DepartureStatus::Leaving
-                        && departure
-                            .record_workout_prompt_due_at_epoch_millis
-                            .is_some()
-                        && departure
-                            .record_workout_reminder_scheduled_at_epoch_millis
-                            .is_some()
-                });
-                if !record_ids.insert(record.id.as_str())
-                    || !source_slot_ids.insert(record.source_slot_id.as_str())
-                    || record.id != format!("{}-workout", record.source_slot_id)
-                    || !valid_source
-                {
+                let source = record.source.expect("workout sources were migrated");
+                let valid_source = match source {
+                    WorkoutSource::Unscheduled => {
+                        record.source_slot_id.is_none()
+                            && record
+                                .id
+                                .strip_prefix(&format!("{}-unscheduled-", week.week_start))
+                                .and_then(|sequence| sequence.parse::<u64>().ok())
+                                .is_some_and(|sequence| sequence < self.next_unscheduled_sequence)
+                    }
+                    WorkoutSource::Primary | WorkoutSource::Fallback => record
+                        .source_slot_id
+                        .as_deref()
+                        .and_then(|slot_id| {
+                            all_departures(week)
+                                .find(|departure| departure.id == slot_id)
+                                .map(|departure| (slot_id, departure))
+                        })
+                        .is_some_and(|(slot_id, departure)| {
+                            source_slot_ids.insert(slot_id)
+                                && record.id == format!("{slot_id}-workout")
+                                && workout_source_for_departure(week, departure) == Some(source)
+                                && departure.status == DepartureStatus::Leaving
+                                && departure
+                                    .record_workout_prompt_due_at_epoch_millis
+                                    .is_some()
+                                && departure
+                                    .record_workout_reminder_scheduled_at_epoch_millis
+                                    .is_some()
+                        }),
+                };
+                if !record_ids.insert(record.id.as_str()) || !valid_source {
                     return Err("The saved workout data is not valid.".into());
                 }
             }
@@ -883,24 +1019,31 @@ impl ExerciseState {
             if draft.duration.is_some() && draft.activity.is_none() {
                 return Err("The saved workout data is not valid.".into());
             }
-            let source = self.weeks.iter().find_map(|week| {
-                all_departures(week)
-                    .find(|departure| departure.id == draft.slot_id)
-                    .map(|departure| (week, departure))
-            });
-            let valid_source = source.is_some_and(|(week, departure)| {
-                departure.status == DepartureStatus::Leaving
-                    && departure
-                        .record_workout_prompt_due_at_epoch_millis
-                        .is_some()
-                    && departure
-                        .record_workout_reminder_scheduled_at_epoch_millis
-                        .is_some()
-                    && !week
-                        .workout_records
-                        .iter()
-                        .any(|record| record.source_slot_id == draft.slot_id)
-            });
+            let source = draft.source.expect("workout sources were migrated");
+            let valid_source = if source == WorkoutSource::Unscheduled {
+                draft.slot_id == UNSCHEDULED_WORKOUT_SLOT_ID
+            } else {
+                self.weeks
+                    .iter()
+                    .find_map(|week| {
+                        all_departures(week)
+                            .find(|departure| departure.id == draft.slot_id)
+                            .map(|departure| (week, departure))
+                    })
+                    .is_some_and(|(week, departure)| {
+                        workout_source_for_departure(week, departure) == Some(source)
+                            && departure.status == DepartureStatus::Leaving
+                            && departure
+                                .record_workout_prompt_due_at_epoch_millis
+                                .is_some()
+                            && departure
+                                .record_workout_reminder_scheduled_at_epoch_millis
+                                .is_some()
+                            && !week.workout_records.iter().any(|record| {
+                                record.source_slot_id.as_deref() == Some(draft.slot_id.as_str())
+                            })
+                    })
+            };
             if !valid_source {
                 return Err("The saved workout data is not valid.".into());
             }
@@ -1021,10 +1164,98 @@ fn all_departures(week: &ExerciseWeek) -> impl Iterator<Item = &PlannedDeparture
         .chain(week.fallback_departures.iter())
 }
 
+fn workout_source_for_departure(
+    week: &ExerciseWeek,
+    departure: &PlannedDeparture,
+) -> Option<WorkoutSource> {
+    if week
+        .primary_departures
+        .iter()
+        .any(|candidate| candidate.id == departure.id)
+    {
+        Some(WorkoutSource::Primary)
+    } else if week
+        .fallback_departures
+        .iter()
+        .any(|candidate| candidate.id == departure.id)
+    {
+        Some(WorkoutSource::Fallback)
+    } else {
+        None
+    }
+}
+
+fn source_from_legacy_slot_id(slot_id: &str) -> WorkoutSource {
+    if slot_id.contains("-fallback-") {
+        WorkoutSource::Fallback
+    } else {
+        WorkoutSource::Primary
+    }
+}
+
 fn all_departures_mut(week: &mut ExerciseWeek) -> impl Iterator<Item = &mut PlannedDeparture> {
     week.primary_departures
         .iter_mut()
         .chain(week.fallback_departures.iter_mut())
+}
+
+fn weekly_goal_reached_at(week: &ExerciseWeek, weekly_goal: u32) -> Option<i64> {
+    let mut qualifying_records = week
+        .workout_records
+        .iter()
+        .filter(|record| record.duration.qualifies())
+        .map(|record| record.recorded_at_epoch_millis)
+        .collect::<Vec<_>>();
+    qualifying_records.sort_unstable();
+    qualifying_records
+        .get(weekly_goal.saturating_sub(1) as usize)
+        .copied()
+}
+
+fn suppress_remaining_obligations(
+    week: &mut ExerciseWeek,
+    goal_reached_at: i64,
+) -> (bool, Vec<String>) {
+    let recorded_slot_ids = week
+        .workout_records
+        .iter()
+        .filter_map(|record| record.source_slot_id.clone())
+        .collect::<HashSet<_>>();
+    let mut changed = false;
+    let mut reminder_ids = Vec::new();
+    for departure in all_departures_mut(week) {
+        if departure.departure_at_epoch_millis >= goal_reached_at
+            && matches!(
+                departure.status,
+                DepartureStatus::Scheduled | DepartureStatus::Available
+            )
+        {
+            if departure.reminder_scheduled_at_epoch_millis.is_some() {
+                reminder_ids.push(reminder_intent(departure).id);
+            }
+            if departure.follow_up_scheduled_at_epoch_millis.is_some() {
+                reminder_ids.push(follow_up_intent(departure).id);
+            }
+            departure.status = DepartureStatus::NotNeeded;
+            changed = true;
+        } else if departure.status == DepartureStatus::Leaving
+            && !recorded_slot_ids.contains(&departure.id)
+        {
+            if departure
+                .record_workout_reminder_scheduled_at_epoch_millis
+                .is_some()
+            {
+                if let Some(due_at) = departure.record_workout_prompt_due_at_epoch_millis {
+                    reminder_ids.push(record_workout_intent(departure, due_at).id);
+                }
+            }
+            departure.status = DepartureStatus::NotNeeded;
+            departure.record_workout_prompt_due_at_epoch_millis = None;
+            departure.record_workout_reminder_scheduled_at_epoch_millis = None;
+            changed = true;
+        }
+    }
+    (changed, reminder_ids)
 }
 
 fn decidable_departure<'a>(
@@ -1087,8 +1318,13 @@ fn fallback_status(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64) 
                 departure_decision_status(week, departure)
                     .expect("closed assigned fallback has a decision")
             ),
+            DepartureStatus::NotNeeded => {
+                format!("{assignment} · Weekly goal met — no workout needed")
+            }
             DepartureStatus::Available => "Available".into(),
         }
+    } else if departure.status == DepartureStatus::NotNeeded {
+        "Weekly goal met — no workout needed".into()
     } else if fallback_is_available(departure, now) {
         "Available".into()
     } else {
@@ -1137,6 +1373,7 @@ fn dashboard_view(
 ) -> ExerciseDashboardView {
     let start = parse_iso_date(&week.week_start).expect("saved week start is valid");
     let end = parse_iso_date(&week.week_end).expect("saved week end is valid");
+    let goal_reached = weekly_goal_reached_at(week, state.routine.weekly_goal).is_some();
     ExerciseDashboardView {
         product_name: "Personal Dashboard".into(),
         feature_area: "Exercise tracking".into(),
@@ -1154,6 +1391,8 @@ fn dashboard_view(
             "{} of {} completed",
             week.completed_count, state.routine.weekly_goal
         ),
+        manual_workout_action: "Log workout now".into(),
+        weekly_goal_status: goal_reached.then(|| "Weekly goal complete".into()),
         next_departure: next_departure.map(friendly_departure),
         primary_departures: week
             .primary_departures
@@ -1182,16 +1421,25 @@ fn dashboard_view(
             .count(),
         reminder_intent,
         reminder_message,
-        departure_prompt: departure_prompt(week, now),
+        departure_prompt: (!goal_reached)
+            .then(|| departure_prompt(week, now))
+            .flatten(),
         departure_reason_prompt: None,
         departure_confirmation: departure_confirmation(week, clock),
-        workout_prompt: workout_prompt(state, week, now),
+        workout_prompt: (!goal_reached)
+            .then(|| workout_prompt(state, week, now))
+            .flatten(),
         workout_recording: workout_recording(state),
         workout_records: week
             .workout_records
             .iter()
             .map(|record| WorkoutRecordView {
                 id: record.id.clone(),
+                source: record
+                    .source
+                    .expect("workout sources were migrated")
+                    .label()
+                    .into(),
                 activity: record.activity.label().into(),
                 duration: record.duration.label().into(),
                 effort: record.effort.label().into(),
@@ -1254,7 +1502,7 @@ fn recordable_departure<'a>(
                 && !week
                     .workout_records
                     .iter()
-                    .any(|record| record.source_slot_id == slot_id)
+                    .any(|record| record.source_slot_id.as_deref() == Some(slot_id))
         })
         .ok_or_else(|| "That workout prompt is not awaiting a record.".to_string())
 }
@@ -1408,6 +1656,7 @@ fn departure_status(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64)
             "Awaiting response".into()
         }
         DepartureStatus::Scheduled => "Scheduled".into(),
+        DepartureStatus::NotNeeded => "Weekly goal met — no workout needed".into(),
         DepartureStatus::Available => "Available".into(),
     }
 }

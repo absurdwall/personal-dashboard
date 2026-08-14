@@ -247,6 +247,33 @@ h1 {
   color: #ffd0c7;
 }
 
+.goal-success {
+  margin: 1rem 0 0;
+  color: #d6efdc;
+  font-weight: 750;
+}
+
+.goal-success[hidden] {
+  display: none;
+}
+
+.manual-workout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.3rem;
+  padding: 1.4rem;
+  border: 1px solid rgb(245 241 229 / 28%);
+  border-radius: 1rem;
+  background: rgb(255 255 255 / 8%);
+}
+
+.manual-workout .section-label,
+.manual-workout h4 {
+  margin: 0;
+}
+
 .departure-response,
 .departure-confirmation,
 .workout-flow,
@@ -578,7 +605,8 @@ input:focus-visible {
 
   .profile-field-row,
   .exchange-actions,
-  .notification-actions {
+  .notification-actions,
+  .manual-workout {
     align-items: stretch;
     flex-direction: column;
   }
