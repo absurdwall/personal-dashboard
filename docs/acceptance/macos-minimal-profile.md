@@ -39,14 +39,25 @@ directory and the bundle identifier, producing `profile.json` and
 `exercise.json` under
 `~/Library/Application Support/com.tortillaflat.personal-dashboard/` on macOS.
 
-## Recorded partial result
+## Recorded result
 
 On 2026-08-14, the arm64 packaged bundle passed `npm run accept:mac` and opened
-without Python or a listening TCP socket. In an isolated data directory, the
-packaged app saved a changed profile label and **Back up profile…** opened the
-real macOS save panel.
+without Python or a listening TCP socket. An isolated profile was prepared with
+the label `Acceptance backup profile`, one qualifying workout, a Saturday
+current-week exception, and a Tuesday first departure in the future routine.
 
-The save was not completed and the native open/restore panel was not exercised:
-the user's active full-screen application prevented safe visual control of the
-modal panel. This is a partial observation only. Steps 4–8 remain the required
-acceptance follow-up before issue 15 can be marked resolved.
+The real macOS save panel wrote `personal-dashboard-backup.json` to Documents
+while the source dashboard remained active. After the label was changed and a
+second workout advanced progress to 2 of 3, the real macOS open panel selected
+the backup. The confirmation left that changed state visible, and **Cancel**
+preserved it.
+
+Selecting the backup again and choosing **Confirm restore** returned the saved
+label, 1-of-3 progress, single Elliptical record, Saturday exception, Tuesday
+future routine, next departure, and reminder intent. Selecting invalid JSON in
+the native open panel displayed the validation error and left that restored
+profile unchanged. Acceptance data and exported files were removed afterward.
+
+This run also exposed and verified the fix for a native integration defect:
+file-panel commands must be asynchronous so the Tauri event loop remains
+available while the operating-system panel is open.

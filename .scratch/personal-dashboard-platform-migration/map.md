@@ -16,11 +16,11 @@
 - [12 — Close the week and repeat the routine](issues/12-close-week-repeat-routine.md) — resolved
 - [13 — Adjust this week or deliberately change the routine](issues/13-adjust-week-or-routine.md) — resolved
 - [14 — Review, correct, and delete workout history](issues/14-review-correct-delete-history.md) — resolved
-- [15 — Back up and restore the complete profile](issues/15-back-up-restore-profile.md) — claimed
+- [15 — Back up and restore the complete profile](issues/15-back-up-restore-profile.md) — resolved
+- [16 — Move the authoritative profile safely](issues/16-move-authoritative-profile.md) — ready-for-agent
 
 ## Blocked tickets
 
-- [16 — Move the authoritative profile safely](issues/16-move-authoritative-profile.md) — blocked by 15
 - [17 — Automatically migrate the completed Mac profile](issues/17-migrate-completed-mac-profile.md) — blocked by 16
 - [18 — Cut over to the Tauri-only Personal Dashboard](issues/18-cut-over-tauri-only.md) — blocked by 17
 

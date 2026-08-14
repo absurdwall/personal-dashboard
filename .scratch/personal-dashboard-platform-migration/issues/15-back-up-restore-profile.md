@@ -4,7 +4,7 @@
 
 **Blocked by:** 12 — Close the week and repeat the routine; 13 — Adjust this week or deliberately change the routine; 14 — Review, correct, and delete workout history.
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] Profile backup exports the complete active profile through a native save interaction.
 - [x] Creating a profile backup leaves the source profile active and does not change reminder authority.
@@ -14,13 +14,21 @@
 - [x] A successful restore reproduces the backed-up dashboard, routine, history, progress, and reminder intent.
 - [x] Invalid, unsupported, or cancelled restore leaves the active profile unchanged.
 - [x] Backup and restore work fully offline and introduce no account, synchronization, cloud storage, or external service.
-- [ ] The primary application seam verifies representative multi-week backup and restore, while acceptance mode verifies real native file interactions.
+- [x] The primary application seam verifies representative multi-week backup and restore, while acceptance mode verifies real native file interactions.
 
 ## Comments
 
-Implementation and the deterministic application seam are complete. On
-2026-08-14 the packaged arm64 app passed launch acceptance and opened the real
-macOS save panel from an isolated profile. The save could not be completed and
-the native open/restore panel could not be exercised safely while another
-full-screen application owned the visible workspace. The recorded procedure in
-`docs/acceptance/macos-minimal-profile.md` remains the acceptance follow-up.
+Native acceptance initially exposed that synchronous Tauri commands blocked the
+application event loop while a macOS file panel was open. The backup and restore
+selection commands now run asynchronously, keeping both native panels and the
+source dashboard interactive.
+
+## Answer
+
+Implemented complete offline profile backup and restore through native macOS
+save/open interactions, whole-document validation, explicit replacement
+confirmation, and crash-recoverable profile replacement. The application seam
+covers representative multi-week state and failure recovery. On 2026-08-14 the
+packaged arm64 app completed the recorded native acceptance flow, including
+save, source continuity, cancel, confirmed restore, restored reminder intent,
+and invalid-file rejection without changing the active profile.

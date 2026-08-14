@@ -112,14 +112,14 @@ fn update_profile_label(
 }
 
 #[tauri::command]
-fn backup_profile(
+async fn backup_profile(
     application: State<'_, DesktopProfileBackupApplication>,
 ) -> Result<ProfileBackupAction, String> {
     application.backup_profile()
 }
 
 #[tauri::command]
-fn select_profile_restore(
+async fn select_profile_restore(
     application: State<'_, DesktopProfileBackupApplication>,
 ) -> Result<ProfileRestoreSelection, String> {
     application.select_profile_restore()
