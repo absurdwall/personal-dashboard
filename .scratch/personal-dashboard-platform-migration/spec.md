@@ -1,6 +1,6 @@
 # Personal Dashboard platform migration
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 

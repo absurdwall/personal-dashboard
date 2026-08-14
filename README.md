@@ -3,10 +3,10 @@
 Personal Dashboard is a private, offline, local-first application. Exercise
 tracking is its current feature area.
 
-## Build the Mac application
+## Build and install the Mac application
 
-The current tracer bullet uses Tauri 2, Rust, plain TypeScript, semantic HTML,
-and CSS. Install the JavaScript and Rust build prerequisites, then run:
+The active application uses Tauri 2, Rust, plain TypeScript, semantic HTML, and
+CSS. Install the JavaScript and Rust build prerequisites, then run:
 
 ```sh
 npm install
@@ -28,15 +28,19 @@ Services:
 open "src-tauri/target/release/bundle/macos/Personal Dashboard.app"
 ```
 
-Verify the packaged bundle rather than a development process:
+Verify the complete Tauri-only release boundary rather than a development
+process:
 
 ```sh
-npm run accept:mac
+npm run accept:cutover
 ```
 
-The acceptance check relocates a copy, launches it through macOS Launch
-Services, verifies the arm64 application identity, and confirms that the app
-uses neither Python nor a listening TCP socket.
+The acceptance check verifies that the active source and README expose only the
+Tauri product, confirms the recoverable baseline tag, relocates a bundle copy,
+launches it through macOS Launch Services, verifies the arm64 application
+identity, and confirms that the app uses neither Python nor a listening TCP
+socket. The private release targets the current Apple Silicon Mac and macOS
+environment. It is ad-hoc signed but is not Developer ID signed or notarized.
 
 ## Exercise week and departure reminder
 
@@ -59,7 +63,7 @@ already scheduled reminder, so closing the Personal Dashboard window does not
 cancel it. Exercise state and reminder eligibility do not depend on Python, a
 localhost server, a browser, an account, or network access.
 
-Run the new application-workflow seam with:
+Run the application-workflow seam with:
 
 ```sh
 cargo test --manifest-path src-tauri/Cargo.toml --test application_workflow
@@ -140,80 +144,28 @@ performs a normal Quit.
 The packaged acceptance procedure and the observed closed-window and
 normal-Quit results are recorded in
 [`docs/acceptance/macos-notification-capability.md`](docs/acceptance/macos-notification-capability.md).
+Already scheduled notifications were observed after both window close and a
+normal Quit. After-Quit delivery remains desirable rather than a guaranteed
+release gate; no background runner or launch-at-login service is required.
 
-## Completed Python baseline
+## Cutover evidence and limitations
 
-The completed Python exercise tracker remains available as migration evidence
-while behavior is moved incrementally. It uses only Python's standard library
-and built-in macOS facilities; there is no account, network service, cloud
-sync, deployment, or third-party dependency.
+The completed 20-scenario baseline inventory is mapped to the active Tauri
+application suites, and the Mac and physical-device gate evidence is collected
+in [`docs/acceptance/tauri-cutover.md`](docs/acceptance/tauri-cutover.md).
+The iPad and Samsung results prove shared-foundation compilation, installation,
+launch, and offline rendering only. Full standalone mobile behavior,
+notifications, profile transfer, and production layouts remain future work.
 
-### Run the baseline dashboard
+## Recoverable completed baseline
 
-From this directory:
+Personal Dashboard is now the sole active product implementation. Normal use,
+testing, backup, restore, reminders, and profile moves run through the packaged
+Tauri application; the current checkout contains no Python dashboard,
+localhost server, or separate reminder runner.
 
-```sh
-PYTHONPATH=src python3 -m exercise_tracker serve
-```
-
-Open <http://127.0.0.1:8765/>. Stop the dashboard with `Control-C`. Its local
-state remains at:
-
-```text
-~/Library/Application Support/Exercise Habit Tracker/state.json
-```
-
-### Run baseline reminders while the dashboard is closed
-
-Start the reminder runner once per logged-in Mac session:
-
-```sh
-PYTHONPATH=src python3 -m exercise_tracker start-reminders
-```
-
-The runner is registered only for the current login session. It is independent
-of the dashboard, checks once per minute, and uses macOS Notification Center at
-a scheduled departure. This foundation deliberately does not configure
-automatic launch at login.
-
-To stop it:
-
-```sh
-PYTHONPATH=src python3 -m exercise_tracker stop-reminders
-```
-
-### Back up and restore baseline data
-
-Export the complete local exercise plan and history to a file you choose:
-
-```sh
-PYTHONPATH=src python3 -m exercise_tracker export-backup --backup-file ~/Documents/exercise-tracker-backup.json
-```
-
-Restore a previously exported file into the local app:
-
-```sh
-PYTHONPATH=src python3 -m exercise_tracker restore-backup --backup-file ~/Documents/exercise-tracker-backup.json
-```
-
-Both operations stay on this Mac and require no account, network connection,
-cloud service, or synchronization. Restore replaces the app's complete local
-state with the selected backup.
-
-### Verify baseline behavior
-
-```sh
-python3 -m unittest discover -s tests -v
-```
-
-To exercise the same workflow through the real macOS Notification Center
-adapter (this displays one acceptance notification):
-
-```sh
-EXERCISE_TRACKER_MACOS_ACCEPTANCE=1 python3 -m unittest discover -s tests -v
-```
-
-The completed pre-Tauri application is preserved by the annotated Git tag
-`python-exercise-tracker-complete`. Its behavior, data contract, synthetic
-migration fixture, and recovery procedure are recorded in
+The completed pre-Tauri application remains immutable and recoverable through
+the annotated Git tag `python-exercise-tracker-complete`. Its behavior, data
+contract, synthetic migration fixture, and detached-worktree recovery procedure
+are recorded in
 [`docs/migration/completed-python-baseline.md`](docs/migration/completed-python-baseline.md).

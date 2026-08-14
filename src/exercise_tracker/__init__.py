@@ -1,1 +1,0 @@
-"""Local Exercise Habit Tracker."""

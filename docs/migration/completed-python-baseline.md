@@ -47,9 +47,10 @@ independent reminder runner, and backup commands:
   history correction and confirmed deletion, and complete local backup and
   validated restore.
 
-The authoritative observable scenarios are in
-`tests/test_application_workflow.py`. Migration parity should port their
-observable outcomes rather than their Python, HTTP, or subprocess mechanics.
+At the annotated tag, the authoritative observable scenarios are in
+`tests/test_application_workflow.py`. Their observable outcomes—not their
+Python, HTTP, or subprocess mechanics—are mapped to the active Tauri suites in
+`docs/acceptance/tauri-cutover.md`.
 
 ## Data contract
 
@@ -63,35 +64,41 @@ observable outcomes rather than their Python, HTTP, or subprocess mechanics.
   `export-backup` and accepted through `restore-backup`.
 
 The synthetic fixture at
-`tests/fixtures/completed-python-baseline-state.json` is a valid representative
-schema-v5 profile for later migration and parity checks. It contains only
+`tests/fixtures/completed-python-baseline-state.json` is the retained
+representative schema-v5 profile for active migration and parity checks. It
+contains only
 fixed example dates and product option values: no personal names, notes,
 credentials, or copied live state. It covers two weeks, a routine change, a
 one-week exception, a successful three-workout week, a qualifying corrected
 record, a short record, a moved slot, a skipped slot, and a missed reminder.
 
-Validate the fixture without touching live state:
+Validate the fixture through the immutable tag without touching live state or
+restoring Python to the active checkout:
 
 ```sh
+repository_root="$PWD"
+baseline_worktree="$(mktemp -d)/python-baseline"
 fixture_state="$(mktemp -d)/state.json"
-PYTHONPATH=src python3 -m exercise_tracker restore-backup \
+git worktree add --detach "$baseline_worktree" python-exercise-tracker-complete
+PYTHONPATH="$baseline_worktree/src" python3 -m exercise_tracker restore-backup \
   --state-file "$fixture_state" \
-  --backup-file tests/fixtures/completed-python-baseline-state.json
-PYTHONPATH=src python3 -m exercise_tracker check-reminders \
+  --backup-file "$repository_root/tests/fixtures/completed-python-baseline-state.json"
+PYTHONPATH="$baseline_worktree/src" python3 -m exercise_tracker check-reminders \
   --state-file "$fixture_state" \
   --notifier stdout \
   --at 2026-08-25T15:30:00-04:00
+git worktree remove "$baseline_worktree"
 ```
 
 The restore must succeed, and the reminder check must generate the following
 week and report the adjusted Tuesday departure at 3:30 PM.
 
-## Launch and reminder mechanics
+## Historical launch and reminder mechanics
 
 The dashboard starts with `PYTHONPATH=src python3 -m exercise_tracker serve`,
 binds only to `127.0.0.1:8765`, and is opened in a separately managed browser.
-Normal dashboard launch therefore requires both the Python process and a
-browser.
+Normal dashboard launch required both the Python process and a browser. These
+mechanics are historical evidence and are not part of the active product.
 
 `start-reminders` writes
 `~/Library/Application Support/Exercise Habit Tracker/com.tortillaflat.exercise-habit-tracker.reminders.plist`

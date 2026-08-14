@@ -386,6 +386,35 @@ fn week_rollover_preserves_goal_suppressed_slots_as_not_needed() {
 }
 
 #[test]
+fn week_rollover_keeps_an_ignored_reminder_before_later_success_as_missed() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_392_900_000);
+    let application = ExerciseApplication::new(profile, reminders, clock.clone());
+
+    application.open().unwrap();
+    clock.advance_to(1_786_453_200_000);
+    for effort in ["Easy", "Moderate", "Hard"] {
+        record_unscheduled_workout(&application, "Other exercise", "20", effort);
+    }
+
+    clock.advance_to(1_786_971_600_000);
+    let rolled = application.open().unwrap();
+    let previous = &rolled.history[0];
+    assert_eq!(
+        "Missed — no response",
+        previous.primary_departures[0].status
+    );
+    assert!(previous.primary_departures[1..]
+        .iter()
+        .all(|departure| departure.status == "Weekly goal met — no workout needed"));
+    assert!(previous
+        .fallback_departures
+        .iter()
+        .all(|departure| departure.availability == "Weekly goal met — no workout needed"));
+}
+
+#[test]
 fn upcoming_primary_departure_adjusts_this_week_and_replaces_its_reminders() {
     let profile = IsolatedProfile::default();
     let reminders = ReminderOutbox::default();
@@ -1621,6 +1650,59 @@ fn in_progress_recording_survives_relaunch_and_retains_a_short_effort() {
     assert_eq!(completed, reopened);
     assert_eq!(1, reopened.workout_records.len());
     assert_eq!("0 of 3 completed", reopened.progress);
+}
+
+#[test]
+fn old_schema_in_progress_workout_resumes_through_the_current_application() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    application
+        .respond_to_departure("2026-08-10-primary-1", "leaving-for-gym")
+        .unwrap();
+    clock.advance_to(1_786_397_400_000);
+    application.open().unwrap();
+    application
+        .start_workout_record("2026-08-10-primary-1")
+        .unwrap();
+    application
+        .choose_workout_activity("2026-08-10-primary-1", "Elliptical")
+        .unwrap();
+
+    let mut old_document: serde_json::Value = serde_json::from_slice(
+        profile
+            .document
+            .lock()
+            .unwrap()
+            .as_deref()
+            .expect("exercise state was saved"),
+    )
+    .unwrap();
+    old_document["schema_version"] = 7.into();
+    old_document["workout_draft"]
+        .as_object_mut()
+        .unwrap()
+        .remove("source");
+    *profile.document.lock().unwrap() = Some(serde_json::to_vec(&old_document).unwrap());
+
+    let relaunched = ExerciseApplication::new(profile, reminders, clock);
+    let resumed = relaunched.open().unwrap();
+    assert_eq!(
+        vec!["Under 20", "20", "30", "45", "60+ minutes"],
+        resumed.workout_recording.unwrap().choices
+    );
+
+    relaunched
+        .choose_workout_duration("2026-08-10-primary-1", "20")
+        .unwrap();
+    let completed = relaunched
+        .complete_workout_record("2026-08-10-primary-1", "Moderate")
+        .unwrap();
+    assert_eq!("1 of 3 completed", completed.progress);
+    assert_eq!("Elliptical", completed.workout_records[0].activity);
 }
 
 #[test]

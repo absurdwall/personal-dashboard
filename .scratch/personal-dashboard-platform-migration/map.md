@@ -19,7 +19,7 @@
 - [15 — Back up and restore the complete profile](issues/15-back-up-restore-profile.md) — resolved
 - [16 — Move the authoritative profile safely](issues/16-move-authoritative-profile.md) — resolved
 - [17 — Automatically migrate the completed Mac profile](issues/17-migrate-completed-mac-profile.md) — resolved
-- [18 — Cut over to the Tauri-only Personal Dashboard](issues/18-cut-over-tauri-only.md) — ready-for-agent
+- [18 — Cut over to the Tauri-only Personal Dashboard](issues/18-cut-over-tauri-only.md) — resolved
 
 ## Blocked tickets
 
