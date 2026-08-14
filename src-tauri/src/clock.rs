@@ -2,6 +2,7 @@ use crate::exercise::ExerciseClock;
 use crate::notification::Clock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[derive(Clone, Copy)]
 pub struct SystemClock;
 
 impl Clock for SystemClock {

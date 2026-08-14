@@ -65,21 +65,36 @@ Run the new application-workflow seam with:
 cargo test --manifest-path src-tauri/Cargo.toml --test application_workflow
 ```
 
-## Minimal Mac profile
+## Complete profile backup and restore
 
-The packaged app keeps its current minimal profile as versioned JSON at:
+The packaged app keeps the profile label and exercise state as versioned,
+app-owned JSON at:
 
 ```text
 ~/Library/Application Support/com.tortillaflat.personal-dashboard/profile.json
+~/Library/Application Support/com.tortillaflat.personal-dashboard/exercise.json
 ```
 
-Use **Save label** to persist a visible profile change. **Export profile…** and
-**Import profile…** use the native macOS file panels; a selected import is
-fully decoded and validated before it can replace the active profile. These
-operations are local and do not require an account or network connection.
+Use **Back up profile…** to create one user-selected recovery file containing
+the label, routine, current and prior weeks, schedule exceptions, departure
+outcomes, decisions, workout history changes, and derived progress. The source
+profile remains active. **Restore profile…** opens a native file panel, fully
+validates the selected backup, and then requires **Confirm restore** before it
+atomically replaces both active documents. An interrupted replacement is
+rolled back from a local recovery journal on the next launch. Cancelling,
+selecting an invalid or unsupported file, or encountering a replacement error
+leaves the active profile unchanged. Backup writes also replace a selected
+destination atomically. These operations are fully offline and do not require
+an account, cloud store, or synchronization.
 
-The packaged acceptance procedure for persistence and file exchange is
-recorded in
+Run the deterministic application seam with:
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml --test profile_backup_workflow
+```
+
+The packaged acceptance procedure for native save/open interactions is recorded
+in
 [`docs/acceptance/macos-minimal-profile.md`](docs/acceptance/macos-minimal-profile.md).
 
 ## Mac notification capability

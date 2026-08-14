@@ -698,6 +698,25 @@ select:focus-visible {
   color: #294b38;
 }
 
+.profile-restore-confirmation {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid rgb(122 48 36 / 22%);
+  border-radius: 0.8rem;
+  background: rgb(122 48 36 / 5%);
+}
+
+.profile-restore-confirmation[hidden] {
+  display: none;
+}
+
+.profile-restore-confirmation p {
+  margin: 0 0 0.8rem;
+  color: #7a3024;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .profile-status {
   min-height: 1.3rem;
   margin: 1rem 0 0;

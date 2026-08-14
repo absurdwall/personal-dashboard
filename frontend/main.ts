@@ -9,8 +9,18 @@ type ProfileView = Readonly<{
   profileLabel: string;
 }>;
 
-type ProfileAction = Readonly<{
+type ProfileBackupAction = Readonly<{
+  message: string;
+}>;
+
+type ProfileRestoreSelection = Readonly<{
+  confirmationRequired: boolean;
+  message: string;
+}>;
+
+type ProfileRestoreAction = Readonly<{
   profile: ProfileView;
+  dashboard: ExerciseDashboardView;
   message: string;
 }>;
 
@@ -250,8 +260,19 @@ const profileLabelDisplay = document.querySelector<HTMLOutputElement>(
 );
 const schemaVersion = document.querySelector<HTMLElement>("#schema-version");
 const profileStatus = document.querySelector<HTMLElement>("#profile-status");
-const exportProfileButton = document.querySelector<HTMLButtonElement>("#export-profile");
-const importProfileButton = document.querySelector<HTMLButtonElement>("#import-profile");
+const backupProfileButton = document.querySelector<HTMLButtonElement>("#backup-profile");
+const selectProfileRestoreButton = document.querySelector<HTMLButtonElement>(
+  "#select-profile-restore",
+);
+const profileRestoreConfirmation = document.querySelector<HTMLElement>(
+  "#profile-restore-confirmation",
+);
+const confirmProfileRestoreButton = document.querySelector<HTMLButtonElement>(
+  "#confirm-profile-restore",
+);
+const cancelProfileRestoreButton = document.querySelector<HTMLButtonElement>(
+  "#cancel-profile-restore",
+);
 const notificationPermission = document.querySelector<HTMLElement>(
   "#notification-permission",
 );
@@ -1064,21 +1085,77 @@ async function runNotificationAction(
   }
 }
 
-async function runProfileAction(
-  action: () => Promise<ProfileAction>,
+function setProfileFileActionsDisabled(disabled: boolean): void {
+  [
+    backupProfileButton,
+    selectProfileRestoreButton,
+    confirmProfileRestoreButton,
+    cancelProfileRestoreButton,
+  ].forEach((button) => button?.toggleAttribute("disabled", disabled));
+}
+
+function renderProfileRestoreSelection(selection: ProfileRestoreSelection): void {
+  if (profileRestoreConfirmation) {
+    profileRestoreConfirmation.hidden = !selection.confirmationRequired;
+  }
+  showProfileStatus(selection.message);
+}
+
+async function runProfileFileAction<T>(
+  command: string,
+  handleResult: (result: T) => void | Promise<void>,
+  handleError?: () => void,
 ): Promise<void> {
-  exportProfileButton?.setAttribute("disabled", "");
-  importProfileButton?.setAttribute("disabled", "");
+  setProfileFileActionsDisabled(true);
   try {
-    const result = await action();
-    renderProfile(result.profile);
-    showProfileStatus(result.message);
+    const result = await window.__TAURI__.core.invoke<T>(command);
+    await handleResult(result);
   } catch (error) {
+    handleError?.();
     showProfileStatus(profileErrorMessage(error), "error");
   } finally {
-    exportProfileButton?.removeAttribute("disabled");
-    importProfileButton?.removeAttribute("disabled");
+    setProfileFileActionsDisabled(false);
   }
+}
+
+function backupProfile(): Promise<void> {
+  return runProfileFileAction<ProfileBackupAction>("backup_profile", (result) => {
+    showProfileStatus(result.message);
+  });
+}
+
+function selectProfileRestore(): Promise<void> {
+  return runProfileFileAction<ProfileRestoreSelection>(
+    "select_profile_restore",
+    renderProfileRestoreSelection,
+    () => {
+      if (profileRestoreConfirmation) {
+        profileRestoreConfirmation.hidden = true;
+      }
+    },
+  );
+}
+
+function cancelProfileRestore(): Promise<void> {
+  return runProfileFileAction<ProfileRestoreSelection>(
+    "cancel_profile_restore",
+    renderProfileRestoreSelection,
+  );
+}
+
+function confirmProfileRestore(): Promise<void> {
+  return runProfileFileAction<ProfileRestoreAction>(
+    "confirm_profile_restore",
+    async (restored) => {
+    renderProfile(restored.profile);
+    renderExerciseDashboard(restored.dashboard);
+    if (profileRestoreConfirmation) {
+      profileRestoreConfirmation.hidden = true;
+    }
+    showProfileStatus(restored.message);
+    await refreshNotificationCapability();
+    },
+  );
 }
 
 async function connectToApplication(): Promise<void> {
@@ -1137,16 +1214,20 @@ profileForm?.addEventListener("submit", (event) => {
   })();
 });
 
-exportProfileButton?.addEventListener("click", () => {
-  void runProfileAction(() =>
-    window.__TAURI__.core.invoke<ProfileAction>("export_profile"),
-  );
+backupProfileButton?.addEventListener("click", () => {
+  void backupProfile();
 });
 
-importProfileButton?.addEventListener("click", () => {
-  void runProfileAction(() =>
-    window.__TAURI__.core.invoke<ProfileAction>("import_profile"),
-  );
+selectProfileRestoreButton?.addEventListener("click", () => {
+  void selectProfileRestore();
+});
+
+confirmProfileRestoreButton?.addEventListener("click", () => {
+  void confirmProfileRestore();
+});
+
+cancelProfileRestoreButton?.addEventListener("click", () => {
+  void cancelProfileRestore();
 });
 
 requestNotificationPermissionButton?.addEventListener("click", () => {

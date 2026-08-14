@@ -5,7 +5,7 @@ const DEFAULT_PROFILE_LABEL: &str = "My Personal Dashboard";
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct Profile {
+pub(crate) struct Profile {
     schema_version: u32,
     profile_label: String,
 }
@@ -47,7 +47,7 @@ impl Profile {
         }
     }
 
-    fn validate(self) -> Result<Self, String> {
+    pub(crate) fn validate(self) -> Result<Self, String> {
         if self.schema_version != PROFILE_SCHEMA_VERSION {
             return Err(format!(
                 "Unsupported profile schema version: {}",
@@ -69,7 +69,7 @@ impl Profile {
         })
     }
 
-    fn view(&self) -> ProfileView {
+    pub(crate) fn view(&self) -> ProfileView {
         ProfileView {
             schema_version: self.schema_version,
             profile_label: self.profile_label.clone(),
@@ -150,12 +150,12 @@ impl<P: ProfilePersistence, E: ProfileExchange> ProfileApplication<P, E> {
     }
 }
 
-fn encode_profile(profile: &Profile) -> Result<Vec<u8>, String> {
+pub(crate) fn encode_profile(profile: &Profile) -> Result<Vec<u8>, String> {
     serde_json::to_vec_pretty(profile)
         .map_err(|error| format!("Could not encode the local profile: {error}"))
 }
 
-fn parse_profile(document: &[u8]) -> Result<Profile, String> {
+pub(crate) fn parse_profile(document: &[u8]) -> Result<Profile, String> {
     serde_json::from_slice::<Profile>(document)
         .map_err(|_| "The selected file is not a valid Personal Dashboard profile.".to_string())?
         .validate()

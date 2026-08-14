@@ -120,9 +120,10 @@
             <p class="section-label">Local profile</p>
             <h3 id="profile-heading">This device keeps one versioned profile.</h3>
             <p>
-              The label below is saved as app-owned JSON. Export creates a
-              portable copy; import validates a selected copy before replacing
-              local state.
+              A local backup includes the label, exercise routine, current and
+              prior weeks, decisions, workout records, and derived progress.
+              Restore validates the complete file before asking to replace this
+              device's active profile.
             </p>
             <p class="schema-chip">Schema version <span id="schema-version">—</span></p>
           </div>
@@ -141,13 +142,33 @@
               Saved locally as <output id="profile-label-display">Loading…</output>
             </p>
             <div class="exchange-actions" aria-label="Profile file actions">
-              <button id="export-profile" type="button" class="secondary-button">
-                Export profile…
+              <button id="backup-profile" type="button" class="secondary-button">
+                Back up profile…
               </button>
-              <button id="import-profile" type="button" class="secondary-button">
-                Import profile…
+              <button id="select-profile-restore" type="button" class="secondary-button">
+                Restore profile…
               </button>
             </div>
+            <section
+              id="profile-restore-confirmation"
+              class="profile-restore-confirmation"
+              aria-labelledby="profile-restore-prompt"
+              hidden
+            >
+              <p id="profile-restore-prompt">
+                Restore this backup? The active profile will be replaced.
+              </p>
+              <div class="exchange-actions">
+                <button id="confirm-profile-restore" type="button">Confirm restore</button>
+                <button
+                  id="cancel-profile-restore"
+                  type="button"
+                  class="secondary-button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </section>
             <p id="profile-status" class="profile-status" role="status" aria-live="polite">
               Loading the local profile…
             </p>

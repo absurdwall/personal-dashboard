@@ -44,7 +44,7 @@ pub trait ExerciseClock: Send + Sync {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-struct ExerciseState {
+pub(crate) struct ExerciseState {
     schema_version: u32,
     routine: Routine,
     weeks: Vec<ExerciseWeek>,
@@ -1037,7 +1037,7 @@ impl ExerciseState {
         }
     }
 
-    fn validate(mut self) -> Result<Self, String> {
+    pub(crate) fn validate(mut self) -> Result<Self, String> {
         if (1..EXERCISE_SCHEMA_VERSION).contains(&self.schema_version) {
             self.schema_version = EXERCISE_SCHEMA_VERSION;
         } else if self.schema_version != EXERCISE_SCHEMA_VERSION {
@@ -1049,10 +1049,156 @@ impl ExerciseState {
         if !routine_is_valid(&self.routine) {
             return Err("The saved exercise routine is not supported yet.".into());
         }
+        self.validate_weeks()?;
         self.migrate_workout_sources();
         self.validate_departures()?;
         self.validate_workouts()?;
         Ok(self)
+    }
+
+    fn validate_weeks(&self) -> Result<(), String> {
+        let mut week_starts = HashSet::new();
+        for week in &self.weeks {
+            let Some(week_start) = parse_iso_date(&week.week_start) else {
+                return Err("The saved exercise week is not valid.".into());
+            };
+            let Some(week_end) = parse_iso_date(&week.week_end) else {
+                return Err("The saved exercise week is not valid.".into());
+            };
+            let week_start_day = week_start.day_number();
+            if !week_starts.insert(week_start)
+                || week_end.day_number() != week_start_day + 6
+                || week.primary_departures.len() != PRIMARY_DAYS.len()
+                || week.fallback_departures.len() != FALLBACK_DAYS.len()
+            {
+                return Err("The saved exercise week is not valid.".into());
+            }
+            for (kind, departures) in [
+                ("primary", &week.primary_departures),
+                ("fallback", &week.fallback_departures),
+            ] {
+                for (index, departure) in departures.iter().enumerate() {
+                    let Some(date) = parse_iso_date(&departure.date) else {
+                        return Err("The saved exercise week is not valid.".into());
+                    };
+                    let schedule =
+                        ScheduleSelection::parse(&departure.day, &departure.departure_time)
+                            .map_err(|_| "The saved exercise week is not valid.".to_string())?;
+                    if departure.id != format!("{}-{kind}-{}", week.week_start, index + 1)
+                        || date.day_number() != week_start_day + schedule.weekday
+                        || departure.departure_at_epoch_millis < 0
+                    {
+                        return Err("The saved exercise week is not valid.".into());
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn scheduled_notification_ids(&self) -> Vec<String> {
+        self.weeks
+            .iter()
+            .flat_map(|week| {
+                all_departures(week).flat_map(|departure| {
+                    let mut ids = Vec::new();
+                    if departure.status == DepartureStatus::Scheduled {
+                        if departure.reminder_scheduled_at_epoch_millis.is_some() {
+                            ids.push(reminder_intent(departure).id);
+                        }
+                        if departure.follow_up_scheduled_at_epoch_millis.is_some() {
+                            ids.push(follow_up_intent(departure).id);
+                        }
+                    }
+                    if departure.status == DepartureStatus::Leaving
+                        && !departure_has_workout_record(week, departure)
+                        && departure
+                            .record_workout_reminder_scheduled_at_epoch_millis
+                            .is_some()
+                    {
+                        if let Some(due_at) = departure.record_workout_prompt_due_at_epoch_millis {
+                            ids.push(record_workout_intent(departure, due_at).id);
+                        }
+                    }
+                    ids
+                })
+            })
+            .collect()
+    }
+
+    pub(crate) fn validate_timestamps<C: ExerciseClock>(&self, clock: &C) -> Result<(), String> {
+        for week in &self.weeks {
+            let week_start_day = parse_iso_date(&week.week_start)
+                .expect("saved week start was validated")
+                .day_number();
+            for departure in all_departures(week) {
+                let schedule = ScheduleSelection::parse(&departure.day, &departure.departure_time)
+                    .expect("saved departure schedule was validated");
+                let expected_departure_at = local_epoch_millis(
+                    clock,
+                    week_start_day + schedule.weekday,
+                    schedule.departure_time.hour,
+                    schedule.departure_time.minute,
+                );
+                let optional_timestamps_are_valid = [
+                    departure.reminder_scheduled_at_epoch_millis,
+                    departure.follow_up_scheduled_at_epoch_millis,
+                    departure.record_workout_prompt_due_at_epoch_millis,
+                    departure.record_workout_reminder_scheduled_at_epoch_millis,
+                ]
+                .into_iter()
+                .flatten()
+                .all(|timestamp| timestamp >= 0);
+                let response_timestamps_are_valid = departure
+                    .departure_response
+                    .as_ref()
+                    .is_none_or(|response| {
+                        response.recorded_at_epoch_millis >= 0
+                            && departure
+                                .record_workout_prompt_due_at_epoch_millis
+                                .is_none_or(|due_at| {
+                                    due_at
+                                        == response.recorded_at_epoch_millis
+                                            + RECORD_WORKOUT_DELAY_MILLIS
+                                })
+                    });
+                if departure.departure_at_epoch_millis != expected_departure_at
+                    || !optional_timestamps_are_valid
+                    || !response_timestamps_are_valid
+                {
+                    return Err("The saved exercise timestamps are not valid.".into());
+                }
+            }
+            if week
+                .workout_records
+                .iter()
+                .any(|record| record.recorded_at_epoch_millis < 0)
+            {
+                return Err("The saved exercise timestamps are not valid.".into());
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn reset_native_reminder_markers(&mut self) {
+        for week in &mut self.weeks {
+            let recorded_slot_ids = week
+                .workout_records
+                .iter()
+                .filter_map(|record| record.source_slot_id.clone())
+                .collect::<HashSet<_>>();
+            for departure in all_departures_mut(week) {
+                if departure.status == DepartureStatus::Scheduled {
+                    departure.reminder_scheduled_at_epoch_millis = None;
+                    departure.follow_up_scheduled_at_epoch_millis = None;
+                }
+                if departure.status == DepartureStatus::Leaving
+                    && !recorded_slot_ids.contains(&departure.id)
+                {
+                    departure.record_workout_reminder_scheduled_at_epoch_millis = None;
+                }
+            }
+        }
     }
 
     fn migrate_workout_sources(&mut self) {
@@ -1252,7 +1398,7 @@ impl ExerciseState {
     }
 }
 
-fn parse_state(document: &[u8]) -> Result<(ExerciseState, bool), String> {
+pub(crate) fn parse_state(document: &[u8]) -> Result<(ExerciseState, bool), String> {
     let state = serde_json::from_slice::<ExerciseState>(document)
         .map_err(|_| "The local exercise state is not valid.".to_string())?;
     let migrated = state.schema_version != EXERCISE_SCHEMA_VERSION;
@@ -2289,7 +2435,7 @@ fn friendly_departure(departure: &PlannedDeparture) -> String {
     )
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct CivilDate {
     year: i64,
     month: i64,
@@ -2300,15 +2446,34 @@ impl CivilDate {
     fn iso_date(self) -> String {
         format!("{:04}-{:02}-{:02}", self.year, self.month, self.day)
     }
+
+    fn day_number(self) -> i64 {
+        let adjusted_year = self.year - i64::from(self.month <= 2);
+        let era = if adjusted_year >= 0 {
+            adjusted_year
+        } else {
+            adjusted_year - 399
+        }
+        .div_euclid(400);
+        let year_of_era = adjusted_year - era * 400;
+        let adjusted_month = self.month + if self.month > 2 { -3 } else { 9 };
+        let day_of_year = (153 * adjusted_month + 2) / 5 + self.day - 1;
+        let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+        era * 146_097 + day_of_era - 719_468
+    }
 }
 
 fn parse_iso_date(value: &str) -> Option<CivilDate> {
     let mut parts = value.split('-');
-    Some(CivilDate {
+    let date = CivilDate {
         year: parts.next()?.parse().ok()?,
         month: parts.next()?.parse().ok()?,
         day: parts.next()?.parse().ok()?,
-    })
+    };
+    (parts.next().is_none()
+        && value == date.iso_date()
+        && date_from_day_number(date.day_number()) == date)
+        .then_some(date)
 }
 
 fn local_day_number<C: ExerciseClock>(clock: &C, epoch_millis: i64) -> i64 {

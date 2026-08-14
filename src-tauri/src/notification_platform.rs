@@ -10,6 +10,7 @@ use objc2_user_notifications::{
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{ptr::NonNull, sync::mpsc};
 
+#[derive(Clone, Copy)]
 pub struct NativeNotificationPlatform;
 
 impl NativeNotificationPlatform {

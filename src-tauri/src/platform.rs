@@ -1,3 +1,4 @@
+use crate::backup::CompleteProfileReplacement;
 use crate::exercise::ExercisePersistence;
 use crate::profile::{ProfileExchange, ProfilePersistence};
 use std::fs::{self, OpenOptions};
@@ -8,8 +9,13 @@ use tauri_plugin_dialog::DialogExt;
 
 const PROFILE_FILE_NAME: &str = "profile.json";
 const EXERCISE_FILE_NAME: &str = "exercise.json";
-const MAX_PROFILE_BYTES: u64 = 64 * 1024;
+const MAX_BACKUP_BYTES: u64 = 10 * 1024 * 1024;
+const RESTORE_TRANSACTION_DIRECTORY: &str = ".profile-restore-transaction";
+const RESTORE_PREPARED_MARKER: &str = "prepared";
+const PREVIOUS_PROFILE_FILE: &str = "profile.previous.json";
+const PREVIOUS_EXERCISE_FILE: &str = "exercise.previous.json";
 
+#[derive(Clone)]
 pub struct FileProfilePersistence {
     profile_file: PathBuf,
 }
@@ -34,6 +40,7 @@ impl ProfilePersistence for FileProfilePersistence {
     }
 }
 
+#[derive(Clone)]
 pub struct FileExercisePersistence {
     exercise_file: PathBuf,
 }
@@ -84,6 +91,111 @@ fn temporary_file_for(profile_file: &Path) -> PathBuf {
     profile_file.with_extension(format!("json.tmp-{}", std::process::id()))
 }
 
+pub struct FileProfileReplacement {
+    profile_file: PathBuf,
+    exercise_file: PathBuf,
+}
+
+impl FileProfileReplacement {
+    pub fn new(profile_file: PathBuf, exercise_file: PathBuf) -> Result<Self, String> {
+        let replacement = Self {
+            profile_file,
+            exercise_file,
+        };
+        replacement.recover_pending_restore()?;
+        Ok(replacement)
+    }
+
+    fn transaction_directory(&self) -> Result<PathBuf, String> {
+        self.profile_file
+            .parent()
+            .map(|parent| parent.join(RESTORE_TRANSACTION_DIRECTORY))
+            .ok_or_else(|| "The local profile path has no parent directory.".to_string())
+    }
+
+    fn prepare_restore(&self) -> Result<PathBuf, String> {
+        let transaction_directory = self.transaction_directory()?;
+        fs::create_dir_all(&transaction_directory)
+            .map_err(|error| format!("Could not prepare the profile restore: {error}"))?;
+        let preparation = (|| {
+            let profile = fs::read(&self.profile_file)
+                .map_err(|error| format!("Could not preserve the active profile: {error}"))?;
+            let exercise = fs::read(&self.exercise_file).map_err(|error| {
+                format!("Could not preserve the active exercise profile: {error}")
+            })?;
+            write_synced(&transaction_directory.join(PREVIOUS_PROFILE_FILE), &profile)?;
+            write_synced(
+                &transaction_directory.join(PREVIOUS_EXERCISE_FILE),
+                &exercise,
+            )?;
+            write_synced(
+                &transaction_directory.join(RESTORE_PREPARED_MARKER),
+                b"prepared",
+            )
+        })();
+        if let Err(error) = preparation {
+            let _ = fs::remove_dir_all(&transaction_directory);
+            return Err(error);
+        }
+        Ok(transaction_directory)
+    }
+
+    fn recover_pending_restore(&self) -> Result<(), String> {
+        let transaction_directory = self.transaction_directory()?;
+        if !transaction_directory.exists() {
+            return Ok(());
+        }
+        if !transaction_directory.join(RESTORE_PREPARED_MARKER).exists() {
+            fs::remove_dir_all(&transaction_directory)
+                .map_err(|error| format!("Could not clear an incomplete restore: {error}"))?;
+            return Ok(());
+        }
+        let profile = fs::read(transaction_directory.join(PREVIOUS_PROFILE_FILE))
+            .map_err(|error| format!("Could not recover the active profile: {error}"))?;
+        let exercise = fs::read(transaction_directory.join(PREVIOUS_EXERCISE_FILE))
+            .map_err(|error| format!("Could not recover the active exercise profile: {error}"))?;
+        atomic_save(&self.profile_file, &profile, "profile")?;
+        atomic_save(&self.exercise_file, &exercise, "exercise state")?;
+        fs::remove_dir_all(&transaction_directory)
+            .map_err(|error| format!("Could not finish profile recovery: {error}"))
+    }
+}
+
+impl CompleteProfileReplacement for FileProfileReplacement {
+    fn replace_complete(&self, profile: &[u8], exercise: &[u8]) -> Result<(), String> {
+        self.recover_pending_restore()?;
+        let transaction_directory = self.prepare_restore()?;
+        let replacement = atomic_save(&self.exercise_file, exercise, "exercise state")
+            .and_then(|_| atomic_save(&self.profile_file, profile, "profile"))
+            .and_then(|_| {
+                fs::remove_dir_all(&transaction_directory)
+                    .map_err(|error| format!("Could not finish the profile restore: {error}"))
+            });
+        if let Err(error) = replacement {
+            return match self.recover_pending_restore() {
+                Ok(()) => Err(error),
+                Err(recovery_error) => Err(format!(
+                    "{error} The previous profile could not be recovered: {recovery_error}"
+                )),
+            };
+        }
+        Ok(())
+    }
+}
+
+fn write_synced(path: &Path, document: &[u8]) -> Result<(), String> {
+    let mut output = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(path)
+        .map_err(|error| format!("Could not prepare the profile restore: {error}"))?;
+    output
+        .write_all(document)
+        .and_then(|_| output.sync_all())
+        .map_err(|error| format!("Could not prepare the profile restore: {error}"))
+}
+
+#[derive(Clone)]
 pub struct NativeFileExchange<R: Runtime> {
     app: AppHandle<R>,
 }
@@ -100,18 +212,17 @@ impl<R: Runtime> ProfileExchange for NativeFileExchange<R> {
             .app
             .dialog()
             .file()
-            .set_title("Export Personal Dashboard profile")
-            .set_file_name("personal-dashboard-profile.json")
-            .add_filter("Personal Dashboard profile", &["json"])
+            .set_title("Back up Personal Dashboard profile")
+            .set_file_name("personal-dashboard-backup.json")
+            .add_filter("Personal Dashboard backup", &["json"])
             .blocking_save_file()
         else {
             return Ok(false);
         };
         let selected_path = selected_file
             .into_path()
-            .map_err(|_| "The selected export destination is unavailable.".to_string())?;
-        fs::write(selected_path, document)
-            .map_err(|error| format!("Could not export the profile: {error}"))?;
+            .map_err(|_| "The selected backup destination is unavailable.".to_string())?;
+        atomic_save(&selected_path, document, "profile backup")?;
         Ok(true)
     }
 
@@ -120,23 +231,23 @@ impl<R: Runtime> ProfileExchange for NativeFileExchange<R> {
             .app
             .dialog()
             .file()
-            .set_title("Import Personal Dashboard profile")
-            .add_filter("Personal Dashboard profile", &["json"])
+            .set_title("Restore Personal Dashboard profile")
+            .add_filter("Personal Dashboard backup", &["json"])
             .blocking_pick_file()
         else {
             return Ok(None);
         };
         let selected_path = selected_file
             .into_path()
-            .map_err(|_| "The selected import file is unavailable.".to_string())?;
+            .map_err(|_| "The selected backup file is unavailable.".to_string())?;
         let metadata = fs::metadata(&selected_path)
-            .map_err(|error| format!("Could not inspect the selected profile: {error}"))?;
-        if metadata.len() > MAX_PROFILE_BYTES {
-            return Err("The selected profile is too large.".into());
+            .map_err(|error| format!("Could not inspect the selected backup: {error}"))?;
+        if metadata.len() > MAX_BACKUP_BYTES {
+            return Err("The selected backup is too large.".into());
         }
         fs::read(selected_path)
             .map(Some)
-            .map_err(|error| format!("Could not read the selected profile: {error}"))
+            .map_err(|error| format!("Could not read the selected backup: {error}"))
     }
 }
 
@@ -160,4 +271,64 @@ pub fn exercise_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, Stri
             .map_err(|error| format!("Could not locate the app data directory: {error}"))?,
     };
     Ok(data_directory.join(EXERCISE_FILE_NAME))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn interrupted_complete_replacement_recovers_both_previous_documents() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "personal-dashboard-profile-replacement-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let profile_file = directory.join(PROFILE_FILE_NAME);
+        let exercise_file = directory.join(EXERCISE_FILE_NAME);
+        fs::write(&profile_file, b"previous profile").unwrap();
+        fs::write(&exercise_file, b"previous exercise").unwrap();
+
+        let interrupted =
+            FileProfileReplacement::new(profile_file.clone(), exercise_file.clone()).unwrap();
+        interrupted.prepare_restore().unwrap();
+        atomic_save(
+            &exercise_file,
+            b"partially restored exercise",
+            "exercise state",
+        )
+        .unwrap();
+
+        FileProfileReplacement::new(profile_file.clone(), exercise_file.clone()).unwrap();
+        assert_eq!(
+            b"previous profile",
+            fs::read(&profile_file).unwrap().as_slice()
+        );
+        assert_eq!(
+            b"previous exercise",
+            fs::read(&exercise_file).unwrap().as_slice()
+        );
+        assert!(!directory.join(RESTORE_TRANSACTION_DIRECTORY).exists());
+
+        let replacement =
+            FileProfileReplacement::new(profile_file.clone(), exercise_file.clone()).unwrap();
+        replacement
+            .replace_complete(b"restored profile", b"restored exercise")
+            .unwrap();
+        assert_eq!(
+            b"restored profile",
+            fs::read(&profile_file).unwrap().as_slice()
+        );
+        assert_eq!(
+            b"restored exercise",
+            fs::read(&exercise_file).unwrap().as_slice()
+        );
+        assert!(!directory.join(RESTORE_TRANSACTION_DIRECTORY).exists());
+        fs::remove_dir_all(directory).unwrap();
+    }
 }
