@@ -110,6 +110,26 @@ fn exercise_dashboard(
 }
 
 #[tauri::command]
+fn adjust_current_week_departure(
+    application: State<'_, DesktopExerciseApplication>,
+    slot_id: String,
+    day: String,
+    departure_time: String,
+) -> Result<ExerciseDashboardView, String> {
+    application.adjust_current_week_departure(&slot_id, &day, &departure_time)
+}
+
+#[tauri::command]
+fn change_repeating_primary_departure(
+    application: State<'_, DesktopExerciseApplication>,
+    order: u32,
+    day: String,
+    departure_time: String,
+) -> Result<ExerciseDashboardView, String> {
+    application.change_repeating_primary_departure(order, &day, &departure_time)
+}
+
+#[tauri::command]
 fn respond_to_departure(
     application: State<'_, DesktopExerciseApplication>,
     slot_id: String,
@@ -250,6 +270,8 @@ pub fn run() {
             export_profile,
             import_profile,
             exercise_dashboard,
+            adjust_current_week_departure,
+            change_repeating_primary_departure,
             respond_to_departure,
             start_departure_decision,
             confirm_departure_decision,
@@ -271,6 +293,8 @@ pub fn run() {
         export_profile,
         import_profile,
         exercise_dashboard,
+        adjust_current_week_departure,
+        change_repeating_primary_departure,
         respond_to_departure,
         start_departure_decision,
         confirm_departure_decision,

@@ -28,8 +28,26 @@ type DepartureReason =
   | "Another commitment"
   | "Other";
 
+type ScheduleChoice = Readonly<{
+  value: string;
+  label: string;
+}>;
+
+type ScheduleChoices = Readonly<{
+  dayChoices: readonly ScheduleChoice[];
+  timeChoices: readonly ScheduleChoice[];
+}>;
+
+type ScheduleAdjustment = Readonly<{
+  action: string;
+  saveAction: string;
+  selectedDay: string;
+  selectedTime: string;
+}>;
+
 type PrimaryDeparture = DepartureTiming & Readonly<{
   status: string;
+  adjustment: ScheduleAdjustment | null;
 }>;
 
 type FallbackDeparture = DepartureTiming & Readonly<{
@@ -67,6 +85,21 @@ type ExerciseWeekHistory = Readonly<{
   workoutRecords: readonly WorkoutRecord[];
 }>;
 
+type RoutineDepartureSettings = Readonly<{
+  order: number;
+  day: string;
+  time: string;
+  selectedDay: string;
+  selectedTime: string;
+}>;
+
+type RoutineSettings = Readonly<{
+  action: string;
+  guidance: string;
+  saveAction: string;
+  primaryDepartures: readonly RoutineDepartureSettings[];
+}>;
+
 type ExerciseDashboardView = Readonly<{
   productName: string;
   featureArea: string;
@@ -76,6 +109,7 @@ type ExerciseDashboardView = Readonly<{
   manualWorkoutAction: string;
   weeklyGoalStatus: string | null;
   nextDeparture: string | null;
+  scheduleChoices: ScheduleChoices;
   primaryDepartures: readonly PrimaryDeparture[];
   fallbackDepartures: readonly FallbackDeparture[];
   fallbackAvailableCount: number;
@@ -100,6 +134,7 @@ type ExerciseDashboardView = Readonly<{
   workoutRecording: WorkoutRecording | null;
   workoutRecords: readonly WorkoutRecord[];
   history: readonly ExerciseWeekHistory[];
+  routineSettings: RoutineSettings;
 }>;
 
 type NotificationPermission =
@@ -185,6 +220,15 @@ const exerciseHistory = document.querySelector<HTMLElement>("#exercise-history")
 const exerciseHistoryWeeks = document.querySelector<HTMLElement>(
   "#exercise-history-weeks",
 );
+const routineSettingsAction = document.querySelector<HTMLElement>(
+  "#routine-settings-action",
+);
+const routineSettingsGuidance = document.querySelector<HTMLElement>(
+  "#routine-settings-guidance",
+);
+const routineDepartures = document.querySelector<HTMLOListElement>(
+  "#routine-departures",
+);
 const profileForm = document.querySelector<HTMLFormElement>("#profile-form");
 const profileLabel = document.querySelector<HTMLInputElement>("#profile-label");
 const profileLabelDisplay = document.querySelector<HTMLOutputElement>(
@@ -226,6 +270,96 @@ function departureItem(
     availability.textContent = status;
     item.append(availability);
   }
+  return item;
+}
+
+function scheduleSelect(
+  labelText: string,
+  choices: readonly ScheduleChoice[],
+  selectedValue: string,
+  role: "day" | "time",
+): HTMLLabelElement {
+  const label = document.createElement("label");
+  const select = document.createElement("select");
+  label.append(labelText);
+  select.dataset.scheduleRole = role;
+  select.replaceChildren(
+    ...choices.map((choice) => {
+      const option = document.createElement("option");
+      option.value = choice.value;
+      option.textContent = choice.label;
+      option.selected = choice.value === selectedValue;
+      return option;
+    }),
+  );
+  label.append(select);
+  return label;
+}
+
+function scheduleControls(
+  dayChoices: readonly ScheduleChoice[],
+  timeChoices: readonly ScheduleChoice[],
+  selectedDay: string,
+  selectedTime: string,
+  saveAction: string,
+): HTMLDivElement {
+  const controls = document.createElement("div");
+  const save = document.createElement("button");
+  controls.className = "schedule-controls";
+  save.type = "button";
+  save.textContent = saveAction;
+  save.dataset.scheduleSave = "true";
+  controls.append(
+    scheduleSelect("Day", dayChoices, selectedDay, "day"),
+    scheduleSelect("Departure time", timeChoices, selectedTime, "time"),
+    save,
+  );
+  return controls;
+}
+
+function primaryDepartureItem(
+  departure: PrimaryDeparture,
+  choices: ScheduleChoices,
+): HTMLLIElement {
+  const item = departureItem(departure, departure.status);
+  if (departure.adjustment) {
+    const editor = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = departure.adjustment.action;
+    editor.className = "schedule-editor";
+    editor.dataset.slotId = departure.id;
+    editor.append(
+      summary,
+      scheduleControls(
+        choices.dayChoices,
+        choices.timeChoices,
+        departure.adjustment.selectedDay,
+        departure.adjustment.selectedTime,
+        departure.adjustment.saveAction,
+      ),
+    );
+    item.append(editor);
+  }
+  return item;
+}
+
+function routineDepartureItem(
+  departure: RoutineDepartureSettings,
+  saveAction: string,
+  choices: ScheduleChoices,
+): HTMLLIElement {
+  const item = document.createElement("li");
+  const timing = document.createElement("strong");
+  const editor = scheduleControls(
+    choices.dayChoices,
+    choices.timeChoices,
+    departure.selectedDay,
+    departure.selectedTime,
+    saveAction,
+  );
+  timing.textContent = `${departure.day} · ${departure.time}`;
+  item.dataset.routineOrder = String(departure.order);
+  item.append(timing, editor);
   return item;
 }
 
@@ -308,7 +442,7 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
   if (primaryDepartures) {
     primaryDepartures.replaceChildren(
       ...view.primaryDepartures.map((departure) =>
-        departureItem(departure, departure.status),
+        primaryDepartureItem(departure, view.scheduleChoices),
       ),
     );
   }
@@ -429,6 +563,76 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
     exerciseHistory.hidden = view.history.length === 0;
     exerciseHistoryWeeks.replaceChildren(...view.history.map(historyWeekItem));
   }
+  if (routineSettingsAction) {
+    routineSettingsAction.textContent = view.routineSettings.action;
+  }
+  if (routineSettingsGuidance) {
+    routineSettingsGuidance.textContent = view.routineSettings.guidance;
+  }
+  if (routineDepartures) {
+    routineDepartures.replaceChildren(
+      ...view.routineSettings.primaryDepartures.map((departure) =>
+        routineDepartureItem(
+          departure,
+          view.routineSettings.saveAction,
+          view.scheduleChoices,
+        ),
+      ),
+    );
+  }
+}
+
+function scheduleEditorFromEvent(
+  event: Event,
+  selector: string,
+): HTMLElement | null {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-schedule-save]",
+  );
+  return button?.closest<HTMLElement>(selector) ?? null;
+}
+
+function selectedSchedule(
+  editor: HTMLElement,
+): Readonly<{ day: string; departureTime: string }> | null {
+  const day = editor.querySelector<HTMLSelectElement>("[data-schedule-role='day']");
+  const departureTime = editor.querySelector<HTMLSelectElement>(
+    "[data-schedule-role='time']",
+  );
+  return day && departureTime
+    ? {
+        day: day.value,
+        departureTime: departureTime.value,
+      }
+    : null;
+}
+
+async function runScheduleSave(
+  editor: HTMLElement,
+  command: "adjust_current_week_departure" | "change_repeating_primary_departure",
+  arguments_: Record<string, unknown>,
+): Promise<void> {
+  editor.querySelectorAll("button, select").forEach((control) => {
+    control.setAttribute("disabled", "");
+  });
+  try {
+    const dashboard = await window.__TAURI__.core.invoke<ExerciseDashboardView>(
+      command,
+      arguments_,
+    );
+    renderExerciseDashboard(dashboard);
+  } catch (error) {
+    if (exerciseReminderStatus) {
+      exerciseReminderStatus.textContent = errorMessage(
+        error,
+        "The schedule change could not be saved.",
+      );
+      exerciseReminderStatus.dataset.state = "error";
+    }
+    editor.querySelectorAll("button, select").forEach((control) => {
+      control.removeAttribute("disabled");
+    });
+  }
 }
 
 async function runDepartureCommand(
@@ -537,6 +741,30 @@ async function refreshExerciseDashboard(): Promise<void> {
       exerciseReminderStatus.dataset.state = "error";
     }
   }
+}
+
+async function handleCurrentWeekScheduleSave(event: Event): Promise<void> {
+  const editor = scheduleEditorFromEvent(event, ".schedule-editor[data-slot-id]");
+  const schedule = editor ? selectedSchedule(editor) : null;
+  if (!editor?.dataset.slotId || !schedule) {
+    return;
+  }
+  await runScheduleSave(editor, "adjust_current_week_departure", {
+    slotId: editor.dataset.slotId,
+    ...schedule,
+  });
+}
+
+async function handleRoutineScheduleSave(event: Event): Promise<void> {
+  const editor = scheduleEditorFromEvent(event, "[data-routine-order]");
+  const schedule = editor ? selectedSchedule(editor) : null;
+  if (!editor?.dataset.routineOrder || !schedule) {
+    return;
+  }
+  await runScheduleSave(editor, "change_repeating_primary_departure", {
+    order: Number(editor.dataset.routineOrder),
+    ...schedule,
+  });
 }
 
 function renderProfile(profile: ProfileView): void {
@@ -785,6 +1013,12 @@ workoutPromptAction?.addEventListener("click", handleWorkoutChoice);
 workoutRecordingChoices?.addEventListener("click", handleWorkoutChoice);
 logWorkoutNow?.addEventListener("click", () => {
   void runWorkoutAction("start_unscheduled_workout_record", {});
+});
+primaryDepartures?.addEventListener("click", (event) => {
+  void handleCurrentWeekScheduleSave(event);
+});
+routineDepartures?.addEventListener("click", (event) => {
+  void handleRoutineScheduleSave(event);
 });
 
 window.addEventListener("focus", () => {

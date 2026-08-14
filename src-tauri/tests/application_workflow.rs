@@ -135,7 +135,7 @@ fn fresh_exercise_week_survives_relaunch_and_emits_the_first_departure_reminder(
 
     assert_eq!("Personal Dashboard", dashboard.product_name);
     assert_eq!("Exercise tracking", dashboard.feature_area);
-    assert_eq!(6, dashboard.schema_version);
+    assert_eq!(7, dashboard.schema_version);
     assert_eq!(
         "Monday, August 10 – Sunday, August 16",
         dashboard.week_label
@@ -383,6 +383,226 @@ fn week_rollover_preserves_goal_suppressed_slots_as_not_needed() {
         .all(|departure| !departure.status.contains("Missed")));
     assert_eq!("0 of 3 completed", rolled.progress);
     assert_eq!(None, rolled.weekly_goal_status);
+}
+
+#[test]
+fn upcoming_primary_departure_adjusts_this_week_and_replaces_its_reminders() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_626_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    let before = application.open().unwrap();
+    assert_eq!(None, before.primary_departures[0].adjustment);
+    assert_eq!(None, before.primary_departures[1].adjustment);
+    let adjustment = before.primary_departures[2].adjustment.as_ref().unwrap();
+    assert_eq!("Adjust this week", adjustment.action);
+    assert_eq!("Save this week only", adjustment.save_action);
+    assert_eq!("Friday", adjustment.selected_day);
+    assert_eq!("16:00", adjustment.selected_time);
+    assert_eq!(
+        vec![
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday"
+        ],
+        before
+            .schedule_choices
+            .day_choices
+            .iter()
+            .map(|choice| choice.label.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(48, before.schedule_choices.time_choices.len());
+    assert!(before
+        .schedule_choices
+        .time_choices
+        .iter()
+        .any(|choice| choice.value == "17:30" && choice.label == "5:30 PM"));
+
+    let adjusted = application
+        .adjust_current_week_departure("2026-08-10-primary-3", "Saturday", "17:30")
+        .unwrap();
+    assert_eq!(
+        Some("Saturday, August 15 at 5:30 PM"),
+        adjusted.next_departure.as_deref()
+    );
+    assert_eq!(
+        vec![
+            ("Monday", "4:00 PM"),
+            ("Wednesday", "4:00 PM"),
+            ("Saturday", "5:30 PM")
+        ],
+        adjusted
+            .primary_departures
+            .iter()
+            .map(|departure| (departure.day.as_str(), departure.time.as_str()))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(1, adjusted.fallback_available_count);
+    assert_eq!(
+        "Reserved by primary departure",
+        adjusted.fallback_departures[0].availability
+    );
+    assert_eq!(
+        vec![
+            "exercise-departure-2026-08-10-primary-3",
+            "exercise-follow-up-2026-08-10-primary-3"
+        ],
+        *reminders.cancelled.lock().unwrap()
+    );
+    assert_eq!(
+        Some(1_786_829_400_000),
+        reminders
+            .scheduled
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|intent| intent.id == "exercise-departure-2026-08-10-primary-3")
+            .map(|intent| intent.deliver_at_epoch_millis)
+    );
+    assert_eq!(
+        Some(1_786_830_300_000),
+        reminders
+            .scheduled
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find(|intent| intent.id == "exercise-follow-up-2026-08-10-primary-3")
+            .map(|intent| intent.deliver_at_epoch_millis)
+    );
+
+    let relaunched = ExerciseApplication::new(profile, reminders, clock.clone());
+    assert_eq!(adjusted, relaunched.open().unwrap());
+
+    clock.advance_to(1_786_971_600_000);
+    let next_week = relaunched.open().unwrap();
+    assert_eq!("Friday", next_week.primary_departures[2].day);
+    assert_eq!("4:00 PM", next_week.primary_departures[2].time);
+    assert_eq!("Saturday", next_week.history[0].primary_departures[2].day);
+    assert_eq!("5:30 PM", next_week.history[0].primary_departures[2].time);
+}
+
+#[test]
+fn deliberate_routine_change_applies_to_future_weeks_without_rewriting_this_week() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    let before = application.open().unwrap();
+    assert_eq!("Change repeating routine", before.routine_settings.action);
+    assert_eq!(
+        "Applies to future weeks only. This week and prior weeks stay unchanged.",
+        before.routine_settings.guidance
+    );
+    assert_eq!(
+        vec![
+            ("Monday", "4:00 PM"),
+            ("Wednesday", "4:00 PM"),
+            ("Friday", "4:00 PM")
+        ],
+        before
+            .routine_settings
+            .primary_departures
+            .iter()
+            .map(|departure| (departure.day.as_str(), departure.time.as_str()))
+            .collect::<Vec<_>>()
+    );
+
+    let changed = application
+        .change_repeating_primary_departure(1, "Tuesday", "15:30")
+        .unwrap();
+    assert_eq!(
+        vec![
+            ("Monday", "4:00 PM"),
+            ("Wednesday", "4:00 PM"),
+            ("Friday", "4:00 PM")
+        ],
+        changed
+            .primary_departures
+            .iter()
+            .map(|departure| (departure.day.as_str(), departure.time.as_str()))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        ("Tuesday", "3:30 PM"),
+        (
+            changed.routine_settings.primary_departures[0].day.as_str(),
+            changed.routine_settings.primary_departures[0].time.as_str()
+        )
+    );
+
+    let relaunched = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+    assert_eq!(changed, relaunched.open().unwrap());
+
+    clock.advance_to(1_786_971_600_000);
+    let next_week = relaunched.open().unwrap();
+    assert_eq!(
+        vec![
+            ("Tuesday", "3:30 PM"),
+            ("Wednesday", "4:00 PM"),
+            ("Friday", "4:00 PM")
+        ],
+        next_week
+            .primary_departures
+            .iter()
+            .map(|departure| (departure.day.as_str(), departure.time.as_str()))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!("Monday", next_week.history[0].primary_departures[0].day);
+    assert_eq!("4:00 PM", next_week.history[0].primary_departures[0].time);
+    assert_eq!(
+        Some(1_787_081_400_000),
+        reminders
+            .scheduled
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|intent| intent.id == "exercise-departure-2026-08-17-primary-1")
+            .map(|intent| intent.deliver_at_epoch_millis)
+    );
+}
+
+#[test]
+fn past_or_ineligible_departures_cannot_be_rewritten_as_upcoming_exceptions() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile, reminders, clock);
+
+    let due = application.open().unwrap();
+    assert_eq!(None, due.primary_departures[0].adjustment);
+    assert_eq!(
+        "Only an upcoming primary departure can be adjusted.",
+        application
+            .adjust_current_week_departure("2026-08-10-primary-1", "Tuesday", "16:00")
+            .unwrap_err()
+    );
+    assert_eq!(
+        "The adjusted departure must remain upcoming.",
+        application
+            .adjust_current_week_departure("2026-08-10-primary-2", "Monday", "15:30")
+            .unwrap_err()
+    );
+    assert_eq!(
+        "That departure time is not available.",
+        application
+            .adjust_current_week_departure("2026-08-10-primary-2", "Thursday", "15:15")
+            .unwrap_err()
+    );
+    assert_eq!(
+        "That schedule day is not available.",
+        application
+            .change_repeating_primary_departure(1, "Someday", "16:00")
+            .unwrap_err()
+    );
 }
 
 #[test]

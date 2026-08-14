@@ -2,14 +2,22 @@ use crate::notification::{NotificationIntent, NotificationPermission, Notificati
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-const EXERCISE_SCHEMA_VERSION: u32 = 6;
+const EXERCISE_SCHEMA_VERSION: u32 = 7;
 const WEEKLY_GOAL: u32 = 3;
 const UNSCHEDULED_WORKOUT_SLOT_ID: &str = "unscheduled";
-const DEPARTURE_HOUR: i64 = 16;
 const FOLLOW_UP_DELAY_MILLIS: i64 = 15 * 60 * 1_000;
 const RECORD_WORKOUT_DELAY_MILLIS: i64 = 90 * 60 * 1_000;
 const PRIMARY_DAYS: [(i64, &str); 3] = [(0, "Monday"), (2, "Wednesday"), (4, "Friday")];
 const FALLBACK_DAYS: [(i64, &str); 2] = [(5, "Saturday"), (6, "Sunday")];
+const WEEKDAYS: [&str; 7] = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+];
 const MONTH_NAMES: [&str; 12] = [
     "January",
     "February",
@@ -118,6 +126,10 @@ impl WorkoutSource {
 
 fn first_unscheduled_sequence() -> u64 {
     1
+}
+
+fn default_departure_time() -> String {
+    "16:00".into()
 }
 
 trait WorkoutChoice: Copy + Sized + 'static {
@@ -243,6 +255,8 @@ struct PlannedDeparture {
     id: String,
     day: String,
     date: String,
+    #[serde(default = "default_departure_time")]
+    departure_time: String,
     departure_at_epoch_millis: i64,
     status: DepartureStatus,
     reminder_scheduled_at_epoch_millis: Option<i64>,
@@ -346,6 +360,49 @@ pub struct PrimaryDepartureView {
     pub day: String,
     pub time: String,
     pub status: String,
+    pub adjustment: Option<ScheduleAdjustmentView>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleChoiceView {
+    pub value: String,
+    pub label: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleChoicesView {
+    pub day_choices: Vec<ScheduleChoiceView>,
+    pub time_choices: Vec<ScheduleChoiceView>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleAdjustmentView {
+    pub action: String,
+    pub save_action: String,
+    pub selected_day: String,
+    pub selected_time: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutineDepartureSettingsView {
+    pub order: u32,
+    pub day: String,
+    pub time: String,
+    pub selected_day: String,
+    pub selected_time: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutineSettingsView {
+    pub action: String,
+    pub guidance: String,
+    pub save_action: String,
+    pub primary_departures: Vec<RoutineDepartureSettingsView>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -432,6 +489,7 @@ pub struct ExerciseDashboardView {
     pub manual_workout_action: String,
     pub weekly_goal_status: Option<String>,
     pub next_departure: Option<String>,
+    pub schedule_choices: ScheduleChoicesView,
     pub primary_departures: Vec<PrimaryDepartureView>,
     pub fallback_departures: Vec<FallbackDepartureView>,
     pub fallback_available_count: usize,
@@ -444,6 +502,7 @@ pub struct ExerciseDashboardView {
     pub workout_recording: Option<WorkoutRecordingView>,
     pub workout_records: Vec<WorkoutRecordView>,
     pub history: Vec<ExerciseWeekHistoryView>,
+    pub routine_settings: RoutineSettingsView,
 }
 
 pub struct ExerciseApplication<P, N, C> {
@@ -578,6 +637,71 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
             visible_reminder_intent,
             reminder_message,
         ))
+    }
+
+    pub fn adjust_current_week_departure(
+        &self,
+        slot_id: &str,
+        day: &str,
+        departure_time: &str,
+    ) -> Result<ExerciseDashboardView, String> {
+        let schedule = ScheduleSelection::parse(day, departure_time)
+            .map_err(ScheduleSelectionError::message)?;
+        let now = self.clock.now_epoch_millis();
+        let week_start_day = local_day_number(&self.clock, now) - local_weekday(&self.clock, now);
+        let adjusted_at = schedule.epoch_millis(&self.clock, week_start_day);
+        if adjusted_at <= now {
+            return Err("The adjusted departure must remain upcoming.".into());
+        }
+
+        let (mut state, _) = self.current_state()?;
+        let week = current_week_mut(&mut state, &self.clock, now)?;
+        let departure = week
+            .primary_departures
+            .iter_mut()
+            .find(|departure| {
+                departure.id == slot_id
+                    && departure.status == DepartureStatus::Scheduled
+                    && departure.departure_at_epoch_millis > now
+            })
+            .ok_or_else(|| "Only an upcoming primary departure can be adjusted.".to_string())?;
+        let cancel_departure = departure.reminder_scheduled_at_epoch_millis.is_some();
+        let cancel_follow_up = departure.follow_up_scheduled_at_epoch_millis.is_some();
+        schedule.apply_to_planned(departure, week_start_day);
+        departure.departure_at_epoch_millis = adjusted_at;
+        departure.reminder_scheduled_at_epoch_millis = None;
+        departure.follow_up_scheduled_at_epoch_millis = None;
+
+        if cancel_departure {
+            self.notifications
+                .cancel(&format!("exercise-departure-{slot_id}"))?;
+        }
+        if cancel_follow_up {
+            self.notifications
+                .cancel(&format!("exercise-follow-up-{slot_id}"))?;
+        }
+        self.save_state(&state)?;
+        self.open()
+    }
+
+    pub fn change_repeating_primary_departure(
+        &self,
+        order: u32,
+        day: &str,
+        departure_time: &str,
+    ) -> Result<ExerciseDashboardView, String> {
+        let schedule = ScheduleSelection::parse(day, departure_time)
+            .map_err(ScheduleSelectionError::message)?;
+        let (mut state, _) = self.current_state()?;
+        let departure = state
+            .routine
+            .primary
+            .iter_mut()
+            .find(|departure| departure.order == order)
+            .ok_or_else(|| "That repeating routine departure is not available.".to_string())?;
+        schedule.apply_to_routine(departure);
+        self.save_state(&state)?;
+        self.open()
     }
 
     pub fn respond_to_departure(
@@ -865,7 +989,7 @@ impl ExerciseState {
                 self.schema_version
             ));
         }
-        if self.routine != ExerciseState::new().routine {
+        if !routine_is_valid(&self.routine) {
             return Err("The saved exercise routine is not supported yet.".into());
         }
         self.migrate_workout_sources();
@@ -896,7 +1020,9 @@ impl ExerciseState {
         for week in &self.weeks {
             let mut departure_ids = HashSet::new();
             for departure in all_departures(week) {
-                if !departure_ids.insert(departure.id.as_str()) {
+                if !departure_ids.insert(departure.id.as_str())
+                    || DepartureTime::parse(&departure.departure_time).is_none()
+                {
                     return Err("The saved departure data is not valid.".into());
                 }
                 let response_is_valid =
@@ -1082,10 +1208,25 @@ fn routine_departures(days: &[(i64, &str)]) -> Vec<RoutineDeparture> {
         .map(|(index, (weekday, day))| RoutineDeparture {
             weekday: *weekday,
             day: (*day).into(),
-            departure_time: "16:00".into(),
+            departure_time: default_departure_time(),
             order: (index + 1) as u32,
         })
         .collect()
+}
+
+fn routine_is_valid(routine: &Routine) -> bool {
+    routine.weekly_goal == WEEKLY_GOAL
+        && routine.fallback == routine_departures(&FALLBACK_DAYS)
+        && routine.primary.len() == PRIMARY_DAYS.len()
+        && routine
+            .primary
+            .iter()
+            .enumerate()
+            .all(|(index, departure)| {
+                departure.order == (index + 1) as u32
+                    && ScheduleSelection::parse(&departure.day, &departure.departure_time)
+                        .is_ok_and(|schedule| schedule.weekday == departure.weekday)
+            })
 }
 
 fn make_week<C: ExerciseClock>(routine: &Routine, clock: &C, week_start_day: i64) -> ExerciseWeek {
@@ -1123,23 +1264,28 @@ fn make_departures<C: ExerciseClock>(
     let week_key = date_from_day_number(week_start_day).iso_date();
     routine
         .iter()
-        .map(|slot| PlannedDeparture {
-            id: format!("{week_key}-{kind}-{}", slot.order),
-            day: slot.day.clone(),
-            date: date_from_day_number(week_start_day + slot.weekday).iso_date(),
-            departure_at_epoch_millis: local_epoch_millis(
-                clock,
-                week_start_day + slot.weekday,
-                DEPARTURE_HOUR,
-                0,
-            ),
-            status,
-            reminder_scheduled_at_epoch_millis: None,
-            follow_up_scheduled_at_epoch_millis: None,
-            departure_response: None,
-            record_workout_prompt_due_at_epoch_millis: None,
-            record_workout_reminder_scheduled_at_epoch_millis: None,
-            assigned_from_slot_id: None,
+        .map(|slot| {
+            let schedule = ScheduleSelection::parse(&slot.day, &slot.departure_time)
+                .expect("the saved routine departure was validated");
+            PlannedDeparture {
+                id: format!("{week_key}-{kind}-{}", slot.order),
+                day: slot.day.clone(),
+                date: date_from_day_number(week_start_day + slot.weekday).iso_date(),
+                departure_time: slot.departure_time.clone(),
+                departure_at_epoch_millis: local_epoch_millis(
+                    clock,
+                    week_start_day + schedule.weekday,
+                    schedule.departure_time.hour,
+                    schedule.departure_time.minute,
+                ),
+                status,
+                reminder_scheduled_at_epoch_millis: None,
+                follow_up_scheduled_at_epoch_millis: None,
+                departure_response: None,
+                record_workout_prompt_due_at_epoch_millis: None,
+                record_workout_reminder_scheduled_at_epoch_millis: None,
+                assigned_from_slot_id: None,
+            }
         })
         .collect()
 }
@@ -1324,15 +1470,26 @@ fn decidable_departure_mut<'a>(
         .ok_or_else(|| "That departure is not awaiting a response.".to_string())
 }
 
-fn fallback_is_available(departure: &PlannedDeparture, now: i64) -> bool {
-    departure.status == DepartureStatus::Available && departure.departure_at_epoch_millis >= now
+fn fallback_reserved_by_primary(week: &ExerciseWeek, departure: &PlannedDeparture) -> bool {
+    week.primary_departures.iter().any(|primary| {
+        matches!(
+            primary.status,
+            DepartureStatus::Scheduled | DepartureStatus::Leaving
+        ) && primary.date == departure.date
+    })
+}
+
+fn fallback_is_available(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64) -> bool {
+    departure.status == DepartureStatus::Available
+        && departure.departure_at_epoch_millis >= now
+        && !fallback_reserved_by_primary(week, departure)
 }
 
 fn next_available_fallback_index(week: &ExerciseWeek, now: i64) -> Option<usize> {
     week.fallback_departures
         .iter()
         .enumerate()
-        .filter(|(_, departure)| fallback_is_available(departure, now))
+        .filter(|(_, departure)| fallback_is_available(week, departure, now))
         .min_by_key(|(_, departure)| departure.departure_at_epoch_millis)
         .map(|(index, _)| index)
 }
@@ -1365,7 +1522,9 @@ fn fallback_status(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64) 
         "Weekly goal met — no workout needed".into()
     } else if departure.status == DepartureStatus::Missed {
         "Missed — no response".into()
-    } else if fallback_is_available(departure, now) {
+    } else if fallback_reserved_by_primary(week, departure) {
+        "Reserved by primary departure".into()
+    } else if fallback_is_available(week, departure, now) {
         "Available".into()
     } else {
         "No longer available".into()
@@ -1430,12 +1589,13 @@ fn dashboard_view(
         manual_workout_action: "Log workout now".into(),
         weekly_goal_status: goal_reached.then(|| "Weekly goal complete".into()),
         next_departure: next_departure.map(friendly_departure),
+        schedule_choices: schedule_choices_view(),
         primary_departures: primary_departure_views(week, now),
         fallback_departures: fallback_departure_views(week, now),
         fallback_available_count: week
             .fallback_departures
             .iter()
-            .filter(|departure| fallback_is_available(departure, now))
+            .filter(|departure| fallback_is_available(week, departure, now))
             .count(),
         reminder_intent,
         reminder_message,
@@ -1459,6 +1619,7 @@ fn dashboard_view(
                 exercise_week_history_view(historical_week, state.routine.weekly_goal, now)
             })
             .collect(),
+        routine_settings: routine_settings_view(&state.routine),
     }
 }
 
@@ -1495,14 +1656,180 @@ fn workout_record_view(record: &WorkoutRecord) -> WorkoutRecordView {
     }
 }
 
+fn weekday_from_label(label: &str) -> Option<i64> {
+    WEEKDAYS
+        .iter()
+        .position(|candidate| *candidate == label)
+        .map(|weekday| weekday as i64)
+}
+
+#[derive(Clone, Copy, Debug)]
+struct DepartureTime {
+    hour: i64,
+    minute: i64,
+}
+
+impl DepartureTime {
+    fn parse(value: &str) -> Option<Self> {
+        if value.len() != 5 || value.as_bytes().get(2) != Some(&b':') {
+            return None;
+        }
+        let mut parts = value.split(':');
+        let hour = parts.next()?.parse::<i64>().ok()?;
+        let minute = parts.next()?.parse::<i64>().ok()?;
+        if parts.next().is_some() || !(0..24).contains(&hour) || !matches!(minute, 0 | 30) {
+            return None;
+        }
+        Some(Self { hour, minute })
+    }
+
+    fn value(self) -> String {
+        format!("{:02}:{:02}", self.hour, self.minute)
+    }
+
+    fn friendly_label(self) -> String {
+        let period = if self.hour < 12 { "AM" } else { "PM" };
+        let display_hour = match self.hour.rem_euclid(12) {
+            0 => 12,
+            value => value,
+        };
+        format!("{display_hour}:{:02} {period}", self.minute)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ScheduleSelection {
+    weekday: i64,
+    day: &'static str,
+    departure_time: DepartureTime,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum ScheduleSelectionError {
+    Day,
+    Time,
+}
+
+impl ScheduleSelectionError {
+    fn message(self) -> &'static str {
+        match self {
+            Self::Day => "That schedule day is not available.",
+            Self::Time => "That departure time is not available.",
+        }
+    }
+}
+
+impl ScheduleSelection {
+    fn parse(day: &str, departure_time: &str) -> Result<Self, ScheduleSelectionError> {
+        let weekday = weekday_from_label(day).ok_or(ScheduleSelectionError::Day)?;
+        let departure_time =
+            DepartureTime::parse(departure_time).ok_or(ScheduleSelectionError::Time)?;
+        Ok(Self {
+            weekday,
+            day: WEEKDAYS[weekday as usize],
+            departure_time,
+        })
+    }
+
+    fn epoch_millis<C: ExerciseClock>(self, clock: &C, week_start_day: i64) -> i64 {
+        local_epoch_millis(
+            clock,
+            week_start_day + self.weekday,
+            self.departure_time.hour,
+            self.departure_time.minute,
+        )
+    }
+
+    fn apply_to_planned(self, departure: &mut PlannedDeparture, week_start_day: i64) {
+        departure.day = self.day.into();
+        departure.date = date_from_day_number(week_start_day + self.weekday).iso_date();
+        departure.departure_time = self.departure_time.value();
+    }
+
+    fn apply_to_routine(self, departure: &mut RoutineDeparture) {
+        departure.weekday = self.weekday;
+        departure.day = self.day.into();
+        departure.departure_time = self.departure_time.value();
+    }
+}
+
+fn friendly_schedule_time(value: &str) -> String {
+    DepartureTime::parse(value)
+        .expect("saved departure time is valid")
+        .friendly_label()
+}
+
+fn schedule_day_choices() -> Vec<ScheduleChoiceView> {
+    WEEKDAYS
+        .iter()
+        .map(|day| ScheduleChoiceView {
+            value: (*day).into(),
+            label: (*day).into(),
+        })
+        .collect()
+}
+
+fn schedule_time_choices() -> Vec<ScheduleChoiceView> {
+    (0..24)
+        .flat_map(|hour| [0, 30].map(move |minute| (hour, minute)))
+        .map(|(hour, minute)| {
+            let value = format!("{hour:02}:{minute:02}");
+            ScheduleChoiceView {
+                label: friendly_schedule_time(&value),
+                value,
+            }
+        })
+        .collect()
+}
+
+fn schedule_choices_view() -> ScheduleChoicesView {
+    ScheduleChoicesView {
+        day_choices: schedule_day_choices(),
+        time_choices: schedule_time_choices(),
+    }
+}
+
+fn schedule_adjustment_view(
+    departure: &PlannedDeparture,
+    now: i64,
+) -> Option<ScheduleAdjustmentView> {
+    (departure.status == DepartureStatus::Scheduled && departure.departure_at_epoch_millis > now)
+        .then(|| ScheduleAdjustmentView {
+            action: "Adjust this week".into(),
+            save_action: "Save this week only".into(),
+            selected_day: departure.day.clone(),
+            selected_time: departure.departure_time.clone(),
+        })
+}
+
+fn routine_settings_view(routine: &Routine) -> RoutineSettingsView {
+    RoutineSettingsView {
+        action: "Change repeating routine".into(),
+        guidance: "Applies to future weeks only. This week and prior weeks stay unchanged.".into(),
+        save_action: "Save future routine".into(),
+        primary_departures: routine
+            .primary
+            .iter()
+            .map(|departure| RoutineDepartureSettingsView {
+                order: departure.order,
+                day: departure.day.clone(),
+                time: friendly_schedule_time(&departure.departure_time),
+                selected_day: departure.day.clone(),
+                selected_time: departure.departure_time.clone(),
+            })
+            .collect(),
+    }
+}
+
 fn primary_departure_views(week: &ExerciseWeek, now: i64) -> Vec<PrimaryDepartureView> {
     week.primary_departures
         .iter()
         .map(|departure| PrimaryDepartureView {
             id: departure.id.clone(),
             day: departure.day.clone(),
-            time: "4:00 PM".into(),
+            time: friendly_schedule_time(&departure.departure_time),
             status: departure_status(week, departure, now),
+            adjustment: schedule_adjustment_view(departure, now),
         })
         .collect()
 }
@@ -1513,7 +1840,7 @@ fn fallback_departure_views(week: &ExerciseWeek, now: i64) -> Vec<FallbackDepart
         .map(|departure| FallbackDepartureView {
             id: departure.id.clone(),
             day: departure.day.clone(),
-            time: "4:00 PM".into(),
+            time: friendly_schedule_time(&departure.departure_time),
             availability: fallback_status(week, departure, now),
         })
         .collect()
@@ -1779,10 +2106,11 @@ fn friendly_time(clock: &impl ExerciseClock, epoch_millis: i64) -> String {
 fn friendly_departure(departure: &PlannedDeparture) -> String {
     let date = parse_iso_date(&departure.date).expect("saved departure date is valid");
     format!(
-        "{}, {} {} at 4:00 PM",
+        "{}, {} {} at {}",
         departure.day,
         month_name(date.month),
-        date.day
+        date.day,
+        friendly_schedule_time(&departure.departure_time)
     )
 }
 
