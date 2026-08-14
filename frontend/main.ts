@@ -71,10 +71,23 @@ type WorkoutRecording = Readonly<{
 type WorkoutRecord = Readonly<{
   id: string;
   source: string;
+  recordedAt: string;
   activity: string;
   duration: string;
   effort: string;
   outcome: string;
+}>;
+
+type WorkoutHistoryControls = Readonly<{
+  activityChoices: readonly string[];
+  durationChoices: readonly string[];
+  effortChoices: readonly string[];
+  editAction: string;
+  saveAction: string;
+  deleteAction: string;
+  deletePrompt: string;
+  confirmDeleteAction: string;
+  cancelDeleteAction: string;
 }>;
 
 type ExerciseWeekHistory = Readonly<{
@@ -132,6 +145,7 @@ type ExerciseDashboardView = Readonly<{
   }> | null;
   workoutPrompt: WorkoutPrompt | null;
   workoutRecording: WorkoutRecording | null;
+  workoutHistoryControls: WorkoutHistoryControls;
   workoutRecords: readonly WorkoutRecord[];
   history: readonly ExerciseWeekHistory[];
   routineSettings: RoutineSettings;
@@ -377,19 +391,125 @@ function workoutButton(
   return button;
 }
 
-function workoutRecordItem(record: WorkoutRecord): HTMLLIElement {
-  const item = document.createElement("li");
+function workoutCorrectionSelect(
+  labelText: string,
+  choices: readonly string[],
+  selectedValue: string,
+  role: "activity" | "duration" | "effort",
+): HTMLLabelElement {
+  const label = document.createElement("label");
+  const select = document.createElement("select");
+  label.append(labelText);
+  select.dataset.historyRole = role;
+  select.replaceChildren(
+    ...choices.map((choice) => {
+      const option = document.createElement("option");
+      option.value = choice;
+      option.textContent = choice;
+      option.selected = choice === selectedValue;
+      return option;
+    }),
+  );
+  label.append(select);
+  return label;
+}
+
+function workoutRecordSummary(record: WorkoutRecord): HTMLDivElement {
+  const summary = document.createElement("div");
   const activity = document.createElement("strong");
   const details = document.createElement("span");
+  const context = document.createElement("span");
   const outcome = document.createElement("span");
   activity.textContent = record.activity;
-  details.textContent = `${record.source} · ${record.duration} · ${record.effort}`;
+  details.textContent = `${record.duration} · ${record.effort}`;
+  context.textContent = `${record.source} · ${record.recordedAt}`;
   outcome.textContent = record.outcome;
-  item.append(activity, details, outcome);
+  summary.className = "workout-record-summary";
+  summary.append(activity, details, context, outcome);
+  return summary;
+}
+
+function workoutRecordEditor(
+  record: WorkoutRecord,
+  controls: WorkoutHistoryControls,
+): HTMLDetailsElement {
+  const editor = document.createElement("details");
+  const editorSummary = document.createElement("summary");
+  const editorControls = document.createElement("div");
+  const save = document.createElement("button");
+  editor.className = "record-editor";
+  editorSummary.textContent = controls.editAction;
+  editorControls.className = "history-controls";
+  save.type = "button";
+  save.textContent = controls.saveAction;
+  save.dataset.historySave = "true";
+  editorControls.append(
+    workoutCorrectionSelect(
+      "Activity",
+      controls.activityChoices,
+      record.activity,
+      "activity",
+    ),
+    workoutCorrectionSelect(
+      "Duration",
+      controls.durationChoices,
+      record.duration,
+      "duration",
+    ),
+    workoutCorrectionSelect(
+      "Perceived effort",
+      controls.effortChoices,
+      record.effort,
+      "effort",
+    ),
+    save,
+  );
+  editor.append(editorSummary, editorControls);
+  return editor;
+}
+
+function workoutRecordDeletion(
+  controls: WorkoutHistoryControls,
+): HTMLDetailsElement {
+  const deletion = document.createElement("details");
+  const deletionSummary = document.createElement("summary");
+  const deletionPrompt = document.createElement("p");
+  const deletionActions = document.createElement("div");
+  const confirmDelete = document.createElement("button");
+  const cancelDelete = document.createElement("button");
+  deletion.className = "record-deletion";
+  deletionSummary.textContent = controls.deleteAction;
+  deletionPrompt.textContent = controls.deletePrompt;
+  deletionActions.className = "history-actions";
+  confirmDelete.type = "button";
+  confirmDelete.textContent = controls.confirmDeleteAction;
+  confirmDelete.dataset.historyDelete = "true";
+  cancelDelete.type = "button";
+  cancelDelete.textContent = controls.cancelDeleteAction;
+  cancelDelete.dataset.historyCancel = "true";
+  deletionActions.append(confirmDelete, cancelDelete);
+  deletion.append(deletionSummary, deletionPrompt, deletionActions);
+  return deletion;
+}
+
+function workoutRecordItem(
+  record: WorkoutRecord,
+  controls: WorkoutHistoryControls,
+): HTMLLIElement {
+  const item = document.createElement("li");
+  item.dataset.recordId = record.id;
+  item.append(
+    workoutRecordSummary(record),
+    workoutRecordEditor(record, controls),
+    workoutRecordDeletion(controls),
+  );
   return item;
 }
 
-function historyWeekItem(week: ExerciseWeekHistory): HTMLElement {
+function historyWeekItem(
+  week: ExerciseWeekHistory,
+  controls: WorkoutHistoryControls,
+): HTMLElement {
   const article = document.createElement("article");
   const heading = document.createElement("h5");
   const progress = document.createElement("p");
@@ -419,7 +539,9 @@ function historyWeekItem(week: ExerciseWeekHistory): HTMLElement {
     const workouts = document.createElement("ol");
     workoutHeading.textContent = "Recorded workouts";
     workouts.className = "workout-records";
-    workouts.replaceChildren(...week.workoutRecords.map(workoutRecordItem));
+    workouts.replaceChildren(
+      ...week.workoutRecords.map((record) => workoutRecordItem(record, controls)),
+    );
     article.append(workoutHeading, workouts);
   }
   return article;
@@ -556,12 +678,18 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
   if (workoutHistory && workoutRecords) {
     workoutHistory.hidden = view.workoutRecords.length === 0;
     workoutRecords.replaceChildren(
-      ...view.workoutRecords.map(workoutRecordItem),
+      ...view.workoutRecords.map((record) =>
+        workoutRecordItem(record, view.workoutHistoryControls),
+      ),
     );
   }
   if (exerciseHistory && exerciseHistoryWeeks) {
     exerciseHistory.hidden = view.history.length === 0;
-    exerciseHistoryWeeks.replaceChildren(...view.history.map(historyWeekItem));
+    exerciseHistoryWeeks.replaceChildren(
+      ...view.history.map((week) =>
+        historyWeekItem(week, view.workoutHistoryControls),
+      ),
+    );
   }
   if (routineSettingsAction) {
     routineSettingsAction.textContent = view.routineSettings.action;
@@ -725,6 +853,77 @@ async function runWorkoutAction(
     }
     setWorkoutActionsDisabled(false);
   }
+}
+
+async function runWorkoutHistoryAction(
+  item: HTMLElement,
+  command: "correct_workout_record" | "confirm_workout_record_deletion",
+  arguments_: Record<string, string>,
+): Promise<void> {
+  item.querySelectorAll("button, select").forEach((control) => {
+    control.setAttribute("disabled", "");
+  });
+  try {
+    const dashboard = await window.__TAURI__.core.invoke<ExerciseDashboardView>(
+      command,
+      arguments_,
+    );
+    renderExerciseDashboard(dashboard);
+  } catch (error) {
+    if (exerciseReminderStatus) {
+      exerciseReminderStatus.textContent = errorMessage(
+        error,
+        "The workout history change could not be saved.",
+      );
+      exerciseReminderStatus.dataset.state = "error";
+    }
+    item.querySelectorAll("button, select").forEach((control) => {
+      control.removeAttribute("disabled");
+    });
+  }
+}
+
+function handleWorkoutHistoryAction(event: Event): void {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
+  const item = button?.closest<HTMLElement>("[data-record-id]");
+  const recordId = item?.dataset.recordId;
+  if (!button || !item || !recordId) {
+    return;
+  }
+  if (button.dataset.historyCancel) {
+    const deletion = button.closest<HTMLDetailsElement>(".record-deletion");
+    if (deletion) {
+      deletion.open = false;
+    }
+    return;
+  }
+  if (button.dataset.historyDelete) {
+    void runWorkoutHistoryAction(item, "confirm_workout_record_deletion", {
+      recordId,
+    });
+    return;
+  }
+  if (!button.dataset.historySave) {
+    return;
+  }
+  const activity = item.querySelector<HTMLSelectElement>(
+    "[data-history-role='activity']",
+  );
+  const duration = item.querySelector<HTMLSelectElement>(
+    "[data-history-role='duration']",
+  );
+  const effort = item.querySelector<HTMLSelectElement>(
+    "[data-history-role='effort']",
+  );
+  if (!activity || !duration || !effort) {
+    return;
+  }
+  void runWorkoutHistoryAction(item, "correct_workout_record", {
+    recordId,
+    activity: activity.value,
+    duration: duration.value,
+    effort: effort.value,
+  });
 }
 
 async function refreshExerciseDashboard(): Promise<void> {
@@ -1011,6 +1210,8 @@ function handleWorkoutChoice(event: Event): void {
 
 workoutPromptAction?.addEventListener("click", handleWorkoutChoice);
 workoutRecordingChoices?.addEventListener("click", handleWorkoutChoice);
+workoutRecords?.addEventListener("click", handleWorkoutHistoryAction);
+exerciseHistoryWeeks?.addEventListener("click", handleWorkoutHistoryAction);
 logWorkoutNow?.addEventListener("click", () => {
   void runWorkoutAction("start_unscheduled_workout_record", {});
 });

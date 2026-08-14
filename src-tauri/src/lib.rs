@@ -200,6 +200,25 @@ fn complete_workout_record(
 }
 
 #[tauri::command]
+fn correct_workout_record(
+    application: State<'_, DesktopExerciseApplication>,
+    record_id: String,
+    activity: String,
+    duration: String,
+    effort: String,
+) -> Result<ExerciseDashboardView, String> {
+    application.correct_workout_record(&record_id, &activity, &duration, &effort)
+}
+
+#[tauri::command]
+fn confirm_workout_record_deletion(
+    application: State<'_, DesktopExerciseApplication>,
+    record_id: String,
+) -> Result<ExerciseDashboardView, String> {
+    application.confirm_workout_record_deletion(&record_id)
+}
+
+#[tauri::command]
 #[cfg(target_os = "macos")]
 fn notification_state(
     application: State<'_, DesktopNotificationApplication>,
@@ -280,6 +299,8 @@ pub fn run() {
             choose_workout_activity,
             choose_workout_duration,
             complete_workout_record,
+            correct_workout_record,
+            confirm_workout_record_deletion,
             notification_state,
             request_notification_permission,
             schedule_capability_notification
@@ -302,7 +323,9 @@ pub fn run() {
         start_unscheduled_workout_record,
         choose_workout_activity,
         choose_workout_duration,
-        complete_workout_record
+        complete_workout_record,
+        correct_workout_record,
+        confirm_workout_record_deletion
     ]);
 
     let application = application

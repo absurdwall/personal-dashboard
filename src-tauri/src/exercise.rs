@@ -462,10 +462,25 @@ pub struct WorkoutRecordingView {
 pub struct WorkoutRecordView {
     pub id: String,
     pub source: String,
+    pub recorded_at: String,
     pub activity: String,
     pub duration: String,
     pub effort: String,
     pub outcome: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkoutHistoryControlsView {
+    pub activity_choices: Vec<String>,
+    pub duration_choices: Vec<String>,
+    pub effort_choices: Vec<String>,
+    pub edit_action: String,
+    pub save_action: String,
+    pub delete_action: String,
+    pub delete_prompt: String,
+    pub confirm_delete_action: String,
+    pub cancel_delete_action: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -500,6 +515,7 @@ pub struct ExerciseDashboardView {
     pub departure_confirmation: Option<DepartureConfirmationView>,
     pub workout_prompt: Option<WorkoutPromptView>,
     pub workout_recording: Option<WorkoutRecordingView>,
+    pub workout_history_controls: WorkoutHistoryControlsView,
     pub workout_records: Vec<WorkoutRecordView>,
     pub history: Vec<ExerciseWeekHistoryView>,
     pub routine_settings: RoutineSettingsView,
@@ -924,6 +940,7 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         if source == WorkoutSource::Unscheduled {
             state.next_unscheduled_sequence += 1;
         }
+        let weekly_goal = state.routine.weekly_goal;
         let week = current_week_mut(&mut state, &self.clock, now)?;
         if source != WorkoutSource::Unscheduled {
             recordable_departure(week, slot_id, now)?;
@@ -941,12 +958,52 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
             duration,
             effort,
         });
-        week.completed_count = week
-            .workout_records
-            .iter()
-            .filter(|record| record.duration.qualifies())
-            .count() as u32;
+        recompute_week_progress(week, weekly_goal, now, true);
         state.workout_draft = None;
+        self.save_state(&state)?;
+        self.open()
+    }
+
+    pub fn correct_workout_record(
+        &self,
+        record_id: &str,
+        activity: &str,
+        duration: &str,
+        effort: &str,
+    ) -> Result<ExerciseDashboardView, String> {
+        let activity = WorkoutActivity::from_label(activity)
+            .ok_or_else(|| "That workout correction is not available.".to_string())?;
+        let duration = WorkoutDuration::from_label(duration)
+            .ok_or_else(|| "That workout correction is not available.".to_string())?;
+        let effort = PerceivedEffort::from_label(effort)
+            .ok_or_else(|| "That workout correction is not available.".to_string())?;
+        let now = self.clock.now_epoch_millis();
+        let current_week_key = current_week_key(&self.clock, now);
+        let (mut state, _) = self.current_state()?;
+        let weekly_goal = state.routine.weekly_goal;
+        let (week, record_index) = workout_record_location_mut(&mut state, record_id)?;
+        let record = &mut week.workout_records[record_index];
+        record.activity = activity;
+        record.duration = duration;
+        record.effort = effort;
+        let is_current = week.week_start == current_week_key;
+        recompute_week_progress(week, weekly_goal, now, is_current);
+        self.save_state(&state)?;
+        self.open()
+    }
+
+    pub fn confirm_workout_record_deletion(
+        &self,
+        record_id: &str,
+    ) -> Result<ExerciseDashboardView, String> {
+        let now = self.clock.now_epoch_millis();
+        let current_week_key = current_week_key(&self.clock, now);
+        let (mut state, _) = self.current_state()?;
+        let weekly_goal = state.routine.weekly_goal;
+        let (week, record_index) = workout_record_location_mut(&mut state, record_id)?;
+        week.workout_records.remove(record_index);
+        let is_current = week.week_start == current_week_key;
+        recompute_week_progress(week, weekly_goal, now, is_current);
         self.save_state(&state)?;
         self.open()
     }
@@ -1375,6 +1432,81 @@ fn weekly_goal_reached_at(week: &ExerciseWeek, weekly_goal: u32) -> Option<i64> 
         .copied()
 }
 
+fn recompute_week_progress(week: &mut ExerciseWeek, weekly_goal: u32, now: i64, is_current: bool) {
+    week.completed_count = week
+        .workout_records
+        .iter()
+        .filter(|record| record.duration.qualifies())
+        .count() as u32;
+    let goal_reached_at = weekly_goal_reached_at(week, weekly_goal);
+    for departure in &mut week.primary_departures {
+        recompute_departure_outcome(departure, goal_reached_at, now, is_current, false);
+    }
+    for departure in &mut week.fallback_departures {
+        recompute_departure_outcome(departure, goal_reached_at, now, is_current, true);
+    }
+}
+
+fn recompute_departure_outcome(
+    departure: &mut PlannedDeparture,
+    goal_reached_at: Option<i64>,
+    now: i64,
+    is_current: bool,
+    is_fallback: bool,
+) {
+    if !matches!(
+        departure.status,
+        DepartureStatus::Missed | DepartureStatus::NotNeeded
+    ) {
+        return;
+    }
+    let leaving_was_suppressed = departure
+        .departure_response
+        .as_ref()
+        .is_some_and(|response| response.outcome == DepartureOutcome::LeavingForGym);
+    if goal_reached_at.is_some_and(|reached_at| {
+        departure.departure_at_epoch_millis >= reached_at || leaving_was_suppressed
+    }) {
+        departure.status = DepartureStatus::NotNeeded;
+    } else if leaving_was_suppressed {
+        let response_at = departure
+            .departure_response
+            .as_ref()
+            .expect("the suppressed leaving departure has a response")
+            .recorded_at_epoch_millis;
+        departure.status = DepartureStatus::Leaving;
+        departure.record_workout_prompt_due_at_epoch_millis =
+            Some(response_at + RECORD_WORKOUT_DELAY_MILLIS);
+        departure.record_workout_reminder_scheduled_at_epoch_millis = None;
+    } else if is_current && departure.departure_at_epoch_millis > now {
+        departure.status = if is_fallback && departure.assigned_from_slot_id.is_none() {
+            DepartureStatus::Available
+        } else {
+            DepartureStatus::Scheduled
+        };
+        departure.reminder_scheduled_at_epoch_millis = None;
+        departure.follow_up_scheduled_at_epoch_millis = None;
+    } else {
+        departure.status = DepartureStatus::Missed;
+    }
+}
+
+fn workout_record_location_mut<'a>(
+    state: &'a mut ExerciseState,
+    record_id: &str,
+) -> Result<(&'a mut ExerciseWeek, usize), String> {
+    for week in &mut state.weeks {
+        if let Some(record_index) = week
+            .workout_records
+            .iter()
+            .position(|record| record.id == record_id)
+        {
+            return Ok((week, record_index));
+        }
+    }
+    Err("That workout record is not available.".into())
+}
+
 fn close_expired_weeks(state: &mut ExerciseState, current_week_start: CivilDate) -> bool {
     let mut changed = false;
     for week in &mut state.weeks {
@@ -1608,15 +1740,12 @@ fn dashboard_view(
             .then(|| workout_prompt(state, week, now))
             .flatten(),
         workout_recording: workout_recording(state),
-        workout_records: week
-            .workout_records
-            .iter()
-            .map(workout_record_view)
-            .collect(),
+        workout_history_controls: workout_history_controls_view(),
+        workout_records: workout_record_views(week, clock),
         history: historical_weeks
             .into_iter()
             .map(|historical_week| {
-                exercise_week_history_view(historical_week, state.routine.weekly_goal, now)
+                exercise_week_history_view(historical_week, state.routine.weekly_goal, clock, now)
             })
             .collect(),
         routine_settings: routine_settings_view(&state.routine),
@@ -1637,7 +1766,7 @@ fn friendly_week_label(week: &ExerciseWeek) -> String {
     )
 }
 
-fn workout_record_view(record: &WorkoutRecord) -> WorkoutRecordView {
+fn workout_record_view(record: &WorkoutRecord, clock: &impl ExerciseClock) -> WorkoutRecordView {
     WorkoutRecordView {
         id: record.id.clone(),
         source: record
@@ -1645,6 +1774,7 @@ fn workout_record_view(record: &WorkoutRecord) -> WorkoutRecordView {
             .expect("workout sources were migrated")
             .label()
             .into(),
+        recorded_at: friendly_recorded_at(clock, record.recorded_at_epoch_millis),
         activity: record.activity.label().into(),
         duration: record.duration.label().into(),
         effort: record.effort.label().into(),
@@ -1653,6 +1783,42 @@ fn workout_record_view(record: &WorkoutRecord) -> WorkoutRecordView {
         } else {
             "Short effort — does not count toward weekly progress".into()
         },
+    }
+}
+
+fn workout_record_views(week: &ExerciseWeek, clock: &impl ExerciseClock) -> Vec<WorkoutRecordView> {
+    let mut records = week.workout_records.iter().collect::<Vec<_>>();
+    records.sort_by(|left, right| {
+        right
+            .recorded_at_epoch_millis
+            .cmp(&left.recorded_at_epoch_millis)
+    });
+    records
+        .into_iter()
+        .map(|record| workout_record_view(record, clock))
+        .collect()
+}
+
+fn workout_history_controls_view() -> WorkoutHistoryControlsView {
+    WorkoutHistoryControlsView {
+        activity_choices: WorkoutActivity::ALL
+            .iter()
+            .map(|choice| choice.label().into())
+            .collect(),
+        duration_choices: WorkoutDuration::ALL
+            .iter()
+            .map(|choice| choice.label().into())
+            .collect(),
+        effort_choices: PerceivedEffort::ALL
+            .iter()
+            .map(|choice| choice.label().into())
+            .collect(),
+        edit_action: "Edit record".into(),
+        save_action: "Save correction".into(),
+        delete_action: "Delete record".into(),
+        delete_prompt: "Delete this workout record? This cannot be undone.".into(),
+        confirm_delete_action: "Confirm delete".into(),
+        cancel_delete_action: "Cancel".into(),
     }
 }
 
@@ -1849,6 +2015,7 @@ fn fallback_departure_views(week: &ExerciseWeek, now: i64) -> Vec<FallbackDepart
 fn exercise_week_history_view(
     week: &ExerciseWeek,
     weekly_goal: u32,
+    clock: &impl ExerciseClock,
     now: i64,
 ) -> ExerciseWeekHistoryView {
     ExerciseWeekHistoryView {
@@ -1856,11 +2023,7 @@ fn exercise_week_history_view(
         progress: format!("{} of {} completed", week.completed_count, weekly_goal),
         primary_departures: primary_departure_views(week, now),
         fallback_departures: fallback_departure_views(week, now),
-        workout_records: week
-            .workout_records
-            .iter()
-            .map(workout_record_view)
-            .collect(),
+        workout_records: workout_record_views(week, clock),
     }
 }
 
@@ -2101,6 +2264,18 @@ fn friendly_time(clock: &impl ExerciseClock, epoch_millis: i64) -> String {
         value => value,
     };
     format!("{display_hour}:{minute:02} {period}")
+}
+
+fn friendly_recorded_at(clock: &impl ExerciseClock, epoch_millis: i64) -> String {
+    let day_number = local_day_number(clock, epoch_millis);
+    let date = date_from_day_number(day_number);
+    let weekday = WEEKDAYS[(day_number + 3).rem_euclid(7) as usize];
+    format!(
+        "{weekday}, {} {} at {}",
+        month_name(date.month),
+        date.day,
+        friendly_time(clock, epoch_millis)
+    )
 }
 
 fn friendly_departure(departure: &PlannedDeparture) -> String {

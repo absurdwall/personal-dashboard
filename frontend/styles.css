@@ -368,14 +368,77 @@ h1 {
 
 .workout-records li {
   display: grid;
-  gap: 0.25rem;
+  gap: 0.65rem;
   padding-top: 0.8rem;
   border-top: 1px solid rgb(24 51 41 / 12%);
+}
+
+.workout-record-summary {
+  display: grid;
+  gap: 0.25rem;
 }
 
 .workout-records span {
   color: #52605a;
   font-size: 0.82rem;
+}
+
+.record-editor summary,
+.record-deletion summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.record-editor summary {
+  color: #1f6b4f;
+}
+
+.record-deletion summary {
+  color: #7a3024;
+}
+
+.history-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.history-controls label {
+  display: grid;
+  gap: 0.35rem;
+  color: #52605a;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.history-controls select {
+  width: 100%;
+  border: 1px solid rgb(24 51 41 / 22%);
+  border-radius: 0.7rem;
+  padding: 0.65rem;
+  background: #fff;
+  color: #18201d;
+}
+
+.history-controls button,
+.history-actions {
+  align-self: end;
+}
+
+.record-deletion p {
+  margin: 0.75rem 0;
+  color: #52605a;
+}
+
+.history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.history-actions button[data-history-delete] {
+  background: #7a3024;
 }
 
 .exercise-history-weeks {
@@ -612,7 +675,8 @@ button:disabled {
 }
 
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: 3px solid #87a995;
   outline-offset: 2px;
 }
@@ -693,6 +757,10 @@ input:focus-visible {
   }
 
   .schedule-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .history-controls {
     grid-template-columns: 1fr;
   }
 

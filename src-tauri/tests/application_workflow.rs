@@ -913,14 +913,276 @@ fn unscheduled_workouts_use_the_click_only_flow_and_share_progress_rules() {
     let short = record_unscheduled_workout(&application, "Other exercise", "Under 20", "Easy");
     assert_eq!("1 of 3 completed", short.progress);
     assert_eq!(2, short.workout_records.len());
-    assert_eq!("Unscheduled workout", short.workout_records[1].source);
+    assert_eq!("Unscheduled workout", short.workout_records[0].source);
     assert_eq!(
         "Short effort — does not count toward weekly progress",
-        short.workout_records[1].outcome
+        short.workout_records[0].outcome
     );
 
     let relaunched = ExerciseApplication::new(profile, reminders, clock);
     assert_eq!(short, relaunched.open().unwrap());
+}
+
+#[test]
+fn workout_history_is_reverse_chronological_with_established_correction_presets() {
+    let clock = FixedNewYorkClock::at(1_786_971_600_000);
+    let application = ExerciseApplication::new(
+        IsolatedProfile::default(),
+        ReminderOutbox::default(),
+        clock.clone(),
+    );
+
+    application.open().unwrap();
+    record_unscheduled_workout(&application, "Elliptical", "20", "Easy");
+    clock.advance_to(1_787_058_000_000);
+    let history =
+        record_unscheduled_workout(&application, "Weight training", "Under 20", "Very hard");
+
+    assert_eq!(
+        vec!["Weight training", "Elliptical"],
+        history
+            .workout_records
+            .iter()
+            .map(|record| record.activity.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        vec![
+            "Tuesday, August 18 at 9:00 AM",
+            "Monday, August 17 at 9:00 AM"
+        ],
+        history
+            .workout_records
+            .iter()
+            .map(|record| record.recorded_at.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        vec!["Elliptical", "Weight training", "Other exercise"],
+        history.workout_history_controls.activity_choices
+    );
+    assert_eq!(
+        vec!["Under 20", "20", "30", "45", "60+ minutes"],
+        history.workout_history_controls.duration_choices
+    );
+    assert_eq!(
+        vec!["Very easy", "Easy", "Moderate", "Hard", "Very hard"],
+        history.workout_history_controls.effort_choices
+    );
+    assert_eq!(
+        (
+            "Edit record",
+            "Save correction",
+            "Delete record",
+            "Delete this workout record? This cannot be undone.",
+            "Confirm delete",
+            "Cancel"
+        ),
+        (
+            history.workout_history_controls.edit_action.as_str(),
+            history.workout_history_controls.save_action.as_str(),
+            history.workout_history_controls.delete_action.as_str(),
+            history.workout_history_controls.delete_prompt.as_str(),
+            history
+                .workout_history_controls
+                .confirm_delete_action
+                .as_str(),
+            history
+                .workout_history_controls
+                .cancel_delete_action
+                .as_str()
+        )
+    );
+}
+
+#[test]
+fn correcting_current_and_historical_records_recomputes_the_owning_week() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    for (recorded_at, effort) in [
+        (1_786_366_800_000, "Easy"),
+        (1_786_370_400_000, "Moderate"),
+        (1_786_374_000_000, "Hard"),
+    ] {
+        clock.advance_to(recorded_at);
+        record_unscheduled_workout(&application, "Elliptical", "20", effort);
+    }
+
+    for (recorded_at, activity, duration, effort) in [
+        (1_786_971_600_000, "Weight training", "20", "Moderate"),
+        (1_787_058_000_000, "Other exercise", "30", "Hard"),
+        (1_787_144_400_000, "Elliptical", "Under 20", "Very easy"),
+    ] {
+        clock.advance_to(recorded_at);
+        application.open().unwrap();
+        record_unscheduled_workout(&application, activity, duration, effort);
+    }
+
+    let before = application.open().unwrap();
+    assert_eq!("2 of 3 completed", before.progress);
+    assert_eq!("3 of 3 completed", before.history[0].progress);
+    let current_record_id = before.workout_records[0].id.clone();
+    let historical_record_id = before.history[0].workout_records[0].id.clone();
+
+    let corrected = application
+        .correct_workout_record(&current_record_id, "Weight training", "45", "Hard")
+        .unwrap();
+    assert_eq!("3 of 3 completed", corrected.progress);
+    assert_eq!(
+        Some("Weekly goal complete"),
+        corrected.weekly_goal_status.as_deref()
+    );
+    assert_eq!(
+        ("Weight training", "45", "Hard"),
+        (
+            corrected.workout_records[0].activity.as_str(),
+            corrected.workout_records[0].duration.as_str(),
+            corrected.workout_records[0].effort.as_str()
+        )
+    );
+
+    let historical = application
+        .correct_workout_record(
+            &historical_record_id,
+            "Other exercise",
+            "Under 20",
+            "Very easy",
+        )
+        .unwrap();
+    assert_eq!("3 of 3 completed", historical.progress);
+    assert_eq!("2 of 3 completed", historical.history[0].progress);
+    assert!(historical.history[0]
+        .primary_departures
+        .iter()
+        .all(|departure| departure.status == "Missed — no response"));
+    assert_eq!(
+        ("Other exercise", "Under 20", "Very easy"),
+        (
+            historical.history[0].workout_records[0].activity.as_str(),
+            historical.history[0].workout_records[0].duration.as_str(),
+            historical.history[0].workout_records[0].effort.as_str()
+        )
+    );
+
+    let relaunched = ExerciseApplication::new(profile, reminders, clock);
+    assert_eq!(historical, relaunched.open().unwrap());
+}
+
+#[test]
+fn deleting_history_requires_confirmation_and_recomputes_historical_success() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    for (recorded_at, activity, effort) in [
+        (1_786_366_800_000, "Elliptical", "Easy"),
+        (1_786_370_400_000, "Other exercise", "Moderate"),
+        (1_786_374_000_000, "Weight training", "Hard"),
+    ] {
+        clock.advance_to(recorded_at);
+        record_unscheduled_workout(&application, activity, "30", effort);
+    }
+
+    clock.advance_to(1_786_971_600_000);
+    let before = application.open().unwrap();
+    assert_eq!("3 of 3 completed", before.history[0].progress);
+    assert_eq!(3, before.history[0].workout_records.len());
+    let record_id = before.history[0].workout_records[1].id.clone();
+
+    let cancelled = application.open().unwrap();
+    assert_eq!(before, cancelled);
+
+    let deleted = application
+        .confirm_workout_record_deletion(&record_id)
+        .unwrap();
+    assert_eq!("0 of 3 completed", deleted.progress);
+    assert_eq!("2 of 3 completed", deleted.history[0].progress);
+    assert_eq!(2, deleted.history[0].workout_records.len());
+    assert!(deleted.history[0]
+        .workout_records
+        .iter()
+        .all(|record| record.id != record_id));
+    assert!(deleted.history[0]
+        .primary_departures
+        .iter()
+        .all(|departure| departure.status == "Missed — no response"));
+
+    let relaunched = ExerciseApplication::new(profile, reminders, clock);
+    assert_eq!(deleted, relaunched.open().unwrap());
+    assert_eq!(
+        "That workout record is not available.",
+        relaunched
+            .confirm_workout_record_deletion(&record_id)
+            .unwrap_err()
+    );
+}
+
+#[test]
+fn deleting_current_success_restores_future_departures_and_reminders() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let application = ExerciseApplication::new(profile, reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    for (recorded_at, effort) in [
+        (1_786_366_800_000, "Easy"),
+        (1_786_370_400_000, "Moderate"),
+        (1_786_374_000_000, "Hard"),
+    ] {
+        clock.advance_to(recorded_at);
+        record_unscheduled_workout(&application, "Elliptical", "20", effort);
+    }
+    let success = application.open().unwrap();
+    assert_eq!(
+        Some("Weekly goal complete"),
+        success.weekly_goal_status.as_deref()
+    );
+    assert!(success
+        .primary_departures
+        .iter()
+        .all(|departure| departure.status == "Weekly goal met — no workout needed"));
+    let record_id = success.workout_records[1].id.clone();
+
+    let restored = application
+        .confirm_workout_record_deletion(&record_id)
+        .unwrap();
+    assert_eq!("2 of 3 completed", restored.progress);
+    assert_eq!(None, restored.weekly_goal_status);
+    assert_eq!(
+        Some("Monday, August 10 at 4:00 PM"),
+        restored.next_departure.as_deref()
+    );
+    assert!(restored
+        .primary_departures
+        .iter()
+        .all(|departure| departure.status == "Scheduled"));
+    assert!(restored
+        .fallback_departures
+        .iter()
+        .all(|departure| departure.availability == "Available"));
+    assert_eq!(2, restored.fallback_available_count);
+    assert_eq!(
+        2,
+        reminders
+            .scheduled
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|intent| intent.id == "exercise-departure-2026-08-10-primary-1")
+            .count()
+    );
+    assert!(reminders
+        .cancelled
+        .lock()
+        .unwrap()
+        .contains(&"exercise-departure-2026-08-10-primary-1".to_string()));
 }
 
 #[test]
@@ -994,7 +1256,7 @@ fn mixed_sources_complete_the_goal_and_allow_an_optional_extra_workout() {
     assert_eq!(None, success.next_departure);
     assert_eq!(None, success.departure_prompt);
     assert_eq!(
-        vec!["Unscheduled workout", "Primary workout", "Fallback workout"],
+        vec!["Fallback workout", "Primary workout", "Unscheduled workout"],
         success
             .workout_records
             .iter()
