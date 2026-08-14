@@ -38,6 +38,33 @@ The acceptance check relocates a copy, launches it through macOS Launch
 Services, verifies the arm64 application identity, and confirms that the app
 uses neither Python nor a listening TCP socket.
 
+## Exercise week and departure reminder
+
+The packaged app opens on the current exercise week. A fresh profile uses the
+established Monday, Wednesday, and Friday 4:00 PM primary departures, followed
+by Saturday and Sunday 4:00 PM fallback availability, with a weekly goal of
+three qualifying workouts. The dashboard shows current progress and the next
+planned departure before profile capability controls.
+
+The repeating routine, generated weeks, and native-reminder scheduling state
+are stored as versioned JSON at:
+
+```text
+~/Library/Application Support/com.tortillaflat.personal-dashboard/exercise.json
+```
+
+When notification permission is granted, the Rust application core emits the
+next departure reminder through the native platform adapter. macOS owns an
+already scheduled reminder, so closing the Personal Dashboard window does not
+cancel it. Exercise state and reminder eligibility do not depend on Python, a
+localhost server, a browser, an account, or network access.
+
+Run the new application-workflow seam with:
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml --test application_workflow
+```
+
 ## Minimal Mac profile
 
 The packaged app keeps its current minimal profile as versioned JSON at:

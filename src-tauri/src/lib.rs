@@ -3,18 +3,24 @@ use tauri::{Manager, State};
 #[cfg(target_os = "macos")]
 use tauri::{RunEvent, WindowEvent};
 
-#[cfg(target_os = "macos")]
-mod notification;
+mod clock;
+pub mod exercise;
+pub mod notification;
 #[cfg(target_os = "macos")]
 mod notification_platform;
 mod platform;
 mod profile;
 
+use clock::SystemClock;
+use exercise::{ExerciseApplication, ExerciseDashboardView};
 #[cfg(target_os = "macos")]
 use notification::{NotificationApplication, NotificationCapabilityView};
 #[cfg(target_os = "macos")]
-use notification_platform::{NativeNotificationPlatform, SystemClock};
-use platform::{profile_file_for, FileProfilePersistence, NativeFileExchange};
+use notification_platform::NativeNotificationPlatform;
+use platform::{
+    exercise_file_for, profile_file_for, FileExercisePersistence, FileProfilePersistence,
+    NativeFileExchange,
+};
 use profile::{ProfileAction, ProfileApplication, ProfileView};
 
 type DesktopProfileApplication =
@@ -22,6 +28,31 @@ type DesktopProfileApplication =
 #[cfg(target_os = "macos")]
 type DesktopNotificationApplication =
     NotificationApplication<NativeNotificationPlatform, SystemClock>;
+#[cfg(target_os = "macos")]
+type DesktopExerciseApplication =
+    ExerciseApplication<FileExercisePersistence, NativeNotificationPlatform, SystemClock>;
+
+#[cfg(not(target_os = "macos"))]
+struct UnavailableNotificationPlatform;
+
+#[cfg(not(target_os = "macos"))]
+impl notification::NotificationPlatform for UnavailableNotificationPlatform {
+    fn permission(&self) -> Result<notification::NotificationPermission, String> {
+        Ok(notification::NotificationPermission::Denied)
+    }
+
+    fn request_permission(&self) -> Result<notification::NotificationPermission, String> {
+        Ok(notification::NotificationPermission::Denied)
+    }
+
+    fn schedule(&self, _intent: notification::NotificationIntent) -> Result<(), String> {
+        Err("Native exercise reminders are not enabled on this platform yet.".into())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+type DesktopExerciseApplication =
+    ExerciseApplication<FileExercisePersistence, UnavailableNotificationPlatform, SystemClock>;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,6 +99,13 @@ fn import_profile(
 }
 
 #[tauri::command]
+fn exercise_dashboard(
+    application: State<'_, DesktopExerciseApplication>,
+) -> Result<ExerciseDashboardView, String> {
+    application.open()
+}
+
+#[tauri::command]
 #[cfg(target_os = "macos")]
 fn notification_state(
     application: State<'_, DesktopNotificationApplication>,
@@ -100,7 +138,20 @@ pub fn run() {
             let profile_file = profile_file_for(&app_handle)?;
             app.manage(ProfileApplication::new(
                 FileProfilePersistence::new(profile_file),
-                NativeFileExchange::new(app_handle),
+                NativeFileExchange::new(app_handle.clone()),
+            ));
+            let exercise_file = exercise_file_for(&app_handle)?;
+            #[cfg(target_os = "macos")]
+            app.manage(ExerciseApplication::new(
+                FileExercisePersistence::new(exercise_file),
+                NativeNotificationPlatform::new(),
+                SystemClock,
+            ));
+            #[cfg(not(target_os = "macos"))]
+            app.manage(ExerciseApplication::new(
+                FileExercisePersistence::new(exercise_file),
+                UnavailableNotificationPlatform,
+                SystemClock,
             ));
             #[cfg(target_os = "macos")]
             app.manage(NotificationApplication::new(
@@ -124,6 +175,7 @@ pub fn run() {
             update_profile_label,
             export_profile,
             import_profile,
+            exercise_dashboard,
             notification_state,
             request_notification_permission,
             schedule_capability_notification
@@ -135,7 +187,8 @@ pub fn run() {
         profile_state,
         update_profile_label,
         export_profile,
-        import_profile
+        import_profile,
+        exercise_dashboard
     ]);
 
     let application = application

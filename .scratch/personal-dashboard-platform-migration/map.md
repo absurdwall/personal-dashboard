@@ -8,16 +8,16 @@
 - [04 — Deliver a notification with the Mac window closed](issues/04-notify-with-mac-window-closed.md) — resolved
 - [05 — Install the minimal shell on the target iPad](issues/05-install-minimal-ipad-shell.md) — resolved
 - [06 — Install the minimal shell on the target Samsung phone](issues/06-install-minimal-samsung-shell.md) — resolved
-- [07 — Show the persistent exercise week and first departure reminder](issues/07-show-exercise-week-first-reminder.md) — ready-for-agent
+- [07 — Show the persistent exercise week and first departure reminder](issues/07-show-exercise-week-first-reminder.md) — resolved
+- [08 — Respond to departure or receive one follow-up](issues/08-respond-or-receive-follow-up.md) — ready-for-agent
+- [13 — Adjust this week or deliberately change the routine](issues/13-adjust-week-or-routine.md) — ready-for-agent
 
 ## Blocked tickets
 
-- [08 — Respond to departure or receive one follow-up](issues/08-respond-or-receive-follow-up.md) — blocked by 07
 - [09 — Record a workout through the established flow](issues/09-record-workout-established-flow.md) — blocked by 08
 - [10 — Recover or skip a planned workout](issues/10-recover-or-skip-workout.md) — blocked by 09
 - [11 — Complete the weekly goal with any qualifying workout](issues/11-complete-weekly-goal.md) — blocked by 10
 - [12 — Close the week and repeat the routine](issues/12-close-week-repeat-routine.md) — blocked by 11
-- [13 — Adjust this week or deliberately change the routine](issues/13-adjust-week-or-routine.md) — blocked by 07
 - [14 — Review, correct, and delete workout history](issues/14-review-correct-delete-history.md) — blocked by 11
 - [15 — Back up and restore the complete profile](issues/15-back-up-restore-profile.md) — blocked by 12, 13, 14
 - [16 — Move the authoritative profile safely](issues/16-move-authoritative-profile.md) — blocked by 15

@@ -35,19 +35,37 @@
           </div>
         </div>
 
-        <div class="readiness-panel">
-          <p class="readiness-kicker">Native Mac foundation</p>
-          <h3>The Personal Dashboard shell is ready.</h3>
-          <p>
-            Established exercise workflows will move here incrementally while
-            the completed baseline remains recoverable.
+        <section class="exercise-dashboard" aria-labelledby="exercise-progress">
+          <div class="progress-copy">
+            <p id="exercise-week" class="readiness-kicker">Loading this week…</p>
+            <h3 id="exercise-progress">Loading exercise progress…</h3>
+          </div>
+          <div class="next-departure">
+            <p>Next departure</p>
+            <strong id="next-departure">Loading…</strong>
+          </div>
+          <div class="schedule-grid">
+            <section class="schedule-card" aria-labelledby="primary-departures-heading">
+              <h4 id="primary-departures-heading">Primary departures</h4>
+              <ol id="primary-departures" class="departure-list"></ol>
+            </section>
+            <section class="schedule-card" aria-labelledby="fallback-departures-heading">
+              <div class="schedule-card-heading">
+                <h4 id="fallback-departures-heading">Fallback availability</h4>
+                <span id="fallback-count" class="availability-count">—</span>
+              </div>
+              <ol id="fallback-departures" class="departure-list"></ol>
+            </section>
+          </div>
+          <p id="exercise-reminder-status" class="exercise-reminder-status" role="status" aria-live="polite">
+            Preparing the next departure reminder…
           </p>
-        </div>
+        </section>
 
         <section class="profile-panel" aria-labelledby="profile-heading">
           <div class="profile-copy">
-            <p class="section-label">Local profile capability</p>
-            <h3 id="profile-heading">This Mac keeps one versioned profile.</h3>
+            <p class="section-label">Local profile</p>
+            <h3 id="profile-heading">This device keeps one versioned profile.</h3>
             <p>
               The label below is saved as app-owned JSON. Export creates a
               portable copy; import validates a selected copy before replacing
@@ -85,12 +103,12 @@
 
         <section class="notification-panel" aria-labelledby="notification-heading">
           <div class="notification-copy">
-            <p class="section-label">Mac lifecycle capability</p>
-            <h3 id="notification-heading">Prove delivery with this window closed.</h3>
+            <p class="section-label">Departure reminders</p>
+            <h3 id="notification-heading">Stay on time with the window closed.</h3>
             <p>
-              Grant notification permission, schedule one bounded capability
-              message, then close this window with the red window control. The
-              app stays available in the Dock and delivers through macOS.
+              Personal Dashboard schedules the next exercise departure through
+              the device notification system. Grant access once; the app does
+              not need an open window to deliver an already scheduled reminder.
             </p>
           </div>
 
@@ -101,22 +119,25 @@
                 <dd id="notification-permission">Checking…</dd>
               </div>
               <div>
-                <dt>Scheduled delivery</dt>
-                <dd id="notification-scheduled-time">Not scheduled</dd>
+                <dt>Next planned departure</dt>
+                <dd id="notification-scheduled-time">Loading…</dd>
               </div>
             </dl>
             <div class="notification-actions">
               <button id="request-notification-permission" type="button">
                 Allow notifications
               </button>
-              <button
-                id="schedule-capability-notification"
-                type="button"
-                class="secondary-button"
-                disabled
-              >
-                Schedule for 10 seconds
-              </button>
+              <details class="capability-check">
+                <summary>Run notification capability check</summary>
+                <button
+                  id="schedule-capability-notification"
+                  type="button"
+                  class="secondary-button"
+                  disabled
+                >
+                  Schedule for 10 seconds
+                </button>
+              </details>
             </div>
             <p
               id="notification-status"

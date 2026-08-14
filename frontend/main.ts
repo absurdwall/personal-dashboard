@@ -14,6 +14,29 @@ type ProfileAction = Readonly<{
   message: string;
 }>;
 
+type PrimaryDeparture = Readonly<{
+  id: string;
+  day: string;
+  time: string;
+}>;
+
+type FallbackDeparture = PrimaryDeparture & Readonly<{
+  availability: string;
+}>;
+
+type ExerciseDashboardView = Readonly<{
+  productName: string;
+  featureArea: string;
+  schemaVersion: number;
+  weekLabel: string;
+  progress: string;
+  nextDeparture: string | null;
+  primaryDepartures: readonly PrimaryDeparture[];
+  fallbackDepartures: readonly FallbackDeparture[];
+  fallbackAvailableCount: number;
+  reminderMessage: string;
+}>;
+
 type NotificationPermission =
   | "prompt"
   | "granted"
@@ -36,6 +59,15 @@ declare global {
 }
 
 const runtimeStatus = document.querySelector<HTMLElement>("#runtime-status");
+const exerciseWeek = document.querySelector<HTMLElement>("#exercise-week");
+const exerciseProgress = document.querySelector<HTMLElement>("#exercise-progress");
+const nextDeparture = document.querySelector<HTMLElement>("#next-departure");
+const primaryDepartures = document.querySelector<HTMLOListElement>("#primary-departures");
+const fallbackDepartures = document.querySelector<HTMLOListElement>("#fallback-departures");
+const fallbackCount = document.querySelector<HTMLElement>("#fallback-count");
+const exerciseReminderStatus = document.querySelector<HTMLElement>(
+  "#exercise-reminder-status",
+);
 const profileForm = document.querySelector<HTMLFormElement>("#profile-form");
 const profileLabel = document.querySelector<HTMLInputElement>("#profile-label");
 const profileLabelDisplay = document.querySelector<HTMLOutputElement>(
@@ -58,6 +90,77 @@ const requestNotificationPermissionButton = document.querySelector<HTMLButtonEle
 const scheduleCapabilityNotificationButton = document.querySelector<HTMLButtonElement>(
   "#schedule-capability-notification",
 );
+
+function departureItem(
+  departure: PrimaryDeparture,
+  status?: string,
+): HTMLLIElement {
+  const item = document.createElement("li");
+  const timing = document.createElement("span");
+  const day = document.createElement("strong");
+  const time = document.createElement("span");
+  day.textContent = departure.day;
+  time.textContent = departure.time;
+  timing.append(day, time);
+  item.append(timing);
+  if (status) {
+    const availability = document.createElement("span");
+    availability.className = "availability";
+    availability.textContent = status;
+    item.append(availability);
+  }
+  return item;
+}
+
+function renderExerciseDashboard(view: ExerciseDashboardView): void {
+  if (exerciseWeek) {
+    exerciseWeek.textContent = `Week of ${view.weekLabel}`;
+  }
+  if (exerciseProgress) {
+    exerciseProgress.textContent = view.progress;
+  }
+  if (nextDeparture) {
+    nextDeparture.textContent =
+      view.nextDeparture ?? "No primary departures remaining this week";
+  }
+  if (primaryDepartures) {
+    primaryDepartures.replaceChildren(
+      ...view.primaryDepartures.map((departure) => departureItem(departure)),
+    );
+  }
+  if (fallbackDepartures) {
+    fallbackDepartures.replaceChildren(
+      ...view.fallbackDepartures.map((departure) =>
+        departureItem(departure, departure.availability),
+      ),
+    );
+  }
+  if (fallbackCount) {
+    fallbackCount.textContent = `${view.fallbackAvailableCount} available`;
+  }
+  if (exerciseReminderStatus) {
+    exerciseReminderStatus.textContent = view.reminderMessage;
+  }
+  if (notificationScheduledTime) {
+    notificationScheduledTime.textContent = view.nextDeparture ?? "None this week";
+  }
+}
+
+async function refreshExerciseDashboard(): Promise<void> {
+  try {
+    const dashboard =
+      await window.__TAURI__.core.invoke<ExerciseDashboardView>("exercise_dashboard");
+    renderExerciseDashboard(dashboard);
+  } catch (error) {
+    if (exerciseReminderStatus) {
+      exerciseReminderStatus.textContent = errorMessage(
+        error,
+        "The exercise dashboard could not be loaded.",
+      );
+      exerciseReminderStatus.dataset.state = "error";
+    }
+  }
+}
 
 function renderProfile(profile: ProfileView): void {
   if (profileLabel) {
@@ -105,15 +208,6 @@ function renderNotificationCapability(view: NotificationCapabilityView): void {
   if (notificationPermission) {
     notificationPermission.textContent = permissionLabel(view.permission);
   }
-  if (notificationScheduledTime) {
-    notificationScheduledTime.textContent = view.scheduledForEpochMillis
-      ? new Date(view.scheduledForEpochMillis).toLocaleTimeString([], {
-          hour: "numeric",
-          minute: "2-digit",
-          second: "2-digit",
-        })
-      : "Not scheduled";
-  }
   if (requestNotificationPermissionButton) {
     requestNotificationPermissionButton.disabled = false;
     requestNotificationPermissionButton.textContent =
@@ -140,6 +234,9 @@ async function refreshNotificationCapability(): Promise<void> {
     const notification =
       await window.__TAURI__.core.invoke<NotificationCapabilityView>("notification_state");
     renderNotificationCapability(notification);
+    if (notification.permission === "granted") {
+      await refreshExerciseDashboard();
+    }
   } catch (error) {
     showNotificationError(error);
   }
@@ -205,9 +302,11 @@ async function connectToApplication(): Promise<void> {
   }
 
   try {
+    await refreshExerciseDashboard();
+
     const profile = await window.__TAURI__.core.invoke<ProfileView>("profile_state");
     renderProfile(profile);
-    showProfileStatus("Profile loaded from this Mac.");
+    showProfileStatus("Profile loaded from this device.");
   } catch (error) {
     showProfileStatus(profileErrorMessage(error), "error");
   }
@@ -227,7 +326,7 @@ profileForm?.addEventListener("submit", (event) => {
         { profileLabel: profileLabel.value },
       );
       renderProfile(profile);
-      showProfileStatus("Profile label saved on this Mac.");
+      showProfileStatus("Profile label saved on this device.");
     } catch (error) {
       showProfileStatus(profileErrorMessage(error), "error");
     }
@@ -255,6 +354,7 @@ scheduleCapabilityNotificationButton?.addEventListener("click", () => {
 });
 
 window.addEventListener("focus", () => {
+  void refreshExerciseDashboard();
   void refreshNotificationCapability();
 });
 

@@ -11,11 +11,14 @@ pub enum NotificationPermission {
     Denied,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NotificationIntent {
+    pub id: String,
     pub deliver_at_epoch_millis: i64,
-    pub title: &'static str,
-    pub body: &'static str,
+    pub title: String,
+    pub body: String,
+    pub detail: String,
 }
 
 pub trait NotificationPlatform: Send + Sync {
@@ -87,9 +90,11 @@ impl<N: NotificationPlatform, C: Clock> NotificationApplication<N, C> {
 
         let deliver_at_epoch_millis = self.clock.now_epoch_millis() + CAPABILITY_DELAY_MILLIS;
         self.platform.schedule(NotificationIntent {
+            id: "personal-dashboard-capability".into(),
             deliver_at_epoch_millis,
-            title: "Personal Dashboard",
-            body: "Mac notification capability delivered while the window was closed.",
+            title: "Personal Dashboard".into(),
+            body: "Mac notification capability delivered while the window was closed.".into(),
+            detail: String::new(),
         })?;
         *self.scheduled_for_epoch_millis.lock().unwrap() = Some(deliver_at_epoch_millis);
 
@@ -189,9 +194,11 @@ mod tests {
         assert_eq!("Capability notification scheduled.", result.message);
         assert_eq!(
             vec![NotificationIntent {
+                id: "personal-dashboard-capability".into(),
                 deliver_at_epoch_millis: 1_010_000,
-                title: "Personal Dashboard",
-                body: "Mac notification capability delivered while the window was closed.",
+                title: "Personal Dashboard".into(),
+                body: "Mac notification capability delivered while the window was closed.".into(),
+                detail: String::new(),
             }],
             *platform.scheduled.lock().unwrap()
         );

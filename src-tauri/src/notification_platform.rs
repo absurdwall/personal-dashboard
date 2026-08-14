@@ -1,6 +1,4 @@
-use crate::notification::{
-    Clock, NotificationIntent, NotificationPermission, NotificationPlatform,
-};
+use crate::notification::{NotificationIntent, NotificationPermission, NotificationPlatform};
 use block2::RcBlock;
 use objc2::runtime::Bool;
 use objc2_foundation::NSString;
@@ -11,17 +9,6 @@ use objc2_user_notifications::{
 };
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{ptr::NonNull, sync::mpsc};
-
-pub struct SystemClock;
-
-impl Clock for SystemClock {
-    fn now_epoch_millis(&self) -> i64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("the system clock must be after the Unix epoch")
-            .as_millis() as i64
-    }
-}
 
 pub struct NativeNotificationPlatform;
 
@@ -83,14 +70,19 @@ fn schedule_macos_notification(intent: NotificationIntent) -> Result<(), String>
         .saturating_sub(now_epoch_millis) as f64
         / 1_000.0;
     let content = UNMutableNotificationContent::new();
-    content.setTitle(&NSString::from_str(intent.title));
-    content.setBody(&NSString::from_str(intent.body));
+    content.setTitle(&NSString::from_str(&intent.title));
+    let body = if intent.detail.is_empty() {
+        intent.body
+    } else {
+        format!("{} {}", intent.body, intent.detail)
+    };
+    content.setBody(&NSString::from_str(&body));
     let trigger = UNTimeIntervalNotificationTrigger::triggerWithTimeInterval_repeats(
         delay_seconds.max(1.0),
         false,
     );
     let request = UNNotificationRequest::requestWithIdentifier_content_trigger(
-        &NSString::from_str("personal-dashboard-capability"),
+        &NSString::from_str(&intent.id),
         &content,
         Some(&trigger),
     );
