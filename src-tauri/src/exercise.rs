@@ -1,7 +1,8 @@
 use crate::notification::{NotificationIntent, NotificationPermission, NotificationPlatform};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
-const EXERCISE_SCHEMA_VERSION: u32 = 2;
+const EXERCISE_SCHEMA_VERSION: u32 = 3;
 const WEEKLY_GOAL: u32 = 3;
 const DEPARTURE_HOUR: i64 = 16;
 const FOLLOW_UP_DELAY_MILLIS: i64 = 15 * 60 * 1_000;
@@ -22,7 +23,6 @@ const MONTH_NAMES: [&str; 12] = [
     "November",
     "December",
 ];
-
 pub trait ExercisePersistence: Send + Sync {
     fn load(&self) -> Result<Option<Vec<u8>>, String>;
     fn save(&self, document: &[u8]) -> Result<(), String>;
@@ -39,6 +39,8 @@ struct ExerciseState {
     schema_version: u32,
     routine: Routine,
     weeks: Vec<ExerciseWeek>,
+    #[serde(default)]
+    workout_draft: Option<WorkoutDraft>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -66,7 +68,145 @@ struct ExerciseWeek {
     completed_count: u32,
     primary_departures: Vec<PlannedDeparture>,
     fallback_departures: Vec<PlannedDeparture>,
+    #[serde(default)]
+    workout_records: Vec<WorkoutRecord>,
 }
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct WorkoutDraft {
+    slot_id: String,
+    activity: Option<WorkoutActivity>,
+    duration: Option<WorkoutDuration>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct WorkoutRecord {
+    id: String,
+    source_slot_id: String,
+    recorded_at_epoch_millis: i64,
+    activity: WorkoutActivity,
+    duration: WorkoutDuration,
+    effort: PerceivedEffort,
+}
+
+trait WorkoutChoice: Copy + Sized + 'static {
+    const ALL: &'static [Self];
+
+    fn label(self) -> &'static str;
+
+    fn from_label(label: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|choice| choice.label() == label)
+    }
+}
+
+macro_rules! persist_workout_choice {
+    ($choice:ty) => {
+        impl Serialize for $choice {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                serializer.serialize_str(self.label())
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $choice {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let label = String::deserialize(deserializer)?;
+                Self::from_label(&label)
+                    .ok_or_else(|| serde::de::Error::custom("unsupported workout choice"))
+            }
+        }
+    };
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum WorkoutActivity {
+    Elliptical,
+    WeightTraining,
+    OtherExercise,
+}
+
+impl WorkoutChoice for WorkoutActivity {
+    const ALL: &'static [Self] = &[Self::Elliptical, Self::WeightTraining, Self::OtherExercise];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Elliptical => "Elliptical",
+            Self::WeightTraining => "Weight training",
+            Self::OtherExercise => "Other exercise",
+        }
+    }
+}
+persist_workout_choice!(WorkoutActivity);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum WorkoutDuration {
+    Under20,
+    Minutes20,
+    Minutes30,
+    Minutes45,
+    Minutes60Plus,
+}
+
+impl WorkoutChoice for WorkoutDuration {
+    const ALL: &'static [Self] = &[
+        Self::Under20,
+        Self::Minutes20,
+        Self::Minutes30,
+        Self::Minutes45,
+        Self::Minutes60Plus,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Under20 => "Under 20",
+            Self::Minutes20 => "20",
+            Self::Minutes30 => "30",
+            Self::Minutes45 => "45",
+            Self::Minutes60Plus => "60+ minutes",
+        }
+    }
+}
+persist_workout_choice!(WorkoutDuration);
+
+impl WorkoutDuration {
+    fn qualifies(self) -> bool {
+        self != Self::Under20
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PerceivedEffort {
+    VeryEasy,
+    Easy,
+    Moderate,
+    Hard,
+    VeryHard,
+}
+
+impl WorkoutChoice for PerceivedEffort {
+    const ALL: &'static [Self] = &[
+        Self::VeryEasy,
+        Self::Easy,
+        Self::Moderate,
+        Self::Hard,
+        Self::VeryHard,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::VeryEasy => "Very easy",
+            Self::Easy => "Easy",
+            Self::Moderate => "Moderate",
+            Self::Hard => "Hard",
+            Self::VeryHard => "Very hard",
+        }
+    }
+}
+persist_workout_choice!(PerceivedEffort);
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -144,6 +284,34 @@ pub struct DepartureConfirmationView {
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct WorkoutPromptView {
+    pub slot_id: String,
+    pub heading: String,
+    pub action: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkoutRecordingView {
+    pub slot_id: String,
+    pub heading: String,
+    pub guidance: String,
+    pub choice_name: String,
+    pub choices: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkoutRecordView {
+    pub id: String,
+    pub activity: String,
+    pub duration: String,
+    pub effort: String,
+    pub outcome: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExerciseDashboardView {
     pub product_name: String,
     pub feature_area: String,
@@ -158,6 +326,9 @@ pub struct ExerciseDashboardView {
     pub reminder_message: String,
     pub departure_prompt: Option<DeparturePromptView>,
     pub departure_confirmation: Option<DepartureConfirmationView>,
+    pub workout_prompt: Option<WorkoutPromptView>,
+    pub workout_recording: Option<WorkoutRecordingView>,
+    pub workout_records: Vec<WorkoutRecordView>,
 }
 
 pub struct ExerciseApplication<P, N, C> {
@@ -318,6 +489,97 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         self.open()
     }
 
+    pub fn start_workout_record(&self, slot_id: &str) -> Result<ExerciseDashboardView, String> {
+        let now = self.clock.now_epoch_millis();
+        let (mut state, _) = self.current_state()?;
+        if state.workout_draft.is_some() {
+            return Err("A workout record is already in progress.".into());
+        }
+        let week = current_week(&state, &self.clock, now)?;
+        recordable_departure(week, slot_id, now)?;
+        state.workout_draft = Some(WorkoutDraft {
+            slot_id: slot_id.into(),
+            activity: None,
+            duration: None,
+        });
+        self.save_state(&state)?;
+        self.open()
+    }
+
+    pub fn choose_workout_activity(
+        &self,
+        slot_id: &str,
+        activity: &str,
+    ) -> Result<ExerciseDashboardView, String> {
+        let activity = WorkoutActivity::from_label(activity)
+            .ok_or_else(|| "That workout activity is not available.".to_string())?;
+        let (mut state, _) = self.current_state()?;
+        let draft = workout_draft_for(&mut state, slot_id)?;
+        if draft.activity.is_some() {
+            return Err("The workout activity has already been selected.".into());
+        }
+        draft.activity = Some(activity);
+        self.save_state(&state)?;
+        self.open()
+    }
+
+    pub fn choose_workout_duration(
+        &self,
+        slot_id: &str,
+        duration: &str,
+    ) -> Result<ExerciseDashboardView, String> {
+        let duration = WorkoutDuration::from_label(duration)
+            .ok_or_else(|| "That workout duration is not available.".to_string())?;
+        let (mut state, _) = self.current_state()?;
+        let draft = workout_draft_for(&mut state, slot_id)?;
+        if draft.activity.is_none() || draft.duration.is_some() {
+            return Err("The workout duration is not ready for selection.".into());
+        }
+        draft.duration = Some(duration);
+        self.save_state(&state)?;
+        self.open()
+    }
+
+    pub fn complete_workout_record(
+        &self,
+        slot_id: &str,
+        effort: &str,
+    ) -> Result<ExerciseDashboardView, String> {
+        let effort = PerceivedEffort::from_label(effort)
+            .ok_or_else(|| "That perceived effort is not available.".to_string())?;
+        let now = self.clock.now_epoch_millis();
+        let (mut state, _) = self.current_state()?;
+        let draft = state
+            .workout_draft
+            .as_ref()
+            .filter(|draft| draft.slot_id == slot_id)
+            .ok_or_else(|| "No workout record is in progress.".to_string())?;
+        let activity = draft
+            .activity
+            .ok_or_else(|| "The workout activity has not been selected.".to_string())?;
+        let duration = draft
+            .duration
+            .ok_or_else(|| "The workout duration has not been selected.".to_string())?;
+        let week = current_week_mut(&mut state, &self.clock, now)?;
+        recordable_departure(week, slot_id, now)?;
+        week.workout_records.push(WorkoutRecord {
+            id: format!("{slot_id}-workout"),
+            source_slot_id: slot_id.into(),
+            recorded_at_epoch_millis: now,
+            activity,
+            duration,
+            effort,
+        });
+        week.completed_count = week
+            .workout_records
+            .iter()
+            .filter(|record| record.duration.qualifies())
+            .count() as u32;
+        state.workout_draft = None;
+        self.save_state(&state)?;
+        self.open()
+    }
+
     fn current_state(&self) -> Result<(ExerciseState, bool), String> {
         match self.persistence.load()? {
             Some(document) => parse_state(&document),
@@ -342,11 +604,12 @@ impl ExerciseState {
                 fallback: routine_departures(&FALLBACK_DAYS),
             },
             weeks: Vec::new(),
+            workout_draft: None,
         }
     }
 
     fn validate(mut self) -> Result<Self, String> {
-        if self.schema_version == 1 {
+        if self.schema_version == 1 || self.schema_version == 2 {
             self.schema_version = EXERCISE_SCHEMA_VERSION;
         } else if self.schema_version != EXERCISE_SCHEMA_VERSION {
             return Err(format!(
@@ -357,7 +620,74 @@ impl ExerciseState {
         if self.routine != ExerciseState::new().routine {
             return Err("The saved exercise routine is not supported yet.".into());
         }
+        self.validate_workouts()?;
         Ok(self)
+    }
+
+    fn validate_workouts(&self) -> Result<(), String> {
+        for week in &self.weeks {
+            let mut record_ids = HashSet::new();
+            let mut source_slot_ids = HashSet::new();
+            for record in &week.workout_records {
+                let source = week
+                    .primary_departures
+                    .iter()
+                    .find(|departure| departure.id == record.source_slot_id);
+                let valid_source = source.is_some_and(|departure| {
+                    departure.status == DepartureStatus::Leaving
+                        && departure
+                            .record_workout_prompt_due_at_epoch_millis
+                            .is_some()
+                        && departure
+                            .record_workout_reminder_scheduled_at_epoch_millis
+                            .is_some()
+                });
+                if !record_ids.insert(record.id.as_str())
+                    || !source_slot_ids.insert(record.source_slot_id.as_str())
+                    || record.id != format!("{}-workout", record.source_slot_id)
+                    || !valid_source
+                {
+                    return Err("The saved workout data is not valid.".into());
+                }
+            }
+            let qualifying_count = week
+                .workout_records
+                .iter()
+                .filter(|record| record.duration.qualifies())
+                .count() as u32;
+            if week.completed_count != qualifying_count {
+                return Err("The saved workout data is not valid.".into());
+            }
+        }
+
+        if let Some(draft) = &self.workout_draft {
+            if draft.duration.is_some() && draft.activity.is_none() {
+                return Err("The saved workout data is not valid.".into());
+            }
+            let source = self.weeks.iter().find_map(|week| {
+                week.primary_departures
+                    .iter()
+                    .find(|departure| departure.id == draft.slot_id)
+                    .map(|departure| (week, departure))
+            });
+            let valid_source = source.is_some_and(|(week, departure)| {
+                departure.status == DepartureStatus::Leaving
+                    && departure
+                        .record_workout_prompt_due_at_epoch_millis
+                        .is_some()
+                    && departure
+                        .record_workout_reminder_scheduled_at_epoch_millis
+                        .is_some()
+                    && !week
+                        .workout_records
+                        .iter()
+                        .any(|record| record.source_slot_id == draft.slot_id)
+            });
+            if !valid_source {
+                return Err("The saved workout data is not valid.".into());
+            }
+        }
+        Ok(())
     }
 }
 
@@ -401,6 +731,7 @@ fn make_week<C: ExerciseClock>(routine: &Routine, clock: &C, week_start_day: i64
             "fallback",
             DepartureStatus::Available,
         ),
+        workout_records: Vec::new(),
     }
 }
 
@@ -536,7 +867,151 @@ fn dashboard_view(
         reminder_message,
         departure_prompt: departure_prompt(week, now),
         departure_confirmation: departure_confirmation(week, clock),
+        workout_prompt: workout_prompt(state, week, now),
+        workout_recording: workout_recording(state),
+        workout_records: week
+            .workout_records
+            .iter()
+            .map(|record| WorkoutRecordView {
+                id: record.id.clone(),
+                activity: record.activity.label().into(),
+                duration: record.duration.label().into(),
+                effort: record.effort.label().into(),
+                outcome: if record.duration.qualifies() {
+                    "Counts toward weekly progress".into()
+                } else {
+                    "Short effort — does not count toward weekly progress".into()
+                },
+            })
+            .collect(),
     }
+}
+
+fn current_week<'a>(
+    state: &'a ExerciseState,
+    clock: &impl ExerciseClock,
+    now: i64,
+) -> Result<&'a ExerciseWeek, String> {
+    let week_key = current_week_key(clock, now);
+    state
+        .weeks
+        .iter()
+        .find(|week| week.week_start == week_key)
+        .ok_or_else(|| "The current exercise week is unavailable.".to_string())
+}
+
+fn current_week_mut<'a>(
+    state: &'a mut ExerciseState,
+    clock: &impl ExerciseClock,
+    now: i64,
+) -> Result<&'a mut ExerciseWeek, String> {
+    let week_key = current_week_key(clock, now);
+    state
+        .weeks
+        .iter_mut()
+        .find(|week| week.week_start == week_key)
+        .ok_or_else(|| "The current exercise week is unavailable.".to_string())
+}
+
+fn current_week_key(clock: &impl ExerciseClock, now: i64) -> String {
+    let week_start_day = local_day_number(clock, now) - local_weekday(clock, now);
+    date_from_day_number(week_start_day).iso_date()
+}
+
+fn recordable_departure<'a>(
+    week: &'a ExerciseWeek,
+    slot_id: &str,
+    now: i64,
+) -> Result<&'a PlannedDeparture, String> {
+    week.primary_departures
+        .iter()
+        .find(|departure| {
+            departure.id == slot_id
+                && departure.status == DepartureStatus::Leaving
+                && departure
+                    .record_workout_prompt_due_at_epoch_millis
+                    .is_some_and(|due_at| due_at <= now)
+                && departure
+                    .record_workout_reminder_scheduled_at_epoch_millis
+                    .is_some()
+                && !week
+                    .workout_records
+                    .iter()
+                    .any(|record| record.source_slot_id == slot_id)
+        })
+        .ok_or_else(|| "That workout prompt is not awaiting a record.".to_string())
+}
+
+fn workout_draft_for<'a>(
+    state: &'a mut ExerciseState,
+    slot_id: &str,
+) -> Result<&'a mut WorkoutDraft, String> {
+    state
+        .workout_draft
+        .as_mut()
+        .filter(|draft| draft.slot_id == slot_id)
+        .ok_or_else(|| "No workout record is in progress.".to_string())
+}
+
+fn workout_prompt(
+    state: &ExerciseState,
+    week: &ExerciseWeek,
+    now: i64,
+) -> Option<WorkoutPromptView> {
+    if state.workout_draft.is_some() {
+        return None;
+    }
+    week.primary_departures
+        .iter()
+        .filter(|departure| recordable_departure(week, &departure.id, now).is_ok())
+        .max_by_key(|departure| departure.record_workout_prompt_due_at_epoch_millis)
+        .map(|departure| WorkoutPromptView {
+            slot_id: departure.id.clone(),
+            heading: "Ready to save this workout?".into(),
+            action: "Done".into(),
+        })
+}
+
+fn workout_recording(state: &ExerciseState) -> Option<WorkoutRecordingView> {
+    let draft = state.workout_draft.as_ref()?;
+    let (heading, guidance, choice_name, choices) = if draft.activity.is_none() {
+        (
+            "What activity did you do?",
+            "Choose one activity.",
+            "activity",
+            WorkoutActivity::ALL
+                .iter()
+                .map(|choice| choice.label().into())
+                .collect(),
+        )
+    } else if draft.duration.is_none() {
+        (
+            "About how long was the workout?",
+            "Choose the closest duration.",
+            "duration",
+            WorkoutDuration::ALL
+                .iter()
+                .map(|choice| choice.label().into())
+                .collect(),
+        )
+    } else {
+        (
+            "How strenuous did this workout feel?",
+            "Choose the description that fits. Harder is not better.",
+            "effort",
+            PerceivedEffort::ALL
+                .iter()
+                .map(|choice| choice.label().into())
+                .collect(),
+        )
+    };
+    Some(WorkoutRecordingView {
+        slot_id: draft.slot_id.clone(),
+        heading: heading.into(),
+        guidance: guidance.into(),
+        choice_name: choice_name.into(),
+        choices,
+    })
 }
 
 fn departure_prompt(week: &ExerciseWeek, now: i64) -> Option<DeparturePromptView> {

@@ -248,7 +248,9 @@ h1 {
 }
 
 .departure-response,
-.departure-confirmation {
+.departure-confirmation,
+.workout-flow,
+.workout-history {
   margin-top: 1.3rem;
   padding: 1.4rem;
   border: 1px solid rgb(245 241 229 / 28%);
@@ -257,7 +259,9 @@ h1 {
   color: #183329;
 }
 
-.departure-response h4 {
+.departure-response h4,
+.workout-flow h4,
+.workout-history h4 {
   margin: 0 0 1rem;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 1.45rem;
@@ -267,6 +271,36 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   gap: 0.7rem;
+}
+
+.workout-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.workout-guidance {
+  color: #52605a;
+}
+
+.workout-records {
+  display: grid;
+  gap: 0.7rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.workout-records li {
+  display: grid;
+  gap: 0.25rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgb(24 51 41 / 12%);
+}
+
+.workout-records span {
+  color: #52605a;
+  font-size: 0.82rem;
 }
 
 .unresolved-status {
@@ -279,7 +313,9 @@ h1 {
   gap: 0.3rem;
 }
 
-.departure-confirmation[hidden] {
+.departure-confirmation[hidden],
+.workout-flow[hidden],
+.workout-history[hidden] {
   display: none;
 }
 

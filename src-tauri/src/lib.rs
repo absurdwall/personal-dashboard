@@ -119,6 +119,41 @@ fn respond_to_departure(
 }
 
 #[tauri::command]
+fn start_workout_record(
+    application: State<'_, DesktopExerciseApplication>,
+    slot_id: String,
+) -> Result<ExerciseDashboardView, String> {
+    application.start_workout_record(&slot_id)
+}
+
+#[tauri::command]
+fn choose_workout_activity(
+    application: State<'_, DesktopExerciseApplication>,
+    slot_id: String,
+    activity: String,
+) -> Result<ExerciseDashboardView, String> {
+    application.choose_workout_activity(&slot_id, &activity)
+}
+
+#[tauri::command]
+fn choose_workout_duration(
+    application: State<'_, DesktopExerciseApplication>,
+    slot_id: String,
+    duration: String,
+) -> Result<ExerciseDashboardView, String> {
+    application.choose_workout_duration(&slot_id, &duration)
+}
+
+#[tauri::command]
+fn complete_workout_record(
+    application: State<'_, DesktopExerciseApplication>,
+    slot_id: String,
+    effort: String,
+) -> Result<ExerciseDashboardView, String> {
+    application.complete_workout_record(&slot_id, &effort)
+}
+
+#[tauri::command]
 #[cfg(target_os = "macos")]
 fn notification_state(
     application: State<'_, DesktopNotificationApplication>,
@@ -190,6 +225,10 @@ pub fn run() {
             import_profile,
             exercise_dashboard,
             respond_to_departure,
+            start_workout_record,
+            choose_workout_activity,
+            choose_workout_duration,
+            complete_workout_record,
             notification_state,
             request_notification_permission,
             schedule_capability_notification
@@ -203,7 +242,11 @@ pub fn run() {
         export_profile,
         import_profile,
         exercise_dashboard,
-        respond_to_departure
+        respond_to_departure,
+        start_workout_record,
+        choose_workout_activity,
+        choose_workout_duration,
+        complete_workout_record
     ]);
 
     let application = application

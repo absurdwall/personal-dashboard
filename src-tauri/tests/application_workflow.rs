@@ -53,6 +53,27 @@ struct ReminderOutbox {
     cancelled: Arc<Mutex<Vec<String>>>,
 }
 
+#[derive(Clone, Default)]
+struct DeniedReminderOutbox;
+
+impl NotificationPlatform for DeniedReminderOutbox {
+    fn permission(&self) -> Result<NotificationPermission, String> {
+        Ok(NotificationPermission::Denied)
+    }
+
+    fn request_permission(&self) -> Result<NotificationPermission, String> {
+        Ok(NotificationPermission::Denied)
+    }
+
+    fn schedule(&self, _intent: NotificationIntent) -> Result<(), String> {
+        panic!("a denied reminder platform must not schedule")
+    }
+
+    fn cancel(&self, _id: &str) -> Result<(), String> {
+        Ok(())
+    }
+}
+
 impl NotificationPlatform for ReminderOutbox {
     fn permission(&self) -> Result<NotificationPermission, String> {
         Ok(NotificationPermission::Granted)
@@ -85,7 +106,7 @@ fn fresh_exercise_week_survives_relaunch_and_emits_the_first_departure_reminder(
 
     assert_eq!("Personal Dashboard", dashboard.product_name);
     assert_eq!("Exercise tracking", dashboard.feature_area);
-    assert_eq!(2, dashboard.schema_version);
+    assert_eq!(3, dashboard.schema_version);
     assert_eq!(
         "Monday, August 10 – Sunday, August 16",
         dashboard.week_label
@@ -202,6 +223,226 @@ fn confirming_departure_persists_the_response_and_one_record_workout_reminder() 
         relaunched
             .respond_to_departure("2026-08-10-primary-1", "leaving-for-gym")
             .unwrap_err()
+    );
+}
+
+#[test]
+fn eligible_departure_records_a_qualifying_workout_in_four_established_selections() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    application
+        .respond_to_departure("2026-08-10-primary-1", "leaving-for-gym")
+        .unwrap();
+    assert_eq!(
+        1,
+        reminders
+            .scheduled
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|intent| intent.body == "Record workout.")
+            .count()
+    );
+
+    clock.advance_to(1_786_397_340_000);
+    assert_eq!(None, application.open().unwrap().workout_prompt);
+
+    clock.advance_to(1_786_397_400_000);
+    let ready = application.open().unwrap();
+    let prompt = ready.workout_prompt.as_ref().unwrap();
+    assert_eq!("2026-08-10-primary-1", prompt.slot_id);
+    assert_eq!("Ready to save this workout?", prompt.heading);
+    assert_eq!("Done", prompt.action);
+
+    let activity = application
+        .start_workout_record("2026-08-10-primary-1")
+        .unwrap();
+    let recording = activity.workout_recording.as_ref().unwrap();
+    assert_eq!("What activity did you do?", recording.heading);
+    assert_eq!("Choose one activity.", recording.guidance);
+    assert_eq!("activity", recording.choice_name);
+    assert_eq!(
+        vec!["Elliptical", "Weight training", "Other exercise"],
+        recording.choices
+    );
+
+    let duration = application
+        .choose_workout_activity("2026-08-10-primary-1", "Elliptical")
+        .unwrap();
+    let recording = duration.workout_recording.as_ref().unwrap();
+    assert_eq!("About how long was the workout?", recording.heading);
+    assert_eq!("Choose the closest duration.", recording.guidance);
+    assert_eq!("duration", recording.choice_name);
+    assert_eq!(
+        vec!["Under 20", "20", "30", "45", "60+ minutes"],
+        recording.choices
+    );
+
+    let effort = application
+        .choose_workout_duration("2026-08-10-primary-1", "20")
+        .unwrap();
+    let recording = effort.workout_recording.as_ref().unwrap();
+    assert_eq!("How strenuous did this workout feel?", recording.heading);
+    assert_eq!(
+        "Choose the description that fits. Harder is not better.",
+        recording.guidance
+    );
+    assert_eq!("effort", recording.choice_name);
+    assert_eq!(
+        vec!["Very easy", "Easy", "Moderate", "Hard", "Very hard"],
+        recording.choices
+    );
+
+    let completed = application
+        .complete_workout_record("2026-08-10-primary-1", "Moderate")
+        .unwrap();
+    assert_eq!("1 of 3 completed", completed.progress);
+    assert_eq!(None, completed.workout_prompt);
+    assert_eq!(None, completed.workout_recording);
+    assert_eq!(1, completed.workout_records.len());
+    let record = &completed.workout_records[0];
+    assert_eq!("Elliptical", record.activity);
+    assert_eq!("20", record.duration);
+    assert_eq!("Moderate", record.effort);
+    assert_eq!("Counts toward weekly progress", record.outcome);
+
+    let relaunched = ExerciseApplication::new(profile, reminders, clock);
+    assert_eq!(completed, relaunched.open().unwrap());
+    assert_eq!(
+        "No workout record is in progress.",
+        relaunched
+            .complete_workout_record("2026-08-10-primary-1", "Moderate")
+            .unwrap_err()
+    );
+    assert_eq!("1 of 3 completed", relaunched.open().unwrap().progress);
+}
+
+#[test]
+fn in_progress_recording_survives_relaunch_and_retains_a_short_effort() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_564_800_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    application
+        .respond_to_departure("2026-08-10-primary-2", "leaving-for-gym")
+        .unwrap();
+    clock.advance_to(1_786_570_200_000);
+    application
+        .start_workout_record("2026-08-10-primary-2")
+        .unwrap();
+    assert_eq!(
+        "The workout duration is not ready for selection.",
+        application
+            .choose_workout_duration("2026-08-10-primary-2", "Under 20")
+            .unwrap_err()
+    );
+    assert_eq!(
+        "That workout activity is not available.",
+        application
+            .choose_workout_activity("2026-08-10-primary-2", "Cycling")
+            .unwrap_err()
+    );
+    let duration = application
+        .choose_workout_activity("2026-08-10-primary-2", "Other exercise")
+        .unwrap();
+
+    let relaunched = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+    assert_eq!(duration, relaunched.open().unwrap());
+    assert_eq!(
+        vec!["Under 20", "20", "30", "45", "60+ minutes"],
+        relaunched
+            .open()
+            .unwrap()
+            .workout_recording
+            .unwrap()
+            .choices
+    );
+
+    relaunched
+        .choose_workout_duration("2026-08-10-primary-2", "Under 20")
+        .unwrap();
+    let completed = relaunched
+        .complete_workout_record("2026-08-10-primary-2", "Very easy")
+        .unwrap();
+    assert_eq!("0 of 3 completed", completed.progress);
+    assert_eq!(1, completed.workout_records.len());
+    let record = &completed.workout_records[0];
+    assert_eq!("Other exercise", record.activity);
+    assert_eq!("Under 20", record.duration);
+    assert_eq!("Very easy", record.effort);
+    assert_eq!(
+        "Short effort — does not count toward weekly progress",
+        record.outcome
+    );
+
+    let reopened = ExerciseApplication::new(profile, reminders, clock)
+        .open()
+        .unwrap();
+    assert_eq!(completed, reopened);
+    assert_eq!(1, reopened.workout_records.len());
+    assert_eq!("0 of 3 completed", reopened.progress);
+}
+
+#[test]
+fn workout_prompt_requires_a_scheduled_record_reminder() {
+    let profile = IsolatedProfile::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile, DeniedReminderOutbox, clock.clone());
+
+    application.open().unwrap();
+    application
+        .respond_to_departure("2026-08-10-primary-1", "leaving-for-gym")
+        .unwrap();
+    clock.advance_to(1_786_397_400_000);
+
+    assert_eq!(None, application.open().unwrap().workout_prompt);
+    assert_eq!(
+        "That workout prompt is not awaiting a record.",
+        application
+            .start_workout_record("2026-08-10-primary-1")
+            .unwrap_err()
+    );
+}
+
+#[test]
+fn invalid_persisted_workout_data_is_rejected_by_the_application_boundary() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders, clock.clone());
+
+    application.open().unwrap();
+    application
+        .respond_to_departure("2026-08-10-primary-1", "leaving-for-gym")
+        .unwrap();
+    clock.advance_to(1_786_397_400_000);
+    application
+        .start_workout_record("2026-08-10-primary-1")
+        .unwrap();
+    application
+        .choose_workout_activity("2026-08-10-primary-1", "Elliptical")
+        .unwrap();
+    application
+        .choose_workout_duration("2026-08-10-primary-1", "20")
+        .unwrap();
+    application
+        .complete_workout_record("2026-08-10-primary-1", "Moderate")
+        .unwrap();
+
+    let document = profile.document.lock().unwrap().clone().unwrap();
+    let mut invalid: serde_json::Value = serde_json::from_slice(&document).unwrap();
+    invalid["weeks"][0]["completed_count"] = 0.into();
+    *profile.document.lock().unwrap() = Some(serde_json::to_vec(&invalid).unwrap());
+
+    assert_eq!(
+        "The saved workout data is not valid.",
+        application.open().unwrap_err()
     );
 }
 

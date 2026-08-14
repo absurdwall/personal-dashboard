@@ -28,6 +28,28 @@ type FallbackDeparture = DepartureTiming & Readonly<{
   availability: string;
 }>;
 
+type WorkoutPrompt = Readonly<{
+  slotId: string;
+  heading: string;
+  action: string;
+}>;
+
+type WorkoutRecording = Readonly<{
+  slotId: string;
+  heading: string;
+  guidance: string;
+  choiceName: "activity" | "duration" | "effort";
+  choices: readonly string[];
+}>;
+
+type WorkoutRecord = Readonly<{
+  id: string;
+  activity: string;
+  duration: string;
+  effort: string;
+  outcome: string;
+}>;
+
 type ExerciseDashboardView = Readonly<{
   productName: string;
   featureArea: string;
@@ -49,6 +71,9 @@ type ExerciseDashboardView = Readonly<{
     message: string;
     nextPrompt: string;
   }> | null;
+  workoutPrompt: WorkoutPrompt | null;
+  workoutRecording: WorkoutRecording | null;
+  workoutRecords: readonly WorkoutRecord[];
 }>;
 
 type NotificationPermission =
@@ -99,6 +124,25 @@ const departureConfirmationMessage = document.querySelector<HTMLElement>(
 const departureConfirmationNextPrompt = document.querySelector<HTMLElement>(
   "#departure-confirmation-next-prompt",
 );
+const workoutPrompt = document.querySelector<HTMLElement>("#workout-prompt");
+const workoutPromptHeading = document.querySelector<HTMLElement>(
+  "#workout-prompt-heading",
+);
+const workoutPromptAction = document.querySelector<HTMLElement>(
+  "#workout-prompt-action",
+);
+const workoutRecording = document.querySelector<HTMLElement>("#workout-recording");
+const workoutRecordingHeading = document.querySelector<HTMLElement>(
+  "#workout-recording-heading",
+);
+const workoutRecordingGuidance = document.querySelector<HTMLElement>(
+  "#workout-recording-guidance",
+);
+const workoutRecordingChoices = document.querySelector<HTMLElement>(
+  "#workout-recording-choices",
+);
+const workoutHistory = document.querySelector<HTMLElement>("#workout-history");
+const workoutRecords = document.querySelector<HTMLOListElement>("#workout-records");
 const profileForm = document.querySelector<HTMLFormElement>("#profile-form");
 const profileLabel = document.querySelector<HTMLInputElement>("#profile-label");
 const profileLabelDisplay = document.querySelector<HTMLOutputElement>(
@@ -141,6 +185,20 @@ function departureItem(
     item.append(availability);
   }
   return item;
+}
+
+function workoutButton(
+  label: string,
+  slotId: string,
+  choiceName: "start" | WorkoutRecording["choiceName"],
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.dataset.slotId = slotId;
+  button.dataset.choiceName = choiceName;
+  button.dataset.choice = label;
+  return button;
 }
 
 function renderExerciseDashboard(view: ExerciseDashboardView): void {
@@ -210,6 +268,54 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
       }
     }
   }
+  if (workoutPrompt && workoutPromptHeading && workoutPromptAction) {
+    workoutPrompt.hidden = view.workoutPrompt === null;
+    workoutPromptAction.replaceChildren();
+    if (view.workoutPrompt) {
+      workoutPromptHeading.textContent = view.workoutPrompt.heading;
+      workoutPromptAction.append(
+        workoutButton(view.workoutPrompt.action, view.workoutPrompt.slotId, "start"),
+      );
+    }
+  }
+  if (
+    workoutRecording &&
+    workoutRecordingHeading &&
+    workoutRecordingGuidance &&
+    workoutRecordingChoices
+  ) {
+    workoutRecording.hidden = view.workoutRecording === null;
+    workoutRecordingChoices.replaceChildren();
+    if (view.workoutRecording) {
+      workoutRecordingHeading.textContent = view.workoutRecording.heading;
+      workoutRecordingGuidance.textContent = view.workoutRecording.guidance;
+      workoutRecordingChoices.append(
+        ...view.workoutRecording.choices.map((choice) =>
+          workoutButton(
+            choice,
+            view.workoutRecording!.slotId,
+            view.workoutRecording!.choiceName,
+          ),
+        ),
+      );
+    }
+  }
+  if (workoutHistory && workoutRecords) {
+    workoutHistory.hidden = view.workoutRecords.length === 0;
+    workoutRecords.replaceChildren(
+      ...view.workoutRecords.map((record) => {
+        const item = document.createElement("li");
+        const activity = document.createElement("strong");
+        const details = document.createElement("span");
+        const outcome = document.createElement("span");
+        activity.textContent = record.activity;
+        details.textContent = `${record.duration} · ${record.effort}`;
+        outcome.textContent = record.outcome;
+        item.append(activity, details, outcome);
+        return item;
+      }),
+    );
+  }
 }
 
 async function respondToDeparture(slotId: string, action: string): Promise<void> {
@@ -233,6 +339,41 @@ async function respondToDeparture(slotId: string, action: string): Promise<void>
     departureActions?.querySelectorAll("button").forEach((button) => {
       button.removeAttribute("disabled");
     });
+  }
+}
+
+function setWorkoutActionsDisabled(disabled: boolean): void {
+  [workoutPromptAction, workoutRecordingChoices].forEach((container) => {
+    container?.querySelectorAll("button").forEach((button) => {
+      button.toggleAttribute("disabled", disabled);
+    });
+  });
+}
+
+async function runWorkoutAction(
+  command:
+    | "start_workout_record"
+    | "choose_workout_activity"
+    | "choose_workout_duration"
+    | "complete_workout_record",
+  arguments_: Record<string, string>,
+): Promise<void> {
+  setWorkoutActionsDisabled(true);
+  try {
+    const dashboard = await window.__TAURI__.core.invoke<ExerciseDashboardView>(
+      command,
+      arguments_,
+    );
+    renderExerciseDashboard(dashboard);
+  } catch (error) {
+    if (exerciseReminderStatus) {
+      exerciseReminderStatus.textContent = errorMessage(
+        error,
+        "The workout record could not be saved.",
+      );
+      exerciseReminderStatus.dataset.state = "error";
+    }
+    setWorkoutActionsDisabled(false);
   }
 }
 
@@ -449,6 +590,28 @@ departureActions?.addEventListener("click", (event) => {
     void respondToDeparture(button.dataset.slotId, button.dataset.action);
   }
 });
+
+function handleWorkoutChoice(event: Event): void {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
+  const slotId = button?.dataset.slotId;
+  const choiceName = button?.dataset.choiceName;
+  const choice = button?.dataset.choice;
+  if (!slotId || !choiceName || !choice) {
+    return;
+  }
+  if (choiceName === "start") {
+    void runWorkoutAction("start_workout_record", { slotId });
+  } else if (choiceName === "activity") {
+    void runWorkoutAction("choose_workout_activity", { slotId, activity: choice });
+  } else if (choiceName === "duration") {
+    void runWorkoutAction("choose_workout_duration", { slotId, duration: choice });
+  } else if (choiceName === "effort") {
+    void runWorkoutAction("complete_workout_record", { slotId, effort: choice });
+  }
+}
+
+workoutPromptAction?.addEventListener("click", handleWorkoutChoice);
+workoutRecordingChoices?.addEventListener("click", handleWorkoutChoice);
 
 window.addEventListener("focus", () => {
   void refreshExerciseDashboard();
