@@ -14,13 +14,17 @@ type ProfileAction = Readonly<{
   message: string;
 }>;
 
-type PrimaryDeparture = Readonly<{
+type DepartureTiming = Readonly<{
   id: string;
   day: string;
   time: string;
 }>;
 
-type FallbackDeparture = PrimaryDeparture & Readonly<{
+type PrimaryDeparture = DepartureTiming & Readonly<{
+  status: string;
+}>;
+
+type FallbackDeparture = DepartureTiming & Readonly<{
   availability: string;
 }>;
 
@@ -35,6 +39,16 @@ type ExerciseDashboardView = Readonly<{
   fallbackDepartures: readonly FallbackDeparture[];
   fallbackAvailableCount: number;
   reminderMessage: string;
+  departurePrompt: Readonly<{
+    slotId: string;
+    heading: string;
+    actions: readonly string[];
+    status: string | null;
+  }> | null;
+  departureConfirmation: Readonly<{
+    message: string;
+    nextPrompt: string;
+  }> | null;
 }>;
 
 type NotificationPermission =
@@ -68,6 +82,23 @@ const fallbackCount = document.querySelector<HTMLElement>("#fallback-count");
 const exerciseReminderStatus = document.querySelector<HTMLElement>(
   "#exercise-reminder-status",
 );
+const departurePrompt = document.querySelector<HTMLElement>("#departure-prompt");
+const departurePromptHeading = document.querySelector<HTMLElement>(
+  "#departure-prompt-heading",
+);
+const departureResponseStatus = document.querySelector<HTMLElement>(
+  "#departure-response-status",
+);
+const departureActions = document.querySelector<HTMLElement>("#departure-actions");
+const departureConfirmation = document.querySelector<HTMLElement>(
+  "#departure-confirmation",
+);
+const departureConfirmationMessage = document.querySelector<HTMLElement>(
+  "#departure-confirmation-message",
+);
+const departureConfirmationNextPrompt = document.querySelector<HTMLElement>(
+  "#departure-confirmation-next-prompt",
+);
 const profileForm = document.querySelector<HTMLFormElement>("#profile-form");
 const profileLabel = document.querySelector<HTMLInputElement>("#profile-label");
 const profileLabelDisplay = document.querySelector<HTMLOutputElement>(
@@ -92,7 +123,7 @@ const scheduleCapabilityNotificationButton = document.querySelector<HTMLButtonEl
 );
 
 function departureItem(
-  departure: PrimaryDeparture,
+  departure: DepartureTiming,
   status?: string,
 ): HTMLLIElement {
   const item = document.createElement("li");
@@ -125,7 +156,9 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
   }
   if (primaryDepartures) {
     primaryDepartures.replaceChildren(
-      ...view.primaryDepartures.map((departure) => departureItem(departure)),
+      ...view.primaryDepartures.map((departure) =>
+        departureItem(departure, departure.status),
+      ),
     );
   }
   if (fallbackDepartures) {
@@ -140,9 +173,66 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
   }
   if (exerciseReminderStatus) {
     exerciseReminderStatus.textContent = view.reminderMessage;
+    delete exerciseReminderStatus.dataset.state;
   }
   if (notificationScheduledTime) {
     notificationScheduledTime.textContent = view.nextDeparture ?? "None this week";
+  }
+  if (departurePrompt && departurePromptHeading && departureActions) {
+    departurePrompt.hidden = view.departurePrompt === null;
+    departureActions.replaceChildren();
+    if (view.departurePrompt) {
+      departurePromptHeading.textContent = view.departurePrompt.heading;
+      if (departureResponseStatus) {
+        departureResponseStatus.textContent = view.departurePrompt.status ?? "";
+        departureResponseStatus.hidden = view.departurePrompt.status === null;
+      }
+      departureActions.replaceChildren(
+        ...view.departurePrompt.actions.map((action) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.textContent = action;
+          button.dataset.slotId = view.departurePrompt?.slotId;
+          button.dataset.action = action.toLowerCase().replaceAll(" ", "-");
+          return button;
+        }),
+      );
+    }
+  }
+  if (departureConfirmation) {
+    departureConfirmation.hidden = view.departureConfirmation === null;
+    if (view.departureConfirmation) {
+      if (departureConfirmationMessage) {
+        departureConfirmationMessage.textContent = view.departureConfirmation.message;
+      }
+      if (departureConfirmationNextPrompt) {
+        departureConfirmationNextPrompt.textContent = view.departureConfirmation.nextPrompt;
+      }
+    }
+  }
+}
+
+async function respondToDeparture(slotId: string, action: string): Promise<void> {
+  departureActions?.querySelectorAll("button").forEach((button) => {
+    button.setAttribute("disabled", "");
+  });
+  try {
+    const dashboard = await window.__TAURI__.core.invoke<ExerciseDashboardView>(
+      "respond_to_departure",
+      { slotId, action },
+    );
+    renderExerciseDashboard(dashboard);
+  } catch (error) {
+    if (exerciseReminderStatus) {
+      exerciseReminderStatus.textContent = errorMessage(
+        error,
+        "The departure response could not be saved.",
+      );
+      exerciseReminderStatus.dataset.state = "error";
+    }
+    departureActions?.querySelectorAll("button").forEach((button) => {
+      button.removeAttribute("disabled");
+    });
   }
 }
 
@@ -351,6 +441,13 @@ requestNotificationPermissionButton?.addEventListener("click", () => {
 
 scheduleCapabilityNotificationButton?.addEventListener("click", () => {
   void runNotificationAction("schedule_capability_notification");
+});
+
+departureActions?.addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
+  if (button?.dataset.slotId && button.dataset.action) {
+    void respondToDeparture(button.dataset.slotId, button.dataset.action);
+  }
 });
 
 window.addEventListener("focus", () => {

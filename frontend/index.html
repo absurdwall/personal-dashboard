@@ -60,6 +60,16 @@
           <p id="exercise-reminder-status" class="exercise-reminder-status" role="status" aria-live="polite">
             Preparing the next departure reminder…
           </p>
+          <section id="departure-prompt" class="departure-response" aria-labelledby="departure-prompt-heading" hidden>
+            <p class="section-label">Departure prompt</p>
+            <h4 id="departure-prompt-heading"></h4>
+            <p id="departure-response-status" class="unresolved-status" hidden></p>
+            <div id="departure-actions" class="departure-actions"></div>
+          </section>
+          <section id="departure-confirmation" class="departure-confirmation" aria-live="polite" hidden>
+            <strong id="departure-confirmation-message"></strong>
+            <span id="departure-confirmation-next-prompt"></span>
+          </section>
         </section>
 
         <section class="profile-panel" aria-labelledby="profile-heading">

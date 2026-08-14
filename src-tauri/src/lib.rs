@@ -48,6 +48,10 @@ impl notification::NotificationPlatform for UnavailableNotificationPlatform {
     fn schedule(&self, _intent: notification::NotificationIntent) -> Result<(), String> {
         Err("Native exercise reminders are not enabled on this platform yet.".into())
     }
+
+    fn cancel(&self, _id: &str) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -103,6 +107,15 @@ fn exercise_dashboard(
     application: State<'_, DesktopExerciseApplication>,
 ) -> Result<ExerciseDashboardView, String> {
     application.open()
+}
+
+#[tauri::command]
+fn respond_to_departure(
+    application: State<'_, DesktopExerciseApplication>,
+    slot_id: String,
+    action: String,
+) -> Result<ExerciseDashboardView, String> {
+    application.respond_to_departure(&slot_id, &action)
 }
 
 #[tauri::command]
@@ -176,6 +189,7 @@ pub fn run() {
             export_profile,
             import_profile,
             exercise_dashboard,
+            respond_to_departure,
             notification_state,
             request_notification_permission,
             schedule_capability_notification
@@ -188,7 +202,8 @@ pub fn run() {
         update_profile_label,
         export_profile,
         import_profile,
-        exercise_dashboard
+        exercise_dashboard,
+        respond_to_departure
     ]);
 
     let application = application

@@ -247,6 +247,42 @@ h1 {
   color: #ffd0c7;
 }
 
+.departure-response,
+.departure-confirmation {
+  margin-top: 1.3rem;
+  padding: 1.4rem;
+  border: 1px solid rgb(245 241 229 / 28%);
+  border-radius: 1rem;
+  background: #f8f5eb;
+  color: #183329;
+}
+
+.departure-response h4 {
+  margin: 0 0 1rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.45rem;
+}
+
+.departure-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.unresolved-status {
+  color: #7a3024;
+  font-weight: 750;
+}
+
+.departure-confirmation {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.departure-confirmation[hidden] {
+  display: none;
+}
+
 .profile-panel {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(20rem, 1.1fr);

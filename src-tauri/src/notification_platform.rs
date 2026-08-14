@@ -1,7 +1,7 @@
 use crate::notification::{NotificationIntent, NotificationPermission, NotificationPlatform};
 use block2::RcBlock;
 use objc2::runtime::Bool;
-use objc2_foundation::NSString;
+use objc2_foundation::{NSArray, NSString};
 use objc2_user_notifications::{
     UNAuthorizationOptions, UNAuthorizationStatus, UNMutableNotificationContent,
     UNNotificationRequest, UNNotificationSettings, UNTimeIntervalNotificationTrigger,
@@ -29,6 +29,11 @@ impl NotificationPlatform for NativeNotificationPlatform {
 
     fn schedule(&self, intent: NotificationIntent) -> Result<(), String> {
         schedule_macos_notification(intent)
+    }
+
+    fn cancel(&self, id: &str) -> Result<(), String> {
+        cancel_macos_notification(id);
+        Ok(())
     }
 }
 
@@ -89,6 +94,13 @@ fn schedule_macos_notification(intent: NotificationIntent) -> Result<(), String>
     UNUserNotificationCenter::currentNotificationCenter()
         .addNotificationRequest_withCompletionHandler(&request, None);
     Ok(())
+}
+
+fn cancel_macos_notification(id: &str) {
+    let identifier = NSString::from_str(id);
+    let identifiers = NSArray::from_slice(&[&*identifier]);
+    UNUserNotificationCenter::currentNotificationCenter()
+        .removePendingNotificationRequestsWithIdentifiers(&identifiers);
 }
 
 fn map_macos_permission(status: UNAuthorizationStatus) -> NotificationPermission {

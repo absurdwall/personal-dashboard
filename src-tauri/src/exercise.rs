@@ -1,9 +1,11 @@
 use crate::notification::{NotificationIntent, NotificationPermission, NotificationPlatform};
 use serde::{Deserialize, Serialize};
 
-const EXERCISE_SCHEMA_VERSION: u32 = 1;
+const EXERCISE_SCHEMA_VERSION: u32 = 2;
 const WEEKLY_GOAL: u32 = 3;
 const DEPARTURE_HOUR: i64 = 16;
+const FOLLOW_UP_DELAY_MILLIS: i64 = 15 * 60 * 1_000;
+const RECORD_WORKOUT_DELAY_MILLIS: i64 = 90 * 60 * 1_000;
 const PRIMARY_DAYS: [(i64, &str); 3] = [(0, "Monday"), (2, "Wednesday"), (4, "Friday")];
 const FALLBACK_DAYS: [(i64, &str); 2] = [(5, "Saturday"), (6, "Sunday")];
 const MONTH_NAMES: [&str; 12] = [
@@ -75,6 +77,14 @@ struct PlannedDeparture {
     departure_at_epoch_millis: i64,
     status: DepartureStatus,
     reminder_scheduled_at_epoch_millis: Option<i64>,
+    #[serde(default)]
+    follow_up_scheduled_at_epoch_millis: Option<i64>,
+    #[serde(default)]
+    departure_response: Option<DepartureResponse>,
+    #[serde(default)]
+    record_workout_prompt_due_at_epoch_millis: Option<i64>,
+    #[serde(default)]
+    record_workout_reminder_scheduled_at_epoch_millis: Option<i64>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
@@ -82,6 +92,20 @@ struct PlannedDeparture {
 enum DepartureStatus {
     Scheduled,
     Available,
+    Leaving,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct DepartureResponse {
+    outcome: DepartureOutcome,
+    recorded_at_epoch_millis: i64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum DepartureOutcome {
+    LeavingForGym,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -90,6 +114,7 @@ pub struct PrimaryDepartureView {
     pub id: String,
     pub day: String,
     pub time: String,
+    pub status: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -99,6 +124,22 @@ pub struct FallbackDepartureView {
     pub day: String,
     pub time: String,
     pub availability: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeparturePromptView {
+    pub slot_id: String,
+    pub heading: String,
+    pub actions: Vec<String>,
+    pub status: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DepartureConfirmationView {
+    pub message: String,
+    pub next_prompt: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -115,6 +156,8 @@ pub struct ExerciseDashboardView {
     pub fallback_available_count: usize,
     pub reminder_intent: Option<NotificationIntent>,
     pub reminder_message: String,
+    pub departure_prompt: Option<DeparturePromptView>,
+    pub departure_confirmation: Option<DepartureConfirmationView>,
 }
 
 pub struct ExerciseApplication<P, N, C> {
@@ -136,11 +179,9 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
 
     pub fn open(&self) -> Result<ExerciseDashboardView, String> {
         let now = self.clock.now_epoch_millis();
-        let mut state = self.current_state()?;
+        let (mut state, mut changed) = self.current_state()?;
         let week_start_day = local_day_number(&self.clock, now) - local_weekday(&self.clock, now);
         let week_key = date_from_day_number(week_start_day).iso_date();
-        let mut changed = false;
-
         if !state.weeks.iter().any(|week| week.week_start == week_key) {
             state
                 .weeks
@@ -160,15 +201,23 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
 
         if let Some(index) = next_index {
             let departure = &mut week.primary_departures[index];
-            reminder_message = if departure.reminder_scheduled_at_epoch_millis.is_some() {
+            reminder_message = if departure.reminder_scheduled_at_epoch_millis.is_some()
+                && departure.follow_up_scheduled_at_epoch_millis.is_some()
+            {
                 "Next departure reminder is scheduled.".into()
             } else {
                 match self.notifications.permission() {
                     Ok(NotificationPermission::Granted) => {
-                        let intent = reminder_intent(departure);
-                        self.notifications.schedule(intent)?;
-                        departure.reminder_scheduled_at_epoch_millis = Some(now);
-                        changed = true;
+                        if departure.reminder_scheduled_at_epoch_millis.is_none() {
+                            self.notifications.schedule(reminder_intent(departure))?;
+                            departure.reminder_scheduled_at_epoch_millis = Some(now);
+                            changed = true;
+                        }
+                        if departure.follow_up_scheduled_at_epoch_millis.is_none() {
+                            self.notifications.schedule(follow_up_intent(departure))?;
+                            departure.follow_up_scheduled_at_epoch_millis = Some(now);
+                            changed = true;
+                        }
                         "Next departure reminder is scheduled.".into()
                     }
                     Ok(NotificationPermission::Denied) => {
@@ -183,6 +232,23 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
             };
         }
 
+        if self.notifications.permission() == Ok(NotificationPermission::Granted) {
+            for departure in &mut week.primary_departures {
+                if departure.status == DepartureStatus::Leaving
+                    && departure
+                        .record_workout_reminder_scheduled_at_epoch_millis
+                        .is_none()
+                {
+                    if let Some(due_at) = departure.record_workout_prompt_due_at_epoch_millis {
+                        self.notifications
+                            .schedule(record_workout_intent(departure, due_at))?;
+                        departure.record_workout_reminder_scheduled_at_epoch_millis = Some(now);
+                        changed = true;
+                    }
+                }
+            }
+        }
+
         if changed {
             self.save_state(&state)?;
         }
@@ -195,16 +261,67 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         Ok(dashboard_view(
             &state,
             week,
+            &self.clock,
+            now,
             next_primary_departure_index(week, &self.clock, now),
             visible_reminder_intent,
             reminder_message,
         ))
     }
 
-    fn current_state(&self) -> Result<ExerciseState, String> {
+    pub fn respond_to_departure(
+        &self,
+        slot_id: &str,
+        action: &str,
+    ) -> Result<ExerciseDashboardView, String> {
+        if action != "leaving-for-gym" {
+            return Err("That departure response is not available yet.".into());
+        }
+
+        let now = self.clock.now_epoch_millis();
+        let (mut state, _) = self.current_state()?;
+        let week_start_day = local_day_number(&self.clock, now) - local_weekday(&self.clock, now);
+        let week_key = date_from_day_number(week_start_day).iso_date();
+        let week = state
+            .weeks
+            .iter_mut()
+            .find(|week| week.week_start == week_key)
+            .ok_or_else(|| "The current exercise week is unavailable.".to_string())?;
+        let departure = week
+            .primary_departures
+            .iter_mut()
+            .find(|departure| departure.id == slot_id)
+            .ok_or_else(|| "That departure is not part of the current week.".to_string())?;
+        if departure.status != DepartureStatus::Scheduled
+            || departure.departure_at_epoch_millis > now
+            || departure.departure_response.is_some()
+        {
+            return Err("That departure is not awaiting a response.".into());
+        }
+
+        let due_at = now + RECORD_WORKOUT_DELAY_MILLIS;
+        if self.notifications.permission()? == NotificationPermission::Granted {
+            self.notifications
+                .schedule(record_workout_intent(departure, due_at))?;
+            departure.record_workout_reminder_scheduled_at_epoch_millis = Some(now);
+        }
+        if departure.follow_up_scheduled_at_epoch_millis.is_some() {
+            self.notifications.cancel(&follow_up_intent(departure).id)?;
+        }
+        departure.status = DepartureStatus::Leaving;
+        departure.departure_response = Some(DepartureResponse {
+            outcome: DepartureOutcome::LeavingForGym,
+            recorded_at_epoch_millis: now,
+        });
+        departure.record_workout_prompt_due_at_epoch_millis = Some(due_at);
+        self.save_state(&state)?;
+        self.open()
+    }
+
+    fn current_state(&self) -> Result<(ExerciseState, bool), String> {
         match self.persistence.load()? {
             Some(document) => parse_state(&document),
-            None => Ok(ExerciseState::new()),
+            None => Ok((ExerciseState::new(), false)),
         }
     }
 
@@ -228,8 +345,10 @@ impl ExerciseState {
         }
     }
 
-    fn validate(self) -> Result<Self, String> {
-        if self.schema_version != EXERCISE_SCHEMA_VERSION {
+    fn validate(mut self) -> Result<Self, String> {
+        if self.schema_version == 1 {
+            self.schema_version = EXERCISE_SCHEMA_VERSION;
+        } else if self.schema_version != EXERCISE_SCHEMA_VERSION {
             return Err(format!(
                 "Unsupported exercise schema version: {}",
                 self.schema_version
@@ -242,10 +361,11 @@ impl ExerciseState {
     }
 }
 
-fn parse_state(document: &[u8]) -> Result<ExerciseState, String> {
-    serde_json::from_slice::<ExerciseState>(document)
-        .map_err(|_| "The local exercise state is not valid.".to_string())?
-        .validate()
+fn parse_state(document: &[u8]) -> Result<(ExerciseState, bool), String> {
+    let state = serde_json::from_slice::<ExerciseState>(document)
+        .map_err(|_| "The local exercise state is not valid.".to_string())?;
+    let migrated = state.schema_version != EXERCISE_SCHEMA_VERSION;
+    Ok((state.validate()?, migrated))
 }
 
 fn routine_departures(days: &[(i64, &str)]) -> Vec<RoutineDeparture> {
@@ -306,6 +426,10 @@ fn make_departures<C: ExerciseClock>(
             ),
             status,
             reminder_scheduled_at_epoch_millis: None,
+            follow_up_scheduled_at_epoch_millis: None,
+            departure_response: None,
+            record_workout_prompt_due_at_epoch_millis: None,
+            record_workout_reminder_scheduled_at_epoch_millis: None,
         })
         .collect()
 }
@@ -338,9 +462,31 @@ fn reminder_intent(departure: &PlannedDeparture) -> NotificationIntent {
     }
 }
 
+fn follow_up_intent(departure: &PlannedDeparture) -> NotificationIntent {
+    NotificationIntent {
+        id: format!("exercise-follow-up-{}", departure.id),
+        deliver_at_epoch_millis: departure.departure_at_epoch_millis + FOLLOW_UP_DELAY_MILLIS,
+        title: "Personal Dashboard".into(),
+        body: "A gentle follow-up: are you leaving for the gym?".into(),
+        detail: friendly_departure(departure),
+    }
+}
+
+fn record_workout_intent(departure: &PlannedDeparture, due_at: i64) -> NotificationIntent {
+    NotificationIntent {
+        id: format!("exercise-record-workout-{}", departure.id),
+        deliver_at_epoch_millis: due_at,
+        title: "Personal Dashboard".into(),
+        body: "Record workout.".into(),
+        detail: format!("Leaving confirmed {}", friendly_departure(departure)),
+    }
+}
+
 fn dashboard_view(
     state: &ExerciseState,
     week: &ExerciseWeek,
+    clock: &impl ExerciseClock,
+    now: i64,
     next_index: Option<usize>,
     reminder_intent: Option<NotificationIntent>,
     reminder_message: String,
@@ -372,6 +518,7 @@ fn dashboard_view(
                 id: departure.id.clone(),
                 day: departure.day.clone(),
                 time: "4:00 PM".into(),
+                status: departure_status(departure, now),
             })
             .collect(),
         fallback_departures: week
@@ -387,7 +534,91 @@ fn dashboard_view(
         fallback_available_count: week.fallback_departures.len(),
         reminder_intent,
         reminder_message,
+        departure_prompt: departure_prompt(week, now),
+        departure_confirmation: departure_confirmation(week, clock),
     }
+}
+
+fn departure_prompt(week: &ExerciseWeek, now: i64) -> Option<DeparturePromptView> {
+    week.primary_departures
+        .iter()
+        .filter(|departure| {
+            departure.status == DepartureStatus::Scheduled
+                && departure.reminder_scheduled_at_epoch_millis.is_some()
+                && departure.departure_at_epoch_millis <= now
+        })
+        .max_by_key(|departure| departure.departure_at_epoch_millis)
+        .map(|departure| DeparturePromptView {
+            slot_id: departure.id.clone(),
+            heading: "Time to leave for the gym".into(),
+            actions: vec![
+                "Leaving for gym".into(),
+                "Move to fallback".into(),
+                "Skip".into(),
+            ],
+            status: follow_up_is_due(departure, now).then(|| "Unresolved — no response".into()),
+        })
+}
+
+fn departure_confirmation(
+    week: &ExerciseWeek,
+    clock: &impl ExerciseClock,
+) -> Option<DepartureConfirmationView> {
+    week.primary_departures
+        .iter()
+        .filter(|departure| departure.status == DepartureStatus::Leaving)
+        .filter_map(|departure| {
+            Some((
+                departure
+                    .departure_response
+                    .as_ref()?
+                    .recorded_at_epoch_millis,
+                departure.record_workout_prompt_due_at_epoch_millis?,
+            ))
+        })
+        .max_by_key(|(recorded_at, _)| *recorded_at)
+        .map(|(_, due_at)| DepartureConfirmationView {
+            message: "Leaving for gym confirmed".into(),
+            next_prompt: format!(
+                "Record workout reminder at {}",
+                friendly_time(clock, due_at)
+            ),
+        })
+}
+
+fn departure_status(departure: &PlannedDeparture, now: i64) -> String {
+    if departure.status == DepartureStatus::Leaving {
+        "Leaving for gym confirmed".into()
+    } else if follow_up_is_due(departure, now) {
+        "Unresolved — no response".into()
+    } else if departure.status == DepartureStatus::Scheduled
+        && departure.departure_at_epoch_millis <= now
+    {
+        "Awaiting response".into()
+    } else {
+        "Scheduled".into()
+    }
+}
+
+fn follow_up_is_due(departure: &PlannedDeparture, now: i64) -> bool {
+    departure.status == DepartureStatus::Scheduled
+        && departure.departure_response.is_none()
+        && departure.follow_up_scheduled_at_epoch_millis.is_some()
+        && departure.departure_at_epoch_millis + FOLLOW_UP_DELAY_MILLIS <= now
+}
+
+fn friendly_time(clock: &impl ExerciseClock, epoch_millis: i64) -> String {
+    let local_seconds =
+        epoch_millis.div_euclid(1_000) + i64::from(clock.utc_offset_minutes_at(epoch_millis)) * 60;
+    let seconds_in_day = local_seconds.rem_euclid(86_400);
+    let hour = seconds_in_day.div_euclid(3_600);
+    let minute = seconds_in_day.rem_euclid(3_600).div_euclid(60);
+    let period = if hour < 12 { "AM" } else { "PM" };
+    let display_hour = match hour.rem_euclid(12) {
+        0 => 12,
+        value => value,
+    };
+    format!("{display_hour}:{minute:02} {period}")
 }
 
 fn friendly_departure(departure: &PlannedDeparture) -> String {

@@ -25,6 +25,7 @@ pub trait NotificationPlatform: Send + Sync {
     fn permission(&self) -> Result<NotificationPermission, String>;
     fn request_permission(&self) -> Result<NotificationPermission, String>;
     fn schedule(&self, intent: NotificationIntent) -> Result<(), String>;
+    fn cancel(&self, id: &str) -> Result<(), String>;
 }
 
 pub trait Clock: Send + Sync {
@@ -165,6 +166,10 @@ mod tests {
 
         fn schedule(&self, intent: NotificationIntent) -> Result<(), String> {
             self.scheduled.lock().unwrap().push(intent);
+            Ok(())
+        }
+
+        fn cancel(&self, _id: &str) -> Result<(), String> {
             Ok(())
         }
     }
