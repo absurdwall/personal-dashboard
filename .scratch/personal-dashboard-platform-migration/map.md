@@ -13,7 +13,7 @@
 - [09 — Record a workout through the established flow](issues/09-record-workout-established-flow.md) — resolved
 - [10 — Recover or skip a planned workout](issues/10-recover-or-skip-workout.md) — resolved
 - [11 — Complete the weekly goal with any qualifying workout](issues/11-complete-weekly-goal.md) — resolved
-- [12 — Close the week and repeat the routine](issues/12-close-week-repeat-routine.md) — ready-for-agent
+- [12 — Close the week and repeat the routine](issues/12-close-week-repeat-routine.md) — resolved
 - [13 — Adjust this week or deliberately change the routine](issues/13-adjust-week-or-routine.md) — ready-for-agent
 - [14 — Review, correct, and delete workout history](issues/14-review-correct-delete-history.md) — ready-for-agent
 

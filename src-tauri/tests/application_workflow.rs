@@ -135,7 +135,7 @@ fn fresh_exercise_week_survives_relaunch_and_emits_the_first_departure_reminder(
 
     assert_eq!("Personal Dashboard", dashboard.product_name);
     assert_eq!("Exercise tracking", dashboard.feature_area);
-    assert_eq!(5, dashboard.schema_version);
+    assert_eq!(6, dashboard.schema_version);
     assert_eq!(
         "Monday, August 10 – Sunday, August 16",
         dashboard.week_label
@@ -189,6 +189,200 @@ fn fresh_exercise_week_survives_relaunch_and_emits_the_first_departure_reminder(
     let relaunched = ExerciseApplication::new(profile, reminders.clone(), monday_morning);
     assert_eq!(dashboard, relaunched.open().unwrap());
     assert_eq!(2, reminders.scheduled.lock().unwrap().len());
+}
+
+#[test]
+fn week_rollover_closes_unanswered_departures_and_repeats_the_routine() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    clock.advance_to(1_786_971_600_000);
+    let rolled = application.open().unwrap();
+
+    assert_eq!("Monday, August 17 – Sunday, August 23", rolled.week_label);
+    assert_eq!("0 of 3 completed", rolled.progress);
+    assert_eq!(
+        Some("Monday, August 17 at 4:00 PM"),
+        rolled.next_departure.as_deref()
+    );
+    assert_eq!(1, rolled.history.len());
+    let previous = &rolled.history[0];
+    assert_eq!("Monday, August 10 – Sunday, August 16", previous.week_label);
+    assert_eq!("0 of 3 completed", previous.progress);
+    assert_eq!(
+        vec!["Missed — no response"; 3],
+        previous
+            .primary_departures
+            .iter()
+            .map(|departure| departure.status.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(previous
+        .primary_departures
+        .iter()
+        .all(|departure| !departure.status.contains("Skipped")));
+    assert!(reminders
+        .scheduled
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|intent| intent.id == "exercise-departure-2026-08-17-primary-1"));
+
+    let relaunched = ExerciseApplication::new(profile, reminders, clock.clone());
+    assert_eq!(rolled, relaunched.open().unwrap());
+
+    clock.advance_to(1_787_576_400_000);
+    let following_week = relaunched.open().unwrap();
+    assert_eq!(2, following_week.history.len());
+    assert_eq!(
+        "Monday, August 17 – Sunday, August 23",
+        following_week.history[0].week_label
+    );
+    assert_eq!(
+        "Monday, August 10 – Sunday, August 16",
+        following_week.history[1].week_label
+    );
+    assert!(following_week.history[1]
+        .primary_departures
+        .iter()
+        .all(|departure| departure.status == "Missed — no response"));
+}
+
+#[test]
+fn week_rollover_discards_an_abandoned_workout_draft_without_changing_the_routine() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let application = ExerciseApplication::new(profile, reminders, clock.clone());
+
+    application.open().unwrap();
+    application.start_unscheduled_workout_record().unwrap();
+    application
+        .choose_workout_activity("unscheduled", "Elliptical")
+        .unwrap();
+
+    clock.advance_to(1_786_971_600_000);
+    let rolled = application.open().unwrap();
+    assert_eq!(None, rolled.workout_recording);
+    assert_eq!(
+        vec!["Monday", "Wednesday", "Friday"],
+        rolled
+            .primary_departures
+            .iter()
+            .map(|departure| departure.day.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        vec!["Saturday", "Sunday"],
+        rolled
+            .fallback_departures
+            .iter()
+            .map(|departure| departure.day.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(application.start_unscheduled_workout_record().is_ok());
+}
+
+#[test]
+fn week_rollover_preserves_completed_short_moved_skipped_and_missed_history() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    application
+        .respond_to_departure("2026-08-10-primary-1", "leaving-for-gym")
+        .unwrap();
+    clock.advance_to(1_786_397_400_000);
+    application
+        .start_workout_record("2026-08-10-primary-1")
+        .unwrap();
+    application
+        .choose_workout_activity("2026-08-10-primary-1", "Elliptical")
+        .unwrap();
+    application
+        .choose_workout_duration("2026-08-10-primary-1", "20")
+        .unwrap();
+    application
+        .complete_workout_record("2026-08-10-primary-1", "Moderate")
+        .unwrap();
+    record_unscheduled_workout(&application, "Other exercise", "Under 20", "Easy");
+
+    clock.advance_to(1_786_564_800_000);
+    application.open().unwrap();
+    application
+        .confirm_departure_decision("2026-08-10-primary-2", "move-to-fallback", "Work ran late")
+        .unwrap();
+    clock.advance_to(1_786_737_600_000);
+    application.open().unwrap();
+    application
+        .confirm_departure_decision("2026-08-10-primary-3", "skip", "Another commitment")
+        .unwrap();
+
+    clock.advance_to(1_786_971_600_000);
+    let rolled = application.open().unwrap();
+    let previous = &rolled.history[0];
+    assert_eq!(
+        vec![
+            "Completed",
+            "Moved to Saturday · Work ran late",
+            "Skipped · Another commitment"
+        ],
+        previous
+            .primary_departures
+            .iter()
+            .map(|departure| departure.status.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        "Assigned from Wednesday · Missed — no response",
+        previous.fallback_departures[0].availability
+    );
+    assert_eq!(2, previous.workout_records.len());
+    assert_eq!("Elliptical", previous.workout_records[0].activity);
+    assert_eq!("Other exercise", previous.workout_records[1].activity);
+    assert_eq!(
+        "Short effort — does not count toward weekly progress",
+        previous.workout_records[1].outcome
+    );
+
+    let relaunched = ExerciseApplication::new(profile, reminders, clock);
+    assert_eq!(rolled, relaunched.open().unwrap());
+}
+
+#[test]
+fn week_rollover_preserves_goal_suppressed_slots_as_not_needed() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let application = ExerciseApplication::new(profile, reminders, clock.clone());
+
+    application.open().unwrap();
+    for effort in ["Easy", "Moderate", "Hard"] {
+        record_unscheduled_workout(&application, "Other exercise", "20", effort);
+    }
+
+    clock.advance_to(1_786_971_600_000);
+    let rolled = application.open().unwrap();
+    let previous = &rolled.history[0];
+    assert!(previous
+        .primary_departures
+        .iter()
+        .all(|departure| departure.status == "Weekly goal met — no workout needed"));
+    assert!(previous
+        .fallback_departures
+        .iter()
+        .all(|departure| { departure.availability == "Weekly goal met — no workout needed" }));
+    assert!(previous
+        .primary_departures
+        .iter()
+        .all(|departure| !departure.status.contains("Missed")));
+    assert_eq!("0 of 3 completed", rolled.progress);
+    assert_eq!(None, rolled.weekly_goal_status);
 }
 
 #[test]

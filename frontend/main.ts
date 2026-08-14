@@ -59,6 +59,14 @@ type WorkoutRecord = Readonly<{
   outcome: string;
 }>;
 
+type ExerciseWeekHistory = Readonly<{
+  weekLabel: string;
+  progress: string;
+  primaryDepartures: readonly PrimaryDeparture[];
+  fallbackDepartures: readonly FallbackDeparture[];
+  workoutRecords: readonly WorkoutRecord[];
+}>;
+
 type ExerciseDashboardView = Readonly<{
   productName: string;
   featureArea: string;
@@ -91,6 +99,7 @@ type ExerciseDashboardView = Readonly<{
   workoutPrompt: WorkoutPrompt | null;
   workoutRecording: WorkoutRecording | null;
   workoutRecords: readonly WorkoutRecord[];
+  history: readonly ExerciseWeekHistory[];
 }>;
 
 type NotificationPermission =
@@ -172,6 +181,10 @@ const workoutRecordingChoices = document.querySelector<HTMLElement>(
 );
 const workoutHistory = document.querySelector<HTMLElement>("#workout-history");
 const workoutRecords = document.querySelector<HTMLOListElement>("#workout-records");
+const exerciseHistory = document.querySelector<HTMLElement>("#exercise-history");
+const exerciseHistoryWeeks = document.querySelector<HTMLElement>(
+  "#exercise-history-weeks",
+);
 const profileForm = document.querySelector<HTMLFormElement>("#profile-form");
 const profileLabel = document.querySelector<HTMLInputElement>("#profile-label");
 const profileLabelDisplay = document.querySelector<HTMLOutputElement>(
@@ -228,6 +241,54 @@ function workoutButton(
   button.dataset.choiceName = choiceName;
   button.dataset.choice = label;
   return button;
+}
+
+function workoutRecordItem(record: WorkoutRecord): HTMLLIElement {
+  const item = document.createElement("li");
+  const activity = document.createElement("strong");
+  const details = document.createElement("span");
+  const outcome = document.createElement("span");
+  activity.textContent = record.activity;
+  details.textContent = `${record.source} · ${record.duration} · ${record.effort}`;
+  outcome.textContent = record.outcome;
+  item.append(activity, details, outcome);
+  return item;
+}
+
+function historyWeekItem(week: ExerciseWeekHistory): HTMLElement {
+  const article = document.createElement("article");
+  const heading = document.createElement("h5");
+  const progress = document.createElement("p");
+  const primaryHeading = document.createElement("h6");
+  const primary = document.createElement("ol");
+  const fallbackHeading = document.createElement("h6");
+  const fallback = document.createElement("ol");
+  heading.textContent = week.weekLabel;
+  progress.textContent = week.progress;
+  primaryHeading.textContent = "Primary departures";
+  fallbackHeading.textContent = "Fallback departures";
+  primary.className = "departure-list";
+  fallback.className = "departure-list";
+  primary.replaceChildren(
+    ...week.primaryDepartures.map((departure) =>
+      departureItem(departure, departure.status),
+    ),
+  );
+  fallback.replaceChildren(
+    ...week.fallbackDepartures.map((departure) =>
+      departureItem(departure, departure.availability),
+    ),
+  );
+  article.append(heading, progress, primaryHeading, primary, fallbackHeading, fallback);
+  if (week.workoutRecords.length > 0) {
+    const workoutHeading = document.createElement("h6");
+    const workouts = document.createElement("ol");
+    workoutHeading.textContent = "Recorded workouts";
+    workouts.className = "workout-records";
+    workouts.replaceChildren(...week.workoutRecords.map(workoutRecordItem));
+    article.append(workoutHeading, workouts);
+  }
+  return article;
 }
 
 function renderExerciseDashboard(view: ExerciseDashboardView): void {
@@ -361,18 +422,12 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
   if (workoutHistory && workoutRecords) {
     workoutHistory.hidden = view.workoutRecords.length === 0;
     workoutRecords.replaceChildren(
-      ...view.workoutRecords.map((record) => {
-        const item = document.createElement("li");
-        const activity = document.createElement("strong");
-        const details = document.createElement("span");
-        const outcome = document.createElement("span");
-        activity.textContent = record.activity;
-        details.textContent = `${record.source} · ${record.duration} · ${record.effort}`;
-        outcome.textContent = record.outcome;
-        item.append(activity, details, outcome);
-        return item;
-      }),
+      ...view.workoutRecords.map(workoutRecordItem),
     );
+  }
+  if (exerciseHistory && exerciseHistoryWeeks) {
+    exerciseHistory.hidden = view.history.length === 0;
+    exerciseHistoryWeeks.replaceChildren(...view.history.map(historyWeekItem));
   }
 }
 

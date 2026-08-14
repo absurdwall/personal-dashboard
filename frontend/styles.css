@@ -277,7 +277,8 @@ h1 {
 .departure-response,
 .departure-confirmation,
 .workout-flow,
-.workout-history {
+.workout-history,
+.exercise-history {
   margin-top: 1.3rem;
   padding: 1.4rem;
   border: 1px solid rgb(245 241 229 / 28%);
@@ -288,7 +289,8 @@ h1 {
 
 .departure-response h4,
 .workout-flow h4,
-.workout-history h4 {
+.workout-history h4,
+.exercise-history h4 {
   margin: 0 0 1rem;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 1.45rem;
@@ -334,6 +336,32 @@ h1 {
   font-size: 0.82rem;
 }
 
+.exercise-history-weeks {
+  display: grid;
+  gap: 1rem;
+}
+
+.exercise-history-weeks article {
+  padding-top: 1rem;
+  border-top: 1px solid rgb(24 51 41 / 12%);
+}
+
+.exercise-history-weeks h5,
+.exercise-history-weeks h6,
+.exercise-history-weeks p {
+  margin: 0 0 0.75rem;
+}
+
+.exercise-history-weeks h5 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.2rem;
+}
+
+.exercise-history-weeks h6 {
+  margin-top: 1rem;
+  font-size: 0.86rem;
+}
+
 .unresolved-status {
   color: #7a3024;
   font-weight: 750;
@@ -347,7 +375,8 @@ h1 {
 .departure-response[hidden],
 .departure-confirmation[hidden],
 .workout-flow[hidden],
-.workout-history[hidden] {
+.workout-history[hidden],
+.exercise-history[hidden] {
   display: none;
 }
 

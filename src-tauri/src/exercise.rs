@@ -2,7 +2,7 @@ use crate::notification::{NotificationIntent, NotificationPermission, Notificati
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-const EXERCISE_SCHEMA_VERSION: u32 = 5;
+const EXERCISE_SCHEMA_VERSION: u32 = 6;
 const WEEKLY_GOAL: u32 = 3;
 const UNSCHEDULED_WORKOUT_SLOT_ID: &str = "unscheduled";
 const DEPARTURE_HOUR: i64 = 16;
@@ -267,6 +267,7 @@ enum DepartureStatus {
     Moved,
     Skipped,
     NotNeeded,
+    Missed,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -412,6 +413,16 @@ pub struct WorkoutRecordView {
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ExerciseWeekHistoryView {
+    pub week_label: String,
+    pub progress: String,
+    pub primary_departures: Vec<PrimaryDepartureView>,
+    pub fallback_departures: Vec<FallbackDepartureView>,
+    pub workout_records: Vec<WorkoutRecordView>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExerciseDashboardView {
     pub product_name: String,
     pub feature_area: String,
@@ -432,6 +443,7 @@ pub struct ExerciseDashboardView {
     pub workout_prompt: Option<WorkoutPromptView>,
     pub workout_recording: Option<WorkoutRecordingView>,
     pub workout_records: Vec<WorkoutRecordView>,
+    pub history: Vec<ExerciseWeekHistoryView>,
 }
 
 pub struct ExerciseApplication<P, N, C> {
@@ -455,8 +467,11 @@ impl<P: ExercisePersistence, N: NotificationPlatform, C: ExerciseClock>
         let now = self.clock.now_epoch_millis();
         let (mut state, mut changed) = self.current_state()?;
         let week_start_day = local_day_number(&self.clock, now) - local_weekday(&self.clock, now);
-        let week_key = date_from_day_number(week_start_day).iso_date();
+        let current_week_start = date_from_day_number(week_start_day);
+        let week_key = current_week_start.iso_date();
+        changed |= close_expired_weeks(&mut state, current_week_start);
         if !state.weeks.iter().any(|week| week.week_start == week_key) {
+            state.workout_draft = None;
             state
                 .weeks
                 .push(make_week(&state.routine, &self.clock, week_start_day));
@@ -886,7 +901,9 @@ impl ExerciseState {
                 }
                 let response_is_valid =
                     match departure.status {
-                        DepartureStatus::Available | DepartureStatus::Scheduled => {
+                        DepartureStatus::Available
+                        | DepartureStatus::Scheduled
+                        | DepartureStatus::Missed => {
                             departure.departure_response.is_none()
                                 && departure
                                     .record_workout_prompt_due_at_epoch_millis
@@ -1212,6 +1229,23 @@ fn weekly_goal_reached_at(week: &ExerciseWeek, weekly_goal: u32) -> Option<i64> 
         .copied()
 }
 
+fn close_expired_weeks(state: &mut ExerciseState, current_week_start: CivilDate) -> bool {
+    let mut changed = false;
+    for week in &mut state.weeks {
+        let week_end = parse_iso_date(&week.week_end).expect("saved week end is valid");
+        if week_end >= current_week_start {
+            continue;
+        }
+        for departure in all_departures_mut(week) {
+            if departure.status == DepartureStatus::Scheduled {
+                departure.status = DepartureStatus::Missed;
+                changed = true;
+            }
+        }
+    }
+    changed
+}
+
 fn suppress_remaining_obligations(
     week: &mut ExerciseWeek,
     goal_reached_at: i64,
@@ -1312,6 +1346,9 @@ fn fallback_status(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64) 
         let assignment = format!("Assigned from {source_day}");
         match departure.status {
             DepartureStatus::Scheduled => assignment,
+            DepartureStatus::Leaving if departure_has_workout_record(week, departure) => {
+                format!("{assignment} · Completed")
+            }
             DepartureStatus::Leaving => format!("{assignment} · Leaving for gym confirmed"),
             DepartureStatus::Moved | DepartureStatus::Skipped => format!(
                 "{assignment} · {}",
@@ -1321,10 +1358,13 @@ fn fallback_status(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64) 
             DepartureStatus::NotNeeded => {
                 format!("{assignment} · Weekly goal met — no workout needed")
             }
+            DepartureStatus::Missed => format!("{assignment} · Missed — no response"),
             DepartureStatus::Available => "Available".into(),
         }
     } else if departure.status == DepartureStatus::NotNeeded {
         "Weekly goal met — no workout needed".into()
+    } else if departure.status == DepartureStatus::Missed {
+        "Missed — no response".into()
     } else if fallback_is_available(departure, now) {
         "Available".into()
     } else {
@@ -1371,22 +1411,18 @@ fn dashboard_view(
     reminder_intent: Option<NotificationIntent>,
     reminder_message: String,
 ) -> ExerciseDashboardView {
-    let start = parse_iso_date(&week.week_start).expect("saved week start is valid");
-    let end = parse_iso_date(&week.week_end).expect("saved week end is valid");
     let goal_reached = weekly_goal_reached_at(week, state.routine.weekly_goal).is_some();
+    let mut historical_weeks = state
+        .weeks
+        .iter()
+        .filter(|candidate| candidate.week_start != week.week_start)
+        .collect::<Vec<_>>();
+    historical_weeks.sort_by(|left, right| right.week_start.cmp(&left.week_start));
     ExerciseDashboardView {
         product_name: "Personal Dashboard".into(),
         feature_area: "Exercise tracking".into(),
         schema_version: state.schema_version,
-        week_label: format!(
-            "{}, {} {} – {}, {} {}",
-            PRIMARY_DAYS[0].1,
-            month_name(start.month),
-            start.day,
-            FALLBACK_DAYS[1].1,
-            month_name(end.month),
-            end.day
-        ),
+        week_label: friendly_week_label(week),
         progress: format!(
             "{} of {} completed",
             week.completed_count, state.routine.weekly_goal
@@ -1394,26 +1430,8 @@ fn dashboard_view(
         manual_workout_action: "Log workout now".into(),
         weekly_goal_status: goal_reached.then(|| "Weekly goal complete".into()),
         next_departure: next_departure.map(friendly_departure),
-        primary_departures: week
-            .primary_departures
-            .iter()
-            .map(|departure| PrimaryDepartureView {
-                id: departure.id.clone(),
-                day: departure.day.clone(),
-                time: "4:00 PM".into(),
-                status: departure_status(week, departure, now),
-            })
-            .collect(),
-        fallback_departures: week
-            .fallback_departures
-            .iter()
-            .map(|departure| FallbackDepartureView {
-                id: departure.id.clone(),
-                day: departure.day.clone(),
-                time: "4:00 PM".into(),
-                availability: fallback_status(week, departure, now),
-            })
-            .collect(),
+        primary_departures: primary_departure_views(week, now),
+        fallback_departures: fallback_departure_views(week, now),
         fallback_available_count: week
             .fallback_departures
             .iter()
@@ -1433,22 +1451,88 @@ fn dashboard_view(
         workout_records: week
             .workout_records
             .iter()
-            .map(|record| WorkoutRecordView {
-                id: record.id.clone(),
-                source: record
-                    .source
-                    .expect("workout sources were migrated")
-                    .label()
-                    .into(),
-                activity: record.activity.label().into(),
-                duration: record.duration.label().into(),
-                effort: record.effort.label().into(),
-                outcome: if record.duration.qualifies() {
-                    "Counts toward weekly progress".into()
-                } else {
-                    "Short effort — does not count toward weekly progress".into()
-                },
+            .map(workout_record_view)
+            .collect(),
+        history: historical_weeks
+            .into_iter()
+            .map(|historical_week| {
+                exercise_week_history_view(historical_week, state.routine.weekly_goal, now)
             })
+            .collect(),
+    }
+}
+
+fn friendly_week_label(week: &ExerciseWeek) -> String {
+    let start = parse_iso_date(&week.week_start).expect("saved week start is valid");
+    let end = parse_iso_date(&week.week_end).expect("saved week end is valid");
+    format!(
+        "{}, {} {} – {}, {} {}",
+        PRIMARY_DAYS[0].1,
+        month_name(start.month),
+        start.day,
+        FALLBACK_DAYS[1].1,
+        month_name(end.month),
+        end.day
+    )
+}
+
+fn workout_record_view(record: &WorkoutRecord) -> WorkoutRecordView {
+    WorkoutRecordView {
+        id: record.id.clone(),
+        source: record
+            .source
+            .expect("workout sources were migrated")
+            .label()
+            .into(),
+        activity: record.activity.label().into(),
+        duration: record.duration.label().into(),
+        effort: record.effort.label().into(),
+        outcome: if record.duration.qualifies() {
+            "Counts toward weekly progress".into()
+        } else {
+            "Short effort — does not count toward weekly progress".into()
+        },
+    }
+}
+
+fn primary_departure_views(week: &ExerciseWeek, now: i64) -> Vec<PrimaryDepartureView> {
+    week.primary_departures
+        .iter()
+        .map(|departure| PrimaryDepartureView {
+            id: departure.id.clone(),
+            day: departure.day.clone(),
+            time: "4:00 PM".into(),
+            status: departure_status(week, departure, now),
+        })
+        .collect()
+}
+
+fn fallback_departure_views(week: &ExerciseWeek, now: i64) -> Vec<FallbackDepartureView> {
+    week.fallback_departures
+        .iter()
+        .map(|departure| FallbackDepartureView {
+            id: departure.id.clone(),
+            day: departure.day.clone(),
+            time: "4:00 PM".into(),
+            availability: fallback_status(week, departure, now),
+        })
+        .collect()
+}
+
+fn exercise_week_history_view(
+    week: &ExerciseWeek,
+    weekly_goal: u32,
+    now: i64,
+) -> ExerciseWeekHistoryView {
+    ExerciseWeekHistoryView {
+        week_label: friendly_week_label(week),
+        progress: format!("{} of {} completed", week.completed_count, weekly_goal),
+        primary_departures: primary_departure_views(week, now),
+        fallback_departures: fallback_departure_views(week, now),
+        workout_records: week
+            .workout_records
+            .iter()
+            .map(workout_record_view)
             .collect(),
     }
 }
@@ -1645,6 +1729,9 @@ fn departure_decision_status(week: &ExerciseWeek, departure: &PlannedDeparture) 
 
 fn departure_status(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64) -> String {
     match departure.status {
+        DepartureStatus::Leaving if departure_has_workout_record(week, departure) => {
+            "Completed".into()
+        }
         DepartureStatus::Leaving => "Leaving for gym confirmed".into(),
         DepartureStatus::Moved | DepartureStatus::Skipped => {
             departure_decision_status(week, departure).expect("closed departure has a decision")
@@ -1657,8 +1744,15 @@ fn departure_status(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64)
         }
         DepartureStatus::Scheduled => "Scheduled".into(),
         DepartureStatus::NotNeeded => "Weekly goal met — no workout needed".into(),
+        DepartureStatus::Missed => "Missed — no response".into(),
         DepartureStatus::Available => "Available".into(),
     }
+}
+
+fn departure_has_workout_record(week: &ExerciseWeek, departure: &PlannedDeparture) -> bool {
+    week.workout_records
+        .iter()
+        .any(|record| record.source_slot_id.as_deref() == Some(departure.id.as_str()))
 }
 
 fn follow_up_is_due(departure: &PlannedDeparture, now: i64) -> bool {
@@ -1692,7 +1786,7 @@ fn friendly_departure(departure: &PlannedDeparture) -> String {
     )
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct CivilDate {
     year: i64,
     month: i64,
