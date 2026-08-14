@@ -8,6 +8,7 @@ type ProfileView = Readonly<{
   schemaVersion: number;
   profileLabel: string;
   authority: "active" | "inactive";
+  origin: "local" | "completed_baseline";
 }>;
 
 type ProfileBackupAction = Readonly<{
@@ -28,6 +29,20 @@ type ProfileRestoreAction = Readonly<{
 type ProfileMoveAction = ProfileRestoreAction &
   Readonly<{ reminderTransitionPending: boolean }>;
 type ProfileMoveSelection = ProfileRestoreSelection;
+
+type BaselineMigrationView = Readonly<{
+  status: "completed" | "not_found" | "existing_profile" | "failed";
+  failure:
+    | "app_state_read"
+    | "incomplete_app_state"
+    | "invalid_app_state"
+    | "baseline_read"
+    | "invalid_baseline"
+    | "unsupported_baseline"
+    | "adoption_failed"
+    | null;
+  blocksProfile: boolean;
+}>;
 
 const INACTIVE_PROFILE_MESSAGE =
   "This profile is inactive. Exercise activity and reminders are paused.";
@@ -1065,7 +1080,9 @@ function renderProfile(profile: ProfileView): void {
   if (profileAuthorityMessage) {
     profileAuthorityMessage.textContent =
       profile.authority === "active"
-        ? "This device is authoritative for this profile."
+        ? profile.origin === "completed_baseline"
+          ? "This device is authoritative. Completed Mac exercise history was adopted automatically."
+          : "This device is authoritative for this profile."
         : INACTIVE_PROFILE_MESSAGE;
   }
   applyAuthorityState();
@@ -1337,6 +1354,36 @@ function reactivateProfile(): Promise<void> {
   );
 }
 
+function baselineMigrationMessage(migration: BaselineMigrationView): string {
+  if (migration.status === "completed") {
+    return "Completed exercise history migrated into Personal Dashboard. The original baseline file was preserved.";
+  }
+  if (migration.status === "not_found") {
+    return "No completed baseline profile was found; Personal Dashboard will start with a new local profile.";
+  }
+  if (migration.status === "existing_profile") {
+    return "Profile loaded from this device.";
+  }
+  switch (migration.failure) {
+    case "app_state_read":
+      return "Personal Dashboard could not read its app-owned profile state. The completed baseline was not changed.";
+    case "incomplete_app_state":
+      return "Personal Dashboard found incomplete app-owned profile state. The completed baseline was not changed.";
+    case "invalid_app_state":
+      return "Personal Dashboard found invalid app-owned profile state. The completed baseline was not changed.";
+    case "baseline_read":
+      return "Personal Dashboard could not read the completed baseline. No profile data was changed.";
+    case "invalid_baseline":
+      return "The completed baseline is invalid and could not be migrated. No profile data was changed.";
+    case "unsupported_baseline":
+      return "The completed baseline uses an unsupported schema version. No profile data was changed.";
+    case "adoption_failed":
+      return "The completed baseline could not be activated in Personal Dashboard. The original baseline was preserved.";
+    default:
+      return "Baseline migration failed. No profile data was changed.";
+  }
+}
+
 async function connectToApplication(): Promise<void> {
   if (!runtimeStatus) {
     return;
@@ -1361,11 +1408,34 @@ async function connectToApplication(): Promise<void> {
     return;
   }
 
+  let migration: BaselineMigrationView;
+  try {
+    migration = await window.__TAURI__.core.invoke<BaselineMigrationView>(
+      "baseline_migration_state",
+    );
+  } catch {
+    showProfileStatus("Baseline migration status is unavailable.", "error");
+    return;
+  }
+  if (migration.blocksProfile) {
+    showProfileStatus(baselineMigrationMessage(migration), "error");
+    document.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>(
+      "button, input, select",
+    ).forEach((control) => {
+      control.disabled = true;
+    });
+    return;
+  }
+
   try {
     const profile = await window.__TAURI__.core.invoke<ProfileView>("profile_state");
     renderProfile(profile);
     await refreshExerciseDashboard();
-    showProfileStatus("Profile loaded from this device.");
+    showProfileStatus(
+      migration.status === "completed"
+        ? baselineMigrationMessage(migration)
+        : "Profile loaded from this device.",
+    );
   } catch (error) {
     showProfileStatus(profileErrorMessage(error), "error");
   }

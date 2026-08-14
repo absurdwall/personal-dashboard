@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-const PROFILE_SCHEMA_VERSION: u32 = 2;
+const PROFILE_SCHEMA_VERSION: u32 = 3;
 const DEFAULT_PROFILE_LABEL: &str = "My Personal Dashboard";
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -20,6 +20,14 @@ pub(crate) struct Profile {
     authority: ProfileAuthority,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pending_notification_cancellations: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    baseline_migration: Option<BaselineMigrationRecord>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct BaselineMigrationRecord {
+    source_schema_version: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -28,6 +36,14 @@ pub struct ProfileView {
     pub schema_version: u32,
     pub profile_label: String,
     pub authority: String,
+    pub origin: ProfileOrigin,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProfileOrigin {
+    Local,
+    CompletedBaseline,
 }
 
 pub trait ProfilePersistence: Send + Sync {
@@ -59,11 +75,21 @@ impl Profile {
             profile_label: DEFAULT_PROFILE_LABEL.into(),
             authority: ProfileAuthority::Active,
             pending_notification_cancellations: Vec::new(),
+            baseline_migration: None,
+        }
+    }
+
+    pub(crate) fn migrated_from_completed_baseline(source_schema_version: u32) -> Self {
+        Self {
+            baseline_migration: Some(BaselineMigrationRecord {
+                source_schema_version,
+            }),
+            ..Self::new()
         }
     }
 
     pub(crate) fn validate(self) -> Result<Self, String> {
-        if ![1, PROFILE_SCHEMA_VERSION].contains(&self.schema_version) {
+        if !(1..=PROFILE_SCHEMA_VERSION).contains(&self.schema_version) {
             return Err(format!(
                 "Unsupported profile schema version: {}",
                 self.schema_version
@@ -90,6 +116,7 @@ impl Profile {
             schema_version: self.schema_version,
             profile_label: self.profile_label.clone(),
             authority: self.authority.label().into(),
+            origin: self.origin(),
         }
     }
 
@@ -99,6 +126,14 @@ impl Profile {
 
     pub(crate) fn authority(&self) -> ProfileAuthority {
         self.authority
+    }
+
+    pub(crate) fn origin(&self) -> ProfileOrigin {
+        if self.baseline_migration.is_some() {
+            ProfileOrigin::CompletedBaseline
+        } else {
+            ProfileOrigin::Local
+        }
     }
 
     pub(crate) fn with_local_authority(
@@ -354,7 +389,7 @@ mod tests {
     fn invalid_or_unsupported_import_keeps_active_profile_unchanged() {
         let invalid_documents = [
             b"not json".to_vec(),
-            br#"{"schema_version":3,"profile_label":"Unsupported"}"#.to_vec(),
+            br#"{"schema_version":99,"profile_label":"Unsupported"}"#.to_vec(),
             br#"{"schema_version":1,"profile_label":"","extra":true}"#.to_vec(),
         ];
 

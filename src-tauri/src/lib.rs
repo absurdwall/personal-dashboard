@@ -6,6 +6,7 @@ use tauri::{RunEvent, WindowEvent};
 pub mod backup;
 mod clock;
 pub mod exercise;
+pub mod migration;
 pub mod move_profile;
 pub mod notification;
 #[cfg(target_os = "macos")]
@@ -18,6 +19,7 @@ use backup::{
 };
 use clock::SystemClock;
 use exercise::{ExerciseApplication, ExerciseDashboardView};
+use migration::{BaselineMigrationApplication, BaselineMigrationView};
 use move_profile::{
     ProfileExerciseAuthority, ProfileMoveAction, ProfileMoveApplication, ProfileMoveSelection,
     ProfileNotificationCancellationJournal,
@@ -27,8 +29,8 @@ use notification::{NotificationApplication, NotificationCapabilityView};
 #[cfg(target_os = "macos")]
 use notification_platform::NativeNotificationPlatform;
 use platform::{
-    exercise_file_for, profile_file_for, FileExercisePersistence, FileProfilePersistence,
-    FileProfileReplacement, NativeFileExchange,
+    baseline_file_for, exercise_file_for, profile_file_for, FileBaselinePersistence,
+    FileExercisePersistence, FileProfilePersistence, FileProfileReplacement, NativeFileExchange,
 };
 use profile::{ProfileApplication, ProfileView};
 
@@ -129,6 +131,11 @@ fn application_identity() -> ApplicationIdentity {
         feature_area: "Exercise tracking",
         boundary_message: "Local Rust application ready · Offline",
     }
+}
+
+#[tauri::command]
+fn baseline_migration_state(migration: State<'_, BaselineMigrationView>) -> BaselineMigrationView {
+    migration.inner().clone()
 }
 
 #[tauri::command]
@@ -355,14 +362,24 @@ pub fn run() {
             let app_handle = app.handle().clone();
             let profile_file = profile_file_for(&app_handle)?;
             let exercise_file = exercise_file_for(&app_handle)?;
+            let baseline_file = baseline_file_for(&app_handle)?;
             let profile_replacement =
                 FileProfileReplacement::new(profile_file.clone(), exercise_file.clone())?;
             let profile_persistence = FileProfilePersistence::new(profile_file);
+            let exercise_persistence = FileExercisePersistence::new(exercise_file);
+            let migration = BaselineMigrationApplication::new(
+                FileBaselinePersistence::new(baseline_file),
+                profile_persistence.clone(),
+                exercise_persistence.clone(),
+                profile_replacement.clone(),
+                SystemClock,
+            )
+            .launch();
+            app.manage(migration);
             app.manage(ProfileApplication::new(
                 profile_persistence.clone(),
                 NativeFileExchange::new(app_handle.clone()),
             ));
-            let exercise_persistence = FileExercisePersistence::new(exercise_file);
             #[cfg(target_os = "macos")]
             app.manage(ExerciseApplication::with_authority(
                 exercise_persistence.clone(),
@@ -433,6 +450,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             application_identity,
+            baseline_migration_state,
             profile_state,
             update_profile_label,
             backup_profile,
@@ -465,6 +483,7 @@ pub fn run() {
     #[cfg(not(target_os = "macos"))]
     let application = application.invoke_handler(tauri::generate_handler![
         application_identity,
+        baseline_migration_state,
         profile_state,
         update_profile_label,
         backup_profile,

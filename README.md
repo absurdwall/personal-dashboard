@@ -97,6 +97,38 @@ The packaged acceptance procedure for native save/open interactions is recorded
 in
 [`docs/acceptance/macos-minimal-profile.md`](docs/acceptance/macos-minimal-profile.md).
 
+## Automatic completed-profile migration
+
+On its first launch, Personal Dashboard looks for the completed Python
+exercise profile at its established Mac location:
+
+```text
+~/Library/Application Support/Exercise Habit Tracker/state.json
+```
+
+When a valid schema-v5 profile exists, the Rust application core converts its
+routine, weeks, progress, fallback assignments, departure outcomes, reminder
+delivery markers, in-progress choice, workout draft, and history into one
+app-owned profile. The paired profile and exercise documents are activated
+atomically, and the profile records its completed-baseline origin so later
+launches do not reconvert or duplicate data. Existing pre-migration Tauri data
+is replaced only during this one adoption; a profile already marked as
+migrated wins without rereading the baseline.
+
+The Python `state.json` is read-only migration input and remains byte-for-byte
+unchanged for rollback. Invalid, unsupported, unreadable, incomplete, or
+interrupted input blocks use of a partial result and shows a controlled status
+in the packaged app. There is no dual-write path back to the Python profile.
+
+Run the deterministic migration seam with:
+
+```sh
+cargo test --manifest-path src-tauri/Cargo.toml --test baseline_migration_workflow
+```
+
+The isolated packaged migration procedure is recorded in
+[`docs/acceptance/macos-baseline-migration.md`](docs/acceptance/macos-baseline-migration.md).
+
 ## Mac notification capability
 
 The packaged app can request macOS notification permission and schedule one

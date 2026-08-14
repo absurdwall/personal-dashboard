@@ -135,7 +135,7 @@ fn fresh_exercise_week_survives_relaunch_and_emits_the_first_departure_reminder(
 
     assert_eq!("Personal Dashboard", dashboard.product_name);
     assert_eq!("Exercise tracking", dashboard.feature_area);
-    assert_eq!(7, dashboard.schema_version);
+    assert_eq!(8, dashboard.schema_version);
     assert_eq!(
         "Monday, August 10 – Sunday, August 16",
         dashboard.week_label
@@ -692,7 +692,11 @@ fn departures_move_to_ordered_fallbacks_or_skip_with_the_complete_preset_reason_
         ],
         reason_prompt.reasons
     );
-    assert_eq!(None, application.open().unwrap().departure_reason_prompt);
+    assert!(application
+        .open()
+        .unwrap()
+        .departure_reason_prompt
+        .is_some());
     assert_eq!(
         "That departure reason is not available.",
         application

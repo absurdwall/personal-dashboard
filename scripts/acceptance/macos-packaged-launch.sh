@@ -9,6 +9,8 @@ acceptance_directory=""
 app_bundle=""
 app_executable=""
 app_pid=""
+acceptance_data_directory=""
+acceptance_baseline_file=""
 
 fail() {
   echo "Packaged launch acceptance failed: $1" >&2
@@ -46,6 +48,8 @@ acceptance_directory="$(cd "$acceptance_directory" && pwd -P)"
 app_bundle="$acceptance_directory/Personal Dashboard.app"
 /usr/bin/ditto "$source_app_bundle" "$app_bundle"
 app_executable="$app_bundle/Contents/MacOS/personal-dashboard"
+acceptance_data_directory="$acceptance_directory/profile"
+acceptance_baseline_file="$acceptance_directory/no-completed-baseline/state.json"
 
 [[ -x "$app_executable" ]] || fail "missing executable at $app_executable"
 
@@ -64,7 +68,10 @@ if otool -L "$app_executable" | grep -qi python; then
 fi
 
 existing_pids=" $(find_app_pids | tr '\n' ' ')"
-open -n "$app_bundle"
+open -n \
+  --env "PERSONAL_DASHBOARD_DATA_DIR=$acceptance_data_directory" \
+  --env "PERSONAL_DASHBOARD_BASELINE_FILE=$acceptance_baseline_file" \
+  "$app_bundle"
 
 for _ in {1..50}; do
   while read -r candidate_pid; do
@@ -91,5 +98,6 @@ fi
 echo "Packaged launch acceptance passed"
 echo "Built bundle: $source_app_bundle"
 echo "Launch: relocated copy opened through macOS Launch Services"
+echo "Profile: isolated temporary app-owned data with no baseline source"
 echo "Architecture: $executable_architectures"
 echo "Runtime: native app process with no Python or listening TCP socket"

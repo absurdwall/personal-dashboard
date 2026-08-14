@@ -2,7 +2,10 @@ use crate::notification::{NotificationIntent, NotificationPermission, Notificati
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-const EXERCISE_SCHEMA_VERSION: u32 = 7;
+mod baseline_migration;
+pub(crate) use baseline_migration::{CompletedBaselineError, CompletedBaselineExercise};
+
+const EXERCISE_SCHEMA_VERSION: u32 = 8;
 const WEEKLY_GOAL: u32 = 3;
 const UNSCHEDULED_WORKOUT_SLOT_ID: &str = "unscheduled";
 const FOLLOW_UP_DELAY_MILLIS: i64 = 15 * 60 * 1_000;
@@ -50,8 +53,17 @@ pub(crate) struct ExerciseState {
     weeks: Vec<ExerciseWeek>,
     #[serde(default)]
     workout_draft: Option<WorkoutDraft>,
+    #[serde(default)]
+    departure_decision: Option<DepartureDecision>,
     #[serde(default = "first_unscheduled_sequence")]
     next_unscheduled_sequence: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct DepartureDecision {
+    slot_id: String,
+    outcome: DepartureOutcome,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -617,9 +629,14 @@ impl<
         changed |= close_expired_weeks(&mut state, current_week_start);
         if !state.weeks.iter().any(|week| week.week_start == week_key) {
             state.workout_draft = None;
+            state.departure_decision = None;
             state
                 .weeks
                 .push(make_week(&state.routine, &self.clock, week_start_day));
+            changed = true;
+        }
+        if !departure_decision_is_current(&state, &week_key, now) {
+            state.departure_decision = None;
             changed = true;
         }
 
@@ -876,7 +893,7 @@ impl<
         self.require_active()?;
         let outcome = departure_decision_outcome(outcome)?;
         let now = self.clock.now_epoch_millis();
-        let (state, _) = self.current_state()?;
+        let (mut state, _) = self.current_state()?;
         let week = current_week(&state, &self.clock, now)?;
         decidable_departure(week, slot_id, now)?;
         if outcome == DepartureOutcome::MoveToFallback
@@ -885,23 +902,12 @@ impl<
             return Err("No fallback slot remains available.".into());
         }
 
-        let mut dashboard = self.open()?;
-        dashboard.departure_reason_prompt = Some(DepartureReasonPromptView {
+        state.departure_decision = Some(DepartureDecision {
             slot_id: slot_id.into(),
-            outcome: outcome_label(outcome).into(),
-            heading: match outcome {
-                DepartureOutcome::MoveToFallback => "Why are you moving this workout?",
-                DepartureOutcome::Skip => "Why are you skipping this workout?",
-                DepartureOutcome::LeavingForGym => unreachable!("validated decision outcome"),
-            }
-            .into(),
-            reasons: DepartureReason::ALL
-                .iter()
-                .map(|reason| reason.label().into())
-                .collect(),
+            outcome,
         });
-        dashboard.departure_prompt = None;
-        Ok(dashboard)
+        self.save_state(&state)?;
+        self.open()
     }
 
     pub fn confirm_departure_decision(
@@ -916,6 +922,13 @@ impl<
             .ok_or_else(|| "That departure reason is not available.".to_string())?;
         let now = self.clock.now_epoch_millis();
         let (mut state, _) = self.current_state()?;
+        if state
+            .departure_decision
+            .as_ref()
+            .is_some_and(|decision| decision.slot_id != slot_id || decision.outcome != outcome)
+        {
+            return Err("That departure decision is not in progress.".into());
+        }
         let week = current_week_mut(&mut state, &self.clock, now)?;
         let source = decidable_departure(week, slot_id, now)?;
         let source_id = source.id.clone();
@@ -949,6 +962,7 @@ impl<
         if let Some(follow_up_id) = follow_up_id {
             self.notifications.cancel(&follow_up_id)?;
         }
+        state.departure_decision = None;
         self.save_state(&state)?;
         self.open()
     }
@@ -970,6 +984,7 @@ impl<
             activity: None,
             duration: None,
         });
+        state.departure_decision = None;
         self.save_state(&state)?;
         self.open()
     }
@@ -1157,6 +1172,7 @@ impl ExerciseState {
             },
             weeks: Vec::new(),
             workout_draft: None,
+            departure_decision: None,
             next_unscheduled_sequence: first_unscheduled_sequence(),
         }
     }
@@ -1177,6 +1193,11 @@ impl ExerciseState {
         self.migrate_workout_sources();
         self.validate_departures()?;
         self.validate_workouts()?;
+        if self.departure_decision.as_ref().is_some_and(|decision| {
+            decision.slot_id.is_empty() || decision.outcome == DepartureOutcome::LeavingForGym
+        }) {
+            return Err("The saved departure decision is not valid.".into());
+        }
         Ok(self)
     }
 
@@ -1640,6 +1661,35 @@ fn departure_decision_outcome(outcome: &str) -> Result<DepartureOutcome, String>
     }
 }
 
+fn departure_reason_prompt(decision: &DepartureDecision) -> DepartureReasonPromptView {
+    DepartureReasonPromptView {
+        slot_id: decision.slot_id.clone(),
+        outcome: outcome_label(decision.outcome).into(),
+        heading: match decision.outcome {
+            DepartureOutcome::MoveToFallback => "Why are you moving this workout?",
+            DepartureOutcome::Skip => "Why are you skipping this workout?",
+            DepartureOutcome::LeavingForGym => unreachable!("validated decision outcome"),
+        }
+        .into(),
+        reasons: DepartureReason::ALL
+            .iter()
+            .map(|reason| reason.label().into())
+            .collect(),
+    }
+}
+
+fn departure_decision_is_current(state: &ExerciseState, week_key: &str, now: i64) -> bool {
+    let Some(decision) = &state.departure_decision else {
+        return true;
+    };
+    let Some(week) = state.weeks.iter().find(|week| week.week_start == week_key) else {
+        return false;
+    };
+    decidable_departure(week, &decision.slot_id, now).is_ok()
+        && (decision.outcome != DepartureOutcome::MoveToFallback
+            || next_available_fallback_index(week, now).is_some())
+}
+
 fn outcome_label(outcome: DepartureOutcome) -> &'static str {
     match outcome {
         DepartureOutcome::LeavingForGym => "leaving-for-gym",
@@ -2001,10 +2051,13 @@ fn dashboard_view(
             .count(),
         reminder_intent,
         reminder_message,
-        departure_prompt: (!goal_reached)
+        departure_prompt: (!goal_reached && state.departure_decision.is_none())
             .then(|| departure_prompt(week, now))
             .flatten(),
-        departure_reason_prompt: None,
+        departure_reason_prompt: state
+            .departure_decision
+            .as_ref()
+            .map(departure_reason_prompt),
         departure_confirmation: departure_confirmation(week, clock),
         workout_prompt: (!goal_reached)
             .then(|| workout_prompt(state, week, now))

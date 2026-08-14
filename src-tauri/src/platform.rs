@@ -1,5 +1,6 @@
 use crate::backup::CompleteProfileReplacement;
 use crate::exercise::ExercisePersistence;
+use crate::migration::{BaselinePersistence, CompleteProfileAdoption, CompleteProfileDocuments};
 use crate::move_profile::ProfileMoveExchange;
 use crate::profile::{ProfileExchange, ProfilePersistence};
 use std::fs::{self, OpenOptions};
@@ -10,11 +11,15 @@ use tauri_plugin_dialog::DialogExt;
 
 const PROFILE_FILE_NAME: &str = "profile.json";
 const EXERCISE_FILE_NAME: &str = "exercise.json";
-const MAX_BACKUP_BYTES: u64 = 10 * 1024 * 1024;
+const MAX_PROFILE_DOCUMENT_BYTES: u64 = 10 * 1024 * 1024;
 const RESTORE_TRANSACTION_DIRECTORY: &str = ".profile-restore-transaction";
 const RESTORE_PREPARED_MARKER: &str = "prepared";
 const PREVIOUS_PROFILE_FILE: &str = "profile.previous.json";
 const PREVIOUS_EXERCISE_FILE: &str = "exercise.previous.json";
+const BASELINE_MIGRATION_TRANSACTION_DIRECTORY: &str = ".baseline-migration-transaction";
+const MIGRATED_PROFILE_FILE: &str = "profile.migrated.json";
+const MIGRATED_EXERCISE_FILE: &str = "exercise.migrated.json";
+const MIGRATION_PREPARED_MARKER: &str = "prepared";
 
 #[derive(Clone)]
 pub struct FileProfilePersistence {
@@ -66,6 +71,32 @@ impl ExercisePersistence for FileExercisePersistence {
     }
 }
 
+#[derive(Clone)]
+pub struct FileBaselinePersistence {
+    baseline_file: PathBuf,
+}
+
+impl FileBaselinePersistence {
+    pub fn new(baseline_file: PathBuf) -> Self {
+        Self { baseline_file }
+    }
+}
+
+impl BaselinePersistence for FileBaselinePersistence {
+    fn load(&self) -> Result<Option<Vec<u8>>, String> {
+        match fs::read(&self.baseline_file) {
+            Ok(document) if document.len() as u64 <= MAX_PROFILE_DOCUMENT_BYTES => {
+                Ok(Some(document))
+            }
+            Ok(_) => Err("The completed baseline state is too large to migrate safely.".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!(
+                "Could not read the completed baseline state: {error}"
+            )),
+        }
+    }
+}
+
 fn atomic_save(path: &Path, document: &[u8], label: &str) -> Result<(), String> {
     let parent = path
         .parent()
@@ -105,6 +136,7 @@ impl FileProfileReplacement {
             exercise_file,
         };
         replacement.recover_pending_restore()?;
+        replacement.recover_pending_initialization()?;
         Ok(replacement)
     }
 
@@ -161,6 +193,62 @@ impl FileProfileReplacement {
         fs::remove_dir_all(&transaction_directory)
             .map_err(|error| format!("Could not finish profile recovery: {error}"))
     }
+
+    fn initialization_transaction_directory(&self) -> Result<PathBuf, String> {
+        self.profile_file
+            .parent()
+            .map(|parent| parent.join(BASELINE_MIGRATION_TRANSACTION_DIRECTORY))
+            .ok_or_else(|| "The local profile path has no parent directory.".to_string())
+    }
+
+    fn prepare_initialization(&self, profile: &[u8], exercise: &[u8]) -> Result<PathBuf, String> {
+        if self.profile_file.exists() || self.exercise_file.exists() {
+            return Err("App-owned profile state already exists.".into());
+        }
+        let transaction_directory = self.initialization_transaction_directory()?;
+        fs::create_dir_all(&transaction_directory)
+            .map_err(|error| format!("Could not prepare baseline migration: {error}"))?;
+        let preparation = (|| {
+            write_synced(&transaction_directory.join(MIGRATED_PROFILE_FILE), profile)?;
+            write_synced(
+                &transaction_directory.join(MIGRATED_EXERCISE_FILE),
+                exercise,
+            )?;
+            write_synced(
+                &transaction_directory.join(MIGRATION_PREPARED_MARKER),
+                b"prepared",
+            )
+        })();
+        if let Err(error) = preparation {
+            let _ = fs::remove_dir_all(&transaction_directory);
+            return Err(error);
+        }
+        Ok(transaction_directory)
+    }
+
+    fn recover_pending_initialization(&self) -> Result<(), String> {
+        let transaction_directory = self.initialization_transaction_directory()?;
+        if !transaction_directory.exists() {
+            return Ok(());
+        }
+        if !transaction_directory
+            .join(MIGRATION_PREPARED_MARKER)
+            .exists()
+        {
+            fs::remove_dir_all(&transaction_directory).map_err(|error| {
+                format!("Could not clear incomplete baseline migration: {error}")
+            })?;
+            return Ok(());
+        }
+        let profile = fs::read(transaction_directory.join(MIGRATED_PROFILE_FILE))
+            .map_err(|error| format!("Could not recover the migrated profile: {error}"))?;
+        let exercise = fs::read(transaction_directory.join(MIGRATED_EXERCISE_FILE))
+            .map_err(|error| format!("Could not recover migrated exercise state: {error}"))?;
+        atomic_save(&self.exercise_file, &exercise, "migrated exercise state")?;
+        atomic_save(&self.profile_file, &profile, "migrated profile")?;
+        fs::remove_dir_all(&transaction_directory)
+            .map_err(|error| format!("Could not finish baseline migration recovery: {error}"))
+    }
 }
 
 impl CompleteProfileReplacement for FileProfileReplacement {
@@ -182,6 +270,20 @@ impl CompleteProfileReplacement for FileProfileReplacement {
             };
         }
         Ok(())
+    }
+}
+
+impl CompleteProfileAdoption for FileProfileReplacement {
+    fn adopt_complete(&self, documents: &CompleteProfileDocuments) -> Result<(), String> {
+        match (self.profile_file.exists(), self.exercise_file.exists()) {
+            (false, false) => {
+                self.recover_pending_initialization()?;
+                self.prepare_initialization(documents.profile(), documents.exercise())?;
+                self.recover_pending_initialization()
+            }
+            (true, true) => self.replace_complete(documents.profile(), documents.exercise()),
+            _ => Err("App-owned profile state is incomplete.".into()),
+        }
     }
 }
 
@@ -300,7 +402,7 @@ impl<R: Runtime> NativeFileExchange<R> {
                 configuration.subject
             )
         })?;
-        if metadata.len() > MAX_BACKUP_BYTES {
+        if metadata.len() > MAX_PROFILE_DOCUMENT_BYTES {
             return Err(format!(
                 "The selected {} is too large.",
                 configuration.subject
@@ -367,6 +469,21 @@ pub fn exercise_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, Stri
     Ok(data_directory.join(EXERCISE_FILE_NAME))
 }
 
+pub fn baseline_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    if let Some(override_file) = std::env::var_os("PERSONAL_DASHBOARD_BASELINE_FILE") {
+        return Ok(PathBuf::from(override_file));
+    }
+    app.path()
+        .home_dir()
+        .map(|home| {
+            home.join("Library")
+                .join("Application Support")
+                .join("Exercise Habit Tracker")
+                .join("state.json")
+        })
+        .map_err(|error| format!("Could not locate the completed baseline state: {error}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -423,6 +540,47 @@ mod tests {
             fs::read(&exercise_file).unwrap().as_slice()
         );
         assert!(!directory.join(RESTORE_TRANSACTION_DIRECTORY).exists());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn interrupted_baseline_initialization_completes_before_profile_use() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "personal-dashboard-baseline-initialization-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let profile_file = directory.join(PROFILE_FILE_NAME);
+        let exercise_file = directory.join(EXERCISE_FILE_NAME);
+        let interrupted =
+            FileProfileReplacement::new(profile_file.clone(), exercise_file.clone()).unwrap();
+        interrupted
+            .prepare_initialization(b"migrated profile", b"migrated exercise")
+            .unwrap();
+        atomic_save(
+            &exercise_file,
+            b"partially activated exercise",
+            "exercise state",
+        )
+        .unwrap();
+
+        FileProfileReplacement::new(profile_file.clone(), exercise_file.clone()).unwrap();
+
+        assert_eq!(
+            b"migrated profile",
+            fs::read(&profile_file).unwrap().as_slice()
+        );
+        assert_eq!(
+            b"migrated exercise",
+            fs::read(&exercise_file).unwrap().as_slice()
+        );
+        assert!(!directory
+            .join(BASELINE_MIGRATION_TRANSACTION_DIRECTORY)
+            .exists());
         fs::remove_dir_all(directory).unwrap();
     }
 }
