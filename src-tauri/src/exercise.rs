@@ -2872,7 +2872,6 @@ fn departure_prompt(week: &ExerciseWeek, now: i64) -> Option<DeparturePromptView
     all_departures(week)
         .filter(|departure| {
             departure.status == DepartureStatus::Scheduled
-                && departure.reminder_scheduled_at_epoch_millis.is_some()
                 && departure.departure_at_epoch_millis <= now
         })
         .max_by_key(|departure| departure.departure_at_epoch_millis)

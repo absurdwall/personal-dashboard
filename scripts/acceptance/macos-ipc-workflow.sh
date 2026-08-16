@@ -14,7 +14,7 @@ acceptance_baseline_file=""
 driver_binary=""
 current_step="setup"
 
-fixed_now_epoch_millis="${PERSONAL_DASHBOARD_ACCEPTANCE_NOW_EPOCH_MILLIS:-1786366800000}"
+fixed_now_epoch_millis="${PERSONAL_DASHBOARD_ACCEPTANCE_NOW_EPOCH_MILLIS:-1786406400000}"
 fixed_utc_offset_minutes="${PERSONAL_DASHBOARD_ACCEPTANCE_UTC_OFFSET_MINUTES:--240}"
 
 fail() {
@@ -129,10 +129,27 @@ run_driver assert-text "Friday"
 run_driver assert-text "Scheduled"
 run_driver assert-text "Fallback availability"
 run_driver assert-text "available"
-run_driver assert-text "Selected departure: Monday"
+run_driver assert-text "Needs attention: Monday"
 run_driver press-contains "Wednesday" 10
 run_driver assert-text "Selected departure: Wednesday"
 run_driver assert-text "Window fixed · pane-owned overflow"
+
+current_step="recovering the pending departure from the contextual pane"
+run_driver assert-text "Needs attention"
+run_driver press "Needs attention" 10
+run_driver assert-text "Time to leave for the gym"
+run_driver assert-text "Leaving for gym"
+run_driver assert-text "Move to fallback"
+run_driver assert-text "Skip"
+run_driver press "Skip" 10
+run_driver assert-text "Work ran late"
+run_driver assert-text "Too tired"
+run_driver assert-text "Sick or injured"
+run_driver assert-text "Another commitment"
+run_driver assert-text "Other"
+run_driver press "Work ran late" 10
+run_driver assert-text "Skipped"
+run_driver assert-text "Selected departure: Monday"
 
 current_step="clicking Log workout now through the rendered UI"
 run_driver press "Log workout now" 10
@@ -147,6 +164,7 @@ current_step="checking the visible completed workout"
 run_driver assert-text "1 of 3 completed"
 run_driver assert-text "Elliptical"
 run_driver assert-text "Counts toward weekly progress"
+run_driver assert-text "Skipped · Work ran late"
 
 current_step="closing the packaged app before persistence check"
 if ! stop_app; then
@@ -160,6 +178,9 @@ run_driver assert-text "WEEK OF MONDAY, AUGUST 10"
 run_driver assert-text "1 of 3 completed"
 run_driver assert-text "Elliptical"
 run_driver assert-text "Counts toward weekly progress"
+run_driver press-contains "Monday" 10
+run_driver assert-text "Selected departure: Monday"
+run_driver assert-text "Skipped"
 
 echo "Packaged IPC acceptance passed"
 echo "Workflow: rendered controls crossed Tauri IPC and recorded an Elliptical workout"

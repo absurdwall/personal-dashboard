@@ -124,23 +124,6 @@
             </div>
             <button id="log-workout-now" type="button">Log workout now</button>
           </section>
-          <section id="departure-prompt" class="departure-response" aria-labelledby="departure-prompt-heading" hidden>
-            <p class="section-label">Departure prompt</p>
-            <h4 id="departure-prompt-heading"></h4>
-            <p id="departure-response-status" class="unresolved-status" hidden></p>
-            <div id="departure-actions" class="departure-actions"></div>
-          </section>
-          <section id="departure-reason-prompt" class="departure-response" aria-labelledby="departure-reason-heading" hidden>
-            <p class="section-label">Choose a reason</p>
-            <h4 id="departure-reason-heading"></h4>
-            <p class="workout-guidance">Choose one preset reason. No typing is required.</p>
-            <div id="departure-reasons" class="departure-actions"></div>
-            <button id="cancel-departure-reason" type="button" class="secondary-button">Cancel</button>
-          </section>
-          <section id="departure-confirmation" class="departure-confirmation" aria-live="polite" hidden>
-            <strong id="departure-confirmation-message"></strong>
-            <span id="departure-confirmation-next-prompt"></span>
-          </section>
           <section id="workout-prompt" class="workout-flow" aria-labelledby="workout-prompt-heading" hidden>
             <p class="section-label">Record workout</p>
             <h4 id="workout-prompt-heading"></h4>
@@ -440,7 +423,29 @@
             <div id="workspace-detail-status" class="workspace-detail-status" role="status" aria-live="polite">
               The local profile is loading.
             </div>
-          </aside>
+            <section id="departure-pending-recovery" class="departure-pending-recovery" hidden>
+              <p class="section-label">Pending departure</p>
+              <p>This response is still waiting for you.</p>
+              <button id="workspace-needs-attention" type="button">Needs attention</button>
+            </section>
+            <section id="departure-prompt" class="departure-response workspace-detail-response" aria-labelledby="departure-prompt-heading" hidden>
+              <p class="section-label">Departure prompt</p>
+              <h4 id="departure-prompt-heading"></h4>
+              <p id="departure-response-status" class="unresolved-status" hidden></p>
+              <div id="departure-actions" class="departure-actions"></div>
+            </section>
+            <section id="departure-reason-prompt" class="departure-response workspace-detail-response" aria-labelledby="departure-reason-heading" hidden>
+              <p class="section-label">Choose a reason</p>
+              <h4 id="departure-reason-heading"></h4>
+              <p class="workout-guidance">Choose one preset reason. No typing is required.</p>
+              <div id="departure-reasons" class="departure-actions"></div>
+              <button id="cancel-departure-reason" type="button" class="secondary-button">Cancel</button>
+            </section>
+            <section id="departure-confirmation" class="departure-confirmation workspace-detail-confirmation" aria-live="polite" hidden>
+              <strong id="departure-confirmation-message"></strong>
+              <span id="departure-confirmation-next-prompt"></span>
+            </section>
+            </aside>
         </div>
       </section>
     </main>

@@ -1136,6 +1136,52 @@ body {
   color: #52605a;
 }
 
+.departure-pending-recovery {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid rgb(173 106 58 / 32%);
+  border-radius: 0.8rem;
+  background: #fff7e8;
+  color: #59321f;
+}
+
+.departure-pending-recovery[hidden] {
+  display: none;
+}
+
+.departure-pending-recovery p:not(.section-label) {
+  margin-bottom: 0.8rem;
+  color: #70432c;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.workspace-detail .departure-response,
+.workspace-detail .departure-confirmation {
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.workspace-detail .departure-response h4 {
+  font-size: 1.2rem;
+}
+
+.workspace-detail .departure-actions {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.workspace-detail .departure-actions button {
+  width: 100%;
+  text-align: left;
+}
+
+.workspace-detail .departure-confirmation {
+  border-color: rgb(33 76 55 / 18%);
+  background: #e6f1e5;
+  color: #24543b;
+}
+
 .workspace-settings > .destination-introduction {
   max-width: 48rem;
 }

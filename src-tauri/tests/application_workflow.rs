@@ -821,6 +821,22 @@ fn confirming_departure_persists_the_response_and_one_record_workout_reminder() 
 }
 
 #[test]
+fn due_departure_response_remains_available_when_notifications_are_denied() {
+    let profile = IsolatedProfile::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile, DeniedReminderOutbox, clock);
+
+    let due = application.open().unwrap();
+
+    assert_eq!(
+        Some("2026-08-10-primary-1"),
+        due.departure_prompt
+            .as_ref()
+            .map(|prompt| prompt.slot_id.as_str())
+    );
+}
+
+#[test]
 fn departures_move_to_ordered_fallbacks_or_skip_with_the_complete_preset_reason_set() {
     let profile = IsolatedProfile::default();
     let reminders = ReminderOutbox::default();

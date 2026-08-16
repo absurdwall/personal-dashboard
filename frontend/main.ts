@@ -297,6 +297,12 @@ const workspaceDetailHeading = document.querySelector<HTMLElement>(
 const workspaceDetailCopy = document.querySelector<HTMLElement>("#workspace-detail-copy");
 const workspaceDetailStatus = document.querySelector<HTMLElement>("#workspace-detail-status");
 const workspaceScrollStatus = document.querySelector<HTMLElement>("#workspace-scroll-status");
+const departurePendingRecovery = document.querySelector<HTMLElement>(
+  "#departure-pending-recovery",
+);
+const workspaceNeedsAttention = document.querySelector<HTMLButtonElement>(
+  "#workspace-needs-attention",
+);
 const historyEmptyState = document.querySelector<HTMLElement>("#history-empty-state");
 const exerciseDashboard = document.querySelector<HTMLElement>("#exercise-dashboard");
 const inactiveProfileNotice = document.querySelector<HTMLElement>(
@@ -881,6 +887,24 @@ function selectedPrimaryDeparture(
   );
 }
 
+function pendingDepartureSlotId(
+  view: ExerciseDashboardView | null,
+): string | null {
+  return view?.departurePrompt?.slotId ?? view?.departureReasonPrompt?.slotId ?? null;
+}
+
+function pendingDeparture(
+  view: ExerciseDashboardView,
+): DepartureTiming | undefined {
+  const slotId = pendingDepartureSlotId(view);
+  if (!slotId) {
+    return undefined;
+  }
+  return [...view.primaryDepartures, ...view.fallbackDepartures].find(
+    (departure) => departure.id === slotId,
+  );
+}
+
 function updateAgendaRowSelection(): void {
   primaryDepartures?.querySelectorAll<HTMLButtonElement>(
     "button[data-agenda-slot-id]",
@@ -898,6 +922,23 @@ function updateWorkspaceDetailStatus(
   if (!workspaceDetailStatus) {
     return;
   }
+  const pendingSlotId = pendingDepartureSlotId(view);
+  const pending = view ? pendingDeparture(view) : undefined;
+  const pendingIsSelected = pendingSlotId !== null && pendingSlotId === selectedDepartureSlotId;
+  const showPendingResponse =
+    currentWorkspaceDestination === "this-week" && pendingSlotId !== null;
+  departurePendingRecovery?.toggleAttribute(
+    "hidden",
+    !showPendingResponse || pendingIsSelected,
+  );
+  departurePrompt?.toggleAttribute(
+    "hidden",
+    !showPendingResponse || !pendingIsSelected || view?.departurePrompt === null,
+  );
+  departureReasonPrompt?.toggleAttribute(
+    "hidden",
+    !showPendingResponse || !pendingIsSelected || view?.departureReasonPrompt === null,
+  );
   if (currentWorkspaceDestination !== "this-week" || !view) {
     workspaceDetailStatus.textContent =
       workspaceDestinationDetails[currentWorkspaceDestination].detailCopy;
@@ -905,16 +946,35 @@ function updateWorkspaceDetailStatus(
   }
 
   const selected = selectedPrimaryDeparture(view);
-  if (view.departurePrompt) {
+  if (showPendingResponse && pending && !pendingIsSelected) {
+    if (workspaceDetailHeading) {
+      workspaceDetailHeading.textContent = selected
+        ? `${selected.day} departure`
+        : "This week's pending departure";
+    }
+    if (workspaceDetailCopy) {
+      workspaceDetailCopy.textContent =
+        "The agenda stays visible while a due departure waits for a response.";
+    }
+    workspaceDetailStatus.textContent = selected
+      ? `Selected departure: ${selected.day} · ${selected.time} · ${selected.status} · Needs attention: ${pending.day}`
+      : `Needs attention: ${pending.day} · ${pending.time}`;
+  } else if (view.departurePrompt && pending) {
     if (workspaceDetailHeading) {
       workspaceDetailHeading.textContent = "Needs attention";
     }
     if (workspaceDetailCopy) {
       workspaceDetailCopy.textContent = view.departurePrompt.heading;
     }
-    workspaceDetailStatus.textContent = selected
-      ? `Needs attention: ${selected.day} · ${selected.time}`
-      : "Needs attention: respond to the pending departure.";
+    workspaceDetailStatus.textContent = `Needs attention: ${pending.day} · ${pending.time}`;
+  } else if (view.departureReasonPrompt && pending) {
+    if (workspaceDetailHeading) {
+      workspaceDetailHeading.textContent = "Needs attention";
+    }
+    if (workspaceDetailCopy) {
+      workspaceDetailCopy.textContent = view.departureReasonPrompt.heading;
+    }
+    workspaceDetailStatus.textContent = `Needs attention: ${pending.day} · ${pending.time}`;
   } else if (selected) {
     if (workspaceDetailHeading) {
       workspaceDetailHeading.textContent = `${selected.day} departure`;
@@ -1442,6 +1502,16 @@ function applyAuthorityState(): void {
   exerciseDashboard?.querySelectorAll("button, select").forEach((control) => {
     control.toggleAttribute("disabled", inactive);
   });
+  departurePendingRecovery?.setAttribute("aria-disabled", String(inactive));
+  departurePendingRecovery?.querySelectorAll("button, select").forEach((control) => {
+    control.toggleAttribute("disabled", inactive);
+  });
+  departurePrompt?.querySelectorAll("button, select").forEach((control) => {
+    control.toggleAttribute("disabled", inactive);
+  });
+  departureReasonPrompt?.querySelectorAll("button, select").forEach((control) => {
+    control.toggleAttribute("disabled", inactive);
+  });
   if (profileLabel) {
     profileLabel.disabled = inactive;
   }
@@ -1956,6 +2026,20 @@ departureReasons?.addEventListener("click", (event) => {
 
 cancelDepartureReason?.addEventListener("click", () => {
   void refreshExerciseDashboard();
+});
+
+workspaceNeedsAttention?.addEventListener("click", () => {
+  const pendingSlotId = pendingDepartureSlotId(currentExerciseView);
+  if (!pendingSlotId) {
+    return;
+  }
+  selectedDepartureSlotId = pendingSlotId;
+  updateAgendaRowSelection();
+  updateWorkspaceDetailStatus();
+  const firstPendingAction =
+    departureActions?.querySelector<HTMLButtonElement>("button") ??
+    departureReasons?.querySelector<HTMLButtonElement>("button");
+  firstPendingAction?.focus();
 });
 
 function handleWorkoutChoice(event: Event): void {

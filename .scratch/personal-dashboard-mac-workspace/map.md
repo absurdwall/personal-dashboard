@@ -2,7 +2,7 @@
 
 ## Current frontier
 
-- [07 — Respond to a pending departure without losing context](issues/07-respond-to-pending-departure-without-losing-context.md) — ready-for-agent
+- [07 — Respond to a pending departure without losing context](issues/07-respond-to-pending-departure-without-losing-context.md) — resolved
 - [08 — Record any workout in the contextual pane](issues/08-record-any-workout-in-contextual-pane.md) — ready-for-agent
 - [09 — Review and correct historical weeks](issues/09-review-and-correct-historical-weeks.md) — ready-for-agent
 - [10 — Adjust this week or the repeating routine in context](issues/10-adjust-this-week-or-repeating-routine-in-context.md) — ready-for-agent
