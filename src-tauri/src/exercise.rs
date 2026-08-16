@@ -10,6 +10,7 @@ const WEEKLY_GOAL: u32 = 3;
 const UNSCHEDULED_WORKOUT_SLOT_ID: &str = "unscheduled";
 const FOLLOW_UP_DELAY_MILLIS: i64 = 15 * 60 * 1_000;
 const RECORD_WORKOUT_DELAY_MILLIS: i64 = 90 * 60 * 1_000;
+const MAX_UTC_OFFSET_MINUTES: i32 = 24 * 60;
 const PRIMARY_DAYS: [(i64, &str); 3] = [(0, "Monday"), (2, "Wednesday"), (4, "Friday")];
 const FALLBACK_DAYS: [(i64, &str); 2] = [(5, "Saturday"), (6, "Sunday")];
 const WEEKDAYS: [&str; 7] = [
@@ -124,6 +125,8 @@ struct WorkoutRecord {
     source: Option<WorkoutSource>,
     source_slot_id: Option<String>,
     recorded_at_epoch_millis: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recorded_at_utc_offset_minutes: Option<i32>,
     activity: WorkoutActivity,
     duration: WorkoutDuration,
     effort: PerceivedEffort,
@@ -281,6 +284,8 @@ struct PlannedDeparture {
     #[serde(default = "default_departure_time")]
     departure_time: String,
     departure_at_epoch_millis: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    departure_utc_offset_minutes: Option<i32>,
     status: DepartureStatus,
     reminder_scheduled_at_epoch_millis: Option<i64>,
     #[serde(default)]
@@ -312,6 +317,8 @@ enum DepartureStatus {
 struct DepartureResponse {
     outcome: DepartureOutcome,
     recorded_at_epoch_millis: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recorded_at_utc_offset_minutes: Option<i32>,
     #[serde(default)]
     reason: Option<DepartureReason>,
     #[serde(default)]
@@ -486,6 +493,7 @@ pub struct WorkoutRecordView {
     pub id: String,
     pub source: String,
     pub recorded_at: String,
+    pub recorded_at_utc_offset_minutes: Option<i32>,
     pub activity: String,
     pub duration: String,
     pub effort: String,
@@ -652,6 +660,11 @@ impl<
         let now = self.clock.now_epoch_millis();
         let (mut state, mut changed) = self.current_state()?;
         let previously_scheduled_notification_ids = state.scheduled_notification_ids();
+        let schedule_rebased = state.rebase_planned_departures(&self.clock);
+        if schedule_rebased {
+            state.clear_native_reminder_markers();
+            changed = true;
+        }
         let week_start_day = local_day_number(&self.clock, now) - local_weekday(&self.clock, now);
         let current_week_start = date_from_day_number(week_start_day);
         let week_key = current_week_start.iso_date();
@@ -693,6 +706,7 @@ impl<
             .cloned()
             .collect::<HashSet<_>>();
         let reconciliation_required = state.pending_reminder_reconciliation.is_some()
+            || schedule_rebased
             || (changed && previously_scheduled_notification_ids != desired_notification_ids);
         let permission = if reconciliation_required || !desired_reminder_intents.is_empty() {
             Some(self.notifications.permission())
@@ -835,6 +849,11 @@ impl<
     pub fn open_inactive(&self) -> Result<ExerciseDashboardView, String> {
         let now = self.clock.now_epoch_millis();
         let (mut state, _) = self.current_state()?;
+        let previously_scheduled_notification_ids = state.scheduled_notification_ids();
+        if state.rebase_planned_departures(&self.clock) {
+            state.clear_native_reminder_markers();
+            state.begin_reminder_reconciliation(previously_scheduled_notification_ids);
+        }
         if state.pending_reminder_reconciliation.is_some() {
             for notification_id in state.reminder_reconciliation_notification_ids(true) {
                 self.notifications.cancel(&notification_id)?;
@@ -955,6 +974,7 @@ impl<
         departure.departure_response = Some(DepartureResponse {
             outcome: DepartureOutcome::LeavingForGym,
             recorded_at_epoch_millis: now,
+            recorded_at_utc_offset_minutes: Some(self.clock.utc_offset_minutes_at(now)),
             reason: None,
             fallback_slot_id: None,
         });
@@ -1034,6 +1054,7 @@ impl<
         source.departure_response = Some(DepartureResponse {
             outcome,
             recorded_at_epoch_millis: now,
+            recorded_at_utc_offset_minutes: Some(self.clock.utc_offset_minutes_at(now)),
             reason: Some(reason),
             fallback_slot_id,
         });
@@ -1161,6 +1182,7 @@ impl<
             source: Some(source),
             source_slot_id: (source != WorkoutSource::Unscheduled).then(|| slot_id.into()),
             recorded_at_epoch_millis: now,
+            recorded_at_utc_offset_minutes: Some(self.clock.utc_offset_minutes_at(now)),
             activity,
             duration,
             effort,
@@ -1227,7 +1249,11 @@ impl<
 
     fn current_state(&self) -> Result<(ExerciseState, bool), String> {
         match self.persistence.load()? {
-            Some(document) => parse_state(&document),
+            Some(document) => {
+                let (state, migrated) = parse_state(&document)?;
+                state.validate_timestamps(&self.clock)?;
+                Ok((state, migrated))
+            }
             None => Ok((ExerciseState::new(), false)),
         }
     }
@@ -1445,20 +1471,9 @@ impl ExerciseState {
             .collect()
     }
 
-    pub(crate) fn validate_timestamps<C: ExerciseClock>(&self, clock: &C) -> Result<(), String> {
+    pub(crate) fn validate_timestamps<C: ExerciseClock>(&self, _clock: &C) -> Result<(), String> {
         for week in &self.weeks {
-            let week_start_day = parse_iso_date(&week.week_start)
-                .expect("saved week start was validated")
-                .day_number();
             for departure in all_departures(week) {
-                let schedule = ScheduleSelection::parse(&departure.day, &departure.departure_time)
-                    .expect("saved departure schedule was validated");
-                let expected_departure_at = local_epoch_millis(
-                    clock,
-                    week_start_day + schedule.weekday,
-                    schedule.departure_time.hour,
-                    schedule.departure_time.minute,
-                );
                 let optional_timestamps_are_valid = [
                     departure.reminder_scheduled_at_epoch_millis,
                     departure.follow_up_scheduled_at_epoch_millis,
@@ -1473,6 +1488,9 @@ impl ExerciseState {
                     .as_ref()
                     .is_none_or(|response| {
                         response.recorded_at_epoch_millis >= 0
+                            && response
+                                .recorded_at_utc_offset_minutes
+                                .is_none_or(valid_utc_offset_minutes)
                             && departure
                                 .record_workout_prompt_due_at_epoch_millis
                                 .is_none_or(|due_at| {
@@ -1481,22 +1499,49 @@ impl ExerciseState {
                                             + RECORD_WORKOUT_DELAY_MILLIS
                                 })
                     });
-                if departure.departure_at_epoch_millis != expected_departure_at
+                if !planned_departure_timestamp_is_valid(departure)
                     || !optional_timestamps_are_valid
                     || !response_timestamps_are_valid
                 {
                     return Err("The saved exercise timestamps are not valid.".into());
                 }
             }
-            if week
-                .workout_records
-                .iter()
-                .any(|record| record.recorded_at_epoch_millis < 0)
-            {
+            if !week.workout_records.iter().all(|record| {
+                record.recorded_at_epoch_millis >= 0
+                    && record
+                        .recorded_at_utc_offset_minutes
+                        .is_none_or(valid_utc_offset_minutes)
+            }) {
                 return Err("The saved exercise timestamps are not valid.".into());
             }
         }
         Ok(())
+    }
+
+    fn rebase_planned_departures<C: ExerciseClock>(&mut self, clock: &C) -> bool {
+        let mut changed = false;
+        for week in &mut self.weeks {
+            for departure in all_departures_mut(week) {
+                let date = parse_iso_date(&departure.date).expect("saved departure date is valid");
+                let schedule = ScheduleSelection::parse(&departure.day, &departure.departure_time)
+                    .expect("saved departure schedule is valid");
+                let departure_at = local_epoch_millis(
+                    clock,
+                    date.day_number(),
+                    schedule.departure_time.hour,
+                    schedule.departure_time.minute,
+                );
+                let offset_minutes = clock.utc_offset_minutes_at(departure_at);
+                if departure.departure_at_epoch_millis != departure_at
+                    || departure.departure_utc_offset_minutes != Some(offset_minutes)
+                {
+                    departure.departure_at_epoch_millis = departure_at;
+                    departure.departure_utc_offset_minutes = Some(offset_minutes);
+                    changed = true;
+                }
+            }
+        }
+        changed
     }
 
     pub(crate) fn reset_native_reminder_markers(&mut self) {
@@ -1726,7 +1771,12 @@ impl ExerciseState {
                                     .is_some()
                         }),
                 };
-                if !record_ids.insert(record.id.as_str()) || !valid_source {
+                if !record_ids.insert(record.id.as_str())
+                    || !valid_source
+                    || record
+                        .recorded_at_utc_offset_minutes
+                        .is_some_and(|offset| !valid_utc_offset_minutes(offset))
+                {
                     return Err("The saved workout data is not valid.".into());
                 }
             }
@@ -1782,6 +1832,44 @@ pub(crate) fn parse_state(document: &[u8]) -> Result<(ExerciseState, bool), Stri
         .map_err(|_| "The local exercise state is not valid.".to_string())?;
     let migrated = state.schema_version != EXERCISE_SCHEMA_VERSION;
     Ok((state.validate()?, migrated))
+}
+
+fn valid_utc_offset_minutes(offset_minutes: i32) -> bool {
+    (-MAX_UTC_OFFSET_MINUTES..=MAX_UTC_OFFSET_MINUTES).contains(&offset_minutes)
+}
+
+fn planned_departure_timestamp_is_valid(departure: &PlannedDeparture) -> bool {
+    if departure.departure_at_epoch_millis < 0 {
+        return false;
+    }
+    let Some(date) = parse_iso_date(&departure.date) else {
+        return false;
+    };
+    let Ok(schedule) = ScheduleSelection::parse(&departure.day, &departure.departure_time) else {
+        return false;
+    };
+    let local_millis = (date.day_number() * 86_400
+        + schedule.departure_time.hour * 3_600
+        + schedule.departure_time.minute * 60)
+        * 1_000;
+    let offset_minutes = match departure.departure_utc_offset_minutes {
+        Some(offset_minutes) if valid_utc_offset_minutes(offset_minutes) => offset_minutes,
+        Some(_) => return false,
+        None => {
+            let difference = local_millis - departure.departure_at_epoch_millis;
+            if difference.rem_euclid(60_000) != 0 {
+                return false;
+            }
+            let Ok(offset_minutes) = i32::try_from(difference / 60_000) else {
+                return false;
+            };
+            if !valid_utc_offset_minutes(offset_minutes) {
+                return false;
+            }
+            return true;
+        }
+    };
+    departure.departure_at_epoch_millis == local_millis - i64::from(offset_minutes) * 60_000
 }
 
 fn routine_departures(days: &[(i64, &str)]) -> Vec<RoutineDeparture> {
@@ -1849,17 +1937,19 @@ fn make_departures<C: ExerciseClock>(
         .map(|slot| {
             let schedule = ScheduleSelection::parse(&slot.day, &slot.departure_time)
                 .expect("the saved routine departure was validated");
+            let departure_at = local_epoch_millis(
+                clock,
+                week_start_day + schedule.weekday,
+                schedule.departure_time.hour,
+                schedule.departure_time.minute,
+            );
             PlannedDeparture {
                 id: format!("{week_key}-{kind}-{}", slot.order),
                 day: slot.day.clone(),
                 date: date_from_day_number(week_start_day + slot.weekday).iso_date(),
                 departure_time: slot.departure_time.clone(),
-                departure_at_epoch_millis: local_epoch_millis(
-                    clock,
-                    week_start_day + schedule.weekday,
-                    schedule.departure_time.hour,
-                    schedule.departure_time.minute,
-                ),
+                departure_at_epoch_millis: departure_at,
+                departure_utc_offset_minutes: Some(clock.utc_offset_minutes_at(departure_at)),
                 status,
                 reminder_scheduled_at_epoch_millis: None,
                 follow_up_scheduled_at_epoch_millis: None,
@@ -2362,6 +2452,7 @@ fn workout_record_view(record: &WorkoutRecord, clock: &impl ExerciseClock) -> Wo
             .label()
             .into(),
         recorded_at: friendly_recorded_at(clock, record.recorded_at_epoch_millis),
+        recorded_at_utc_offset_minutes: record.recorded_at_utc_offset_minutes,
         activity: record.activity.label().into(),
         duration: record.duration.label().into(),
         effort: record.effort.label().into(),

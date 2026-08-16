@@ -56,11 +56,13 @@ impl CompletedBaselineExercise {
                         .ok_or(CompletedBaselineError::Invalid)?;
                     format!("{source_slot_id}-workout")
                 };
+                let recorded_at = parse_baseline_timestamp(&record.recorded_at)?;
                 workout_records.push(WorkoutRecord {
                     id,
                     source: Some(record.source),
                     source_slot_id: record.source_slot_id,
-                    recorded_at_epoch_millis: parse_baseline_timestamp(&record.recorded_at)?.epoch,
+                    recorded_at_epoch_millis: recorded_at.epoch,
+                    recorded_at_utc_offset_minutes: Some(recorded_at.offset_minutes),
                     activity: record.activity,
                     duration: record.duration,
                     effort: record.effort,
@@ -229,6 +231,7 @@ fn migrate_departures(
                 date: timing.date,
                 departure_time: timing.time,
                 departure_at_epoch_millis: timing.epoch,
+                departure_utc_offset_minutes: Some(timing.offset_minutes),
                 status: departure.status,
                 reminder_scheduled_at_epoch_millis: optional_epoch(
                     departure.reminder_sent_at.as_deref(),
@@ -256,9 +259,11 @@ fn migrate_departures(
 fn migrate_departure_response(
     response: &BaselineDepartureResponse,
 ) -> Result<DepartureResponse, CompletedBaselineError> {
+    let recorded_at = parse_baseline_timestamp(&response.recorded_at)?;
     Ok(DepartureResponse {
         outcome: response.outcome,
-        recorded_at_epoch_millis: parse_baseline_timestamp(&response.recorded_at)?.epoch,
+        recorded_at_epoch_millis: recorded_at.epoch,
+        recorded_at_utc_offset_minutes: Some(recorded_at.offset_minutes),
         reason: response.reason,
         fallback_slot_id: response.fallback_slot_id.clone(),
     })
@@ -301,6 +306,7 @@ struct BaselineTimestamp {
     epoch: i64,
     date: String,
     time: String,
+    offset_minutes: i32,
 }
 
 fn parse_baseline_timestamp(value: &str) -> Result<BaselineTimestamp, CompletedBaselineError> {
@@ -351,6 +357,7 @@ fn parse_baseline_timestamp(value: &str) -> Result<BaselineTimestamp, CompletedB
         epoch: (local_seconds - offset_seconds) * 1_000 + millis,
         date: date.to_string(),
         time: format!("{hour:02}:{minute:02}"),
+        offset_minutes: (offset_seconds / 60) as i32,
     })
 }
 

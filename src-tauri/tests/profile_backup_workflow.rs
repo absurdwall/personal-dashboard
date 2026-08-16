@@ -121,6 +121,31 @@ impl ExerciseClock for FixedNewYorkClock {
     }
 }
 
+#[derive(Clone)]
+struct FixedOffsetClock {
+    now_epoch_millis: i64,
+    offset_minutes: i32,
+}
+
+impl FixedOffsetClock {
+    fn at(now_epoch_millis: i64, offset_minutes: i32) -> Self {
+        Self {
+            now_epoch_millis,
+            offset_minutes,
+        }
+    }
+}
+
+impl ExerciseClock for FixedOffsetClock {
+    fn now_epoch_millis(&self) -> i64 {
+        self.now_epoch_millis
+    }
+
+    fn utc_offset_minutes_at(&self, _epoch_millis: i64) -> i32 {
+        self.offset_minutes
+    }
+}
+
 #[derive(Clone, Default)]
 struct ReminderOutbox {
     scheduled: Arc<Mutex<Vec<NotificationIntent>>>,
@@ -170,8 +195,8 @@ impl NotificationPlatform for ReminderOutbox {
     }
 }
 
-fn record_unscheduled_workout(
-    application: &ExerciseApplication<MemoryDocument, ReminderOutbox, FixedNewYorkClock>,
+fn record_unscheduled_workout<C: ExerciseClock>(
+    application: &ExerciseApplication<MemoryDocument, ReminderOutbox, C>,
     activity: &str,
     duration: &str,
     effort: &str,
@@ -186,6 +211,128 @@ fn record_unscheduled_workout(
     application
         .complete_workout_record("unscheduled", effort)
         .unwrap();
+}
+
+#[test]
+fn backup_restore_rebases_future_reminders_but_preserves_historical_instants_across_zones() {
+    let now = 1_786_366_800_000;
+    let source_clock = FixedOffsetClock::at(now, -4 * 60);
+    let source_profile = MemoryDocument::default();
+    let source_exercise = MemoryDocument::default();
+    let source_exchange = MemoryExchange::default();
+    let source_reminders = ReminderOutbox::default();
+    let source_profile_application =
+        ProfileApplication::new(source_profile.clone(), source_exchange.clone());
+    let source_exercise_application = ExerciseApplication::new(
+        source_exercise.clone(),
+        source_reminders.clone(),
+        source_clock.clone(),
+    );
+    source_profile_application
+        .update_profile_label("Portable source profile".into())
+        .unwrap();
+    source_exercise_application.open().unwrap();
+    record_unscheduled_workout(
+        &source_exercise_application,
+        "Weight training",
+        "30",
+        "Moderate",
+    );
+    let source_dashboard = source_exercise_application.open().unwrap();
+    let source_backup = ProfileBackupApplication::new(
+        source_profile.clone(),
+        source_exercise.clone(),
+        source_exchange.clone(),
+        source_reminders,
+        source_clock,
+        MemoryReplacement::new(source_profile.clone(), source_exercise.clone()),
+    );
+    source_backup.backup_profile().unwrap();
+    let backup_document = source_exchange
+        .exported_document
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap();
+    let source_json: serde_json::Value = serde_json::from_slice(&backup_document).unwrap();
+    let source_record = &source_json["exercise"]["weeks"][0]["workout_records"][0];
+
+    let target_clock = FixedOffsetClock::at(now, 9 * 60);
+    let target_profile = MemoryDocument::default();
+    let target_exercise = MemoryDocument::default();
+    let target_exchange = MemoryExchange::default();
+    let target_reminders = ReminderOutbox::default();
+    let target_profile_application =
+        ProfileApplication::new(target_profile.clone(), target_exchange.clone());
+    let target_exercise_application = ExerciseApplication::new(
+        target_exercise.clone(),
+        target_reminders.clone(),
+        target_clock.clone(),
+    );
+    target_profile_application
+        .update_profile_label("Destination profile".into())
+        .unwrap();
+    target_exercise_application.open().unwrap();
+    *target_exchange.import_document.lock().unwrap() = Some(backup_document);
+    let target_backup = ProfileBackupApplication::new(
+        target_profile.clone(),
+        target_exercise.clone(),
+        target_exchange,
+        target_reminders.clone(),
+        target_clock.clone(),
+        MemoryReplacement::new(target_profile.clone(), target_exercise.clone()),
+    );
+
+    target_backup.select_profile_restore().unwrap();
+    target_backup.confirm_profile_restore().unwrap();
+    let target_dashboard = target_exercise_application.open().unwrap();
+    let target_json: serde_json::Value =
+        serde_json::from_slice(&target_exercise.document.lock().unwrap().clone().unwrap()).unwrap();
+    let target_record = &target_json["weeks"][0]["workout_records"][0];
+
+    assert_eq!(
+        source_dashboard
+            .primary_departures
+            .iter()
+            .map(|departure| (&departure.day, &departure.time))
+            .collect::<Vec<_>>(),
+        target_dashboard
+            .primary_departures
+            .iter()
+            .map(|departure| (&departure.day, &departure.time))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        source_record["recorded_at_epoch_millis"],
+        target_record["recorded_at_epoch_millis"]
+    );
+    assert_eq!(-4 * 60, target_record["recorded_at_utc_offset_minutes"]);
+    let source_deliver_at = source_dashboard
+        .reminder_intent
+        .as_ref()
+        .unwrap()
+        .deliver_at_epoch_millis;
+    let target_deliver_at = target_dashboard
+        .reminder_intent
+        .as_ref()
+        .unwrap()
+        .deliver_at_epoch_millis;
+    assert_ne!(source_deliver_at, target_deliver_at);
+    assert!(target_reminders
+        .scheduled
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|intent| intent.deliver_at_epoch_millis == target_deliver_at));
+
+    let scheduled_after_restore = target_reminders.scheduled.lock().unwrap().len();
+    ExerciseApplication::new(target_exercise, target_reminders.clone(), target_clock)
+        .open()
+        .unwrap();
+    assert_eq!(
+        scheduled_after_restore,
+        target_reminders.scheduled.lock().unwrap().len()
+    );
 }
 
 #[test]
@@ -555,6 +702,15 @@ fn cancelled_invalid_or_unsupported_restore_keeps_the_active_profile() {
     );
     assert_eq!(active_profile, profile_application.open().unwrap());
     assert_eq!(active_dashboard, exercise_application.open().unwrap());
+
+    let mut invalid_offset: serde_json::Value = serde_json::from_slice(&valid_backup).unwrap();
+    invalid_offset["exercise"]["weeks"][0]["primary_departures"][0]
+        ["departure_utc_offset_minutes"] = 0.into();
+    *exchange.import_document.lock().unwrap() = Some(serde_json::to_vec(&invalid_offset).unwrap());
+    assert_eq!(
+        "The saved exercise timestamps are not valid.",
+        backup.select_profile_restore().unwrap_err()
+    );
 
     let mut unsupported: serde_json::Value = serde_json::from_slice(&valid_backup).unwrap();
     unsupported["schema_version"] = 99.into();

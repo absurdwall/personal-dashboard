@@ -122,6 +122,31 @@ impl ExerciseClock for FixedNewYorkClock {
     }
 }
 
+#[derive(Clone)]
+struct FixedOffsetClock {
+    now_epoch_millis: i64,
+    offset_minutes: i32,
+}
+
+impl FixedOffsetClock {
+    fn at(now_epoch_millis: i64, offset_minutes: i32) -> Self {
+        Self {
+            now_epoch_millis,
+            offset_minutes,
+        }
+    }
+}
+
+impl ExerciseClock for FixedOffsetClock {
+    fn now_epoch_millis(&self) -> i64 {
+        self.now_epoch_millis
+    }
+
+    fn utc_offset_minutes_at(&self, _epoch_millis: i64) -> i32 {
+        self.offset_minutes
+    }
+}
+
 #[derive(Clone, Default)]
 struct ReminderOutbox {
     scheduled: Arc<Mutex<Vec<NotificationIntent>>>,
@@ -152,20 +177,20 @@ impl NotificationPlatform for ReminderOutbox {
     }
 }
 
-type ExerciseApp = ExerciseApplication<
+type ExerciseApp<C> = ExerciseApplication<
     MemoryDocument,
     ReminderOutbox,
-    FixedNewYorkClock,
+    C,
     ProfileExerciseAuthority<MemoryDocument>,
     ProfileNotificationCancellationJournal<MemoryDocument>,
 >;
 
-fn exercise_app(
+fn exercise_app<C: ExerciseClock>(
     profile: MemoryDocument,
     exercise: MemoryDocument,
     reminders: ReminderOutbox,
-    clock: FixedNewYorkClock,
-) -> ExerciseApp {
+    clock: C,
+) -> ExerciseApp<C> {
     ExerciseApplication::with_authority(
         exercise,
         reminders,
@@ -175,7 +200,7 @@ fn exercise_app(
     )
 }
 
-fn record_workout(application: &ExerciseApp) {
+fn record_workout<C: ExerciseClock>(application: &ExerciseApp<C>) {
     application.start_unscheduled_workout_record().unwrap();
     application
         .choose_workout_activity("unscheduled", "Elliptical")
@@ -186,6 +211,127 @@ fn record_workout(application: &ExerciseApp) {
     application
         .complete_workout_record("unscheduled", "Moderate")
         .unwrap();
+}
+
+#[test]
+fn moved_profile_import_rebases_future_reminders_across_zones() {
+    let now = 1_786_366_800_000;
+    let source_clock = FixedOffsetClock::at(now, -4 * 60);
+    let source_profile = MemoryDocument::default();
+    let source_exercise = MemoryDocument::default();
+    let source_reminders = ReminderOutbox::default();
+    let source_exchange = MemoryMoveExchange::default();
+    let source_profile_app =
+        ProfileApplication::new(source_profile.clone(), MemoryBackupExchange::default());
+    let source_exercise_app = exercise_app(
+        source_profile.clone(),
+        source_exercise.clone(),
+        source_reminders.clone(),
+        source_clock.clone(),
+    );
+    source_profile_app
+        .update_profile_label("Portable moved profile".into())
+        .unwrap();
+    source_exercise_app.open().unwrap();
+    record_workout(&source_exercise_app);
+    let source_dashboard = source_exercise_app.open().unwrap();
+    let source_move = ProfileMoveApplication::new(
+        source_profile.clone(),
+        source_exercise.clone(),
+        source_exchange.clone(),
+        source_reminders,
+        source_clock,
+        MemoryReplacement::new(source_profile.clone(), source_exercise.clone()),
+    );
+
+    source_move.move_profile().unwrap();
+    let moved_document = source_exchange
+        .exported_document
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap();
+    let moved_json: serde_json::Value = serde_json::from_slice(&moved_document).unwrap();
+    let moved_record = &moved_json["exercise"]["weeks"][0]["workout_records"][0];
+
+    let target_clock = FixedOffsetClock::at(now, 9 * 60);
+    let target_profile = MemoryDocument::default();
+    let target_exercise = MemoryDocument::default();
+    let target_reminders = ReminderOutbox::default();
+    let target_exchange = MemoryMoveExchange::default();
+    let target_profile_app =
+        ProfileApplication::new(target_profile.clone(), MemoryBackupExchange::default());
+    let target_exercise_app = exercise_app(
+        target_profile.clone(),
+        target_exercise.clone(),
+        target_reminders.clone(),
+        target_clock.clone(),
+    );
+    target_profile_app
+        .update_profile_label("Destination before move".into())
+        .unwrap();
+    target_exercise_app.open().unwrap();
+    *target_exchange.import_document.lock().unwrap() = Some(moved_document);
+    let target_move = ProfileMoveApplication::new(
+        target_profile.clone(),
+        target_exercise.clone(),
+        target_exchange,
+        target_reminders.clone(),
+        target_clock,
+        MemoryReplacement::new(target_profile.clone(), target_exercise.clone()),
+    );
+
+    target_move.select_profile_move_import().unwrap();
+    let imported = target_move.confirm_profile_move_import().unwrap();
+    let target_json: serde_json::Value =
+        serde_json::from_slice(&target_exercise.document.lock().unwrap().clone().unwrap()).unwrap();
+    let target_record = &target_json["weeks"][0]["workout_records"][0];
+
+    assert_eq!(
+        source_dashboard
+            .primary_departures
+            .iter()
+            .map(|departure| (&departure.day, &departure.time))
+            .collect::<Vec<_>>(),
+        imported
+            .dashboard
+            .primary_departures
+            .iter()
+            .map(|departure| (&departure.day, &departure.time))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        moved_record["recorded_at_epoch_millis"],
+        target_record["recorded_at_epoch_millis"]
+    );
+    assert_eq!(-4 * 60, target_record["recorded_at_utc_offset_minutes"]);
+    assert_ne!(
+        source_dashboard
+            .reminder_intent
+            .as_ref()
+            .unwrap()
+            .deliver_at_epoch_millis,
+        imported
+            .dashboard
+            .reminder_intent
+            .as_ref()
+            .unwrap()
+            .deliver_at_epoch_millis
+    );
+    assert!(target_reminders
+        .scheduled
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|intent| {
+            intent.deliver_at_epoch_millis
+                == imported
+                    .dashboard
+                    .reminder_intent
+                    .as_ref()
+                    .unwrap()
+                    .deliver_at_epoch_millis
+        }));
 }
 
 #[test]

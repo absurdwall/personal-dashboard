@@ -120,6 +120,7 @@ type WorkoutRecord = Readonly<{
   id: string;
   source: string;
   recordedAt: string;
+  recordedAtUtcOffsetMinutes: number | null;
   activity: string;
   duration: string;
   effort: string;
