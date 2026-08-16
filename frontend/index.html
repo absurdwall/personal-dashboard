@@ -91,17 +91,26 @@
             <p>Next departure</p>
             <strong id="next-departure">Loading…</strong>
           </div>
-          <div class="schedule-grid">
-            <section class="schedule-card" aria-labelledby="primary-departures-heading">
-              <h4 id="primary-departures-heading">Primary departures</h4>
-              <ol id="primary-departures" class="departure-list"></ol>
+          <div class="agenda-layout">
+            <section class="agenda-group primary-agenda" aria-labelledby="primary-departures-heading">
+              <div class="agenda-group-heading">
+                <div>
+                  <p class="agenda-kicker">Current plan</p>
+                  <h4 id="primary-departures-heading">Primary departures</h4>
+                </div>
+                <span class="agenda-count">3 planned</span>
+              </div>
+              <ol id="primary-departures" class="departure-list agenda-list"></ol>
             </section>
-            <section class="schedule-card" aria-labelledby="fallback-departures-heading">
-              <div class="schedule-card-heading">
-                <h4 id="fallback-departures-heading">Fallback availability</h4>
+            <section class="agenda-group fallback-agenda" aria-labelledby="fallback-departures-heading">
+              <div class="agenda-group-heading">
+                <div>
+                  <p class="agenda-kicker">Recovery capacity</p>
+                  <h4 id="fallback-departures-heading">Fallback availability</h4>
+                </div>
                 <span id="fallback-count" class="availability-count">—</span>
               </div>
-              <ol id="fallback-departures" class="departure-list"></ol>
+              <ol id="fallback-departures" class="departure-list agenda-list"></ol>
             </section>
           </div>
           <p id="exercise-reminder-status" class="exercise-reminder-status" role="status" aria-live="polite">

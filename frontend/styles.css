@@ -1253,3 +1253,241 @@ body {
     padding: 1rem;
   }
 }
+
+/* Issue 06: keep This Week dense enough to scan as an agenda before detail actions expand. */
+#exercise-dashboard {
+  padding: 1.25rem;
+}
+
+#exercise-dashboard .progress-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(11rem, 0.72fr);
+  align-items: end;
+  gap: 0.9rem;
+  margin-bottom: 0.9rem;
+}
+
+#exercise-dashboard h3 {
+  max-width: none;
+  margin-bottom: 0;
+  font-size: clamp(1.8rem, 4vw, 2.65rem);
+}
+
+#exercise-dashboard .next-departure {
+  padding: 0.8rem 0.95rem;
+  border-radius: 0.8rem;
+}
+
+#exercise-dashboard .next-departure p {
+  margin-bottom: 0.3rem;
+  font-size: 0.66rem;
+}
+
+#exercise-dashboard .next-departure strong {
+  font-size: 1.15rem;
+}
+
+.agenda-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(13rem, 0.82fr);
+  gap: 0.75rem;
+}
+
+.agenda-group {
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid rgb(245 241 229 / 24%);
+  border-radius: 0.85rem;
+  background: #f8f5eb;
+  color: #183329;
+}
+
+.agenda-group-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.45rem;
+}
+
+.agenda-kicker {
+  margin: 0 0 0.2rem;
+  color: #64716b;
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.agenda-group h4 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.08rem;
+  font-weight: 600;
+}
+
+.agenda-count {
+  flex: 0 0 auto;
+  padding: 0.28rem 0.45rem;
+  border: 1px solid rgb(24 51 41 / 14%);
+  border-radius: 999px;
+  color: #52605a;
+  font-size: 0.66rem;
+  font-weight: 750;
+}
+
+.agenda-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agenda-list li.agenda-row {
+  display: grid;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.35rem 0;
+  border-top: 1px solid rgb(24 51 41 / 12%);
+}
+
+.agenda-row-trigger {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: #183329;
+  text-align: left;
+  font-size: 0.75rem;
+}
+
+.agenda-row-trigger:hover,
+.agenda-row-trigger[aria-pressed="true"] {
+  border-color: rgb(33 76 55 / 22%);
+  background: #dcece1;
+}
+
+.agenda-row-trigger[aria-pressed="true"] {
+  box-shadow: inset 0.2rem 0 0 #356047;
+}
+
+.agenda-row-identity,
+.agenda-row-state {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 0.45rem;
+}
+
+.agenda-row-identity {
+  flex-wrap: wrap;
+}
+
+.agenda-row-identity strong {
+  font-size: 0.78rem;
+}
+
+.agenda-row-identity span {
+  color: #64716b;
+  font-size: 0.7rem;
+}
+
+.agenda-row-state {
+  align-items: center;
+  color: #52605a;
+  line-height: 1.25;
+}
+
+.agenda-status-marker {
+  display: inline-grid;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.status-completed .agenda-status-marker {
+  border-radius: 0.25rem;
+}
+
+.status-missed .agenda-status-marker,
+.status-unresolved .agenda-status-marker,
+.status-awaiting-response .agenda-status-marker {
+  border-width: 2px;
+}
+
+.status-completed,
+.availability-available .agenda-row-state {
+  color: #24543b;
+  font-weight: 750;
+}
+
+.status-missed,
+.status-unresolved,
+.status-awaiting-response,
+.availability-unavailable .agenda-row-state,
+.availability-reserved .agenda-row-state {
+  color: #7a3024;
+  font-weight: 750;
+}
+
+.workout-evidence {
+  margin-left: 0.5rem;
+  color: #24543b;
+  font-size: 0.68rem;
+  font-weight: 750;
+}
+
+.agenda-row > .schedule-editor {
+  margin: 0 0.5rem 0.35rem;
+}
+
+.fallback-agenda .agenda-row {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+}
+
+.fallback-agenda .agenda-row-identity {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.fallback-agenda .agenda-row-state {
+  font-size: 0.7rem;
+}
+
+#exercise-dashboard .exercise-reminder-status {
+  margin-top: 0.7rem;
+  font-size: 0.74rem;
+}
+
+#exercise-dashboard .manual-workout {
+  margin-top: 0.7rem;
+  padding: 0.85rem;
+}
+
+#exercise-dashboard .manual-workout h4 {
+  font-size: 1rem;
+}
+
+@media (max-width: 760px) {
+  #exercise-dashboard .progress-copy,
+  .agenda-layout {
+    grid-template-columns: 1fr;
+  }
+
+  #exercise-dashboard .progress-copy {
+    gap: 0.65rem;
+  }
+}

@@ -389,8 +389,26 @@ pub struct PrimaryDepartureView {
     pub id: String,
     pub day: String,
     pub time: String,
+    pub departure_at_epoch_millis: i64,
     pub status: String,
+    pub status_kind: DepartureStatusKind,
+    pub has_workout_record: bool,
     pub adjustment: Option<ScheduleAdjustmentView>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DepartureStatusKind {
+    Scheduled,
+    AwaitingResponse,
+    Unresolved,
+    Leaving,
+    Completed,
+    Moved,
+    Skipped,
+    NotNeeded,
+    Missed,
+    Available,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -441,7 +459,20 @@ pub struct FallbackDepartureView {
     pub id: String,
     pub day: String,
     pub time: String,
+    pub departure_at_epoch_millis: i64,
     pub availability: String,
+    pub availability_kind: FallbackAvailabilityKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FallbackAvailabilityKind {
+    Assigned,
+    Available,
+    NotNeeded,
+    Missed,
+    Reserved,
+    Unavailable,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -535,6 +566,7 @@ pub struct ExerciseDashboardView {
     pub manual_workout_action: String,
     pub weekly_goal_status: Option<String>,
     pub next_departure: Option<String>,
+    pub next_departure_slot_id: Option<String>,
     pub schedule_choices: ScheduleChoicesView,
     pub primary_departures: Vec<PrimaryDepartureView>,
     pub fallback_departures: Vec<FallbackDepartureView>,
@@ -2395,6 +2427,7 @@ fn dashboard_view(
         manual_workout_action: "Log workout now".into(),
         weekly_goal_status: goal_reached.then(|| "Weekly goal complete".into()),
         next_departure: next_departure.map(friendly_departure),
+        next_departure_slot_id: next_departure.map(|departure| departure.id.clone()),
         schedule_choices: schedule_choices_view(),
         primary_departures: primary_departure_views(week, now),
         fallback_departures: fallback_departure_views(week, now),
@@ -2672,7 +2705,10 @@ fn primary_departure_views(week: &ExerciseWeek, now: i64) -> Vec<PrimaryDepartur
             id: departure.id.clone(),
             day: departure.day.clone(),
             time: friendly_schedule_time(&departure.departure_time),
+            departure_at_epoch_millis: departure.departure_at_epoch_millis,
             status: departure_status(week, departure, now),
+            status_kind: departure_status_kind(week, departure, now),
+            has_workout_record: departure_has_workout_record(week, departure),
             adjustment: schedule_adjustment_view(departure, now),
         })
         .collect()
@@ -2685,7 +2721,9 @@ fn fallback_departure_views(week: &ExerciseWeek, now: i64) -> Vec<FallbackDepart
             id: departure.id.clone(),
             day: departure.day.clone(),
             time: friendly_schedule_time(&departure.departure_time),
+            departure_at_epoch_millis: departure.departure_at_epoch_millis,
             availability: fallback_status(week, departure, now),
+            availability_kind: fallback_availability_kind(week, departure, now),
         })
         .collect()
 }
@@ -2895,25 +2933,44 @@ fn departure_decision_status(week: &ExerciseWeek, departure: &PlannedDeparture) 
     }
 }
 
-fn departure_status(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64) -> String {
+fn departure_status_kind(
+    week: &ExerciseWeek,
+    departure: &PlannedDeparture,
+    now: i64,
+) -> DepartureStatusKind {
     match departure.status {
         DepartureStatus::Leaving if departure_has_workout_record(week, departure) => {
-            "Completed".into()
+            DepartureStatusKind::Completed
         }
-        DepartureStatus::Leaving => "Leaving for gym confirmed".into(),
-        DepartureStatus::Moved | DepartureStatus::Skipped => {
-            departure_decision_status(week, departure).expect("closed departure has a decision")
-        }
+        DepartureStatus::Leaving => DepartureStatusKind::Leaving,
+        DepartureStatus::Moved => DepartureStatusKind::Moved,
+        DepartureStatus::Skipped => DepartureStatusKind::Skipped,
         DepartureStatus::Scheduled if follow_up_is_due(departure, now) => {
-            "Unresolved — no response".into()
+            DepartureStatusKind::Unresolved
         }
         DepartureStatus::Scheduled if departure.departure_at_epoch_millis <= now => {
-            "Awaiting response".into()
+            DepartureStatusKind::AwaitingResponse
         }
-        DepartureStatus::Scheduled => "Scheduled".into(),
-        DepartureStatus::NotNeeded => "Weekly goal met — no workout needed".into(),
-        DepartureStatus::Missed => "Missed — no response".into(),
-        DepartureStatus::Available => "Available".into(),
+        DepartureStatus::Scheduled => DepartureStatusKind::Scheduled,
+        DepartureStatus::NotNeeded => DepartureStatusKind::NotNeeded,
+        DepartureStatus::Missed => DepartureStatusKind::Missed,
+        DepartureStatus::Available => DepartureStatusKind::Available,
+    }
+}
+
+fn departure_status(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64) -> String {
+    match departure_status_kind(week, departure, now) {
+        DepartureStatusKind::Completed => "Completed".into(),
+        DepartureStatusKind::Leaving => "Leaving for gym confirmed".into(),
+        DepartureStatusKind::Moved | DepartureStatusKind::Skipped => {
+            departure_decision_status(week, departure).expect("closed departure has a decision")
+        }
+        DepartureStatusKind::Unresolved => "Unresolved — no response".into(),
+        DepartureStatusKind::AwaitingResponse => "Awaiting response".into(),
+        DepartureStatusKind::Scheduled => "Scheduled".into(),
+        DepartureStatusKind::NotNeeded => "Weekly goal met — no workout needed".into(),
+        DepartureStatusKind::Missed => "Missed — no response".into(),
+        DepartureStatusKind::Available => "Available".into(),
     }
 }
 
@@ -2928,6 +2985,26 @@ fn follow_up_is_due(departure: &PlannedDeparture, now: i64) -> bool {
         && departure.departure_response.is_none()
         && departure.follow_up_scheduled_at_epoch_millis.is_some()
         && departure.departure_at_epoch_millis + FOLLOW_UP_DELAY_MILLIS <= now
+}
+
+fn fallback_availability_kind(
+    week: &ExerciseWeek,
+    departure: &PlannedDeparture,
+    now: i64,
+) -> FallbackAvailabilityKind {
+    if departure.assigned_from_slot_id.is_some() {
+        FallbackAvailabilityKind::Assigned
+    } else if departure.status == DepartureStatus::NotNeeded {
+        FallbackAvailabilityKind::NotNeeded
+    } else if departure.status == DepartureStatus::Missed {
+        FallbackAvailabilityKind::Missed
+    } else if fallback_reserved_by_primary(week, departure) {
+        FallbackAvailabilityKind::Reserved
+    } else if fallback_is_available(week, departure, now) {
+        FallbackAvailabilityKind::Available
+    } else {
+        FallbackAvailabilityKind::Unavailable
+    }
 }
 
 fn friendly_time(clock: &impl ExerciseClock, epoch_millis: i64) -> String {

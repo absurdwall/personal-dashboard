@@ -94,13 +94,38 @@ type ScheduleAdjustment = Readonly<{
 }>;
 
 type PrimaryDeparture = DepartureTiming & Readonly<{
+  departureAtEpochMillis: number;
   status: string;
+  statusKind: DepartureStatusKind;
+  hasWorkoutRecord: boolean;
   adjustment: ScheduleAdjustment | null;
 }>;
 
 type FallbackDeparture = DepartureTiming & Readonly<{
+  departureAtEpochMillis: number;
   availability: string;
+  availabilityKind: FallbackAvailabilityKind;
 }>;
+
+type DepartureStatusKind =
+  | "scheduled"
+  | "awaiting-response"
+  | "unresolved"
+  | "leaving"
+  | "completed"
+  | "moved"
+  | "skipped"
+  | "not-needed"
+  | "missed"
+  | "available";
+
+type FallbackAvailabilityKind =
+  | "assigned"
+  | "available"
+  | "not-needed"
+  | "missed"
+  | "reserved"
+  | "unavailable";
 
 type WorkoutPrompt = Readonly<{
   slotId: string;
@@ -171,6 +196,7 @@ type ExerciseDashboardView = Readonly<{
   manualWorkoutAction: string;
   weeklyGoalStatus: string | null;
   nextDeparture: string | null;
+  nextDepartureSlotId: string | null;
   scheduleChoices: ScheduleChoices;
   primaryDepartures: readonly PrimaryDeparture[];
   fallbackDepartures: readonly FallbackDeparture[];
@@ -446,6 +472,8 @@ const scheduleCapabilityNotificationButton = document.querySelector<HTMLButtonEl
 );
 let currentProfileAuthority: ProfileView["authority"] = "active";
 let currentWorkspaceDestination: WorkspaceDestination = "this-week";
+let currentExerciseView: ExerciseDashboardView | null = null;
+let selectedDepartureSlotId: string | null = null;
 
 function departureItem(
   departure: DepartureTiming,
@@ -516,7 +544,42 @@ function primaryDepartureItem(
   departure: PrimaryDeparture,
   choices: ScheduleChoices,
 ): HTMLLIElement {
-  const item = departureItem(departure, departure.status);
+  const item = document.createElement("li");
+  const trigger = document.createElement("button");
+  const identity = document.createElement("span");
+  const day = document.createElement("strong");
+  const time = document.createElement("span");
+  const state = document.createElement("span");
+  const marker = document.createElement("span");
+  const status = document.createElement("span");
+  item.className = "agenda-row primary-agenda-row";
+  item.dataset.slotId = departure.id;
+  trigger.type = "button";
+  trigger.className = "agenda-row-trigger";
+  trigger.dataset.agendaSlotId = departure.id;
+  trigger.setAttribute("aria-label", `Select ${departure.day} departure`);
+  trigger.setAttribute(
+    "aria-pressed",
+    String(departure.id === selectedDepartureSlotId),
+  );
+  identity.className = "agenda-row-identity";
+  day.textContent = departure.day;
+  time.textContent = departure.time;
+  identity.append(day, time);
+  state.className = `agenda-row-state status-${departure.statusKind}`;
+  marker.className = "agenda-status-marker";
+  marker.setAttribute("aria-hidden", "true");
+  marker.textContent = departureStatusSignal(departure.statusKind);
+  status.textContent = departure.status;
+  state.append(marker, status);
+  trigger.append(identity, state);
+  item.append(trigger);
+  if (departure.hasWorkoutRecord) {
+    const evidence = document.createElement("span");
+    evidence.className = "workout-evidence";
+    evidence.textContent = "✓ Workout recorded";
+    item.append(evidence);
+  }
   if (departure.adjustment) {
     const editor = document.createElement("details");
     const summary = document.createElement("summary");
@@ -536,6 +599,72 @@ function primaryDepartureItem(
     item.append(editor);
   }
   return item;
+}
+
+function fallbackDepartureItem(departure: FallbackDeparture): HTMLLIElement {
+  const item = document.createElement("li");
+  const identity = document.createElement("span");
+  const day = document.createElement("strong");
+  const time = document.createElement("span");
+  const state = document.createElement("span");
+  const marker = document.createElement("span");
+  const status = document.createElement("span");
+  item.className = `agenda-row fallback-agenda-row availability-${departure.availabilityKind}`;
+  item.dataset.slotId = departure.id;
+  identity.className = "agenda-row-identity";
+  day.textContent = departure.day;
+  time.textContent = departure.time;
+  identity.append(day, time);
+  state.className = "agenda-row-state";
+  marker.className = "agenda-status-marker";
+  marker.setAttribute("aria-hidden", "true");
+  marker.textContent = fallbackAvailabilitySignal(departure.availabilityKind);
+  status.textContent = departure.availability;
+  state.append(marker, status);
+  item.append(identity, state);
+  return item;
+}
+
+function departureStatusSignal(kind: DepartureStatusKind): string {
+  return {
+    scheduled: "•",
+    "awaiting-response": "!",
+    unresolved: "!",
+    leaving: "→",
+    completed: "✓",
+    moved: "↪",
+    skipped: "—",
+    "not-needed": "·",
+    missed: "×",
+    available: "•",
+  }[kind];
+}
+
+function fallbackAvailabilitySignal(kind: FallbackAvailabilityKind): string {
+  return {
+    assigned: "↪",
+    available: "•",
+    "not-needed": "·",
+    missed: "×",
+    reserved: "—",
+    unavailable: "—",
+  }[kind];
+}
+
+function chronologicalPrimaryDepartures(
+  departures: readonly PrimaryDeparture[],
+): PrimaryDeparture[] {
+  return [...departures].sort(
+    (left, right) => left.departureAtEpochMillis - right.departureAtEpochMillis,
+  );
+}
+
+function chronologicalFallbackDepartures(
+  departures: readonly FallbackDeparture[],
+): FallbackDeparture[] {
+  return [...departures].sort(
+    (left, right) => left.departureAtEpochMillis - right.departureAtEpochMillis,
+  );
 }
 
 function routineDepartureItem(
@@ -744,19 +873,64 @@ function updateWorkspaceScrollStatus(): void {
     : "Window fixed · pane-owned overflow";
 }
 
-function updateWorkspaceDetailStatus(view?: ExerciseDashboardView): void {
+function selectedPrimaryDeparture(
+  view: ExerciseDashboardView,
+): PrimaryDeparture | undefined {
+  return chronologicalPrimaryDepartures(view.primaryDepartures).find(
+    (departure) => departure.id === selectedDepartureSlotId,
+  );
+}
+
+function updateAgendaRowSelection(): void {
+  primaryDepartures?.querySelectorAll<HTMLButtonElement>(
+    "button[data-agenda-slot-id]",
+  ).forEach((button) => {
+    button.setAttribute(
+      "aria-pressed",
+      String(button.dataset.agendaSlotId === selectedDepartureSlotId),
+    );
+  });
+}
+
+function updateWorkspaceDetailStatus(
+  view: ExerciseDashboardView | null = currentExerciseView,
+): void {
   if (!workspaceDetailStatus) {
     return;
   }
-  if (currentProfileAuthority === "inactive") {
-    workspaceDetailStatus.textContent = INACTIVE_PROFILE_MESSAGE;
-  } else if (currentWorkspaceDestination === "this-week" && view?.departurePrompt) {
-    workspaceDetailStatus.textContent = `Needs attention: ${view.departurePrompt.heading}`;
-  } else if (currentWorkspaceDestination === "this-week" && view?.nextDeparture) {
-    workspaceDetailStatus.textContent = `Next departure: ${view.nextDeparture}`;
+  if (currentWorkspaceDestination !== "this-week" || !view) {
+    workspaceDetailStatus.textContent =
+      workspaceDestinationDetails[currentWorkspaceDestination].detailCopy;
+    return;
+  }
+
+  const selected = selectedPrimaryDeparture(view);
+  if (view.departurePrompt) {
+    if (workspaceDetailHeading) {
+      workspaceDetailHeading.textContent = "Needs attention";
+    }
+    if (workspaceDetailCopy) {
+      workspaceDetailCopy.textContent = view.departurePrompt.heading;
+    }
+    workspaceDetailStatus.textContent = selected
+      ? `Needs attention: ${selected.day} · ${selected.time}`
+      : "Needs attention: respond to the pending departure.";
+  } else if (selected) {
+    if (workspaceDetailHeading) {
+      workspaceDetailHeading.textContent = `${selected.day} departure`;
+    }
+    if (workspaceDetailCopy) {
+      workspaceDetailCopy.textContent = selected.hasWorkoutRecord
+        ? "This departure has recorded workout evidence attached."
+        : "Select a row to keep its schedule context visible while you work.";
+    }
+    workspaceDetailStatus.textContent = `Selected departure: ${selected.day} · ${selected.time} · ${selected.status}${selected.hasWorkoutRecord ? " · Workout recorded" : ""}`;
   } else {
     workspaceDetailStatus.textContent =
       workspaceDestinationDetails[currentWorkspaceDestination].detailCopy;
+  }
+  if (currentProfileAuthority === "inactive") {
+    workspaceDetailStatus.textContent = INACTIVE_PROFILE_MESSAGE;
   }
 }
 
@@ -796,6 +970,16 @@ function showWorkspaceDestination(destination: WorkspaceDestination, focus = fal
 }
 
 function renderExerciseDashboard(view: ExerciseDashboardView): void {
+  currentExerciseView = view;
+  const primaryAgenda = chronologicalPrimaryDepartures(view.primaryDepartures);
+  const fallbackAgenda = chronologicalFallbackDepartures(view.fallbackDepartures);
+  const selectedStillExists = primaryAgenda.some(
+    (departure) => departure.id === selectedDepartureSlotId,
+  );
+  if (!selectedStillExists) {
+    selectedDepartureSlotId =
+      view.departurePrompt?.slotId ?? view.nextDepartureSlotId ?? primaryAgenda[0]?.id ?? null;
+  }
   if (exerciseWeek) {
     exerciseWeek.textContent = `Week of ${view.weekLabel}`;
   }
@@ -811,16 +995,14 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
   }
   if (primaryDepartures) {
     primaryDepartures.replaceChildren(
-      ...view.primaryDepartures.map((departure) =>
+      ...primaryAgenda.map((departure) =>
         primaryDepartureItem(departure, view.scheduleChoices),
       ),
     );
   }
   if (fallbackDepartures) {
     fallbackDepartures.replaceChildren(
-      ...view.fallbackDepartures.map((departure) =>
-        departureItem(departure, departure.availability),
-      ),
+      ...fallbackAgenda.map((departure) => fallbackDepartureItem(departure)),
     );
   }
   if (fallbackCount) {
@@ -962,6 +1144,7 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
       ),
     );
   }
+  updateAgendaRowSelection();
   updateWorkspaceDetailStatus(view);
   updateWorkspaceScrollStatus();
   applyAuthorityState();
@@ -1802,6 +1985,14 @@ logWorkoutNow?.addEventListener("click", () => {
   void runWorkoutAction("start_unscheduled_workout_record", {});
 });
 primaryDepartures?.addEventListener("click", (event) => {
+  const agendaRow = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-agenda-slot-id]",
+  );
+  if (agendaRow?.dataset.agendaSlotId) {
+    selectedDepartureSlotId = agendaRow.dataset.agendaSlotId;
+    updateAgendaRowSelection();
+    updateWorkspaceDetailStatus();
+  }
   void handleCurrentWeekScheduleSave(event);
 });
 routineDepartures?.addEventListener("click", (event) => {

@@ -69,7 +69,11 @@ func findText(_ application: AXUIElement, _ text: String) -> AXUIElement? {
     return match
 }
 
-func findPressable(_ application: AXUIElement, _ text: String) -> AXUIElement? {
+func findPressable(
+    _ application: AXUIElement,
+    _ text: String,
+    contains: Bool = false
+) -> AXUIElement? {
     let pressableRoles = Set([
         "AXButton",
         "AXCheckBox",
@@ -82,7 +86,11 @@ func findPressable(_ application: AXUIElement, _ text: String) -> AXUIElement? {
     var match: AXUIElement?
     _ = walk(application) { element in
         let role = stringAttribute(element, "AXRole")
-        if pressableRoles.contains(role) && nodeText(element) == text {
+        let renderedText = nodeText(element)
+        let matches = contains
+            ? renderedText.localizedCaseInsensitiveContains(text)
+            : renderedText == text
+        if pressableRoles.contains(role) && matches {
             match = element
             return true
         }
@@ -147,6 +155,24 @@ do {
             throw DriverError.timeout("pressable control: \(text)")
         }
         print("Pressed rendered control: \(text)")
+    case "press-contains":
+        let deadline = Date().addingTimeInterval(timeout)
+        var pressed = false
+        repeat {
+            if let element = findPressable(application, text, contains: true) {
+                let error = AXUIElementPerformAction(element, "AXPress" as CFString)
+                guard error == .success else {
+                    throw DriverError.actionFailed(text, error)
+                }
+                pressed = true
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        } while Date() < deadline
+        guard pressed else {
+            throw DriverError.timeout("pressable control containing: \(text)")
+        }
+        print("Pressed rendered control containing: \(text)")
     default:
         throw DriverError.usage
     }

@@ -123,6 +123,15 @@ run_driver press "Settings" 10
 run_driver assert-text "Profile & data"
 run_driver press "This Week" 10
 run_driver assert-text "Primary departures"
+run_driver assert-text "Monday"
+run_driver assert-text "Wednesday"
+run_driver assert-text "Friday"
+run_driver assert-text "Scheduled"
+run_driver assert-text "Fallback availability"
+run_driver assert-text "available"
+run_driver assert-text "Selected departure: Monday"
+run_driver press-contains "Wednesday" 10
+run_driver assert-text "Selected departure: Wednesday"
 run_driver assert-text "Window fixed · pane-owned overflow"
 
 current_step="clicking Log workout now through the rendered UI"
