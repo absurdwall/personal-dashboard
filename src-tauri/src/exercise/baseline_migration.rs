@@ -80,6 +80,7 @@ impl CompletedBaselineExercise {
             schema_version: EXERCISE_SCHEMA_VERSION,
             routine: baseline.routine,
             weeks,
+            pending_reminder_reconciliation: None,
             workout_draft: baseline
                 .workout_draft
                 .map(migrate_workout_draft)

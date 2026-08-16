@@ -5,7 +5,7 @@ use std::collections::HashSet;
 mod baseline_migration;
 pub(crate) use baseline_migration::{CompletedBaselineError, CompletedBaselineExercise};
 
-const EXERCISE_SCHEMA_VERSION: u32 = 8;
+const EXERCISE_SCHEMA_VERSION: u32 = 9;
 const WEEKLY_GOAL: u32 = 3;
 const UNSCHEDULED_WORKOUT_SLOT_ID: &str = "unscheduled";
 const FOLLOW_UP_DELAY_MILLIS: i64 = 15 * 60 * 1_000;
@@ -51,12 +51,23 @@ pub(crate) struct ExerciseState {
     schema_version: u32,
     routine: Routine,
     weeks: Vec<ExerciseWeek>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pending_reminder_reconciliation: Option<ReminderReconciliation>,
     #[serde(default)]
     workout_draft: Option<WorkoutDraft>,
     #[serde(default)]
     departure_decision: Option<DepartureDecision>,
     #[serde(default = "first_unscheduled_sequence")]
     next_unscheduled_sequence: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ReminderReconciliation {
+    #[serde(default)]
+    cancel_notification_ids: Vec<String>,
+    #[serde(default)]
+    desired_notification_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -623,6 +634,7 @@ impl<
         }
         let now = self.clock.now_epoch_millis();
         let (mut state, mut changed) = self.current_state()?;
+        let previously_scheduled_notification_ids = state.scheduled_notification_ids();
         let week_start_day = local_day_number(&self.clock, now) - local_weekday(&self.clock, now);
         let current_week_start = date_from_day_number(week_start_day);
         let week_key = current_week_start.iso_date();
@@ -635,7 +647,9 @@ impl<
                 .push(make_week(&state.routine, &self.clock, week_start_day));
             changed = true;
         }
-        if !departure_decision_is_current(&state, &week_key, now) {
+        if state.departure_decision.is_some()
+            && !departure_decision_is_current(&state, &week_key, now)
+        {
             state.departure_decision = None;
             changed = true;
         }
@@ -648,80 +662,102 @@ impl<
             .expect("the current week was just ensured");
         let goal_reached = weekly_goal_reached_at(week, weekly_goal).is_some();
         if let Some(goal_reached_at) = weekly_goal_reached_at(week, weekly_goal) {
-            let (suppressed, reminder_ids) = suppress_remaining_obligations(week, goal_reached_at);
+            let (suppressed, _reminder_ids) = suppress_remaining_obligations(week, goal_reached_at);
             changed |= suppressed;
-            for reminder_id in reminder_ids {
-                self.notifications.cancel(&reminder_id)?;
-            }
         }
-        let next_id = (!goal_reached)
-            .then(|| next_scheduled_departure(week, &self.clock, now))
-            .flatten()
-            .map(|departure| departure.id.clone());
-        let visible_reminder_intent = (!goal_reached)
-            .then(|| next_scheduled_departure(week, &self.clock, now))
-            .flatten()
-            .map(reminder_intent);
+        let desired_reminder_intents = reminder_intents_for_state(&state, &self.clock, now);
+        let desired_notification_ids = desired_reminder_intents
+            .iter()
+            .map(|intent| intent.id.clone())
+            .collect::<HashSet<_>>();
+        let was_pending_reminder_reconciliation = state.pending_reminder_reconciliation.is_some();
+        let previously_scheduled_notification_ids = previously_scheduled_notification_ids
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let reconciliation_required = state.pending_reminder_reconciliation.is_some()
+            || (changed && previously_scheduled_notification_ids != desired_notification_ids);
+        let permission = if reconciliation_required || !desired_reminder_intents.is_empty() {
+            Some(self.notifications.permission())
+        } else {
+            None
+        };
+
+        if reconciliation_required {
+            let mut reconciliation_ids = previously_scheduled_notification_ids;
+            reconciliation_ids.extend(state.scheduled_notification_ids());
+            state.begin_reminder_reconciliation(reconciliation_ids);
+            state.set_desired_reminder_ids(desired_notification_ids.iter().cloned());
+            self.save_state(&state)?;
+
+            if let Some(Ok(notification_permission)) = &permission {
+                let intents = if *notification_permission == NotificationPermission::Granted {
+                    desired_reminder_intents
+                } else {
+                    Vec::new()
+                };
+                self.reconcile_reminders(
+                    &mut state,
+                    intents,
+                    now,
+                    was_pending_reminder_reconciliation,
+                )?;
+            }
+        } else if let Some(Ok(NotificationPermission::Granted)) = &permission {
+            let mut scheduled_notification_ids = state
+                .scheduled_notification_ids()
+                .into_iter()
+                .collect::<HashSet<_>>();
+            let mut reminders_changed = false;
+            for intent in desired_reminder_intents {
+                if scheduled_notification_ids.insert(intent.id.clone()) {
+                    self.notifications.schedule(intent.clone())?;
+                    state.mark_native_reminder(&intent.id, now);
+                    reminders_changed = true;
+                }
+            }
+            if reminders_changed || changed {
+                self.save_state(&state)?;
+            }
+        } else if changed {
+            self.save_state(&state)?;
+        }
+
+        let next_departure = (!goal_reached)
+            .then(|| {
+                state
+                    .weeks
+                    .iter()
+                    .find(|candidate| candidate.week_start == week_key)
+                    .and_then(|current| next_scheduled_departure(current, &self.clock, now))
+            })
+            .flatten();
+        let visible_reminder_intent = next_departure.map(reminder_intent);
         let mut reminder_message = if goal_reached {
             "Weekly goal complete — optional workouts welcome".into()
         } else {
             "No departure reminder remains this week.".into()
         };
-
-        if let Some(next_id) = next_id {
-            let departure = all_departures_mut(week)
-                .find(|departure| departure.id == next_id)
-                .expect("the next departure belongs to this week");
-            reminder_message = if departure.reminder_scheduled_at_epoch_millis.is_some()
-                && departure.follow_up_scheduled_at_epoch_millis.is_some()
-            {
-                "Next departure reminder is scheduled.".into()
-            } else {
-                match self.notifications.permission() {
-                    Ok(NotificationPermission::Granted) => {
-                        if departure.reminder_scheduled_at_epoch_millis.is_none() {
-                            self.notifications.schedule(reminder_intent(departure))?;
-                            departure.reminder_scheduled_at_epoch_millis = Some(now);
-                            changed = true;
-                        }
-                        if departure.follow_up_scheduled_at_epoch_millis.is_none() {
-                            self.notifications.schedule(follow_up_intent(departure))?;
-                            departure.follow_up_scheduled_at_epoch_millis = Some(now);
-                            changed = true;
-                        }
-                        "Next departure reminder is scheduled.".into()
-                    }
-                    Ok(NotificationPermission::Denied) => {
-                        "Allow notifications in system settings to receive departure reminders."
-                            .into()
-                    }
-                    Ok(NotificationPermission::Prompt) => {
-                        "Allow notifications to receive departure reminders.".into()
-                    }
-                    Err(_) => "Notification status is temporarily unavailable.".into(),
-                }
-            };
-        }
-
-        if !goal_reached && self.notifications.permission() == Ok(NotificationPermission::Granted) {
-            for departure in all_departures_mut(week) {
-                if departure.status == DepartureStatus::Leaving
-                    && departure
-                        .record_workout_reminder_scheduled_at_epoch_millis
-                        .is_none()
+        if let Some(next_departure) = next_departure {
+            reminder_message = match permission {
+                Some(Ok(NotificationPermission::Granted))
+                    if next_departure.reminder_scheduled_at_epoch_millis.is_some()
+                        && next_departure.follow_up_scheduled_at_epoch_millis.is_some() =>
                 {
-                    if let Some(due_at) = departure.record_workout_prompt_due_at_epoch_millis {
-                        self.notifications
-                            .schedule(record_workout_intent(departure, due_at))?;
-                        departure.record_workout_reminder_scheduled_at_epoch_millis = Some(now);
-                        changed = true;
-                    }
+                    "Next departure reminder is scheduled.".into()
                 }
-            }
-        }
-
-        if changed {
-            self.save_state(&state)?;
+                Some(Ok(NotificationPermission::Granted)) => {
+                    "Next departure reminder is not scheduled yet.".into()
+                }
+                Some(Ok(NotificationPermission::Denied)) => {
+                    "Allow notifications in system settings to receive departure reminders.".into()
+                }
+                Some(Ok(NotificationPermission::Prompt)) => {
+                    "Allow notifications to receive departure reminders.".into()
+                }
+                Some(Err(_)) => "Notification status is temporarily unavailable.".into(),
+                None => "No departure reminder remains this week.".into(),
+            };
         }
 
         let week = state
@@ -740,6 +776,46 @@ impl<
             visible_reminder_intent,
             reminder_message,
         ))
+    }
+
+    fn reconcile_reminders(
+        &self,
+        state: &mut ExerciseState,
+        desired_reminder_intents: Vec<NotificationIntent>,
+        now: i64,
+        cancel_desired_notification_ids: bool,
+    ) -> Result<(), String> {
+        let mut notification_ids = Vec::new();
+        for notification_id in state.pending_reminder_cancellation_ids() {
+            if !notification_ids.contains(notification_id) {
+                notification_ids.push(notification_id.clone());
+            }
+        }
+        for notification_id in state.scheduled_notification_ids() {
+            if !notification_ids.contains(&notification_id) {
+                notification_ids.push(notification_id);
+            }
+        }
+        if cancel_desired_notification_ids {
+            for notification_id in state.pending_reminder_desired_ids() {
+                if !notification_ids.contains(notification_id) {
+                    notification_ids.push(notification_id.clone());
+                }
+            }
+        }
+        for notification_id in notification_ids {
+            self.notifications.cancel(&notification_id)?;
+        }
+        let desired_notification_ids = desired_reminder_intents
+            .iter()
+            .map(|intent| intent.id.clone())
+            .collect::<HashSet<_>>();
+        for intent in desired_reminder_intents {
+            self.notifications.schedule(intent)?;
+        }
+        state.set_native_reminder_markers(&desired_notification_ids, now);
+        state.complete_reminder_reconciliation();
+        self.save_state(state)
     }
 
     fn retry_pending_notification_cancellations(&self) -> Result<(), String> {
@@ -793,6 +869,7 @@ impl<
         }
 
         let (mut state, _) = self.current_state()?;
+        let previously_scheduled_notification_ids = state.scheduled_notification_ids();
         let week = current_week_mut(&mut state, &self.clock, now)?;
         let departure = week
             .primary_departures
@@ -803,21 +880,12 @@ impl<
                     && departure.departure_at_epoch_millis > now
             })
             .ok_or_else(|| "Only an upcoming primary departure can be adjusted.".to_string())?;
-        let cancel_departure = departure.reminder_scheduled_at_epoch_millis.is_some();
-        let cancel_follow_up = departure.follow_up_scheduled_at_epoch_millis.is_some();
         schedule.apply_to_planned(departure, week_start_day);
         departure.departure_at_epoch_millis = adjusted_at;
         departure.reminder_scheduled_at_epoch_millis = None;
         departure.follow_up_scheduled_at_epoch_millis = None;
 
-        if cancel_departure {
-            self.notifications
-                .cancel(&format!("exercise-departure-{slot_id}"))?;
-        }
-        if cancel_follow_up {
-            self.notifications
-                .cancel(&format!("exercise-follow-up-{slot_id}"))?;
-        }
+        state.begin_reminder_reconciliation(previously_scheduled_notification_ids);
         self.save_state(&state)?;
         self.open()
     }
@@ -832,6 +900,7 @@ impl<
         let schedule = ScheduleSelection::parse(day, departure_time)
             .map_err(ScheduleSelectionError::message)?;
         let (mut state, _) = self.current_state()?;
+        let previously_scheduled_notification_ids = state.scheduled_notification_ids();
         let departure = state
             .routine
             .primary
@@ -839,6 +908,7 @@ impl<
             .find(|departure| departure.order == order)
             .ok_or_else(|| "That repeating routine departure is not available.".to_string())?;
         schedule.apply_to_routine(departure);
+        state.begin_reminder_reconciliation(previously_scheduled_notification_ids);
         self.save_state(&state)?;
         self.open()
     }
@@ -1171,6 +1241,7 @@ impl ExerciseState {
                 fallback: routine_departures(&FALLBACK_DAYS),
             },
             weeks: Vec::new(),
+            pending_reminder_reconciliation: None,
             workout_draft: None,
             departure_decision: None,
             next_unscheduled_sequence: first_unscheduled_sequence(),
@@ -1197,6 +1268,31 @@ impl ExerciseState {
             decision.slot_id.is_empty() || decision.outcome == DepartureOutcome::LeavingForGym
         }) {
             return Err("The saved departure decision is not valid.".into());
+        }
+        if self
+            .pending_reminder_reconciliation
+            .as_ref()
+            .is_some_and(|transition| {
+                transition
+                    .cancel_notification_ids
+                    .iter()
+                    .chain(transition.desired_notification_ids.iter())
+                    .any(|notification_id| notification_id.is_empty())
+                    || transition.cancel_notification_ids.len()
+                        != transition
+                            .cancel_notification_ids
+                            .iter()
+                            .collect::<HashSet<_>>()
+                            .len()
+                    || transition.desired_notification_ids.len()
+                        != transition
+                            .desired_notification_ids
+                            .iter()
+                            .collect::<HashSet<_>>()
+                            .len()
+            })
+        {
+            return Err("The saved reminder reconciliation is not valid.".into());
         }
         Ok(self)
     }
@@ -1239,6 +1335,65 @@ impl ExerciseState {
             }
         }
         Ok(())
+    }
+
+    fn begin_reminder_reconciliation(
+        &mut self,
+        notification_ids: impl IntoIterator<Item = String>,
+    ) {
+        let transition =
+            self.pending_reminder_reconciliation
+                .get_or_insert_with(|| ReminderReconciliation {
+                    cancel_notification_ids: Vec::new(),
+                    desired_notification_ids: Vec::new(),
+                });
+        transition.cancel_notification_ids.extend(notification_ids);
+        transition.cancel_notification_ids.sort();
+        transition.cancel_notification_ids.dedup();
+    }
+
+    fn pending_reminder_cancellation_ids(&self) -> &[String] {
+        self.pending_reminder_reconciliation
+            .as_ref()
+            .map(|transition| transition.cancel_notification_ids.as_slice())
+            .unwrap_or(&[])
+    }
+
+    fn set_desired_reminder_ids(&mut self, notification_ids: impl IntoIterator<Item = String>) {
+        if let Some(transition) = &mut self.pending_reminder_reconciliation {
+            transition.desired_notification_ids = notification_ids.into_iter().collect();
+            transition.desired_notification_ids.sort();
+            transition.desired_notification_ids.dedup();
+        }
+    }
+
+    fn pending_reminder_desired_ids(&self) -> &[String] {
+        self.pending_reminder_reconciliation
+            .as_ref()
+            .map(|transition| transition.desired_notification_ids.as_slice())
+            .unwrap_or(&[])
+    }
+
+    fn complete_reminder_reconciliation(&mut self) {
+        self.pending_reminder_reconciliation = None;
+    }
+
+    fn mark_native_reminder(&mut self, notification_id: &str, now: i64) {
+        for week in &mut self.weeks {
+            for departure in all_departures_mut(week) {
+                if notification_id == reminder_intent(departure).id {
+                    departure.reminder_scheduled_at_epoch_millis = Some(now);
+                }
+                if notification_id == follow_up_intent(departure).id {
+                    departure.follow_up_scheduled_at_epoch_millis = Some(now);
+                }
+                if let Some(due_at) = departure.record_workout_prompt_due_at_epoch_millis {
+                    if notification_id == record_workout_intent(departure, due_at).id {
+                        departure.record_workout_reminder_scheduled_at_epoch_millis = Some(now);
+                    }
+                }
+            }
+        }
     }
 
     pub(crate) fn scheduled_notification_ids(&self) -> Vec<String> {
@@ -1326,6 +1481,11 @@ impl ExerciseState {
     }
 
     pub(crate) fn reset_native_reminder_markers(&mut self) {
+        self.pending_reminder_reconciliation = None;
+        self.clear_native_reminder_markers();
+    }
+
+    fn clear_native_reminder_markers(&mut self) {
         for week in &mut self.weeks {
             let recorded_slot_ids = week
                 .workout_records
@@ -1341,6 +1501,25 @@ impl ExerciseState {
                     && !recorded_slot_ids.contains(&departure.id)
                 {
                     departure.record_workout_reminder_scheduled_at_epoch_millis = None;
+                }
+            }
+        }
+    }
+
+    fn set_native_reminder_markers(&mut self, notification_ids: &HashSet<String>, now: i64) {
+        self.clear_native_reminder_markers();
+        for week in &mut self.weeks {
+            for departure in all_departures_mut(week) {
+                if notification_ids.contains(&reminder_intent(departure).id) {
+                    departure.reminder_scheduled_at_epoch_millis = Some(now);
+                }
+                if notification_ids.contains(&follow_up_intent(departure).id) {
+                    departure.follow_up_scheduled_at_epoch_millis = Some(now);
+                }
+                if let Some(due_at) = departure.record_workout_prompt_due_at_epoch_millis {
+                    if notification_ids.contains(&record_workout_intent(departure, due_at).id) {
+                        departure.record_workout_reminder_scheduled_at_epoch_millis = Some(now);
+                    }
                 }
             }
         }
@@ -1651,6 +1830,36 @@ fn next_scheduled_departure<'a, C: ExerciseClock>(
                 || local_day_number(clock, departure.departure_at_epoch_millis) == today
         })
         .min_by_key(|departure| departure.departure_at_epoch_millis)
+}
+
+fn reminder_intents_for_state<C: ExerciseClock>(
+    state: &ExerciseState,
+    clock: &C,
+    now: i64,
+) -> Vec<NotificationIntent> {
+    let week_key = current_week_key(clock, now);
+    let Some(week) = state.weeks.iter().find(|week| week.week_start == week_key) else {
+        return Vec::new();
+    };
+    if weekly_goal_reached_at(week, state.routine.weekly_goal).is_some() {
+        return Vec::new();
+    }
+
+    let mut intents = Vec::new();
+    if let Some(departure) = next_scheduled_departure(week, clock, now) {
+        intents.push(reminder_intent(departure));
+        intents.push(follow_up_intent(departure));
+    }
+    for departure in all_departures(week) {
+        if departure.status == DepartureStatus::Leaving
+            && !departure_has_workout_record(week, departure)
+        {
+            if let Some(due_at) = departure.record_workout_prompt_due_at_epoch_millis {
+                intents.push(record_workout_intent(departure, due_at));
+            }
+        }
+    }
+    intents
 }
 
 fn departure_decision_outcome(outcome: &str) -> Result<DepartureOutcome, String> {

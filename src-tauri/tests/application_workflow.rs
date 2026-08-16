@@ -1,9 +1,11 @@
 use personal_dashboard_lib::exercise::{
-    ExerciseApplication, ExerciseClock, ExerciseDashboardView, ExercisePersistence,
+    ExerciseApplication, ExerciseAuthority, ExerciseClock, ExerciseDashboardView,
+    ExercisePersistence, NoPendingNotificationCancellations,
 };
 use personal_dashboard_lib::notification::{
     NotificationIntent, NotificationPermission, NotificationPlatform,
 };
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Default)]
@@ -96,6 +98,126 @@ impl NotificationPlatform for ReminderOutbox {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum ReminderFailure {
+    Cancel(usize),
+    Schedule(usize),
+}
+
+#[derive(Clone, Default)]
+struct RecoverableReminderOutbox {
+    active: Arc<Mutex<BTreeMap<String, NotificationIntent>>>,
+    cancel_calls: Arc<Mutex<usize>>,
+    schedule_calls: Arc<Mutex<usize>>,
+    failure: Arc<Mutex<Option<ReminderFailure>>>,
+}
+
+impl RecoverableReminderOutbox {
+    fn fail_on_cancel_call(&self, call: usize) {
+        *self.failure.lock().unwrap() = Some(ReminderFailure::Cancel(call));
+    }
+
+    fn fail_on_schedule_call(&self, call: usize) {
+        *self.failure.lock().unwrap() = Some(ReminderFailure::Schedule(call));
+    }
+
+    fn clear_failure(&self) {
+        *self.failure.lock().unwrap() = None;
+    }
+
+    fn active_ids(&self) -> Vec<String> {
+        self.active.lock().unwrap().keys().cloned().collect()
+    }
+
+    fn schedule_call_count(&self) -> usize {
+        *self.schedule_calls.lock().unwrap()
+    }
+}
+
+impl NotificationPlatform for RecoverableReminderOutbox {
+    fn permission(&self) -> Result<NotificationPermission, String> {
+        Ok(NotificationPermission::Granted)
+    }
+
+    fn request_permission(&self) -> Result<NotificationPermission, String> {
+        Ok(NotificationPermission::Granted)
+    }
+
+    fn schedule(&self, intent: NotificationIntent) -> Result<(), String> {
+        let mut calls = self.schedule_calls.lock().unwrap();
+        *calls += 1;
+        let failure = *self.failure.lock().unwrap();
+        if failure.is_some_and(|failure| failure == ReminderFailure::Schedule(*calls)) {
+            *self.failure.lock().unwrap() = None;
+            return Err("The exercise reminder could not be scheduled.".into());
+        }
+        self.active
+            .lock()
+            .unwrap()
+            .insert(intent.id.clone(), intent);
+        Ok(())
+    }
+
+    fn cancel(&self, id: &str) -> Result<(), String> {
+        let mut calls = self.cancel_calls.lock().unwrap();
+        *calls += 1;
+        let failure = *self.failure.lock().unwrap();
+        if failure.is_some_and(|failure| failure == ReminderFailure::Cancel(*calls)) {
+            *self.failure.lock().unwrap() = None;
+            return Err("The exercise reminder could not be cancelled.".into());
+        }
+        self.active.lock().unwrap().remove(id);
+        Ok(())
+    }
+}
+
+#[derive(Clone, Default)]
+struct FaultingPersistence {
+    document: Arc<Mutex<Option<Vec<u8>>>>,
+    save_calls: Arc<Mutex<usize>>,
+    fail_on_save: Arc<Mutex<Option<usize>>>,
+}
+
+impl FaultingPersistence {
+    fn fail_on_save_call(&self, call: usize) {
+        *self.fail_on_save.lock().unwrap() = Some(call);
+    }
+
+    fn save_call_count(&self) -> usize {
+        *self.save_calls.lock().unwrap()
+    }
+
+    fn document_json(&self) -> serde_json::Value {
+        serde_json::from_slice(&self.document.lock().unwrap().clone().unwrap()).unwrap()
+    }
+}
+
+impl ExercisePersistence for FaultingPersistence {
+    fn load(&self) -> Result<Option<Vec<u8>>, String> {
+        Ok(self.document.lock().unwrap().clone())
+    }
+
+    fn save(&self, document: &[u8]) -> Result<(), String> {
+        let mut calls = self.save_calls.lock().unwrap();
+        *calls += 1;
+        if *self.fail_on_save.lock().unwrap() == Some(*calls) {
+            *self.fail_on_save.lock().unwrap() = None;
+            return Err("The local exercise state could not be saved.".into());
+        }
+        *self.document.lock().unwrap() = Some(document.to_vec());
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+struct InactiveExerciseAuthority;
+
+impl ExerciseAuthority for InactiveExerciseAuthority {
+    fn is_active(&self) -> Result<bool, String> {
+        Ok(false)
+    }
+}
+
 fn finish_unscheduled_workout(
     application: &ExerciseApplication<IsolatedProfile, ReminderOutbox, FixedNewYorkClock>,
     activity: &str,
@@ -135,7 +257,7 @@ fn fresh_exercise_week_survives_relaunch_and_emits_the_first_departure_reminder(
 
     assert_eq!("Personal Dashboard", dashboard.product_name);
     assert_eq!("Exercise tracking", dashboard.feature_area);
-    assert_eq!(8, dashboard.schema_version);
+    assert_eq!(9, dashboard.schema_version);
     assert_eq!(
         "Monday, August 10 – Sunday, August 16",
         dashboard.week_label
@@ -1826,4 +1948,204 @@ fn silence_receives_one_follow_up_and_remains_unresolved_after_relaunch() {
             .filter(|intent| intent.body == "A gentle follow-up: are you leaving for the gym?")
             .count()
     );
+}
+
+#[test]
+fn interrupted_one_week_adjustment_is_reconciled_after_cancellation_failure() {
+    let profile = FaultingPersistence::default();
+    let reminders = RecoverableReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_626_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    reminders.fail_on_cancel_call(reminders.cancel_calls.lock().unwrap().saturating_add(1));
+
+    assert!(application
+        .adjust_current_week_departure("2026-08-10-primary-3", "Saturday", "17:30")
+        .is_err());
+
+    let persisted = profile.document_json();
+    assert_eq!(
+        "Saturday",
+        persisted["weeks"][0]["primary_departures"][2]["day"]
+    );
+    assert!(persisted["pending_reminder_reconciliation"].is_object());
+
+    reminders.clear_failure();
+    let relaunched = ExerciseApplication::new(profile.clone(), reminders.clone(), clock);
+    let dashboard = relaunched.open().unwrap();
+
+    assert_eq!("Saturday", dashboard.primary_departures[2].day);
+    assert_eq!(
+        vec![
+            "exercise-departure-2026-08-10-primary-3",
+            "exercise-follow-up-2026-08-10-primary-3"
+        ],
+        reminders.active_ids()
+    );
+    assert!(relaunched.open().is_ok());
+    assert_eq!(2, reminders.active_ids().len());
+    assert!(profile.document_json()["pending_reminder_reconciliation"].is_null());
+}
+
+#[test]
+fn interrupted_one_week_adjustment_is_reconciled_after_partial_cancellation() {
+    let profile = FaultingPersistence::default();
+    let reminders = RecoverableReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_626_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    reminders.fail_on_cancel_call(reminders.cancel_calls.lock().unwrap().saturating_add(2));
+
+    assert!(application
+        .adjust_current_week_departure("2026-08-10-primary-3", "Saturday", "17:30")
+        .is_err());
+    assert!(profile.document_json()["pending_reminder_reconciliation"].is_object());
+
+    reminders.clear_failure();
+    ExerciseApplication::new(profile.clone(), reminders.clone(), clock)
+        .open()
+        .unwrap();
+
+    assert_eq!(2, reminders.active_ids().len());
+    assert!(profile.document_json()["pending_reminder_reconciliation"].is_null());
+}
+
+#[test]
+fn schedule_change_persistence_failure_happens_before_native_effects() {
+    let profile = FaultingPersistence::default();
+    let reminders = RecoverableReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_626_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    let active_before = reminders.active_ids();
+    profile.fail_on_save_call(profile.save_call_count() + 1);
+
+    assert!(application
+        .adjust_current_week_departure("2026-08-10-primary-3", "Saturday", "17:30")
+        .is_err());
+    assert_eq!(active_before, reminders.active_ids());
+    assert_eq!(
+        "Friday",
+        profile.document_json()["weeks"][0]["primary_departures"][2]["day"]
+    );
+    assert!(profile.document_json()["pending_reminder_reconciliation"].is_null());
+
+    reminders.clear_failure();
+    let recovered = application
+        .adjust_current_week_departure("2026-08-10-primary-3", "Saturday", "17:30")
+        .unwrap();
+    assert_eq!("Saturday", recovered.primary_departures[2].day);
+}
+
+#[test]
+fn interrupted_one_week_adjustment_is_reconciled_after_partial_scheduling() {
+    let profile = FaultingPersistence::default();
+    let reminders = RecoverableReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_626_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    reminders.fail_on_schedule_call(reminders.schedule_call_count() + 2);
+
+    assert!(application
+        .adjust_current_week_departure("2026-08-10-primary-3", "Saturday", "17:30")
+        .is_err());
+    assert!(profile.document_json()["pending_reminder_reconciliation"].is_object());
+
+    reminders.clear_failure();
+    let relaunched = ExerciseApplication::new(profile.clone(), reminders.clone(), clock);
+    relaunched.open().unwrap();
+
+    assert_eq!(
+        vec![
+            "exercise-departure-2026-08-10-primary-3",
+            "exercise-follow-up-2026-08-10-primary-3"
+        ],
+        reminders.active_ids()
+    );
+    assert!(profile.document_json()["pending_reminder_reconciliation"].is_null());
+}
+
+#[test]
+fn interrupted_one_week_adjustment_is_reconciled_after_final_persistence_failure() {
+    let profile = FaultingPersistence::default();
+    let reminders = RecoverableReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_626_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    let transition_save = profile.save_call_count() + 1;
+    let final_save = transition_save + 1;
+    profile.fail_on_save_call(final_save);
+
+    assert!(application
+        .adjust_current_week_departure("2026-08-10-primary-3", "Saturday", "17:30")
+        .is_err());
+    assert!(profile.document_json()["pending_reminder_reconciliation"].is_object());
+    assert_eq!(2, reminders.active_ids().len());
+
+    let relaunched = ExerciseApplication::new(profile.clone(), reminders.clone(), clock);
+    relaunched.open().unwrap();
+
+    assert_eq!(2, reminders.active_ids().len());
+    assert!(profile.document_json()["pending_reminder_reconciliation"].is_null());
+}
+
+#[test]
+fn repeating_routine_reconciliation_is_idempotent_and_replaces_old_week_reminders() {
+    let profile = FaultingPersistence::default();
+    let reminders = RecoverableReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    application
+        .change_repeating_primary_departure(1, "Tuesday", "15:30")
+        .unwrap();
+    let calls_after_change = reminders.schedule_call_count();
+    assert!(profile.document_json()["pending_reminder_reconciliation"].is_null());
+
+    let relaunched = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+    relaunched.open().unwrap();
+    assert_eq!(calls_after_change, reminders.schedule_call_count());
+
+    clock.advance_to(1_786_971_600_000);
+    relaunched.open().unwrap();
+    assert_eq!(
+        vec![
+            "exercise-departure-2026-08-17-primary-1",
+            "exercise-follow-up-2026-08-17-primary-1"
+        ],
+        reminders.active_ids()
+    );
+    assert!(profile.document_json()["pending_reminder_reconciliation"].is_null());
+}
+
+#[test]
+fn inactive_profiles_never_schedule_pending_exercise_reconciliation() {
+    let profile = FaultingPersistence::default();
+    let reminders = RecoverableReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_626_000_000);
+    let active = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    active.open().unwrap();
+    reminders.fail_on_cancel_call(reminders.cancel_calls.lock().unwrap().saturating_add(1));
+    assert!(active
+        .adjust_current_week_departure("2026-08-10-primary-3", "Saturday", "17:30")
+        .is_err());
+    let schedule_calls_before = reminders.schedule_call_count();
+
+    let inactive = ExerciseApplication::with_authority(
+        profile,
+        reminders.clone(),
+        clock,
+        InactiveExerciseAuthority,
+        NoPendingNotificationCancellations,
+    );
+    inactive.open().unwrap();
+
+    assert_eq!(schedule_calls_before, reminders.schedule_call_count());
 }
