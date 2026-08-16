@@ -4,15 +4,26 @@ use personal_dashboard_lib::notification::{
     NotificationIntent, NotificationPermission, NotificationPlatform,
 };
 use personal_dashboard_lib::profile::{ProfileApplication, ProfileExchange, ProfilePersistence};
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Default)]
 struct MemoryDocument {
     document: Arc<Mutex<Option<Vec<u8>>>>,
+    fail_next_load: Arc<Mutex<Option<String>>>,
+}
+
+impl MemoryDocument {
+    fn fail_next_load(&self, message: &str) {
+        *self.fail_next_load.lock().unwrap() = Some(message.into());
+    }
 }
 
 impl ProfilePersistence for MemoryDocument {
     fn load(&self) -> Result<Option<Vec<u8>>, String> {
+        if let Some(error) = self.fail_next_load.lock().unwrap().take() {
+            return Err(error);
+        }
         Ok(self.document.lock().unwrap().clone())
     }
 
@@ -24,6 +35,9 @@ impl ProfilePersistence for MemoryDocument {
 
 impl ExercisePersistence for MemoryDocument {
     fn load(&self) -> Result<Option<Vec<u8>>, String> {
+        if let Some(error) = self.fail_next_load.lock().unwrap().take() {
+            return Err(error);
+        }
         Ok(self.document.lock().unwrap().clone())
     }
 
@@ -111,6 +125,15 @@ impl ExerciseClock for FixedNewYorkClock {
 struct ReminderOutbox {
     scheduled: Arc<Mutex<Vec<NotificationIntent>>>,
     cancelled: Arc<Mutex<Vec<String>>>,
+    active: Arc<Mutex<HashSet<String>>>,
+    fail_cancel: Arc<Mutex<bool>>,
+    fail_schedule_after: Arc<Mutex<Option<usize>>>,
+}
+
+impl ReminderOutbox {
+    fn fail_scheduling_after(&self, successful_schedules: usize) {
+        *self.fail_schedule_after.lock().unwrap() = Some(successful_schedules);
+    }
 }
 
 impl NotificationPlatform for ReminderOutbox {
@@ -123,12 +146,26 @@ impl NotificationPlatform for ReminderOutbox {
     }
 
     fn schedule(&self, intent: NotificationIntent) -> Result<(), String> {
+        let mut remaining = self.fail_schedule_after.lock().unwrap();
+        if let Some(countdown) = remaining.as_mut() {
+            if *countdown == 0 {
+                return Err("The exercise reminder could not be scheduled.".into());
+            }
+            *countdown -= 1;
+        }
+        drop(remaining);
+        let notification_id = intent.id.clone();
         self.scheduled.lock().unwrap().push(intent);
+        self.active.lock().unwrap().insert(notification_id);
         Ok(())
     }
 
     fn cancel(&self, id: &str) -> Result<(), String> {
+        if *self.fail_cancel.lock().unwrap() {
+            return Err("The exercise reminder could not be cancelled.".into());
+        }
         self.cancelled.lock().unwrap().push(id.into());
+        self.active.lock().unwrap().remove(id);
         Ok(())
     }
 }
@@ -329,6 +366,22 @@ fn complete_profile_backup_restores_only_after_confirmation() {
 
     let selection = target_backup.select_profile_restore().unwrap();
     assert!(selection.confirmation_required);
+    let preview = selection.preview.unwrap();
+    assert_eq!(source_profile_view, preview.profile);
+    let preview_week = preview.exercise.current_week.as_ref().unwrap();
+    assert_eq!("2026-08-17", preview_week.week_start);
+    assert_eq!("2026-08-23", preview_week.week_end);
+    assert_eq!(
+        source_dashboard.progress,
+        format!(
+            "{} of {} completed",
+            preview_week.completed_count, preview_week.weekly_goal
+        )
+    );
+    assert_eq!(
+        source_dashboard.history.len(),
+        preview.exercise.historical_week_count
+    );
     assert_eq!(
         target_profile_before,
         target_profile_application.open().unwrap()
@@ -350,6 +403,11 @@ fn complete_profile_backup_restores_only_after_confirmation() {
         source_dashboard,
         target_exercise_application.open().unwrap()
     );
+    assert!(target_reminders
+        .active
+        .lock()
+        .unwrap()
+        .contains(&source_dashboard.reminder_intent.as_ref().unwrap().id));
     assert!(target_reminders
         .cancelled
         .lock()
@@ -426,6 +484,27 @@ fn cancelled_invalid_or_unsupported_restore_keeps_the_active_profile() {
             .unwrap()
             .confirmation_required
     );
+    exercise.fail_next_load("The active exercise profile could not be read.");
+    assert_eq!(
+        "The active exercise profile could not be read.",
+        backup.confirm_profile_restore().unwrap_err()
+    );
+    assert!(
+        !backup
+            .cancel_profile_restore()
+            .unwrap()
+            .confirmation_required
+    );
+    assert_eq!(active_profile, profile_application.open().unwrap());
+    assert_eq!(active_dashboard, exercise_application.open().unwrap());
+
+    *exchange.import_document.lock().unwrap() = Some(valid_backup.clone());
+    assert!(
+        backup
+            .select_profile_restore()
+            .unwrap()
+            .confirmation_required
+    );
     *exchange.import_document.lock().unwrap() = Some(b"not json".to_vec());
     assert_eq!(
         "The selected file is not a valid Personal Dashboard backup.",
@@ -486,4 +565,113 @@ fn cancelled_invalid_or_unsupported_restore_keeps_the_active_profile() {
     );
     assert_eq!(active_profile, profile_application.open().unwrap());
     assert_eq!(active_dashboard, exercise_application.open().unwrap());
+}
+
+#[test]
+fn confirmed_restore_recovers_after_native_effect_failure_and_is_idempotent() {
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let source_profile = MemoryDocument::default();
+    let source_exercise = MemoryDocument::default();
+    let source_exchange = MemoryExchange::default();
+    let source_reminders = ReminderOutbox::default();
+    let source_profile_application =
+        ProfileApplication::new(source_profile.clone(), source_exchange.clone());
+    let source_exercise_application =
+        ExerciseApplication::new(source_exercise.clone(), source_reminders, clock.clone());
+    source_profile_application
+        .update_profile_label("Restored after interruption".into())
+        .unwrap();
+    source_exercise_application.open().unwrap();
+    let source_backup = ProfileBackupApplication::new(
+        source_profile.clone(),
+        source_exercise.clone(),
+        source_exchange.clone(),
+        ReminderOutbox::default(),
+        clock.clone(),
+        MemoryReplacement::new(source_profile.clone(), source_exercise.clone()),
+    );
+    source_backup.backup_profile().unwrap();
+    let backup_document = source_exchange
+        .exported_document
+        .lock()
+        .unwrap()
+        .clone()
+        .unwrap();
+
+    let target_profile = MemoryDocument::default();
+    let target_exercise = MemoryDocument::default();
+    let target_exchange = MemoryExchange::default();
+    let target_reminders = ReminderOutbox::default();
+    let target_profile_application =
+        ProfileApplication::new(target_profile.clone(), target_exchange.clone());
+    let target_exercise_application = ExerciseApplication::new(
+        target_exercise.clone(),
+        target_reminders.clone(),
+        clock.clone(),
+    );
+    target_profile_application
+        .update_profile_label("Current profile before restore".into())
+        .unwrap();
+    target_exercise_application.open().unwrap();
+    *target_exchange.import_document.lock().unwrap() = Some(backup_document);
+    *target_reminders.fail_cancel.lock().unwrap() = true;
+    target_reminders.fail_scheduling_after(1);
+
+    let restore = ProfileBackupApplication::new(
+        target_profile.clone(),
+        target_exercise.clone(),
+        target_exchange,
+        target_reminders.clone(),
+        clock.clone(),
+        MemoryReplacement::new(target_profile.clone(), target_exercise.clone()),
+    );
+    restore.select_profile_restore().unwrap();
+    assert_eq!(
+        "The exercise reminder could not be cancelled.",
+        restore.confirm_profile_restore().unwrap_err()
+    );
+
+    let committed_exercise: serde_json::Value =
+        serde_json::from_slice(&target_exercise.document.lock().unwrap().clone().unwrap()).unwrap();
+    assert!(committed_exercise["pending_reminder_reconciliation"].is_object());
+    assert_eq!(
+        "Restored after interruption",
+        target_profile_application.open().unwrap().profile_label
+    );
+
+    *target_reminders.fail_cancel.lock().unwrap() = false;
+    let interrupted = ExerciseApplication::new(
+        target_exercise.clone(),
+        target_reminders.clone(),
+        clock.clone(),
+    );
+    assert_eq!(
+        "The exercise reminder could not be scheduled.",
+        interrupted.open().unwrap_err()
+    );
+    *target_reminders.fail_schedule_after.lock().unwrap() = None;
+    let relaunched = ExerciseApplication::new(
+        target_exercise.clone(),
+        target_reminders.clone(),
+        clock.clone(),
+    );
+    let recovered = relaunched.open().unwrap();
+    let scheduled_after_recovery = target_reminders.scheduled.lock().unwrap().len();
+    let recovered_exercise: serde_json::Value =
+        serde_json::from_slice(&target_exercise.document.lock().unwrap().clone().unwrap()).unwrap();
+    assert!(recovered_exercise["pending_reminder_reconciliation"].is_null());
+    assert!(target_reminders
+        .active
+        .lock()
+        .unwrap()
+        .contains(&recovered.reminder_intent.unwrap().id));
+
+    let repeated = ExerciseApplication::new(target_exercise, target_reminders.clone(), clock)
+        .open()
+        .unwrap();
+    assert_eq!(
+        scheduled_after_recovery,
+        target_reminders.scheduled.lock().unwrap().len()
+    );
+    assert_eq!(recovered.week_label, repeated.week_label);
 }

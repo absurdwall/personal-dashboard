@@ -15,9 +15,24 @@ type ProfileBackupAction = Readonly<{
   message: string;
 }>;
 
+type ProfileRestorePreview = Readonly<{
+  profile: ProfileView;
+  exercise: Readonly<{
+    currentWeek: Readonly<{
+      weekStart: string;
+      weekEnd: string;
+      completedCount: number;
+      weeklyGoal: number;
+    }> | null;
+    historicalWeekCount: number;
+    desiredReminderCount: number;
+  }>;
+}>;
+
 type ProfileRestoreSelection = Readonly<{
   confirmationRequired: boolean;
   message: string;
+  preview?: ProfileRestorePreview;
 }>;
 
 type ProfileRestoreAction = Readonly<{
@@ -300,6 +315,27 @@ const selectProfileRestoreButton = document.querySelector<HTMLButtonElement>(
 );
 const profileRestoreConfirmation = document.querySelector<HTMLElement>(
   "#profile-restore-confirmation",
+);
+const profileRestorePreview = document.querySelector<HTMLElement>(
+  "#profile-restore-preview",
+);
+const profileRestorePreviewProfile = document.querySelector<HTMLElement>(
+  "#profile-restore-preview-profile",
+);
+const profileRestorePreviewAuthority = document.querySelector<HTMLElement>(
+  "#profile-restore-preview-authority",
+);
+const profileRestorePreviewWeek = document.querySelector<HTMLElement>(
+  "#profile-restore-preview-week",
+);
+const profileRestorePreviewProgress = document.querySelector<HTMLElement>(
+  "#profile-restore-preview-progress",
+);
+const profileRestorePreviewHistory = document.querySelector<HTMLElement>(
+  "#profile-restore-preview-history",
+);
+const profileRestorePreviewReminders = document.querySelector<HTMLElement>(
+  "#profile-restore-preview-reminders",
 );
 const confirmProfileRestoreButton = document.querySelector<HTMLButtonElement>(
   "#confirm-profile-restore",
@@ -1218,6 +1254,42 @@ function setProfileFileActionsDisabled(disabled: boolean): void {
 function renderProfileRestoreSelection(selection: ProfileRestoreSelection): void {
   if (profileRestoreConfirmation) {
     profileRestoreConfirmation.hidden = !selection.confirmationRequired;
+  }
+  const preview = selection.preview;
+  if (profileRestorePreview) {
+    profileRestorePreview.hidden = !selection.confirmationRequired || !preview;
+  }
+  if (preview) {
+    const currentWeek = preview.exercise.currentWeek;
+    if (profileRestorePreviewProfile) {
+      profileRestorePreviewProfile.textContent = preview.profile.profileLabel;
+    }
+    if (profileRestorePreviewAuthority) {
+      profileRestorePreviewAuthority.textContent =
+        preview.profile.authority === "active"
+          ? "Active on this device"
+          : "Inactive on this device";
+    }
+    if (profileRestorePreviewWeek) {
+      profileRestorePreviewWeek.textContent = currentWeek
+        ? `${currentWeek.weekStart} – ${currentWeek.weekEnd}`
+        : "No saved exercise week";
+    }
+    if (profileRestorePreviewProgress) {
+      profileRestorePreviewProgress.textContent = currentWeek
+        ? `${currentWeek.completedCount} of ${currentWeek.weeklyGoal} completed`
+        : "No saved exercise week";
+    }
+    if (profileRestorePreviewHistory) {
+      profileRestorePreviewHistory.textContent = `${preview.exercise.historicalWeekCount} saved historical week${
+        preview.exercise.historicalWeekCount === 1 ? "" : "s"
+      }`;
+    }
+    if (profileRestorePreviewReminders) {
+      profileRestorePreviewReminders.textContent = `${preview.exercise.desiredReminderCount} reminder${
+        preview.exercise.desiredReminderCount === 1 ? "" : "s"
+      } will be rebuilt`;
+    }
   }
   showProfileStatus(selection.message);
 }

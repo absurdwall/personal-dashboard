@@ -544,6 +544,23 @@ pub struct ExerciseDashboardView {
     pub routine_settings: RoutineSettingsView,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExerciseWeekPreview {
+    pub week_start: String,
+    pub week_end: String,
+    pub completed_count: u32,
+    pub weekly_goal: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExerciseRestorePreview {
+    pub current_week: Option<ExerciseWeekPreview>,
+    pub historical_week_count: usize,
+    pub desired_reminder_count: usize,
+}
+
 pub trait ExerciseAuthority: Send + Sync {
     fn is_active(&self) -> Result<bool, String>;
 }
@@ -785,25 +802,9 @@ impl<
         now: i64,
         cancel_desired_notification_ids: bool,
     ) -> Result<(), String> {
-        let mut notification_ids = Vec::new();
-        for notification_id in state.pending_reminder_cancellation_ids() {
-            if !notification_ids.contains(notification_id) {
-                notification_ids.push(notification_id.clone());
-            }
-        }
-        for notification_id in state.scheduled_notification_ids() {
-            if !notification_ids.contains(&notification_id) {
-                notification_ids.push(notification_id);
-            }
-        }
-        if cancel_desired_notification_ids {
-            for notification_id in state.pending_reminder_desired_ids() {
-                if !notification_ids.contains(notification_id) {
-                    notification_ids.push(notification_id.clone());
-                }
-            }
-        }
-        for notification_id in notification_ids {
+        for notification_id in
+            state.reminder_reconciliation_notification_ids(cancel_desired_notification_ids)
+        {
             self.notifications.cancel(&notification_id)?;
         }
         let desired_notification_ids = desired_reminder_intents
@@ -833,7 +834,14 @@ impl<
 
     pub fn open_inactive(&self) -> Result<ExerciseDashboardView, String> {
         let now = self.clock.now_epoch_millis();
-        let (state, _) = self.current_state()?;
+        let (mut state, _) = self.current_state()?;
+        if state.pending_reminder_reconciliation.is_some() {
+            for notification_id in state.reminder_reconciliation_notification_ids(true) {
+                self.notifications.cancel(&notification_id)?;
+            }
+            state.reset_native_reminder_markers();
+            self.save_state(&state)?;
+        }
         let week_key = current_week_key(&self.clock, now);
         let week = state
             .weeks
@@ -1374,6 +1382,17 @@ impl ExerciseState {
             .unwrap_or(&[])
     }
 
+    fn reminder_reconciliation_notification_ids(&self, include_desired: bool) -> Vec<String> {
+        let mut notification_ids = self.pending_reminder_cancellation_ids().to_vec();
+        notification_ids.extend(self.scheduled_notification_ids());
+        if include_desired {
+            notification_ids.extend(self.pending_reminder_desired_ids().iter().cloned());
+        }
+        notification_ids.sort();
+        notification_ids.dedup();
+        notification_ids
+    }
+
     fn complete_reminder_reconciliation(&mut self) {
         self.pending_reminder_reconciliation = None;
     }
@@ -1483,6 +1502,42 @@ impl ExerciseState {
     pub(crate) fn reset_native_reminder_markers(&mut self) {
         self.pending_reminder_reconciliation = None;
         self.clear_native_reminder_markers();
+    }
+
+    pub(crate) fn prepare_reminder_reconciliation<C: ExerciseClock>(
+        &mut self,
+        notification_ids: impl IntoIterator<Item = String>,
+        clock: &C,
+        now: i64,
+    ) {
+        self.reset_native_reminder_markers();
+        self.begin_reminder_reconciliation(notification_ids);
+        let desired_notification_ids = reminder_intents_for_state(self, clock, now)
+            .into_iter()
+            .map(|intent| intent.id);
+        self.set_desired_reminder_ids(desired_notification_ids);
+    }
+
+    pub(crate) fn restore_preview<C: ExerciseClock>(
+        &self,
+        clock: &C,
+        now: i64,
+    ) -> ExerciseRestorePreview {
+        let latest_week = self
+            .weeks
+            .iter()
+            .max_by(|left, right| left.week_start.cmp(&right.week_start));
+        let current_week = latest_week.map(|week| ExerciseWeekPreview {
+            week_start: week.week_start.clone(),
+            week_end: week.week_end.clone(),
+            completed_count: week.completed_count,
+            weekly_goal: self.routine.weekly_goal,
+        });
+        ExerciseRestorePreview {
+            current_week,
+            historical_week_count: self.weeks.len().saturating_sub(1),
+            desired_reminder_count: reminder_intents_for_state(self, clock, now).len(),
+        }
     }
 
     fn clear_native_reminder_markers(&mut self) {

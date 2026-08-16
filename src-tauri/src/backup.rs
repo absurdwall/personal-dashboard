@@ -1,5 +1,6 @@
 use crate::exercise::{
-    ExerciseApplication, ExerciseClock, ExerciseDashboardView, ExercisePersistence, ExerciseState,
+    ExerciseApplication, ExerciseClock, ExerciseDashboardView, ExercisePersistence,
+    ExerciseRestorePreview, ExerciseState,
 };
 use crate::notification::NotificationPlatform;
 use crate::profile::{Profile, ProfileExchange, ProfilePersistence, ProfileView};
@@ -27,6 +28,15 @@ pub struct ProfileBackupAction {
 pub struct ProfileRestoreSelection {
     pub confirmation_required: bool,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<ProfileRestorePreview>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileRestorePreview {
+    pub profile: ProfileView,
+    pub exercise: ExerciseRestorePreview,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -103,11 +113,26 @@ where
         };
         let backup = parse_backup(&document)?;
         backup.exercise.validate_timestamps(&self.clock)?;
+        let current_profile_document = self.current_profile_document()?;
+        let current_profile = crate::profile::parse_profile(&current_profile_document)?;
+        let replacement_profile = backup.profile.clone().with_local_authority(
+            current_profile.authority(),
+            current_profile
+                .pending_notification_cancellations()
+                .to_vec(),
+        );
+        let exercise_preview: ExerciseRestorePreview = backup
+            .exercise
+            .restore_preview(&self.clock, self.clock.now_epoch_millis());
+        let preview = ProfileRestorePreview {
+            profile: replacement_profile.view(),
+            exercise: exercise_preview,
+        };
         *self
             .pending_restore
             .lock()
             .map_err(|_| "The pending restore is unavailable.".to_string())? = Some(backup);
-        Ok(ProfileRestoreSelection::ready())
+        Ok(ProfileRestoreSelection::ready(preview))
     }
 
     pub fn cancel_profile_restore(&self) -> Result<ProfileRestoreSelection, String> {
@@ -126,33 +151,12 @@ where
         let mut restored = pending
             .take()
             .ok_or_else(|| "No validated profile restore is awaiting confirmation.".to_string())?;
-        let current_profile_document = self.current_profile_document()?;
-        let current_profile = crate::profile::parse_profile(&current_profile_document)?;
-        restored.profile = restored.profile.with_local_authority(
-            current_profile.authority(),
-            current_profile
-                .pending_notification_cancellations()
-                .to_vec(),
-        );
-        let current_exercise_document = self.current_exercise_document()?;
-        let (active_exercise, _) = crate::exercise::parse_state(&current_exercise_document)?;
-        let notification_ids = active_exercise.scheduled_notification_ids();
-        restored.exercise.reset_native_reminder_markers();
-        let restored_exercise_document = encode_exercise(&restored.exercise)?;
-        let restored_profile_document = crate::profile::encode_profile(&restored.profile)?;
-
-        if let Err(error) = self
-            .replacement
-            .replace_complete(&restored_profile_document, &restored_exercise_document)
-        {
+        if let Err(error) = self.replace_profile_restore(&mut restored) {
             *pending = Some(restored);
             return Err(error);
         }
         drop(pending);
 
-        for notification_id in notification_ids {
-            self.notifications.cancel(&notification_id)?;
-        }
         let exercise_application = ExerciseApplication::new(
             self.exercise_persistence.clone(),
             self.notifications.clone(),
@@ -168,6 +172,28 @@ where
             dashboard,
             message: "Profile restored.".into(),
         })
+    }
+
+    fn replace_profile_restore(&self, restored: &mut ProfileBackupDocument) -> Result<(), String> {
+        let current_profile_document = self.current_profile_document()?;
+        let current_profile = crate::profile::parse_profile(&current_profile_document)?;
+        restored.profile = restored.profile.clone().with_local_authority(
+            current_profile.authority(),
+            current_profile
+                .pending_notification_cancellations()
+                .to_vec(),
+        );
+        let current_exercise_document = self.current_exercise_document()?;
+        let (active_exercise, _) = crate::exercise::parse_state(&current_exercise_document)?;
+        restored.exercise.prepare_reminder_reconciliation(
+            active_exercise.scheduled_notification_ids(),
+            &self.clock,
+            self.clock.now_epoch_millis(),
+        );
+        let restored_exercise_document = encode_exercise(&restored.exercise)?;
+        let restored_profile_document = crate::profile::encode_profile(&restored.profile)?;
+        self.replacement
+            .replace_complete(&restored_profile_document, &restored_exercise_document)
     }
 
     fn current_backup(&self) -> Result<ProfileBackupDocument, String> {
@@ -197,10 +223,11 @@ where
 }
 
 impl ProfileRestoreSelection {
-    fn ready() -> Self {
+    fn ready(preview: ProfileRestorePreview) -> Self {
         Self {
             confirmation_required: true,
             message: "Valid profile backup selected.".into(),
+            preview: Some(preview),
         }
     }
 
@@ -208,6 +235,7 @@ impl ProfileRestoreSelection {
         Self {
             confirmation_required: false,
             message: "Restore cancelled.".into(),
+            preview: None,
         }
     }
 }

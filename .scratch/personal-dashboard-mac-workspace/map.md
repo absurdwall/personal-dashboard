@@ -2,7 +2,6 @@
 
 ## Current frontier
 
-- [02 — Make confirmed profile restore recoverable](issues/02-make-confirmed-profile-restore-recoverable.md) — ready-for-agent
 - [03 — Preserve profile meaning across time zones](issues/03-preserve-profile-meaning-across-time-zones.md) — ready-for-agent
 - [04 — Drive the packaged Mac app through real Tauri IPC](issues/04-drive-packaged-mac-app-through-real-tauri-ipc.md) — ready-for-agent
 
