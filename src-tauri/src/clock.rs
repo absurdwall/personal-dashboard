@@ -22,6 +22,11 @@ impl ExerciseClock for SystemClock {
 }
 
 fn system_epoch_millis() -> i64 {
+    if let Ok(value) = std::env::var("PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS") {
+        if let Ok(epoch_millis) = value.parse::<i64>() {
+            return epoch_millis;
+        }
+    }
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("the system clock must be after the Unix epoch")
@@ -30,6 +35,11 @@ fn system_epoch_millis() -> i64 {
 
 #[cfg(all(unix, target_pointer_width = "64"))]
 fn platform_utc_offset_minutes(epoch_millis: i64) -> i32 {
+    if let Ok(value) = std::env::var("PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES") {
+        if let Ok(offset_minutes) = value.parse::<i32>() {
+            return offset_minutes;
+        }
+    }
     use std::ffi::{c_char, c_int, c_long};
     use std::mem::MaybeUninit;
 

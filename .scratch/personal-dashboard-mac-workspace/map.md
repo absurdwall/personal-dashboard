@@ -2,11 +2,10 @@
 
 ## Current frontier
 
-- [04 — Drive the packaged Mac app through real Tauri IPC](issues/04-drive-packaged-mac-app-through-real-tauri-ipc.md) — ready-for-agent
+- [05 — Replace the scrolling document with Mac workspace navigation](issues/05-replace-scrolling-document-with-mac-workspace-navigation.md) — ready-for-agent
 
 ## Blocked tickets
 
-- [05 — Replace the scrolling document with Mac workspace navigation](issues/05-replace-scrolling-document-with-mac-workspace-navigation.md) — blocked by 01, 02, 03, 04
 - [06 — Present This Week as a chronological agenda](issues/06-present-this-week-as-chronological-agenda.md) — blocked by 05
 - [07 — Respond to a pending departure without losing context](issues/07-respond-to-pending-departure-without-losing-context.md) — blocked by 06
 - [08 — Record any workout in the contextual pane](issues/08-record-any-workout-in-contextual-pane.md) — blocked by 06
