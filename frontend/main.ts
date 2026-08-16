@@ -221,7 +221,57 @@ declare global {
   }
 }
 
+type WorkspaceDestination = "this-week" | "history" | "settings";
+
+const workspaceDestinationDetails: Record<
+  WorkspaceDestination,
+  Readonly<{
+    title: string;
+    description: string;
+    detailHeading: string;
+    detailCopy: string;
+  }>
+> = {
+  "this-week": {
+    title: "This Week",
+    description:
+      "Plan the next departure, record what happened, and keep this week moving.",
+    detailHeading: "Current focus",
+    detailCopy: "This Week keeps the next useful action close to the schedule.",
+  },
+  history: {
+    title: "History",
+    description: "Review recorded workouts and decisions from earlier weeks.",
+    detailHeading: "Looking back",
+    detailCopy: "History keeps completed weeks available without crowding the current plan.",
+  },
+  settings: {
+    title: "Profile & data",
+    description: "Keep this device's profile, routine, reminders, and local files under your control.",
+    detailHeading: "Local controls",
+    detailCopy: "Settings keeps profile authority, files, routines, and notification choices together.",
+  },
+};
+
 const runtimeStatus = document.querySelector<HTMLElement>("#runtime-status");
+const workspaceDestinationButtons = document.querySelectorAll<HTMLButtonElement>(
+  "[data-workspace-destination]",
+);
+const workspaceDestinationPanels = document.querySelectorAll<HTMLElement>(
+  "[data-workspace-panel]",
+);
+const workspaceTitle = document.querySelector<HTMLElement>("#workspace-title");
+const workspaceDescription = document.querySelector<HTMLElement>("#workspace-description");
+const workspaceContextStatus = document.querySelector<HTMLElement>(
+  "#workspace-context-status",
+);
+const workspaceDetailHeading = document.querySelector<HTMLElement>(
+  "#workspace-detail-heading",
+);
+const workspaceDetailCopy = document.querySelector<HTMLElement>("#workspace-detail-copy");
+const workspaceDetailStatus = document.querySelector<HTMLElement>("#workspace-detail-status");
+const workspaceScrollStatus = document.querySelector<HTMLElement>("#workspace-scroll-status");
+const historyEmptyState = document.querySelector<HTMLElement>("#history-empty-state");
 const exerciseDashboard = document.querySelector<HTMLElement>("#exercise-dashboard");
 const inactiveProfileNotice = document.querySelector<HTMLElement>(
   "#inactive-profile-notice",
@@ -395,6 +445,7 @@ const scheduleCapabilityNotificationButton = document.querySelector<HTMLButtonEl
   "#schedule-capability-notification",
 );
 let currentProfileAuthority: ProfileView["authority"] = "active";
+let currentWorkspaceDestination: WorkspaceDestination = "this-week";
 
 function departureItem(
   departure: DepartureTiming,
@@ -677,6 +728,73 @@ function historyWeekItem(
   return article;
 }
 
+function updateWorkspaceScrollStatus(): void {
+  if (!workspaceScrollStatus) {
+    return;
+  }
+
+  const viewportHeight = window.innerHeight;
+  const documentOwnsScroll =
+    document.documentElement.scrollHeight > viewportHeight + 1 ||
+    document.body.scrollHeight > viewportHeight + 1 ||
+    document.documentElement.scrollTop > 0 ||
+    document.body.scrollTop > 0;
+  workspaceScrollStatus.textContent = documentOwnsScroll
+    ? "Window overflow detected — use the active pane to review details."
+    : "Window fixed · pane-owned overflow";
+}
+
+function updateWorkspaceDetailStatus(view?: ExerciseDashboardView): void {
+  if (!workspaceDetailStatus) {
+    return;
+  }
+  if (currentProfileAuthority === "inactive") {
+    workspaceDetailStatus.textContent = INACTIVE_PROFILE_MESSAGE;
+  } else if (currentWorkspaceDestination === "this-week" && view?.departurePrompt) {
+    workspaceDetailStatus.textContent = `Needs attention: ${view.departurePrompt.heading}`;
+  } else if (currentWorkspaceDestination === "this-week" && view?.nextDeparture) {
+    workspaceDetailStatus.textContent = `Next departure: ${view.nextDeparture}`;
+  } else {
+    workspaceDetailStatus.textContent =
+      workspaceDestinationDetails[currentWorkspaceDestination].detailCopy;
+  }
+}
+
+function showWorkspaceDestination(destination: WorkspaceDestination, focus = false): void {
+  currentWorkspaceDestination = destination;
+  const details = workspaceDestinationDetails[destination];
+  workspaceDestinationButtons.forEach((button) => {
+    const isCurrent = button.dataset.workspaceDestination === destination;
+    button.toggleAttribute("aria-current", isCurrent);
+    if (isCurrent) {
+      button.setAttribute("aria-current", "page");
+    }
+    if (focus && isCurrent) {
+      button.focus();
+    }
+  });
+  workspaceDestinationPanels.forEach((panel) => {
+    panel.hidden = panel.dataset.workspacePanel !== destination;
+  });
+  if (workspaceTitle) {
+    workspaceTitle.textContent = details.title;
+  }
+  if (workspaceDescription) {
+    workspaceDescription.textContent = details.description;
+  }
+  if (workspaceContextStatus) {
+    workspaceContextStatus.textContent = `${details.title} is the current destination.`;
+  }
+  if (workspaceDetailHeading) {
+    workspaceDetailHeading.textContent = details.detailHeading;
+  }
+  if (workspaceDetailCopy) {
+    workspaceDetailCopy.textContent = details.detailCopy;
+  }
+  updateWorkspaceDetailStatus();
+  updateWorkspaceScrollStatus();
+}
+
 function renderExerciseDashboard(view: ExerciseDashboardView): void {
   if (exerciseWeek) {
     exerciseWeek.textContent = `Week of ${view.weekLabel}`;
@@ -818,6 +936,9 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
   }
   if (exerciseHistory && exerciseHistoryWeeks) {
     exerciseHistory.hidden = view.history.length === 0;
+    if (historyEmptyState) {
+      historyEmptyState.hidden = view.history.length > 0;
+    }
     exerciseHistoryWeeks.replaceChildren(
       ...view.history.map((week) =>
         historyWeekItem(week, view.workoutHistoryControls),
@@ -841,6 +962,8 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
       ),
     );
   }
+  updateWorkspaceDetailStatus(view);
+  updateWorkspaceScrollStatus();
   applyAuthorityState();
 }
 
@@ -1122,6 +1245,7 @@ function renderProfile(profile: ProfileView): void {
           : "This device is authoritative for this profile."
         : INACTIVE_PROFILE_MESSAGE;
   }
+  updateWorkspaceDetailStatus();
   applyAuthorityState();
 }
 
@@ -1515,6 +1639,22 @@ async function connectToApplication(): Promise<void> {
 
   await refreshNotificationCapability();
 }
+
+workspaceDestinationButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const destination = button.dataset.workspaceDestination;
+    if (
+      destination === "this-week" ||
+      destination === "history" ||
+      destination === "settings"
+    ) {
+      showWorkspaceDestination(destination);
+    }
+  });
+});
+
+window.addEventListener("resize", updateWorkspaceScrollStatus);
+showWorkspaceDestination("this-week");
 
 profileForm?.addEventListener("submit", (event) => {
   event.preventDefault();

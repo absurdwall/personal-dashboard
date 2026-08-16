@@ -113,6 +113,18 @@ launch_app
 run_driver wait-text "Log workout now" 30
 run_driver assert-text "WEEK OF MONDAY, AUGUST 10"
 
+current_step="checking persistent workspace destinations"
+run_driver wait-text "This Week" 10
+run_driver assert-text "History"
+run_driver assert-text "Settings"
+run_driver press "History" 10
+run_driver assert-text "Previous weeks"
+run_driver press "Settings" 10
+run_driver assert-text "Profile & data"
+run_driver press "This Week" 10
+run_driver assert-text "Primary departures"
+run_driver assert-text "Window fixed · pane-owned overflow"
+
 current_step="clicking Log workout now through the rendered UI"
 run_driver press "Log workout now" 10
 current_step="choosing Elliptical through the rendered UI"

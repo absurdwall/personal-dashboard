@@ -2,17 +2,16 @@
 
 ## Current frontier
 
-- [05 — Replace the scrolling document with Mac workspace navigation](issues/05-replace-scrolling-document-with-mac-workspace-navigation.md) — ready-for-agent
+- [06 — Present This Week as a chronological agenda](issues/06-present-this-week-as-chronological-agenda.md) — ready-for-agent
+- [09 — Review and correct historical weeks](issues/09-review-and-correct-historical-weeks.md) — ready-for-agent
+- [10 — Adjust this week or the repeating routine in context](issues/10-adjust-this-week-or-repeating-routine-in-context.md) — ready-for-agent
+- [11 — Manage profile and authority under Profile & Data](issues/11-manage-profile-and-authority-under-profile-data.md) — ready-for-agent
+- [12 — Inspect reminder readiness under Notifications](issues/12-inspect-reminder-readiness-under-notifications.md) — ready-for-agent
 
 ## Blocked tickets
 
-- [06 — Present This Week as a chronological agenda](issues/06-present-this-week-as-chronological-agenda.md) — blocked by 05
 - [07 — Respond to a pending departure without losing context](issues/07-respond-to-pending-departure-without-losing-context.md) — blocked by 06
 - [08 — Record any workout in the contextual pane](issues/08-record-any-workout-in-contextual-pane.md) — blocked by 06
-- [09 — Review and correct historical weeks](issues/09-review-and-correct-historical-weeks.md) — blocked by 05
-- [10 — Adjust this week or the repeating routine in context](issues/10-adjust-this-week-or-repeating-routine-in-context.md) — blocked by 05
-- [11 — Manage profile and authority under Profile & Data](issues/11-manage-profile-and-authority-under-profile-data.md) — blocked by 05
-- [12 — Inspect reminder readiness under Notifications](issues/12-inspect-reminder-readiness-under-notifications.md) — blocked by 05
 - [13 — Preserve every workflow in the compact window](issues/13-preserve-every-workflow-in-compact-window.md) — blocked by 07, 08, 09, 10, 11, 12
 - [14 — Prove the accessible production Mac workspace](issues/14-prove-accessible-production-mac-workspace.md) — blocked by 13
 

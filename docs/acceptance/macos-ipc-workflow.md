@@ -10,11 +10,14 @@ prototype, a development server, or a direct Rust application object.
    bundle to a temporary location, uses temporary profile and baseline paths,
    and supplies a fixed epoch and UTC offset through the acceptance-only clock
    environment variables.
-3. The native macOS accessibility driver waits for the rendered **Log workout
-   now** control, presses **Elliptical**, **30**, and **Moderate**, and checks
-   the visible `1 of 3 completed`, `Elliptical`, and `Counts toward weekly
-   progress` state.
-4. The script terminates and relaunches the copied packaged app, then checks
+3. The native macOS accessibility driver verifies the persistent **This Week**,
+   **History**, and **Settings** destinations, switches through each destination,
+   and checks the rendered fixed-window/pane-overflow status before returning to
+   **This Week**.
+4. The driver then presses **Log workout now**, **Elliptical**, **30**, and
+   **Moderate**, and checks the visible `1 of 3 completed`, `Elliptical`, and
+   `Counts toward weekly progress` state.
+5. The script terminates and relaunches the copied packaged app, then checks
    the same visible result through the rendered accessibility tree.
 
 The driver is compiled from the macOS system `ApplicationServices` and
@@ -25,9 +28,10 @@ the temporary directory created by this run.
 
 ## Recorded result
 
-On 2026-08-16, the arm64 packaged app completed the unscheduled workout through
-the rendered controls and real Tauri IPC. The visible state reached `1 of 3
-completed`, showed the `Elliptical` record and its qualifying outcome, and the
-same state was visible after a true packaged-app termination and relaunch. The
-run used an isolated temporary profile with a fixed epoch and UTC−04 offset;
-the temporary app copy and profile data were removed afterward.
+On 2026-08-16, the arm64 packaged app switched through all three destinations,
+reported `Window fixed · pane-owned overflow`, and completed the unscheduled
+workout through the rendered controls and real Tauri IPC. The visible state
+reached `1 of 3 completed`, showed the `Elliptical` record and its qualifying
+outcome, and the same state was visible after a true packaged-app termination
+and relaunch. The run used an isolated temporary profile with a fixed epoch and
+UTC−04 offset; the temporary app copy and profile data were removed afterward.

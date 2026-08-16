@@ -12,28 +12,74 @@
   </head>
   <body>
     <main class="app-shell">
-      <header class="product-header">
-        <div>
-          <p class="eyebrow" data-product-name>Personal Dashboard</p>
-          <h1 data-feature-area>Exercise tracking</h1>
-          <p class="introduction">
-            Your private, offline place for exercise plans, reminders, and
-            progress.
-          </p>
-        </div>
-        <div id="runtime-status" class="runtime-status" role="status" aria-live="polite">
-          Connecting to the local application…
-        </div>
-      </header>
-
-      <section class="feature-card" aria-labelledby="exercise-heading">
-        <div class="feature-heading">
+      <aside class="workspace-sidebar" aria-label="Primary">
+        <div class="workspace-brand">
           <div class="feature-mark" aria-hidden="true">PD</div>
           <div>
-            <p class="section-label">Current feature area</p>
-            <h2 id="exercise-heading" data-feature-area>Exercise tracking</h2>
+            <p class="eyebrow" data-product-name>Personal Dashboard</p>
+            <p class="sidebar-feature" data-feature-area>Exercise tracking</p>
           </div>
         </div>
+        <nav class="workspace-navigation" aria-label="Workspace destinations">
+          <button
+            type="button"
+            class="destination-button"
+            data-workspace-destination="this-week"
+            aria-controls="workspace-destination-this-week"
+            aria-current="page"
+          >
+            <span class="destination-icon" aria-hidden="true">◷</span>
+            <span>This Week</span>
+          </button>
+          <button
+            type="button"
+            class="destination-button"
+            data-workspace-destination="history"
+            aria-controls="workspace-destination-history"
+          >
+            <span class="destination-icon" aria-hidden="true">↺</span>
+            <span>History</span>
+          </button>
+          <button
+            type="button"
+            class="destination-button"
+            data-workspace-destination="settings"
+            aria-controls="workspace-destination-settings"
+          >
+            <span class="destination-icon" aria-hidden="true">⚙</span>
+            <span>Settings</span>
+          </button>
+        </nav>
+        <div class="sidebar-status">
+          <div id="runtime-status" class="runtime-status" role="status" aria-live="polite">
+            Connecting to the local application…
+          </div>
+          <p class="sidebar-reassurance">Private and offline on this Mac.</p>
+        </div>
+      </aside>
+
+      <section class="workspace-shell" aria-label="Personal Dashboard workspace">
+        <header class="workspace-header">
+          <div>
+            <p class="section-label" data-feature-area>Exercise tracking</p>
+            <h1 id="workspace-title">This Week</h1>
+            <p id="workspace-description" class="workspace-description">
+              Plan the next departure, record what happened, and keep this week moving.
+            </p>
+          </div>
+          <div id="workspace-context-status" class="workspace-context-status" role="status" aria-live="polite">
+            This Week is the current destination.
+          </div>
+        </header>
+
+        <div class="workspace-regions">
+          <section class="workspace-information" aria-label="Workspace information">
+            <section
+              id="workspace-destination-this-week"
+              class="workspace-destination"
+              data-workspace-panel="this-week"
+              aria-labelledby="workspace-title"
+            >
 
         <section id="exercise-dashboard" class="exercise-dashboard" aria-labelledby="exercise-progress">
           <p id="inactive-profile-notice" class="inactive-profile-notice" role="status" hidden></p>
@@ -102,19 +148,50 @@
             <h4 id="workout-history-heading">Recorded workouts</h4>
             <ol id="workout-records" class="workout-records"></ol>
           </section>
-          <section id="exercise-history" class="exercise-history" aria-labelledby="exercise-history-heading" hidden>
-            <p class="section-label">History</p>
-            <h4 id="exercise-history-heading">Previous weeks</h4>
-            <div id="exercise-history-weeks" class="exercise-history-weeks"></div>
-          </section>
-          <section class="routine-settings" aria-labelledby="routine-settings-action">
-            <details>
-              <summary id="routine-settings-action">Change repeating routine</summary>
-              <p id="routine-settings-guidance"></p>
-              <ol id="routine-departures" class="routine-departures"></ol>
-            </details>
-          </section>
         </section>
+            </section>
+
+            <section
+              id="workspace-destination-history"
+              class="workspace-destination"
+              data-workspace-panel="history"
+              aria-labelledby="history-heading"
+              hidden
+            >
+              <p class="section-label">Completed weeks</p>
+              <h2 id="history-heading" class="destination-heading">History</h2>
+              <p class="destination-introduction">
+                Review recorded workouts and decisions from earlier weeks.
+              </p>
+              <p id="history-empty-state" class="history-empty-state">
+                Previous weeks will appear here after a completed week.
+              </p>
+              <section id="exercise-history" class="exercise-history" aria-labelledby="exercise-history-heading" hidden>
+                <p class="section-label">History</p>
+                <h4 id="exercise-history-heading">Previous weeks</h4>
+                <div id="exercise-history-weeks" class="exercise-history-weeks"></div>
+              </section>
+            </section>
+
+            <section
+              id="workspace-destination-settings"
+              class="workspace-destination workspace-settings"
+              data-workspace-panel="settings"
+              aria-labelledby="settings-heading"
+              hidden
+            >
+              <p class="section-label">Workspace controls</p>
+              <h2 id="settings-heading" class="destination-heading">Profile &amp; data</h2>
+              <p class="destination-introduction">
+                Keep this device's profile, routine, reminders, and local files under your control.
+              </p>
+              <section class="routine-settings" aria-labelledby="routine-settings-action">
+                <details>
+                  <summary id="routine-settings-action">Change repeating routine</summary>
+                  <p id="routine-settings-guidance"></p>
+                  <ol id="routine-departures" class="routine-departures"></ol>
+                </details>
+              </section>
 
         <section class="profile-panel" aria-labelledby="profile-heading">
           <div class="profile-copy">
@@ -339,6 +416,23 @@
             <dd>Native Mac window</dd>
           </div>
         </dl>
+      </section>
+          </section>
+
+          <aside class="workspace-detail" aria-labelledby="workspace-detail-heading">
+            <p class="section-label">Context</p>
+            <h2 id="workspace-detail-heading">Current focus</h2>
+            <p id="workspace-detail-copy">
+              This Week keeps the next useful action close to the schedule.
+            </p>
+            <p id="workspace-scroll-status" class="workspace-scroll-status" role="status" aria-live="polite">
+              Checking window and pane boundaries…
+            </p>
+            <div id="workspace-detail-status" class="workspace-detail-status" role="status" aria-live="polite">
+              The local profile is loading.
+            </div>
+          </aside>
+        </div>
       </section>
     </main>
 
