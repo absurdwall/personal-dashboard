@@ -5,16 +5,19 @@ enum DriverError: Error, CustomStringConvertible {
     case usage
     case invalidPid(String)
     case timeout(String)
+    case unexpectedText(String)
     case actionFailed(String, AXError)
 
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|press> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|press> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
             return "timed out waiting for rendered UI text: \(text)"
+        case let .unexpectedText(text):
+            return "unexpected rendered UI text was visible: \(text)"
         case let .actionFailed(action, error):
             return "accessibility action \(action) failed: \(error.rawValue)"
         }
@@ -116,6 +119,12 @@ func waitForText(_ application: AXUIElement, _ text: String, timeout: TimeInterv
     throw DriverError.timeout(text)
 }
 
+func assertAbsentText(_ application: AXUIElement, _ text: String) throws {
+    guard findText(application, text) == nil else {
+        throw DriverError.unexpectedText(text)
+    }
+}
+
 func requireArguments() throws -> (pid_t, String, String, TimeInterval) {
     guard CommandLine.arguments.count >= 4 else {
         throw DriverError.usage
@@ -143,6 +152,9 @@ do {
     case "assert-text":
         try waitForText(application, text, timeout: 0.5)
         print("Visible rendered state contains: \(text)")
+    case "assert-absent-text":
+        try assertAbsentText(application, text)
+        print("Rendered state does not contain: \(text)")
     case "press":
         let deadline = Date().addingTimeInterval(timeout)
         var pressed = false

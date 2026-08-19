@@ -5,15 +5,15 @@ Spec: [spec.md](spec.md)
 ## Resolved tickets
 
 - [01 — 让计划锻炼可以直接记录](issues/01-directly-record-planned-workout.md) — resolved
+- [02 — 建立 list-first This Week 与 temporary sheet](issues/02-list-first-this-week-temporary-sheet.md) — resolved
 
 ## Current frontier
 
-- [02 — 建立 list-first This Week 与 temporary sheet](issues/02-list-first-this-week-temporary-sheet.md) — ready-for-agent
+- [03 — 完成 selected scheduled 与 unscheduled workout recording](issues/03-record-selected-and-unscheduled-workouts.md) — ready-for-agent
+- [04 — 完成 change-time 与 skip 例外流程](issues/04-change-time-and-skip-exceptions.md) — ready-for-agent
 
 ## Blocked tickets
 
-- [03 — 完成 selected scheduled 与 unscheduled workout recording](issues/03-record-selected-and-unscheduled-workouts.md) — blocked by 02
-- [04 — 完成 change-time 与 skip 例外流程](issues/04-change-time-and-skip-exceptions.md) — blocked by 02
 - [05 — 完成中等窗口与 640x520 compact flow](issues/05-responsive-navigation-and-compact-flow.md) — blocked by 03 and 04
 - [06 — 完成 packaged Mac This Week acceptance gate](issues/06-packaged-this-week-acceptance-gate.md) — blocked by 05
 

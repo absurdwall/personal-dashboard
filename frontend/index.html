@@ -105,8 +105,8 @@
             <section class="agenda-group fallback-agenda" aria-labelledby="fallback-departures-heading">
               <div class="agenda-group-heading">
                 <div>
-                  <p class="agenda-kicker">Recovery capacity</p>
-                  <h4 id="fallback-departures-heading">Fallback availability</h4>
+                  <p class="agenda-kicker">Other times this week</p>
+                  <h4 id="fallback-departures-heading">Open capacity</h4>
                 </div>
                 <span id="fallback-count" class="availability-count">—</span>
               </div>
@@ -123,22 +123,6 @@
               <h4 id="manual-workout-heading">Record an unscheduled workout</h4>
             </div>
             <button id="log-workout-now" type="button">Log workout now</button>
-          </section>
-          <section id="workout-prompt" class="workout-flow" aria-labelledby="workout-prompt-heading" hidden>
-            <p class="section-label">Record workout</p>
-            <h4 id="workout-prompt-heading"></h4>
-            <div id="workout-prompt-action" class="workout-choices"></div>
-          </section>
-          <section id="workout-recording" class="workout-flow" aria-labelledby="workout-recording-heading" hidden>
-            <p class="section-label">Record workout</p>
-            <h4 id="workout-recording-heading"></h4>
-            <p id="workout-recording-guidance" class="workout-guidance"></p>
-            <div id="workout-recording-choices" class="workout-choices"></div>
-          </section>
-          <section id="workout-history" class="workout-history" aria-labelledby="workout-history-heading" hidden>
-            <p class="section-label">This week</p>
-            <h4 id="workout-history-heading">Recorded workouts</h4>
-            <ol id="workout-records" class="workout-records"></ol>
           </section>
         </section>
             </section>
@@ -411,41 +395,42 @@
       </section>
           </section>
 
-          <aside class="workspace-detail" aria-labelledby="workspace-detail-heading">
-            <p class="section-label">Context</p>
-            <h2 id="workspace-detail-heading">Current focus</h2>
-            <p id="workspace-detail-copy">
-              This Week keeps the next useful action close to the schedule.
-            </p>
-            <p id="workspace-scroll-status" class="workspace-scroll-status" role="status" aria-live="polite">
-              Checking window and pane boundaries…
-            </p>
-            <div id="workspace-detail-status" class="workspace-detail-status" role="status" aria-live="polite">
-              The local profile is loading.
-            </div>
-            <section id="departure-pending-recovery" class="departure-pending-recovery" hidden>
-              <p class="section-label">Pending departure</p>
-              <p>This response is still waiting for you.</p>
-              <button id="workspace-needs-attention" type="button">Needs attention</button>
+          <div id="workspace-sheet-backdrop" class="workspace-sheet-backdrop" hidden></div>
+          <aside
+            id="workspace-detail"
+            class="workspace-detail"
+            aria-labelledby="workspace-detail-heading"
+            aria-describedby="workspace-detail-copy"
+            hidden
+          >
+            <header class="workspace-detail-header">
+              <div>
+                <p id="workspace-detail-kicker" class="section-label">Selected workout</p>
+                <h2 id="workspace-detail-heading">Selected workout</h2>
+              </div>
+              <button
+                id="workspace-detail-close"
+                class="workspace-detail-close secondary-button"
+                type="button"
+              >
+                Close
+              </button>
+            </header>
+            <p id="workspace-detail-copy">Choose a planned workout to inspect it.</p>
+            <div id="workspace-detail-status" class="workspace-detail-status" role="status" aria-live="polite"></div>
+            <div id="workspace-detail-actions" class="workspace-detail-actions"></div>
+            <section id="workout-recording" class="workout-flow" aria-labelledby="workout-recording-heading" hidden>
+              <p class="section-label">Record workout</p>
+              <h4 id="workout-recording-heading"></h4>
+              <p id="workout-recording-guidance" class="workout-guidance"></p>
+              <div id="workout-recording-choices" class="workout-choices"></div>
             </section>
-            <section id="departure-prompt" class="departure-response workspace-detail-response" aria-labelledby="departure-prompt-heading" hidden>
-              <p class="section-label">Departure prompt</p>
-              <h4 id="departure-prompt-heading"></h4>
-              <p id="departure-response-status" class="unresolved-status" hidden></p>
-              <div id="departure-actions" class="departure-actions"></div>
+            <section id="workout-history" class="workout-history" aria-labelledby="workout-history-heading" hidden>
+              <p class="section-label">This week</p>
+              <h4 id="workout-history-heading">Recorded workouts</h4>
+              <ol id="workout-records" class="workout-records"></ol>
             </section>
-            <section id="departure-reason-prompt" class="departure-response workspace-detail-response" aria-labelledby="departure-reason-heading" hidden>
-              <p class="section-label">Choose a reason</p>
-              <h4 id="departure-reason-heading"></h4>
-              <p class="workout-guidance">Choose one preset reason. No typing is required.</p>
-              <div id="departure-reasons" class="departure-actions"></div>
-              <button id="cancel-departure-reason" type="button" class="secondary-button">Cancel</button>
-            </section>
-            <section id="departure-confirmation" class="departure-confirmation workspace-detail-confirmation" aria-live="polite" hidden>
-              <strong id="departure-confirmation-message"></strong>
-              <span id="departure-confirmation-next-prompt"></span>
-            </section>
-            </aside>
+          </aside>
         </div>
       </section>
     </main>

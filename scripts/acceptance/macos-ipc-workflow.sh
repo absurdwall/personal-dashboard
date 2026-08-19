@@ -16,7 +16,7 @@ current_step="setup"
 
 fixed_now_epoch_millis="${PERSONAL_DASHBOARD_ACCEPTANCE_NOW_EPOCH_MILLIS:-1786406400000}"
 fixed_utc_offset_minutes="${PERSONAL_DASHBOARD_ACCEPTANCE_UTC_OFFSET_MINUTES:--240}"
-acceptance_scenario="${PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO:-baseline}"
+acceptance_scenario="${PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO:-list-first}"
 
 fail() {
   echo "Packaged IPC acceptance failed at ${current_step}: $1" >&2
@@ -114,7 +114,10 @@ run_direct_record_scenario() {
   launch_app
 
   current_step="waiting for a due planned workout"
-  run_driver wait-text "Record workout" 30
+  run_driver wait-text "Log workout now" 30
+  run_driver press-contains "Monday" 10
+  run_driver assert-text "Monday workout"
+  run_driver assert-text "Record workout"
   run_driver assert-text "Unrecorded — ready to record"
   run_driver press-contains "Record workout" 10
 
@@ -128,6 +131,7 @@ run_direct_record_scenario() {
   current_step="checking the direct-record result"
   run_driver assert-text "1 of 3 completed"
   run_driver assert-text "Completed"
+  run_driver press-contains "Monday" 10
   run_driver assert-text "Elliptical"
   run_driver assert-text "Counts toward weekly progress"
 
@@ -140,6 +144,7 @@ run_direct_record_scenario() {
   current_step="checking direct-record persistence after relaunch"
   run_driver wait-text "1 of 3 completed" 30
   run_driver assert-text "Completed"
+  run_driver press-contains "Monday" 10
   run_driver assert-text "Elliptical"
   run_driver assert-text "Counts toward weekly progress"
 
@@ -149,90 +154,68 @@ run_direct_record_scenario() {
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
 }
 
+run_list_first_scenario() {
+  current_step="waiting for rendered list-first dashboard"
+  launch_app
+  run_driver wait-text "Log workout now" 30
+
+  current_step="checking the default This Week agenda"
+  run_driver assert-text "WEEK OF MONDAY, AUGUST 10"
+  run_driver assert-text "0 of 3 completed"
+  run_driver assert-text "Next departure"
+  run_driver assert-text "Primary departures"
+  run_driver assert-text "Monday"
+  run_driver assert-text "Wednesday"
+  run_driver assert-text "Friday"
+  run_driver assert-text "Open capacity"
+  run_driver assert-text "Saturday"
+  run_driver assert-text "Sunday"
+  run_driver assert-text "History"
+  run_driver assert-text "Settings"
+  run_driver assert-absent-text "Selected workout"
+  run_driver assert-absent-text "Monday workout"
+  run_driver assert-absent-text "Leaving for gym"
+  run_driver assert-absent-text "Move to fallback"
+  run_driver assert-absent-text "Fallback availability"
+
+  current_step="checking direct destination switching"
+  run_driver press "History" 10
+  run_driver assert-text "Previous weeks"
+  run_driver press "Settings" 10
+  run_driver assert-text "Profile & data"
+  run_driver press "This Week" 10
+
+  current_step="opening and closing a future workout sheet"
+  run_driver press-contains "Wednesday" 10
+  run_driver assert-text "Selected workout"
+  run_driver assert-text "Wednesday workout"
+  run_driver assert-absent-text "Record workout"
+  run_driver press "Close" 10
+  run_driver assert-absent-text "Wednesday workout"
+  run_driver assert-text "0 of 3 completed"
+
+  current_step="opening a due workout sheet without recording it"
+  run_driver press-contains "Monday" 10
+  run_driver assert-text "Monday workout"
+  run_driver assert-text "Record workout"
+  run_driver press "Close" 10
+  run_driver assert-absent-text "Monday workout"
+  run_driver assert-text "0 of 3 completed"
+
+  echo "Packaged IPC list-first acceptance passed"
+  echo "Workflow: the packaged This Week agenda stayed list-first until an explicit row selection"
+  echo "Sheet: future and due rows exposed distinct detail state without the departure-response surface"
+  echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
+}
+
 if [[ "$acceptance_scenario" == "direct" ]]; then
   run_direct_record_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "baseline" ]]; then
+if [[ "$acceptance_scenario" == "list-first" || "$acceptance_scenario" == "baseline" ]]; then
+  run_list_first_scenario
+  exit 0
+fi
+if [[ "$acceptance_scenario" != "direct" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi
-
-current_step="waiting for rendered dashboard"
-launch_app
-current_step="checking the rendered dashboard"
-run_driver wait-text "Log workout now" 30
-run_driver assert-text "WEEK OF MONDAY, AUGUST 10"
-
-current_step="checking persistent workspace destinations"
-run_driver wait-text "This Week" 10
-run_driver assert-text "History"
-run_driver assert-text "Settings"
-run_driver press "History" 10
-run_driver assert-text "Previous weeks"
-run_driver press "Settings" 10
-run_driver assert-text "Profile & data"
-run_driver press "This Week" 10
-run_driver assert-text "Primary departures"
-run_driver assert-text "Monday"
-run_driver assert-text "Wednesday"
-run_driver assert-text "Friday"
-run_driver assert-text "Scheduled"
-run_driver assert-text "Fallback availability"
-run_driver assert-text "available"
-run_driver assert-text "Needs attention: Monday"
-run_driver press-contains "Wednesday" 10
-run_driver assert-text "Selected departure: Wednesday"
-run_driver assert-text "Window fixed · pane-owned overflow"
-
-current_step="recovering the pending departure from the contextual pane"
-run_driver assert-text "Needs attention"
-run_driver press "Needs attention" 10
-run_driver assert-text "Time to leave for the gym"
-run_driver assert-text "Leaving for gym"
-run_driver assert-text "Move to fallback"
-run_driver assert-text "Skip"
-run_driver press "Skip" 10
-run_driver assert-text "Work ran late"
-run_driver assert-text "Too tired"
-run_driver assert-text "Sick or injured"
-run_driver assert-text "Another commitment"
-run_driver assert-text "Other"
-run_driver press "Work ran late" 10
-run_driver assert-text "Skipped"
-run_driver assert-text "Selected departure: Monday"
-
-current_step="clicking Log workout now through the rendered UI"
-run_driver press "Log workout now" 10
-current_step="choosing Elliptical through the rendered UI"
-run_driver press "Elliptical" 10
-current_step="choosing the 30-minute preset through the rendered UI"
-run_driver press "30" 10
-current_step="choosing Moderate effort through the rendered UI"
-run_driver press "Moderate" 10
-
-current_step="checking the visible completed workout"
-run_driver assert-text "1 of 3 completed"
-run_driver assert-text "Elliptical"
-run_driver assert-text "Counts toward weekly progress"
-run_driver assert-text "Skipped · Work ran late"
-
-current_step="closing the packaged app before persistence check"
-if ! stop_app; then
-  fail "app process did not exit after termination"
-fi
-launch_app
-
-current_step="checking persisted visible state after relaunch"
-run_driver wait-text "Log workout now" 30
-run_driver assert-text "WEEK OF MONDAY, AUGUST 10"
-run_driver assert-text "1 of 3 completed"
-run_driver assert-text "Elliptical"
-run_driver assert-text "Counts toward weekly progress"
-run_driver press-contains "Monday" 10
-run_driver assert-text "Selected departure: Monday"
-run_driver assert-text "Skipped"
-
-echo "Packaged IPC acceptance passed"
-echo "Workflow: rendered controls crossed Tauri IPC and recorded an Elliptical workout"
-echo "Persistence: isolated packaged app relaunched with the saved result visible"
-echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"

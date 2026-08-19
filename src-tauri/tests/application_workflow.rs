@@ -1023,7 +1023,7 @@ fn due_fallback_workout_exposes_the_same_direct_record_action() {
     let completed = application
         .complete_workout_record("2026-08-10-fallback-1", "Moderate")
         .unwrap();
-    assert_eq!("Fallback workout", completed.workout_records[0].source);
+    assert_eq!("Open capacity workout", completed.workout_records[0].source);
     assert_eq!("1 of 3 completed", completed.progress);
     assert_eq!("Recorded", completed.fallback_departures[0].availability);
 }
@@ -1619,7 +1619,11 @@ fn mixed_sources_complete_the_goal_and_allow_an_optional_extra_workout() {
     assert_eq!(None, success.next_departure);
     assert_eq!(None, success.departure_prompt);
     assert_eq!(
-        vec!["Fallback workout", "Primary workout", "Unscheduled workout"],
+        vec![
+            "Open capacity workout",
+            "Primary workout",
+            "Unscheduled workout"
+        ],
         success
             .workout_records
             .iter()

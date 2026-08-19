@@ -149,6 +149,7 @@ type WorkoutRecording = Readonly<{
 type WorkoutRecord = Readonly<{
   id: string;
   source: string;
+  sourceSlotId: string | null;
   recordedAt: string;
   recordedAtUtcOffsetMinutes: number | null;
   activity: string;
@@ -259,28 +260,20 @@ const workspaceDestinationDetails: Record<
   Readonly<{
     title: string;
     description: string;
-    detailHeading: string;
-    detailCopy: string;
   }>
 > = {
   "this-week": {
     title: "This Week",
     description:
       "Plan the next departure, record what happened, and keep this week moving.",
-    detailHeading: "Current focus",
-    detailCopy: "This Week keeps the next useful action close to the schedule.",
   },
   history: {
     title: "History",
     description: "Review recorded workouts and decisions from earlier weeks.",
-    detailHeading: "Looking back",
-    detailCopy: "History keeps completed weeks available without crowding the current plan.",
   },
   settings: {
     title: "Profile & data",
     description: "Keep this device's profile, routine, reminders, and local files under your control.",
-    detailHeading: "Local controls",
-    detailCopy: "Settings keeps profile authority, files, routines, and notification choices together.",
   },
 };
 
@@ -299,14 +292,20 @@ const workspaceContextStatus = document.querySelector<HTMLElement>(
 const workspaceDetailHeading = document.querySelector<HTMLElement>(
   "#workspace-detail-heading",
 );
+const workspaceDetailKicker = document.querySelector<HTMLElement>(
+  "#workspace-detail-kicker",
+);
 const workspaceDetailCopy = document.querySelector<HTMLElement>("#workspace-detail-copy");
 const workspaceDetailStatus = document.querySelector<HTMLElement>("#workspace-detail-status");
-const workspaceScrollStatus = document.querySelector<HTMLElement>("#workspace-scroll-status");
-const departurePendingRecovery = document.querySelector<HTMLElement>(
-  "#departure-pending-recovery",
+const workspaceDetail = document.querySelector<HTMLElement>("#workspace-detail");
+const workspaceDetailClose = document.querySelector<HTMLButtonElement>(
+  "#workspace-detail-close",
 );
-const workspaceNeedsAttention = document.querySelector<HTMLButtonElement>(
-  "#workspace-needs-attention",
+const workspaceSheetBackdrop = document.querySelector<HTMLElement>(
+  "#workspace-sheet-backdrop",
+);
+const workspaceDetailActions = document.querySelector<HTMLElement>(
+  "#workspace-detail-actions",
 );
 const historyEmptyState = document.querySelector<HTMLElement>("#history-empty-state");
 const exerciseDashboard = document.querySelector<HTMLElement>("#exercise-dashboard");
@@ -324,40 +323,6 @@ const exerciseReminderStatus = document.querySelector<HTMLElement>(
 );
 const weeklyGoalStatus = document.querySelector<HTMLElement>("#weekly-goal-status");
 const logWorkoutNow = document.querySelector<HTMLButtonElement>("#log-workout-now");
-const departurePrompt = document.querySelector<HTMLElement>("#departure-prompt");
-const departurePromptHeading = document.querySelector<HTMLElement>(
-  "#departure-prompt-heading",
-);
-const departureResponseStatus = document.querySelector<HTMLElement>(
-  "#departure-response-status",
-);
-const departureActions = document.querySelector<HTMLElement>("#departure-actions");
-const departureReasonPrompt = document.querySelector<HTMLElement>(
-  "#departure-reason-prompt",
-);
-const departureReasonHeading = document.querySelector<HTMLElement>(
-  "#departure-reason-heading",
-);
-const departureReasons = document.querySelector<HTMLElement>("#departure-reasons");
-const cancelDepartureReason = document.querySelector<HTMLButtonElement>(
-  "#cancel-departure-reason",
-);
-const departureConfirmation = document.querySelector<HTMLElement>(
-  "#departure-confirmation",
-);
-const departureConfirmationMessage = document.querySelector<HTMLElement>(
-  "#departure-confirmation-message",
-);
-const departureConfirmationNextPrompt = document.querySelector<HTMLElement>(
-  "#departure-confirmation-next-prompt",
-);
-const workoutPrompt = document.querySelector<HTMLElement>("#workout-prompt");
-const workoutPromptHeading = document.querySelector<HTMLElement>(
-  "#workout-prompt-heading",
-);
-const workoutPromptAction = document.querySelector<HTMLElement>(
-  "#workout-prompt-action",
-);
 const workoutRecording = document.querySelector<HTMLElement>("#workout-recording");
 const workoutRecordingHeading = document.querySelector<HTMLElement>(
   "#workout-recording-heading",
@@ -485,6 +450,9 @@ let currentProfileAuthority: ProfileView["authority"] = "active";
 let currentWorkspaceDestination: WorkspaceDestination = "this-week";
 let currentExerciseView: ExerciseDashboardView | null = null;
 let selectedDepartureSlotId: string | null = null;
+let activeWorkoutSlotId: string | null = null;
+let workspaceDetailOpen = false;
+let detailTriggerToRestore: HTMLButtonElement | null = null;
 
 function departureItem(
   departure: DepartureTiming,
@@ -551,10 +519,7 @@ function scheduleControls(
   return controls;
 }
 
-function primaryDepartureItem(
-  departure: PrimaryDeparture,
-  choices: ScheduleChoices,
-): HTMLLIElement {
+function primaryDepartureItem(departure: PrimaryDeparture): HTMLLIElement {
   const item = document.createElement("li");
   const trigger = document.createElement("button");
   const identity = document.createElement("span");
@@ -568,7 +533,7 @@ function primaryDepartureItem(
   trigger.type = "button";
   trigger.className = "agenda-row-trigger";
   trigger.dataset.agendaSlotId = departure.id;
-  trigger.setAttribute("aria-label", `Select ${departure.day} departure`);
+  trigger.setAttribute("aria-label", `Select ${departure.day} planned workout`);
   trigger.setAttribute(
     "aria-pressed",
     String(departure.id === selectedDepartureSlotId),
@@ -581,7 +546,7 @@ function primaryDepartureItem(
   marker.className = "agenda-status-marker";
   marker.setAttribute("aria-hidden", "true");
   marker.textContent = departureStatusSignal(departure.statusKind);
-  status.textContent = departure.status;
+  status.textContent = primaryDepartureStatusLabel(departure);
   state.append(marker, status);
   trigger.append(identity, state);
   item.append(trigger);
@@ -591,39 +556,12 @@ function primaryDepartureItem(
     evidence.textContent = "✓ Workout recorded";
     item.append(evidence);
   }
-  if (departure.recordWorkoutAction) {
-    const action = workoutButton(
-      departure.recordWorkoutAction,
-      departure.id,
-      "start",
-    );
-    action.className = "agenda-record-button";
-    action.setAttribute("aria-label", `${departure.recordWorkoutAction}: ${departure.day}`);
-    item.append(action);
-  }
-  if (departure.adjustment) {
-    const editor = document.createElement("details");
-    const summary = document.createElement("summary");
-    summary.textContent = departure.adjustment.action;
-    editor.className = "schedule-editor";
-    editor.dataset.slotId = departure.id;
-    editor.append(
-      summary,
-      scheduleControls(
-        choices.dayChoices,
-        choices.timeChoices,
-        departure.adjustment.selectedDay,
-        departure.adjustment.selectedTime,
-        departure.adjustment.saveAction,
-      ),
-    );
-    item.append(editor);
-  }
   return item;
 }
 
 function fallbackDepartureItem(departure: FallbackDeparture): HTMLLIElement {
   const item = document.createElement("li");
+  const trigger = document.createElement("button");
   const identity = document.createElement("span");
   const day = document.createElement("strong");
   const time = document.createElement("span");
@@ -632,6 +570,22 @@ function fallbackDepartureItem(departure: FallbackDeparture): HTMLLIElement {
   const status = document.createElement("span");
   item.className = `agenda-row fallback-agenda-row availability-${departure.availabilityKind}`;
   item.dataset.slotId = departure.id;
+  trigger.type = "button";
+  trigger.className = "agenda-row-trigger";
+  trigger.dataset.agendaSlotId = departure.id;
+  trigger.setAttribute("aria-label", `Select ${departure.day} open capacity`);
+  trigger.setAttribute(
+    "aria-pressed",
+    String(departure.id === selectedDepartureSlotId),
+  );
+  if (
+    departure.availabilityKind === "reserved" ||
+    departure.availabilityKind === "unavailable"
+  ) {
+    trigger.disabled = true;
+    trigger.dataset.agendaUnavailable = "true";
+    trigger.setAttribute("aria-disabled", "true");
+  }
   identity.className = "agenda-row-identity";
   day.textContent = departure.day;
   time.textContent = departure.time;
@@ -640,19 +594,10 @@ function fallbackDepartureItem(departure: FallbackDeparture): HTMLLIElement {
   marker.className = "agenda-status-marker";
   marker.setAttribute("aria-hidden", "true");
   marker.textContent = fallbackAvailabilitySignal(departure.availabilityKind);
-  status.textContent = departure.availability;
+  status.textContent = fallbackDepartureStatusLabel(departure);
   state.append(marker, status);
-  item.append(identity, state);
-  if (departure.recordWorkoutAction) {
-    const action = workoutButton(
-      departure.recordWorkoutAction,
-      departure.id,
-      "start",
-    );
-    action.className = "agenda-record-button";
-    action.setAttribute("aria-label", `${departure.recordWorkoutAction}: ${departure.day}`);
-    item.append(action);
-  }
+  trigger.append(identity, state);
+  item.append(trigger);
   return item;
 }
 
@@ -683,6 +628,41 @@ function fallbackAvailabilitySignal(kind: FallbackAvailabilityKind): string {
     reserved: "—",
     unavailable: "—",
   }[kind];
+}
+
+function primaryDepartureStatusLabel(departure: PrimaryDeparture): string {
+  if (departure.hasWorkoutRecord || departure.statusKind === "completed") {
+    return "Completed";
+  }
+  if (departure.recordWorkoutAction) {
+    return "Unrecorded — ready to record";
+  }
+  return {
+    scheduled: "Scheduled",
+    unrecorded: "Unrecorded",
+    "awaiting-response": "Needs review",
+    unresolved: "Needs review",
+    leaving: "Ready to record",
+    completed: "Completed",
+    moved: "Rescheduled",
+    skipped: "Skipped",
+    "not-needed": "No workout needed",
+    missed: "Missed",
+    available: "Available",
+  }[departure.statusKind];
+}
+
+function fallbackDepartureStatusLabel(departure: FallbackDeparture): string {
+  return {
+    assigned: "Assigned from primary plan",
+    available: "Available",
+    unrecorded: "Unrecorded — ready to record",
+    recorded: "Recorded",
+    "not-needed": "No workout needed",
+    missed: "Missed",
+    reserved: "Reserved",
+    unavailable: "Unavailable",
+  }[departure.availabilityKind];
 }
 
 function chronologicalPrimaryDepartures(
@@ -864,17 +844,17 @@ function historyWeekItem(
   heading.textContent = week.weekLabel;
   progress.textContent = week.progress;
   primaryHeading.textContent = "Primary departures";
-  fallbackHeading.textContent = "Fallback departures";
+  fallbackHeading.textContent = "Open capacity";
   primary.className = "departure-list";
   fallback.className = "departure-list";
   primary.replaceChildren(
     ...week.primaryDepartures.map((departure) =>
-      departureItem(departure, departure.status),
+      departureItem(departure, primaryDepartureStatusLabel(departure)),
     ),
   );
   fallback.replaceChildren(
     ...week.fallbackDepartures.map((departure) =>
-      departureItem(departure, departure.availability),
+      departureItem(departure, fallbackDepartureStatusLabel(departure)),
     ),
   );
   article.append(heading, progress, primaryHeading, primary, fallbackHeading, fallback);
@@ -891,139 +871,217 @@ function historyWeekItem(
   return article;
 }
 
-function updateWorkspaceScrollStatus(): void {
-  if (!workspaceScrollStatus) {
-    return;
-  }
+type SelectedDeparture = PrimaryDeparture | FallbackDeparture;
 
-  const viewportHeight = window.innerHeight;
-  const documentOwnsScroll =
-    document.documentElement.scrollHeight > viewportHeight + 1 ||
-    document.body.scrollHeight > viewportHeight + 1 ||
-    document.documentElement.scrollTop > 0 ||
-    document.body.scrollTop > 0;
-  workspaceScrollStatus.textContent = documentOwnsScroll
-    ? "Window overflow detected — use the active pane to review details."
-    : "Window fixed · pane-owned overflow";
-}
-
-function selectedPrimaryDeparture(
+function selectedDeparture(
   view: ExerciseDashboardView,
-): PrimaryDeparture | undefined {
-  return chronologicalPrimaryDepartures(view.primaryDepartures).find(
+): SelectedDeparture | undefined {
+  return [...view.primaryDepartures, ...view.fallbackDepartures].find(
     (departure) => departure.id === selectedDepartureSlotId,
   );
 }
 
-function pendingDepartureSlotId(
-  view: ExerciseDashboardView | null,
-): string | null {
-  return view?.departurePrompt?.slotId ?? view?.departureReasonPrompt?.slotId ?? null;
+function isPrimaryDeparture(
+  departure: SelectedDeparture,
+): departure is PrimaryDeparture {
+  return "status" in departure;
 }
 
-function pendingDeparture(
-  view: ExerciseDashboardView,
-): DepartureTiming | undefined {
-  const slotId = pendingDepartureSlotId(view);
-  if (!slotId) {
-    return undefined;
-  }
-  return [...view.primaryDepartures, ...view.fallbackDepartures].find(
-    (departure) => departure.id === slotId,
-  );
+function selectedDepartureStatusLabel(departure: SelectedDeparture): string {
+  return isPrimaryDeparture(departure)
+    ? primaryDepartureStatusLabel(departure)
+    : fallbackDepartureStatusLabel(departure);
+}
+
+function selectedDepartureHasWorkoutRecord(departure: SelectedDeparture): boolean {
+  return isPrimaryDeparture(departure)
+    ? departure.hasWorkoutRecord
+    : departure.availabilityKind === "recorded";
+}
+
+function selectedDepartureRecordAction(
+  departure: SelectedDeparture,
+): string | null {
+  return departure.recordWorkoutAction;
 }
 
 function updateAgendaRowSelection(): void {
-  primaryDepartures?.querySelectorAll<HTMLButtonElement>(
-    "button[data-agenda-slot-id]",
-  ).forEach((button) => {
-    button.setAttribute(
-      "aria-pressed",
-      String(button.dataset.agendaSlotId === selectedDepartureSlotId),
-    );
+  [primaryDepartures, fallbackDepartures].forEach((container) => {
+    container?.querySelectorAll<HTMLButtonElement>(
+      "button[data-agenda-slot-id]",
+    ).forEach((button) => {
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.agendaSlotId === selectedDepartureSlotId),
+      );
+    });
   });
 }
 
-function updateWorkspaceDetailStatus(
-  view: ExerciseDashboardView | null = currentExerciseView,
-): void {
-  if (!workspaceDetailStatus) {
+function closeWorkspaceDetail(restoreFocus = true): void {
+  workspaceDetailOpen = false;
+  renderWorkspaceDetail();
+  const trigger = detailTriggerToRestore;
+  if (restoreFocus) {
+    if (trigger?.isConnected) {
+      window.requestAnimationFrame(() => trigger.focus());
+    } else {
+      restoreSelectedAgendaFocus();
+    }
+  }
+  detailTriggerToRestore = null;
+}
+
+function restoreSelectedAgendaFocus(): void {
+  if (!selectedDepartureSlotId) {
     return;
   }
-  const pendingSlotId = pendingDepartureSlotId(view);
-  const pending = view ? pendingDeparture(view) : undefined;
-  const pendingIsSelected = pendingSlotId !== null && pendingSlotId === selectedDepartureSlotId;
-  const showPendingResponse =
-    currentWorkspaceDestination === "this-week" && pendingSlotId !== null;
-  departurePendingRecovery?.toggleAttribute(
-    "hidden",
-    !showPendingResponse || pendingIsSelected,
-  );
-  departurePrompt?.toggleAttribute(
-    "hidden",
-    !showPendingResponse || !pendingIsSelected || view?.departurePrompt === null,
-  );
-  departureReasonPrompt?.toggleAttribute(
-    "hidden",
-    !showPendingResponse || !pendingIsSelected || view?.departureReasonPrompt === null,
-  );
-  if (currentWorkspaceDestination !== "this-week" || !view) {
-    workspaceDetailStatus.textContent =
-      workspaceDestinationDetails[currentWorkspaceDestination].detailCopy;
+  const trigger = [primaryDepartures, fallbackDepartures]
+    .flatMap((container) =>
+      container
+        ? Array.from(
+            container.querySelectorAll<HTMLButtonElement>(
+              "button[data-agenda-slot-id]",
+            ),
+          )
+        : [],
+    )
+    .find((button) => button.dataset.agendaSlotId === selectedDepartureSlotId);
+  window.requestAnimationFrame(() => trigger?.focus());
+}
+
+function openWorkspaceDetail(
+  slotId: string,
+  trigger: HTMLButtonElement | null = null,
+): void {
+  selectedDepartureSlotId = slotId;
+  detailTriggerToRestore = trigger;
+  workspaceDetailOpen = true;
+  updateAgendaRowSelection();
+  if (currentExerciseView?.workoutRecording?.slotId === slotId) {
+    activeWorkoutSlotId = slotId;
+  }
+  renderWorkspaceDetail();
+  window.requestAnimationFrame(() => workspaceDetailClose?.focus());
+}
+
+function renderWorkspaceDetail(
+  view: ExerciseDashboardView | null = currentExerciseView,
+): void {
+  if (!workspaceDetail || !workspaceSheetBackdrop) {
     return;
   }
 
-  const selected = selectedPrimaryDeparture(view);
-  if (showPendingResponse && pending && !pendingIsSelected) {
-    if (workspaceDetailHeading) {
-      workspaceDetailHeading.textContent = selected
-        ? `${selected.day} departure`
-        : "This week's pending departure";
+  const open = workspaceDetailOpen && currentWorkspaceDestination === "this-week";
+  workspaceDetail.hidden = !open;
+  workspaceSheetBackdrop.hidden = !open;
+  workspaceDetail.setAttribute("aria-hidden", String(!open));
+  if (!open) {
+    workspaceDetailActions?.replaceChildren();
+    if (workoutRecording) {
+      workoutRecording.hidden = true;
     }
-    if (workspaceDetailCopy) {
-      workspaceDetailCopy.textContent =
-        "The agenda stays visible while a due departure waits for a response.";
+    if (workoutHistory) {
+      workoutHistory.hidden = true;
     }
-    workspaceDetailStatus.textContent = selected
-      ? `Selected departure: ${selected.day} · ${selected.time} · ${selected.status} · Needs attention: ${pending.day}`
-      : `Needs attention: ${pending.day} · ${pending.time}`;
-  } else if (view.departurePrompt && pending) {
-    if (workspaceDetailHeading) {
-      workspaceDetailHeading.textContent = "Needs attention";
-    }
-    if (workspaceDetailCopy) {
-      workspaceDetailCopy.textContent = view.departurePrompt.heading;
-    }
-    workspaceDetailStatus.textContent = `Needs attention: ${pending.day} · ${pending.time}`;
-  } else if (view.departureReasonPrompt && pending) {
-    if (workspaceDetailHeading) {
-      workspaceDetailHeading.textContent = "Needs attention";
-    }
-    if (workspaceDetailCopy) {
-      workspaceDetailCopy.textContent = view.departureReasonPrompt.heading;
-    }
-    workspaceDetailStatus.textContent = `Needs attention: ${pending.day} · ${pending.time}`;
-  } else if (selected) {
-    if (workspaceDetailHeading) {
-      workspaceDetailHeading.textContent = `${selected.day} departure`;
-    }
-    if (workspaceDetailCopy) {
-      workspaceDetailCopy.textContent = selected.hasWorkoutRecord
-        ? "This departure has recorded workout evidence attached."
-        : "Select a row to keep its schedule context visible while you work.";
-    }
-    workspaceDetailStatus.textContent = `Selected departure: ${selected.day} · ${selected.time} · ${selected.status}${selected.hasWorkoutRecord ? " · Workout recorded" : ""}`;
-  } else {
-    workspaceDetailStatus.textContent =
-      workspaceDestinationDetails[currentWorkspaceDestination].detailCopy;
+    return;
   }
-  if (currentProfileAuthority === "inactive") {
-    workspaceDetailStatus.textContent = INACTIVE_PROFILE_MESSAGE;
+
+  const selected = view ? selectedDeparture(view) : undefined;
+  const recording = view?.workoutRecording ?? null;
+  const showingRecording = Boolean(
+    recording &&
+      (activeWorkoutSlotId === recording.slotId ||
+        selected?.id === recording.slotId),
+  );
+
+  if (workspaceDetailKicker) {
+    workspaceDetailKicker.textContent = showingRecording
+      ? "Record workout"
+      : "Selected workout";
+  }
+  if (workspaceDetailHeading) {
+    workspaceDetailHeading.textContent = selected
+      ? `${selected.day} workout`
+      : "Record a workout";
+  }
+  if (workspaceDetailCopy) {
+    workspaceDetailCopy.textContent = selected
+      ? `${selected.day} · ${selected.time}. The agenda remains visible while you review this plan.`
+      : "Record a workout that was not attached to a planned time.";
+  }
+  if (workspaceDetailStatus) {
+    const status = selected
+      ? `${selectedDepartureStatusLabel(selected)}${
+          selectedDepartureHasWorkoutRecord(selected) ? " · Workout recorded" : ""
+        }`
+      : "Choose the activity details below.";
+    workspaceDetailStatus.textContent =
+      currentProfileAuthority === "inactive" ? INACTIVE_PROFILE_MESSAGE : status;
+  }
+  if (workspaceDetailActions) {
+    workspaceDetailActions.replaceChildren();
+    const recordAction = selected ? selectedDepartureRecordAction(selected) : null;
+    if (
+      selected &&
+      recordAction &&
+      !selectedDepartureHasWorkoutRecord(selected) &&
+      !showingRecording
+    ) {
+      workspaceDetailActions.append(
+        workoutButton(recordAction, selected.id, "start"),
+      );
+    }
+  }
+
+  if (
+    workoutRecording &&
+    workoutRecordingHeading &&
+    workoutRecordingGuidance &&
+    workoutRecordingChoices
+  ) {
+    workoutRecording.hidden = !showingRecording;
+    workoutRecordingChoices.replaceChildren();
+    if (showingRecording && recording) {
+      if (workspaceDetailHeading) {
+        workspaceDetailHeading.textContent = selected
+          ? `${selected.day} workout`
+          : "Record a workout";
+      }
+      workoutRecordingHeading.textContent = recording.heading;
+      workoutRecordingGuidance.textContent = recording.guidance;
+      workoutRecordingChoices.append(
+        ...recording.choices.map((choice) =>
+          workoutButton(choice, recording.slotId, recording.choiceName),
+        ),
+      );
+    }
+  }
+
+  if (workoutHistory && workoutRecords) {
+    const selectedRecords = selected
+      ? view?.workoutRecords.filter(
+          (record) => record.sourceSlotId === selected.id,
+        ) ?? []
+      : [];
+    const showHistory = Boolean(selected && selectedRecords.length > 0);
+    workoutHistory.hidden = !showHistory;
+    workoutRecords.replaceChildren(
+      ...(showHistory && view
+        ? selectedRecords.map((record) =>
+            workoutRecordItem(record, view.workoutHistoryControls),
+          )
+        : []),
+    );
   }
 }
 
 function showWorkspaceDestination(destination: WorkspaceDestination, focus = false): void {
   currentWorkspaceDestination = destination;
+  if (destination !== "this-week") {
+    workspaceDetailOpen = false;
+    detailTriggerToRestore = null;
+  }
   const details = workspaceDestinationDetails[destination];
   workspaceDestinationButtons.forEach((button) => {
     const isCurrent = button.dataset.workspaceDestination === destination;
@@ -1047,26 +1105,18 @@ function showWorkspaceDestination(destination: WorkspaceDestination, focus = fal
   if (workspaceContextStatus) {
     workspaceContextStatus.textContent = `${details.title} is the current destination.`;
   }
-  if (workspaceDetailHeading) {
-    workspaceDetailHeading.textContent = details.detailHeading;
-  }
-  if (workspaceDetailCopy) {
-    workspaceDetailCopy.textContent = details.detailCopy;
-  }
-  updateWorkspaceDetailStatus();
-  updateWorkspaceScrollStatus();
+  renderWorkspaceDetail();
 }
 
 function renderExerciseDashboard(view: ExerciseDashboardView): void {
   currentExerciseView = view;
   const primaryAgenda = chronologicalPrimaryDepartures(view.primaryDepartures);
   const fallbackAgenda = chronologicalFallbackDepartures(view.fallbackDepartures);
-  const selectedStillExists = primaryAgenda.some(
-    (departure) => departure.id === selectedDepartureSlotId,
-  );
-  if (!selectedStillExists) {
-    selectedDepartureSlotId =
-      view.departurePrompt?.slotId ?? view.nextDepartureSlotId ?? primaryAgenda[0]?.id ?? null;
+  const allAgendaIds = [...primaryAgenda, ...fallbackAgenda].map((departure) => departure.id);
+  if (selectedDepartureSlotId && !allAgendaIds.includes(selectedDepartureSlotId)) {
+    selectedDepartureSlotId = null;
+    workspaceDetailOpen = false;
+    detailTriggerToRestore = null;
   }
   if (exerciseWeek) {
     exerciseWeek.textContent = `Week of ${view.weekLabel}`;
@@ -1084,7 +1134,7 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
   if (primaryDepartures) {
     primaryDepartures.replaceChildren(
       ...primaryAgenda.map((departure) =>
-        primaryDepartureItem(departure, view.scheduleChoices),
+        primaryDepartureItem(departure),
       ),
     );
   }
@@ -1108,101 +1158,13 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
     weeklyGoalStatus.textContent = view.weeklyGoalStatus ?? "";
   }
   if (logWorkoutNow) {
-    logWorkoutNow.textContent = view.manualWorkoutAction;
-    logWorkoutNow.disabled = view.workoutRecording !== null;
+    logWorkoutNow.textContent = view.workoutRecording
+      ? "Resume workout"
+      : view.manualWorkoutAction;
+    logWorkoutNow.disabled = false;
   }
   if (notificationScheduledTime) {
     notificationScheduledTime.textContent = view.nextDeparture ?? "None this week";
-  }
-  if (departurePrompt && departurePromptHeading && departureActions) {
-    departurePrompt.hidden = view.departurePrompt === null;
-    departureActions.replaceChildren();
-    if (view.departurePrompt) {
-      departurePromptHeading.textContent = view.departurePrompt.heading;
-      if (departureResponseStatus) {
-        departureResponseStatus.textContent = view.departurePrompt.status ?? "";
-        departureResponseStatus.hidden = view.departurePrompt.status === null;
-      }
-      departureActions.replaceChildren(
-        ...view.departurePrompt.actions.map((action) => {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.textContent = action;
-          button.dataset.slotId = view.departurePrompt?.slotId;
-          button.dataset.action = action.toLowerCase().replaceAll(" ", "-");
-          return button;
-        }),
-      );
-    }
-  }
-  if (departureReasonPrompt && departureReasonHeading && departureReasons) {
-    departureReasonPrompt.hidden = view.departureReasonPrompt === null;
-    departureReasons.replaceChildren();
-    if (view.departureReasonPrompt) {
-      departureReasonHeading.textContent = view.departureReasonPrompt.heading;
-      departureReasons.replaceChildren(
-        ...view.departureReasonPrompt.reasons.map((reason) => {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.textContent = reason;
-          button.dataset.slotId = view.departureReasonPrompt?.slotId;
-          button.dataset.outcome = view.departureReasonPrompt?.outcome;
-          button.dataset.reason = reason;
-          return button;
-        }),
-      );
-    }
-  }
-  if (departureConfirmation) {
-    departureConfirmation.hidden = view.departureConfirmation === null;
-    if (view.departureConfirmation) {
-      if (departureConfirmationMessage) {
-        departureConfirmationMessage.textContent = view.departureConfirmation.message;
-      }
-      if (departureConfirmationNextPrompt) {
-        departureConfirmationNextPrompt.textContent = view.departureConfirmation.nextPrompt;
-      }
-    }
-  }
-  if (workoutPrompt && workoutPromptHeading && workoutPromptAction) {
-    workoutPrompt.hidden = view.workoutPrompt === null;
-    workoutPromptAction.replaceChildren();
-    if (view.workoutPrompt) {
-      workoutPromptHeading.textContent = view.workoutPrompt.heading;
-      workoutPromptAction.append(
-        workoutButton(view.workoutPrompt.action, view.workoutPrompt.slotId, "start"),
-      );
-    }
-  }
-  if (
-    workoutRecording &&
-    workoutRecordingHeading &&
-    workoutRecordingGuidance &&
-    workoutRecordingChoices
-  ) {
-    workoutRecording.hidden = view.workoutRecording === null;
-    workoutRecordingChoices.replaceChildren();
-    if (view.workoutRecording) {
-      workoutRecordingHeading.textContent = view.workoutRecording.heading;
-      workoutRecordingGuidance.textContent = view.workoutRecording.guidance;
-      workoutRecordingChoices.append(
-        ...view.workoutRecording.choices.map((choice) =>
-          workoutButton(
-            choice,
-            view.workoutRecording!.slotId,
-            view.workoutRecording!.choiceName,
-          ),
-        ),
-      );
-    }
-  }
-  if (workoutHistory && workoutRecords) {
-    workoutHistory.hidden = view.workoutRecords.length === 0;
-    workoutRecords.replaceChildren(
-      ...view.workoutRecords.map((record) =>
-        workoutRecordItem(record, view.workoutHistoryControls),
-      ),
-    );
   }
   if (exerciseHistory && exerciseHistoryWeeks) {
     exerciseHistory.hidden = view.history.length === 0;
@@ -1233,8 +1195,7 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
     );
   }
   updateAgendaRowSelection();
-  updateWorkspaceDetailStatus(view);
-  updateWorkspaceScrollStatus();
+  renderWorkspaceDetail(view);
   applyAuthorityState();
 }
 
@@ -1291,72 +1252,24 @@ async function runScheduleSave(
   }
 }
 
-async function runDepartureCommand(
-  controls: HTMLElement | null,
-  command: "respond_to_departure" | "start_departure_decision" | "confirm_departure_decision",
-  arguments_: Record<string, string>,
-  fallbackError: string,
-): Promise<void> {
-  controls?.querySelectorAll("button").forEach((button) => {
-    button.setAttribute("disabled", "");
-  });
-  try {
-    const dashboard = await window.__TAURI__.core.invoke<ExerciseDashboardView>(
-      command,
-      arguments_,
-    );
-    renderExerciseDashboard(dashboard);
-  } catch (error) {
-    if (exerciseReminderStatus) {
-      exerciseReminderStatus.textContent = errorMessage(error, fallbackError);
-      exerciseReminderStatus.dataset.state = "error";
-    }
-    controls?.querySelectorAll("button").forEach((button) => {
-      button.removeAttribute("disabled");
-    });
-  }
-}
-
-async function respondToDeparture(slotId: string, action: string): Promise<void> {
-  const command =
-    action === "leaving-for-gym" ? "respond_to_departure" : "start_departure_decision";
-  await runDepartureCommand(
-    departureActions,
-    command,
-    {
-      slotId,
-      ...(action === "leaving-for-gym" ? { action } : { outcome: action }),
-    },
-    "The departure response could not be saved.",
-  );
-}
-
-async function confirmDepartureDecision(
-  slotId: string,
-  outcome: DepartureDecisionOutcome,
-  reason: DepartureReason,
-): Promise<void> {
-  await runDepartureCommand(
-    departureReasons,
-    "confirm_departure_decision",
-    { slotId, outcome, reason },
-    "The departure decision could not be saved.",
-  );
-}
-
 function setWorkoutActionsDisabled(disabled: boolean): void {
+  const shouldDisable = disabled || currentProfileAuthority === "inactive";
   if (logWorkoutNow) {
-    logWorkoutNow.disabled = disabled || workoutRecording?.hidden === false;
+    logWorkoutNow.disabled = shouldDisable;
   }
-  [workoutPromptAction, workoutRecordingChoices].forEach((container) => {
+  [workspaceDetailActions, workoutRecordingChoices].forEach((container) => {
     container?.querySelectorAll("button").forEach((button) => {
-      button.toggleAttribute("disabled", disabled);
+      button.toggleAttribute("disabled", shouldDisable);
     });
   });
   [primaryDepartures, fallbackDepartures].forEach((container) => {
-    container?.querySelectorAll<HTMLButtonElement>(
-      "button[data-choice-name='start']",
-    ).forEach((button) => button.toggleAttribute("disabled", disabled));
+    container?.querySelectorAll<HTMLButtonElement>("button[data-agenda-slot-id]").forEach(
+      (button) => {
+        if (button.dataset.agendaUnavailable !== "true") {
+          button.toggleAttribute("disabled", shouldDisable);
+        }
+      },
+    );
   });
 }
 
@@ -1375,7 +1288,18 @@ async function runWorkoutAction(
       command,
       arguments_,
     );
+    if (command === "complete_workout_record") {
+      activeWorkoutSlotId = null;
+      workspaceDetailOpen = false;
+    } else if (dashboard.workoutRecording) {
+      activeWorkoutSlotId = dashboard.workoutRecording.slotId;
+    }
     renderExerciseDashboard(dashboard);
+    setWorkoutActionsDisabled(false);
+    if (command === "complete_workout_record") {
+      detailTriggerToRestore = null;
+      restoreSelectedAgendaFocus();
+    }
   } catch (error) {
     if (exerciseReminderStatus) {
       exerciseReminderStatus.textContent = errorMessage(
@@ -1521,7 +1445,7 @@ function renderProfile(profile: ProfileView): void {
           : "This device is authoritative for this profile."
         : INACTIVE_PROFILE_MESSAGE;
   }
-  updateWorkspaceDetailStatus();
+  renderWorkspaceDetail();
   applyAuthorityState();
 }
 
@@ -1535,14 +1459,8 @@ function applyAuthorityState(): void {
   exerciseDashboard?.querySelectorAll("button, select").forEach((control) => {
     control.toggleAttribute("disabled", inactive);
   });
-  departurePendingRecovery?.setAttribute("aria-disabled", String(inactive));
-  departurePendingRecovery?.querySelectorAll("button, select").forEach((control) => {
-    control.toggleAttribute("disabled", inactive);
-  });
-  departurePrompt?.querySelectorAll("button, select").forEach((control) => {
-    control.toggleAttribute("disabled", inactive);
-  });
-  departureReasonPrompt?.querySelectorAll("button, select").forEach((control) => {
+  workspaceDetail?.setAttribute("aria-disabled", String(inactive));
+  workspaceDetail?.querySelectorAll("button, select").forEach((control) => {
     control.toggleAttribute("disabled", inactive);
   });
   if (profileLabel) {
@@ -1939,7 +1857,6 @@ workspaceDestinationButtons.forEach((button) => {
   });
 });
 
-window.addEventListener("resize", updateWorkspaceScrollStatus);
 showWorkspaceDestination("this-week");
 
 profileForm?.addEventListener("submit", (event) => {
@@ -2029,52 +1946,6 @@ scheduleCapabilityNotificationButton?.addEventListener("click", () => {
   void runNotificationAction("schedule_capability_notification");
 });
 
-departureActions?.addEventListener("click", (event) => {
-  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
-  if (button?.dataset.slotId && button.dataset.action) {
-    void respondToDeparture(button.dataset.slotId, button.dataset.action);
-  }
-});
-
-departureReasons?.addEventListener("click", (event) => {
-  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
-  const outcome = button?.dataset.outcome;
-  const reason = button?.dataset.reason;
-  if (
-    button?.dataset.slotId &&
-    (outcome === "move-to-fallback" || outcome === "skip") &&
-    (reason === "Work ran late" ||
-      reason === "Too tired" ||
-      reason === "Sick or injured" ||
-      reason === "Another commitment" ||
-      reason === "Other")
-  ) {
-    void confirmDepartureDecision(
-      button.dataset.slotId,
-      outcome,
-      reason,
-    );
-  }
-});
-
-cancelDepartureReason?.addEventListener("click", () => {
-  void refreshExerciseDashboard();
-});
-
-workspaceNeedsAttention?.addEventListener("click", () => {
-  const pendingSlotId = pendingDepartureSlotId(currentExerciseView);
-  if (!pendingSlotId) {
-    return;
-  }
-  selectedDepartureSlotId = pendingSlotId;
-  updateAgendaRowSelection();
-  updateWorkspaceDetailStatus();
-  const firstPendingAction =
-    departureActions?.querySelector<HTMLButtonElement>("button") ??
-    departureReasons?.querySelector<HTMLButtonElement>("button");
-  firstPendingAction?.focus();
-});
-
 function handleWorkoutChoice(event: Event): void {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
   const slotId = button?.dataset.slotId;
@@ -2094,27 +1965,62 @@ function handleWorkoutChoice(event: Event): void {
   }
 }
 
-workoutPromptAction?.addEventListener("click", handleWorkoutChoice);
+function handleAgendaSelection(event: Event): void {
+  const trigger = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-agenda-slot-id]",
+  );
+  if (trigger?.dataset.agendaSlotId) {
+    openWorkspaceDetail(trigger.dataset.agendaSlotId, trigger);
+  }
+}
+
+workspaceDetailActions?.addEventListener("click", handleWorkoutChoice);
 workoutRecordingChoices?.addEventListener("click", handleWorkoutChoice);
 workoutRecords?.addEventListener("click", handleWorkoutHistoryAction);
 exerciseHistoryWeeks?.addEventListener("click", handleWorkoutHistoryAction);
+workspaceDetailClose?.addEventListener("click", () => {
+  closeWorkspaceDetail();
+});
+workspaceSheetBackdrop?.addEventListener("click", () => {
+  closeWorkspaceDetail();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && workspaceDetailOpen) {
+    event.preventDefault();
+    closeWorkspaceDetail();
+  }
+});
 logWorkoutNow?.addEventListener("click", () => {
+  const existingRecording = currentExerciseView?.workoutRecording;
+  if (existingRecording) {
+    activeWorkoutSlotId = existingRecording.slotId;
+    selectedDepartureSlotId = currentExerciseView
+      ? [...currentExerciseView.primaryDepartures, ...currentExerciseView.fallbackDepartures]
+          .some((departure) => departure.id === existingRecording.slotId)
+        ? existingRecording.slotId
+        : null
+      : null;
+    detailTriggerToRestore = null;
+    workspaceDetailOpen = true;
+    updateAgendaRowSelection();
+    renderWorkspaceDetail();
+    window.requestAnimationFrame(() => workspaceDetailClose?.focus());
+    return;
+  }
+  activeWorkoutSlotId = "unscheduled";
+  selectedDepartureSlotId = null;
+  detailTriggerToRestore = null;
+  workspaceDetailOpen = true;
+  renderWorkspaceDetail();
+  window.requestAnimationFrame(() => workspaceDetailClose?.focus());
   void runWorkoutAction("start_unscheduled_workout_record", {});
 });
 primaryDepartures?.addEventListener("click", (event) => {
-  handleWorkoutChoice(event);
-  const agendaRow = (event.target as HTMLElement).closest<HTMLButtonElement>(
-    "button[data-agenda-slot-id]",
-  );
-  if (agendaRow?.dataset.agendaSlotId) {
-    selectedDepartureSlotId = agendaRow.dataset.agendaSlotId;
-    updateAgendaRowSelection();
-    updateWorkspaceDetailStatus();
-  }
+  handleAgendaSelection(event);
   void handleCurrentWeekScheduleSave(event);
 });
 fallbackDepartures?.addEventListener("click", (event) => {
-  handleWorkoutChoice(event);
+  handleAgendaSelection(event);
 });
 routineDepartures?.addEventListener("click", (event) => {
   void handleRoutineScheduleSave(event);

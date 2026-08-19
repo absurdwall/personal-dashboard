@@ -1054,23 +1054,20 @@ body {
 }
 
 .workspace-regions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.42fr);
+  position: relative;
+  display: block;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
-.workspace-information,
-.workspace-detail {
+.workspace-information {
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-}
-
-.workspace-information {
-  border-right: 1px solid rgb(24 32 29 / 12%);
   background: #f8f5eb;
 }
 
@@ -1095,8 +1092,61 @@ body {
 }
 
 .workspace-detail {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(27rem, 52%);
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 1.6rem;
+  border-left: 1px solid rgb(24 32 29 / 14%);
   background: #eeece3;
+  box-shadow: -1.2rem 0 2.8rem rgb(24 32 29 / 12%);
+}
+
+.workspace-detail[hidden],
+.workspace-sheet-backdrop[hidden] {
+  display: none !important;
+}
+
+.workspace-sheet-backdrop {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  background: rgb(24 32 29 / 17%);
+}
+
+.workspace-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.workspace-detail-close {
+  flex: 0 0 auto;
+  padding: 0.4rem 0.65rem;
+}
+
+.workspace-detail-actions {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 1rem;
+}
+
+.workspace-detail-actions button {
+  width: 100%;
+  text-align: left;
+}
+
+.workspace-detail .workout-flow,
+.workspace-detail .workout-history {
+  margin-top: 1rem;
+  padding: 1rem;
 }
 
 .workspace-detail h2,
@@ -1110,14 +1160,13 @@ body {
   line-height: 1.1;
 }
 
-.workspace-detail > p:not(.section-label, .workspace-scroll-status),
+.workspace-detail > p:not(.section-label),
 .destination-introduction,
 .history-empty-state {
   color: #64716b;
   line-height: 1.55;
 }
 
-.workspace-scroll-status,
 .workspace-detail-status {
   margin-top: 1.25rem;
   padding: 0.8rem;
@@ -1277,18 +1326,21 @@ body {
   }
 
   .workspace-regions {
-    grid-template-rows: minmax(0, 1fr) minmax(8rem, auto);
-    grid-template-columns: 1fr;
+    display: block;
   }
 
   .workspace-information {
-    border-right: 0;
+    height: 100%;
   }
 
   .workspace-detail {
-    max-height: 14rem;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-height: none;
     padding: 1rem;
-    border-top: 1px solid rgb(24 32 29 / 12%);
+    border-left: 0;
   }
 
   .workspace-destination {
@@ -1425,6 +1477,17 @@ body {
   box-shadow: inset 0.2rem 0 0 #356047;
 }
 
+.agenda-row-trigger:disabled {
+  cursor: default;
+  opacity: 0.78;
+}
+
+.agenda-row-trigger:disabled:hover {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
 .agenda-row-identity,
 .agenda-row-state {
   display: flex;
@@ -1496,29 +1559,12 @@ body {
   font-weight: 750;
 }
 
-.agenda-record-button {
-  justify-self: start;
-  margin: 0 0.5rem 0.15rem;
-  padding: 0.38rem 0.62rem;
-  border: 1px solid rgb(33 76 55 / 28%);
-  border-radius: 0.5rem;
-  background: #edf6ee;
-  color: #24543b;
-  font-size: 0.7rem;
-  font-weight: 750;
-}
-
-.agenda-record-button:hover,
-.agenda-record-button:focus-visible {
-  background: #dcece1;
-}
-
 .agenda-row > .schedule-editor {
   margin: 0 0.5rem 0.35rem;
 }
 
 .fallback-agenda .agenda-row {
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  display: block;
 }
 
 .fallback-agenda .agenda-row-identity {

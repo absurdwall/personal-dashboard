@@ -144,7 +144,7 @@ impl WorkoutSource {
     fn label(self) -> &'static str {
         match self {
             Self::Primary => "Primary workout",
-            Self::Fallback => "Fallback workout",
+            Self::Fallback => "Open capacity workout",
             Self::Unscheduled => "Unscheduled workout",
         }
     }
@@ -528,6 +528,7 @@ pub struct WorkoutRecordingView {
 pub struct WorkoutRecordView {
     pub id: String,
     pub source: String,
+    pub source_slot_id: Option<String>,
     pub recorded_at: String,
     pub recorded_at_utc_offset_minutes: Option<i32>,
     pub activity: String,
@@ -2519,6 +2520,7 @@ fn workout_record_view(record: &WorkoutRecord, clock: &impl ExerciseClock) -> Wo
             .expect("workout sources were migrated")
             .label()
             .into(),
+        source_slot_id: record.source_slot_id.clone(),
         recorded_at: friendly_recorded_at(clock, record.recorded_at_epoch_millis),
         recorded_at_utc_offset_minutes: record.recorded_at_utc_offset_minutes,
         activity: record.activity.label().into(),
