@@ -173,6 +173,14 @@ function isMoved(item) {
   return slotState(item) === "moved";
 }
 
+function isFuturePlanned(item) {
+  return slotState(item) === "scheduled";
+}
+
+function isExceptionEligible(item) {
+  return slotState(item) === "due" || isMoved(item);
+}
+
 function qualifyingWorkoutCount() {
   return (
     allSlots().filter(isCompleted).length +
@@ -271,24 +279,28 @@ function actionButtons(item) {
   if (isSkipped(item)) {
     return `<div class="action-stack"><button class="secondary-action" type="button" data-action="undo-skip">Undo skip</button></div>`;
   }
-  if (item.tone === "available" && !isMoved(item)) {
+  if (isFuturePlanned(item)) return "";
+  if (slotState(item) === "available" && !isMoved(item)) {
     return `<p class="detail-muted">This time becomes active after a workout is moved here.</p>`;
   }
-  const record = item.tone === "due" || isMoved(item) ? `<button class="primary-action" type="button" data-action="record">${icon("check")}Record workout</button>` : "";
-  return `<div class="action-stack">${record}<button class="secondary-action" type="button" data-action="reschedule">${icon("clock")}Change to another time</button><button class="quiet-action" type="button" data-action="skip">Skip this session</button></div>`;
+  if (!isExceptionEligible(item)) return "";
+  return `<div class="action-stack"><button class="primary-action" type="button" data-action="record">${icon("check")}Record workout</button><button class="secondary-action" type="button" data-action="reschedule">${icon("clock")}Change to another time</button><button class="quiet-action" type="button" data-action="skip">Skip this session</button></div>`;
 }
 
 function summaryDetail() {
   const item = slotById();
   const movement = isMoved(item) ? `<div class="moved-note"><span class="eyebrow">Schedule updated</span><strong>${item.movedTo}</strong><small>The original row stays visible as a record of the change.</small></div>` : "";
   const statusCopy = isCompleted(item) ? "Workout recorded" : isShortRecorded(item) ? "Workout recorded · Short effort — does not count toward weekly progress" : isSkipped(item) ? "Skipped for this week" : item.status;
+  const detailNote = isExceptionEligible(item)
+    ? `<p class="detail-note">No departure confirmation is needed. Record the workout when you return; until then this row remains available for a change or a skip.</p>`
+    : "";
   return `<section class="detail-content">
     <div class="detail-topline"><span class="eyebrow">Selected workout</span><button class="close-button" type="button" data-close aria-label="Close detail">${icon("close")}</button></div>
     <div class="detail-title"><div class="date-tile"><strong>${item.shortDay}</strong><small>${item.date.replace("August ", "")}</small></div><div><h2>${item.day}</h2><p>${item.time} · ${item.label}</p></div></div>
     <div class="status-line ${slotState(item)}">${statusMark(item)}<strong>${statusCopy}</strong></div>
     ${movement}
     ${actionButtons(item)}
-    <p class="detail-note">No departure confirmation is needed. Record the workout when you return; until then this row remains available for a change or a skip.</p>
+    ${detailNote}
   </section>`;
 }
 
