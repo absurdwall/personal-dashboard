@@ -82,11 +82,16 @@ const state = {
   surface: "list",
   selected: readParam("selected", "mon"),
   detailMode: "summary",
+  detailOrigin: null,
   rescheduleDay: "Saturday",
   rescheduleTime: "4:00 PM",
   toast: null,
   toastUndo: null,
   recordSaved: false,
+  recordingSource: null,
+  recordingStage: "activity",
+  recordingDraft: { activity: null, duration: null, effort: null },
+  unscheduledRecords: [],
 };
 
 if (!variants[state.variant]) state.variant = "A";
@@ -94,6 +99,26 @@ if (!variants[state.variant]) state.variant = "A";
 const app = document.querySelector("#app");
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const times = ["4:00 PM", "5:30 PM", "6:00 PM", "7:30 PM"];
+const recordStages = {
+  activity: {
+    label: "Activity",
+    guidance: "What did you do?",
+    choices: ["Elliptical", "Weight training", "Other exercise"],
+    next: "duration",
+  },
+  duration: {
+    label: "Duration",
+    guidance: "About how long was the workout?",
+    choices: ["Under 20", "20", "30", "45", "60+ minutes"],
+    next: "effort",
+  },
+  effort: {
+    label: "Effort",
+    guidance: "How strenuous did this workout feel?",
+    choices: ["Very easy", "Easy", "Moderate", "Hard", "Very hard"],
+    next: "complete",
+  },
+};
 
 function readParam(name, fallback) {
   return new URLSearchParams(window.location.search).get(name) ?? fallback;
@@ -132,12 +157,27 @@ function isCompleted(item) {
   return slotState(item) === "completed";
 }
 
+function isShortRecorded(item) {
+  return slotState(item) === "recorded-short";
+}
+
+function isRecorded(item) {
+  return isCompleted(item) || isShortRecorded(item);
+}
+
 function isSkipped(item) {
   return slotState(item) === "skipped";
 }
 
 function isMoved(item) {
   return slotState(item) === "moved";
+}
+
+function qualifyingWorkoutCount() {
+  return (
+    allSlots().filter(isCompleted).length +
+    state.unscheduledRecords.filter((record) => record.qualifying).length
+  );
 }
 
 function statusLabel(item) {
@@ -161,18 +201,20 @@ function compactNav() {
 }
 
 function header() {
-  const completed = allSlots().filter(isCompleted).length;
-  const next = allSlots().find((item) => !isCompleted(item) && !isSkipped(item) && item.tone !== "available");
+  const completed = qualifyingWorkoutCount();
+  const next = allSlots().find((item) => !isRecorded(item) && !isSkipped(item) && item.tone !== "available");
+  const emptyKicker = completed >= 3 ? "Weekly goal complete" : "No scheduled workouts remaining";
+  const emptyTitle = completed >= 3 ? "Weekly goal complete" : "Log an extra workout";
   return `<header class="week-header">
     <div class="title-block"><span class="eyebrow">This Week · ${sourceData.week}</span><h1>Exercise plan</h1><p>${completed} of 3 qualifying workouts completed</p></div>
     <div class="progress-chip"><strong>${completed}/3</strong><span>completed</span></div>
-    <button class="next-card ${next?.tone === "due" ? "is-due" : ""}" type="button" data-open="${next?.id ?? "mon"}"><span>${next?.tone === "due" ? "Needs workout record" : "Next workout"}</span><strong>${next ? `${next.day} · ${next.time}` : "Weekly goal complete"}</strong><small>${next ? next.date : "Optional workouts welcome"}</small></button>
+    <button class="next-card ${next?.tone === "due" ? "is-due" : ""}" type="button" data-open="${next?.id ?? "mon"}"><span>${next?.tone === "due" ? "Needs workout record" : next ? "Next workout" : emptyKicker}</span><strong>${next ? `${next.day} · ${next.time}` : emptyTitle}</strong><small>${next ? next.date : "Optional workouts welcome"}</small></button>
   </header>`;
 }
 
 function statusMark(item) {
   const stateName = slotState(item);
-  const glyph = stateName === "completed" ? "✓" : stateName === "skipped" ? "—" : stateName === "moved" ? "↪" : stateName === "available" ? "·" : stateName === "due" ? "!" : "•";
+  const glyph = stateName === "completed" ? "✓" : stateName === "recorded-short" ? "~" : stateName === "skipped" ? "—" : stateName === "moved" ? "↪" : stateName === "available" ? "·" : stateName === "due" ? "!" : "•";
   return `<span class="status-mark status-${stateName}" aria-hidden="true">${glyph}</span>`;
 }
 
@@ -197,15 +239,33 @@ function section(title, eyebrow, items, options = {}) {
   </section>`;
 }
 
+function unscheduledRecordSummary(record) {
+  const outcome = record.qualifying
+    ? "Counts toward weekly progress"
+    : "Short effort — does not count toward weekly progress";
+  return `<div class="unscheduled-record"><strong>${record.source}</strong><span>${record.activity} · ${record.duration} · ${outcome}</span></div>`;
+}
+
+function unscheduledEntry() {
+  const recordSummary = state.unscheduledRecords.length
+    ? `<div class="unscheduled-records" role="status" aria-live="polite">${state.unscheduledRecords.map(unscheduledRecordSummary).join("")}</div>`
+    : `<p class="unscheduled-help">Record an extra workout without attaching it to Monday, Wednesday, Friday, or an open capacity row.</p>`;
+  return `<section class="unscheduled-entry" aria-labelledby="unscheduled-entry-title">
+    <div class="unscheduled-copy"><span class="eyebrow">Any time this week</span><h2 id="unscheduled-entry-title">Extra workout</h2>${recordSummary}</div>
+    <button class="secondary-action" type="button" data-action="unscheduled-record">${icon("check")}Log workout now</button>
+  </section>`;
+}
+
 function agenda(options = {}) {
   return `<div class="agenda-list">
+    ${options.includeUnscheduled ? unscheduledEntry() : ""}
     ${section("Primary workouts", "Planned schedule", sourceData.primary, options)}
     ${section("Open capacity", "Other times this week", sourceData.fallback, { ...options, className: "capacity-section", countLabel: "open" })}
   </div>`;
 }
 
 function actionButtons(item) {
-  if (isCompleted(item)) {
+  if (isRecorded(item)) {
     return `<div class="action-stack"><button class="secondary-action" type="button" data-action="edit-record">${icon("edit")}Edit workout record</button></div>`;
   }
   if (isSkipped(item)) {
@@ -221,7 +281,7 @@ function actionButtons(item) {
 function summaryDetail() {
   const item = slotById();
   const movement = isMoved(item) ? `<div class="moved-note"><span class="eyebrow">Schedule updated</span><strong>${item.movedTo}</strong><small>The original row stays visible as a record of the change.</small></div>` : "";
-  const statusCopy = isCompleted(item) ? "Workout recorded" : isSkipped(item) ? "Skipped for this week" : item.status;
+  const statusCopy = isCompleted(item) ? "Workout recorded" : isShortRecorded(item) ? "Workout recorded · Short effort — does not count toward weekly progress" : isSkipped(item) ? "Skipped for this week" : item.status;
   return `<section class="detail-content">
     <div class="detail-topline"><span class="eyebrow">Selected workout</span><button class="close-button" type="button" data-close aria-label="Close detail">${icon("close")}</button></div>
     <div class="detail-title"><div class="date-tile"><strong>${item.shortDay}</strong><small>${item.date.replace("August ", "")}</small></div><div><h2>${item.day}</h2><p>${item.time} · ${item.label}</p></div></div>
@@ -234,13 +294,22 @@ function summaryDetail() {
 
 function recordDetail() {
   const item = slotById();
+  const unscheduled = state.recordingSource === "unscheduled";
+  const backLabel = unscheduled ? "This Week" : item.day;
+  const heading = unscheduled ? "Unscheduled workout" : `Record ${item.day}'s workout`;
+  const stage = state.recordingStage === "complete" ? null : recordStages[state.recordingStage];
+  const sourceNote = unscheduled
+    ? `<div class="record-source"><strong>Independent record</strong><span>This workout will not change the selected scheduled row.</span></div>`
+    : "";
+  const backControl = unscheduled
+    ? `<button class="back-link" type="button" data-close>${icon("back")}Back to ${backLabel}</button>`
+    : `<button class="back-link" type="button" data-detail-mode="summary">${icon("back")}Back to ${backLabel}</button>`;
+  const stageContent = stage
+    ? `<div class="choice-group"><span>${stage.label}</span><p class="stage-guidance">${stage.guidance}</p><div class="choice-row">${stage.choices.map((choice) => `<button class="choice" type="button" data-action="choose-record" data-choice-name="${state.recordingStage}" data-choice="${choice}">${choice}</button>`).join("")}</div>${state.recordingStage === "effort" ? `<p class="neutral-guidance">Harder is not better.</p>` : ""}</div>`
+    : `<div class="record-review" aria-live="polite"><div><span>Activity</span><strong>${state.recordingDraft.activity}</strong></div><div><span>Duration</span><strong>${state.recordingDraft.duration}</strong></div><div><span>Effort</span><strong>${state.recordingDraft.effort}</strong></div></div><button class="primary-action save-action" type="button" data-action="save-record">${icon("check")}Save workout</button>`;
   return `<section class="detail-content form-detail">
-    <div class="detail-topline"><button class="back-link" type="button" data-detail-mode="summary">${icon("back")}Back to ${item.day}</button><button class="close-button" type="button" data-close aria-label="Close detail">${icon("close")}</button></div>
-    <span class="eyebrow">Workout record</span><h2>Record ${item.day}'s workout</h2><p class="form-intro">Click-only fixture controls; no typing is needed.</p>
-    <div class="choice-group"><span>Activity</span><div class="choice-row"><button class="choice is-chosen" type="button">Strength</button><button class="choice" type="button">Running</button><button class="choice" type="button">Mobility</button></div></div>
-    <div class="choice-group"><span>Duration</span><div class="choice-row"><button class="choice" type="button">30 min</button><button class="choice is-chosen" type="button">45 min</button><button class="choice" type="button">60 min</button></div></div>
-    <div class="choice-group"><span>Effort</span><div class="choice-row"><button class="choice" type="button">Easy</button><button class="choice is-chosen" type="button">Moderate</button><button class="choice" type="button">Hard</button></div></div>
-    <button class="primary-action save-action" type="button" data-action="save-record">${icon("check")}Save workout</button>
+    <div class="detail-topline">${backControl}<button class="close-button" type="button" data-close aria-label="Close detail">${icon("close")}</button></div>
+    <span class="eyebrow">${unscheduled ? "Unscheduled workout" : "Workout record"}</span><h2>${heading}</h2><p class="form-intro">Click a choice to continue; no typing is needed.</p>${sourceNote}${stageContent}
   </section>`;
 }
 
@@ -280,7 +349,7 @@ function listPage(className, options = {}) {
 }
 
 function renderA() {
-  return listPage("variant-a", { sheet: state.surface === "detail" });
+  return listPage("variant-a", { sheet: state.surface === "detail", includeUnscheduled: true });
 }
 
 function renderB() {
@@ -319,6 +388,9 @@ function syncUrl() {
 function openDetail(id) {
   state.selected = id;
   state.detailMode = "summary";
+  state.detailOrigin = "scheduled";
+  state.recordingSource = null;
+  resetRecording();
   state.surface = "detail";
   state.toast = null;
   state.toastUndo = null;
@@ -328,11 +400,15 @@ function openDetail(id) {
 }
 
 function closeDetail() {
+  const origin = state.detailOrigin;
   state.surface = "list";
   state.detailMode = "summary";
+  state.detailOrigin = null;
+  state.recordingSource = null;
+  resetRecording();
   syncUrl();
   render();
-  requestAnimationFrame(() => document.querySelector(`[data-open="${state.selected}"]`)?.focus());
+  focusReturnedSource(origin);
 }
 
 function showToast(message, undo = null) {
@@ -352,9 +428,39 @@ function selectedItem() {
   return slotById();
 }
 
+function resetRecording() {
+  state.recordingStage = "activity";
+  state.recordingDraft = { activity: null, duration: null, effort: null };
+}
+
+function focusRecordControl() {
+  requestAnimationFrame(() => document.querySelector(".form-detail .choice, .form-detail .save-action")?.focus());
+}
+
+function focusReturnedSource(origin) {
+  const selector = origin === "unscheduled" ? '[data-action="unscheduled-record"]' : `[data-open="${state.selected}"]`;
+  requestAnimationFrame(() => document.querySelector(selector)?.focus());
+}
+
 function openRecord() {
+  state.recordingSource = "scheduled";
+  resetRecording();
   state.detailMode = "record";
   render();
+  focusRecordControl();
+}
+
+function openUnscheduledRecord() {
+  state.recordingSource = "unscheduled";
+  state.detailOrigin = "unscheduled";
+  resetRecording();
+  state.detailMode = "record";
+  state.surface = "detail";
+  state.toast = null;
+  state.toastUndo = null;
+  syncUrl();
+  render();
+  focusRecordControl();
 }
 
 function openReschedule() {
@@ -364,16 +470,52 @@ function openReschedule() {
   render();
 }
 
+function chooseRecord(control) {
+  const stage = recordStages[state.recordingStage];
+  const choiceName = control.dataset.choiceName;
+  const choice = control.dataset.choice;
+  if (!stage || choiceName !== state.recordingStage || !stage.choices.includes(choice)) return;
+  state.recordingDraft[choiceName] = choice;
+  state.recordingStage = stage.next;
+  render();
+  focusRecordControl();
+}
+
 function saveRecord() {
+  const qualifies = state.recordingDraft.duration !== "Under 20";
+  const origin = state.detailOrigin;
+  if (state.recordingSource === "unscheduled") {
+    const record = {
+      id: `unscheduled-${state.unscheduledRecords.length + 1}`,
+      source: "Unscheduled workout",
+      activity: state.recordingDraft.activity,
+      duration: state.recordingDraft.duration,
+      effort: state.recordingDraft.effort,
+      qualifying: qualifies,
+    };
+    state.unscheduledRecords.push(record);
+    state.surface = "list";
+    state.detailMode = "summary";
+    state.recordingSource = null;
+    resetRecording();
+    syncUrl();
+    render();
+    showToast("Unscheduled workout recorded");
+    focusReturnedSource(origin);
+    return;
+  }
   const item = selectedItem();
-  item.state = "completed";
-  item.status = "Workout recorded";
-  item.tone = "completed";
+  item.state = qualifies ? "completed" : "recorded-short";
+  item.status = qualifies ? "Workout recorded" : "Workout recorded · Short effort";
+  item.tone = item.state;
   state.surface = "list";
   state.detailMode = "summary";
+  state.recordingSource = null;
+  resetRecording();
   syncUrl();
   render();
   showToast(`${item.day} workout recorded`);
+  focusReturnedSource(origin);
 }
 
 function saveReschedule() {
@@ -385,6 +527,7 @@ function saveReschedule() {
   item.movedTo = destination;
   state.surface = "list";
   state.detailMode = "summary";
+  state.detailOrigin = null;
   syncUrl();
   render();
   showToast(`${item.day} moved to ${destination}`);
@@ -399,6 +542,7 @@ function skipItem() {
   delete item.movedTo;
   state.surface = "list";
   state.detailMode = "summary";
+  state.detailOrigin = null;
   syncUrl();
   render();
   showToast(`${item.day} skipped`, () => {
@@ -435,6 +579,8 @@ function bind() {
   app.querySelectorAll("[data-action]").forEach((control) => control.addEventListener("click", () => {
     const action = control.dataset.action;
     if (action === "record") openRecord();
+    if (action === "unscheduled-record") openUnscheduledRecord();
+    if (action === "choose-record") chooseRecord(control);
     if (action === "reschedule") openReschedule();
     if (action === "skip") skipItem();
     if (action === "save-record") saveRecord();
@@ -452,6 +598,9 @@ function cycle(delta) {
   state.variant = keys[(current + delta + keys.length) % keys.length];
   state.surface = "list";
   state.detailMode = "summary";
+  state.detailOrigin = null;
+  state.recordingSource = null;
+  resetRecording();
   syncUrl();
   render();
 }

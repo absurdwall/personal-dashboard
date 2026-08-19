@@ -61,6 +61,16 @@ button:focus-visible, select:focus-visible { outline: 3px solid #347e70; outline
 .next-card small { color: var(--muted); font-size: 9px; }
 
 .agenda-list { max-width: 720px; margin: 22px auto 0; }
+.unscheduled-entry { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 13px; border: 1px solid #c8d9cf; border-radius: 9px; background: #f5faf6; }
+.unscheduled-copy { min-width: 0; }
+.unscheduled-copy .eyebrow { margin-bottom: 3px; color: var(--accent-strong); }
+.unscheduled-copy h2 { margin: 0; font-size: 13px; letter-spacing: -.01em; }
+.unscheduled-help { margin: 4px 0 0; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.unscheduled-entry > .secondary-action { flex: 0 0 auto; min-height: 34px; white-space: nowrap; }
+.unscheduled-records { display: grid; gap: 3px; margin-top: 5px; }
+.unscheduled-record { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 8px; color: var(--muted); font-size: 9px; line-height: 1.35; }
+.unscheduled-record strong { color: var(--success); font-size: 9px; }
+.unscheduled-record span { overflow: hidden; text-overflow: ellipsis; }
 .agenda-section { margin-top: 20px; }
 .agenda-section:first-child { margin-top: 0; }
 .capacity-section { margin-top: 30px; }
@@ -84,6 +94,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid #347e70; outline
 .status-mark { display: inline-grid; width: 15px; height: 15px; flex: 0 0 15px; place-items: center; border-radius: 50%; background: #d2d8d3; color: #59655f; font-size: 10px; font-weight: 800; }
 .status-due { background: var(--warning); color: #fff; }
 .status-completed { background: var(--success); color: #fff; }
+.status-recorded-short { background: #c2d2c7; color: #365546; }
 .status-skipped { background: #dedddb; color: #6d625c; }
 .status-moved { background: #7f8fa1; color: #fff; }
 .status-available { background: #cde1d0; color: var(--success); }
@@ -118,8 +129,16 @@ button:focus-visible, select:focus-visible { outline: 3px solid #347e70; outline
 .form-detail .detail-topline { margin-bottom: 23px; }
 .form-detail h2 { max-width: 14ch; margin-top: 3px; }
 .form-intro { margin: 8px 0 25px; }
+.record-source { display: grid; gap: 3px; margin: -7px 0 18px; padding: 9px 10px; border: 1px solid #c8d9cf; border-radius: 7px; background: #f5faf6; color: var(--accent-strong); font-size: 9px; line-height: 1.4; }
+.record-source span { color: var(--muted); }
+.record-review { display: grid; gap: 7px; margin-top: 20px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-soft); }
+.record-review div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.record-review span { color: var(--muted); font-size: 9px; }
+.record-review strong { font-size: 10px; text-align: right; }
 .choice-group { margin-top: 18px; }
 .choice-group > span, .schedule-field label { display: block; margin-bottom: 7px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.stage-guidance { margin: -2px 0 9px; color: #303934; font-size: 13px; font-weight: 700; }
+.neutral-guidance { margin: 9px 0 0; color: var(--muted); font-size: 9px; font-style: italic; }
 .choice-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .choice { min-height: 31px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-soft); color: #58615c; font-size: 9px; }
 .choice.is-chosen { border-color: #9bbca9; background: var(--accent-soft); color: var(--accent-strong); font-weight: 750; }
@@ -193,6 +212,8 @@ button:focus-visible, select:focus-visible { outline: 3px solid #347e70; outline
   .progress-chip strong { font-size: 14px; }
   .next-card { grid-column: 1 / -1; grid-row: 2; }
   .agenda-list { margin-top: 17px; }
+  .unscheduled-entry { align-items: stretch; flex-direction: column; gap: 10px; }
+  .unscheduled-entry > .secondary-action { width: 100%; }
   .slot-row { grid-template-columns: 47px minmax(0, 1fr) 15px; gap: 7px; padding: 10px 6px; }
   .slot-status { grid-column: 2; grid-row: 2; margin-top: -5px; }
   .slot-row > .icon { grid-column: 3; grid-row: 1 / span 2; }
