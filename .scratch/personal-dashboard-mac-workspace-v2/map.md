@@ -13,6 +13,7 @@ Spec: [spec.md](spec.md)
 - [08 — 将默认 prototype 入口指向 v2 A 方案](issues/08-route-default-prototype-to-v2.md) — resolved
 - [09 — 在 v2 This Week 中补充独立的 Log workout now 入口](issues/09-add-independent-unscheduled-entry.md) — resolved
 - [10 — 让 future row 只显示计划与状态](issues/10-hide-exception-actions-for-future-rows.md) — resolved
+- [11 — 恢复准确且可操作的 workout recording controls](issues/11-restore-exact-workout-recording-controls.md) — resolved
 
 ## Current frontier
 
