@@ -93,6 +93,31 @@ type ScheduleAdjustment = Readonly<{
   selectedTime: string;
 }>;
 
+type ScheduleOption = Readonly<{
+  value: string;
+  day: string;
+  time: string;
+  label: string;
+  suggested: boolean;
+}>;
+
+type DepartureExceptionKind =
+  | "unrecorded"
+  | "changed-original"
+  | "changed-destination"
+  | "skipped";
+
+type DepartureException = Readonly<{
+  kind: DepartureExceptionKind;
+  changeAction: string | null;
+  skipAction: string | null;
+  undoAction: string | null;
+  targetDay: string | null;
+  targetTime: string | null;
+  scheduleOptions: readonly ScheduleOption[];
+  selectedSchedule: string | null;
+}>;
+
 type PrimaryDeparture = DepartureTiming & Readonly<{
   departureAtEpochMillis: number;
   status: string;
@@ -100,6 +125,7 @@ type PrimaryDeparture = DepartureTiming & Readonly<{
   hasWorkoutRecord: boolean;
   recordWorkoutAction: string | null;
   adjustment: ScheduleAdjustment | null;
+  exception: DepartureException | null;
 }>;
 
 type FallbackDeparture = DepartureTiming & Readonly<{
@@ -174,6 +200,7 @@ type ExerciseWeekHistory = Readonly<{
   weekLabel: string;
   progress: string;
   primaryDepartures: readonly PrimaryDeparture[];
+  adjustedDepartures: readonly PrimaryDeparture[];
   fallbackDepartures: readonly FallbackDeparture[];
   workoutRecords: readonly WorkoutRecord[];
 }>;
@@ -205,6 +232,7 @@ type ExerciseDashboardView = Readonly<{
   nextDepartureSlotId: string | null;
   scheduleChoices: ScheduleChoices;
   primaryDepartures: readonly PrimaryDeparture[];
+  adjustedDepartures: readonly PrimaryDeparture[];
   fallbackDepartures: readonly FallbackDeparture[];
   fallbackAvailableCount: number;
   reminderMessage: string;
@@ -230,6 +258,13 @@ type ExerciseDashboardView = Readonly<{
   workoutRecords: readonly WorkoutRecord[];
   history: readonly ExerciseWeekHistory[];
   routineSettings: RoutineSettings;
+}>;
+
+type DepartureChangePreview = Readonly<{
+  slotId: string;
+  day: string;
+  time: string;
+  conflict: string | null;
 }>;
 
 const UNSCHEDULED_WORKOUT_SLOT_ID = "unscheduled";
@@ -309,6 +344,7 @@ const workspaceSheetBackdrop = document.querySelector<HTMLElement>(
 const workspaceDetailActions = document.querySelector<HTMLElement>(
   "#workspace-detail-actions",
 );
+const workspaceException = document.querySelector<HTMLElement>("#workspace-exception");
 const historyEmptyState = document.querySelector<HTMLElement>("#history-empty-state");
 const exerciseDashboard = document.querySelector<HTMLElement>("#exercise-dashboard");
 const inactiveProfileNotice = document.querySelector<HTMLElement>(
@@ -318,6 +354,8 @@ const exerciseWeek = document.querySelector<HTMLElement>("#exercise-week");
 const exerciseProgress = document.querySelector<HTMLElement>("#exercise-progress");
 const nextDeparture = document.querySelector<HTMLElement>("#next-departure");
 const primaryDepartures = document.querySelector<HTMLOListElement>("#primary-departures");
+const adjustedAgendaSection = document.querySelector<HTMLElement>("#adjusted-agenda");
+const adjustedDepartures = document.querySelector<HTMLOListElement>("#adjusted-departures");
 const fallbackDepartures = document.querySelector<HTMLOListElement>("#fallback-departures");
 const fallbackCount = document.querySelector<HTMLElement>("#fallback-count");
 const exerciseReminderStatus = document.querySelector<HTMLElement>(
@@ -459,6 +497,9 @@ let selectedDepartureSlotId: string | null = null;
 let activeWorkoutSlotId: string | null = null;
 let workspaceDetailOpen = false;
 let detailTriggerToRestore: HTMLButtonElement | null = null;
+let exceptionEditorSlotId: string | null = null;
+let exceptionPreview: DepartureChangePreview | null = null;
+let exceptionSelectedSchedule: string | null = null;
 
 function departureItem(
   departure: DepartureTiming,
@@ -525,7 +566,10 @@ function scheduleControls(
   return controls;
 }
 
-function primaryDepartureItem(departure: PrimaryDeparture): HTMLLIElement {
+function primaryDepartureItem(
+  departure: PrimaryDeparture,
+  adjusted = false,
+): HTMLLIElement {
   const item = document.createElement("li");
   const trigger = document.createElement("button");
   const identity = document.createElement("span");
@@ -534,12 +578,15 @@ function primaryDepartureItem(departure: PrimaryDeparture): HTMLLIElement {
   const state = document.createElement("span");
   const marker = document.createElement("span");
   const status = document.createElement("span");
-  item.className = "agenda-row primary-agenda-row";
+  item.className = `agenda-row primary-agenda-row${adjusted ? " adjusted-agenda-row" : ""}`;
   item.dataset.slotId = departure.id;
   trigger.type = "button";
   trigger.className = "agenda-row-trigger";
   trigger.dataset.agendaSlotId = departure.id;
-  trigger.setAttribute("aria-label", `Select ${departure.day} planned workout`);
+  trigger.setAttribute(
+    "aria-label",
+    `Select ${departure.day} ${adjusted ? "changed" : "planned"} workout`,
+  );
   trigger.setAttribute(
     "aria-pressed",
     String(departure.id === selectedDepartureSlotId),
@@ -561,6 +608,15 @@ function primaryDepartureItem(departure: PrimaryDeparture): HTMLLIElement {
     evidence.className = "workout-evidence";
     evidence.textContent = "✓ Workout recorded";
     item.append(evidence);
+  }
+  if (departure.exception?.undoAction) {
+    const undo = document.createElement("button");
+    undo.type = "button";
+    undo.className = "secondary-button agenda-inline-action";
+    undo.textContent = departure.exception.undoAction;
+    undo.dataset.exceptionAction = "undo";
+    undo.dataset.slotId = departure.id;
+    item.append(undo);
   }
   return item;
 }
@@ -656,7 +712,7 @@ function primaryDepartureStatusLabel(departure: PrimaryDeparture): string {
     unresolved: "Needs review",
     leaving: "Ready to record",
     completed: "Completed",
-    moved: "Rescheduled",
+    moved: "Changed this week",
     skipped: "Skipped",
     "not-needed": "No workout needed",
     missed: "Missed",
@@ -851,13 +907,17 @@ function historyWeekItem(
   const progress = document.createElement("p");
   const primaryHeading = document.createElement("h6");
   const primary = document.createElement("ol");
+  const adjustedHeading = document.createElement("h6");
+  const adjusted = document.createElement("ol");
   const fallbackHeading = document.createElement("h6");
   const fallback = document.createElement("ol");
   heading.textContent = week.weekLabel;
   progress.textContent = week.progress;
   primaryHeading.textContent = "Primary departures";
   fallbackHeading.textContent = "Open capacity";
+  adjustedHeading.textContent = "Changed this week";
   primary.className = "departure-list";
+  adjusted.className = "departure-list";
   fallback.className = "departure-list";
   primary.replaceChildren(
     ...week.primaryDepartures.map((departure) =>
@@ -869,7 +929,16 @@ function historyWeekItem(
       departureItem(departure, fallbackDepartureStatusLabel(departure)),
     ),
   );
-  article.append(heading, progress, primaryHeading, primary, fallbackHeading, fallback);
+  adjusted.replaceChildren(
+    ...week.adjustedDepartures.map((departure) =>
+      departureItem(departure, primaryDepartureStatusLabel(departure)),
+    ),
+  );
+  article.append(heading, progress, primaryHeading, primary);
+  if (week.adjustedDepartures.length > 0) {
+    article.append(adjustedHeading, adjusted);
+  }
+  article.append(fallbackHeading, fallback);
   if (week.workoutRecords.length > 0) {
     const workoutHeading = document.createElement("h6");
     const workouts = document.createElement("ol");
@@ -888,7 +957,11 @@ type SelectedDeparture = PrimaryDeparture | FallbackDeparture;
 function selectedDeparture(
   view: ExerciseDashboardView,
 ): SelectedDeparture | undefined {
-  return [...view.primaryDepartures, ...view.fallbackDepartures].find(
+  return [
+    ...view.primaryDepartures,
+    ...view.adjustedDepartures,
+    ...view.fallbackDepartures,
+  ].find(
     (departure) => departure.id === selectedDepartureSlotId,
   );
 }
@@ -912,7 +985,16 @@ function selectedDepartureHasWorkoutRecord(departure: SelectedDeparture): boolea
 }
 
 function selectedDepartureSourceLabel(departure: SelectedDeparture): string {
-  return isPrimaryDeparture(departure) ? "Primary workout" : "Open capacity workout";
+  if (!isPrimaryDeparture(departure)) {
+    return "Open capacity workout";
+  }
+  if (departure.exception?.kind === "changed-destination") {
+    return "Changed this week";
+  }
+  if (departure.exception?.kind === "changed-original") {
+    return "Original plan";
+  }
+  return "Primary workout";
 }
 
 function selectedDepartureRecordAction(
@@ -922,7 +1004,7 @@ function selectedDepartureRecordAction(
 }
 
 function updateAgendaRowSelection(): void {
-  [primaryDepartures, fallbackDepartures].forEach((container) => {
+  [primaryDepartures, adjustedDepartures, fallbackDepartures].forEach((container) => {
     container?.querySelectorAll<HTMLButtonElement>(
       "button[data-agenda-slot-id]",
     ).forEach((button) => {
@@ -952,7 +1034,7 @@ function restoreSelectedAgendaFocus(): void {
   if (!selectedDepartureSlotId) {
     return;
   }
-  const trigger = [primaryDepartures, fallbackDepartures]
+  const trigger = [primaryDepartures, adjustedDepartures, fallbackDepartures]
     .flatMap((container) =>
       container
         ? Array.from(
@@ -966,10 +1048,21 @@ function restoreSelectedAgendaFocus(): void {
   window.requestAnimationFrame(() => trigger?.focus());
 }
 
+function focusExceptionControl(selector: string): void {
+  window.requestAnimationFrame(() => {
+    workspaceException?.querySelector<HTMLElement>(selector)?.focus();
+  });
+}
+
 function openWorkspaceDetail(
   slotId: string,
   trigger: HTMLButtonElement | null = null,
 ): void {
+  if (exceptionEditorSlotId !== slotId) {
+    exceptionEditorSlotId = null;
+    exceptionPreview = null;
+    exceptionSelectedSchedule = null;
+  }
   selectedDepartureSlotId = slotId;
   detailTriggerToRestore = trigger;
   workspaceDetailOpen = true;
@@ -979,6 +1072,105 @@ function openWorkspaceDetail(
   }
   renderWorkspaceDetail();
   window.requestAnimationFrame(() => workspaceDetailClose?.focus());
+}
+
+function exceptionActionButton(
+  label: string,
+  slotId: string,
+  action: "change" | "skip" | "undo",
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.dataset.exceptionAction = action;
+  button.dataset.slotId = slotId;
+  if (action === "skip") {
+    button.className = "secondary-button";
+  }
+  return button;
+}
+
+function exceptionScheduleSelect(
+  choices: readonly ScheduleOption[],
+  selectedSchedule: string | null,
+): HTMLLabelElement {
+  const label = document.createElement("label");
+  const select = document.createElement("select");
+  label.append("New time");
+  select.dataset.exceptionSchedule = "true";
+  select.replaceChildren(
+    ...choices.map((choice) => {
+      const option = document.createElement("option");
+      option.value = choice.value;
+      option.textContent = choice.suggested
+        ? `${choice.label} · suggested`
+        : choice.label;
+      option.selected = choice.value === selectedSchedule;
+      return option;
+    }),
+  );
+  label.append(select);
+  return label;
+}
+
+function exceptionEditor(
+  departure: PrimaryDeparture,
+  preview: DepartureChangePreview | null,
+): HTMLDivElement {
+  const editor = document.createElement("div");
+  const heading = document.createElement("h4");
+  const guidance = document.createElement("p");
+  const controls = document.createElement("div");
+  const previewButton = document.createElement("button");
+  const cancelButton = document.createElement("button");
+  const choices = departure.exception?.scheduleOptions ?? [];
+  const selectedSchedule =
+    exceptionSelectedSchedule ?? departure.exception?.selectedSchedule ?? choices[0]?.value ?? null;
+  const selectedChoice = choices.find((choice) => choice.value === selectedSchedule);
+  const previewMatches = Boolean(
+    preview &&
+      preview.slotId === departure.id &&
+      selectedChoice?.day === preview.day &&
+      selectedChoice?.time === preview.time,
+  );
+  editor.className = "exception-editor";
+  heading.textContent = "Change this workout time";
+  guidance.textContent =
+    "Choose any time that has not passed. Saturday and Sunday are suggested; the final time is shown before saving.";
+  controls.className = "exception-controls";
+  previewButton.type = "button";
+  previewButton.textContent = "Check this time";
+  previewButton.dataset.exceptionPreview = "true";
+  previewButton.dataset.slotId = departure.id;
+  cancelButton.type = "button";
+  cancelButton.className = "secondary-button";
+  cancelButton.textContent = "Cancel";
+  cancelButton.dataset.exceptionCancel = "true";
+  cancelButton.dataset.slotId = departure.id;
+  controls.append(exceptionScheduleSelect(choices, selectedSchedule));
+  if (!previewMatches) {
+    controls.append(previewButton);
+  } else if (preview) {
+    const result = document.createElement("p");
+    result.className = preview.conflict ? "exception-warning" : "exception-preview";
+    result.setAttribute("role", preview.conflict ? "alert" : "status");
+    result.textContent = preview.conflict
+      ? preview.conflict
+      : `No conflict found. Final time: ${preview.day} · ${preview.time}.`;
+    controls.append(result);
+    const save = document.createElement("button");
+    save.type = "button";
+    save.textContent = preview.conflict
+      ? "Confirm change"
+      : `Change to ${preview.day} · ${preview.time}`;
+    save.dataset.exceptionSave = "true";
+    save.dataset.slotId = departure.id;
+    save.dataset.confirmConflict = String(Boolean(preview.conflict));
+    controls.append(save);
+  }
+  controls.append(cancelButton);
+  editor.append(heading, guidance, controls);
+  return editor;
 }
 
 function renderWorkspaceDetail(
@@ -994,6 +1186,10 @@ function renderWorkspaceDetail(
   workspaceDetail.setAttribute("aria-hidden", String(!open));
   if (!open) {
     workspaceDetailActions?.replaceChildren();
+    workspaceException?.replaceChildren();
+    if (workspaceException) {
+      workspaceException.hidden = true;
+    }
     if (workoutRecording) {
       workoutRecording.hidden = true;
     }
@@ -1022,8 +1218,16 @@ function renderWorkspaceDetail(
       : "Record a workout";
   }
   if (workspaceDetailCopy) {
+    const changedOriginal =
+      selected &&
+      isPrimaryDeparture(selected) &&
+      selected.exception?.kind === "changed-original" &&
+      selected.exception.targetDay &&
+      selected.exception.targetTime
+        ? ` Changed this week to ${selected.exception.targetDay} · ${selected.exception.targetTime}.`
+        : "";
     workspaceDetailCopy.textContent = selected
-      ? `${selected.day} · ${selected.time} · ${selectedDepartureSourceLabel(selected)}. The agenda remains visible while you review this plan.`
+      ? `${selected.day} · ${selected.time} · ${selectedDepartureSourceLabel(selected)}.${changedOriginal} The agenda remains visible while you review this plan.`
       : "Unscheduled workout · record a workout that is not attached to a planned time.";
   }
   if (workspaceDetailStatus) {
@@ -1048,6 +1252,39 @@ function renderWorkspaceDetail(
         workoutButton(recordAction, selected.id, "start"),
       );
     }
+    if (selected && isPrimaryDeparture(selected) && selected.exception) {
+      const exception = selected.exception;
+      const editing = exceptionEditorSlotId === selected.id;
+      if (!editing && exception.changeAction) {
+        workspaceDetailActions.append(
+          exceptionActionButton(exception.changeAction, selected.id, "change"),
+        );
+      }
+      if (!editing && exception.skipAction) {
+        workspaceDetailActions.append(
+          exceptionActionButton(exception.skipAction, selected.id, "skip"),
+        );
+      }
+      if (!editing && exception.undoAction) {
+        workspaceDetailActions.append(
+          exceptionActionButton(exception.undoAction, selected.id, "undo"),
+        );
+      }
+    }
+  }
+  if (workspaceException) {
+    const editing = Boolean(
+      selected &&
+        isPrimaryDeparture(selected) &&
+        selected.exception &&
+        exceptionEditorSlotId === selected.id,
+    );
+    workspaceException.hidden = !editing;
+    workspaceException.replaceChildren(
+      ...(editing && selected && isPrimaryDeparture(selected) && selected.exception
+        ? [exceptionEditor(selected, exceptionPreview)]
+        : []),
+    );
   }
 
   if (
@@ -1127,8 +1364,11 @@ function showWorkspaceDestination(destination: WorkspaceDestination, focus = fal
 function renderExerciseDashboard(view: ExerciseDashboardView): void {
   currentExerciseView = view;
   const primaryAgenda = chronologicalPrimaryDepartures(view.primaryDepartures);
+  const adjustedAgenda = chronologicalPrimaryDepartures(view.adjustedDepartures);
   const fallbackAgenda = chronologicalFallbackDepartures(view.fallbackDepartures);
-  const allAgendaIds = [...primaryAgenda, ...fallbackAgenda].map((departure) => departure.id);
+  const allAgendaIds = [...primaryAgenda, ...adjustedAgenda, ...fallbackAgenda].map(
+    (departure) => departure.id,
+  );
   if (selectedDepartureSlotId && !allAgendaIds.includes(selectedDepartureSlotId)) {
     selectedDepartureSlotId = null;
     workspaceDetailOpen = false;
@@ -1152,6 +1392,12 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
       ...primaryAgenda.map((departure) =>
         primaryDepartureItem(departure),
       ),
+    );
+  }
+  if (adjustedAgendaSection && adjustedDepartures) {
+    adjustedAgendaSection.hidden = adjustedAgenda.length === 0;
+    adjustedDepartures.replaceChildren(
+      ...adjustedAgenda.map((departure) => primaryDepartureItem(departure, true)),
     );
   }
   if (fallbackDepartures) {
@@ -1278,17 +1524,209 @@ async function runScheduleSave(
   }
 }
 
+function selectedExceptionSchedule(
+  slotId: string,
+): Readonly<{ day: string; departureTime: string }> | null {
+  const select = workspaceException?.querySelector<HTMLSelectElement>(
+    "select[data-exception-schedule]",
+  );
+  if (!select) {
+    return null;
+  }
+  const value = select.value;
+  if (!value) {
+    return null;
+  }
+  const separator = value.indexOf("|");
+  if (separator === -1) {
+    return null;
+  }
+  return {
+    day: value.slice(0, separator),
+    departureTime: value.slice(separator + 1),
+  };
+}
+
+async function runExceptionPreview(slotId: string): Promise<void> {
+  const schedule = selectedExceptionSchedule(slotId);
+  if (!schedule) {
+    return;
+  }
+  const select = workspaceException?.querySelector<HTMLSelectElement>(
+    "select[data-exception-schedule]",
+  );
+  exceptionSelectedSchedule = select?.value ?? exceptionSelectedSchedule;
+  workspaceException?.querySelectorAll("button, select").forEach((control) => {
+    control.setAttribute("disabled", "");
+  });
+  try {
+    exceptionPreview = await window.__TAURI__.core.invoke<DepartureChangePreview>(
+      "preview_current_week_departure_change",
+      {
+        slotId,
+        ...schedule,
+      },
+    );
+    renderWorkspaceDetail();
+    focusExceptionControl("button[data-exception-save]");
+  } catch (error) {
+    if (exerciseReminderStatus) {
+      exerciseReminderStatus.textContent = errorMessage(
+        error,
+        "The time change could not be previewed.",
+      );
+      exerciseReminderStatus.dataset.state = "error";
+    }
+    workspaceException?.querySelectorAll("button, select").forEach((control) => {
+      control.removeAttribute("disabled");
+    });
+    focusExceptionControl("button[data-exception-preview]");
+  }
+}
+
+async function runExceptionMutation(
+  command:
+    | "change_current_week_departure"
+    | "skip_current_week_departure"
+    | "undo_skip_current_week_departure",
+  arguments_: Record<string, unknown>,
+  slotId: string,
+): Promise<void> {
+  setWorkoutActionsDisabled(true);
+  try {
+    const dashboard = await window.__TAURI__.core.invoke<ExerciseDashboardView>(
+      command,
+      arguments_,
+    );
+    exceptionEditorSlotId = null;
+    exceptionPreview = null;
+    exceptionSelectedSchedule = null;
+    workspaceDetailOpen = false;
+    detailTriggerToRestore = null;
+    selectedDepartureSlotId = slotId;
+    renderExerciseDashboard(dashboard);
+    setWorkoutActionsDisabled(false);
+    window.requestAnimationFrame(() => restoreSelectedAgendaFocus());
+  } catch (error) {
+    if (exerciseReminderStatus) {
+      exerciseReminderStatus.textContent = errorMessage(
+        error,
+        "The workout exception could not be saved.",
+      );
+      exerciseReminderStatus.dataset.state = "error";
+    }
+    setWorkoutActionsDisabled(false);
+  }
+}
+
+function handleExceptionAction(event: Event): boolean {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
+  if (!button) {
+    return false;
+  }
+  const slotId = button.dataset.slotId;
+  if (!slotId) {
+    return false;
+  }
+  if (button.dataset.exceptionAction === "change") {
+    exceptionEditorSlotId = slotId;
+    exceptionPreview = null;
+    const departure = currentExerciseView
+      ? selectedDeparture(currentExerciseView)
+      : undefined;
+    exceptionSelectedSchedule =
+      departure && isPrimaryDeparture(departure)
+        ? departure.exception?.selectedSchedule ?? null
+        : null;
+    renderWorkspaceDetail();
+    focusExceptionControl("select[data-exception-schedule]");
+    return true;
+  }
+  if (button.dataset.exceptionAction === "skip") {
+    void runExceptionMutation("skip_current_week_departure", { slotId }, slotId);
+    return true;
+  }
+  if (button.dataset.exceptionAction === "undo") {
+    void runExceptionMutation("undo_skip_current_week_departure", { slotId }, slotId);
+    return true;
+  }
+  if (button.dataset.exceptionCancel) {
+    exceptionEditorSlotId = null;
+    exceptionPreview = null;
+    exceptionSelectedSchedule = null;
+    renderWorkspaceDetail();
+    window.requestAnimationFrame(() => {
+      workspaceDetailActions
+        ?.querySelector<HTMLButtonElement>('button[data-exception-action="change"]')
+        ?.focus();
+    });
+    return true;
+  }
+  if (button.dataset.exceptionPreview) {
+    void runExceptionPreview(slotId);
+    return true;
+  }
+  if (button.dataset.exceptionSave) {
+    const schedule = selectedExceptionSchedule(slotId);
+    if (!schedule) {
+      return true;
+    }
+    const selected = currentExerciseView
+      ? selectedDeparture(currentExerciseView)
+      : undefined;
+    const selectedChoice =
+      selected && isPrimaryDeparture(selected) && selected.exception
+        ? selected.exception.scheduleOptions.find(
+            (choice) => choice.day === schedule.day && choice.value.endsWith(`|${schedule.departureTime}`),
+          )
+        : undefined;
+    if (
+      !exceptionPreview ||
+      exceptionPreview.slotId !== slotId ||
+      selectedChoice?.day !== exceptionPreview.day ||
+      selectedChoice?.time !== exceptionPreview.time
+    ) {
+      void runExceptionPreview(slotId);
+      return true;
+    }
+    void runExceptionMutation(
+      "change_current_week_departure",
+      {
+        slotId,
+        ...schedule,
+        confirmConflict: button.dataset.confirmConflict === "true",
+      },
+      slotId,
+    );
+    return true;
+  }
+  return false;
+}
+
+workspaceException?.addEventListener("change", (event) => {
+  const select = (event.target as HTMLElement).closest<HTMLSelectElement>(
+    "select[data-exception-schedule]",
+  );
+  if (!select) {
+    return;
+  }
+  exceptionSelectedSchedule = select.value;
+  exceptionPreview = null;
+  renderWorkspaceDetail();
+  focusExceptionControl("select[data-exception-schedule]");
+});
+
 function setWorkoutActionsDisabled(disabled: boolean): void {
   const shouldDisable = disabled || currentProfileAuthority === "inactive";
   if (logWorkoutNow) {
     logWorkoutNow.disabled = shouldDisable;
   }
-  [workspaceDetailActions, workoutRecordingChoices].forEach((container) => {
+  [workspaceDetailActions, workspaceException, workoutRecordingChoices].forEach((container) => {
     container?.querySelectorAll("button").forEach((button) => {
       button.toggleAttribute("disabled", shouldDisable);
     });
   });
-  [primaryDepartures, fallbackDepartures].forEach((container) => {
+  [primaryDepartures, adjustedDepartures, fallbackDepartures].forEach((container) => {
     container?.querySelectorAll<HTMLButtonElement>("button[data-agenda-slot-id]").forEach(
       (button) => {
         if (button.dataset.agendaUnavailable !== "true") {
@@ -2004,7 +2442,14 @@ function handleAgendaSelection(event: Event): void {
   }
 }
 
-workspaceDetailActions?.addEventListener("click", handleWorkoutChoice);
+workspaceDetailActions?.addEventListener("click", (event) => {
+  if (!handleExceptionAction(event)) {
+    handleWorkoutChoice(event);
+  }
+});
+workspaceException?.addEventListener("click", (event) => {
+  handleExceptionAction(event);
+});
 workoutRecordingChoices?.addEventListener("click", handleWorkoutChoice);
 workoutRecords?.addEventListener("click", handleWorkoutHistoryAction);
 currentWeekWorkoutRecords?.addEventListener("click", handleWorkoutHistoryAction);
@@ -2026,7 +2471,11 @@ logWorkoutNow?.addEventListener("click", () => {
   if (existingRecording) {
     activeWorkoutSlotId = existingRecording.slotId;
     selectedDepartureSlotId = currentExerciseView
-      ? [...currentExerciseView.primaryDepartures, ...currentExerciseView.fallbackDepartures]
+      ? [
+          ...currentExerciseView.primaryDepartures,
+          ...currentExerciseView.adjustedDepartures,
+          ...currentExerciseView.fallbackDepartures,
+        ]
           .some((departure) => departure.id === existingRecording.slotId)
         ? existingRecording.slotId
         : null
@@ -2048,8 +2497,17 @@ logWorkoutNow?.addEventListener("click", () => {
   void runWorkoutAction("start_unscheduled_workout_record", {});
 });
 primaryDepartures?.addEventListener("click", (event) => {
+  if (handleExceptionAction(event)) {
+    return;
+  }
   handleAgendaSelection(event);
   void handleCurrentWeekScheduleSave(event);
+});
+adjustedDepartures?.addEventListener("click", (event) => {
+  if (handleExceptionAction(event)) {
+    return;
+  }
+  handleAgendaSelection(event);
 });
 fallbackDepartures?.addEventListener("click", (event) => {
   handleAgendaSelection(event);

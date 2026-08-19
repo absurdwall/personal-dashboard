@@ -1,6 +1,6 @@
 use personal_dashboard_lib::exercise::{
-    DepartureStatusKind, ExerciseApplication, ExerciseAuthority, ExerciseClock,
-    ExerciseDashboardView, ExercisePersistence, FallbackAvailabilityKind,
+    DepartureExceptionKind, DepartureStatusKind, ExerciseApplication, ExerciseAuthority,
+    ExerciseClock, ExerciseDashboardView, ExercisePersistence, FallbackAvailabilityKind,
     NoPendingNotificationCancellations,
 };
 use personal_dashboard_lib::notification::{
@@ -258,7 +258,7 @@ fn fresh_exercise_week_survives_relaunch_and_emits_the_first_departure_reminder(
 
     assert_eq!("Personal Dashboard", dashboard.product_name);
     assert_eq!("Exercise tracking", dashboard.feature_area);
-    assert_eq!(9, dashboard.schema_version);
+    assert_eq!(10, dashboard.schema_version);
     assert_eq!(
         "Monday, August 10 – Sunday, August 16",
         dashboard.week_label
@@ -754,6 +754,241 @@ fn past_or_ineligible_departures_cannot_be_rewritten_as_upcoming_exceptions() {
         application
             .change_repeating_primary_departure(1, "Someday", "16:00")
             .unwrap_err()
+    );
+}
+
+#[test]
+fn direct_skip_exposes_undo_without_progress_and_undo_restores_recording() {
+    let profile = IsolatedProfile::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application =
+        ExerciseApplication::new(profile.clone(), DeniedReminderOutbox, clock.clone());
+
+    application.open().unwrap();
+    let skipped = application
+        .skip_current_week_departure("2026-08-10-primary-1")
+        .unwrap();
+    let skipped_departure = &skipped.primary_departures[0];
+    assert_eq!("0 of 3 completed", skipped.progress);
+    assert_eq!(DepartureStatusKind::Skipped, skipped_departure.status_kind);
+    assert_eq!("Skipped", skipped_departure.status);
+    assert_eq!(None, skipped_departure.record_workout_action);
+    assert_eq!(
+        Some(DepartureExceptionKind::Skipped),
+        skipped_departure
+            .exception
+            .as_ref()
+            .map(|exception| exception.kind)
+    );
+    assert_eq!(
+        Some("Undo skip"),
+        skipped_departure
+            .exception
+            .as_ref()
+            .and_then(|exception| exception.undo_action.as_deref())
+    );
+
+    let undone = application
+        .undo_skip_current_week_departure("2026-08-10-primary-1")
+        .unwrap();
+    let restored_departure = &undone.primary_departures[0];
+    assert_eq!(
+        DepartureStatusKind::Unrecorded,
+        restored_departure.status_kind
+    );
+    assert_eq!(
+        Some("Record workout"),
+        restored_departure.record_workout_action.as_deref()
+    );
+    assert_eq!(
+        Some(DepartureExceptionKind::Unrecorded),
+        restored_departure
+            .exception
+            .as_ref()
+            .map(|exception| exception.kind)
+    );
+    assert_eq!("0 of 3 completed", undone.progress);
+    assert_eq!(
+        undone,
+        ExerciseApplication::new(profile, DeniedReminderOutbox, clock)
+            .open()
+            .unwrap()
+    );
+}
+
+#[test]
+fn change_time_preserves_original_creates_recordable_target_and_leaves_routine_unchanged() {
+    let profile = IsolatedProfile::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application =
+        ExerciseApplication::new(profile.clone(), DeniedReminderOutbox, clock.clone());
+
+    let before = application.open().unwrap();
+    let exception_choices = &before.primary_departures[0]
+        .exception
+        .as_ref()
+        .unwrap()
+        .schedule_options;
+    assert!(!exception_choices
+        .iter()
+        .any(|choice| choice.day == "Monday" && choice.time == "4:00 PM"));
+    assert!(exception_choices
+        .iter()
+        .any(|choice| choice.day == "Tuesday" && choice.time == "4:00 PM"));
+    assert!(exception_choices
+        .iter()
+        .any(|choice| choice.day == "Saturday" && choice.time == "4:00 PM" && choice.suggested));
+    assert!(exception_choices
+        .iter()
+        .any(|choice| choice.day == "Sunday" && choice.time == "4:00 PM" && choice.suggested));
+    let preview = application
+        .preview_current_week_departure_change("2026-08-10-primary-1", "Saturday", "17:30")
+        .unwrap();
+    assert_eq!(None, preview.conflict);
+    assert_eq!("Saturday", preview.day);
+    assert_eq!("5:30 PM", preview.time);
+
+    let changed = application
+        .change_current_week_departure("2026-08-10-primary-1", "Saturday", "17:30", false)
+        .unwrap();
+    let original = &changed.primary_departures[0];
+    assert_eq!(DepartureStatusKind::Moved, original.status_kind);
+    assert_eq!("Changed to Saturday · 5:30 PM", original.status);
+    assert_eq!(
+        Some(DepartureExceptionKind::ChangedOriginal),
+        original.exception.as_ref().map(|exception| exception.kind)
+    );
+    assert_eq!(
+        Some(("Saturday", "5:30 PM")),
+        original.exception.as_ref().and_then(|exception| {
+            Some((
+                exception.target_day.as_deref()?,
+                exception.target_time.as_deref()?,
+            ))
+        })
+    );
+    assert_eq!(1, changed.adjusted_departures.len());
+    let target = &changed.adjusted_departures[0];
+    assert_eq!("Saturday", target.day);
+    assert_eq!("5:30 PM", target.time);
+    assert_eq!(DepartureStatusKind::Scheduled, target.status_kind);
+    assert_eq!(None, target.record_workout_action);
+    assert_eq!(
+        Some(DepartureExceptionKind::ChangedDestination),
+        target.exception.as_ref().map(|exception| exception.kind)
+    );
+    assert_eq!(
+        vec![
+            ("Monday", "4:00 PM"),
+            ("Wednesday", "4:00 PM"),
+            ("Friday", "4:00 PM")
+        ],
+        changed
+            .routine_settings
+            .primary_departures
+            .iter()
+            .map(|departure| (departure.day.as_str(), departure.time.as_str()))
+            .collect::<Vec<_>>()
+    );
+
+    clock.advance_to(1_786_829_400_000);
+    let due_target = application.open().unwrap();
+    let target_id = due_target.adjusted_departures[0].id.clone();
+    assert_eq!(
+        DepartureStatusKind::Unrecorded,
+        due_target.adjusted_departures[0].status_kind
+    );
+    assert_eq!(
+        Some("Record workout"),
+        due_target.adjusted_departures[0]
+            .record_workout_action
+            .as_deref()
+    );
+
+    application.start_workout_record(&target_id).unwrap();
+    application
+        .choose_workout_activity(&target_id, "Elliptical")
+        .unwrap();
+    application
+        .choose_workout_duration(&target_id, "30")
+        .unwrap();
+    let completed = application
+        .complete_workout_record(&target_id, "Moderate")
+        .unwrap();
+    assert_eq!("1 of 3 completed", completed.progress);
+    assert_eq!(
+        "Changed to Saturday · 5:30 PM",
+        completed.primary_departures[0].status
+    );
+    assert_eq!("Completed", completed.adjusted_departures[0].status);
+    assert_eq!(
+        completed,
+        ExerciseApplication::new(profile, DeniedReminderOutbox, clock)
+            .open()
+            .unwrap()
+    );
+}
+
+#[test]
+fn change_time_requires_explicit_confirmation_for_a_conflict() {
+    let profile = IsolatedProfile::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile, DeniedReminderOutbox, clock);
+
+    application.open().unwrap();
+    let preview = application
+        .preview_current_week_departure_change("2026-08-10-primary-1", "Wednesday", "16:00")
+        .unwrap();
+    assert_eq!(
+        Some("This time overlaps Wednesday · 4:00 PM."),
+        preview.conflict.as_deref()
+    );
+    assert_eq!(
+        "The selected time conflicts with another planned workout. Confirm to continue.",
+        application
+            .change_current_week_departure("2026-08-10-primary-1", "Wednesday", "16:00", false,)
+            .unwrap_err()
+    );
+    let confirmed = application
+        .change_current_week_departure("2026-08-10-primary-1", "Wednesday", "16:00", true)
+        .unwrap();
+    assert_eq!(1, confirmed.adjusted_departures.len());
+    assert_eq!("Wednesday", confirmed.adjusted_departures[0].day);
+    assert_eq!("4:00 PM", confirmed.adjusted_departures[0].time);
+    assert_eq!(
+        DepartureStatusKind::Moved,
+        confirmed.primary_departures[0].status_kind
+    );
+}
+
+#[test]
+fn change_time_exception_reconciles_existing_reminders_and_survives_relaunch() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    clock.advance_to(1_786_392_000_000);
+    let changed = application
+        .change_current_week_departure("2026-08-10-primary-1", "Saturday", "17:30", false)
+        .unwrap();
+
+    assert!(reminders
+        .cancelled
+        .lock()
+        .unwrap()
+        .contains(&"exercise-departure-2026-08-10-primary-1".into()));
+    assert!(reminders
+        .cancelled
+        .lock()
+        .unwrap()
+        .contains(&"exercise-follow-up-2026-08-10-primary-1".into()));
+    assert_eq!(
+        changed,
+        ExerciseApplication::new(profile, reminders, clock)
+            .open()
+            .unwrap()
     );
 }
 

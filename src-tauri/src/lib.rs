@@ -232,6 +232,43 @@ fn adjust_current_week_departure(
 }
 
 #[tauri::command]
+fn preview_current_week_departure_change(
+    application: State<'_, DesktopExerciseApplication>,
+    slot_id: String,
+    day: String,
+    departure_time: String,
+) -> Result<exercise::DepartureChangePreviewView, String> {
+    application.preview_current_week_departure_change(&slot_id, &day, &departure_time)
+}
+
+#[tauri::command]
+fn change_current_week_departure(
+    application: State<'_, DesktopExerciseApplication>,
+    slot_id: String,
+    day: String,
+    departure_time: String,
+    confirm_conflict: bool,
+) -> Result<ExerciseDashboardView, String> {
+    application.change_current_week_departure(&slot_id, &day, &departure_time, confirm_conflict)
+}
+
+#[tauri::command]
+fn skip_current_week_departure(
+    application: State<'_, DesktopExerciseApplication>,
+    slot_id: String,
+) -> Result<ExerciseDashboardView, String> {
+    application.skip_current_week_departure(&slot_id)
+}
+
+#[tauri::command]
+fn undo_skip_current_week_departure(
+    application: State<'_, DesktopExerciseApplication>,
+    slot_id: String,
+) -> Result<ExerciseDashboardView, String> {
+    application.undo_skip_current_week_departure(&slot_id)
+}
+
+#[tauri::command]
 fn change_repeating_primary_departure(
     application: State<'_, DesktopExerciseApplication>,
     order: u32,
@@ -464,6 +501,10 @@ pub fn run() {
             reactivate_profile,
             exercise_dashboard,
             adjust_current_week_departure,
+            preview_current_week_departure_change,
+            change_current_week_departure,
+            skip_current_week_departure,
+            undo_skip_current_week_departure,
             change_repeating_primary_departure,
             respond_to_departure,
             start_departure_decision,
@@ -497,6 +538,10 @@ pub fn run() {
         reactivate_profile,
         exercise_dashboard,
         adjust_current_week_departure,
+        preview_current_week_departure_change,
+        change_current_week_departure,
+        skip_current_week_departure,
+        undo_skip_current_week_departure,
         change_repeating_primary_departure,
         respond_to_departure,
         start_departure_decision,

@@ -102,6 +102,16 @@
               </div>
               <ol id="primary-departures" class="departure-list agenda-list"></ol>
             </section>
+            <section id="adjusted-agenda" class="agenda-group adjusted-agenda" aria-labelledby="adjusted-departures-heading" hidden>
+              <div class="agenda-group-heading">
+                <div>
+                  <p class="agenda-kicker">One-off changes</p>
+                  <h4 id="adjusted-departures-heading">Changed this week</h4>
+                </div>
+                <span class="agenda-count">As scheduled</span>
+              </div>
+              <ol id="adjusted-departures" class="departure-list agenda-list"></ol>
+            </section>
             <section class="agenda-group fallback-agenda" aria-labelledby="fallback-departures-heading">
               <div class="agenda-group-heading">
                 <div>
@@ -429,6 +439,7 @@
             <p id="workspace-detail-copy">Choose a planned workout to inspect it.</p>
             <div id="workspace-detail-status" class="workspace-detail-status" role="status" aria-live="polite"></div>
             <div id="workspace-detail-actions" class="workspace-detail-actions"></div>
+            <div id="workspace-exception" class="workspace-exception" hidden></div>
             <section id="workout-recording" class="workout-flow" aria-labelledby="workout-recording-heading" hidden>
               <p class="section-label">Record workout</p>
               <h4 id="workout-recording-heading"></h4>

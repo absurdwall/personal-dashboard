@@ -5,7 +5,7 @@ use std::collections::HashSet;
 mod baseline_migration;
 pub(crate) use baseline_migration::{CompletedBaselineError, CompletedBaselineExercise};
 
-const EXERCISE_SCHEMA_VERSION: u32 = 9;
+const EXERCISE_SCHEMA_VERSION: u32 = 10;
 const WEEKLY_GOAL: u32 = 3;
 const UNSCHEDULED_WORKOUT_SLOT_ID: &str = "unscheduled";
 const FOLLOW_UP_DELAY_MILLIS: i64 = 15 * 60 * 1_000;
@@ -60,6 +60,8 @@ pub(crate) struct ExerciseState {
     departure_decision: Option<DepartureDecision>,
     #[serde(default = "first_unscheduled_sequence")]
     next_unscheduled_sequence: u64,
+    #[serde(default = "first_unscheduled_sequence")]
+    next_adjusted_sequence: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -102,6 +104,8 @@ struct ExerciseWeek {
     week_end: String,
     completed_count: u32,
     primary_departures: Vec<PlannedDeparture>,
+    #[serde(default)]
+    adjusted_departures: Vec<PlannedDeparture>,
     fallback_departures: Vec<PlannedDeparture>,
     #[serde(default)]
     workout_records: Vec<WorkoutRecord>,
@@ -323,6 +327,8 @@ struct DepartureResponse {
     reason: Option<DepartureReason>,
     #[serde(default)]
     fallback_slot_id: Option<String>,
+    #[serde(default)]
+    adjusted_slot_id: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
@@ -331,6 +337,7 @@ enum DepartureOutcome {
     LeavingForGym,
     MoveToFallback,
     Skip,
+    ChangeTime,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -395,6 +402,7 @@ pub struct PrimaryDepartureView {
     pub has_workout_record: bool,
     pub record_workout_action: Option<String>,
     pub adjustment: Option<ScheduleAdjustmentView>,
+    pub exception: Option<DepartureExceptionView>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -425,6 +433,47 @@ pub struct ScheduleChoiceView {
 pub struct ScheduleChoicesView {
     pub day_choices: Vec<ScheduleChoiceView>,
     pub time_choices: Vec<ScheduleChoiceView>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleOptionView {
+    pub value: String,
+    pub day: String,
+    pub time: String,
+    pub label: String,
+    pub suggested: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DepartureExceptionKind {
+    Unrecorded,
+    ChangedOriginal,
+    ChangedDestination,
+    Skipped,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DepartureExceptionView {
+    pub kind: DepartureExceptionKind,
+    pub change_action: Option<String>,
+    pub skip_action: Option<String>,
+    pub undo_action: Option<String>,
+    pub target_day: Option<String>,
+    pub target_time: Option<String>,
+    pub schedule_options: Vec<ScheduleOptionView>,
+    pub selected_schedule: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DepartureChangePreviewView {
+    pub slot_id: String,
+    pub day: String,
+    pub time: String,
+    pub conflict: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -557,6 +606,7 @@ pub struct ExerciseWeekHistoryView {
     pub week_label: String,
     pub progress: String,
     pub primary_departures: Vec<PrimaryDepartureView>,
+    pub adjusted_departures: Vec<PrimaryDepartureView>,
     pub fallback_departures: Vec<FallbackDepartureView>,
     pub workout_records: Vec<WorkoutRecordView>,
 }
@@ -575,6 +625,7 @@ pub struct ExerciseDashboardView {
     pub next_departure_slot_id: Option<String>,
     pub schedule_choices: ScheduleChoicesView,
     pub primary_departures: Vec<PrimaryDepartureView>,
+    pub adjusted_departures: Vec<PrimaryDepartureView>,
     pub fallback_departures: Vec<FallbackDepartureView>,
     pub fallback_available_count: usize,
     pub reminder_intent: Option<NotificationIntent>,
@@ -955,6 +1006,175 @@ impl<
         self.open()
     }
 
+    pub fn preview_current_week_departure_change(
+        &self,
+        slot_id: &str,
+        day: &str,
+        departure_time: &str,
+    ) -> Result<DepartureChangePreviewView, String> {
+        self.require_active()?;
+        let schedule = ScheduleSelection::parse(day, departure_time)
+            .map_err(ScheduleSelectionError::message)?;
+        let now = self.clock.now_epoch_millis();
+        let week_start_day = local_day_number(&self.clock, now) - local_weekday(&self.clock, now);
+        let adjusted_at = schedule.epoch_millis(&self.clock, week_start_day);
+        if adjusted_at <= now {
+            return Err("The selected time must remain upcoming.".into());
+        }
+        let (state, _) = self.current_state()?;
+        let week = current_week(&state, &self.clock, now)?;
+        changeable_primary_departure(week, slot_id, now)?;
+        Ok(DepartureChangePreviewView {
+            slot_id: slot_id.into(),
+            day: schedule.day.into(),
+            time: schedule.departure_time.friendly_label(),
+            conflict: schedule_conflict(week, slot_id, adjusted_at).map(|departure| {
+                format!(
+                    "This time overlaps {} · {}.",
+                    departure.day,
+                    friendly_schedule_time(&departure.departure_time)
+                )
+            }),
+        })
+    }
+
+    pub fn change_current_week_departure(
+        &self,
+        slot_id: &str,
+        day: &str,
+        departure_time: &str,
+        confirm_conflict: bool,
+    ) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
+        let schedule = ScheduleSelection::parse(day, departure_time)
+            .map_err(ScheduleSelectionError::message)?;
+        let now = self.clock.now_epoch_millis();
+        let week_start_day = local_day_number(&self.clock, now) - local_weekday(&self.clock, now);
+        let adjusted_at = schedule.epoch_millis(&self.clock, week_start_day);
+        if adjusted_at <= now {
+            return Err("The selected time must remain upcoming.".into());
+        }
+
+        let (mut state, _) = self.current_state()?;
+        let conflict = {
+            let week = current_week(&state, &self.clock, now)?;
+            changeable_primary_departure(week, slot_id, now)?;
+            schedule_conflict(week, slot_id, adjusted_at)
+        };
+        if conflict.is_some() && !confirm_conflict {
+            return Err(
+                "The selected time conflicts with another planned workout. Confirm to continue."
+                    .into(),
+            );
+        }
+
+        let previously_scheduled_notification_ids = state.scheduled_notification_ids();
+        let adjusted_sequence = state.next_adjusted_sequence;
+        state.next_adjusted_sequence = state
+            .next_adjusted_sequence
+            .checked_add(1)
+            .ok_or_else(|| "No more one-off schedule slots are available.".to_string())?;
+        let week = current_week_mut(&mut state, &self.clock, now)?;
+        let adjusted_id = format!("{}-adjusted-{adjusted_sequence}", week.week_start);
+        let source_id = {
+            let source = changeable_primary_departure_mut(week, slot_id, now)?;
+            let source_id = source.id.clone();
+            source.status = DepartureStatus::Moved;
+            source.departure_response = Some(DepartureResponse {
+                outcome: DepartureOutcome::ChangeTime,
+                recorded_at_epoch_millis: now,
+                recorded_at_utc_offset_minutes: Some(self.clock.utc_offset_minutes_at(now)),
+                reason: None,
+                fallback_slot_id: None,
+                adjusted_slot_id: Some(adjusted_id.clone()),
+            });
+            source.reminder_scheduled_at_epoch_millis = None;
+            source.follow_up_scheduled_at_epoch_millis = None;
+            source_id
+        };
+        week.adjusted_departures.push(PlannedDeparture {
+            id: adjusted_id.clone(),
+            day: schedule.day.into(),
+            date: date_from_day_number(week_start_day + schedule.weekday).iso_date(),
+            departure_time: schedule.departure_time.value(),
+            departure_at_epoch_millis: adjusted_at,
+            departure_utc_offset_minutes: Some(self.clock.utc_offset_minutes_at(adjusted_at)),
+            status: DepartureStatus::Scheduled,
+            reminder_scheduled_at_epoch_millis: None,
+            follow_up_scheduled_at_epoch_millis: None,
+            departure_response: None,
+            record_workout_prompt_due_at_epoch_millis: None,
+            record_workout_reminder_scheduled_at_epoch_millis: None,
+            assigned_from_slot_id: Some(source_id),
+        });
+        state.departure_decision = None;
+        state.begin_reminder_reconciliation(previously_scheduled_notification_ids);
+        self.save_state(&state)?;
+        self.open()
+    }
+
+    pub fn skip_current_week_departure(
+        &self,
+        slot_id: &str,
+    ) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
+        let now = self.clock.now_epoch_millis();
+        let (mut state, _) = self.current_state()?;
+        let previously_scheduled_notification_ids = state.scheduled_notification_ids();
+        let week = current_week_mut(&mut state, &self.clock, now)?;
+        let departure = changeable_primary_departure_mut(week, slot_id, now)?;
+        departure.status = DepartureStatus::Skipped;
+        departure.departure_response = Some(DepartureResponse {
+            outcome: DepartureOutcome::Skip,
+            recorded_at_epoch_millis: now,
+            recorded_at_utc_offset_minutes: Some(self.clock.utc_offset_minutes_at(now)),
+            reason: None,
+            fallback_slot_id: None,
+            adjusted_slot_id: None,
+        });
+        departure.reminder_scheduled_at_epoch_millis = None;
+        departure.follow_up_scheduled_at_epoch_millis = None;
+        state.departure_decision = None;
+        state.begin_reminder_reconciliation(previously_scheduled_notification_ids);
+        self.save_state(&state)?;
+        self.open()
+    }
+
+    pub fn undo_skip_current_week_departure(
+        &self,
+        slot_id: &str,
+    ) -> Result<ExerciseDashboardView, String> {
+        self.require_active()?;
+        let now = self.clock.now_epoch_millis();
+        let (mut state, _) = self.current_state()?;
+        let previously_scheduled_notification_ids = state.scheduled_notification_ids();
+        let week = current_week_mut(&mut state, &self.clock, now)?;
+        let departure = all_departures_mut(week)
+            .find(|departure| {
+                departure.id == slot_id
+                    && departure.status == DepartureStatus::Skipped
+                    && departure
+                        .departure_response
+                        .as_ref()
+                        .is_some_and(|response| {
+                            response.outcome == DepartureOutcome::Skip
+                                && response.reason.is_none()
+                                && response.fallback_slot_id.is_none()
+                                && response.adjusted_slot_id.is_none()
+                        })
+            })
+            .ok_or_else(|| "Only a directly skipped departure can be undone.".to_string())?;
+        departure.status = DepartureStatus::Scheduled;
+        departure.departure_response = None;
+        departure.reminder_scheduled_at_epoch_millis = None;
+        departure.follow_up_scheduled_at_epoch_millis = None;
+        departure.record_workout_prompt_due_at_epoch_millis = None;
+        departure.record_workout_reminder_scheduled_at_epoch_millis = None;
+        state.begin_reminder_reconciliation(previously_scheduled_notification_ids);
+        self.save_state(&state)?;
+        self.open()
+    }
+
     pub fn change_repeating_primary_departure(
         &self,
         order: u32,
@@ -1015,6 +1235,7 @@ impl<
             recorded_at_utc_offset_minutes: Some(self.clock.utc_offset_minutes_at(now)),
             reason: None,
             fallback_slot_id: None,
+            adjusted_slot_id: None,
         });
         departure.record_workout_prompt_due_at_epoch_millis = Some(due_at);
         self.save_state(&state)?;
@@ -1087,7 +1308,9 @@ impl<
         source.status = match outcome {
             DepartureOutcome::MoveToFallback => DepartureStatus::Moved,
             DepartureOutcome::Skip => DepartureStatus::Skipped,
-            DepartureOutcome::LeavingForGym => unreachable!("validated decision outcome"),
+            DepartureOutcome::LeavingForGym | DepartureOutcome::ChangeTime => {
+                unreachable!("validated decision outcome")
+            }
         };
         source.departure_response = Some(DepartureResponse {
             outcome,
@@ -1095,6 +1318,7 @@ impl<
             recorded_at_utc_offset_minutes: Some(self.clock.utc_offset_minutes_at(now)),
             reason: Some(reason),
             fallback_slot_id,
+            adjusted_slot_id: None,
         });
         if let Some(follow_up_id) = follow_up_id {
             self.notifications.cancel(&follow_up_id)?;
@@ -1341,6 +1565,7 @@ impl ExerciseState {
             workout_draft: None,
             departure_decision: None,
             next_unscheduled_sequence: first_unscheduled_sequence(),
+            next_adjusted_sequence: first_unscheduled_sequence(),
         }
     }
 
@@ -1427,6 +1652,25 @@ impl ExerciseState {
                     {
                         return Err("The saved exercise week is not valid.".into());
                     }
+                }
+            }
+            for departure in &week.adjusted_departures {
+                let Some(date) = parse_iso_date(&departure.date) else {
+                    return Err("The saved exercise week is not valid.".into());
+                };
+                let schedule = ScheduleSelection::parse(&departure.day, &departure.departure_time)
+                    .map_err(|_| "The saved exercise week is not valid.".to_string())?;
+                let valid_id = departure
+                    .id
+                    .strip_prefix(&format!("{}-adjusted-", week.week_start))
+                    .and_then(|sequence| sequence.parse::<u64>().ok())
+                    .is_some_and(|sequence| sequence > 0);
+                if !valid_id
+                    || departure.assigned_from_slot_id.is_none()
+                    || date.day_number() != week_start_day + schedule.weekday
+                    || departure.departure_at_epoch_millis < 0
+                {
+                    return Err("The saved exercise week is not valid.".into());
                 }
             }
         }
@@ -1737,6 +1981,7 @@ impl ExerciseState {
                                     response.outcome == DepartureOutcome::LeavingForGym
                                         && response.reason.is_none()
                                         && response.fallback_slot_id.is_none()
+                                        && response.adjusted_slot_id.is_none()
                                 })
                                 && departure
                                     .record_workout_prompt_due_at_epoch_millis
@@ -1752,6 +1997,7 @@ impl ExerciseState {
                                 response.outcome == DepartureOutcome::LeavingForGym
                                     && response.reason.is_none()
                                     && response.fallback_slot_id.is_none()
+                                    && response.adjusted_slot_id.is_none()
                                     && departure
                                         .record_workout_prompt_due_at_epoch_millis
                                         .is_some()
@@ -1760,16 +2006,21 @@ impl ExerciseState {
                             .departure_response
                             .as_ref()
                             .is_some_and(|response| {
-                                response.outcome == DepartureOutcome::MoveToFallback
+                                (response.outcome == DepartureOutcome::MoveToFallback
                                     && response.reason.is_some()
                                     && response.fallback_slot_id.is_some()
+                                    && response.adjusted_slot_id.is_none())
+                                    || (response.outcome == DepartureOutcome::ChangeTime
+                                        && response.reason.is_none()
+                                        && response.fallback_slot_id.is_none()
+                                        && response.adjusted_slot_id.is_some())
                             }),
                         DepartureStatus::Skipped => departure
                             .departure_response
                             .as_ref()
                             .is_some_and(|response| {
                                 response.outcome == DepartureOutcome::Skip
-                                    && response.reason.is_some()
+                                    && response.adjusted_slot_id.is_none()
                                     && response.fallback_slot_id.is_none()
                             }),
                     };
@@ -1781,16 +2032,42 @@ impl ExerciseState {
             for source in
                 all_departures(week).filter(|departure| departure.status == DepartureStatus::Moved)
             {
-                let target_id = source
+                let response = source
                     .departure_response
                     .as_ref()
-                    .and_then(|response| response.fallback_slot_id.as_deref())
-                    .expect("validated moved departure has a target");
-                let target_is_valid = week.fallback_departures.iter().any(|fallback| {
-                    fallback.id == target_id
-                        && fallback.assigned_from_slot_id.as_deref() == Some(source.id.as_str())
-                        && fallback.status != DepartureStatus::Available
-                });
+                    .expect("validated moved departure has a response");
+                let target_id = match response.outcome {
+                    DepartureOutcome::MoveToFallback => response
+                        .fallback_slot_id
+                        .as_deref()
+                        .expect("validated fallback move has a target"),
+                    DepartureOutcome::ChangeTime => response
+                        .adjusted_slot_id
+                        .as_deref()
+                        .expect("validated time change has a target"),
+                    DepartureOutcome::LeavingForGym | DepartureOutcome::Skip => {
+                        return Err("The saved departure data is not valid.".into())
+                    }
+                };
+                let target_is_valid = match response.outcome {
+                    DepartureOutcome::MoveToFallback => {
+                        week.fallback_departures.iter().any(|fallback| {
+                            fallback.id == target_id
+                                && fallback.assigned_from_slot_id.as_deref()
+                                    == Some(source.id.as_str())
+                                && fallback.status != DepartureStatus::Available
+                        })
+                    }
+                    DepartureOutcome::ChangeTime => {
+                        week.adjusted_departures.iter().any(|adjusted| {
+                            adjusted.id == target_id
+                                && adjusted.assigned_from_slot_id.as_deref()
+                                    == Some(source.id.as_str())
+                                && adjusted.status != DepartureStatus::Available
+                        })
+                    }
+                    DepartureOutcome::LeavingForGym | DepartureOutcome::Skip => false,
+                };
                 if !target_is_valid {
                     return Err("The saved departure data is not valid.".into());
                 }
@@ -1966,6 +2243,7 @@ fn make_week<C: ExerciseClock>(routine: &Routine, clock: &C, week_start_day: i64
             "primary",
             DepartureStatus::Scheduled,
         ),
+        adjusted_departures: Vec::new(),
         fallback_departures: make_departures(
             &routine.fallback,
             clock,
@@ -2078,7 +2356,9 @@ fn departure_reason_prompt(decision: &DepartureDecision) -> DepartureReasonPromp
         heading: match decision.outcome {
             DepartureOutcome::MoveToFallback => "Why are you moving this workout?",
             DepartureOutcome::Skip => "Why are you skipping this workout?",
-            DepartureOutcome::LeavingForGym => unreachable!("validated decision outcome"),
+            DepartureOutcome::LeavingForGym | DepartureOutcome::ChangeTime => {
+                unreachable!("validated decision outcome")
+            }
         }
         .into(),
         reasons: DepartureReason::ALL
@@ -2105,12 +2385,14 @@ fn outcome_label(outcome: DepartureOutcome) -> &'static str {
         DepartureOutcome::LeavingForGym => "leaving-for-gym",
         DepartureOutcome::MoveToFallback => "move-to-fallback",
         DepartureOutcome::Skip => "skip",
+        DepartureOutcome::ChangeTime => "change-time",
     }
 }
 
 fn all_departures(week: &ExerciseWeek) -> impl Iterator<Item = &PlannedDeparture> {
     week.primary_departures
         .iter()
+        .chain(week.adjusted_departures.iter())
         .chain(week.fallback_departures.iter())
 }
 
@@ -2120,6 +2402,12 @@ fn workout_source_for_departure(
 ) -> Option<WorkoutSource> {
     if week
         .primary_departures
+        .iter()
+        .any(|candidate| candidate.id == departure.id)
+    {
+        Some(WorkoutSource::Primary)
+    } else if week
+        .adjusted_departures
         .iter()
         .any(|candidate| candidate.id == departure.id)
     {
@@ -2146,6 +2434,7 @@ fn source_from_legacy_slot_id(slot_id: &str) -> WorkoutSource {
 fn all_departures_mut(week: &mut ExerciseWeek) -> impl Iterator<Item = &mut PlannedDeparture> {
     week.primary_departures
         .iter_mut()
+        .chain(week.adjusted_departures.iter_mut())
         .chain(week.fallback_departures.iter_mut())
 }
 
@@ -2170,6 +2459,9 @@ fn recompute_week_progress(week: &mut ExerciseWeek, weekly_goal: u32, now: i64, 
         .count() as u32;
     let goal_reached_at = weekly_goal_reached_at(week, weekly_goal);
     for departure in &mut week.primary_departures {
+        recompute_departure_outcome(departure, goal_reached_at, now, is_current, false);
+    }
+    for departure in &mut week.adjusted_departures {
         recompute_departure_outcome(departure, goal_reached_at, now, is_current, false);
     }
     for departure in &mut week.fallback_departures {
@@ -2333,11 +2625,12 @@ fn decidable_departure_mut<'a>(
 }
 
 fn fallback_reserved_by_primary(week: &ExerciseWeek, departure: &PlannedDeparture) -> bool {
-    week.primary_departures.iter().any(|primary| {
+    all_departures(week).any(|primary| {
         matches!(
             primary.status,
             DepartureStatus::Scheduled | DepartureStatus::Leaving
-        ) && !departure_has_workout_record(week, primary)
+        ) && workout_source_for_departure(week, primary) == Some(WorkoutSource::Primary)
+            && !departure_has_workout_record(week, primary)
             && primary.date == departure.date
     })
 }
@@ -2465,7 +2758,8 @@ fn dashboard_view(
         next_departure: next_departure.map(friendly_departure),
         next_departure_slot_id: next_departure.map(|departure| departure.id.clone()),
         schedule_choices: schedule_choices_view(),
-        primary_departures: primary_departure_views(week, now),
+        primary_departures: primary_departure_views(week, clock, now),
+        adjusted_departures: adjusted_departure_views(week, clock, now),
         fallback_departures: fallback_departure_views(week, now),
         fallback_available_count: week
             .fallback_departures
@@ -2703,6 +2997,131 @@ fn schedule_choices_view() -> ScheduleChoicesView {
     }
 }
 
+fn change_time_choices_for_source<C: ExerciseClock>(
+    clock: &C,
+    now: i64,
+    source_time: Option<&str>,
+) -> Vec<ScheduleOptionView> {
+    let week_start_day = local_day_number(clock, now) - local_weekday(clock, now);
+    [5_i64, 6, 0, 1, 2, 3, 4]
+        .into_iter()
+        .flat_map(|weekday| {
+            (0..24).flat_map(move |hour| {
+                [0, 30].into_iter().filter_map(move |minute| {
+                    let value = format!("{hour:02}:{minute:02}");
+                    let schedule = ScheduleSelection::parse(WEEKDAYS[weekday as usize], &value)
+                        .expect("generated schedule choices are valid");
+                    (schedule.epoch_millis(clock, week_start_day) > now).then(|| {
+                        let day = WEEKDAYS[weekday as usize].to_string();
+                        ScheduleOptionView {
+                            value: format!("{day}|{value}"),
+                            day: day.clone(),
+                            time: friendly_schedule_time(&value),
+                            label: format!("{day} · {}", friendly_schedule_time(&value)),
+                            suggested: (weekday == 5 || weekday == 6)
+                                && source_time
+                                    .is_some_and(|source_time| source_time == value.as_str()),
+                        }
+                    })
+                })
+            })
+        })
+        .collect()
+}
+
+fn departure_exception_view(
+    week: &ExerciseWeek,
+    departure: &PlannedDeparture,
+    now: i64,
+    change_choices: &[ScheduleOptionView],
+) -> Option<DepartureExceptionView> {
+    let is_primary_like =
+        workout_source_for_departure(week, departure) == Some(WorkoutSource::Primary);
+    if !is_primary_like {
+        return None;
+    }
+
+    if let Some(response) = departure.departure_response.as_ref() {
+        return match response.outcome {
+            DepartureOutcome::ChangeTime => {
+                let target = response
+                    .adjusted_slot_id
+                    .as_deref()
+                    .and_then(|slot_id| all_departures(week).find(|slot| slot.id == slot_id))?;
+                Some(DepartureExceptionView {
+                    kind: DepartureExceptionKind::ChangedOriginal,
+                    change_action: None,
+                    skip_action: None,
+                    undo_action: None,
+                    target_day: Some(target.day.clone()),
+                    target_time: Some(friendly_schedule_time(&target.departure_time)),
+                    schedule_options: Vec::new(),
+                    selected_schedule: None,
+                })
+            }
+            DepartureOutcome::Skip => Some(DepartureExceptionView {
+                kind: DepartureExceptionKind::Skipped,
+                change_action: None,
+                skip_action: None,
+                undo_action: response.reason.is_none().then(|| "Undo skip".into()),
+                target_day: None,
+                target_time: None,
+                schedule_options: Vec::new(),
+                selected_schedule: None,
+            }),
+            DepartureOutcome::LeavingForGym | DepartureOutcome::MoveToFallback => None,
+        };
+    }
+
+    let changed_destination = departure.assigned_from_slot_id.is_some()
+        && week
+            .adjusted_departures
+            .iter()
+            .any(|candidate| candidate.id == departure.id);
+    let can_use_exception_actions = departure.status == DepartureStatus::Scheduled
+        && departure.departure_at_epoch_millis <= now
+        && direct_recordable_departure(week, &departure.id, now).is_ok();
+    if changed_destination {
+        return Some(DepartureExceptionView {
+            kind: DepartureExceptionKind::ChangedDestination,
+            change_action: can_use_exception_actions.then(|| "Change to another time".into()),
+            skip_action: can_use_exception_actions.then(|| "Skip this session".into()),
+            undo_action: None,
+            target_day: None,
+            target_time: None,
+            schedule_options: can_use_exception_actions
+                .then(|| change_choices.to_vec())
+                .unwrap_or_default(),
+            selected_schedule: can_use_exception_actions
+                .then(|| default_change_schedule(change_choices, &departure.departure_time)),
+        });
+    }
+
+    can_use_exception_actions.then(|| DepartureExceptionView {
+        kind: DepartureExceptionKind::Unrecorded,
+        change_action: Some("Change to another time".into()),
+        skip_action: Some("Skip this session".into()),
+        undo_action: None,
+        target_day: None,
+        target_time: None,
+        schedule_options: change_choices.to_vec(),
+        selected_schedule: Some(default_change_schedule(
+            change_choices,
+            &departure.departure_time,
+        )),
+    })
+}
+
+fn default_change_schedule(choices: &[ScheduleOptionView], source_time: &str) -> String {
+    let source_time = friendly_schedule_time(source_time);
+    choices
+        .iter()
+        .find(|choice| choice.suggested && choice.time == source_time)
+        .or_else(|| choices.first())
+        .map(|choice| choice.value.clone())
+        .unwrap_or_default()
+}
+
 fn schedule_adjustment_view(
     departure: &PlannedDeparture,
     now: i64,
@@ -2735,19 +3154,45 @@ fn routine_settings_view(routine: &Routine) -> RoutineSettingsView {
     }
 }
 
-fn primary_departure_views(week: &ExerciseWeek, now: i64) -> Vec<PrimaryDepartureView> {
-    week.primary_departures
+fn primary_departure_views(
+    week: &ExerciseWeek,
+    clock: &impl ExerciseClock,
+    now: i64,
+) -> Vec<PrimaryDepartureView> {
+    planned_departure_views(week, &week.primary_departures, clock, now)
+}
+
+fn adjusted_departure_views(
+    week: &ExerciseWeek,
+    clock: &impl ExerciseClock,
+    now: i64,
+) -> Vec<PrimaryDepartureView> {
+    planned_departure_views(week, &week.adjusted_departures, clock, now)
+}
+
+fn planned_departure_views(
+    week: &ExerciseWeek,
+    departures: &[PlannedDeparture],
+    clock: &impl ExerciseClock,
+    now: i64,
+) -> Vec<PrimaryDepartureView> {
+    departures
         .iter()
-        .map(|departure| PrimaryDepartureView {
-            id: departure.id.clone(),
-            day: departure.day.clone(),
-            time: friendly_schedule_time(&departure.departure_time),
-            departure_at_epoch_millis: departure.departure_at_epoch_millis,
-            status: departure_status(week, departure, now),
-            status_kind: departure_status_kind(week, departure, now),
-            has_workout_record: departure_has_workout_record(week, departure),
-            record_workout_action: record_workout_action(week, departure, now),
-            adjustment: schedule_adjustment_view(departure, now),
+        .map(|departure| {
+            let change_choices =
+                change_time_choices_for_source(clock, now, Some(&departure.departure_time));
+            PrimaryDepartureView {
+                id: departure.id.clone(),
+                day: departure.day.clone(),
+                time: friendly_schedule_time(&departure.departure_time),
+                departure_at_epoch_millis: departure.departure_at_epoch_millis,
+                status: departure_status(week, departure, now),
+                status_kind: departure_status_kind(week, departure, now),
+                has_workout_record: departure_has_workout_record(week, departure),
+                record_workout_action: record_workout_action(week, departure, now),
+                adjustment: schedule_adjustment_view(departure, now),
+                exception: departure_exception_view(week, departure, now, &change_choices),
+            }
         })
         .collect()
 }
@@ -2776,7 +3221,8 @@ fn exercise_week_history_view(
     ExerciseWeekHistoryView {
         week_label: friendly_week_label(week),
         progress: format!("{} of {} completed", week.completed_count, weekly_goal),
-        primary_departures: primary_departure_views(week, now),
+        primary_departures: primary_departure_views(week, clock, now),
+        adjusted_departures: adjusted_departure_views(week, clock, now),
         fallback_departures: fallback_departure_views(week, now),
         workout_records: workout_record_views(week, clock),
     }
@@ -2836,6 +3282,74 @@ fn recordable_departure<'a>(
         .ok_or_else(|| "That workout prompt is not awaiting a record.".to_string())
 }
 
+fn changeable_primary_departure<'a>(
+    week: &'a ExerciseWeek,
+    slot_id: &str,
+    now: i64,
+) -> Result<&'a PlannedDeparture, String> {
+    all_departures(week)
+        .find(|departure| {
+            workout_source_for_departure(week, departure) == Some(WorkoutSource::Primary)
+                && departure.id == slot_id
+                && departure.status == DepartureStatus::Scheduled
+                && departure.departure_at_epoch_millis <= now
+                && departure.departure_response.is_none()
+                && departure
+                    .record_workout_prompt_due_at_epoch_millis
+                    .is_none()
+                && !departure_has_workout_record(week, departure)
+        })
+        .ok_or_else(|| {
+            "Only a due or past unrecorded primary workout can use this exception.".into()
+        })
+}
+
+fn changeable_primary_departure_mut<'a>(
+    week: &'a mut ExerciseWeek,
+    slot_id: &str,
+    now: i64,
+) -> Result<&'a mut PlannedDeparture, String> {
+    let is_primary = week
+        .primary_departures
+        .iter()
+        .chain(week.adjusted_departures.iter())
+        .any(|departure| departure.id == slot_id);
+    let has_workout_record = week
+        .workout_records
+        .iter()
+        .any(|record| record.source_slot_id.as_deref() == Some(slot_id));
+    all_departures_mut(week)
+        .find(|departure| {
+            is_primary
+                && departure.id == slot_id
+                && departure.status == DepartureStatus::Scheduled
+                && departure.departure_at_epoch_millis <= now
+                && departure.departure_response.is_none()
+                && departure
+                    .record_workout_prompt_due_at_epoch_millis
+                    .is_none()
+                && !has_workout_record
+        })
+        .ok_or_else(|| {
+            "Only a due or past unrecorded primary workout can use this exception.".into()
+        })
+}
+
+fn schedule_conflict<'a>(
+    week: &'a ExerciseWeek,
+    source_slot_id: &str,
+    target_at: i64,
+) -> Option<&'a PlannedDeparture> {
+    all_departures(week).find(|departure| {
+        departure.id != source_slot_id
+            && departure.departure_at_epoch_millis == target_at
+            && (matches!(
+                departure.status,
+                DepartureStatus::Scheduled | DepartureStatus::Leaving
+            ) || departure_has_workout_record(week, departure))
+    })
+}
+
 fn direct_recordable_departure<'a>(
     week: &'a ExerciseWeek,
     slot_id: &str,
@@ -2852,9 +3366,6 @@ fn direct_recordable_departure<'a>(
                 && departure.departure_response.is_none()
                 && departure
                     .record_workout_prompt_due_at_epoch_millis
-                    .is_none()
-                && departure
-                    .record_workout_reminder_scheduled_at_epoch_millis
                     .is_none()
                 && (departure.assigned_from_slot_id.is_some()
                     || workout_source_for_departure(week, departure)
@@ -3074,7 +3585,25 @@ fn departure_decision_status(week: &ExerciseWeek, departure: &PlannedDeparture) 
                 response.reason?.label()
             ))
         }
-        DepartureOutcome::Skip => Some(format!("Skipped · {}", response.reason?.label())),
+        DepartureOutcome::ChangeTime => {
+            let target = response
+                .adjusted_slot_id
+                .as_deref()
+                .and_then(|slot_id| all_departures(week).find(|slot| slot.id == slot_id));
+            target.map(|target| {
+                format!(
+                    "Changed to {} · {}",
+                    target.day,
+                    friendly_schedule_time(&target.departure_time)
+                )
+            })
+        }
+        DepartureOutcome::Skip => Some(
+            response
+                .reason
+                .map(|reason| format!("Skipped · {}", reason.label()))
+                .unwrap_or_else(|| "Skipped".into()),
+        ),
         DepartureOutcome::LeavingForGym => None,
     }
 }

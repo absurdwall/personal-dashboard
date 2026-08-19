@@ -73,6 +73,7 @@ impl CompletedBaselineExercise {
                 week_end: week.week_end,
                 completed_count: week.completed_count,
                 primary_departures,
+                adjusted_departures: Vec::new(),
                 fallback_departures,
                 workout_records,
             });
@@ -94,6 +95,7 @@ impl CompletedBaselineExercise {
                     outcome: decision.outcome,
                 }),
             next_unscheduled_sequence,
+            next_adjusted_sequence: 1,
         }
         .validate()
         .map_err(|_| CompletedBaselineError::Invalid)?;
@@ -266,6 +268,7 @@ fn migrate_departure_response(
         recorded_at_utc_offset_minutes: Some(recorded_at.offset_minutes),
         reason: response.reason,
         fallback_slot_id: response.fallback_slot_id.clone(),
+        adjusted_slot_id: None,
     })
 }
 

@@ -1143,6 +1143,80 @@ body {
   text-align: left;
 }
 
+.workspace-exception {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid rgb(33 76 55 / 20%);
+  border-radius: 0.8rem;
+  background: rgb(220 236 225 / 55%);
+}
+
+.workspace-exception[hidden] {
+  display: none;
+}
+
+.exception-editor h4 {
+  margin-bottom: 0.45rem;
+  color: #183329;
+  font-size: 1.05rem;
+}
+
+.exception-editor > p {
+  color: #52605a;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.exception-controls {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.8rem;
+}
+
+.exception-controls label {
+  display: grid;
+  gap: 0.35rem;
+  color: #52605a;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.exception-controls select {
+  width: 100%;
+  padding: 0.65rem;
+  border: 1px solid rgb(24 51 41 / 20%);
+  border-radius: 0.55rem;
+  background: #fff;
+  color: #183329;
+  font: inherit;
+}
+
+.exception-controls button {
+  width: 100%;
+  text-align: left;
+}
+
+.exception-preview,
+.exception-warning {
+  margin: 0;
+  padding: 0.7rem;
+  border-radius: 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.exception-preview {
+  background: #e6f1e5;
+  color: #24543b;
+}
+
+.exception-warning {
+  border: 1px solid rgb(122 48 36 / 28%);
+  background: #fff1e7;
+  color: #7a3024;
+  font-weight: 700;
+}
+
 .workspace-detail .workout-flow,
 .workspace-detail .workout-history {
   margin-top: 1rem;
@@ -1557,6 +1631,17 @@ body {
   color: #24543b;
   font-size: 0.68rem;
   font-weight: 750;
+}
+
+.agenda-inline-action {
+  justify-self: start;
+  margin-left: 0.5rem;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.72rem;
+}
+
+.adjusted-agenda {
+  border-color: rgb(33 76 55 / 28%);
 }
 
 .agenda-row > .schedule-editor {

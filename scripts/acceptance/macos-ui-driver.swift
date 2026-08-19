@@ -11,7 +11,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|press> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|press|press-contains|select-contains> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -108,6 +108,19 @@ func findPressable(
     return match
 }
 
+func findRole(_ application: AXUIElement, _ roles: Set<String>) -> AXUIElement? {
+    var match: AXUIElement?
+    _ = walk(application) { element in
+        let role = stringAttribute(element, "AXRole")
+        if roles.contains(role) {
+            match = element
+            return true
+        }
+        return false
+    }
+    return match
+}
+
 func waitForText(_ application: AXUIElement, _ text: String, timeout: TimeInterval) throws {
     let deadline = Date().addingTimeInterval(timeout)
     repeat {
@@ -146,6 +159,40 @@ func waitForFocusedText(
         Thread.sleep(forTimeInterval: 0.1)
     } while Date() < deadline
     throw DriverError.timeout("focused rendered control: \(text)")
+}
+
+func selectOption(
+    _ application: AXUIElement,
+    _ text: String,
+    timeout: TimeInterval
+) throws {
+    guard let picker = findRole(application, Set(["AXComboBox", "AXPopUpButton"])) else {
+        throw DriverError.timeout("schedule picker")
+    }
+
+    let pressError = AXUIElementPerformAction(picker, "AXPress" as CFString)
+    if pressError == .success {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let option = findPressable(application, text, contains: true) {
+                let optionError = AXUIElementPerformAction(option, "AXPress" as CFString)
+                guard optionError == .success else {
+                    throw DriverError.actionFailed(text, optionError)
+                }
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        } while Date() < deadline
+    }
+
+    let setError = AXUIElementSetAttributeValue(
+        picker,
+        "AXValue" as CFString,
+        text as CFTypeRef
+    )
+    guard setError == .success else {
+        throw DriverError.actionFailed("select \(text)", setError)
+    }
 }
 
 func requireArguments() throws -> (pid_t, String, String, TimeInterval) {
@@ -217,6 +264,9 @@ do {
             throw DriverError.timeout("pressable control containing: \(text)")
         }
         print("Pressed rendered control containing: \(text)")
+    case "select-contains":
+        try selectOption(application, text, timeout: timeout)
+        print("Selected rendered option containing: \(text)")
     default:
         throw DriverError.usage
     }

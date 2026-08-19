@@ -291,6 +291,129 @@ run_list_first_scenario() {
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
 }
 
+run_exception_scenario() {
+  current_step="launching change-time-and-skip packaged scenario"
+  launch_app
+
+  current_step="skipping a due workout without a reason"
+  run_driver wait-text "Log workout now" 30
+  run_driver press-contains "Monday" 10
+  run_driver assert-text "Change to another time"
+  run_driver assert-text "Skip this session"
+  run_driver press "Skip this session" 10
+  run_driver assert-text "Skipped"
+  run_driver assert-text "Undo skip"
+  run_driver assert-text "0 of 3 completed"
+  run_driver assert-focused-text "Monday" 10
+
+  current_step="relaunching and undoing the direct skip"
+  if ! stop_app; then
+    fail "app process did not exit after saving the direct skip"
+  fi
+  launch_app
+  run_driver wait-text "Undo skip" 30
+  run_driver press "Undo skip" 10
+  run_driver assert-text "0 of 3 completed"
+  run_driver assert-focused-text "Monday" 10
+  run_driver press-contains "Monday" 10
+  run_driver assert-text "Record workout"
+  run_driver assert-text "Change to another time"
+
+  current_step="opening the change-time editor with logical keyboard focus"
+  run_driver press "Change to another time" 10
+  run_driver assert-text "Change this workout time"
+  run_driver assert-text "Check this time"
+  run_driver assert-focused-text "Saturday" 10
+  run_driver assert-text "suggested"
+  run_driver select-contains "Sunday · 4:00 PM" 10
+  run_driver assert-focused-text "Sunday" 10
+  run_driver assert-text "suggested"
+
+  current_step="previewing and saving an arbitrary Tuesday change-time choice"
+  run_driver select-contains "Tuesday · 4:00 PM" 10
+  run_driver assert-text "Check this time"
+  run_driver press "Check this time" 10
+  run_driver assert-text "No conflict found"
+  run_driver assert-text "Final time: Tuesday"
+  run_driver assert-focused-text "Change to Tuesday" 10
+  run_driver press-contains "Change to Tuesday" 10
+  run_driver assert-text "Changed this week"
+  run_driver assert-text "Tuesday"
+  run_driver assert-text "0 of 3 completed"
+  run_driver assert-focused-text "Monday" 10
+
+  current_step="advancing the isolated packaged clock to the changed target"
+  fixed_now_epoch_millis="1786482000000"
+  if ! stop_app; then
+    fail "app process did not exit after saving the change-time exception"
+  fi
+  launch_app
+
+  current_step="confirming an intentional conflict from the due changed target"
+  run_driver wait-text "Unrecorded — ready to record" 30
+  run_driver assert-text "Changed this week"
+  run_driver assert-text "Tuesday"
+  run_driver press-contains "Tuesday" 10
+  run_driver assert-text "Record workout"
+  run_driver assert-text "Change to another time"
+  run_driver press "Change to another time" 10
+  run_driver assert-focused-text "Saturday" 10
+  run_driver select-contains "Wednesday · 4:00 PM" 10
+  run_driver press "Check this time" 10
+  run_driver assert-text "This time overlaps Wednesday"
+  run_driver assert-text "Confirm change"
+  run_driver assert-focused-text "Confirm change" 10
+  run_driver press "Confirm change" 10
+  run_driver assert-text "Changed this week"
+  run_driver assert-text "Wednesday"
+  run_driver assert-text "0 of 3 completed"
+  run_driver assert-focused-text "Tuesday" 10
+
+  current_step="recording the independent changed target occurrence"
+  fixed_now_epoch_millis="1786568400000"
+  if ! stop_app; then
+    fail "app process did not exit after confirming the conflict"
+  fi
+  launch_app
+  run_driver wait-text "Unrecorded — ready to record" 30
+  run_driver assert-text "Changed this week"
+  run_driver assert-text "Tuesday"
+  run_driver assert-text "Wednesday"
+  run_driver press-contains "Wednesday changed" 10
+  run_driver assert-text "Record workout"
+  run_driver press "Record workout" 10
+  run_driver press "Elliptical" 10
+  run_driver press "30" 10
+  run_driver press "Moderate" 10
+  run_driver assert-text "1 of 3 completed"
+  run_driver assert-text "Completed"
+  run_driver assert-focused-text "Wednesday changed" 10
+
+  current_step="checking original and changed target persistence after relaunch"
+  if ! stop_app; then
+    fail "app process did not exit after recording the changed target occurrence"
+  fi
+  launch_app
+  run_driver wait-text "1 of 3 completed" 30
+  run_driver assert-text "Changed this week"
+  run_driver assert-text "Tuesday"
+  run_driver assert-text "Wednesday"
+  run_driver assert-text "Completed"
+  run_driver press-contains "Monday" 10
+  run_driver assert-text "Changed to Tuesday"
+  run_driver press "Close" 10
+  run_driver assert-focused-text "Monday" 10
+  run_driver press-contains "Wednesday changed" 10
+  run_driver assert-text "Workout recorded"
+
+  echo "Packaged IPC change-time-and-skip acceptance passed"
+  echo "Workflow: direct Skip and Undo crossed Tauri IPC without the departure-response tree"
+  echo "Change-time: an arbitrary Tuesday choice was saved, then an intentional Wednesday conflict was previewed and explicitly confirmed"
+  echo "Target: the independent changed occurrence was recorded after the isolated clock advanced"
+  echo "Persistence: the moved original and recorded target remained visible after relaunch"
+  echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
+}
+
 if [[ "$acceptance_scenario" == "direct" ]]; then
   run_direct_record_scenario
   exit 0
@@ -303,6 +426,10 @@ if [[ "$acceptance_scenario" == "list-first" || "$acceptance_scenario" == "basel
   run_list_first_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "workouts" ]]; then
+if [[ "$acceptance_scenario" == "exceptions" ]]; then
+  run_exception_scenario
+  exit 0
+fi
+if [[ "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi
