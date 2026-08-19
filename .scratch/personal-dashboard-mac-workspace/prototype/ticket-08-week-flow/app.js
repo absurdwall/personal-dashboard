@@ -264,6 +264,11 @@ function unscheduledEntry() {
   </section>`;
 }
 
+function recordReview(record, live = false) {
+  const liveAttribute = live ? ` aria-live="polite"` : "";
+  return `<div class="record-review"${liveAttribute}><div><span>Activity</span><strong>${record.activity}</strong></div><div><span>Duration</span><strong>${record.duration}</strong></div><div><span>Effort</span><strong>${record.effort}</strong></div></div>`;
+}
+
 function agenda(options = {}) {
   return `<div class="agenda-list">
     ${options.includeUnscheduled ? unscheduledEntry() : ""}
@@ -290,6 +295,7 @@ function actionButtons(item) {
 function summaryDetail() {
   const item = slotById();
   const movement = isMoved(item) ? `<div class="moved-note"><span class="eyebrow">Schedule updated</span><strong>${item.movedTo}</strong><small>The original row stays visible as a record of the change.</small></div>` : "";
+  const recordSummary = item.record ? recordReview(item.record) : "";
   const statusCopy = isCompleted(item) ? "Workout recorded" : isShortRecorded(item) ? "Workout recorded · Short effort — does not count toward weekly progress" : isSkipped(item) ? "Skipped for this week" : item.status;
   const detailNote = isExceptionEligible(item)
     ? `<p class="detail-note">No departure confirmation is needed. Record the workout when you return; until then this row remains available for a change or a skip.</p>`
@@ -299,6 +305,7 @@ function summaryDetail() {
     <div class="detail-title"><div class="date-tile"><strong>${item.shortDay}</strong><small>${item.date.replace("August ", "")}</small></div><div><h2>${item.day}</h2><p>${item.time} · ${item.label}</p></div></div>
     <div class="status-line ${slotState(item)}">${statusMark(item)}<strong>${statusCopy}</strong></div>
     ${movement}
+    ${recordSummary}
     ${actionButtons(item)}
     ${detailNote}
   </section>`;
@@ -318,7 +325,7 @@ function recordDetail() {
     : `<button class="back-link" type="button" data-detail-mode="summary">${icon("back")}Back to ${backLabel}</button>`;
   const stageContent = stage
     ? `<div class="choice-group"><span>${stage.label}</span><p class="stage-guidance">${stage.guidance}</p><div class="choice-row">${stage.choices.map((choice) => `<button class="choice" type="button" data-action="choose-record" data-choice-name="${state.recordingStage}" data-choice="${choice}">${choice}</button>`).join("")}</div>${state.recordingStage === "effort" ? `<p class="neutral-guidance">Harder is not better.</p>` : ""}</div>`
-    : `<div class="record-review" aria-live="polite"><div><span>Activity</span><strong>${state.recordingDraft.activity}</strong></div><div><span>Duration</span><strong>${state.recordingDraft.duration}</strong></div><div><span>Effort</span><strong>${state.recordingDraft.effort}</strong></div></div><button class="primary-action save-action" type="button" data-action="save-record">${icon("check")}Save workout</button>`;
+    : `${recordReview(state.recordingDraft, true)}<button class="primary-action save-action" type="button" data-action="save-record">${icon("check")}Save workout</button>`;
   return `<section class="detail-content form-detail">
     <div class="detail-topline">${backControl}<button class="close-button" type="button" data-close aria-label="Close detail">${icon("close")}</button></div>
     <span class="eyebrow">${unscheduled ? "Unscheduled workout" : "Workout record"}</span><h2>${heading}</h2><p class="form-intro">Click a choice to continue; no typing is needed.</p>${sourceNote}${stageContent}
@@ -517,6 +524,11 @@ function saveRecord() {
     return;
   }
   const item = selectedItem();
+  item.record = {
+    activity: state.recordingDraft.activity,
+    duration: state.recordingDraft.duration,
+    effort: state.recordingDraft.effort,
+  };
   item.state = qualifies ? "completed" : "recorded-short";
   item.status = qualifies ? "Workout recorded" : "Workout recorded · Short effort";
   item.tone = item.state;
