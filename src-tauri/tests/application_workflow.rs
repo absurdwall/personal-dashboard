@@ -1,6 +1,7 @@
 use personal_dashboard_lib::exercise::{
-    ExerciseApplication, ExerciseAuthority, ExerciseClock, ExerciseDashboardView,
-    ExercisePersistence, NoPendingNotificationCancellations,
+    DepartureStatusKind, ExerciseApplication, ExerciseAuthority, ExerciseClock,
+    ExerciseDashboardView, ExercisePersistence, FallbackAvailabilityKind,
+    NoPendingNotificationCancellations,
 };
 use personal_dashboard_lib::notification::{
     NotificationIntent, NotificationPermission, NotificationPlatform,
@@ -834,6 +835,197 @@ fn due_departure_response_remains_available_when_notifications_are_denied() {
             .as_ref()
             .map(|prompt| prompt.slot_id.as_str())
     );
+}
+
+#[test]
+fn due_planned_workout_exposes_direct_record_action_without_departure_response() {
+    let profile = IsolatedProfile::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile, DeniedReminderOutbox, clock);
+
+    let dashboard = application.open().unwrap();
+    let due = &dashboard.primary_departures[0];
+    let future = &dashboard.primary_departures[1];
+
+    assert_eq!(DepartureStatusKind::Unrecorded, due.status_kind);
+    assert_eq!(Some("Record workout"), due.record_workout_action.as_deref());
+    assert_eq!(DepartureStatusKind::Scheduled, future.status_kind);
+    assert_eq!(None, future.record_workout_action);
+    assert_eq!(
+        Some("2026-08-10-primary-1"),
+        dashboard
+            .departure_prompt
+            .as_ref()
+            .map(|prompt| prompt.slot_id.as_str())
+    );
+
+    let recording = application
+        .start_workout_record("2026-08-10-primary-1")
+        .unwrap();
+    assert_eq!(
+        vec!["Elliptical", "Weight training", "Other exercise"],
+        recording.workout_recording.unwrap().choices
+    );
+}
+
+#[test]
+fn direct_planned_workout_records_against_the_occurrence_and_survives_relaunch() {
+    let profile = IsolatedProfile::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application =
+        ExerciseApplication::new(profile.clone(), DeniedReminderOutbox, clock.clone());
+
+    application.open().unwrap();
+    application
+        .start_workout_record("2026-08-10-primary-1")
+        .unwrap();
+    application
+        .choose_workout_activity("2026-08-10-primary-1", "Elliptical")
+        .unwrap();
+    application
+        .choose_workout_duration("2026-08-10-primary-1", "30")
+        .unwrap();
+    let completed = application
+        .complete_workout_record("2026-08-10-primary-1", "Moderate")
+        .unwrap();
+
+    assert_eq!("1 of 3 completed", completed.progress);
+    assert_eq!(1, completed.workout_records.len());
+    assert_eq!("Primary workout", completed.workout_records[0].source);
+    assert_eq!(
+        "2026-08-10-primary-1-workout",
+        completed.workout_records[0].id
+    );
+    assert_eq!("Completed", completed.primary_departures[0].status);
+    assert_eq!(None, completed.primary_departures[0].record_workout_action);
+
+    let relaunched = ExerciseApplication::new(profile, DeniedReminderOutbox, clock)
+        .open()
+        .unwrap();
+    assert_eq!(completed, relaunched);
+    assert_eq!("1 of 3 completed", relaunched.progress);
+}
+
+#[test]
+fn direct_planned_record_reconciles_the_completed_slot_out_of_reminders() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    application
+        .start_workout_record("2026-08-10-primary-1")
+        .unwrap();
+    application
+        .choose_workout_activity("2026-08-10-primary-1", "Elliptical")
+        .unwrap();
+    application
+        .choose_workout_duration("2026-08-10-primary-1", "30")
+        .unwrap();
+    let completed = application
+        .complete_workout_record("2026-08-10-primary-1", "Moderate")
+        .unwrap();
+
+    assert_eq!(
+        Some("Wednesday, August 12 at 4:00 PM"),
+        completed.next_departure.as_deref()
+    );
+    {
+        let cancelled = reminders.cancelled.lock().unwrap();
+        assert!(cancelled.contains(&"exercise-departure-2026-08-10-primary-1".into()));
+        assert!(cancelled.contains(&"exercise-follow-up-2026-08-10-primary-1".into()));
+    }
+    assert!(reminders
+        .scheduled
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|intent| intent.id == "exercise-departure-2026-08-10-primary-2"));
+
+    let relaunched = ExerciseApplication::new(profile, reminders, clock)
+        .open()
+        .unwrap();
+    assert_eq!(completed, relaunched);
+}
+
+#[test]
+fn direct_planned_short_workout_is_saved_without_qualifying_progress_or_duplicate_recording() {
+    let profile = IsolatedProfile::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application =
+        ExerciseApplication::new(profile.clone(), DeniedReminderOutbox, clock.clone());
+
+    application.open().unwrap();
+    application
+        .start_workout_record("2026-08-10-primary-1")
+        .unwrap();
+    application
+        .choose_workout_activity("2026-08-10-primary-1", "Other exercise")
+        .unwrap();
+    application
+        .choose_workout_duration("2026-08-10-primary-1", "Under 20")
+        .unwrap();
+    let completed = application
+        .complete_workout_record("2026-08-10-primary-1", "Very easy")
+        .unwrap();
+
+    assert_eq!("0 of 3 completed", completed.progress);
+    assert_eq!(
+        "Short effort — does not count toward weekly progress",
+        completed.workout_records[0].outcome
+    );
+    assert_eq!(None, completed.primary_departures[0].record_workout_action);
+    assert!(application
+        .start_workout_record("2026-08-10-primary-1")
+        .is_err());
+
+    let relaunched = ExerciseApplication::new(profile, DeniedReminderOutbox, clock)
+        .open()
+        .unwrap();
+    assert_eq!(completed, relaunched);
+    assert_eq!("0 of 3 completed", relaunched.progress);
+}
+
+#[test]
+fn due_fallback_workout_exposes_the_same_direct_record_action() {
+    let profile = IsolatedProfile::default();
+    let clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let application = ExerciseApplication::new(profile, DeniedReminderOutbox, clock.clone());
+
+    application.open().unwrap();
+    application
+        .confirm_departure_decision("2026-08-10-primary-1", "move-to-fallback", "Work ran late")
+        .unwrap();
+    clock.advance_to(1_786_824_000_000);
+
+    let dashboard = application.open().unwrap();
+    let due = &dashboard.fallback_departures[0];
+    let future = &dashboard.fallback_departures[1];
+
+    assert_eq!(FallbackAvailabilityKind::Unrecorded, due.availability_kind);
+    assert_eq!(Some("Record workout"), due.record_workout_action.as_deref());
+    assert_eq!(
+        FallbackAvailabilityKind::Available,
+        future.availability_kind
+    );
+    assert_eq!(None, future.record_workout_action);
+
+    application
+        .start_workout_record("2026-08-10-fallback-1")
+        .unwrap();
+    application
+        .choose_workout_activity("2026-08-10-fallback-1", "Weight training")
+        .unwrap();
+    application
+        .choose_workout_duration("2026-08-10-fallback-1", "20")
+        .unwrap();
+    let completed = application
+        .complete_workout_record("2026-08-10-fallback-1", "Moderate")
+        .unwrap();
+    assert_eq!("Fallback workout", completed.workout_records[0].source);
+    assert_eq!("1 of 3 completed", completed.progress);
+    assert_eq!("Recorded", completed.fallback_departures[0].availability);
 }
 
 #[test]

@@ -393,6 +393,7 @@ pub struct PrimaryDepartureView {
     pub status: String,
     pub status_kind: DepartureStatusKind,
     pub has_workout_record: bool,
+    pub record_workout_action: Option<String>,
     pub adjustment: Option<ScheduleAdjustmentView>,
 }
 
@@ -400,6 +401,7 @@ pub struct PrimaryDepartureView {
 #[serde(rename_all = "kebab-case")]
 pub enum DepartureStatusKind {
     Scheduled,
+    Unrecorded,
     AwaitingResponse,
     Unresolved,
     Leaving,
@@ -462,6 +464,7 @@ pub struct FallbackDepartureView {
     pub departure_at_epoch_millis: i64,
     pub availability: String,
     pub availability_kind: FallbackAvailabilityKind,
+    pub record_workout_action: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -469,6 +472,8 @@ pub struct FallbackDepartureView {
 pub enum FallbackAvailabilityKind {
     Assigned,
     Available,
+    Unrecorded,
+    Recorded,
     NotNeeded,
     Missed,
     Reserved,
@@ -1106,7 +1111,8 @@ impl<
             return Err("A workout record is already in progress.".into());
         }
         let week = current_week(&state, &self.clock, now)?;
-        let departure = recordable_departure(week, slot_id, now)?;
+        let departure = direct_recordable_departure(week, slot_id, now)
+            .or_else(|_| recordable_departure(week, slot_id, now))?;
         let source = workout_source_for_departure(week, departure)
             .ok_or_else(|| "That workout source is not available.".to_string())?;
         state.workout_draft = Some(WorkoutDraft {
@@ -1196,30 +1202,53 @@ impl<
         let source = draft
             .source
             .ok_or_else(|| "The workout source is not available.".to_string())?;
+        let direct_record = if source == WorkoutSource::Unscheduled {
+            false
+        } else {
+            let week = current_week(&state, &self.clock, now)?;
+            direct_recordable_departure(week, slot_id, now).is_ok()
+        };
+        if source != WorkoutSource::Unscheduled && !direct_record {
+            let week = current_week(&state, &self.clock, now)?;
+            recordable_departure(week, slot_id, now)?;
+        }
+        let previously_scheduled_notification_ids = direct_record
+            .then(|| state.scheduled_notification_ids())
+            .unwrap_or_default();
         let unscheduled_sequence = state.next_unscheduled_sequence;
         if source == WorkoutSource::Unscheduled {
             state.next_unscheduled_sequence += 1;
         }
         let weekly_goal = state.routine.weekly_goal;
-        let week = current_week_mut(&mut state, &self.clock, now)?;
-        if source != WorkoutSource::Unscheduled {
-            recordable_departure(week, slot_id, now)?;
+        {
+            let week = current_week_mut(&mut state, &self.clock, now)?;
+            week.workout_records.push(WorkoutRecord {
+                id: if source == WorkoutSource::Unscheduled {
+                    format!("{}-unscheduled-{unscheduled_sequence}", week.week_start)
+                } else {
+                    format!("{slot_id}-workout")
+                },
+                source: Some(source),
+                source_slot_id: (source != WorkoutSource::Unscheduled).then(|| slot_id.into()),
+                recorded_at_epoch_millis: now,
+                recorded_at_utc_offset_minutes: Some(self.clock.utc_offset_minutes_at(now)),
+                activity,
+                duration,
+                effort,
+            });
+            if direct_record {
+                if let Some(departure) =
+                    all_departures_mut(week).find(|departure| departure.id == slot_id)
+                {
+                    departure.reminder_scheduled_at_epoch_millis = None;
+                    departure.follow_up_scheduled_at_epoch_millis = None;
+                }
+            }
+            recompute_week_progress(week, weekly_goal, now, true);
         }
-        week.workout_records.push(WorkoutRecord {
-            id: if source == WorkoutSource::Unscheduled {
-                format!("{}-unscheduled-{unscheduled_sequence}", week.week_start)
-            } else {
-                format!("{slot_id}-workout")
-            },
-            source: Some(source),
-            source_slot_id: (source != WorkoutSource::Unscheduled).then(|| slot_id.into()),
-            recorded_at_epoch_millis: now,
-            recorded_at_utc_offset_minutes: Some(self.clock.utc_offset_minutes_at(now)),
-            activity,
-            duration,
-            effort,
-        });
-        recompute_week_progress(week, weekly_goal, now, true);
+        if direct_record && !previously_scheduled_notification_ids.is_empty() {
+            state.begin_reminder_reconciliation(previously_scheduled_notification_ids);
+        }
         state.workout_draft = None;
         self.save_state(&state)?;
         self.open()
@@ -1479,7 +1508,9 @@ impl ExerciseState {
             .flat_map(|week| {
                 all_departures(week).flat_map(|departure| {
                     let mut ids = Vec::new();
-                    if departure.status == DepartureStatus::Scheduled {
+                    if departure.status == DepartureStatus::Scheduled
+                        && !departure_has_workout_record(week, departure)
+                    {
                         if departure.reminder_scheduled_at_epoch_millis.is_some() {
                             ids.push(reminder_intent(departure).id);
                         }
@@ -1793,14 +1824,10 @@ impl ExerciseState {
                         .is_some_and(|(slot_id, departure)| {
                             source_slot_ids.insert(slot_id)
                                 && record.id == format!("{slot_id}-workout")
-                                && workout_source_for_departure(week, departure) == Some(source)
-                                && departure.status == DepartureStatus::Leaving
-                                && departure
-                                    .record_workout_prompt_due_at_epoch_millis
-                                    .is_some()
-                                && departure
-                                    .record_workout_reminder_scheduled_at_epoch_millis
-                                    .is_some()
+                                && (departure_supports_workout_draft(week, departure, source)
+                                    || departure_supports_direct_workout_record(
+                                        week, departure, source, record,
+                                    ))
                         }),
                 };
                 if !record_ids.insert(record.id.as_str())
@@ -1838,14 +1865,7 @@ impl ExerciseState {
                             .map(|departure| (week, departure))
                     })
                     .is_some_and(|(week, departure)| {
-                        workout_source_for_departure(week, departure) == Some(source)
-                            && departure.status == DepartureStatus::Leaving
-                            && departure
-                                .record_workout_prompt_due_at_epoch_millis
-                                .is_some()
-                            && departure
-                                .record_workout_reminder_scheduled_at_epoch_millis
-                                .is_some()
+                        departure_supports_workout_draft(week, departure, source)
                             && !week.workout_records.iter().any(|record| {
                                 record.source_slot_id.as_deref() == Some(draft.slot_id.as_str())
                             })
@@ -2001,7 +2021,10 @@ fn next_scheduled_departure<'a, C: ExerciseClock>(
 ) -> Option<&'a PlannedDeparture> {
     let today = local_day_number(clock, now);
     all_departures(week)
-        .filter(|departure| departure.status == DepartureStatus::Scheduled)
+        .filter(|departure| {
+            departure.status == DepartureStatus::Scheduled
+                && !departure_has_workout_record(week, departure)
+        })
         .filter(|departure| {
             departure.departure_at_epoch_millis >= now
                 || local_day_number(clock, departure.departure_at_epoch_millis) == today
@@ -2313,13 +2336,15 @@ fn fallback_reserved_by_primary(week: &ExerciseWeek, departure: &PlannedDepartur
         matches!(
             primary.status,
             DepartureStatus::Scheduled | DepartureStatus::Leaving
-        ) && primary.date == departure.date
+        ) && !departure_has_workout_record(week, primary)
+            && primary.date == departure.date
     })
 }
 
 fn fallback_is_available(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64) -> bool {
     departure.status == DepartureStatus::Available
         && departure.departure_at_epoch_millis >= now
+        && !departure_has_workout_record(week, departure)
         && !fallback_reserved_by_primary(week, departure)
 }
 
@@ -2333,6 +2358,9 @@ fn next_available_fallback_index(week: &ExerciseWeek, now: i64) -> Option<usize>
 }
 
 fn fallback_status(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64) -> String {
+    if departure_has_workout_record(week, departure) {
+        return "Recorded".into();
+    }
     if let Some(source_id) = departure.assigned_from_slot_id.as_deref() {
         let source_day = all_departures(week)
             .find(|candidate| candidate.id == source_id)
@@ -2340,6 +2368,11 @@ fn fallback_status(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64) 
             .unwrap_or("planned workout");
         let assignment = format!("Assigned from {source_day}");
         match departure.status {
+            DepartureStatus::Scheduled
+                if direct_recordable_departure(week, &departure.id, now).is_ok() =>
+            {
+                format!("{assignment} · Unrecorded — ready to record")
+            }
             DepartureStatus::Scheduled => assignment,
             DepartureStatus::Leaving if departure_has_workout_record(week, departure) => {
                 format!("{assignment} · Completed")
@@ -2360,6 +2393,8 @@ fn fallback_status(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64) 
         "Weekly goal met — no workout needed".into()
     } else if departure.status == DepartureStatus::Missed {
         "Missed — no response".into()
+    } else if direct_recordable_departure(week, &departure.id, now).is_ok() {
+        "Unrecorded — ready to record".into()
     } else if fallback_reserved_by_primary(week, departure) {
         "Reserved by primary departure".into()
     } else if fallback_is_available(week, departure, now) {
@@ -2709,6 +2744,7 @@ fn primary_departure_views(week: &ExerciseWeek, now: i64) -> Vec<PrimaryDepartur
             status: departure_status(week, departure, now),
             status_kind: departure_status_kind(week, departure, now),
             has_workout_record: departure_has_workout_record(week, departure),
+            record_workout_action: record_workout_action(week, departure, now),
             adjustment: schedule_adjustment_view(departure, now),
         })
         .collect()
@@ -2724,6 +2760,7 @@ fn fallback_departure_views(week: &ExerciseWeek, now: i64) -> Vec<FallbackDepart
             departure_at_epoch_millis: departure.departure_at_epoch_millis,
             availability: fallback_status(week, departure, now),
             availability_kind: fallback_availability_kind(week, departure, now),
+            record_workout_action: record_workout_action(week, departure, now),
         })
         .collect()
 }
@@ -2795,6 +2832,113 @@ fn recordable_departure<'a>(
                     .any(|record| record.source_slot_id.as_deref() == Some(slot_id))
         })
         .ok_or_else(|| "That workout prompt is not awaiting a record.".to_string())
+}
+
+fn direct_recordable_departure<'a>(
+    week: &'a ExerciseWeek,
+    slot_id: &str,
+    now: i64,
+) -> Result<&'a PlannedDeparture, String> {
+    all_departures(week)
+        .find(|departure| {
+            departure.id == slot_id
+                && matches!(
+                    departure.status,
+                    DepartureStatus::Scheduled | DepartureStatus::Available
+                )
+                && departure.departure_at_epoch_millis <= now
+                && departure.departure_response.is_none()
+                && departure
+                    .record_workout_prompt_due_at_epoch_millis
+                    .is_none()
+                && departure
+                    .record_workout_reminder_scheduled_at_epoch_millis
+                    .is_none()
+                && (departure.assigned_from_slot_id.is_some()
+                    || workout_source_for_departure(week, departure)
+                        != Some(WorkoutSource::Fallback))
+                && !departure_has_workout_record(week, departure)
+        })
+        .ok_or_else(|| "That planned workout is not ready to record.".into())
+}
+
+fn record_workout_action(
+    week: &ExerciseWeek,
+    departure: &PlannedDeparture,
+    now: i64,
+) -> Option<String> {
+    direct_recordable_departure(week, &departure.id, now)
+        .or_else(|_| recordable_departure(week, &departure.id, now))
+        .ok()
+        .map(|_| "Record workout".into())
+}
+
+fn departure_supports_workout_draft(
+    week: &ExerciseWeek,
+    departure: &PlannedDeparture,
+    source: WorkoutSource,
+) -> bool {
+    if workout_source_for_departure(week, departure) != Some(source) {
+        return false;
+    }
+    if source == WorkoutSource::Fallback && departure.assigned_from_slot_id.is_none() {
+        return false;
+    }
+    match departure.status {
+        DepartureStatus::Leaving => departure
+            .departure_response
+            .as_ref()
+            .is_some_and(|response| {
+                response.outcome == DepartureOutcome::LeavingForGym
+                    && response.reason.is_none()
+                    && response.fallback_slot_id.is_none()
+                    && departure
+                        .record_workout_prompt_due_at_epoch_millis
+                        .is_some()
+                    && departure
+                        .record_workout_reminder_scheduled_at_epoch_millis
+                        .is_some()
+            }),
+        DepartureStatus::Available | DepartureStatus::Scheduled => {
+            departure.departure_response.is_none()
+                && departure
+                    .record_workout_prompt_due_at_epoch_millis
+                    .is_none()
+                && departure
+                    .record_workout_reminder_scheduled_at_epoch_millis
+                    .is_none()
+        }
+        DepartureStatus::Moved
+        | DepartureStatus::Skipped
+        | DepartureStatus::NotNeeded
+        | DepartureStatus::Missed => false,
+    }
+}
+
+fn departure_supports_direct_workout_record(
+    week: &ExerciseWeek,
+    departure: &PlannedDeparture,
+    source: WorkoutSource,
+    record: &WorkoutRecord,
+) -> bool {
+    workout_source_for_departure(week, departure) == Some(source)
+        && matches!(
+            departure.status,
+            DepartureStatus::Available
+                | DepartureStatus::Scheduled
+                | DepartureStatus::Missed
+                | DepartureStatus::NotNeeded
+        )
+        && departure.departure_response.is_none()
+        && departure
+            .record_workout_prompt_due_at_epoch_millis
+            .is_none()
+        && departure
+            .record_workout_reminder_scheduled_at_epoch_millis
+            .is_none()
+        && (departure.assigned_from_slot_id.is_some()
+            || workout_source_for_departure(week, departure) != Some(WorkoutSource::Fallback))
+        && record.recorded_at_epoch_millis >= departure.departure_at_epoch_millis
 }
 
 fn workout_draft_for<'a>(
@@ -2873,6 +3017,7 @@ fn departure_prompt(week: &ExerciseWeek, now: i64) -> Option<DeparturePromptView
         .filter(|departure| {
             departure.status == DepartureStatus::Scheduled
                 && departure.departure_at_epoch_millis <= now
+                && !departure_has_workout_record(week, departure)
         })
         .max_by_key(|departure| departure.departure_at_epoch_millis)
         .map(|departure| DeparturePromptView {
@@ -2938,14 +3083,17 @@ fn departure_status_kind(
     now: i64,
 ) -> DepartureStatusKind {
     match departure.status {
-        DepartureStatus::Leaving if departure_has_workout_record(week, departure) => {
-            DepartureStatusKind::Completed
-        }
+        _ if departure_has_workout_record(week, departure) => DepartureStatusKind::Completed,
         DepartureStatus::Leaving => DepartureStatusKind::Leaving,
         DepartureStatus::Moved => DepartureStatusKind::Moved,
         DepartureStatus::Skipped => DepartureStatusKind::Skipped,
         DepartureStatus::Scheduled if follow_up_is_due(departure, now) => {
             DepartureStatusKind::Unresolved
+        }
+        DepartureStatus::Scheduled
+            if direct_recordable_departure(week, &departure.id, now).is_ok() =>
+        {
+            DepartureStatusKind::Unrecorded
         }
         DepartureStatus::Scheduled if departure.departure_at_epoch_millis <= now => {
             DepartureStatusKind::AwaitingResponse
@@ -2953,6 +3101,11 @@ fn departure_status_kind(
         DepartureStatus::Scheduled => DepartureStatusKind::Scheduled,
         DepartureStatus::NotNeeded => DepartureStatusKind::NotNeeded,
         DepartureStatus::Missed => DepartureStatusKind::Missed,
+        DepartureStatus::Available
+            if direct_recordable_departure(week, &departure.id, now).is_ok() =>
+        {
+            DepartureStatusKind::Unrecorded
+        }
         DepartureStatus::Available => DepartureStatusKind::Available,
     }
 }
@@ -2965,6 +3118,7 @@ fn departure_status(week: &ExerciseWeek, departure: &PlannedDeparture, now: i64)
             departure_decision_status(week, departure).expect("closed departure has a decision")
         }
         DepartureStatusKind::Unresolved => "Unresolved — no response".into(),
+        DepartureStatusKind::Unrecorded => "Unrecorded — ready to record".into(),
         DepartureStatusKind::AwaitingResponse => "Awaiting response".into(),
         DepartureStatusKind::Scheduled => "Scheduled".into(),
         DepartureStatusKind::NotNeeded => "Weekly goal met — no workout needed".into(),
@@ -2991,7 +3145,11 @@ fn fallback_availability_kind(
     departure: &PlannedDeparture,
     now: i64,
 ) -> FallbackAvailabilityKind {
-    if departure.assigned_from_slot_id.is_some() {
+    if departure_has_workout_record(week, departure) {
+        FallbackAvailabilityKind::Recorded
+    } else if direct_recordable_departure(week, &departure.id, now).is_ok() {
+        FallbackAvailabilityKind::Unrecorded
+    } else if departure.assigned_from_slot_id.is_some() {
         FallbackAvailabilityKind::Assigned
     } else if departure.status == DepartureStatus::NotNeeded {
         FallbackAvailabilityKind::NotNeeded

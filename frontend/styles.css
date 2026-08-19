@@ -1496,6 +1496,23 @@ body {
   font-weight: 750;
 }
 
+.agenda-record-button {
+  justify-self: start;
+  margin: 0 0.5rem 0.15rem;
+  padding: 0.38rem 0.62rem;
+  border: 1px solid rgb(33 76 55 / 28%);
+  border-radius: 0.5rem;
+  background: #edf6ee;
+  color: #24543b;
+  font-size: 0.7rem;
+  font-weight: 750;
+}
+
+.agenda-record-button:hover,
+.agenda-record-button:focus-visible {
+  background: #dcece1;
+}
+
 .agenda-row > .schedule-editor {
   margin: 0 0.5rem 0.35rem;
 }

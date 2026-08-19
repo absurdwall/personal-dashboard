@@ -98,6 +98,7 @@ type PrimaryDeparture = DepartureTiming & Readonly<{
   status: string;
   statusKind: DepartureStatusKind;
   hasWorkoutRecord: boolean;
+  recordWorkoutAction: string | null;
   adjustment: ScheduleAdjustment | null;
 }>;
 
@@ -105,10 +106,12 @@ type FallbackDeparture = DepartureTiming & Readonly<{
   departureAtEpochMillis: number;
   availability: string;
   availabilityKind: FallbackAvailabilityKind;
+  recordWorkoutAction: string | null;
 }>;
 
 type DepartureStatusKind =
   | "scheduled"
+  | "unrecorded"
   | "awaiting-response"
   | "unresolved"
   | "leaving"
@@ -122,6 +125,8 @@ type DepartureStatusKind =
 type FallbackAvailabilityKind =
   | "assigned"
   | "available"
+  | "unrecorded"
+  | "recorded"
   | "not-needed"
   | "missed"
   | "reserved"
@@ -586,6 +591,16 @@ function primaryDepartureItem(
     evidence.textContent = "✓ Workout recorded";
     item.append(evidence);
   }
+  if (departure.recordWorkoutAction) {
+    const action = workoutButton(
+      departure.recordWorkoutAction,
+      departure.id,
+      "start",
+    );
+    action.className = "agenda-record-button";
+    action.setAttribute("aria-label", `${departure.recordWorkoutAction}: ${departure.day}`);
+    item.append(action);
+  }
   if (departure.adjustment) {
     const editor = document.createElement("details");
     const summary = document.createElement("summary");
@@ -628,12 +643,23 @@ function fallbackDepartureItem(departure: FallbackDeparture): HTMLLIElement {
   status.textContent = departure.availability;
   state.append(marker, status);
   item.append(identity, state);
+  if (departure.recordWorkoutAction) {
+    const action = workoutButton(
+      departure.recordWorkoutAction,
+      departure.id,
+      "start",
+    );
+    action.className = "agenda-record-button";
+    action.setAttribute("aria-label", `${departure.recordWorkoutAction}: ${departure.day}`);
+    item.append(action);
+  }
   return item;
 }
 
 function departureStatusSignal(kind: DepartureStatusKind): string {
   return {
     scheduled: "•",
+    unrecorded: "!",
     "awaiting-response": "!",
     unresolved: "!",
     leaving: "→",
@@ -650,6 +676,8 @@ function fallbackAvailabilitySignal(kind: FallbackAvailabilityKind): string {
   return {
     assigned: "↪",
     available: "•",
+    unrecorded: "!",
+    recorded: "✓",
     "not-needed": "·",
     missed: "×",
     reserved: "—",
@@ -1324,6 +1352,11 @@ function setWorkoutActionsDisabled(disabled: boolean): void {
     container?.querySelectorAll("button").forEach((button) => {
       button.toggleAttribute("disabled", disabled);
     });
+  });
+  [primaryDepartures, fallbackDepartures].forEach((container) => {
+    container?.querySelectorAll<HTMLButtonElement>(
+      "button[data-choice-name='start']",
+    ).forEach((button) => button.toggleAttribute("disabled", disabled));
   });
 }
 
@@ -2069,6 +2102,7 @@ logWorkoutNow?.addEventListener("click", () => {
   void runWorkoutAction("start_unscheduled_workout_record", {});
 });
 primaryDepartures?.addEventListener("click", (event) => {
+  handleWorkoutChoice(event);
   const agendaRow = (event.target as HTMLElement).closest<HTMLButtonElement>(
     "button[data-agenda-slot-id]",
   );
@@ -2078,6 +2112,9 @@ primaryDepartures?.addEventListener("click", (event) => {
     updateWorkspaceDetailStatus();
   }
   void handleCurrentWeekScheduleSave(event);
+});
+fallbackDepartures?.addEventListener("click", (event) => {
+  handleWorkoutChoice(event);
 });
 routineDepartures?.addEventListener("click", (event) => {
   void handleRoutineScheduleSave(event);

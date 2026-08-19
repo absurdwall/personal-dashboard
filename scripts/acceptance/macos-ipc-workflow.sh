@@ -16,6 +16,7 @@ current_step="setup"
 
 fixed_now_epoch_millis="${PERSONAL_DASHBOARD_ACCEPTANCE_NOW_EPOCH_MILLIS:-1786406400000}"
 fixed_utc_offset_minutes="${PERSONAL_DASHBOARD_ACCEPTANCE_UTC_OFFSET_MINUTES:--240}"
+acceptance_scenario="${PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO:-baseline}"
 
 fail() {
   echo "Packaged IPC acceptance failed at ${current_step}: $1" >&2
@@ -108,8 +109,57 @@ run_driver() {
   printf '%s\n' "$output"
 }
 
+run_direct_record_scenario() {
+  current_step="launching direct-record packaged scenario"
+  launch_app
+
+  current_step="waiting for a due planned workout"
+  run_driver wait-text "Record workout" 30
+  run_driver assert-text "Unrecorded — ready to record"
+  run_driver press-contains "Record workout" 10
+
+  current_step="choosing Elliptical in the direct-record flow"
+  run_driver press "Elliptical" 10
+  current_step="choosing the 30-minute preset in the direct-record flow"
+  run_driver press "30" 10
+  current_step="choosing Moderate effort in the direct-record flow"
+  run_driver press "Moderate" 10
+
+  current_step="checking the direct-record result"
+  run_driver assert-text "1 of 3 completed"
+  run_driver assert-text "Completed"
+  run_driver assert-text "Elliptical"
+  run_driver assert-text "Counts toward weekly progress"
+
+  current_step="relaunching after the direct-record result"
+  if ! stop_app; then
+    fail "app process did not exit after termination"
+  fi
+  launch_app
+
+  current_step="checking direct-record persistence after relaunch"
+  run_driver wait-text "1 of 3 completed" 30
+  run_driver assert-text "Completed"
+  run_driver assert-text "Elliptical"
+  run_driver assert-text "Counts toward weekly progress"
+
+  echo "Packaged IPC direct-record acceptance passed"
+  echo "Workflow: a due planned workout crossed Tauri IPC without a departure response"
+  echo "Persistence: the direct record remained visible after relaunch"
+  echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
+}
+
+if [[ "$acceptance_scenario" == "direct" ]]; then
+  run_direct_record_scenario
+  exit 0
+fi
+if [[ "$acceptance_scenario" != "baseline" ]]; then
+  fail "unknown acceptance scenario: $acceptance_scenario"
+fi
+
 current_step="waiting for rendered dashboard"
 launch_app
+current_step="checking the rendered dashboard"
 run_driver wait-text "Log workout now" 30
 run_driver assert-text "WEEK OF MONDAY, AUGUST 10"
 

@@ -37,12 +37,18 @@ func children(of element: AXUIElement) -> [AXUIElement] {
     (attribute(element, "AXChildren") as? [AXUIElement]) ?? []
 }
 
-func walk(_ element: AXUIElement, visit: (AXUIElement) -> Bool) -> Bool {
-    if visit(element) {
-        return true
-    }
-    for child in children(of: element) where walk(child, visit: visit) {
-        return true
+func walk(_ root: AXUIElement, visit: (AXUIElement) -> Bool) -> Bool {
+    var pending = [root]
+    var visited = Set<CFHashCode>()
+
+    while let element = pending.popLast() {
+        guard visited.insert(CFHash(element)).inserted else {
+            continue
+        }
+        if visit(element) {
+            return true
+        }
+        pending.append(contentsOf: children(of: element).reversed())
     }
     return false
 }
