@@ -896,6 +896,10 @@ fn direct_planned_workout_records_against_the_occurrence_and_survives_relaunch()
         "2026-08-10-primary-1-workout",
         completed.workout_records[0].id
     );
+    assert_eq!(
+        Some("2026-08-10-primary-1"),
+        completed.workout_records[0].source_slot_id.as_deref()
+    );
     assert_eq!("Completed", completed.primary_departures[0].status);
     assert_eq!(None, completed.primary_departures[0].record_workout_action);
 
@@ -974,6 +978,10 @@ fn direct_planned_short_workout_is_saved_without_qualifying_progress_or_duplicat
     assert_eq!(
         "Short effort — does not count toward weekly progress",
         completed.workout_records[0].outcome
+    );
+    assert_eq!(
+        Some("2026-08-10-primary-1"),
+        completed.workout_records[0].source_slot_id.as_deref()
     );
     assert_eq!(None, completed.primary_departures[0].record_workout_action);
     assert!(application
@@ -1267,6 +1275,7 @@ fn unscheduled_workouts_use_the_click_only_flow_and_share_progress_rules() {
     let qualifying = finish_unscheduled_workout(&application, "Weight training", "30", "Moderate");
     assert_eq!("1 of 3 completed", qualifying.progress);
     assert_eq!("Unscheduled workout", qualifying.workout_records[0].source);
+    assert_eq!(None, qualifying.workout_records[0].source_slot_id);
     assert_eq!(
         "Counts toward weekly progress",
         qualifying.workout_records[0].outcome
@@ -1281,6 +1290,7 @@ fn unscheduled_workouts_use_the_click_only_flow_and_share_progress_rules() {
         "Short effort — does not count toward weekly progress",
         short.workout_records[0].outcome
     );
+    assert_eq!(None, short.workout_records[0].source_slot_id);
 
     let relaunched = ExerciseApplication::new(profile, reminders, clock);
     assert_eq!(short, relaunched.open().unwrap());

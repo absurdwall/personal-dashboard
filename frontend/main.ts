@@ -232,6 +232,8 @@ type ExerciseDashboardView = Readonly<{
   routineSettings: RoutineSettings;
 }>;
 
+const UNSCHEDULED_WORKOUT_SLOT_ID = "unscheduled";
+
 type NotificationPermission =
   | "prompt"
   | "granted"
@@ -335,6 +337,10 @@ const workoutRecordingChoices = document.querySelector<HTMLElement>(
 );
 const workoutHistory = document.querySelector<HTMLElement>("#workout-history");
 const workoutRecords = document.querySelector<HTMLOListElement>("#workout-records");
+const currentWeekHistory = document.querySelector<HTMLElement>("#current-week-history");
+const currentWeekWorkoutRecords = document.querySelector<HTMLOListElement>(
+  "#current-week-workout-records",
+);
 const exerciseHistory = document.querySelector<HTMLElement>("#exercise-history");
 const exerciseHistoryWeeks = document.querySelector<HTMLElement>(
   "#exercise-history-weeks",
@@ -598,6 +604,12 @@ function fallbackDepartureItem(departure: FallbackDeparture): HTMLLIElement {
   state.append(marker, status);
   trigger.append(identity, state);
   item.append(trigger);
+  if (departure.availabilityKind === "recorded") {
+    const evidence = document.createElement("span");
+    evidence.className = "workout-evidence";
+    evidence.textContent = "✓ Workout recorded";
+    item.append(evidence);
+  }
   return item;
 }
 
@@ -899,6 +911,10 @@ function selectedDepartureHasWorkoutRecord(departure: SelectedDeparture): boolea
     : departure.availabilityKind === "recorded";
 }
 
+function selectedDepartureSourceLabel(departure: SelectedDeparture): string {
+  return isPrimaryDeparture(departure) ? "Primary workout" : "Open capacity workout";
+}
+
 function selectedDepartureRecordAction(
   departure: SelectedDeparture,
 ): string | null {
@@ -1007,8 +1023,8 @@ function renderWorkspaceDetail(
   }
   if (workspaceDetailCopy) {
     workspaceDetailCopy.textContent = selected
-      ? `${selected.day} · ${selected.time}. The agenda remains visible while you review this plan.`
-      : "Record a workout that was not attached to a planned time.";
+      ? `${selected.day} · ${selected.time} · ${selectedDepartureSourceLabel(selected)}. The agenda remains visible while you review this plan.`
+      : "Unscheduled workout · record a workout that is not attached to a planned time.";
   }
   if (workspaceDetailStatus) {
     const status = selected
@@ -1169,11 +1185,21 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
   if (exerciseHistory && exerciseHistoryWeeks) {
     exerciseHistory.hidden = view.history.length === 0;
     if (historyEmptyState) {
-      historyEmptyState.hidden = view.history.length > 0;
+      historyEmptyState.hidden =
+        view.history.length > 0 || view.workoutRecords.length > 0;
     }
     exerciseHistoryWeeks.replaceChildren(
       ...view.history.map((week) =>
         historyWeekItem(week, view.workoutHistoryControls),
+      ),
+    );
+  }
+  if (currentWeekHistory && currentWeekWorkoutRecords) {
+    const hasCurrentWeekRecords = view.workoutRecords.length > 0;
+    currentWeekHistory.hidden = !hasCurrentWeekRecords;
+    currentWeekWorkoutRecords.replaceChildren(
+      ...view.workoutRecords.map((record) =>
+        workoutRecordItem(record, view.workoutHistoryControls),
       ),
     );
   }
@@ -1298,7 +1324,11 @@ async function runWorkoutAction(
     setWorkoutActionsDisabled(false);
     if (command === "complete_workout_record") {
       detailTriggerToRestore = null;
-      restoreSelectedAgendaFocus();
+      if (arguments_.slotId === UNSCHEDULED_WORKOUT_SLOT_ID) {
+        window.requestAnimationFrame(() => logWorkoutNow?.focus());
+      } else {
+        restoreSelectedAgendaFocus();
+      }
     }
   } catch (error) {
     if (exerciseReminderStatus) {
@@ -1977,6 +2007,7 @@ function handleAgendaSelection(event: Event): void {
 workspaceDetailActions?.addEventListener("click", handleWorkoutChoice);
 workoutRecordingChoices?.addEventListener("click", handleWorkoutChoice);
 workoutRecords?.addEventListener("click", handleWorkoutHistoryAction);
+currentWeekWorkoutRecords?.addEventListener("click", handleWorkoutHistoryAction);
 exerciseHistoryWeeks?.addEventListener("click", handleWorkoutHistoryAction);
 workspaceDetailClose?.addEventListener("click", () => {
   closeWorkspaceDetail();
@@ -2007,10 +2038,11 @@ logWorkoutNow?.addEventListener("click", () => {
     window.requestAnimationFrame(() => workspaceDetailClose?.focus());
     return;
   }
-  activeWorkoutSlotId = "unscheduled";
+  activeWorkoutSlotId = UNSCHEDULED_WORKOUT_SLOT_ID;
   selectedDepartureSlotId = null;
   detailTriggerToRestore = null;
   workspaceDetailOpen = true;
+  updateAgendaRowSelection();
   renderWorkspaceDetail();
   window.requestAnimationFrame(() => workspaceDetailClose?.focus());
   void runWorkoutAction("start_unscheduled_workout_record", {});

@@ -154,6 +154,89 @@ run_direct_record_scenario() {
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
 }
 
+run_workout_recording_scenario() {
+  current_step="launching scheduled-and-unscheduled packaged scenario"
+  launch_app
+
+  current_step="opening a due planned workout with visible source context"
+  run_driver wait-text "Log workout now" 30
+  run_driver press-contains "Monday" 10
+  run_driver assert-text "Monday workout"
+  run_driver assert-text "Primary workout"
+  run_driver assert-text "Record workout"
+  run_driver assert-text "Unrecorded — ready to record"
+  run_driver press "Record workout" 10
+  run_driver assert-text "What activity did you do?"
+
+  current_step="persisting the planned workout draft before relaunch"
+  run_driver press "Elliptical" 10
+  run_driver assert-text "About how long was the workout?"
+  if ! stop_app; then
+    fail "app process did not exit after saving the planned workout draft"
+  fi
+  launch_app
+
+  current_step="resuming the planned workout after relaunch"
+  run_driver wait-text "Resume workout" 30
+  run_driver press-contains "Monday" 10
+  run_driver assert-text "About how long was the workout?"
+  run_driver press "Under 20" 10
+  run_driver assert-text "How strenuous did this workout feel?"
+  run_driver press "Easy" 10
+
+  current_step="checking the scheduled record result and restored focus"
+  run_driver assert-text "0 of 3 completed"
+  run_driver assert-text "Completed"
+  run_driver assert-text "Workout recorded"
+  run_driver assert-absent-text "Monday workout"
+  run_driver assert-focused-text "Monday" 10
+  run_driver press-contains "Monday" 10
+  run_driver assert-text "Primary workout"
+  run_driver assert-text "Elliptical"
+  run_driver assert-text "Short effort — does not count toward weekly progress"
+  run_driver press "Close" 10
+
+  current_step="recording an independent unscheduled qualifying workout"
+  run_driver press "Log workout now" 10
+  run_driver assert-text "Unscheduled workout"
+  run_driver assert-text "What activity did you do?"
+  run_driver press "Weight training" 10
+  run_driver press "30" 10
+  run_driver press "Moderate" 10
+  run_driver assert-text "1 of 3 completed"
+  run_driver assert-absent-text "Monday workout"
+  run_driver assert-focused-text "Log workout now" 10
+
+  current_step="checking both sources and short-effort semantics in current-week history"
+  run_driver press "History" 10
+  run_driver assert-text "Recorded workouts"
+  run_driver assert-text "Primary workout"
+  run_driver assert-text "Unscheduled workout"
+  run_driver assert-text "Weight training"
+  run_driver assert-text "Short effort — does not count toward weekly progress"
+  run_driver assert-text "Counts toward weekly progress"
+
+  current_step="relaunching after scheduled and unscheduled records"
+  if ! stop_app; then
+    fail "app process did not exit after scheduled and unscheduled records"
+  fi
+  launch_app
+
+  current_step="checking scheduled and unscheduled persistence after relaunch"
+  run_driver wait-text "1 of 3 completed" 30
+  run_driver press "History" 10
+  run_driver assert-text "Primary workout"
+  run_driver assert-text "Unscheduled workout"
+  run_driver assert-text "Weight training"
+  run_driver assert-text "Short effort — does not count toward weekly progress"
+
+  echo "Packaged IPC scheduled-and-unscheduled acceptance passed"
+  echo "Workflow: a due planned record and an independent unscheduled record crossed Tauri IPC"
+  echo "Persistence: the draft and both completed records remained visible after relaunch"
+  echo "Focus: scheduled completion returned focus to Monday; unscheduled completion returned focus to Log workout now"
+  echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
+}
+
 run_list_first_scenario() {
   current_step="waiting for rendered list-first dashboard"
   launch_app
@@ -212,10 +295,14 @@ if [[ "$acceptance_scenario" == "direct" ]]; then
   run_direct_record_scenario
   exit 0
 fi
+if [[ "$acceptance_scenario" == "workouts" ]]; then
+  run_workout_recording_scenario
+  exit 0
+fi
 if [[ "$acceptance_scenario" == "list-first" || "$acceptance_scenario" == "baseline" ]]; then
   run_list_first_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "direct" ]]; then
+if [[ "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "workouts" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi

@@ -11,7 +11,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|press> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|press> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -125,6 +125,29 @@ func assertAbsentText(_ application: AXUIElement, _ text: String) throws {
     }
 }
 
+func focusedElement(_ application: AXUIElement) -> AXUIElement? {
+    guard let value = attribute(application, "AXFocusedUIElement") else {
+        return nil
+    }
+    return unsafeDowncast(value, to: AXUIElement.self)
+}
+
+func waitForFocusedText(
+    _ application: AXUIElement,
+    _ text: String,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if let element = focusedElement(application),
+           nodeText(element).localizedCaseInsensitiveContains(text) {
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout("focused rendered control: \(text)")
+}
+
 func requireArguments() throws -> (pid_t, String, String, TimeInterval) {
     guard CommandLine.arguments.count >= 4 else {
         throw DriverError.usage
@@ -155,6 +178,9 @@ do {
     case "assert-absent-text":
         try assertAbsentText(application, text)
         print("Rendered state does not contain: \(text)")
+    case "assert-focused-text":
+        try waitForFocusedText(application, text, timeout: timeout)
+        print("Focused rendered control contains: \(text)")
     case "press":
         let deadline = Date().addingTimeInterval(timeout)
         var pressed = false
