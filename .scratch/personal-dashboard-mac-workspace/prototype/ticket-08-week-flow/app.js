@@ -92,6 +92,7 @@ const state = {
   recordingStage: "activity",
   recordingDraft: { activity: null, duration: null, effort: null },
   unscheduledRecords: [],
+  movedDestinations: [],
 };
 
 if (!variants[state.variant]) state.variant = "A";
@@ -99,6 +100,15 @@ if (!variants[state.variant]) state.variant = "A";
 const app = document.querySelector("#app");
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const times = ["4:00 PM", "5:30 PM", "6:00 PM", "7:30 PM"];
+const dayMeta = {
+  Monday: { shortDay: "Mon", date: "August 10" },
+  Tuesday: { shortDay: "Tue", date: "August 11" },
+  Wednesday: { shortDay: "Wed", date: "August 12" },
+  Thursday: { shortDay: "Thu", date: "August 13" },
+  Friday: { shortDay: "Fri", date: "August 14" },
+  Saturday: { shortDay: "Sat", date: "August 15" },
+  Sunday: { shortDay: "Sun", date: "August 16" },
+};
 const recordStages = {
   activity: {
     label: "Activity",
@@ -141,8 +151,17 @@ function icon(name) {
   return `<svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
 }
 
+function capacitySlots() {
+  return sourceData.fallback.filter(
+    (slot) =>
+      !state.movedDestinations.some(
+        (destination) => destination.day === slot.day && destination.time === slot.time,
+      ),
+  );
+}
+
 function allSlots() {
-  return [...sourceData.primary, ...sourceData.fallback];
+  return [...sourceData.primary, ...state.movedDestinations, ...capacitySlots()];
 }
 
 function slotById(id = state.selected) {
@@ -173,12 +192,49 @@ function isMoved(item) {
   return slotState(item) === "moved";
 }
 
+function isMovedDestination(item) {
+  return item.exceptionKind === "changed-destination";
+}
+
 function isFuturePlanned(item) {
   return slotState(item) === "scheduled";
 }
 
+function isDirectRecordEligible(item) {
+  return slotState(item) === "due" || item.recordingEligibility === "due";
+}
+
 function isExceptionEligible(item) {
   return slotState(item) === "due" || isMoved(item);
+}
+
+function movedDestinationFor(source) {
+  return state.movedDestinations.find((destination) => destination.sourceId === source.id);
+}
+
+function movedDestinationId(source, day, time) {
+  const normalizedDestination = `${day}-${time}`.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return `${source.id}-moved-destination-${normalizedDestination}`;
+}
+
+function materializeMovedDestination(source) {
+  const destinationMeta = dayMeta[state.rescheduleDay];
+  return {
+    id: movedDestinationId(source, state.rescheduleDay, state.rescheduleTime),
+    sourceId: source.id,
+    sourceDay: source.day,
+    sourceTime: source.time,
+    exceptionKind: "changed-destination",
+    day: state.rescheduleDay,
+    shortDay: destinationMeta.shortDay,
+    date: destinationMeta.date,
+    time: state.rescheduleTime,
+    label: "Moved workout",
+    status: "Scheduled",
+    tone: "scheduled",
+    state: "scheduled",
+    recordingEligibility: "future",
+  };
 }
 
 function qualifyingWorkoutCount() {
@@ -210,7 +266,9 @@ function compactNav() {
 
 function header() {
   const completed = qualifyingWorkoutCount();
-  const next = allSlots().find((item) => !isRecorded(item) && !isSkipped(item) && item.tone !== "available");
+  const next = allSlots().find(
+    (item) => !isRecorded(item) && !isSkipped(item) && !isMoved(item) && item.tone !== "available",
+  );
   const emptyKicker = completed >= 3 ? "Weekly goal complete" : "No scheduled workouts remaining";
   const emptyTitle = completed >= 3 ? "Weekly goal complete" : "Log an extra workout";
   return `<header class="week-header">
@@ -228,7 +286,11 @@ function statusMark(item) {
 
 function slotRow(item, options = {}) {
   const selected = state.selected === item.id;
-  const movedText = isMoved(item) && item.movedTo ? `Changed to ${item.movedTo}` : statusLabel(item);
+  const movedText = isMoved(item) && item.movedTo
+    ? `Changed this week · ${item.movedTo}`
+    : isMovedDestination(item)
+      ? `Moved destination · ${statusLabel(item)}`
+      : statusLabel(item);
   return `<li class="agenda-item ${selected ? "is-selected" : ""} ${options.inline ? "has-inline-detail" : ""}">
     <button class="slot-row ${slotState(item)}" type="button" data-open="${item.id}" aria-pressed="${selected}">
       <span class="slot-date"><strong>${item.shortDay}</strong><small>${item.date}</small></span>
@@ -245,6 +307,15 @@ function section(title, eyebrow, items, options = {}) {
     <div class="section-heading"><div><span class="eyebrow">${eyebrow}</span><h2>${title}</h2></div><span>${items.length} ${options.countLabel ?? "items"}</span></div>
     <ol>${items.map((item) => slotRow(item, options)).join("")}</ol>
   </section>`;
+}
+
+function movedDestinationSection(options = {}) {
+  if (state.movedDestinations.length === 0) return "";
+  return section("Changed this week", "Moved destinations", state.movedDestinations, {
+    ...options,
+    className: `${options.className ?? ""} moved-destination-section`.trim(),
+    countLabel: "activity",
+  });
 }
 
 function unscheduledRecordSummary(record) {
@@ -273,7 +344,8 @@ function agenda(options = {}) {
   return `<div class="agenda-list">
     ${options.includeUnscheduled ? unscheduledEntry() : ""}
     ${section("Primary workouts", "Planned schedule", sourceData.primary, options)}
-    ${section("Open capacity", "Other times this week", sourceData.fallback, { ...options, className: "capacity-section", countLabel: "open" })}
+    ${movedDestinationSection(options)}
+    ${section("Open capacity", "Other times this week", capacitySlots(), { ...options, className: "capacity-section", countLabel: "open" })}
   </div>`;
 }
 
@@ -283,6 +355,10 @@ function actionButtons(item) {
   }
   if (isSkipped(item)) {
     return `<div class="action-stack"><button class="secondary-action" type="button" data-action="undo-skip">Undo skip</button></div>`;
+  }
+  if (isMovedDestination(item)) {
+    if (!isDirectRecordEligible(item)) return "";
+    return `<div class="action-stack"><button class="primary-action" type="button" data-action="record">${icon("check")}Record workout</button></div>`;
   }
   if (isFuturePlanned(item)) return "";
   if (slotState(item) === "available" && !isMoved(item)) {
@@ -295,6 +371,7 @@ function actionButtons(item) {
 function summaryDetail() {
   const item = slotById();
   const movement = isMoved(item) ? `<div class="moved-note"><span class="eyebrow">Schedule updated</span><strong>${item.movedTo}</strong><small>The original row stays visible as a record of the change.</small></div>` : "";
+  const destinationNote = isMovedDestination(item) ? `<div class="moved-note"><span class="eyebrow">Moved destination</span><strong>From ${item.sourceDay} · ${item.sourceTime}</strong><small>This record belongs to the moved occurrence, not the original row.</small></div>` : "";
   const recordSummary = item.record ? recordReview(item.record) : "";
   const statusCopy = isCompleted(item) ? "Workout recorded" : isShortRecorded(item) ? "Workout recorded · Short effort — does not count toward weekly progress" : isSkipped(item) ? "Skipped for this week" : item.status;
   const detailNote = isExceptionEligible(item)
@@ -305,6 +382,7 @@ function summaryDetail() {
     <div class="detail-title"><div class="date-tile"><strong>${item.shortDay}</strong><small>${item.date.replace("August ", "")}</small></div><div><h2>${item.day}</h2><p>${item.time} · ${item.label}</p></div></div>
     <div class="status-line ${slotState(item)}">${statusMark(item)}<strong>${statusCopy}</strong></div>
     ${movement}
+    ${destinationNote}
     ${recordSummary}
     ${actionButtons(item)}
     ${detailNote}
@@ -377,8 +455,9 @@ function renderB() {
 
 function renderC() {
   const primary = section("Primary plan", "Planned schedule", sourceData.primary, { className: "board-column" });
-  const capacity = section("Open capacity", "Suggested recovery times", sourceData.fallback, { className: "board-column", countLabel: "open" });
-  return `<main class="page variant-c"><div class="page-scroll">${header()}<div class="two-track-board"><div>${primary}</div><div>${capacity}</div></div></div>${state.surface === "detail" ? focusModal() : ""}</main>`;
+  const moved = movedDestinationSection({ className: "board-column" });
+  const capacity = section("Open capacity", "Suggested recovery times", capacitySlots(), { className: "board-column", countLabel: "open" });
+  return `<main class="page variant-c"><div class="page-scroll">${header()}<div class="two-track-board"><div>${primary}${moved}</div><div>${capacity}</div></div></div>${state.surface === "detail" ? focusModal() : ""}</main>`;
 }
 
 function switcher() {
@@ -525,6 +604,7 @@ function saveRecord() {
   }
   const item = selectedItem();
   item.record = {
+    sourceSlotId: item.id,
     activity: state.recordingDraft.activity,
     duration: state.recordingDraft.duration,
     effort: state.recordingDraft.effort,
@@ -545,6 +625,13 @@ function saveRecord() {
 function saveReschedule() {
   const item = selectedItem();
   const destination = `${state.rescheduleDay} · ${state.rescheduleTime}`;
+  const movedDestination = materializeMovedDestination(item);
+  const existingDestination = movedDestinationFor(item);
+  if (existingDestination) {
+    Object.assign(existingDestination, movedDestination);
+  } else {
+    state.movedDestinations.push(movedDestination);
+  }
   item.state = "moved";
   item.status = "Changed this week";
   item.tone = "moved";
