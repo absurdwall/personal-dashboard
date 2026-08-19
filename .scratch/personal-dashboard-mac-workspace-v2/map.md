@@ -9,10 +9,11 @@ Spec: [spec.md](spec.md)
 - [03 — 完成 selected scheduled 与 unscheduled workout recording](issues/03-record-selected-and-unscheduled-workouts.md) — resolved
 - [04 — 完成 change-time 与 skip 例外流程](issues/04-change-time-and-skip-exceptions.md) — resolved
 - [05 — 完成中等窗口与 640x520 compact flow](issues/05-responsive-navigation-and-compact-flow.md) — resolved
+- [06 — 完成 packaged Mac This Week acceptance gate](issues/06-packaged-this-week-acceptance-gate.md) — resolved
 
 ## Current frontier
 
-- [06 — 完成 packaged Mac This Week acceptance gate](issues/06-packaged-this-week-acceptance-gate.md) — ready-for-agent
+- None — Ticket 06 is the final v2 workspace gate; full rendered Accessibility execution remains environment-blocked by the locked desktop session.
 
 ## Blocked tickets
 

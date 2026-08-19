@@ -1,4 +1,6 @@
 import ApplicationServices
+import AppKit
+import CoreGraphics
 import Foundation
 
 enum DriverError: Error, CustomStringConvertible {
@@ -11,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|press|press-contains|select-contains|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|press|press-contains|select-contains|set-size|assert-size> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -76,6 +78,76 @@ func findText(_ application: AXUIElement, _ text: String) -> AXUIElement? {
         return false
     }
     return match
+}
+
+struct AccessibilityPath {
+    let element: AXUIElement
+    let ancestors: [AXUIElement]
+}
+
+func findTextPath(
+    _ root: AXUIElement,
+    _ text: String,
+    contains: Bool = true
+) -> AccessibilityPath? {
+    var visited = Set<CFHashCode>()
+
+    func visit(
+        _ element: AXUIElement,
+        ancestors: [AXUIElement]
+    ) -> AccessibilityPath? {
+        guard visited.insert(CFHash(element)).inserted else {
+            return nil
+        }
+        let renderedText = nodeText(element)
+        let matches = contains
+            ? renderedText.localizedCaseInsensitiveContains(text)
+            : renderedText == text
+        if matches {
+            return AccessibilityPath(element: element, ancestors: ancestors)
+        }
+        let nextAncestors = ancestors + [element]
+        for child in children(of: element) {
+            if let result = visit(child, ancestors: nextAncestors) {
+                return result
+            }
+        }
+        return nil
+    }
+
+    return visit(root, ancestors: [])
+}
+
+func findTextPaths(
+    _ root: AXUIElement,
+    _ text: String,
+    contains: Bool = true
+) -> [AccessibilityPath] {
+    var visited = Set<CFHashCode>()
+    var matches: [AccessibilityPath] = []
+
+    func visit(
+        _ element: AXUIElement,
+        ancestors: [AXUIElement]
+    ) {
+        guard visited.insert(CFHash(element)).inserted else {
+            return
+        }
+        let renderedText = nodeText(element)
+        let matchesText = contains
+            ? renderedText.localizedCaseInsensitiveContains(text)
+            : renderedText == text
+        if matchesText {
+            matches.append(AccessibilityPath(element: element, ancestors: ancestors))
+        }
+        let nextAncestors = ancestors + [element]
+        for child in children(of: element) {
+            visit(child, ancestors: nextAncestors)
+        }
+    }
+
+    visit(root, ancestors: [])
+    return matches
 }
 
 func findPressable(
@@ -159,6 +231,333 @@ func waitForFocusedText(
         Thread.sleep(forTimeInterval: 0.1)
     } while Date() < deadline
     throw DriverError.timeout("focused rendered control: \(text)")
+}
+
+func focusPressable(
+    _ application: AXUIElement,
+    _ text: String,
+    contains: Bool,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if let element = findPressable(application, text, contains: contains) {
+            let error = AXUIElementSetAttributeValue(
+                element,
+                "AXFocused" as CFString,
+                kCFBooleanTrue
+            )
+            guard error == .success else {
+                throw DriverError.actionFailed("focus \(text)", error)
+            }
+            try waitForFocusedText(application, text, timeout: 1)
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout("focusable rendered control: \(text)")
+}
+
+func keyCode(_ text: String) -> CGKeyCode? {
+    switch text.lowercased() {
+    case "return", "enter":
+        return 36
+    case "space":
+        return 49
+    case "escape", "esc":
+        return 53
+    case "tab":
+        return 48
+    default:
+        return nil
+    }
+}
+
+func pressKey(_ pid: pid_t, _ text: String) throws {
+    guard let code = keyCode(text) else {
+        throw DriverError.usage
+    }
+    _ = NSRunningApplication(processIdentifier: pid)?.activate(
+        options: []
+    )
+    guard let source = CGEventSource(stateID: .combinedSessionState),
+          let keyDown = CGEvent(
+              keyboardEventSource: source,
+              virtualKey: code,
+              keyDown: true
+          ),
+          let keyUp = CGEvent(
+              keyboardEventSource: source,
+              virtualKey: code,
+              keyDown: false
+          ) else {
+        throw DriverError.actionFailed("key \(text)", .failure)
+    }
+    keyDown.postToPid(pid)
+    keyUp.postToPid(pid)
+    Thread.sleep(forTimeInterval: 0.25)
+}
+
+func frame(_ element: AXUIElement) -> CGRect? {
+    guard let rawPosition = attribute(element, "AXPosition"),
+          let rawSize = attribute(element, "AXSize") else {
+        return nil
+    }
+    let positionValue = unsafeDowncast(rawPosition, to: AXValue.self)
+    let sizeValue = unsafeDowncast(rawSize, to: AXValue.self)
+    var origin = CGPoint.zero
+    var size = CGSize.zero
+    guard AXValueGetValue(positionValue, .cgPoint, &origin),
+          AXValueGetValue(sizeValue, .cgSize, &size) else {
+        return nil
+    }
+    return CGRect(origin: origin, size: size)
+}
+
+func assertVisibleFocus(
+    _ application: AXUIElement,
+    _ text: String,
+    timeout: TimeInterval
+) throws {
+    try waitForFocusedText(application, text, timeout: timeout)
+    guard let focused = focusedElement(application),
+          let window = mainWindow(application),
+          let focusedFrame = frame(focused),
+          let windowFrame = frame(window),
+          focusedFrame.width > 0,
+          focusedFrame.height > 0,
+          focusedFrame.intersects(windowFrame) else {
+        throw DriverError.timeout("visible focused control: \(text)")
+    }
+}
+
+func roleCounts(_ application: AXUIElement) -> [String: Int] {
+    var counts: [String: Int] = [:]
+    _ = walk(application) { element in
+        let role = stringAttribute(element, "AXRole")
+        if !role.isEmpty {
+            counts[role, default: 0] += 1
+        }
+        return false
+    }
+    return counts
+}
+
+func assertSemanticContract(
+    _ application: AXUIElement,
+    _ mode: String
+) throws {
+    let counts = roleCounts(application)
+    let compactMode = mode == "compact" || mode == "detail-compact" || mode == "settings"
+    guard (counts["AXWindow"] ?? 0) > 0,
+          (counts["AXWebArea"] ?? 0) > 0,
+          (counts["AXButton"] ?? 0) >= 4,
+          (counts["AXStaticText"] ?? 0) > 0,
+          compactMode || (counts["AXList"] ?? 0) > 0 else {
+        throw DriverError.timeout("semantic workspace roles")
+    }
+
+    for text in ["This Week", "History", "Settings"] {
+        guard findPressable(application, text) != nil else {
+            throw DriverError.timeout("semantic navigation control: \(text)")
+        }
+    }
+
+    if mode == "default" {
+        for text in ["Primary departures", "Open capacity", "Log workout now"] {
+            guard findText(application, text) != nil else {
+                throw DriverError.timeout("semantic default workspace content: \(text)")
+            }
+        }
+    } else if mode == "detail" || mode == "detail-compact" {
+        guard findText(application, "workout") != nil,
+              findPressable(application, "Close") != nil ||
+                findPressable(application, "Back") != nil else {
+            throw DriverError.timeout("semantic detail surface")
+        }
+    } else if mode == "compact" {
+        for text in ["This Week", "History", "Settings"] {
+            guard findText(application, text) != nil else {
+                throw DriverError.timeout("semantic compact navigation label: \(text)")
+            }
+        }
+    } else if mode == "settings" {
+        guard (counts["AXTextField"] ?? 0) > 0,
+              findText(application, "Profile & data") != nil else {
+            throw DriverError.timeout("semantic settings form")
+        }
+    } else if mode == "recording" {
+        guard findText(application, "What activity did you do?") != nil,
+              findPressable(application, "Elliptical") != nil else {
+            throw DriverError.timeout("semantic workout recording form")
+        }
+    } else if mode == "warning" {
+        guard findText(application, "overlaps") != nil,
+              (counts["AXStaticText"] ?? 0) > 0 else {
+            throw DriverError.timeout("semantic conflict warning")
+        }
+    } else {
+        throw DriverError.usage
+    }
+}
+
+func normalizedAttributeValue(_ raw: CFTypeRef) -> String {
+    if let value = raw as? Bool {
+        return value ? "true" : "false"
+    }
+    if let value = raw as? NSNumber {
+        return value.boolValue ? "true" : "false"
+    }
+    if let value = raw as? String {
+        return value.lowercased()
+    }
+    return String(describing: raw).lowercased()
+}
+
+func assertState(
+    _ application: AXUIElement,
+    _ text: String,
+    _ expected: String
+) throws {
+    guard let element = findPressable(application, text, contains: true) else {
+        throw DriverError.timeout("stateful rendered control: \(text)")
+    }
+    let values = [
+        "AXSelected",
+        "AXPressed",
+        "AXCurrent",
+        "AXValue",
+        "AXDescription",
+        "AXHelp",
+    ].compactMap {
+        attribute(element, $0).map(normalizedAttributeValue)
+    }
+    let matches: Set<String>
+    switch expected.lowercased() {
+    case "current":
+        matches = ["true", "1", "page", "current", "selected"]
+    case "pressed", "selected":
+        matches = ["true", "1", "pressed", "selected"]
+    default:
+        throw DriverError.usage
+    }
+    guard values.contains(where: { value in
+        matches.contains(value) || matches.contains(where: { value.contains($0) })
+    }) else {
+        throw DriverError.unexpectedText("\(text) did not expose state \(expected)")
+    }
+}
+
+func assertLiveSemantics(
+    _ application: AXUIElement,
+    _ text: String,
+    _ expected: String
+) throws {
+    guard let expectedToken = ["alert", "status"].first(where: {
+              $0 == expected.lowercased()
+          }) else {
+        throw DriverError.usage
+    }
+    let tokens = expectedToken == "alert"
+        ? ["alert", "assertive"]
+        : ["status", "polite"]
+    let exposesExpectedSemantics = findTextPaths(application, text).contains { path in
+        let candidates = [path.element] + path.ancestors.reversed()
+        let values = candidates.flatMap { element in
+            [
+                "AXRole",
+                "AXSubrole",
+                "AXRoleDescription",
+                "AXLive",
+                "AXDescription",
+                "AXHelp",
+            ].compactMap { attribute(element, $0).map(normalizedAttributeValue) }
+        }
+        return values.contains { value in
+            tokens.contains { value.contains($0) }
+        }
+    }
+    guard exposesExpectedSemantics else {
+        throw DriverError.unexpectedText("\(text) did not expose live semantics \(expectedToken)")
+    }
+}
+
+func visibleAttribute(_ element: AXUIElement, _ name: String) -> Bool {
+    guard let raw = attribute(element, name) else {
+        return true
+    }
+    let value = normalizedAttributeValue(raw)
+    return value != "true"
+}
+
+func hasVisibleVerticalScrollBar(_ element: AXUIElement) -> Bool {
+    guard let rawScrollBar = attribute(element, "AXVerticalScrollBar") else {
+        return false
+    }
+    let scrollBar = unsafeDowncast(rawScrollBar, to: AXUIElement.self)
+    return visibleAttribute(scrollBar, "AXHidden")
+}
+
+func assertDocumentFixed(_ application: AXUIElement) throws {
+    var webAreaFound = false
+    var documentScrolls = false
+    _ = walk(application) { element in
+        guard stringAttribute(element, "AXRole") == "AXWebArea" else {
+            return false
+        }
+        webAreaFound = true
+        if hasVisibleVerticalScrollBar(element) {
+            documentScrolls = true
+        }
+        return false
+    }
+    guard webAreaFound else {
+        throw DriverError.timeout("rendered web area")
+    }
+    guard !documentScrolls else {
+        throw DriverError.unexpectedText("document/body scroll")
+    }
+}
+
+func assertScrollableSurface(
+    _ application: AXUIElement,
+    _ label: String
+) throws {
+    let anchorText: String
+    switch label.lowercased() {
+    case "settings":
+        anchorText = "Profile & data"
+    case "exception detail":
+        anchorText = "Change this workout time"
+    case "workout detail":
+        anchorText = "About how long was the workout?"
+    default:
+        throw DriverError.usage
+    }
+    guard let path = findTextPath(application, anchorText),
+          let surface = path.ancestors.reversed().first(where: { element in
+              let role = stringAttribute(element, "AXRole")
+              return role == "AXScrollArea" ||
+                  (role != "AXWebArea" && role != "AXWindow" &&
+                    attribute(element, "AXVerticalScrollBar") != nil)
+          }),
+          let scrollBarRaw = attribute(surface, "AXVerticalScrollBar") else {
+        throw DriverError.timeout("scrollable active surface: \(label)")
+    }
+    let scrollBar = unsafeDowncast(scrollBarRaw, to: AXUIElement.self)
+    guard let before = attribute(scrollBar, "AXValue") as? NSNumber else {
+        throw DriverError.timeout("scroll position: \(label)")
+    }
+    let error = AXUIElementPerformAction(surface, "AXScrollDownByPage" as CFString)
+    guard error == .success else {
+        throw DriverError.actionFailed("scroll \(label)", error)
+    }
+    Thread.sleep(forTimeInterval: 0.25)
+    guard let after = attribute(scrollBar, "AXValue") as? NSNumber,
+          after.doubleValue != before.doubleValue else {
+        throw DriverError.timeout("scroll position changed: \(label)")
+    }
+    try assertDocumentFixed(application)
 }
 
 func selectOption(
@@ -300,6 +699,41 @@ do {
     case "assert-focused-text":
         try waitForFocusedText(application, text, timeout: timeout)
         print("Focused rendered control contains: \(text)")
+    case "focus":
+        try focusPressable(application, text, contains: false, timeout: timeout)
+        print("Focused rendered control: \(text)")
+    case "focus-contains":
+        try focusPressable(application, text, contains: true, timeout: timeout)
+        print("Focused rendered control containing: \(text)")
+    case "press-key":
+        try pressKey(pid, text)
+        print("Sent keyboard activation: \(text)")
+    case "assert-visible-focus":
+        try assertVisibleFocus(application, text, timeout: timeout)
+        print("Focused rendered control is visible: \(text)")
+    case "assert-semantic":
+        try assertSemanticContract(application, text)
+        print("Rendered semantic contract passed: \(text)")
+    case "assert-state":
+        let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else {
+            throw DriverError.usage
+        }
+        try assertState(application, parts[0], parts[1])
+        print("Rendered state passed: \(parts[0]) is \(parts[1])")
+    case "assert-live":
+        let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else {
+            throw DriverError.usage
+        }
+        try assertLiveSemantics(application, parts[0], parts[1])
+        print("Rendered live semantics passed: \(parts[0]) is \(parts[1])")
+    case "assert-document-fixed":
+        try assertDocumentFixed(application)
+        print("Rendered document has no visible vertical scroll")
+    case "assert-scroll-surface":
+        try assertScrollableSurface(application, text)
+        print("Rendered active surface scrolled without document scroll: \(text)")
     case "press":
         let deadline = Date().addingTimeInterval(timeout)
         var pressed = false

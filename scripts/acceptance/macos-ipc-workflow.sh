@@ -109,6 +109,124 @@ run_driver() {
   printf '%s\n' "$output"
 }
 
+run_keyboard_scenario() {
+  current_step="launching keyboard packaged scenario"
+  launch_app
+
+  current_step="checking keyboard-accessible default workspace semantics"
+  run_driver wait-text "Log workout now" 30
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver assert-semantic "default"
+  run_driver assert-document-fixed "document" 10
+  run_driver focus "History" 10
+  run_driver assert-visible-focus "History" 10
+  run_driver press-key "return" 10
+  run_driver assert-text "Previous weeks"
+  run_driver focus "Settings" 10
+  run_driver press-key "return" 10
+  run_driver assert-text "Profile & data"
+  run_driver assert-semantic "settings"
+  run_driver focus "This Week" 10
+  run_driver press-key "return" 10
+  run_driver assert-text "Primary departures"
+  run_driver assert-state "This Week|current" 10
+
+  current_step="selecting a future row with keyboard activation"
+  run_driver focus-contains "Wednesday" 10
+  run_driver assert-visible-focus "Wednesday" 10
+  run_driver press-key "space" 10
+  run_driver assert-semantic "detail"
+  run_driver assert-state "Wednesday|pressed" 10
+  run_driver assert-text "Wednesday workout"
+  run_driver assert-absent-text "Record workout"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver focus "Back" 10
+  run_driver press-key "return" 10
+  run_driver assert-focused-text "Wednesday" 10
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver focus-contains "Wednesday" 10
+  run_driver press-key "space" 10
+  run_driver focus "Close" 10
+  run_driver assert-visible-focus "Close" 10
+  run_driver press-key "return" 10
+  run_driver assert-focused-text "Wednesday" 10
+
+  current_step="activating Record workout, Skip, and Undo with the keyboard"
+  run_driver focus-contains "Monday" 10
+  run_driver press-key "space" 10
+  run_driver assert-text "Record workout"
+  run_driver focus "Skip this session" 10
+  run_driver press-key "return" 10
+  run_driver assert-text "Skipped"
+  run_driver focus "Undo skip" 10
+  run_driver press-key "return" 10
+  run_driver assert-text "Record workout"
+
+  current_step="activating conflict confirmation with the keyboard"
+  run_driver focus-contains "Monday" 10
+  run_driver press-key "space" 10
+  run_driver focus "Change to another time" 10
+  run_driver press-key "return" 10
+  run_driver select-contains "Wednesday · 4:00 PM" 10
+  run_driver focus "Check this time" 10
+  run_driver press-key "return" 10
+  run_driver assert-text "This time overlaps Wednesday"
+  run_driver assert-semantic "warning"
+  run_driver assert-live "This time overlaps Wednesday|alert" 10
+  run_driver focus "Confirm change" 10
+  run_driver assert-visible-focus "Confirm change" 10
+  run_driver press-key "return" 10
+  run_driver assert-text "Changed this week"
+
+  current_step="relaunching the changed target for keyboard direct recording"
+  fixed_now_epoch_millis="1786568400000"
+  if ! stop_app; then
+    fail "app process did not exit after saving the keyboard change-time exception"
+  fi
+  launch_app
+  run_driver wait-text "Unrecorded — ready to record" 30
+  run_driver focus-contains "Wednesday changed" 10
+  run_driver press-key "space" 10
+  run_driver focus "Record workout" 10
+  run_driver press-key "return" 10
+  run_driver assert-semantic "recording"
+  run_driver focus "Elliptical" 10
+  run_driver press-key "return" 10
+  run_driver press "Under 20" 10
+  run_driver press "Easy" 10
+  run_driver assert-text "Workout recorded"
+  run_driver assert-live "Workout recorded|status" 10
+
+  current_step="activating the unscheduled workout entry with the keyboard"
+  run_driver press-key "escape" 10
+  run_driver focus "Log workout now" 10
+  run_driver press-key "return" 10
+  run_driver assert-text "Unscheduled workout"
+  run_driver assert-semantic "detail"
+
+  echo "Packaged IPC keyboard-and-semantics acceptance passed"
+  echo "Keyboard: destinations, rows, detail actions, conflict confirmation, and unscheduled entry activated by key events"
+  echo "Semantics: landmarks, live status, selected detail, and visible focus were observed through Accessibility"
+  echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
+}
+
+run_final_gate() {
+  for scenario in list-first direct workouts exceptions responsive keyboard; do
+    current_step="running packaged $scenario acceptance"
+    if ! PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO="$scenario" \
+      "$script_directory/macos-ipc-workflow.sh"; then
+      fail "packaged $scenario acceptance did not pass"
+    fi
+  done
+
+  echo "Packaged IPC This Week delivery gate passed"
+  echo "Coverage: list-first, direct scheduled record, unscheduled record, exceptions, responsive viewports, and keyboard Accessibility"
+  echo "Persistence: each workflow runs in an isolated packaged profile and verifies relaunch where required"
+}
+
 run_direct_record_scenario() {
   current_step="launching direct-record packaged scenario"
   launch_app
@@ -243,6 +361,10 @@ run_list_first_scenario() {
   run_driver wait-text "Log workout now" 30
 
   current_step="checking the default This Week agenda"
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver assert-semantic "default"
+  run_driver assert-document-fixed "document" 10
   run_driver assert-text "WEEK OF MONDAY, AUGUST 10"
   run_driver assert-text "0 of 3 completed"
   run_driver assert-text "Next departure"
@@ -266,6 +388,8 @@ run_list_first_scenario() {
   run_driver assert-text "Previous weeks"
   run_driver press "Settings" 10
   run_driver assert-text "Profile & data"
+  run_driver assert-semantic "settings"
+  run_driver assert-scroll-surface "settings" 10
   run_driver press "This Week" 10
 
   current_step="opening and closing a future workout sheet"
@@ -422,6 +546,7 @@ run_responsive_scenario() {
   run_driver wait-text "Log workout now" 30
   run_driver set-size "960x720" 10
   run_driver assert-size "960x720" 10
+  run_driver assert-document-fixed "document" 10
   run_driver assert-text "This Week"
   run_driver assert-text "Primary departures"
   run_driver assert-text "Open capacity"
@@ -443,6 +568,7 @@ run_responsive_scenario() {
   current_step="preserving the selected sheet and switching to compact Back"
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
+  run_driver assert-semantic "detail-compact"
   run_driver assert-text "Wednesday workout"
   run_driver assert-text "Back"
   run_driver assert-focused-text "Back" 10
@@ -459,6 +585,12 @@ run_responsive_scenario() {
   run_driver set-size "800x640" 10
   run_driver assert-size "800x640" 10
   run_driver assert-absent-text "Wednesday workout"
+  run_driver press "Settings" 10
+  run_driver assert-text "Profile & data"
+  run_driver assert-semantic "settings"
+  run_driver assert-scroll-surface "settings" 10
+  run_driver press "This Week" 10
+  run_driver assert-text "Primary departures"
   run_driver set-size "960x720" 10
   run_driver assert-size "960x720" 10
   run_driver assert-absent-text "Wednesday workout"
@@ -466,6 +598,7 @@ run_responsive_scenario() {
   current_step="checking compact destination labels"
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
+  run_driver assert-semantic "compact"
   run_driver press "History" 10
   run_driver assert-text "Previous weeks"
   run_driver press "Settings" 10
@@ -486,6 +619,7 @@ run_responsive_scenario() {
   run_driver assert-size "640x520" 10
   run_driver assert-text "Change this workout time"
   run_driver assert-text "Back"
+  run_driver assert-scroll-surface "exception detail" 10
   run_driver press "Cancel" 10
   run_driver press "Back" 10
 
@@ -502,6 +636,7 @@ run_responsive_scenario() {
   run_driver assert-size "640x520" 10
   run_driver assert-text "About how long was the workout?"
   run_driver assert-text "Back"
+  run_driver assert-scroll-surface "workout detail" 10
 
   echo "Packaged IPC responsive-navigation acceptance passed"
   echo "Viewport: 960x720 desktop, 800x640 intermediate, and 640x520 compact"
@@ -510,6 +645,10 @@ run_responsive_scenario() {
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
 }
 
+if [[ "$acceptance_scenario" == "gate" ]]; then
+  run_final_gate
+  exit 0
+fi
 if [[ "$acceptance_scenario" == "direct" ]]; then
   run_direct_record_scenario
   exit 0
@@ -530,6 +669,10 @@ if [[ "$acceptance_scenario" == "responsive" ]]; then
   run_responsive_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" ]]; then
+if [[ "$acceptance_scenario" == "keyboard" ]]; then
+  run_keyboard_scenario
+  exit 0
+fi
+if [[ "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "keyboard" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi

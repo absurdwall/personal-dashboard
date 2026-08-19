@@ -1186,6 +1186,7 @@ function exceptionEditor(
     const result = document.createElement("p");
     result.className = preview.conflict ? "exception-warning" : "exception-preview";
     result.setAttribute("role", preview.conflict ? "alert" : "status");
+    result.setAttribute("aria-live", preview.conflict ? "assertive" : "polite");
     result.textContent = preview.conflict
       ? preview.conflict
       : `No conflict found. Final time: ${preview.day} · ${preview.time}.`;
@@ -1638,6 +1639,14 @@ async function runExceptionMutation(
     detailTriggerToRestore = null;
     selectedDepartureSlotId = slotId;
     renderExerciseDashboard(dashboard);
+    if (workspaceContextStatus) {
+      workspaceContextStatus.textContent =
+        command === "skip_current_week_departure"
+          ? "Workout skipped."
+          : command === "undo_skip_current_week_departure"
+            ? "Skip undone."
+            : "Workout time changed.";
+    }
     setWorkoutActionsDisabled(false);
     window.requestAnimationFrame(() => restoreSelectedAgendaFocus());
   } catch (error) {
@@ -1792,6 +1801,12 @@ async function runWorkoutAction(
       activeWorkoutSlotId = dashboard.workoutRecording.slotId;
     }
     renderExerciseDashboard(dashboard);
+    if (command === "complete_workout_record" && workspaceContextStatus) {
+      workspaceContextStatus.textContent =
+        arguments_.slotId === UNSCHEDULED_WORKOUT_SLOT_ID
+          ? "Unscheduled workout recorded."
+          : "Workout recorded.";
+    }
     setWorkoutActionsDisabled(false);
     if (command === "complete_workout_record") {
       detailTriggerToRestore = null;
