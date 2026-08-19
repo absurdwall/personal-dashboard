@@ -10,6 +10,7 @@ Spec: [spec.md](spec.md)
 - [04 — 完成 change-time 与 skip 例外流程](issues/04-change-time-and-skip-exceptions.md) — resolved
 - [05 — 完成中等窗口与 640x520 compact flow](issues/05-responsive-navigation-and-compact-flow.md) — resolved
 - [06 — 完成 packaged Mac This Week acceptance gate](issues/06-packaged-this-week-acceptance-gate.md) — resolved
+- [08 — 将默认 prototype 入口指向 v2 A 方案](issues/08-route-default-prototype-to-v2.md) — resolved
 
 ## Current frontier
 
