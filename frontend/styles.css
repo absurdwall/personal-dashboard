@@ -1685,3 +1685,190 @@ body {
     gap: 0.65rem;
   }
 }
+
+/* Ticket 05: the shell changes navigation density before it sacrifices agenda readability. */
+@media (min-width: 681px) and (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 4.25rem minmax(0, 1fr);
+  }
+
+  .workspace-sidebar {
+    display: flex;
+    align-items: center;
+    flex-direction: column;
+    gap: 1.25rem;
+    padding: 1rem 0.55rem;
+    border-right: 1px solid rgb(24 32 29 / 14%);
+    border-bottom: 0;
+  }
+
+  .workspace-brand {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .workspace-brand > div:last-child,
+  .destination-button > span:not(.destination-icon) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .workspace-navigation {
+    display: grid;
+    width: 100%;
+  }
+
+  .destination-button {
+    justify-content: center;
+    padding: 0.7rem 0.35rem;
+  }
+
+  .destination-icon {
+    display: grid;
+  }
+
+  .sidebar-status {
+    width: 100%;
+  }
+
+  .workspace-sidebar .runtime-status,
+  .sidebar-reassurance {
+    display: none;
+  }
+
+  .workspace-context-status {
+    display: none;
+  }
+
+  .agenda-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-detail {
+    width: min(30rem, 70%);
+    padding: 1.35rem;
+  }
+}
+
+@media (max-width: 680px) {
+  .app-shell {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-sidebar {
+    display: grid;
+    grid-template-areas:
+      "brand status"
+      "navigation navigation";
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.55rem 0.8rem;
+    padding: 0.65rem 0.7rem;
+  }
+
+  .workspace-brand {
+    grid-area: brand;
+    padding: 0;
+  }
+
+  .workspace-brand .feature-mark {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .sidebar-status {
+    grid-area: status;
+    margin-top: 0;
+  }
+
+  .workspace-sidebar .runtime-status,
+  .sidebar-reassurance {
+    display: none;
+  }
+
+  .workspace-navigation {
+    display: grid;
+    grid-area: navigation;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.3rem;
+  }
+
+  .destination-button {
+    justify-content: center;
+    padding: 0.55rem 0.35rem;
+    font-size: 0.76rem;
+  }
+
+  .destination-icon {
+    display: none;
+  }
+
+  .workspace-header {
+    padding: 0.75rem 0.85rem 0.65rem;
+  }
+
+  .workspace-header h1 {
+    font-size: 1.7rem;
+  }
+
+  .workspace-description {
+    max-width: 34rem;
+    font-size: 0.75rem;
+  }
+
+  .workspace-context-status {
+    display: none;
+  }
+
+  .workspace-destination {
+    padding: 0.85rem;
+  }
+
+  #exercise-dashboard {
+    padding: 0.85rem;
+  }
+
+  #exercise-dashboard .progress-copy {
+    gap: 0.45rem;
+  }
+
+  #exercise-dashboard h3 {
+    font-size: 1.6rem;
+  }
+
+  #exercise-dashboard .next-departure {
+    padding: 0.7rem 0.8rem;
+  }
+
+  .agenda-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .agenda-group {
+    padding: 0.7rem;
+  }
+
+  .agenda-row-trigger {
+    grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+    padding: 0.42rem 0.4rem;
+  }
+
+  .workspace-detail {
+    width: 100%;
+    padding: 0.85rem;
+    border-left: 0;
+    box-shadow: none;
+  }
+
+  .app-shell[data-detail-open="true"] .workspace-information {
+    visibility: hidden;
+  }
+}

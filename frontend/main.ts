@@ -326,6 +326,7 @@ const workspaceDescription = document.querySelector<HTMLElement>("#workspace-des
 const workspaceContextStatus = document.querySelector<HTMLElement>(
   "#workspace-context-status",
 );
+const workspaceInformation = document.querySelector<HTMLElement>(".workspace-information");
 const workspaceDetailHeading = document.querySelector<HTMLElement>(
   "#workspace-detail-heading",
 );
@@ -490,6 +491,7 @@ const requestNotificationPermissionButton = document.querySelector<HTMLButtonEle
 const scheduleCapabilityNotificationButton = document.querySelector<HTMLButtonElement>(
   "#schedule-capability-notification",
 );
+const appShell = document.querySelector<HTMLElement>(".app-shell");
 let currentProfileAuthority: ProfileView["authority"] = "active";
 let currentWorkspaceDestination: WorkspaceDestination = "this-week";
 let currentExerciseView: ExerciseDashboardView | null = null;
@@ -500,6 +502,36 @@ let detailTriggerToRestore: HTMLButtonElement | null = null;
 let exceptionEditorSlotId: string | null = null;
 let exceptionPreview: DepartureChangePreview | null = null;
 let exceptionSelectedSchedule: string | null = null;
+
+type WorkspaceViewportMode = "desktop" | "intermediate" | "compact";
+
+function workspaceViewportMode(): WorkspaceViewportMode {
+  if (window.innerWidth <= 680) {
+    return "compact";
+  }
+  if (window.innerWidth <= 900) {
+    return "intermediate";
+  }
+  return "desktop";
+}
+
+function syncWorkspaceViewportMode(): void {
+  const mode = workspaceViewportMode();
+  const compactDetailOpen =
+    mode === "compact" &&
+    workspaceDetailOpen &&
+    currentWorkspaceDestination === "this-week";
+  appShell?.setAttribute("data-detail-open", String(workspaceDetailOpen));
+  workspaceInformation?.setAttribute("aria-hidden", String(compactDetailOpen));
+  if (workspaceDetailClose) {
+    const compact = mode === "compact";
+    workspaceDetailClose.textContent = compact ? "Back" : "Close";
+    workspaceDetailClose.setAttribute(
+      "aria-label",
+      compact ? "Back to This Week agenda" : "Close workout detail",
+    );
+  }
+}
 
 function departureItem(
   departure: DepartureTiming,
@@ -1176,6 +1208,7 @@ function exceptionEditor(
 function renderWorkspaceDetail(
   view: ExerciseDashboardView | null = currentExerciseView,
 ): void {
+  syncWorkspaceViewportMode();
   if (!workspaceDetail || !workspaceSheetBackdrop) {
     return;
   }
@@ -2325,6 +2358,8 @@ workspaceDestinationButtons.forEach((button) => {
   });
 });
 
+syncWorkspaceViewportMode();
+window.addEventListener("resize", syncWorkspaceViewportMode);
 showWorkspaceDestination("this-week");
 
 profileForm?.addEventListener("submit", (event) => {
@@ -2480,7 +2515,7 @@ logWorkoutNow?.addEventListener("click", () => {
         ? existingRecording.slotId
         : null
       : null;
-    detailTriggerToRestore = null;
+    detailTriggerToRestore = selectedDepartureSlotId ? null : logWorkoutNow;
     workspaceDetailOpen = true;
     updateAgendaRowSelection();
     renderWorkspaceDetail();
@@ -2489,7 +2524,7 @@ logWorkoutNow?.addEventListener("click", () => {
   }
   activeWorkoutSlotId = UNSCHEDULED_WORKOUT_SLOT_ID;
   selectedDepartureSlotId = null;
-  detailTriggerToRestore = null;
+  detailTriggerToRestore = logWorkoutNow;
   workspaceDetailOpen = true;
   updateAgendaRowSelection();
   renderWorkspaceDetail();

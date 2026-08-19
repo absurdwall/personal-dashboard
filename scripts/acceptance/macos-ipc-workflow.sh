@@ -414,6 +414,102 @@ run_exception_scenario() {
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
 }
 
+run_responsive_scenario() {
+  current_step="launching responsive packaged scenario"
+  launch_app
+
+  current_step="checking the full desktop workspace at 960x720"
+  run_driver wait-text "Log workout now" 30
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver assert-text "This Week"
+  run_driver assert-text "Primary departures"
+  run_driver assert-text "Open capacity"
+  run_driver press-contains "Wednesday" 10
+  run_driver assert-text "Wednesday workout"
+  run_driver assert-text "Close"
+  run_driver assert-absent-text "Back"
+
+  current_step="preserving the selected sheet at an intermediate narrow viewport"
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver assert-text "Wednesday workout"
+  run_driver assert-text "Close"
+  run_driver assert-focused-text "Close" 10
+  run_driver assert-text "Primary departures"
+  run_driver assert-text "History"
+  run_driver assert-text "Settings"
+
+  current_step="preserving the selected sheet and switching to compact Back"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver assert-text "Wednesday workout"
+  run_driver assert-text "Back"
+  run_driver assert-focused-text "Back" 10
+  run_driver assert-absent-text "Primary departures"
+  run_driver assert-text "This Week"
+  run_driver assert-text "History"
+  run_driver assert-text "Settings"
+  run_driver press "Back" 10
+  run_driver assert-absent-text "Wednesday workout"
+  run_driver assert-text "Primary departures"
+  run_driver assert-focused-text "Wednesday" 10
+
+  current_step="keeping closed agenda state closed while resizing"
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver assert-absent-text "Wednesday workout"
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver assert-absent-text "Wednesday workout"
+
+  current_step="checking compact destination labels"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver press "History" 10
+  run_driver assert-text "Previous weeks"
+  run_driver press "Settings" 10
+  run_driver assert-text "Profile & data"
+  run_driver press "This Week" 10
+  run_driver assert-text "Primary departures"
+
+  current_step="preserving a pending exception editor across resize"
+  run_driver press-contains "Monday" 10
+  run_driver assert-text "Back"
+  run_driver press "Change to another time" 10
+  run_driver assert-text "Change this workout time"
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver assert-text "Change this workout time"
+  run_driver assert-text "Close"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver assert-text "Change this workout time"
+  run_driver assert-text "Back"
+  run_driver press "Cancel" 10
+  run_driver press "Back" 10
+
+  current_step="preserving a pending workout draft across resize"
+  run_driver press-contains "Monday" 10
+  run_driver assert-text "Back"
+  run_driver press "Record workout" 10
+  run_driver press "Elliptical" 10
+  run_driver assert-text "About how long was the workout?"
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver assert-text "About how long was the workout?"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver assert-text "About how long was the workout?"
+  run_driver assert-text "Back"
+
+  echo "Packaged IPC responsive-navigation acceptance passed"
+  echo "Viewport: 960x720 desktop, 800x640 intermediate, and 640x520 compact"
+  echo "State: selected detail, exception editor, and workout draft survived resize"
+  echo "Navigation: compact destination labels and Back restored agenda focus"
+  echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
+}
+
 if [[ "$acceptance_scenario" == "direct" ]]; then
   run_direct_record_scenario
   exit 0
@@ -430,6 +526,10 @@ if [[ "$acceptance_scenario" == "exceptions" ]]; then
   run_exception_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" ]]; then
+if [[ "$acceptance_scenario" == "responsive" ]]; then
+  run_responsive_scenario
+  exit 0
+fi
+if [[ "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi

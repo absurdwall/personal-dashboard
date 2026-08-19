@@ -11,7 +11,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|press|press-contains|select-contains> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|press|press-contains|select-contains|set-size|assert-size> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -195,6 +195,78 @@ func selectOption(
     }
 }
 
+func mainWindow(_ application: AXUIElement) -> AXUIElement? {
+    if let focused = attribute(application, "AXFocusedWindow") {
+        return unsafeDowncast(focused, to: AXUIElement.self)
+    }
+    return (attribute(application, "AXWindows") as? [AXUIElement])?.first
+}
+
+func parseWindowSize(_ text: String) -> CGSize? {
+    let dimensions = text.split(separator: "x", omittingEmptySubsequences: true)
+    guard dimensions.count == 2,
+          let width = Double(dimensions[0]),
+          let height = Double(dimensions[1]),
+          width >= 640,
+          height >= 520 else {
+        return nil
+    }
+    return CGSize(width: width, height: height)
+}
+
+func windowSize(_ window: AXUIElement) -> CGSize? {
+    guard let rawValue = attribute(window, "AXSize") else {
+        return nil
+    }
+    let value = unsafeDowncast(rawValue, to: AXValue.self)
+    var size = CGSize.zero
+    guard AXValueGetValue(value, .cgSize, &size) else {
+        return nil
+    }
+    return size
+}
+
+func resizeWindow(
+    _ application: AXUIElement,
+    _ text: String
+) throws {
+    guard var size = parseWindowSize(text) else {
+        throw DriverError.usage
+    }
+    guard let window = mainWindow(application) else {
+        throw DriverError.timeout("main application window")
+    }
+    guard let value = AXValueCreate(.cgSize, &size) else {
+        throw DriverError.actionFailed("resize \(text)", .failure)
+    }
+    let error = AXUIElementSetAttributeValue(window, "AXSize" as CFString, value)
+    guard error == .success else {
+        throw DriverError.actionFailed("resize \(text)", error)
+    }
+    Thread.sleep(forTimeInterval: 0.25)
+}
+
+func assertWindowSize(
+    _ application: AXUIElement,
+    _ text: String,
+    timeout: TimeInterval
+) throws {
+    guard let expected = parseWindowSize(text),
+          let window = mainWindow(application) else {
+        throw DriverError.usage
+    }
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if let actual = windowSize(window),
+           abs(actual.width - expected.width) < 1,
+           abs(actual.height - expected.height) < 1 {
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout("window size: \(text)")
+}
+
 func requireArguments() throws -> (pid_t, String, String, TimeInterval) {
     guard CommandLine.arguments.count >= 4 else {
         throw DriverError.usage
@@ -267,6 +339,12 @@ do {
     case "select-contains":
         try selectOption(application, text, timeout: timeout)
         print("Selected rendered option containing: \(text)")
+    case "set-size":
+        try resizeWindow(application, text)
+        print("Resized rendered window to: \(text)")
+    case "assert-size":
+        try assertWindowSize(application, text, timeout: timeout)
+        print("Rendered window size is: \(text)")
     default:
         throw DriverError.usage
     }
