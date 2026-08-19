@@ -17,6 +17,12 @@ const variants = {
   },
 };
 
+const destinations = {
+  "this-week": { label: "This Week", title: "This Week" },
+  history: { label: "History", title: "History" },
+  settings: { label: "Settings", title: "Profile & data" },
+};
+
 const sourceData = {
   week: "Monday, August 10 – Sunday, August 16",
   progress: "0 of 3 completed",
@@ -79,6 +85,7 @@ const sourceData = {
 
 const state = {
   variant: readParam("variant", "A").toUpperCase(),
+  destination: readParam("destination", "this-week"),
   surface: "list",
   selected: readParam("selected", "mon"),
   detailMode: "summary",
@@ -96,6 +103,7 @@ const state = {
 };
 
 if (!variants[state.variant]) state.variant = "A";
+if (!destinations[state.destination]) state.destination = "this-week";
 
 const app = document.querySelector("#app");
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -252,16 +260,16 @@ function nav() {
   return `<aside class="sidebar" aria-label="Primary navigation">
     <div class="brand"><span class="brand-mark">P</span><div><strong>Personal Dashboard</strong><small>Exercise tracking</small></div></div>
     <nav class="nav-list">
-      <button class="nav-item is-current" type="button" aria-current="page">${icon("calendar")}<span>This Week</span><kbd>⌘1</kbd></button>
-      <button class="nav-item" type="button">${icon("history")}<span>History</span><kbd>⌘2</kbd></button>
-      <button class="nav-item" type="button">${icon("settings")}<span>Settings</span><kbd>⌘3</kbd></button>
+      <button class="nav-item ${state.destination === "this-week" ? "is-current" : ""}" type="button" data-destination="this-week" aria-label="This Week" ${state.destination === "this-week" ? 'aria-current="page"' : ""}>${icon("calendar")}<span>This Week</span><kbd>⌘1</kbd></button>
+      <button class="nav-item ${state.destination === "history" ? "is-current" : ""}" type="button" data-destination="history" aria-label="History" ${state.destination === "history" ? 'aria-current="page"' : ""}>${icon("history")}<span>History</span><kbd>⌘2</kbd></button>
+      <button class="nav-item ${state.destination === "settings" ? "is-current" : ""}" type="button" data-destination="settings" aria-label="Settings" ${state.destination === "settings" ? 'aria-current="page"' : ""}>${icon("settings")}<span>Settings</span><kbd>⌘3</kbd></button>
     </nav>
     <div class="sidebar-foot"><span class="privacy-dot"></span>Private and offline on this Mac.</div>
   </aside>`;
 }
 
 function compactNav() {
-  return `<header class="compact-nav"><div class="compact-brand"><span class="brand-mark">P</span><strong>Personal Dashboard</strong></div><select aria-label="Destination"><option>This Week</option><option>History</option><option>Settings</option></select></header>`;
+  return `<header class="compact-nav"><div class="compact-brand"><span class="brand-mark">P</span><strong>Personal Dashboard</strong></div><select aria-label="Destination" data-destination-select>${Object.entries(destinations).map(([value, destination]) => `<option value="${value}" ${value === state.destination ? "selected" : ""}>${destination.label}</option>`).join("")}</select></header>`;
 }
 
 function header() {
@@ -292,7 +300,7 @@ function slotRow(item, options = {}) {
       ? `Moved destination · ${statusLabel(item)}`
       : statusLabel(item);
   return `<li class="agenda-item ${selected ? "is-selected" : ""} ${options.inline ? "has-inline-detail" : ""}">
-    <button class="slot-row ${slotState(item)}" type="button" data-open="${item.id}" aria-pressed="${selected}">
+    <button class="slot-row ${slotState(item)}" type="button" data-open="${item.id}" data-source-row="${item.id}" aria-pressed="${selected}">
       <span class="slot-date"><strong>${item.shortDay}</strong><small>${item.date}</small></span>
       <span class="slot-copy"><strong>${item.time}</strong><small>${item.label}</small></span>
       <span class="slot-status">${statusMark(item)}<span>${movedText}</span></span>
@@ -370,6 +378,9 @@ function actionButtons(item) {
 
 function summaryDetail() {
   const item = slotById();
+  const backControl = window.matchMedia("(max-width: 700px)").matches
+    ? `<button class="back-link" type="button" data-close>${icon("back")}Back to This Week</button>`
+    : `<span class="eyebrow">Selected workout</span>`;
   const movement = isMoved(item) ? `<div class="moved-note"><span class="eyebrow">Schedule updated</span><strong>${item.movedTo}</strong><small>The original row stays visible as a record of the change.</small></div>` : "";
   const destinationNote = isMovedDestination(item) ? `<div class="moved-note"><span class="eyebrow">Moved destination</span><strong>From ${item.sourceDay} · ${item.sourceTime}</strong><small>This record belongs to the moved occurrence, not the original row.</small></div>` : "";
   const recordSummary = item.record ? recordReview(item.record) : "";
@@ -378,7 +389,7 @@ function summaryDetail() {
     ? `<p class="detail-note">No departure confirmation is needed. Record the workout when you return; until then this row remains available for a change or a skip.</p>`
     : "";
   return `<section class="detail-content">
-    <div class="detail-topline"><span class="eyebrow">Selected workout</span><button class="close-button" type="button" data-close aria-label="Close detail">${icon("close")}</button></div>
+    <div class="detail-topline">${backControl}<button class="close-button" type="button" data-close aria-label="Close detail">${icon("close")}</button></div>
     <div class="detail-title"><div class="date-tile"><strong>${item.shortDay}</strong><small>${item.date.replace("August ", "")}</small></div><div><h2>${item.day}</h2><p>${item.time} · ${item.label}</p></div></div>
     <div class="status-line ${slotState(item)}">${statusMark(item)}<strong>${statusCopy}</strong></div>
     ${movement}
@@ -460,6 +471,49 @@ function renderC() {
   return `<main class="page variant-c"><div class="page-scroll">${header()}<div class="two-track-board"><div>${primary}${moved}</div><div>${capacity}</div></div></div>${state.surface === "detail" ? focusModal() : ""}</main>`;
 }
 
+function destinationPage(className, eyebrow, title, description, content) {
+  return `<main class="page destination-page ${className}"><div class="page-scroll"><div class="destination-shell">
+    <header class="destination-header"><span class="eyebrow">${eyebrow}</span><h1>${title}</h1><p>${description}</p></header>
+    ${content}
+  </div></div></main>`;
+}
+
+function historySurface() {
+  const scheduledRecords = allSlots()
+    .filter((item) => item.record)
+    .map((item) => `<li class="destination-record"><div><strong>${item.day} · ${item.time}</strong><span>${item.label}</span></div>${recordReview(item.record)}</li>`)
+    .join("");
+  const unscheduledRecords = state.unscheduledRecords
+    .map((record) => `<li class="destination-record"><div><strong>${record.source}</strong><span>${record.activity} · ${record.duration}</span></div><small>${record.qualifying ? "Counts toward weekly progress" : "Short effort — does not count toward weekly progress"}</small></li>`)
+    .join("");
+  const records = scheduledRecords || unscheduledRecords
+    ? `<ol class="destination-records">${scheduledRecords}${unscheduledRecords}</ol>`
+    : `<div class="destination-empty" role="status"><strong>No records yet</strong><span>This week's records and previous weeks will appear here as you log workouts.</span></div>`;
+  return destinationPage(
+    "history-page",
+    "Completed weeks",
+    "History",
+    "Review recorded workouts and decisions from earlier weeks.",
+    `<section class="destination-card" aria-labelledby="history-records-title"><span class="eyebrow">This week</span><h2 id="history-records-title">Recorded workouts</h2>${records}</section>`,
+  );
+}
+
+function settingsSurface() {
+  return destinationPage(
+    "settings-page",
+    "Workspace controls",
+    "Profile & data",
+    "Keep this device's profile, routine, reminders, and local files under your control.",
+    `<section class="destination-card" aria-labelledby="settings-surface-title"><span class="eyebrow">Local profile</span><h2 id="settings-surface-title">Private and offline on this Mac</h2><p>Profile, repeating routine, reminders, and local data stay within the Personal Dashboard workspace.</p><div class="destination-facts"><div><strong>Profile</strong><span>One versioned profile on this device.</span></div><div><strong>Routine</strong><span>Repeating schedule remains separate from this week's changes.</span></div><div><strong>Reminders</strong><span>Reminder readiness remains part of the production workspace.</span></div></div></section>`,
+  );
+}
+
+function currentPage() {
+  if (state.destination === "history") return historySurface();
+  if (state.destination === "settings") return settingsSurface();
+  return state.variant === "A" ? renderA() : state.variant === "B" ? renderB() : renderC();
+}
+
 function switcher() {
   return `<div class="prototype-switcher" role="group" aria-label="Layout alternative switcher"><button type="button" data-cycle="-1" aria-label="Previous alternative">←</button><div><strong>${state.variant} — ${variants[state.variant].name}</strong><span>${variants[state.variant].description}</span></div><button type="button" data-cycle="1" aria-label="Next alternative">→</button></div>`;
 }
@@ -470,9 +524,12 @@ function toast() {
 }
 
 function render() {
-  const page = state.variant === "A" ? renderA() : state.variant === "B" ? renderB() : renderC();
-  app.innerHTML = `<div class="frame">${compactNav()}${nav()}${page}</div>${switcher()}${toast()}<div class="prototype-badge">PROTOTYPE · THIS WEEK FLOW · FIXTURE ONLY</div>`;
-  document.title = `Personal Dashboard — ${state.variant} ${variants[state.variant].name}`;
+  const page = currentPage();
+  const alternativeSwitcher = state.destination === "this-week" ? switcher() : "";
+  app.innerHTML = `<div class="frame">${compactNav()}${nav()}${page}</div>${alternativeSwitcher}${toast()}<div class="prototype-badge">PROTOTYPE · THIS WEEK FLOW · FIXTURE ONLY</div>`;
+  document.title = state.destination === "this-week"
+    ? `Personal Dashboard — ${state.variant} ${variants[state.variant].name}`
+    : `Personal Dashboard — ${destinations[state.destination].title}`;
   bind();
 }
 
@@ -480,7 +537,47 @@ function syncUrl() {
   const url = new URL(window.location.href);
   url.searchParams.set("variant", state.variant);
   url.searchParams.set("selected", state.selected);
+  url.searchParams.set("destination", state.destination);
   window.history.replaceState({}, "", url);
+}
+
+function focusDestinationControl() {
+  requestAnimationFrame(() => {
+    const compact = window.matchMedia("(max-width: 700px)").matches;
+    const control = compact
+      ? document.querySelector("[data-destination-select]")
+      : document.querySelector(`[data-destination="${state.destination}"]`);
+    control?.focus();
+  });
+}
+
+function showDestination(destination) {
+  if (!destinations[destination]) return;
+  const returningToThisWeek = state.destination !== "this-week" && destination === "this-week";
+  state.destination = destination;
+  syncUrl();
+  render();
+  if (returningToThisWeek) {
+    focusRestoredThisWeek();
+  } else {
+    focusDestinationControl();
+  }
+}
+
+function focusRestoredThisWeek() {
+  requestAnimationFrame(() => {
+    if (state.surface !== "detail") {
+      focusDestinationControl();
+      return;
+    }
+    const selector = state.detailMode === "record"
+      ? ".form-detail .choice, .form-detail .save-action"
+      : state.detailMode === "reschedule"
+        ? ".form-detail select, .form-detail .save-action"
+        : ".detail-sheet .back-link, .detail-sheet .close-button, .focus-modal .back-link, .focus-modal .close-button, .inline-detail .back-link, .inline-detail .close-button, .inline-detail .primary-action";
+    const control = document.querySelector(selector) ?? document.querySelector(`[data-destination="${state.destination}"]`);
+    control?.focus();
+  });
 }
 
 function openDetail(id) {
@@ -536,7 +633,7 @@ function focusRecordControl() {
 }
 
 function focusReturnedSource(origin) {
-  const selector = origin === "unscheduled" ? '[data-action="unscheduled-record"]' : `[data-open="${state.selected}"]`;
+  const selector = origin === "unscheduled" ? '[data-action="unscheduled-record"]' : `[data-source-row="${state.selected}"]`;
   requestAnimationFrame(() => document.querySelector(selector)?.focus());
 }
 
@@ -676,6 +773,8 @@ function undoSkip() {
 }
 
 function bind() {
+  app.querySelectorAll("[data-destination]").forEach((control) => control.addEventListener("click", () => showDestination(control.dataset.destination)));
+  app.querySelectorAll("[data-destination-select]").forEach((control) => control.addEventListener("change", () => showDestination(control.value)));
   app.querySelectorAll("[data-open]").forEach((control) => control.addEventListener("click", () => openDetail(control.dataset.open)));
   app.querySelectorAll("[data-close]").forEach((control) => control.addEventListener("click", closeDetail));
   app.querySelectorAll("[data-detail-mode]").forEach((control) => control.addEventListener("click", () => {
@@ -704,6 +803,7 @@ function bind() {
 }
 
 function cycle(delta) {
+  if (state.destination !== "this-week") return;
   const keys = Object.keys(variants);
   const current = keys.indexOf(state.variant);
   state.variant = keys[(current + delta + keys.length) % keys.length];

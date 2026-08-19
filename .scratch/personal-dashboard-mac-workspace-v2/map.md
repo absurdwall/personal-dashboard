@@ -15,6 +15,7 @@ Spec: [spec.md](spec.md)
 - [10 — 让 future row 只显示计划与状态](issues/10-hide-exception-actions-for-future-rows.md) — resolved
 - [11 — 恢复准确且可操作的 workout recording controls](issues/11-restore-exact-workout-recording-controls.md) — resolved
 - [12 — 将 changed destination 呈现为独立可记录 row](issues/12-materialize-moved-destination-row.md) — resolved
+- [13 — 让 v2 的 History、Settings 与 compact destination 可达](issues/13-make-v2-destinations-reachable.md) — resolved
 
 ## Current frontier
 
