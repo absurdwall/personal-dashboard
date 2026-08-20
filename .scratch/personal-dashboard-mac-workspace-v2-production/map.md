@@ -29,7 +29,7 @@ The previous v2 effort remains useful historical evidence, but its tickets 08–
 | [05 — Change-time, skip/undo, and moved occurrence](issues/05-change-time-skip-and-moved-occurrence.md) | Close and prove exception semantics without corrupting the source occurrence | resolved | 01, 02, 03 |
 | [06 — Responsive sheet and accessibility](issues/06-responsive-sheet-and-accessibility.md) | Match the temporary-sheet behavior across viewports and restore keyboard usability | claimed | 02, 03, 04, 05 |
 | [07 — Persistence, history, settings, and boundaries](issues/07-persistence-history-settings-and-boundaries.md) | Prove relaunch persistence and that existing secondary surfaces remain reachable and coherent | claimed | 03, 04, 05, 06 |
-| [08 — Packaged v2 parity gate](issues/08-packaged-v2-parity-gate.md) | Launch the packaged app and close the effort only after end-to-end parity evidence | ready-for-agent | 01–07 |
+| [08 — Packaged v2 parity gate](issues/08-packaged-v2-parity-gate.md) | Launch the packaged app and close the effort only after end-to-end parity evidence | claimed | 01–07 |
 
 ## Review-comment coverage
 
