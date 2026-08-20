@@ -214,7 +214,7 @@ run_keyboard_scenario() {
 }
 
 run_final_gate() {
-  for scenario in list-first direct state-semantics workouts exceptions responsive keyboard; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive keyboard; do
     current_step="running packaged $scenario acceptance"
     if ! PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO="$scenario" \
       "$script_directory/macos-ipc-workflow.sh"; then
@@ -223,7 +223,7 @@ run_final_gate() {
   done
 
   echo "Packaged IPC This Week delivery gate passed"
-  echo "Coverage: list-first, direct scheduled record, unresolved state, unscheduled record, exceptions, responsive viewports, and keyboard Accessibility"
+  echo "Coverage: list-first, direct scheduled record, unresolved state, unscheduled 0-to-3 progress, exceptions, responsive viewports, and keyboard Accessibility"
   echo "Persistence: each workflow runs in an isolated packaged profile and verifies relaunch where required"
 }
 
@@ -299,6 +299,91 @@ run_state_semantics_scenario() {
   echo "Packaged IPC state-semantics acceptance passed"
   echo "State: unresolved remained visibly distinct while its direct record action stayed available"
   echo "Gate: no departure-response screen was required"
+  echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
+}
+
+run_progress_scenario() {
+  current_step="launching unscheduled-progress packaged scenario"
+  launch_app
+
+  current_step="checking zero progress and preserving an unscheduled draft"
+  run_driver wait-text "Log workout now" 30
+  run_driver assert-text "0 of 3 completed"
+  run_driver press "Log workout now" 10
+  run_driver assert-text "Unscheduled workout"
+  run_driver press "Elliptical" 10
+  run_driver assert-text "About how long was the workout?"
+  run_driver assert-text "0 of 3 completed"
+  if ! stop_app; then
+    fail "app process did not exit after saving the unscheduled workout draft"
+  fi
+
+  current_step="resuming the unscheduled draft without counting it"
+  launch_app
+  run_driver wait-text "Resume workout" 30
+  run_driver press "Resume workout" 10
+  run_driver assert-text "Unscheduled workout"
+  run_driver assert-text "About how long was the workout?"
+  run_driver press "Under 20" 10
+  run_driver press "Easy" 10
+  run_driver assert-text "0 of 3 completed"
+
+  current_step="recording the first qualifying unscheduled workout"
+  run_driver press "Log workout now" 10
+  run_driver assert-text "Unscheduled workout"
+  run_driver press "Weight training" 10
+  run_driver press "30" 10
+  run_driver press "Moderate" 10
+  run_driver assert-text "1 of 3 completed"
+
+  current_step="recording the second qualifying unscheduled workout"
+  run_driver press "Log workout now" 10
+  run_driver assert-text "Unscheduled workout"
+  run_driver press "Elliptical" 10
+  run_driver press "45" 10
+  run_driver press "Hard" 10
+  run_driver assert-text "2 of 3 completed"
+
+  current_step="completing weekly progress with the third qualifying unscheduled workout"
+  run_driver press "Log workout now" 10
+  run_driver assert-text "Unscheduled workout"
+  run_driver press "Other exercise" 10
+  run_driver press "60+ minutes" 10
+  run_driver press "Very hard" 10
+  run_driver assert-text "3 of 3 completed"
+  run_driver assert-text "Weekly goal complete"
+  run_driver assert-text "Weekly goal complete — optional workouts welcome"
+  run_driver assert-absent-text "Monday workout"
+
+  current_step="checking current-week History source identity and outcomes"
+  run_driver press "History" 10
+  run_driver assert-text "Recorded workouts"
+  run_driver assert-text "Unscheduled workout"
+  run_driver assert-text "Short effort — does not count toward weekly progress"
+  run_driver assert-text "Counts toward weekly progress"
+  run_driver assert-text "Weight training"
+  run_driver assert-text "Elliptical"
+  run_driver assert-text "Other exercise"
+
+  current_step="checking progress after returning to This Week"
+  run_driver press "This Week" 10
+  run_driver assert-text "3 of 3 completed"
+
+  current_step="checking complete unscheduled progress after relaunch"
+  if ! stop_app; then
+    fail "app process did not exit after completing unscheduled progress"
+  fi
+  launch_app
+  run_driver wait-text "3 of 3 completed" 30
+  run_driver press "History" 10
+  run_driver assert-text "Recorded workouts"
+  run_driver assert-text "Unscheduled workout"
+  run_driver assert-text "Short effort — does not count toward weekly progress"
+  run_driver assert-text "Counts toward weekly progress"
+
+  echo "Packaged IPC unscheduled-progress acceptance passed"
+  echo "Workflow: an independent draft crossed relaunch, then Under 20 stayed at zero while qualifying records reached 1, 2, and 3"
+  echo "History: current-week records retained the Unscheduled workout source and outcome labels after relaunch"
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
 }
 
@@ -762,6 +847,10 @@ if [[ "$acceptance_scenario" == "state-semantics" ]]; then
   run_state_semantics_scenario
   exit 0
 fi
+if [[ "$acceptance_scenario" == "progress" ]]; then
+  run_progress_scenario
+  exit 0
+fi
 if [[ "$acceptance_scenario" == "workouts" ]]; then
   run_workout_recording_scenario
   exit 0
@@ -782,6 +871,6 @@ if [[ "$acceptance_scenario" == "keyboard" ]]; then
   run_keyboard_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "keyboard" ]]; then
+if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "keyboard" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi

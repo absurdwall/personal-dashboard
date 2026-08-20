@@ -1549,6 +1549,82 @@ fn unscheduled_workouts_use_the_click_only_flow_and_share_progress_rules() {
 }
 
 #[test]
+fn unscheduled_draft_and_progress_states_survive_relaunch_without_a_schedule_binding() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    let started = application.start_unscheduled_workout_record().unwrap();
+    assert_eq!("0 of 3 completed", started.progress);
+    assert_eq!(0, started.workout_records.len());
+    assert_eq!(
+        Some("unscheduled"),
+        started
+            .workout_recording
+            .as_ref()
+            .map(|recording| recording.slot_id.as_str())
+    );
+
+    application
+        .choose_workout_activity("unscheduled", "Elliptical")
+        .unwrap();
+    let resumed = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone())
+        .open()
+        .unwrap();
+    assert_eq!("0 of 3 completed", resumed.progress);
+    assert_eq!(0, resumed.workout_records.len());
+    assert_eq!(
+        Some("unscheduled"),
+        resumed
+            .workout_recording
+            .as_ref()
+            .map(|recording| recording.slot_id.as_str())
+    );
+
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+    application.open().unwrap();
+    application
+        .choose_workout_duration("unscheduled", "Under 20")
+        .unwrap();
+    let short = application
+        .complete_workout_record("unscheduled", "Easy")
+        .unwrap();
+    assert_eq!("0 of 3 completed", short.progress);
+    assert_eq!(1, short.workout_records.len());
+    assert_eq!(None, short.workout_records[0].source_slot_id);
+
+    let partial = record_unscheduled_workout(&application, "Weight training", "30", "Moderate");
+    assert_eq!("1 of 3 completed", partial.progress);
+    let partial = record_unscheduled_workout(&application, "Elliptical", "45", "Hard");
+    assert_eq!("2 of 3 completed", partial.progress);
+    let complete =
+        record_unscheduled_workout(&application, "Other exercise", "60+ minutes", "Very hard");
+    assert_eq!("3 of 3 completed", complete.progress);
+    assert_eq!(
+        Some("Weekly goal complete"),
+        complete.weekly_goal_status.as_deref()
+    );
+    assert_eq!(4, complete.workout_records.len());
+    assert!(complete
+        .workout_records
+        .iter()
+        .all(|record| record.source == "Unscheduled workout" && record.source_slot_id.is_none()));
+    let mut record_ids = complete
+        .workout_records
+        .iter()
+        .map(|record| record.id.clone())
+        .collect::<Vec<_>>();
+    record_ids.sort();
+    record_ids.dedup();
+    assert_eq!(4, record_ids.len());
+
+    let relaunched = ExerciseApplication::new(profile, reminders, clock);
+    assert_eq!(complete, relaunched.open().unwrap());
+}
+
+#[test]
 fn workout_history_is_reverse_chronological_with_established_correction_presets() {
     let clock = FixedNewYorkClock::at(1_786_971_600_000);
     let application = ExerciseApplication::new(
