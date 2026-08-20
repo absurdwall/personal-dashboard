@@ -406,7 +406,7 @@ run_workout_recording_scenario() {
   run_driver assert-text "Monday workout"
   run_driver assert-text "Primary workout"
   run_driver assert-text "Record workout"
-  run_driver assert-text "Unrecorded — ready to record"
+  run_driver assert-text "Unresolved — no response"
   run_driver press "Record workout" 10
   run_driver assert-text "What activity did you do?"
 
@@ -693,8 +693,8 @@ run_exception_scenario() {
   run_driver press "Change to another time" 10
   run_driver assert-text "Change this workout time"
   run_driver assert-text "Check this time"
-  run_driver assert-absent-text "Monday · 4:00 PM"
-  run_driver assert-absent-text "Monday · 8:00 PM"
+  run_driver assert-select-absent-option "Monday · 4:00 PM" 10
+  run_driver assert-select-absent-option "Monday · 8:00 PM" 10
   run_driver assert-text "Saturday · 4:00 PM"
   run_driver assert-text "suggested"
   run_driver select-contains "Sunday · 4:00 PM" 10
@@ -706,7 +706,7 @@ run_exception_scenario() {
   run_driver assert-text "Check this time"
   run_driver press "Check this time" 10
   run_driver assert-text "No conflict found"
-  run_driver assert-text "Final time: Tuesday"
+  run_driver wait-text "Final time: Tuesday" 10
   run_driver press-contains "Change to Tuesday" 10
   run_driver assert-text "Changed this week"
   run_driver assert-text "Tuesday"

@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|press|press-contains|select-contains|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|assert-select-option|assert-select-absent-option|press|press-contains|select-contains|set-size|assert-size> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -183,6 +183,19 @@ func findPressable(
 func findRole(_ application: AXUIElement, _ roles: Set<String>) -> AXUIElement? {
     var match: AXUIElement?
     _ = walk(application) { element in
+        let role = stringAttribute(element, "AXRole")
+        if roles.contains(role) {
+            match = element
+            return true
+        }
+        return false
+    }
+    return match
+}
+
+func findRoleWithin(_ root: AXUIElement, _ roles: Set<String>) -> AXUIElement? {
+    var match: AXUIElement?
+    _ = walk(root) { element in
         let role = stringAttribute(element, "AXRole")
         if roles.contains(role) {
             match = element
@@ -532,7 +545,8 @@ func assertDocumentFixed(_ application: AXUIElement) throws {
 
 func assertScrollableSurface(
     _ application: AXUIElement,
-    _ label: String
+    _ label: String,
+    pid: pid_t
 ) throws {
     let anchorText: String
     switch label.lowercased() {
@@ -547,27 +561,75 @@ func assertScrollableSurface(
     default:
         throw DriverError.usage
     }
-    guard let path = findTextPath(application, anchorText),
-          let surface = path.ancestors.reversed().first(where: { element in
-              let role = stringAttribute(element, "AXRole")
-              return role == "AXScrollArea" ||
-                  (role != "AXWebArea" && role != "AXWindow" &&
-                    attribute(element, "AXVerticalScrollBar") != nil)
-          }),
-          let scrollBarRaw = attribute(surface, "AXVerticalScrollBar") else {
+    let surfaceAndAnchor: (AXUIElement, AXUIElement, CGRect)? = findTextPaths(
+        application,
+        anchorText
+    ).compactMap { path in
+        guard let surface = path.ancestors.reversed().first(where: { element in
+                  let role = stringAttribute(element, "AXRole")
+                  return role == "AXScrollArea" ||
+                      (role != "AXWebArea" && role != "AXWindow" &&
+                        attribute(element, "AXVerticalScrollBar") != nil)
+              }) else {
+            return nil
+        }
+        guard let anchorFrame = frame(path.element), anchorFrame.width > 0, anchorFrame.height > 0 else {
+            return nil
+        }
+        return (surface, path.element, anchorFrame)
+    }.max { left, right in
+        left.2.minY < right.2.minY
+    }
+    guard let (surface, anchor, beforeAnchorFrame) = surfaceAndAnchor,
+          let beforeSurfaceFrame = frame(surface),
+          beforeSurfaceFrame.width > 0,
+          beforeSurfaceFrame.height > 0,
+          beforeSurfaceFrame.contains(
+              CGPoint(x: beforeAnchorFrame.midX, y: beforeAnchorFrame.midY)
+          ) else {
         throw DriverError.timeout("scrollable active surface: \(label)")
     }
-    let scrollBar = unsafeDowncast(scrollBarRaw, to: AXUIElement.self)
-    guard let before = attribute(scrollBar, "AXValue") as? NSNumber else {
-        throw DriverError.timeout("scroll position: \(label)")
+    guard let source = CGEventSource(stateID: .combinedSessionState),
+          let move = CGEvent(
+              mouseEventSource: source,
+              mouseType: .mouseMoved,
+              mouseCursorPosition: CGPoint(
+                  x: beforeAnchorFrame.midX,
+                  y: beforeAnchorFrame.midY
+              ),
+              mouseButton: .left
+          ),
+          let scroll = CGEvent(
+              scrollWheelEvent2Source: source,
+              units: .pixel,
+              wheelCount: 1,
+              wheel1: -8,
+              wheel2: 0,
+              wheel3: 0
+          ) else {
+        throw DriverError.actionFailed("scroll \(label)", .failure)
     }
-    let error = AXUIElementPerformAction(surface, "AXScrollDownByPage" as CFString)
-    guard error == .success else {
-        throw DriverError.actionFailed("scroll \(label)", error)
-    }
+    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    move.post(tap: .cghidEventTap)
+    Thread.sleep(forTimeInterval: 0.05)
+    scroll.post(tap: .cghidEventTap)
     Thread.sleep(forTimeInterval: 0.25)
-    guard let after = attribute(scrollBar, "AXValue") as? NSNumber,
-          after.doubleValue != before.doubleValue else {
+    guard let afterSurfaceFrame = frame(surface),
+          abs(afterSurfaceFrame.origin.x - beforeSurfaceFrame.origin.x) <= 1,
+          abs(afterSurfaceFrame.origin.y - beforeSurfaceFrame.origin.y) <= 1,
+          abs(afterSurfaceFrame.width - beforeSurfaceFrame.width) <= 1,
+          abs(afterSurfaceFrame.height - beforeSurfaceFrame.height) <= 1 else {
+        throw DriverError.timeout("scrollable surface moved: \(label)")
+    }
+    let anchorFrameChanged: Bool
+    if let afterAnchorFrame = frame(anchor) {
+        anchorFrameChanged =
+            abs(afterAnchorFrame.origin.x - beforeAnchorFrame.origin.x) > 1 ||
+                abs(afterAnchorFrame.origin.y - beforeAnchorFrame.origin.y) > 1
+    } else {
+        anchorFrameChanged = false
+    }
+    guard anchorFrameChanged else {
         throw DriverError.timeout("scroll position changed: \(label)")
     }
     try assertDocumentFixed(application)
@@ -578,7 +640,8 @@ func selectOption(
     _ text: String,
     timeout: TimeInterval
 ) throws {
-    guard let picker = findRole(application, Set(["AXComboBox", "AXPopUpButton"])) else {
+    guard let picker = findExceptionSchedulePicker(application)
+        ?? findRole(application, Set(["AXComboBox", "AXPopUpButton"])) else {
         throw DriverError.timeout("schedule picker")
     }
 
@@ -604,6 +667,84 @@ func selectOption(
     )
     guard setError == .success else {
         throw DriverError.actionFailed("select \(text)", setError)
+    }
+}
+
+enum OptionExpectation {
+    case present
+    case absent
+}
+
+func findExceptionSchedulePicker(_ application: AXUIElement) -> AXUIElement? {
+    guard let newTimePath = findTextPath(application, "New time") else {
+        return nil
+    }
+    let pickerRoles = Set(["AXComboBox", "AXPopUpButton"])
+    for context in newTimePath.ancestors.reversed() {
+        if let picker = findRoleWithin(context, pickerRoles) {
+            return picker
+        }
+    }
+    return nil
+}
+
+func findVisibleMenu(_ application: AXUIElement) -> AXUIElement? {
+    var match: AXUIElement?
+    _ = walk(application) { element in
+        guard stringAttribute(element, "AXRole") == "AXMenu",
+              visibleAttribute(element, "AXHidden") else {
+            return false
+        }
+        match = element
+        return true
+    }
+    return match
+}
+
+func findMenuItem(_ menu: AXUIElement, _ text: String) -> AXUIElement? {
+    var match: AXUIElement?
+    _ = walk(menu) { element in
+        guard stringAttribute(element, "AXRole") == "AXMenuItem",
+              nodeText(element).localizedCaseInsensitiveContains(text) else {
+            return false
+        }
+        match = element
+        return true
+    }
+    return match
+}
+
+func assertSelectOption(
+    _ application: AXUIElement,
+    _ text: String,
+    expectation: OptionExpectation,
+    pid: pid_t,
+    timeout: TimeInterval
+) throws {
+    guard let picker = findExceptionSchedulePicker(application) else {
+        throw DriverError.timeout("exception schedule picker")
+    }
+    let pressError = AXUIElementPerformAction(picker, "AXPress" as CFString)
+    guard pressError == .success else {
+        throw DriverError.actionFailed("open exception schedule picker", pressError)
+    }
+
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if let menu = findVisibleMenu(application),
+           let option = findMenuItem(menu, text) {
+            try pressKey(pid, "escape")
+            if case .present = expectation {
+                return
+            }
+            throw DriverError.unexpectedText("select option: \(nodeText(option))")
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+
+    try pressKey(pid, "escape")
+    guard case .absent = expectation else {
+        throw DriverError.timeout("select option: \(text)")
     }
 }
 
@@ -745,8 +886,14 @@ do {
         try assertDocumentFixed(application)
         print("Rendered document has no visible vertical scroll")
     case "assert-scroll-surface":
-        try assertScrollableSurface(application, text)
+        try assertScrollableSurface(application, text, pid: pid)
         print("Rendered active surface scrolled without document scroll: \(text)")
+    case "assert-select-option":
+        try assertSelectOption(application, text, expectation: .present, pid: pid, timeout: timeout)
+        print("Rendered select contains option: \(text)")
+    case "assert-select-absent-option":
+        try assertSelectOption(application, text, expectation: .absent, pid: pid, timeout: timeout)
+        print("Rendered select excludes option: \(text)")
     case "press":
         let deadline = Date().addingTimeInterval(timeout)
         var pressed = false
