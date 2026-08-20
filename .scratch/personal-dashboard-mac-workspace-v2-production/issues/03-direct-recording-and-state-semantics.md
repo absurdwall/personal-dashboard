@@ -1,7 +1,7 @@
 # 03 — Close and prove direct recording and occurrence state semantics
 
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: 01, 02
 
 ## Goal
@@ -24,10 +24,10 @@ Primary targets are frontend/main.ts, frontend/index.html, src-tauri/src/exercis
 
 ## Acceptance
 
-- [ ] The production UI never routes the normal due-record flow through a “Leaving?” gate.
-- [ ] Future rows cannot be recorded, due rows can be recorded directly, and recorded rows cannot be recorded twice.
-- [ ] A relaunch or fresh dashboard read shows the same source binding and state; the full persistence matrix is ticket 07.
-- [ ] Rust/application tests and the relevant real-app acceptance scenario cover the state distinctions above.
+- [x] The production UI never routes the normal due-record flow through a “Leaving?” gate.
+- [x] Future rows cannot be recorded, due rows can be recorded directly, and recorded rows cannot be recorded twice.
+- [x] A relaunch or fresh dashboard read shows the same source binding and state; the full persistence matrix is ticket 07.
+- [x] Rust/application tests and the relevant real-app acceptance scenario cover the state distinctions above.
 
 ## Boundaries
 
@@ -56,4 +56,13 @@ The packaged state-semantics attempt was made with:
 
 `PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=state-semantics scripts/acceptance/macos-ipc-workflow.sh`
 
-It was blocked by the current macOS desktop environment: the Accessibility driver timed out waiting for `Log workout now` while the packaged app was not visible on the locked screen. The ticket therefore remains `claimed`; the packaged acceptance checkboxes remain open and no release-parity claim is made from Rust or build results alone.
+It was initially blocked by the macOS lock screen. The unlocked rerun passed after the acceptance flow was corrected to select Monday before asserting the detail-only `Unresolved — no response` text. The direct-record rerun also passed after pinning its clock to 16:05, before the follow-up becomes due, so the packaged scenario proves the due/unrecorded state rather than conflating it with unresolved.
+
+- 2026-08-20: Unlocked packaged evidence passed:
+  - `PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=state-semantics scripts/acceptance/macos-ipc-workflow.sh`
+  - `PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=direct scripts/acceptance/macos-ipc-workflow.sh`
+  - The existing shell/list-first surface covers future-row detail; Rust application tests cover future, recorded, moved-source, moved-destination, skipped, unresolved, available, and duplicate protections. The unrelated list-first Settings-scroll assertion remains ticket 07 scope.
+
+## Answer
+
+Resolved with direct recording, unresolved-state, future-row, recorded-row, and relaunch evidence complete. The packaged UI crosses real Tauri IPC without a `Leaving for gym` gate; due rows expose `Record workout`, completed rows remove it, and source binding persists after relaunch. `npm run check`, the full Rust suite (71 tests), formatting, build, and shell syntax checks pass.

@@ -229,6 +229,7 @@ run_final_gate() {
 
 run_direct_record_scenario() {
   current_step="launching direct-record packaged scenario"
+  fixed_now_epoch_millis="1786392300000"
   launch_app
 
   current_step="waiting for a due planned workout"
@@ -290,7 +291,7 @@ run_state_semantics_scenario() {
   current_step="relaunching after the follow-up becomes due"
   fixed_now_epoch_millis="1786392900000"
   launch_app
-  run_driver wait-text "Unresolved — no response" 30
+  run_driver wait-text "Monday" 30
   run_driver press-contains "Monday" 10
   run_driver assert-text "Unresolved — no response"
   run_driver assert-text "Record workout"

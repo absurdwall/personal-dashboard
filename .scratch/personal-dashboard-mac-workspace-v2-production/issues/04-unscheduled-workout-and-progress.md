@@ -1,7 +1,7 @@
 # 04 — Complete unscheduled workout, derived progress, and history evidence
 
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: 01, 02, 03
 
 ## Goal
@@ -23,11 +23,11 @@ Primary targets are frontend/main.ts, frontend/index.html, frontend/styles.css, 
 
 ## Acceptance
 
-- [ ] Log workout works without selecting or mutating a scheduled occurrence.
-- [ ] An incomplete draft is not counted as completed; a completed unscheduled workout is counted exactly once.
-- [ ] Progress remains correct after completion, navigation, and relaunch.
-- [ ] History and the current-week summary agree about the record and its source type.
-- [ ] Production tests and a real-app acceptance scenario cover the zero/partial/complete progress states.
+- [x] Log workout works without selecting or mutating a scheduled occurrence.
+- [x] An incomplete draft is not counted as completed; a completed unscheduled workout is counted exactly once.
+- [x] Progress remains correct after completion, navigation, and relaunch.
+- [x] History and the current-week summary agree about the record and its source type.
+- [x] Production tests and a real-app acceptance scenario cover the zero/partial/complete progress states.
 
 ## Boundaries
 
@@ -51,8 +51,14 @@ Passed:
 - Focused Rust tests for unscheduled recording, draft relaunch, rollover cleanup, and the new integrated progress test.
 - `npm run build:mac` — rebuilt `src-tauri/target/release/bundle/macos/Personal Dashboard.app`.
 
-The packaged attempt was made with:
+The packaged attempt was initially made with:
 
 `PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=progress scripts/acceptance/macos-ipc-workflow.sh`
 
-It was blocked by the current macOS desktop environment: the Accessibility driver timed out waiting for `Log workout now` while the packaged app was not visible on the locked screen. The ticket therefore remains `claimed`; the packaged acceptance checkboxes remain open and no release-parity claim is made from Rust or build results alone.
+It was initially blocked by the macOS lock screen. The unlocked rerun passed the complete 0-to-3 flow, including draft continuation after relaunch, Under 20 staying at zero, History source/outcome evidence, This Week navigation, and complete progress after relaunch.
+
+- 2026-08-20: Unlocked packaged rerun passed `PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=progress scripts/acceptance/macos-ipc-workflow.sh`. The prior lock-screen blocker is closed.
+
+## Answer
+
+Resolved with independent unscheduled recording, persisted draft semantics, derived 0/1/2/3 progress, source-aware current-week History, navigation, and relaunch evidence complete. The production runtime needed no new service or dependency; the existing Rust seam was already authoritative and is now covered by the integrated application regression test and packaged acceptance flow.
