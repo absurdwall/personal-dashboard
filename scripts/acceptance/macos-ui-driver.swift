@@ -348,18 +348,31 @@ func assertSemanticContract(
     _ mode: String
 ) throws {
     let counts = roleCounts(application)
+    let compactViewport = mainWindow(application).flatMap(windowSize).map { $0.width <= 680 } ?? false
     let compactMode = mode == "compact" || mode == "detail-compact" || mode == "settings"
+    let minimumButtonCount = compactViewport ? 1 : 4
     guard (counts["AXWindow"] ?? 0) > 0,
           (counts["AXWebArea"] ?? 0) > 0,
-          (counts["AXButton"] ?? 0) >= 4,
+          (counts["AXButton"] ?? 0) >= minimumButtonCount,
           (counts["AXStaticText"] ?? 0) > 0,
           compactMode || (counts["AXList"] ?? 0) > 0 else {
         throw DriverError.timeout("semantic workspace roles")
     }
 
-    for text in ["This Week", "History", "Settings"] {
-        guard findPressable(application, text) != nil else {
-            throw DriverError.timeout("semantic navigation control: \(text)")
+    if compactViewport {
+        let expectedDestination = mode == "settings" ? "Settings" : "This Week"
+        guard let switcher = findRole(application, Set(["AXComboBox", "AXPopUpButton"])),
+              nodeText(switcher).localizedCaseInsensitiveContains(expectedDestination),
+              findText(application, "Destination") != nil else {
+            throw DriverError.timeout("compact destination switcher")
+        }
+    }
+
+    if !compactViewport {
+        for text in ["This Week", "History", "Settings"] {
+            guard findPressable(application, text) != nil else {
+                throw DriverError.timeout("semantic navigation control: \(text)")
+            }
         }
     }
 
@@ -376,10 +389,8 @@ func assertSemanticContract(
             throw DriverError.timeout("semantic detail surface")
         }
     } else if mode == "compact" {
-        for text in ["This Week", "History", "Settings"] {
-            guard findText(application, text) != nil else {
-                throw DriverError.timeout("semantic compact navigation label: \(text)")
-            }
+        guard findText(application, "Destination") != nil else {
+            throw DriverError.timeout("semantic compact navigation label: Destination")
         }
     } else if mode == "settings" {
         guard (counts["AXTextField"] ?? 0) > 0,
@@ -525,6 +536,8 @@ func assertScrollableSurface(
 ) throws {
     let anchorText: String
     switch label.lowercased() {
+    case "agenda":
+        anchorText = "Primary departures"
     case "settings":
         anchorText = "Profile & data"
     case "exception detail":

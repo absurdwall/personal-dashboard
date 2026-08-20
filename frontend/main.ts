@@ -292,6 +292,10 @@ declare global {
 
 type WorkspaceDestination = "this-week" | "history" | "settings";
 
+function isWorkspaceDestination(value: string | undefined): value is WorkspaceDestination {
+  return value === "this-week" || value === "history" || value === "settings";
+}
+
 const workspaceDestinationDetails: Record<
   WorkspaceDestination,
   Readonly<{
@@ -319,6 +323,9 @@ const workspaceDestinationButtons = document.querySelectorAll<HTMLButtonElement>
 );
 const workspaceDestinationPanels = document.querySelectorAll<HTMLElement>(
   "[data-workspace-panel]",
+);
+const workspaceDestinationSelect = document.querySelector<HTMLSelectElement>(
+  "#workspace-destination-select",
 );
 const workspaceTitle = document.querySelector<HTMLElement>("#workspace-title");
 const workspaceDescription = document.querySelector<HTMLElement>("#workspace-description");
@@ -504,6 +511,18 @@ let exceptionSelectedSchedule: string | null = null;
 
 type WorkspaceViewportMode = "desktop" | "intermediate" | "compact";
 
+function setAgendaTriggerState(
+  trigger: HTMLButtonElement,
+  slotId: string,
+): void {
+  const selected = slotId === selectedDepartureSlotId;
+  trigger.setAttribute("aria-pressed", String(selected));
+  trigger.setAttribute(
+    "aria-expanded",
+    String(selected && workspaceDetailOpen),
+  );
+}
+
 function workspaceViewportMode(): WorkspaceViewportMode {
   if (window.innerWidth <= 680) {
     return "compact";
@@ -520,8 +539,13 @@ function syncWorkspaceViewportMode(): void {
     mode === "compact" &&
     workspaceDetailOpen &&
     currentWorkspaceDestination === "this-week";
-  appShell?.setAttribute("data-detail-open", String(workspaceDetailOpen));
+  appShell?.setAttribute("data-detail-open", String(compactDetailOpen));
   workspaceInformation?.setAttribute("aria-hidden", String(compactDetailOpen));
+  workspaceInformation?.toggleAttribute("inert", compactDetailOpen);
+  workspaceDetail?.setAttribute("aria-modal", String(compactDetailOpen));
+  if (workspaceDestinationSelect) {
+    workspaceDestinationSelect.value = currentWorkspaceDestination;
+  }
   if (workspaceDetailClose) {
     const compact = mode === "compact";
     workspaceDetailClose.textContent = compact ? "Back" : "Close";
@@ -618,10 +642,8 @@ function primaryDepartureItem(
     "aria-label",
     `Select ${departure.day} ${adjusted ? "changed" : "planned"} workout`,
   );
-  trigger.setAttribute(
-    "aria-pressed",
-    String(departure.id === selectedDepartureSlotId),
-  );
+  setAgendaTriggerState(trigger, departure.id);
+  trigger.setAttribute("aria-controls", "workspace-detail");
   identity.className = "agenda-row-identity";
   day.textContent = departure.day;
   time.textContent = departure.time;
@@ -667,10 +689,8 @@ function fallbackDepartureItem(departure: FallbackDeparture): HTMLLIElement {
   trigger.className = "agenda-row-trigger";
   trigger.dataset.agendaSlotId = departure.id;
   trigger.setAttribute("aria-label", `Select ${departure.day} open capacity`);
-  trigger.setAttribute(
-    "aria-pressed",
-    String(departure.id === selectedDepartureSlotId),
-  );
+  setAgendaTriggerState(trigger, departure.id);
+  trigger.setAttribute("aria-controls", "workspace-detail");
   if (
     departure.availabilityKind === "reserved" ||
     departure.availabilityKind === "unavailable"
@@ -1038,18 +1058,19 @@ function updateAgendaRowSelection(): void {
     container?.querySelectorAll<HTMLButtonElement>(
       "button[data-agenda-slot-id]",
     ).forEach((button) => {
-      button.setAttribute(
-        "aria-pressed",
-        String(button.dataset.agendaSlotId === selectedDepartureSlotId),
-      );
+      if (button.dataset.agendaSlotId) {
+        setAgendaTriggerState(button, button.dataset.agendaSlotId);
+      }
     });
   });
 }
 
 function closeWorkspaceDetail(restoreFocus = true): void {
   workspaceDetailOpen = false;
+  updateAgendaRowSelection();
   renderWorkspaceDetail();
   const trigger = detailTriggerToRestore;
+  trigger?.setAttribute("aria-expanded", "false");
   if (restoreFocus) {
     if (trigger?.isConnected) {
       window.requestAnimationFrame(() => trigger.focus());
@@ -1095,6 +1116,7 @@ function openWorkspaceDetail(
   }
   selectedDepartureSlotId = slotId;
   detailTriggerToRestore = trigger;
+  trigger?.setAttribute("aria-expanded", "true");
   workspaceDetailOpen = true;
   updateAgendaRowSelection();
   if (currentExerciseView?.workoutRecording?.slotId === slotId) {
@@ -1216,6 +1238,8 @@ function renderWorkspaceDetail(
   workspaceDetail.hidden = !open;
   workspaceSheetBackdrop.hidden = !open;
   workspaceDetail.setAttribute("aria-hidden", String(!open));
+  workspaceDetail.toggleAttribute("inert", !open);
+  workspaceSheetBackdrop.setAttribute("aria-hidden", String(!open));
   if (!open) {
     workspaceDetailActions?.replaceChildren();
     workspaceException?.replaceChildren();
@@ -1364,8 +1388,10 @@ function renderWorkspaceDetail(
 function showWorkspaceDestination(destination: WorkspaceDestination, focus = false): void {
   currentWorkspaceDestination = destination;
   if (destination !== "this-week") {
+    detailTriggerToRestore?.setAttribute("aria-expanded", "false");
     workspaceDetailOpen = false;
     detailTriggerToRestore = null;
+    updateAgendaRowSelection();
   }
   const details = workspaceDestinationDetails[destination];
   workspaceDestinationButtons.forEach((button) => {
@@ -1381,6 +1407,9 @@ function showWorkspaceDestination(destination: WorkspaceDestination, focus = fal
   workspaceDestinationPanels.forEach((panel) => {
     panel.hidden = panel.dataset.workspacePanel !== destination;
   });
+  if (workspaceDestinationSelect) {
+    workspaceDestinationSelect.value = destination;
+  }
   if (workspaceTitle) {
     workspaceTitle.textContent = details.title;
   }
@@ -1806,9 +1835,15 @@ async function runWorkoutAction(
           : "Workout recorded.";
     }
     setWorkoutActionsDisabled(false);
+    if (command !== "complete_workout_record" && dashboard.workoutRecording) {
+      window.requestAnimationFrame(() => {
+        workoutRecordingChoices?.querySelector<HTMLButtonElement>("button")?.focus();
+      });
+    }
     if (command === "complete_workout_record") {
       detailTriggerToRestore = null;
       if (arguments_.slotId === UNSCHEDULED_WORKOUT_SLOT_ID) {
+        logWorkoutNow?.setAttribute("aria-expanded", "false");
         window.requestAnimationFrame(() => logWorkoutNow?.focus());
       } else {
         restoreSelectedAgendaFocus();
@@ -2361,14 +2396,17 @@ async function connectToApplication(): Promise<void> {
 workspaceDestinationButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const destination = button.dataset.workspaceDestination;
-    if (
-      destination === "this-week" ||
-      destination === "history" ||
-      destination === "settings"
-    ) {
+    if (isWorkspaceDestination(destination)) {
       showWorkspaceDestination(destination);
     }
   });
+});
+
+workspaceDestinationSelect?.addEventListener("change", () => {
+  const destination = workspaceDestinationSelect.value;
+  if (isWorkspaceDestination(destination)) {
+    showWorkspaceDestination(destination);
+  }
 });
 
 syncWorkspaceViewportMode();
@@ -2529,6 +2567,7 @@ logWorkoutNow?.addEventListener("click", () => {
         : null
       : null;
     detailTriggerToRestore = selectedDepartureSlotId ? null : logWorkoutNow;
+    logWorkoutNow.setAttribute("aria-expanded", "true");
     workspaceDetailOpen = true;
     updateAgendaRowSelection();
     renderWorkspaceDetail();
@@ -2538,6 +2577,7 @@ logWorkoutNow?.addEventListener("click", () => {
   activeWorkoutSlotId = UNSCHEDULED_WORKOUT_SLOT_ID;
   selectedDepartureSlotId = null;
   detailTriggerToRestore = logWorkoutNow;
+  logWorkoutNow.setAttribute("aria-expanded", "true");
   workspaceDetailOpen = true;
   updateAgendaRowSelection();
   renderWorkspaceDetail();

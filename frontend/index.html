@@ -50,6 +50,14 @@
             <span>Settings</span>
           </button>
         </nav>
+        <div class="workspace-compact-navigation">
+          <label for="workspace-destination-select">Destination</label>
+          <select id="workspace-destination-select" aria-label="Destination">
+            <option value="this-week">This Week</option>
+            <option value="history">History</option>
+            <option value="settings">Settings</option>
+          </select>
+        </div>
         <div class="sidebar-status">
           <div id="runtime-status" class="runtime-status" role="status" aria-live="polite">
             Connecting to the local application…
@@ -147,7 +155,14 @@
               <p class="section-label">Any exercise counts</p>
               <h4 id="manual-workout-heading">Record an unscheduled workout</h4>
             </div>
-            <button id="log-workout-now" type="button">Log workout now</button>
+            <button
+              id="log-workout-now"
+              type="button"
+              aria-controls="workspace-detail"
+              aria-expanded="false"
+            >
+              Log workout now
+            </button>
           </section>
         </section>
             </section>
@@ -434,6 +449,9 @@
           <aside
             id="workspace-detail"
             class="workspace-detail"
+            role="dialog"
+            aria-modal="false"
+            aria-label="Selected workout detail"
             aria-labelledby="workspace-detail-heading"
             aria-describedby="workspace-detail-copy"
             hidden

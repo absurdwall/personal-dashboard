@@ -945,6 +945,10 @@ body {
   gap: 0.35rem;
 }
 
+.workspace-compact-navigation {
+  display: none;
+}
+
 .destination-button {
   display: flex;
   align-items: center;
@@ -1068,6 +1072,7 @@ body {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   background: #f8f5eb;
 }
 
@@ -1102,6 +1107,7 @@ body {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   padding: 1.6rem;
   border-left: 1px solid rgb(24 32 29 / 14%);
   background: #eeece3;
@@ -1806,6 +1812,37 @@ body {
     gap: 0.3rem;
   }
 
+  .workspace-navigation {
+    display: none;
+  }
+
+  .workspace-compact-navigation {
+    display: grid;
+    grid-area: navigation;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .workspace-compact-navigation label {
+    color: #52605a;
+    font-size: 0.72rem;
+    font-weight: 750;
+  }
+
+  .workspace-compact-navigation select {
+    width: 100%;
+    min-width: 0;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid rgb(24 51 41 / 20%);
+    border-radius: 0.55rem;
+    background: #fff;
+    color: #183329;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
   .destination-button {
     justify-content: center;
     padding: 0.55rem 0.35rem;
@@ -1874,6 +1911,6 @@ body {
   }
 
   .app-shell[data-detail-open="true"] .workspace-information {
-    visibility: hidden;
+    display: none;
   }
 }

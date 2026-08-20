@@ -142,6 +142,10 @@ run_keyboard_scenario() {
   run_driver assert-absent-text "Record workout"
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
+  run_driver assert-semantic "compact"
+  run_driver focus "Destination" 10
+  run_driver assert-visible-focus "Destination" 10
+  run_driver select-contains "This Week" 10
   run_driver focus "Back" 10
   run_driver press-key "return" 10
   run_driver assert-focused-text "Wednesday" 10
@@ -151,7 +155,7 @@ run_keyboard_scenario() {
   run_driver press-key "space" 10
   run_driver focus-contains "Close" 10
   run_driver assert-visible-focus "Close" 10
-  run_driver press-key "return" 10
+  run_driver press-key "escape" 10
   run_driver assert-focused-text "Wednesday" 10
 
   current_step="activating Record workout, Skip, and Undo with the keyboard"
@@ -161,9 +165,11 @@ run_keyboard_scenario() {
   run_driver focus "Skip this session" 10
   run_driver press-key "return" 10
   run_driver assert-text "Skipped"
+  run_driver assert-focused-text "Monday" 10
   run_driver focus "Undo skip" 10
   run_driver press-key "return" 10
   run_driver assert-text "Record workout"
+  run_driver assert-focused-text "Monday" 10
 
   current_step="activating conflict confirmation with the keyboard"
   run_driver focus-contains "Monday" 10
@@ -180,6 +186,7 @@ run_keyboard_scenario() {
   run_driver assert-visible-focus "Confirm change" 10
   run_driver press-key "return" 10
   run_driver assert-text "Changed this week"
+  run_driver assert-focused-text "Monday" 10
 
   current_step="relaunching the changed target for keyboard direct recording"
   fixed_now_epoch_millis="1786568400000"
@@ -193,12 +200,13 @@ run_keyboard_scenario() {
   run_driver focus "Record workout" 10
   run_driver press-key "return" 10
   run_driver assert-semantic "recording"
-  run_driver focus "Elliptical" 10
+  run_driver assert-focused-text "Elliptical" 10
   run_driver press-key "return" 10
   run_driver press "Under 20" 10
   run_driver press "Easy" 10
   run_driver assert-text "Workout recorded"
   run_driver assert-live "Workout recorded|status" 10
+  run_driver assert-focused-text "Wednesday changed" 10
 
   current_step="activating the unscheduled workout entry with the keyboard"
   run_driver press-key "escape" 10
@@ -501,9 +509,9 @@ run_shell_scenario() {
   run_driver assert-size "640x520" 10
   run_driver assert-semantic "compact"
   run_driver assert-document-fixed "document" 10
+  run_driver assert-scroll-surface "agenda" 10
+  run_driver assert-text "Destination"
   run_driver assert-text "This Week"
-  run_driver assert-text "History"
-  run_driver assert-text "Settings"
   run_driver assert-absent-text "Selected workout"
 
   current_step="checking explicit row selection and temporary detail return"
@@ -561,8 +569,7 @@ run_list_first_scenario() {
   run_driver assert-size "640x520" 10
   run_driver assert-semantic "compact"
   run_driver assert-text "This Week"
-  run_driver assert-text "History"
-  run_driver assert-text "Settings"
+  run_driver assert-text "Destination"
   run_driver set-size "960x720" 10
   run_driver assert-size "960x720" 10
 
@@ -613,6 +620,7 @@ run_exception_scenario() {
   run_driver assert-text "Undo skip"
   run_driver assert-text "0 of 3 completed"
   run_driver assert-state "Monday|pressed" 10
+  run_driver assert-focused-text "Monday" 10
 
   current_step="relaunching and undoing the direct skip"
   if ! stop_app; then
@@ -623,6 +631,7 @@ run_exception_scenario() {
   run_driver press "Undo skip" 10
   run_driver assert-text "0 of 3 completed"
   run_driver assert-state "Monday|pressed" 10
+  run_driver assert-focused-text "Monday" 10
   run_driver press-contains "Monday" 10
   run_driver assert-text "Record workout"
   run_driver assert-text "Change to another time"
@@ -650,6 +659,7 @@ run_exception_scenario() {
   run_driver assert-text "Tuesday"
   run_driver assert-text "0 of 3 completed"
   run_driver assert-state "Monday|pressed" 10
+  run_driver assert-focused-text "Monday" 10
 
   current_step="advancing the isolated packaged clock to the changed target"
   fixed_now_epoch_millis="1786482000000"
@@ -671,6 +681,7 @@ run_exception_scenario() {
   run_driver assert-absent-text "Record workout"
   run_driver assert-absent-text "Change to another time"
   run_driver assert-state "Tuesday|pressed" 10
+  run_driver assert-focused-text "Tuesday" 10
   if ! stop_app; then
     fail "app process did not exit after skipping the moved destination"
   fi
@@ -679,6 +690,7 @@ run_exception_scenario() {
   run_driver press "Undo skip" 10
   run_driver assert-text "0 of 3 completed"
   run_driver assert-state "Tuesday|pressed" 10
+  run_driver assert-focused-text "Tuesday" 10
   run_driver press-contains "Tuesday" 10
   run_driver assert-text "Record workout"
   run_driver assert-text "Change to another time"
@@ -695,6 +707,7 @@ run_exception_scenario() {
   run_driver assert-text "Wednesday"
   run_driver assert-text "0 of 3 completed"
   run_driver assert-state "Tuesday|pressed" 10
+  run_driver assert-focused-text "Tuesday" 10
 
   current_step="recording the independent changed target occurrence"
   fixed_now_epoch_millis="1786568400000"
@@ -715,6 +728,7 @@ run_exception_scenario() {
   run_driver assert-text "1 of 3 completed"
   run_driver assert-text "Completed"
   run_driver assert-state "Wednesday changed|pressed" 10
+  run_driver assert-focused-text "Wednesday changed" 10
 
   current_step="checking original and changed target persistence after relaunch"
   if ! stop_app; then
@@ -779,9 +793,8 @@ run_responsive_scenario() {
   run_driver assert-text "Back"
   run_driver assert-focused-text "Back" 10
   run_driver assert-absent-text "Primary departures"
+  run_driver assert-text "Destination"
   run_driver assert-text "This Week"
-  run_driver assert-text "History"
-  run_driver assert-text "Settings"
   run_driver press "Back" 10
   run_driver assert-absent-text "Wednesday workout"
   run_driver assert-text "Primary departures"
@@ -805,17 +818,22 @@ run_responsive_scenario() {
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
   run_driver assert-semantic "compact"
-  run_driver press "History" 10
+  run_driver select-contains "History" 10
   run_driver assert-text "Previous weeks"
-  run_driver press "Settings" 10
+  run_driver select-contains "Settings" 10
   run_driver assert-text "Profile & data"
-  run_driver press "This Week" 10
+  run_driver select-contains "This Week" 10
   run_driver assert-text "Primary departures"
 
   current_step="preserving a pending exception editor across resize"
   run_driver press-contains "Monday" 10
   run_driver assert-text "Back"
   run_driver press "Change to another time" 10
+  run_driver assert-text "Change this workout time"
+  run_driver select-contains "History" 10
+  run_driver assert-text "Previous weeks"
+  run_driver select-contains "This Week" 10
+  run_driver press-contains "Monday" 10
   run_driver assert-text "Change this workout time"
   run_driver set-size "800x640" 10
   run_driver assert-size "800x640" 10
@@ -833,7 +851,13 @@ run_responsive_scenario() {
   run_driver press-contains "Monday" 10
   run_driver assert-text "Back"
   run_driver press "Record workout" 10
+  run_driver assert-focused-text "Elliptical" 10
   run_driver press "Elliptical" 10
+  run_driver assert-text "About how long was the workout?"
+  run_driver select-contains "History" 10
+  run_driver assert-text "Previous weeks"
+  run_driver select-contains "This Week" 10
+  run_driver press-contains "Monday" 10
   run_driver assert-text "About how long was the workout?"
   run_driver set-size "800x640" 10
   run_driver assert-size "800x640" 10
