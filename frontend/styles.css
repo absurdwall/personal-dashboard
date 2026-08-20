@@ -1013,9 +1013,9 @@ body {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1.5rem;
+  gap: 1rem;
   min-width: 0;
-  padding: 1.35rem 1.6rem 1.1rem;
+  padding: 1rem 1.4rem 0.85rem;
   border-bottom: 1px solid rgb(24 32 29 / 12%);
   background: #f4f1e8;
 }
@@ -1028,27 +1028,27 @@ body {
   max-width: none;
   margin-bottom: 0.35rem;
   color: #18201d;
-  font-size: clamp(1.8rem, 4vw, 3rem);
+  font-size: clamp(1.7rem, 3vw, 2.35rem);
   letter-spacing: -0.04em;
   line-height: 1;
 }
 
 .workspace-description {
-  max-width: 46rem;
+  max-width: 34rem;
   margin-bottom: 0;
   color: #64716b;
-  font-size: 0.86rem;
+  font-size: 0.78rem;
   line-height: 1.45;
 }
 
 .workspace-context-status {
   flex: 0 0 auto;
-  max-width: 14rem;
-  padding: 0.5rem 0.7rem;
+  max-width: 12rem;
+  padding: 0.4rem 0.6rem;
   border: 1px solid rgb(24 32 29 / 12%);
   border-radius: 0.6rem;
   color: #52605a;
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   line-height: 1.35;
   text-align: right;
 }
@@ -1428,7 +1428,7 @@ body {
 
 /* Issue 06: keep This Week dense enough to scan as an agenda before detail actions expand. */
 #exercise-dashboard {
-  padding: 1.25rem;
+  padding: 1.15rem 1.4rem 1.35rem;
 }
 
 #exercise-dashboard .progress-copy {
@@ -1461,7 +1461,7 @@ body {
 
 .agenda-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.18fr) minmax(13rem, 0.82fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
 }
 
@@ -1659,6 +1659,11 @@ body {
 
 .fallback-agenda .agenda-row-state {
   font-size: 0.7rem;
+}
+
+.fallback-agenda {
+  border-color: rgb(33 76 55 / 16%);
+  background: #f1f4ed;
 }
 
 #exercise-dashboard .exercise-reminder-status {

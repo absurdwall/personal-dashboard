@@ -64,7 +64,7 @@
             <p class="section-label" data-feature-area>Exercise tracking</p>
             <h1 id="workspace-title">This Week</h1>
             <p id="workspace-description" class="workspace-description">
-              Plan the next departure, record what happened, and keep this week moving.
+              See this week's plan and record what happened.
             </p>
           </div>
           <div id="workspace-context-status" class="workspace-context-status" role="status" aria-live="polite">
@@ -100,7 +100,12 @@
                 </div>
                 <span class="agenda-count">3 planned</span>
               </div>
-              <ol id="primary-departures" class="departure-list agenda-list"></ol>
+              <ol
+                id="primary-departures"
+                class="departure-list agenda-list"
+                role="list"
+                aria-label="Primary planned workouts"
+              ></ol>
             </section>
             <section id="adjusted-agenda" class="agenda-group adjusted-agenda" aria-labelledby="adjusted-departures-heading" hidden>
               <div class="agenda-group-heading">
@@ -110,7 +115,12 @@
                 </div>
                 <span class="agenda-count">As scheduled</span>
               </div>
-              <ol id="adjusted-departures" class="departure-list agenda-list"></ol>
+              <ol
+                id="adjusted-departures"
+                class="departure-list agenda-list"
+                role="list"
+                aria-label="Workouts changed this week"
+              ></ol>
             </section>
             <section class="agenda-group fallback-agenda" aria-labelledby="fallback-departures-heading">
               <div class="agenda-group-heading">
@@ -120,7 +130,12 @@
                 </div>
                 <span id="fallback-count" class="availability-count">—</span>
               </div>
-              <ol id="fallback-departures" class="departure-list agenda-list"></ol>
+              <ol
+                id="fallback-departures"
+                class="departure-list agenda-list"
+                role="list"
+                aria-label="Open capacity this week"
+              ></ol>
             </section>
           </div>
           <p id="exercise-reminder-status" class="exercise-reminder-status" role="status" aria-live="polite">

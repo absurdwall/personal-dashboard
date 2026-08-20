@@ -149,7 +149,7 @@ run_keyboard_scenario() {
   run_driver assert-size "960x720" 10
   run_driver focus-contains "Wednesday" 10
   run_driver press-key "space" 10
-  run_driver focus "Close" 10
+  run_driver focus-contains "Close" 10
   run_driver assert-visible-focus "Close" 10
   run_driver press-key "return" 10
   run_driver assert-focused-text "Wednesday" 10
@@ -312,7 +312,7 @@ run_workout_recording_scenario() {
   run_driver assert-text "Primary workout"
   run_driver assert-text "Elliptical"
   run_driver assert-text "Short effort — does not count toward weekly progress"
-  run_driver press "Close" 10
+  run_driver press-contains "Close" 10
 
   current_step="recording an independent unscheduled qualifying workout"
   run_driver press "Log workout now" 10
@@ -355,6 +355,57 @@ run_workout_recording_scenario() {
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
 }
 
+run_shell_scenario() {
+  current_step="launching production shell packaged scenario"
+  launch_app
+
+  current_step="checking the default This Week shell at supported viewport sizes"
+  run_driver wait-text "Log workout now" 30
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver assert-semantic "default"
+  run_driver assert-document-fixed "document" 10
+  run_driver assert-text "WEEK OF MONDAY, AUGUST 10"
+  run_driver assert-text "0 of 3 completed"
+  run_driver assert-text "Next departure"
+  run_driver assert-text "Primary departures"
+  run_driver assert-text "Open capacity"
+  run_driver assert-text "Log workout now"
+  run_driver assert-absent-text "Selected workout"
+  run_driver assert-absent-text "Leaving for gym"
+
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver assert-semantic "default"
+  run_driver assert-document-fixed "document" 10
+  run_driver assert-text "Primary departures"
+  run_driver assert-text "Open capacity"
+
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver assert-semantic "compact"
+  run_driver assert-document-fixed "document" 10
+  run_driver assert-text "This Week"
+  run_driver assert-text "History"
+  run_driver assert-text "Settings"
+  run_driver assert-absent-text "Selected workout"
+
+  current_step="checking explicit row selection and temporary detail return"
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver press-contains "Wednesday" 10
+  run_driver assert-text "Wednesday workout"
+  run_driver assert-state "Wednesday|pressed" 10
+  run_driver press-contains "Close" 10
+  run_driver assert-absent-text "Wednesday workout"
+  run_driver assert-state "Wednesday|pressed" 10
+
+  echo "Packaged IPC production shell acceptance passed"
+  echo "Shell: This Week stayed list-first with full-width agenda hierarchy at 960x720, 800x640, and 640x520"
+  echo "Detail: explicit row selection opened the temporary surface and Close returned to the selected agenda context"
+  echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
+}
+
 run_list_first_scenario() {
   current_step="waiting for rendered list-first dashboard"
   launch_app
@@ -383,6 +434,21 @@ run_list_first_scenario() {
   run_driver assert-absent-text "Move to fallback"
   run_driver assert-absent-text "Fallback availability"
 
+  current_step="checking the default shell at intermediate and compact sizes"
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver assert-semantic "default"
+  run_driver assert-text "Primary departures"
+  run_driver assert-text "Open capacity"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver assert-semantic "compact"
+  run_driver assert-text "This Week"
+  run_driver assert-text "History"
+  run_driver assert-text "Settings"
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+
   current_step="checking direct destination switching"
   run_driver press "History" 10
   run_driver assert-text "Previous weeks"
@@ -397,7 +463,7 @@ run_list_first_scenario() {
   run_driver assert-text "Selected workout"
   run_driver assert-text "Wednesday workout"
   run_driver assert-absent-text "Record workout"
-  run_driver press "Close" 10
+  run_driver press-contains "Close" 10
   run_driver assert-absent-text "Wednesday workout"
   run_driver assert-text "0 of 3 completed"
 
@@ -405,7 +471,7 @@ run_list_first_scenario() {
   run_driver press-contains "Monday" 10
   run_driver assert-text "Monday workout"
   run_driver assert-text "Record workout"
-  run_driver press "Close" 10
+  run_driver press-contains "Close" 10
   run_driver assert-absent-text "Monday workout"
   run_driver assert-text "0 of 3 completed"
 
@@ -525,7 +591,7 @@ run_exception_scenario() {
   run_driver assert-text "Completed"
   run_driver press-contains "Monday" 10
   run_driver assert-text "Changed to Tuesday"
-  run_driver press "Close" 10
+  run_driver press-contains "Close" 10
   run_driver assert-focused-text "Monday" 10
   run_driver press-contains "Wednesday changed" 10
   run_driver assert-text "Workout recorded"
@@ -649,6 +715,10 @@ if [[ "$acceptance_scenario" == "gate" ]]; then
   run_final_gate
   exit 0
 fi
+if [[ "$acceptance_scenario" == "shell" ]]; then
+  run_shell_scenario
+  exit 0
+fi
 if [[ "$acceptance_scenario" == "direct" ]]; then
   run_direct_record_scenario
   exit 0
@@ -673,6 +743,6 @@ if [[ "$acceptance_scenario" == "keyboard" ]]; then
   run_keyboard_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "keyboard" ]]; then
+if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "keyboard" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi

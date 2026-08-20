@@ -301,8 +301,7 @@ const workspaceDestinationDetails: Record<
 > = {
   "this-week": {
     title: "This Week",
-    description:
-      "Plan the next departure, record what happened, and keep this week moving.",
+    description: "See this week's plan and record what happened.",
   },
   history: {
     title: "History",
