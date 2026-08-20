@@ -979,6 +979,219 @@ fn change_time_requires_explicit_confirmation_for_a_conflict() {
 }
 
 #[test]
+fn change_time_requires_the_same_confirmation_for_adjusted_and_assigned_targets() {
+    let adjusted_profile = IsolatedProfile::default();
+    let adjusted_clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let adjusted_application = ExerciseApplication::new(
+        adjusted_profile,
+        DeniedReminderOutbox,
+        adjusted_clock.clone(),
+    );
+
+    adjusted_application.open().unwrap();
+    adjusted_application
+        .change_current_week_departure("2026-08-10-primary-1", "Saturday", "16:00", false)
+        .unwrap();
+    adjusted_clock.advance_to(1_786_564_800_000);
+    adjusted_application.open().unwrap();
+
+    let adjusted_preview = adjusted_application
+        .preview_current_week_departure_change("2026-08-10-primary-2", "Saturday", "16:00")
+        .unwrap();
+    assert_eq!(
+        Some("This time overlaps Saturday · 4:00 PM."),
+        adjusted_preview.conflict.as_deref()
+    );
+    assert_eq!(
+        "The selected time conflicts with another planned workout. Confirm to continue.",
+        adjusted_application
+            .change_current_week_departure("2026-08-10-primary-2", "Saturday", "16:00", false,)
+            .unwrap_err()
+    );
+    let adjusted_confirmed = adjusted_application
+        .change_current_week_departure("2026-08-10-primary-2", "Saturday", "16:00", true)
+        .unwrap();
+    assert_eq!(2, adjusted_confirmed.adjusted_departures.len());
+
+    let fallback_profile = IsolatedProfile::default();
+    let fallback_clock = FixedNewYorkClock::at(1_786_392_000_000);
+    let fallback_application = ExerciseApplication::new(
+        fallback_profile,
+        DeniedReminderOutbox,
+        fallback_clock.clone(),
+    );
+
+    fallback_application.open().unwrap();
+    fallback_application
+        .confirm_departure_decision("2026-08-10-primary-1", "move-to-fallback", "Work ran late")
+        .unwrap();
+    fallback_clock.advance_to(1_786_564_800_000);
+    fallback_application.open().unwrap();
+
+    let fallback_preview = fallback_application
+        .preview_current_week_departure_change("2026-08-10-primary-2", "Saturday", "16:00")
+        .unwrap();
+    assert_eq!(
+        Some("This time overlaps Saturday · 4:00 PM."),
+        fallback_preview.conflict.as_deref()
+    );
+    assert_eq!(
+        "The selected time conflicts with another planned workout. Confirm to continue.",
+        fallback_application
+            .change_current_week_departure("2026-08-10-primary-2", "Saturday", "16:00", false,)
+            .unwrap_err()
+    );
+    let fallback_confirmed = fallback_application
+        .change_current_week_departure("2026-08-10-primary-2", "Saturday", "16:00", true)
+        .unwrap();
+    assert_eq!(1, fallback_confirmed.adjusted_departures.len());
+}
+
+#[test]
+fn moved_destination_skip_and_undo_preserve_source_binding_and_recordability() {
+    let profile = IsolatedProfile::default();
+    let reminders = ReminderOutbox::default();
+    let clock = FixedNewYorkClock::at(1_786_366_800_000);
+    let application = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone());
+
+    application.open().unwrap();
+    clock.advance_to(1_786_392_000_000);
+    let changed = application
+        .change_current_week_departure("2026-08-10-primary-1", "Tuesday", "16:00", false)
+        .unwrap();
+    let target_id = changed.adjusted_departures[0].id.clone();
+    let routine = changed.routine_settings.clone();
+    assert_eq!(
+        DepartureStatusKind::Moved,
+        changed.primary_departures[0].status_kind
+    );
+    assert_eq!(
+        Some(DepartureExceptionKind::ChangedDestination),
+        changed.adjusted_departures[0]
+            .exception
+            .as_ref()
+            .map(|exception| exception.kind)
+    );
+
+    clock.advance_to(1_786_482_000_000);
+    let due = application.open().unwrap();
+    let due_target = due
+        .adjusted_departures
+        .iter()
+        .find(|departure| departure.id == target_id)
+        .unwrap();
+    assert_eq!(DepartureStatusKind::Unresolved, due_target.status_kind);
+    assert_eq!(
+        Some("Record workout"),
+        due_target.record_workout_action.as_deref()
+    );
+    assert_eq!(
+        Some("Change to another time"),
+        due_target
+            .exception
+            .as_ref()
+            .and_then(|exception| exception.change_action.as_deref())
+    );
+
+    let skipped = application.skip_current_week_departure(&target_id).unwrap();
+    let skipped_target = skipped
+        .adjusted_departures
+        .iter()
+        .find(|departure| departure.id == target_id)
+        .unwrap();
+    assert_eq!(DepartureStatusKind::Skipped, skipped_target.status_kind);
+    assert_eq!(None, skipped_target.record_workout_action);
+    assert_eq!(
+        Some("Undo skip"),
+        skipped_target
+            .exception
+            .as_ref()
+            .and_then(|exception| exception.undo_action.as_deref())
+    );
+    assert_eq!(
+        DepartureStatusKind::Moved,
+        skipped.primary_departures[0].status_kind
+    );
+    assert_eq!(routine, skipped.routine_settings);
+    assert_eq!("0 of 3 completed", skipped.progress);
+    let reminder_cancellations_after_skip = reminders.cancelled.lock().unwrap().clone();
+    assert!(reminder_cancellations_after_skip.contains(&format!("exercise-departure-{target_id}")));
+    assert!(reminder_cancellations_after_skip.contains(&format!("exercise-follow-up-{target_id}")));
+    let relaunched = ExerciseApplication::new(profile.clone(), reminders.clone(), clock.clone())
+        .open()
+        .unwrap();
+    assert_eq!(skipped, relaunched);
+    assert_eq!(
+        reminder_cancellations_after_skip,
+        *reminders.cancelled.lock().unwrap()
+    );
+
+    let undone = application
+        .undo_skip_current_week_departure(&target_id)
+        .unwrap();
+    let restored_target = undone
+        .adjusted_departures
+        .iter()
+        .find(|departure| departure.id == target_id)
+        .unwrap();
+    assert_eq!(DepartureStatusKind::Unresolved, restored_target.status_kind);
+    assert_eq!(
+        Some("Record workout"),
+        restored_target.record_workout_action.as_deref()
+    );
+    assert_eq!(
+        Some(DepartureExceptionKind::ChangedDestination),
+        restored_target
+            .exception
+            .as_ref()
+            .map(|exception| exception.kind)
+    );
+    assert_eq!(
+        DepartureStatusKind::Moved,
+        undone.primary_departures[0].status_kind
+    );
+    assert_eq!(routine, undone.routine_settings);
+    assert_eq!("0 of 3 completed", undone.progress);
+    let reminder_cancellations_after_undo = reminders.cancelled.lock().unwrap().clone();
+    assert!(reminder_cancellations_after_undo.len() >= reminder_cancellations_after_skip.len());
+    assert!(reminder_cancellations_after_undo.contains(&format!("exercise-departure-{target_id}")));
+    assert!(reminder_cancellations_after_undo.contains(&format!("exercise-follow-up-{target_id}")));
+
+    application.start_workout_record(&target_id).unwrap();
+    application
+        .choose_workout_activity(&target_id, "Elliptical")
+        .unwrap();
+    application
+        .choose_workout_duration(&target_id, "30")
+        .unwrap();
+    let recorded = application
+        .complete_workout_record(&target_id, "Moderate")
+        .unwrap();
+    let target_record = recorded
+        .workout_records
+        .iter()
+        .find(|record| record.source_slot_id.as_deref() == Some(target_id.as_str()))
+        .unwrap();
+    assert_eq!(
+        Some(target_id.as_str()),
+        target_record.source_slot_id.as_deref()
+    );
+    assert_eq!("1 of 3 completed", recorded.progress);
+    assert_eq!(None, recorded.primary_departures[0].record_workout_action);
+    assert_eq!(
+        DepartureStatusKind::Completed,
+        recorded.adjusted_departures[0].status_kind
+    );
+    assert_eq!(routine, recorded.routine_settings);
+    assert_eq!(
+        recorded,
+        ExerciseApplication::new(profile, reminders, clock)
+            .open()
+            .unwrap()
+    );
+}
+
+#[test]
 fn change_time_exception_reconciles_existing_reminders_and_survives_relaunch() {
     let profile = IsolatedProfile::default();
     let reminders = ReminderOutbox::default();

@@ -612,7 +612,7 @@ run_exception_scenario() {
   run_driver assert-text "Skipped"
   run_driver assert-text "Undo skip"
   run_driver assert-text "0 of 3 completed"
-  run_driver assert-focused-text "Monday" 10
+  run_driver assert-state "Monday|pressed" 10
 
   current_step="relaunching and undoing the direct skip"
   if ! stop_app; then
@@ -622,7 +622,7 @@ run_exception_scenario() {
   run_driver wait-text "Undo skip" 30
   run_driver press "Undo skip" 10
   run_driver assert-text "0 of 3 completed"
-  run_driver assert-focused-text "Monday" 10
+  run_driver assert-state "Monday|pressed" 10
   run_driver press-contains "Monday" 10
   run_driver assert-text "Record workout"
   run_driver assert-text "Change to another time"
@@ -631,10 +631,12 @@ run_exception_scenario() {
   run_driver press "Change to another time" 10
   run_driver assert-text "Change this workout time"
   run_driver assert-text "Check this time"
-  run_driver assert-focused-text "Saturday" 10
+  run_driver assert-absent-text "Monday · 4:00 PM"
+  run_driver assert-absent-text "Monday · 8:00 PM"
+  run_driver assert-text "Saturday · 4:00 PM"
   run_driver assert-text "suggested"
   run_driver select-contains "Sunday · 4:00 PM" 10
-  run_driver assert-focused-text "Sunday" 10
+  run_driver assert-text "Sunday · 4:00 PM"
   run_driver assert-text "suggested"
 
   current_step="previewing and saving an arbitrary Tuesday change-time choice"
@@ -643,12 +645,11 @@ run_exception_scenario() {
   run_driver press "Check this time" 10
   run_driver assert-text "No conflict found"
   run_driver assert-text "Final time: Tuesday"
-  run_driver assert-focused-text "Change to Tuesday" 10
   run_driver press-contains "Change to Tuesday" 10
   run_driver assert-text "Changed this week"
   run_driver assert-text "Tuesday"
   run_driver assert-text "0 of 3 completed"
-  run_driver assert-focused-text "Monday" 10
+  run_driver assert-state "Monday|pressed" 10
 
   current_step="advancing the isolated packaged clock to the changed target"
   fixed_now_epoch_millis="1786482000000"
@@ -657,25 +658,43 @@ run_exception_scenario() {
   fi
   launch_app
 
-  current_step="confirming an intentional conflict from the due changed target"
   run_driver wait-text "Unrecorded — ready to record" 30
   run_driver assert-text "Changed this week"
   run_driver assert-text "Tuesday"
+  current_step="skipping and undoing the moved destination occurrence"
   run_driver press-contains "Tuesday" 10
   run_driver assert-text "Record workout"
   run_driver assert-text "Change to another time"
+  run_driver press "Skip this session" 10
+  run_driver assert-text "Skipped"
+  run_driver assert-text "Undo skip"
+  run_driver assert-absent-text "Record workout"
+  run_driver assert-absent-text "Change to another time"
+  run_driver assert-state "Tuesday|pressed" 10
+  if ! stop_app; then
+    fail "app process did not exit after skipping the moved destination"
+  fi
+  launch_app
+  run_driver wait-text "Undo skip" 30
+  run_driver press "Undo skip" 10
+  run_driver assert-text "0 of 3 completed"
+  run_driver assert-state "Tuesday|pressed" 10
+  run_driver press-contains "Tuesday" 10
+  run_driver assert-text "Record workout"
+  run_driver assert-text "Change to another time"
+
+  current_step="confirming an intentional conflict from the due changed target"
   run_driver press "Change to another time" 10
-  run_driver assert-focused-text "Saturday" 10
+  run_driver assert-text "Saturday · 4:00 PM"
   run_driver select-contains "Wednesday · 4:00 PM" 10
   run_driver press "Check this time" 10
   run_driver assert-text "This time overlaps Wednesday"
   run_driver assert-text "Confirm change"
-  run_driver assert-focused-text "Confirm change" 10
   run_driver press "Confirm change" 10
   run_driver assert-text "Changed this week"
   run_driver assert-text "Wednesday"
   run_driver assert-text "0 of 3 completed"
-  run_driver assert-focused-text "Tuesday" 10
+  run_driver assert-state "Tuesday|pressed" 10
 
   current_step="recording the independent changed target occurrence"
   fixed_now_epoch_millis="1786568400000"
@@ -695,7 +714,7 @@ run_exception_scenario() {
   run_driver press "Moderate" 10
   run_driver assert-text "1 of 3 completed"
   run_driver assert-text "Completed"
-  run_driver assert-focused-text "Wednesday changed" 10
+  run_driver assert-state "Wednesday changed|pressed" 10
 
   current_step="checking original and changed target persistence after relaunch"
   if ! stop_app; then
@@ -713,7 +732,7 @@ run_exception_scenario() {
   run_driver assert-absent-text "Change to another time"
   run_driver assert-absent-text "Skip this session"
   run_driver press-contains "Close" 10
-  run_driver assert-focused-text "Monday" 10
+  run_driver assert-state "Monday|pressed" 10
   run_driver press-contains "Wednesday changed" 10
   run_driver assert-text "Workout recorded"
 

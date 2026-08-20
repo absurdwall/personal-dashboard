@@ -3343,11 +3343,15 @@ fn schedule_conflict<'a>(
     all_departures(week).find(|departure| {
         departure.id != source_slot_id
             && departure.departure_at_epoch_millis == target_at
-            && (matches!(
-                departure.status,
-                DepartureStatus::Scheduled | DepartureStatus::Leaving
-            ) || departure_has_workout_record(week, departure))
+            && departure_occupies_target_slot(week, departure)
     })
+}
+
+fn departure_occupies_target_slot(week: &ExerciseWeek, departure: &PlannedDeparture) -> bool {
+    matches!(
+        departure.status,
+        DepartureStatus::Scheduled | DepartureStatus::Leaving
+    ) || departure_has_workout_record(week, departure)
 }
 
 fn direct_recordable_departure<'a>(
