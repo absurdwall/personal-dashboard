@@ -733,14 +733,13 @@ function primaryDepartureStatusLabel(departure: PrimaryDeparture): string {
   if (departure.hasWorkoutRecord || departure.statusKind === "completed") {
     return "Completed";
   }
-  if (departure.recordWorkoutAction) {
-    return "Unrecorded — ready to record";
-  }
   return {
     scheduled: "Scheduled",
-    unrecorded: "Unrecorded",
+    unrecorded: departure.recordWorkoutAction
+      ? "Unrecorded — ready to record"
+      : "Unrecorded",
     "awaiting-response": "Needs review",
-    unresolved: "Needs review",
+    unresolved: "Unresolved — no response",
     leaving: "Ready to record",
     completed: "Completed",
     moved: "Changed this week",

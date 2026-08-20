@@ -24,7 +24,7 @@ The previous v2 effort remains useful historical evidence, but its tickets 08–
 |---|---|---|---|
 | [01 — Production gap matrix](issues/01-production-gap-matrix.md) | Freeze the real production gap and cutover contract | resolved | — |
 | [02 — Production shell](issues/02-production-shell-and-this-week.md) | Make the real app visually and structurally match the v2 default workspace | claimed | 01 |
-| [03 — Direct recording and state semantics](issues/03-direct-recording-and-state-semantics.md) | Close and prove the click-only direct-record path and occurrence state model | ready-for-agent | 01, 02 |
+| [03 — Direct recording and state semantics](issues/03-direct-recording-and-state-semantics.md) | Close and prove the click-only direct-record path and occurrence state model | claimed | 01, 02 |
 | [04 — Unscheduled workout and progress](issues/04-unscheduled-workout-and-progress.md) | Close and prove independent workout logging, draft behavior, progress, and history evidence | ready-for-agent | 01, 02, 03 |
 | [05 — Change-time, skip/undo, and moved occurrence](issues/05-change-time-skip-and-moved-occurrence.md) | Close and prove exception semantics without corrupting the source occurrence | ready-for-agent | 01, 02, 03 |
 | [06 — Responsive sheet and accessibility](issues/06-responsive-sheet-and-accessibility.md) | Match the temporary-sheet behavior across viewports and restore keyboard usability | ready-for-agent | 02, 03, 04, 05 |

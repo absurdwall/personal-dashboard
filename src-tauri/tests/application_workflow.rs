@@ -877,6 +877,23 @@ fn change_time_preserves_original_creates_recordable_target_and_leaves_routine_u
         Some(DepartureExceptionKind::ChangedDestination),
         target.exception.as_ref().map(|exception| exception.kind)
     );
+    assert_eq!(None, original.record_workout_action);
+    assert_eq!(
+        (None, None),
+        original
+            .exception
+            .as_ref()
+            .map(|exception| (
+                exception.change_action.clone(),
+                exception.skip_action.clone()
+            ))
+            .unwrap()
+    );
+    let original_id = original.id.clone();
+    assert!(application.start_workout_record(&original_id).is_err());
+    assert!(application
+        .change_current_week_departure(&original_id, "Sunday", "17:30", false)
+        .is_err());
     assert_eq!(
         vec![
             ("Monday", "4:00 PM"),
@@ -2384,6 +2401,16 @@ fn silence_receives_one_follow_up_and_remains_unresolved_after_relaunch() {
     assert_eq!(
         "Unresolved — no response",
         after_follow_up.primary_departures[0].status
+    );
+    assert_eq!(
+        DepartureStatusKind::Unresolved,
+        after_follow_up.primary_departures[0].status_kind
+    );
+    assert_eq!(
+        Some("Record workout"),
+        after_follow_up.primary_departures[0]
+            .record_workout_action
+            .as_deref()
     );
 
     clock.advance_to(1_786_399_200_000);

@@ -214,7 +214,7 @@ run_keyboard_scenario() {
 }
 
 run_final_gate() {
-  for scenario in list-first direct workouts exceptions responsive keyboard; do
+  for scenario in list-first direct state-semantics workouts exceptions responsive keyboard; do
     current_step="running packaged $scenario acceptance"
     if ! PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO="$scenario" \
       "$script_directory/macos-ipc-workflow.sh"; then
@@ -223,7 +223,7 @@ run_final_gate() {
   done
 
   echo "Packaged IPC This Week delivery gate passed"
-  echo "Coverage: list-first, direct scheduled record, unscheduled record, exceptions, responsive viewports, and keyboard Accessibility"
+  echo "Coverage: list-first, direct scheduled record, unresolved state, unscheduled record, exceptions, responsive viewports, and keyboard Accessibility"
   echo "Persistence: each workflow runs in an isolated packaged profile and verifies relaunch where required"
 }
 
@@ -249,9 +249,12 @@ run_direct_record_scenario() {
   current_step="checking the direct-record result"
   run_driver assert-text "1 of 3 completed"
   run_driver assert-text "Completed"
+  run_driver assert-absent-text "Monday workout"
+  run_driver assert-state "Monday|pressed" 10
   run_driver press-contains "Monday" 10
   run_driver assert-text "Elliptical"
   run_driver assert-text "Counts toward weekly progress"
+  run_driver assert-absent-text "Record workout"
 
   current_step="relaunching after the direct-record result"
   if ! stop_app; then
@@ -265,10 +268,37 @@ run_direct_record_scenario() {
   run_driver press-contains "Monday" 10
   run_driver assert-text "Elliptical"
   run_driver assert-text "Counts toward weekly progress"
+  run_driver assert-absent-text "Record workout"
 
   echo "Packaged IPC direct-record acceptance passed"
   echo "Workflow: a due planned workout crossed Tauri IPC without a departure response"
   echo "Persistence: the direct record remained visible after relaunch"
+  echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
+}
+
+run_state_semantics_scenario() {
+  current_step="launching unresolved-state packaged scenario"
+  fixed_now_epoch_millis="1786366800000"
+  launch_app
+
+  current_step="seeding the unanswered due occurrence"
+  run_driver wait-text "Log workout now" 30
+  if ! stop_app; then
+    fail "app process did not exit after seeding the unanswered occurrence"
+  fi
+
+  current_step="relaunching after the follow-up becomes due"
+  fixed_now_epoch_millis="1786392900000"
+  launch_app
+  run_driver wait-text "Unresolved — no response" 30
+  run_driver press-contains "Monday" 10
+  run_driver assert-text "Unresolved — no response"
+  run_driver assert-text "Record workout"
+  run_driver assert-absent-text "Leaving for gym"
+
+  echo "Packaged IPC state-semantics acceptance passed"
+  echo "State: unresolved remained visibly distinct while its direct record action stayed available"
+  echo "Gate: no departure-response screen was required"
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
 }
 
@@ -426,6 +456,7 @@ run_list_first_scenario() {
   run_driver assert-text "Open capacity"
   run_driver assert-text "Saturday"
   run_driver assert-text "Sunday"
+  run_driver assert-text "Available"
   run_driver assert-text "History"
   run_driver assert-text "Settings"
   run_driver assert-absent-text "Selected workout"
@@ -462,6 +493,7 @@ run_list_first_scenario() {
   run_driver press-contains "Wednesday" 10
   run_driver assert-text "Selected workout"
   run_driver assert-text "Wednesday workout"
+  run_driver assert-text "Scheduled"
   run_driver assert-absent-text "Record workout"
   run_driver press-contains "Close" 10
   run_driver assert-absent-text "Wednesday workout"
@@ -591,6 +623,9 @@ run_exception_scenario() {
   run_driver assert-text "Completed"
   run_driver press-contains "Monday" 10
   run_driver assert-text "Changed to Tuesday"
+  run_driver assert-absent-text "Record workout"
+  run_driver assert-absent-text "Change to another time"
+  run_driver assert-absent-text "Skip this session"
   run_driver press-contains "Close" 10
   run_driver assert-focused-text "Monday" 10
   run_driver press-contains "Wednesday changed" 10
@@ -723,6 +758,10 @@ if [[ "$acceptance_scenario" == "direct" ]]; then
   run_direct_record_scenario
   exit 0
 fi
+if [[ "$acceptance_scenario" == "state-semantics" ]]; then
+  run_state_semantics_scenario
+  exit 0
+fi
 if [[ "$acceptance_scenario" == "workouts" ]]; then
   run_workout_recording_scenario
   exit 0
@@ -743,6 +782,6 @@ if [[ "$acceptance_scenario" == "keyboard" ]]; then
   run_keyboard_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "keyboard" ]]; then
+if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "keyboard" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi
