@@ -23,6 +23,11 @@ if grep -Eq 'PYTHONPATH=src|python3 -m exercise_tracker|http://127[.]0[.]0[.]1' 
   fail "README still presents Python or localhost as an active product path"
 fi
 
+if grep -R -n -E 'fetch[[:space:]]*[(]|XMLHttpRequest|WebSocket|EventSource|https?://|localhost|127[.]0[.]0[.]1|[.]scratch/' \
+  frontend src-tauri/src 2>/dev/null; then
+  fail "production frontend/Rust sources contain a network or fixture dependency"
+fi
+
 [[ "$(git cat-file -t python-exercise-tracker-complete)" == "tag" ]] ||
   fail "completed baseline is not preserved by an annotated Git tag"
 [[ "$(git rev-parse python-exercise-tracker-complete^{commit})" == \
@@ -32,3 +37,4 @@ fi
 echo "Tauri-only source acceptance passed"
 echo "Active product: Tauri 2, Rust, TypeScript, HTML, and CSS"
 echo "Recoverable baseline: annotated tag python-exercise-tracker-complete"
+echo "Boundary: production frontend/Rust sources contain no network or fixture dependency"

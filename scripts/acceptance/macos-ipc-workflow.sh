@@ -222,7 +222,7 @@ run_keyboard_scenario() {
 }
 
 run_final_gate() {
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive keyboard; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive keyboard week-close; do
     current_step="running packaged $scenario acceptance"
     if ! PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO="$scenario" \
       "$script_directory/macos-ipc-workflow.sh"; then
@@ -231,7 +231,7 @@ run_final_gate() {
   done
 
   echo "Packaged IPC This Week delivery gate passed"
-  echo "Coverage: list-first, direct scheduled record, unresolved state, unscheduled 0-to-3 progress, exceptions, responsive viewports, and keyboard Accessibility"
+  echo "Coverage: list-first, direct scheduled record, unresolved state, unscheduled 0-to-3 progress, exceptions, responsive viewports, keyboard Accessibility, and week-close History"
   echo "Persistence: each workflow runs in an isolated packaged profile and verifies relaunch where required"
 }
 
@@ -606,6 +606,59 @@ run_list_first_scenario() {
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
 }
 
+run_week_close_scenario() {
+  current_step="launching week-close packaged scenario"
+  fixed_now_epoch_millis="1786392900000"
+  launch_app
+
+  current_step="checking an unresolved occurrence and a qualifying record before week close"
+  run_driver wait-text "Log workout now" 30
+  run_driver assert-text "0 of 3 completed"
+  run_driver press-contains "Monday" 10
+  run_driver assert-text "Monday workout"
+  run_driver assert-text "Unresolved — no response"
+  run_driver assert-text "Record workout"
+  run_driver press-contains "Close" 10
+  run_driver press "Log workout now" 10
+  run_driver press "Weight training" 10
+  run_driver press "30" 10
+  run_driver press "Moderate" 10
+  run_driver assert-text "1 of 3 completed"
+
+  current_step="relaunching in the following week"
+  if ! stop_app; then
+    fail "app process did not exit after the pre-close persistence assertion"
+  fi
+  fixed_now_epoch_millis="1786971600000"
+  launch_app
+
+  current_step="checking week-close History and the fresh default workspace"
+  run_driver wait-text "0 of 3 completed" 30
+  run_driver assert-semantic "default"
+  run_driver assert-text "Primary departures"
+  run_driver assert-text "This Week"
+  run_driver assert-absent-text "Selected workout"
+  run_driver assert-absent-text "Monday workout"
+  run_driver press "History" 10
+  run_driver assert-text "Previous weeks"
+  run_driver assert-text "Monday, August 10 – Sunday, August 16"
+  run_driver assert-text "Missed — no response"
+  run_driver assert-text "1 of 3 completed"
+  run_driver assert-text "Unscheduled workout"
+  run_driver assert-text "Weight training"
+  run_driver assert-text "Counts toward weekly progress"
+  run_driver press "This Week" 10
+  run_driver assert-text "Primary departures"
+  run_driver assert-text "0 of 3 completed"
+  run_driver assert-absent-text "Selected workout"
+  run_driver assert-absent-text "Monday workout"
+
+  echo "Packaged IPC week-close acceptance passed"
+  echo "Week close: an unresolved no-record occurrence became Missed — no response while a qualifying unscheduled record remained 1 of 3 in History"
+  echo "Relaunch: the new app opened list-first on This Week without reopening stale detail"
+  echo "Clock: pre_close=1786392900000 post_close=1786971600000 offset_minutes=$fixed_utc_offset_minutes"
+}
+
 run_exception_scenario() {
   current_step="launching change-time-and-skip packaged scenario"
   launch_app
@@ -915,6 +968,10 @@ if [[ "$acceptance_scenario" == "keyboard" ]]; then
   run_keyboard_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "keyboard" ]]; then
+if [[ "$acceptance_scenario" == "week-close" ]]; then
+  run_week_close_scenario
+  exit 0
+fi
+if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "keyboard" && "$acceptance_scenario" != "week-close" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi
