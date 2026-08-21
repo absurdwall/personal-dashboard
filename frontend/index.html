@@ -11,10 +11,10 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app-shell">
+    <main class="app-shell" data-workspace-destination="this-week">
       <aside class="workspace-sidebar" aria-label="Primary">
         <div class="workspace-brand">
-          <div class="feature-mark" aria-hidden="true">PD</div>
+          <div class="feature-mark" aria-hidden="true">P</div>
           <div>
             <p class="eyebrow" data-product-name>Personal Dashboard</p>
             <p class="sidebar-feature" data-feature-area>Exercise tracking</p>
@@ -89,21 +89,44 @@
               aria-labelledby="workspace-title"
             >
 
-        <section id="exercise-dashboard" class="exercise-dashboard" aria-labelledby="exercise-progress">
+        <section id="exercise-dashboard" class="exercise-dashboard" aria-labelledby="exercise-plan-heading">
           <p id="inactive-profile-notice" class="inactive-profile-notice" role="status" hidden></p>
-          <div class="progress-copy">
-            <p id="exercise-week" class="readiness-kicker">Loading this week…</p>
-            <h3 id="exercise-progress">Loading exercise progress…</h3>
-          </div>
-          <div class="next-departure">
-            <p>Next departure</p>
-            <strong id="next-departure">Loading…</strong>
-          </div>
+          <header class="week-header" aria-label="This Week summary">
+            <div class="title-block">
+              <p id="exercise-week" class="eyebrow" aria-label="Week of this week">Loading this week…</p>
+              <h2 id="exercise-plan-heading">Exercise plan</h2>
+              <p id="exercise-progress" class="progress-summary">Loading exercise progress…</p>
+            </div>
+            <div id="exercise-progress-chip" class="progress-chip" role="status" aria-label="Weekly progress: 0 of 3 completed">
+              <strong id="exercise-progress-chip-value">0/3</strong>
+              <span>completed</span>
+            </div>
+            <div id="next-departure-card" class="next-card" role="status" aria-label="Next departure">
+              <span id="next-departure-label">Next workout</span>
+              <strong id="next-departure">Loading…</strong>
+              <small id="next-departure-date">This week</small>
+            </div>
+          </header>
+          <section class="manual-workout" aria-labelledby="manual-workout-heading">
+            <div class="manual-workout-copy">
+              <p class="eyebrow">Any time this week</p>
+              <h4 id="manual-workout-heading">Extra workout</h4>
+              <p class="manual-workout-help">Record an unscheduled workout without attaching it to a planned time.</p>
+            </div>
+            <button
+              id="log-workout-now"
+              type="button"
+              aria-controls="workspace-detail"
+              aria-expanded="false"
+            >
+              Log workout now
+            </button>
+          </section>
           <div class="agenda-layout">
             <section class="agenda-group primary-agenda" aria-labelledby="primary-departures-heading">
               <div class="agenda-group-heading">
                 <div>
-                  <p class="agenda-kicker">Current plan</p>
+                  <p class="agenda-kicker">Planned schedule</p>
                   <h4 id="primary-departures-heading">Primary departures</h4>
                 </div>
                 <span class="agenda-count">3 planned</span>
@@ -150,20 +173,6 @@
             Preparing the next departure reminder…
           </p>
           <p id="weekly-goal-status" class="goal-success" role="status" aria-live="polite" hidden></p>
-          <section class="manual-workout" aria-labelledby="manual-workout-heading">
-            <div>
-              <p class="section-label">Any exercise counts</p>
-              <h4 id="manual-workout-heading">Record an unscheduled workout</h4>
-            </div>
-            <button
-              id="log-workout-now"
-              type="button"
-              aria-controls="workspace-detail"
-              aria-expanded="false"
-            >
-              Log workout now
-            </button>
-          </section>
         </section>
             </section>
 
@@ -457,9 +466,16 @@
             hidden
           >
             <header class="workspace-detail-header">
-              <div>
-                <p id="workspace-detail-kicker" class="section-label">Selected workout</p>
-                <h2 id="workspace-detail-heading">Selected workout</h2>
+              <div class="workspace-detail-title">
+                <div id="workspace-detail-date-tile" class="date-tile" hidden>
+                  <strong id="workspace-detail-date-day">—</strong>
+                  <small id="workspace-detail-date-label">—</small>
+                </div>
+                <div>
+                  <p id="workspace-detail-kicker" class="eyebrow">Selected workout</p>
+                  <h2 id="workspace-detail-heading">Selected workout</h2>
+                  <p id="workspace-detail-time">—</p>
+                </div>
               </div>
               <button
                 id="workspace-detail-close"

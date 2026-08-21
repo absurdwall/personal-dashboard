@@ -1,10 +1,21 @@
 :root {
-  color: #18201d;
-  background: #ece9df;
+  color: #232724;
+  background: #ececea;
   font-family:
-    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  --parity-accent: #35695c;
+  --parity-accent-strong: #214e43;
+  --parity-accent-soft: #e3eee9;
+  --parity-border: #d8dad6;
+  --parity-muted: #606763;
+  --parity-sidebar: #f7f7f5;
+  --parity-surface: #ffffff;
+  --parity-surface-soft: #fafaf8;
+  --parity-warning: #a45d17;
+  --parity-warning-soft: #fff3df;
+  --parity-success: #3d774b;
 }
 
 * {
@@ -1911,6 +1922,1062 @@ body {
   }
 
   .app-shell[data-detail-open="true"] .workspace-information {
+    display: block;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+
+/* V2 A parity closure: production This Week mirrors the List + temporary sheet reference. */
+
+html,
+body {
+  background: #ececea;
+}
+
+body {
+  color: #232724;
+}
+
+.app-shell {
+  grid-template-columns: 184px minmax(0, 1fr);
+  background: var(--parity-surface);
+}
+
+.workspace-sidebar {
+  gap: 0;
+  padding: 0;
+  border-right-color: var(--parity-border);
+  background: var(--parity-sidebar);
+}
+
+.workspace-brand {
+  min-height: 68px;
+  padding: 14px;
+  border-bottom: 1px solid rgb(0 0 0 / 5%);
+  gap: 9px;
+}
+
+.workspace-brand .feature-mark {
+  width: 29px;
+  height: 29px;
+  border-radius: 8px;
+  background: var(--parity-accent);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.workspace-brand .eyebrow {
+  margin: 0;
+  color: #232724;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.workspace-brand .sidebar-feature {
+  margin-top: 3px;
+  color: var(--parity-muted);
+  font-size: 9px;
+}
+
+.workspace-navigation {
+  display: grid;
+  gap: 3px;
+  padding: 14px 10px;
+}
+
+.destination-button {
+  display: grid;
+  grid-template-columns: 19px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 37px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #232724;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.destination-button:hover {
+  border-color: transparent;
+  background: #ededeb;
+}
+
+.destination-button[aria-current="page"] {
+  border-color: transparent;
+  background: #e0ebe5;
+  color: #183e34;
+}
+
+.destination-icon {
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  color: currentColor;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.workspace-compact-navigation {
+  display: none;
+}
+
+.sidebar-status {
+  display: block;
+  margin-top: auto;
+  padding: 16px;
+}
+
+.workspace-sidebar .runtime-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  max-width: 1px;
+  overflow: hidden;
+  padding: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sidebar-reassurance {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  color: var(--parity-muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.sidebar-reassurance::before {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--parity-success);
+  content: "";
+}
+
+.app-shell[data-workspace-destination="this-week"] .workspace-header {
+  display: none;
+}
+
+.workspace-header {
+  padding: 1rem 1.4rem 0.85rem;
+  border-bottom-color: var(--parity-border);
+  background: var(--parity-surface);
+}
+
+.workspace-header h1 {
+  color: #232724;
+  font-family: inherit;
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.045em;
+}
+
+.workspace-description,
+.workspace-context-status {
+  color: var(--parity-muted);
+}
+
+.workspace-regions {
+  height: 100%;
+  background: var(--parity-surface);
+}
+
+.workspace-information {
+  background: var(--parity-surface);
+}
+
+.workspace-destination {
+  padding: 0;
+}
+
+#workspace-destination-this-week {
+  padding: 0;
+}
+
+#exercise-dashboard {
+  min-height: 100%;
+  padding: 0 0 88px;
+  background: var(--parity-surface);
+  color: #232724;
+}
+
+#inactive-profile-notice {
+  max-width: 720px;
+  width: calc(100% - (2 * max(28px, 5vw)));
+  margin: 16px auto -2px;
+}
+
+.week-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px minmax(220px, 275px);
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 34px max(28px, 5vw) 21px;
+  border-bottom: 1px solid var(--parity-border);
+  background: var(--parity-surface);
+}
+
+.title-block {
+  min-width: 0;
+}
+
+.title-block .eyebrow,
+.week-header .eyebrow {
+  margin: 0 0 6px;
+  color: var(--parity-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.title-block h2 {
+  margin: 0;
+  color: #232724;
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+}
+
+.progress-summary {
+  margin: 6px 0 0;
+  color: var(--parity-muted);
+  font-size: 10px;
+}
+
+.progress-chip {
+  display: grid;
+  width: 68px;
+  height: 68px;
+  place-items: center;
+  align-content: center;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--parity-accent) 0 var(--progress-ratio, 0%),
+    #e4e8e4 var(--progress-ratio, 0%) 100%
+  );
+  color: var(--parity-accent-strong);
+}
+
+.progress-chip strong {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.progress-chip span {
+  margin-top: 5px;
+  color: var(--parity-muted);
+  font-size: 8px;
+}
+
+.next-card {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid #d1dfd7;
+  border-radius: 9px;
+  background: #f1f7f3;
+  color: #232724;
+  text-align: left;
+}
+
+.next-card.is-due {
+  border-color: #dbbd91;
+  background: var(--parity-warning-soft);
+}
+
+.next-card span {
+  color: var(--parity-accent-strong);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.next-card.is-due span {
+  color: #8c521a;
+}
+
+.next-card strong {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.next-card small {
+  color: var(--parity-muted);
+  font-size: 9px;
+}
+
+.manual-workout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 720px;
+  width: calc(100% - (2 * max(28px, 5vw)));
+  margin: 24px auto 0;
+  padding: 12px 13px;
+  border: 1px solid #c8d9cf;
+  border-radius: 9px;
+  background: #f5faf6;
+  color: #232724;
+}
+
+.manual-workout-copy {
+  min-width: 0;
+}
+
+.manual-workout .eyebrow {
+  margin: 0 0 3px;
+  color: var(--parity-accent-strong);
+}
+
+.manual-workout h4 {
+  margin: 0;
+  color: #232724;
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+.manual-workout-help {
+  margin: 4px 0 0;
+  color: var(--parity-muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.manual-workout > button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 12px;
+  border-color: #b7c6bf;
+  border-radius: 7px;
+  background: #f3f8f4;
+  color: var(--parity-accent-strong);
+  font-size: 10px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.agenda-layout {
+  display: block;
+  max-width: 720px;
+  width: calc(100% - (2 * max(28px, 5vw)));
+  margin: 20px auto 0;
+}
+
+.agenda-group {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #232724;
+}
+
+.agenda-group + .agenda-group {
+  margin-top: 30px;
+}
+
+.agenda-group-heading {
+  margin-bottom: 6px;
+}
+
+.agenda-kicker {
+  margin: 0 0 3px;
+  color: var(--parity-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agenda-group h4 {
+  margin: 0;
+  color: #232724;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+.agenda-count {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--parity-muted);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.fallback-agenda .availability-count {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--parity-muted);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.agenda-list {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agenda-list li.agenda-row {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.agenda-row-trigger {
+  display: grid;
+  grid-template-columns: 60px minmax(150px, 1fr) minmax(130px, auto) 16px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 11px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #232724;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.agenda-row-trigger:hover {
+  border-color: transparent;
+  background: #f4f7f4;
+}
+
+.agenda-row-trigger[aria-pressed="true"] {
+  border-color: #bcd1c5;
+  background: var(--parity-accent-soft);
+  box-shadow: inset 3px 0 0 var(--parity-accent);
+}
+
+.agenda-row-trigger:disabled {
+  cursor: default;
+  opacity: 0.78;
+}
+
+.agenda-row-trigger:disabled:hover {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.agenda-row-identity,
+.agenda-row-copy,
+.agenda-row-state {
+  min-width: 0;
+}
+
+.agenda-row-identity,
+.agenda-row-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.agenda-row-identity strong,
+.agenda-row-copy strong {
+  overflow: hidden;
+  color: #34423d;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-row-copy strong {
+  color: #232724;
+}
+
+.agenda-row-identity small,
+.agenda-row-copy small {
+  overflow: hidden;
+  color: var(--parity-muted);
+  font-size: 9px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-row-state {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--parity-muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.agenda-status-marker {
+  display: inline-grid;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #d2d8d3;
+  color: #59655f;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.status-completed .agenda-status-marker {
+  border-radius: 50%;
+  background: var(--parity-success);
+  color: #fff;
+}
+
+.status-missed .agenda-status-marker,
+.status-unresolved .agenda-status-marker,
+.status-awaiting-response .agenda-status-marker,
+.status-unrecorded .agenda-status-marker {
+  background: var(--parity-warning);
+  color: #fff;
+}
+
+.status-missed,
+.status-unresolved,
+.status-awaiting-response,
+.status-unrecorded {
+  color: #8c521a;
+  font-weight: 700;
+}
+
+.status-completed,
+.availability-available .agenda-row-state,
+.availability-recorded .agenda-row-state {
+  color: var(--parity-success);
+  font-weight: 700;
+}
+
+.availability-available .agenda-status-marker,
+.availability-recorded .agenda-status-marker {
+  background: #cde1d0;
+  color: var(--parity-success);
+}
+
+.availability-unavailable .agenda-row-state,
+.availability-reserved .agenda-row-state {
+  color: var(--parity-muted);
+}
+
+.agenda-chevron {
+  color: #9ba39e;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+  text-align: right;
+}
+
+.workout-evidence {
+  display: block;
+  margin: 0 0 3px 79px;
+  color: var(--parity-success);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.agenda-inline-action {
+  margin-left: 79px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 9px;
+}
+
+.adjusted-agenda {
+  padding-top: 1px;
+}
+
+.fallback-agenda {
+  border: 0;
+  background: transparent;
+}
+
+#exercise-dashboard .exercise-reminder-status,
+#exercise-dashboard .goal-success {
+  max-width: 720px;
+  margin: 12px auto 0;
+  color: var(--parity-muted);
+  font-size: 9px;
+}
+
+#exercise-dashboard .goal-success {
+  color: var(--parity-success);
+  font-weight: 700;
+}
+
+.workspace-sheet-backdrop {
+  background: rgb(23 35 30 / 12%);
+}
+
+.workspace-detail {
+  width: min(410px, 52%);
+  padding: 0;
+  border-left-color: var(--parity-border);
+  background: var(--parity-surface);
+  box-shadow: 0 20px 50px rgb(28 36 32 / 15%);
+}
+
+.workspace-detail-header {
+  align-items: flex-start;
+  min-height: 22px;
+  margin: 0 30px 28px;
+  padding-top: 28px;
+}
+
+.workspace-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+}
+
+.workspace-detail-title > div:last-child {
+  min-width: 0;
+}
+
+.workspace-detail .date-tile {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  place-items: center;
+  align-content: center;
+  border: 1px solid var(--parity-border);
+  border-radius: 9px;
+  background: var(--parity-surface-soft);
+}
+
+.workspace-detail .date-tile[hidden] {
+  display: none;
+}
+
+.workspace-detail .date-tile strong {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.workspace-detail .date-tile small {
+  margin-top: 3px;
+  color: var(--parity-muted);
+  font-size: 8px;
+}
+
+.workspace-detail .eyebrow {
+  margin: 0 0 5px;
+  color: var(--parity-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.workspace-detail h2 {
+  max-width: 14ch;
+  margin: 0;
+  color: #232724;
+  font-family: inherit;
+  font-size: 25px;
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+}
+
+.workspace-detail-time {
+  margin: 5px 0 0;
+  color: var(--parity-muted);
+  font-size: 10px;
+}
+
+.workspace-detail-close {
+  min-height: 22px;
+  padding: 5px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--parity-muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.workspace-detail-close:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--parity-accent-strong);
+}
+
+#workspace-detail-copy {
+  margin: 0 30px;
+  color: var(--parity-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.workspace-detail-status {
+  margin: 22px 30px 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--parity-border);
+  border-right: 0;
+  border-bottom: 1px solid var(--parity-border);
+  border-left: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #303934;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.workspace-detail-actions {
+  gap: 8px;
+  margin: 25px 30px 0;
+}
+
+.workspace-detail-actions button {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 10px;
+}
+
+.workspace-detail-actions button:first-child {
+  border-color: var(--parity-accent);
+  background: var(--parity-accent);
+}
+
+.workspace-detail-actions button:not(:first-child) {
+  border-color: #b7c6bf;
+  background: #f3f8f4;
+  color: var(--parity-accent-strong);
+}
+
+.workspace-detail-actions .secondary-button {
+  border-color: #b7c6bf;
+  background: #f3f8f4;
+  color: var(--parity-accent-strong);
+}
+
+.workspace-detail-actions .secondary-button:last-child {
+  border-color: #e0e1df;
+  background: transparent;
+  color: #744c48;
+}
+
+.workspace-exception {
+  margin: 18px 30px 0;
+  padding: 0 12px 18px;
+  border: 0;
+  border-top: 1px solid var(--parity-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.workspace-detail .workout-flow,
+.workspace-detail .workout-history {
+  margin: 20px 30px 0;
+  padding: 17px 0 76px;
+  border: 0;
+  border-top: 1px solid var(--parity-border);
+  border-radius: 0;
+  background: transparent;
+  color: #232724;
+}
+
+.workspace-detail .workout-flow h4,
+.workspace-detail .workout-history h4 {
+  margin: 0 0 9px;
+  color: #232724;
+  font-family: inherit;
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+}
+
+.workspace-detail .workout-guidance,
+.workspace-detail .workout-history span {
+  color: var(--parity-muted);
+  font-size: 10px;
+}
+
+@media (min-width: 681px) and (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 68px minmax(0, 1fr);
+  }
+
+  .workspace-sidebar {
+    align-items: center;
+    padding: 0;
+  }
+
+  .workspace-brand {
+    justify-content: center;
+    width: 100%;
+    min-height: 68px;
+    padding: 14px 0;
+  }
+
+  .workspace-brand > div:last-child,
+  .destination-button > span:not(.destination-icon) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .workspace-navigation {
+    width: 100%;
+    padding: 14px 10px;
+  }
+
+  .destination-button {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 0;
+  }
+
+  .sidebar-status {
+    width: 100%;
+    padding: 16px 0;
+  }
+
+  .sidebar-reassurance {
+    justify-content: center;
+  }
+
+  .sidebar-reassurance {
+    font-size: 0;
+  }
+
+  .sidebar-reassurance::before {
+    margin: 0;
+  }
+
+  .week-header {
+    grid-template-columns: minmax(0, 1fr) 64px minmax(190px, 275px);
+    gap: 16px;
+    padding-right: 28px;
+    padding-left: 28px;
+  }
+
+  .agenda-layout,
+  .manual-workout,
+  #exercise-dashboard .exercise-reminder-status,
+  #exercise-dashboard .goal-success {
+    max-width: none;
+    width: auto;
+    margin-right: 20px;
+    margin-left: 20px;
+  }
+}
+
+@media (max-width: 680px) {
+  .app-shell {
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-sidebar {
+    display: grid;
+    grid-template-areas: "brand navigation";
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.8rem;
+    min-height: 52px;
+    padding: 0 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--parity-border);
+  }
+
+  .workspace-brand {
+    grid-area: brand;
+    min-height: 52px;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .workspace-brand .feature-mark {
+    width: 26px;
+    height: 26px;
+  }
+
+  .workspace-navigation,
+  .sidebar-status {
     display: none;
+  }
+
+  .workspace-compact-navigation {
+    display: grid;
+    grid-area: navigation;
+  }
+
+  .workspace-compact-navigation label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .workspace-compact-navigation select {
+    width: 105px;
+    min-height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--parity-border);
+    border-radius: 7px;
+    background: var(--parity-surface);
+    color: #232724;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .week-header {
+    grid-template-columns: minmax(0, 1fr) 58px;
+    grid-template-rows: auto auto;
+    align-items: start;
+    gap: 10px;
+    padding: 16px 16px 14px;
+  }
+
+  .title-block h2 {
+    font-size: 22px;
+  }
+
+  .title-block .eyebrow {
+    max-width: 42ch;
+    font-size: 8px;
+  }
+
+  .progress-chip {
+    width: 58px;
+    height: 58px;
+  }
+
+  .progress-chip strong {
+    font-size: 15px;
+  }
+
+  .next-card {
+    grid-column: 1 / -1;
+    padding: 11px 12px;
+  }
+
+  .manual-workout,
+  .agenda-layout,
+  #exercise-dashboard .exercise-reminder-status,
+  #exercise-dashboard .goal-success {
+    max-width: none;
+    width: auto;
+    margin-right: 16px;
+    margin-left: 16px;
+  }
+
+  .manual-workout {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .manual-workout > button {
+    width: 100%;
+  }
+
+  .agenda-layout {
+    margin-top: 20px;
+  }
+
+  .agenda-group + .agenda-group {
+    margin-top: 24px;
+  }
+
+  .agenda-row-trigger {
+    grid-template-columns: 54px minmax(0, 1fr) 16px;
+    grid-template-rows: auto auto;
+    gap: 3px 10px;
+    padding: 9px 7px;
+  }
+
+  .agenda-row-state {
+    grid-column: 2;
+    grid-row: 2;
+    margin-top: -1px;
+  }
+
+  .agenda-chevron {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+
+  .workout-evidence,
+  .agenda-inline-action {
+    margin-left: 71px;
+  }
+
+  .workspace-detail {
+    width: 100%;
+    border-left: 0;
+    box-shadow: none;
+  }
+
+  .workspace-detail-header {
+    margin-right: 16px;
+    margin-left: 16px;
+    padding-top: 16px;
+  }
+
+  #workspace-detail-copy,
+  .workspace-detail-status,
+  .workspace-detail-actions,
+  .workspace-exception,
+  .workspace-detail .workout-flow,
+  .workspace-detail .workout-history {
+    margin-right: 16px;
+    margin-left: 16px;
+  }
+
+  .workspace-detail .workout-flow,
+  .workspace-detail .workout-history {
+    padding-bottom: 48px;
+  }
+
+  .app-shell[data-detail-open="true"] .workspace-information {
+    display: block;
+    visibility: hidden;
+    pointer-events: none;
   }
 }

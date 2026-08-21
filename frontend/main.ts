@@ -336,6 +336,16 @@ const workspaceInformation = document.querySelector<HTMLElement>(".workspace-inf
 const workspaceDetailHeading = document.querySelector<HTMLElement>(
   "#workspace-detail-heading",
 );
+const workspaceDetailDateTile = document.querySelector<HTMLElement>(
+  "#workspace-detail-date-tile",
+);
+const workspaceDetailDateDay = document.querySelector<HTMLElement>(
+  "#workspace-detail-date-day",
+);
+const workspaceDetailDateLabel = document.querySelector<HTMLElement>(
+  "#workspace-detail-date-label",
+);
+const workspaceDetailTime = document.querySelector<HTMLElement>("#workspace-detail-time");
 const workspaceDetailKicker = document.querySelector<HTMLElement>(
   "#workspace-detail-kicker",
 );
@@ -359,7 +369,14 @@ const inactiveProfileNotice = document.querySelector<HTMLElement>(
 );
 const exerciseWeek = document.querySelector<HTMLElement>("#exercise-week");
 const exerciseProgress = document.querySelector<HTMLElement>("#exercise-progress");
+const exerciseProgressChip = document.querySelector<HTMLElement>("#exercise-progress-chip");
+const exerciseProgressChipValue = document.querySelector<HTMLElement>(
+  "#exercise-progress-chip-value",
+);
+const nextDepartureCard = document.querySelector<HTMLElement>("#next-departure-card");
+const nextDepartureLabel = document.querySelector<HTMLElement>("#next-departure-label");
 const nextDeparture = document.querySelector<HTMLElement>("#next-departure");
+const nextDepartureDate = document.querySelector<HTMLElement>("#next-departure-date");
 const primaryDepartures = document.querySelector<HTMLOListElement>("#primary-departures");
 const adjustedAgendaSection = document.querySelector<HTMLElement>("#adjusted-agenda");
 const adjustedDepartures = document.querySelector<HTMLOListElement>("#adjusted-departures");
@@ -577,6 +594,58 @@ function departureItem(
   return item;
 }
 
+const weekdayOrder = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+] as const;
+
+const monthNumbers: Readonly<Record<string, number>> = {
+  January: 0,
+  February: 1,
+  March: 2,
+  April: 3,
+  May: 4,
+  June: 5,
+  July: 6,
+  August: 7,
+  September: 8,
+  October: 9,
+  November: 10,
+  December: 11,
+};
+
+function weekDateLabel(weekLabel: string | undefined, day: string): string | null {
+  if (!weekLabel) {
+    return null;
+  }
+  const match = weekLabel.match(/^[^,]+,\s+([A-Za-z]+)\s+(\d+)\s+–/);
+  const month = match ? monthNumbers[match[1]] : undefined;
+  const startDay = match ? Number(match[2]) : Number.NaN;
+  const dayOffset = weekdayOrder.indexOf(day as (typeof weekdayOrder)[number]);
+  if (month === undefined || Number.isNaN(startDay) || dayOffset < 0) {
+    return null;
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(2000, month, startDay + dayOffset)));
+}
+
+function shortWeekday(day: string): string {
+  return day.slice(0, 3);
+}
+
+function progressFraction(progress: string): string {
+  const match = progress.match(/^(\d+)\s+of\s+(\d+)/);
+  return match ? `${match[1]}/${match[2]}` : progress;
+}
+
 function scheduleSelect(
   labelText: string,
   choices: readonly ScheduleChoice[],
@@ -629,32 +698,47 @@ function primaryDepartureItem(
   const trigger = document.createElement("button");
   const identity = document.createElement("span");
   const day = document.createElement("strong");
-  const time = document.createElement("span");
+  const date = document.createElement("small");
+  const copy = document.createElement("span");
+  const time = document.createElement("strong");
+  const label = document.createElement("small");
   const state = document.createElement("span");
   const marker = document.createElement("span");
   const status = document.createElement("span");
+  const chevron = document.createElement("span");
   item.className = `agenda-row primary-agenda-row${adjusted ? " adjusted-agenda-row" : ""}`;
   item.dataset.slotId = departure.id;
   trigger.type = "button";
   trigger.className = "agenda-row-trigger";
   trigger.dataset.agendaSlotId = departure.id;
-  trigger.setAttribute(
-    "aria-label",
-    `Select ${departure.day} ${adjusted ? "changed" : "planned"} workout`,
-  );
   setAgendaTriggerState(trigger, departure.id);
   trigger.setAttribute("aria-controls", "workspace-detail");
-  identity.className = "agenda-row-identity";
-  day.textContent = departure.day;
+  identity.className = "agenda-row-identity slot-date";
+  day.textContent = shortWeekday(departure.day);
+  const dateLabel =
+    weekDateLabel(currentExerciseView?.weekLabel, departure.day) ?? "This week";
+  date.textContent = dateLabel;
+  copy.className = "agenda-row-copy slot-copy";
   time.textContent = departure.time;
-  identity.append(day, time);
-  state.className = `agenda-row-state status-${departure.statusKind}`;
+  const workoutLabel = adjusted ? "Changed workout" : "Primary workout";
+  label.textContent = workoutLabel;
+  copy.append(time, label);
+  identity.append(day, date);
+  state.className = `agenda-row-state slot-status status-${departure.statusKind}`;
   marker.className = "agenda-status-marker";
   marker.setAttribute("aria-hidden", "true");
   marker.textContent = departureStatusSignal(departure.statusKind);
-  status.textContent = primaryDepartureStatusLabel(departure);
+  const statusLabel = primaryDepartureStatusLabel(departure);
+  status.textContent = statusLabel;
   state.append(marker, status);
-  trigger.append(identity, state);
+  chevron.className = "agenda-chevron";
+  chevron.setAttribute("aria-hidden", "true");
+  chevron.textContent = "›";
+  trigger.append(identity, copy, state, chevron);
+  trigger.setAttribute(
+    "aria-label",
+    `Select ${departure.day}, ${dateLabel}, ${departure.time}, ${workoutLabel}, ${statusLabel}`,
+  );
   item.append(trigger);
   if (departure.hasWorkoutRecord) {
     const evidence = document.createElement("span");
@@ -679,16 +763,19 @@ function fallbackDepartureItem(departure: FallbackDeparture): HTMLLIElement {
   const trigger = document.createElement("button");
   const identity = document.createElement("span");
   const day = document.createElement("strong");
-  const time = document.createElement("span");
+  const date = document.createElement("small");
+  const copy = document.createElement("span");
+  const time = document.createElement("strong");
+  const label = document.createElement("small");
   const state = document.createElement("span");
   const marker = document.createElement("span");
   const status = document.createElement("span");
+  const chevron = document.createElement("span");
   item.className = `agenda-row fallback-agenda-row availability-${departure.availabilityKind}`;
   item.dataset.slotId = departure.id;
   trigger.type = "button";
   trigger.className = "agenda-row-trigger";
   trigger.dataset.agendaSlotId = departure.id;
-  trigger.setAttribute("aria-label", `Select ${departure.day} open capacity`);
   setAgendaTriggerState(trigger, departure.id);
   trigger.setAttribute("aria-controls", "workspace-detail");
   if (
@@ -699,17 +786,32 @@ function fallbackDepartureItem(departure: FallbackDeparture): HTMLLIElement {
     trigger.dataset.agendaUnavailable = "true";
     trigger.setAttribute("aria-disabled", "true");
   }
-  identity.className = "agenda-row-identity";
-  day.textContent = departure.day;
+  identity.className = "agenda-row-identity slot-date";
+  day.textContent = shortWeekday(departure.day);
+  const dateLabel =
+    weekDateLabel(currentExerciseView?.weekLabel, departure.day) ?? "This week";
+  date.textContent = dateLabel;
+  copy.className = "agenda-row-copy slot-copy";
   time.textContent = departure.time;
-  identity.append(day, time);
-  state.className = "agenda-row-state";
+  const workoutLabel = "Available workout time";
+  label.textContent = workoutLabel;
+  copy.append(time, label);
+  identity.append(day, date);
+  state.className = "agenda-row-state slot-status";
   marker.className = "agenda-status-marker";
   marker.setAttribute("aria-hidden", "true");
   marker.textContent = fallbackAvailabilitySignal(departure.availabilityKind);
-  status.textContent = fallbackDepartureStatusLabel(departure);
+  const statusLabel = fallbackDepartureStatusLabel(departure);
+  status.textContent = statusLabel;
   state.append(marker, status);
-  trigger.append(identity, state);
+  chevron.className = "agenda-chevron";
+  chevron.setAttribute("aria-hidden", "true");
+  chevron.textContent = "›";
+  trigger.append(identity, copy, state, chevron);
+  trigger.setAttribute(
+    "aria-label",
+    `Select ${departure.day}, ${dateLabel}, ${departure.time}, ${workoutLabel}, ${statusLabel}`,
+  );
   item.append(trigger);
   if (departure.availabilityKind === "recorded") {
     const evidence = document.createElement("span");
@@ -1273,6 +1375,22 @@ function renderWorkspaceDetail(
       ? `${selected.day} workout`
       : "Record a workout";
   }
+  if (workspaceDetailDateTile) {
+    workspaceDetailDateTile.hidden = !selected;
+  }
+  if (workspaceDetailDateDay) {
+    workspaceDetailDateDay.textContent = selected ? shortWeekday(selected.day) : "—";
+  }
+  if (workspaceDetailDateLabel) {
+    workspaceDetailDateLabel.textContent = selected
+      ? weekDateLabel(view?.weekLabel, selected.day) ?? "This week"
+      : "—";
+  }
+  if (workspaceDetailTime) {
+    workspaceDetailTime.textContent = selected
+      ? `${selected.time} · ${selectedDepartureSourceLabel(selected)}`
+      : "Unscheduled workout";
+  }
   if (workspaceDetailCopy) {
     const changedOriginal =
       selected &&
@@ -1387,6 +1505,7 @@ function renderWorkspaceDetail(
 
 function showWorkspaceDestination(destination: WorkspaceDestination, focus = false): void {
   currentWorkspaceDestination = destination;
+  appShell?.setAttribute("data-workspace-destination", destination);
   if (destination !== "this-week") {
     detailTriggerToRestore?.setAttribute("aria-expanded", "false");
     workspaceDetailOpen = false;
@@ -1427,6 +1546,16 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
   const primaryAgenda = chronologicalPrimaryDepartures(view.primaryDepartures);
   const adjustedAgenda = chronologicalPrimaryDepartures(view.adjustedDepartures);
   const fallbackAgenda = chronologicalFallbackDepartures(view.fallbackDepartures);
+  const nextDepartureView = [
+    ...view.primaryDepartures,
+    ...view.adjustedDepartures,
+    ...view.fallbackDepartures,
+  ].find((departure) => departure.id === view.nextDepartureSlotId);
+  const nextNeedsRecord = Boolean(
+    nextDepartureView &&
+      "recordWorkoutAction" in nextDepartureView &&
+      nextDepartureView.recordWorkoutAction,
+  );
   const allAgendaIds = [...primaryAgenda, ...adjustedAgenda, ...fallbackAgenda].map(
     (departure) => departure.id,
   );
@@ -1436,17 +1565,56 @@ function renderExerciseDashboard(view: ExerciseDashboardView): void {
     detailTriggerToRestore = null;
   }
   if (exerciseWeek) {
-    exerciseWeek.textContent = `Week of ${view.weekLabel}`;
+    exerciseWeek.textContent = `This Week · ${view.weekLabel}`;
+    exerciseWeek.setAttribute("aria-label", `Week of ${view.weekLabel}`);
   }
   if (exerciseProgress) {
     exerciseProgress.textContent = view.progress;
+  }
+  if (exerciseProgressChipValue) {
+    exerciseProgressChipValue.textContent = progressFraction(view.progress);
+  }
+  if (exerciseProgressChip) {
+    const progressMatch = view.progress.match(/^(\d+)\s+of\s+(\d+)/);
+    const completed = progressMatch ? Number(progressMatch[1]) : 0;
+    const goal = progressMatch ? Number(progressMatch[2]) : 0;
+    const ratio = goal > 0 ? `${Math.min(completed / goal, 1) * 100}%` : "0%";
+    exerciseProgressChip.style.setProperty("--progress-ratio", ratio);
+    exerciseProgressChip.setAttribute(
+      "aria-label",
+      `Weekly progress: ${view.progress}`,
+    );
+  }
+  if (nextDepartureLabel) {
+    nextDepartureLabel.textContent = view.weeklyGoalStatus
+      ? "Weekly goal complete"
+      : nextNeedsRecord
+        ? "Needs workout record"
+        : view.nextDeparture
+          ? "Next workout"
+          : "No scheduled workouts remaining";
   }
   if (nextDeparture) {
     nextDeparture.textContent =
       view.nextDeparture ??
       (view.weeklyGoalStatus
-        ? "Weekly goal complete — optional workouts welcome"
-        : "No primary departures remaining this week");
+        ? "Log an extra workout"
+        : "Log an extra workout");
+  }
+  if (nextDepartureDate) {
+    nextDepartureDate.textContent = nextDepartureView
+      ? weekDateLabel(view.weekLabel, nextDepartureView.day) ?? "This week"
+      : "Optional workouts welcome";
+  }
+  if (nextDepartureCard) {
+    nextDepartureCard.classList.toggle("is-due", nextNeedsRecord);
+    const nextDateLabel = nextDepartureDate?.textContent ?? "";
+    nextDepartureCard.setAttribute(
+      "aria-label",
+      nextDeparture
+        ? `Next departure · ${nextDepartureLabel?.textContent ?? "Next workout"}: ${nextDeparture.textContent} · ${nextDateLabel}`
+        : "Next departure",
+    );
   }
   if (primaryDepartures) {
     primaryDepartures.replaceChildren(
