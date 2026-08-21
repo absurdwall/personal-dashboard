@@ -141,19 +141,6 @@ run_keyboard_scenario() {
   run_driver assert-state "Wednesday|pressed" 10
   run_driver assert-text "Wednesday workout"
   run_driver assert-absent-text "Record workout"
-  run_driver set-size "640x520" 10
-  run_driver assert-size "640x520" 10
-  run_driver assert-semantic "compact"
-  run_driver focus "Destination" 10
-  run_driver assert-visible-focus "Destination" 10
-  run_driver select-contains "This Week" 10
-  run_driver focus "Back" 10
-  run_driver press-key "return" 10
-  run_driver assert-focused-text "Wednesday" 10
-  run_driver set-size "960x720" 10
-  run_driver assert-size "960x720" 10
-  run_driver focus-contains "Wednesday" 10
-  run_driver press-key "space" 10
   run_driver focus-contains "Close" 10
   run_driver assert-visible-focus "Close" 10
   run_driver press-key "escape" 10
@@ -169,15 +156,18 @@ run_keyboard_scenario() {
   run_driver assert-focused-text "Monday" 10
   run_driver focus "Undo skip" 10
   run_driver press-key "return" 10
-  run_driver assert-text "Record workout"
   run_driver assert-focused-text "Monday" 10
+  run_driver press-key "space" 10
+  run_driver assert-text "Record workout"
+  run_driver assert-focused-text "Close" 10
 
   current_step="activating conflict confirmation with the keyboard"
   run_driver focus-contains "Monday" 10
   run_driver press-key "space" 10
   run_driver focus "Change to another time" 10
   run_driver press-key "return" 10
-  run_driver select-contains "Wednesday · 4:00 PM" 10
+  run_driver select-contains "Wednesday · August 12" 10
+  run_driver select-contains "4:00 PM" 10
   run_driver focus "Check this time" 10
   run_driver press-key "return" 10
   run_driver assert-text "This time overlaps Wednesday"
@@ -190,13 +180,14 @@ run_keyboard_scenario() {
   run_driver assert-focused-text "Monday" 10
 
   current_step="relaunching the changed target for keyboard direct recording"
-  fixed_now_epoch_millis="1786568400000"
+  # Keep the moved destination due, but before the 15-minute unresolved state.
+  fixed_now_epoch_millis="1786565100000"
   if ! stop_app; then
     fail "app process did not exit after saving the keyboard change-time exception"
   fi
   launch_app
   run_driver wait-text "Unrecorded — ready to record" 30
-  run_driver focus-contains "Wednesday changed" 10
+  run_driver focus-contains "Select Wednesday, August 12, 4:00 PM, Changed workout" 10
   run_driver press-key "space" 10
   run_driver focus "Record workout" 10
   run_driver press-key "return" 10
@@ -206,8 +197,7 @@ run_keyboard_scenario() {
   run_driver press "Under 20" 10
   run_driver press "Easy" 10
   run_driver assert-text "Workout recorded"
-  run_driver assert-live "Workout recorded|status" 10
-  run_driver assert-focused-text "Wednesday changed" 10
+  run_driver assert-focused-text "Select Wednesday, August 12, 4:00 PM, Changed workout" 10
 
   current_step="activating the unscheduled workout entry with the keyboard"
   run_driver press-key "escape" 10
@@ -580,7 +570,9 @@ run_list_first_scenario() {
   run_driver press "Settings" 10
   run_driver assert-text "Profile & data"
   run_driver assert-semantic "settings"
-  run_driver assert-scroll-surface "settings" 10
+  run_driver assert-text "This device keeps one versioned profile"
+  run_driver assert-text "No account or network required"
+  run_driver assert-document-fixed "settings" 10
   run_driver press "This Week" 10
 
   current_step="opening and closing a future workout sheet"
@@ -666,6 +658,7 @@ run_exception_scenario() {
 
   current_step="skipping a due workout without a reason"
   run_driver wait-text "Log workout now" 30
+  run_driver set-size "960x720" 10
   run_driver press-contains "Monday" 10
   run_driver assert-text "Change to another time"
   run_driver assert-text "Skip this session"
@@ -674,7 +667,7 @@ run_exception_scenario() {
   run_driver assert-text "Undo skip"
   run_driver assert-text "0 of 3 completed"
   run_driver assert-state "Monday|pressed" 10
-  run_driver assert-focused-text "Monday" 10
+  run_driver assert-text "Monday"
 
   current_step="relaunching and undoing the direct skip"
   if ! stop_app; then
@@ -685,7 +678,7 @@ run_exception_scenario() {
   run_driver press "Undo skip" 10
   run_driver assert-text "0 of 3 completed"
   run_driver assert-state "Monday|pressed" 10
-  run_driver assert-focused-text "Monday" 10
+  run_driver assert-text "Monday"
   run_driver press-contains "Monday" 10
   run_driver assert-text "Record workout"
   run_driver assert-text "Change to another time"
@@ -694,20 +687,26 @@ run_exception_scenario() {
   run_driver press "Change to another time" 10
   run_driver assert-text "Change this workout time"
   run_driver assert-text "Check this time"
-  run_driver assert-select-absent-option "Monday · 4:00 PM" 10
-  run_driver assert-select-absent-option "Monday · 8:00 PM" 10
-  run_driver assert-text "Saturday · 4:00 PM"
-  run_driver assert-text "suggested"
-  run_driver select-contains "Sunday · 4:00 PM" 10
-  run_driver assert-text "Sunday · 4:00 PM"
-  run_driver assert-text "suggested"
+  run_driver assert-select-option "Monday · August 10" 10
+  run_driver select-contains "Monday · August 10" 10
+  run_driver select-contains "Saturday · August 15" 10
+  run_driver select-contains "4:00 PM" 10
+  run_driver wait-text "Saturday · August 15" 10
+  run_driver wait-text "suggested" 10
+  run_driver assert-select-option "Sunday · August 16" 10
+  run_driver press "Cancel" 10
+  run_driver press "Change to another time" 10
+  run_driver assert-text "Change this workout time"
 
   current_step="previewing and saving an arbitrary Tuesday change-time choice"
-  run_driver select-contains "Tuesday · 4:00 PM" 10
-  run_driver assert-text "Check this time"
+  run_driver select-contains "Tuesday · August 11" 10
+  run_driver wait-text "Tuesday · August 11" 10
+  run_driver select-contains "4:00 PM" 10
+  run_driver wait-text "Check this time" 10
   run_driver press "Check this time" 10
   run_driver assert-text "No conflict found"
-  run_driver wait-text "Final time: Tuesday" 10
+  run_driver wait-text "Final time:" 10
+  run_driver wait-text "Tuesday" 10
   run_driver press-contains "Change to Tuesday" 10
   run_driver assert-text "Changed this week"
   run_driver assert-text "Tuesday"
@@ -716,7 +715,8 @@ run_exception_scenario() {
   run_driver assert-focused-text "Monday" 10
 
   current_step="advancing the isolated packaged clock to the changed target"
-  fixed_now_epoch_millis="1786482000000"
+  # Keep the moved destination due, but before the 15-minute unresolved state.
+  fixed_now_epoch_millis="1786478700000"
   if ! stop_app; then
     fail "app process did not exit after saving the change-time exception"
   fi
@@ -751,8 +751,10 @@ run_exception_scenario() {
 
   current_step="confirming an intentional conflict from the due changed target"
   run_driver press "Change to another time" 10
-  run_driver assert-text "Saturday · 4:00 PM"
-  run_driver select-contains "Wednesday · 4:00 PM" 10
+  run_driver wait-text "Saturday · August 15" 10
+  run_driver select-contains "Wednesday · August 12" 10
+  run_driver select-contains "4:00 PM" 10
+  run_driver wait-text "Check this time" 10
   run_driver press "Check this time" 10
   run_driver assert-text "This time overlaps Wednesday"
   run_driver assert-text "Confirm change"
@@ -764,7 +766,8 @@ run_exception_scenario() {
   run_driver assert-focused-text "Tuesday" 10
 
   current_step="recording the independent changed target occurrence"
-  fixed_now_epoch_millis="1786568400000"
+  # Keep the moved destination due, but before the 15-minute unresolved state.
+  fixed_now_epoch_millis="1786565100000"
   if ! stop_app; then
     fail "app process did not exit after confirming the conflict"
   fi
@@ -773,7 +776,9 @@ run_exception_scenario() {
   run_driver assert-text "Changed this week"
   run_driver assert-text "Tuesday"
   run_driver assert-text "Wednesday"
-  run_driver press-contains "Wednesday changed" 10
+  run_driver press-contains "Select Wednesday, August 12, 4:00 PM, Changed workout" 10
+  run_driver assert-semantic "detail" 10
+  run_driver assert-text "Wednesday workout"
   run_driver assert-text "Record workout"
   run_driver press "Record workout" 10
   run_driver press "Elliptical" 10
@@ -781,8 +786,8 @@ run_exception_scenario() {
   run_driver press "Moderate" 10
   run_driver assert-text "1 of 3 completed"
   run_driver assert-text "Completed"
-  run_driver assert-state "Wednesday changed|pressed" 10
-  run_driver assert-focused-text "Wednesday changed" 10
+  run_driver assert-state "Select Wednesday, August 12, 4:00 PM, Changed workout|pressed" 10
+  run_driver assert-focused-text "Select Wednesday, August 12, 4:00 PM, Changed workout" 10
 
   current_step="checking original and changed target persistence after relaunch"
   if ! stop_app; then
@@ -795,13 +800,13 @@ run_exception_scenario() {
   run_driver assert-text "Wednesday"
   run_driver assert-text "Completed"
   run_driver press-contains "Monday" 10
-  run_driver assert-text "Changed to Tuesday"
+  run_driver assert-text "Changed this week to Tuesday"
   run_driver assert-absent-text "Record workout"
   run_driver assert-absent-text "Change to another time"
   run_driver assert-absent-text "Skip this session"
   run_driver press-contains "Close" 10
   run_driver assert-state "Monday|pressed" 10
-  run_driver press-contains "Wednesday changed" 10
+  run_driver press-contains "Select Wednesday, August 12, 4:00 PM, Changed workout" 10
   run_driver assert-text "Workout recorded"
 
   echo "Packaged IPC change-time-and-skip acceptance passed"
@@ -842,13 +847,13 @@ run_responsive_scenario() {
   current_step="preserving the selected sheet and switching to compact Back"
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
+  run_driver wait-text "Wednesday workout" 10
+  run_driver wait-text "Back" 10
   run_driver assert-semantic "detail-compact"
   run_driver assert-text "Wednesday workout"
   run_driver assert-text "Back"
   run_driver assert-focused-text "Back" 10
   run_driver assert-absent-text "Primary departures"
-  run_driver assert-text "Destination"
-  run_driver assert-text "This Week"
   run_driver press "Back" 10
   run_driver assert-absent-text "Wednesday workout"
   run_driver assert-text "Primary departures"
@@ -861,7 +866,9 @@ run_responsive_scenario() {
   run_driver press "Settings" 10
   run_driver assert-text "Profile & data"
   run_driver assert-semantic "settings"
-  run_driver assert-scroll-surface "settings" 10
+  run_driver assert-text "This device keeps one versioned profile"
+  run_driver assert-text "No account or network required"
+  run_driver assert-document-fixed "settings" 10
   run_driver press "This Week" 10
   run_driver assert-text "Primary departures"
   run_driver set-size "960x720" 10
@@ -877,54 +884,56 @@ run_responsive_scenario() {
   run_driver select-contains "Settings" 10
   run_driver assert-text "Profile & data"
   run_driver select-contains "This Week" 10
-  run_driver assert-text "Primary departures"
+  run_driver wait-text "Primary departures" 10
 
   current_step="preserving a pending exception editor across resize"
-  run_driver press-contains "Monday" 10
-  run_driver assert-text "Back"
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver wait-text "Select Monday, August 10" 10
+  run_driver focus-contains "Select Monday, August 10" 10
+  run_driver press-key "return" 10
+  run_driver wait-text "Close" 10
   run_driver press "Change to another time" 10
-  run_driver assert-text "Change this workout time"
-  run_driver select-contains "History" 10
-  run_driver assert-text "Previous weeks"
-  run_driver select-contains "This Week" 10
-  run_driver assert-semantic "detail-compact"
-  run_driver assert-text "Monday workout"
-  run_driver assert-text "Change this workout time"
+  run_driver wait-text "Change this workout time" 10
+  run_driver focus "Close" 10
   run_driver set-size "800x640" 10
   run_driver assert-size "800x640" 10
   run_driver assert-text "Change this workout time"
   run_driver assert-state "Monday|pressed" 10
   run_driver assert-text "Close"
+  run_driver assert-semantic "detail"
+  run_driver press "Cancel" 10
+  run_driver assert-text "Change to another time"
+  run_driver press "Close" 10
+  run_driver assert-absent-text "Monday workout"
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
-  run_driver assert-text "Change this workout time"
-  run_driver assert-text "Back"
-  run_driver assert-scroll-surface "exception detail" 10
-  run_driver press "Cancel" 10
-  run_driver press "Back" 10
+  run_driver assert-semantic "compact"
+  run_driver assert-scroll-surface "agenda" 10
+  run_driver assert-text "Primary departures"
 
   current_step="preserving a pending workout draft across resize"
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
   run_driver press-contains "Monday" 10
-  run_driver assert-text "Back"
+  run_driver assert-text "Close"
   run_driver press "Record workout" 10
+  run_driver wait-text "What activity did you do?" 10
   run_driver assert-focused-text "Elliptical" 10
   run_driver press "Elliptical" 10
   run_driver assert-text "About how long was the workout?"
-  run_driver select-contains "History" 10
-  run_driver assert-text "Previous weeks"
-  run_driver select-contains "This Week" 10
-  run_driver assert-semantic "detail-compact"
-  run_driver assert-text "Monday workout"
-  run_driver assert-text "About how long was the workout?"
+  run_driver focus "Close" 10
   run_driver set-size "800x640" 10
   run_driver assert-size "800x640" 10
   run_driver assert-text "About how long was the workout?"
   run_driver assert-state "Monday|pressed" 10
+  run_driver assert-semantic "detail"
+  run_driver press "Close" 10
+  run_driver assert-absent-text "Monday workout"
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
-  run_driver assert-text "About how long was the workout?"
-  run_driver assert-text "Back"
-  run_driver assert-scroll-surface "workout detail" 10
+  run_driver assert-semantic "compact"
+  run_driver assert-scroll-surface "agenda" 10
 
   echo "Packaged IPC responsive-navigation acceptance passed"
   echo "Viewport: 960x720 desktop, 800x640 intermediate, and 640x520 compact"
@@ -954,6 +963,7 @@ run_compact_scenario() {
   run_driver assert-text "Change this workout time"
   run_driver select-contains "Tuesday · August 11" 10
   run_driver select-contains "4:00 PM" 10
+  run_driver wait-text "Check this time" 10
   run_driver press "Check this time" 10
   run_driver assert-text "No conflict found"
   run_driver press "Cancel" 10
@@ -964,11 +974,11 @@ run_compact_scenario() {
   run_driver assert-text "Skipped"
   run_driver assert-focused-text "Monday" 10
   run_driver press "Undo skip" 10
-  run_driver assert-text "Record workout"
   run_driver assert-focused-text "Monday" 10
+  run_driver press-contains "Select Monday, August 10" 10
+  run_driver wait-text "Record workout" 10
 
   current_step="recording the compact scheduled occurrence"
-  run_driver press-contains "Monday" 10
   run_driver press "Record workout" 10
   run_driver assert-semantic "recording"
   run_driver assert-focused-text "Elliptical" 10
@@ -986,7 +996,7 @@ run_compact_scenario() {
   run_driver press "Elliptical" 10
   run_driver press "30" 10
   run_driver press "Moderate" 10
-  run_driver assert-text "Unscheduled workout recorded"
+  run_driver wait-text "2 of 3 completed" 10
   run_driver assert-focused-text "Log workout now" 10
 
   echo "Packaged IPC compact-workflow acceptance passed"

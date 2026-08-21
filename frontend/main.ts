@@ -564,8 +564,10 @@ function syncWorkspaceViewportMode(restoreFocus = false): void {
     workspaceDetailOpen &&
     currentWorkspaceDestination === "this-week";
   appShell?.setAttribute("data-detail-open", String(compactDetailOpen));
-  workspaceInformation?.setAttribute("aria-hidden", String(compactDetailOpen));
-  workspaceDetail?.setAttribute("aria-modal", String(compactDetailOpen));
+  workspaceInformation?.removeAttribute("aria-hidden");
+  // macOS WebKit collapses the compact sheet's AX subtree when aria-modal is true;
+  // retain role=dialog and the visual full-surface boundary so the controls remain exposed.
+  workspaceDetail?.setAttribute("aria-modal", "false");
   if (workspaceDestinationSelect) {
     workspaceDestinationSelect.value = currentWorkspaceDestination;
   }
@@ -885,7 +887,7 @@ function primaryDepartureStatusLabel(departure: PrimaryDeparture): string {
     moved: "Changed this week",
     skipped: "Skipped",
     "not-needed": "No workout needed",
-    missed: "Missed",
+    missed: "Missed — no response",
     available: "Available",
   }[departure.statusKind];
 }
@@ -897,7 +899,7 @@ function fallbackDepartureStatusLabel(departure: FallbackDeparture): string {
     unrecorded: "Unrecorded — ready to record",
     recorded: "Recorded",
     "not-needed": "No workout needed",
-    missed: "Missed",
+    missed: "Missed — no response",
     reserved: "Reserved",
     unavailable: "Unavailable",
   }[departure.availabilityKind];
@@ -1591,6 +1593,7 @@ function showWorkspaceDestination(destination: WorkspaceDestination, focus = fal
     if (isCurrent) {
       button.setAttribute("aria-current", "page");
     }
+    button.setAttribute("aria-pressed", String(isCurrent));
     button.setAttribute(
       "aria-label",
       isCurrent
@@ -2103,6 +2106,10 @@ async function runWorkoutAction(
         arguments_.slotId === UNSCHEDULED_WORKOUT_SLOT_ID
           ? "Unscheduled workout recorded."
           : "Workout recorded.";
+      workspaceContextStatus.setAttribute(
+        "aria-label",
+        workspaceContextStatus.textContent,
+      );
     }
     setWorkoutActionsDisabled(false);
     if (command !== "complete_workout_record" && dashboard.workoutRecording) {
@@ -2680,7 +2687,12 @@ workspaceDestinationSelect?.addEventListener("change", () => {
 });
 
 syncWorkspaceViewportMode();
-window.addEventListener("resize", () => syncWorkspaceViewportMode(true));
+window.addEventListener("resize", () => {
+  syncWorkspaceViewportMode(true);
+  if (workspaceDetailOpen && currentWorkspaceDestination === "this-week") {
+    renderWorkspaceDetail();
+  }
+});
 showWorkspaceDestination("this-week");
 
 profileForm?.addEventListener("submit", (event) => {
