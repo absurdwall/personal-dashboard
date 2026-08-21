@@ -1,5 +1,7 @@
 # 03 — Integrated responsive and accessibility parity
 
+**Type:** task
+
 **What to build:** Across desktop, intermediate, and compact windows, the user can complete every approved workflow against the final v2 surface: scheduled recording, unscheduled recording, change-time, conflict confirmation, skip, undo, moved-destination recording, destination navigation, and temporary-sheet return. Mouse and keyboard users receive the same visible result, stable focus, and readable state signals.
 
 **Blocked by:** 01 — V2 A visual parity and default workspace; 02 — Day-first change-time picker.

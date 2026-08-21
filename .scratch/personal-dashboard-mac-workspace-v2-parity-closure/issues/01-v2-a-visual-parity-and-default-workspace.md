@@ -1,5 +1,7 @@
 # 01 — V2 A visual parity and default workspace
 
+**Type:** task
+
 **What to build:** When the user launches Personal Dashboard, the default This Week surface should look and feel like prototype A — List + temporary sheet — rather than merely sharing its general concept. The visual hierarchy, palette, typography, spacing, agenda rows, status signals, unscheduled entry point, and temporary detail surface must be one coherent production surface at all supported viewport classes.
 
 **Blocked by:** None — can start immediately.

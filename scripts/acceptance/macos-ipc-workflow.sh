@@ -17,11 +17,94 @@ current_step="setup"
 fixed_now_epoch_millis="${PERSONAL_DASHBOARD_ACCEPTANCE_NOW_EPOCH_MILLIS:-1786406400000}"
 fixed_utc_offset_minutes="${PERSONAL_DASHBOARD_ACCEPTANCE_UTC_OFFSET_MINUTES:--240}"
 acceptance_scenario="${PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO:-list-first}"
+scenario_budget_seconds="${PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS:-240}"
+suite_budget_seconds="${PERSONAL_DASHBOARD_ACCEPTANCE_SUITE_TIMEOUT_SECONDS:-1800}"
+main_shell_pid="$$"
+scenario_watchdog_pid=""
 
 fail() {
   echo "Packaged IPC acceptance failed at ${current_step}: $1" >&2
   exit 1
 }
+
+require_positive_integer() {
+  local value_name="$1"
+  local value="$2"
+  [[ "$value" =~ ^[1-9][0-9]*$ ]] ||
+    fail "${value_name} must be a positive integer (got: ${value})"
+}
+
+terminate_child() {
+  local child_pid="$1"
+  kill -TERM "$child_pid" 2>/dev/null || true
+  for _ in {1..20}; do
+    kill -0 "$child_pid" 2>/dev/null || return 0
+    sleep 0.1
+  done
+  kill -KILL "$child_pid" 2>/dev/null || true
+}
+
+run_bounded_scenario() {
+  local scenario="$1"
+  local started_epoch
+  local now_epoch
+  local scenario_deadline
+  local child_pid
+
+  [[ "$scenario" != "gate" ]] || fail "the gate cannot recursively invoke itself"
+  current_step="running packaged ${scenario} acceptance"
+  PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO="$scenario" \
+    PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS="$scenario_budget_seconds" \
+    "$script_directory/macos-ipc-workflow.sh" &
+  child_pid="$!"
+  started_epoch="$(date +%s)"
+  scenario_deadline=$((started_epoch + scenario_budget_seconds))
+
+  while kill -0 "$child_pid" 2>/dev/null; do
+    now_epoch="$(date +%s)"
+    if (( now_epoch >= scenario_deadline )); then
+      terminate_child "$child_pid"
+      wait "$child_pid" 2>/dev/null || true
+      fail "packaged ${scenario} acceptance exceeded ${scenario_budget_seconds}s"
+    fi
+    if (( now_epoch >= suite_deadline_epoch )); then
+      terminate_child "$child_pid"
+      wait "$child_pid" 2>/dev/null || true
+      fail "packaged gate exceeded ${suite_budget_seconds}s"
+    fi
+    sleep 1
+  done
+
+  if ! wait "$child_pid"; then
+    fail "packaged ${scenario} acceptance did not pass"
+  fi
+}
+
+run_final_gate() {
+  require_positive_integer "scenario budget" "$scenario_budget_seconds"
+  require_positive_integer "suite budget" "$suite_budget_seconds"
+  local suite_started_epoch
+  suite_started_epoch="$(date +%s)"
+  suite_deadline_epoch=$((suite_started_epoch + suite_budget_seconds))
+
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close; do
+    run_bounded_scenario "$scenario"
+  done
+
+  echo "Packaged IPC This Week delivery gate passed"
+  echo "Coverage: list-first, direct scheduled record, unresolved state, unscheduled 0-to-3 progress, exceptions, compact workflows, responsive viewports, keyboard Accessibility, and week-close History"
+  echo "Persistence: each workflow runs in an isolated packaged profile and verifies relaunch where required"
+  echo "Budget: ${scenario_budget_seconds}s per scenario, ${suite_budget_seconds}s overall"
+}
+
+# The gate delegates setup and cleanup to its bounded child scenarios. Do not
+# copy an app bundle or compile a driver in this outer dispatcher first.
+if [[ "$acceptance_scenario" == "gate" ]]; then
+  run_final_gate
+  exit 0
+fi
+
+require_positive_integer "scenario budget" "$scenario_budget_seconds"
 
 find_app_pids() {
   while read -r candidate_pid candidate_command; do
@@ -46,6 +129,11 @@ stop_app() {
 }
 
 cleanup() {
+  if [[ -n "$scenario_watchdog_pid" ]] && kill -0 "$scenario_watchdog_pid" 2>/dev/null; then
+    kill -TERM "$scenario_watchdog_pid" 2>/dev/null || true
+    wait "$scenario_watchdog_pid" 2>/dev/null || true
+  fi
+  scenario_watchdog_pid=""
   if ! stop_app; then
     echo "Packaged IPC acceptance cleanup warning: app process did not exit" >&2
   fi
@@ -59,6 +147,14 @@ cleanup() {
 }
 
 trap cleanup EXIT
+trap 'fail "scenario exceeded ${scenario_budget_seconds}s"' TERM
+
+(
+  sleep "$scenario_budget_seconds"
+  echo "Packaged IPC acceptance exceeded ${scenario_budget_seconds}s at ${current_step}" >&2
+  kill -TERM "$main_shell_pid" 2>/dev/null || true
+) &
+scenario_watchdog_pid="$!"
 
 [[ -d "$source_app_bundle" ]] || fail "missing application bundle at $source_app_bundle"
 [[ -f "$script_directory/macos-ui-driver.swift" ]] ||
@@ -210,20 +306,6 @@ run_keyboard_scenario() {
   echo "Keyboard: destinations, rows, detail actions, conflict confirmation, and unscheduled entry activated by key events"
   echo "Semantics: landmarks, live status, selected detail, and visible focus were observed through Accessibility"
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
-}
-
-run_final_gate() {
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close; do
-    current_step="running packaged $scenario acceptance"
-    if ! PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO="$scenario" \
-      "$script_directory/macos-ipc-workflow.sh"; then
-      fail "packaged $scenario acceptance did not pass"
-    fi
-  done
-
-  echo "Packaged IPC This Week delivery gate passed"
-  echo "Coverage: list-first, direct scheduled record, unresolved state, unscheduled 0-to-3 progress, exceptions, compact workflows, responsive viewports, keyboard Accessibility, and week-close History"
-  echo "Persistence: each workflow runs in an isolated packaged profile and verifies relaunch where required"
 }
 
 run_direct_record_scenario() {
@@ -567,12 +649,32 @@ run_list_first_scenario() {
   current_step="checking direct destination switching"
   run_driver press "History" 10
   run_driver assert-text "Previous weeks"
+  run_driver assert-destination-inset "History" 10
+  run_driver assert-document-fixed "history" 10
   run_driver press "Settings" 10
   run_driver assert-text "Profile & data"
   run_driver assert-semantic "settings"
   run_driver assert-text "This device keeps one versioned profile"
   run_driver assert-text "No account or network required"
+  run_driver assert-destination-inset "Settings" 10
   run_driver assert-document-fixed "settings" 10
+
+  current_step="checking secondary destination insets at compact size"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver assert-destination-inset "Settings" 10
+  run_driver assert-document-fixed "settings" 10
+  run_driver assert-scroll-surface "settings" 10
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver press "History" 10
+  run_driver assert-text "Previous weeks"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver assert-destination-inset "History" 10
+  run_driver assert-document-fixed "history" 10
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
   run_driver press "This Week" 10
 
   current_step="opening and closing a future workout sheet"
@@ -1005,10 +1107,6 @@ run_compact_scenario() {
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
 }
 
-if [[ "$acceptance_scenario" == "gate" ]]; then
-  run_final_gate
-  exit 0
-fi
 if [[ "$acceptance_scenario" == "shell" ]]; then
   run_shell_scenario
   exit 0

@@ -183,29 +183,35 @@
               aria-labelledby="history-heading"
               hidden
             >
-              <p class="section-label">Completed weeks</p>
-              <h2 id="history-heading" class="destination-heading">History</h2>
-              <p class="destination-introduction">
-                Review this week's recorded workouts and decisions from earlier weeks.
-              </p>
-              <section
-                id="current-week-history"
-                class="exercise-history"
-                aria-labelledby="current-week-history-heading"
-                hidden
+              <div
+                class="workspace-destination-content-boundary"
+                role="group"
+                aria-label="History content"
               >
-                <p class="section-label">This week</p>
-                <h4 id="current-week-history-heading">Recorded workouts</h4>
-                <ol id="current-week-workout-records" class="workout-records"></ol>
-              </section>
-              <p id="history-empty-state" class="history-empty-state">
-                This week's records and previous weeks will appear here as you log workouts.
-              </p>
-              <section id="exercise-history" class="exercise-history" aria-labelledby="exercise-history-heading" hidden>
-                <p class="section-label">History</p>
-                <h4 id="exercise-history-heading">Previous weeks</h4>
-                <div id="exercise-history-weeks" class="exercise-history-weeks"></div>
-              </section>
+                <p class="section-label">Completed weeks</p>
+                <h2 id="history-heading" class="destination-heading">History</h2>
+                <p class="destination-introduction">
+                  Review this week's recorded workouts and decisions from earlier weeks.
+                </p>
+                <section
+                  id="current-week-history"
+                  class="exercise-history"
+                  aria-labelledby="current-week-history-heading"
+                  hidden
+                >
+                  <p class="section-label">This week</p>
+                  <h4 id="current-week-history-heading">Recorded workouts</h4>
+                  <ol id="current-week-workout-records" class="workout-records"></ol>
+                </section>
+                <p id="history-empty-state" class="history-empty-state">
+                  This week's records and previous weeks will appear here as you log workouts.
+                </p>
+                <section id="exercise-history" class="exercise-history" aria-labelledby="exercise-history-heading" hidden>
+                  <p class="section-label">History</p>
+                  <h4 id="exercise-history-heading">Previous weeks</h4>
+                  <div id="exercise-history-weeks" class="exercise-history-weeks"></div>
+                </section>
+              </div>
             </section>
 
             <section
@@ -215,18 +221,23 @@
               aria-labelledby="settings-heading"
               hidden
             >
-              <p class="section-label">Workspace controls</p>
-              <h2 id="settings-heading" class="destination-heading">Profile &amp; data</h2>
-              <p class="destination-introduction">
-                Keep this device's profile, routine, reminders, and local files under your control.
-              </p>
-              <section class="routine-settings" aria-labelledby="routine-settings-action">
-                <details>
-                  <summary id="routine-settings-action">Change repeating routine</summary>
-                  <p id="routine-settings-guidance"></p>
-                  <ol id="routine-departures" class="routine-departures"></ol>
-                </details>
-              </section>
+              <div
+                class="workspace-destination-content-boundary"
+                role="group"
+                aria-label="Settings content"
+              >
+                <p class="section-label">Workspace controls</p>
+                <h2 id="settings-heading" class="destination-heading">Profile &amp; data</h2>
+                <p class="destination-introduction">
+                  Keep this device's profile, routine, reminders, and local files under your control.
+                </p>
+                <section class="routine-settings" aria-labelledby="routine-settings-action">
+                  <details>
+                    <summary id="routine-settings-action">Change repeating routine</summary>
+                    <p id="routine-settings-guidance"></p>
+                    <ol id="routine-departures" class="routine-departures"></ol>
+                  </details>
+                </section>
 
         <section class="profile-panel" aria-labelledby="profile-heading">
           <div class="profile-copy">
@@ -451,7 +462,8 @@
             <dd>Native Mac window</dd>
           </div>
         </dl>
-      </section>
+              </div>
+            </section>
           </section>
 
           <div id="workspace-sheet-backdrop" class="workspace-sheet-backdrop" hidden></div>

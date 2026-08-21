@@ -1928,6 +1928,33 @@ body {
   }
 }
 
+/* Review fix: secondary destinations keep the prototype's page inset; This Week stays list-first and flush. */
+#workspace-destination-history,
+#workspace-destination-settings {
+  padding: 34px max(28px, 5vw) 88px;
+}
+
+@media (min-width: 681px) and (max-width: 900px) {
+  #workspace-destination-history,
+  #workspace-destination-settings {
+    padding: 21px 20px 82px;
+  }
+}
+
+@media (max-width: 680px) {
+  #workspace-destination-history,
+  #workspace-destination-settings {
+    padding: 22px 16px 75px;
+  }
+}
+
+@media (max-height: 560px) {
+  #workspace-destination-history,
+  #workspace-destination-settings {
+    padding-top: 14px;
+  }
+}
+
 /* V2 A parity closure: production This Week mirrors the List + temporary sheet reference. */
 
 html,

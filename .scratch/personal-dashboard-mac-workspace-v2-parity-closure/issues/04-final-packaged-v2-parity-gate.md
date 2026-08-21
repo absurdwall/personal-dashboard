@@ -1,5 +1,7 @@
 # 04 — Final packaged v2 parity gate
 
+**Type:** task
+
 **What to build:** Close the parity-closure round only when a fresh isolated launch of the real packaged Mac application matches prototype A and completes the approved workflows with the required persistence, responsive, accessibility, History, and Settings evidence.
 
 **Blocked by:** 01 — V2 A visual parity and default workspace; 02 — Day-first change-time picker; 03 — Integrated responsive and accessibility parity.

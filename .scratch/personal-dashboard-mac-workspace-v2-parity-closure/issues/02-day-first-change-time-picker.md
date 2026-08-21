@@ -1,5 +1,7 @@
 # 02 — Day-first change-time picker
 
+**Type:** task
+
 **What to build:** When the user changes a due workout's time, the user first chooses the weekday or date and then chooses a time available on that day. The final choice remains previewable and conflict-confirmable, while the existing moved-source, independent-destination, persistence, and reminder semantics remain intact.
 
 **Blocked by:** None — can start immediately.

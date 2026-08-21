@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|set-size|assert-size> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -494,6 +494,151 @@ func frame(_ element: AXUIElement) -> CGRect? {
     return CGRect(origin: origin, size: size)
 }
 
+func performAccessibilityAction(
+    _ element: AXUIElement,
+    _ action: String,
+    _ description: String
+) throws {
+    let error = AXUIElementPerformAction(element, action as CFString)
+    guard error == .success else {
+        throw DriverError.actionFailed(description, error)
+    }
+}
+
+func setAccessibilityAttribute(
+    _ element: AXUIElement,
+    _ name: String,
+    _ value: CFTypeRef,
+    _ description: String
+) throws {
+    let error = AXUIElementSetAttributeValue(element, name as CFString, value)
+    guard error == .success else {
+        throw DriverError.actionFailed(description, error)
+    }
+}
+
+struct PickerState: Equatable {
+    let value: String
+    let selectedValues: [String]
+
+    var summary: String {
+        let values = [value] + selectedValues
+        return values.filter { !$0.isEmpty }.joined(separator: " | ")
+    }
+}
+
+func pickerState(_ picker: AXUIElement) -> PickerState {
+    let value = attribute(picker, "AXValue").map(normalizedAttributeValue) ?? ""
+    let selectedValues = (attribute(picker, "AXSelectedChildren") as? [AXUIElement] ?? [])
+        .flatMap { child in
+            ["AXValue", "AXTitle"].compactMap { name in
+                attribute(child, name).map(normalizedAttributeValue)
+            }
+        }
+    return PickerState(value: value, selectedValues: selectedValues)
+}
+
+func pickerStateMatches(_ state: PickerState, _ text: String) -> Bool {
+    let expected = text.lowercased()
+    return ([state.value] + state.selectedValues).contains { value in
+        !value.isEmpty && value.contains(expected)
+    }
+}
+
+func waitForPickerValue(
+    _ picker: AXUIElement,
+    _ text: String,
+    timeout: TimeInterval,
+    changedFrom previousState: PickerState
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    var lastValue = "<none>"
+    repeat {
+        let currentState = pickerState(picker)
+        lastValue = currentState.summary
+        if pickerStateMatches(currentState, text) {
+            guard currentState != previousState else {
+                throw DriverError.unexpectedText(
+                    "specific picker value remained unchanged: (text)"
+                )
+            }
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout(
+        "specific picker value: \(text) (actual: \(lastValue))"
+    )
+}
+
+func scrollSurface(for path: AccessibilityPath) -> AXUIElement? {
+    if let informationSurface = path.ancestors.reversed().first(where: { element in
+        visibleAttribute(element, "AXHidden") &&
+            nodeText(element).localizedCaseInsensitiveContains("Workspace information")
+    }) {
+        return informationSurface
+    }
+    return path.ancestors.reversed().first { element in
+        let role = stringAttribute(element, "AXRole")
+        return visibleAttribute(element, "AXHidden") &&
+            (role == "AXScrollArea" ||
+            (role != "AXWebArea" && role != "AXWindow" &&
+                attribute(element, "AXVerticalScrollBar") != nil))
+    }
+}
+
+func assertDestinationInset(
+    _ application: AXUIElement,
+    _ destination: String
+) throws {
+    let normalizedDestination = destination.lowercased()
+    guard normalizedDestination == "history" || normalizedDestination == "settings" else {
+        throw DriverError.usage
+    }
+    let boundaryLabel = normalizedDestination == "history"
+        ? "History content"
+        : "Settings content"
+    guard let boundaryPath = findTextPath(
+        application,
+        boundaryLabel,
+        contains: true
+    ), visibleAttribute(boundaryPath.element, "AXHidden") else {
+        throw DriverError.timeout("destination content boundary: \(destination)")
+    }
+    guard let boundaryFrame = frame(boundaryPath.element),
+          boundaryFrame.width > 0,
+          boundaryFrame.height > 0 else {
+        throw DriverError.timeout("destination content boundary frame: \(destination)")
+    }
+    guard let surface = scrollSurface(for: boundaryPath),
+          let surfaceFrame = frame(surface),
+          surfaceFrame.width > 0,
+          surfaceFrame.height > 0 else {
+        throw DriverError.timeout("destination information surface frame: \(destination)")
+    }
+
+    let compactViewport = mainWindow(application).flatMap(windowSize).map {
+        $0.width <= 680
+    } ?? false
+    let minimumInset: CGFloat = compactViewport ? 12 : 20
+    let leftInset = boundaryFrame.minX - surfaceFrame.minX
+    let rightInset = surfaceFrame.maxX - boundaryFrame.maxX
+    guard boundaryFrame.minX >= surfaceFrame.minX,
+          boundaryFrame.maxX <= surfaceFrame.maxX,
+          leftInset >= minimumInset,
+          rightInset >= minimumInset else {
+        throw DriverError.unexpectedText(
+            "\(destination) content boundary is flush or asymmetric " +
+                "(left=\(Int(leftInset)), right=\(Int(rightInset)), " +
+                "minimum=\(Int(minimumInset)))"
+        )
+    }
+    print(
+        "\(destination) content boundary inset passed: " +
+            "left=\(Int(leftInset)) right=\(Int(rightInset))"
+    )
+}
+
 func assertVisibleFocus(
     _ application: AXUIElement,
     _ text: String,
@@ -905,12 +1050,7 @@ func assertScrollableSurface(
         application,
         anchorText
     ).compactMap { path in
-        guard let surface = path.ancestors.reversed().first(where: { element in
-                  let role = stringAttribute(element, "AXRole")
-                  return role == "AXScrollArea" ||
-                      (role != "AXWebArea" && role != "AXWindow" &&
-                        attribute(element, "AXVerticalScrollBar") != nil)
-              }) else {
+        guard let surface = scrollSurface(for: path) else {
             return nil
         }
         guard let anchorFrame = frame(path.element), anchorFrame.width > 0, anchorFrame.height > 0 else {
@@ -1010,8 +1150,13 @@ func assertScrollableSurface(
             Thread.sleep(forTimeInterval: 0.25)
         },
     ]
-    for attempt in attempts {
-        try? attempt()
+    var attemptErrors: [String] = []
+    for (index, attempt) in attempts.enumerated() {
+        do {
+            try attempt()
+        } catch {
+            attemptErrors.append("attempt \(index + 1): \(error)")
+        }
         if let afterAnchorFrame = frame(anchor),
            abs(afterAnchorFrame.origin.x - beforeAnchorFrame.origin.x) > 1 ||
             abs(afterAnchorFrame.origin.y - beforeAnchorFrame.origin.y) > 1 {
@@ -1027,7 +1172,12 @@ func assertScrollableSurface(
         throw DriverError.timeout("scrollable surface moved: \(label)")
     }
     guard anchorFrameChanged else {
-        throw DriverError.timeout("scroll position changed: \(label)")
+        let details = attemptErrors.isEmpty
+            ? "no attempt changed the anchor"
+            : attemptErrors.joined(separator: "; ")
+        throw DriverError.timeout(
+            "scroll position changed: \(label) (\(details))"
+        )
     }
     try assertDocumentFixed(application)
 }
@@ -1040,14 +1190,16 @@ func selectOption(
 ) throws {
     let destinationOption = Set(["History", "Settings", "This Week"]).contains(text)
     let pickers: [AXUIElement]
-    if destinationOption, let destinationPicker = findDestinationPicker(application) {
+    if destinationOption {
+        guard let destinationPicker = findDestinationPicker(application) else {
+            throw DriverError.timeout("destination picker")
+        }
         pickers = [destinationPicker]
     } else {
-        pickers = (try? waitForExceptionSchedulePickers(
+        pickers = try waitForExceptionSchedulePickers(
             application,
             timeout: timeout
-        ))
-            ?? [findRole(application, Set(["AXComboBox", "AXPopUpButton"]))].compactMap { $0 }
+        )
     }
     guard !pickers.isEmpty else {
         throw DriverError.timeout("schedule picker")
@@ -1055,167 +1207,94 @@ func selectOption(
 
     if destinationOption, let destinationPicker = pickers.first {
         let destinationIndex: Int
-        let destinationText: String
+        let previousState = pickerState(destinationPicker)
         switch text {
         case "This Week":
             destinationIndex = 0
-            destinationText = "Primary departures"
         case "History":
             destinationIndex = 1
-            destinationText = "Previous weeks"
         case "Settings":
             destinationIndex = 2
-            destinationText = "Profile & data"
         default:
             throw DriverError.usage
         }
-        _ = AXUIElementSetAttributeValue(
+        try setAccessibilityAttribute(
             destinationPicker,
-            "AXFocused" as CFString,
-            kCFBooleanTrue
+            "AXFocused",
+            kCFBooleanTrue,
+            "focus destination picker"
         )
-        _ = AXUIElementPerformAction(destinationPicker, "AXPress" as CFString)
+        try performAccessibilityAction(
+            destinationPicker,
+            "AXPress",
+            "open destination picker"
+        )
         Thread.sleep(forTimeInterval: 0.1)
-        try? pressGlobalKey("home")
+        try pressGlobalKey("home")
         for _ in 0..<destinationIndex {
-            try? pressGlobalKey("down")
+            try pressGlobalKey("down")
         }
-        try? pressGlobalKey("return")
-        let destinationDeadline = Date().addingTimeInterval(timeout)
-        repeat {
-            if findText(application, destinationText) != nil {
-                return
-            }
-            Thread.sleep(forTimeInterval: 0.1)
-        } while Date() < destinationDeadline
-        try? pressGlobalKey("escape")
+        try pressGlobalKey("return")
+        try waitForPickerValue(
+            destinationPicker,
+            text,
+            timeout: timeout,
+            changedFrom: previousState
+        )
+        return
     }
 
     for picker in pickers {
-        let pressError = AXUIElementPerformAction(picker, "AXPress" as CFString)
-        guard pressError == .success else {
-            continue
-        }
+        let previousState = pickerState(picker)
+        try performAccessibilityAction(picker, "AXPress", "open schedule picker")
         let deadline = Date().addingTimeInterval(timeout)
+        var menuAppeared = false
         repeat {
             if let menu = findVisibleMenu(application) {
+                menuAppeared = true
                 if let option = findMenuItem(menu, text) {
-                    let optionIndex = menuItems(menu).firstIndex {
-                        nodeText($0).localizedCaseInsensitiveContains(text)
-                    }
-                    try? scrollMenuOptionIntoView(menu, option, pid: pid)
-                    let optionError = AXUIElementPerformAction(option, "AXPress" as CFString)
-                    guard optionError == .success else {
-                        throw DriverError.actionFailed(text, optionError)
-                    }
-                    try? pressKey(pid, "return")
-                    let selectionDeadline = Date().addingTimeInterval(1)
-                    repeat {
-                        if findText(application, text) != nil {
-                            return
-                        }
-                        Thread.sleep(forTimeInterval: 0.1)
-                    } while Date() < selectionDeadline
-
-                    try? pressKey(pid, "escape")
-                    _ = AXUIElementPerformAction(picker, "AXPress" as CFString)
-                    Thread.sleep(forTimeInterval: 0.1)
-
-                    if let optionIndex,
-                       findVisibleMenu(application) != nil {
-                        _ = AXUIElementSetAttributeValue(
-                            picker,
-                            "AXFocused" as CFString,
-                            kCFBooleanTrue
-                        )
-                        try? pressGlobalKey("home")
-                        for _ in 0..<optionIndex {
-                            try? pressGlobalKey("down")
-                        }
-                        try? pressGlobalKey("return")
-                        let keyboardDeadline = Date().addingTimeInterval(1)
-                        repeat {
-                            if findText(application, text) != nil {
-                                return
-                            }
-                            Thread.sleep(forTimeInterval: 0.1)
-                        } while Date() < keyboardDeadline
-                    }
-
-                    if let retryMenu = findVisibleMenu(application),
-                       let retryOption = findMenuItem(retryMenu, text) {
-                        try? scrollMenuOptionIntoView(retryMenu, retryOption, pid: pid)
-                        try? clickElement(retryOption, pid: pid)
-                        try? pressKey(pid, "return")
-                        let retryDeadline = Date().addingTimeInterval(1)
-                        repeat {
-                            if findText(application, text) != nil {
-                                return
-                            }
-                            Thread.sleep(forTimeInterval: 0.1)
-                        } while Date() < retryDeadline
-                    }
-
-                    try? pressKey(pid, "escape")
-                    _ = AXUIElementPerformAction(picker, "AXPress" as CFString)
-                    Thread.sleep(forTimeInterval: 0.1)
-                    if let mirroredMenu = findVisibleMenu(application),
-                       let mirroredOption = findMenuItem(mirroredMenu, text) {
-                        try? scrollMenuOptionIntoView(mirroredMenu, mirroredOption, pid: pid)
-                        try? clickElement(mirroredOption, pid: pid, mirroredY: true)
-                        try? pressKey(pid, "return")
-                        let mirroredDeadline = Date().addingTimeInterval(1)
-                        repeat {
-                            if findText(application, text) != nil {
-                                return
-                            }
-                            Thread.sleep(forTimeInterval: 0.1)
-                        } while Date() < mirroredDeadline
-                    }
-                    break
+                    try scrollMenuOptionIntoView(menu, option, pid: pid)
+                    try performAccessibilityAction(
+                        option,
+                        "AXPress",
+                        "select schedule option \(text)"
+                    )
+                    try pressKey(pid, "return")
+                    try waitForPickerValue(
+                        picker,
+                        text,
+                        timeout: timeout,
+                        changedFrom: previousState
+                    )
+                    return
                 }
-                try? pressKey(pid, "escape")
+                try pressKey(pid, "escape")
                 break
             }
             Thread.sleep(forTimeInterval: 0.1)
         } while Date() < deadline
-        try? pressKey(pid, "escape")
-    }
-
-    if text == "4:00 PM", let timePicker = pickers.last {
-        _ = AXUIElementSetAttributeValue(
-            timePicker,
-            "AXFocused" as CFString,
-            kCFBooleanTrue
-        )
-        try? pressGlobalKey("home")
-        try? pressGlobalKey("return")
-        let selectionDeadline = Date().addingTimeInterval(timeout)
-        repeat {
-            if findText(application, text) != nil {
-                return
-            }
-            Thread.sleep(forTimeInterval: 0.1)
-        } while Date() < selectionDeadline
+        if menuAppeared {
+            try pressKey(pid, "escape")
+        } else {
+            throw DriverError.timeout("visible schedule picker")
+        }
     }
 
     for picker in pickers {
-        let setError = AXUIElementSetAttributeValue(
+        let previousState = pickerState(picker)
+        try setAccessibilityAttribute(
             picker,
-            "AXValue" as CFString,
-            text as CFTypeRef
+            "AXValue",
+            text as CFTypeRef,
+            "set schedule picker to \(text)"
         )
-        guard setError == .success else {
-            continue
-        }
-        let valueDeadline = Date().addingTimeInterval(timeout)
-        repeat {
-            if nodeText(picker).localizedCaseInsensitiveContains(text) ||
-                stringAttribute(picker, "AXValue").localizedCaseInsensitiveContains(text) {
-                return
-            }
-            Thread.sleep(forTimeInterval: 0.1)
-        } while Date() < valueDeadline
+        try waitForPickerValue(
+            picker,
+            text,
+            timeout: timeout,
+            changedFrom: previousState
+        )
+        return
     }
 
     throw DriverError.timeout("select option: \(text)")
@@ -1330,17 +1409,6 @@ func findMenuItem(_ menu: AXUIElement, _ text: String) -> AXUIElement? {
     return match
 }
 
-func menuItems(_ menu: AXUIElement) -> [AXUIElement] {
-    var matches: [AXUIElement] = []
-    _ = walk(menu) { element in
-        if stringAttribute(element, "AXRole") == "AXMenuItem" {
-            matches.append(element)
-        }
-        return false
-    }
-    return matches
-}
-
 func assertSelectOption(
     _ application: AXUIElement,
     _ text: String,
@@ -1348,19 +1416,16 @@ func assertSelectOption(
     pid: pid_t,
     timeout: TimeInterval
 ) throws {
-    let pickers = (try? waitForExceptionSchedulePickers(
+    let pickers = try waitForExceptionSchedulePickers(
         application,
         timeout: timeout
-    )) ?? [findRole(application, Set(["AXComboBox", "AXPopUpButton"]))].compactMap { $0 }
+    )
     guard !pickers.isEmpty else {
         throw DriverError.timeout("exception schedule picker")
     }
     var sawVisibleMenu = false
     for picker in pickers {
-        let pressError = AXUIElementPerformAction(picker, "AXPress" as CFString)
-        guard pressError == .success else {
-            continue
-        }
+        try performAccessibilityAction(picker, "AXPress", "open schedule picker")
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
             if let menu = findVisibleMenu(application) {
@@ -1372,13 +1437,11 @@ func assertSelectOption(
                     }
                     throw DriverError.unexpectedText("select option: \(nodeText(option))")
                 }
-                try? pressKey(pid, "escape")
+                try pressKey(pid, "escape")
                 break
             }
             Thread.sleep(forTimeInterval: 0.1)
         } while Date() < deadline
-
-        try? pressKey(pid, "escape")
     }
     guard case .absent = expectation else {
         throw DriverError.timeout("select option: \(text)")
@@ -1471,10 +1534,11 @@ func resizeWindow(
     _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
     var position = CGPoint(x: 40, y: 40)
     if let positionValue = AXValueCreate(.cgPoint, &position) {
-        _ = AXUIElementSetAttributeValue(
+        try setAccessibilityAttribute(
             window,
-            "AXPosition" as CFString,
-            positionValue
+            "AXPosition",
+            positionValue,
+            "position window for resize"
         )
     }
     var resized = false
@@ -1543,10 +1607,11 @@ do {
     let (pid, command, text, timeout) = try requireArguments()
     let application = AXUIElementCreateApplication(pid)
     _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows])
-    _ = AXUIElementSetAttributeValue(
+    try setAccessibilityAttribute(
         application,
-        "AXFrontmost" as CFString,
-        kCFBooleanTrue
+        "AXFrontmost",
+        kCFBooleanTrue,
+        "activate application"
     )
     Thread.sleep(forTimeInterval: 0.05)
 
@@ -1598,6 +1663,8 @@ do {
     case "assert-scroll-surface":
         try assertScrollableSurface(application, text, pid: pid)
         print("Rendered active surface scrolled without document scroll: \(text)")
+    case "assert-destination-inset":
+        try assertDestinationInset(application, text)
     case "assert-select-option":
         try assertSelectOption(application, text, expectation: .present, pid: pid, timeout: timeout)
         print("Rendered select contains option: \(text)")
