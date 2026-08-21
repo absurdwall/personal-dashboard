@@ -248,13 +248,16 @@ func waitForFocusedText(
 
 func focusPressable(
     _ application: AXUIElement,
-    _ text: String,
+    pid: pid_t,
+    text: String,
     contains: Bool,
     timeout: TimeInterval
 ) throws {
     let deadline = Date().addingTimeInterval(timeout)
     repeat {
         if let element = findPressable(application, text, contains: contains) {
+            _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+            Thread.sleep(forTimeInterval: 0.05)
             let error = AXUIElementSetAttributeValue(
                 element,
                 "AXFocused" as CFString,
@@ -263,8 +266,14 @@ func focusPressable(
             guard error == .success else {
                 throw DriverError.actionFailed("focus \(text)", error)
             }
-            try waitForFocusedText(application, text, timeout: 1)
-            return
+            let focusDeadline = min(deadline, Date().addingTimeInterval(1))
+            repeat {
+                if let focused = focusedElement(application),
+                   nodeText(focused).localizedCaseInsensitiveContains(text) {
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.1)
+            } while Date() < focusDeadline
         }
         Thread.sleep(forTimeInterval: 0.1)
     } while Date() < deadline
@@ -383,7 +392,7 @@ func assertSemanticContract(
 
     if !compactViewport {
         for text in ["This Week", "History", "Settings"] {
-            guard findPressable(application, text) != nil else {
+            guard findPressable(application, text, contains: true) != nil else {
                 throw DriverError.timeout("semantic navigation control: \(text)")
             }
         }
@@ -397,8 +406,8 @@ func assertSemanticContract(
         }
     } else if mode == "detail" || mode == "detail-compact" {
         guard findText(application, "workout") != nil,
-              findPressable(application, "Close") != nil ||
-                findPressable(application, "Back") != nil else {
+              findPressable(application, "Close", contains: true) != nil ||
+                findPressable(application, "Back", contains: true) != nil else {
             throw DriverError.timeout("semantic detail surface")
         }
     } else if mode == "compact" {
@@ -446,18 +455,15 @@ func assertState(
     guard let element = findPressable(application, text, contains: true) else {
         throw DriverError.timeout("stateful rendered control: \(text)")
     }
-    let values = [
-        "AXSelected",
-        "AXPressed",
-        "AXCurrent",
-        "AXValue",
-        "AXDescription",
-        "AXHelp",
-    ].compactMap {
+    let expectedState = expected.lowercased()
+    let stateAttributes = expectedState == "current"
+        ? ["AXCurrent", "AXSelected"]
+        : ["AXSelected", "AXPressed", "AXValue"]
+    let values = stateAttributes.compactMap {
         attribute(element, $0).map(normalizedAttributeValue)
     }
     let matches: Set<String>
-    switch expected.lowercased() {
+    switch expectedState {
     case "current":
         matches = ["true", "1", "page", "current", "selected"]
     case "pressed", "selected":
@@ -781,6 +787,7 @@ func windowSize(_ window: AXUIElement) -> CGSize? {
 
 func resizeWindow(
     _ application: AXUIElement,
+    pid: pid_t,
     _ text: String
 ) throws {
     guard var size = parseWindowSize(text) else {
@@ -792,11 +799,13 @@ func resizeWindow(
     guard let value = AXValueCreate(.cgSize, &size) else {
         throw DriverError.actionFailed("resize \(text)", .failure)
     }
+    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
     let error = AXUIElementSetAttributeValue(window, "AXSize" as CFString, value)
     guard error == .success else {
         throw DriverError.actionFailed("resize \(text)", error)
     }
     Thread.sleep(forTimeInterval: 0.25)
+    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
 }
 
 func assertWindowSize(
@@ -839,6 +848,13 @@ func requireArguments() throws -> (pid_t, String, String, TimeInterval) {
 do {
     let (pid, command, text, timeout) = try requireArguments()
     let application = AXUIElementCreateApplication(pid)
+    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows])
+    _ = AXUIElementSetAttributeValue(
+        application,
+        "AXFrontmost" as CFString,
+        kCFBooleanTrue
+    )
+    Thread.sleep(forTimeInterval: 0.05)
 
     switch command {
     case "wait-text":
@@ -854,10 +870,10 @@ do {
         try waitForFocusedText(application, text, timeout: timeout)
         print("Focused rendered control contains: \(text)")
     case "focus":
-        try focusPressable(application, text, contains: false, timeout: timeout)
+        try focusPressable(application, pid: pid, text: text, contains: true, timeout: timeout)
         print("Focused rendered control: \(text)")
     case "focus-contains":
-        try focusPressable(application, text, contains: true, timeout: timeout)
+        try focusPressable(application, pid: pid, text: text, contains: true, timeout: timeout)
         print("Focused rendered control containing: \(text)")
     case "press-key":
         try pressKey(pid, text)
@@ -898,7 +914,7 @@ do {
         let deadline = Date().addingTimeInterval(timeout)
         var pressed = false
         repeat {
-            if let element = findPressable(application, text) {
+            if let element = findPressable(application, text, contains: true) {
                 let error = AXUIElementPerformAction(element, "AXPress" as CFString)
                 guard error == .success else {
                     throw DriverError.actionFailed(text, error)
@@ -934,7 +950,7 @@ do {
         try selectOption(application, text, timeout: timeout)
         print("Selected rendered option containing: \(text)")
     case "set-size":
-        try resizeWindow(application, text)
+        try resizeWindow(application, pid: pid, text)
         print("Resized rendered window to: \(text)")
     case "assert-size":
         try assertWindowSize(application, text, timeout: timeout)

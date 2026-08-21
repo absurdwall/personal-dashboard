@@ -92,10 +92,11 @@ launch_app() {
   open -a "$app_bundle" || fail "Launch Services could not activate the isolated app"
 
   for _ in {1..80}; do
+    app_pid=""
     while read -r candidate_pid; do
       app_pid="$candidate_pid"
-      break 2
     done < <(find_app_pids)
+    [[ -n "$app_pid" ]] && break
     sleep 0.1
   done
   [[ -n "$app_pid" ]] || fail "Launch Services did not start the isolated app process"
@@ -222,7 +223,7 @@ run_keyboard_scenario() {
 }
 
 run_final_gate() {
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive keyboard week-close; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close; do
     current_step="running packaged $scenario acceptance"
     if ! PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO="$scenario" \
       "$script_directory/macos-ipc-workflow.sh"; then
@@ -231,7 +232,7 @@ run_final_gate() {
   done
 
   echo "Packaged IPC This Week delivery gate passed"
-  echo "Coverage: list-first, direct scheduled record, unresolved state, unscheduled 0-to-3 progress, exceptions, responsive viewports, keyboard Accessibility, and week-close History"
+  echo "Coverage: list-first, direct scheduled record, unresolved state, unscheduled 0-to-3 progress, exceptions, compact workflows, responsive viewports, keyboard Accessibility, and week-close History"
   echo "Persistence: each workflow runs in an isolated packaged profile and verifies relaunch where required"
 }
 
@@ -886,11 +887,13 @@ run_responsive_scenario() {
   run_driver select-contains "History" 10
   run_driver assert-text "Previous weeks"
   run_driver select-contains "This Week" 10
-  run_driver press-contains "Monday" 10
+  run_driver assert-semantic "detail-compact"
+  run_driver assert-text "Monday workout"
   run_driver assert-text "Change this workout time"
   run_driver set-size "800x640" 10
   run_driver assert-size "800x640" 10
   run_driver assert-text "Change this workout time"
+  run_driver assert-state "Monday|pressed" 10
   run_driver assert-text "Close"
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
@@ -910,11 +913,13 @@ run_responsive_scenario() {
   run_driver select-contains "History" 10
   run_driver assert-text "Previous weeks"
   run_driver select-contains "This Week" 10
-  run_driver press-contains "Monday" 10
+  run_driver assert-semantic "detail-compact"
+  run_driver assert-text "Monday workout"
   run_driver assert-text "About how long was the workout?"
   run_driver set-size "800x640" 10
   run_driver assert-size "800x640" 10
   run_driver assert-text "About how long was the workout?"
+  run_driver assert-state "Monday|pressed" 10
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
   run_driver assert-text "About how long was the workout?"
@@ -925,6 +930,68 @@ run_responsive_scenario() {
   echo "Viewport: 960x720 desktop, 800x640 intermediate, and 640x520 compact"
   echo "State: selected detail, exception editor, and workout draft survived resize"
   echo "Navigation: compact destination labels and Back restored agenda focus"
+  echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
+}
+
+run_compact_scenario() {
+  current_step="launching compact workflow packaged scenario"
+  launch_app
+
+  current_step="checking the compact This Week interaction surface"
+  run_driver wait-text "Log workout now" 30
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver assert-semantic "compact"
+  run_driver assert-document-fixed "document" 10
+  run_driver assert-scroll-surface "agenda" 10
+
+  current_step="opening and cancelling compact change-time editing"
+  run_driver press-contains "Monday" 10
+  run_driver assert-semantic "detail-compact"
+  run_driver assert-text "Back"
+  run_driver assert-text "Change to another time"
+  run_driver press "Change to another time" 10
+  run_driver assert-text "Change this workout time"
+  run_driver select-contains "Tuesday · August 11" 10
+  run_driver select-contains "4:00 PM" 10
+  run_driver press "Check this time" 10
+  run_driver assert-text "No conflict found"
+  run_driver press "Cancel" 10
+  run_driver assert-text "Change to another time"
+
+  current_step="skipping and undoing the compact due occurrence"
+  run_driver press "Skip this session" 10
+  run_driver assert-text "Skipped"
+  run_driver assert-focused-text "Monday" 10
+  run_driver press "Undo skip" 10
+  run_driver assert-text "Record workout"
+  run_driver assert-focused-text "Monday" 10
+
+  current_step="recording the compact scheduled occurrence"
+  run_driver press-contains "Monday" 10
+  run_driver press "Record workout" 10
+  run_driver assert-semantic "recording"
+  run_driver assert-focused-text "Elliptical" 10
+  run_driver press "Elliptical" 10
+  run_driver press "30" 10
+  run_driver press "Moderate" 10
+  run_driver assert-text "Workout recorded"
+  run_driver assert-focused-text "Monday" 10
+
+  current_step="recording an unscheduled workout in compact mode"
+  run_driver press "Log workout now" 10
+  run_driver assert-text "Unscheduled workout"
+  run_driver assert-semantic "recording"
+  run_driver assert-focused-text "Elliptical" 10
+  run_driver press "Elliptical" 10
+  run_driver press "30" 10
+  run_driver press "Moderate" 10
+  run_driver assert-text "Unscheduled workout recorded"
+  run_driver assert-focused-text "Log workout now" 10
+
+  echo "Packaged IPC compact-workflow acceptance passed"
+  echo "Compact: Change, Skip, Undo, scheduled Record, and unscheduled Log workout remained actionable at 640x520"
+  echo "Focus: mutation completion returned to the affected agenda row or Log workout trigger"
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
 }
 
@@ -964,6 +1031,10 @@ if [[ "$acceptance_scenario" == "responsive" ]]; then
   run_responsive_scenario
   exit 0
 fi
+if [[ "$acceptance_scenario" == "compact" ]]; then
+  run_compact_scenario
+  exit 0
+fi
 if [[ "$acceptance_scenario" == "keyboard" ]]; then
   run_keyboard_scenario
   exit 0
@@ -972,6 +1043,6 @@ if [[ "$acceptance_scenario" == "week-close" ]]; then
   run_week_close_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "keyboard" && "$acceptance_scenario" != "week-close" ]]; then
+if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "compact" && "$acceptance_scenario" != "keyboard" && "$acceptance_scenario" != "week-close" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi

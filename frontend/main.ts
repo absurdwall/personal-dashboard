@@ -326,7 +326,7 @@ const workspaceDestinationDetails: Record<
 
 const runtimeStatus = document.querySelector<HTMLElement>("#runtime-status");
 const workspaceDestinationButtons = document.querySelectorAll<HTMLButtonElement>(
-  "[data-workspace-destination]",
+  ".destination-button[data-workspace-destination]",
 );
 const workspaceDestinationPanels = document.querySelectorAll<HTMLElement>(
   "[data-workspace-panel]",
@@ -557,7 +557,7 @@ function workspaceViewportMode(): WorkspaceViewportMode {
   return "desktop";
 }
 
-function syncWorkspaceViewportMode(): void {
+function syncWorkspaceViewportMode(restoreFocus = false): void {
   const mode = workspaceViewportMode();
   const compactDetailOpen =
     mode === "compact" &&
@@ -565,7 +565,6 @@ function syncWorkspaceViewportMode(): void {
     currentWorkspaceDestination === "this-week";
   appShell?.setAttribute("data-detail-open", String(compactDetailOpen));
   workspaceInformation?.setAttribute("aria-hidden", String(compactDetailOpen));
-  workspaceInformation?.toggleAttribute("inert", compactDetailOpen);
   workspaceDetail?.setAttribute("aria-modal", String(compactDetailOpen));
   if (workspaceDestinationSelect) {
     workspaceDestinationSelect.value = currentWorkspaceDestination;
@@ -577,6 +576,18 @@ function syncWorkspaceViewportMode(): void {
       "aria-label",
       compact ? "Back to This Week agenda" : "Close workout detail",
     );
+  }
+  if (restoreFocus && workspaceDetailOpen && currentWorkspaceDestination === "this-week") {
+    window.requestAnimationFrame(() => {
+      if (
+        workspaceDetail &&
+        workspaceDetailClose &&
+        !workspaceDetail.hidden &&
+        !workspaceDetail.contains(document.activeElement)
+      ) {
+        workspaceDetailClose.focus();
+      }
+    });
   }
 }
 
@@ -1563,21 +1574,29 @@ function renderWorkspaceDetail(
 }
 
 function showWorkspaceDestination(destination: WorkspaceDestination, focus = false): void {
+  const restoreOpenDetail = destination === "this-week" && workspaceDetailOpen;
   currentWorkspaceDestination = destination;
   appShell?.setAttribute("data-workspace-destination", destination);
-  if (destination !== "this-week") {
-    detailTriggerToRestore?.setAttribute("aria-expanded", "false");
-    workspaceDetailOpen = false;
-    detailTriggerToRestore = null;
-    updateAgendaRowSelection();
-  }
   const details = workspaceDestinationDetails[destination];
   workspaceDestinationButtons.forEach((button) => {
-    const isCurrent = button.dataset.workspaceDestination === destination;
+    const buttonDestination = button.dataset.workspaceDestination;
+    const isCurrent = buttonDestination === destination;
+    const buttonLabel =
+      buttonDestination === "this-week"
+        ? "This Week"
+        : buttonDestination === "history"
+          ? "History"
+          : "Settings";
     button.toggleAttribute("aria-current", isCurrent);
     if (isCurrent) {
       button.setAttribute("aria-current", "page");
     }
+    button.setAttribute(
+      "aria-label",
+      isCurrent
+        ? `${buttonLabel}, current destination`
+        : buttonLabel,
+    );
     if (focus && isCurrent) {
       button.focus();
     }
@@ -1598,6 +1617,9 @@ function showWorkspaceDestination(destination: WorkspaceDestination, focus = fal
     workspaceContextStatus.textContent = `${details.title} is the current destination.`;
   }
   renderWorkspaceDetail();
+  if (restoreOpenDetail) {
+    window.requestAnimationFrame(() => workspaceDetailClose?.focus());
+  }
 }
 
 function renderExerciseDashboard(view: ExerciseDashboardView): void {
@@ -2658,7 +2680,7 @@ workspaceDestinationSelect?.addEventListener("change", () => {
 });
 
 syncWorkspaceViewportMode();
-window.addEventListener("resize", syncWorkspaceViewportMode);
+window.addEventListener("resize", () => syncWorkspaceViewportMode(true));
 showWorkspaceDestination("this-week");
 
 profileForm?.addEventListener("submit", (event) => {
