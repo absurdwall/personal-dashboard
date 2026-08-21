@@ -824,28 +824,65 @@ fn change_time_preserves_original_creates_recordable_target_and_leaves_routine_u
         ExerciseApplication::new(profile.clone(), DeniedReminderOutbox, clock.clone());
 
     let before = application.open().unwrap();
-    let exception_choices = &before.primary_departures[0]
-        .exception
-        .as_ref()
+    let exception = before.primary_departures[0].exception.as_ref().unwrap();
+    assert_eq!(
+        Some("Saturday|16:00"),
+        exception.selected_schedule.as_deref()
+    );
+    let exception_days = &exception.day_choices;
+    assert_eq!(
+        vec![
+            ("Saturday", "August 15", true),
+            ("Sunday", "August 16", true),
+            ("Monday", "August 10", false),
+            ("Tuesday", "August 11", false),
+            ("Wednesday", "August 12", false),
+            ("Thursday", "August 13", false),
+            ("Friday", "August 14", false),
+        ],
+        exception_days
+            .iter()
+            .map(|choice| (
+                choice.value.as_str(),
+                choice.date.as_str(),
+                choice.suggested
+            ))
+            .collect::<Vec<_>>()
+    );
+    let saturday = exception_days
+        .iter()
+        .find(|choice| choice.value == "Saturday")
+        .unwrap();
+    assert_eq!(48, saturday.time_choices.len());
+    assert!(saturday
+        .time_choices
+        .iter()
+        .any(|choice| choice.value == "16:00" && choice.suggested));
+    let monday = exception_days
+        .iter()
+        .find(|choice| choice.value == "Monday")
+        .unwrap();
+    assert!(!monday
+        .time_choices
+        .iter()
+        .any(|choice| choice.value == "16:00"));
+    assert!(monday
+        .time_choices
+        .iter()
+        .any(|choice| choice.value == "16:30"));
+    assert!(exception_days
+        .iter()
+        .find(|choice| choice.value == "Sunday")
         .unwrap()
-        .schedule_options;
-    assert!(!exception_choices
+        .time_choices
         .iter()
-        .any(|choice| choice.day == "Monday" && choice.time == "4:00 PM"));
-    assert!(exception_choices
-        .iter()
-        .any(|choice| choice.day == "Tuesday" && choice.time == "4:00 PM"));
-    assert!(exception_choices
-        .iter()
-        .any(|choice| choice.day == "Saturday" && choice.time == "4:00 PM" && choice.suggested));
-    assert!(exception_choices
-        .iter()
-        .any(|choice| choice.day == "Sunday" && choice.time == "4:00 PM" && choice.suggested));
+        .any(|choice| choice.value == "16:00" && choice.suggested));
     let preview = application
         .preview_current_week_departure_change("2026-08-10-primary-1", "Saturday", "17:30")
         .unwrap();
     assert_eq!(None, preview.conflict);
     assert_eq!("Saturday", preview.day);
+    assert_eq!("August 15", preview.date);
     assert_eq!("5:30 PM", preview.time);
 
     let changed = application

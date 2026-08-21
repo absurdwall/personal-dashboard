@@ -93,12 +93,18 @@ type ScheduleAdjustment = Readonly<{
   selectedTime: string;
 }>;
 
-type ScheduleOption = Readonly<{
+type ChangeTimeChoice = Readonly<{
   value: string;
-  day: string;
-  time: string;
   label: string;
   suggested: boolean;
+}>;
+
+type ChangeTimeDayChoice = Readonly<{
+  value: string;
+  label: string;
+  date: string;
+  suggested: boolean;
+  timeChoices: readonly ChangeTimeChoice[];
 }>;
 
 type DepartureExceptionKind =
@@ -114,7 +120,7 @@ type DepartureException = Readonly<{
   undoAction: string | null;
   targetDay: string | null;
   targetTime: string | null;
-  scheduleOptions: readonly ScheduleOption[];
+  dayChoices: readonly ChangeTimeDayChoice[];
   selectedSchedule: string | null;
 }>;
 
@@ -263,6 +269,7 @@ type ExerciseDashboardView = Readonly<{
 type DepartureChangePreview = Readonly<{
   slotId: string;
   day: string;
+  date: string;
   time: string;
   conflict: string | null;
 }>;
@@ -1244,27 +1251,68 @@ function exceptionActionButton(
   return button;
 }
 
-function exceptionScheduleSelect(
-  choices: readonly ScheduleOption[],
-  selectedSchedule: string | null,
+function exceptionDaySelect(
+  choices: readonly ChangeTimeDayChoice[],
+  selectedDay: string | null,
 ): HTMLLabelElement {
   const label = document.createElement("label");
   const select = document.createElement("select");
-  label.append("New time");
-  select.dataset.exceptionSchedule = "true";
+  label.append("Weekday / date");
+  select.dataset.exceptionScheduleDay = "true";
   select.replaceChildren(
     ...choices.map((choice) => {
       const option = document.createElement("option");
       option.value = choice.value;
-      option.textContent = choice.suggested
-        ? `${choice.label} · suggested`
-        : choice.label;
-      option.selected = choice.value === selectedSchedule;
+      option.textContent = [
+        choice.label,
+        choice.date,
+        ...(choice.suggested ? ["suggested"] : []),
+      ].join(" · ");
+      option.selected = choice.value === selectedDay;
       return option;
     }),
   );
   label.append(select);
   return label;
+}
+
+function exceptionTimeSelect(
+  choice: ChangeTimeDayChoice | undefined,
+  selectedTime: string | null,
+): HTMLLabelElement {
+  const label = document.createElement("label");
+  const select = document.createElement("select");
+  label.append("Time");
+  select.dataset.exceptionScheduleTime = "true";
+  select.replaceChildren(
+    ...(choice?.timeChoices ?? []).map((timeChoice) => {
+      const option = document.createElement("option");
+      option.value = timeChoice.value;
+      option.textContent = timeChoice.suggested
+        ? `${timeChoice.label} · suggested`
+        : timeChoice.label;
+      option.selected = timeChoice.value === selectedTime;
+      return option;
+    }),
+  );
+  label.append(select);
+  return label;
+}
+
+function exceptionScheduleParts(
+  value: string | null,
+): Readonly<{ day: string; departureTime: string }> | null {
+  if (!value) {
+    return null;
+  }
+  const separator = value.indexOf("|");
+  if (separator === -1) {
+    return null;
+  }
+  return {
+    day: value.slice(0, separator),
+    departureTime: value.slice(separator + 1),
+  };
 }
 
 function exceptionEditor(
@@ -1277,20 +1325,28 @@ function exceptionEditor(
   const controls = document.createElement("div");
   const previewButton = document.createElement("button");
   const cancelButton = document.createElement("button");
-  const choices = departure.exception?.scheduleOptions ?? [];
+  const dayChoices = departure.exception?.dayChoices ?? [];
   const selectedSchedule =
-    exceptionSelectedSchedule ?? departure.exception?.selectedSchedule ?? choices[0]?.value ?? null;
-  const selectedChoice = choices.find((choice) => choice.value === selectedSchedule);
+    exceptionSelectedSchedule ?? departure.exception?.selectedSchedule ?? null;
+  const selectedParts = exceptionScheduleParts(selectedSchedule);
+  const selectedDay =
+    dayChoices.find((choice) => choice.value === selectedParts?.day) ?? dayChoices[0];
+  const selectedTime =
+    selectedDay?.timeChoices.find(
+      (choice) => choice.value === selectedParts?.departureTime,
+    ) ??
+    selectedDay?.timeChoices.find((choice) => choice.suggested) ??
+    selectedDay?.timeChoices[0];
   const previewMatches = Boolean(
     preview &&
       preview.slotId === departure.id &&
-      selectedChoice?.day === preview.day &&
-      selectedChoice?.time === preview.time,
+      selectedDay?.value === preview.day &&
+      selectedTime?.label === preview.time,
   );
   editor.className = "exception-editor";
   heading.textContent = "Change this workout time";
   guidance.textContent =
-    "Choose any time that has not passed. Saturday and Sunday are suggested; the final time is shown before saving.";
+    "Choose a weekday and calendar date, then choose a time available on that day. Saturday and Sunday are suggested; the final time is shown before saving.";
   controls.className = "exception-controls";
   previewButton.type = "button";
   previewButton.textContent = "Check this time";
@@ -1301,7 +1357,10 @@ function exceptionEditor(
   cancelButton.textContent = "Cancel";
   cancelButton.dataset.exceptionCancel = "true";
   cancelButton.dataset.slotId = departure.id;
-  controls.append(exceptionScheduleSelect(choices, selectedSchedule));
+  controls.append(
+    exceptionDaySelect(dayChoices, selectedDay?.value ?? null),
+    exceptionTimeSelect(selectedDay, selectedTime?.value ?? null),
+  );
   if (!previewMatches) {
     controls.append(previewButton);
   } else if (preview) {
@@ -1311,13 +1370,13 @@ function exceptionEditor(
     result.setAttribute("aria-live", preview.conflict ? "assertive" : "polite");
     result.textContent = preview.conflict
       ? preview.conflict
-      : `No conflict found. Final time: ${preview.day} · ${preview.time}.`;
+      : `No conflict found. Final time: ${preview.day}, ${preview.date} · ${preview.time}.`;
     controls.append(result);
     const save = document.createElement("button");
     save.type = "button";
     save.textContent = preview.conflict
       ? "Confirm change"
-      : `Change to ${preview.day} · ${preview.time}`;
+      : `Change to ${preview.day}, ${preview.date} · ${preview.time}`;
     save.dataset.exceptionSave = "true";
     save.dataset.slotId = departure.id;
     save.dataset.confirmConflict = String(Boolean(preview.conflict));
@@ -1756,23 +1815,18 @@ async function runScheduleSave(
 function selectedExceptionSchedule(
   slotId: string,
 ): Readonly<{ day: string; departureTime: string }> | null {
-  const select = workspaceException?.querySelector<HTMLSelectElement>(
-    "select[data-exception-schedule]",
+  const daySelect = workspaceException?.querySelector<HTMLSelectElement>(
+    "select[data-exception-schedule-day]",
   );
-  if (!select) {
-    return null;
-  }
-  const value = select.value;
-  if (!value) {
-    return null;
-  }
-  const separator = value.indexOf("|");
-  if (separator === -1) {
+  const timeSelect = workspaceException?.querySelector<HTMLSelectElement>(
+    "select[data-exception-schedule-time]",
+  );
+  if (!daySelect || !timeSelect || !daySelect.value || !timeSelect.value) {
     return null;
   }
   return {
-    day: value.slice(0, separator),
-    departureTime: value.slice(separator + 1),
+    day: daySelect.value,
+    departureTime: timeSelect.value,
   };
 }
 
@@ -1781,10 +1835,7 @@ async function runExceptionPreview(slotId: string): Promise<void> {
   if (!schedule) {
     return;
   }
-  const select = workspaceException?.querySelector<HTMLSelectElement>(
-    "select[data-exception-schedule]",
-  );
-  exceptionSelectedSchedule = select?.value ?? exceptionSelectedSchedule;
+  exceptionSelectedSchedule = `${schedule.day}|${schedule.departureTime}`;
   workspaceException?.querySelectorAll("button, select").forEach((control) => {
     control.setAttribute("disabled", "");
   });
@@ -1876,7 +1927,7 @@ function handleExceptionAction(event: Event): boolean {
         ? departure.exception?.selectedSchedule ?? null
         : null;
     renderWorkspaceDetail();
-    focusExceptionControl("select[data-exception-schedule]");
+    focusExceptionControl("select[data-exception-schedule-day]");
     return true;
   }
   if (button.dataset.exceptionAction === "skip") {
@@ -1911,17 +1962,18 @@ function handleExceptionAction(event: Event): boolean {
     const selected = currentExerciseView
       ? selectedDeparture(currentExerciseView)
       : undefined;
-    const selectedChoice =
+    const selectedDayChoice =
       selected && isPrimaryDeparture(selected) && selected.exception
-        ? selected.exception.scheduleOptions.find(
-            (choice) => choice.day === schedule.day && choice.value.endsWith(`|${schedule.departureTime}`),
-          )
+        ? selected.exception.dayChoices.find((choice) => choice.value === schedule.day)
         : undefined;
+    const selectedTimeChoice = selectedDayChoice?.timeChoices.find(
+      (choice) => choice.value === schedule.departureTime,
+    );
     if (
       !exceptionPreview ||
       exceptionPreview.slotId !== slotId ||
-      selectedChoice?.day !== exceptionPreview.day ||
-      selectedChoice?.time !== exceptionPreview.time
+      selectedDayChoice?.value !== exceptionPreview.day ||
+      selectedTimeChoice?.label !== exceptionPreview.time
     ) {
       void runExceptionPreview(slotId);
       return true;
@@ -1941,16 +1993,44 @@ function handleExceptionAction(event: Event): boolean {
 }
 
 workspaceException?.addEventListener("change", (event) => {
-  const select = (event.target as HTMLElement).closest<HTMLSelectElement>(
-    "select[data-exception-schedule]",
+  const target = event.target as HTMLElement;
+  const daySelect = target.closest<HTMLSelectElement>(
+    "select[data-exception-schedule-day]",
   );
-  if (!select) {
+  const timeSelect = target.closest<HTMLSelectElement>(
+    "select[data-exception-schedule-time]",
+  );
+  if (!daySelect && !timeSelect) {
     return;
   }
-  exceptionSelectedSchedule = select.value;
+  if (daySelect) {
+    const dayChoice = currentExerciseView
+      ? selectedDeparture(currentExerciseView)
+      : undefined;
+    const choices =
+      dayChoice && isPrimaryDeparture(dayChoice)
+        ? dayChoice.exception?.dayChoices ?? []
+        : [];
+    const selectedDay = choices.find((choice) => choice.value === daySelect.value);
+    const previousTime = exceptionScheduleParts(exceptionSelectedSchedule)?.departureTime;
+    const selectedTime =
+      selectedDay?.timeChoices.find((choice) => choice.value === previousTime) ??
+      selectedDay?.timeChoices.find((choice) => choice.suggested) ??
+      selectedDay?.timeChoices[0];
+    exceptionSelectedSchedule = selectedDay && selectedTime
+      ? `${selectedDay.value}|${selectedTime.value}`
+      : null;
+  } else if (timeSelect) {
+    const selectedDay = workspaceException?.querySelector<HTMLSelectElement>(
+      "select[data-exception-schedule-day]",
+    );
+    exceptionSelectedSchedule = selectedDay?.value && timeSelect.value
+      ? `${selectedDay.value}|${timeSelect.value}`
+      : null;
+  }
   exceptionPreview = null;
   renderWorkspaceDetail();
-  focusExceptionControl("select[data-exception-schedule]");
+  focusExceptionControl("select[data-exception-schedule-time]");
 });
 
 function setWorkoutActionsDisabled(disabled: boolean): void {

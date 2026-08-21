@@ -437,12 +437,20 @@ pub struct ScheduleChoicesView {
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ScheduleOptionView {
+pub struct ChangeTimeChoiceView {
     pub value: String,
-    pub day: String,
-    pub time: String,
     pub label: String,
     pub suggested: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeTimeDayChoiceView {
+    pub value: String,
+    pub label: String,
+    pub date: String,
+    pub suggested: bool,
+    pub time_choices: Vec<ChangeTimeChoiceView>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -463,7 +471,7 @@ pub struct DepartureExceptionView {
     pub undo_action: Option<String>,
     pub target_day: Option<String>,
     pub target_time: Option<String>,
-    pub schedule_options: Vec<ScheduleOptionView>,
+    pub day_choices: Vec<ChangeTimeDayChoiceView>,
     pub selected_schedule: Option<String>,
 }
 
@@ -472,6 +480,7 @@ pub struct DepartureExceptionView {
 pub struct DepartureChangePreviewView {
     pub slot_id: String,
     pub day: String,
+    pub date: String,
     pub time: String,
     pub conflict: Option<String>,
 }
@@ -1027,6 +1036,7 @@ impl<
         Ok(DepartureChangePreviewView {
             slot_id: slot_id.into(),
             day: schedule.day.into(),
+            date: friendly_schedule_date(week_start_day + schedule.weekday),
             time: schedule.departure_time.friendly_label(),
             conflict: schedule_conflict(week, slot_id, adjusted_at).map(|departure| {
                 format!(
@@ -2967,6 +2977,11 @@ fn friendly_schedule_time(value: &str) -> String {
         .friendly_label()
 }
 
+fn friendly_schedule_date(day_number: i64) -> String {
+    let date = date_from_day_number(day_number);
+    format!("{} {}", month_name(date.month), date.day)
+}
+
 fn schedule_day_choices() -> Vec<ScheduleChoiceView> {
     WEEKDAYS
         .iter()
@@ -2997,43 +3012,51 @@ fn schedule_choices_view() -> ScheduleChoicesView {
     }
 }
 
-fn change_time_choices_for_source<C: ExerciseClock>(
+fn change_time_day_choices_for_source<C: ExerciseClock>(
     clock: &C,
     now: i64,
     source_time: Option<&str>,
-) -> Vec<ScheduleOptionView> {
+) -> Vec<ChangeTimeDayChoiceView> {
     let week_start_day = local_day_number(clock, now) - local_weekday(clock, now);
-    [5_i64, 6, 0, 1, 2, 3, 4]
-        .into_iter()
-        .flat_map(|weekday| {
-            (0..24).flat_map(move |hour| {
-                [0, 30].into_iter().filter_map(move |minute| {
-                    let value = format!("{hour:02}:{minute:02}");
-                    let schedule = ScheduleSelection::parse(WEEKDAYS[weekday as usize], &value)
-                        .expect("generated schedule choices are valid");
-                    (schedule.epoch_millis(clock, week_start_day) > now).then(|| {
-                        let day = WEEKDAYS[weekday as usize].to_string();
-                        ScheduleOptionView {
-                            value: format!("{day}|{value}"),
-                            day: day.clone(),
-                            time: friendly_schedule_time(&value),
-                            label: format!("{day} · {}", friendly_schedule_time(&value)),
-                            suggested: (weekday == 5 || weekday == 6)
-                                && source_time
-                                    .is_some_and(|source_time| source_time == value.as_str()),
-                        }
-                    })
-                })
-            })
-        })
-        .collect()
+    let mut choices = Vec::new();
+    for weekday in [5_i64, 6, 0, 1, 2, 3, 4] {
+        let day = WEEKDAYS[weekday as usize].to_string();
+        let mut time_choices = Vec::new();
+        for hour in 0..24 {
+            for minute in [0, 30] {
+                let value = format!("{hour:02}:{minute:02}");
+                let schedule = ScheduleSelection::parse(WEEKDAYS[weekday as usize], &value)
+                    .expect("generated schedule choices are valid");
+                if schedule.epoch_millis(clock, week_start_day) <= now {
+                    continue;
+                }
+                time_choices.push(ChangeTimeChoiceView {
+                    value: value.clone(),
+                    label: friendly_schedule_time(&value),
+                    suggested: (weekday == 5 || weekday == 6)
+                        && source_time.is_some_and(|source_time| source_time == value.as_str()),
+                });
+            }
+        }
+        if time_choices.is_empty() {
+            continue;
+        }
+        choices.push(ChangeTimeDayChoiceView {
+            value: day.clone(),
+            label: day,
+            date: friendly_schedule_date(week_start_day + weekday),
+            suggested: time_choices.iter().any(|choice| choice.suggested),
+            time_choices,
+        });
+    }
+    choices
 }
 
 fn departure_exception_view(
     week: &ExerciseWeek,
     departure: &PlannedDeparture,
     now: i64,
-    change_choices: &[ScheduleOptionView],
+    change_choices: &[ChangeTimeDayChoiceView],
 ) -> Option<DepartureExceptionView> {
     let is_primary_like =
         workout_source_for_departure(week, departure) == Some(WorkoutSource::Primary);
@@ -3055,7 +3078,7 @@ fn departure_exception_view(
                     undo_action: None,
                     target_day: Some(target.day.clone()),
                     target_time: Some(friendly_schedule_time(&target.departure_time)),
-                    schedule_options: Vec::new(),
+                    day_choices: Vec::new(),
                     selected_schedule: None,
                 })
             }
@@ -3066,7 +3089,7 @@ fn departure_exception_view(
                 undo_action: response.reason.is_none().then(|| "Undo skip".into()),
                 target_day: None,
                 target_time: None,
-                schedule_options: Vec::new(),
+                day_choices: Vec::new(),
                 selected_schedule: None,
             }),
             DepartureOutcome::LeavingForGym | DepartureOutcome::MoveToFallback => None,
@@ -3089,11 +3112,11 @@ fn departure_exception_view(
             undo_action: None,
             target_day: None,
             target_time: None,
-            schedule_options: can_use_exception_actions
+            day_choices: can_use_exception_actions
                 .then(|| change_choices.to_vec())
                 .unwrap_or_default(),
             selected_schedule: can_use_exception_actions
-                .then(|| default_change_schedule(change_choices, &departure.departure_time)),
+                .then(|| default_change_schedule(change_choices)),
         });
     }
 
@@ -3104,21 +3127,28 @@ fn departure_exception_view(
         undo_action: None,
         target_day: None,
         target_time: None,
-        schedule_options: change_choices.to_vec(),
-        selected_schedule: Some(default_change_schedule(
-            change_choices,
-            &departure.departure_time,
-        )),
+        day_choices: change_choices.to_vec(),
+        selected_schedule: Some(default_change_schedule(change_choices)),
     })
 }
 
-fn default_change_schedule(choices: &[ScheduleOptionView], source_time: &str) -> String {
-    let source_time = friendly_schedule_time(source_time);
+fn default_change_schedule(choices: &[ChangeTimeDayChoiceView]) -> String {
     choices
         .iter()
-        .find(|choice| choice.suggested && choice.time == source_time)
-        .or_else(|| choices.first())
-        .map(|choice| choice.value.clone())
+        .find(|choice| choice.suggested)
+        .and_then(|day| {
+            day.time_choices
+                .iter()
+                .find(|choice| choice.suggested)
+                .map(|time| format!("{}|{}", day.value, time.value))
+        })
+        .or_else(|| {
+            choices.first().and_then(|day| {
+                day.time_choices
+                    .first()
+                    .map(|time| format!("{}|{}", day.value, time.value))
+            })
+        })
         .unwrap_or_default()
 }
 
@@ -3180,7 +3210,7 @@ fn planned_departure_views(
         .iter()
         .map(|departure| {
             let change_choices =
-                change_time_choices_for_source(clock, now, Some(&departure.departure_time));
+                change_time_day_choices_for_source(clock, now, Some(&departure.departure_time));
             PrimaryDepartureView {
                 id: departure.id.clone(),
                 day: departure.day.clone(),
