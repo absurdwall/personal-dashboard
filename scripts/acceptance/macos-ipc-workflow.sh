@@ -6,9 +6,11 @@ script_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd "$script_directory/../.." && pwd)"
 source_app_bundle="${PERSONAL_DASHBOARD_APP_BUNDLE:-$repository_root/src-tauri/target/release/bundle/macos/Personal Dashboard.app}"
 acceptance_directory=""
+acceptance_directory_owned_by_supervisor=0
 app_bundle=""
 app_executable=""
 app_pid=""
+app_pid_file=""
 acceptance_data_directory=""
 acceptance_baseline_file=""
 driver_binary=""
@@ -44,6 +46,126 @@ process_group_id() {
   ps -o pgid= -p "$1" 2>/dev/null | tr -d ' '
 }
 
+pid_is_running() {
+  local pid="$1"
+  local process_state
+
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  process_state="$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ')"
+  [[ -n "$process_state" && "$process_state" != Z* ]]
+}
+
+process_group_has_running_processes() {
+  local group_id="$1"
+  local candidate_pid
+  local candidate_group_id
+  local candidate_state
+
+  [[ "$group_id" =~ ^[0-9]+$ && "$group_id" != "0" ]] || return 1
+  while read -r candidate_pid candidate_group_id candidate_state; do
+    [[ "$candidate_group_id" == "$group_id" ]] || continue
+    [[ "$candidate_pid" =~ ^[0-9]+$ && "$candidate_state" != Z* ]] || continue
+    return 0
+  done < <(ps -axo pid=,pgid=,stat= 2>/dev/null || true)
+  return 1
+}
+
+collect_process_tree() {
+  local root_pid="$1"
+  local descendant_pid
+
+  printf '%s\n' "$root_pid"
+  while read -r descendant_pid; do
+    [[ "$descendant_pid" =~ ^[0-9]+$ ]] || continue
+    collect_process_tree "$descendant_pid"
+  done < <(pgrep -P "$root_pid" 2>/dev/null || true)
+}
+
+process_list_has_running_pids() {
+  local process_pids="$1"
+  local candidate_pid
+
+  while read -r candidate_pid; do
+    [[ "$candidate_pid" =~ ^[0-9]+$ ]] || continue
+    pid_is_running "$candidate_pid" && return 0
+  done <<< "$process_pids"
+  return 1
+}
+
+read_supervised_app_pid() {
+  local supervision_directory="$1"
+  local pid_file="$supervision_directory/app.pid"
+  local supervised_pid=""
+
+  [[ -f "$pid_file" ]] || return 1
+  IFS= read -r supervised_pid < "$pid_file" || true
+  [[ "$supervised_pid" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$supervised_pid"
+}
+
+supervised_app_command_matches() {
+  local supervised_pid="$1"
+  local supervision_directory="$2"
+  local expected_executable="$supervision_directory/Personal Dashboard.app/Contents/MacOS/personal-dashboard"
+  local actual_command
+
+  actual_command="$(ps -o command= -p "$supervised_pid" 2>/dev/null | sed 's/[[:space:]]*$//')"
+  [[ "$actual_command" == "$expected_executable" ]]
+}
+
+supervised_processes_running() {
+  local child_pid="$1"
+  local child_group_id="$2"
+  local supervision_directory="$3"
+  local supervised_pid=""
+  local parent_group_id
+
+  parent_group_id="$(process_group_id "$$")"
+  if [[ -n "$child_group_id" && "$child_group_id" != "0" &&
+    "$child_group_id" != "$parent_group_id" ]] &&
+    process_group_has_running_processes "$child_group_id"; then
+    return 0
+  fi
+  pid_is_running "$child_pid" && return 0
+  if [[ -n "$supervision_directory" && -d "$supervision_directory" ]]; then
+    if [[ -f "$supervision_directory/app.pid" ]]; then
+      if ! supervised_pid="$(read_supervised_app_pid "$supervision_directory")"; then
+        # A malformed ownership record is an unknown live-process state. Keep
+        # the directory and fail closed instead of deleting it.
+        return 0
+      fi
+      pid_is_running "$supervised_pid" && return 0
+    fi
+  fi
+  return 1
+}
+
+remove_acceptance_directory() {
+  local directory="$1"
+
+  [[ -n "$directory" && -d "$directory" ]] || return 0
+  case "$directory" in
+    /tmp/personal-dashboard-ipc.* | /private/tmp/personal-dashboard-ipc.*)
+      find "$directory" -depth -delete
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+finalize_supervised_directory() {
+  local child_pid="$1"
+  local child_group_id="$2"
+  local supervision_directory="$3"
+
+  [[ -n "$supervision_directory" && -d "$supervision_directory" ]] || return 0
+  if supervised_processes_running "$child_pid" "$child_group_id" "$supervision_directory"; then
+    return 1
+  fi
+  remove_acceptance_directory "$supervision_directory"
+}
+
 terminate_process_tree_fallback() {
   local root_pid="$1"
   local descendant_pid
@@ -59,7 +181,9 @@ terminate_process_tree_fallback() {
 terminate_child() {
   local child_pid="$1"
   local child_group_id="${2:-}"
+  local supervision_directory="${3:-}"
   local parent_group_id
+  local supervised_pid=""
 
   parent_group_id="$(process_group_id "$$")"
   if [[ -n "$child_group_id" && "$child_group_id" != "0" &&
@@ -69,15 +193,10 @@ terminate_child() {
     terminate_process_tree_fallback "$child_pid"
   fi
 
-  # Allow the child EXIT trap to stop the app (up to five seconds) and remove
-  # its temporary profile before escalating to a process-group KILL.
+  # Give cooperative cleanup a short TERM window, but keep ownership in this
+  # outer supervisor because the child shell may be killed before its EXIT trap.
   for _ in {1..60}; do
-    if [[ -n "$child_group_id" && "$child_group_id" != "0" &&
-      "$child_group_id" != "$parent_group_id" ]]; then
-      kill -0 "-$child_group_id" 2>/dev/null || return 0
-    else
-      kill -0 "$child_pid" 2>/dev/null || return 0
-    fi
+    supervised_processes_running "$child_pid" "$child_group_id" "$supervision_directory" || return 0
     sleep 0.1
   done
 
@@ -88,6 +207,44 @@ terminate_child() {
     terminate_process_tree_fallback "$child_pid"
     kill -KILL "$child_pid" 2>/dev/null || true
   fi
+
+  # A legacy or unexpectedly re-parented app must still be treated as owned
+  # by this timeout path. Only kill the recorded PID when its command remains
+  # the isolated packaged executable; otherwise retain the directory below.
+  if [[ -n "$supervision_directory" ]] &&
+    supervised_pid="$(read_supervised_app_pid "$supervision_directory")" &&
+    supervised_app_command_matches "$supervised_pid" "$supervision_directory"; then
+    terminate_process_tree_fallback "$supervised_pid"
+    kill -KILL "$supervised_pid" 2>/dev/null || true
+  fi
+
+  for _ in {1..60}; do
+    supervised_processes_running "$child_pid" "$child_group_id" "$supervision_directory" || return 0
+    sleep 0.1
+  done
+  return 1
+}
+
+finish_bounded_failure() {
+  local child_pid="$1"
+  local child_group_id="$2"
+  local supervision_directory="$3"
+  local failure_message="$4"
+  local child_was_waited="${5:-0}"
+
+  if ! terminate_child "$child_pid" "$child_group_id" "$supervision_directory"; then
+    if [[ "$child_was_waited" != "1" ]]; then
+      wait "$child_pid" 2>/dev/null || true
+    fi
+    fail "${failure_message}; cleanup could not prove process termination; retained directory at ${supervision_directory}"
+  fi
+  if [[ "$child_was_waited" != "1" ]]; then
+    wait "$child_pid" 2>/dev/null || true
+  fi
+  if ! finalize_supervised_directory "$child_pid" "$child_group_id" "$supervision_directory"; then
+    fail "${failure_message}; cleanup could not prove process termination; retained directory at ${supervision_directory}"
+  fi
+  fail "$failure_message"
 }
 
 run_bounded_scenario() {
@@ -98,14 +255,20 @@ run_bounded_scenario() {
   local child_pid
   local child_group_id=""
   local parent_group_id
+  local supervision_directory
   local child_status=0
 
   [[ "$scenario" != "gate" ]] || fail "the gate cannot recursively invoke itself"
   current_step="running packaged ${scenario} acceptance"
   parent_group_id="$(process_group_id "$$")"
   started_monotonic_millis="$(monotonic_millis)"
+  supervision_directory="$(mktemp -d /tmp/personal-dashboard-ipc.XXXXXX)" ||
+    fail "could not create packaged ${scenario} supervision directory"
+  supervision_directory="$(cd "$supervision_directory" && pwd -P)" ||
+    fail "could not resolve packaged ${scenario} supervision directory"
   PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO="$scenario" \
     PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS="$scenario_budget_seconds" \
+    PERSONAL_DASHBOARD_ACCEPTANCE_DIRECTORY="$supervision_directory" \
     /usr/bin/perl -e \
       'setpgrp(0, 0); exec @ARGV or die "could not exec acceptance scenario: $!"' \
       "$script_directory/macos-ipc-workflow.sh" &
@@ -120,23 +283,20 @@ run_bounded_scenario() {
     sleep 0.01
   done
   [[ -n "$child_group_id" && "$child_group_id" != "$parent_group_id" ]] || {
-    terminate_child "$child_pid"
-    wait "$child_pid" 2>/dev/null || true
-    fail "could not identify packaged ${scenario} process group"
+    finish_bounded_failure "$child_pid" "$child_group_id" "$supervision_directory" \
+      "could not identify packaged ${scenario} process group"
   }
 
-  while kill -0 "$child_pid" 2>/dev/null; do
+  while pid_is_running "$child_pid"; do
     now_monotonic_millis="$(monotonic_millis)"
     if (( suite_deadline_monotonic_millis > 0 &&
       now_monotonic_millis >= suite_deadline_monotonic_millis )); then
-      terminate_child "$child_pid" "$child_group_id"
-      wait "$child_pid" 2>/dev/null || true
-      fail "packaged gate exceeded ${suite_budget_seconds}s"
+      finish_bounded_failure "$child_pid" "$child_group_id" "$supervision_directory" \
+        "packaged gate exceeded ${suite_budget_seconds}s"
     fi
     if (( now_monotonic_millis >= scenario_deadline_monotonic_millis )); then
-      terminate_child "$child_pid" "$child_group_id"
-      wait "$child_pid" 2>/dev/null || true
-      fail "packaged ${scenario} acceptance exceeded ${scenario_budget_seconds}s"
+      finish_bounded_failure "$child_pid" "$child_group_id" "$supervision_directory" \
+        "packaged ${scenario} acceptance exceeded ${scenario_budget_seconds}s"
     fi
     sleep 0.2
   done
@@ -145,12 +305,15 @@ run_bounded_scenario() {
   now_monotonic_millis="$(monotonic_millis)"
   if (( suite_deadline_monotonic_millis > 0 &&
     now_monotonic_millis >= suite_deadline_monotonic_millis )); then
-    terminate_child "$child_pid" "$child_group_id"
-    fail "packaged gate exceeded ${suite_budget_seconds}s"
+    finish_bounded_failure "$child_pid" "$child_group_id" "$supervision_directory" \
+      "packaged gate exceeded ${suite_budget_seconds}s" 1
   fi
   if (( now_monotonic_millis >= scenario_deadline_monotonic_millis )); then
-    terminate_child "$child_pid" "$child_group_id"
-    fail "packaged ${scenario} acceptance exceeded ${scenario_budget_seconds}s"
+    finish_bounded_failure "$child_pid" "$child_group_id" "$supervision_directory" \
+      "packaged ${scenario} acceptance exceeded ${scenario_budget_seconds}s" 1
+  fi
+  if ! finalize_supervised_directory "$child_pid" "$child_group_id" "$supervision_directory"; then
+    fail "packaged ${scenario} cleanup could not prove process termination; retained directory at ${supervision_directory}"
   fi
   if (( child_status != 0 )); then
     fail "packaged ${scenario} acceptance did not pass"
@@ -185,45 +348,53 @@ fi
 
 require_positive_integer "scenario budget" "$scenario_budget_seconds"
 
-find_app_pids() {
-  while read -r candidate_pid candidate_command; do
-    if [[ "$candidate_command" == "$app_executable" ]]; then
-      echo "$candidate_pid"
-    fi
-  done < <(ps -axo pid=,command=)
-}
-
 stop_app() {
-  if [[ -n "$app_pid" ]] && kill -0 "$app_pid" 2>/dev/null; then
+  local app_process_pids=""
+
+  if [[ -n "$app_pid" ]] && pid_is_running "$app_pid"; then
+    app_process_pids="$(collect_process_tree "$app_pid")"
     terminate_process_tree_fallback "$app_pid"
     for _ in {1..50}; do
-      kill -0 "$app_pid" 2>/dev/null || break
+      process_list_has_running_pids "$app_process_pids" || break
       sleep 0.1
     done
-    if kill -0 "$app_pid" 2>/dev/null; then
+    if process_list_has_running_pids "$app_process_pids"; then
       terminate_process_tree_fallback "$app_pid"
-      kill -KILL "$app_pid" 2>/dev/null || true
-      return 1
+      while read -r process_pid; do
+        [[ "$process_pid" =~ ^[0-9]+$ ]] || continue
+        kill -KILL "$process_pid" 2>/dev/null || true
+      done <<< "$app_process_pids"
+      for _ in {1..50}; do
+        process_list_has_running_pids "$app_process_pids" || break
+        sleep 0.1
+      done
+      process_list_has_running_pids "$app_process_pids" && return 1
     fi
   fi
   app_pid=""
+  if [[ -n "$app_pid_file" && -f "$app_pid_file" ]]; then
+    rm -f "$app_pid_file"
+  fi
+  return 0
 }
 
 cleanup() {
+  local app_stopped=0
+
   if [[ -n "$scenario_watchdog_pid" ]] && kill -0 "$scenario_watchdog_pid" 2>/dev/null; then
     kill -TERM "$scenario_watchdog_pid" 2>/dev/null || true
     wait "$scenario_watchdog_pid" 2>/dev/null || true
   fi
   scenario_watchdog_pid=""
-  if ! stop_app; then
+  if stop_app; then
+    app_stopped=1
+  else
     echo "Packaged IPC acceptance cleanup warning: app process did not exit" >&2
   fi
-  if [[ -n "$acceptance_directory" && -d "$acceptance_directory" ]]; then
-    case "$acceptance_directory" in
-      /tmp/personal-dashboard-ipc.* | /private/tmp/personal-dashboard-ipc.*)
-        find "$acceptance_directory" -depth -delete
-        ;;
-    esac
+  if (( app_stopped == 1 && acceptance_directory_owned_by_supervisor == 0 )); then
+    if ! remove_acceptance_directory "$acceptance_directory"; then
+      echo "Packaged IPC acceptance cleanup warning: retained directory at ${acceptance_directory}" >&2
+    fi
   fi
 }
 
@@ -250,12 +421,27 @@ scenario_watchdog_pid="$!"
   fail "missing macOS accessibility driver source"
 
 current_step="preparing isolated app"
-acceptance_directory="$(mktemp -d /tmp/personal-dashboard-ipc.XXXXXX)"
-acceptance_directory="$(cd "$acceptance_directory" && pwd -P)"
+if [[ -n "${PERSONAL_DASHBOARD_ACCEPTANCE_DIRECTORY:-}" ]]; then
+  case "$PERSONAL_DASHBOARD_ACCEPTANCE_DIRECTORY" in
+    /tmp/personal-dashboard-ipc.* | /private/tmp/personal-dashboard-ipc.*)
+      ;;
+    *)
+      fail "invalid supervised acceptance directory: $PERSONAL_DASHBOARD_ACCEPTANCE_DIRECTORY"
+      ;;
+  esac
+  [[ -d "$PERSONAL_DASHBOARD_ACCEPTANCE_DIRECTORY" ]] ||
+    fail "missing supervised acceptance directory at $PERSONAL_DASHBOARD_ACCEPTANCE_DIRECTORY"
+  acceptance_directory="$(cd "$PERSONAL_DASHBOARD_ACCEPTANCE_DIRECTORY" && pwd -P)"
+  acceptance_directory_owned_by_supervisor=1
+else
+  acceptance_directory="$(mktemp -d /tmp/personal-dashboard-ipc.XXXXXX)"
+  acceptance_directory="$(cd "$acceptance_directory" && pwd -P)"
+fi
 app_bundle="$acceptance_directory/Personal Dashboard.app"
 acceptance_data_directory="$acceptance_directory/profile"
 acceptance_baseline_file="$acceptance_directory/no-completed-baseline/state.json"
 driver_binary="$acceptance_directory/macos-ui-driver"
+app_pid_file="$acceptance_directory/app.pid"
 /usr/bin/ditto "$source_app_bundle" "$app_bundle" || fail "could not copy the packaged app"
 app_executable="$app_bundle/Contents/MacOS/personal-dashboard"
 
@@ -267,24 +453,16 @@ swiftc "$script_directory/macos-ui-driver.swift" \
 
 launch_app() {
   current_step="launching isolated packaged app"
-  open -n \
-    --env "PERSONAL_DASHBOARD_DATA_DIR=$acceptance_data_directory" \
-    --env "PERSONAL_DASHBOARD_BASELINE_FILE=$acceptance_baseline_file" \
-    --env "PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS=$fixed_now_epoch_millis" \
-    --env "PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES=$fixed_utc_offset_minutes" \
-    "$app_bundle" || fail "Launch Services could not open the isolated app"
+  PERSONAL_DASHBOARD_DATA_DIR="$acceptance_data_directory" \
+    PERSONAL_DASHBOARD_BASELINE_FILE="$acceptance_baseline_file" \
+    PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS="$fixed_now_epoch_millis" \
+    PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES="$fixed_utc_offset_minutes" \
+    "$app_executable" >"$acceptance_directory/app.log" 2>&1 &
+  app_pid="$!"
+  printf '%s\n' "$app_pid" > "$app_pid_file" || fail "could not record the isolated app PID"
   sleep 0.3
-  open -a "$app_bundle" || fail "Launch Services could not activate the isolated app"
-
-  for _ in {1..80}; do
-    app_pid=""
-    while read -r candidate_pid; do
-      app_pid="$candidate_pid"
-    done < <(find_app_pids)
-    [[ -n "$app_pid" ]] && break
-    sleep 0.1
-  done
-  [[ -n "$app_pid" ]] || fail "Launch Services did not start the isolated app process"
+  pid_is_running "$app_pid" ||
+    fail "the isolated packaged app exited during direct launch; see $acceptance_directory/app.log"
 }
 
 run_driver() {

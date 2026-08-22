@@ -10,8 +10,9 @@ object.
 1. Build the packaged app with `npm run build:mac`.
 2. Run `scripts/acceptance/macos-ipc-workflow.sh` on the supported Mac. The script copies the
    bundle to a temporary location, uses temporary profile and baseline paths,
-   and supplies a fixed epoch and UTC offset through the acceptance-only clock
-   environment variables.
+   supplies a fixed epoch and UTC offset through the acceptance-only clock
+   environment variables, and launches the copied executable directly inside
+   the scenario's isolated process group.
 3. The focused list-first check verifies the persistent **This Week**, **History**,
    and **Settings** destinations, switches through each destination, and checks
    the rendered fixed-window/pane-overflow status before returning to **This Week**.
@@ -28,8 +29,11 @@ object.
 The driver is compiled from the macOS system `ApplicationServices` and
 `Foundation` frameworks into the temporary acceptance directory. It adds no
 runtime or product dependency. A failed step names the user-visible boundary
-that failed, and the exit trap terminates the isolated app and removes only
-the temporary directory created by this run.
+that failed. The scenario child stops the app cooperatively when possible; the
+outer supervisor owns timeout cleanup, verifies the isolated process group and
+recorded app PID have exited, and removes only that run's temporary directory.
+If termination cannot be proven, the directory is retained with an explicit
+diagnostic.
 
 ## Acceptance budgets
 
@@ -38,9 +42,11 @@ default. The recursive `gate` dispatcher runs each child through the same
 scenario budget and has an enforced 1,800-second suite budget. The outer gate
 does not perform app setup before dispatching its children, starts each child
 in an isolated process group, and re-checks the monotonic deadline after the
-child exits. A stalled window server therefore cannot leave a driver, app,
-watchdog, or temporary profile alive after the budget expires. Override the
-limits only when an explicitly longer packaged run is required:
+child exits. The packaged app executable inherits that group, so a stalled
+window server cannot leave a driver, app, watchdog, or temporary profile alive
+after the budget expires; cleanup retains the directory if termination cannot
+be proven. Override the limits only when an explicitly longer packaged run is
+required:
 
 ```sh
 PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=gate \
