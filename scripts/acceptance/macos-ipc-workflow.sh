@@ -21,6 +21,7 @@ scenario_budget_seconds="${PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECOND
 suite_budget_seconds="${PERSONAL_DASHBOARD_ACCEPTANCE_SUITE_TIMEOUT_SECONDS:-1800}"
 main_shell_pid="$$"
 scenario_watchdog_pid=""
+suite_deadline_monotonic_millis=0
 
 fail() {
   echo "Packaged IPC acceptance failed at ${current_step}: $1" >&2
@@ -34,48 +35,124 @@ require_positive_integer() {
     fail "${value_name} must be a positive integer (got: ${value})"
 }
 
+monotonic_millis() {
+  /usr/bin/perl -MTime::HiRes=clock_gettime,CLOCK_MONOTONIC -e \
+    'printf "%d\n", clock_gettime(CLOCK_MONOTONIC) * 1000'
+}
+
+process_group_id() {
+  ps -o pgid= -p "$1" 2>/dev/null | tr -d ' '
+}
+
+terminate_process_tree_fallback() {
+  local root_pid="$1"
+  local descendant_pid
+
+  while read -r descendant_pid; do
+    [[ "$descendant_pid" =~ ^[0-9]+$ ]] || continue
+    terminate_process_tree_fallback "$descendant_pid"
+  done < <(pgrep -P "$root_pid" 2>/dev/null || true)
+
+  kill -TERM "$root_pid" 2>/dev/null || true
+}
+
 terminate_child() {
   local child_pid="$1"
-  kill -TERM "$child_pid" 2>/dev/null || true
-  for _ in {1..20}; do
-    kill -0 "$child_pid" 2>/dev/null || return 0
+  local child_group_id="${2:-}"
+  local parent_group_id
+
+  parent_group_id="$(process_group_id "$$")"
+  if [[ -n "$child_group_id" && "$child_group_id" != "0" &&
+    "$child_group_id" != "$parent_group_id" ]]; then
+    kill -TERM "-$child_group_id" 2>/dev/null || true
+  else
+    terminate_process_tree_fallback "$child_pid"
+  fi
+
+  # Allow the child EXIT trap to stop the app (up to five seconds) and remove
+  # its temporary profile before escalating to a process-group KILL.
+  for _ in {1..60}; do
+    if [[ -n "$child_group_id" && "$child_group_id" != "0" &&
+      "$child_group_id" != "$parent_group_id" ]]; then
+      kill -0 "-$child_group_id" 2>/dev/null || return 0
+    else
+      kill -0 "$child_pid" 2>/dev/null || return 0
+    fi
     sleep 0.1
   done
-  kill -KILL "$child_pid" 2>/dev/null || true
+
+  if [[ -n "$child_group_id" && "$child_group_id" != "0" &&
+    "$child_group_id" != "$parent_group_id" ]]; then
+    kill -KILL "-$child_group_id" 2>/dev/null || true
+  else
+    terminate_process_tree_fallback "$child_pid"
+    kill -KILL "$child_pid" 2>/dev/null || true
+  fi
 }
 
 run_bounded_scenario() {
   local scenario="$1"
-  local started_epoch
-  local now_epoch
-  local scenario_deadline
+  local started_monotonic_millis
+  local now_monotonic_millis
+  local scenario_deadline_monotonic_millis
   local child_pid
+  local child_group_id=""
+  local parent_group_id
+  local child_status=0
 
   [[ "$scenario" != "gate" ]] || fail "the gate cannot recursively invoke itself"
   current_step="running packaged ${scenario} acceptance"
+  parent_group_id="$(process_group_id "$$")"
+  started_monotonic_millis="$(monotonic_millis)"
   PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO="$scenario" \
     PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS="$scenario_budget_seconds" \
-    "$script_directory/macos-ipc-workflow.sh" &
+    /usr/bin/perl -e \
+      'setpgrp(0, 0); exec @ARGV or die "could not exec acceptance scenario: $!"' \
+      "$script_directory/macos-ipc-workflow.sh" &
   child_pid="$!"
-  started_epoch="$(date +%s)"
-  scenario_deadline=$((started_epoch + scenario_budget_seconds))
+  scenario_deadline_monotonic_millis=$((
+    started_monotonic_millis + scenario_budget_seconds * 1000
+  ))
+
+  for _ in {1..20}; do
+    child_group_id="$(process_group_id "$child_pid")"
+    [[ -n "$child_group_id" && "$child_group_id" != "$parent_group_id" ]] && break
+    sleep 0.01
+  done
+  [[ -n "$child_group_id" && "$child_group_id" != "$parent_group_id" ]] || {
+    terminate_child "$child_pid"
+    wait "$child_pid" 2>/dev/null || true
+    fail "could not identify packaged ${scenario} process group"
+  }
 
   while kill -0 "$child_pid" 2>/dev/null; do
-    now_epoch="$(date +%s)"
-    if (( now_epoch >= scenario_deadline )); then
-      terminate_child "$child_pid"
-      wait "$child_pid" 2>/dev/null || true
-      fail "packaged ${scenario} acceptance exceeded ${scenario_budget_seconds}s"
-    fi
-    if (( now_epoch >= suite_deadline_epoch )); then
-      terminate_child "$child_pid"
+    now_monotonic_millis="$(monotonic_millis)"
+    if (( suite_deadline_monotonic_millis > 0 &&
+      now_monotonic_millis >= suite_deadline_monotonic_millis )); then
+      terminate_child "$child_pid" "$child_group_id"
       wait "$child_pid" 2>/dev/null || true
       fail "packaged gate exceeded ${suite_budget_seconds}s"
     fi
-    sleep 1
+    if (( now_monotonic_millis >= scenario_deadline_monotonic_millis )); then
+      terminate_child "$child_pid" "$child_group_id"
+      wait "$child_pid" 2>/dev/null || true
+      fail "packaged ${scenario} acceptance exceeded ${scenario_budget_seconds}s"
+    fi
+    sleep 0.2
   done
 
-  if ! wait "$child_pid"; then
+  wait "$child_pid" || child_status="$?"
+  now_monotonic_millis="$(monotonic_millis)"
+  if (( suite_deadline_monotonic_millis > 0 &&
+    now_monotonic_millis >= suite_deadline_monotonic_millis )); then
+    terminate_child "$child_pid" "$child_group_id"
+    fail "packaged gate exceeded ${suite_budget_seconds}s"
+  fi
+  if (( now_monotonic_millis >= scenario_deadline_monotonic_millis )); then
+    terminate_child "$child_pid" "$child_group_id"
+    fail "packaged ${scenario} acceptance exceeded ${scenario_budget_seconds}s"
+  fi
+  if (( child_status != 0 )); then
     fail "packaged ${scenario} acceptance did not pass"
   fi
 }
@@ -83,9 +160,11 @@ run_bounded_scenario() {
 run_final_gate() {
   require_positive_integer "scenario budget" "$scenario_budget_seconds"
   require_positive_integer "suite budget" "$suite_budget_seconds"
-  local suite_started_epoch
-  suite_started_epoch="$(date +%s)"
-  suite_deadline_epoch=$((suite_started_epoch + suite_budget_seconds))
+  local suite_started_monotonic_millis
+  suite_started_monotonic_millis="$(monotonic_millis)"
+  suite_deadline_monotonic_millis=$((
+    suite_started_monotonic_millis + suite_budget_seconds * 1000
+  ))
 
   for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close; do
     run_bounded_scenario "$scenario"
@@ -116,12 +195,14 @@ find_app_pids() {
 
 stop_app() {
   if [[ -n "$app_pid" ]] && kill -0 "$app_pid" 2>/dev/null; then
-    kill -TERM "$app_pid"
+    terminate_process_tree_fallback "$app_pid"
     for _ in {1..50}; do
       kill -0 "$app_pid" 2>/dev/null || break
       sleep 0.1
     done
     if kill -0 "$app_pid" 2>/dev/null; then
+      terminate_process_tree_fallback "$app_pid"
+      kill -KILL "$app_pid" 2>/dev/null || true
       return 1
     fi
   fi
@@ -150,9 +231,17 @@ trap cleanup EXIT
 trap 'fail "scenario exceeded ${scenario_budget_seconds}s"' TERM
 
 (
-  sleep "$scenario_budget_seconds"
-  echo "Packaged IPC acceptance exceeded ${scenario_budget_seconds}s at ${current_step}" >&2
-  kill -TERM "$main_shell_pid" 2>/dev/null || true
+  watchdog_deadline_monotonic_millis=$((
+    $(monotonic_millis) + scenario_budget_seconds * 1000
+  ))
+  while :; do
+    if (( $(monotonic_millis) >= watchdog_deadline_monotonic_millis )); then
+      echo "Packaged IPC acceptance exceeded ${scenario_budget_seconds}s at ${current_step}" >&2
+      kill -TERM "$main_shell_pid" 2>/dev/null || true
+      exit 0
+    fi
+    sleep 0.2
+  done
 ) &
 scenario_watchdog_pid="$!"
 
@@ -263,7 +352,8 @@ run_keyboard_scenario() {
   run_driver focus "Change to another time" 10
   run_driver press-key "return" 10
   run_driver select-contains "Wednesday · August 12" 10
-  run_driver select-contains "4:00 PM" 10
+  # Wednesday retains the source 4:00 PM value; this is an intentional no-op.
+  run_driver select-contains-allow-unchanged "4:00 PM" 10
   run_driver focus "Check this time" 10
   run_driver press-key "return" 10
   run_driver assert-text "This time overlaps Wednesday"
@@ -792,7 +882,8 @@ run_exception_scenario() {
   run_driver assert-select-option "Monday · August 10" 10
   run_driver select-contains "Monday · August 10" 10
   run_driver select-contains "Saturday · August 15" 10
-  run_driver select-contains "4:00 PM" 10
+  # Saturday preserves the source 4:00 PM value as its suggested time.
+  run_driver select-contains-allow-unchanged "4:00 PM" 10
   run_driver wait-text "Saturday · August 15" 10
   run_driver wait-text "suggested" 10
   run_driver assert-select-option "Sunday · August 16" 10
@@ -803,7 +894,8 @@ run_exception_scenario() {
   current_step="previewing and saving an arbitrary Tuesday change-time choice"
   run_driver select-contains "Tuesday · August 11" 10
   run_driver wait-text "Tuesday · August 11" 10
-  run_driver select-contains "4:00 PM" 10
+  # Tuesday retains the source 4:00 PM value; this is an intentional no-op.
+  run_driver select-contains-allow-unchanged "4:00 PM" 10
   run_driver wait-text "Check this time" 10
   run_driver press "Check this time" 10
   run_driver assert-text "No conflict found"
@@ -855,7 +947,8 @@ run_exception_scenario() {
   run_driver press "Change to another time" 10
   run_driver wait-text "Saturday · August 15" 10
   run_driver select-contains "Wednesday · August 12" 10
-  run_driver select-contains "4:00 PM" 10
+  # Wednesday retains the current 4:00 PM value; this is an intentional no-op.
+  run_driver select-contains-allow-unchanged "4:00 PM" 10
   run_driver wait-text "Check this time" 10
   run_driver press "Check this time" 10
   run_driver assert-text "This time overlaps Wednesday"
@@ -1064,7 +1157,8 @@ run_compact_scenario() {
   run_driver press "Change to another time" 10
   run_driver assert-text "Change this workout time"
   run_driver select-contains "Tuesday · August 11" 10
-  run_driver select-contains "4:00 PM" 10
+  # Compact Tuesday retains the source 4:00 PM value; this is an intentional no-op.
+  run_driver select-contains-allow-unchanged "4:00 PM" 10
   run_driver wait-text "Check this time" 10
   run_driver press "Check this time" 10
   run_driver assert-text "No conflict found"

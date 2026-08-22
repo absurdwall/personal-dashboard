@@ -1948,13 +1948,6 @@ body {
   }
 }
 
-@media (max-height: 560px) {
-  #workspace-destination-history,
-  #workspace-destination-settings {
-    padding-top: 14px;
-  }
-}
-
 /* V2 A parity closure: production This Week mirrors the List + temporary sheet reference. */
 
 html,

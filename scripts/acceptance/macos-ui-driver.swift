@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -517,6 +517,12 @@ func setAccessibilityAttribute(
     }
 }
 
+func isExplicitlyUnsupported(_ error: AXError) -> Bool {
+    error == .attributeUnsupported ||
+        error == .actionUnsupported ||
+        error == .notImplemented
+}
+
 struct PickerState: Equatable {
     let value: String
     let selectedValues: [String]
@@ -549,7 +555,8 @@ func waitForPickerValue(
     _ picker: AXUIElement,
     _ text: String,
     timeout: TimeInterval,
-    changedFrom previousState: PickerState
+    changedFrom previousState: PickerState,
+    requireChange: Bool = true
 ) throws {
     let deadline = Date().addingTimeInterval(timeout)
     var lastValue = "<none>"
@@ -557,9 +564,9 @@ func waitForPickerValue(
         let currentState = pickerState(picker)
         lastValue = currentState.summary
         if pickerStateMatches(currentState, text) {
-            guard currentState != previousState else {
+            guard !requireChange || currentState != previousState else {
                 throw DriverError.unexpectedText(
-                    "specific picker value remained unchanged: (text)"
+                    "specific picker value remained unchanged: \(text)"
                 )
             }
             return
@@ -1069,38 +1076,70 @@ func assertScrollableSurface(
           ) else {
         throw DriverError.timeout("scrollable active surface: \(label)")
     }
-    guard let source = CGEventSource(stateID: .combinedSessionState),
-          let move = CGEvent(
-              mouseEventSource: source,
-              mouseType: .mouseMoved,
-              mouseCursorPosition: CGPoint(
-                  x: beforeAnchorFrame.midX,
-                  y: beforeAnchorFrame.midY
-              ),
-              mouseButton: .left
-          ),
-          let scroll = CGEvent(
-              scrollWheelEvent2Source: source,
-              units: .pixel,
-              wheelCount: 1,
-              wheel1: -8,
-              wheel2: 0,
-              wheel3: 0
-          ) else {
-        throw DriverError.actionFailed("scroll \(label)", .failure)
-    }
     _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
     var anchorFrameChanged = false
-    let attempts: [() throws -> Void] = [
+    enum ScrollAttemptResult {
+        case moved
+        case unsupported(String)
+    }
+
+    func anchorHasMoved() -> Bool {
+        guard let afterAnchorFrame = frame(anchor) else {
+            return false
+        }
+        return abs(afterAnchorFrame.origin.x - beforeAnchorFrame.origin.x) > 1 ||
+            abs(afterAnchorFrame.origin.y - beforeAnchorFrame.origin.y) > 1
+    }
+
+    func postMouseScroll(toProcess: Bool) throws -> ScrollAttemptResult {
+        guard let source = CGEventSource(stateID: .combinedSessionState),
+              let move = CGEvent(
+                  mouseEventSource: source,
+                  mouseType: .mouseMoved,
+                  mouseCursorPosition: CGPoint(
+                      x: beforeAnchorFrame.midX,
+                      y: beforeAnchorFrame.midY
+                  ),
+                  mouseButton: .left
+              ),
+              let scroll = CGEvent(
+                  scrollWheelEvent2Source: source,
+                  units: .pixel,
+                  wheelCount: 1,
+                  wheel1: -8,
+                  wheel2: 0,
+                  wheel3: 0
+              ) else {
+            return .unsupported("mouse event source unavailable")
+        }
+        if toProcess {
+            move.postToPid(pid)
+            Thread.sleep(forTimeInterval: 0.05)
+            scroll.postToPid(pid)
+        } else {
+            move.post(tap: .cghidEventTap)
+            Thread.sleep(forTimeInterval: 0.05)
+            scroll.post(tap: .cghidEventTap)
+        }
+        Thread.sleep(forTimeInterval: 0.25)
+        guard anchorHasMoved() else {
+            throw DriverError.timeout(
+                "scroll action did not move the \(label) anchor"
+            )
+        }
+        return .moved
+    }
+
+    let attempts: [() throws -> ScrollAttemptResult] = [
         {
             guard let rawScrollBar = attribute(surface, "AXVerticalScrollBar") else {
-                throw DriverError.actionFailed("scroll \(label)", .failure)
+                return .unsupported("AX vertical scrollbar unavailable")
             }
             let scrollBar = unsafeDowncast(rawScrollBar, to: AXUIElement.self)
             guard let current = numberAttribute(scrollBar, "AXValue"),
                   let maximum = numberAttribute(scrollBar, "AXMaxValue"),
                   maximum > current else {
-                throw DriverError.actionFailed("scroll \(label)", .failure)
+                return .unsupported("AX vertical scrollbar has no scroll range")
             }
             let step = max(1, min(maximum - current, 0.75 * beforeSurfaceFrame.height))
             let target = min(maximum, current + step)
@@ -1109,60 +1148,79 @@ func assertScrollableSurface(
                 "AXValue" as CFString,
                 NSNumber(value: target)
             )
+            if isExplicitlyUnsupported(error) {
+                return .unsupported("AX vertical scrollbar value is unsupported")
+            }
             guard error == .success else {
                 throw DriverError.actionFailed("scroll \(label)", error)
             }
             Thread.sleep(forTimeInterval: 0.25)
+            guard anchorHasMoved() else {
+                throw DriverError.timeout(
+                    "scroll action did not move the \(label) anchor"
+                )
+            }
+            return .moved
         },
         {
-            if let focusTarget = focusableSurfaceElement(surface) {
-                let focusError = AXUIElementSetAttributeValue(
-                    focusTarget,
-                    "AXFocused" as CFString,
-                    kCFBooleanTrue
-                )
-                guard focusError == .success else {
-                    throw DriverError.actionFailed("focus scroll (label)", focusError)
-                }
-                try pressPageDown(pid)
+            guard let focusTarget = focusableSurfaceElement(surface) else {
+                return .unsupported("no focusable scroll target")
             }
+            let focusError = AXUIElementSetAttributeValue(
+                focusTarget,
+                "AXFocused" as CFString,
+                kCFBooleanTrue
+            )
+            if isExplicitlyUnsupported(focusError) {
+                return .unsupported("scroll target does not expose focus")
+            }
+            guard focusError == .success else {
+                throw DriverError.actionFailed("focus scroll \(label)", focusError)
+            }
+            try pressPageDown(pid)
+            guard anchorHasMoved() else {
+                throw DriverError.timeout(
+                    "scroll action did not move the \(label) anchor"
+                )
+            }
+            return .moved
         },
         {
             let error = AXUIElementPerformAction(
                 surface,
                 "AXScrollDownByPage" as CFString
             )
+            if isExplicitlyUnsupported(error) {
+                return .unsupported("AX page scroll action is unsupported")
+            }
             guard error == .success else {
                 throw DriverError.actionFailed("scroll \(label)", error)
             }
             Thread.sleep(forTimeInterval: 0.25)
+            guard anchorHasMoved() else {
+                throw DriverError.timeout(
+                    "scroll action did not move the \(label) anchor"
+                )
+            }
+            return .moved
         },
         {
-            move.post(tap: .cghidEventTap)
-            Thread.sleep(forTimeInterval: 0.05)
-            scroll.post(tap: .cghidEventTap)
-            Thread.sleep(forTimeInterval: 0.25)
+            try postMouseScroll(toProcess: false)
         },
         {
-            move.postToPid(pid)
-            Thread.sleep(forTimeInterval: 0.05)
-            scroll.postToPid(pid)
-            Thread.sleep(forTimeInterval: 0.25)
+            try postMouseScroll(toProcess: true)
         },
     ]
-    var attemptErrors: [String] = []
-    for (index, attempt) in attempts.enumerated() {
-        do {
-            try attempt()
-        } catch {
-            attemptErrors.append("attempt \(index + 1): \(error)")
-        }
-        if let afterAnchorFrame = frame(anchor),
-           abs(afterAnchorFrame.origin.x - beforeAnchorFrame.origin.x) > 1 ||
-            abs(afterAnchorFrame.origin.y - beforeAnchorFrame.origin.y) > 1 {
+    var unsupportedAttempts: [String] = []
+    for attempt in attempts {
+        switch try attempt() {
+        case .moved:
             anchorFrameChanged = true
-            break
+        case let .unsupported(reason):
+            unsupportedAttempts.append(reason)
+            continue
         }
+        break
     }
     guard let afterSurfaceFrame = frame(surface),
           abs(afterSurfaceFrame.origin.x - beforeSurfaceFrame.origin.x) <= 1,
@@ -1172,9 +1230,9 @@ func assertScrollableSurface(
         throw DriverError.timeout("scrollable surface moved: \(label)")
     }
     guard anchorFrameChanged else {
-        let details = attemptErrors.isEmpty
-            ? "no attempt changed the anchor"
-            : attemptErrors.joined(separator: "; ")
+        let details = unsupportedAttempts.isEmpty
+            ? "no supported scroll method changed the anchor"
+            : unsupportedAttempts.joined(separator: "; ")
         throw DriverError.timeout(
             "scroll position changed: \(label) (\(details))"
         )
@@ -1186,7 +1244,8 @@ func selectOption(
     _ application: AXUIElement,
     _ text: String,
     pid: pid_t,
-    timeout: TimeInterval
+    timeout: TimeInterval,
+    allowUnchanged: Bool = false
 ) throws {
     let destinationOption = Set(["History", "Settings", "This Week"]).contains(text)
     let pickers: [AXUIElement]
@@ -1239,7 +1298,8 @@ func selectOption(
             destinationPicker,
             text,
             timeout: timeout,
-            changedFrom: previousState
+            changedFrom: previousState,
+            requireChange: !allowUnchanged
         )
         return
     }
@@ -1264,7 +1324,8 @@ func selectOption(
                         picker,
                         text,
                         timeout: timeout,
-                        changedFrom: previousState
+                        changedFrom: previousState,
+                        requireChange: !allowUnchanged
                     )
                     return
                 }
@@ -1292,7 +1353,8 @@ func selectOption(
             picker,
             text,
             timeout: timeout,
-            changedFrom: previousState
+            changedFrom: previousState,
+            requireChange: !allowUnchanged
         )
         return
     }
@@ -1718,6 +1780,15 @@ do {
     case "select-contains":
         try selectOption(application, text, pid: pid, timeout: timeout)
         print("Selected rendered option containing: \(text)")
+    case "select-contains-allow-unchanged":
+        try selectOption(
+            application,
+            text,
+            pid: pid,
+            timeout: timeout,
+            allowUnchanged: true
+        )
+        print("Selected rendered option containing (unchanged allowed): \(text)")
     case "set-size":
         try resizeWindow(application, pid: pid, text)
         print("Resized rendered window to: \(text)")
