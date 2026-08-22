@@ -32,6 +32,10 @@ _Avoid_: Primary device, synced device
 Operating-system installation, launch, local file access, notifications, and lifecycle integration. It does not require the interface to use each platform's native visual controls.
 _Avoid_: Fully native UI
 
+**Mac workspace**:
+The action-first Personal Dashboard surface where current exercise state and timely actions are available together in a typical Mac window, while history and administration remain reachable as secondary destinations.
+_Avoid_: Landing page, whole-window scrolling document
+
 **Baseline migration**:
 The automatic, one-time, rollback-safe adoption of the completed local web version's data by the evolving Mac app.
 _Avoid_: Manual re-entry, destructive conversion

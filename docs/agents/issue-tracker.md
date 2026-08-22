@@ -23,7 +23,7 @@ When a skill says “fetch the relevant ticket,” read the referenced local Mar
 - Map: `.scratch/<effort>/map.md`
 - Child ticket: `.scratch/<effort>/issues/NN-<slug>.md`
 - `Type:` records `research`, `prototype`, `grilling`, or `task`
-- `Status:` records `claimed` or `resolved`
+- `Status:` records one of the canonical triage states from `triage-labels.md` before execution (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, or `wontfix`); use `claimed` while work is in progress and `resolved` when complete
 - `Blocked by:` lists prerequisite ticket numbers
 - Claim work by setting `Status: claimed`
 - Resolve work by adding `## Answer`, setting `Status: resolved`, and updating the map
