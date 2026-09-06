@@ -13,6 +13,7 @@ pub mod notification;
 mod notification_platform;
 mod platform;
 pub mod profile;
+pub mod today;
 
 use backup::{
     ProfileBackupAction, ProfileBackupApplication, ProfileRestoreAction, ProfileRestoreSelection,
@@ -29,13 +30,21 @@ use notification::{NotificationApplication, NotificationCapabilityView};
 #[cfg(target_os = "macos")]
 use notification_platform::NativeNotificationPlatform;
 use platform::{
-    baseline_file_for, exercise_file_for, profile_file_for, FileBaselinePersistence,
-    FileExercisePersistence, FileProfilePersistence, FileProfileReplacement, NativeFileExchange,
+    baseline_file_for, exercise_file_for, profile_file_for, today_workspace_file_for,
+    FileBaselinePersistence, FileExercisePersistence, FileProfilePersistence,
+    FileProfileReplacement, FileTodayWorkspacePersistence, NativeFileExchange,
+    NativeTodayWorkspaceExchange,
 };
 use profile::{ProfileApplication, ProfileView};
+use today::{DaytimeUpdateInput, EveningUpdateInput, TodayApplication, TodayView};
 
 type DesktopProfileApplication =
     ProfileApplication<FileProfilePersistence, NativeFileExchange<tauri::Wry>>;
+type DesktopTodayApplication = TodayApplication<
+    FileTodayWorkspacePersistence,
+    NativeTodayWorkspaceExchange<tauri::Wry>,
+    SystemClock,
+>;
 #[cfg(target_os = "macos")]
 type DesktopNotificationApplication =
     NotificationApplication<NativeNotificationPlatform, SystemClock>;
@@ -131,6 +140,34 @@ fn application_identity() -> ApplicationIdentity {
         feature_area: "Exercise tracking",
         boundary_message: "Local Rust application ready · Offline",
     }
+}
+
+#[tauri::command]
+fn today_view(application: State<'_, DesktopTodayApplication>) -> Result<TodayView, String> {
+    application.open()
+}
+
+#[tauri::command]
+async fn select_today_vault(
+    application: State<'_, DesktopTodayApplication>,
+) -> Result<TodayView, String> {
+    application.select_vault()
+}
+
+#[tauri::command]
+fn append_daytime_update(
+    application: State<'_, DesktopTodayApplication>,
+    input: DaytimeUpdateInput,
+) -> Result<TodayView, String> {
+    application.append_daytime_update(input)
+}
+
+#[tauri::command]
+fn update_evening_review(
+    application: State<'_, DesktopTodayApplication>,
+    input: EveningUpdateInput,
+) -> Result<TodayView, String> {
+    application.update_evening_review(input)
 }
 
 #[tauri::command]
@@ -400,6 +437,7 @@ pub fn run() {
             let profile_file = profile_file_for(&app_handle)?;
             let exercise_file = exercise_file_for(&app_handle)?;
             let baseline_file = baseline_file_for(&app_handle)?;
+            let today_workspace_file = today_workspace_file_for(&app_handle)?;
             let profile_replacement =
                 FileProfileReplacement::new(profile_file.clone(), exercise_file.clone())?;
             let profile_persistence = FileProfilePersistence::new(profile_file);
@@ -416,6 +454,11 @@ pub fn run() {
             app.manage(ProfileApplication::new(
                 profile_persistence.clone(),
                 NativeFileExchange::new(app_handle.clone()),
+            ));
+            app.manage(TodayApplication::new(
+                FileTodayWorkspacePersistence::new(today_workspace_file),
+                NativeTodayWorkspaceExchange::new(app_handle.clone()),
+                SystemClock,
             ));
             #[cfg(target_os = "macos")]
             app.manage(ExerciseApplication::with_authority(
@@ -487,6 +530,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             application_identity,
+            today_view,
+            select_today_vault,
+            append_daytime_update,
+            update_evening_review,
             baseline_migration_state,
             profile_state,
             update_profile_label,
@@ -524,6 +571,10 @@ pub fn run() {
     #[cfg(not(target_os = "macos"))]
     let application = application.invoke_handler(tauri::generate_handler![
         application_identity,
+        today_view,
+        select_today_vault,
+        append_daytime_update,
+        update_evening_review,
         baseline_migration_state,
         profile_state,
         update_profile_label,

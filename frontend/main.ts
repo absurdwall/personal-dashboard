@@ -4,6 +4,56 @@ type ApplicationIdentity = Readonly<{
   boundaryMessage: string;
 }>;
 
+type TodayState = "unconfigured" | "missing" | "ready" | "error";
+
+type MorningBlockView = Readonly<{
+  period: string;
+  title: string;
+  detail: string | null;
+}>;
+
+type PlanningEvidenceView = Readonly<{
+  label: string;
+  items: readonly string[];
+}>;
+
+type DaytimeUpdateView = Readonly<{
+  title: string;
+  context: readonly string[];
+  revisedDirection: readonly string[];
+}>;
+
+type DaytimeView = Readonly<{
+  updates: readonly DaytimeUpdateView[];
+}>;
+
+type EveningView = Readonly<{
+  account: readonly string[];
+  comparison: readonly string[];
+  summary: readonly string[];
+  questions: readonly string[];
+  additions: readonly string[];
+  corrections: readonly string[];
+}>;
+
+type TodayView = Readonly<{
+  state: TodayState;
+  date: string;
+  vaultName: string | null;
+  message: string;
+  revision: string | null;
+  timeline: readonly MorningBlockView[];
+  evidence: readonly PlanningEvidenceView[];
+  daytime: DaytimeView;
+  evening: EveningView;
+}>;
+
+type TodayPhase = "morning" | "daytime" | "evening";
+
+function isTodayPhase(value: string | undefined): value is TodayPhase {
+  return value === "morning" || value === "daytime" || value === "evening";
+}
+
 type ProfileView = Readonly<{
   schemaVersion: number;
   profileLabel: string;
@@ -297,10 +347,15 @@ declare global {
   }
 }
 
-type WorkspaceDestination = "this-week" | "history" | "settings";
+type WorkspaceDestination = "today" | "this-week" | "history" | "settings";
 
 function isWorkspaceDestination(value: string | undefined): value is WorkspaceDestination {
-  return value === "this-week" || value === "history" || value === "settings";
+  return (
+    value === "today" ||
+    value === "this-week" ||
+    value === "history" ||
+    value === "settings"
+  );
 }
 
 const workspaceDestinationDetails: Record<
@@ -310,6 +365,10 @@ const workspaceDestinationDetails: Record<
     description: string;
   }>
 > = {
+  today: {
+    title: "Today",
+    description: "查看今天 Daily Record 里的大致安排。",
+  },
   "this-week": {
     title: "This Week",
     description: "See this week's plan and record what happened.",
@@ -340,6 +399,72 @@ const workspaceContextStatus = document.querySelector<HTMLElement>(
   "#workspace-context-status",
 );
 const workspaceInformation = document.querySelector<HTMLElement>(".workspace-information");
+const todayDate = document.querySelector<HTMLElement>("#today-date");
+const todayHeading = document.querySelector<HTMLElement>("#today-heading");
+const todayVault = document.querySelector<HTMLElement>("#today-vault");
+const todayStatus = document.querySelector<HTMLElement>("#today-status");
+const todayReady = document.querySelector<HTMLElement>("#today-ready");
+const todayTimeline = document.querySelector<HTMLOListElement>("#today-timeline");
+const todayBlockCount = document.querySelector<HTMLElement>("#today-block-count");
+const todayPlanEmpty = document.querySelector<HTMLElement>("#today-plan-empty");
+const todayPhaseButtons = document.querySelectorAll<HTMLButtonElement>("[data-today-phase]");
+const todayPhasePanels = document.querySelectorAll<HTMLElement>("[data-today-phase-panel]");
+const todayDaytimeCount = document.querySelector<HTMLElement>("#today-daytime-count");
+const todayDaytimeUpdates = document.querySelector<HTMLElement>("#today-daytime-updates");
+const todayDaytimeEmpty = document.querySelector<HTMLElement>("#today-daytime-empty");
+const todayDaytimeForm = document.querySelector<HTMLFormElement>("#today-daytime-form");
+const todayDaytimeKind = document.querySelector<HTMLSelectElement>("#today-daytime-kind");
+const todayDaytimeContent = document.querySelector<HTMLInputElement>("#today-daytime-content");
+const todayHabitNameField = document.querySelector<HTMLElement>("#today-habit-name-field");
+const todayHabitName = document.querySelector<HTMLInputElement>("#today-habit-name");
+const todayHabitOutcomeField = document.querySelector<HTMLElement>("#today-habit-outcome-field");
+const todayHabitOutcome = document.querySelector<HTMLSelectElement>("#today-habit-outcome");
+const todayEveningAccountSection = document.querySelector<HTMLElement>(
+  "#today-evening-account-section",
+);
+const todayEveningAccount = document.querySelector<HTMLElement>("#today-evening-account");
+const todayEveningComparisonSection = document.querySelector<HTMLElement>(
+  "#today-evening-comparison-section",
+);
+const todayEveningComparison = document.querySelector<HTMLElement>(
+  "#today-evening-comparison",
+);
+const todayEveningSummarySection = document.querySelector<HTMLElement>(
+  "#today-evening-summary-section",
+);
+const todayEveningSummary = document.querySelector<HTMLElement>("#today-evening-summary");
+const todayEveningQuestionsSection = document.querySelector<HTMLElement>(
+  "#today-evening-questions-section",
+);
+const todayEveningQuestions = document.querySelector<HTMLUListElement>(
+  "#today-evening-questions",
+);
+const todayEveningEmpty = document.querySelector<HTMLElement>("#today-evening-empty");
+const todayEveningForm = document.querySelector<HTMLFormElement>("#today-evening-form");
+const todayEveningMode = document.querySelector<HTMLSelectElement>("#today-evening-mode");
+const todayEveningContent = document.querySelector<HTMLInputElement>("#today-evening-content");
+const todayEveningAdditionsSection = document.querySelector<HTMLElement>(
+  "#today-evening-additions-section",
+);
+const todayEveningAdditions = document.querySelector<HTMLUListElement>(
+  "#today-evening-additions",
+);
+const todayEveningCorrectionsSection = document.querySelector<HTMLElement>(
+  "#today-evening-corrections-section",
+);
+const todayEveningCorrections = document.querySelector<HTMLElement>(
+  "#today-evening-corrections",
+);
+const todayEvidenceToggle = document.querySelector<HTMLButtonElement>("#today-evidence-toggle");
+const todayEvidenceContent = document.querySelector<HTMLElement>("#today-evidence-content");
+const todayEvidenceCount = document.querySelector<HTMLElement>("#today-evidence-count");
+const todayEvidenceGroups = document.querySelector<HTMLElement>("#today-evidence-groups");
+const todayEvidenceEmpty = document.querySelector<HTMLElement>("#today-evidence-empty");
+const todayHandoff = document.querySelector<HTMLElement>("#today-handoff");
+const todayHandoffHeading = document.querySelector<HTMLElement>("#today-handoff-heading");
+const todayHandoffCopy = document.querySelector<HTMLElement>("#today-handoff-copy");
+const selectTodayVaultButton = document.querySelector<HTMLButtonElement>("#select-today-vault");
+const refreshTodayButton = document.querySelector<HTMLButtonElement>("#refresh-today");
 const workspaceDetailHeading = document.querySelector<HTMLElement>(
   "#workspace-detail-heading",
 );
@@ -524,6 +649,9 @@ const scheduleCapabilityNotificationButton = document.querySelector<HTMLButtonEl
 const appShell = document.querySelector<HTMLElement>(".app-shell");
 let currentProfileAuthority: ProfileView["authority"] = "active";
 let currentWorkspaceDestination: WorkspaceDestination = "this-week";
+let refreshingToday = false;
+let currentTodayPhase: TodayPhase = "morning";
+let currentTodayView: TodayView | null = null;
 let currentExerciseView: ExerciseDashboardView | null = null;
 let selectedDepartureSlotId: string | null = null;
 let activeWorkoutSlotId: string | null = null;
@@ -1575,6 +1703,315 @@ function renderWorkspaceDetail(
   }
 }
 
+function todayTimelineItem(block: MorningBlockView): HTMLLIElement {
+  const item = document.createElement("li");
+  item.className = "today-timeline-item";
+  const period = document.createElement("span");
+  period.className = "today-period";
+  period.textContent = block.period;
+  const copy = document.createElement("div");
+  const title = document.createElement("h4");
+  title.textContent = block.title;
+  copy.append(title);
+  if (block.detail) {
+    const detail = document.createElement("p");
+    detail.textContent = block.detail;
+    copy.append(detail);
+  }
+  item.append(period, copy);
+  return item;
+}
+
+function todayEvidenceGroup(group: PlanningEvidenceView): HTMLElement {
+  const section = document.createElement("section");
+  section.className = "today-evidence-group";
+  const heading = document.createElement("h4");
+  heading.textContent = group.label;
+  const list = document.createElement("ul");
+  list.append(
+    ...group.items.map((item) => {
+      const row = document.createElement("li");
+      row.textContent = item;
+      return row;
+    }),
+  );
+  section.append(heading, list);
+  return section;
+}
+
+function daytimeUpdateArticle(update: DaytimeUpdateView): HTMLElement {
+  const article = document.createElement("article");
+  article.className = "today-daytime-update";
+  const heading = document.createElement("h4");
+  heading.textContent = update.title;
+  article.append(heading);
+  if (update.context.length > 0 && update.revisedDirection.length > 0) {
+    const contextLabel = document.createElement("p");
+    contextLabel.className = "today-update-label";
+    contextLabel.textContent = "发生了什么，以及为什么";
+    article.append(contextLabel);
+  }
+  update.context.forEach((line) => {
+    const paragraph = document.createElement("p");
+    paragraph.textContent = line;
+    article.append(paragraph);
+  });
+  if (update.revisedDirection.length > 0) {
+    const label = document.createElement("p");
+    label.className = "today-update-label";
+    label.textContent = "接下来这样安排";
+    const list = document.createElement("ul");
+    list.append(
+      ...update.revisedDirection.map((line) => {
+        const item = document.createElement("li");
+        item.textContent = line;
+        return item;
+      }),
+    );
+    article.append(label, list);
+  }
+  return article;
+}
+
+function renderReadingParagraphs(
+  container: HTMLElement | null,
+  lines: readonly string[],
+): void {
+  container?.replaceChildren(
+    ...lines.map((line) => {
+      const paragraph = document.createElement("p");
+      paragraph.textContent = line;
+      return paragraph;
+    }),
+  );
+}
+
+function renderReadingList(
+  container: HTMLElement | null,
+  lines: readonly string[],
+): void {
+  container?.replaceChildren(
+    ...lines.map((line) => {
+      const item = document.createElement("li");
+      item.textContent = line;
+      return item;
+    }),
+  );
+}
+
+function showTodayPhase(phase: TodayPhase, focus = false): void {
+  const phaseChanged = currentTodayPhase !== phase;
+  currentTodayPhase = phase;
+  const labels: Record<TodayPhase, string> = {
+    morning: "早间计划",
+    daytime: "白天更新",
+    evening: "晚间复盘",
+  };
+  if (todayHeading) {
+    todayHeading.textContent = labels[phase];
+  }
+  todayPhaseButtons.forEach((button) => {
+    const selected = button.dataset.todayPhase === phase;
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+    if (focus && selected) {
+      button.focus();
+    }
+  });
+  todayPhasePanels.forEach((panel) => {
+    panel.hidden = panel.dataset.todayPhasePanel !== phase;
+  });
+  if (phaseChanged && workspaceInformation) {
+    workspaceInformation.scrollTop = 0;
+  }
+}
+
+function renderToday(view: TodayView): void {
+  currentTodayView = view;
+  if (todayDate) {
+    todayDate.textContent = `Today · ${view.date}`;
+  }
+  if (todayVault) {
+    todayVault.textContent = view.vaultName
+      ? `Vault: ${view.vaultName}`
+      : "尚未选择 Vault。";
+  }
+  if (todayStatus) {
+    todayStatus.textContent = view.message;
+    todayStatus.dataset.state = view.state;
+  }
+
+  const ready = view.state === "ready";
+  if (todayReady) {
+    todayReady.hidden = !ready;
+  }
+  if (todayHandoff) {
+    todayHandoff.hidden = ready;
+  }
+  if (todayTimeline) {
+    todayTimeline.replaceChildren(...view.timeline.map(todayTimelineItem));
+  }
+  if (todayBlockCount) {
+    todayBlockCount.textContent = `${view.timeline.length} 个时间块`;
+  }
+  if (todayPlanEmpty) {
+    todayPlanEmpty.hidden = view.timeline.length > 0;
+  }
+
+  if (todayDaytimeCount) {
+    todayDaytimeCount.textContent = `${view.daytime.updates.length} 条`;
+  }
+  if (todayDaytimeUpdates) {
+    todayDaytimeUpdates.replaceChildren(
+      ...view.daytime.updates.map(daytimeUpdateArticle),
+    );
+  }
+  if (todayDaytimeEmpty) {
+    todayDaytimeEmpty.hidden = view.daytime.updates.length > 0;
+  }
+
+  const eveningHasContent =
+    view.evening.account.length > 0 ||
+    view.evening.comparison.length > 0 ||
+    view.evening.summary.length > 0 ||
+    view.evening.questions.length > 0 ||
+    view.evening.additions.length > 0 ||
+    view.evening.corrections.length > 0;
+  todayEveningAccountSection?.toggleAttribute(
+    "hidden",
+    view.evening.account.length === 0,
+  );
+  renderReadingList(todayEveningAccount, view.evening.account);
+  todayEveningComparisonSection?.toggleAttribute(
+    "hidden",
+    view.evening.comparison.length === 0,
+  );
+  renderReadingParagraphs(todayEveningComparison, view.evening.comparison);
+  todayEveningSummarySection?.toggleAttribute(
+    "hidden",
+    view.evening.summary.length === 0,
+  );
+  renderReadingParagraphs(todayEveningSummary, view.evening.summary);
+  todayEveningQuestionsSection?.toggleAttribute(
+    "hidden",
+    view.evening.questions.length === 0,
+  );
+  renderReadingList(todayEveningQuestions, view.evening.questions);
+  todayEveningAdditionsSection?.toggleAttribute(
+    "hidden",
+    view.evening.additions.length === 0,
+  );
+  renderReadingList(todayEveningAdditions, view.evening.additions);
+  todayEveningCorrectionsSection?.toggleAttribute(
+    "hidden",
+    view.evening.corrections.length === 0,
+  );
+  renderReadingParagraphs(todayEveningCorrections, view.evening.corrections);
+  if (todayEveningEmpty) {
+    todayEveningEmpty.hidden = eveningHasContent;
+  }
+
+  const evidenceItemCount = view.evidence.reduce(
+    (total, group) => total + group.items.length,
+    0,
+  );
+  if (todayEvidenceCount) {
+    todayEvidenceCount.textContent = `${evidenceItemCount} 项`;
+  }
+  if (todayEvidenceGroups) {
+    todayEvidenceGroups.replaceChildren(...view.evidence.map(todayEvidenceGroup));
+  }
+  if (todayEvidenceEmpty) {
+    todayEvidenceEmpty.hidden = evidenceItemCount > 0;
+  }
+  if (!ready) {
+    todayEvidenceToggle?.setAttribute("aria-expanded", "false");
+    if (todayEvidenceContent) {
+      todayEvidenceContent.hidden = true;
+    }
+  }
+
+  if (todayHandoffHeading && todayHandoffCopy) {
+    if (view.state === "unconfigured") {
+      todayHandoffHeading.textContent = "连接 Tortilla Flat vault。";
+      todayHandoffCopy.textContent =
+        "只需选择一次 vault 文件夹。Personal Dashboard 只保存这个 workspace 设置，并直接读取规范 Daily Record。";
+    } else if (view.state === "missing") {
+      todayHandoffHeading.textContent = "Today 需要一份 Daily Record。";
+      todayHandoffCopy.textContent =
+        "请让 Codex 运行早间流程，然后回到这里刷新 Today。";
+    } else if (view.state === "error") {
+      todayHandoffHeading.textContent = "今天的 Daily Record 需要修复。";
+      todayHandoffCopy.textContent = view.message;
+    }
+  }
+  showTodayPhase(currentTodayPhase);
+}
+
+function showTodayMutationStatus(message: string, state: "ready" | "error"): void {
+  if (todayStatus) {
+    todayStatus.textContent = message;
+    todayStatus.dataset.state = state;
+  }
+}
+
+function syncHabitFields(): void {
+  const visible = todayDaytimeKind?.value === "habit-outcome";
+  todayHabitNameField?.toggleAttribute("hidden", !visible);
+  todayHabitOutcomeField?.toggleAttribute("hidden", !visible);
+}
+
+async function saveTodayMutation(
+  command: "append_daytime_update" | "update_evening_review",
+  input: Record<string, unknown>,
+  successMessage: string,
+): Promise<boolean> {
+  if (!currentTodayView?.revision || refreshingToday) {
+    showTodayMutationStatus("请先刷新有效的 Daily Record，再保存。", "error");
+    return false;
+  }
+  refreshingToday = true;
+  todayDaytimeForm?.querySelector("button")?.toggleAttribute("disabled", true);
+  todayEveningForm?.querySelector("button")?.toggleAttribute("disabled", true);
+  try {
+    const view = await window.__TAURI__.core.invoke<TodayView>(command, {
+      input: { ...input, expectedRevision: currentTodayView.revision },
+    });
+    renderToday(view);
+    showTodayMutationStatus(successMessage, "ready");
+    return true;
+  } catch (error) {
+    showTodayMutationStatus(`未保存：${String(error)}`, "error");
+    return false;
+  } finally {
+    refreshingToday = false;
+    todayDaytimeForm?.querySelector("button")?.removeAttribute("disabled");
+    todayEveningForm?.querySelector("button")?.removeAttribute("disabled");
+  }
+}
+
+async function refreshToday(command = "today_view"): Promise<void> {
+  if (refreshingToday) {
+    return;
+  }
+  refreshingToday = true;
+  selectTodayVaultButton?.toggleAttribute("disabled", true);
+  refreshTodayButton?.toggleAttribute("disabled", true);
+  try {
+    const view = await window.__TAURI__.core.invoke<TodayView>(command);
+    renderToday(view);
+  } catch (error) {
+    if (todayStatus) {
+      todayStatus.textContent = `无法读取 Today：${String(error)}`;
+      todayStatus.dataset.state = "error";
+    }
+  } finally {
+    refreshingToday = false;
+    selectTodayVaultButton?.removeAttribute("disabled");
+    refreshTodayButton?.removeAttribute("disabled");
+  }
+}
+
 function showWorkspaceDestination(destination: WorkspaceDestination, focus = false): void {
   const restoreOpenDetail = destination === "this-week" && workspaceDetailOpen;
   currentWorkspaceDestination = destination;
@@ -1584,11 +2021,13 @@ function showWorkspaceDestination(destination: WorkspaceDestination, focus = fal
     const buttonDestination = button.dataset.workspaceDestination;
     const isCurrent = buttonDestination === destination;
     const buttonLabel =
-      buttonDestination === "this-week"
-        ? "This Week"
-        : buttonDestination === "history"
-          ? "History"
-          : "Settings";
+      buttonDestination === "today"
+        ? "Today"
+        : buttonDestination === "this-week"
+          ? "This Week"
+          : buttonDestination === "history"
+            ? "History"
+            : "Settings";
     button.toggleAttribute("aria-current", isCurrent);
     if (isCurrent) {
       button.setAttribute("aria-current", "page");
@@ -1620,6 +2059,9 @@ function showWorkspaceDestination(destination: WorkspaceDestination, focus = fal
     workspaceContextStatus.textContent = `${details.title} is the current destination.`;
   }
   renderWorkspaceDetail();
+  if (destination === "today") {
+    void refreshToday();
+  }
   if (restoreOpenDetail) {
     window.requestAnimationFrame(() => workspaceDetailClose?.focus());
   }
@@ -2695,6 +3137,97 @@ window.addEventListener("resize", () => {
 });
 showWorkspaceDestination("this-week");
 
+selectTodayVaultButton?.addEventListener("click", () => {
+  void refreshToday("select_today_vault");
+});
+
+refreshTodayButton?.addEventListener("click", () => {
+  void refreshToday();
+});
+
+todayDaytimeKind?.addEventListener("change", syncHabitFields);
+syncHabitFields();
+
+todayDaytimeForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!todayDaytimeKind || !todayDaytimeContent) {
+    return;
+  }
+  void (async () => {
+    const saved = await saveTodayMutation(
+      "append_daytime_update",
+      {
+        kind: todayDaytimeKind.value,
+        content: todayDaytimeContent.value,
+        habitName: todayDaytimeKind.value === "habit-outcome" ? todayHabitName?.value ?? null : null,
+        habitOutcome:
+          todayDaytimeKind.value === "habit-outcome" ? todayHabitOutcome?.value || null : null,
+      },
+      "白天更新已写入 Daily Record。",
+    );
+    if (saved) {
+      todayDaytimeContent.value = "";
+      if (todayHabitName) todayHabitName.value = "";
+      if (todayHabitOutcome) todayHabitOutcome.value = "";
+      showTodayPhase("daytime");
+    }
+  })();
+});
+
+todayEveningForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!todayEveningMode || !todayEveningContent) {
+    return;
+  }
+  void (async () => {
+    const saved = await saveTodayMutation(
+      "update_evening_review",
+      { mode: todayEveningMode.value, content: todayEveningContent.value },
+      "晚间更新已写入 Daily Record。",
+    );
+    if (saved) {
+      todayEveningContent.value = "";
+      showTodayPhase("evening");
+    }
+  })();
+});
+
+todayEvidenceToggle?.addEventListener("click", () => {
+  const expanded = todayEvidenceToggle.getAttribute("aria-expanded") === "true";
+  todayEvidenceToggle.setAttribute("aria-expanded", String(!expanded));
+  if (todayEvidenceContent) {
+    todayEvidenceContent.hidden = expanded;
+  }
+});
+
+todayPhaseButtons.forEach((button, index) => {
+  button.addEventListener("click", () => {
+    if (isTodayPhase(button.dataset.todayPhase)) {
+      showTodayPhase(button.dataset.todayPhase);
+    }
+  });
+  button.addEventListener("keydown", (event) => {
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") {
+      nextIndex = (index + 1) % todayPhaseButtons.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (index - 1 + todayPhaseButtons.length) % todayPhaseButtons.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = todayPhaseButtons.length - 1;
+    }
+    if (nextIndex === null) {
+      return;
+    }
+    event.preventDefault();
+    const nextPhase = todayPhaseButtons[nextIndex]?.dataset.todayPhase;
+    if (isTodayPhase(nextPhase)) {
+      showTodayPhase(nextPhase, true);
+    }
+  });
+});
+
 profileForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!profileLabel) {
@@ -2887,6 +3420,7 @@ routineDepartures?.addEventListener("click", (event) => {
 });
 
 window.addEventListener("focus", () => {
+  void refreshToday();
   void refreshExerciseDashboard();
   void refreshNotificationCapability();
 });

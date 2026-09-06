@@ -1928,6 +1928,439 @@ body {
   }
 }
 
+/* Keep Today content padding after the production workspace parity layer. */
+#workspace-destination-today.today-destination {
+  padding: 30px max(28px, 5vw) 64px;
+}
+
+@media (max-width: 900px) {
+  #workspace-destination-today.today-destination {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+}
+
+@media (max-width: 680px) {
+  #workspace-destination-today.today-destination {
+    padding: 20px 16px 48px;
+  }
+}
+
+/* Today — morning plan from the user-owned Tortilla Flat daily record. */
+#workspace-destination-today.today-destination {
+  width: min(100%, 940px);
+  margin: 0 auto;
+  padding: 30px max(28px, 5vw) 64px;
+}
+
+.today-toolbar,
+.today-region-heading,
+.today-evidence-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.today-toolbar {
+  padding-bottom: 17px;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.today-toolbar .section-label,
+.today-region-heading .section-label {
+  margin-bottom: 5px;
+  color: var(--parity-muted);
+  font-size: 9px;
+  letter-spacing: 0.09em;
+}
+
+.today-toolbar h2,
+.today-region-heading h3,
+.today-handoff h3 {
+  margin-bottom: 0;
+  color: #232724;
+  font-family: inherit;
+  letter-spacing: -0.025em;
+}
+
+.today-toolbar h2 {
+  font-size: 25px;
+}
+
+.today-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.today-actions button {
+  min-height: 34px;
+  padding: 7px 11px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+
+.today-vault {
+  margin: 13px 0 5px;
+  color: var(--parity-muted);
+  font-size: 11px;
+}
+
+.today-status {
+  margin: 0 0 20px;
+  color: var(--parity-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.today-status[data-state="error"] {
+  color: #8a3d31;
+}
+
+.today-phase-navigation {
+  display: flex;
+  gap: 22px;
+  margin: 0 0 24px;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.today-phase-navigation button {
+  min-height: 39px;
+  margin-bottom: -1px;
+  padding: 0 1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--parity-muted);
+  font-size: 11px;
+}
+
+.today-phase-navigation button[aria-selected="true"] {
+  border-bottom-color: var(--parity-accent);
+  color: var(--parity-accent-strong);
+}
+
+.today-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.85fr) minmax(220px, 0.75fr);
+  align-items: start;
+  gap: 30px;
+}
+
+.today-timeline-region {
+  min-width: 0;
+}
+
+.today-phase-primary,
+.today-phase-panel {
+  min-width: 0;
+}
+
+.today-region-heading {
+  padding: 0 0 11px;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.today-region-heading h3 {
+  font-size: 17px;
+}
+
+.today-count {
+  flex: 0 0 auto;
+  color: var(--parity-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.today-timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.today-timeline-item {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 16px;
+  padding: 19px 0;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.today-period {
+  color: var(--parity-accent-strong);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.today-timeline-item h4,
+.today-evidence-group h4 {
+  margin: 0;
+  color: #232724;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.today-timeline-item p {
+  margin: 5px 0 0;
+  color: var(--parity-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.today-plan-empty,
+.today-evidence-empty,
+.today-phase-empty {
+  margin: 18px 0 0;
+  color: var(--parity-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.today-reading-introduction {
+  max-width: 58ch;
+  margin: 14px 0 6px;
+  color: var(--parity-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.today-bounded-form {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 6px;
+  padding: 14px;
+  border: 1px solid var(--parity-border);
+  border-radius: 9px;
+  background: var(--parity-surface-soft);
+}
+
+.today-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 9px;
+}
+
+.today-bounded-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--parity-muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.today-bounded-form input,
+.today-bounded-form select {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid rgb(35 39 36 / 18%);
+  border-radius: 7px;
+  background: #fff;
+  color: #232724;
+  font: inherit;
+  font-size: 12px;
+}
+
+.today-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.today-form-actions button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 7px 11px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+
+.today-form-actions p {
+  margin: 0;
+  color: var(--parity-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.today-daytime-update,
+.today-review-section {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.today-daytime-update h4,
+.today-review-section h4 {
+  margin: 0 0 9px;
+  color: #232724;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.today-daytime-update p,
+.today-daytime-update li,
+.today-review-section p,
+.today-review-section li {
+  color: #4f5753;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.today-daytime-update p,
+.today-review-section p {
+  margin: 0 0 8px;
+}
+
+.today-daytime-update ul,
+.today-review-section ul {
+  margin: 0;
+  padding-left: 19px;
+}
+
+.today-update-label {
+  margin-top: 13px !important;
+  color: var(--parity-accent-strong) !important;
+  font-size: 10px !important;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.today-review-summary {
+  color: var(--parity-muted);
+}
+
+.today-review-questions {
+  margin-top: 18px;
+  padding: 15px 17px;
+  border-bottom: 0;
+  border-left: 3px solid #c6d8d1;
+  background: #f7faf8;
+}
+
+.today-evidence-region {
+  border: 1px solid var(--parity-border);
+  border-radius: 10px;
+  background: var(--parity-surface-soft);
+}
+
+.today-evidence-toggle {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #303633;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+  text-align: left;
+}
+
+.today-evidence-groups,
+.today-evidence-empty {
+  padding-right: 14px;
+  padding-bottom: 14px;
+  padding-left: 14px;
+}
+
+.today-evidence-group {
+  padding: 11px 0;
+  border-top: 1px solid var(--parity-border);
+}
+
+.today-evidence-group h4 {
+  margin-bottom: 7px;
+  font-size: 11px;
+}
+
+.today-evidence-group ul {
+  margin: 0;
+  padding-left: 17px;
+  color: var(--parity-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.today-handoff {
+  max-width: 610px;
+  margin-top: 26px;
+  padding: 18px 0;
+  border-top: 1px solid var(--parity-border);
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.today-handoff h3 {
+  font-size: 16px;
+}
+
+.today-handoff > p:last-child {
+  margin: 7px 0 0;
+  color: var(--parity-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+@media (max-width: 900px) {
+  #workspace-destination-today.today-destination {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+
+  .today-layout {
+    grid-template-columns: minmax(0, 1fr) 220px;
+    gap: 22px;
+  }
+}
+
+@media (max-width: 680px) {
+  #workspace-destination-today.today-destination {
+    padding: 20px 16px 48px;
+  }
+
+  .today-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .today-actions {
+    width: 100%;
+  }
+
+  .today-actions button {
+    flex: 1;
+  }
+
+  .today-phase-navigation {
+    gap: 0;
+  }
+
+  .today-phase-navigation button {
+    flex: 1;
+  }
+
+  .today-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .today-timeline-item {
+    grid-template-columns: 60px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .today-form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .today-form-actions button {
+    width: 100%;
+  }
+}
+
 /* Review fix: secondary destinations keep the prototype's page inset; This Week stays list-first and flush. */
 #workspace-destination-history,
 #workspace-destination-settings {

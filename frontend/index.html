@@ -24,6 +24,15 @@
           <button
             type="button"
             class="destination-button"
+            data-workspace-destination="today"
+            aria-controls="workspace-destination-today"
+          >
+            <span class="destination-icon" aria-hidden="true">☀</span>
+            <span>Today</span>
+          </button>
+          <button
+            type="button"
+            class="destination-button"
             data-workspace-destination="this-week"
             aria-controls="workspace-destination-this-week"
             aria-current="page"
@@ -54,6 +63,7 @@
           <label for="workspace-destination-select">Destination</label>
           <select id="workspace-destination-select" aria-label="Destination">
             <option value="this-week">This Week</option>
+            <option value="today">Today</option>
             <option value="history">History</option>
             <option value="settings">Settings</option>
           </select>
@@ -82,6 +92,243 @@
 
         <div class="workspace-regions">
           <section class="workspace-information" aria-label="Workspace information">
+            <section
+              id="workspace-destination-today"
+              class="workspace-destination today-destination"
+              data-workspace-panel="today"
+              aria-labelledby="today-heading"
+              hidden
+            >
+              <div class="today-toolbar">
+                <div>
+                  <p id="today-date" class="section-label">Today</p>
+                  <h2 id="today-heading" class="destination-heading">早间计划</h2>
+                </div>
+                <div class="today-actions" aria-label="Today workspace actions">
+                  <button id="select-today-vault" type="button" class="secondary-button">
+                    选择 Vault…
+                  </button>
+                  <button id="refresh-today" type="button">刷新</button>
+                </div>
+              </div>
+              <p id="today-vault" class="today-vault">尚未选择 Vault。</p>
+              <p id="today-status" class="today-status" role="status" aria-live="polite">
+                正在读取今天的早间计划…
+              </p>
+
+              <div id="today-ready" hidden>
+                <nav class="today-phase-navigation" role="tablist" aria-label="Today 阶段">
+                  <button
+                    type="button"
+                    role="tab"
+                    data-today-phase="morning"
+                    aria-controls="today-phase-morning"
+                    aria-selected="true"
+                  >
+                    Morning
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    data-today-phase="daytime"
+                    aria-controls="today-phase-daytime"
+                    aria-selected="false"
+                  >
+                    Daytime
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    data-today-phase="evening"
+                    aria-controls="today-phase-evening"
+                    aria-selected="false"
+                  >
+                    Evening
+                  </button>
+                </nav>
+
+                <div class="today-layout">
+                  <div class="today-phase-primary">
+                    <section
+                      id="today-phase-morning"
+                      class="today-phase-panel today-timeline-region"
+                      data-today-phase-panel="morning"
+                      role="tabpanel"
+                      aria-labelledby="today-timeline-heading"
+                    >
+                      <div class="today-region-heading">
+                        <div>
+                          <p class="section-label">今日方向</p>
+                          <h3 id="today-timeline-heading">今天的大致安排</h3>
+                        </div>
+                        <span id="today-block-count" class="today-count"></span>
+                      </div>
+                      <ol
+                        id="today-timeline"
+                        class="today-timeline"
+                        role="list"
+                        aria-label="今天的早间计划时间线"
+                      ></ol>
+                      <p id="today-plan-empty" class="today-plan-empty" hidden>
+                        这份有效的 Daily Record 还没有早间计划。
+                      </p>
+                    </section>
+
+                    <section
+                      id="today-phase-daytime"
+                      class="today-phase-panel today-reading-surface"
+                      data-today-phase-panel="daytime"
+                      role="tabpanel"
+                      aria-labelledby="today-daytime-heading"
+                      hidden
+                    >
+                      <div class="today-region-heading">
+                        <div>
+                          <p class="section-label">白天更新</p>
+                          <h3 id="today-daytime-heading">变化与新的方向</h3>
+                        </div>
+                        <span id="today-daytime-count" class="today-count"></span>
+                      </div>
+                      <p class="today-reading-introduction">
+                        这里只呈现有意义的事件和 material replan；未记录的活动保持 unknown。
+                      </p>
+                      <form id="today-daytime-form" class="today-bounded-form">
+                        <div class="today-form-row">
+                          <label>
+                            更新类型
+                            <select id="today-daytime-kind" name="kind">
+                              <option value="meaningful-event">有意义的事件</option>
+                              <option value="remembered-block">补记时间块</option>
+                              <option value="habit-outcome">Habit 结果</option>
+                              <option value="material-change">重大调整</option>
+                            </select>
+                          </label>
+                          <label id="today-habit-name-field" hidden>
+                            Habit
+                            <input id="today-habit-name" type="text" maxlength="120" autocomplete="off" />
+                          </label>
+                          <label id="today-habit-outcome-field" hidden>
+                            结果
+                            <select id="today-habit-outcome">
+                              <option value="">保持 unknown</option>
+                              <option value="normal">normal</option>
+                              <option value="baseline">baseline</option>
+                              <option value="partial">partial</option>
+                              <option value="not_done">not_done</option>
+                            </select>
+                          </label>
+                        </div>
+                        <label>
+                          一句话说明
+                          <input id="today-daytime-content" type="text" maxlength="500" autocomplete="off" aria-label="Daytime update text" required />
+                        </label>
+                        <div class="today-form-actions">
+                          <button id="save-daytime-update" type="submit">保存白天更新</button>
+                          <p>Dida365 仍管理 Tasks/Habits；需要重排今天时，交给 Codex。</p>
+                        </div>
+                      </form>
+                      <div id="today-daytime-updates" class="today-daytime-updates"></div>
+                      <p id="today-daytime-empty" class="today-phase-empty" hidden>
+                        今天还没有需要留下的白天变化。这不表示计划失败，也不需要补记普通完成项。
+                      </p>
+                    </section>
+
+                    <section
+                      id="today-phase-evening"
+                      class="today-phase-panel today-reading-surface"
+                      data-today-phase-panel="evening"
+                      role="tabpanel"
+                      aria-labelledby="today-evening-heading"
+                      hidden
+                    >
+                      <div class="today-region-heading">
+                        <div>
+                          <p class="section-label">晚间复盘</p>
+                          <h3 id="today-evening-heading">Agent 整理的今日记录</h3>
+                        </div>
+                      </div>
+                      <p class="today-reading-introduction">
+                        先读一个保守的 first pass；不要求完整重建整天。
+                      </p>
+                      <form id="today-evening-form" class="today-bounded-form">
+                        <div class="today-form-row">
+                          <label>
+                            更新方式
+                            <select id="today-evening-mode">
+                              <option value="addition">补充遗漏信息</option>
+                              <option value="correction">修正已有复盘</option>
+                            </select>
+                          </label>
+                        </div>
+                        <label>
+                          简短内容
+                          <input id="today-evening-content" type="text" maxlength="500" autocomplete="off" aria-label="Evening update text" required />
+                        </label>
+                        <div class="today-form-actions">
+                          <button id="save-evening-update" type="submit">保存晚间更新</button>
+                          <p>这会写入受控小节，不会关闭今天，也不会改写整份 Markdown。</p>
+                        </div>
+                      </form>
+                      <section id="today-evening-account-section" class="today-review-section" hidden>
+                        <h4>今天发生了什么</h4>
+                        <div id="today-evening-account"></div>
+                      </section>
+                      <section id="today-evening-comparison-section" class="today-review-section" hidden>
+                        <h4>计划与实际</h4>
+                        <div id="today-evening-comparison"></div>
+                      </section>
+                      <section id="today-evening-summary-section" class="today-review-section today-review-summary" hidden>
+                        <h4>简单总结（可选）</h4>
+                        <div id="today-evening-summary"></div>
+                      </section>
+                      <section id="today-evening-questions-section" class="today-review-section today-review-questions" hidden>
+                        <h4>仍值得确认</h4>
+                        <ul id="today-evening-questions"></ul>
+                      </section>
+                      <section id="today-evening-additions-section" class="today-review-section" hidden>
+                        <h4>你的补充</h4>
+                        <ul id="today-evening-additions"></ul>
+                      </section>
+                      <section id="today-evening-corrections-section" class="today-review-section" hidden>
+                        <h4>你的修正</h4>
+                        <div id="today-evening-corrections"></div>
+                      </section>
+                      <p id="today-evening-empty" class="today-phase-empty" hidden>
+                        Agent 还没有准备晚间复盘。今晚可以不复盘，也不会形成补写债务。
+                      </p>
+                    </section>
+                  </div>
+
+                  <aside class="today-evidence-region" aria-labelledby="today-evidence-heading">
+                    <button
+                      id="today-evidence-toggle"
+                      class="today-evidence-toggle"
+                      type="button"
+                      aria-expanded="false"
+                      aria-controls="today-evidence-content"
+                    >
+                      <span id="today-evidence-heading">计划依据</span>
+                      <span id="today-evidence-count" class="today-count"></span>
+                    </button>
+                    <div id="today-evidence-content" hidden>
+                      <div id="today-evidence-groups" class="today-evidence-groups"></div>
+                      <p id="today-evidence-empty" class="today-evidence-empty" hidden>
+                        尚未记录计划依据。
+                      </p>
+                    </div>
+                  </aside>
+                </div>
+              </div>
+
+              <section id="today-handoff" class="today-handoff" aria-labelledby="today-handoff-heading" hidden>
+                <p class="section-label">早间交接</p>
+                <h3 id="today-handoff-heading">Today 需要一份 Daily Record。</h3>
+                <p id="today-handoff-copy">
+                  请让 Codex 运行早间流程，然后回到这里刷新 Today。
+                </p>
+              </section>
+            </section>
+
             <section
               id="workspace-destination-this-week"
               class="workspace-destination"

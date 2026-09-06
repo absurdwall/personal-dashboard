@@ -160,10 +160,14 @@ finalize_supervised_directory() {
   local supervision_directory="$3"
 
   [[ -n "$supervision_directory" && -d "$supervision_directory" ]] || return 0
-  if supervised_processes_running "$child_pid" "$child_group_id" "$supervision_directory"; then
-    return 1
-  fi
-  remove_acceptance_directory "$supervision_directory"
+  for _ in {1..50}; do
+    if ! supervised_processes_running "$child_pid" "$child_group_id" "$supervision_directory"; then
+      remove_acceptance_directory "$supervision_directory"
+      return
+    fi
+    sleep 0.1
+  done
+  return 1
 }
 
 terminate_process_tree_fallback() {
@@ -329,7 +333,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle; do
     run_bounded_scenario "$scenario"
   done
 
@@ -471,6 +475,37 @@ run_driver() {
     fail "$output"
   fi
   printf '%s\n' "$output"
+}
+
+launch_app_waiting_for_text() {
+  local expected_text="$1"
+  local timeout_seconds="${2:-30}"
+  local output=""
+
+  for attempt in 1 2; do
+    launch_app
+    if output="$("$driver_binary" "$app_pid" wait-text "$expected_text" "$timeout_seconds" 2>&1)"; then
+      printf '%s\n' "$output"
+      return 0
+    fi
+    if (( attempt == 1 )); then
+      current_step="retrying packaged app after Accessibility readiness delay"
+      stop_app || fail "app process did not exit before the bounded readiness retry"
+      sleep 2
+    fi
+  done
+  fail "$output"
+}
+
+wait_for_file_text() {
+  local file="$1"
+  local expected_text="$2"
+
+  for _ in {1..50}; do
+    grep -Fq -- "$expected_text" "$file" && return 0
+    sleep 0.1
+  done
+  return 1
 }
 
 run_keyboard_scenario() {
@@ -1379,6 +1414,399 @@ run_compact_scenario() {
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
 }
 
+run_today_scenario() {
+  local vault_directory="$acceptance_directory/tortilla-flat-vault"
+  local record_directory="$vault_directory/life/Journal/Daily/2026/2026-08"
+  local record_file="$record_directory/2026-08-10.md"
+  local before_phase_hash
+  local after_phase_hash
+
+  current_step="preparing an isolated representative Tortilla Flat vault"
+  mkdir -p "$vault_directory/.obsidian" "$record_directory"
+
+  current_step="preselecting the isolated vault for the Today scenario"
+  mkdir -p "$acceptance_data_directory"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_directory" > "$acceptance_data_directory/today-workspace.json"
+
+  if [[ "$acceptance_scenario" == "installed-cycle" ]]; then
+    current_step="launching the installed daily-cycle scenario with a missing record"
+    launch_app
+    [[ "$(ps -o command= -p "$app_pid" | sed 's/[[:space:]]*$//')" == "$app_executable" ]] ||
+      fail "the packaged app was not launched through its production executable"
+    if command -v lsof >/dev/null 2>&1 &&
+      lsof -nP -a -p "$app_pid" -iTCP -sTCP:LISTEN 2>/dev/null | grep -q .; then
+      fail "the packaged app opened a local TCP listener"
+    fi
+    run_driver wait-text "Log workout now" 30
+    run_driver press "Today" 10
+    run_driver wait-text "Today 需要一份 Daily Record" 20
+    run_driver assert-text "请让 Codex 运行早间流程"
+
+    current_step="surfacing malformed Daily Record identity without guessing"
+    cat > "$record_file" <<'EOF'
+---
+type: note
+date: 2026-08-09
+---
+# malformed representative record
+
+## 用户内容
+
+- 这一行不能被错误状态改写。
+EOF
+    run_driver press "刷新" 10
+    run_driver wait-text "今天的 Daily Record 需要修复" 20
+    run_driver assert-text "请修复 type 和 date"
+    grep -Fq "这一行不能被错误状态改写" "$record_file" ||
+      fail "malformed-state presentation changed the source Markdown"
+  fi
+
+  current_step="preparing a canonical daily record in the isolated vault"
+  cat > "$record_file" <<'EOF'
+---
+type: daily-record
+date: 2026-08-10
+owner: user
+source: morning-planning
+custom-field: preserve-me
+---
+# 2026-08-10
+
+## 今天的大致安排
+
+- **上午：** 准备 10:00 check-in；之后完成 reimbursement。
+- **下午：** 留一块连续时间推进主要工作。
+- **晚上：** 散步并收尾。
+
+## 计划依据
+
+### 固定安排
+
+- 10:00 check-in
+
+### Tasks（任务）
+
+- [Insurance reimbursement](ticktick://task/123)
+
+### Habits（习惯）
+
+- 深蹲
+
+### Options（可选项）
+
+- 阅读一篇论文
+
+## 用户自己的段落
+
+- [[Private Context]] remains ordinary Obsidian Markdown.
+
+## 白天更新
+
+### 14:10 — 重大调整
+
+突然出现紧急工作，同时能量很低。放弃原本的下午安排。
+
+- 17:00 前完成紧急工作；
+- Exercise 改为 low-energy baseline：步行 10 分钟；
+- 晚饭后用于恢复。
+
+### 16:40 — 有意义的记录
+
+紧急工作已经完成，比预期更早恢复了一点精力。
+
+## 晚间复盘
+
+### 今天发生了什么
+
+- 完成主要工作和紧急工作；
+- 步行约 12 分钟；
+- living space 是否整理保持 unknown。
+
+### 计划与实际
+
+下午因紧急工作偏离原计划，之后保护了恢复时间。
+
+### 简单总结（可选）
+
+这是受约束的一天，不是失败的一天。
+
+### 开放问题
+
+- 有没有一件重要但尚未记录的事？
+EOF
+
+  if [[ "$acceptance_scenario" == "installed-cycle" ]]; then
+    current_step="refreshing from malformed identity to the repaired canonical record"
+    run_driver press "刷新" 10
+    run_driver wait-text "准备 10:00 check-in" 20
+  else
+    current_step="launching Today packaged scenario"
+    launch_app
+
+    current_step="opening the preselected canonical Daily Record"
+    run_driver wait-text "Log workout now" 30
+    run_driver press "Today" 10
+    run_driver wait-text "准备 10:00 check-in" 20
+  fi
+  run_driver set-size "960x720" 10
+
+  current_step="checking presentation hierarchy and compact evidence"
+  run_driver assert-semantic "today"
+  run_driver assert-text "今天的大致安排"
+  run_driver assert-text "3 个时间块"
+  run_driver assert-absent-text "ticktick://task/123"
+  run_driver press "计划依据" 10
+  run_driver assert-text "Insurance reimbursement"
+
+  current_step="navigating the read-only Daytime and Evening projections"
+  before_phase_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
+  run_driver press "Daytime" 10
+  run_driver assert-semantic "today-daytime"
+  run_driver assert-state "Daytime|selected" 10
+  run_driver assert-text "14:10 — 重大调整"
+  run_driver assert-text "发生了什么，以及为什么"
+  run_driver assert-text "突然出现紧急工作"
+  run_driver assert-text "接下来这样安排"
+  run_driver assert-text "紧急工作已经完成"
+  run_driver assert-text "Insurance reimbursement"
+
+  current_step="saving a bounded daytime update through packaged Tauri IPC"
+  run_driver type-text "Daytime update text|确认下午继续推进主要工作" 10
+  run_driver press "保存白天更新" 10
+  run_driver wait-text "白天更新已写入 Daily Record" 10
+  run_driver assert-text "确认下午继续推进主要工作"
+  grep -Fq "确认下午继续推进主要工作" "$record_file" ||
+    fail "daytime IPC save did not update the canonical Markdown"
+
+  if [[ "$acceptance_scenario" == "today-write" || "$acceptance_scenario" == "installed-cycle" ]]; then
+    current_step="relaunching before the independent evening write flow"
+    if ! stop_app; then
+      fail "app process did not exit after the daytime Today write"
+    fi
+    sleep 1
+    launch_app_waiting_for_text "Log workout now" 30
+    run_driver press "Today" 10
+    run_driver wait-text "准备 10:00 check-in" 20
+  fi
+
+  current_step="opening the refreshed Evening phase"
+  run_driver press "Evening" 10
+  run_driver wait-text "Agent 整理的今日记录" 10
+  run_driver assert-semantic "today-evening"
+  run_driver assert-state "Evening|selected" 10
+  run_driver assert-text "完成主要工作和紧急工作"
+  run_driver assert-text "下午因紧急工作偏离原计划"
+  run_driver assert-text "这是受约束的一天，不是失败的一天"
+  run_driver assert-text "有没有一件重要但尚未记录的事"
+
+  current_step="saving a bounded evening addition through packaged Tauri IPC"
+  run_driver type-text "Evening update text|补记：和家人通了电话" 10
+  run_driver press "保存晚间更新" 10
+  wait_for_file_text "$record_file" "- 补记：和家人通了电话" ||
+    fail "evening IPC save did not update the canonical Markdown"
+  if [[ "$acceptance_scenario" != "installed-cycle" ]]; then
+    run_driver wait-text "晚间更新已写入 Daily Record" 10
+    run_driver assert-text "补记：和家人通了电话"
+  fi
+  grep -Fq "owner: user" "$record_file" ||
+    fail "Today writes changed unrelated frontmatter"
+  grep -Fq "custom-field: preserve-me" "$record_file" ||
+    fail "Today writes changed unfamiliar frontmatter"
+  grep -Fq "[[Private Context]] remains ordinary Obsidian Markdown." "$record_file" ||
+    fail "Today writes changed an unfamiliar Markdown section"
+  after_phase_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
+  [[ "$before_phase_hash" != "$after_phase_hash" ]] ||
+    fail "packaged write flows did not change the canonical Daily Record"
+
+  if [[ "$acceptance_scenario" == "today-write" ]]; then
+    current_step="checking exercise isolation after Today writes"
+    if ! stop_app; then
+      fail "app process did not exit after the evening Today write"
+    fi
+    launch_app
+    run_driver wait-text "Primary departures" 30
+    run_driver assert-text "Log workout now"
+    echo "Packaged IPC Today write acceptance passed"
+    echo "Writes: bounded Daytime and Evening actions crossed real Tauri IPC and were verified in canonical Markdown"
+    echo "Isolation: the existing exercise destination remained reachable"
+    return
+  fi
+
+  current_step="refreshing all phase projections after an external update"
+  /usr/bin/perl -0pi -e \
+    's/准备 10:00 check-in/准备已更新的 10:00 check-in/; s/紧急工作已经完成/紧急工作更新后已经完成/; s/这是受约束的一天/这是外部更新后的受约束一天/' \
+    "$record_file"
+  run_driver press "刷新" 10
+  run_driver wait-text "这是外部更新后的受约束一天" 10
+  run_driver press "Daytime" 10
+  run_driver wait-text "紧急工作更新后已经完成" 10
+  run_driver press "Morning" 10
+  run_driver wait-text "准备已更新的 10:00 check-in" 10
+
+  current_step="checking intermediate and compact Today layouts"
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver press "Daytime" 10
+  run_driver assert-semantic "today-daytime"
+  if [[ "$acceptance_scenario" == "installed-cycle" ]]; then
+    current_step="relaunching for the independent compact Evening projection"
+    if ! stop_app; then
+      fail "app process did not exit before the compact Evening projection"
+    fi
+    sleep 1
+    launch_app_waiting_for_text "Log workout now" 30
+    run_driver set-size "960x720" 10
+    run_driver press "Today" 10
+    run_driver set-size "640x520" 10
+    run_driver wait-text "准备已更新的 10:00 check-in" 20
+  fi
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver press "Evening" 10
+  run_driver wait-text "Agent 整理的今日记录" 10
+  run_driver assert-semantic "today-evening"
+  run_driver assert-text "这是外部更新后的受约束一天"
+
+  current_step="checking quiet partial-record phase states"
+  /usr/bin/perl -0pi -e 's/## 白天更新.*\z/## 白天更新\n\n## 晚间复盘\n/s' "$record_file"
+  if [[ "$acceptance_scenario" == "installed-cycle" ]]; then
+    if ! stop_app; then
+      fail "app process did not exit before the partial Evening projection"
+    fi
+    sleep 1
+    launch_app_waiting_for_text "Log workout now" 30
+    run_driver set-size "960x720" 10
+    run_driver press "Today" 10
+    run_driver set-size "640x520" 10
+    run_driver press "Evening" 10
+  else
+    run_driver press "刷新" 10
+  fi
+  run_driver wait-text "Agent 还没有准备晚间复盘" 10
+  if [[ "$acceptance_scenario" == "installed-cycle" ]]; then
+    if ! stop_app; then
+      fail "app process did not exit before the partial Daytime projection"
+    fi
+    sleep 1
+    launch_app_waiting_for_text "Log workout now" 30
+    run_driver set-size "960x720" 10
+    run_driver press "Today" 10
+    run_driver set-size "640x520" 10
+  fi
+  run_driver press "Daytime" 10
+  run_driver wait-text "今天还没有需要留下的白天变化" 10
+  run_driver assert-absent-text "这是外部更新后的受约束一天"
+
+  current_step="checking the existing exercise destination remains reachable"
+  if [[ "$acceptance_scenario" == "installed-cycle" ]]; then
+    if ! stop_app; then
+      fail "app process did not exit before the Exercise regression check"
+    fi
+    sleep 1
+    launch_app_waiting_for_text "Primary departures" 30
+  else
+    run_driver set-size "960x720" 10
+    run_driver assert-size "960x720" 10
+    run_driver press "This Week" 10
+    run_driver wait-text "Primary departures" 10
+  fi
+  run_driver assert-text "Log workout now"
+
+  if [[ "$acceptance_scenario" == "installed-cycle" ]]; then
+    current_step="independently inspecting the resulting canonical Markdown"
+    iconv -f UTF-8 -t UTF-8 "$record_file" >/dev/null ||
+      fail "the resulting Daily Record is not readable UTF-8 Markdown"
+    grep -Fq "type: daily-record" "$record_file" ||
+      fail "the resulting Daily Record lost its canonical type"
+    grep -Fq "date: 2026-08-10" "$record_file" ||
+      fail "the resulting Daily Record lost its canonical date"
+    grep -Fq "[[Private Context]] remains ordinary Obsidian Markdown." "$record_file" ||
+      fail "the resulting Daily Record lost unfamiliar Obsidian content"
+    [[ "$(find "$vault_directory/life" -type f | wc -l | tr -d ' ')" == "1" ]] ||
+      fail "the app created a second life data file beside the canonical Daily Record"
+    [[ -z "$(find "$acceptance_data_directory" -type f -name '*.md' -print)" ]] ||
+      fail "the app created a parallel Markdown life ledger in application data"
+
+    echo "Packaged IPC installed daily-cycle acceptance passed"
+    echo "States: missing, malformed identity, repaired valid record, external refresh, and quiet partial phases"
+    echo "Writes: bounded Daytime and Evening actions crossed real Tauri IPC"
+    echo "Markdown: UTF-8 canonical identity and unfamiliar Obsidian content survived; no app-owned life ledger was created"
+    echo "Viewport: Morning, Daytime, and Evening remained available at 960x720, 800x640, and 640x520"
+    echo "Launch: direct packaged executable, no local TCP listener, and existing Exercise destination remained reachable"
+    return
+  fi
+
+  echo "Packaged IPC Today lifecycle acceptance passed"
+  echo "Vault: isolated workspace setting resolved the canonical date path"
+  echo "Writes: bounded Daytime and Evening actions crossed real Tauri IPC and were verified in canonical Markdown"
+  echo "Refresh: one external record update appeared consistently in every phase"
+  echo "Hierarchy: phase-specific primary reading and expandable evidence held at 960x720, 800x640, and 640x520"
+  echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
+}
+
+run_live_daily_cycle_scenario() {
+  local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
+  local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
+  local live_phase="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_PHASE:-daytime}"
+  local expected_morning_text="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_MORNING_TEXT:-}"
+  local update_text="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_UPDATE_TEXT:-}"
+  local record_file
+
+  [[ -n "$vault_directory" && -d "$vault_directory/.obsidian" ]] ||
+    fail "live-cycle requires PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT pointing to an Obsidian vault"
+  [[ "$record_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] ||
+    fail "live-cycle requires PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE in YYYY-MM-DD form"
+  [[ "$live_phase" == "daytime" || "$live_phase" == "evening" ]] ||
+    fail "live-cycle phase must be daytime or evening"
+  [[ -n "$expected_morning_text" && -n "$update_text" ]] ||
+    fail "live-cycle requires expected morning and update text"
+  vault_directory="$(cd "$vault_directory" && pwd -P)"
+  record_file="$vault_directory/life/Journal/Daily/${record_date:0:4}/${record_date:0:7}/$record_date.md"
+  [[ -f "$record_file" ]] || fail "missing live Daily Record at $record_file"
+
+  current_step="preselecting the live canonical System Workspace"
+  mkdir -p "$acceptance_data_directory"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_directory" > "$acceptance_data_directory/today-workspace.json"
+
+  current_step="launching the packaged app against the live Daily Record"
+  launch_app_waiting_for_text "Log workout now" 30
+  run_driver set-size "960x720" 10
+  run_driver press "Today" 10
+  run_driver wait-text "$expected_morning_text" 20
+  run_driver assert-semantic "today"
+
+  if [[ "$live_phase" == "daytime" ]]; then
+    current_step="writing the live meaningful Daytime update through Tauri IPC"
+    run_driver press "Daytime" 10
+    run_driver type-text "Daytime update text|$update_text" 10
+    run_driver press "保存白天更新" 10
+    wait_for_file_text "$record_file" "$update_text" ||
+      fail "live Daytime IPC write did not reach the canonical Daily Record"
+  else
+    current_step="reading the Codex Minimal Review and writing the live Evening addition through Tauri IPC"
+    run_driver press "Evening" 10
+    run_driver wait-text "今天发生了什么" 10
+    run_driver type-text "Evening update text|$update_text" 10
+    run_driver press "保存晚间更新" 10
+    wait_for_file_text "$record_file" "- $update_text" ||
+      fail "live Evening IPC write did not reach the canonical Daily Record"
+  fi
+
+  current_step="independently validating the live Daily Record after Dashboard IPC"
+  iconv -f UTF-8 -t UTF-8 "$record_file" >/dev/null ||
+    fail "live Daily Record is not readable UTF-8 Markdown"
+  grep -Fq "type: daily-record" "$record_file" || fail "live Daily Record lost canonical type"
+  grep -Fq "date: $record_date" "$record_file" || fail "live Daily Record lost canonical date"
+  [[ -z "$(find "$acceptance_data_directory" -type f -name '*.md' -print)" ]] ||
+    fail "live-cycle created a parallel Markdown ledger in application data"
+
+  echo "Packaged IPC live ${live_phase} cycle passed"
+  echo "Record: $record_file"
+  echo "Boundary: the packaged app wrote the canonical Markdown through Tauri IPC without an app-owned life ledger"
+}
+
 if [[ "$acceptance_scenario" == "shell" ]]; then
   run_shell_scenario
   exit 0
@@ -1423,6 +1851,14 @@ if [[ "$acceptance_scenario" == "week-close" ]]; then
   run_week_close_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "compact" && "$acceptance_scenario" != "keyboard" && "$acceptance_scenario" != "week-close" ]]; then
+if [[ "$acceptance_scenario" == "today" || "$acceptance_scenario" == "today-write" || "$acceptance_scenario" == "installed-cycle" ]]; then
+  run_today_scenario
+  exit 0
+fi
+if [[ "$acceptance_scenario" == "live-cycle" ]]; then
+  run_live_daily_cycle_scenario
+  exit 0
+fi
+if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "compact" && "$acceptance_scenario" != "keyboard" && "$acceptance_scenario" != "week-close" && "$acceptance_scenario" != "today" && "$acceptance_scenario" != "today-write" && "$acceptance_scenario" != "installed-cycle" && "$acceptance_scenario" != "live-cycle" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi

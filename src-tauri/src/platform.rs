@@ -3,6 +3,8 @@ use crate::exercise::ExercisePersistence;
 use crate::migration::{BaselinePersistence, CompleteProfileAdoption, CompleteProfileDocuments};
 use crate::move_profile::ProfileMoveExchange;
 use crate::profile::{ProfileExchange, ProfilePersistence};
+use crate::today::{TodayWorkspaceExchange, TodayWorkspacePersistence};
+use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -11,6 +13,7 @@ use tauri_plugin_dialog::DialogExt;
 
 const PROFILE_FILE_NAME: &str = "profile.json";
 const EXERCISE_FILE_NAME: &str = "exercise.json";
+const TODAY_WORKSPACE_FILE_NAME: &str = "today-workspace.json";
 const MAX_PROFILE_DOCUMENT_BYTES: u64 = 10 * 1024 * 1024;
 const RESTORE_TRANSACTION_DIRECTORY: &str = ".profile-restore-transaction";
 const RESTORE_PREPARED_MARKER: &str = "prepared";
@@ -304,6 +307,82 @@ pub struct NativeFileExchange<R: Runtime> {
     app: AppHandle<R>,
 }
 
+#[derive(Clone)]
+pub struct FileTodayWorkspacePersistence {
+    workspace_file: PathBuf,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TodayWorkspaceDocument {
+    schema_version: u32,
+    selected_vault: PathBuf,
+}
+
+impl FileTodayWorkspacePersistence {
+    pub fn new(workspace_file: PathBuf) -> Self {
+        Self { workspace_file }
+    }
+}
+
+impl TodayWorkspacePersistence for FileTodayWorkspacePersistence {
+    fn load_selected_vault(&self) -> Result<Option<PathBuf>, String> {
+        let document = match fs::read(&self.workspace_file) {
+            Ok(document) => document,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(format!(
+                    "Could not read the Today workspace setting: {error}"
+                ))
+            }
+        };
+        let document: TodayWorkspaceDocument = serde_json::from_slice(&document)
+            .map_err(|error| format!("The Today workspace setting is invalid: {error}"))?;
+        if document.schema_version != 1 {
+            return Err("The Today workspace setting uses an unsupported schema version.".into());
+        }
+        Ok(Some(document.selected_vault))
+    }
+
+    fn save_selected_vault(&self, vault: &Path) -> Result<(), String> {
+        let document = serde_json::to_vec_pretty(&TodayWorkspaceDocument {
+            schema_version: 1,
+            selected_vault: vault.to_path_buf(),
+        })
+        .map_err(|error| format!("Could not encode the Today workspace setting: {error}"))?;
+        atomic_save(&self.workspace_file, &document, "Today workspace setting")
+    }
+}
+
+#[derive(Clone)]
+pub struct NativeTodayWorkspaceExchange<R: Runtime> {
+    app: AppHandle<R>,
+}
+
+impl<R: Runtime> NativeTodayWorkspaceExchange<R> {
+    pub fn new(app: AppHandle<R>) -> Self {
+        Self { app }
+    }
+}
+
+impl<R: Runtime> TodayWorkspaceExchange for NativeTodayWorkspaceExchange<R> {
+    fn select_vault(&self) -> Result<Option<PathBuf>, String> {
+        let Some(selected_folder) = self
+            .app
+            .dialog()
+            .file()
+            .set_title("Select the Tortilla Flat vault")
+            .blocking_pick_folder()
+        else {
+            return Ok(None);
+        };
+        selected_folder
+            .into_path()
+            .map(Some)
+            .map_err(|_| "The selected vault folder is unavailable.".into())
+    }
+}
+
 #[derive(Clone, Copy)]
 enum ProfileFilePurpose {
     Backup,
@@ -467,6 +546,17 @@ pub fn exercise_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, Stri
             .map_err(|error| format!("Could not locate the app data directory: {error}"))?,
     };
     Ok(data_directory.join(EXERCISE_FILE_NAME))
+}
+
+pub fn today_workspace_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    let data_directory = match std::env::var_os("PERSONAL_DASHBOARD_DATA_DIR") {
+        Some(override_directory) => PathBuf::from(override_directory),
+        None => app
+            .path()
+            .app_data_dir()
+            .map_err(|error| format!("Could not locate the app data directory: {error}"))?,
+    };
+    Ok(data_directory.join(TODAY_WORKSPACE_FILE_NAME))
 }
 
 pub fn baseline_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {

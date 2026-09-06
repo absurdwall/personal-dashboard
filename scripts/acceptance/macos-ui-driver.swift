@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -390,6 +390,76 @@ func postGlobalText(_ text: String) throws {
     keyUp.post(tap: .cghidEventTap)
 }
 
+func typeText(
+    _ application: AXUIElement,
+    pid: pid_t,
+    label: String,
+    value: String,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if let element = findTextPaths(application, label).first(where: { path in
+            Set(["AXTextField", "AXTextArea"]).contains(
+                stringAttribute(path.element, "AXRole")
+            )
+        })?.element {
+            _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+            try setAccessibilityAttribute(
+                element,
+                "AXFocused",
+                kCFBooleanTrue,
+                "focus text field \(label)"
+            )
+            try setAccessibilityAttribute(
+                element,
+                "AXValue",
+                value as CFString,
+                "set text field \(label)"
+            )
+            Thread.sleep(forTimeInterval: 0.25)
+            if stringAttribute(element, "AXValue") == value {
+                return
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout("editable control: \(label)")
+}
+
+func postGlobalShortcut(keyCode: CGKeyCode, flags: CGEventFlags) throws {
+    guard let source = CGEventSource(stateID: .combinedSessionState),
+          let keyDown = CGEvent(
+              keyboardEventSource: source,
+              virtualKey: keyCode,
+              keyDown: true
+          ),
+          let keyUp = CGEvent(
+              keyboardEventSource: source,
+              virtualKey: keyCode,
+              keyDown: false
+          ) else {
+        throw DriverError.actionFailed("keyboard shortcut", .failure)
+    }
+    keyDown.flags = flags
+    keyUp.flags = flags
+    keyDown.post(tap: .cghidEventTap)
+    keyUp.post(tap: .cghidEventTap)
+}
+
+func chooseFolder(_ pid: pid_t, path: String) throws {
+    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows])
+    Thread.sleep(forTimeInterval: 0.35)
+    try postGlobalShortcut(keyCode: 5, flags: [.maskCommand, .maskShift])
+    Thread.sleep(forTimeInterval: 0.35)
+    try postGlobalText(path)
+    Thread.sleep(forTimeInterval: 0.15)
+    try postGlobalKey("return")
+    Thread.sleep(forTimeInterval: 0.5)
+    try postGlobalKey("return")
+    Thread.sleep(forTimeInterval: 0.5)
+}
+
 func characterKeyCode(_ character: Character) -> CGKeyCode? {
     switch character.lowercased() {
     case "a": return 0
@@ -681,8 +751,9 @@ func assertSemanticContract(
 ) throws {
     let counts = roleCounts(application)
     let compactViewport = mainWindow(application).flatMap(windowSize).map { $0.width <= 680 } ?? false
+    let todayMode = mode == "today" || mode == "today-daytime" || mode == "today-evening"
     let compactMode = mode == "compact" || mode == "detail-compact" ||
-        mode == "settings" || mode == "recording"
+        mode == "settings" || mode == "recording" || todayMode
     let minimumButtonCount = compactViewport ? 1 : 4
     guard (counts["AXWindow"] ?? 0) > 0,
           (counts["AXWebArea"] ?? 0) > 0,
@@ -692,9 +763,13 @@ func assertSemanticContract(
         throw DriverError.timeout("semantic workspace roles")
     }
 
-    let requiresDestinationSwitcher = Set(["default", "compact", "settings"]).contains(mode)
+    let requiresDestinationSwitcher = Set([
+        "default", "compact", "settings", "today", "today-daytime", "today-evening",
+    ]).contains(mode)
     if compactViewport && requiresDestinationSwitcher {
-        let expectedDestination = mode == "settings" ? "Settings" : "This Week"
+        let expectedDestination = mode == "settings"
+            ? "Settings"
+            : todayMode ? "Today" : "This Week"
         let switcherRoles = Set(["AXComboBox", "AXPopUpButton"])
         let switcherDescriptions = findRolesWithin(application, switcherRoles).map(nodeText)
         let hasExpectedSwitcher = switcherDescriptions.contains {
@@ -709,7 +784,7 @@ func assertSemanticContract(
     }
 
     if !compactViewport {
-        for text in ["This Week", "History", "Settings"] {
+        for text in ["Today", "This Week", "History", "Settings"] {
             guard findPressable(application, text, contains: true) != nil else {
                 throw DriverError.timeout("semantic navigation control: \(text)")
             }
@@ -720,6 +795,31 @@ func assertSemanticContract(
         for text in ["Primary departures", "Open capacity", "Log workout now"] {
             guard findText(application, text) != nil else {
                 throw DriverError.timeout("semantic default workspace content: \(text)")
+            }
+        }
+    } else if todayMode {
+        for text in ["Morning", "Daytime", "Evening"] {
+            guard findPressable(application, text, contains: true) != nil else {
+                throw DriverError.timeout("semantic Today phase control: \(text)")
+            }
+        }
+        guard findPressable(application, "刷新", contains: true) != nil else {
+            throw DriverError.timeout("semantic Today refresh control")
+        }
+        if mode == "today" {
+            guard findText(application, "今天的大致安排") != nil,
+                  findPressable(application, "计划依据", contains: true) != nil else {
+                throw DriverError.timeout("semantic Today morning plan")
+            }
+        } else if mode == "today-daytime" {
+            guard findText(application, "变化与新的方向") != nil,
+                  findPressable(application, "完成", contains: true) == nil,
+                  findPressable(application, "Habit", contains: true) == nil else {
+                throw DriverError.timeout("semantic Today daytime reading surface")
+            }
+        } else if mode == "today-evening" {
+            guard findText(application, "Agent 整理的今日记录") != nil else {
+                throw DriverError.timeout("semantic Today evening reading surface")
             }
         }
     } else if mode == "detail" || mode == "detail-compact" {
@@ -1247,7 +1347,7 @@ func selectOption(
     timeout: TimeInterval,
     allowUnchanged: Bool = false
 ) throws {
-    let destinationOption = Set(["History", "Settings", "This Week"]).contains(text)
+    let destinationOption = Set(["History", "Settings", "This Week", "Today"]).contains(text)
     let pickers: [AXUIElement]
     if destinationOption {
         guard let destinationPicker = findDestinationPicker(application) else {
@@ -1265,18 +1365,7 @@ func selectOption(
     }
 
     if destinationOption, let destinationPicker = pickers.first {
-        let destinationIndex: Int
         let previousState = pickerState(destinationPicker)
-        switch text {
-        case "This Week":
-            destinationIndex = 0
-        case "History":
-            destinationIndex = 1
-        case "Settings":
-            destinationIndex = 2
-        default:
-            throw DriverError.usage
-        }
         try setAccessibilityAttribute(
             destinationPicker,
             "AXFocused",
@@ -1288,20 +1377,30 @@ func selectOption(
             "AXPress",
             "open destination picker"
         )
-        Thread.sleep(forTimeInterval: 0.1)
-        try pressGlobalKey("home")
-        for _ in 0..<destinationIndex {
-            try pressGlobalKey("down")
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let menu = findVisibleMenu(application),
+               let option = findMenuItem(menu, text) {
+                try performAccessibilityAction(
+                    option,
+                    "AXPress",
+                    "select destination \(text)"
+                )
+                try waitForPickerValue(
+                    destinationPicker,
+                    text,
+                    timeout: timeout,
+                    changedFrom: previousState,
+                    requireChange: !allowUnchanged
+                )
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        } while Date() < deadline
+        if findVisibleMenu(application) != nil {
+            try pressKey(pid, "escape")
         }
-        try pressGlobalKey("return")
-        try waitForPickerValue(
-            destinationPicker,
-            text,
-            timeout: timeout,
-            changedFrom: previousState,
-            requireChange: !allowUnchanged
-        )
-        return
+        throw DriverError.timeout("destination option: \(text)")
     }
 
     for picker in pickers {
@@ -1699,6 +1798,22 @@ do {
     case "press-key":
         try pressKey(pid, text)
         print("Sent keyboard activation: \(text)")
+    case "type-text":
+        let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else {
+            throw DriverError.usage
+        }
+        try typeText(
+            application,
+            pid: pid,
+            label: parts[0],
+            value: parts[1],
+            timeout: timeout
+        )
+        print("Entered text in rendered control: \(parts[0])")
+    case "choose-folder":
+        try chooseFolder(pid, path: text)
+        print("Selected native folder: \(text)")
     case "assert-visible-focus":
         try assertVisibleFocus(application, text, timeout: timeout)
         print("Focused rendered control is visible: \(text)")
