@@ -20,7 +20,16 @@ type PlanningEvidenceView = Readonly<{
 type DaytimeUpdateView = Readonly<{
   title: string;
   context: readonly string[];
+  neutral: readonly string[];
+  observedFacts: readonly string[];
+  originalIntent: readonly string[];
+  changeReasons: readonly string[];
   revisedDirection: readonly string[];
+}>;
+
+type EveningOtherView = Readonly<{
+  heading: string;
+  lines: readonly string[];
 }>;
 
 type DaytimeView = Readonly<{
@@ -34,6 +43,7 @@ type EveningView = Readonly<{
   questions: readonly string[];
   additions: readonly string[];
   corrections: readonly string[];
+  other: readonly EveningOtherView[];
 }>;
 
 type TodayView = Readonly<{
@@ -455,6 +465,7 @@ const todayEveningCorrectionsSection = document.querySelector<HTMLElement>(
 const todayEveningCorrections = document.querySelector<HTMLElement>(
   "#today-evening-corrections",
 );
+const todayEveningOther = document.querySelector<HTMLElement>("#today-evening-other");
 const todayEvidenceToggle = document.querySelector<HTMLButtonElement>("#today-evidence-toggle");
 const todayEvidenceContent = document.querySelector<HTMLElement>("#today-evidence-content");
 const todayEvidenceCount = document.querySelector<HTMLElement>("#today-evidence-count");
@@ -1745,10 +1756,16 @@ function daytimeUpdateArticle(update: DaytimeUpdateView): HTMLElement {
   const heading = document.createElement("h4");
   heading.textContent = update.title;
   article.append(heading);
-  if (update.context.length > 0 && update.revisedDirection.length > 0) {
+  if (
+    update.context.length > 0 &&
+    (update.observedFacts.length > 0 ||
+      update.originalIntent.length > 0 ||
+      update.changeReasons.length > 0 ||
+      update.revisedDirection.length > 0)
+  ) {
     const contextLabel = document.createElement("p");
     contextLabel.className = "today-update-label";
-    contextLabel.textContent = "发生了什么，以及为什么";
+    contextLabel.textContent = "背景";
     article.append(contextLabel);
   }
   update.context.forEach((line) => {
@@ -1756,13 +1773,26 @@ function daytimeUpdateArticle(update: DaytimeUpdateView): HTMLElement {
     paragraph.textContent = line;
     article.append(paragraph);
   });
-  if (update.revisedDirection.length > 0) {
+  appendDaytimeGroup(article, "记录内容", update.neutral);
+  appendDaytimeGroup(article, "观察到的事实", update.observedFacts);
+  appendDaytimeGroup(article, "原计划意图", update.originalIntent);
+  appendDaytimeGroup(article, "变化原因", update.changeReasons);
+  appendDaytimeGroup(article, "接下来这样安排", update.revisedDirection);
+  return article;
+}
+
+function appendDaytimeGroup(
+  article: HTMLElement,
+  heading: string,
+  lines: readonly string[],
+): void {
+  if (lines.length > 0) {
     const label = document.createElement("p");
     label.className = "today-update-label";
-    label.textContent = "接下来这样安排";
+    label.textContent = heading;
     const list = document.createElement("ul");
     list.append(
-      ...update.revisedDirection.map((line) => {
+      ...lines.map((line) => {
         const item = document.createElement("li");
         item.textContent = line;
         return item;
@@ -1770,7 +1800,6 @@ function daytimeUpdateArticle(update: DaytimeUpdateView): HTMLElement {
     );
     article.append(label, list);
   }
-  return article;
 }
 
 function renderReadingParagraphs(
@@ -1876,7 +1905,8 @@ function renderToday(view: TodayView): void {
     view.evening.summary.length > 0 ||
     view.evening.questions.length > 0 ||
     view.evening.additions.length > 0 ||
-    view.evening.corrections.length > 0;
+    view.evening.corrections.length > 0 ||
+    view.evening.other.length > 0;
   todayEveningAccountSection?.toggleAttribute(
     "hidden",
     view.evening.account.length === 0,
@@ -1907,6 +1937,23 @@ function renderToday(view: TodayView): void {
     view.evening.corrections.length === 0,
   );
   renderReadingParagraphs(todayEveningCorrections, view.evening.corrections);
+  if (todayEveningOther) {
+    todayEveningOther.replaceChildren(
+      ...view.evening.other.map((group) => {
+        const section = document.createElement("section");
+        section.className = "today-review-section";
+        const heading = document.createElement("h4");
+        heading.textContent = group.heading;
+        section.append(heading);
+        group.lines.forEach((line) => {
+          const paragraph = document.createElement("p");
+          paragraph.textContent = line;
+          section.append(paragraph);
+        });
+        return section;
+      }),
+    );
+  }
   if (todayEveningEmpty) {
     todayEveningEmpty.hidden = eveningHasContent;
   }

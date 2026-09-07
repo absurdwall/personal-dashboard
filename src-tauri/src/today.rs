@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const DAILY_RECORD_TYPE: &str = "daily-record";
 const CANONICAL_SECTIONS: [&str; 4] = ["今天的大致安排", "计划依据", "白天更新", "晚间复盘"];
@@ -44,35 +45,293 @@ impl TodayRecordStore for FileTodayRecordStore {
         expected: &[u8],
         updated: &[u8],
     ) -> Result<(), String> {
-        let current = fs::read(path)
-            .map_err(|error| format!("Could not re-read today's daily record: {error}"))?;
-        if current != expected {
-            return Err(
-                "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。"
-                    .into(),
-            );
-        }
-        let temporary = path.with_extension(format!("md.tmp-{}", std::process::id()));
-        let write_result = (|| {
-            let mut output = OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&temporary)
-                .map_err(|error| {
-                    format!("Could not prepare today's daily record update: {error}")
-                })?;
-            output
-                .write_all(updated)
-                .and_then(|_| output.sync_all())
-                .map_err(|error| format!("Could not write today's daily record update: {error}"))?;
-            fs::rename(&temporary, path)
-                .map_err(|error| format!("Could not activate today's daily record update: {error}"))
-        })();
-        if write_result.is_err() {
-            let _ = fs::remove_file(&temporary);
-        }
-        write_result
+        save_file_if_unchanged(path, expected, updated, |_| Ok(()))
     }
+}
+
+fn save_file_if_unchanged<F>(
+    path: &Path,
+    expected: &[u8],
+    updated: &[u8],
+    before_exchange: F,
+) -> Result<(), String>
+where
+    F: FnOnce(&Path) -> Result<(), String>,
+{
+    let current = fs::read(path)
+        .map_err(|error| format!("Could not re-read today's daily record: {error}"))?;
+    if current != expected {
+        return Err(external_change_message(None));
+    }
+    prepare_recovery_directory(path)?;
+    let (temporary, mut output) = create_temporary_file(path)?;
+    let preparation = (|| {
+        fs::set_permissions(
+            &temporary,
+            fs::metadata(path)
+                .map_err(|error| {
+                    format!("Could not inspect today's daily record permissions: {error}")
+                })?
+                .permissions(),
+        )
+        .map_err(|error| format!("Could not preserve today's daily record permissions: {error}"))?;
+        output
+            .write_all(updated)
+            .and_then(|_| output.sync_all())
+            .map_err(|error| format!("Could not write today's daily record update: {error}"))?;
+        drop(output);
+        before_exchange(&temporary)
+    })();
+    if let Err(error) = preparation {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+
+    if let Err(error) = atomic_exchange(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+    let recovery = preserve_displaced_inode(path, &temporary).or_else(|preservation_error| {
+        match atomic_exchange(&temporary, path) {
+            Ok(()) => {
+                let _ = sync_parent(path);
+                Err(format!(
+                    "{preservation_error}; activation was rolled back and the rejected Dashboard candidate remains at {}",
+                    temporary.display()
+                ))
+            }
+            Err(rollback_error) => Err(format!(
+                "{preservation_error}; rollback also failed ({rollback_error}); the actual displaced Daily Record inode remains linked at {}",
+                temporary.display()
+            )),
+        }
+    })?;
+    let displaced = fs::read(&temporary).map_err(|error| {
+        format!(
+            "Could not verify the displaced daily record after atomic exchange; its durable recovery link remains at {}: {error}",
+            recovery.display()
+        )
+    })?;
+    if displaced == expected {
+        let active = fs::read(path).map_err(|error| {
+            format!(
+                "Could not verify today's daily record after atomic exchange; the actual displaced inode remains recoverable at {}: {error}",
+                recovery.display()
+            )
+        })?;
+        if active == updated {
+            sync_parent(path)?;
+            sync_parent(&recovery)?;
+            fs::remove_file(&temporary).map_err(|error| {
+                format!("Could not remove the completed daily record snapshot: {error}")
+            })?;
+            return Ok(());
+        }
+
+        // An external writer superseded our complete atomic activation. Its bytes remain
+        // canonical; the inode displaced by our activation remains linked in recovery.
+        let _ = fs::remove_file(&temporary);
+        return Err(external_change_message(Some(&recovery)));
+    }
+
+    // The canonical path changed after the initial read. Swap the exact displaced version
+    // back instead of overwriting it with our candidate.
+    atomic_exchange(&temporary, path).map_err(|error| {
+        format!(
+            "{error}; the displaced external record remains at {} for recovery",
+            temporary.display()
+        )
+    })?;
+    let active_after_rollback = fs::read(path).map_err(|error| {
+        format!("Could not verify today's daily record after conflict rollback: {error}")
+    })?;
+    let exchanged_candidate = fs::read(&temporary).map_err(|error| {
+        format!("Could not verify the rejected daily record candidate: {error}")
+    })?;
+    if active_after_rollback == displaced && exchanged_candidate == updated {
+        fs::remove_file(&temporary).map_err(|error| {
+            format!("Could not remove the rejected daily record candidate: {error}")
+        })?;
+        sync_parent(path)?;
+        return Err(external_change_message(Some(&recovery)));
+    }
+
+    // A second uncoordinated save crossed the rollback itself. Never delete the bytes that
+    // were exchanged out; retain them beside the record for explicit recovery.
+    let recovery = preserve_conflict_snapshot(path, &temporary)?;
+    sync_parent(path)?;
+    Err(external_change_message(Some(&recovery)))
+}
+
+fn prepare_recovery_directory(path: &Path) -> Result<(), String> {
+    let recovery_directory = recovery_directory_for(path)?;
+    fs::create_dir_all(&recovery_directory).map_err(|error| {
+        format!(
+            "Could not create the Daily Record recovery directory; no write was attempted: {error}"
+        )
+    })
+}
+
+fn preserve_displaced_inode(path: &Path, displaced: &Path) -> Result<PathBuf, String> {
+    let recovery_directory = recovery_directory_for(path)?;
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("Could not create a recovery snapshot nonce: {error}"))?
+        .as_nanos();
+    let record_name = path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("daily-record");
+    for attempt in 0..32u8 {
+        let recovery = recovery_directory.join(format!(
+            "{record_name}-{nonce}-{}-{attempt}.snapshot",
+            std::process::id()
+        ));
+        match fs::hard_link(displaced, &recovery) {
+            Ok(()) => {
+                sync_parent(&recovery)?;
+                return Ok(recovery);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "Could not preserve the Daily Record inode actually displaced during activation: {error}"
+                ))
+            }
+        }
+    }
+    Err(
+        "Could not reserve a unique recovery path for the Daily Record inode actually displaced during activation."
+            .into(),
+    )
+}
+
+fn recovery_directory_for(path: &Path) -> Result<PathBuf, String> {
+    let vault = path
+        .ancestors()
+        .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "life"))
+        .and_then(Path::parent);
+    let root = vault.or_else(|| path.parent()).ok_or_else(|| {
+        "Today's Daily Record has no location for a same-volume recovery snapshot.".to_string()
+    })?;
+    Ok(root.join(".personal-dashboard-recovery").join("today"))
+}
+
+fn create_temporary_file(path: &Path) -> Result<(PathBuf, fs::File), String> {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("Could not create a daily record update nonce: {error}"))?
+        .as_nanos();
+    for attempt in 0..32u8 {
+        let temporary = path.with_extension(format!(
+            "md.personal-dashboard-tmp-{}-{nonce}-{attempt}",
+            std::process::id()
+        ));
+        match OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temporary)
+        {
+            Ok(output) => return Ok((temporary, output)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "Could not prepare today's daily record update: {error}"
+                ))
+            }
+        }
+    }
+    Err("Could not reserve a unique temporary daily record path.".into())
+}
+
+fn external_change_message(recovery: Option<&Path>) -> String {
+    match recovery {
+        Some(path) => format!(
+            "今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请在 Obsidian 中检查后刷新 Today。",
+            path.display()
+        ),
+        None => "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。".into(),
+    }
+}
+
+fn preserve_conflict_snapshot(path: &Path, temporary: &Path) -> Result<PathBuf, String> {
+    let recovery_directory = recovery_directory_for(path)?;
+    fs::create_dir_all(&recovery_directory).map_err(|error| {
+        format!("Could not create the Daily Record recovery directory: {error}")
+    })?;
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("Could not create a conflict snapshot nonce: {error}"))?
+        .as_nanos();
+    for attempt in 0..32u8 {
+        let record_name = path
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .unwrap_or("daily-record");
+        let recovery = recovery_directory.join(format!(
+            "{record_name}-conflict-{nonce}-{}-{attempt}.snapshot",
+            std::process::id()
+        ));
+        match fs::hard_link(temporary, &recovery) {
+            Ok(()) => {
+                fs::remove_file(temporary).map_err(|error| {
+                    format!("Could not finalize the conflict recovery snapshot: {error}")
+                })?;
+                return Ok(recovery);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "Could not preserve the concurrent daily record snapshot: {error}"
+                ))
+            }
+        }
+    }
+    Err("Could not reserve a unique daily record conflict snapshot path.".into())
+}
+
+fn sync_parent(path: &Path) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Today's daily record has no parent directory.".to_string())?;
+    fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| format!("Could not sync today's daily record directory: {error}"))
+}
+
+#[cfg(target_os = "macos")]
+fn atomic_exchange(left: &Path, right: &Path) -> Result<(), String> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    const RENAME_SWAP: u32 = 0x0000_0002;
+    unsafe extern "C" {
+        fn renamex_np(
+            from: *const std::os::raw::c_char,
+            to: *const std::os::raw::c_char,
+            flags: u32,
+        ) -> i32;
+    }
+
+    let left = CString::new(left.as_os_str().as_bytes())
+        .map_err(|_| "The temporary daily record path contains a NUL byte.".to_string())?;
+    let right = CString::new(right.as_os_str().as_bytes())
+        .map_err(|_| "The daily record path contains a NUL byte.".to_string())?;
+    // SAFETY: both C strings are NUL-terminated and remain alive for the duration of the call.
+    let result = unsafe { renamex_np(left.as_ptr(), right.as_ptr(), RENAME_SWAP) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "Could not atomically exchange today's daily record: {}",
+            std::io::Error::last_os_error()
+        ))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn atomic_exchange(_left: &Path, _right: &Path) -> Result<(), String> {
+    Err("Atomic conditional Daily Record replacement is currently supported only on macOS.".into())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -138,7 +397,18 @@ pub struct PlanningEvidenceView {
 pub struct DaytimeUpdateView {
     pub title: String,
     pub context: Vec<String>,
+    pub neutral: Vec<String>,
+    pub observed_facts: Vec<String>,
+    pub original_intent: Vec<String>,
+    pub change_reasons: Vec<String>,
     pub revised_direction: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EveningOtherView {
+    pub heading: String,
+    pub lines: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -156,6 +426,7 @@ pub struct EveningView {
     pub questions: Vec<String>,
     pub additions: Vec<String>,
     pub corrections: Vec<String>,
+    pub other: Vec<EveningOtherView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -242,13 +513,14 @@ where
         let (heading, body) = daytime_block(&input, &self.clock.current_time_label())?;
         let (vault, path, document) = self.load_writable_record()?;
         require_revision(&document, &input.expected_revision)?;
-        validate_daily_record(&document, &self.clock.current_date())?;
+        validate_writable_daily_record(&document, &self.clock.current_date())?;
         let updated = append_to_canonical_section(
             &document,
             "白天更新",
             &format!("### {heading}\n\n{body}"),
             Some("晚间复盘"),
         );
+        validate_writable_daily_record(&updated, &self.clock.current_date())?;
         self.record_store
             .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
         self.open_vault(&vault, self.clock.current_date())
@@ -258,18 +530,22 @@ where
         validate_short_text(&input.content, "晚间复盘更新")?;
         let (vault, path, document) = self.load_writable_record()?;
         require_revision(&document, &input.expected_revision)?;
-        validate_daily_record(&document, &self.clock.current_date())?;
+        validate_writable_daily_record(&document, &self.clock.current_date())?;
         let updated = match input.mode {
             EveningUpdateMode::Addition => update_evening_subsection(
                 &document,
                 "用户补充",
-                &format!("- {}", input.content.trim()),
+                &format!("- {}", literal_line(input.content.trim())),
                 false,
             )?,
-            EveningUpdateMode::Correction => {
-                update_evening_subsection(&document, "用户修正", input.content.trim(), true)?
-            }
+            EveningUpdateMode::Correction => update_evening_subsection(
+                &document,
+                "用户修正",
+                &format!("- {}", literal_line(input.content.trim())),
+                true,
+            )?,
         };
+        validate_writable_daily_record(&updated, &self.clock.current_date())?;
         self.record_store
             .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
         self.open_vault(&vault, self.clock.current_date())
@@ -351,6 +627,19 @@ fn validate_daily_record(document: &str, expected_date: &str) -> Result<(), Stri
     parse_daily_record(document, expected_date).map(|_| ())
 }
 
+fn validate_writable_daily_record(document: &str, expected_date: &str) -> Result<(), String> {
+    validate_daily_record(document, expected_date)?;
+    let layout = document_layout(document)
+        .ok_or_else(|| "今天的 Daily Record 缺少有效 frontmatter。未写入任何内容。".to_string())?;
+    if scan_markdown_lines(&document[layout.body_start..]).unclosed_fence {
+        return Err(
+            "今天的 Daily Record 正文包含未闭合的 Markdown 代码围栏，无法安全定位写入位置；未写入任何内容。"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 fn document_revision(document: &[u8]) -> String {
     let mut hash = 0xcbf29ce484222325u64;
     for byte in document {
@@ -383,13 +672,20 @@ fn validate_short_text(value: &str, label: &str) -> Result<(), String> {
 }
 
 fn daytime_block(input: &DaytimeUpdateInput, time: &str) -> Result<(String, String), String> {
-    let content = input.content.trim();
+    let content = literal_line(input.content.trim());
     match input.kind {
-        DaytimeUpdateKind::MeaningfulEvent => {
-            Ok((format!("{time} — 有意义的事件"), content.into()))
-        }
-        DaytimeUpdateKind::RememberedBlock => Ok((format!("{time} — 补记时间块"), content.into())),
-        DaytimeUpdateKind::MaterialChange => Ok((format!("{time} — 重大调整"), content.into())),
+        DaytimeUpdateKind::MeaningfulEvent => Ok((
+            format!("{time} — 有意义的事件"),
+            format!("- 观察事实：{content}"),
+        )),
+        DaytimeUpdateKind::RememberedBlock => Ok((
+            format!("{time} — 补记时间块"),
+            format!("- 观察事实：{content}"),
+        )),
+        DaytimeUpdateKind::MaterialChange => Ok((
+            format!("{time} — 重大调整"),
+            format!("- 调整后方向：{content}"),
+        )),
         DaytimeUpdateKind::HabitOutcome => {
             let habit = input.habit_name.as_deref().unwrap_or("").trim();
             validate_short_text(habit, "Habit 名称")?;
@@ -399,10 +695,19 @@ fn daytime_block(input: &DaytimeUpdateInput, time: &str) -> Result<(String, Stri
             }
             Ok((
                 format!("{time} — Habit 结果"),
-                format!("- Habit：{habit}\n- 结果：{outcome}\n- 说明：{content}"),
+                format!(
+                    "- 观察事实：Habit：{}；结果：{}；说明：{}",
+                    literal_line(habit),
+                    outcome,
+                    content
+                ),
             ))
         }
     }
+}
+
+fn literal_line(value: &str) -> String {
+    value.to_owned()
 }
 
 fn append_to_canonical_section(
@@ -499,23 +804,26 @@ fn subsection_offsets(document: &str, parent: &str, subsection: &str) -> Vec<(us
     let Some((parent_start, parent_end)) = section_offsets(document, parent) else {
         return Vec::new();
     };
-    let marker = format!("### {subsection}");
     let mut matches = Vec::new();
-    let mut offset = parent_start;
     let mut body_start = None;
-    for segment in document[parent_start..parent_end].split_inclusive('\n') {
-        let line = segment.trim_end_matches(['\r', '\n']);
-        if line.trim() == marker {
-            if let Some(start) = body_start.take() {
-                matches.push((start, offset));
-            }
-            body_start = Some(offset + segment.len());
-        } else if body_start.is_some()
-            && (line.trim().starts_with("### ") || line.trim().starts_with("## "))
-        {
-            matches.push((body_start.take().expect("subsection start exists"), offset));
+    for line in scan_markdown_lines(&document[parent_start..parent_end]) {
+        if line.in_fenced_code {
+            continue;
         }
-        offset += segment.len();
+        let absolute_start = parent_start + line.start;
+        if heading_matches(line.text, 3, subsection) {
+            if let Some(start) = body_start.take() {
+                matches.push((start, absolute_start));
+            }
+            body_start = Some(parent_start + line.next);
+        } else if body_start.is_some()
+            && markdown_heading(line.text).is_some_and(|heading| heading.level <= 3)
+        {
+            matches.push((
+                body_start.take().expect("subsection start exists"),
+                absolute_start,
+            ));
+        }
     }
     if let Some(start) = body_start {
         matches.push((start, parent_end));
@@ -524,17 +832,20 @@ fn subsection_offsets(document: &str, parent: &str, subsection: &str) -> Vec<(us
 }
 
 fn section_offsets(document: &str, heading: &str) -> Option<(usize, usize)> {
-    let marker = format!("## {heading}");
-    let mut offset = 0;
+    let body_start = document_layout(document)?.body_start;
     let mut section_start = None;
-    for segment in document.split_inclusive('\n') {
-        let line = segment.trim_end_matches(['\r', '\n']);
-        if section_start.is_none() && line.trim() == marker {
-            section_start = Some(offset);
-        } else if section_start.is_some() && line.trim().starts_with("## ") {
-            return Some((section_start.expect("section start exists"), offset));
+    for line in scan_markdown_lines(&document[body_start..]) {
+        if line.in_fenced_code {
+            continue;
         }
-        offset += segment.len();
+        let absolute_start = body_start + line.start;
+        if section_start.is_none() && heading_matches(line.text, 2, heading) {
+            section_start = Some(absolute_start);
+        } else if section_start.is_some()
+            && markdown_heading(line.text).is_some_and(|heading| heading.level <= 2)
+        {
+            return Some((section_start.expect("section start exists"), absolute_start));
+        }
     }
     section_start.map(|start| (start, document.len()))
 }
@@ -615,13 +926,152 @@ fn parse_daily_record(
 }
 
 fn split_frontmatter(document: &str) -> Option<(&str, &str)> {
-    let normalized = document.strip_prefix('\u{feff}').unwrap_or(document);
-    let after_open = normalized.strip_prefix("---\n")?;
-    let boundary = after_open.find("\n---")?;
-    let frontmatter = &after_open[..boundary];
-    let mut body = &after_open[boundary + 4..];
-    body = body.strip_prefix('\n').unwrap_or(body);
-    Some((frontmatter, body))
+    let layout = document_layout(document)?;
+    Some((layout.frontmatter, &document[layout.body_start..]))
+}
+
+struct DocumentLayout<'a> {
+    frontmatter: &'a str,
+    body_start: usize,
+}
+
+fn document_layout(document: &str) -> Option<DocumentLayout<'_>> {
+    let opening_start = if document.starts_with('\u{feff}') {
+        3
+    } else {
+        0
+    };
+    let (opening, frontmatter_start) = markdown_line(document, opening_start)?;
+    if opening != "---" {
+        return None;
+    }
+    let mut offset = frontmatter_start;
+    while offset < document.len() {
+        let line_start = offset;
+        let (line, next) = markdown_line(document, offset)?;
+        if line == "---" {
+            return Some(DocumentLayout {
+                frontmatter: &document[frontmatter_start..line_start],
+                body_start: next,
+            });
+        }
+        offset = next;
+    }
+    None
+}
+
+fn markdown_line(document: &str, start: usize) -> Option<(&str, usize)> {
+    if start > document.len() {
+        return None;
+    }
+    let remainder = &document[start..];
+    let newline = remainder.find('\n');
+    let end = newline.map_or(document.len(), |index| start + index);
+    let next = newline.map_or(document.len(), |index| start + index + 1);
+    Some((
+        document[start..end]
+            .strip_suffix('\r')
+            .unwrap_or(&document[start..end]),
+        next,
+    ))
+}
+
+#[derive(Clone, Copy)]
+struct ScannedMarkdownLine<'a> {
+    text: &'a str,
+    start: usize,
+    next: usize,
+    in_fenced_code: bool,
+    fence_boundary: bool,
+}
+
+#[derive(Clone, Copy)]
+struct MarkdownFence {
+    marker: u8,
+    length: usize,
+}
+
+struct MarkdownScan<'a> {
+    lines: Vec<ScannedMarkdownLine<'a>>,
+    unclosed_fence: bool,
+}
+
+impl<'a> IntoIterator for MarkdownScan<'a> {
+    type Item = ScannedMarkdownLine<'a>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.lines.into_iter()
+    }
+}
+
+fn scan_markdown_lines(document: &str) -> MarkdownScan<'_> {
+    let mut lines = Vec::new();
+    let mut offset = 0;
+    let mut active_fence = None;
+    while offset < document.len() {
+        let Some((text, next)) = markdown_line(document, offset) else {
+            break;
+        };
+        let (in_fenced_code, fence_boundary) = if let Some(fence) = active_fence {
+            if closes_markdown_fence(text, fence) {
+                active_fence = None;
+                (true, true)
+            } else {
+                (true, false)
+            }
+        } else if let Some(fence) = opens_markdown_fence(text) {
+            active_fence = Some(fence);
+            (true, true)
+        } else {
+            (false, false)
+        };
+        lines.push(ScannedMarkdownLine {
+            text,
+            start: offset,
+            next,
+            in_fenced_code,
+            fence_boundary,
+        });
+        offset = next;
+    }
+    MarkdownScan {
+        lines,
+        unclosed_fence: active_fence.is_some(),
+    }
+}
+
+fn opens_markdown_fence(line: &str) -> Option<MarkdownFence> {
+    let indentation = line.bytes().take_while(|byte| *byte == b' ').count();
+    if indentation > 3 {
+        return None;
+    }
+    let remainder = &line[indentation..];
+    let marker = *remainder.as_bytes().first()?;
+    if !matches!(marker, b'`' | b'~') {
+        return None;
+    }
+    let length = remainder.bytes().take_while(|byte| *byte == marker).count();
+    if length < 3 || (marker == b'`' && remainder[length..].contains('`')) {
+        return None;
+    }
+    Some(MarkdownFence { marker, length })
+}
+
+fn closes_markdown_fence(line: &str, fence: MarkdownFence) -> bool {
+    let indentation = line.bytes().take_while(|byte| *byte == b' ').count();
+    if indentation > 3 {
+        return false;
+    }
+    let remainder = &line[indentation..];
+    let length = remainder
+        .bytes()
+        .take_while(|byte| *byte == fence.marker)
+        .count();
+    length >= fence.length
+        && remainder[length..]
+            .bytes()
+            .all(|byte| matches!(byte, b' ' | b'\t'))
 }
 
 fn frontmatter_value(frontmatter: &str, key: &str) -> Option<String> {
@@ -637,57 +1087,155 @@ fn frontmatter_value(frontmatter: &str, key: &str) -> Option<String> {
 }
 
 fn section_count(body: &str, heading: &str) -> usize {
-    body.lines()
-        .filter(|line| line.trim() == format!("## {heading}"))
+    scan_markdown_lines(body)
+        .into_iter()
+        .filter(|line| !line.in_fenced_code && heading_matches(line.text, 2, heading))
         .count()
 }
 
 fn section_body<'a>(body: &'a str, heading: &str) -> Option<&'a str> {
-    let marker = format!("## {heading}");
-    let mut offset = 0;
     let mut start = None;
     let mut end = body.len();
-    for segment in body.split_inclusive('\n') {
-        let line = segment.trim_end_matches(['\r', '\n']);
-        if start.is_none() && line.trim() == marker {
-            start = Some(offset + segment.len());
-        } else if start.is_some() && line.trim().starts_with("## ") {
-            end = offset;
+    for line in scan_markdown_lines(body) {
+        if line.in_fenced_code {
+            continue;
+        }
+        if start.is_none() && heading_matches(line.text, 2, heading) {
+            start = Some(line.next);
+        } else if start.is_some()
+            && markdown_heading(line.text).is_some_and(|heading| heading.level <= 2)
+        {
+            end = line.start;
             break;
         }
-        offset += segment.len();
     }
     let start = start?;
     Some(body[start..end].trim())
 }
 
+struct MarkdownHeading<'a> {
+    level: usize,
+    title: &'a str,
+}
+
+fn markdown_heading(line: &str) -> Option<MarkdownHeading<'_>> {
+    let indentation = line.bytes().take_while(|byte| *byte == b' ').count();
+    if indentation > 3 {
+        return None;
+    }
+    let remainder = &line[indentation..];
+    let level = remainder.bytes().take_while(|byte| *byte == b'#').count();
+    if !(1..=6).contains(&level) {
+        return None;
+    }
+    let after_marks = &remainder[level..];
+    if !after_marks.is_empty() && !after_marks.starts_with(' ') && !after_marks.starts_with('\t') {
+        return None;
+    }
+    let title = atx_heading_title(after_marks);
+    Some(MarkdownHeading { level, title })
+}
+
+fn atx_heading_title(after_marks: &str) -> &str {
+    let title = after_marks
+        .trim_start_matches([' ', '\t'])
+        .trim_end_matches([' ', '\t']);
+    let closing_start = title.trim_end_matches('#').len();
+    if closing_start == title.len() {
+        return title;
+    }
+    let before_closing = &title[..closing_start];
+    if before_closing.is_empty() || before_closing.ends_with(' ') || before_closing.ends_with('\t')
+    {
+        before_closing.trim_end_matches([' ', '\t'])
+    } else {
+        title
+    }
+}
+
+fn heading_matches(line: &str, level: usize, title: &str) -> bool {
+    markdown_heading(line).is_some_and(|heading| heading.level == level && heading.title == title)
+}
+
 fn parse_timeline(section: &str) -> Vec<MorningBlockView> {
-    section
-        .lines()
-        .filter_map(|line| {
-            let item = line.trim().strip_prefix("- ")?.trim();
-            if item.is_empty() {
-                return None;
+    let mut timeline = Vec::new();
+    let mut active_heading = None;
+    let mut current: Option<(String, String)> = None;
+
+    for line in scan_markdown_lines(section) {
+        let trimmed = line.text.trim();
+        if !line.in_fenced_code {
+            if let Some(heading) = markdown_heading(line.text).filter(|heading| heading.level >= 3)
+            {
+                flush_timeline_block(&mut timeline, &mut current);
+                let heading = clean_inline_markdown(heading.title);
+                active_heading = (!heading.is_empty()).then_some(heading);
+                continue;
             }
-            let (period, content) = parse_bold_prefix(item)
-                .map(|(period, content)| {
-                    (
-                        period
-                            .trim_end_matches('：')
-                            .trim_end_matches(':')
-                            .to_owned(),
-                        content,
-                    )
-                })
-                .unwrap_or_else(|| ("安排".to_owned(), item));
-            let (title, detail) = split_summary(content);
-            (!title.is_empty()).then_some(MorningBlockView {
-                period,
-                title: title.to_owned(),
-                detail: detail.map(str::to_owned),
-            })
-        })
-        .collect()
+            if let Some(item) = list_item(trimmed)
+                .map(str::trim)
+                .filter(|item| !item.is_empty())
+            {
+                flush_timeline_block(&mut timeline, &mut current);
+                let (period, content) = parse_bold_prefix(item)
+                    .map(|(period, content)| {
+                        (
+                            period
+                                .trim_end_matches('：')
+                                .trim_end_matches(':')
+                                .to_owned(),
+                            content.to_owned(),
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        (
+                            active_heading.clone().unwrap_or_else(|| "安排".to_owned()),
+                            item.to_owned(),
+                        )
+                    });
+                current = Some((period, clean_inline_markdown(&content)));
+                continue;
+            }
+        }
+        if trimmed.is_empty() || line.fence_boundary {
+            continue;
+        }
+
+        let prose = clean_inline_markdown(trimmed);
+        if prose.is_empty() {
+            continue;
+        }
+        if let Some((_, content)) = current.as_mut() {
+            if !content.is_empty() && !content.ends_with(['，', '。', '；', '：', '、']) {
+                content.push(' ');
+            }
+            content.push_str(&prose);
+        } else {
+            current = Some((
+                active_heading.clone().unwrap_or_else(|| "安排".to_owned()),
+                prose,
+            ));
+        }
+    }
+    flush_timeline_block(&mut timeline, &mut current);
+    timeline
+}
+
+fn flush_timeline_block(
+    timeline: &mut Vec<MorningBlockView>,
+    current: &mut Option<(String, String)>,
+) {
+    let Some((period, content)) = current.take() else {
+        return;
+    };
+    let (title, detail) = split_summary(&content);
+    if !title.is_empty() {
+        timeline.push(MorningBlockView {
+            period,
+            title: title.to_owned(),
+            detail: detail.map(str::to_owned),
+        });
+    }
 }
 
 fn parse_bold_prefix(item: &str) -> Option<(&str, &str)> {
@@ -710,11 +1258,14 @@ fn split_summary(content: &str) -> (&str, Option<&str>) {
 fn parse_evidence(section: &str) -> Vec<PlanningEvidenceView> {
     let mut groups = Vec::new();
     let mut current: Option<PlanningEvidenceView> = None;
-    for line in section.lines() {
-        let trimmed = line.trim();
-        if let Some(label) = trimmed
-            .strip_prefix("### ")
-            .or_else(|| trimmed.strip_prefix("#### "))
+    for line in scan_markdown_lines(section) {
+        if line.in_fenced_code {
+            continue;
+        }
+        let trimmed = line.text.trim();
+        if let Some(label) = markdown_heading(line.text)
+            .filter(|heading| matches!(heading.level, 3 | 4))
+            .map(|heading| heading.title)
         {
             if let Some(group) = current.take() {
                 groups.push(group);
@@ -723,7 +1274,7 @@ fn parse_evidence(section: &str) -> Vec<PlanningEvidenceView> {
                 label: clean_inline_markdown(label),
                 items: Vec::new(),
             });
-        } else if let Some(item) = trimmed.strip_prefix("- ") {
+        } else if let Some(item) = list_item(trimmed) {
             let item = clean_inline_markdown(item);
             if !item.is_empty() {
                 current
@@ -756,14 +1307,64 @@ fn parse_daytime(section: &str) -> DaytimeView {
             if content.paragraphs.is_empty() && content.items.is_empty() {
                 return None;
             }
+            let title = title.unwrap_or_else(|| "白天记录".into());
+            let mut observed_facts = Vec::new();
+            let mut neutral = Vec::new();
+            let mut original_intent = Vec::new();
+            let mut change_reasons = Vec::new();
+            let mut revised_direction = Vec::new();
+            for item in content.items {
+                match daytime_item_role(&item) {
+                    (DaytimeItemRole::ObservedFact, value) => observed_facts.push(value),
+                    (DaytimeItemRole::OriginalIntent, value) => original_intent.push(value),
+                    (DaytimeItemRole::ChangeReason, value) => change_reasons.push(value),
+                    (DaytimeItemRole::RevisedDirection, value) => revised_direction.push(value),
+                    (DaytimeItemRole::Unlabeled, value) => neutral.push(value),
+                }
+            }
             Some(DaytimeUpdateView {
-                title: title.unwrap_or_else(|| "白天记录".into()),
+                title,
                 context: content.paragraphs,
-                revised_direction: content.items,
+                neutral,
+                observed_facts,
+                original_intent,
+                change_reasons,
+                revised_direction,
             })
         })
         .collect();
     DaytimeView { updates }
+}
+
+enum DaytimeItemRole {
+    ObservedFact,
+    OriginalIntent,
+    ChangeReason,
+    RevisedDirection,
+    Unlabeled,
+}
+
+fn daytime_item_role(item: &str) -> (DaytimeItemRole, String) {
+    let cleaned = clean_inline_markdown(item);
+    let Some((label, value)) = cleaned
+        .split_once('：')
+        .or_else(|| cleaned.split_once(": "))
+    else {
+        return (DaytimeItemRole::Unlabeled, cleaned);
+    };
+    let role = match label.trim() {
+        "观察事实" | "已确认" | "事实" => DaytimeItemRole::ObservedFact,
+        "原计划意图" | "原始意图" | "原计划" => DaytimeItemRole::OriginalIntent,
+        "变化原因" | "变更原因" | "原因" => DaytimeItemRole::ChangeReason,
+        "修订方向" | "调整后方向" | "调整方向" => DaytimeItemRole::RevisedDirection,
+        _ => return (DaytimeItemRole::Unlabeled, cleaned),
+    };
+    let value = value.trim();
+    if value.is_empty() {
+        (DaytimeItemRole::Unlabeled, cleaned)
+    } else {
+        (role, value.to_owned())
+    }
 }
 
 fn parse_evening(section: &str) -> EveningView {
@@ -790,11 +1391,17 @@ fn parse_evening(section: &str) -> EveningView {
         {
             view.questions.extend(lines);
         } else if normalized.contains("发生了什么")
+            || normalized.contains("今日回顾")
             || normalized.contains("今日记录")
             || normalized.contains("重要事件")
             || heading.is_none()
         {
             view.account.extend(lines);
+        } else {
+            view.other.push(EveningOtherView {
+                heading: normalized.to_owned(),
+                lines,
+            });
         }
     }
     view
@@ -804,11 +1411,12 @@ fn split_subsections(section: &str) -> Vec<(Option<String>, String)> {
     let mut sections = Vec::new();
     let mut heading = None;
     let mut lines = Vec::new();
-    for line in section.lines() {
-        let trimmed = line.trim();
-        if let Some(next_heading) = trimmed
-            .strip_prefix("### ")
-            .or_else(|| trimmed.strip_prefix("#### "))
+    for line in scan_markdown_lines(section) {
+        if let Some(next_heading) = (!line.in_fenced_code)
+            .then(|| markdown_heading(line.text))
+            .flatten()
+            .filter(|heading| matches!(heading.level, 3 | 4))
+            .map(|heading| heading.title)
         {
             if heading.is_some() || lines.iter().any(|line: &String| !line.trim().is_empty()) {
                 sections.push((heading.take(), lines.join("\n")));
@@ -816,7 +1424,7 @@ fn split_subsections(section: &str) -> Vec<(Option<String>, String)> {
             }
             heading = Some(clean_inline_markdown(next_heading));
         } else {
-            lines.push(line.to_owned());
+            lines.push(line.text.to_owned());
         }
     }
     if heading.is_some() || lines.iter().any(|line| !line.trim().is_empty()) {
@@ -834,17 +1442,23 @@ fn parse_reading_content(body: &str) -> ReadingContent {
             paragraph.clear();
         }
     };
-    for line in body.lines() {
-        let trimmed = line.trim();
+    for line in scan_markdown_lines(body) {
+        let trimmed = line.text.trim();
         if trimmed.is_empty() {
             flush_paragraph(&mut paragraph, &mut content.paragraphs);
-        } else if let Some(item) = list_item(trimmed) {
+        } else if line.fence_boundary {
             flush_paragraph(&mut paragraph, &mut content.paragraphs);
-            let item = clean_inline_markdown(item);
-            if !item.is_empty() {
-                content.items.push(item);
+        } else if !line.in_fenced_code {
+            if let Some(item) = list_item(trimmed) {
+                flush_paragraph(&mut paragraph, &mut content.paragraphs);
+                let item = clean_inline_markdown(item);
+                if !item.is_empty() {
+                    content.items.push(item);
+                }
+            } else if !trimmed.starts_with('#') {
+                paragraph.push(trimmed.to_owned());
             }
-        } else if !trimmed.starts_with('#') {
+        } else {
             paragraph.push(trimmed.to_owned());
         }
     }
@@ -853,7 +1467,25 @@ fn parse_reading_content(body: &str) -> ReadingContent {
 }
 
 fn list_item(line: &str) -> Option<&str> {
-    line.strip_prefix("- ").or_else(|| line.strip_prefix("* "))
+    line.strip_prefix("- ")
+        .or_else(|| line.strip_prefix("* "))
+        .or_else(|| line.strip_prefix("+ "))
+        .or_else(|| ordered_list_item(line))
+}
+
+fn ordered_list_item(line: &str) -> Option<&str> {
+    let marker_end = line
+        .bytes()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    if marker_end == 0 || marker_end > 9 {
+        return None;
+    }
+    let marker = line.as_bytes().get(marker_end)?;
+    if !matches!(marker, b'.' | b')') {
+        return None;
+    }
+    line.get(marker_end + 1..)?.strip_prefix(' ')
 }
 
 fn clean_inline_markdown(value: &str) -> String {
@@ -883,4 +1515,124 @@ fn clean_inline_markdown(value: &str) -> String {
     }
     output.push_str(remainder);
     output.replace("**", "").replace('`', "").trim().to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::save_file_if_unchanged;
+    use std::cell::RefCell;
+    use std::fs;
+    use std::io::{Seek, SeekFrom, Write};
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TempDirectory(PathBuf);
+
+    impl TempDirectory {
+        fn new() -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock should be after the epoch")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "personal-dashboard-today-store-{}-{nonce}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).expect("temporary directory should be created");
+            Self(path)
+        }
+    }
+
+    impl Drop for TempDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn atomic_exchange_detects_an_external_save_after_candidate_sync() {
+        let directory = TempDirectory::new();
+        let path = directory.0.join("2026-08-10.md");
+        let original = b"original daily record\n";
+        let external = b"external editor save\n";
+        let updated = b"dashboard candidate\n";
+        fs::write(&path, original).expect("original should be written");
+
+        let error = save_file_if_unchanged(&path, original, updated, |_| {
+            fs::write(&path, external).map_err(|error| error.to_string())
+        })
+        .expect_err("the save crossing candidate preparation must conflict");
+
+        assert!(error.contains("并发变化"), "{error}");
+        assert_eq!(
+            fs::read(&path).expect("canonical record should remain readable"),
+            external
+        );
+        let recoveries = fs::read_dir(directory.0.join(".personal-dashboard-recovery/today"))
+            .expect("recovery directory should remain readable")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("recovery entries should be readable");
+        assert_eq!(
+            recoveries.len(),
+            1,
+            "the original inode remains recoverable"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn recovery_tracks_the_same_byte_inode_actually_displaced_by_activation() {
+        let directory = TempDirectory::new();
+        let path = directory.0.join("2026-08-10.md");
+        let replacement = directory.0.join("external-replacement.md");
+        let original = b"original daily record\n";
+        let updated = b"dashboard candidate\n";
+        fs::write(&path, original).expect("original should be written");
+        let retained_descriptor = RefCell::new(None);
+
+        save_file_if_unchanged(&path, original, updated, |_| {
+            fs::write(&replacement, original).map_err(|error| error.to_string())?;
+            fs::rename(&replacement, &path).map_err(|error| error.to_string())?;
+            let descriptor = fs::OpenOptions::new()
+                .write(true)
+                .open(&path)
+                .map_err(|error| error.to_string())?;
+            retained_descriptor.replace(Some(descriptor));
+            Ok(())
+        })
+        .expect("same-byte replacement may be activated after its inode is preserved");
+
+        let mut descriptor = retained_descriptor
+            .borrow_mut()
+            .take()
+            .expect("external replacement descriptor should be retained");
+        descriptor
+            .seek(SeekFrom::Start(0))
+            .expect("external descriptor should seek");
+        descriptor
+            .write_all(b"late external edit\n")
+            .expect("late external edit should complete");
+        descriptor
+            .set_len(b"late external edit\n".len() as u64)
+            .expect("late external edit should replace prior bytes");
+        descriptor
+            .sync_all()
+            .expect("late external edit should sync");
+
+        assert_eq!(
+            fs::read(&path).expect("canonical record should remain readable"),
+            updated
+        );
+        let recovery_directory = directory.0.join(".personal-dashboard-recovery/today");
+        let late_edit_is_recoverable = fs::read_dir(recovery_directory)
+            .expect("recovery directory should remain readable")
+            .filter_map(Result::ok)
+            .any(|entry| {
+                fs::read(entry.path()).is_ok_and(|bytes| bytes == b"late external edit\n")
+            });
+        assert!(
+            late_edit_is_recoverable,
+            "the inode actually displaced by activation must keep a durable link"
+        );
+    }
 }

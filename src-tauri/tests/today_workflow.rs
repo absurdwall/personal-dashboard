@@ -1,11 +1,22 @@
 use personal_dashboard_lib::today::{
-    DaytimeUpdateInput, DaytimeUpdateKind, EveningUpdateInput, EveningUpdateMode, TodayApplication,
-    TodayClock, TodayRecordStore, TodayState, TodayWorkspaceExchange, TodayWorkspacePersistence,
+    DaytimeUpdateInput, DaytimeUpdateKind, EveningUpdateInput, EveningUpdateMode,
+    FileTodayRecordStore, TodayApplication, TodayClock, TodayRecordStore, TodayState,
+    TodayWorkspaceExchange, TodayWorkspacePersistence,
 };
 use std::cell::RefCell;
 use std::fs;
+#[cfg(target_os = "macos")]
+use std::io::Write;
+#[cfg(target_os = "macos")]
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+#[cfg(target_os = "macos")]
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(target_os = "macos")]
+use std::sync::Arc;
+#[cfg(target_os = "macos")]
+use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 struct TempDirectory(PathBuf);
@@ -117,7 +128,7 @@ date: 2026-08-10
     assert_eq!(refreshed.daytime.updates.len(), 2);
     assert_eq!(refreshed.daytime.updates[1].title, "14:10 — 有意义的事件");
     assert_eq!(
-        refreshed.daytime.updates[1].context,
+        refreshed.daytime.updates[1].observed_facts,
         vec!["确认下午可以继续推进主要工作。"]
     );
     let saved = fs::read_to_string(
@@ -128,7 +139,9 @@ date: 2026-08-10
     .expect("updated record should remain readable");
     assert!(saved.contains("[[保留这个链接]]"));
     assert!(saved.ends_with("## 用户自己的段落\n\n[[保留这个链接]]\n"));
-    assert!(saved.contains("### 14:10 — 有意义的事件\n\n确认下午可以继续推进主要工作。"));
+    assert!(
+        saved.contains("### 14:10 — 有意义的事件\n\n- 观察事实：确认下午可以继续推进主要工作。")
+    );
 }
 
 #[test]
@@ -191,6 +204,350 @@ Agent 准备的比较。
     assert!(saved.contains("Agent 准备的比较。"));
     assert!(saved.contains("custom: keep"));
     assert!(saved.contains("## 未知段落\n\n<!-- keep-byte-for-byte -->"));
+}
+
+#[test]
+fn evening_write_ignores_heading_like_text_inside_multiline_frontmatter() {
+    let vault = TempDirectory::new("today-frontmatter-heading");
+    let original = r#"---
+type: daily-record
+date: 2026-08-10
+notes: |
+  ## 晚间复盘
+  ### 用户修正
+  这些只是 YAML multiline scalar 的内容。
+future-field: keep-byte-for-byte
+---
+# 2026-08-10
+
+## 晚间复盘
+
+### 用户修正
+
+- 旧修正。
+
+## 用户自己的段落
+
+<!-- keep-byte-for-byte -->
+"#;
+    write_record(vault.path(), original);
+    let app = application_for(vault.path());
+    let opened = app.open().expect("record should open");
+
+    let refreshed = app
+        .update_evening_review(EveningUpdateInput {
+            expected_revision: opened.revision.expect("revision should exist"),
+            mode: EveningUpdateMode::Correction,
+            content: "新修正。".into(),
+        })
+        .expect("body correction should save");
+
+    assert_eq!(refreshed.state, TodayState::Ready);
+    let saved = fs::read_to_string(
+        vault
+            .path()
+            .join("life/Journal/Daily/2026/2026-08/2026-08-10.md"),
+    )
+    .expect("record should remain readable");
+    let expected_frontmatter = original.split_once("# 2026-08-10").unwrap().0;
+    assert!(saved.starts_with(expected_frontmatter));
+    assert!(saved.contains("future-field: keep-byte-for-byte\n---\n"));
+    assert!(saved.ends_with("## 用户自己的段落\n\n<!-- keep-byte-for-byte -->\n"));
+    assert_eq!(saved.matches("## 晚间复盘").count(), 2);
+    assert!(saved.contains("### 用户修正\n\n- 新修正。"));
+}
+
+#[test]
+fn evening_correction_preserves_an_indented_unfamiliar_body_subsection() {
+    let vault = TempDirectory::new("today-indented-evening-subsection");
+    let original = r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 晚间复盘
+
+### 用户修正
+
+旧修正。
+
+  ### 用户自己的记录
+
+必须保留的用户内容。
+
+## 用户自己的段落
+
+<!-- keep-byte-for-byte -->
+"#;
+    write_record(vault.path(), original);
+    let app = application_for(vault.path());
+    let opened = app.open().expect("record should open");
+
+    let refreshed = app
+        .update_evening_review(EveningUpdateInput {
+            expected_revision: opened.revision.expect("revision should exist"),
+            mode: EveningUpdateMode::Correction,
+            content: "新修正。".into(),
+        })
+        .expect("correction should preserve an unfamiliar body subsection");
+
+    assert_eq!(refreshed.state, TodayState::Ready);
+    let saved = fs::read_to_string(
+        vault
+            .path()
+            .join("life/Journal/Daily/2026/2026-08/2026-08-10.md"),
+    )
+    .expect("record should remain readable");
+    assert!(saved.contains("### 用户修正\n\n- 新修正。"));
+    assert!(saved.contains("  ### 用户自己的记录\n\n必须保留的用户内容。"));
+    assert!(saved.ends_with("## 用户自己的段落\n\n<!-- keep-byte-for-byte -->\n"));
+}
+
+#[test]
+fn evening_correction_preserves_an_unfamiliar_heading_with_an_attached_hash() {
+    let vault = TempDirectory::new("today-attached-hash-evening-subsection");
+    let original = r#"---
+type: daily-record
+date: 2026-08-10
+future-field: keep-byte-for-byte
+---
+# 2026-08-10
+
+## 晚间复盘
+
+### 用户修正#
+
+必须保留的用户内容。
+
+## 用户自己的段落
+
+<!-- keep-byte-for-byte -->
+"#;
+    write_record(vault.path(), original);
+    let app = application_for(vault.path());
+    let opened = app.open().expect("record should open");
+
+    let refreshed = app
+        .update_evening_review(EveningUpdateInput {
+            expected_revision: opened.revision.expect("revision should exist"),
+            mode: EveningUpdateMode::Correction,
+            content: "新修正。".into(),
+        })
+        .expect("correction should preserve the unfamiliar subsection");
+
+    assert_eq!(refreshed.state, TodayState::Ready);
+    let saved = fs::read_to_string(
+        vault
+            .path()
+            .join("life/Journal/Daily/2026/2026-08/2026-08-10.md"),
+    )
+    .expect("record should remain readable");
+    assert!(saved.starts_with(
+        "---\ntype: daily-record\ndate: 2026-08-10\nfuture-field: keep-byte-for-byte\n---\n"
+    ));
+    assert!(saved.contains("### 用户修正#\n\n必须保留的用户内容。"));
+    assert!(saved.contains("### 用户修正\n\n- 新修正。"));
+    assert!(saved.ends_with("## 用户自己的段落\n\n<!-- keep-byte-for-byte -->\n"));
+}
+
+#[test]
+fn evening_correction_ignores_a_heading_inside_a_backtick_fence() {
+    let vault = TempDirectory::new("today-backtick-fenced-evening-example");
+    let original = r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 晚间复盘
+
+### 我的示例
+
+```markdown
+### 用户修正
+
+必须保留的示例内容。
+```
+
+### 事件回顾
+
+真实回顾。
+"#;
+    write_record(vault.path(), original);
+    let app = application_for(vault.path());
+    let opened = app.open().expect("record should open");
+
+    assert!(opened.evening.corrections.is_empty());
+    assert_eq!(opened.evening.other[0].heading, "我的示例");
+    assert_eq!(
+        opened.evening.other[0].lines,
+        vec!["### 用户修正", "必须保留的示例内容。"]
+    );
+
+    let refreshed = app
+        .update_evening_review(EveningUpdateInput {
+            expected_revision: opened.revision.expect("revision should exist"),
+            mode: EveningUpdateMode::Correction,
+            content: "新修正。".into(),
+        })
+        .expect("fenced example should not become the correction target");
+
+    assert_eq!(refreshed.state, TodayState::Ready);
+    assert_eq!(refreshed.evening.corrections, vec!["新修正。"]);
+    let saved = fs::read_to_string(
+        vault
+            .path()
+            .join("life/Journal/Daily/2026/2026-08/2026-08-10.md"),
+    )
+    .expect("record should remain readable");
+    assert!(
+        saved.contains("### 我的示例\n\n```markdown\n### 用户修正\n\n必须保留的示例内容。\n```")
+    );
+    assert!(saved.contains("### 事件回顾\n\n真实回顾。"));
+    assert_eq!(saved.matches("### 用户修正\n").count(), 2);
+    assert!(saved.contains("### 用户修正\n\n- 新修正。"));
+}
+
+#[test]
+fn canonical_headings_inside_an_indented_tilde_fence_are_literal_content() {
+    let vault = TempDirectory::new("today-tilde-fenced-canonical-headings");
+    let original = r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 今天的大致安排
+
+- **上午：** 完成主要工作。
+
+  ~~~~markdown
+## 晚间复盘
+### 用户修正
+  ~~~
+  ~~~~ 不是 closing fence
+## 白天更新
+## 今天的大致安排
+## 计划依据
+仍然属于代码示例。
+   ~~~~~
+
+## 晚间复盘
+
+### 事件回顾
+
+真实回顾。
+"#;
+    write_record(vault.path(), original);
+    let app = application_for(vault.path());
+    let opened = app
+        .open()
+        .expect("canonical-looking headings inside a tilde fence should be literal");
+
+    assert_eq!(opened.state, TodayState::Ready);
+    assert_eq!(opened.timeline.len(), 1);
+    assert_eq!(opened.evening.other.len(), 1);
+    assert_eq!(opened.evening.other[0].heading, "事件回顾");
+
+    let refreshed = app
+        .update_evening_review(EveningUpdateInput {
+            expected_revision: opened.revision.expect("revision should exist"),
+            mode: EveningUpdateMode::Correction,
+            content: "新修正。".into(),
+        })
+        .expect("fenced canonical headings should not become write targets");
+
+    assert_eq!(refreshed.state, TodayState::Ready);
+    let saved = fs::read_to_string(
+        vault
+            .path()
+            .join("life/Journal/Daily/2026/2026-08/2026-08-10.md"),
+    )
+    .expect("record should remain readable");
+    assert!(saved.contains(
+        "  ~~~~markdown\n## 晚间复盘\n### 用户修正\n  ~~~\n  ~~~~ 不是 closing fence\n## 白天更新\n## 今天的大致安排\n## 计划依据\n仍然属于代码示例。\n   ~~~~~"
+    ));
+    assert_eq!(saved.matches("## 晚间复盘\n").count(), 2);
+    assert_eq!(saved.matches("### 用户修正\n").count(), 2);
+    assert!(saved.contains("### 用户修正\n\n- 新修正。"));
+}
+
+#[test]
+fn evening_correction_refuses_an_unclosed_fence_without_changing_the_record() {
+    let vault = TempDirectory::new("today-unclosed-evening-fence");
+    let original = r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 晚间复盘
+
+### 我的示例
+
+````markdown
+### 用户修正
+
+必须保留的示例内容。
+```
+```` 不是 closing fence
+"#;
+    write_record(vault.path(), original);
+    let app = application_for(vault.path());
+    let opened = app.open().expect("record should remain readable");
+
+    let error = app
+        .update_evening_review(EveningUpdateInput {
+            expected_revision: opened.revision.expect("revision should exist"),
+            mode: EveningUpdateMode::Correction,
+            content: "新修正。".into(),
+        })
+        .expect_err("an unclosed fence must refuse an unsafe append");
+
+    assert!(error.contains("代码围栏"), "{error}");
+    let saved = fs::read_to_string(
+        vault
+            .path()
+            .join("life/Journal/Daily/2026/2026-08/2026-08-10.md"),
+    )
+    .expect("record should remain readable");
+    assert_eq!(saved, original);
+}
+
+#[test]
+fn form_input_is_persisted_as_literal_content_without_creating_a_section() {
+    let vault = TempDirectory::new("today-literal-input");
+    write_record(
+        vault.path(),
+        "---\ntype: daily-record\ndate: 2026-08-10\n---\n# 2026-08-10\n\n## 白天更新\n\n## 晚间复盘\n",
+    );
+    let app = application_for(vault.path());
+    let opened = app.open().expect("record should open");
+
+    let refreshed = app
+        .append_daytime_update(DaytimeUpdateInput {
+            expected_revision: opened.revision.expect("revision should exist"),
+            kind: DaytimeUpdateKind::MeaningfulEvent,
+            content: "## 晚间复盘".into(),
+            habit_name: None,
+            habit_outcome: None,
+        })
+        .expect("heading-like user input should save as literal content");
+
+    assert_eq!(refreshed.state, TodayState::Ready);
+    assert_eq!(refreshed.daytime.updates.len(), 1);
+    let saved = fs::read_to_string(
+        vault
+            .path()
+            .join("life/Journal/Daily/2026/2026-08/2026-08-10.md"),
+    )
+    .expect("record should remain readable");
+    assert_eq!(
+        saved.lines().filter(|line| *line == "## 晚间复盘").count(),
+        1
+    );
+    assert!(saved.contains("观察事实：## 晚间复盘"));
 }
 
 #[test]
@@ -259,6 +616,63 @@ fn stale_revision_reports_a_conflict_and_preserves_the_external_edit() {
     assert_eq!(saved, external);
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn retained_external_descriptor_never_loses_its_late_write() {
+    let vault = TempDirectory::new("today-retained-descriptor");
+    let path = vault.path().join("life/Journal/Daily/record.md");
+    fs::create_dir_all(path.parent().expect("record should have a parent"))
+        .expect("record directory should be created");
+    let original = b"original daily record\n";
+    fs::write(&path, original).expect("original should be written");
+    let original_inode = fs::metadata(&path).expect("metadata should exist").ino();
+    let mut external_descriptor = fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .expect("external editor should retain the original descriptor");
+    let allow_external_write = Arc::new(AtomicBool::new(false));
+    let writer_allowed = Arc::clone(&allow_external_write);
+    let observed_path = path.clone();
+    let writer = thread::spawn(move || {
+        while fs::metadata(&observed_path)
+            .expect("canonical metadata should remain readable")
+            .ino()
+            == original_inode
+        {
+            thread::yield_now();
+        }
+        while !writer_allowed.load(Ordering::SeqCst) {
+            thread::yield_now();
+        }
+        external_descriptor
+            .write_all(b"external descriptor edit\n")
+            .expect("external descriptor write should complete");
+        external_descriptor
+            .sync_all()
+            .expect("external descriptor write should sync");
+    });
+
+    let candidate = b"dashboard candidate\n";
+    let result = FileTodayRecordStore.save_if_unchanged(&path, original, candidate);
+    allow_external_write.store(true, Ordering::SeqCst);
+    writer.join().expect("external writer should finish");
+
+    let recovery_directory = vault.path().join(".personal-dashboard-recovery/today");
+    let external_edit_is_recoverable = fs::read_dir(recovery_directory)
+        .expect("temporary workspace should remain readable")
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_file())
+        .any(|entry| {
+            fs::read(entry.path())
+                .map(|bytes| bytes.starts_with(b"external descriptor edit\n"))
+                .unwrap_or(false)
+        });
+    assert!(
+        external_edit_is_recoverable,
+        "{result:?} must not unlink the inode edited through the retained descriptor"
+    );
+}
+
 struct FailingRecordStore;
 
 impl TodayRecordStore for FailingRecordStore {
@@ -310,6 +724,39 @@ fn atomic_write_failure_is_visible_and_leaves_the_record_unchanged() {
 }
 
 #[test]
+fn unavailable_recovery_storage_fails_closed_before_a_daily_record_write() {
+    let vault = TempDirectory::new("today-recovery-failure");
+    let original = "---\ntype: daily-record\ndate: 2026-08-10\n---\n# 2026-08-10\n\n## 白天更新\n";
+    write_record(vault.path(), original);
+    fs::write(
+        vault.path().join(".personal-dashboard-recovery"),
+        b"blocked",
+    )
+    .expect("a conflicting recovery path should be created");
+    let app = application_for(vault.path());
+    let opened = app.open().expect("record should open");
+
+    let error = app
+        .append_daytime_update(DaytimeUpdateInput {
+            expected_revision: opened.revision.expect("revision should exist"),
+            kind: DaytimeUpdateKind::MeaningfulEvent,
+            content: "不能在无 recovery 时写入。".into(),
+            habit_name: None,
+            habit_outcome: None,
+        })
+        .expect_err("a write without durable recovery must fail closed");
+
+    assert!(error.contains("recovery directory"));
+    let saved = fs::read_to_string(
+        vault
+            .path()
+            .join("life/Journal/Daily/2026/2026-08/2026-08-10.md"),
+    )
+    .expect("record should remain readable");
+    assert_eq!(saved, original);
+}
+
+#[test]
 fn habit_outcome_accepts_only_agreed_meanings_and_never_infers_absence() {
     let vault = TempDirectory::new("today-habit-outcome");
     write_record(
@@ -339,6 +786,11 @@ fn habit_outcome_accepts_only_agreed_meanings_and_never_infers_absence() {
         })
         .expect("agreed outcome should save");
     assert_eq!(saved.daytime.updates.len(), 1);
+    assert_eq!(
+        saved.daytime.updates[0].observed_facts,
+        vec!["Habit：Exercise；结果：baseline；说明：今天做了轻量版本。"]
+    );
+    assert!(saved.daytime.updates[0].revised_direction.is_empty());
 }
 
 #[test]
@@ -454,6 +906,129 @@ owner: user
 }
 
 #[test]
+fn flexible_list_markers_and_today_review_alias_remain_visible() {
+    let vault = TempDirectory::new("today-flexible-markdown");
+    write_record(
+        vault.path(),
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 今天的大致安排
+
+* **上午：** 星号列表也属于有效计划。
++ **下午：** 加号列表也属于有效计划。
+
+## 计划依据
+
+### 固定安排
+
+* 10:00 check-in
+
+## 晚间复盘
+
+### 今日回顾
+
+* Agent 记录的主要事实。
+"#,
+    );
+
+    let view = application_for(vault.path())
+        .open()
+        .expect("flexible record should open");
+
+    assert_eq!(view.timeline.len(), 2);
+    assert_eq!(view.timeline[0].title, "星号列表也属于有效计划。");
+    assert_eq!(view.timeline[1].title, "加号列表也属于有效计划。");
+    assert_eq!(view.evidence[0].items, vec!["10:00 check-in"]);
+    assert_eq!(view.evening.account, vec!["Agent 记录的主要事实。"]);
+}
+
+#[test]
+fn numbered_morning_items_and_unclassified_evening_content_remain_visible() {
+    let vault = TempDirectory::new("today-conservative-primary-content");
+    write_record(
+        vault.path(),
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 今天的大致安排
+
+1. **上午：** 主要工作。
+2. **下午：** 休息和恢复。
+
+## 晚间复盘
+
+### 事件回顾
+
+完成了主要工作，下午恢复。
+"#,
+    );
+
+    let view = application_for(vault.path())
+        .open()
+        .expect("valid primary content should open");
+
+    assert_eq!(view.state, TodayState::Ready);
+    assert_eq!(view.timeline.len(), 2);
+    assert_eq!(view.timeline[0].period, "上午");
+    assert_eq!(view.timeline[0].title, "主要工作。");
+    assert_eq!(view.timeline[1].period, "下午");
+    assert_eq!(view.timeline[1].title, "休息和恢复。");
+    assert_eq!(view.evening.other.len(), 1);
+    assert_eq!(view.evening.other[0].heading, "事件回顾");
+    assert_eq!(
+        view.evening.other[0].lines,
+        vec!["完成了主要工作，下午恢复。"]
+    );
+}
+
+#[test]
+fn prose_morning_blocks_and_multiline_list_continuations_remain_visible() {
+    let vault = TempDirectory::new("today-prose-morning-plan");
+    write_record(
+        vault.path(),
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 今天的大致安排
+
+### 上午
+
+完成主要工作，之后休息。
+
+### 下午
+
+散步并保留恢复时间。
+
+- **晚上：** 整理当天记录，
+  然后准备休息。
+"#,
+    );
+
+    let view = application_for(vault.path())
+        .open()
+        .expect("prose-based morning plan should open");
+
+    assert_eq!(view.state, TodayState::Ready);
+    assert_eq!(view.timeline.len(), 3);
+    assert_eq!(view.timeline[0].period, "上午");
+    assert_eq!(view.timeline[0].title, "完成主要工作，之后休息。");
+    assert_eq!(view.timeline[1].period, "下午");
+    assert_eq!(view.timeline[1].title, "散步并保留恢复时间。");
+    assert_eq!(view.timeline[2].period, "晚上");
+    assert_eq!(view.timeline[2].title, "整理当天记录，然后准备休息。");
+}
+
+#[test]
 fn complete_daily_record_projects_daytime_and_evening_reading_views() {
     let vault = TempDirectory::new("today-complete-lifecycle");
     write_record(
@@ -516,13 +1091,14 @@ date: 2026-08-10
         vec!["突然出现紧急工作，同时能量很低。放弃原本的下午安排。"]
     );
     assert_eq!(
-        view.daytime.updates[0].revised_direction,
+        view.daytime.updates[0].neutral,
         vec![
             "17:00 前完成紧急工作；",
             "Exercise 改为 low-energy baseline：步行 10 分钟；",
             "晚饭后用于恢复。",
         ]
     );
+    assert!(view.daytime.updates[0].revised_direction.is_empty());
     assert_eq!(
         view.evening.account,
         vec![
@@ -543,6 +1119,87 @@ date: 2026-08-10
         view.evening.questions,
         vec!["有没有一件重要但尚未记录的事？"]
     );
+}
+
+#[test]
+fn daytime_preserves_fact_intent_reason_and_direction_roles() {
+    let vault = TempDirectory::new("today-daytime-semantics");
+    write_record(
+        vault.path(),
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 白天更新
+
+### 12:00 — 有意义的事件
+
+- 已确认：Exercise 达到 baseline。
+
+### 14:10 — Material replan
+
+- **原计划意图：** 下午推进主要工作。
+- **变化原因：** 出现紧急工作。
+- **修订方向：** 先完成紧急工作，再保护恢复时间。
+"#,
+    );
+
+    let view = application_for(vault.path())
+        .open()
+        .expect("semantic daytime record should open");
+
+    assert_eq!(
+        view.daytime.updates[0].observed_facts,
+        vec!["Exercise 达到 baseline。"]
+    );
+    assert!(view.daytime.updates[0].revised_direction.is_empty());
+    assert_eq!(
+        view.daytime.updates[1].original_intent,
+        vec!["下午推进主要工作。"]
+    );
+    assert_eq!(
+        view.daytime.updates[1].change_reasons,
+        vec!["出现紧急工作。"]
+    );
+    assert_eq!(
+        view.daytime.updates[1].revised_direction,
+        vec!["先完成紧急工作，再保护恢复时间。"]
+    );
+}
+
+#[test]
+fn material_replan_keeps_unrecognized_items_neutral() {
+    let vault = TempDirectory::new("today-neutral-material-replan");
+    write_record(
+        vault.path(),
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 白天更新
+
+### 14:10 — 重大调整
+
+- 已完成上午工作。
+- 原计划：下午继续工作。
+- 原因：身体疲劳。
+- 调整方向：改为恢复。
+"#,
+    );
+
+    let view = application_for(vault.path())
+        .open()
+        .expect("material replan should open");
+    let update = &view.daytime.updates[0];
+
+    assert_eq!(update.neutral, vec!["已完成上午工作。"]);
+    assert_eq!(update.original_intent, vec!["下午继续工作。"]);
+    assert_eq!(update.change_reasons, vec!["身体疲劳。"]);
+    assert_eq!(update.revised_direction, vec!["改为恢复。"]);
 }
 
 #[test]
