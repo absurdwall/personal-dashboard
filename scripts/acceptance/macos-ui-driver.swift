@@ -26,6 +26,11 @@ enum DriverError: Error, CustomStringConvertible {
     }
 }
 
+func reportNativePickerTransition(_ message: String) {
+    let line = "Native picker transition: \(message)\n"
+    FileHandle.standardError.write(Data(line.utf8))
+}
+
 func attribute(_ element: AXUIElement, _ name: String) -> CFTypeRef? {
     var value: CFTypeRef?
     guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else {
@@ -361,6 +366,8 @@ func postGlobalKey(_ text: String) throws {
           ) else {
         throw DriverError.actionFailed("key (text)", .failure)
     }
+    keyDown.flags = []
+    keyUp.flags = []
     keyDown.post(tap: .cghidEventTap)
     keyUp.post(tap: .cghidEventTap)
 }
@@ -379,6 +386,10 @@ func postGlobalText(_ text: String) throws {
           ) else {
         throw DriverError.actionFailed("type \(text)", .failure)
     }
+    // Combined session events can inherit Command from the preceding Cmd+A.
+    // Plain text must not become a keyboard shortcut in native AppKit fields.
+    keyDown.flags = []
+    keyUp.flags = []
     let unicode = Array(text.utf16)
         unicode.withUnsafeBufferPointer { buffer in
             keyDown.keyboardSetUnicodeString(
@@ -447,17 +458,251 @@ func postGlobalShortcut(keyCode: CGKeyCode, flags: CGEventFlags) throws {
     keyUp.post(tap: .cghidEventTap)
 }
 
-func chooseFolder(_ pid: pid_t, path: String) throws {
+func activateApplication(
+    _ application: AXUIElement,
+    pid: pid_t,
+    timeout: TimeInterval
+) throws {
+    guard let runningApplication = NSRunningApplication(processIdentifier: pid) else {
+        throw DriverError.invalidPid(String(pid))
+    }
+    let deadline = Date().addingTimeInterval(max(1, timeout))
+    var lastAccessibilityError: AXError?
+    repeat {
+        if let session = CGSessionCopyCurrentDictionary() as? [String: Any],
+           session["CGSSessionScreenIsLocked"] as? Bool == true {
+            throw DriverError.unexpectedText(
+                "macOS is locked; Accessibility acceptance requires an interactive desktop"
+            )
+        }
+        _ = runningApplication.activate(options: [.activateAllWindows])
+        if runningApplication.isActive {
+            return
+        }
+        let error = AXUIElementSetAttributeValue(
+            application,
+            "AXFrontmost" as CFString,
+            kCFBooleanTrue
+        )
+        lastAccessibilityError = error
+        if error == .success,
+           let frontmost = attribute(application, "AXFrontmost") as? NSNumber,
+           frontmost.boolValue {
+            return
+        }
+        if error != .success && error != .cannotComplete {
+            throw DriverError.actionFailed("activate application", error)
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    let detail = lastAccessibilityError.map { " (last AX error: \($0.rawValue))" } ?? ""
+    throw DriverError.timeout("active application\(detail)")
+}
+
+func visibleSheet(_ application: AXUIElement) -> AXUIElement? {
+    findRolesWithin(application, ["AXSheet"]).first { sheet in
+        visibleAttribute(sheet, "AXHidden")
+    }
+}
+
+func waitForPickerSheet(
+    _ application: AXUIElement,
+    timeout: TimeInterval
+) throws -> AXUIElement {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if let sheet = visibleSheet(application),
+           findPressable(sheet, "Open") != nil {
+            return sheet
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout("native folder picker")
+}
+
+func waitForFocusedPickerTextField(
+    _ application: AXUIElement,
+    picker: AXUIElement,
+    timeout: TimeInterval
+) throws -> AXUIElement {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if let field = focusedElement(application),
+           stringAttribute(field, "AXRole") == "AXTextField" {
+            let pickerTextFields = findRolesWithin(picker, ["AXTextField"])
+            if pickerTextFields.contains(where: { CFEqual($0, field) }) {
+                return field
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout("focused native folder path field")
+}
+
+func waitForTextFieldValue(
+    _ field: AXUIElement,
+    value: String,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    var lastValue = "<unavailable>"
+    repeat {
+        lastValue = stringAttribute(field, "AXValue")
+        if lastValue == value {
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout(
+        "exact native folder path: \(value) (actual: \(lastValue))"
+    )
+}
+
+func waitForTextFieldToClose(
+    _ root: AXUIElement,
+    field: AXUIElement,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        let fieldStillPresent = findRolesWithin(root, ["AXTextField"])
+            .contains(where: { CFEqual($0, field) })
+        if !fieldStillPresent {
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout("native folder path sheet to close")
+}
+
+func waitForPickerTarget(
+    _ root: AXUIElement,
+    targetName: String,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if findTextPaths(root, targetName).contains(where: { path in
+            stringAttribute(path.element, "AXRole") != "AXTextField" &&
+                visibleAttribute(path.element, "AXHidden")
+        }) {
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout("native folder picker target: \(targetName)")
+}
+
+func waitForEnabledOpenButton(
+    _ root: AXUIElement,
+    application: AXUIElement,
+    timeout: TimeInterval
+) throws -> AXUIElement? {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        // Return can confirm the selected directory and dismiss the whole panel.
+        if visibleSheet(application) == nil {
+            return nil
+        }
+        if let button = findPressable(root, "Open"),
+           (attribute(button, "AXEnabled") as? NSNumber)?.boolValue != false {
+            return button
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout("enabled native folder picker Open button")
+}
+
+func waitForPickerToClose(
+    _ application: AXUIElement,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if visibleSheet(application) == nil {
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout("native folder picker to close")
+}
+
+func chooseFolder(
+    _ application: AXUIElement,
+    pid: pid_t,
+    path: String,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
     _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows])
-    Thread.sleep(forTimeInterval: 0.35)
+    let picker = try waitForPickerSheet(
+        application,
+        timeout: max(0.1, deadline.timeIntervalSinceNow)
+    )
+    reportNativePickerTransition(
+        "picker ready role=\(stringAttribute(picker, "AXRole")) " +
+            "identifier=\(stringAttribute(picker, "AXIdentifier")) open=enabled"
+    )
+
     try postGlobalShortcut(keyCode: 5, flags: [.maskCommand, .maskShift])
-    Thread.sleep(forTimeInterval: 0.35)
+    let pathField = try waitForFocusedPickerTextField(
+        application,
+        picker: picker,
+        timeout: max(0.1, deadline.timeIntervalSinceNow)
+    )
+    reportNativePickerTransition(
+        "path field focused role=\(stringAttribute(pathField, "AXRole")) " +
+            "identifier=\(stringAttribute(pathField, "AXIdentifier")) " +
+            "value=\(stringAttribute(pathField, "AXValue"))"
+    )
+    try setAccessibilityAttribute(
+        pathField,
+        "AXFocused",
+        kCFBooleanTrue,
+        "focus native folder path"
+    )
+    try postGlobalShortcut(keyCode: 0, flags: [.maskCommand])
     try postGlobalText(path)
-    Thread.sleep(forTimeInterval: 0.15)
+    try waitForTextFieldValue(
+        pathField,
+        value: path,
+        timeout: max(0.1, deadline.timeIntervalSinceNow)
+    )
+    reportNativePickerTransition("exact path observed value=\(path)")
+
+    // The first Return accepts the path/autocomplete result. Wait for Finder's
+    // matching row before the second Return commits navigation; fixed sleeps
+    // can race both asynchronous transitions and previously reported success
+    // while this sheet was still open.
     try postGlobalKey("return")
-    Thread.sleep(forTimeInterval: 0.5)
+    let targetName = URL(fileURLWithPath: path).lastPathComponent
+    try waitForPickerTarget(
+        picker,
+        targetName: targetName,
+        timeout: max(0.1, deadline.timeIntervalSinceNow)
+    )
+    reportNativePickerTransition("folder target visible name=\(targetName)")
     try postGlobalKey("return")
-    Thread.sleep(forTimeInterval: 0.5)
+    try waitForTextFieldToClose(
+        picker,
+        field: pathField,
+        timeout: max(0.1, deadline.timeIntervalSinceNow)
+    )
+    reportNativePickerTransition("path sheet closed")
+
+    if let openButton = try waitForEnabledOpenButton(
+        picker,
+        application: application,
+        timeout: max(0.1, deadline.timeIntervalSinceNow)
+    ) {
+        reportNativePickerTransition("Open button enabled")
+        try performAccessibilityAction(openButton, "AXPress", "open selected native folder")
+    }
+    try waitForPickerToClose(
+        application,
+        timeout: max(0.1, deadline.timeIntervalSinceNow)
+    )
+    reportNativePickerTransition("picker closed")
 }
 
 func characterKeyCode(_ character: Character) -> CGKeyCode? {
@@ -1767,13 +2012,9 @@ func requireArguments() throws -> (pid_t, String, String, TimeInterval) {
 do {
     let (pid, command, text, timeout) = try requireArguments()
     let application = AXUIElementCreateApplication(pid)
-    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows])
-    try setAccessibilityAttribute(
-        application,
-        "AXFrontmost",
-        kCFBooleanTrue,
-        "activate application"
-    )
+    if command != "choose-folder" {
+        try activateApplication(application, pid: pid, timeout: timeout)
+    }
     Thread.sleep(forTimeInterval: 0.05)
 
     switch command {
@@ -1812,7 +2053,7 @@ do {
         )
         print("Entered text in rendered control: \(parts[0])")
     case "choose-folder":
-        try chooseFolder(pid, path: text)
+        try chooseFolder(application, pid: pid, path: text, timeout: timeout)
         print("Selected native folder: \(text)")
     case "assert-visible-focus":
         try assertVisibleFocus(application, text, timeout: timeout)

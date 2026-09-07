@@ -455,6 +455,18 @@ swiftc "$script_directory/macos-ui-driver.swift" \
   -framework AppKit \
   -o "$driver_binary" || fail "could not compile the macOS accessibility driver"
 
+current_step="checking for an interactive unlocked macOS session"
+if /usr/sbin/ioreg -n Root -d1 -a 2>/dev/null |
+  /usr/bin/plutil -convert json -o - - 2>/dev/null |
+  grep -q 'CGSSessionScreenIsLocked.*true'; then
+  fail "macOS is locked; packaged Accessibility acceptance requires an interactive desktop"
+fi
+frontmost_process_name="$(/usr/bin/osascript \
+  -e 'tell application "System Events" to tell first process whose frontmost is true to get name' \
+  2>/dev/null || true)"
+[[ "$frontmost_process_name" != "loginwindow" ]] ||
+  fail "macOS loginwindow is frontmost; packaged Accessibility acceptance requires an interactive desktop"
+
 launch_app() {
   current_step="launching isolated packaged app"
   PERSONAL_DASHBOARD_DATA_DIR="$acceptance_data_directory" \
@@ -1424,10 +1436,12 @@ run_today_scenario() {
   current_step="preparing an isolated representative Tortilla Flat vault"
   mkdir -p "$vault_directory/.obsidian" "$record_directory"
 
-  current_step="preselecting the isolated vault for the Today scenario"
   mkdir -p "$acceptance_data_directory"
-  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
-    "$vault_directory" > "$acceptance_data_directory/today-workspace.json"
+  if [[ "$acceptance_scenario" != "installed-cycle" ]]; then
+    current_step="preselecting the isolated vault for the Today scenario"
+    printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+      "$vault_directory" > "$acceptance_data_directory/today-workspace.json"
+  fi
 
   if [[ "$acceptance_scenario" == "installed-cycle" ]]; then
     current_step="launching the installed daily-cycle scenario with a missing record"
@@ -1440,6 +1454,14 @@ run_today_scenario() {
     fi
     run_driver wait-text "Log workout now" 30
     run_driver press "Today" 10
+    run_driver wait-text "连接 Tortilla Flat vault" 20
+    current_step="selecting the isolated vault through the native folder picker"
+    run_driver press "选择 Vault…" 10
+    run_driver choose-folder "$vault_directory" 20
+    [[ -f "$acceptance_data_directory/today-workspace.json" ]] ||
+      fail "the native folder picker closed without persisting a workspace selection"
+    [[ "$(/usr/bin/plutil -extract selectedVault raw "$acceptance_data_directory/today-workspace.json" 2>/dev/null)" == "$vault_directory" ]] ||
+      fail "the native folder picker persisted a different workspace selection"
     run_driver wait-text "Today 需要一份 Daily Record" 20
     run_driver assert-text "请让 Codex 运行早间流程"
 
@@ -1470,6 +1492,10 @@ date: 2026-08-10
 owner: user
 source: morning-planning
 custom-field: preserve-me
+notes: |
+  ## 晚间复盘
+  ### 用户修正
+  这些只是 frontmatter 中的 YAML multiline 内容。
 ---
 # 2026-08-10
 
@@ -1507,9 +1533,10 @@ custom-field: preserve-me
 
 突然出现紧急工作，同时能量很低。放弃原本的下午安排。
 
-- 17:00 前完成紧急工作；
-- Exercise 改为 low-energy baseline：步行 10 分钟；
-- 晚饭后用于恢复。
+- 修订方向：17:00 前完成紧急工作；
+- 修订方向：Exercise 改为 low-energy baseline：步行 10 分钟；
+- 修订方向：晚饭后用于恢复。
+- 中午已经休息了一会儿。
 
 ### 16:40 — 有意义的记录
 
@@ -1565,11 +1592,26 @@ EOF
   run_driver assert-semantic "today-daytime"
   run_driver assert-state "Daytime|selected" 10
   run_driver assert-text "14:10 — 重大调整"
-  run_driver assert-text "发生了什么，以及为什么"
+  run_driver assert-text "背景"
   run_driver assert-text "突然出现紧急工作"
   run_driver assert-text "接下来这样安排"
+  run_driver assert-text "记录内容"
+  run_driver assert-text "中午已经休息了一会儿"
   run_driver assert-text "紧急工作已经完成"
   run_driver assert-text "Insurance reimbursement"
+
+  current_step="refusing a stale Daytime write after an external editor save"
+  printf '\n<!-- external conflict marker -->\n' >> "$record_file"
+  run_driver type-text "Daytime update text|这条冲突候选不能覆盖外部编辑" 10
+  run_driver press "保存白天更新" 10
+  run_driver wait-text "外部发生变化" 10
+  grep -Fq "<!-- external conflict marker -->" "$record_file" ||
+    fail "stale Today write removed the external edit"
+  if grep -Fq "这条冲突候选不能覆盖外部编辑" "$record_file"; then
+    fail "stale Today write reached canonical Markdown"
+  fi
+  run_driver press "刷新" 10
+  run_driver wait-text "紧急工作已经完成" 10
 
   current_step="saving a bounded daytime update through packaged Tauri IPC"
   run_driver type-text "Daytime update text|确认下午继续推进主要工作" 10
@@ -1613,8 +1655,14 @@ EOF
     fail "Today writes changed unrelated frontmatter"
   grep -Fq "custom-field: preserve-me" "$record_file" ||
     fail "Today writes changed unfamiliar frontmatter"
+  grep -Fq "  ## 晚间复盘" "$record_file" ||
+    fail "Today writes changed heading-like YAML multiline content"
+  grep -Fq "  ### 用户修正" "$record_file" ||
+    fail "Today writes changed subsection-like YAML multiline content"
   grep -Fq "[[Private Context]] remains ordinary Obsidian Markdown." "$record_file" ||
     fail "Today writes changed an unfamiliar Markdown section"
+  [[ -n "$(find "$vault_directory/.personal-dashboard-recovery/today" -type f -name '*.snapshot' -print -quit 2>/dev/null)" ]] ||
+    fail "Today writes did not retain a non-canonical recovery snapshot"
   after_phase_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
   [[ "$before_phase_hash" != "$after_phase_hash" ]] ||
     fail "packaged write flows did not change the canonical Daily Record"
@@ -1729,7 +1777,7 @@ EOF
       fail "the app created a parallel Markdown life ledger in application data"
 
     echo "Packaged IPC installed daily-cycle acceptance passed"
-    echo "States: missing, malformed identity, repaired valid record, external refresh, and quiet partial phases"
+    echo "States: native vault selection, missing, malformed identity, repaired valid record, external conflict/refresh, and quiet partial phases"
     echo "Writes: bounded Daytime and Evening actions crossed real Tauri IPC"
     echo "Markdown: UTF-8 canonical identity and unfamiliar Obsidian content survived; no app-owned life ledger was created"
     echo "Viewport: Morning, Daytime, and Evening remained available at 960x720, 800x640, and 640x520"
