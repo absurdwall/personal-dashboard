@@ -54,9 +54,9 @@ Never delete or rewrite:
 
 ## Notification inventory and cancellation
 
-Before removing `exercise.json`, parse and validate it through the existing
-profile/exercise boundary and derive every old Tauri identifier for every
-stored departure:
+Before removing `exercise.json`, parse and validate both `profile.json` and
+`exercise.json` through the existing profile/exercise boundary. Derive every
+old Tauri identifier for every stored departure:
 
 ```text
 exercise-departure-<departure.id>
@@ -64,10 +64,15 @@ exercise-follow-up-<departure.id>
 exercise-record-workout-<departure.id>
 ```
 
-Include identifiers already present in `pending_notification_cancellations`.
-Deduplicate the complete set, pass each identifier through the existing native
-notification cancellation adapter, and persist/retry failures before deleting
-the state that makes reconstruction possible. On macOS that adapter calls
+Union those derived identifiers with both
+`exercise.json.pending_reminder_reconciliation.cancel_notification_ids` and
+`.desired_notification_ids`, plus
+`profile.json.pending_notification_cancellations`. The reconciliation arrays
+may retain identifiers that no longer correspond to a current departure, so no
+one source is a substitute for the others. Deduplicate the complete set, pass
+each identifier through the existing native notification cancellation adapter,
+and persist/retry failures before deleting the state that makes reconstruction
+possible. On macOS that adapter calls
 `UNUserNotificationCenter.removePendingNotificationRequestsWithIdentifiers`.
 The cutover cannot report success while any cancellation remains pending.
 

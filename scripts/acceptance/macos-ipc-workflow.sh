@@ -2274,39 +2274,61 @@ source: final-dashboard-2-acceptance
 
 ### 初始安排
 
-- **上午：** 完成固定工作与报销；学习完成量保持未知。
-- **下午：** 继续原定项目。
-- **晚上：** 17:30 取饭，并保留跑步选项。
+- **早上（07:30–10:00）：** 先学习，再处理上午的固定安排；早餐、学习一小时，不把空档填满。
+- **上午（10:00–12:00）：** 工作 check-in → insurance reimbursement；固定安排后，集中处理今天到期的 reimbursement。
+- **中午（12:00–13:30）：** 午饭、留白和 buffer；至少半小时不安排事项，为上午延伸留余地。
+- **下午（13:30–17:00）：** 推进 apartment-renewal；若没有紧急事项，给它一个完整工作块。
+- **晚上（17:30 以后）：** 取饭、Exercise、自由恢复；取饭后争取 30 分钟锻炼，其余时间不设必须事项。
 
 ### 初始计划依据
 
 #### 固定安排
 
 - 10:00 工作 check-in
+- 17:30 取晚饭
 
-#### Tasks / Habits
+#### Tasks（任务）
 
-- Insurance reimbursement
-- Exercise
+- Insurance reimbursement · 今天到期
+- Apartment-renewal · 周五到期
+
+#### Habits（习惯）
+
+- Exercise · normal 30 分钟 / low-energy baseline 走 10 分钟
+- Reset living space · 10 分钟
+
+#### Options（选项）
+
+- 学习 Agent memory · 小型 Vibe code · 玩游戏
 
 ## 今天的大致安排
 
-- **下午：** 先处理 17:00 前必须完成的紧急工作。
-- **晚上：** 17:30 取饭，之后保护恢复空间。
+- **现在：** 处理需要 17:00 前完成的紧急工作。
+- **17:30：** 取晚饭仍然保留。
+- **Exercise：** 退到 low-energy baseline，走 10 分钟即可。
+- **晚饭后：** 不再安排必须事项，保护恢复空间。
+- **未知：** 上午学习实际做了多少、Reset living space 均未记录。
 
 ## 计划依据
 
 ### 固定安排
 
 - 10:00 工作 check-in
+- 17:30 取晚饭
 
 ### Tasks（任务）
 
-- Insurance reimbursement
+- Insurance reimbursement · 今天到期
+- Apartment-renewal · 周五到期
 
 ### Habits（习惯）
 
-- Exercise
+- Exercise · normal 30 分钟 / low-energy baseline 走 10 分钟
+- Reset living space · 10 分钟
+
+### Options（选项）
+
+- 学习 Agent memory · 小型 Vibe code · 玩游戏
 
 ## 白天更新
 
@@ -2316,7 +2338,7 @@ source: final-dashboard-2-acceptance
 
 ### 10:00 — 有意义的记录
 
-- 观察事实：参加工作 check-in，并处理报销。
+- 观察事实：参加工作 check-in，午前集中完成 insurance reimbursement。
 
 ### 13:40 — 有意义的事件
 
@@ -2324,9 +2346,9 @@ source: final-dashboard-2-acceptance
 
 ### 14:10 — 重大调整
 
-- 原计划意图：下午继续原定项目。
-- 变化原因：临时工作需要先处理。
-- 修订方向：17:00 前完成紧急工作；17:30 取饭；晚间保留恢复空间。
+- 原计划意图：下午原本推进 apartment-renewal。
+- 变化原因：能量很低 + 临时出现紧急工作。
+- 修订方向：紧急工作优先；Exercise 退到 low-energy baseline；17:30 取饭；晚饭后保护休息。
 
 ## 晚间复盘
 
@@ -2354,15 +2376,21 @@ EOF
   run_driver set-size "1180x820" 10
   run_driver assert-size "1180x820" 10
   run_driver press "Today" 10
-  run_driver wait-text "完成固定工作与报销" 20
+  run_driver wait-text "先学习，再处理上午的固定安排" 20
   run_driver assert-semantic "today"
   run_driver assert-text "Today · 2026-09-08"
-  run_driver assert-text "继续原定项目"
+  run_driver assert-text "5 个时间块"
+  run_driver assert-text "取饭、Exercise、自由恢复"
+  run_driver press-contains "初始计划依据" 10
+  run_driver assert-text "Options"
+  run_driver assert-text "小型 Vibe code"
   run_driver press "Daytime" 10
   run_driver assert-semantic "today-daytime"
   run_driver assert-text "07:18 起床"
-  run_driver assert-text "先处理 17:00 前必须完成的紧急工作"
-  run_driver assert-text "下午继续原定项目"
+  run_driver assert-text "处理需要 17:00 前完成的紧急工作"
+  run_driver assert-text "下午原本推进 apartment-renewal"
+  run_driver assert-text "Exercise 退到 low-energy baseline"
+  run_driver assert-text "Reset living space 均未记录"
   run_driver press "Evening" 10
   run_driver assert-semantic "today-evening"
   run_driver assert-text "19:00 跑步 30 分钟"
@@ -2401,6 +2429,7 @@ EOF
   run_driver press "Daytime" 10
   run_driver assert-semantic "today-daytime"
   run_driver assert-text "17:30 取饭"
+  run_driver assert-text "Exercise 退到 low-energy baseline"
   run_driver assert-document-fixed "document" 10
 
   current_step="checking narrow FINAL layouts, hierarchy, and primary actions"
@@ -2408,6 +2437,7 @@ EOF
   run_driver assert-size "640x520" 10
   run_driver assert-semantic "today-daytime"
   run_driver assert-text "Destination"
+  run_driver assert-text "Reset living space 均未记录"
   run_driver select-contains "Calendar" 10
   run_driver assert-semantic "calendar"
   run_driver assert-text "打开完整 Today"
@@ -2495,70 +2525,22 @@ run_live_daily_cycle_scenario() {
   echo "Boundary: the packaged app wrote the canonical Markdown through Tauri IPC without an app-owned life ledger"
 }
 
-if [[ "$acceptance_scenario" == "shell" ]]; then
-  run_shell_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "direct" ]]; then
-  run_direct_record_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "state-semantics" ]]; then
-  run_state_semantics_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "progress" ]]; then
-  run_progress_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "workouts" ]]; then
-  run_workout_recording_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "list-first" || "$acceptance_scenario" == "baseline" ]]; then
-  run_list_first_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "exceptions" ]]; then
-  run_exception_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "responsive" ]]; then
-  run_responsive_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "compact" ]]; then
-  run_compact_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "keyboard" ]]; then
-  run_keyboard_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "week-close" ]]; then
-  run_week_close_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "today" || "$acceptance_scenario" == "today-write" || "$acceptance_scenario" == "installed-cycle" ]]; then
-  run_today_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "calendar" ]]; then
-  run_calendar_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "habits" ]]; then
-  run_habits_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "dashboard-2" ]]; then
-  run_dashboard_2_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" == "live-cycle" ]]; then
-  run_live_daily_cycle_scenario
-  exit 0
-fi
-if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "compact" && "$acceptance_scenario" != "keyboard" && "$acceptance_scenario" != "week-close" && "$acceptance_scenario" != "today" && "$acceptance_scenario" != "today-write" && "$acceptance_scenario" != "installed-cycle" && "$acceptance_scenario" != "calendar" && "$acceptance_scenario" != "habits" && "$acceptance_scenario" != "dashboard-2" && "$acceptance_scenario" != "live-cycle" ]]; then
-  fail "unknown acceptance scenario: $acceptance_scenario"
-fi
+case "$acceptance_scenario" in
+  shell) run_shell_scenario ;;
+  direct) run_direct_record_scenario ;;
+  state-semantics) run_state_semantics_scenario ;;
+  progress) run_progress_scenario ;;
+  workouts) run_workout_recording_scenario ;;
+  list-first | baseline) run_list_first_scenario ;;
+  exceptions) run_exception_scenario ;;
+  responsive) run_responsive_scenario ;;
+  compact) run_compact_scenario ;;
+  keyboard) run_keyboard_scenario ;;
+  week-close) run_week_close_scenario ;;
+  today | today-write | installed-cycle) run_today_scenario ;;
+  calendar) run_calendar_scenario ;;
+  habits) run_habits_scenario ;;
+  dashboard-2) run_dashboard_2_scenario ;;
+  live-cycle) run_live_daily_cycle_scenario ;;
+  *) fail "unknown acceptance scenario: $acceptance_scenario" ;;
+esac
