@@ -1052,6 +1052,13 @@ func assertSemanticContract(
               findPressable(application, "今天", contains: true) != nil else {
             throw DriverError.timeout("semantic Calendar reading surface")
         }
+        let calendarHeadings = findRolesWithin(application, ["AXHeading"])
+            .filter { nodeText($0) == "Calendar" }
+        guard calendarHeadings.count == 1 else {
+            throw DriverError.timeout(
+                "semantic Calendar heading hierarchy (expected 1, found \(calendarHeadings.count))"
+            )
+        }
     } else if todayMode {
         for text in ["Morning", "Daytime", "Evening"] {
             guard findPressable(application, text, contains: true) != nil else {
@@ -1609,12 +1616,21 @@ func selectOption(
     allowUnchanged: Bool = false
 ) throws {
     let destinationOption = Set(["History", "Settings", "This Week", "Today"]).contains(text)
+    let calendarField = text.hasSuffix(" 年")
+        ? "年份"
+        : text.hasSuffix(" 月")
+            ? "月份"
+            : nil
     let pickers: [AXUIElement]
     if destinationOption {
         guard let destinationPicker = findDestinationPicker(application) else {
             throw DriverError.timeout("destination picker")
         }
         pickers = [destinationPicker]
+    } else if let calendarField {
+        pickers = findRolesWithin(application, ["AXPopUpButton"]).filter {
+            nodeText($0).localizedCaseInsensitiveContains(calendarField)
+        }
     } else {
         pickers = try waitForExceptionSchedulePickers(
             application,
@@ -1662,6 +1678,31 @@ func selectOption(
             try pressKey(pid, "escape")
         }
         throw DriverError.timeout("destination option: \(text)")
+    }
+
+    if calendarField != nil, let calendarPicker = pickers.first {
+        let previousState = pickerState(calendarPicker)
+        try performAccessibilityAction(calendarPicker, "AXPress", "open Calendar picker")
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if let menu = findVisibleMenu(application),
+               let option = findMenuItem(menu, text) {
+                try performAccessibilityAction(option, "AXPress", "select Calendar option \(text)")
+                try waitForPickerValue(
+                    calendarPicker,
+                    text,
+                    timeout: timeout,
+                    changedFrom: previousState,
+                    requireChange: !allowUnchanged
+                )
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        } while Date() < deadline
+        if findVisibleMenu(application) != nil {
+            try pressKey(pid, "escape")
+        }
+        throw DriverError.timeout("Calendar option: \(text)")
     }
 
     for picker in pickers {

@@ -1,3 +1,5 @@
+import { LatestRequest } from "./latest-request.js";
+
 type ApplicationIdentity = Readonly<{
   productName: string;
   featureArea: string;
@@ -722,14 +724,15 @@ const scheduleCapabilityNotificationButton = document.querySelector<HTMLButtonEl
 const appShell = document.querySelector<HTMLElement>(".app-shell");
 let currentProfileAuthority: ProfileView["authority"] = "active";
 let currentWorkspaceDestination: WorkspaceDestination = "this-week";
-let refreshingToday = false;
-let todayRefreshVersion = 0;
+let todayOperationCount = 0;
+const todayPresentationRequests = new LatestRequest();
 let currentTodayPhase: TodayPhase = "morning";
 let currentTodayView: TodayView | null = null;
 let selectedTodayDate: string | null = null;
 let currentCalendarMonth: CalendarMonthView | null = null;
 let selectedCalendarDate: string | null = null;
-let refreshingCalendar = false;
+const calendarMonthRequests = new LatestRequest();
+const calendarSelectionRequests = new LatestRequest();
 let currentExerciseView: ExerciseDashboardView | null = null;
 let applicationFeatureArea = "Exercise tracking";
 let selectedDepartureSlotId: string | null = null;
@@ -1972,6 +1975,18 @@ function showTodayPhase(phase: TodayPhase, focus = false): void {
   }
 }
 
+function eveningViewHasContent(evening: EveningView): boolean {
+  return (
+    evening.account.length > 0 ||
+    evening.comparison.length > 0 ||
+    evening.summary.length > 0 ||
+    evening.questions.length > 0 ||
+    evening.additions.length > 0 ||
+    evening.corrections.length > 0 ||
+    evening.other.length > 0
+  );
+}
+
 function renderToday(view: TodayView): void {
   currentTodayView = view;
   if (todayDate) {
@@ -1988,11 +2003,12 @@ function renderToday(view: TodayView): void {
   }
 
   const ready = view.state === "ready";
+  const readable = ready || (!view.isToday && view.state === "missing");
   if (todayReady) {
-    todayReady.hidden = !ready;
+    todayReady.hidden = !readable;
   }
   if (todayHandoff) {
-    todayHandoff.hidden = ready;
+    todayHandoff.hidden = readable;
   }
   if (todayTimeline) {
     todayTimeline.replaceChildren(...view.baseline.timeline.map(todayTimelineItem));
@@ -2082,14 +2098,7 @@ function renderToday(view: TodayView): void {
     todayDaytimeEmpty.hidden = arrangementChanges.length > 0;
   }
 
-  const eveningHasContent =
-    view.evening.account.length > 0 ||
-    view.evening.comparison.length > 0 ||
-    view.evening.summary.length > 0 ||
-    view.evening.questions.length > 0 ||
-    view.evening.additions.length > 0 ||
-    view.evening.corrections.length > 0 ||
-    view.evening.other.length > 0;
+  const eveningHasContent = eveningViewHasContent(view.evening);
   todayEveningAccountSection?.toggleAttribute(
     "hidden",
     view.evening.account.length === 0,
@@ -2203,32 +2212,43 @@ function syncHabitFields(): void {
   todayHabitOutcomeField?.toggleAttribute("hidden", !visible);
 }
 
+function updateTodayOperationState(delta: number): void {
+  todayOperationCount = Math.max(0, todayOperationCount + delta);
+  const busy = todayOperationCount > 0;
+  selectTodayVaultButton?.toggleAttribute("disabled", busy);
+  refreshTodayButton?.toggleAttribute("disabled", busy);
+  todayDaytimeForm?.querySelector("button")?.toggleAttribute("disabled", busy);
+  todayEveningForm?.querySelector("button")?.toggleAttribute("disabled", busy);
+}
+
 async function saveTodayMutation(
   command: "append_daytime_update" | "update_evening_review",
   input: Record<string, unknown>,
   successMessage: string,
 ): Promise<boolean> {
-  if (!currentTodayView?.revision || refreshingToday) {
+  if (!currentTodayView?.revision || todayOperationCount > 0) {
     showTodayMutationStatus("请先刷新有效的 Daily Record，再保存。", "error");
     return false;
   }
-  refreshingToday = true;
-  todayDaytimeForm?.querySelector("button")?.toggleAttribute("disabled", true);
-  todayEveningForm?.querySelector("button")?.toggleAttribute("disabled", true);
+  const expectedRevision = currentTodayView.revision;
+  const presentationRequest = todayPresentationRequests.begin();
+  updateTodayOperationState(1);
   try {
     const view = await window.__TAURI__.core.invoke<TodayView>(command, {
-      input: { ...input, expectedRevision: currentTodayView.revision },
+      input: { ...input, expectedRevision },
     });
-    renderToday(view);
-    showTodayMutationStatus(successMessage, "ready");
+    if (todayPresentationRequests.isCurrent(presentationRequest)) {
+      renderToday(view);
+      showTodayMutationStatus(successMessage, "ready");
+    }
     return true;
   } catch (error) {
-    showTodayMutationStatus(`未保存：${String(error)}`, "error");
+    if (todayPresentationRequests.isCurrent(presentationRequest)) {
+      showTodayMutationStatus(`未保存：${String(error)}`, "error");
+    }
     return false;
   } finally {
-    refreshingToday = false;
-    todayDaytimeForm?.querySelector("button")?.removeAttribute("disabled");
-    todayEveningForm?.querySelector("button")?.removeAttribute("disabled");
+    updateTodayOperationState(-1);
   }
 }
 
@@ -2236,19 +2256,17 @@ async function refreshToday(
   date: string | null = selectedTodayDate,
   supersede = false,
 ): Promise<void> {
-  if (refreshingToday && !supersede) {
+  if (todayOperationCount > 0 && !supersede) {
     return;
   }
-  const refreshVersion = ++todayRefreshVersion;
-  refreshingToday = true;
-  selectTodayVaultButton?.toggleAttribute("disabled", true);
-  refreshTodayButton?.toggleAttribute("disabled", true);
+  const presentationRequest = todayPresentationRequests.begin();
+  updateTodayOperationState(1);
   try {
     const previousDate = currentTodayView?.date ?? null;
     const view = date
       ? await window.__TAURI__.core.invoke<TodayView>("daily_view", { date })
       : await window.__TAURI__.core.invoke<TodayView>("today_view");
-    if (refreshVersion !== todayRefreshVersion) {
+    if (!todayPresentationRequests.isCurrent(presentationRequest)) {
       return;
     }
     if (previousDate !== view.date) {
@@ -2256,7 +2274,7 @@ async function refreshToday(
     }
     renderToday(view);
   } catch (error) {
-    if (refreshVersion !== todayRefreshVersion) {
+    if (!todayPresentationRequests.isCurrent(presentationRequest)) {
       return;
     }
     if (todayStatus) {
@@ -2264,33 +2282,31 @@ async function refreshToday(
       todayStatus.dataset.state = "error";
     }
   } finally {
-    if (refreshVersion === todayRefreshVersion) {
-      refreshingToday = false;
-      selectTodayVaultButton?.removeAttribute("disabled");
-      refreshTodayButton?.removeAttribute("disabled");
-    }
+    updateTodayOperationState(-1);
   }
 }
 
 async function selectTodayVault(): Promise<void> {
-  if (refreshingToday) {
+  if (todayOperationCount > 0) {
     return;
   }
-  refreshingToday = true;
-  selectTodayVaultButton?.toggleAttribute("disabled", true);
+  const presentationRequest = todayPresentationRequests.begin();
+  updateTodayOperationState(1);
   try {
     const view = await window.__TAURI__.core.invoke<TodayView>("select_today_vault");
+    if (!todayPresentationRequests.isCurrent(presentationRequest)) {
+      return;
+    }
     selectedTodayDate = null;
     currentTodayPhase = view.defaultPhase;
     renderToday(view);
   } catch (error) {
-    if (todayStatus) {
+    if (todayPresentationRequests.isCurrent(presentationRequest) && todayStatus) {
       todayStatus.textContent = `无法选择 Vault：${String(error)}`;
       todayStatus.dataset.state = "error";
     }
   } finally {
-    refreshingToday = false;
-    selectTodayVaultButton?.removeAttribute("disabled");
+    updateTodayOperationState(-1);
   }
 }
 
@@ -2388,7 +2404,7 @@ function renderCalendarSummary(view: TodayView): void {
       ? "error"
       : view.state === "missing" || view.state === "unconfigured"
         ? "missing"
-        : view.defaultPhase === "evening"
+        : eveningViewHasContent(view.evening)
           ? "reviewed"
           : "unreviewed";
   if (calendarSummaryStatus) {
@@ -2433,25 +2449,42 @@ function renderCalendarSummary(view: TodayView): void {
 }
 
 async function selectCalendarDate(date: string): Promise<void> {
+  const selectionRequest = calendarSelectionRequests.begin();
   selectedCalendarDate = date;
   const [year, month] = date.split("-").map(Number);
   if (
-    currentCalendarMonth &&
-    (currentCalendarMonth.year !== year || currentCalendarMonth.month !== month)
+    !currentCalendarMonth ||
+    currentCalendarMonth.year !== year ||
+    currentCalendarMonth.month !== month
   ) {
-    await refreshCalendarMonth(year, month);
+    const monthView = await refreshCalendarMonth(year, month);
+    if (!monthView || !calendarSelectionRequests.isCurrent(selectionRequest)) {
+      return;
+    }
   }
   if (currentCalendarMonth) {
     renderCalendarGrid(currentCalendarMonth);
   }
   try {
     const view = await window.__TAURI__.core.invoke<TodayView>("daily_view", { date });
+    if (
+      !calendarSelectionRequests.isCurrent(selectionRequest) ||
+      selectedCalendarDate !== date
+    ) {
+      return;
+    }
     renderCalendarSummary(view);
     if (calendarStatus) {
       calendarStatus.textContent = `已选择 ${calendarDateLabel(date)}。`;
       calendarStatus.dataset.state = view.state;
     }
   } catch (error) {
+    if (
+      !calendarSelectionRequests.isCurrent(selectionRequest) ||
+      selectedCalendarDate !== date
+    ) {
+      return;
+    }
     if (calendarSummaryHeading) {
       calendarSummaryHeading.textContent = calendarDateLabel(date);
     }
@@ -2473,16 +2506,19 @@ async function selectCalendarDate(date: string): Promise<void> {
   }
 }
 
-async function refreshCalendarMonth(year: number, month: number): Promise<void> {
-  if (refreshingCalendar) {
-    return;
-  }
-  refreshingCalendar = true;
+async function refreshCalendarMonth(
+  year: number,
+  month: number,
+): Promise<CalendarMonthView | null> {
+  const monthRequest = calendarMonthRequests.begin();
   try {
     const view = await window.__TAURI__.core.invoke<CalendarMonthView>("calendar_month", {
       year,
       month,
     });
+    if (!calendarMonthRequests.isCurrent(monthRequest)) {
+      return null;
+    }
     currentCalendarMonth = view;
     renderCalendarGrid(view);
     if (calendarStatus) {
@@ -2491,29 +2527,57 @@ async function refreshCalendarMonth(year: number, month: number): Promise<void> 
         : "尚未选择 Vault；请先到 Today 连接 Tortilla Flat vault。";
       calendarStatus.dataset.state = view.configured ? "ready" : "unconfigured";
     }
+    return view;
   } catch (error) {
-    if (calendarStatus) {
+    if (calendarMonthRequests.isCurrent(monthRequest) && calendarStatus) {
       calendarStatus.textContent = `无法读取月份：${String(error)}`;
       calendarStatus.dataset.state = "error";
     }
-  } finally {
-    refreshingCalendar = false;
+    return null;
   }
 }
 
 async function openCalendar(): Promise<void> {
   if (!selectedCalendarDate) {
     const today = await window.__TAURI__.core.invoke<TodayView>("today_view");
+    if (currentWorkspaceDestination !== "calendar" || selectedCalendarDate) {
+      return;
+    }
     selectedCalendarDate = today.date;
     const [year, month] = today.date.split("-").map(Number);
     populateCalendarYears(year);
-    await refreshCalendarMonth(year, month);
+    const monthView = await refreshCalendarMonth(year, month);
+    if (!monthView || currentWorkspaceDestination !== "calendar") {
+      return;
+    }
     renderCalendarSummary(today);
     return;
   }
-  const [year, month] = selectedCalendarDate.split("-").map(Number);
-  await refreshCalendarMonth(year, month);
-  await selectCalendarDate(selectedCalendarDate);
+  const date = selectedCalendarDate;
+  const [year, month] = date.split("-").map(Number);
+  const monthView = await refreshCalendarMonth(year, month);
+  if (
+    !monthView ||
+    currentWorkspaceDestination !== "calendar" ||
+    selectedCalendarDate !== date
+  ) {
+    return;
+  }
+  await selectCalendarDate(date);
+}
+
+async function chooseCalendarMonth(
+  year: number,
+  month: number,
+  date = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-01`,
+): Promise<void> {
+  calendarSelectionRequests.invalidate();
+  selectedCalendarDate = date;
+  const monthView = await refreshCalendarMonth(year, month);
+  if (!monthView || selectedCalendarDate !== date) {
+    return;
+  }
+  await selectCalendarDate(date);
 }
 
 async function moveCalendarMonth(delta: number): Promise<void> {
@@ -2522,17 +2586,23 @@ async function moveCalendarMonth(delta: number): Promise<void> {
   const index = baseYear * 12 + baseMonth - 1 + delta;
   const year = Math.floor(index / 12);
   const month = ((index % 12) + 12) % 12 + 1;
-  selectedCalendarDate = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-01`;
-  await refreshCalendarMonth(year, month);
-  await selectCalendarDate(selectedCalendarDate);
+  await chooseCalendarMonth(year, month);
 }
 
 async function showCalendarToday(): Promise<void> {
+  const selectionRequest = calendarSelectionRequests.begin();
   const today = await window.__TAURI__.core.invoke<TodayView>("today_view");
-  selectedCalendarDate = today.date;
-  const [year, month] = today.date.split("-").map(Number);
-  await refreshCalendarMonth(year, month);
-  renderCalendarSummary(today);
+  if (!calendarSelectionRequests.isCurrent(selectionRequest)) {
+    return;
+  }
+  await chooseCalendarMonth(
+    Number(today.date.slice(0, 4)),
+    Number(today.date.slice(5, 7)),
+    today.date,
+  );
+  if (selectedCalendarDate === today.date) {
+    renderCalendarSummary(today);
+  }
 }
 
 function renderWorkspaceFeatureArea(destination: WorkspaceDestination): void {
@@ -2553,7 +2623,15 @@ function showWorkspaceDestination(
   dailyDate: string | null = null,
 ): void {
   const destinationChanged = currentWorkspaceDestination !== destination;
+  const leavingToday = currentWorkspaceDestination === "today" && destination !== "today";
   const leavingCalendar = currentWorkspaceDestination === "calendar" && destination !== "calendar";
+  if (leavingToday) {
+    todayPresentationRequests.invalidate();
+  }
+  if (leavingCalendar) {
+    calendarMonthRequests.invalidate();
+    calendarSelectionRequests.invalidate();
+  }
   const restoreOpenDetail = destination === "this-week" && workspaceDetailOpen;
   currentWorkspaceDestination = destination;
   appShell?.setAttribute("data-workspace-destination", destination);
@@ -3772,16 +3850,16 @@ calendarNextMonth?.addEventListener("click", () => {
 });
 
 calendarYear?.addEventListener("change", () => {
-  void moveCalendarMonth(
-    (Number(calendarYear.value) - (currentCalendarMonth?.year ?? Number(calendarYear.value))) *
-      12,
+  void chooseCalendarMonth(
+    Number(calendarYear.value),
+    currentCalendarMonth?.month ?? Number(calendarMonth?.value),
   );
 });
 
 calendarMonth?.addEventListener("change", () => {
-  void moveCalendarMonth(
-    Number(calendarMonth.value) -
-      (currentCalendarMonth?.month ?? Number(calendarMonth.value)),
+  void chooseCalendarMonth(
+    currentCalendarMonth?.year ?? Number(calendarYear?.value),
+    Number(calendarMonth.value),
   );
 });
 

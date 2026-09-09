@@ -29,6 +29,8 @@
 验证：
 
 - `cargo test --manifest-path src-tauri/Cargo.toml`：117 passed（含 4 个新增 Calendar 工作流测试）。
+- `npm run test:frontend`：2 passed；延迟响应测试确认旧 Calendar 选择与已失效的写入响应不能覆盖较新的导航状态。
 - `npm run check`、`cargo fmt --check`、Swift driver typecheck、shell syntax check：通过。
-- 隔离打包 app 的 `calendar` 场景：通过；覆盖 reviewed／unreviewed／malformed／empty／today、历史 refresh、只读表单边界、960x720 与 640x520、键盘日期移动和 compact Today 返回。
+- 隔离打包 app 的 `calendar` 场景：通过；覆盖 reviewed／unreviewed／malformed／empty／today、当日已有复盘、历史 refresh、空白历史日三阶段只读面、跨年上／下月和独立年／月选择、960x720 与 640x520、键盘日期移动和 compact Today 返回。
 - 文件 hash 验证确认只有验收脚本主动制造的外部更新发生变化；Calendar 浏览没有修改或创建其他 Daily Record。
+- 独立 Standards／Spec review 提出的异步竞态、空白历史日、当日复盘状态、重复 Calendar 标题和 period navigation 证据均已修复并重跑相关验证。

@@ -1943,6 +1943,10 @@ date: 2026-08-10
 ## 白天更新
 
 ## 晚间复盘
+
+### 今天发生了什么
+
+- 今天的晚间复盘内容。
 EOF
 
   before_hashes="$(shasum -a 256 "$reviewed_file" "$unreviewed_file" "$malformed_file" "$today_file")"
@@ -1956,6 +1960,22 @@ EOF
   run_driver assert-text "Month view"
   run_driver assert-text "Selected day"
   run_driver assert-text "Calendar 浏览不会修改 Daily Record"
+  run_driver assert-text "今天的晚间复盘内容"
+
+  current_step="operating independent year and month Calendar navigation"
+  run_driver select-contains "1 月" 10
+  run_driver wait-text "2026 年 1 月" 20
+  run_driver press "上个月" 10
+  run_driver wait-text "2025 年 12 月" 20
+  run_driver press "下个月" 10
+  run_driver wait-text "2026 年 1 月" 20
+  run_driver select-contains "2027 年" 10
+  run_driver wait-text "2027 年 1 月" 20
+  run_driver select-contains "2 月" 10
+  run_driver wait-text "2027 年 2 月" 20
+  run_driver press "今天" 10
+  run_driver wait-text "2026 年 8 月" 20
+  run_driver assert-text "今天的晚间复盘内容"
 
   current_step="opening a reviewed historical day in Evening"
   run_driver press-contains "8 月 8 日" 10
@@ -1992,6 +2012,17 @@ EOF
   run_driver press-contains "8 月 6 日" 10
   run_driver wait-text "没有 Daily Record；保持空白" 10
   [[ ! -e "$record_directory/2026-08-06.md" ]] || fail "Calendar browsing created an empty-day record"
+  run_driver press "打开完整 Today" 10
+  run_driver wait-text "Selected day · 2026-08-06" 20
+  run_driver assert-state "Daytime|selected" 10
+  run_driver assert-semantic "today-daytime"
+  run_driver assert-absent-text "保存白天更新"
+  run_driver press "Morning" 10
+  run_driver assert-state "Morning|selected" 10
+  run_driver press "Evening" 10
+  run_driver assert-state "Evening|selected" 10
+  run_driver press "Calendar" 10
+  run_driver wait-text "2026 年 8 月" 20
 
   current_step="checking compact Calendar and keyboard date movement"
   run_driver set-size "640x520" 10
