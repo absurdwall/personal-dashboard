@@ -32,7 +32,32 @@ PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=300 \
 scripts/acceptance/macos-ipc-workflow.sh
 ```
 
-## 2026-09-09 comparison
+## 2026-09-09 candidate and result matrix
+
+- Candidate commit: `2d051548fdeadf00e52b1247127c0842ee8d4638`.
+- Rebuilt packaged executable SHA-256:
+  `0eed6ef29378a025f01d5a4caa7c7ed1d3ce81c45c65b8f1b7ae86bb64cc3a5c`.
+- Source: the current `src-tauri/target/release/bundle/macos/Personal
+  Dashboard.app`, copied to an isolated temporary directory before launch.
+
+The images below are ignored local evidence under
+`output/playwright/final-acceptance/`. Each row was directly compared for font
+family/size, palette, spacing, reading hierarchy, wrapping, expansion, and
+primary-action reachability; all nine passed. Hashes are full SHA-256 values.
+
+| Entry | Size | FINAL reference | Packaged product | Result |
+| --- | --- | --- | --- | --- |
+| Today | 1180×820 | `reference-final-wide.png` · `adb82974c5def04641d673807bbcb40e420ae052034bafcae448fac989c86947` | `product-today-wide.png` · `822602f0cd5642ead666c7b58b0898f9998995748621b23c2222fe2e13396dd3` | PASS |
+| Today | 800×640 | `reference-final-medium.png` · `fff8966d6822b7e4ac8981a41132bdc3071022e65f4d230e16a2b70f00e66a1d` | `product-today-medium.png` · `e2b4e1759c8aed90569883d7fff74310bcbad9f5033a97268b7e1136ca699894` | PASS |
+| Today | 640×520 | `reference-final-narrow.png` · `72a5587a897ff78b97eb9f6a939fc2d30189d3967c45421512aa8f9348f91f9f` | `product-today-narrow.png` · `24f1a958e6f5a90c480c1378313645cc685f4ff09cd56157bda367b583b7b81c` | PASS |
+| Calendar | 1180×820 | `reference-final-calendar-wide.png` · `8886be0ed20c4ab92a087843a2463e0c6714e837884a001f35adfe5be4f7b72f` | `product-calendar-wide.png` · `a6e42999f696804fd769b441ee16ae2ca0a80d17dce77d4004a5be40cba33fb2` | PASS |
+| Calendar | 800×640 | `reference-final-calendar-medium.png` · `864ff88158cc8ef39790562c9f57892edf519e1286212afae5146a6e9b9b2aab` | `product-calendar-medium.png` · `00e778cb64bbef2a4f717e2880ec40cb1a669220dd003eddb635d0e10dc1d9ee` | PASS |
+| Calendar | 640×520 | `reference-final-calendar-narrow.png` · `2d03eb816dc37e2e62679d6950165763004c3d1e7437428a2627500df877f24b` | `product-calendar-narrow.png` · `d732879e73c583c31fb26d4cef6e3b08fd68e2028436d4d2cb5fcf204610fb2e` | PASS |
+| Habits | 1180×820 | `reference-final-habits-wide.png` · `707573c10154b4cf3d83a323606912604de9629a2919d2b4298241a7d7f0f48e` | `product-habits-wide.png` · `5feae99ee9e53c7d89588832e9b4180218914d6f7eb849d110aab1f237ac351f` | PASS |
+| Habits | 800×640 | `reference-final-habits-medium.png` · `95179aae539d6ce10343e351aab855ebe0ec589ce34b0e8f23ff5f80e5350c08` | `product-habits-medium.png` · `7ab123b83af5e93fbd8a24f025a424ba5d5fdb77f2b022f122412acd129c6c76` | PASS |
+| Habits | 640×520 | `reference-final-habits-narrow.png` · `c8ebf8b1573ee8f2a7cf41b99446469244363a1ae216e5af3837c461a8988e52` | `product-habits-narrow.png` · `cc9143ebfbd40a6b4d266586c93beda280eeae7b0228b6183a3f87b4337225d1` | PASS |
+
+## Comparison notes
 
 | Dimension | Direct rendered observation |
 | --- | --- |
