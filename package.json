@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node scripts/prepare-frontend.mjs && tsc",
     "check": "npm run build && cargo check --manifest-path src-tauri/Cargo.toml",
+    "prototype:dashboard-2": "node .scratch/personal-dashboard-2/prototype/serve.mjs",
     "prototype:mac-workspace": "node .scratch/personal-dashboard-mac-workspace/prototype/serve.mjs",
     "build:mac": "tauri build --bundles app",
     "accept:mac": "scripts/acceptance/macos-packaged-launch.sh",
