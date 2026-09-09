@@ -343,6 +343,11 @@ fn prior_week_snapshot_remains_readable_as_stale_after_monday_rollover() {
     .unwrap();
 
     assert_eq!(view.state, HabitSnapshotState::Stale);
+    assert_eq!(
+        view.display_range_label.as_deref(),
+        Some("2026-06-29 — 2026-09-20")
+    );
+    assert_eq!(view.range_label.as_deref(), Some("2026-06-22 — 2026-09-08"));
     assert_eq!(view.habit("exercise").unwrap().history.len(), 84);
 }
 

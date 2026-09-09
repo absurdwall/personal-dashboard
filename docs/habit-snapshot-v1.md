@@ -26,7 +26,7 @@ The document is strict JSON. Unknown fields, missing required fields, duplicate 
 | --- | --- |
 | `schemaVersion` | Integer `1`. Other versions are rejected. |
 | `generatedAt` | `YYYY-MM-DDTHH:mm:ss±HH:mm`, including the offset in effect at generation. It cannot be later than the Dashboard's current local date. |
-| `range.from` | Monday eleven weeks before the Monday containing `generatedAt`. A reader crossing into a later week keeps the old valid document as stale and projects the current 12-week display window from it. |
+| `range.from` | Monday eleven weeks before the Monday containing `generatedAt`. A reader crossing into a later week keeps the old valid document as stale and projects the current 12-week display window from it; the UI labels that display window separately from this source-coverage range. |
 | `range.to` | Latest proved lived date, between `range.from` and the current local date. |
 | `producer.kind` | Non-empty producer class such as `agent-derived`. |
 | `producer.label` | Human-readable provenance displayed in the app. |

@@ -110,6 +110,7 @@ pub struct HabitSnapshotView {
     pub state: HabitSnapshotState,
     pub message: String,
     pub generated_at: Option<String>,
+    pub display_range_label: Option<String>,
     pub range_label: Option<String>,
     pub producer_label: Option<String>,
     pub summary: HabitSummaryView,
@@ -144,6 +145,7 @@ impl HabitSnapshotView {
             state,
             message: message.into(),
             generated_at: None,
+            display_range_label: None,
             range_label: None,
             producer_label: None,
             summary: HabitSummaryView::default(),
@@ -503,6 +505,7 @@ pub fn project_snapshot(
         state,
         message,
         generated_at: Some(snapshot.generated_at.clone()),
+        display_range_label: Some(format!("{history_start} — {history_end}")),
         range_label: Some(format!("{} — {}", snapshot.range.from, snapshot.range.to)),
         producer_label: Some(format!(
             "{} · {}",

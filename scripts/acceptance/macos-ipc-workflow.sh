@@ -2110,6 +2110,7 @@ EOF
   run_driver assert-text "0 / 5"
   run_driver assert-text "07:18"
   run_driver assert-text "仅阈值证据"
+  run_driver assert-text "2026-06-22 — 2026-09-13"
   run_driver assert-text "2026-06-22 — 2026-09-08"
   run_driver assert-text "2026-09-08T14:10:00-04:00"
   run_driver assert-text "今天锚点"
@@ -2117,6 +2118,8 @@ EOF
   current_step="opening a sourced conflict date and 12-week history"
   run_driver press-contains "2026-09-07 · Exercise" 10
   run_driver wait-text "近 12 周记录" 10
+  run_driver assert-text "6 月"
+  run_driver assert-text "周一"
   run_driver assert-text "来源冲突 · 不计次"
   run_driver assert-text "只是文字记录，不自动计次"
   run_driver assert-text "历史目标 context"

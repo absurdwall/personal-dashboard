@@ -167,6 +167,7 @@ type HabitSnapshotView = Readonly<{
   state: HabitSnapshotState;
   message: string;
   generatedAt: string | null;
+  displayRangeLabel: string | null;
   rangeLabel: string | null;
   producerLabel: string | null;
   summary: Readonly<{
@@ -3011,9 +3012,32 @@ function habitRow(habit: HabitView): HTMLElement {
   historyHeading.append(heading, caption);
   const grid = document.createElement("div");
   grid.className = "habit-history-grid";
-  grid.replaceChildren(
-    ...habit.history.map((cell) => habitCellButton(habit, cell, false)),
+  const weeks = Array.from({ length: 12 }, (_, week) =>
+    habit.history.slice(week * 7, week * 7 + 7),
   );
+  const months = document.createElement("div");
+  months.className = "habit-history-months";
+  const monthCorner = document.createElement("span");
+  monthCorner.setAttribute("aria-hidden", "true");
+  const monthLabels = weeks.map((week, index) => {
+    const label = document.createElement("span");
+    const month = week[0]?.date.slice(5, 7);
+    const previousMonth = weeks[index - 1]?.[0]?.date.slice(5, 7);
+    label.textContent = index === 0 || month !== previousMonth ? `${Number(month)} 月` : "";
+    return label;
+  });
+  months.replaceChildren(monthCorner, ...monthLabels);
+  const weekdayLabels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+  for (const [weekday, weekdayLabel] of weekdayLabels.entries()) {
+    const label = document.createElement("span");
+    label.className = "habit-history-weekday";
+    label.textContent = weekdayLabel;
+    grid.append(label);
+    for (const week of weeks) {
+      const cell = week[weekday];
+      if (cell) grid.append(habitCellButton(habit, cell, false));
+    }
+  }
   const goalContext = document.createElement("p");
   goalContext.className = "habit-goal-context";
   goalContext.textContent = habit.goalHistory.length
@@ -3026,7 +3050,7 @@ function habitRow(habit: HabitView): HTMLElement {
   detail.dataset.habitDetail = habit.key;
   detail.setAttribute("role", "status");
   detail.textContent = "选择一个日期点，查看来源、coverage 与记录。";
-  history.append(historyHeading, grid, goalContext, detail);
+  history.append(historyHeading, months, grid, goalContext, detail);
   article.append(identity, value, recent, expand, history);
   return article;
 }
@@ -3038,8 +3062,8 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
     habitsStatus.dataset.state = view.state;
   }
   if (habitsRange) {
-    habitsRange.textContent = view.rangeLabel
-      ? `12 周 bounded range · ${view.rangeLabel}`
+    habitsRange.textContent = view.displayRangeLabel && view.rangeLabel
+      ? `12 周显示窗口 · ${view.displayRangeLabel} · 来源覆盖 · ${view.rangeLabel}`
       : "等待有效的 bounded snapshot。";
   }
   const hasSnapshot = view.habits.length > 0;
@@ -3115,6 +3139,7 @@ async function refreshHabits(): Promise<void> {
       state: "error",
       message: `无法读取 Habits 快照：${String(error)}`,
       generatedAt: null,
+      displayRangeLabel: null,
       rangeLabel: null,
       producerLabel: null,
       summary: {
@@ -4402,8 +4427,11 @@ habitsDestination?.addEventListener("click", (event) => {
   if (expand) {
     const row = expand.closest<HTMLElement>(".habit-snapshot-row");
     const history = row?.querySelector<HTMLElement>(".habit-history");
+    const recent = row?.querySelector<HTMLElement>(".habit-recent");
     if (!history) return;
     history.hidden = !history.hidden;
+    if (recent) recent.hidden = !history.hidden;
+    row?.classList.toggle("is-expanded", !history.hidden);
     expand.setAttribute("aria-expanded", String(!history.hidden));
     expand.textContent = history.hidden ? "展开" : "收起";
     return;
@@ -4418,10 +4446,13 @@ habitsDestination?.addEventListener("click", (event) => {
   const cell = habit?.history.find((item) => item.date === date);
   const row = button.closest<HTMLElement>(".habit-snapshot-row");
   const history = row?.querySelector<HTMLElement>(".habit-history");
+  const recent = row?.querySelector<HTMLElement>(".habit-recent");
   const expandButton = row?.querySelector<HTMLButtonElement>("button[data-habit-expand]");
   const detail = row?.querySelector<HTMLElement>(".habit-cell-detail");
   if (!habit || !cell || !history || !detail) return;
   history.hidden = false;
+  if (recent) recent.hidden = true;
+  row?.classList.add("is-expanded");
   expandButton?.setAttribute("aria-expanded", "true");
   if (expandButton) expandButton.textContent = "收起";
   const heading = document.createElement("strong");
