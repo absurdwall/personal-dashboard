@@ -86,6 +86,22 @@ impl TodayClock for NextDayClock {
     }
 }
 
+struct FollowingMondayClock;
+
+impl TodayClock for FollowingMondayClock {
+    fn current_date(&self) -> String {
+        "2026-09-14".into()
+    }
+
+    fn current_time_label(&self) -> String {
+        "08:00".into()
+    }
+
+    fn current_timestamp_label(&self) -> String {
+        "2026-09-14T08:00:00-04:00".into()
+    }
+}
+
 fn snapshot_path(vault: &Path) -> PathBuf {
     vault.join(".personal-dashboard/derived/habits-v1.json")
 }
@@ -196,6 +212,26 @@ fn malformed_refresh_retains_the_last_valid_snapshot_and_never_writes() {
 }
 
 #[test]
+fn disappearing_snapshot_after_a_valid_read_retains_the_last_reading() {
+    let vault = TempDirectory::new("habit-snapshot-disappeared");
+    write_snapshot(
+        vault.path(),
+        include_str!("fixtures/habits-v1-complete.json"),
+    );
+    let application = application(Some(vault.path()));
+    let first = application.habits().expect("first valid read");
+    fs::remove_file(snapshot_path(vault.path())).unwrap();
+
+    let retained = application
+        .habits()
+        .expect("missing refresh stays readable");
+
+    assert_eq!(retained.state, HabitSnapshotState::Retained);
+    assert_eq!(retained.summary, first.summary);
+    assert!(retained.message.contains("快照文件已不存在"));
+}
+
+#[test]
 fn absent_unconfigured_stale_and_malformed_snapshots_are_explicit_empty_states() {
     let unconfigured = application(None).habits().unwrap();
     assert_eq!(unconfigured.state, HabitSnapshotState::Unconfigured);
@@ -289,4 +325,44 @@ fn equal_timestamp_results_from_one_source_are_rejected_as_ambiguous() {
 
     assert_eq!(view.state, HabitSnapshotState::Error);
     assert!(view.message.contains("相同 observedAt"));
+}
+
+#[test]
+fn prior_week_snapshot_remains_readable_as_stale_after_monday_rollover() {
+    let vault = TempDirectory::new("habit-snapshot-monday-rollover");
+    let document = include_str!("fixtures/habits-v1-complete.json")
+        .replace("2026-09-08T14:10:00-04:00", "2026-09-13T14:10:00-04:00");
+    write_snapshot(vault.path(), &document);
+
+    let view = TodayApplication::new(
+        SelectedVault(Some(vault.path().to_path_buf())),
+        NoSelection,
+        FollowingMondayClock,
+    )
+    .habits()
+    .unwrap();
+
+    assert_eq!(view.state, HabitSnapshotState::Stale);
+    assert_eq!(view.habit("exercise").unwrap().history.len(), 84);
+}
+
+#[test]
+fn conflicting_exact_times_remain_unresolved_instead_of_choosing_a_source() {
+    let vault = TempDirectory::new("habit-snapshot-time-conflict");
+    let document = include_str!("fixtures/habits-v1-complete.json").replace(
+        "{ \"source\": \"dida\", \"observedAt\": \"2026-09-08T07:20:00-04:00\", \"status\": \"actual-time\", \"evidence\": \"explicit-time\", \"actualTime\": { \"occurredOn\": \"2026-09-08\", \"localTime\": \"07:18\", \"utcOffsetMinutes\": -240, \"dayRelation\": \"same-day\" } }",
+        "{ \"source\": \"dida\", \"observedAt\": \"2026-09-08T07:20:00-04:00\", \"status\": \"actual-time\", \"evidence\": \"explicit-time\", \"actualTime\": { \"occurredOn\": \"2026-09-08\", \"localTime\": \"07:18\", \"utcOffsetMinutes\": -240, \"dayRelation\": \"same-day\" } }, { \"source\": \"manual\", \"observedAt\": \"2026-09-08T07:25:00-04:00\", \"status\": \"actual-time\", \"evidence\": \"explicit-time\", \"actualTime\": { \"occurredOn\": \"2026-09-08\", \"localTime\": \"07:22\", \"utcOffsetMinutes\": -240, \"dayRelation\": \"same-day\" } }",
+    );
+    write_snapshot(vault.path(), &document);
+
+    let view = application(Some(vault.path())).habits().unwrap();
+    let wake = view.habit("wake").unwrap();
+
+    assert_eq!(wake.today.status, HabitCellStatus::Conflict);
+    assert_eq!(wake.today.actual_time_label, None);
+    assert!(wake
+        .today
+        .details
+        .iter()
+        .any(|line| line.contains("来源冲突")));
 }

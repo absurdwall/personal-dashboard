@@ -1,9 +1,29 @@
+use crate::today::CalendarDate;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::fs;
+use std::path::Path;
 
 pub const SNAPSHOT_RELATIVE_PATH: &str = ".personal-dashboard/derived/habits-v1.json";
 const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 const HISTORY_WEEKS: i64 = 12;
+
+pub trait HabitSnapshotStore {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String>;
+}
+
+#[derive(Clone, Copy)]
+pub struct FileHabitSnapshotStore;
+
+impl HabitSnapshotStore for FileHabitSnapshotStore {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
+        match fs::read(path) {
+            Ok(document) => Ok(Some(document)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!("无法读取 Habits 快照：{error}")),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -59,6 +79,7 @@ pub struct HabitView {
     pub active: bool,
     pub goal_kind: String,
     pub goal_label: String,
+    pub weekly_target: Option<u32>,
     pub completed_count: Option<u32>,
     pub source_labels: Vec<String>,
     pub coverage_label: String,
@@ -301,105 +322,15 @@ struct Observation {
     note: Option<String>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct Date {
-    year: i32,
-    month: u32,
-    day: u32,
-}
-
-impl Date {
-    fn parse(value: &str) -> Option<Self> {
-        let bytes = value.as_bytes();
-        if bytes.len() != 10
-            || bytes[4] != b'-'
-            || bytes[7] != b'-'
-            || !bytes
-                .iter()
-                .enumerate()
-                .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit())
-        {
-            return None;
-        }
-        Self::new(
-            value[..4].parse().ok()?,
-            value[5..7].parse().ok()?,
-            value[8..].parse().ok()?,
-        )
-    }
-
-    fn new(year: i32, month: u32, day: u32) -> Option<Self> {
-        if !(1..=9999).contains(&year) || !(1..=12).contains(&month) {
-            return None;
-        }
-        let maximum = match month {
-            2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
-            2 => 28,
-            4 | 6 | 9 | 11 => 30,
-            _ => 31,
-        };
-        (1..=maximum)
-            .contains(&day)
-            .then_some(Self { year, month, day })
-    }
-
-    fn unix_days(self) -> i64 {
-        let mut year = i64::from(self.year);
-        let month = i64::from(self.month);
-        let day = i64::from(self.day);
-        year -= i64::from(month <= 2);
-        let era = year.div_euclid(400);
-        let year_of_era = year - era * 400;
-        let month_prime = month + if month > 2 { -3 } else { 9 };
-        let day_of_year = (153 * month_prime + 2) / 5 + day - 1;
-        let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-        era * 146_097 + day_of_era - 719_468
-    }
-
-    fn from_unix_days(unix_days: i64) -> Self {
-        let shifted_days = unix_days + 719_468;
-        let era = shifted_days.div_euclid(146_097);
-        let day_of_era = shifted_days - era * 146_097;
-        let year_of_era =
-            (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
-        let mut year = year_of_era + era * 400;
-        let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
-        let month_prime = (5 * day_of_year + 2) / 153;
-        let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
-        let month = month_prime + if month_prime < 10 { 3 } else { -9 };
-        year += i64::from(month <= 2);
-        Self {
-            year: year as i32,
-            month: month as u32,
-            day: day as u32,
-        }
-    }
-
-    fn monday(self) -> Self {
-        Self::from_unix_days(self.unix_days() - (self.unix_days() + 3).rem_euclid(7))
-    }
-
-    fn plus_days(self, days: i64) -> Self {
-        Self::from_unix_days(self.unix_days() + days)
-    }
-}
-
-impl std::fmt::Display for Date {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            formatter,
-            "{:04}-{:02}-{:02}",
-            self.year, self.month, self.day
-        )
-    }
-}
-
 pub fn snapshot_dates(document: &[u8], today: &str) -> Result<Vec<String>, String> {
     let snapshot = parse_and_validate(document, today)?;
-    let start = Date::parse(&snapshot.range.from).expect("validated snapshot start");
-    let end = Date::parse(today).expect("validated current date");
+    let end = CalendarDate::parse(today).expect("validated current date");
+    let snapshot_start =
+        CalendarDate::parse(&snapshot.range.from).expect("validated snapshot start");
+    let current_window_start = end.monday().plus_days(-7 * (HISTORY_WEEKS - 1));
+    let start = std::cmp::max(snapshot_start, current_window_start);
     Ok((start.unix_days()..=end.unix_days())
-        .map(|day| Date::from_unix_days(day).to_string())
+        .map(|day| CalendarDate::from_unix_days(day).to_string())
         .collect())
 }
 
@@ -409,7 +340,7 @@ pub fn project_snapshot(
     local_records: Vec<LocalHabitRecord>,
 ) -> Result<HabitSnapshotView, String> {
     let snapshot = parse_and_validate(document, today)?;
-    let today_date = Date::parse(today).expect("validated current date");
+    let today_date = CalendarDate::parse(today).expect("validated current date");
     let week_start = today_date.monday();
     let history_start = week_start.plus_days(-7 * (HISTORY_WEEKS - 1));
     let history_end = week_start.plus_days(6);
@@ -437,7 +368,7 @@ pub fn project_snapshot(
             .collect();
         let mut history = Vec::with_capacity((HISTORY_WEEKS * 7) as usize);
         for unix_day in history_start.unix_days()..=history_end.unix_days() {
-            let date = Date::from_unix_days(unix_day).to_string();
+            let date = CalendarDate::from_unix_days(unix_day).to_string();
             let local = local_by_key_date
                 .get(&(habit.key.as_str(), date.as_str()))
                 .cloned()
@@ -453,7 +384,8 @@ pub fn project_snapshot(
         let current_cells: Vec<&HabitCellView> = history
             .iter()
             .filter(|cell| {
-                Date::parse(&cell.date).is_some_and(|date| date >= week_start && date <= today_date)
+                CalendarDate::parse(&cell.date)
+                    .is_some_and(|date| date >= week_start && date <= today_date)
             })
             .collect();
         if current_cells.iter().any(|cell| cell.coverage != "complete") {
@@ -514,7 +446,7 @@ pub fn project_snapshot(
         let recent = history
             .iter()
             .filter(|cell| {
-                Date::parse(&cell.date)
+                CalendarDate::parse(&cell.date)
                     .is_some_and(|date| date >= recent_start && date <= today_date)
             })
             .cloned()
@@ -525,6 +457,10 @@ pub fn project_snapshot(
             active: habit.active,
             goal_kind,
             goal_label: current_goal_label,
+            weekly_target: match habit.goal {
+                Some(Goal::WeeklyCount { standard }) => Some(standard),
+                _ => None,
+            },
             completed_count,
             source_labels,
             coverage_label: format!(
@@ -582,9 +518,9 @@ fn project_cell(
     day: Option<&HabitDay>,
     sources: &HashMap<&str, &Source>,
     local: &[&LocalHabitRecord],
-    today: Date,
+    today: CalendarDate,
 ) -> HabitCellView {
-    let date_value = Date::parse(date).expect("generated history date");
+    let date_value = CalendarDate::parse(date).expect("generated history date");
     if date_value > today {
         return HabitCellView {
             date: date.into(),
@@ -627,12 +563,30 @@ fn project_cell(
         .collect();
     let completed = definitive.contains(&ObservationStatus::Completed);
     let not_done = definitive.contains(&ObservationStatus::NotDone);
-    let conflict = completed && not_done;
-    let actual = observations
+    let actual_candidates: Vec<&ActualTime> = observations
         .iter()
-        .find(|item| item.status == ObservationStatus::ActualTime)
-        .and_then(|item| item.actual_time.as_ref())
-        .filter(|actual| actual.day_relation != DayRelation::Unresolved);
+        .filter(|item| item.status == ObservationStatus::ActualTime)
+        .filter_map(|item| item.actual_time.as_ref())
+        .filter(|actual| actual.day_relation != DayRelation::Unresolved)
+        .collect();
+    let exact_times: BTreeSet<String> = actual_candidates
+        .iter()
+        .map(|actual| {
+            format!(
+                "{}|{}|{:?}|{:?}",
+                actual.occurred_on,
+                actual.local_time,
+                actual.utc_offset_minutes,
+                actual.day_relation
+            )
+        })
+        .collect();
+    let conflict = (completed && not_done)
+        || exact_times.len() > 1
+        || (!actual_candidates.is_empty() && not_done);
+    let actual = (!conflict)
+        .then(|| actual_candidates.first().copied())
+        .flatten();
     let status = if conflict {
         HabitCellStatus::Conflict
     } else if actual.is_some() {
@@ -725,7 +679,7 @@ fn project_cell(
 }
 
 fn parse_and_validate(document: &[u8], today: &str) -> Result<SnapshotDocument, String> {
-    let today = Date::parse(today)
+    let today = CalendarDate::parse(today)
         .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
     let snapshot: SnapshotDocument = serde_json::from_slice(document)
         .map_err(|error| format!("Habits 快照不是有效的 schema v1 JSON：{error}"))?;
@@ -740,17 +694,21 @@ fn parse_and_validate(document: &[u8], today: &str) -> Result<SnapshotDocument, 
     let generated_at = timestamp_epoch_minutes(&snapshot.generated_at).ok_or_else(|| {
         "Habits 快照 generatedAt 必须是含 UTC offset 的完整本地时间。".to_string()
     })?;
-    let generated_date = Date::parse(&snapshot.generated_at[..10])
+    let generated_date = CalendarDate::parse(&snapshot.generated_at[..10])
         .expect("validated timestamp contains a valid date");
     if generated_date > today {
         return Err("Habits 快照 generatedAt 不能晚于当前本地日期。".into());
     }
-    let range_from = Date::parse(&snapshot.range.from)
+    let range_from = CalendarDate::parse(&snapshot.range.from)
         .ok_or_else(|| "Habits 快照 range.from 不是有效日期。".to_string())?;
-    let range_to = Date::parse(&snapshot.range.to)
+    let range_to = CalendarDate::parse(&snapshot.range.to)
         .ok_or_else(|| "Habits 快照 range.to 不是有效日期。".to_string())?;
-    let expected_from = today.monday().plus_days(-7 * (HISTORY_WEEKS - 1));
-    if range_from != expected_from || range_to < range_from || range_to > today {
+    let expected_from = generated_date.monday().plus_days(-7 * (HISTORY_WEEKS - 1));
+    if range_from != expected_from
+        || range_to < range_from
+        || range_to > generated_date
+        || range_to > today
+    {
         return Err(format!(
             "Habits 快照范围必须从 {expected_from} 开始并在今天之前结束；收到 {} — {}。",
             snapshot.range.from, snapshot.range.to
@@ -784,7 +742,7 @@ fn parse_and_validate(document: &[u8], today: &str) -> Result<SnapshotDocument, 
         }
         let mut history_weeks = HashSet::new();
         for context in &habit.goal_history {
-            let week = Date::parse(&context.week_of)
+            let week = CalendarDate::parse(&context.week_of)
                 .ok_or_else(|| format!("Habit {} 的历史目标周日期无效。", habit.key))?;
             if week.monday() != week || week >= today.monday() {
                 return Err(format!("Habit {} 的历史目标必须使用过去周一。", habit.key));
@@ -797,7 +755,7 @@ fn parse_and_validate(document: &[u8], today: &str) -> Result<SnapshotDocument, 
         }
         let mut day_keys = HashSet::new();
         for day in &habit.days {
-            let lived = Date::parse(&day.lived_date)
+            let lived = CalendarDate::parse(&day.lived_date)
                 .ok_or_else(|| format!("Habit {} 有无效 livedDate。", habit.key))?;
             if lived < range_from || lived > range_to {
                 return Err(format!("Habit {} 的 livedDate 超出快照范围。", habit.key));
@@ -863,14 +821,18 @@ fn validate_goal(goal: Option<&Goal>) -> Result<(), String> {
     }
 }
 
-fn validate_observation(observation: &Observation, lived: Date, habit: &str) -> Result<(), String> {
+fn validate_observation(
+    observation: &Observation,
+    lived: CalendarDate,
+    habit: &str,
+) -> Result<(), String> {
     match (
         observation.status,
         observation.evidence,
         observation.actual_time.as_ref(),
     ) {
         (ObservationStatus::ActualTime, EvidenceKind::ExplicitTime, Some(actual)) => {
-            let occurred = Date::parse(&actual.occurred_on)
+            let occurred = CalendarDate::parse(&actual.occurred_on)
                 .ok_or_else(|| format!("Habit {habit} 的 actualTime.occurredOn 无效。"))?;
             if !valid_time(&actual.local_time) {
                 return Err(format!(
@@ -952,7 +914,7 @@ fn timestamp_epoch_minutes(value: &str) -> Option<i64> {
     {
         return None;
     }
-    let date = Date::parse(&value[..10])?;
+    let date = CalendarDate::parse(&value[..10])?;
     let hour: i64 = value[11..13].parse().ok()?;
     let minute: i64 = value[14..16].parse().ok()?;
     let second: i64 = value[17..19].parse().ok()?;

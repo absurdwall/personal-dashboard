@@ -1,4 +1,7 @@
-use crate::habits::{project_snapshot, snapshot_dates, LocalHabitRecord, SNAPSHOT_RELATIVE_PATH};
+use crate::habits::{
+    project_snapshot, snapshot_dates, FileHabitSnapshotStore, HabitSnapshotStore, LocalHabitRecord,
+    SNAPSHOT_RELATIVE_PATH,
+};
 pub use crate::habits::{HabitCellStatus, HabitSnapshotState, HabitSnapshotView};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -645,15 +648,16 @@ pub struct TodayView {
     pub evening: EveningView,
 }
 
-pub struct TodayApplication<P, E, C, S = FileTodayRecordStore> {
+pub struct TodayApplication<P, E, C, S = FileTodayRecordStore, H = FileHabitSnapshotStore> {
     persistence: P,
     exchange: E,
     clock: C,
     record_store: S,
+    habit_snapshot_store: H,
     habit_cache: Mutex<HashMap<PathBuf, HabitSnapshotView>>,
 }
 
-impl<P, E, C> TodayApplication<P, E, C, FileTodayRecordStore>
+impl<P, E, C> TodayApplication<P, E, C, FileTodayRecordStore, FileHabitSnapshotStore>
 where
     P: TodayWorkspacePersistence,
     E: TodayWorkspaceExchange,
@@ -665,12 +669,13 @@ where
             exchange,
             clock,
             record_store: FileTodayRecordStore,
+            habit_snapshot_store: FileHabitSnapshotStore,
             habit_cache: Mutex::new(HashMap::new()),
         }
     }
 }
 
-impl<P, E, C, S> TodayApplication<P, E, C, S>
+impl<P, E, C, S> TodayApplication<P, E, C, S, FileHabitSnapshotStore>
 where
     P: TodayWorkspacePersistence,
     E: TodayWorkspaceExchange,
@@ -683,6 +688,33 @@ where
             exchange,
             clock,
             record_store,
+            habit_snapshot_store: FileHabitSnapshotStore,
+            habit_cache: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+impl<P, E, C, S, H> TodayApplication<P, E, C, S, H>
+where
+    P: TodayWorkspacePersistence,
+    E: TodayWorkspaceExchange,
+    C: TodayClock,
+    S: TodayRecordStore,
+    H: HabitSnapshotStore,
+{
+    pub fn with_stores(
+        persistence: P,
+        exchange: E,
+        clock: C,
+        record_store: S,
+        habit_snapshot_store: H,
+    ) -> Self {
+        Self {
+            persistence,
+            exchange,
+            clock,
+            record_store,
+            habit_snapshot_store,
             habit_cache: Mutex::new(HashMap::new()),
         }
     }
@@ -692,15 +724,22 @@ where
             return Ok(HabitSnapshotView::unconfigured());
         };
         let path = vault.join(SNAPSHOT_RELATIVE_PATH);
-        let document = match fs::read(&path) {
-            Ok(document) => document,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Ok(HabitSnapshotView::missing())
+        let document = match self.habit_snapshot_store.load(&path) {
+            Ok(Some(document)) => document,
+            Ok(None) => {
+                if self.has_cached_habit_snapshot(&path)? {
+                    return self.retained_or_error(
+                        &path,
+                        "Habits 快照文件已不存在；可能正在等待下一次原子替换。".into(),
+                    );
+                }
+                return Ok(HabitSnapshotView::missing());
             }
             Err(error) => {
-                return Ok(HabitSnapshotView::error(format!(
-                    "无法读取 Habits 快照：{error}"
-                )))
+                if self.has_cached_habit_snapshot(&path)? {
+                    return self.retained_or_error(&path, error);
+                }
+                return Ok(HabitSnapshotView::error(error));
             }
         };
         let today = self.clock.current_date();
@@ -759,6 +798,14 @@ where
                 "Habits 快照无效；没有可保留的旧读数：{error}"
             )))
         }
+    }
+
+    fn has_cached_habit_snapshot(&self, path: &Path) -> Result<bool, String> {
+        Ok(self
+            .habit_cache
+            .lock()
+            .map_err(|_| "Habits 快照缓存不可用。".to_string())?
+            .contains_key(path))
     }
 
     pub fn open(&self) -> Result<TodayView, String> {
@@ -1510,15 +1557,15 @@ fn canonical_record_path(vault: &Path, date: &str) -> Result<PathBuf, String> {
         .join(format!("{date}.md")))
 }
 
-#[derive(Clone, Copy)]
-struct CalendarDate {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct CalendarDate {
     year: i32,
     month: u32,
     day: u32,
 }
 
 impl CalendarDate {
-    fn new(year: i32, month: u32, day: u32) -> Option<Self> {
+    pub(crate) fn new(year: i32, month: u32, day: u32) -> Option<Self> {
         if !(1..=9999).contains(&year) || !(1..=12).contains(&month) {
             return None;
         }
@@ -1533,7 +1580,7 @@ impl CalendarDate {
             .then_some(Self { year, month, day })
     }
 
-    fn parse(value: &str) -> Option<Self> {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
         let bytes = value.as_bytes();
         if bytes.len() != 10
             || bytes[4] != b'-'
@@ -1552,7 +1599,7 @@ impl CalendarDate {
         )
     }
 
-    fn unix_days(self) -> i64 {
+    pub(crate) fn unix_days(self) -> i64 {
         let mut year = i64::from(self.year);
         let month = i64::from(self.month);
         let day = i64::from(self.day);
@@ -1565,7 +1612,7 @@ impl CalendarDate {
         era * 146_097 + day_of_era - 719_468
     }
 
-    fn from_unix_days(unix_days: i64) -> Self {
+    pub(crate) fn from_unix_days(unix_days: i64) -> Self {
         let shifted_days = unix_days + 719_468;
         let era = shifted_days.div_euclid(146_097);
         let day_of_era = shifted_days - era * 146_097;
@@ -1584,8 +1631,16 @@ impl CalendarDate {
         }
     }
 
-    fn weekday_from_sunday(self) -> i64 {
+    pub(crate) fn weekday_from_sunday(self) -> i64 {
         (self.unix_days() + 4).rem_euclid(7)
+    }
+
+    pub(crate) fn monday(self) -> Self {
+        Self::from_unix_days(self.unix_days() - (self.unix_days() + 3).rem_euclid(7))
+    }
+
+    pub(crate) fn plus_days(self, days: i64) -> Self {
+        Self::from_unix_days(self.unix_days() + days)
     }
 }
 

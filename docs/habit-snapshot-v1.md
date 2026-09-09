@@ -10,7 +10,7 @@ The Dashboard is a reader. It does not call Dida365, poll any source, start an A
 
 ## Producer handoff
 
-1. Establish the local lived date for this run. The 12-week window starts on Monday eleven weeks before the current Monday. `range.to` is the latest date actually proved by the source read and cannot be in the future.
+1. Establish the local lived date for this generation run. The 12-week window starts on Monday eleven weeks before that generation date's Monday. `range.to` is the latest date actually proved by the source read, cannot be after `generatedAt`'s local date, and cannot be in the future.
 2. Build a complete candidate document from already-read source results. Preserve the stable catalog `key` when a display `name` changes. Never fuzzy-match similar names.
 3. Validate the entire candidate against this contract before it can replace the canonical file. A source failure, empty response, invalid date, unsupported schema, or partial candidate must leave the prior canonical file untouched.
 4. Write the candidate to a new temporary file in the same directory, flush the file, atomically rename it over `habits-v1.json`, then flush the parent directory. Do not truncate or update the canonical file in place.
@@ -26,7 +26,7 @@ The document is strict JSON. Unknown fields, missing required fields, duplicate 
 | --- | --- |
 | `schemaVersion` | Integer `1`. Other versions are rejected. |
 | `generatedAt` | `YYYY-MM-DDTHH:mm:ss±HH:mm`, including the offset in effect at generation. It cannot be later than the Dashboard's current local date. |
-| `range.from` | Monday eleven weeks before the current Monday. |
+| `range.from` | Monday eleven weeks before the Monday containing `generatedAt`. A reader crossing into a later week keeps the old valid document as stale and projects the current 12-week display window from it. |
 | `range.to` | Latest proved lived date, between `range.from` and the current local date. |
 | `producer.kind` | Non-empty producer class such as `agent-derived`. |
 | `producer.label` | Human-readable provenance displayed in the app. |

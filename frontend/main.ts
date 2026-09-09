@@ -149,6 +149,7 @@ type HabitView = Readonly<{
   active: boolean;
   goalKind: "weekly-count" | "daily-time";
   goalLabel: string;
+  weeklyTarget: number | null;
   completedCount: number | null;
   sourceLabels: readonly string[];
   coverageLabel: string;
@@ -492,31 +493,38 @@ const workspaceDestinationDetails: Record<
   Readonly<{
     title: string;
     description: string;
+    featureArea: string;
   }>
 > = {
   today: {
     title: "Today",
     description: "查看今天 Daily Record 里的大致安排。",
+    featureArea: "Daily Record",
   },
   calendar: {
     title: "Calendar",
     description: "先看整个月，再进入某一天。",
+    featureArea: "Calendar",
   },
   habits: {
     title: "Habits",
     description: "查看按需快照里的周次数、每日时刻与 12 周记录。",
+    featureArea: "Habits",
   },
   "this-week": {
     title: "This Week",
     description: "See this week's plan and record what happened.",
+    featureArea: "Exercise tracking",
   },
   history: {
     title: "History",
     description: "Review recorded workouts and decisions from earlier weeks.",
+    featureArea: "Exercise tracking",
   },
   settings: {
     title: "Profile & data",
     description: "Keep this device's profile, routine, reminders, and local files under your control.",
+    featureArea: "Exercise tracking",
   },
 };
 
@@ -2910,7 +2918,7 @@ function habitProgressLabel(habit: HabitView): string {
   if (habit.completedCount === null) {
     return habit.today.actualTimeLabel ?? "实际未知";
   }
-  const target = habit.goalLabel.match(/\d+/)?.[0] ?? "—";
+  const target = habit.weeklyTarget ?? "—";
   return `${habit.completedCount} / ${target}`;
 }
 
@@ -2921,13 +2929,17 @@ function habitCellButton(
 ): HTMLButtonElement {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = `habit-cell status-${cell.status}`;
+  button.className = `habit-cell status-${cell.status}${
+    cell.date === habit.today.date ? " is-today" : ""
+  }`;
   button.dataset.habitKey = habit.key;
   button.dataset.habitDate = cell.date;
   button.dataset.habitDetails = JSON.stringify(cell.details);
   button.setAttribute(
     "aria-label",
-    `${cell.date} · ${habit.name} · ${habitStatusLabels[cell.status]} · coverage ${cell.coverage}`,
+    `${cell.date} · ${habit.name} · ${habitStatusLabels[cell.status]} · coverage ${cell.coverage}${
+      cell.date === habit.today.date ? " · 今天锚点" : ""
+    }`,
   );
   button.title = `${cell.date} · ${habitStatusLabels[cell.status]}`;
   if (compact) {
@@ -3117,14 +3129,7 @@ async function refreshHabits(): Promise<void> {
 }
 
 function renderWorkspaceFeatureArea(destination: WorkspaceDestination): void {
-  const featureArea =
-    destination === "today"
-      ? "Daily Record"
-      : destination === "calendar"
-        ? "Calendar"
-        : destination === "habits"
-          ? "Habits"
-        : applicationFeatureArea;
+  const featureArea = workspaceDestinationDetails[destination].featureArea;
   document.querySelectorAll<HTMLElement>("[data-feature-area]").forEach((element) => {
     element.textContent = featureArea;
   });
@@ -3156,18 +3161,9 @@ function showWorkspaceDestination(
   workspaceDestinationButtons.forEach((button) => {
     const buttonDestination = button.dataset.workspaceDestination;
     const isCurrent = buttonDestination === destination;
-    const buttonLabel =
-      buttonDestination === "today"
-        ? "Today"
-        : buttonDestination === "calendar"
-          ? "Calendar"
-          : buttonDestination === "habits"
-            ? "Habits"
-        : buttonDestination === "this-week"
-          ? "This Week"
-          : buttonDestination === "history"
-            ? "History"
-            : "Settings";
+    const buttonLabel = isWorkspaceDestination(buttonDestination)
+      ? workspaceDestinationDetails[buttonDestination].title
+      : "Settings";
     button.toggleAttribute("aria-current", isCurrent);
     if (isCurrent) {
       button.setAttribute("aria-current", "page");
