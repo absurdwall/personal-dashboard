@@ -1060,6 +1060,7 @@ func assertSemanticContract(
             guard findText(application, "时间轴 + 记录") != nil,
                   findText(application, "现在怎么走") != nil,
                   findText(application, "已发生 / 已确认") != nil,
+                  findText(application, "当前安排 · 未按时间推断") != nil,
                   findText(application, "接下来计划") != nil,
                   findText(application, "当日简短记录") != nil,
                   findText(application, "安排变化") != nil,

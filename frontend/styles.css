@@ -2164,18 +2164,21 @@ body {
   text-transform: uppercase;
 }
 
-.today-known-update {
+.today-known-update,
+.today-direction-update {
   padding: 15px 0;
   border-bottom: 1px solid var(--parity-border);
 }
 
-.today-known-update h4 {
+.today-known-update h4,
+.today-direction-update h4 {
   margin: 0 0 7px;
   color: #232724;
   font-size: 12px;
 }
 
-.today-known-update ul {
+.today-known-update ul,
+.today-direction-update ul {
   margin: 0;
   padding-left: 18px;
   color: #4f5753;

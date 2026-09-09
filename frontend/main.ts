@@ -434,6 +434,9 @@ const todayPhasePanels = document.querySelectorAll<HTMLElement>("[data-today-pha
 const todayDaytimeCount = document.querySelector<HTMLElement>("#today-daytime-count");
 const todayDaytimeKnown = document.querySelector<HTMLElement>("#today-daytime-known");
 const todayDaytimeKnownEmpty = document.querySelector<HTMLElement>("#today-daytime-known-empty");
+const todayFutureDirections = document.querySelector<HTMLElement>("#today-future-directions");
+const todayFutureCount = document.querySelector<HTMLElement>("#today-future-count");
+const todayFutureEmpty = document.querySelector<HTMLElement>("#today-future-empty");
 const todayDaytimeShortRecords = document.querySelector<HTMLElement>(
   "#today-daytime-short-records",
 );
@@ -1821,6 +1824,23 @@ function daytimeKnownArticle(update: DaytimeUpdateView): HTMLElement {
   return article;
 }
 
+function daytimeDirectionArticle(update: DaytimeUpdateView): HTMLElement {
+  const article = document.createElement("article");
+  article.className = "today-direction-update";
+  const heading = document.createElement("h4");
+  heading.textContent = update.title;
+  const list = document.createElement("ul");
+  list.append(
+    ...update.revisedDirection.map((line) => {
+      const item = document.createElement("li");
+      item.textContent = line;
+      return item;
+    }),
+  );
+  article.append(heading, list);
+  return article;
+}
+
 function daytimeHasArrangementChange(update: DaytimeUpdateView): boolean {
   return (
     update.originalIntent.length > 0 ||
@@ -1962,18 +1982,36 @@ function renderToday(view: TodayView): void {
   const knownUpdates = view.daytime.updates.filter(
     (update) => update.observedFacts.length > 0,
   );
+  const directionUpdates = view.daytime.updates.filter(
+    (update) => update.revisedDirection.length > 0,
+  );
+  const directionCount = directionUpdates.reduce(
+    (total, update) => total + update.revisedDirection.length,
+    0,
+  );
   const arrangementChanges = view.daytime.updates.filter(daytimeHasArrangementChange);
   const shortRecords = view.daytime.updates.filter(
     (update) => !daytimeHasArrangementChange(update),
   );
   if (todayDaytimeCount) {
-    todayDaytimeCount.textContent = `${knownUpdates.length} 条已知 · ${view.timeline.length} 项计划`;
+    todayDaytimeCount.textContent = `${knownUpdates.length} 条已知 · ${directionCount} 项接下来`;
   }
   if (todayDaytimeKnown) {
     todayDaytimeKnown.replaceChildren(...knownUpdates.map(daytimeKnownArticle));
   }
   if (todayDaytimeKnownEmpty) {
     todayDaytimeKnownEmpty.hidden = knownUpdates.length > 0;
+  }
+  if (todayFutureDirections) {
+    todayFutureDirections.replaceChildren(
+      ...directionUpdates.map(daytimeDirectionArticle),
+    );
+  }
+  if (todayFutureCount) {
+    todayFutureCount.textContent = `${directionCount} 项`;
+  }
+  if (todayFutureEmpty) {
+    todayFutureEmpty.hidden = directionCount > 0;
   }
   if (todayDaytimeShortRecords) {
     todayDaytimeShortRecords.replaceChildren(...shortRecords.map(daytimeUpdateArticle));

@@ -1766,6 +1766,9 @@ EOF
   run_driver set-size "640x520" 10
   run_driver press "Daytime" 10
   run_driver wait-text "今天还没有明确记录的安排变化" 10
+  run_driver assert-text "当前安排 · 未按时间推断"
+  run_driver assert-text "尚未明确记录接下来方向"
+  run_driver assert-text "先处理已更新的紧急工作"
   run_driver assert-absent-text "这是外部更新后的受约束一天"
 
   current_step="checking old-record compatibility without inventing a baseline"
