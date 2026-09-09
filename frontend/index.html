@@ -102,7 +102,7 @@
               <div class="today-toolbar">
                 <div>
                   <p id="today-date" class="section-label">Today</p>
-                  <h2 id="today-heading" class="destination-heading">早间计划</h2>
+                  <h2 id="today-heading" class="destination-heading">早间基准</h2>
                 </div>
                 <div class="today-actions" aria-label="Today workspace actions">
                   <button id="select-today-vault" type="button" class="secondary-button">
@@ -125,7 +125,8 @@
                     aria-controls="today-phase-morning"
                     aria-selected="true"
                   >
-                    Morning
+                    <strong>Morning</strong>
+                    <small>早间基准</small>
                   </button>
                   <button
                     type="button"
@@ -134,7 +135,8 @@
                     aria-controls="today-phase-daytime"
                     aria-selected="false"
                   >
-                    Daytime
+                    <strong>Daytime</strong>
+                    <small>当日进展</small>
                   </button>
                   <button
                     type="button"
@@ -143,7 +145,8 @@
                     aria-controls="today-phase-evening"
                     aria-selected="false"
                   >
-                    Evening
+                    <strong>Evening</strong>
+                    <small>晚间复盘</small>
                   </button>
                 </nav>
 
@@ -158,19 +161,20 @@
                     >
                       <div class="today-region-heading">
                         <div>
-                          <p class="section-label">今日方向</p>
-                          <h3 id="today-timeline-heading">今天的大致安排</h3>
+                          <p class="section-label">Morning baseline · 早间起点</p>
+                          <h3 id="today-timeline-heading">早间基准安排</h3>
                         </div>
                         <span id="today-block-count" class="today-count"></span>
                       </div>
+                      <p id="today-baseline-status" class="today-baseline-status"></p>
                       <ol
-                        id="today-timeline"
+                        id="today-baseline-timeline"
                         class="today-timeline"
                         role="list"
                         aria-label="今天的早间计划时间线"
                       ></ol>
                       <p id="today-plan-empty" class="today-plan-empty" hidden>
-                        这份有效的 Daily Record 还没有早间计划。
+                        这份 Daily Record 尚未独立保存早间基准。
                       </p>
                     </section>
 
@@ -190,8 +194,35 @@
                         <span id="today-daytime-count" class="today-count"></span>
                       </div>
                       <p class="today-reading-introduction">
-                        这里只呈现有意义的事件和 material replan；未记录的活动保持 unknown。
+                        当前安排、明确记录和变化并排阅读；时间过去、第一次回复或没有回复都不会自动变成事实。
                       </p>
+                      <div class="today-daytime-layout">
+                        <section class="today-current-arrangement" aria-labelledby="today-current-arrangement-heading">
+                          <div class="today-current-heading">
+                            <div>
+                              <p class="section-label">Current arrangement · 当前安排</p>
+                              <h4 id="today-current-arrangement-heading">现在怎么走</h4>
+                            </div>
+                            <span id="today-current-count" class="today-count"></span>
+                          </div>
+                          <ol
+                            id="today-current-timeline"
+                            class="today-timeline"
+                            role="list"
+                            aria-label="今天的当前安排"
+                          ></ol>
+                          <p id="today-current-empty" class="today-plan-empty" hidden>
+                            这份 Daily Record 还没有当前安排。
+                          </p>
+                          <div class="today-now-marker" role="separator">
+                            <span>记录边界</span>
+                          </div>
+                          <div id="today-daytime-updates" class="today-daytime-updates"></div>
+                          <p id="today-daytime-empty" class="today-phase-empty" hidden>
+                            今天还没有需要留下的白天变化。这不表示计划失败，也不需要补记普通完成项。
+                          </p>
+                        </section>
+                        <aside class="today-update-rail" aria-label="Daytime update rail">
                       <form id="today-daytime-form" class="today-bounded-form">
                         <div class="today-form-row">
                           <label>
@@ -224,13 +255,14 @@
                         </label>
                         <div class="today-form-actions">
                           <button id="save-daytime-update" type="submit">保存白天更新</button>
-                          <p>Dida365 仍管理 Tasks/Habits；需要重排今天时，交给 Codex。</p>
+                          <p>这里只记录明确输入；不会据此推断完成情况或自动重写计划。</p>
                         </div>
                       </form>
-                      <div id="today-daytime-updates" class="today-daytime-updates"></div>
-                      <p id="today-daytime-empty" class="today-phase-empty" hidden>
-                        今天还没有需要留下的白天变化。这不表示计划失败，也不需要补记普通完成项。
-                      </p>
+                          <p class="today-update-boundary">
+                            重排由外部 Agent 明确更新“当前安排”；这里的记录不会覆盖早间基准，也不会自动写回 Dida365。
+                          </p>
+                        </aside>
+                      </div>
                     </section>
 
                     <section
@@ -308,13 +340,13 @@
                       aria-expanded="false"
                       aria-controls="today-evidence-content"
                     >
-                      <span id="today-evidence-heading">计划依据</span>
+                      <span id="today-evidence-heading">初始计划依据</span>
                       <span id="today-evidence-count" class="today-count"></span>
                     </button>
                     <div id="today-evidence-content" hidden>
                       <div id="today-evidence-groups" class="today-evidence-groups"></div>
                       <p id="today-evidence-empty" class="today-evidence-empty" hidden>
-                        尚未记录计划依据。
+                        尚未记录初始计划依据。
                       </p>
                     </div>
                   </aside>

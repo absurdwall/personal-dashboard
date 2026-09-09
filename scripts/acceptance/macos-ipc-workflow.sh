@@ -1499,11 +1499,29 @@ notes: |
 ---
 # 2026-08-10
 
+## 早间基准
+
+### 初始安排
+
+- **上午：** 完成原定项目；学习是否完成保持未知。
+- **下午：** 推进 apartment-renewal。
+- **晚上：** 取饭并保留运动选项。
+
+### 初始计划依据
+
+#### 固定安排
+
+- 10:00 check-in
+
+#### Tasks / Habits
+
+- Insurance reimbursement
+- Exercise
+
 ## 今天的大致安排
 
-- **上午：** 准备 10:00 check-in；之后完成 reimbursement。
-- **下午：** 留一块连续时间推进主要工作。
-- **晚上：** 散步并收尾。
+- **下午：** 先处理需要 17:00 前完成的紧急工作。
+- **晚上：** 17:30 取饭；之后保护恢复空间。
 
 ## 计划依据
 
@@ -1566,24 +1584,25 @@ EOF
   if [[ "$acceptance_scenario" == "installed-cycle" ]]; then
     current_step="refreshing from malformed identity to the repaired canonical record"
     run_driver press "刷新" 10
-    run_driver wait-text "准备 10:00 check-in" 20
+    run_driver wait-text "完成原定项目" 20
   else
     current_step="launching Today packaged scenario"
-    launch_app
+    launch_app_waiting_for_text "Log workout now" 30
 
     current_step="opening the preselected canonical Daily Record"
-    run_driver wait-text "Log workout now" 30
     run_driver press "Today" 10
-    run_driver wait-text "准备 10:00 check-in" 20
+    run_driver wait-text "完成原定项目" 20
   fi
   run_driver set-size "960x720" 10
 
   current_step="checking presentation hierarchy and compact evidence"
   run_driver assert-semantic "today"
-  run_driver assert-text "今天的大致安排"
+  run_driver assert-text "早间基准安排"
   run_driver assert-text "3 个时间块"
+  run_driver assert-text "完成原定项目"
+  run_driver assert-absent-text "先处理需要 17:00 前完成的紧急工作"
   run_driver assert-absent-text "ticktick://task/123"
-  run_driver press "计划依据" 10
+  run_driver press "初始计划依据" 10
   run_driver assert-text "Insurance reimbursement"
 
   current_step="navigating the read-only Daytime and Evening projections"
@@ -1591,6 +1610,9 @@ EOF
   run_driver press "Daytime" 10
   run_driver assert-semantic "today-daytime"
   run_driver assert-state "Daytime|selected" 10
+  run_driver assert-text "现在怎么走"
+  run_driver assert-text "先处理需要 17:00 前完成的紧急工作"
+  run_driver assert-absent-text "完成原定项目"
   run_driver assert-text "14:10 — 重大调整"
   run_driver assert-text "背景"
   run_driver assert-text "突然出现紧急工作"
@@ -1598,7 +1620,6 @@ EOF
   run_driver assert-text "记录内容"
   run_driver assert-text "中午已经休息了一会儿"
   run_driver assert-text "紧急工作已经完成"
-  run_driver assert-text "Insurance reimbursement"
 
   current_step="refusing a stale Daytime write after an external editor save"
   printf '\n<!-- external conflict marker -->\n' >> "$record_file"
@@ -1621,7 +1642,7 @@ EOF
   grep -Fq "确认下午继续推进主要工作" "$record_file" ||
     fail "daytime IPC save did not update the canonical Markdown"
 
-  if [[ "$acceptance_scenario" == "today-write" || "$acceptance_scenario" == "installed-cycle" ]]; then
+  if [[ "$acceptance_scenario" == "today" || "$acceptance_scenario" == "today-write" || "$acceptance_scenario" == "installed-cycle" ]]; then
     current_step="relaunching before the independent evening write flow"
     if ! stop_app; then
       fail "app process did not exit after the daytime Today write"
@@ -1629,11 +1650,12 @@ EOF
     sleep 1
     launch_app_waiting_for_text "Log workout now" 30
     run_driver press "Today" 10
-    run_driver wait-text "准备 10:00 check-in" 20
+    run_driver wait-text "完成原定项目" 20
   fi
 
   current_step="opening the refreshed Evening phase"
   run_driver press "Evening" 10
+  run_driver assert-state "Evening|selected" 10
   run_driver wait-text "Agent 整理的今日记录" 10
   run_driver assert-semantic "today-evening"
   run_driver assert-state "Evening|selected" 10
@@ -1683,32 +1705,32 @@ EOF
 
   current_step="refreshing all phase projections after an external update"
   /usr/bin/perl -0pi -e \
-    's/准备 10:00 check-in/准备已更新的 10:00 check-in/; s/紧急工作已经完成/紧急工作更新后已经完成/; s/这是受约束的一天/这是外部更新后的受约束一天/' \
+    's/先处理需要 17:00 前完成的紧急工作/先处理已更新的紧急工作/; s/紧急工作已经完成/紧急工作更新后已经完成/; s/这是受约束的一天/这是外部更新后的受约束一天/' \
     "$record_file"
   run_driver press "刷新" 10
   run_driver wait-text "这是外部更新后的受约束一天" 10
   run_driver press "Daytime" 10
   run_driver wait-text "紧急工作更新后已经完成" 10
+  run_driver assert-text "先处理已更新的紧急工作"
   run_driver press "Morning" 10
-  run_driver wait-text "准备已更新的 10:00 check-in" 10
+  run_driver wait-text "完成原定项目" 10
+  run_driver assert-absent-text "先处理已更新的紧急工作"
 
   current_step="checking intermediate and compact Today layouts"
   run_driver set-size "800x640" 10
   run_driver assert-size "800x640" 10
   run_driver press "Daytime" 10
   run_driver assert-semantic "today-daytime"
-  if [[ "$acceptance_scenario" == "installed-cycle" ]]; then
-    current_step="relaunching for the independent compact Evening projection"
-    if ! stop_app; then
-      fail "app process did not exit before the compact Evening projection"
-    fi
-    sleep 1
-    launch_app_waiting_for_text "Log workout now" 30
-    run_driver set-size "960x720" 10
-    run_driver press "Today" 10
-    run_driver set-size "640x520" 10
-    run_driver wait-text "准备已更新的 10:00 check-in" 20
+  current_step="relaunching for the independent compact Evening projection"
+  if ! stop_app; then
+    fail "app process did not exit before the compact Evening projection"
   fi
+  sleep 1
+  launch_app_waiting_for_text "Log workout now" 30
+  run_driver set-size "960x720" 10
+  run_driver press "Today" 10
+  run_driver set-size "640x520" 10
+  run_driver wait-text "完成原定项目" 20
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
   run_driver press "Evening" 10
@@ -1718,33 +1740,41 @@ EOF
 
   current_step="checking quiet partial-record phase states"
   /usr/bin/perl -0pi -e 's/## 白天更新.*\z/## 白天更新\n\n## 晚间复盘\n/s' "$record_file"
-  if [[ "$acceptance_scenario" == "installed-cycle" ]]; then
-    if ! stop_app; then
-      fail "app process did not exit before the partial Evening projection"
-    fi
-    sleep 1
-    launch_app_waiting_for_text "Log workout now" 30
-    run_driver set-size "960x720" 10
-    run_driver press "Today" 10
-    run_driver set-size "640x520" 10
-    run_driver press "Evening" 10
-  else
-    run_driver press "刷新" 10
+  if ! stop_app; then
+    fail "app process did not exit before the partial Evening projection"
   fi
+  sleep 1
+  launch_app_waiting_for_text "Log workout now" 30
+  run_driver set-size "960x720" 10
+  run_driver press "Today" 10
+  run_driver set-size "640x520" 10
+  run_driver press "Evening" 10
   run_driver wait-text "Agent 还没有准备晚间复盘" 10
-  if [[ "$acceptance_scenario" == "installed-cycle" ]]; then
-    if ! stop_app; then
-      fail "app process did not exit before the partial Daytime projection"
-    fi
-    sleep 1
-    launch_app_waiting_for_text "Log workout now" 30
-    run_driver set-size "960x720" 10
-    run_driver press "Today" 10
-    run_driver set-size "640x520" 10
+  if ! stop_app; then
+    fail "app process did not exit before the partial Daytime projection"
   fi
+  sleep 1
+  launch_app_waiting_for_text "Log workout now" 30
+  run_driver set-size "960x720" 10
+  run_driver press "Today" 10
+  run_driver set-size "640x520" 10
   run_driver press "Daytime" 10
   run_driver wait-text "今天还没有需要留下的白天变化" 10
   run_driver assert-absent-text "这是外部更新后的受约束一天"
+
+  current_step="checking old-record compatibility without inventing a baseline"
+  /usr/bin/perl -0pi -e 's/## 早间基准.*?(?=## 今天的大致安排)//s' "$record_file"
+  if ! stop_app; then
+    fail "app process did not exit before the old-record compatibility projection"
+  fi
+  sleep 1
+  launch_app_waiting_for_text "Log workout now" 30
+  run_driver set-size "960x720" 10
+  run_driver press "Today" 10
+  run_driver wait-text "未独立保存早间基准" 10
+  run_driver assert-absent-text "完成原定项目"
+  run_driver press "Daytime" 10
+  run_driver wait-text "先处理已更新的紧急工作" 10
 
   current_step="checking the existing exercise destination remains reachable"
   if [[ "$acceptance_scenario" == "installed-cycle" ]]; then

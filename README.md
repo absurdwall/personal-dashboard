@@ -108,6 +108,12 @@ made through a retained descriptor; that is intentional. The guarantee relies
 on macOS same-volume atomic exchange and hard links, and does not claim tested
 power-loss durability within the exchange/link interval.
 
+The compatible 2.0 representation for an independently retained morning
+baseline, the still-current arrangement, explicit writer transitions, and old
+record behavior is documented in
+[`docs/daily-record-baseline.md`](docs/daily-record-baseline.md). Reader support
+does not by itself activate or prove the future production writer.
+
 ## Complete profile backup and restore
 
 The packaged app keeps the profile label and exercise state as versioned,

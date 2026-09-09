@@ -1,7 +1,7 @@
 use personal_dashboard_lib::today::{
-    DaytimeUpdateInput, DaytimeUpdateKind, EveningUpdateInput, EveningUpdateMode,
-    FileTodayRecordStore, TodayApplication, TodayClock, TodayRecordStore, TodayState,
-    TodayWorkspaceExchange, TodayWorkspacePersistence,
+    BaselineAvailability, DaytimeUpdateInput, DaytimeUpdateKind, EveningUpdateInput,
+    EveningUpdateMode, FileTodayRecordStore, TodayApplication, TodayClock, TodayRecordStore,
+    TodayState, TodayWorkspaceExchange, TodayWorkspacePersistence,
 };
 use std::cell::RefCell;
 use std::fs;
@@ -88,6 +88,311 @@ fn write_record(vault: &Path, document: &str) {
 
 fn application_for(vault: &Path) -> TodayApplication<SelectedVault, NoSelection, FixedClock> {
     TodayApplication::new(SelectedVault(vault.to_path_buf()), NoSelection, FixedClock)
+}
+
+#[test]
+fn new_record_exposes_an_independent_morning_baseline_and_current_plan() {
+    let vault = TempDirectory::new("today-independent-baseline");
+    write_record(
+        vault.path(),
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 早间基准
+
+### 初始安排
+
+- **上午：** 先完成原定项目。
+- **下午：** 留出安静工作块。
+
+### 初始计划依据
+
+#### 固定安排
+
+- 10:00 check-in
+
+## 今天的大致安排
+
+- **下午：** 先处理紧急工作。
+- **晚上：** 保护恢复空间。
+
+## 计划依据
+
+### 当前约束
+
+- 紧急工作需要 17:00 前完成
+
+## 白天更新
+
+### 14:10 — 重大调整
+
+- 原计划意图：下午推进原定项目。
+- 修订方向：先处理紧急工作。
+
+## 晚间复盘
+"#,
+    );
+
+    let view = application_for(vault.path())
+        .open()
+        .expect("new-format record should open");
+
+    assert_eq!(view.baseline.availability, BaselineAvailability::Saved);
+    assert_eq!(view.baseline.timeline[0].title, "先完成原定项目。");
+    assert_eq!(view.baseline.evidence[0].label, "固定安排");
+    assert_eq!(view.timeline[0].title, "先处理紧急工作。");
+    assert_eq!(view.evidence[0].label, "当前约束");
+}
+
+#[test]
+fn old_record_keeps_its_current_plan_without_inventing_a_baseline() {
+    let vault = TempDirectory::new("today-old-record-no-baseline");
+    write_record(
+        vault.path(),
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 今天的大致安排
+
+- **下午：** 这是旧记录仍然可读的主计划。
+
+## 计划依据
+
+### Tasks（任务）
+
+- 旧记录里的任务
+
+## 白天更新
+
+## 晚间复盘
+"#,
+    );
+
+    let view = application_for(vault.path())
+        .open()
+        .expect("old four-section record should open");
+
+    assert_eq!(view.state, TodayState::Ready);
+    assert_eq!(view.baseline.availability, BaselineAvailability::Missing);
+    assert!(view.baseline.timeline.is_empty());
+    assert!(view.baseline.evidence.is_empty());
+    assert!(view.baseline.message.contains("未独立保存早间基准"));
+    assert_eq!(view.timeline[0].title, "这是旧记录仍然可读的主计划。");
+    assert_eq!(view.evidence[0].items, vec!["旧记录里的任务"]);
+}
+
+#[test]
+fn blank_baseline_is_distinct_from_missing_and_saved_baselines() {
+    let vault = TempDirectory::new("today-blank-baseline");
+    write_record(
+        vault.path(),
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 早间基准
+
+### 初始安排
+
+### 初始计划依据
+
+## 今天的大致安排
+
+- **下午：** 当前安排仍然可读。
+"#,
+    );
+
+    let view = application_for(vault.path())
+        .open()
+        .expect("blank baseline should remain readable");
+
+    assert_eq!(view.baseline.availability, BaselineAvailability::Empty);
+    assert!(view.baseline.timeline.is_empty());
+    assert!(view.baseline.evidence.is_empty());
+    assert_eq!(view.timeline[0].title, "当前安排仍然可读。");
+}
+
+#[test]
+fn synthetic_day_contexts_only_project_explicit_baseline_current_and_fact_content() {
+    struct Example {
+        label: &'static str,
+        baseline: &'static str,
+        current: &'static str,
+        daytime: &'static str,
+        expected_baseline: &'static str,
+        expected_current: &'static str,
+        expected_fact_count: usize,
+        expected_direction_count: usize,
+    }
+
+    let examples = [
+        Example {
+            label: "planning-after-waking-early",
+            baseline: "- **上午：** 07:00 起床后确认先做重要工作。",
+            current: "- **上午：** 07:00 起床后确认先做重要工作。",
+            daytime: "",
+            expected_baseline: "07:00 起床后确认先做重要工作。",
+            expected_current: "07:00 起床后确认先做重要工作。",
+            expected_fact_count: 0,
+            expected_direction_count: 0,
+        },
+        Example {
+            label: "planning-after-waking-late",
+            baseline: "- **上午：** 11:00 起床后从早餐开始。",
+            current: "- **上午：** 11:00 起床后从早餐开始。",
+            daytime: "### 11:00 — 有意义的事件\n\n- 观察事实：11:00 起床。",
+            expected_baseline: "11:00 起床后从早餐开始。",
+            expected_current: "11:00 起床后从早餐开始。",
+            expected_fact_count: 1,
+            expected_direction_count: 0,
+        },
+        Example {
+            label: "first-reply-after-working-all-morning",
+            baseline: "- **上午：** 自动安排的学习块。",
+            current: "- **下午：** 接下来先处理紧急工作。",
+            daytime: "### 11:00 — 有意义的事件\n\n- 观察事实：上午已完成明确报告的工作。\n- 修订方向：下午先处理紧急工作。",
+            expected_baseline: "自动安排的学习块。",
+            expected_current: "接下来先处理紧急工作。",
+            expected_fact_count: 1,
+            expected_direction_count: 1,
+        },
+        Example {
+            label: "event-only",
+            baseline: "- **下午：** 保留原来的下午安排。",
+            current: "- **下午：** 保留原来的下午安排。",
+            daytime: "### 14:10 — 有意义的事件\n\n- 观察事实：收到一个包裹。",
+            expected_baseline: "保留原来的下午安排。",
+            expected_current: "保留原来的下午安排。",
+            expected_fact_count: 1,
+            expected_direction_count: 0,
+        },
+        Example {
+            label: "pure-replan",
+            baseline: "- **下午：** 推进原定项目。",
+            current: "- **下午：** 改为阅读，不需要说明原因。",
+            daytime: "### 14:10 — 重大调整\n\n下午想换个方向。\n\n- 原计划意图：推进原定项目。\n- 修订方向：改为阅读。",
+            expected_baseline: "推进原定项目。",
+            expected_current: "改为阅读，不需要说明原因。",
+            expected_fact_count: 0,
+            expected_direction_count: 1,
+        },
+    ];
+
+    for example in examples {
+        let vault = TempDirectory::new(example.label);
+        let document = format!(
+            "---\ntype: daily-record\ndate: 2026-08-10\n---\n# 2026-08-10\n\n## 早间基准\n\n### 初始安排\n\n{}\n\n### 初始计划依据\n\n## 今天的大致安排\n\n{}\n\n## 计划依据\n\n## 白天更新\n\n{}\n\n## 晚间复盘\n",
+            example.baseline, example.current, example.daytime
+        );
+        write_record(vault.path(), &document);
+
+        let view = application_for(vault.path())
+            .open()
+            .unwrap_or_else(|error| panic!("{} should open: {error}", example.label));
+
+        assert_eq!(
+            view.baseline.timeline[0].title, example.expected_baseline,
+            "{} baseline",
+            example.label
+        );
+        assert_eq!(
+            view.timeline[0].title, example.expected_current,
+            "{} current arrangement",
+            example.label
+        );
+        let fact_count = view
+            .daytime
+            .updates
+            .iter()
+            .map(|update| update.observed_facts.len())
+            .sum::<usize>();
+        let direction_count = view
+            .daytime
+            .updates
+            .iter()
+            .map(|update| update.revised_direction.len())
+            .sum::<usize>();
+        assert_eq!(
+            fact_count, example.expected_fact_count,
+            "{} facts",
+            example.label
+        );
+        assert_eq!(
+            direction_count, example.expected_direction_count,
+            "{} directions",
+            example.label
+        );
+    }
+}
+
+#[test]
+fn bounded_daytime_write_preserves_the_independent_baseline_bytes() {
+    let vault = TempDirectory::new("today-baseline-write-preservation");
+    let original = r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 早间基准
+
+### 初始安排
+
+- **上午：** 原始起点必须保留。
+
+### 初始计划依据
+
+#### 固定安排
+
+- 10:00 check-in
+
+## 今天的大致安排
+
+- **下午：** 当前安排。
+
+## 白天更新
+
+## 晚间复盘
+"#;
+    write_record(vault.path(), original);
+    let app = application_for(vault.path());
+    let opened = app.open().expect("record should open");
+
+    app.append_daytime_update(DaytimeUpdateInput {
+        expected_revision: opened.revision.expect("revision should exist"),
+        kind: DaytimeUpdateKind::MaterialChange,
+        content: "下午改为阅读。".into(),
+        habit_name: None,
+        habit_outcome: None,
+    })
+    .expect("bounded update should save");
+
+    let saved = fs::read_to_string(
+        vault
+            .path()
+            .join("life/Journal/Daily/2026/2026-08/2026-08-10.md"),
+    )
+    .expect("record should remain readable");
+    let original_baseline = original
+        .split_once("## 早间基准")
+        .and_then(|(_, rest)| rest.split_once("## 今天的大致安排"))
+        .map(|(baseline, _)| baseline)
+        .expect("fixture should contain a baseline");
+    let saved_baseline = saved
+        .split_once("## 早间基准")
+        .and_then(|(_, rest)| rest.split_once("## 今天的大致安排"))
+        .map(|(baseline, _)| baseline)
+        .expect("saved record should contain a baseline");
+    assert_eq!(saved_baseline, original_baseline);
+    assert!(saved.contains("调整后方向：下午改为阅读。"));
 }
 
 #[test]

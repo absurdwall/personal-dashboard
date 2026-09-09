@@ -1052,12 +1052,13 @@ func assertSemanticContract(
             throw DriverError.timeout("semantic Today refresh control")
         }
         if mode == "today" {
-            guard findText(application, "今天的大致安排") != nil,
-                  findPressable(application, "计划依据", contains: true) != nil else {
-                throw DriverError.timeout("semantic Today morning plan")
+            guard findText(application, "早间基准安排") != nil,
+                  findPressable(application, "初始计划依据", contains: true) != nil else {
+                throw DriverError.timeout("semantic Today morning baseline")
             }
         } else if mode == "today-daytime" {
             guard findText(application, "变化与新的方向") != nil,
+                  findText(application, "现在怎么走") != nil,
                   findPressable(application, "完成", contains: true) == nil,
                   findPressable(application, "Habit", contains: true) == nil else {
                 throw DriverError.timeout("semantic Today daytime reading surface")

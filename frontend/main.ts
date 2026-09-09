@@ -17,6 +17,13 @@ type PlanningEvidenceView = Readonly<{
   items: readonly string[];
 }>;
 
+type MorningBaselineView = Readonly<{
+  availability: "missing" | "empty" | "saved";
+  message: string;
+  timeline: readonly MorningBlockView[];
+  evidence: readonly PlanningEvidenceView[];
+}>;
+
 type DaytimeUpdateView = Readonly<{
   title: string;
   context: readonly string[];
@@ -52,6 +59,7 @@ type TodayView = Readonly<{
   vaultName: string | null;
   message: string;
   revision: string | null;
+  baseline: MorningBaselineView;
   timeline: readonly MorningBlockView[];
   evidence: readonly PlanningEvidenceView[];
   daytime: DaytimeView;
@@ -414,9 +422,13 @@ const todayHeading = document.querySelector<HTMLElement>("#today-heading");
 const todayVault = document.querySelector<HTMLElement>("#today-vault");
 const todayStatus = document.querySelector<HTMLElement>("#today-status");
 const todayReady = document.querySelector<HTMLElement>("#today-ready");
-const todayTimeline = document.querySelector<HTMLOListElement>("#today-timeline");
+const todayBaselineStatus = document.querySelector<HTMLElement>("#today-baseline-status");
+const todayTimeline = document.querySelector<HTMLOListElement>("#today-baseline-timeline");
 const todayBlockCount = document.querySelector<HTMLElement>("#today-block-count");
 const todayPlanEmpty = document.querySelector<HTMLElement>("#today-plan-empty");
+const todayCurrentTimeline = document.querySelector<HTMLOListElement>("#today-current-timeline");
+const todayCurrentCount = document.querySelector<HTMLElement>("#today-current-count");
+const todayCurrentEmpty = document.querySelector<HTMLElement>("#today-current-empty");
 const todayPhaseButtons = document.querySelectorAll<HTMLButtonElement>("[data-today-phase]");
 const todayPhasePanels = document.querySelectorAll<HTMLElement>("[data-today-phase-panel]");
 const todayDaytimeCount = document.querySelector<HTMLElement>("#today-daytime-count");
@@ -467,6 +479,8 @@ const todayEveningCorrections = document.querySelector<HTMLElement>(
 );
 const todayEveningOther = document.querySelector<HTMLElement>("#today-evening-other");
 const todayEvidenceToggle = document.querySelector<HTMLButtonElement>("#today-evidence-toggle");
+const todayEvidenceRegion = document.querySelector<HTMLElement>(".today-evidence-region");
+const todayEvidenceHeading = document.querySelector<HTMLElement>("#today-evidence-heading");
 const todayEvidenceContent = document.querySelector<HTMLElement>("#today-evidence-content");
 const todayEvidenceCount = document.querySelector<HTMLElement>("#today-evidence-count");
 const todayEvidenceGroups = document.querySelector<HTMLElement>("#today-evidence-groups");
@@ -1831,9 +1845,12 @@ function renderReadingList(
 function showTodayPhase(phase: TodayPhase, focus = false): void {
   const phaseChanged = currentTodayPhase !== phase;
   currentTodayPhase = phase;
+  if (todayReady) {
+    todayReady.dataset.phase = phase;
+  }
   const labels: Record<TodayPhase, string> = {
-    morning: "早间计划",
-    daytime: "白天更新",
+    morning: "早间基准",
+    daytime: "当日进展",
     evening: "晚间复盘",
   };
   if (todayHeading) {
@@ -1850,6 +1867,10 @@ function showTodayPhase(phase: TodayPhase, focus = false): void {
   todayPhasePanels.forEach((panel) => {
     panel.hidden = panel.dataset.todayPhasePanel !== phase;
   });
+  if (todayEvidenceRegion) {
+    todayEvidenceRegion.hidden = phase !== "morning";
+  }
+  renderTodayEvidence(phase);
   if (phaseChanged && workspaceInformation) {
     workspaceInformation.scrollTop = 0;
   }
@@ -1878,13 +1899,30 @@ function renderToday(view: TodayView): void {
     todayHandoff.hidden = ready;
   }
   if (todayTimeline) {
-    todayTimeline.replaceChildren(...view.timeline.map(todayTimelineItem));
+    todayTimeline.replaceChildren(...view.baseline.timeline.map(todayTimelineItem));
   }
   if (todayBlockCount) {
-    todayBlockCount.textContent = `${view.timeline.length} 个时间块`;
+    todayBlockCount.textContent = `${view.baseline.timeline.length} 个时间块`;
+  }
+  if (todayBaselineStatus) {
+    todayBaselineStatus.textContent = view.baseline.message;
+    todayBaselineStatus.dataset.availability = view.baseline.availability;
   }
   if (todayPlanEmpty) {
-    todayPlanEmpty.hidden = view.timeline.length > 0;
+    todayPlanEmpty.hidden = view.baseline.timeline.length > 0;
+    todayPlanEmpty.textContent =
+      view.baseline.availability === "missing"
+        ? "这份 Daily Record 未独立保存早间基准；不会用当前安排补造起点。"
+        : "早间基准已建立，但初始安排仍为空。";
+  }
+  if (todayCurrentTimeline) {
+    todayCurrentTimeline.replaceChildren(...view.timeline.map(todayTimelineItem));
+  }
+  if (todayCurrentCount) {
+    todayCurrentCount.textContent = `${view.timeline.length} 个时间块`;
+  }
+  if (todayCurrentEmpty) {
+    todayCurrentEmpty.hidden = view.timeline.length > 0;
   }
 
   if (todayDaytimeCount) {
@@ -1958,19 +1996,6 @@ function renderToday(view: TodayView): void {
     todayEveningEmpty.hidden = eveningHasContent;
   }
 
-  const evidenceItemCount = view.evidence.reduce(
-    (total, group) => total + group.items.length,
-    0,
-  );
-  if (todayEvidenceCount) {
-    todayEvidenceCount.textContent = `${evidenceItemCount} 项`;
-  }
-  if (todayEvidenceGroups) {
-    todayEvidenceGroups.replaceChildren(...view.evidence.map(todayEvidenceGroup));
-  }
-  if (todayEvidenceEmpty) {
-    todayEvidenceEmpty.hidden = evidenceItemCount > 0;
-  }
   if (!ready) {
     todayEvidenceToggle?.setAttribute("aria-expanded", "false");
     if (todayEvidenceContent) {
@@ -1993,6 +2018,33 @@ function renderToday(view: TodayView): void {
     }
   }
   showTodayPhase(currentTodayPhase);
+}
+
+function renderTodayEvidence(phase: TodayPhase): void {
+  const view = currentTodayView;
+  if (!view) {
+    return;
+  }
+  const evidence = phase === "morning" ? view.baseline.evidence : view.evidence;
+  const evidenceItemCount = evidence.reduce(
+    (total, group) => total + group.items.length,
+    0,
+  );
+  if (todayEvidenceHeading) {
+    todayEvidenceHeading.textContent =
+      phase === "morning" ? "初始计划依据" : "当前计划依据";
+  }
+  if (todayEvidenceCount) {
+    todayEvidenceCount.textContent = `${evidenceItemCount} 项`;
+  }
+  if (todayEvidenceGroups) {
+    todayEvidenceGroups.replaceChildren(...evidence.map(todayEvidenceGroup));
+  }
+  if (todayEvidenceEmpty) {
+    todayEvidenceEmpty.hidden = evidenceItemCount > 0;
+    todayEvidenceEmpty.textContent =
+      phase === "morning" ? "尚未记录初始计划依据。" : "尚未记录当前计划依据。";
+  }
 }
 
 function showTodayMutationStatus(message: string, state: "ready" | "error"): void {
@@ -3216,7 +3268,6 @@ todayDaytimeForm?.addEventListener("submit", (event) => {
       todayDaytimeContent.value = "";
       if (todayHabitName) todayHabitName.value = "";
       if (todayHabitOutcome) todayHabitOutcome.value = "";
-      showTodayPhase("daytime");
     }
   })();
 });
@@ -3234,7 +3285,6 @@ todayEveningForm?.addEventListener("submit", (event) => {
     );
     if (saved) {
       todayEveningContent.value = "";
-      showTodayPhase("evening");
     }
   })();
 });

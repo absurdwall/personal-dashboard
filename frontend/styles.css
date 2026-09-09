@@ -2026,6 +2026,8 @@ body {
 }
 
 .today-phase-navigation button {
+  display: grid;
+  gap: 2px;
   min-height: 39px;
   margin-bottom: -1px;
   padding: 0 1px;
@@ -2035,6 +2037,17 @@ body {
   background: transparent;
   color: var(--parity-muted);
   font-size: 11px;
+  text-align: left;
+}
+
+.today-phase-navigation strong {
+  font-size: 11px;
+}
+
+.today-phase-navigation small {
+  color: var(--parity-muted);
+  font-size: 9px;
+  font-weight: 500;
 }
 
 .today-phase-navigation button[aria-selected="true"] {
@@ -2047,6 +2060,11 @@ body {
   grid-template-columns: minmax(0, 1.85fr) minmax(220px, 0.75fr);
   align-items: start;
   gap: 30px;
+}
+
+#today-ready[data-phase="daytime"] .today-layout,
+#today-ready[data-phase="evening"] .today-layout {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .today-timeline-region {
@@ -2072,6 +2090,84 @@ body {
   color: var(--parity-muted);
   font-size: 10px;
   font-weight: 700;
+}
+
+.today-baseline-status {
+  margin: 13px 0 0;
+  color: var(--parity-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.today-baseline-status[data-availability="missing"] {
+  color: #8a6131;
+}
+
+.today-daytime-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(220px, 0.8fr);
+  align-items: start;
+  gap: 28px;
+  margin-top: 18px;
+}
+
+.today-current-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.today-current-heading .section-label {
+  margin-bottom: 5px;
+  color: var(--parity-muted);
+  font-size: 9px;
+  letter-spacing: 0.09em;
+}
+
+.today-current-heading h4 {
+  margin: 0;
+  color: #232724;
+  font-size: 15px;
+  letter-spacing: -0.02em;
+}
+
+.today-now-marker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 4px;
+  color: var(--parity-accent-strong);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.today-now-marker::after {
+  height: 1px;
+  flex: 1;
+  background: var(--parity-accent);
+  content: "";
+}
+
+.today-update-rail {
+  min-width: 0;
+  padding-left: 16px;
+  border-left: 1px solid var(--parity-border);
+}
+
+.today-update-rail .today-bounded-form {
+  margin-top: 0;
+}
+
+.today-update-boundary {
+  margin: 12px 0 0;
+  color: var(--parity-muted);
+  font-size: 10px;
+  line-height: 1.55;
 }
 
 .today-timeline {
@@ -2344,6 +2440,17 @@ body {
   .today-layout {
     grid-template-columns: 1fr;
     gap: 24px;
+  }
+
+  .today-daytime-layout {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .today-update-rail {
+    padding: 18px 0 0;
+    border-top: 1px solid var(--parity-border);
+    border-left: 0;
   }
 
   .today-timeline-item {

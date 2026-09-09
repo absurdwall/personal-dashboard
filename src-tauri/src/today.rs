@@ -5,7 +5,13 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const DAILY_RECORD_TYPE: &str = "daily-record";
-const CANONICAL_SECTIONS: [&str; 4] = ["今天的大致安排", "计划依据", "白天更新", "晚间复盘"];
+const CANONICAL_SECTIONS: [&str; 5] = [
+    "早间基准",
+    "今天的大致安排",
+    "计划依据",
+    "白天更新",
+    "晚间复盘",
+];
 
 pub trait TodayWorkspacePersistence {
     fn load_selected_vault(&self) -> Result<Option<PathBuf>, String>;
@@ -392,6 +398,34 @@ pub struct PlanningEvidenceView {
     pub items: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BaselineAvailability {
+    Missing,
+    Empty,
+    Saved,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MorningBaselineView {
+    pub availability: BaselineAvailability,
+    pub message: String,
+    pub timeline: Vec<MorningBlockView>,
+    pub evidence: Vec<PlanningEvidenceView>,
+}
+
+impl MorningBaselineView {
+    fn missing() -> Self {
+        Self {
+            availability: BaselineAvailability::Missing,
+            message: "这份 Daily Record 未独立保存早间基准；当前安排仍可在 Daytime 查看。".into(),
+            timeline: Vec::new(),
+            evidence: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DaytimeUpdateView {
@@ -437,6 +471,7 @@ pub struct TodayView {
     pub vault_name: Option<String>,
     pub message: String,
     pub revision: Option<String>,
+    pub baseline: MorningBaselineView,
     pub timeline: Vec<MorningBlockView>,
     pub evidence: Vec<PlanningEvidenceView>,
     pub daytime: DaytimeView,
@@ -491,6 +526,7 @@ where
                 vault_name: None,
                 message: "请选择 Tortilla Flat vault，以读取今天的早间计划。".into(),
                 revision: None,
+                baseline: MorningBaselineView::missing(),
                 timeline: Vec::new(),
                 evidence: Vec::new(),
                 daytime: DaytimeView::default(),
@@ -581,6 +617,7 @@ where
                     message: "今天还没有 Daily Record。请先让 Codex 运行早间流程，然后刷新 Today。"
                         .into(),
                     revision: None,
+                    baseline: MorningBaselineView::missing(),
                     timeline: Vec::new(),
                     evidence: Vec::new(),
                     daytime: DaytimeView::default(),
@@ -593,27 +630,40 @@ where
         let revision = document_revision(document.as_bytes());
 
         match parse_daily_record(&document, &date) {
-            Ok((timeline, evidence, daytime, evening)) => Ok(TodayView {
-                state: TodayState::Ready,
-                date,
-                vault_name,
-                message: if timeline.is_empty() {
-                    "今天的 Daily Record 有效，但早间计划尚未写入。".into()
+            Ok((baseline, timeline, evidence, daytime, evening)) => {
+                let message = if timeline.is_empty() {
+                    "这份 Daily Record 有效，但当前安排尚未写入。"
                 } else {
-                    "已从今天的 Daily Record 读取早间计划。".into()
-                },
-                revision: Some(revision),
-                timeline,
-                evidence,
-                daytime,
-                evening,
-            }),
+                    match baseline.availability {
+                        BaselineAvailability::Missing => {
+                            "已读取当前安排；这份 Daily Record 未独立保存早间基准。"
+                        }
+                        BaselineAvailability::Empty => {
+                            "已读取当前安排；早间基准章节存在但内容为空。"
+                        }
+                        BaselineAvailability::Saved => "已读取独立早间基准和当前安排。",
+                    }
+                };
+                Ok(TodayView {
+                    state: TodayState::Ready,
+                    date,
+                    vault_name,
+                    message: message.into(),
+                    revision: Some(revision),
+                    baseline,
+                    timeline,
+                    evidence,
+                    daytime,
+                    evening,
+                })
+            }
             Err(message) => Ok(TodayView {
                 state: TodayState::Error,
                 date,
                 vault_name,
                 message,
                 revision: None,
+                baseline: MorningBaselineView::missing(),
                 timeline: Vec::new(),
                 evidence: Vec::new(),
                 daytime: DaytimeView::default(),
@@ -881,6 +931,7 @@ fn parse_daily_record(
     expected_date: &str,
 ) -> Result<
     (
+        MorningBaselineView,
         Vec<MorningBlockView>,
         Vec<PlanningEvidenceView>,
         DaytimeView,
@@ -910,6 +961,7 @@ fn parse_daily_record(
         }
     }
 
+    let baseline = parse_morning_baseline(body)?;
     let timeline = section_body(body, "今天的大致安排")
         .map(parse_timeline)
         .unwrap_or_default();
@@ -922,7 +974,43 @@ fn parse_daily_record(
     let evening = section_body(body, "晚间复盘")
         .map(parse_evening)
         .unwrap_or_default();
-    Ok((timeline, evidence, daytime, evening))
+    Ok((baseline, timeline, evidence, daytime, evening))
+}
+
+fn parse_morning_baseline(body: &str) -> Result<MorningBaselineView, String> {
+    let Some(section) = section_body(body, "早间基准") else {
+        return Ok(MorningBaselineView::missing());
+    };
+    for subsection in ["初始安排", "初始计划依据"] {
+        if heading_count(section, 3, subsection) > 1 {
+            return Err(format!(
+                "今天的 Daily Record 在“早间基准”中包含多个“{subsection}”段落。请合并重复段落，然后刷新 Today。"
+            ));
+        }
+    }
+
+    let timeline = subsection_body(section, "初始安排")
+        .map(parse_timeline)
+        .unwrap_or_default();
+    let evidence = subsection_body(section, "初始计划依据")
+        .map(parse_evidence)
+        .unwrap_or_default();
+    let availability = if timeline.is_empty() && evidence.is_empty() {
+        BaselineAvailability::Empty
+    } else {
+        BaselineAvailability::Saved
+    };
+    let message = match availability {
+        BaselineAvailability::Empty => "早间基准章节已保存，但初始安排和依据仍为空。",
+        BaselineAvailability::Saved => "已读取独立保存的早间基准。",
+        BaselineAvailability::Missing => unreachable!("the missing case returns before parsing"),
+    };
+    Ok(MorningBaselineView {
+        availability,
+        message: message.into(),
+        timeline,
+        evidence,
+    })
 }
 
 fn split_frontmatter(document: &str) -> Option<(&str, &str)> {
@@ -1087,23 +1175,35 @@ fn frontmatter_value(frontmatter: &str, key: &str) -> Option<String> {
 }
 
 fn section_count(body: &str, heading: &str) -> usize {
+    heading_count(body, 2, heading)
+}
+
+fn heading_count(body: &str, level: usize, heading: &str) -> usize {
     scan_markdown_lines(body)
         .into_iter()
-        .filter(|line| !line.in_fenced_code && heading_matches(line.text, 2, heading))
+        .filter(|line| !line.in_fenced_code && heading_matches(line.text, level, heading))
         .count()
 }
 
 fn section_body<'a>(body: &'a str, heading: &str) -> Option<&'a str> {
+    heading_body(body, 2, heading)
+}
+
+fn subsection_body<'a>(body: &'a str, heading: &str) -> Option<&'a str> {
+    heading_body(body, 3, heading)
+}
+
+fn heading_body<'a>(body: &'a str, level: usize, heading: &str) -> Option<&'a str> {
     let mut start = None;
     let mut end = body.len();
     for line in scan_markdown_lines(body) {
         if line.in_fenced_code {
             continue;
         }
-        if start.is_none() && heading_matches(line.text, 2, heading) {
+        if start.is_none() && heading_matches(line.text, level, heading) {
             start = Some(line.next);
         } else if start.is_some()
-            && markdown_heading(line.text).is_some_and(|heading| heading.level <= 2)
+            && markdown_heading(line.text).is_some_and(|heading| heading.level <= level)
         {
             end = line.start;
             break;
