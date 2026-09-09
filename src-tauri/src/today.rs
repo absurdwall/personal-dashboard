@@ -2118,6 +2118,11 @@ struct ReadingContent {
 fn parse_daytime(section: &str) -> DaytimeView {
     let updates = split_subsections(section)
         .into_iter()
+        .filter(|(title, _)| {
+            !title
+                .as_deref()
+                .is_some_and(|title| matches!(title, "简短记录" | "修改记录"))
+        })
         .filter_map(|(title, body)| {
             let content = parse_reading_content(&body);
             if content.paragraphs.is_empty() && content.items.is_empty() {

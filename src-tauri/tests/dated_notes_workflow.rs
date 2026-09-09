@@ -204,6 +204,11 @@ fn add_and_multiple_corrections_keep_one_id_and_an_append_only_trace() {
         .expect("second correction should save");
 
     let note = &corrected.daytime.short_records[0];
+    assert!(corrected
+        .daytime
+        .updates
+        .iter()
+        .all(|update| update.title != "简短记录" && update.title != "修改记录"));
     assert_eq!(note.id, "note-1");
     assert_eq!(note.category, ShortRecordCategory::Exercise);
     assert_eq!(note.text, "跑步 25 分钟");
