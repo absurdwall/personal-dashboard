@@ -36,7 +36,9 @@ use platform::{
     NativeTodayWorkspaceExchange,
 };
 use profile::{ProfileApplication, ProfileView};
-use today::{DaytimeUpdateInput, EveningUpdateInput, TodayApplication, TodayView};
+use today::{
+    CalendarMonthView, DaytimeUpdateInput, EveningUpdateInput, TodayApplication, TodayView,
+};
 
 type DesktopProfileApplication =
     ProfileApplication<FileProfilePersistence, NativeFileExchange<tauri::Wry>>;
@@ -145,6 +147,23 @@ fn application_identity() -> ApplicationIdentity {
 #[tauri::command]
 fn today_view(application: State<'_, DesktopTodayApplication>) -> Result<TodayView, String> {
     application.open()
+}
+
+#[tauri::command]
+fn daily_view(
+    application: State<'_, DesktopTodayApplication>,
+    date: String,
+) -> Result<TodayView, String> {
+    application.open_date(&date)
+}
+
+#[tauri::command]
+fn calendar_month(
+    application: State<'_, DesktopTodayApplication>,
+    year: i32,
+    month: u32,
+) -> Result<CalendarMonthView, String> {
+    application.calendar_month(year, month)
 }
 
 #[tauri::command]
@@ -531,6 +550,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             application_identity,
             today_view,
+            daily_view,
+            calendar_month,
             select_today_vault,
             append_daytime_update,
             update_evening_review,
@@ -572,6 +593,8 @@ pub fn run() {
     let application = application.invoke_handler(tauri::generate_handler![
         application_identity,
         today_view,
+        daily_view,
+        calendar_month,
         select_today_vault,
         append_daytime_update,
         update_evening_review,

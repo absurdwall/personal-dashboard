@@ -1838,6 +1838,188 @@ EOF
   echo "Clock: now=$fixed_now_epoch_millis offset_minutes=$fixed_utc_offset_minutes"
 }
 
+run_calendar_scenario() {
+  local vault_directory="$acceptance_directory/tortilla-flat-vault"
+  local record_directory="$vault_directory/life/Journal/Daily/2026/2026-08"
+  local reviewed_file="$record_directory/2026-08-08.md"
+  local unreviewed_file="$record_directory/2026-08-09.md"
+  local malformed_file="$record_directory/2026-08-07.md"
+  local today_file="$record_directory/2026-08-10.md"
+  local before_hashes
+  local after_hashes
+
+  current_step="preparing isolated Calendar Daily Records"
+  mkdir -p "$vault_directory/.obsidian" "$record_directory" "$acceptance_data_directory"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_directory" > "$acceptance_data_directory/today-workspace.json"
+
+  cat > "$reviewed_file" <<'EOF'
+---
+type: daily-record
+date: 2026-08-08
+---
+# 2026-08-08
+
+## 早间基准
+
+### 初始安排
+
+- **上午：** 周六的初始安排。
+
+### 初始计划依据
+
+## 今天的大致安排
+
+- **下午：** 周六的当前安排。
+
+## 白天更新
+
+### 15:00 — 有意义的事件
+
+- 观察事实：周六完成了明确工作。
+
+## 晚间复盘
+
+### 今天发生了什么
+
+- 周六晚间复盘内容。
+EOF
+
+  cat > "$unreviewed_file" <<'EOF'
+---
+type: daily-record
+date: 2026-08-09
+---
+# 2026-08-09
+
+## 早间基准
+
+### 初始安排
+
+- **上午：** 周日的初始安排。
+
+### 初始计划依据
+
+## 今天的大致安排
+
+- **下午：** 周日的当前安排。
+
+## 白天更新
+
+### 14:00 — 有意义的事件
+
+- 观察事实：周日有一条明确记录。
+
+## 晚间复盘
+EOF
+
+  cat > "$malformed_file" <<'EOF'
+---
+type: note
+date: 2026-08-07
+---
+# malformed Calendar record
+EOF
+
+  cat > "$today_file" <<'EOF'
+---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 早间基准
+
+### 初始安排
+
+- **上午：** 今天的初始安排。
+
+### 初始计划依据
+
+## 今天的大致安排
+
+- **下午：** 今天的当前安排。
+
+## 白天更新
+
+## 晚间复盘
+EOF
+
+  before_hashes="$(shasum -a 256 "$reviewed_file" "$unreviewed_file" "$malformed_file" "$today_file")"
+
+  current_step="opening the FINAL Calendar month and selected-day summary"
+  launch_app_waiting_for_text "Log workout now" 30
+  run_driver set-size "960x720" 10
+  run_driver press "Calendar" 10
+  run_driver wait-text "2026 年 8 月" 20
+  run_driver assert-semantic "calendar"
+  run_driver assert-text "Month view"
+  run_driver assert-text "Selected day"
+  run_driver assert-text "Calendar 浏览不会修改 Daily Record"
+
+  current_step="opening a reviewed historical day in Evening"
+  run_driver press-contains "8 月 8 日" 10
+  run_driver wait-text "周六晚间复盘内容" 10
+  run_driver assert-text "有复盘"
+  run_driver press "打开完整 Today" 10
+  run_driver wait-text "周六晚间复盘内容" 20
+  run_driver assert-state "Evening|selected" 10
+  run_driver assert-text "Selected day · 2026-08-08"
+  run_driver assert-absent-text "保存晚间更新"
+
+  current_step="preserving the selected date and phase through refresh"
+  run_driver press "Daytime" 10
+  run_driver assert-state "Daytime|selected" 10
+  /usr/bin/perl -0pi -e 's/周六的当前安排/周六刷新后的当前安排/' "$reviewed_file"
+  run_driver press "刷新" 10
+  run_driver wait-text "周六刷新后的当前安排" 10
+  run_driver assert-state "Daytime|selected" 10
+  run_driver assert-text "Selected day · 2026-08-08"
+
+  current_step="opening an unreviewed historical day in Daytime"
+  run_driver press "Calendar" 10
+  run_driver press-contains "8 月 9 日" 10
+  run_driver wait-text "这一天有 Daily Record，但没有晚间复盘" 10
+  run_driver press "打开完整 Today" 10
+  run_driver wait-text "周日的当前安排" 20
+  run_driver assert-state "Daytime|selected" 10
+  run_driver assert-absent-text "保存白天更新"
+
+  current_step="keeping malformed and empty days independently readable"
+  run_driver press "Calendar" 10
+  run_driver press-contains "8 月 7 日" 10
+  run_driver wait-text "读取错误" 10
+  run_driver press-contains "8 月 6 日" 10
+  run_driver wait-text "没有 Daily Record；保持空白" 10
+  [[ ! -e "$record_directory/2026-08-06.md" ]] || fail "Calendar browsing created an empty-day record"
+
+  current_step="checking compact Calendar and keyboard date movement"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver assert-semantic "calendar"
+  run_driver focus-contains "8 月 8 日" 10
+  run_driver press-key "right" 10
+  run_driver wait-text "这一天有 Daily Record，但没有晚间复盘" 10
+  run_driver assert-state "8 月 9 日|pressed" 10
+  run_driver assert-focused-text "8 月 9 日" 10
+
+  current_step="returning to the current local Today"
+  run_driver select-contains "Today" 10
+  run_driver wait-text "今天的初始安排" 20
+  run_driver assert-text "Today · 2026-08-10"
+  run_driver assert-state "Morning|selected" 10
+
+  after_hashes="$(shasum -a 256 "$reviewed_file" "$unreviewed_file" "$malformed_file" "$today_file")"
+  [[ "$before_hashes" != "$after_hashes" ]] || fail "external refresh fixture did not change as expected"
+  [[ "$(printf '%s\n' "$after_hashes" | sed -n '2,4p')" == "$(printf '%s\n' "$before_hashes" | sed -n '2,4p')" ]] ||
+    fail "Calendar browsing changed an unrelated source record"
+
+  echo "Packaged IPC Calendar-to-Today acceptance passed"
+  echo "Dates: reviewed, unreviewed, malformed, empty, and current local day remained distinct"
+  echo "Navigation: selected date survived phase refresh; Today restored 2026-08-10"
+  echo "Viewport: Calendar summary, grid, and keyboard date movement remained available at 960x720 and 640x520"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -1948,10 +2130,14 @@ if [[ "$acceptance_scenario" == "today" || "$acceptance_scenario" == "today-writ
   run_today_scenario
   exit 0
 fi
+if [[ "$acceptance_scenario" == "calendar" ]]; then
+  run_calendar_scenario
+  exit 0
+fi
 if [[ "$acceptance_scenario" == "live-cycle" ]]; then
   run_live_daily_cycle_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "compact" && "$acceptance_scenario" != "keyboard" && "$acceptance_scenario" != "week-close" && "$acceptance_scenario" != "today" && "$acceptance_scenario" != "today-write" && "$acceptance_scenario" != "installed-cycle" && "$acceptance_scenario" != "live-cycle" ]]; then
+if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "compact" && "$acceptance_scenario" != "keyboard" && "$acceptance_scenario" != "week-close" && "$acceptance_scenario" != "today" && "$acceptance_scenario" != "today-write" && "$acceptance_scenario" != "installed-cycle" && "$acceptance_scenario" != "calendar" && "$acceptance_scenario" != "live-cycle" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi

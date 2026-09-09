@@ -33,6 +33,15 @@
           <button
             type="button"
             class="destination-button"
+            data-workspace-destination="calendar"
+            aria-controls="workspace-destination-calendar"
+          >
+            <span class="destination-icon" aria-hidden="true">▦</span>
+            <span>Calendar</span>
+          </button>
+          <button
+            type="button"
+            class="destination-button"
             data-workspace-destination="this-week"
             aria-controls="workspace-destination-this-week"
             aria-current="page"
@@ -64,6 +73,7 @@
           <select id="workspace-destination-select" aria-label="Destination">
             <option value="this-week">This Week</option>
             <option value="today">Today</option>
+            <option value="calendar">Calendar</option>
             <option value="history">History</option>
             <option value="settings">Settings</option>
           </select>
@@ -92,6 +102,85 @@
 
         <div class="workspace-regions">
           <section class="workspace-information" aria-label="Workspace information">
+            <section
+              id="workspace-destination-calendar"
+              class="workspace-destination calendar-destination"
+              data-workspace-panel="calendar"
+              aria-labelledby="calendar-heading"
+              hidden
+            >
+              <header class="calendar-header">
+                <div>
+                  <p class="section-label">Calendar · History recall</p>
+                  <h2 id="calendar-heading" class="destination-heading">Calendar</h2>
+                  <p>先看整个月，再进入某一天；选中的日期复用 Today 的三个阶段。</p>
+                </div>
+                <div class="calendar-toolbar" aria-label="Calendar period navigation">
+                  <button id="calendar-previous-month" type="button" class="calendar-step" aria-label="上个月">←</button>
+                  <label>
+                    <span class="visually-hidden">年份</span>
+                    <select id="calendar-year" aria-label="年份"></select>
+                  </label>
+                  <span aria-hidden="true">/</span>
+                  <label>
+                    <span class="visually-hidden">月份</span>
+                    <select id="calendar-month" aria-label="月份">
+                      <option value="1">1 月</option>
+                      <option value="2">2 月</option>
+                      <option value="3">3 月</option>
+                      <option value="4">4 月</option>
+                      <option value="5">5 月</option>
+                      <option value="6">6 月</option>
+                      <option value="7">7 月</option>
+                      <option value="8">8 月</option>
+                      <option value="9">9 月</option>
+                      <option value="10">10 月</option>
+                      <option value="11">11 月</option>
+                      <option value="12">12 月</option>
+                    </select>
+                  </label>
+                  <button id="calendar-next-month" type="button" class="calendar-step" aria-label="下个月">→</button>
+                  <button id="calendar-today" type="button" class="secondary-button">今天</button>
+                </div>
+              </header>
+              <p id="calendar-status" class="today-status" role="status" aria-live="polite"></p>
+              <div class="calendar-frame">
+                <section class="calendar-month-region" aria-labelledby="calendar-month-heading">
+                  <div class="calendar-month-heading">
+                    <div>
+                      <p class="section-label">Month view · 月历</p>
+                      <h3 id="calendar-month-heading"></h3>
+                    </div>
+                    <div class="calendar-legend" aria-label="Calendar legend">
+                      <span><i data-calendar-marker="reviewed"></i>有复盘</span>
+                      <span><i data-calendar-marker="unreviewed"></i>无复盘</span>
+                      <span><i data-calendar-marker="error"></i>读取错误</span>
+                    </div>
+                  </div>
+                  <div class="calendar-weekdays" aria-hidden="true">
+                    <span>周日</span><span>周一</span><span>周二</span><span>周三</span>
+                    <span>周四</span><span>周五</span><span>周六</span>
+                  </div>
+                  <div id="calendar-grid" class="calendar-grid" aria-label="Calendar dates"></div>
+                </section>
+                <aside id="calendar-summary" class="calendar-summary" aria-labelledby="calendar-summary-heading">
+                  <div class="calendar-selected-heading">
+                    <div>
+                      <p class="section-label">Selected day · 选中日期</p>
+                      <h3 id="calendar-summary-heading">选择一个日期</h3>
+                    </div>
+                    <span id="calendar-summary-status" class="calendar-summary-status"></span>
+                  </div>
+                  <div id="calendar-summary-copy" class="calendar-summary-copy">
+                    <strong>选择月历中的一天</strong>
+                    <p>先预览是否有记录与复盘，再打开完整 Today。</p>
+                  </div>
+                  <button id="calendar-open-day" type="button" class="calendar-open-day" disabled>
+                    打开完整 Today <span aria-hidden="true">↗</span>
+                  </button>
+                </aside>
+              </div>
+            </section>
             <section
               id="workspace-destination-today"
               class="workspace-destination today-destination"

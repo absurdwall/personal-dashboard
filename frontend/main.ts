@@ -56,6 +56,8 @@ type EveningView = Readonly<{
 type TodayView = Readonly<{
   state: TodayState;
   date: string;
+  isToday: boolean;
+  defaultPhase: TodayPhase;
   vaultName: string | null;
   message: string;
   revision: string | null;
@@ -67,6 +69,22 @@ type TodayView = Readonly<{
 }>;
 
 type TodayPhase = "morning" | "daytime" | "evening";
+
+type DailyRecordAvailability = "missing" | "unreviewed" | "reviewed" | "error";
+
+type CalendarDayView = Readonly<{
+  date: string;
+  inMonth: boolean;
+  isToday: boolean;
+  availability: DailyRecordAvailability;
+}>;
+
+type CalendarMonthView = Readonly<{
+  year: number;
+  month: number;
+  configured: boolean;
+  days: readonly CalendarDayView[];
+}>;
 
 function isTodayPhase(value: string | undefined): value is TodayPhase {
   return value === "morning" || value === "daytime" || value === "evening";
@@ -365,11 +383,12 @@ declare global {
   }
 }
 
-type WorkspaceDestination = "today" | "this-week" | "history" | "settings";
+type WorkspaceDestination = "today" | "calendar" | "this-week" | "history" | "settings";
 
 function isWorkspaceDestination(value: string | undefined): value is WorkspaceDestination {
   return (
     value === "today" ||
+    value === "calendar" ||
     value === "this-week" ||
     value === "history" ||
     value === "settings"
@@ -386,6 +405,10 @@ const workspaceDestinationDetails: Record<
   today: {
     title: "Today",
     description: "查看今天 Daily Record 里的大致安排。",
+  },
+  calendar: {
+    title: "Calendar",
+    description: "先看整个月，再进入某一天。",
   },
   "this-week": {
     title: "This Week",
@@ -417,6 +440,20 @@ const workspaceContextStatus = document.querySelector<HTMLElement>(
   "#workspace-context-status",
 );
 const workspaceInformation = document.querySelector<HTMLElement>(".workspace-information");
+const calendarYear = document.querySelector<HTMLSelectElement>("#calendar-year");
+const calendarMonth = document.querySelector<HTMLSelectElement>("#calendar-month");
+const calendarPreviousMonth = document.querySelector<HTMLButtonElement>(
+  "#calendar-previous-month",
+);
+const calendarNextMonth = document.querySelector<HTMLButtonElement>("#calendar-next-month");
+const calendarToday = document.querySelector<HTMLButtonElement>("#calendar-today");
+const calendarStatus = document.querySelector<HTMLElement>("#calendar-status");
+const calendarMonthHeading = document.querySelector<HTMLElement>("#calendar-month-heading");
+const calendarGrid = document.querySelector<HTMLElement>("#calendar-grid");
+const calendarSummaryHeading = document.querySelector<HTMLElement>("#calendar-summary-heading");
+const calendarSummaryStatus = document.querySelector<HTMLElement>("#calendar-summary-status");
+const calendarSummaryCopy = document.querySelector<HTMLElement>("#calendar-summary-copy");
+const calendarOpenDay = document.querySelector<HTMLButtonElement>("#calendar-open-day");
 const todayDate = document.querySelector<HTMLElement>("#today-date");
 const todayHeading = document.querySelector<HTMLElement>("#today-heading");
 const todayVault = document.querySelector<HTMLElement>("#today-vault");
@@ -686,8 +723,13 @@ const appShell = document.querySelector<HTMLElement>(".app-shell");
 let currentProfileAuthority: ProfileView["authority"] = "active";
 let currentWorkspaceDestination: WorkspaceDestination = "this-week";
 let refreshingToday = false;
+let todayRefreshVersion = 0;
 let currentTodayPhase: TodayPhase = "morning";
 let currentTodayView: TodayView | null = null;
+let selectedTodayDate: string | null = null;
+let currentCalendarMonth: CalendarMonthView | null = null;
+let selectedCalendarDate: string | null = null;
+let refreshingCalendar = false;
 let currentExerciseView: ExerciseDashboardView | null = null;
 let applicationFeatureArea = "Exercise tracking";
 let selectedDepartureSlotId: string | null = null;
@@ -1933,7 +1975,7 @@ function showTodayPhase(phase: TodayPhase, focus = false): void {
 function renderToday(view: TodayView): void {
   currentTodayView = view;
   if (todayDate) {
-    todayDate.textContent = `Today · ${view.date}`;
+    todayDate.textContent = `${view.isToday ? "Today" : "Selected day"} · ${view.date}`;
   }
   if (todayVault) {
     todayVault.textContent = view.vaultName
@@ -1977,6 +2019,12 @@ function renderToday(view: TodayView): void {
   }
   if (todayCurrentEmpty) {
     todayCurrentEmpty.hidden = view.timeline.length > 0;
+  }
+  if (todayDaytimeForm) {
+    todayDaytimeForm.hidden = !view.isToday;
+  }
+  if (todayEveningForm) {
+    todayEveningForm.hidden = !view.isToday;
   }
 
   const knownUpdates = view.daytime.updates.filter(
@@ -2184,36 +2232,328 @@ async function saveTodayMutation(
   }
 }
 
-async function refreshToday(command = "today_view"): Promise<void> {
-  if (refreshingToday) {
+async function refreshToday(
+  date: string | null = selectedTodayDate,
+  supersede = false,
+): Promise<void> {
+  if (refreshingToday && !supersede) {
     return;
   }
+  const refreshVersion = ++todayRefreshVersion;
   refreshingToday = true;
   selectTodayVaultButton?.toggleAttribute("disabled", true);
   refreshTodayButton?.toggleAttribute("disabled", true);
   try {
-    const view = await window.__TAURI__.core.invoke<TodayView>(command);
+    const previousDate = currentTodayView?.date ?? null;
+    const view = date
+      ? await window.__TAURI__.core.invoke<TodayView>("daily_view", { date })
+      : await window.__TAURI__.core.invoke<TodayView>("today_view");
+    if (refreshVersion !== todayRefreshVersion) {
+      return;
+    }
+    if (previousDate !== view.date) {
+      currentTodayPhase = view.defaultPhase;
+    }
     renderToday(view);
   } catch (error) {
+    if (refreshVersion !== todayRefreshVersion) {
+      return;
+    }
     if (todayStatus) {
       todayStatus.textContent = `无法读取 Today：${String(error)}`;
       todayStatus.dataset.state = "error";
     }
   } finally {
-    refreshingToday = false;
-    selectTodayVaultButton?.removeAttribute("disabled");
-    refreshTodayButton?.removeAttribute("disabled");
+    if (refreshVersion === todayRefreshVersion) {
+      refreshingToday = false;
+      selectTodayVaultButton?.removeAttribute("disabled");
+      refreshTodayButton?.removeAttribute("disabled");
+    }
   }
 }
 
+async function selectTodayVault(): Promise<void> {
+  if (refreshingToday) {
+    return;
+  }
+  refreshingToday = true;
+  selectTodayVaultButton?.toggleAttribute("disabled", true);
+  try {
+    const view = await window.__TAURI__.core.invoke<TodayView>("select_today_vault");
+    selectedTodayDate = null;
+    currentTodayPhase = view.defaultPhase;
+    renderToday(view);
+  } catch (error) {
+    if (todayStatus) {
+      todayStatus.textContent = `无法选择 Vault：${String(error)}`;
+      todayStatus.dataset.state = "error";
+    }
+  } finally {
+    refreshingToday = false;
+    selectTodayVaultButton?.removeAttribute("disabled");
+  }
+}
+
+const calendarAvailabilityLabels: Record<
+  DailyRecordAvailability,
+  Readonly<{ label: string; marker: string }>
+> = {
+  missing: { label: "无记录", marker: "" },
+  unreviewed: { label: "无复盘", marker: "记" },
+  reviewed: { label: "有复盘", marker: "复" },
+  error: { label: "读取错误", marker: "!" },
+};
+
+function calendarDateLabel(date: string): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const weekday = new Intl.DateTimeFormat("zh-CN", {
+    weekday: "short",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+  return `${month} 月 ${day} 日 · ${weekday}`;
+}
+
+function populateCalendarYears(centerYear: number): void {
+  if (!calendarYear) {
+    return;
+  }
+  calendarYear.replaceChildren(
+    ...[centerYear - 1, centerYear, centerYear + 1].map((year) => {
+      const option = document.createElement("option");
+      option.value = String(year);
+      option.textContent = `${year} 年`;
+      return option;
+    }),
+  );
+  calendarYear.value = String(centerYear);
+}
+
+function renderCalendarGrid(month: CalendarMonthView): void {
+  if (calendarMonthHeading) {
+    calendarMonthHeading.textContent = `${month.year} 年 ${month.month} 月`;
+  }
+  if (calendarYear) {
+    if (!Array.from(calendarYear.options).some((option) => Number(option.value) === month.year)) {
+      populateCalendarYears(month.year);
+    }
+    calendarYear.value = String(month.year);
+  }
+  if (calendarMonth) {
+    calendarMonth.value = String(month.month);
+  }
+  if (calendarGrid) {
+    calendarGrid.setAttribute("aria-label", `${month.year} 年 ${month.month} 月`);
+    calendarGrid.replaceChildren(
+      ...month.days.map((day) => {
+        const button = document.createElement("button");
+        const dayNumber = Number(day.date.slice(8));
+        const status = calendarAvailabilityLabels[day.availability];
+        const selected = day.date === selectedCalendarDate;
+        button.type = "button";
+        button.className = "calendar-day";
+        button.dataset.calendarDate = day.date;
+        button.dataset.availability = day.availability;
+        button.toggleAttribute("data-outside-month", !day.inMonth);
+        button.toggleAttribute("data-selected", selected);
+        button.setAttribute(
+          "aria-label",
+          `${calendarDateLabel(day.date)} · ${day.isToday ? "今天 · " : ""}${status.label}`,
+        );
+        button.setAttribute("aria-pressed", String(selected));
+        const top = document.createElement("span");
+        top.className = "calendar-day-top";
+        const number = document.createElement("strong");
+        number.textContent = String(dayNumber);
+        const todayLabel = document.createElement("small");
+        todayLabel.textContent = day.isToday ? "今天" : "";
+        top.append(number, todayLabel);
+        const marker = document.createElement("span");
+        marker.className = "calendar-day-marker";
+        marker.dataset.availability = day.availability;
+        marker.textContent = status.marker;
+        marker.setAttribute("aria-hidden", "true");
+        button.append(top, marker);
+        return button;
+      }),
+    );
+  }
+}
+
+function renderCalendarSummary(view: TodayView): void {
+  if (calendarSummaryHeading) {
+    calendarSummaryHeading.textContent = calendarDateLabel(view.date);
+  }
+  const availability: DailyRecordAvailability =
+    view.state === "error"
+      ? "error"
+      : view.state === "missing" || view.state === "unconfigured"
+        ? "missing"
+        : view.defaultPhase === "evening"
+          ? "reviewed"
+          : "unreviewed";
+  if (calendarSummaryStatus) {
+    calendarSummaryStatus.textContent = calendarAvailabilityLabels[availability].label;
+    calendarSummaryStatus.dataset.availability = availability;
+  }
+  if (calendarOpenDay) {
+    calendarOpenDay.disabled = view.state === "unconfigured";
+  }
+  if (!calendarSummaryCopy) {
+    return;
+  }
+  const heading = document.createElement("strong");
+  const copy = document.createElement("p");
+  const detail = document.createElement("small");
+  if (view.state === "ready" && availability === "reviewed") {
+    heading.textContent = "晚间复盘";
+    copy.textContent =
+      view.evening.account[0] ??
+      view.evening.summary[0] ??
+      view.evening.comparison[0] ??
+      "这一天有晚间复盘。";
+    detail.textContent = `${view.daytime.updates.length} 条日间记录 · 默认打开晚间复盘`;
+  } else if (view.state === "ready") {
+    heading.textContent = "当日状态";
+    copy.textContent = "这一天有 Daily Record，但没有晚间复盘。";
+    detail.textContent = `${view.daytime.updates.length} 条日间记录 · 默认打开当日进展`;
+  } else if (view.state === "error") {
+    heading.textContent = "读取错误";
+    copy.textContent = view.message;
+    detail.textContent = "这一天的异常不会阻断其他日期。";
+  } else if (view.state === "unconfigured") {
+    heading.textContent = "尚未选择 Vault";
+    copy.textContent = "请先到 Today 选择 Tortilla Flat vault。";
+    detail.textContent = "Calendar 浏览不会创建文件。";
+  } else {
+    heading.textContent = "空白日期";
+    copy.textContent = "没有 Daily Record；保持空白，不制造补记义务。";
+    detail.textContent = "未记录不解释成未完成。";
+  }
+  calendarSummaryCopy.replaceChildren(heading, copy, detail);
+}
+
+async function selectCalendarDate(date: string): Promise<void> {
+  selectedCalendarDate = date;
+  const [year, month] = date.split("-").map(Number);
+  if (
+    currentCalendarMonth &&
+    (currentCalendarMonth.year !== year || currentCalendarMonth.month !== month)
+  ) {
+    await refreshCalendarMonth(year, month);
+  }
+  if (currentCalendarMonth) {
+    renderCalendarGrid(currentCalendarMonth);
+  }
+  try {
+    const view = await window.__TAURI__.core.invoke<TodayView>("daily_view", { date });
+    renderCalendarSummary(view);
+    if (calendarStatus) {
+      calendarStatus.textContent = `已选择 ${calendarDateLabel(date)}。`;
+      calendarStatus.dataset.state = view.state;
+    }
+  } catch (error) {
+    if (calendarSummaryHeading) {
+      calendarSummaryHeading.textContent = calendarDateLabel(date);
+    }
+    if (calendarSummaryStatus) {
+      calendarSummaryStatus.textContent = "读取错误";
+      calendarSummaryStatus.dataset.availability = "error";
+    }
+    if (calendarSummaryCopy) {
+      const heading = document.createElement("strong");
+      heading.textContent = "读取错误";
+      const copy = document.createElement("p");
+      copy.textContent = String(error);
+      calendarSummaryCopy.replaceChildren(heading, copy);
+    }
+    if (calendarStatus) {
+      calendarStatus.textContent = `无法读取 ${date}；其他日期仍可选择。`;
+      calendarStatus.dataset.state = "error";
+    }
+  }
+}
+
+async function refreshCalendarMonth(year: number, month: number): Promise<void> {
+  if (refreshingCalendar) {
+    return;
+  }
+  refreshingCalendar = true;
+  try {
+    const view = await window.__TAURI__.core.invoke<CalendarMonthView>("calendar_month", {
+      year,
+      month,
+    });
+    currentCalendarMonth = view;
+    renderCalendarGrid(view);
+    if (calendarStatus) {
+      calendarStatus.textContent = view.configured
+        ? "选择日期可预览摘要；Calendar 浏览不会修改 Daily Record。"
+        : "尚未选择 Vault；请先到 Today 连接 Tortilla Flat vault。";
+      calendarStatus.dataset.state = view.configured ? "ready" : "unconfigured";
+    }
+  } catch (error) {
+    if (calendarStatus) {
+      calendarStatus.textContent = `无法读取月份：${String(error)}`;
+      calendarStatus.dataset.state = "error";
+    }
+  } finally {
+    refreshingCalendar = false;
+  }
+}
+
+async function openCalendar(): Promise<void> {
+  if (!selectedCalendarDate) {
+    const today = await window.__TAURI__.core.invoke<TodayView>("today_view");
+    selectedCalendarDate = today.date;
+    const [year, month] = today.date.split("-").map(Number);
+    populateCalendarYears(year);
+    await refreshCalendarMonth(year, month);
+    renderCalendarSummary(today);
+    return;
+  }
+  const [year, month] = selectedCalendarDate.split("-").map(Number);
+  await refreshCalendarMonth(year, month);
+  await selectCalendarDate(selectedCalendarDate);
+}
+
+async function moveCalendarMonth(delta: number): Promise<void> {
+  const baseYear = currentCalendarMonth?.year ?? Number(calendarYear?.value);
+  const baseMonth = currentCalendarMonth?.month ?? Number(calendarMonth?.value);
+  const index = baseYear * 12 + baseMonth - 1 + delta;
+  const year = Math.floor(index / 12);
+  const month = ((index % 12) + 12) % 12 + 1;
+  selectedCalendarDate = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-01`;
+  await refreshCalendarMonth(year, month);
+  await selectCalendarDate(selectedCalendarDate);
+}
+
+async function showCalendarToday(): Promise<void> {
+  const today = await window.__TAURI__.core.invoke<TodayView>("today_view");
+  selectedCalendarDate = today.date;
+  const [year, month] = today.date.split("-").map(Number);
+  await refreshCalendarMonth(year, month);
+  renderCalendarSummary(today);
+}
+
 function renderWorkspaceFeatureArea(destination: WorkspaceDestination): void {
-  const featureArea = destination === "today" ? "Daily Record" : applicationFeatureArea;
+  const featureArea =
+    destination === "today"
+      ? "Daily Record"
+      : destination === "calendar"
+        ? "Calendar"
+        : applicationFeatureArea;
   document.querySelectorAll<HTMLElement>("[data-feature-area]").forEach((element) => {
     element.textContent = featureArea;
   });
 }
 
-function showWorkspaceDestination(destination: WorkspaceDestination, focus = false): void {
+function showWorkspaceDestination(
+  destination: WorkspaceDestination,
+  focus = false,
+  dailyDate: string | null = null,
+): void {
+  const destinationChanged = currentWorkspaceDestination !== destination;
+  const leavingCalendar = currentWorkspaceDestination === "calendar" && destination !== "calendar";
   const restoreOpenDetail = destination === "this-week" && workspaceDetailOpen;
   currentWorkspaceDestination = destination;
   appShell?.setAttribute("data-workspace-destination", destination);
@@ -2224,6 +2564,8 @@ function showWorkspaceDestination(destination: WorkspaceDestination, focus = fal
     const buttonLabel =
       buttonDestination === "today"
         ? "Today"
+        : buttonDestination === "calendar"
+          ? "Calendar"
         : buttonDestination === "this-week"
           ? "This Week"
           : buttonDestination === "history"
@@ -2244,9 +2586,27 @@ function showWorkspaceDestination(destination: WorkspaceDestination, focus = fal
       button.focus();
     }
   });
+  let activeDestinationPanel: HTMLElement | null = null;
   workspaceDestinationPanels.forEach((panel) => {
-    panel.hidden = panel.dataset.workspacePanel !== destination;
+    const isActive = panel.dataset.workspacePanel === destination;
+    panel.hidden = !isActive;
+    if (isActive) {
+      activeDestinationPanel = panel;
+    }
   });
+  if (leavingCalendar) {
+    calendarGrid?.replaceChildren();
+  }
+  if (destinationChanged && activeDestinationPanel && workspaceInformation) {
+    workspaceInformation.prepend(activeDestinationPanel);
+  }
+  if (destinationChanged && workspaceInformation) {
+    workspaceInformation.scrollTop = 0;
+    window.requestAnimationFrame(() => {
+      workspaceInformation.scrollTop = 0;
+      activeDestinationPanel?.scrollIntoView({ block: "start" });
+    });
+  }
   if (workspaceDestinationSelect) {
     workspaceDestinationSelect.value = destination;
   }
@@ -2262,7 +2622,21 @@ function showWorkspaceDestination(destination: WorkspaceDestination, focus = fal
   renderWorkspaceFeatureArea(destination);
   renderWorkspaceDetail();
   if (destination === "today") {
-    void refreshToday();
+    selectedTodayDate = dailyDate;
+    if (dailyDate !== null) {
+      currentTodayView = null;
+      if (todayDate) {
+        todayDate.textContent = `Selected day · ${dailyDate}`;
+      }
+      if (todayStatus) {
+        todayStatus.textContent = `正在读取 ${dailyDate} 的 Daily Record…`;
+        todayStatus.dataset.state = "loading";
+      }
+    }
+    void refreshToday(dailyDate, true);
+  }
+  if (destination === "calendar") {
+    void openCalendar();
   }
   if (restoreOpenDetail) {
     window.requestAnimationFrame(() => workspaceDetailClose?.focus());
@@ -3339,11 +3713,86 @@ window.addEventListener("resize", () => {
 showWorkspaceDestination("this-week");
 
 selectTodayVaultButton?.addEventListener("click", () => {
-  void refreshToday("select_today_vault");
+  void selectTodayVault();
 });
 
 refreshTodayButton?.addEventListener("click", () => {
   void refreshToday();
+});
+
+calendarGrid?.addEventListener("click", (event) => {
+  const target = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-calendar-date]",
+  );
+  if (target?.dataset.calendarDate) {
+    void selectCalendarDate(target.dataset.calendarDate);
+  }
+});
+
+calendarGrid?.addEventListener("keydown", (event) => {
+  const target = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-calendar-date]",
+  );
+  if (!target || !currentCalendarMonth) {
+    return;
+  }
+  const index = currentCalendarMonth.days.findIndex(
+    (day) => day.date === target.dataset.calendarDate,
+  );
+  const offsets: Partial<Record<string, number>> = {
+    ArrowLeft: -1,
+    ArrowRight: 1,
+    ArrowUp: -7,
+    ArrowDown: 7,
+    Home: -index,
+    End: currentCalendarMonth.days.length - 1 - index,
+  };
+  const offset = offsets[event.key];
+  if (offset === undefined) {
+    return;
+  }
+  const next = currentCalendarMonth.days[index + offset];
+  if (!next) {
+    return;
+  }
+  event.preventDefault();
+  void selectCalendarDate(next.date).then(() => {
+    calendarGrid
+      ?.querySelector<HTMLButtonElement>(`button[data-calendar-date="${next.date}"]`)
+      ?.focus();
+  });
+});
+
+calendarPreviousMonth?.addEventListener("click", () => {
+  void moveCalendarMonth(-1);
+});
+
+calendarNextMonth?.addEventListener("click", () => {
+  void moveCalendarMonth(1);
+});
+
+calendarYear?.addEventListener("change", () => {
+  void moveCalendarMonth(
+    (Number(calendarYear.value) - (currentCalendarMonth?.year ?? Number(calendarYear.value))) *
+      12,
+  );
+});
+
+calendarMonth?.addEventListener("change", () => {
+  void moveCalendarMonth(
+    Number(calendarMonth.value) -
+      (currentCalendarMonth?.month ?? Number(calendarMonth.value)),
+  );
+});
+
+calendarToday?.addEventListener("click", () => {
+  void showCalendarToday();
+});
+
+calendarOpenDay?.addEventListener("click", () => {
+  if (selectedCalendarDate) {
+    showWorkspaceDestination("today", true, selectedCalendarDate);
+  }
 });
 
 todayDaytimeKind?.addEventListener("change", syncHabitFields);
@@ -3619,7 +4068,9 @@ routineDepartures?.addEventListener("click", (event) => {
 });
 
 window.addEventListener("focus", () => {
-  void refreshToday();
+  if (currentWorkspaceDestination === "today") {
+    void refreshToday();
+  }
   void refreshExerciseDashboard();
   void refreshNotificationCapability();
 });

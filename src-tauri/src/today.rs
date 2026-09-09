@@ -383,6 +383,47 @@ pub enum TodayState {
     Error,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DailyPhase {
+    Morning,
+    Daytime,
+    Evening,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DailyRecordAvailability {
+    Missing,
+    Unreviewed,
+    Reviewed,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarDayView {
+    pub date: String,
+    pub in_month: bool,
+    pub is_today: bool,
+    pub availability: DailyRecordAvailability,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarMonthView {
+    pub year: i32,
+    pub month: u32,
+    pub configured: bool,
+    pub days: Vec<CalendarDayView>,
+}
+
+impl CalendarMonthView {
+    pub fn day(&self, date: &str) -> Option<&CalendarDayView> {
+        self.days.iter().find(|day| day.date == date)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MorningBlockView {
@@ -463,11 +504,23 @@ pub struct EveningView {
     pub other: Vec<EveningOtherView>,
 }
 
+fn evening_has_content(evening: &EveningView) -> bool {
+    !evening.account.is_empty()
+        || !evening.comparison.is_empty()
+        || !evening.summary.is_empty()
+        || !evening.questions.is_empty()
+        || !evening.additions.is_empty()
+        || !evening.corrections.is_empty()
+        || !evening.other.is_empty()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TodayView {
     pub state: TodayState,
     pub date: String,
+    pub is_today: bool,
+    pub default_phase: DailyPhase,
     pub vault_name: Option<String>,
     pub message: String,
     pub revision: Option<String>,
@@ -519,12 +572,24 @@ where
 
     pub fn open(&self) -> Result<TodayView, String> {
         let date = self.clock.current_date();
+        self.open_date(&date)
+    }
+
+    pub fn open_date(&self, date: &str) -> Result<TodayView, String> {
+        canonical_record_path(Path::new("."), date)?;
+        let is_today = date == self.clock.current_date();
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(TodayView {
                 state: TodayState::Unconfigured,
-                date,
+                date: date.to_owned(),
+                is_today,
+                default_phase: if is_today {
+                    DailyPhase::Morning
+                } else {
+                    DailyPhase::Daytime
+                },
                 vault_name: None,
-                message: "请选择 Tortilla Flat vault，以读取今天的早间计划。".into(),
+                message: "请选择 Tortilla Flat vault，以读取 Daily Record。".into(),
                 revision: None,
                 baseline: MorningBaselineView::missing(),
                 timeline: Vec::new(),
@@ -533,7 +598,7 @@ where
                 evening: EveningView::default(),
             });
         };
-        self.open_vault(&vault, date)
+        self.open_vault(&vault, date.to_owned())
     }
 
     pub fn select_vault(&self) -> Result<TodayView, String> {
@@ -542,6 +607,47 @@ where
         };
         self.persistence.save_selected_vault(&vault)?;
         self.open_vault(&vault, self.clock.current_date())
+    }
+
+    pub fn calendar_month(&self, year: i32, month: u32) -> Result<CalendarMonthView, String> {
+        let first_day = CalendarDate::new(year, month, 1)
+            .ok_or_else(|| "The selected calendar month is invalid.".to_string())?;
+        let current_date = self.clock.current_date();
+        let start = first_day.unix_days() - first_day.weekday_from_sunday();
+        let vault = self.persistence.load_selected_vault()?;
+        let mut days = Vec::with_capacity(42);
+        for offset in 0..42 {
+            let date = CalendarDate::from_unix_days(start + offset);
+            let date_label = date.to_string();
+            let availability = match vault.as_deref() {
+                None => DailyRecordAvailability::Missing,
+                Some(vault) => match self.open_vault(vault, date_label.clone()) {
+                    Ok(view) => match view.state {
+                        TodayState::Ready if evening_has_content(&view.evening) => {
+                            DailyRecordAvailability::Reviewed
+                        }
+                        TodayState::Ready => DailyRecordAvailability::Unreviewed,
+                        TodayState::Missing | TodayState::Unconfigured => {
+                            DailyRecordAvailability::Missing
+                        }
+                        TodayState::Error => DailyRecordAvailability::Error,
+                    },
+                    Err(_) => DailyRecordAvailability::Error,
+                },
+            };
+            days.push(CalendarDayView {
+                date: date_label.clone(),
+                in_month: date.year == year && date.month == month,
+                is_today: date_label == current_date,
+                availability,
+            });
+        }
+        Ok(CalendarMonthView {
+            year,
+            month,
+            configured: vault.is_some(),
+            days,
+        })
     }
 
     pub fn append_daytime_update(&self, input: DaytimeUpdateInput) -> Result<TodayView, String> {
@@ -602,6 +708,7 @@ where
     }
 
     fn open_vault(&self, vault: &Path, date: String) -> Result<TodayView, String> {
+        let is_today = date == self.clock.current_date();
         let vault_name = vault
             .file_name()
             .and_then(|name| name.to_str())
@@ -613,6 +720,12 @@ where
                 return Ok(TodayView {
                     state: TodayState::Missing,
                     date,
+                    is_today,
+                    default_phase: if is_today {
+                        DailyPhase::Morning
+                    } else {
+                        DailyPhase::Daytime
+                    },
                     vault_name,
                     message: "今天还没有 Daily Record。请先让 Codex 运行早间流程，然后刷新 Today。"
                         .into(),
@@ -647,6 +760,14 @@ where
                 Ok(TodayView {
                     state: TodayState::Ready,
                     date,
+                    is_today,
+                    default_phase: if is_today {
+                        DailyPhase::Morning
+                    } else if evening_has_content(&evening) {
+                        DailyPhase::Evening
+                    } else {
+                        DailyPhase::Daytime
+                    },
                     vault_name,
                     message: message.into(),
                     revision: Some(revision),
@@ -660,6 +781,12 @@ where
             Err(message) => Ok(TodayView {
                 state: TodayState::Error,
                 date,
+                is_today,
+                default_phase: if is_today {
+                    DailyPhase::Morning
+                } else {
+                    DailyPhase::Daytime
+                },
                 vault_name,
                 message,
                 revision: None,
@@ -901,29 +1028,108 @@ fn section_offsets(document: &str, heading: &str) -> Option<(usize, usize)> {
 }
 
 fn canonical_record_path(vault: &Path, date: &str) -> Result<PathBuf, String> {
-    let (year, month) = date_parts(date)
-        .ok_or_else(|| "The current local date is not a valid YYYY-MM-DD date.".to_string())?;
+    let parsed = CalendarDate::parse(date)
+        .ok_or_else(|| "The selected date is not a valid YYYY-MM-DD calendar date.".to_string())?;
+    let year = format!("{:04}", parsed.year);
+    let month = format!("{:02}", parsed.month);
     Ok(vault
         .join("life/Journal/Daily")
-        .join(year)
+        .join(&year)
         .join(format!("{year}-{month}"))
         .join(format!("{date}.md")))
 }
 
-fn date_parts(date: &str) -> Option<(&str, &str)> {
-    let bytes = date.as_bytes();
-    if bytes.len() == 10
-        && bytes[4] == b'-'
-        && bytes[7] == b'-'
-        && bytes
-            .iter()
-            .enumerate()
-            .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit())
-    {
-        Some((&date[..4], &date[5..7]))
-    } else {
-        None
+#[derive(Clone, Copy)]
+struct CalendarDate {
+    year: i32,
+    month: u32,
+    day: u32,
+}
+
+impl CalendarDate {
+    fn new(year: i32, month: u32, day: u32) -> Option<Self> {
+        if !(1..=9999).contains(&year) || !(1..=12).contains(&month) {
+            return None;
+        }
+        let days_in_month = match month {
+            2 if is_leap_year(year) => 29,
+            2 => 28,
+            4 | 6 | 9 | 11 => 30,
+            _ => 31,
+        };
+        (1..=days_in_month)
+            .contains(&day)
+            .then_some(Self { year, month, day })
     }
+
+    fn parse(value: &str) -> Option<Self> {
+        let bytes = value.as_bytes();
+        if bytes.len() != 10
+            || bytes[4] != b'-'
+            || bytes[7] != b'-'
+            || !bytes
+                .iter()
+                .enumerate()
+                .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit())
+        {
+            return None;
+        }
+        Self::new(
+            value[..4].parse().ok()?,
+            value[5..7].parse().ok()?,
+            value[8..].parse().ok()?,
+        )
+    }
+
+    fn unix_days(self) -> i64 {
+        let mut year = i64::from(self.year);
+        let month = i64::from(self.month);
+        let day = i64::from(self.day);
+        year -= i64::from(month <= 2);
+        let era = year.div_euclid(400);
+        let year_of_era = year - era * 400;
+        let month_prime = month + if month > 2 { -3 } else { 9 };
+        let day_of_year = (153 * month_prime + 2) / 5 + day - 1;
+        let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+        era * 146_097 + day_of_era - 719_468
+    }
+
+    fn from_unix_days(unix_days: i64) -> Self {
+        let shifted_days = unix_days + 719_468;
+        let era = shifted_days.div_euclid(146_097);
+        let day_of_era = shifted_days - era * 146_097;
+        let year_of_era =
+            (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+        let mut year = year_of_era + era * 400;
+        let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+        let month_prime = (5 * day_of_year + 2) / 153;
+        let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+        let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+        year += i64::from(month <= 2);
+        Self {
+            year: year as i32,
+            month: month as u32,
+            day: day as u32,
+        }
+    }
+
+    fn weekday_from_sunday(self) -> i64 {
+        (self.unix_days() + 4).rem_euclid(7)
+    }
+}
+
+impl std::fmt::Display for CalendarDate {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            formatter,
+            "{:04}-{:02}-{:02}",
+            self.year, self.month, self.day
+        )
+    }
+}
+
+fn is_leap_year(year: i32) -> bool {
+    year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
 }
 
 fn parse_daily_record(

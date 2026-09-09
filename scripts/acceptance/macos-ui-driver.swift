@@ -997,8 +997,9 @@ func assertSemanticContract(
     let counts = roleCounts(application)
     let compactViewport = mainWindow(application).flatMap(windowSize).map { $0.width <= 680 } ?? false
     let todayMode = mode == "today" || mode == "today-daytime" || mode == "today-evening"
+    let calendarMode = mode == "calendar"
     let compactMode = mode == "compact" || mode == "detail-compact" ||
-        mode == "settings" || mode == "recording" || todayMode
+        mode == "settings" || mode == "recording" || todayMode || calendarMode
     let minimumButtonCount = compactViewport ? 1 : 4
     guard (counts["AXWindow"] ?? 0) > 0,
           (counts["AXWebArea"] ?? 0) > 0,
@@ -1009,11 +1010,12 @@ func assertSemanticContract(
     }
 
     let requiresDestinationSwitcher = Set([
-        "default", "compact", "settings", "today", "today-daytime", "today-evening",
+        "default", "compact", "settings", "calendar", "today", "today-daytime", "today-evening",
     ]).contains(mode)
     if compactViewport && requiresDestinationSwitcher {
         let expectedDestination = mode == "settings"
             ? "Settings"
+            : calendarMode ? "Calendar"
             : todayMode ? "Today" : "This Week"
         let switcherRoles = Set(["AXComboBox", "AXPopUpButton"])
         let switcherDescriptions = findRolesWithin(application, switcherRoles).map(nodeText)
@@ -1029,7 +1031,7 @@ func assertSemanticContract(
     }
 
     if !compactViewport {
-        for text in ["Today", "This Week", "History", "Settings"] {
+        for text in ["Today", "Calendar", "This Week", "History", "Settings"] {
             guard findPressable(application, text, contains: true) != nil else {
                 throw DriverError.timeout("semantic navigation control: \(text)")
             }
@@ -1041,6 +1043,14 @@ func assertSemanticContract(
             guard findText(application, text) != nil else {
                 throw DriverError.timeout("semantic default workspace content: \(text)")
             }
+        }
+    } else if calendarMode {
+        guard findText(application, "Month view") != nil,
+              findText(application, "Selected day") != nil,
+              findPressable(application, "上个月", contains: true) != nil,
+              findPressable(application, "下个月", contains: true) != nil,
+              findPressable(application, "今天", contains: true) != nil else {
+            throw DriverError.timeout("semantic Calendar reading surface")
         }
     } else if todayMode {
         for text in ["Morning", "Daytime", "Evening"] {
