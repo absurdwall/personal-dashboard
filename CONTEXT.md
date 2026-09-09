@@ -12,6 +12,14 @@ _Avoid_: Exercise Habit Tracker, generic habit engine
 The current Personal Dashboard feature area, comprising the established exercise-planning, reminder, recording, history, and backup behavior. It is not the permanent boundary of the product.
 _Avoid_: Product name, generic habit framework
 
+**Habits**:
+A read-only Personal Dashboard feature area for reviewing sourced habit evidence across the current week, recent days, and bounded history. It is separate from the Exercise tracker and does not itself record or schedule activity.
+_Avoid_: Exercise tracker, habit editor, generic habit framework
+
+**Habit snapshot**:
+A bounded, dated set of derived habit evidence with explicit provenance and coverage, prepared outside Personal Dashboard for Habits to read. It is not an authoritative task store or a live source connection.
+_Avoid_: Habit database, live sync, Dida365 mirror
+
 **Baseline behavior**:
 The user-visible exercise workflows already provided by the completed local web version and protected as the product evolves.
 _Avoid_: Old web edition, legacy product
