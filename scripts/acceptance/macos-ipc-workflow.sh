@@ -1633,10 +1633,10 @@ EOF
   run_driver assert-text "中午已经休息了一会儿"
   run_driver assert-text "紧急工作已经完成"
 
-  current_step="refusing a stale Daytime write after an external editor save"
+  current_step="refusing a stale dated-note write after an external editor save"
   printf '\n<!-- external conflict marker -->\n' >> "$record_file"
-  run_driver type-text "Daytime update text|这条冲突候选不能覆盖外部编辑" 10
-  run_driver press "保存白天更新" 10
+  run_driver type-text "Short record text|这条冲突候选不能覆盖外部编辑" 10
+  run_driver press "保存记录" 10
   run_driver wait-text "外部发生变化" 10
   grep -Fq "<!-- external conflict marker -->" "$record_file" ||
     fail "stale Today write removed the external edit"
@@ -1646,13 +1646,22 @@ EOF
   run_driver press "刷新" 10
   run_driver wait-text "紧急工作已经完成" 10
 
-  current_step="saving a bounded daytime update through packaged Tauri IPC"
-  run_driver type-text "Daytime update text|确认下午继续推进主要工作" 10
-  run_driver press "保存白天更新" 10
-  run_driver wait-text "白天更新已写入 Daily Record" 10
-  run_driver assert-text "确认下午继续推进主要工作"
-  grep -Fq "确认下午继续推进主要工作" "$record_file" ||
-    fail "daytime IPC save did not update the canonical Markdown"
+  current_step="saving and correcting a dated note through packaged Tauri IPC"
+  run_driver type-text "Short record text|跑步 30 分钟" 10
+  run_driver press "保存记录" 10
+  run_driver wait-text "简短记录已写入 Daily Record" 10
+  run_driver assert-text "跑步 30 分钟"
+  grep -Fq "跑步 30 分钟" "$record_file" ||
+    fail "dated-note IPC save did not update the canonical Markdown"
+  run_driver press "更正这条" 10
+  run_driver type-text "Short record text|跑步 25 分钟" 10
+  run_driver press "保存更正" 10
+  run_driver wait-text "更正及修改记录已写入 Daily Record" 10
+  run_driver assert-text "跑步 25 分钟"
+  grep -Fq "原文：跑步 30 分钟" "$record_file" ||
+    fail "dated-note correction did not retain the original text"
+  grep -Fq "新文：跑步 25 分钟" "$record_file" ||
+    fail "dated-note correction did not append the corrected text"
 
   if [[ "$acceptance_scenario" == "today" || "$acceptance_scenario" == "today-write" || "$acceptance_scenario" == "installed-cycle" ]]; then
     current_step="relaunching before the independent evening write flow"
@@ -1663,6 +1672,8 @@ EOF
     launch_app_waiting_for_text "Log workout now" 30
     run_driver press "Today" 10
     run_driver wait-text "完成原定项目" 20
+    run_driver press "Daytime" 10
+    run_driver wait-text "跑步 25 分钟" 10
   fi
 
   current_step="opening the refreshed Evening phase"
@@ -1675,6 +1686,9 @@ EOF
   run_driver assert-text "下午因紧急工作偏离原计划"
   run_driver assert-text "这是受约束的一天，不是失败的一天"
   run_driver assert-text "有没有一件重要但尚未记录的事"
+  run_driver assert-text "补充与更正"
+  run_driver assert-text "跑步 25 分钟"
+  run_driver assert-text "Agent 原文保持不变"
 
   current_step="saving a bounded evening addition through packaged Tauri IPC"
   run_driver type-text "Evening update text|补记：和家人通了电话" 10
@@ -1710,7 +1724,7 @@ EOF
     run_driver wait-text "Primary departures" 30
     run_driver assert-text "Log workout now"
     echo "Packaged IPC Today write acceptance passed"
-    echo "Writes: bounded Daytime and Evening actions crossed real Tauri IPC and were verified in canonical Markdown"
+    echo "Writes: dated-note add/correct/relaunch and bounded Evening actions crossed real Tauri IPC and were verified in canonical Markdown"
     echo "Isolation: the existing exercise destination remained reachable"
     return
   fi

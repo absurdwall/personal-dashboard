@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 — 通过 Calendar 回看某一天
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Today 日间栏支持普通／健身短句；日期、类别和加载 revision 绑定保存目标，导航或跨午夜不误写其他天。
 - [ ] 按 G2 写入同一 Daily Record，稳定条目标识与追加修改痕迹保留原文、新文和有 offset 的修改时刻。

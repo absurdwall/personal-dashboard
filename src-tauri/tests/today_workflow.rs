@@ -1554,7 +1554,13 @@ fn missing_record_returns_an_honest_empty_state() {
     assert_eq!(view.state, TodayState::Missing);
     assert!(view.timeline.is_empty());
     assert!(view.evidence.is_empty());
-    assert!(view.message.contains("Codex"));
+    assert!(view.can_record);
+    assert!(view.target_binding.is_some());
+    assert!(view.message.contains("明确保存"));
+    assert!(!vault
+        .path()
+        .join("life/Journal/Daily/2026/2026-08/2026-08-10.md")
+        .exists());
 }
 
 #[test]

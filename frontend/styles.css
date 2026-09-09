@@ -2722,6 +2722,57 @@ body {
   border-bottom: 1px solid var(--parity-border);
 }
 
+.today-short-record {
+  position: relative;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.today-short-record > p {
+  margin: 0 0 4px;
+  color: #303633;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.today-short-record > small,
+.today-short-record details {
+  color: var(--parity-muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.today-correct-record {
+  min-height: 0;
+  margin-top: 7px;
+  padding: 4px 7px;
+  font-size: 9px;
+}
+
+.today-short-record details {
+  margin-top: 8px;
+}
+
+.today-short-record summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.today-short-record details p {
+  margin: 5px 0 0;
+  color: var(--parity-muted);
+  font-size: 9px;
+}
+
+.today-record-supplements {
+  margin-top: 16px;
+}
+
+.today-record-revision-warning {
+  color: #8a6131 !important;
+  font-size: 10px !important;
+}
+
 .today-daytime-update h4,
 .today-review-section h4 {
   margin: 0 0 9px;

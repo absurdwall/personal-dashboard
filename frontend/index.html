@@ -344,36 +344,21 @@
                       <form id="today-daytime-form" class="today-bounded-form">
                         <div class="today-form-row">
                           <label>
-                            更新类型
+                            记录类别
                             <select id="today-daytime-kind" name="kind">
-                              <option value="meaningful-event">有意义的事件</option>
-                              <option value="remembered-block">补记时间块</option>
-                              <option value="habit-outcome">Habit 结果</option>
-                              <option value="material-change">重大调整</option>
-                            </select>
-                          </label>
-                          <label id="today-habit-name-field" hidden>
-                            Habit
-                            <input id="today-habit-name" type="text" maxlength="120" autocomplete="off" />
-                          </label>
-                          <label id="today-habit-outcome-field" hidden>
-                            结果
-                            <select id="today-habit-outcome">
-                              <option value="">保持 unknown</option>
-                              <option value="normal">normal</option>
-                              <option value="baseline">baseline</option>
-                              <option value="partial">partial</option>
-                              <option value="not_done">not_done</option>
+                              <option value="ordinary">日常记录</option>
+                              <option value="exercise">健身</option>
                             </select>
                           </label>
                         </div>
                         <label>
-                          一句话说明
-                          <input id="today-daytime-content" type="text" maxlength="500" autocomplete="off" aria-label="Daytime update text" required />
+                          <span id="today-note-form-label">写一句</span>
+                          <input id="today-daytime-content" type="text" maxlength="500" autocomplete="off" aria-label="Short record text" placeholder="跑步 30 分钟" required />
                         </label>
                         <div class="today-form-actions">
-                          <button id="save-daytime-update" type="submit">保存白天更新</button>
-                          <p>这里只记录明确输入；不会据此推断完成情况或自动重写计划。</p>
+                          <button id="save-daytime-update" type="submit">保存记录</button>
+                          <button id="cancel-note-correction" type="button" class="secondary-button" hidden>取消更正</button>
+                          <p id="today-note-target">保存在当前所选日期的日记录中；不替你打卡。</p>
                         </div>
                       </form>
                           <section class="today-rail-section" aria-labelledby="today-short-records-heading">
@@ -462,6 +447,13 @@
                       <section id="today-evening-corrections-section" class="today-review-section" hidden>
                         <h4>你的修正</h4>
                         <div id="today-evening-corrections"></div>
+                      </section>
+                      <section id="today-record-supplements-section" class="today-review-section today-record-supplements" hidden>
+                        <h4>补充与更正</h4>
+                        <p id="today-record-revision-warning" class="today-record-revision-warning" hidden>
+                          这份复盘之后仍有记录修订；Agent 原文保持不变。
+                        </p>
+                        <div id="today-record-supplements"></div>
                       </section>
                       <div id="today-evening-other"></div>
                       <p id="today-evening-empty" class="today-phase-empty" hidden>

@@ -39,6 +39,24 @@ impl TodayClock for SystemClock {
         let minute = local_millis % 3_600_000 / 60_000;
         format!("{hour:02}:{minute:02}")
     }
+
+    fn current_timestamp_label(&self) -> String {
+        let epoch_millis = system_epoch_millis();
+        let offset_minutes = platform_utc_offset_minutes(epoch_millis);
+        let offset_millis = i64::from(offset_minutes) * 60_000;
+        let local_days = (epoch_millis + offset_millis).div_euclid(86_400_000);
+        let local_millis = (epoch_millis + offset_millis).rem_euclid(86_400_000);
+        let (year, month, day) = civil_date_from_unix_days(local_days);
+        let hour = local_millis / 3_600_000;
+        let minute = local_millis % 3_600_000 / 60_000;
+        let sign = if offset_minutes < 0 { '-' } else { '+' };
+        let absolute_offset = offset_minutes.unsigned_abs();
+        format!(
+            "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}{sign}{:02}:{:02}",
+            absolute_offset / 60,
+            absolute_offset % 60
+        )
+    }
 }
 
 fn civil_date_from_unix_days(unix_days: i64) -> (i64, i64, i64) {

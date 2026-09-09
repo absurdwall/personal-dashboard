@@ -37,7 +37,8 @@ use platform::{
 };
 use profile::{ProfileApplication, ProfileView};
 use today::{
-    CalendarMonthView, DaytimeUpdateInput, EveningUpdateInput, TodayApplication, TodayView,
+    CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DaytimeUpdateInput,
+    EveningUpdateInput, TodayApplication, TodayView,
 };
 
 type DesktopProfileApplication =
@@ -179,6 +180,22 @@ fn append_daytime_update(
     input: DaytimeUpdateInput,
 ) -> Result<TodayView, String> {
     application.append_daytime_update(input)
+}
+
+#[tauri::command]
+fn add_dated_note(
+    application: State<'_, DesktopTodayApplication>,
+    input: DatedNoteInput,
+) -> Result<TodayView, String> {
+    application.add_dated_note(input)
+}
+
+#[tauri::command]
+fn correct_dated_note(
+    application: State<'_, DesktopTodayApplication>,
+    input: DatedNoteCorrectionInput,
+) -> Result<TodayView, String> {
+    application.correct_dated_note(input)
 }
 
 #[tauri::command]
@@ -554,6 +571,8 @@ pub fn run() {
             calendar_month,
             select_today_vault,
             append_daytime_update,
+            add_dated_note,
+            correct_dated_note,
             update_evening_review,
             baseline_migration_state,
             profile_state,
@@ -597,6 +616,8 @@ pub fn run() {
         calendar_month,
         select_today_vault,
         append_daytime_update,
+        add_dated_note,
+        correct_dated_note,
         update_evening_review,
         baseline_migration_state,
         profile_state,

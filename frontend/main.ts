@@ -36,6 +36,24 @@ type DaytimeUpdateView = Readonly<{
   revisedDirection: readonly string[];
 }>;
 
+type ShortRecordCategory = "ordinary" | "exercise";
+
+type ShortRecordChangeView = Readonly<{
+  id: string;
+  modifiedAt: string;
+  oldText: string;
+  newText: string;
+}>;
+
+type ShortRecordView = Readonly<{
+  id: string;
+  date: string;
+  category: ShortRecordCategory;
+  createdAt: string;
+  text: string;
+  changes: readonly ShortRecordChangeView[];
+}>;
+
 type EveningOtherView = Readonly<{
   heading: string;
   lines: readonly string[];
@@ -43,6 +61,7 @@ type EveningOtherView = Readonly<{
 
 type DaytimeView = Readonly<{
   updates: readonly DaytimeUpdateView[];
+  shortRecords: readonly ShortRecordView[];
 }>;
 
 type EveningView = Readonly<{
@@ -53,16 +72,20 @@ type EveningView = Readonly<{
   additions: readonly string[];
   corrections: readonly string[];
   other: readonly EveningOtherView[];
+  recordSupplements: readonly ShortRecordView[];
+  hasLaterRecordRevision: boolean;
 }>;
 
 type TodayView = Readonly<{
   state: TodayState;
   date: string;
   isToday: boolean;
+  canRecord: boolean;
   defaultPhase: TodayPhase;
   vaultName: string | null;
   message: string;
   revision: string | null;
+  targetBinding: string | null;
   baseline: MorningBaselineView;
   timeline: readonly MorningBlockView[];
   evidence: readonly PlanningEvidenceView[];
@@ -487,10 +510,10 @@ const todayDaytimeEmpty = document.querySelector<HTMLElement>("#today-daytime-em
 const todayDaytimeForm = document.querySelector<HTMLFormElement>("#today-daytime-form");
 const todayDaytimeKind = document.querySelector<HTMLSelectElement>("#today-daytime-kind");
 const todayDaytimeContent = document.querySelector<HTMLInputElement>("#today-daytime-content");
-const todayHabitNameField = document.querySelector<HTMLElement>("#today-habit-name-field");
-const todayHabitName = document.querySelector<HTMLInputElement>("#today-habit-name");
-const todayHabitOutcomeField = document.querySelector<HTMLElement>("#today-habit-outcome-field");
-const todayHabitOutcome = document.querySelector<HTMLSelectElement>("#today-habit-outcome");
+const todayNoteFormLabel = document.querySelector<HTMLElement>("#today-note-form-label");
+const todayNoteTarget = document.querySelector<HTMLElement>("#today-note-target");
+const saveDaytimeUpdateButton = document.querySelector<HTMLButtonElement>("#save-daytime-update");
+const cancelNoteCorrectionButton = document.querySelector<HTMLButtonElement>("#cancel-note-correction");
 const todayEveningAccountSection = document.querySelector<HTMLElement>(
   "#today-evening-account-section",
 );
@@ -526,6 +549,13 @@ const todayEveningCorrectionsSection = document.querySelector<HTMLElement>(
 );
 const todayEveningCorrections = document.querySelector<HTMLElement>(
   "#today-evening-corrections",
+);
+const todayRecordSupplementsSection = document.querySelector<HTMLElement>(
+  "#today-record-supplements-section",
+);
+const todayRecordSupplements = document.querySelector<HTMLElement>("#today-record-supplements");
+const todayRecordRevisionWarning = document.querySelector<HTMLElement>(
+  "#today-record-revision-warning",
 );
 const todayEveningOther = document.querySelector<HTMLElement>("#today-evening-other");
 const todayEvidenceToggle = document.querySelector<HTMLButtonElement>("#today-evidence-toggle");
@@ -729,6 +759,13 @@ const todayPresentationRequests = new LatestRequest();
 let currentTodayPhase: TodayPhase = "morning";
 let currentTodayView: TodayView | null = null;
 let selectedTodayDate: string | null = null;
+type DatedNoteDraft = {
+  content: string;
+  category: ShortRecordCategory;
+  correctionId: string | null;
+};
+const datedNoteDrafts = new Map<string, DatedNoteDraft>();
+let correctingShortRecordId: string | null = null;
 let currentCalendarMonth: CalendarMonthView | null = null;
 let selectedCalendarDate: string | null = null;
 const calendarMonthRequests = new LatestRequest();
@@ -1852,6 +1889,37 @@ function daytimeUpdateArticle(update: DaytimeUpdateView): HTMLElement {
   return article;
 }
 
+function shortRecordArticle(record: ShortRecordView, editable = true): HTMLElement {
+  const article = document.createElement("article");
+  article.className = "today-short-record";
+  const body = document.createElement("p");
+  body.textContent = record.text;
+  const meta = document.createElement("small");
+  meta.textContent = `${record.category === "exercise" ? "健身" : "日常记录"} · ${record.date}`;
+  article.append(body, meta);
+  if (editable) {
+    const correct = document.createElement("button");
+    correct.type = "button";
+    correct.className = "today-correct-record secondary-button";
+    correct.dataset.correctRecordId = record.id;
+    correct.textContent = "更正这条";
+    article.append(correct);
+  }
+  if (record.changes.length > 0) {
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = `修改记录 · ${record.changes.length}`;
+    details.append(summary);
+    record.changes.forEach((change) => {
+      const changeRow = document.createElement("p");
+      changeRow.textContent = `${change.modifiedAt} · ${change.oldText} → ${change.newText}`;
+      details.append(changeRow);
+    });
+    article.append(details);
+  }
+  return article;
+}
+
 function daytimeKnownArticle(update: DaytimeUpdateView): HTMLElement {
   const article = document.createElement("article");
   article.className = "today-known-update";
@@ -1983,12 +2051,61 @@ function eveningViewHasContent(evening: EveningView): boolean {
     evening.questions.length > 0 ||
     evening.additions.length > 0 ||
     evening.corrections.length > 0 ||
-    evening.other.length > 0
+    evening.other.length > 0 ||
+    evening.recordSupplements.length > 0
   );
 }
 
+function selectedShortRecordCategory(): ShortRecordCategory {
+  return todayDaytimeKind?.value === "exercise" ? "exercise" : "ordinary";
+}
+
+function stashDatedNoteDraft(): void {
+  if (!currentTodayView || !todayDaytimeContent) {
+    return;
+  }
+  const content = todayDaytimeContent.value;
+  if (content || correctingShortRecordId) {
+    datedNoteDrafts.set(currentTodayView.date, {
+      content,
+      category: selectedShortRecordCategory(),
+      correctionId: correctingShortRecordId,
+    });
+  } else {
+    datedNoteDrafts.delete(currentTodayView.date);
+  }
+}
+
+function renderDatedNoteComposer(view: TodayView): void {
+  const draft = datedNoteDrafts.get(view.date);
+  correctingShortRecordId = draft?.correctionId ?? null;
+  if (todayDaytimeContent) {
+    todayDaytimeContent.value = draft?.content ?? "";
+  }
+  if (todayDaytimeKind) {
+    todayDaytimeKind.value = draft?.category ?? "ordinary";
+    todayDaytimeKind.disabled = correctingShortRecordId !== null;
+  }
+  if (todayNoteFormLabel) {
+    todayNoteFormLabel.textContent = correctingShortRecordId ? "更正记录" : "写一句";
+  }
+  if (saveDaytimeUpdateButton) {
+    saveDaytimeUpdateButton.textContent = correctingShortRecordId ? "保存更正" : "保存记录";
+  }
+  cancelNoteCorrectionButton?.toggleAttribute("hidden", correctingShortRecordId === null);
+  if (todayNoteTarget) {
+    todayNoteTarget.textContent = view.canRecord
+      ? `保存在 ${view.date} 的日记录中；不替你打卡。`
+      : "未来日期不能记录已经发生的事实。";
+  }
+}
+
 function renderToday(view: TodayView): void {
+  if (currentTodayView?.date !== view.date) {
+    stashDatedNoteDraft();
+  }
   currentTodayView = view;
+  renderDatedNoteComposer(view);
   if (todayDate) {
     todayDate.textContent = `${view.isToday ? "Today" : "Selected day"} · ${view.date}`;
   }
@@ -2003,7 +2120,7 @@ function renderToday(view: TodayView): void {
   }
 
   const ready = view.state === "ready";
-  const readable = ready || (!view.isToday && view.state === "missing");
+  const readable = ready || view.state === "missing";
   if (todayReady) {
     todayReady.hidden = !readable;
   }
@@ -2037,7 +2154,7 @@ function renderToday(view: TodayView): void {
     todayCurrentEmpty.hidden = view.timeline.length > 0;
   }
   if (todayDaytimeForm) {
-    todayDaytimeForm.hidden = !view.isToday;
+    todayDaytimeForm.hidden = !view.canRecord;
   }
   if (todayEveningForm) {
     todayEveningForm.hidden = !view.isToday;
@@ -2054,7 +2171,8 @@ function renderToday(view: TodayView): void {
     0,
   );
   const arrangementChanges = view.daytime.updates.filter(daytimeHasArrangementChange);
-  const shortRecords = view.daytime.updates.filter(
+  const shortRecords = view.daytime.shortRecords;
+  const legacyShortRecords = view.daytime.updates.filter(
     (update) => !daytimeHasArrangementChange(update),
   );
   if (todayDaytimeCount) {
@@ -2078,13 +2196,16 @@ function renderToday(view: TodayView): void {
     todayFutureEmpty.hidden = directionCount > 0;
   }
   if (todayDaytimeShortRecords) {
-    todayDaytimeShortRecords.replaceChildren(...shortRecords.map(daytimeUpdateArticle));
+    todayDaytimeShortRecords.replaceChildren(
+      ...shortRecords.map((record) => shortRecordArticle(record)),
+      ...legacyShortRecords.map(daytimeUpdateArticle),
+    );
   }
   if (todayShortRecordCount) {
-    todayShortRecordCount.textContent = `${shortRecords.length} 条`;
+    todayShortRecordCount.textContent = `${shortRecords.length + legacyShortRecords.length} 条`;
   }
   if (todayShortRecordsEmpty) {
-    todayShortRecordsEmpty.hidden = shortRecords.length > 0;
+    todayShortRecordsEmpty.hidden = shortRecords.length + legacyShortRecords.length > 0;
   }
   if (todayDaytimeUpdates) {
     todayDaytimeUpdates.replaceChildren(
@@ -2129,6 +2250,19 @@ function renderToday(view: TodayView): void {
     view.evening.corrections.length === 0,
   );
   renderReadingParagraphs(todayEveningCorrections, view.evening.corrections);
+  todayRecordSupplementsSection?.toggleAttribute(
+    "hidden",
+    view.evening.recordSupplements.length === 0,
+  );
+  if (todayRecordSupplements) {
+    todayRecordSupplements.replaceChildren(
+      ...view.evening.recordSupplements.map((record) => shortRecordArticle(record, false)),
+    );
+  }
+  todayRecordRevisionWarning?.toggleAttribute(
+    "hidden",
+    !view.evening.hasLaterRecordRevision,
+  );
   if (todayEveningOther) {
     todayEveningOther.replaceChildren(
       ...view.evening.other.map((group) => {
@@ -2206,12 +2340,6 @@ function showTodayMutationStatus(message: string, state: "ready" | "error"): voi
   }
 }
 
-function syncHabitFields(): void {
-  const visible = todayDaytimeKind?.value === "habit-outcome";
-  todayHabitNameField?.toggleAttribute("hidden", !visible);
-  todayHabitOutcomeField?.toggleAttribute("hidden", !visible);
-}
-
 function updateTodayOperationState(delta: number): void {
   todayOperationCount = Math.max(0, todayOperationCount + delta);
   const busy = todayOperationCount > 0;
@@ -2219,6 +2347,76 @@ function updateTodayOperationState(delta: number): void {
   refreshTodayButton?.toggleAttribute("disabled", busy);
   todayDaytimeForm?.querySelector("button")?.toggleAttribute("disabled", busy);
   todayEveningForm?.querySelector("button")?.toggleAttribute("disabled", busy);
+}
+
+function localOperationId(prefix: string): string {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
+
+async function saveDatedNote(): Promise<boolean> {
+  const loaded = currentTodayView;
+  const content = todayDaytimeContent?.value.trim() ?? "";
+  if (
+    !loaded?.targetBinding ||
+    !loaded.canRecord ||
+    !content ||
+    todayOperationCount > 0
+  ) {
+    showTodayMutationStatus("请先打开可记录的日期，并填写一句内容。", "error");
+    return false;
+  }
+  const correction = loaded.daytime.shortRecords.find(
+    (record) => record.id === correctingShortRecordId,
+  );
+  if (correctingShortRecordId && (!correction || !loaded.revision)) {
+    showTodayMutationStatus("要更正的记录已经变化。草稿仍保留；请刷新后重试。", "error");
+    return false;
+  }
+  const command = correction ? "correct_dated_note" : "add_dated_note";
+  const input = correction
+    ? {
+        date: loaded.date,
+        targetBinding: loaded.targetBinding,
+        expectedRevision: loaded.revision,
+        entryId: correction.id,
+        changeId: localOperationId("change"),
+        content,
+      }
+    : {
+        date: loaded.date,
+        targetBinding: loaded.targetBinding,
+        expectedRevision: loaded.revision,
+        entryId: localOperationId("note"),
+        category: selectedShortRecordCategory(),
+        content,
+      };
+  const presentationRequest = todayPresentationRequests.begin();
+  updateTodayOperationState(1);
+  try {
+    const view = await window.__TAURI__.core.invoke<TodayView>(command, { input });
+    datedNoteDrafts.delete(loaded.date);
+    correctingShortRecordId = null;
+    if (todayPresentationRequests.isCurrent(presentationRequest)) {
+      renderToday(view);
+      showTodayMutationStatus(
+        correction ? "更正及修改记录已写入 Daily Record。" : "简短记录已写入 Daily Record。",
+        "ready",
+      );
+    }
+    return true;
+  } catch (error) {
+    datedNoteDrafts.set(loaded.date, {
+      content,
+      category: correction?.category ?? selectedShortRecordCategory(),
+      correctionId: correction?.id ?? null,
+    });
+    if (todayPresentationRequests.isCurrent(presentationRequest)) {
+      showTodayMutationStatus(`未保存：${String(error)}`, "error");
+    }
+    return false;
+  } finally {
+    updateTodayOperationState(-1);
+  }
 }
 
 async function saveTodayMutation(
@@ -3873,32 +4071,42 @@ calendarOpenDay?.addEventListener("click", () => {
   }
 });
 
-todayDaytimeKind?.addEventListener("change", syncHabitFields);
-syncHabitFields();
+todayDaytimeContent?.addEventListener("input", stashDatedNoteDraft);
+todayDaytimeKind?.addEventListener("change", stashDatedNoteDraft);
 
 todayDaytimeForm?.addEventListener("submit", (event) => {
   event.preventDefault();
-  if (!todayDaytimeKind || !todayDaytimeContent) {
+  void saveDatedNote();
+});
+
+todayDaytimeShortRecords?.addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-correct-record-id]",
+  );
+  const record = currentTodayView?.daytime.shortRecords.find(
+    (candidate) => candidate.id === button?.dataset.correctRecordId,
+  );
+  if (!record || !currentTodayView) {
     return;
   }
-  void (async () => {
-    const saved = await saveTodayMutation(
-      "append_daytime_update",
-      {
-        kind: todayDaytimeKind.value,
-        content: todayDaytimeContent.value,
-        habitName: todayDaytimeKind.value === "habit-outcome" ? todayHabitName?.value ?? null : null,
-        habitOutcome:
-          todayDaytimeKind.value === "habit-outcome" ? todayHabitOutcome?.value || null : null,
-      },
-      "白天更新已写入 Daily Record。",
-    );
-    if (saved) {
-      todayDaytimeContent.value = "";
-      if (todayHabitName) todayHabitName.value = "";
-      if (todayHabitOutcome) todayHabitOutcome.value = "";
-    }
-  })();
+  correctingShortRecordId = record.id;
+  datedNoteDrafts.set(currentTodayView.date, {
+    content: record.text,
+    category: record.category,
+    correctionId: record.id,
+  });
+  renderDatedNoteComposer(currentTodayView);
+  todayDaytimeContent?.focus();
+});
+
+cancelNoteCorrectionButton?.addEventListener("click", () => {
+  if (!currentTodayView) {
+    return;
+  }
+  correctingShortRecordId = null;
+  datedNoteDrafts.delete(currentTodayView.date);
+  renderDatedNoteComposer(currentTodayView);
+  todayDaytimeContent?.focus();
 });
 
 todayEveningForm?.addEventListener("submit", (event) => {

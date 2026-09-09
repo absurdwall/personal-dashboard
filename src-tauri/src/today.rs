@@ -25,12 +25,24 @@ pub trait TodayWorkspaceExchange {
 pub trait TodayClock {
     fn current_date(&self) -> String;
     fn current_time_label(&self) -> String;
+
+    fn current_timestamp_label(&self) -> String {
+        format!(
+            "{}T{} offset-unknown",
+            self.current_date(),
+            self.current_time_label()
+        )
+    }
 }
 
 pub trait TodayRecordStore {
     fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String>;
     fn save_if_unchanged(&self, path: &Path, expected: &[u8], updated: &[u8])
         -> Result<(), String>;
+
+    fn create_new(&self, _path: &Path, _document: &[u8]) -> Result<(), String> {
+        Err("This Daily Record store does not support exclusive creation.".into())
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -52,6 +64,46 @@ impl TodayRecordStore for FileTodayRecordStore {
         updated: &[u8],
     ) -> Result<(), String> {
         save_file_if_unchanged(path, expected, updated, |_| Ok(()))
+    }
+
+    fn create_new(&self, path: &Path, document: &[u8]) -> Result<(), String> {
+        let parent = path
+            .parent()
+            .ok_or_else(|| "The Daily Record has no parent directory.".to_string())?;
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create the Daily Record directory: {error}"))?;
+        let (temporary, mut output) = create_temporary_file(path)?;
+        let prepared = output
+            .write_all(document)
+            .and_then(|_| output.sync_all())
+            .map_err(|error| format!("Could not prepare the new Daily Record: {error}"));
+        drop(output);
+        if let Err(error) = prepared {
+            let _ = fs::remove_file(&temporary);
+            return Err(error);
+        }
+        if let Err(error) = fs::hard_link(&temporary, path) {
+            let _ = fs::remove_file(&temporary);
+            return Err(if error.kind() == std::io::ErrorKind::AlreadyExists {
+                "该日期的 Daily Record 已被另一个写入创建。请刷新后重试；现有内容未被覆盖。"
+                    .to_string()
+            } else {
+                format!("Could not exclusively activate the new Daily Record: {error}")
+            });
+        }
+        sync_parent(path).map_err(|error| {
+            format!(
+                "{error}; the complete new Daily Record is present at {} and can be verified by refreshing",
+                path.display()
+            )
+        })?;
+        fs::remove_file(&temporary).map_err(|error| {
+            format!(
+                "The new Daily Record is active, but its temporary hard link remains at {}: {error}",
+                temporary.display()
+            )
+        })?;
+        sync_parent(path)
     }
 }
 
@@ -374,6 +426,44 @@ pub struct EveningUpdateInput {
     pub content: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ShortRecordCategory {
+    Ordinary,
+    Exercise,
+}
+
+impl ShortRecordCategory {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Ordinary => "ordinary",
+            Self::Exercise => "exercise",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatedNoteInput {
+    pub date: String,
+    pub target_binding: String,
+    pub expected_revision: Option<String>,
+    pub entry_id: String,
+    pub category: ShortRecordCategory,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatedNoteCorrectionInput {
+    pub date: String,
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub entry_id: String,
+    pub change_id: String,
+    pub content: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TodayState {
@@ -490,6 +580,27 @@ pub struct EveningOtherView {
 #[serde(rename_all = "camelCase")]
 pub struct DaytimeView {
     pub updates: Vec<DaytimeUpdateView>,
+    pub short_records: Vec<ShortRecordView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortRecordChangeView {
+    pub id: String,
+    pub modified_at: String,
+    pub old_text: String,
+    pub new_text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortRecordView {
+    pub id: String,
+    pub date: String,
+    pub category: ShortRecordCategory,
+    pub created_at: String,
+    pub text: String,
+    pub changes: Vec<ShortRecordChangeView>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -502,6 +613,8 @@ pub struct EveningView {
     pub additions: Vec<String>,
     pub corrections: Vec<String>,
     pub other: Vec<EveningOtherView>,
+    pub record_supplements: Vec<ShortRecordView>,
+    pub has_later_record_revision: bool,
 }
 
 fn evening_has_content(evening: &EveningView) -> bool {
@@ -520,10 +633,12 @@ pub struct TodayView {
     pub state: TodayState,
     pub date: String,
     pub is_today: bool,
+    pub can_record: bool,
     pub default_phase: DailyPhase,
     pub vault_name: Option<String>,
     pub message: String,
     pub revision: Option<String>,
+    pub target_binding: Option<String>,
     pub baseline: MorningBaselineView,
     pub timeline: Vec<MorningBlockView>,
     pub evidence: Vec<PlanningEvidenceView>,
@@ -583,6 +698,7 @@ where
                 state: TodayState::Unconfigured,
                 date: date.to_owned(),
                 is_today,
+                can_record: false,
                 default_phase: if is_today {
                     DailyPhase::Morning
                 } else {
@@ -591,6 +707,7 @@ where
                 vault_name: None,
                 message: "请选择 Tortilla Flat vault，以读取 Daily Record。".into(),
                 revision: None,
+                target_binding: None,
                 baseline: MorningBaselineView::missing(),
                 timeline: Vec::new(),
                 evidence: Vec::new(),
@@ -648,6 +765,146 @@ where
             configured: vault.is_some(),
             days,
         })
+    }
+
+    pub fn add_dated_note(&self, input: DatedNoteInput) -> Result<TodayView, String> {
+        validate_short_text(&input.content, "简短记录")?;
+        validate_local_identifier(&input.entry_id, "记录标识")?;
+        self.validate_event_date(&input.date)?;
+        let (vault, path) = self.bound_record_target(&input.date, &input.target_binding)?;
+        let created_at = self.clock.current_timestamp_label();
+        validate_timestamp_label(&created_at)?;
+        let marker = short_record_marker(&input.entry_id, input.category, &created_at);
+        let block = format!("{marker}\n- {}", literal_line(input.content.trim()));
+
+        match self.record_store.load(&path)? {
+            Some(bytes) => {
+                let document = String::from_utf8(bytes).map_err(|_| {
+                    "该日期的 Daily Record 不是有效的 UTF-8 文本；未写入任何内容。".to_string()
+                })?;
+                let records = parse_short_records(&document, &input.date)?;
+                if let Some(record) = records.iter().find(|record| record.id == input.entry_id) {
+                    if record.category == input.category && record.text == input.content.trim() {
+                        return self.open_vault(&vault, input.date);
+                    }
+                    return Err(
+                        "该记录标识已经用于另一条内容。请刷新后重试；未写入任何内容。".into(),
+                    );
+                }
+                let expected = input.expected_revision.as_deref().ok_or_else(|| {
+                    "该日期的 Daily Record 已被创建。请刷新后重试；现有内容未被覆盖。".to_string()
+                })?;
+                require_revision_for_date(&document, expected, &input.date)?;
+                validate_writable_daily_record(&document, &input.date)?;
+                let updated = append_to_named_subsection(
+                    &document,
+                    "白天更新",
+                    "简短记录",
+                    &block,
+                    Some("晚间复盘"),
+                )?;
+                validate_writable_daily_record(&updated, &input.date)?;
+                self.record_store.save_if_unchanged(
+                    &path,
+                    document.as_bytes(),
+                    updated.as_bytes(),
+                )?;
+            }
+            None => {
+                if input.expected_revision.is_some() {
+                    return Err(
+                        "该日期的 Daily Record 已不存在。请刷新后重试；未创建替代记录。".into(),
+                    );
+                }
+                let document = minimal_daily_record(&input.date, &block);
+                validate_writable_daily_record(&document, &input.date)?;
+                self.record_store.create_new(&path, document.as_bytes())?;
+            }
+        }
+        self.open_vault(&vault, input.date)
+    }
+
+    pub fn correct_dated_note(&self, input: DatedNoteCorrectionInput) -> Result<TodayView, String> {
+        validate_short_text(&input.content, "更正内容")?;
+        validate_local_identifier(&input.entry_id, "记录标识")?;
+        validate_local_identifier(&input.change_id, "修改标识")?;
+        self.validate_event_date(&input.date)?;
+        let (vault, path) = self.bound_record_target(&input.date, &input.target_binding)?;
+        let bytes = self.record_store.load(&path)?.ok_or_else(|| {
+            "该日期的 Daily Record 已不存在。请刷新后重试；未创建替代记录。".to_string()
+        })?;
+        let document = String::from_utf8(bytes).map_err(|_| {
+            "该日期的 Daily Record 不是有效的 UTF-8 文本；未写入任何内容。".to_string()
+        })?;
+        let parsed = parse_short_record_locations(&document, &input.date)?;
+        if let Some(change) = parsed
+            .changes
+            .iter()
+            .find(|change| change.view.id == input.change_id)
+        {
+            if change.entry_id == input.entry_id && change.view.new_text == input.content.trim() {
+                return self.open_vault(&vault, input.date);
+            }
+            return Err("该修改标识已经用于另一项更正。请刷新后重试；未写入任何内容。".into());
+        }
+        require_revision_for_date(&document, &input.expected_revision, &input.date)?;
+        validate_writable_daily_record(&document, &input.date)?;
+        let record = parsed
+            .records
+            .iter()
+            .find(|record| record.view.id == input.entry_id)
+            .ok_or_else(|| "找不到要更正的简短记录。请刷新后确认该条目仍然存在。".to_string())?;
+        let modified_at = self.clock.current_timestamp_label();
+        validate_timestamp_label(&modified_at)?;
+        let old_text = record.view.text.clone();
+        let mut updated = String::with_capacity(document.len() + input.content.len() + 200);
+        updated.push_str(&document[..record.text_start]);
+        updated.push_str("- ");
+        updated.push_str(input.content.trim());
+        updated.push_str(&document[record.text_end..]);
+        let change_block = format!(
+            "{}\n- 原文：{}\n- 新文：{}",
+            short_record_change_marker(&input.change_id, &input.entry_id, &modified_at),
+            literal_line(&old_text),
+            literal_line(input.content.trim())
+        );
+        updated = append_to_named_subsection(
+            &updated,
+            "白天更新",
+            "修改记录",
+            &change_block,
+            Some("晚间复盘"),
+        )?;
+        validate_writable_daily_record(&updated, &input.date)?;
+        self.record_store
+            .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
+        self.open_vault(&vault, input.date)
+    }
+
+    fn validate_event_date(&self, date: &str) -> Result<(), String> {
+        let selected = CalendarDate::parse(date).ok_or_else(|| {
+            "The selected date is not a valid YYYY-MM-DD calendar date.".to_string()
+        })?;
+        let today = CalendarDate::parse(&self.clock.current_date())
+            .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
+        if selected.unix_days() > today.unix_days() {
+            return Err("不能在未来日期记录已经发生的事实。请选择今天或过去日期。".into());
+        }
+        Ok(())
+    }
+
+    fn bound_record_target(&self, date: &str, binding: &str) -> Result<(PathBuf, PathBuf), String> {
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or_else(|| "请先选择 Tortilla Flat vault，再保存简短记录。".to_string())?;
+        let path = canonical_record_path(&vault, date)?;
+        if record_target_binding(&path) != binding {
+            return Err(
+                "Vault 或日期保存目标已经变化。草稿仍保留；请返回原日期或刷新后再保存。".into(),
+            );
+        }
+        Ok((vault, path))
     }
 
     pub fn append_daytime_update(&self, input: DaytimeUpdateInput) -> Result<TodayView, String> {
@@ -709,27 +966,35 @@ where
 
     fn open_vault(&self, vault: &Path, date: String) -> Result<TodayView, String> {
         let is_today = date == self.clock.current_date();
+        let can_record = CalendarDate::parse(&date).is_some_and(|selected| {
+            CalendarDate::parse(&self.clock.current_date())
+                .is_some_and(|today| selected.unix_days() <= today.unix_days())
+        });
         let vault_name = vault
             .file_name()
             .and_then(|name| name.to_str())
             .map(str::to_owned);
         let path = canonical_record_path(vault, &date)?;
+        let target_binding = record_target_binding(&path);
         let bytes = match self.record_store.load(&path)? {
             Some(document) => document,
             None => {
+                let message =
+                    format!("{date} 还没有 Daily Record。只有明确保存一句记录时才会建立最小记录。");
                 return Ok(TodayView {
                     state: TodayState::Missing,
                     date,
                     is_today,
+                    can_record,
                     default_phase: if is_today {
                         DailyPhase::Morning
                     } else {
                         DailyPhase::Daytime
                     },
                     vault_name,
-                    message: "今天还没有 Daily Record。请先让 Codex 运行早间流程，然后刷新 Today。"
-                        .into(),
+                    message,
                     revision: None,
+                    target_binding: Some(target_binding),
                     baseline: MorningBaselineView::missing(),
                     timeline: Vec::new(),
                     evidence: Vec::new(),
@@ -743,7 +1008,12 @@ where
         let revision = document_revision(document.as_bytes());
 
         match parse_daily_record(&document, &date) {
-            Ok((baseline, timeline, evidence, daytime, evening)) => {
+            Ok((baseline, timeline, evidence, mut daytime, mut evening)) => {
+                let short_records = parse_short_records(&document, &date)?;
+                daytime.short_records = short_records.clone();
+                evening.has_later_record_revision =
+                    evening_has_content(&evening) && !short_records.is_empty();
+                evening.record_supplements = short_records;
                 let message = if timeline.is_empty() {
                     "这份 Daily Record 有效，但当前安排尚未写入。"
                 } else {
@@ -761,6 +1031,7 @@ where
                     state: TodayState::Ready,
                     date,
                     is_today,
+                    can_record,
                     default_phase: if is_today {
                         DailyPhase::Morning
                     } else if evening_has_content(&evening) {
@@ -771,6 +1042,7 @@ where
                     vault_name,
                     message: message.into(),
                     revision: Some(revision),
+                    target_binding: Some(target_binding),
                     baseline,
                     timeline,
                     evidence,
@@ -782,6 +1054,7 @@ where
                 state: TodayState::Error,
                 date,
                 is_today,
+                can_record,
                 default_phase: if is_today {
                     DailyPhase::Morning
                 } else {
@@ -790,6 +1063,7 @@ where
                 vault_name,
                 message,
                 revision: None,
+                target_binding: Some(target_binding),
                 baseline: MorningBaselineView::missing(),
                 timeline: Vec::new(),
                 evidence: Vec::new(),
@@ -835,6 +1109,21 @@ fn require_revision(document: &str, expected: &str) -> Result<(), String> {
                 .into(),
         )
     }
+}
+
+fn require_revision_for_date(document: &str, expected: &str, date: &str) -> Result<(), String> {
+    if document_revision(document.as_bytes()) == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "{date} 的 Daily Record 已在外部发生变化。草稿仍保留；请刷新后再保存，外部内容未被覆盖。"
+        ))
+    }
+}
+
+fn record_target_binding(path: &Path) -> String {
+    let normalized = path.to_string_lossy();
+    format!("target-{}", document_revision(normalized.as_bytes()))
 }
 
 fn validate_short_text(value: &str, label: &str) -> Result<(), String> {
@@ -885,6 +1174,93 @@ fn daytime_block(input: &DaytimeUpdateInput, time: &str) -> Result<(String, Stri
 
 fn literal_line(value: &str) -> String {
     value.to_owned()
+}
+
+fn validate_local_identifier(value: &str, label: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.len() > 96
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(format!("{label}格式无效；未写入任何内容。"));
+    }
+    Ok(())
+}
+
+fn validate_timestamp_label(value: &str) -> Result<(), String> {
+    let has_offset = value
+        .get(16..)
+        .is_some_and(|suffix| suffix.starts_with('+') || suffix.starts_with('-'));
+    if value.len() < 22 || value.as_bytes().get(10) != Some(&b'T') || !has_offset {
+        return Err("当前本地时间缺少 UTC offset；未写入记录。".into());
+    }
+    Ok(())
+}
+
+fn short_record_marker(id: &str, category: ShortRecordCategory, created_at: &str) -> String {
+    format!(
+        "<!-- personal-dashboard:short-record id={id} category={} created-at={created_at} -->",
+        category.as_str()
+    )
+}
+
+fn short_record_change_marker(change_id: &str, entry_id: &str, modified_at: &str) -> String {
+    format!(
+        "<!-- personal-dashboard:short-record-change id={change_id} entry-id={entry_id} modified-at={modified_at} -->"
+    )
+}
+
+fn minimal_daily_record(date: &str, record_block: &str) -> String {
+    format!(
+        "---\ntype: daily-record\ndate: {date}\n---\n# {date}\n\n## 白天更新\n\n### 简短记录\n\n{record_block}\n"
+    )
+}
+
+fn append_to_named_subsection(
+    document: &str,
+    parent: &str,
+    subsection: &str,
+    content: &str,
+    insert_parent_before: Option<&str>,
+) -> Result<String, String> {
+    if section_offsets(document, parent).is_none() {
+        return Ok(append_to_canonical_section(
+            document,
+            parent,
+            &format!("### {subsection}\n\n{content}"),
+            insert_parent_before,
+        ));
+    }
+    let matches = subsection_offsets(document, parent, subsection);
+    if matches.len() > 1 {
+        return Err(format!(
+            "该日期的 Daily Record 包含多个“{subsection}”段落。请先合并重复段落；未写入任何内容。"
+        ));
+    }
+    let Some((_, end)) = matches.first().copied() else {
+        return Ok(append_to_canonical_section(
+            document,
+            parent,
+            &format!("### {subsection}\n\n{content}"),
+            insert_parent_before,
+        ));
+    };
+    let mut output = String::with_capacity(document.len() + content.len() + 4);
+    output.push_str(&document[..end]);
+    if !output.ends_with('\n') {
+        output.push('\n');
+    }
+    if !output.ends_with("\n\n") {
+        output.push('\n');
+    }
+    output.push_str(content);
+    output.push('\n');
+    if !document[end..].starts_with('\n') {
+        output.push('\n');
+    }
+    output.push_str(&document[end..]);
+    Ok(output)
 }
 
 fn append_to_canonical_section(
@@ -1130,6 +1506,137 @@ impl std::fmt::Display for CalendarDate {
 
 fn is_leap_year(year: i32) -> bool {
     year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+}
+
+struct ShortRecordLocation {
+    view: ShortRecordView,
+    text_start: usize,
+    text_end: usize,
+}
+
+struct ShortRecordChangeLocation {
+    entry_id: String,
+    view: ShortRecordChangeView,
+}
+
+struct ParsedShortRecords {
+    records: Vec<ShortRecordLocation>,
+    changes: Vec<ShortRecordChangeLocation>,
+}
+
+fn parse_short_records(document: &str, date: &str) -> Result<Vec<ShortRecordView>, String> {
+    Ok(parse_short_record_locations(document, date)?
+        .records
+        .into_iter()
+        .map(|record| record.view)
+        .collect())
+}
+
+fn parse_short_record_locations(document: &str, date: &str) -> Result<ParsedShortRecords, String> {
+    let Some((section_start, section_end)) = section_offsets(document, "白天更新") else {
+        return Ok(ParsedShortRecords {
+            records: Vec::new(),
+            changes: Vec::new(),
+        });
+    };
+    let lines: Vec<_> = scan_markdown_lines(&document[section_start..section_end])
+        .into_iter()
+        .filter(|line| !line.in_fenced_code)
+        .collect();
+    let mut records: Vec<ShortRecordLocation> = Vec::new();
+    let mut changes: Vec<ShortRecordChangeLocation> = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        if let Some(attributes) = marker_attributes(line.text, "short-record") {
+            let id = required_marker_attribute(&attributes, "id")?;
+            validate_local_identifier(id, "记录标识")?;
+            if records.iter().any(|record| record.view.id == id) {
+                return Err("Daily Record 包含重复的简短记录标识；请修复后刷新 Today。".into());
+            }
+            let category = match required_marker_attribute(&attributes, "category")? {
+                "ordinary" => ShortRecordCategory::Ordinary,
+                "exercise" => ShortRecordCategory::Exercise,
+                _ => return Err("Daily Record 包含无法识别的简短记录类别。".into()),
+            };
+            let created_at = required_marker_attribute(&attributes, "created-at")?;
+            let text_line = lines[index + 1..]
+                .iter()
+                .find(|candidate| !candidate.text.trim().is_empty())
+                .ok_or_else(|| "Daily Record 的简短记录缺少正文。".to_string())?;
+            let text = text_line
+                .text
+                .trim()
+                .strip_prefix("- ")
+                .ok_or_else(|| "Daily Record 的简短记录正文格式无效。".to_string())?;
+            records.push(ShortRecordLocation {
+                view: ShortRecordView {
+                    id: id.to_owned(),
+                    date: date.to_owned(),
+                    category,
+                    created_at: created_at.to_owned(),
+                    text: text.to_owned(),
+                    changes: Vec::new(),
+                },
+                text_start: section_start + text_line.start,
+                text_end: section_start + text_line.start + text_line.text.len(),
+            });
+        } else if let Some(attributes) = marker_attributes(line.text, "short-record-change") {
+            let change_id = required_marker_attribute(&attributes, "id")?;
+            let entry_id = required_marker_attribute(&attributes, "entry-id")?;
+            validate_local_identifier(change_id, "修改标识")?;
+            validate_local_identifier(entry_id, "记录标识")?;
+            if changes.iter().any(|change| change.view.id == change_id) {
+                return Err("Daily Record 包含重复的修改记录标识；请修复后刷新 Today。".into());
+            }
+            let modified_at = required_marker_attribute(&attributes, "modified-at")?;
+            let mut following = lines[index + 1..]
+                .iter()
+                .filter(|candidate| !candidate.text.trim().is_empty());
+            let old_text = following
+                .next()
+                .and_then(|candidate| candidate.text.trim().strip_prefix("- 原文："))
+                .ok_or_else(|| "Daily Record 的修改记录缺少原文。".to_string())?;
+            let new_text = following
+                .next()
+                .and_then(|candidate| candidate.text.trim().strip_prefix("- 新文："))
+                .ok_or_else(|| "Daily Record 的修改记录缺少新文。".to_string())?;
+            changes.push(ShortRecordChangeLocation {
+                entry_id: entry_id.to_owned(),
+                view: ShortRecordChangeView {
+                    id: change_id.to_owned(),
+                    modified_at: modified_at.to_owned(),
+                    old_text: old_text.to_owned(),
+                    new_text: new_text.to_owned(),
+                },
+            });
+        }
+    }
+    for change in &changes {
+        if let Some(record) = records
+            .iter_mut()
+            .find(|record| record.view.id == change.entry_id)
+        {
+            record.view.changes.push(change.view.clone());
+        }
+    }
+    Ok(ParsedShortRecords { records, changes })
+}
+
+fn marker_attributes<'a>(line: &'a str, marker: &str) -> Option<Vec<(&'a str, &'a str)>> {
+    let prefix = format!("<!-- personal-dashboard:{marker} ");
+    let body = line.trim().strip_prefix(&prefix)?.strip_suffix(" -->")?;
+    body.split_ascii_whitespace()
+        .map(|attribute| attribute.split_once('='))
+        .collect()
+}
+
+fn required_marker_attribute<'a>(
+    attributes: &'a [(&'a str, &'a str)],
+    name: &str,
+) -> Result<&'a str, String> {
+    attributes
+        .iter()
+        .find_map(|(key, value)| (*key == name).then_some(*value))
+        .ok_or_else(|| format!("Daily Record 的 Dashboard 标记缺少 {name}。"))
 }
 
 fn parse_daily_record(
@@ -1642,7 +2149,10 @@ fn parse_daytime(section: &str) -> DaytimeView {
             })
         })
         .collect();
-    DaytimeView { updates }
+    DaytimeView {
+        updates,
+        short_records: Vec::new(),
+    }
 }
 
 enum DaytimeItemRole {
