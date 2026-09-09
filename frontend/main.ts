@@ -113,6 +113,70 @@ type CalendarMonthView = Readonly<{
   days: readonly CalendarDayView[];
 }>;
 
+type HabitSnapshotState =
+  | "unconfigured"
+  | "missing"
+  | "ready"
+  | "stale"
+  | "retained"
+  | "error";
+
+type HabitCellStatus =
+  | "unknown"
+  | "completed"
+  | "notDone"
+  | "conflict"
+  | "partial"
+  | "baseline"
+  | "unavailable"
+  | "actualTime"
+  | "thresholdOnly"
+  | "recordOnly";
+
+type HabitCellView = Readonly<{
+  date: string;
+  coverage: string;
+  status: HabitCellStatus;
+  hasRecord: boolean;
+  countsAsCompletion: boolean;
+  actualTimeLabel: string | null;
+  details: readonly string[];
+}>;
+
+type HabitView = Readonly<{
+  key: string;
+  name: string;
+  active: boolean;
+  goalKind: "weekly-count" | "daily-time";
+  goalLabel: string;
+  completedCount: number | null;
+  sourceLabels: readonly string[];
+  coverageLabel: string;
+  goalHistory: readonly Readonly<{
+    weekOf: string;
+    label: string;
+    goalLabel: string;
+  }>[];
+  today: HabitCellView;
+  recent: readonly HabitCellView[];
+  history: readonly HabitCellView[];
+}>;
+
+type HabitSnapshotView = Readonly<{
+  state: HabitSnapshotState;
+  message: string;
+  generatedAt: string | null;
+  rangeLabel: string | null;
+  producerLabel: string | null;
+  summary: Readonly<{
+    knownCompletions: number;
+    targetCompletions: number;
+    coverageNote: string;
+    excludedNoGoal: number;
+  }>;
+  habits: readonly HabitView[];
+}>;
+
 function isTodayPhase(value: string | undefined): value is TodayPhase {
   return value === "morning" || value === "daytime" || value === "evening";
 }
@@ -410,12 +474,13 @@ declare global {
   }
 }
 
-type WorkspaceDestination = "today" | "calendar" | "this-week" | "history" | "settings";
+type WorkspaceDestination = "today" | "calendar" | "habits" | "this-week" | "history" | "settings";
 
 function isWorkspaceDestination(value: string | undefined): value is WorkspaceDestination {
   return (
     value === "today" ||
     value === "calendar" ||
+    value === "habits" ||
     value === "this-week" ||
     value === "history" ||
     value === "settings"
@@ -436,6 +501,10 @@ const workspaceDestinationDetails: Record<
   calendar: {
     title: "Calendar",
     description: "先看整个月，再进入某一天。",
+  },
+  habits: {
+    title: "Habits",
+    description: "查看按需快照里的周次数、每日时刻与 12 周记录。",
   },
   "this-week": {
     title: "This Week",
@@ -481,6 +550,22 @@ const calendarSummaryHeading = document.querySelector<HTMLElement>("#calendar-su
 const calendarSummaryStatus = document.querySelector<HTMLElement>("#calendar-summary-status");
 const calendarSummaryCopy = document.querySelector<HTMLElement>("#calendar-summary-copy");
 const calendarOpenDay = document.querySelector<HTMLButtonElement>("#calendar-open-day");
+const habitsStatus = document.querySelector<HTMLElement>("#habits-status");
+const habitsDestination = document.querySelector<HTMLElement>("#workspace-destination-habits");
+const habitsRange = document.querySelector<HTMLElement>("#habits-range");
+const habitsReady = document.querySelector<HTMLElement>("#habits-ready");
+const habitsEmpty = document.querySelector<HTMLElement>("#habits-empty");
+const habitsEmptyHeading = document.querySelector<HTMLElement>("#habits-empty-heading");
+const habitsEmptyCopy = document.querySelector<HTMLElement>("#habits-empty-copy");
+const habitsSummaryTotal = document.querySelector<HTMLElement>("#habits-summary-total");
+const habitsSummaryRows = document.querySelector<HTMLElement>("#habits-summary-rows");
+const habitsSummaryNote = document.querySelector<HTMLElement>("#habits-summary-note");
+const habitsGeneratedAt = document.querySelector<HTMLElement>("#habits-generated-at");
+const habitsProducer = document.querySelector<HTMLElement>("#habits-producer");
+const habitsTodayDate = document.querySelector<HTMLElement>("#habits-today-date");
+const habitsDailyList = document.querySelector<HTMLElement>("#habits-daily-list");
+const habitsWeeklyList = document.querySelector<HTMLElement>("#habits-weekly-list");
+const refreshHabitsButton = document.querySelector<HTMLButtonElement>("#refresh-habits");
 const todayDate = document.querySelector<HTMLElement>("#today-date");
 const todayHeading = document.querySelector<HTMLElement>("#today-heading");
 const todayVault = document.querySelector<HTMLElement>("#today-vault");
@@ -772,6 +857,8 @@ let currentCalendarMonth: CalendarMonthView | null = null;
 let selectedCalendarDate: string | null = null;
 const calendarMonthRequests = new LatestRequest();
 const calendarSelectionRequests = new LatestRequest();
+const habitSnapshotRequests = new LatestRequest();
+let currentHabitSnapshot: HabitSnapshotView | null = null;
 let currentExerciseView: ExerciseDashboardView | null = null;
 let applicationFeatureArea = "Exercise tracking";
 let selectedDepartureSlotId: string | null = null;
@@ -2806,12 +2893,237 @@ async function showCalendarToday(): Promise<void> {
   }
 }
 
+const habitStatusLabels: Record<HabitCellStatus, string> = {
+  unknown: "未知",
+  completed: "已知完成",
+  notDone: "明确未完成",
+  conflict: "来源冲突 · 不计次",
+  partial: "partial · 不计次",
+  baseline: "baseline · 不计次",
+  unavailable: "来源不可用",
+  actualTime: "明确实际时刻",
+  thresholdOnly: "仅阈值证据",
+  recordOnly: "有文字记录 · 不计次",
+};
+
+function habitProgressLabel(habit: HabitView): string {
+  if (habit.completedCount === null) {
+    return habit.today.actualTimeLabel ?? "实际未知";
+  }
+  const target = habit.goalLabel.match(/\d+/)?.[0] ?? "—";
+  return `${habit.completedCount} / ${target}`;
+}
+
+function habitCellButton(
+  habit: HabitView,
+  cell: HabitCellView,
+  compact: boolean,
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `habit-cell status-${cell.status}`;
+  button.dataset.habitKey = habit.key;
+  button.dataset.habitDate = cell.date;
+  button.dataset.habitDetails = JSON.stringify(cell.details);
+  button.setAttribute(
+    "aria-label",
+    `${cell.date} · ${habit.name} · ${habitStatusLabels[cell.status]} · coverage ${cell.coverage}`,
+  );
+  button.title = `${cell.date} · ${habitStatusLabels[cell.status]}`;
+  if (compact) {
+    const weekday = ["日", "一", "二", "三", "四", "五", "六"][
+      new Date(`${cell.date}T00:00:00Z`).getUTCDay()
+    ];
+    const label = document.createElement("small");
+    label.textContent = weekday;
+    button.append(label);
+  }
+  const mark = document.createElement("span");
+  mark.setAttribute("aria-hidden", "true");
+  mark.textContent = cell.hasRecord ? "•" : "";
+  button.append(mark);
+  return button;
+}
+
+function habitRow(habit: HabitView): HTMLElement {
+  const article = document.createElement("article");
+  article.className = "habit-snapshot-row";
+  article.dataset.habitKey = habit.key;
+  const identity = document.createElement("div");
+  identity.className = "habit-snapshot-identity";
+  const name = document.createElement("strong");
+  const metadata = document.createElement("p");
+  const sources = document.createElement("small");
+  name.textContent = habit.name;
+  metadata.textContent = `${habit.goalLabel} · ${habit.coverageLabel}`;
+  sources.textContent = `来源：${habit.sourceLabels.join("、") || "未声明"}`;
+  identity.append(name, metadata, sources);
+
+  const value = document.createElement("div");
+  value.className = "habit-snapshot-value";
+  const progress = document.createElement("strong");
+  const todayState = document.createElement("small");
+  progress.textContent = habitProgressLabel(habit);
+  todayState.textContent = `今天：${habitStatusLabels[habit.today.status]}`;
+  value.append(progress, todayState);
+
+  const recent = document.createElement("div");
+  recent.className = "habit-recent";
+  const recentLabel = document.createElement("span");
+  recentLabel.textContent = "近 7 天";
+  const recentCells = document.createElement("div");
+  recentCells.className = "habit-recent-cells";
+  recentCells.replaceChildren(
+    ...habit.recent.map((cell) => habitCellButton(habit, cell, true)),
+  );
+  recent.append(recentLabel, recentCells);
+
+  const expand = document.createElement("button");
+  expand.type = "button";
+  expand.className = "habit-expand";
+  expand.dataset.habitExpand = habit.key;
+  expand.setAttribute("aria-expanded", "false");
+  expand.textContent = "展开";
+
+  const history = document.createElement("section");
+  history.className = "habit-history";
+  history.hidden = true;
+  history.id = `habit-history-${habit.key}`;
+  expand.setAttribute("aria-controls", history.id);
+  const historyHeading = document.createElement("div");
+  historyHeading.className = "habit-history-heading";
+  const heading = document.createElement("strong");
+  const caption = document.createElement("small");
+  heading.textContent = "近 12 周记录";
+  caption.textContent = "点 = 有来源记录；实心完成与文字记录状态不同";
+  historyHeading.append(heading, caption);
+  const grid = document.createElement("div");
+  grid.className = "habit-history-grid";
+  grid.replaceChildren(
+    ...habit.history.map((cell) => habitCellButton(habit, cell, false)),
+  );
+  const goalContext = document.createElement("p");
+  goalContext.className = "habit-goal-context";
+  goalContext.textContent = habit.goalHistory.length
+    ? `历史目标 context：${habit.goalHistory
+        .map((context) => `${context.weekOf} ${context.label} ${context.goalLabel}`)
+        .join("；")}`
+    : "历史目标 context：快照未提供；不回填历史达标率。";
+  const detail = document.createElement("div");
+  detail.className = "habit-cell-detail";
+  detail.dataset.habitDetail = habit.key;
+  detail.setAttribute("role", "status");
+  detail.textContent = "选择一个日期点，查看来源、coverage 与记录。";
+  history.append(historyHeading, grid, goalContext, detail);
+  article.append(identity, value, recent, expand, history);
+  return article;
+}
+
+function renderHabitSnapshot(view: HabitSnapshotView): void {
+  currentHabitSnapshot = view;
+  if (habitsStatus) {
+    habitsStatus.textContent = view.message;
+    habitsStatus.dataset.state = view.state;
+  }
+  if (habitsRange) {
+    habitsRange.textContent = view.rangeLabel
+      ? `12 周 bounded range · ${view.rangeLabel}`
+      : "等待有效的 bounded snapshot。";
+  }
+  const hasSnapshot = view.habits.length > 0;
+  if (habitsReady) habitsReady.hidden = !hasSnapshot;
+  if (habitsEmpty) habitsEmpty.hidden = hasSnapshot;
+  if (!hasSnapshot) {
+    if (habitsEmptyHeading) {
+      habitsEmptyHeading.textContent =
+        view.state === "unconfigured" ? "尚未选择 Vault。" : "尚无可显示的 Habits 快照。";
+    }
+    if (habitsEmptyCopy) habitsEmptyCopy.textContent = view.message;
+    return;
+  }
+  if (habitsSummaryTotal) {
+    habitsSummaryTotal.textContent = `${view.summary.knownCompletions} / ${view.summary.targetCompletions}`;
+  }
+  if (habitsSummaryNote) {
+    const noGoal = view.summary.excludedNoGoal
+      ? ` ${view.summary.excludedNoGoal} 个无目标习惯未计入分母。`
+      : "";
+    habitsSummaryNote.textContent = `${view.summary.coverageNote}${noGoal}`;
+  }
+  if (habitsGeneratedAt) habitsGeneratedAt.textContent = view.generatedAt ?? "未知";
+  if (habitsProducer) habitsProducer.textContent = view.producerLabel ?? "未知";
+  if (habitsTodayDate) habitsTodayDate.textContent = view.habits[0]?.today.date ?? "—";
+  if (habitsSummaryRows) {
+    habitsSummaryRows.replaceChildren(
+      ...view.habits
+        .filter((habit) => habit.goalKind === "weekly-count")
+        .map((habit) => {
+          const row = document.createElement("div");
+          const label = document.createElement("span");
+          const value = document.createElement("strong");
+          const kind = document.createElement("small");
+          row.className = "habits-summary-row";
+          label.textContent = habit.name;
+          value.textContent = habitProgressLabel(habit);
+          kind.textContent = habit.goalLabel;
+          row.append(label, value, kind);
+          return row;
+        }),
+    );
+  }
+  if (habitsDailyList) {
+    habitsDailyList.replaceChildren(
+      ...view.habits
+        .filter((habit) => habit.goalKind !== "weekly-count")
+        .map(habitRow),
+    );
+  }
+  if (habitsWeeklyList) {
+    habitsWeeklyList.replaceChildren(
+      ...view.habits
+        .filter((habit) => habit.goalKind === "weekly-count")
+        .map(habitRow),
+    );
+  }
+}
+
+async function refreshHabits(): Promise<void> {
+  const request = habitSnapshotRequests.begin();
+  if (habitsStatus) {
+    habitsStatus.textContent = "正在读取本地 Habits 快照…";
+    habitsStatus.dataset.state = "loading";
+  }
+  try {
+    const view = await window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot");
+    if (!habitSnapshotRequests.isCurrent(request)) return;
+    renderHabitSnapshot(view);
+  } catch (error) {
+    if (!habitSnapshotRequests.isCurrent(request)) return;
+    renderHabitSnapshot({
+      state: "error",
+      message: `无法读取 Habits 快照：${String(error)}`,
+      generatedAt: null,
+      rangeLabel: null,
+      producerLabel: null,
+      summary: {
+        knownCompletions: 0,
+        targetCompletions: 0,
+        coverageNote: "",
+        excludedNoGoal: 0,
+      },
+      habits: [],
+    });
+  }
+}
+
 function renderWorkspaceFeatureArea(destination: WorkspaceDestination): void {
   const featureArea =
     destination === "today"
       ? "Daily Record"
       : destination === "calendar"
         ? "Calendar"
+        : destination === "habits"
+          ? "Habits"
         : applicationFeatureArea;
   document.querySelectorAll<HTMLElement>("[data-feature-area]").forEach((element) => {
     element.textContent = featureArea;
@@ -2826,12 +3138,16 @@ function showWorkspaceDestination(
   const destinationChanged = currentWorkspaceDestination !== destination;
   const leavingToday = currentWorkspaceDestination === "today" && destination !== "today";
   const leavingCalendar = currentWorkspaceDestination === "calendar" && destination !== "calendar";
+  const leavingHabits = currentWorkspaceDestination === "habits" && destination !== "habits";
   if (leavingToday) {
     todayPresentationRequests.invalidate();
   }
   if (leavingCalendar) {
     calendarMonthRequests.invalidate();
     calendarSelectionRequests.invalidate();
+  }
+  if (leavingHabits) {
+    habitSnapshotRequests.invalidate();
   }
   const restoreOpenDetail = destination === "this-week" && workspaceDetailOpen;
   currentWorkspaceDestination = destination;
@@ -2845,6 +3161,8 @@ function showWorkspaceDestination(
         ? "Today"
         : buttonDestination === "calendar"
           ? "Calendar"
+          : buttonDestination === "habits"
+            ? "Habits"
         : buttonDestination === "this-week"
           ? "This Week"
           : buttonDestination === "history"
@@ -2916,6 +3234,9 @@ function showWorkspaceDestination(
   }
   if (destination === "calendar") {
     void openCalendar();
+  }
+  if (destination === "habits") {
+    void refreshHabits();
   }
   if (restoreOpenDetail) {
     window.requestAnimationFrame(() => workspaceDetailClose?.focus());
@@ -4072,6 +4393,54 @@ calendarOpenDay?.addEventListener("click", () => {
   if (selectedCalendarDate) {
     showWorkspaceDestination("today", true, selectedCalendarDate);
   }
+});
+
+refreshHabitsButton?.addEventListener("click", () => {
+  void refreshHabits();
+});
+
+habitsDestination?.addEventListener("click", (event) => {
+  const expand = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-habit-expand]",
+  );
+  if (expand) {
+    const row = expand.closest<HTMLElement>(".habit-snapshot-row");
+    const history = row?.querySelector<HTMLElement>(".habit-history");
+    if (!history) return;
+    history.hidden = !history.hidden;
+    expand.setAttribute("aria-expanded", String(!history.hidden));
+    expand.textContent = history.hidden ? "展开" : "收起";
+    return;
+  }
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-habit-key][data-habit-date]",
+  );
+  if (!button) return;
+  const key = button.dataset.habitKey;
+  const date = button.dataset.habitDate;
+  const habit = currentHabitSnapshot?.habits.find((item) => item.key === key);
+  const cell = habit?.history.find((item) => item.date === date);
+  const row = button.closest<HTMLElement>(".habit-snapshot-row");
+  const history = row?.querySelector<HTMLElement>(".habit-history");
+  const expandButton = row?.querySelector<HTMLButtonElement>("button[data-habit-expand]");
+  const detail = row?.querySelector<HTMLElement>(".habit-cell-detail");
+  if (!habit || !cell || !history || !detail) return;
+  history.hidden = false;
+  expandButton?.setAttribute("aria-expanded", "true");
+  if (expandButton) expandButton.textContent = "收起";
+  const heading = document.createElement("strong");
+  const state = document.createElement("span");
+  const details = document.createElement("ul");
+  heading.textContent = `${cell.date} · ${habit.name}`;
+  state.textContent = `${habitStatusLabels[cell.status]} · coverage ${cell.coverage}`;
+  details.replaceChildren(
+    ...cell.details.map((line) => {
+      const item = document.createElement("li");
+      item.textContent = line;
+      return item;
+    }),
+  );
+  detail.replaceChildren(heading, state, details);
 });
 
 todayDaytimeContent?.addEventListener("input", stashDatedNoteDraft);

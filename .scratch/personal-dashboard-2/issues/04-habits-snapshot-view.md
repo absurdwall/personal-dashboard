@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — 保留早间基准，展示当前安排
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 实现 G3 bounded、versioned snapshot 读取与验证，提供完整合成生产样例及供外部 Agent 使用的生成契约；不直连或轮询 Dida365。
 - [ ] 逐 Habit 的身份、来源、覆盖范围、更新时间与 actual-time 证据明确；刷新失败保留上个有效读数并显示状态。

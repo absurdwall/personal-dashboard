@@ -6,6 +6,7 @@ use tauri::{RunEvent, WindowEvent};
 pub mod backup;
 mod clock;
 pub mod exercise;
+pub mod habits;
 pub mod migration;
 pub mod move_profile;
 pub mod notification;
@@ -38,7 +39,7 @@ use platform::{
 use profile::{ProfileApplication, ProfileView};
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DaytimeUpdateInput,
-    EveningUpdateInput, TodayApplication, TodayView,
+    EveningUpdateInput, HabitSnapshotView, TodayApplication, TodayView,
 };
 
 type DesktopProfileApplication =
@@ -165,6 +166,13 @@ fn calendar_month(
     month: u32,
 ) -> Result<CalendarMonthView, String> {
     application.calendar_month(year, month)
+}
+
+#[tauri::command]
+fn habit_snapshot(
+    application: State<'_, DesktopTodayApplication>,
+) -> Result<HabitSnapshotView, String> {
+    application.habits()
 }
 
 #[tauri::command]
@@ -569,6 +577,7 @@ pub fn run() {
             today_view,
             daily_view,
             calendar_month,
+            habit_snapshot,
             select_today_vault,
             append_daytime_update,
             add_dated_note,
@@ -614,6 +623,7 @@ pub fn run() {
         today_view,
         daily_view,
         calendar_month,
+        habit_snapshot,
         select_today_vault,
         append_daytime_update,
         add_dated_note,

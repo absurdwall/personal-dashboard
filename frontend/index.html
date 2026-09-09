@@ -42,6 +42,15 @@
           <button
             type="button"
             class="destination-button"
+            data-workspace-destination="habits"
+            aria-controls="workspace-destination-habits"
+          >
+            <span class="destination-icon" aria-hidden="true">◉</span>
+            <span>Habits</span>
+          </button>
+          <button
+            type="button"
+            class="destination-button"
             data-workspace-destination="this-week"
             aria-controls="workspace-destination-this-week"
             aria-current="page"
@@ -74,6 +83,7 @@
             <option value="this-week">This Week</option>
             <option value="today">Today</option>
             <option value="calendar">Calendar</option>
+            <option value="habits">Habits</option>
             <option value="history">History</option>
             <option value="settings">Settings</option>
           </select>
@@ -489,6 +499,75 @@
                 <p id="today-handoff-copy">
                   请让 Codex 运行早间流程，然后回到这里刷新 Today。
                 </p>
+              </section>
+            </section>
+
+            <section
+              id="workspace-destination-habits"
+              class="workspace-destination habits-destination"
+              data-workspace-panel="habits"
+              aria-labelledby="habits-heading"
+              hidden
+            >
+              <header class="habits-header">
+                <div>
+                  <p class="section-label">Habits · Sourced snapshot</p>
+                  <h2 id="habits-heading" class="destination-heading">本周习惯</h2>
+                  <p id="habits-range">正在读取按需快照…</p>
+                </div>
+                <button id="refresh-habits" type="button">刷新快照</button>
+              </header>
+              <p id="habits-status" class="today-status" role="status" aria-live="polite">
+                正在读取 Habits 快照…
+              </p>
+              <div id="habits-ready" class="habits-layout" hidden>
+                <aside class="habits-week-summary" aria-labelledby="habits-summary-heading">
+                  <div class="habits-group-heading">
+                    <div>
+                      <p class="section-label">本周统计</p>
+                      <h3 id="habits-summary-heading">简短摘要</h3>
+                    </div>
+                    <small>周一至周日</small>
+                  </div>
+                  <div class="habits-summary-total">
+                    <strong id="habits-summary-total">—</strong>
+                    <span>已知次数 / 目标次数</span>
+                  </div>
+                  <div id="habits-summary-rows"></div>
+                  <p id="habits-summary-note"></p>
+                  <dl class="habits-provenance">
+                    <div><dt>更新时间</dt><dd id="habits-generated-at">—</dd></div>
+                    <div><dt>来源</dt><dd id="habits-producer">—</dd></div>
+                  </dl>
+                </aside>
+                <section class="habits-today-detail" aria-labelledby="habits-today-heading">
+                  <div class="habits-group-heading">
+                    <div>
+                      <p class="section-label">今日情况</p>
+                      <h3 id="habits-today-heading">已知与未知并列</h3>
+                    </div>
+                    <small id="habits-today-date">—</small>
+                  </div>
+                  <section class="habits-target-section" aria-labelledby="habits-daily-heading">
+                    <div class="habits-target-heading">
+                      <h4 id="habits-daily-heading">每日锚点</h4>
+                      <small>目标 / 明确实际</small>
+                    </div>
+                    <div id="habits-daily-list"></div>
+                  </section>
+                  <section class="habits-target-section" aria-labelledby="habits-weekly-heading">
+                    <div class="habits-target-heading">
+                      <h4 id="habits-weekly-heading">本周习惯在今天</h4>
+                      <small>周次数 · 今日状态</small>
+                    </div>
+                    <div id="habits-weekly-list"></div>
+                  </section>
+                </section>
+              </div>
+              <section id="habits-empty" class="today-handoff" aria-labelledby="habits-empty-heading" hidden>
+                <p class="section-label">Habits snapshot</p>
+                <h3 id="habits-empty-heading">尚无可显示的快照。</h3>
+                <p id="habits-empty-copy">Dashboard 不会自行生成或连接 Dida365。</p>
               </section>
             </section>
 

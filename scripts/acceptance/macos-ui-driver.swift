@@ -998,8 +998,9 @@ func assertSemanticContract(
     let compactViewport = mainWindow(application).flatMap(windowSize).map { $0.width <= 680 } ?? false
     let todayMode = mode == "today" || mode == "today-daytime" || mode == "today-evening"
     let calendarMode = mode == "calendar"
+    let habitsMode = mode == "habits"
     let compactMode = mode == "compact" || mode == "detail-compact" ||
-        mode == "settings" || mode == "recording" || todayMode || calendarMode
+        mode == "settings" || mode == "recording" || todayMode || calendarMode || habitsMode
     let minimumButtonCount = compactViewport ? 1 : 4
     guard (counts["AXWindow"] ?? 0) > 0,
           (counts["AXWebArea"] ?? 0) > 0,
@@ -1010,12 +1011,13 @@ func assertSemanticContract(
     }
 
     let requiresDestinationSwitcher = Set([
-        "default", "compact", "settings", "calendar", "today", "today-daytime", "today-evening",
+        "default", "compact", "settings", "calendar", "habits", "today", "today-daytime", "today-evening",
     ]).contains(mode)
     if compactViewport && requiresDestinationSwitcher {
         let expectedDestination = mode == "settings"
             ? "Settings"
             : calendarMode ? "Calendar"
+            : habitsMode ? "Habits"
             : todayMode ? "Today" : "This Week"
         let switcherRoles = Set(["AXComboBox", "AXPopUpButton"])
         let switcherDescriptions = findRolesWithin(application, switcherRoles).map(nodeText)
@@ -1031,7 +1033,7 @@ func assertSemanticContract(
     }
 
     if !compactViewport {
-        for text in ["Today", "Calendar", "This Week", "History", "Settings"] {
+        for text in ["Today", "Calendar", "Habits", "This Week", "History", "Settings"] {
             guard findPressable(application, text, contains: true) != nil else {
                 throw DriverError.timeout("semantic navigation control: \(text)")
             }
@@ -1058,6 +1060,13 @@ func assertSemanticContract(
             throw DriverError.timeout(
                 "semantic Calendar heading hierarchy (expected 1, found \(calendarHeadings.count))"
             )
+        }
+    } else if habitsMode {
+        guard findText(application, "本周统计") != nil,
+              findText(application, "每日锚点") != nil,
+              findText(application, "本周习惯在今天") != nil,
+              findPressable(application, "刷新快照", contains: true) != nil else {
+            throw DriverError.timeout("semantic Habits snapshot surface")
         }
     } else if todayMode {
         for text in ["Morning", "Daytime", "Evening"] {

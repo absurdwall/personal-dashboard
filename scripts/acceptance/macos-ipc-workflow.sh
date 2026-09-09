@@ -333,7 +333,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle habits; do
     run_bounded_scenario "$scenario"
   done
 
@@ -2065,6 +2065,84 @@ EOF
   echo "Viewport: Calendar summary, grid, and keyboard date movement remained available at 960x720 and 640x520"
 }
 
+run_habits_scenario() {
+  local vault_directory="$acceptance_directory/tortilla-flat-vault"
+  local snapshot_directory="$vault_directory/.personal-dashboard/derived"
+  local snapshot_file="$snapshot_directory/habits-v1.json"
+  local record_directory="$vault_directory/life/Journal/Daily/2026/2026-09"
+  local record_file="$record_directory/2026-09-07.md"
+  local before_record_hash
+
+  current_step="preparing isolated Habits snapshot and Daily Record context"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p "$vault_directory/.obsidian" "$snapshot_directory" "$record_directory" "$acceptance_data_directory"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_directory" > "$acceptance_data_directory/today-workspace.json"
+  /bin/cp "$repository_root/src-tauri/tests/fixtures/habits-v1-complete.json" "$snapshot_file"
+  cat > "$record_file" <<'EOF'
+---
+type: daily-record
+date: 2026-09-07
+---
+# 2026-09-07
+
+## 白天更新
+
+### 简短记录
+
+<!-- personal-dashboard:short-record id=run-1 category=exercise created-at=2026-09-07T19:00:00-04:00 needs-review=false -->
+- 只是文字记录，不自动计次
+EOF
+  before_record_hash="$(shasum -a 256 "$record_file")"
+
+  current_step="opening the FINAL Habits snapshot surface"
+  launch_app_waiting_for_text "Log workout now" 30
+  run_driver set-size "960x720" 10
+  run_driver press "Habits" 10
+  run_driver wait-text "3 / 15" 20
+  run_driver assert-semantic "habits"
+  run_driver assert-text "已知次数 / 目标次数"
+  run_driver assert-text "Exercise"
+  run_driver assert-text "1 / 3"
+  run_driver assert-text "营养药"
+  run_driver assert-text "2 / 7"
+  run_driver assert-text "Reset living space"
+  run_driver assert-text "0 / 5"
+  run_driver assert-text "07:18"
+  run_driver assert-text "仅阈值证据"
+  run_driver assert-text "2026-06-22 — 2026-09-08"
+  run_driver assert-text "2026-09-08T14:10:00-04:00"
+
+  current_step="opening a sourced conflict date and 12-week history"
+  run_driver press-contains "2026-09-07 · Exercise" 10
+  run_driver wait-text "近 12 周记录" 10
+  run_driver assert-text "来源冲突 · 不计次"
+  run_driver assert-text "只是文字记录，不自动计次"
+  run_driver assert-text "历史目标 context"
+
+  current_step="checking compact Habits layout and destination switcher"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver assert-semantic "habits"
+  run_driver assert-text "Destination"
+  run_driver assert-text "3 / 15"
+  run_driver assert-text "近 12 周记录"
+
+  current_step="retaining the last valid reading after malformed refresh"
+  printf '{"schemaVersion":2}\n' > "$snapshot_file"
+  run_driver press "刷新快照" 10
+  run_driver wait-text "继续显示上个有效快照" 20
+  run_driver assert-text "3 / 15"
+  [[ "$(shasum -a 256 "$record_file")" == "$before_record_hash" ]] ||
+    fail "Habits reading changed the Daily Record context"
+
+  echo "Packaged IPC Habits snapshot acceptance passed"
+  echo "Projection: corrected 3 / 15 summary, daily actual-time evidence, recent dots, and 12-week history crossed real Tauri IPC"
+  echo "Boundary: isolated local snapshot and Daily Record only; no producer, Dida365 call, polling, or record write"
+  echo "Failure: malformed refresh retained the last valid in-process reading with visible status"
+  echo "Viewport: Habits remained readable at 960x720 and 640x520"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -2179,10 +2257,14 @@ if [[ "$acceptance_scenario" == "calendar" ]]; then
   run_calendar_scenario
   exit 0
 fi
+if [[ "$acceptance_scenario" == "habits" ]]; then
+  run_habits_scenario
+  exit 0
+fi
 if [[ "$acceptance_scenario" == "live-cycle" ]]; then
   run_live_daily_cycle_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "compact" && "$acceptance_scenario" != "keyboard" && "$acceptance_scenario" != "week-close" && "$acceptance_scenario" != "today" && "$acceptance_scenario" != "today-write" && "$acceptance_scenario" != "installed-cycle" && "$acceptance_scenario" != "calendar" && "$acceptance_scenario" != "live-cycle" ]]; then
+if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "compact" && "$acceptance_scenario" != "keyboard" && "$acceptance_scenario" != "week-close" && "$acceptance_scenario" != "today" && "$acceptance_scenario" != "today-write" && "$acceptance_scenario" != "installed-cycle" && "$acceptance_scenario" != "calendar" && "$acceptance_scenario" != "habits" && "$acceptance_scenario" != "live-cycle" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi

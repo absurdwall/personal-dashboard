@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-08T14:10:00-04:00",
+  "range": { "from": "2026-06-22", "to": "2026-09-08" },
+  "producer": { "kind": "agent-derived", "label": "Daily flow synthetic snapshot" },
+  "sources": [
+    { "key": "dida", "kind": "dida365", "label": "Dida365 打卡" },
+    { "key": "manual", "kind": "manual", "label": "Agent 对话补报" }
+  ],
+  "habits": [
+    {
+      "key": "exercise", "name": "Exercise", "active": true, "trackingKind": "weekly-count",
+      "goal": { "kind": "weekly-count", "standard": 3 },
+      "goalHistory": [{ "weekOf": "2026-08-31", "label": "当周标准", "goal": { "kind": "weekly-count", "standard": 2 } }],
+      "days": [
+        { "livedDate": "2026-08-25", "coverage": "complete", "observations": [
+          { "source": "dida", "observedAt": "2026-08-25T19:00:00-04:00", "status": "completed", "evidence": "check-in", "note": "historical synthetic completion" }
+        ]},
+        { "livedDate": "2026-09-07", "coverage": "complete", "observations": [
+          { "source": "dida", "observedAt": "2026-09-07T20:00:00-04:00", "status": "completed", "evidence": "check-in", "note": "Dida says complete" },
+          { "source": "manual", "observedAt": "2026-09-07T20:05:00-04:00", "status": "not-done", "evidence": "manual-completion", "note": "manual correction conflicts" }
+        ]},
+        { "livedDate": "2026-09-08", "coverage": "complete", "observations": [
+          { "source": "dida", "observedAt": "2026-09-08T08:30:00-04:00", "status": "completed", "evidence": "check-in" },
+          { "source": "dida", "observedAt": "2026-09-08T08:35:00-04:00", "status": "completed", "evidence": "check-in", "note": "latest same source wins" },
+          { "source": "manual", "observedAt": "2026-09-08T08:36:00-04:00", "status": "completed", "evidence": "manual-completion" }
+        ]}
+      ]
+    },
+    {
+      "key": "nutrition", "name": "营养药", "active": true, "trackingKind": "weekly-count",
+      "goal": { "kind": "weekly-count", "standard": 7 }, "goalHistory": [],
+      "days": [
+        { "livedDate": "2026-08-27", "coverage": "complete", "observations": [
+          { "source": "dida", "observedAt": "2026-08-27T08:00:00-04:00", "status": "completed", "evidence": "check-in" }
+        ]},
+        { "livedDate": "2026-09-07", "coverage": "complete", "observations": [
+          { "source": "dida", "observedAt": "2026-09-07T08:00:00-04:00", "status": "completed", "evidence": "check-in" }
+        ]},
+        { "livedDate": "2026-09-08", "coverage": "complete", "observations": [
+          { "source": "dida", "observedAt": "2026-09-08T08:00:00-04:00", "status": "completed", "evidence": "check-in" }
+        ]}
+      ]
+    },
+    {
+      "key": "reset", "name": "Reset living space", "active": true, "trackingKind": "weekly-count",
+      "goal": { "kind": "weekly-count", "standard": 5 }, "goalHistory": [],
+      "days": [
+        { "livedDate": "2026-09-03", "coverage": "complete", "observations": [
+          { "source": "manual", "observedAt": "2026-09-03T20:00:00-04:00", "status": "completed", "evidence": "manual-completion", "note": "historical synthetic completion" }
+        ]},
+        { "livedDate": "2026-09-07", "coverage": "partial", "observations": [
+          { "source": "dida", "observedAt": "2026-09-07T21:00:00-04:00", "status": "baseline", "evidence": "check-in", "note": "baseline tier only" }
+        ]},
+        { "livedDate": "2026-09-08", "coverage": "complete", "observations": [
+          { "source": "dida", "observedAt": "2026-09-08T09:00:00-04:00", "status": "partial", "evidence": "check-in", "note": "partial tier only" }
+        ]}
+      ]
+    },
+    {
+      "key": "wake", "name": "起床", "active": true, "trackingKind": "daily-time",
+      "goal": { "kind": "daily-time", "standard": "07:30", "dayRelation": "same-day" }, "goalHistory": [],
+      "days": [
+        { "livedDate": "2026-09-05", "coverage": "complete", "observations": [
+          { "source": "manual", "observedAt": "2026-09-05T08:15:00-04:00", "status": "actual-time", "evidence": "explicit-time", "actualTime": { "occurredOn": "2026-09-05", "localTime": "08:12", "utcOffsetMinutes": -240, "dayRelation": "same-day" } }
+        ]},
+        { "livedDate": "2026-09-08", "coverage": "complete", "observations": [
+        { "source": "dida", "observedAt": "2026-09-08T07:20:00-04:00", "status": "actual-time", "evidence": "explicit-time", "actualTime": { "occurredOn": "2026-09-08", "localTime": "07:18", "utcOffsetMinutes": -240, "dayRelation": "same-day" } }
+        ]}
+      ]
+    },
+    {
+      "key": "sleep", "name": "睡觉", "active": true, "trackingKind": "daily-time",
+      "goal": { "kind": "daily-time", "standard": "23:30", "dayRelation": "same-day" }, "goalHistory": [],
+      "days": [
+        { "livedDate": "2026-09-04", "coverage": "complete", "observations": [
+          { "source": "manual", "observedAt": "2026-09-05T00:35:00-04:00", "status": "actual-time", "evidence": "explicit-time", "actualTime": { "occurredOn": "2026-09-05", "localTime": "00:30", "utcOffsetMinutes": -240, "dayRelation": "next-day" }, "note": "9/4 lived day" }
+        ]},
+        { "livedDate": "2026-09-08", "coverage": "complete", "observations": [
+        { "source": "dida", "observedAt": "2026-09-08T14:00:00-04:00", "status": "threshold-met", "evidence": "threshold-check-in", "note": "threshold cannot establish an exact minute" }
+        ]}
+      ]
+    }
+  ]
+}

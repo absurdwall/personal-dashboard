@@ -1,7 +1,11 @@
+use crate::habits::{project_snapshot, snapshot_dates, LocalHabitRecord, SNAPSHOT_RELATIVE_PATH};
+pub use crate::habits::{HabitCellStatus, HabitSnapshotState, HabitSnapshotView};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const DAILY_RECORD_TYPE: &str = "daily-record";
@@ -646,6 +650,7 @@ pub struct TodayApplication<P, E, C, S = FileTodayRecordStore> {
     exchange: E,
     clock: C,
     record_store: S,
+    habit_cache: Mutex<HashMap<PathBuf, HabitSnapshotView>>,
 }
 
 impl<P, E, C> TodayApplication<P, E, C, FileTodayRecordStore>
@@ -660,6 +665,7 @@ where
             exchange,
             clock,
             record_store: FileTodayRecordStore,
+            habit_cache: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -677,6 +683,81 @@ where
             exchange,
             clock,
             record_store,
+            habit_cache: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn habits(&self) -> Result<HabitSnapshotView, String> {
+        let Some(vault) = self.persistence.load_selected_vault()? else {
+            return Ok(HabitSnapshotView::unconfigured());
+        };
+        let path = vault.join(SNAPSHOT_RELATIVE_PATH);
+        let document = match fs::read(&path) {
+            Ok(document) => document,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(HabitSnapshotView::missing())
+            }
+            Err(error) => {
+                return Ok(HabitSnapshotView::error(format!(
+                    "无法读取 Habits 快照：{error}"
+                )))
+            }
+        };
+        let today = self.clock.current_date();
+        let dates = match snapshot_dates(&document, &today) {
+            Ok(dates) => dates,
+            Err(error) => return Ok(self.retained_or_error(&path, error)?),
+        };
+        let mut local_records = Vec::new();
+        for date in dates {
+            let record_path = canonical_record_path(&vault, &date)?;
+            let Ok(Some(bytes)) = self.record_store.load(&record_path) else {
+                continue;
+            };
+            let Ok(record) = String::from_utf8(bytes) else {
+                continue;
+            };
+            let Ok(records) = parse_short_records(&record, &date) else {
+                continue;
+            };
+            for record in records
+                .into_iter()
+                .filter(|record| record.category == ShortRecordCategory::Exercise)
+            {
+                local_records.push(LocalHabitRecord {
+                    key: "exercise".into(),
+                    date: record.date,
+                    source_label: "Dashboard Daily Record".into(),
+                    text: record.text,
+                });
+            }
+        }
+        match project_snapshot(&document, &today, local_records) {
+            Ok(view) => {
+                self.habit_cache
+                    .lock()
+                    .map_err(|_| "Habits 快照缓存不可用。".to_string())?
+                    .insert(path, view.clone());
+                Ok(view)
+            }
+            Err(error) => Ok(self.retained_or_error(&path, error)?),
+        }
+    }
+
+    fn retained_or_error(&self, path: &Path, error: String) -> Result<HabitSnapshotView, String> {
+        let cache = self
+            .habit_cache
+            .lock()
+            .map_err(|_| "Habits 快照缓存不可用。".to_string())?;
+        if let Some(previous) = cache.get(path) {
+            let mut retained = previous.clone();
+            retained.state = HabitSnapshotState::Retained;
+            retained.message = format!("刷新失败，继续显示上个有效快照：{error}");
+            Ok(retained)
+        } else {
+            Ok(HabitSnapshotView::error(format!(
+                "Habits 快照无效；没有可保留的旧读数：{error}"
+            )))
         }
     }
 
