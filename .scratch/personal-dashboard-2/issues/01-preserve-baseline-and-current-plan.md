@@ -29,7 +29,7 @@
 
 验证：
 
-- `cargo test --manifest-path src-tauri/Cargo.toml`：112 passed。
-- `cargo test --manifest-path src-tauri/Cargo.toml --test today_workflow`：37 passed。
+- `cargo test --manifest-path src-tauri/Cargo.toml`：113 passed。
+- `cargo test --manifest-path src-tauri/Cargo.toml --test today_workflow`：38 passed。
 - `npm run check`、`cargo fmt --check`、Swift driver typecheck、shell syntax check、`git diff --check`：通过。
 - 隔离打包 app 的 `today` 与 `today-write` 场景：通过；覆盖真实 IPC 写入、外部刷新、旧记录兼容和 960x720／800x640／640x520 三档 Today 布局。

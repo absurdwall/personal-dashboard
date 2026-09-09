@@ -432,6 +432,14 @@ const todayCurrentEmpty = document.querySelector<HTMLElement>("#today-current-em
 const todayPhaseButtons = document.querySelectorAll<HTMLButtonElement>("[data-today-phase]");
 const todayPhasePanels = document.querySelectorAll<HTMLElement>("[data-today-phase-panel]");
 const todayDaytimeCount = document.querySelector<HTMLElement>("#today-daytime-count");
+const todayDaytimeKnown = document.querySelector<HTMLElement>("#today-daytime-known");
+const todayDaytimeKnownEmpty = document.querySelector<HTMLElement>("#today-daytime-known-empty");
+const todayDaytimeShortRecords = document.querySelector<HTMLElement>(
+  "#today-daytime-short-records",
+);
+const todayShortRecordCount = document.querySelector<HTMLElement>("#today-short-record-count");
+const todayShortRecordsEmpty = document.querySelector<HTMLElement>("#today-short-records-empty");
+const todayChangeCount = document.querySelector<HTMLElement>("#today-change-count");
 const todayDaytimeUpdates = document.querySelector<HTMLElement>("#today-daytime-updates");
 const todayDaytimeEmpty = document.querySelector<HTMLElement>("#today-daytime-empty");
 const todayDaytimeForm = document.querySelector<HTMLFormElement>("#today-daytime-form");
@@ -678,6 +686,7 @@ let refreshingToday = false;
 let currentTodayPhase: TodayPhase = "morning";
 let currentTodayView: TodayView | null = null;
 let currentExerciseView: ExerciseDashboardView | null = null;
+let applicationFeatureArea = "Exercise tracking";
 let selectedDepartureSlotId: string | null = null;
 let activeWorkoutSlotId: string | null = null;
 let workspaceDetailOpen = false;
@@ -1795,6 +1804,31 @@ function daytimeUpdateArticle(update: DaytimeUpdateView): HTMLElement {
   return article;
 }
 
+function daytimeKnownArticle(update: DaytimeUpdateView): HTMLElement {
+  const article = document.createElement("article");
+  article.className = "today-known-update";
+  const heading = document.createElement("h4");
+  heading.textContent = update.title;
+  const list = document.createElement("ul");
+  list.append(
+    ...update.observedFacts.map((line) => {
+      const item = document.createElement("li");
+      item.textContent = line;
+      return item;
+    }),
+  );
+  article.append(heading, list);
+  return article;
+}
+
+function daytimeHasArrangementChange(update: DaytimeUpdateView): boolean {
+  return (
+    update.originalIntent.length > 0 ||
+    update.changeReasons.length > 0 ||
+    update.revisedDirection.length > 0
+  );
+}
+
 function appendDaytimeGroup(
   article: HTMLElement,
   heading: string,
@@ -1870,7 +1904,7 @@ function showTodayPhase(phase: TodayPhase, focus = false): void {
   if (todayEvidenceRegion) {
     todayEvidenceRegion.hidden = phase !== "morning";
   }
-  renderTodayEvidence(phase);
+  renderTodayEvidence();
   if (phaseChanged && workspaceInformation) {
     workspaceInformation.scrollTop = 0;
   }
@@ -1925,16 +1959,41 @@ function renderToday(view: TodayView): void {
     todayCurrentEmpty.hidden = view.timeline.length > 0;
   }
 
+  const knownUpdates = view.daytime.updates.filter(
+    (update) => update.observedFacts.length > 0,
+  );
+  const arrangementChanges = view.daytime.updates.filter(daytimeHasArrangementChange);
+  const shortRecords = view.daytime.updates.filter(
+    (update) => !daytimeHasArrangementChange(update),
+  );
   if (todayDaytimeCount) {
-    todayDaytimeCount.textContent = `${view.daytime.updates.length} 条`;
+    todayDaytimeCount.textContent = `${knownUpdates.length} 条已知 · ${view.timeline.length} 项计划`;
+  }
+  if (todayDaytimeKnown) {
+    todayDaytimeKnown.replaceChildren(...knownUpdates.map(daytimeKnownArticle));
+  }
+  if (todayDaytimeKnownEmpty) {
+    todayDaytimeKnownEmpty.hidden = knownUpdates.length > 0;
+  }
+  if (todayDaytimeShortRecords) {
+    todayDaytimeShortRecords.replaceChildren(...shortRecords.map(daytimeUpdateArticle));
+  }
+  if (todayShortRecordCount) {
+    todayShortRecordCount.textContent = `${shortRecords.length} 条`;
+  }
+  if (todayShortRecordsEmpty) {
+    todayShortRecordsEmpty.hidden = shortRecords.length > 0;
   }
   if (todayDaytimeUpdates) {
     todayDaytimeUpdates.replaceChildren(
-      ...view.daytime.updates.map(daytimeUpdateArticle),
+      ...arrangementChanges.map(daytimeUpdateArticle),
     );
   }
+  if (todayChangeCount) {
+    todayChangeCount.textContent = `${arrangementChanges.length} 条`;
+  }
   if (todayDaytimeEmpty) {
-    todayDaytimeEmpty.hidden = view.daytime.updates.length > 0;
+    todayDaytimeEmpty.hidden = arrangementChanges.length > 0;
   }
 
   const eveningHasContent =
@@ -2020,19 +2079,18 @@ function renderToday(view: TodayView): void {
   showTodayPhase(currentTodayPhase);
 }
 
-function renderTodayEvidence(phase: TodayPhase): void {
+function renderTodayEvidence(): void {
   const view = currentTodayView;
   if (!view) {
     return;
   }
-  const evidence = phase === "morning" ? view.baseline.evidence : view.evidence;
+  const evidence = view.baseline.evidence;
   const evidenceItemCount = evidence.reduce(
     (total, group) => total + group.items.length,
     0,
   );
   if (todayEvidenceHeading) {
-    todayEvidenceHeading.textContent =
-      phase === "morning" ? "初始计划依据" : "当前计划依据";
+    todayEvidenceHeading.textContent = "初始计划依据";
   }
   if (todayEvidenceCount) {
     todayEvidenceCount.textContent = `${evidenceItemCount} 项`;
@@ -2042,8 +2100,7 @@ function renderTodayEvidence(phase: TodayPhase): void {
   }
   if (todayEvidenceEmpty) {
     todayEvidenceEmpty.hidden = evidenceItemCount > 0;
-    todayEvidenceEmpty.textContent =
-      phase === "morning" ? "尚未记录初始计划依据。" : "尚未记录当前计划依据。";
+    todayEvidenceEmpty.textContent = "尚未记录初始计划依据。";
   }
 }
 
@@ -2111,6 +2168,13 @@ async function refreshToday(command = "today_view"): Promise<void> {
   }
 }
 
+function renderWorkspaceFeatureArea(destination: WorkspaceDestination): void {
+  const featureArea = destination === "today" ? "Daily Record" : applicationFeatureArea;
+  document.querySelectorAll<HTMLElement>("[data-feature-area]").forEach((element) => {
+    element.textContent = featureArea;
+  });
+}
+
 function showWorkspaceDestination(destination: WorkspaceDestination, focus = false): void {
   const restoreOpenDetail = destination === "this-week" && workspaceDetailOpen;
   currentWorkspaceDestination = destination;
@@ -2157,6 +2221,7 @@ function showWorkspaceDestination(destination: WorkspaceDestination, focus = fal
   if (workspaceContextStatus) {
     workspaceContextStatus.textContent = `${details.title} is the current destination.`;
   }
+  renderWorkspaceFeatureArea(destination);
   renderWorkspaceDetail();
   if (destination === "today") {
     void refreshToday();
@@ -3167,9 +3232,8 @@ async function connectToApplication(): Promise<void> {
     document.querySelectorAll<HTMLElement>("[data-product-name]").forEach((element) => {
       element.textContent = identity.productName;
     });
-    document.querySelectorAll<HTMLElement>("[data-feature-area]").forEach((element) => {
-      element.textContent = identity.featureArea;
-    });
+    applicationFeatureArea = identity.featureArea;
+    renderWorkspaceFeatureArea(currentWorkspaceDestination);
   } catch {
     runtimeStatus.textContent = "The local application boundary is unavailable.";
     runtimeStatus.dataset.state = "error";

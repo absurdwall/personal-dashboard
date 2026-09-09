@@ -1391,6 +1391,9 @@ fn parse_evidence(section: &str) -> Vec<PlanningEvidenceView> {
         groups.push(group);
     }
     groups
+        .into_iter()
+        .filter(|group| !group.items.is_empty())
+        .collect()
 }
 
 #[derive(Default)]

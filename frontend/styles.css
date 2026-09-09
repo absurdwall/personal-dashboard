@@ -2134,6 +2134,55 @@ body {
   letter-spacing: -0.02em;
 }
 
+.today-axis-legend,
+.today-zone-heading,
+.today-rail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.today-axis-legend {
+  margin: 13px 0 4px;
+  color: var(--parity-muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.today-axis-zone {
+  padding-top: 14px;
+}
+
+.today-zone-label,
+.today-rail-heading {
+  margin: 0;
+  color: var(--parity-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.today-known-update {
+  padding: 15px 0;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.today-known-update h4 {
+  margin: 0 0 7px;
+  color: #232724;
+  font-size: 12px;
+}
+
+.today-known-update ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #4f5753;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .today-now-marker {
   display: flex;
   align-items: center;
@@ -2161,6 +2210,22 @@ body {
 
 .today-update-rail .today-bounded-form {
   margin-top: 0;
+}
+
+.today-rail-section {
+  margin-top: 18px;
+}
+
+.today-rail-heading {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.today-axis-note {
+  margin: 15px 0 0;
+  color: var(--parity-muted);
+  font-size: 10px;
+  line-height: 1.55;
 }
 
 .today-update-boundary {

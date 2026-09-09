@@ -221,6 +221,42 @@ date: 2026-08-10
 }
 
 #[test]
+fn evidence_headings_without_items_do_not_make_a_baseline_saved() {
+    let vault = TempDirectory::new("today-heading-only-baseline");
+    write_record(
+        vault.path(),
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 早间基准
+
+### 初始安排
+
+### 初始计划依据
+
+#### 固定安排
+
+#### Tasks（任务）
+
+## 今天的大致安排
+
+- **下午：** 当前安排仍然可读。
+"#,
+    );
+
+    let view = application_for(vault.path())
+        .open()
+        .expect("heading-only baseline should remain readable");
+
+    assert_eq!(view.baseline.availability, BaselineAvailability::Empty);
+    assert!(view.baseline.timeline.is_empty());
+    assert!(view.baseline.evidence.is_empty());
+}
+
+#[test]
 fn synthetic_day_contexts_only_project_explicit_baseline_current_and_fact_content() {
     struct Example {
         label: &'static str,

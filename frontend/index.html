@@ -161,8 +161,8 @@
                     >
                       <div class="today-region-heading">
                         <div>
-                          <p class="section-label">Morning baseline · 早间起点</p>
-                          <h3 id="today-timeline-heading">早间基准安排</h3>
+                          <p class="section-label">Morning · 早间基准</p>
+                          <h3 id="today-timeline-heading">当天的初始安排</h3>
                         </div>
                         <span id="today-block-count" class="today-count"></span>
                       </div>
@@ -188,23 +188,42 @@
                     >
                       <div class="today-region-heading">
                         <div>
-                          <p class="section-label">白天更新</p>
-                          <h3 id="today-daytime-heading">变化与新的方向</h3>
+                          <p class="section-label">Daytime · 时间轴</p>
+                          <h3 id="today-daytime-heading">时间轴 + 记录</h3>
                         </div>
                         <span id="today-daytime-count" class="today-count"></span>
                       </div>
                       <p class="today-reading-introduction">
-                        当前安排、明确记录和变化并排阅读；时间过去、第一次回复或没有回复都不会自动变成事实。
+                        已确认的事实、接下来计划和记录变化并排阅读；时间过去、第一次回复或没有回复都不会自动变成事实。
                       </p>
                       <div class="today-daytime-layout">
                         <section class="today-current-arrangement" aria-labelledby="today-current-arrangement-heading">
                           <div class="today-current-heading">
                             <div>
-                              <p class="section-label">Current arrangement · 当前安排</p>
+                              <p class="section-label">Daytime · 时间轴</p>
                               <h4 id="today-current-arrangement-heading">现在怎么走</h4>
                             </div>
-                            <span id="today-current-count" class="today-count"></span>
+                            <span id="today-daytime-count" class="today-count"></span>
                           </div>
+                          <div class="today-axis-legend" aria-label="时间轴图例">
+                            <span>已发生 / 已确认</span>
+                            <span>接下来计划</span>
+                          </div>
+                          <section class="today-axis-zone" aria-labelledby="today-known-heading">
+                            <p id="today-known-heading" class="today-zone-label">已发生 / 已确认</p>
+                            <div id="today-daytime-known" class="today-daytime-known"></div>
+                            <p id="today-daytime-known-empty" class="today-phase-empty" hidden>
+                              今天还没有明确记录的已发生事实。
+                            </p>
+                          </section>
+                          <div class="today-now-marker" role="separator">
+                            <span>现在 · 记录边界</span>
+                          </div>
+                          <section class="today-axis-zone today-future-zone" aria-labelledby="today-future-heading">
+                            <div class="today-zone-heading">
+                              <p id="today-future-heading" class="today-zone-label">接下来计划</p>
+                              <span id="today-current-count" class="today-count"></span>
+                            </div>
                           <ol
                             id="today-current-timeline"
                             class="today-timeline"
@@ -214,12 +233,9 @@
                           <p id="today-current-empty" class="today-plan-empty" hidden>
                             这份 Daily Record 还没有当前安排。
                           </p>
-                          <div class="today-now-marker" role="separator">
-                            <span>记录边界</span>
-                          </div>
-                          <div id="today-daytime-updates" class="today-daytime-updates"></div>
-                          <p id="today-daytime-empty" class="today-phase-empty" hidden>
-                            今天还没有需要留下的白天变化。这不表示计划失败，也不需要补记普通完成项。
+                          </section>
+                          <p class="today-axis-note">
+                            时间轴只整理明确事实和接下来方向；没有记录的活动继续保持未知。
                           </p>
                         </section>
                         <aside class="today-update-rail" aria-label="Daytime update rail">
@@ -258,6 +274,26 @@
                           <p>这里只记录明确输入；不会据此推断完成情况或自动重写计划。</p>
                         </div>
                       </form>
+                          <section class="today-rail-section" aria-labelledby="today-short-records-heading">
+                            <div class="today-rail-heading">
+                              <span id="today-short-records-heading">当日简短记录</span>
+                              <span id="today-short-record-count" class="today-count"></span>
+                            </div>
+                            <div id="today-daytime-short-records" class="today-daytime-updates"></div>
+                            <p id="today-short-records-empty" class="today-phase-empty" hidden>
+                              还没有简短记录。
+                            </p>
+                          </section>
+                          <section class="today-rail-section" aria-labelledby="today-changes-heading">
+                            <div class="today-rail-heading">
+                              <span id="today-changes-heading">安排变化</span>
+                              <span id="today-change-count" class="today-count"></span>
+                            </div>
+                            <div id="today-daytime-updates" class="today-daytime-updates"></div>
+                            <p id="today-daytime-empty" class="today-phase-empty" hidden>
+                              今天还没有明确记录的安排变化。
+                            </p>
+                          </section>
                           <p class="today-update-boundary">
                             重排由外部 Agent 明确更新“当前安排”；这里的记录不会覆盖早间基准，也不会自动写回 Dida365。
                           </p>

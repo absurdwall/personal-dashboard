@@ -1597,7 +1597,8 @@ EOF
 
   current_step="checking presentation hierarchy and compact evidence"
   run_driver assert-semantic "today"
-  run_driver assert-text "早间基准安排"
+  run_driver assert-text "Daily Record"
+  run_driver assert-text "当天的初始安排"
   run_driver assert-text "3 个时间块"
   run_driver assert-text "完成原定项目"
   run_driver assert-absent-text "先处理需要 17:00 前完成的紧急工作"
@@ -1610,7 +1611,12 @@ EOF
   run_driver press "Daytime" 10
   run_driver assert-semantic "today-daytime"
   run_driver assert-state "Daytime|selected" 10
+  run_driver assert-text "时间轴 + 记录"
   run_driver assert-text "现在怎么走"
+  run_driver assert-text "已发生 / 已确认"
+  run_driver assert-text "接下来计划"
+  run_driver assert-text "当日简短记录"
+  run_driver assert-text "安排变化"
   run_driver assert-text "先处理需要 17:00 前完成的紧急工作"
   run_driver assert-absent-text "完成原定项目"
   run_driver assert-text "14:10 — 重大调整"
@@ -1759,7 +1765,7 @@ EOF
   run_driver press "Today" 10
   run_driver set-size "640x520" 10
   run_driver press "Daytime" 10
-  run_driver wait-text "今天还没有需要留下的白天变化" 10
+  run_driver wait-text "今天还没有明确记录的安排变化" 10
   run_driver assert-absent-text "这是外部更新后的受约束一天"
 
   current_step="checking old-record compatibility without inventing a baseline"
