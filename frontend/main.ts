@@ -1,7 +1,7 @@
 import {
-  hasEveningReviewContent,
-  hasEveningVisibleContent,
-} from "./evening-content.js";
+  DatedNoteTargetChangedError,
+  submitDatedNote,
+} from "./dated-note-command.js";
 import { LatestRequest } from "./latest-request.js";
 
 type ApplicationIdentity = Readonly<{
@@ -88,6 +88,7 @@ type TodayView = Readonly<{
   isToday: boolean;
   canRecord: boolean;
   defaultPhase: TodayPhase;
+  dailyRecordAvailability: DailyRecordAvailability;
   vaultName: string | null;
   message: string;
   revision: string | null;
@@ -2159,7 +2160,16 @@ function showTodayPhase(phase: TodayPhase, focus = false): void {
 }
 
 function eveningViewHasContent(evening: EveningView): boolean {
-  return hasEveningVisibleContent(evening);
+  return (
+    evening.account.length > 0 ||
+    evening.comparison.length > 0 ||
+    evening.summary.length > 0 ||
+    evening.questions.length > 0 ||
+    evening.additions.length > 0 ||
+    evening.corrections.length > 0 ||
+    evening.other.length > 0 ||
+    evening.recordSupplements.length > 0
+  );
 }
 
 function selectedShortRecordCategory(): ShortRecordCategory {
@@ -2472,41 +2482,28 @@ async function saveDatedNote(): Promise<boolean> {
     showTodayMutationStatus("请先打开可记录的日期，并填写一句内容。", "error");
     return false;
   }
-  const correction = loaded.daytime.shortRecords.find(
-    (record) => record.id === correctingShortRecordId,
-  );
-  if (correctingShortRecordId && (!correction || !loaded.revision)) {
-    showTodayMutationStatus("要更正的记录已经变化。草稿仍保留；请刷新后重试。", "error");
-    return false;
-  }
-  const command = correction ? "correct_dated_note" : "add_dated_note";
-  const input = correction
-    ? {
-        date: loaded.date,
-        targetBinding: loaded.targetBinding,
-        expectedRevision: loaded.revision,
-        entryId: correction.id,
-        changeId: localOperationId("change"),
-        content,
-      }
-    : {
-        date: loaded.date,
-        targetBinding: loaded.targetBinding,
-        expectedRevision: loaded.revision,
-        entryId: localOperationId("note"),
-        category: selectedShortRecordCategory(),
-        content,
-      };
+  const category = selectedShortRecordCategory();
+  const correctionId = correctingShortRecordId;
   const presentationRequest = todayPresentationRequests.begin();
   updateTodayOperationState(1);
   try {
-    const view = await window.__TAURI__.core.invoke<TodayView>(command, { input });
+    const view = await submitDatedNote<TodayView>(
+      {
+        date: loaded.date,
+        targetBinding: loaded.targetBinding,
+        revision: loaded.revision,
+        records: loaded.daytime.shortRecords,
+      },
+      { content, category, correctionId },
+      window.__TAURI__.core.invoke,
+      localOperationId,
+    );
     datedNoteDrafts.delete(loaded.targetBinding);
     correctingShortRecordId = null;
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
       renderToday(view);
       showTodayMutationStatus(
-        correction ? "更正及修改记录已写入 Daily Record。" : "简短记录已写入 Daily Record。",
+        correctionId ? "更正及修改记录已写入 Daily Record。" : "简短记录已写入 Daily Record。",
         "ready",
       );
     }
@@ -2514,11 +2511,16 @@ async function saveDatedNote(): Promise<boolean> {
   } catch (error) {
     datedNoteDrafts.set(loaded.targetBinding, {
       content,
-      category: correction?.category ?? selectedShortRecordCategory(),
-      correctionId: correction?.id ?? null,
+      category,
+      correctionId,
     });
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
-      showTodayMutationStatus(`未保存：${String(error)}`, "error");
+      showTodayMutationStatus(
+        error instanceof DatedNoteTargetChangedError
+          ? error.message
+          : `未保存：${String(error)}`,
+        "error",
+      );
     }
     return false;
   } finally {
@@ -2704,14 +2706,7 @@ function renderCalendarSummary(view: TodayView): void {
   if (calendarSummaryHeading) {
     calendarSummaryHeading.textContent = calendarDateLabel(view.date);
   }
-  const availability: DailyRecordAvailability =
-    view.state === "error"
-      ? "error"
-      : view.state === "missing" || view.state === "unconfigured"
-        ? "missing"
-        : hasEveningReviewContent(view.evening)
-          ? "reviewed"
-          : "unreviewed";
+  const availability = view.dailyRecordAvailability;
   if (calendarSummaryStatus) {
     calendarSummaryStatus.textContent = calendarAvailabilityLabels[availability].label;
     calendarSummaryStatus.dataset.availability = availability;
@@ -3295,49 +3290,31 @@ async function saveHabitExerciseNote(): Promise<boolean> {
     return false;
   }
   const draft = habitNoteDrafts.get(loaded.targetBinding);
-  const correction = loaded.daytime.shortRecords.find(
-    (record) => record.id === draft?.correctionId && record.category === "exercise",
-  );
-  if (draft?.correctionId && (!correction || !loaded.revision)) {
-    habitNoteStatus = {
-      message: "要更正的记录已经变化。草稿仍保留；请重新打开该日期后重试。",
-      state: "error",
-    };
-    renderSelectedHabitCell();
-    return false;
-  }
-  const command = correction ? "correct_dated_note" : "add_dated_note";
-  const input = correction
-    ? {
-        date: loaded.date,
-        targetBinding: loaded.targetBinding,
-        expectedRevision: loaded.revision,
-        entryId: correction.id,
-        changeId: localOperationId("change"),
-        content,
-      }
-    : {
-        date: loaded.date,
-        targetBinding: loaded.targetBinding,
-        expectedRevision: loaded.revision,
-        entryId: localOperationId("note"),
-        category: "exercise" as const,
-        content,
-      };
+  const correctionId = draft?.correctionId ?? null;
   habitNoteDrafts.set(loaded.targetBinding, {
     content,
-    correctionId: correction?.id ?? null,
+    correctionId,
   });
   habitDateOperationCount += 1;
   const request = habitDateRequests.begin();
   renderSelectedHabitCell();
   try {
-    const view = await window.__TAURI__.core.invoke<TodayView>(command, { input });
+    const view = await submitDatedNote<TodayView>(
+      {
+        date: loaded.date,
+        targetBinding: loaded.targetBinding,
+        revision: loaded.revision,
+        records: loaded.daytime.shortRecords,
+      },
+      { content, category: "exercise", correctionId },
+      window.__TAURI__.core.invoke,
+      localOperationId,
+    );
     habitNoteDrafts.delete(loaded.targetBinding);
     if (habitDateRequests.isCurrent(request)) {
       currentHabitDateView = view;
       habitNoteStatus = {
-        message: correction
+        message: correctionId
           ? "更正及修改记录已写入 Daily Record；未更新滴答或完成次数。"
           : "健身短句已写入 Daily Record；未更新滴答或完成次数。",
         state: "ready",
@@ -3347,7 +3324,12 @@ async function saveHabitExerciseNote(): Promise<boolean> {
     return true;
   } catch (error) {
     if (habitDateRequests.isCurrent(request)) {
-      habitNoteStatus = { message: `未保存：${String(error)}`, state: "error" };
+      habitNoteStatus = {
+        message: error instanceof DatedNoteTargetChangedError
+          ? error.message
+          : `未保存：${String(error)}`,
+        state: "error",
+      };
       renderSelectedHabitCell();
     }
     return false;

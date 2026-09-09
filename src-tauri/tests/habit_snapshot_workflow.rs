@@ -1,6 +1,6 @@
 use personal_dashboard_lib::today::{
-    DatedNoteCorrectionInput, DatedNoteInput, HabitCellStatus, HabitSnapshotState,
-    ShortRecordCategory, TodayApplication, TodayClock, TodayWorkspaceExchange,
+    DailyRecordAvailability, DatedNoteCorrectionInput, DatedNoteInput, HabitCellStatus,
+    HabitSnapshotState, ShortRecordCategory, TodayApplication, TodayClock, TodayWorkspaceExchange,
     TodayWorkspacePersistence,
 };
 use std::fs;
@@ -243,6 +243,10 @@ fn exercise_note_identity_is_shared_by_habits_and_today_without_counting_as_comp
     let relaunched = application(Some(vault.path()));
     let reopened = relaunched.open_date("2026-09-06").unwrap();
     let reprojected = relaunched.habits().unwrap();
+    assert_eq!(
+        reopened.daily_record_availability,
+        DailyRecordAvailability::Unreviewed
+    );
     assert_eq!(reopened.daytime.short_records.len(), 1);
     assert_eq!(reopened.daytime.short_records[0].id, "habit-note-1");
     assert_eq!(reopened.daytime.short_records[0].text, "跑步 20 分钟");

@@ -2188,6 +2188,36 @@ EOF
   run_driver assert-text "修改记录 · 1"
   run_driver assert-text "1 / 3"
 
+  current_step="correcting the shared stable entry directly from Habits"
+  run_driver press "更正这条" 10
+  run_driver type-text "Exercise note text|跑步 25 分钟" 10
+  run_driver press "保存更正" 10
+  run_driver wait-text "更正及修改记录已写入 Daily Record" 20
+  run_driver assert-text "跑步 25 分钟"
+  run_driver assert-text "修改记录 · 2"
+  [[ "$(grep -c 'personal-dashboard:short-record id=' "$new_record_file")" == "1" ]] ||
+    fail "Habits correction duplicated the stable short-record identity"
+  grep -Fq "原文：跑步 20 分钟" "$new_record_file" ||
+    fail "Habits correction did not preserve its preceding text"
+  grep -Fq "新文：跑步 25 分钟" "$new_record_file" ||
+    fail "Habits correction did not append its corrected text"
+
+  current_step="reading the Habits correction through Calendar, Today, and Evening"
+  run_driver press "Calendar" 10
+  run_driver wait-text "2026 年 9 月" 20
+  run_driver press-contains "9 月 6 日" 10
+  run_driver wait-text "这一天有 Daily Record，但没有晚间复盘" 10
+  run_driver press "打开完整 Today" 10
+  run_driver wait-text "跑步 25 分钟" 20
+  run_driver press "Evening" 10
+  run_driver wait-text "补充与更正" 10
+  run_driver assert-text "跑步 25 分钟"
+  run_driver assert-text "修改记录 · 2"
+
+  current_step="returning to Habits for compact and retention checks"
+  run_driver press "Habits" 10
+  run_driver wait-text "3 / 15" 20
+
   current_step="checking compact Habits layout and destination switcher"
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
@@ -2207,7 +2237,7 @@ EOF
 
   echo "Packaged IPC Habits snapshot acceptance passed"
   echo "Projection: corrected 3 / 15 summary, daily actual-time evidence, recent dots, and 12-week history crossed real Tauri IPC"
-  echo "Entry: Habits created one missing dated Exercise note; Calendar and Today corrected the same stable entry across relaunch"
+  echo "Entry: Habits created and corrected one dated Exercise note; Calendar, Today, and Evening read the same stable entry across relaunch"
   echo "Boundary: the note changed only the canonical Daily Record; no producer, Dida365 call, polling, snapshot count, or snapshot write"
   echo "Failure: malformed refresh retained the last valid in-process reading with visible status"
   echo "Viewport: Habits remained readable at 960x720 and 640x520"

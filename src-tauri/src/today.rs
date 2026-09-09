@@ -629,6 +629,15 @@ fn evening_has_content(evening: &EveningView) -> bool {
         || !evening.other.is_empty()
 }
 
+fn daily_record_availability(state: TodayState, evening: &EveningView) -> DailyRecordAvailability {
+    match state {
+        TodayState::Ready if evening_has_content(evening) => DailyRecordAvailability::Reviewed,
+        TodayState::Ready => DailyRecordAvailability::Unreviewed,
+        TodayState::Missing | TodayState::Unconfigured => DailyRecordAvailability::Missing,
+        TodayState::Error => DailyRecordAvailability::Error,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TodayView {
@@ -637,6 +646,7 @@ pub struct TodayView {
     pub is_today: bool,
     pub can_record: bool,
     pub default_phase: DailyPhase,
+    pub daily_record_availability: DailyRecordAvailability,
     pub vault_name: Option<String>,
     pub message: String,
     pub revision: Option<String>,
@@ -828,6 +838,7 @@ where
                 } else {
                     DailyPhase::Daytime
                 },
+                daily_record_availability: DailyRecordAvailability::Missing,
                 vault_name: None,
                 message: "请选择 Tortilla Flat vault，以读取 Daily Record。".into(),
                 revision: None,
@@ -863,16 +874,7 @@ where
             let availability = match vault.as_deref() {
                 None => DailyRecordAvailability::Missing,
                 Some(vault) => match self.open_vault(vault, date_label.clone()) {
-                    Ok(view) => match view.state {
-                        TodayState::Ready if evening_has_content(&view.evening) => {
-                            DailyRecordAvailability::Reviewed
-                        }
-                        TodayState::Ready => DailyRecordAvailability::Unreviewed,
-                        TodayState::Missing | TodayState::Unconfigured => {
-                            DailyRecordAvailability::Missing
-                        }
-                        TodayState::Error => DailyRecordAvailability::Error,
-                    },
+                    Ok(view) => view.daily_record_availability,
                     Err(_) => DailyRecordAvailability::Error,
                 },
             };
@@ -1128,6 +1130,7 @@ where
                     } else {
                         DailyPhase::Daytime
                     },
+                    daily_record_availability: DailyRecordAvailability::Missing,
                     vault_name,
                     message,
                     revision: None,
@@ -1177,6 +1180,10 @@ where
                     } else {
                         DailyPhase::Daytime
                     },
+                    daily_record_availability: daily_record_availability(
+                        TodayState::Ready,
+                        &evening,
+                    ),
                     vault_name,
                     message: message.into(),
                     revision: Some(revision),
@@ -1198,6 +1205,7 @@ where
                 } else {
                     DailyPhase::Daytime
                 },
+                daily_record_availability: DailyRecordAvailability::Error,
                 vault_name,
                 message,
                 revision: None,
