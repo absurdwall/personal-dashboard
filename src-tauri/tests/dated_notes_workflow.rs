@@ -171,7 +171,7 @@ fn add_and_multiple_corrections_keep_one_id_and_an_append_only_trace() {
     write_record(
         vault.path(),
         "2026-08-10",
-        "## 白天更新\n\n保留 **未知段落**。\n\n## 晚间复盘\n\n### 今天发生了什么\n\n- Agent 原文。\n",
+        "## 白天更新\n\n保留 **未知段落**。\n\n### 简短记录\n\n- 用户手写短句。\n\n### 修改记录\n\n- 用户手写修改说明。\n\n## 晚间复盘\n\n### 今天发生了什么\n\n- Agent 原文。\n",
     );
     let clock = AdjustableClock::new("2026-08-10", "2026-08-10T14:10-04:00");
     let application = app(vault.path(), clock.clone());
@@ -208,10 +208,16 @@ fn add_and_multiple_corrections_keep_one_id_and_an_append_only_trace() {
         .daytime
         .updates
         .iter()
-        .all(|update| update.title != "简短记录" && update.title != "修改记录"));
+        .any(|update| update.title == "简短记录" && update.neutral == vec!["用户手写短句。"]));
+    assert!(corrected
+        .daytime
+        .updates
+        .iter()
+        .any(|update| update.title == "修改记录" && update.neutral == vec!["用户手写修改说明。"]));
     assert_eq!(note.id, "note-1");
     assert_eq!(note.category, ShortRecordCategory::Exercise);
     assert_eq!(note.text, "跑步 25 分钟");
+    assert_eq!(note.created_at, "2026-08-10T14:10-04:00");
     assert_eq!(note.changes.len(), 2);
     assert_eq!(note.changes[0].old_text, "跑步 30 分钟");
     assert_eq!(note.changes[0].new_text, "跑步 20 分钟");
@@ -230,6 +236,14 @@ fn add_and_multiple_corrections_keep_one_id_and_an_append_only_trace() {
     assert!(markdown.contains("- Agent 原文。"));
     assert!(markdown.contains("2026-08-10T15:20-04:00"));
     assert!(markdown.contains("2026-08-10T16:30-04:00"));
+
+    fs::write(
+        record_path(vault.path(), "2026-08-10"),
+        markdown.replace("needs-review=true", "needs-review=false"),
+    )
+    .expect("a later Agent review should be able to acknowledge integrated supplements");
+    let integrated = application.open().expect("integrated review should reopen");
+    assert!(!integrated.evening.has_later_record_revision);
 }
 
 #[test]
@@ -262,6 +276,13 @@ fn explicit_save_exclusively_creates_a_minimal_past_record_but_never_a_future_fa
     assert!(!fs::read_to_string(record_path(vault.path(), "2026-08-09"))
         .unwrap()
         .contains("并发候选"));
+    assert!(!created.evening.has_later_record_revision);
+    let created_path = record_path(vault.path(), "2026-08-09");
+    let mut with_later_review = fs::read_to_string(&created_path).unwrap();
+    with_later_review.push_str("\n## 晚间复盘\n\n### 今天发生了什么\n\n- Agent 后来整合。\n");
+    fs::write(&created_path, with_later_review).unwrap();
+    let reviewed = application.open_date("2026-08-09").unwrap();
+    assert!(!reviewed.evening.has_later_record_revision);
 
     let future = application
         .open_date("2026-08-11")

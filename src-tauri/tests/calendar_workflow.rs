@@ -67,6 +67,10 @@ impl TodayClock for MutableClock {
     fn current_time_label(&self) -> String {
         "23:59".into()
     }
+
+    fn current_timestamp_label(&self) -> String {
+        format!("{}T23:59-04:00", self.current_date())
+    }
 }
 
 fn record_path(vault: &Path, date: &str) -> PathBuf {

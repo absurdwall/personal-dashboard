@@ -43,6 +43,7 @@ type ShortRecordChangeView = Readonly<{
   modifiedAt: string;
   oldText: string;
   newText: string;
+  needsReview: boolean;
 }>;
 
 type ShortRecordView = Readonly<{
@@ -52,6 +53,7 @@ type ShortRecordView = Readonly<{
   createdAt: string;
   text: string;
   changes: readonly ShortRecordChangeView[];
+  needsReview: boolean;
 }>;
 
 type EveningOtherView = Readonly<{
@@ -1895,7 +1897,7 @@ function shortRecordArticle(record: ShortRecordView, editable = true): HTMLEleme
   const body = document.createElement("p");
   body.textContent = record.text;
   const meta = document.createElement("small");
-  meta.textContent = `${record.category === "exercise" ? "健身" : "日常记录"} · ${record.date}`;
+  meta.textContent = `${record.category === "exercise" ? "健身" : "日常记录"} · 目标 ${record.date} · 记录于 ${record.createdAt}`;
   article.append(body, meta);
   if (editable) {
     const correct = document.createElement("button");
@@ -2061,23 +2063,24 @@ function selectedShortRecordCategory(): ShortRecordCategory {
 }
 
 function stashDatedNoteDraft(): void {
-  if (!currentTodayView || !todayDaytimeContent) {
+  const draftKey = currentTodayView?.targetBinding;
+  if (!currentTodayView || !draftKey || !todayDaytimeContent) {
     return;
   }
   const content = todayDaytimeContent.value;
   if (content || correctingShortRecordId) {
-    datedNoteDrafts.set(currentTodayView.date, {
+    datedNoteDrafts.set(draftKey, {
       content,
       category: selectedShortRecordCategory(),
       correctionId: correctingShortRecordId,
     });
   } else {
-    datedNoteDrafts.delete(currentTodayView.date);
+    datedNoteDrafts.delete(draftKey);
   }
 }
 
 function renderDatedNoteComposer(view: TodayView): void {
-  const draft = datedNoteDrafts.get(view.date);
+  const draft = view.targetBinding ? datedNoteDrafts.get(view.targetBinding) : undefined;
   correctingShortRecordId = draft?.correctionId ?? null;
   if (todayDaytimeContent) {
     todayDaytimeContent.value = draft?.content ?? "";
@@ -2394,7 +2397,7 @@ async function saveDatedNote(): Promise<boolean> {
   updateTodayOperationState(1);
   try {
     const view = await window.__TAURI__.core.invoke<TodayView>(command, { input });
-    datedNoteDrafts.delete(loaded.date);
+    datedNoteDrafts.delete(loaded.targetBinding);
     correctingShortRecordId = null;
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
       renderToday(view);
@@ -2405,7 +2408,7 @@ async function saveDatedNote(): Promise<boolean> {
     }
     return true;
   } catch (error) {
-    datedNoteDrafts.set(loaded.date, {
+    datedNoteDrafts.set(loaded.targetBinding, {
       content,
       category: correction?.category ?? selectedShortRecordCategory(),
       correctionId: correction?.id ?? null,
@@ -4090,7 +4093,10 @@ todayDaytimeShortRecords?.addEventListener("click", (event) => {
     return;
   }
   correctingShortRecordId = record.id;
-  datedNoteDrafts.set(currentTodayView.date, {
+  if (!currentTodayView.targetBinding) {
+    return;
+  }
+  datedNoteDrafts.set(currentTodayView.targetBinding, {
     content: record.text,
     category: record.category,
     correctionId: record.id,
@@ -4104,7 +4110,9 @@ cancelNoteCorrectionButton?.addEventListener("click", () => {
     return;
   }
   correctingShortRecordId = null;
-  datedNoteDrafts.delete(currentTodayView.date);
+  if (currentTodayView.targetBinding) {
+    datedNoteDrafts.delete(currentTodayView.targetBinding);
+  }
   renderDatedNoteComposer(currentTodayView);
   todayDaytimeContent?.focus();
 });

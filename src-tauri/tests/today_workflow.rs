@@ -77,6 +77,10 @@ impl TodayClock for FixedClock {
     fn current_time_label(&self) -> String {
         "14:10".to_owned()
     }
+
+    fn current_timestamp_label(&self) -> String {
+        "2026-08-10T14:10-04:00".to_owned()
+    }
 }
 
 fn write_record(vault: &Path, document: &str) {

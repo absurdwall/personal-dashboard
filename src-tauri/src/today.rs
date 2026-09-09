@@ -25,14 +25,7 @@ pub trait TodayWorkspaceExchange {
 pub trait TodayClock {
     fn current_date(&self) -> String;
     fn current_time_label(&self) -> String;
-
-    fn current_timestamp_label(&self) -> String {
-        format!(
-            "{}T{} offset-unknown",
-            self.current_date(),
-            self.current_time_label()
-        )
-    }
+    fn current_timestamp_label(&self) -> String;
 }
 
 pub trait TodayRecordStore {
@@ -590,6 +583,7 @@ pub struct ShortRecordChangeView {
     pub modified_at: String,
     pub old_text: String,
     pub new_text: String,
+    pub needs_review: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -601,6 +595,7 @@ pub struct ShortRecordView {
     pub created_at: String,
     pub text: String,
     pub changes: Vec<ShortRecordChangeView>,
+    pub needs_review: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -774,8 +769,6 @@ where
         let (vault, path) = self.bound_record_target(&input.date, &input.target_binding)?;
         let created_at = self.clock.current_timestamp_label();
         validate_timestamp_label(&created_at)?;
-        let marker = short_record_marker(&input.entry_id, input.category, &created_at);
-        let block = format!("{marker}\n- {}", literal_line(input.content.trim()));
 
         match self.record_store.load(&path)? {
             Some(bytes) => {
@@ -796,6 +789,13 @@ where
                 })?;
                 require_revision_for_date(&document, expected, &input.date)?;
                 validate_writable_daily_record(&document, &input.date)?;
+                let marker = short_record_marker(
+                    &input.entry_id,
+                    input.category,
+                    &created_at,
+                    daily_record_has_review(&document, &input.date)?,
+                );
+                let block = format!("{marker}\n- {}", literal_line(input.content.trim()));
                 let updated = append_to_named_subsection(
                     &document,
                     "白天更新",
@@ -816,6 +816,9 @@ where
                         "该日期的 Daily Record 已不存在。请刷新后重试；未创建替代记录。".into(),
                     );
                 }
+                let marker =
+                    short_record_marker(&input.entry_id, input.category, &created_at, false);
+                let block = format!("{marker}\n- {}", literal_line(input.content.trim()));
                 let document = minimal_daily_record(&input.date, &block);
                 validate_writable_daily_record(&document, &input.date)?;
                 self.record_store.create_new(&path, document.as_bytes())?;
@@ -864,7 +867,12 @@ where
         updated.push_str(&document[record.text_end..]);
         let change_block = format!(
             "{}\n- 原文：{}\n- 新文：{}",
-            short_record_change_marker(&input.change_id, &input.entry_id, &modified_at),
+            short_record_change_marker(
+                &input.change_id,
+                &input.entry_id,
+                &modified_at,
+                daily_record_has_review(&document, &input.date)?,
+            ),
             literal_line(&old_text),
             literal_line(input.content.trim())
         );
@@ -1011,8 +1019,9 @@ where
             Ok((baseline, timeline, evidence, mut daytime, mut evening)) => {
                 let short_records = parse_short_records(&document, &date)?;
                 daytime.short_records = short_records.clone();
-                evening.has_later_record_revision =
-                    evening_has_content(&evening) && !short_records.is_empty();
+                evening.has_later_record_revision = short_records.iter().any(|record| {
+                    record.needs_review || record.changes.iter().any(|change| change.needs_review)
+                });
                 evening.record_supplements = short_records;
                 let message = if timeline.is_empty() {
                     "这份 Daily Record 有效，但当前安排尚未写入。"
@@ -1076,6 +1085,11 @@ where
 
 fn validate_daily_record(document: &str, expected_date: &str) -> Result<(), String> {
     parse_daily_record(document, expected_date).map(|_| ())
+}
+
+fn daily_record_has_review(document: &str, expected_date: &str) -> Result<bool, String> {
+    parse_daily_record(document, expected_date)
+        .map(|(_, _, _, _, evening)| evening_has_content(&evening))
 }
 
 fn validate_writable_daily_record(document: &str, expected_date: &str) -> Result<(), String> {
@@ -1198,16 +1212,26 @@ fn validate_timestamp_label(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn short_record_marker(id: &str, category: ShortRecordCategory, created_at: &str) -> String {
+fn short_record_marker(
+    id: &str,
+    category: ShortRecordCategory,
+    created_at: &str,
+    needs_review: bool,
+) -> String {
     format!(
-        "<!-- personal-dashboard:short-record id={id} category={} created-at={created_at} -->",
-        category.as_str()
+        "<!-- personal-dashboard:short-record id={id} category={} created-at={created_at} needs-review={needs_review} -->",
+        category.as_str(),
     )
 }
 
-fn short_record_change_marker(change_id: &str, entry_id: &str, modified_at: &str) -> String {
+fn short_record_change_marker(
+    change_id: &str,
+    entry_id: &str,
+    modified_at: &str,
+    needs_review: bool,
+) -> String {
     format!(
-        "<!-- personal-dashboard:short-record-change id={change_id} entry-id={entry_id} modified-at={modified_at} -->"
+        "<!-- personal-dashboard:short-record-change id={change_id} entry-id={entry_id} modified-at={modified_at} needs-review={needs_review} -->"
     )
 }
 
@@ -1246,21 +1270,7 @@ fn append_to_named_subsection(
             insert_parent_before,
         ));
     };
-    let mut output = String::with_capacity(document.len() + content.len() + 4);
-    output.push_str(&document[..end]);
-    if !output.ends_with('\n') {
-        output.push('\n');
-    }
-    if !output.ends_with("\n\n") {
-        output.push('\n');
-    }
-    output.push_str(content);
-    output.push('\n');
-    if !document[end..].starts_with('\n') {
-        output.push('\n');
-    }
-    output.push_str(&document[end..]);
-    Ok(output)
+    Ok(insert_separated_block(document, end, content))
 }
 
 fn append_to_canonical_section(
@@ -1270,21 +1280,7 @@ fn append_to_canonical_section(
     insert_before: Option<&str>,
 ) -> String {
     if let Some((_, end)) = section_offsets(document, heading) {
-        let mut output = String::with_capacity(document.len() + block.len() + 3);
-        output.push_str(&document[..end]);
-        if !output.ends_with('\n') {
-            output.push('\n');
-        }
-        if !output.ends_with("\n\n") {
-            output.push('\n');
-        }
-        output.push_str(block);
-        output.push('\n');
-        if !document[end..].starts_with('\n') {
-            output.push('\n');
-        }
-        output.push_str(&document[end..]);
-        return output;
+        return insert_separated_block(document, end, block);
     }
 
     let insertion = insert_before
@@ -1299,6 +1295,24 @@ fn append_to_canonical_section(
         output.push('\n');
     }
     output.push_str(&format!("## {heading}\n\n{block}\n\n"));
+    output.push_str(&document[insertion..]);
+    output
+}
+
+fn insert_separated_block(document: &str, insertion: usize, block: &str) -> String {
+    let mut output = String::with_capacity(document.len() + block.len() + 4);
+    output.push_str(&document[..insertion]);
+    if !output.ends_with('\n') {
+        output.push('\n');
+    }
+    if !output.ends_with("\n\n") {
+        output.push('\n');
+    }
+    output.push_str(block);
+    output.push('\n');
+    if !document[insertion..].starts_with('\n') {
+        output.push('\n');
+    }
     output.push_str(&document[insertion..]);
     output
 }
@@ -1558,6 +1572,7 @@ fn parse_short_record_locations(document: &str, date: &str) -> Result<ParsedShor
                 _ => return Err("Daily Record 包含无法识别的简短记录类别。".into()),
             };
             let created_at = required_marker_attribute(&attributes, "created-at")?;
+            let needs_review = marker_boolean_attribute(&attributes, "needs-review")?;
             let text_line = lines[index + 1..]
                 .iter()
                 .find(|candidate| !candidate.text.trim().is_empty())
@@ -1575,6 +1590,7 @@ fn parse_short_record_locations(document: &str, date: &str) -> Result<ParsedShor
                     created_at: created_at.to_owned(),
                     text: text.to_owned(),
                     changes: Vec::new(),
+                    needs_review,
                 },
                 text_start: section_start + text_line.start,
                 text_end: section_start + text_line.start + text_line.text.len(),
@@ -1588,6 +1604,7 @@ fn parse_short_record_locations(document: &str, date: &str) -> Result<ParsedShor
                 return Err("Daily Record 包含重复的修改记录标识；请修复后刷新 Today。".into());
             }
             let modified_at = required_marker_attribute(&attributes, "modified-at")?;
+            let needs_review = marker_boolean_attribute(&attributes, "needs-review")?;
             let mut following = lines[index + 1..]
                 .iter()
                 .filter(|candidate| !candidate.text.trim().is_empty());
@@ -1606,6 +1623,7 @@ fn parse_short_record_locations(document: &str, date: &str) -> Result<ParsedShor
                     modified_at: modified_at.to_owned(),
                     old_text: old_text.to_owned(),
                     new_text: new_text.to_owned(),
+                    needs_review,
                 },
             });
         }
@@ -1637,6 +1655,16 @@ fn required_marker_attribute<'a>(
         .iter()
         .find_map(|(key, value)| (*key == name).then_some(*value))
         .ok_or_else(|| format!("Daily Record 的 Dashboard 标记缺少 {name}。"))
+}
+
+fn marker_boolean_attribute(attributes: &[(&str, &str)], name: &str) -> Result<bool, String> {
+    match required_marker_attribute(attributes, name)? {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(format!(
+            "Daily Record 的 Dashboard 标记包含无效的 {name} 值。"
+        )),
+    }
 }
 
 fn parse_daily_record(
@@ -2118,12 +2146,8 @@ struct ReadingContent {
 fn parse_daytime(section: &str) -> DaytimeView {
     let updates = split_subsections(section)
         .into_iter()
-        .filter(|(title, _)| {
-            !title
-                .as_deref()
-                .is_some_and(|title| matches!(title, "简短记录" | "修改记录"))
-        })
         .filter_map(|(title, body)| {
+            let body = strip_app_owned_record_blocks(title.as_deref(), &body);
             let content = parse_reading_content(&body);
             if content.paragraphs.is_empty() && content.items.is_empty() {
                 return None;
@@ -2158,6 +2182,31 @@ fn parse_daytime(section: &str) -> DaytimeView {
         updates,
         short_records: Vec::new(),
     }
+}
+
+fn strip_app_owned_record_blocks(title: Option<&str>, body: &str) -> String {
+    let marker = match title {
+        Some("简短记录") => "short-record",
+        Some("修改记录") => "short-record-change",
+        _ => return body.to_owned(),
+    };
+    let owned_line_count = if marker == "short-record" { 1 } else { 2 };
+    let mut skip_nonempty = 0;
+    let mut unmanaged = Vec::new();
+    for line in scan_markdown_lines(body) {
+        if !line.in_fenced_code && marker_attributes(line.text, marker).is_some() {
+            skip_nonempty = owned_line_count;
+            continue;
+        }
+        if skip_nonempty > 0 {
+            if !line.text.trim().is_empty() {
+                skip_nonempty -= 1;
+            }
+            continue;
+        }
+        unmanaged.push(line.text);
+    }
+    unmanaged.join("\n")
 }
 
 enum DaytimeItemRole {
