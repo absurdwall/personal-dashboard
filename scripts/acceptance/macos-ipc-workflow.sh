@@ -2071,7 +2071,9 @@ run_habits_scenario() {
   local snapshot_file="$snapshot_directory/habits-v1.json"
   local record_directory="$vault_directory/life/Journal/Daily/2026/2026-09"
   local record_file="$record_directory/2026-09-07.md"
-  local before_record_hash
+  local new_record_file="$record_directory/2026-09-06.md"
+  local before_snapshot_hash
+  local before_malformed_record_hashes
 
   current_step="preparing isolated Habits snapshot and Daily Record context"
   fixed_now_epoch_millis="1788891000000"
@@ -2093,7 +2095,7 @@ date: 2026-09-07
 <!-- personal-dashboard:short-record id=run-1 category=exercise created-at=2026-09-07T19:00:00-04:00 needs-review=false -->
 - 只是文字记录，不自动计次
 EOF
-  before_record_hash="$(shasum -a 256 "$record_file")"
+  before_snapshot_hash="$(shasum -a 256 "$snapshot_file")"
 
   current_step="opening the FINAL Habits snapshot surface"
   launch_app_waiting_for_text "Log workout now" 30
@@ -2123,6 +2125,68 @@ EOF
   run_driver assert-text "来源冲突 · 不计次"
   run_driver assert-text "只是文字记录，不自动计次"
   run_driver assert-text "历史目标 context"
+  run_driver wait-text "写一句 · 2026-09-07" 10
+  run_driver assert-text "健身 · 日期与关联已预设"
+
+  current_step="preserving a Habits draft across an external record conflict"
+  printf '\n<!-- external Habits conflict marker -->\n' >> "$record_file"
+  run_driver type-text "Exercise note text|这条 Habits 冲突草稿不能覆盖外部编辑" 10
+  run_driver press "保存记录" 10
+  run_driver wait-text "外部发生变化" 10
+  run_driver assert-text "这条 Habits 冲突草稿不能覆盖外部编辑"
+  grep -Fq "<!-- external Habits conflict marker -->" "$record_file" ||
+    fail "stale Habits write removed the external edit"
+  if grep -Fq "这条 Habits 冲突草稿不能覆盖外部编辑" "$record_file"; then
+    fail "stale Habits write reached canonical Markdown"
+  fi
+
+  current_step="explicitly creating a missing dated Exercise note from Habits"
+  [[ ! -e "$new_record_file" ]] || fail "missing-date Habits fixture already exists"
+  run_driver press-contains "2026-09-06 · Exercise" 10
+  run_driver wait-text "写一句 · 2026-09-06" 10
+  run_driver type-text "Exercise note text|跑步 30 分钟" 10
+  run_driver press "保存记录" 10
+  run_driver wait-text "健身短句已写入 Daily Record" 20
+  run_driver assert-text "跑步 30 分钟"
+  run_driver assert-text "1 / 3"
+  wait_for_file_text "$new_record_file" "跑步 30 分钟" ||
+    fail "Habits note save did not create the canonical dated Daily Record"
+  [[ "$(shasum -a 256 "$snapshot_file")" == "$before_snapshot_hash" ]] ||
+    fail "Habits note save changed the derived snapshot"
+
+  current_step="reading the same note through Calendar and correcting it in Today"
+  run_driver press "Calendar" 10
+  run_driver wait-text "2026 年 9 月" 20
+  run_driver wait-text "没有 Daily Record；保持空白" 20
+  run_driver press-contains "9 月 6 日" 10
+  run_driver wait-text "这一天有 Daily Record，但没有晚间复盘" 10
+  run_driver press "打开完整 Today" 10
+  run_driver wait-text "跑步 30 分钟" 20
+  run_driver assert-state "Daytime|selected" 10
+  run_driver assert-semantic "today-daytime"
+  run_driver press "更正这条" 10
+  run_driver type-text "Short record text|跑步 20 分钟" 10
+  run_driver press "保存更正" 10
+  run_driver wait-text "更正及修改记录已写入 Daily Record" 20
+  run_driver assert-text "跑步 20 分钟"
+  [[ "$(grep -c 'personal-dashboard:short-record id=' "$new_record_file")" == "1" ]] ||
+    fail "cross-entry correction duplicated the stable short-record identity"
+  grep -Fq "原文：跑步 30 分钟" "$new_record_file" ||
+    fail "cross-entry correction did not preserve the original text"
+  grep -Fq "新文：跑步 20 分钟" "$new_record_file" ||
+    fail "cross-entry correction did not append the corrected text"
+
+  current_step="relaunching and reading the corrected stable entry back in Habits"
+  if ! stop_app; then
+    fail "app process did not exit after the cross-entry correction"
+  fi
+  launch_app_waiting_for_text "Log workout now" 30
+  run_driver press "Habits" 10
+  run_driver wait-text "3 / 15" 20
+  run_driver press-contains "2026-09-06 · Exercise" 10
+  run_driver wait-text "跑步 20 分钟" 20
+  run_driver assert-text "修改记录 · 1"
+  run_driver assert-text "1 / 3"
 
   current_step="checking compact Habits layout and destination switcher"
   run_driver set-size "640x520" 10
@@ -2133,16 +2197,18 @@ EOF
   run_driver assert-text "近 12 周记录"
 
   current_step="retaining the last valid reading after malformed refresh"
+  before_malformed_record_hashes="$(shasum -a 256 "$record_file" "$new_record_file")"
   printf '{"schemaVersion":2}\n' > "$snapshot_file"
   run_driver press "刷新快照" 10
   run_driver wait-text "继续显示上个有效快照" 20
   run_driver assert-text "3 / 15"
-  [[ "$(shasum -a 256 "$record_file")" == "$before_record_hash" ]] ||
-    fail "Habits reading changed the Daily Record context"
+  [[ "$(shasum -a 256 "$record_file" "$new_record_file")" == "$before_malformed_record_hashes" ]] ||
+    fail "Habits refresh changed Daily Record content"
 
   echo "Packaged IPC Habits snapshot acceptance passed"
   echo "Projection: corrected 3 / 15 summary, daily actual-time evidence, recent dots, and 12-week history crossed real Tauri IPC"
-  echo "Boundary: isolated local snapshot and Daily Record only; no producer, Dida365 call, polling, or record write"
+  echo "Entry: Habits created one missing dated Exercise note; Calendar and Today corrected the same stable entry across relaunch"
+  echo "Boundary: the note changed only the canonical Daily Record; no producer, Dida365 call, polling, snapshot count, or snapshot write"
   echo "Failure: malformed refresh retained the last valid in-process reading with visible status"
   echo "Viewport: Habits remained readable at 960x720 and 640x520"
 }

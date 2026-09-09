@@ -1,5 +1,6 @@
 use personal_dashboard_lib::today::{
-    HabitCellStatus, HabitSnapshotState, TodayApplication, TodayClock, TodayWorkspaceExchange,
+    DatedNoteCorrectionInput, DatedNoteInput, HabitCellStatus, HabitSnapshotState,
+    ShortRecordCategory, TodayApplication, TodayClock, TodayWorkspaceExchange,
     TodayWorkspacePersistence,
 };
 use std::fs;
@@ -66,7 +67,7 @@ impl TodayClock for FixedClock {
     }
 
     fn current_timestamp_label(&self) -> String {
-        "2026-09-08T14:10:00-04:00".into()
+        "2026-09-08T14:10-04:00".into()
     }
 }
 
@@ -171,6 +172,9 @@ fn sourced_snapshot_projects_correct_week_counts_time_evidence_and_record_dots()
         .details
         .iter()
         .any(|line| line.contains("Dashboard") && line.contains("只是文字记录")));
+    assert_eq!(monday.local_records.len(), 1);
+    assert_eq!(monday.local_records[0].id, "run-1");
+    assert_eq!(monday.local_records[0].text, "只是文字记录，不自动计次");
     let tuesday = exercise.cell("2026-09-08").expect("Tuesday history cell");
     assert!(tuesday.counts_as_completion);
 
@@ -187,6 +191,75 @@ fn sourced_snapshot_projects_correct_week_counts_time_evidence_and_record_dots()
 
     assert_eq!(exercise.history.len(), 84);
     assert_eq!(exercise.recent.len(), 7);
+}
+
+#[test]
+fn exercise_note_identity_is_shared_by_habits_and_today_without_counting_as_completion() {
+    let vault = TempDirectory::new("habit-exercise-note-shared");
+    write_snapshot(
+        vault.path(),
+        include_str!("fixtures/habits-v1-complete.json"),
+    );
+    let snapshot_before = fs::read(snapshot_path(vault.path())).unwrap();
+    let app = application(Some(vault.path()));
+    let missing = app.open_date("2026-09-06").unwrap();
+
+    let added = app
+        .add_dated_note(DatedNoteInput {
+            date: missing.date.clone(),
+            target_binding: missing.target_binding.clone().unwrap(),
+            expected_revision: missing.revision.clone(),
+            entry_id: "habit-note-1".into(),
+            category: ShortRecordCategory::Exercise,
+            content: "跑步 30 分钟".into(),
+        })
+        .unwrap();
+    let first_record = &added.daytime.short_records[0];
+    assert_eq!(first_record.id, "habit-note-1");
+
+    let projected = app.habits().unwrap();
+    let exercise = projected.habit("exercise").unwrap();
+    let cell = exercise.cell("2026-09-06").unwrap();
+    assert_eq!(exercise.completed_count, Some(1));
+    assert_eq!(cell.status, HabitCellStatus::RecordOnly);
+    assert!(!cell.counts_as_completion);
+    assert_eq!(cell.local_records[0].id, first_record.id);
+    assert_eq!(cell.local_records[0].text, "跑步 30 分钟");
+
+    let corrected = app
+        .correct_dated_note(DatedNoteCorrectionInput {
+            date: added.date.clone(),
+            target_binding: added.target_binding.clone().unwrap(),
+            expected_revision: added.revision.clone().unwrap(),
+            entry_id: first_record.id.clone(),
+            change_id: "habit-change-1".into(),
+            content: "跑步 20 分钟".into(),
+        })
+        .unwrap();
+    assert_eq!(corrected.daytime.short_records.len(), 1);
+    assert_eq!(corrected.daytime.short_records[0].id, "habit-note-1");
+    assert_eq!(corrected.daytime.short_records[0].changes.len(), 1);
+
+    let relaunched = application(Some(vault.path()));
+    let reopened = relaunched.open_date("2026-09-06").unwrap();
+    let reprojected = relaunched.habits().unwrap();
+    assert_eq!(reopened.daytime.short_records.len(), 1);
+    assert_eq!(reopened.daytime.short_records[0].id, "habit-note-1");
+    assert_eq!(reopened.daytime.short_records[0].text, "跑步 20 分钟");
+    assert_eq!(
+        reprojected
+            .habit("exercise")
+            .unwrap()
+            .cell("2026-09-06")
+            .unwrap()
+            .local_records[0]
+            .id,
+        "habit-note-1"
+    );
+    assert_eq!(
+        fs::read(snapshot_path(vault.path())).unwrap(),
+        snapshot_before
+    );
 }
 
 #[test]

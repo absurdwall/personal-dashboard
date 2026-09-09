@@ -1,3 +1,7 @@
+import {
+  hasEveningReviewContent,
+  hasEveningVisibleContent,
+} from "./evening-content.js";
 import { LatestRequest } from "./latest-request.js";
 
 type ApplicationIdentity = Readonly<{
@@ -141,6 +145,11 @@ type HabitCellView = Readonly<{
   countsAsCompletion: boolean;
   actualTimeLabel: string | null;
   details: readonly string[];
+  localRecords: readonly Readonly<{
+    id: string;
+    sourceLabel: string;
+    text: string;
+  }>[];
 }>;
 
 type HabitView = Readonly<{
@@ -867,7 +876,15 @@ let selectedCalendarDate: string | null = null;
 const calendarMonthRequests = new LatestRequest();
 const calendarSelectionRequests = new LatestRequest();
 const habitSnapshotRequests = new LatestRequest();
+const habitDateRequests = new LatestRequest();
 let currentHabitSnapshot: HabitSnapshotView | null = null;
+type HabitCellSelection = Readonly<{ habitKey: string; date: string }>;
+type HabitNoteDraft = Readonly<{ content: string; correctionId: string | null }>;
+let selectedHabitCell: HabitCellSelection | null = null;
+let currentHabitDateView: TodayView | null = null;
+let habitDateOperationCount = 0;
+let habitNoteStatus: Readonly<{ message: string; state: "ready" | "error" }> | null = null;
+const habitNoteDrafts = new Map<string, HabitNoteDraft>();
 let currentExerciseView: ExerciseDashboardView | null = null;
 let applicationFeatureArea = "Exercise tracking";
 let selectedDepartureSlotId: string | null = null;
@@ -2142,16 +2159,7 @@ function showTodayPhase(phase: TodayPhase, focus = false): void {
 }
 
 function eveningViewHasContent(evening: EveningView): boolean {
-  return (
-    evening.account.length > 0 ||
-    evening.comparison.length > 0 ||
-    evening.summary.length > 0 ||
-    evening.questions.length > 0 ||
-    evening.additions.length > 0 ||
-    evening.corrections.length > 0 ||
-    evening.other.length > 0 ||
-    evening.recordSupplements.length > 0
-  );
+  return hasEveningVisibleContent(evening);
 }
 
 function selectedShortRecordCategory(): ShortRecordCategory {
@@ -2701,7 +2709,7 @@ function renderCalendarSummary(view: TodayView): void {
       ? "error"
       : view.state === "missing" || view.state === "unconfigured"
         ? "missing"
-        : eveningViewHasContent(view.evening)
+        : hasEveningReviewContent(view.evening)
           ? "reviewed"
           : "unreviewed";
   if (calendarSummaryStatus) {
@@ -2836,15 +2844,25 @@ async function refreshCalendarMonth(
 
 async function openCalendar(): Promise<void> {
   if (!selectedCalendarDate) {
+    const selectionRequest = calendarSelectionRequests.begin();
     const today = await window.__TAURI__.core.invoke<TodayView>("today_view");
-    if (currentWorkspaceDestination !== "calendar" || selectedCalendarDate) {
+    if (
+      !calendarSelectionRequests.isCurrent(selectionRequest) ||
+      currentWorkspaceDestination !== "calendar" ||
+      selectedCalendarDate
+    ) {
       return;
     }
     selectedCalendarDate = today.date;
     const [year, month] = today.date.split("-").map(Number);
     populateCalendarYears(year);
     const monthView = await refreshCalendarMonth(year, month);
-    if (!monthView || currentWorkspaceDestination !== "calendar") {
+    if (
+      !monthView ||
+      !calendarSelectionRequests.isCurrent(selectionRequest) ||
+      currentWorkspaceDestination !== "calendar" ||
+      selectedCalendarDate !== today.date
+    ) {
       return;
     }
     renderCalendarSummary(today);
@@ -3057,6 +3075,288 @@ function habitRow(habit: HabitView): HTMLElement {
   return article;
 }
 
+function selectedHabitContext(): Readonly<{
+  habit: HabitView;
+  cell: HabitCellView;
+  row: HTMLElement;
+  detail: HTMLElement;
+}> | null {
+  if (!selectedHabitCell || !currentHabitSnapshot) return null;
+  const habit = currentHabitSnapshot.habits.find(
+    (candidate) => candidate.key === selectedHabitCell?.habitKey,
+  );
+  const cell = habit?.history.find(
+    (candidate) => candidate.date === selectedHabitCell?.date,
+  );
+  const row = [...(habitsDestination?.querySelectorAll<HTMLElement>(".habit-snapshot-row") ?? [])]
+    .find((candidate) => candidate.dataset.habitKey === selectedHabitCell?.habitKey);
+  const detail = row?.querySelector<HTMLElement>(".habit-cell-detail");
+  if (!habit || !cell || !row || !detail) return null;
+  return { habit, cell, row, detail };
+}
+
+function habitExerciseRecordArticle(record: ShortRecordView): HTMLElement {
+  const article = document.createElement("article");
+  article.className = "habit-note-record";
+  const text = document.createElement("p");
+  text.textContent = record.text;
+  const meta = document.createElement("small");
+  meta.textContent = `健身 · 目标 ${record.date} · 记录于 ${record.createdAt}`;
+  const correct = document.createElement("button");
+  correct.type = "button";
+  correct.dataset.habitCorrectRecordId = record.id;
+  correct.textContent = "更正这条";
+  article.append(text, meta, correct);
+  if (record.changes.length > 0) {
+    const changes = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = `修改记录 · ${record.changes.length}`;
+    changes.append(summary);
+    for (const change of record.changes) {
+      const line = document.createElement("p");
+      line.textContent = `${change.modifiedAt} · ${change.oldText} → ${change.newText}`;
+      changes.append(line);
+    }
+    article.append(changes);
+  }
+  return article;
+}
+
+function habitExerciseEditor(date: string, cell: HabitCellView): HTMLElement {
+  const panel = document.createElement("section");
+  panel.className = "habit-note-editor";
+  const view = currentHabitDateView?.date === date ? currentHabitDateView : null;
+  const binding = view?.targetBinding ?? null;
+  const draft = binding ? habitNoteDrafts.get(binding) : undefined;
+  const exerciseRecords = view?.daytime.shortRecords.filter(
+    (record) => record.category === "exercise",
+  );
+  const heading = document.createElement("strong");
+  heading.textContent = `${draft?.correctionId ? "更正记录" : "写一句"} · ${date}`;
+  const association = document.createElement("p");
+  association.className = "habit-note-association";
+  association.textContent = "健身 · 日期与关联已预设";
+  panel.append(heading, association);
+
+  const records = document.createElement("div");
+  records.className = "habit-note-records";
+  if (exerciseRecords) {
+    if (exerciseRecords.length > 0) {
+      records.replaceChildren(...exerciseRecords.map(habitExerciseRecordArticle));
+    } else {
+      const empty = document.createElement("p");
+      empty.textContent = "还没有健身短句。";
+      records.replaceChildren(empty);
+    }
+  } else if (cell.localRecords.length > 0) {
+    records.replaceChildren(
+      ...cell.localRecords.map((record) => {
+        const line = document.createElement("p");
+        line.textContent = record.text;
+        return line;
+      }),
+    );
+  } else {
+    records.textContent = "正在读取所选日期…";
+  }
+  panel.append(records);
+
+  if (view?.targetBinding && view.canRecord) {
+    const form = document.createElement("form");
+    form.dataset.habitNoteForm = "";
+    const label = document.createElement("label");
+    label.textContent = "记录内容";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 500;
+    input.required = true;
+    input.autocomplete = "off";
+    input.placeholder = "例如：跑步 30 分钟";
+    input.setAttribute("aria-label", "Exercise note text");
+    input.value = draft?.content ?? "";
+    label.append(input);
+    const actions = document.createElement("div");
+    actions.className = "habit-note-actions";
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.disabled = habitDateOperationCount > 0;
+    save.textContent = draft?.correctionId ? "保存更正" : "保存记录";
+    actions.append(save);
+    if (draft?.correctionId) {
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "secondary-button";
+      cancel.dataset.habitCancelCorrection = "";
+      cancel.textContent = "取消更正";
+      actions.append(cancel);
+    }
+    const target = document.createElement("small");
+    target.textContent = `保存在 ${date} 的日记录中；不替你打卡。`;
+    form.append(label, actions, target);
+    panel.append(form);
+  } else if (view && !view.canRecord) {
+    const boundary = document.createElement("p");
+    boundary.textContent = "未来日期不能记录已经发生的事实。";
+    panel.append(boundary);
+  }
+
+  if (habitNoteStatus) {
+    const status = document.createElement("p");
+    status.className = "habit-note-status";
+    status.dataset.state = habitNoteStatus.state;
+    status.setAttribute("role", "status");
+    status.textContent = habitNoteStatus.message;
+    panel.append(status);
+  }
+  return panel;
+}
+
+function renderSelectedHabitCell(): void {
+  const context = selectedHabitContext();
+  if (!context) return;
+  const { habit, cell, row, detail } = context;
+  const history = row.querySelector<HTMLElement>(".habit-history");
+  const recent = row.querySelector<HTMLElement>(".habit-recent");
+  const expand = row.querySelector<HTMLButtonElement>("button[data-habit-expand]");
+  if (history) history.hidden = false;
+  if (recent) recent.hidden = true;
+  row.classList.add("is-expanded");
+  expand?.setAttribute("aria-expanded", "true");
+  if (expand) expand.textContent = "收起";
+
+  const heading = document.createElement("strong");
+  const state = document.createElement("span");
+  const details = document.createElement("ul");
+  heading.textContent = `${cell.date} · ${habit.name}`;
+  state.textContent = `${habitStatusLabels[cell.status]} · coverage ${cell.coverage}`;
+  details.replaceChildren(
+    ...cell.details.map((line) => {
+      const item = document.createElement("li");
+      item.textContent = line;
+      return item;
+    }),
+  );
+  detail.replaceChildren(heading, state, details);
+  if (habit.key === "exercise") {
+    detail.append(habitExerciseEditor(cell.date, cell));
+  }
+}
+
+async function loadSelectedHabitDate(habitKey: string, date: string): Promise<void> {
+  selectedHabitCell = { habitKey, date };
+  currentHabitDateView = null;
+  habitNoteStatus = null;
+  renderSelectedHabitCell();
+  if (habitKey !== "exercise") return;
+  const request = habitDateRequests.begin();
+  try {
+    const view = await window.__TAURI__.core.invoke<TodayView>("daily_view", { date });
+    if (
+      !habitDateRequests.isCurrent(request) ||
+      selectedHabitCell?.habitKey !== habitKey ||
+      selectedHabitCell.date !== date
+    ) {
+      return;
+    }
+    currentHabitDateView = view;
+    renderSelectedHabitCell();
+  } catch (error) {
+    if (!habitDateRequests.isCurrent(request)) return;
+    habitNoteStatus = { message: `无法读取所选日期：${String(error)}`, state: "error" };
+    renderSelectedHabitCell();
+  }
+}
+
+function stashHabitNoteDraft(): void {
+  const binding = currentHabitDateView?.targetBinding;
+  const input = habitsDestination?.querySelector<HTMLInputElement>(
+    "input[aria-label='Exercise note text']",
+  );
+  if (!binding || !input) return;
+  const previous = habitNoteDrafts.get(binding);
+  if (input.value || previous?.correctionId) {
+    habitNoteDrafts.set(binding, {
+      content: input.value,
+      correctionId: previous?.correctionId ?? null,
+    });
+  } else {
+    habitNoteDrafts.delete(binding);
+  }
+}
+
+async function saveHabitExerciseNote(): Promise<boolean> {
+  const loaded = currentHabitDateView;
+  const content = habitsDestination
+    ?.querySelector<HTMLInputElement>("input[aria-label='Exercise note text']")
+    ?.value.trim() ?? "";
+  if (!loaded?.targetBinding || !loaded.canRecord || !content || habitDateOperationCount > 0) {
+    habitNoteStatus = { message: "请先打开可记录的日期，并填写一句内容。", state: "error" };
+    renderSelectedHabitCell();
+    return false;
+  }
+  const draft = habitNoteDrafts.get(loaded.targetBinding);
+  const correction = loaded.daytime.shortRecords.find(
+    (record) => record.id === draft?.correctionId && record.category === "exercise",
+  );
+  if (draft?.correctionId && (!correction || !loaded.revision)) {
+    habitNoteStatus = {
+      message: "要更正的记录已经变化。草稿仍保留；请重新打开该日期后重试。",
+      state: "error",
+    };
+    renderSelectedHabitCell();
+    return false;
+  }
+  const command = correction ? "correct_dated_note" : "add_dated_note";
+  const input = correction
+    ? {
+        date: loaded.date,
+        targetBinding: loaded.targetBinding,
+        expectedRevision: loaded.revision,
+        entryId: correction.id,
+        changeId: localOperationId("change"),
+        content,
+      }
+    : {
+        date: loaded.date,
+        targetBinding: loaded.targetBinding,
+        expectedRevision: loaded.revision,
+        entryId: localOperationId("note"),
+        category: "exercise" as const,
+        content,
+      };
+  habitNoteDrafts.set(loaded.targetBinding, {
+    content,
+    correctionId: correction?.id ?? null,
+  });
+  habitDateOperationCount += 1;
+  const request = habitDateRequests.begin();
+  renderSelectedHabitCell();
+  try {
+    const view = await window.__TAURI__.core.invoke<TodayView>(command, { input });
+    habitNoteDrafts.delete(loaded.targetBinding);
+    if (habitDateRequests.isCurrent(request)) {
+      currentHabitDateView = view;
+      habitNoteStatus = {
+        message: correction
+          ? "更正及修改记录已写入 Daily Record；未更新滴答或完成次数。"
+          : "健身短句已写入 Daily Record；未更新滴答或完成次数。",
+        state: "ready",
+      };
+    }
+    await refreshHabits();
+    return true;
+  } catch (error) {
+    if (habitDateRequests.isCurrent(request)) {
+      habitNoteStatus = { message: `未保存：${String(error)}`, state: "error" };
+      renderSelectedHabitCell();
+    }
+    return false;
+  } finally {
+    habitDateOperationCount = Math.max(0, habitDateOperationCount - 1);
+    if (habitDateRequests.isCurrent(request)) renderSelectedHabitCell();
+  }
+}
+
 function renderHabitSnapshot(view: HabitSnapshotView): void {
   currentHabitSnapshot = view;
   if (habitsStatus) {
@@ -3123,6 +3423,7 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
         .map(habitRow),
     );
   }
+  renderSelectedHabitCell();
 }
 
 async function refreshHabits(): Promise<void> {
@@ -3180,6 +3481,9 @@ function showWorkspaceDestination(
   }
   if (leavingHabits) {
     habitSnapshotRequests.invalidate();
+    habitDateRequests.invalidate();
+    stashHabitNoteDraft();
+    currentHabitDateView = null;
   }
   const restoreOpenDetail = destination === "this-week" && workspaceDetailOpen;
   currentWorkspaceDestination = destination;
@@ -3259,7 +3563,10 @@ function showWorkspaceDestination(
     void openCalendar();
   }
   if (destination === "habits") {
-    void refreshHabits();
+    const selection = selectedHabitCell;
+    void refreshHabits().then(() => {
+      if (selection) void loadSelectedHabitDate(selection.habitKey, selection.date);
+    });
   }
   if (restoreOpenDetail) {
     window.requestAnimationFrame(() => workspaceDetailClose?.focus());
@@ -4423,6 +4730,37 @@ refreshHabitsButton?.addEventListener("click", () => {
 });
 
 habitsDestination?.addEventListener("click", (event) => {
+  const correct = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-habit-correct-record-id]",
+  );
+  if (correct && currentHabitDateView?.targetBinding) {
+    const record = currentHabitDateView.daytime.shortRecords.find(
+      (candidate) => candidate.id === correct.dataset.habitCorrectRecordId,
+    );
+    if (!record || record.category !== "exercise") return;
+    habitNoteDrafts.set(currentHabitDateView.targetBinding, {
+      content: record.text,
+      correctionId: record.id,
+    });
+    habitNoteStatus = null;
+    renderSelectedHabitCell();
+    habitsDestination
+      .querySelector<HTMLInputElement>("input[aria-label='Exercise note text']")
+      ?.focus();
+    return;
+  }
+  const cancelCorrection = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-habit-cancel-correction]",
+  );
+  if (cancelCorrection && currentHabitDateView?.targetBinding) {
+    habitNoteDrafts.delete(currentHabitDateView.targetBinding);
+    habitNoteStatus = null;
+    renderSelectedHabitCell();
+    habitsDestination
+      .querySelector<HTMLInputElement>("input[aria-label='Exercise note text']")
+      ?.focus();
+    return;
+  }
   const expand = (event.target as HTMLElement).closest<HTMLButtonElement>(
     "button[data-habit-expand]",
   );
@@ -4436,6 +4774,12 @@ habitsDestination?.addEventListener("click", (event) => {
     row?.classList.toggle("is-expanded", !history.hidden);
     expand.setAttribute("aria-expanded", String(!history.hidden));
     expand.textContent = history.hidden ? "展开" : "收起";
+    if (history.hidden && selectedHabitCell?.habitKey === row?.dataset.habitKey) {
+      habitDateRequests.invalidate();
+      selectedHabitCell = null;
+      currentHabitDateView = null;
+      habitNoteStatus = null;
+    }
     return;
   }
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
@@ -4444,32 +4788,24 @@ habitsDestination?.addEventListener("click", (event) => {
   if (!button) return;
   const key = button.dataset.habitKey;
   const date = button.dataset.habitDate;
-  const habit = currentHabitSnapshot?.habits.find((item) => item.key === key);
-  const cell = habit?.history.find((item) => item.date === date);
-  const row = button.closest<HTMLElement>(".habit-snapshot-row");
-  const history = row?.querySelector<HTMLElement>(".habit-history");
-  const recent = row?.querySelector<HTMLElement>(".habit-recent");
-  const expandButton = row?.querySelector<HTMLButtonElement>("button[data-habit-expand]");
-  const detail = row?.querySelector<HTMLElement>(".habit-cell-detail");
-  if (!habit || !cell || !history || !detail) return;
-  history.hidden = false;
-  if (recent) recent.hidden = true;
-  row?.classList.add("is-expanded");
-  expandButton?.setAttribute("aria-expanded", "true");
-  if (expandButton) expandButton.textContent = "收起";
-  const heading = document.createElement("strong");
-  const state = document.createElement("span");
-  const details = document.createElement("ul");
-  heading.textContent = `${cell.date} · ${habit.name}`;
-  state.textContent = `${habitStatusLabels[cell.status]} · coverage ${cell.coverage}`;
-  details.replaceChildren(
-    ...cell.details.map((line) => {
-      const item = document.createElement("li");
-      item.textContent = line;
-      return item;
-    }),
+  if (!key || !date) return;
+  void loadSelectedHabitDate(key, date);
+});
+
+habitsDestination?.addEventListener("input", (event) => {
+  if ((event.target as HTMLElement).matches("input[aria-label='Exercise note text']")) {
+    stashHabitNoteDraft();
+  }
+});
+
+habitsDestination?.addEventListener("submit", (event) => {
+  const form = (event.target as HTMLElement).closest<HTMLFormElement>(
+    "form[data-habit-note-form]",
   );
-  detail.replaceChildren(heading, state, details);
+  if (!form) return;
+  event.preventDefault();
+  stashHabitNoteDraft();
+  void saveHabitExerciseNote();
 });
 
 todayDaytimeContent?.addEventListener("input", stashDatedNoteDraft);

@@ -764,6 +764,7 @@ where
                 .filter(|record| record.category == ShortRecordCategory::Exercise)
             {
                 local_records.push(LocalHabitRecord {
+                    id: record.id,
                     key: "exercise".into(),
                     date: record.date,
                     source_label: "Dashboard Daily Record".into(),

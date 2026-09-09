@@ -13,12 +13,16 @@ The current Personal Dashboard feature area, comprising the established exercise
 _Avoid_: Product name, generic habit framework
 
 **Habits**:
-A read-only Personal Dashboard feature area for reviewing sourced habit evidence across the current week, recent days, and bounded history. It is separate from the Exercise tracker and does not itself record or schedule activity.
-_Avoid_: Exercise tracker, habit editor, generic habit framework
+A Personal Dashboard feature area for reviewing sourced habit evidence across the current week, recent days, and bounded history. It may add or correct dated exercise Short records, but it does not record habit completion or schedule activity.
+_Avoid_: Exercise tracker, habit check-in, generic habit framework
 
 **Habit snapshot**:
 A bounded, dated set of derived habit evidence with explicit provenance and coverage, prepared outside Personal Dashboard for Habits to read. It is not an authoritative task store or a live source connection.
 _Avoid_: Habit database, live sync, Dida365 mirror
+
+**Short record**:
+A dated free-text Daily Record entry with a stable identity, an optional exercise association, and an append-only correction trace. An associated Short record can mark a Habits date as having context, but it is not completion evidence.
+_Avoid_: Habit completion, workout log, check-in
 
 **Baseline behavior**:
 The user-visible exercise workflows already provided by the completed local web version and protected as the product evolves.

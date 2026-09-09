@@ -61,6 +61,15 @@ pub struct HabitCellView {
     pub counts_as_completion: bool,
     pub actual_time_label: Option<String>,
     pub details: Vec<String>,
+    pub local_records: Vec<HabitLocalRecordView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitLocalRecordView {
+    pub id: String,
+    pub source_label: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -156,6 +165,7 @@ impl HabitSnapshotView {
 
 #[derive(Debug, Clone)]
 pub struct LocalHabitRecord {
+    pub id: String,
     pub key: String,
     pub date: String,
     pub source_label: String,
@@ -533,6 +543,7 @@ fn project_cell(
             counts_as_completion: false,
             actual_time_label: None,
             details: vec!["未来日期 · unknown".into()],
+            local_records: Vec::new(),
         };
     }
     let coverage = day.map(|item| item.coverage).unwrap_or(Coverage::Unknown);
@@ -678,6 +689,14 @@ fn project_cell(
             DayRelation::Unresolved => unreachable!(),
         }),
         details,
+        local_records: local
+            .iter()
+            .map(|record| HabitLocalRecordView {
+                id: record.id.clone(),
+                source_label: record.source_label.clone(),
+                text: record.text.clone(),
+            })
+            .collect(),
     }
 }
 

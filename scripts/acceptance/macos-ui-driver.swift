@@ -1083,6 +1083,8 @@ func assertSemanticContract(
                 throw DriverError.timeout("semantic Today morning baseline")
             }
         } else if mode == "today-daytime" {
+            let todaySurface = findTextPath(application, "时间轴 + 记录")
+                .flatMap(scrollSurface)
             guard findText(application, "时间轴 + 记录") != nil,
                   findText(application, "现在怎么走") != nil,
                   findText(application, "已发生 / 已确认") != nil,
@@ -1090,8 +1092,9 @@ func assertSemanticContract(
                   findText(application, "接下来计划") != nil,
                   findText(application, "当日简短记录") != nil,
                   findText(application, "安排变化") != nil,
-                  findPressable(application, "完成", contains: true) == nil,
-                  findPressable(application, "Habit", contains: true) == nil else {
+                  todaySurface != nil,
+                  findPressable(todaySurface!, "完成", contains: true) == nil,
+                  findPressable(todaySurface!, "Habit", contains: true) == nil else {
                 throw DriverError.timeout("semantic Today daytime reading surface")
             }
         } else if mode == "today-evening" {

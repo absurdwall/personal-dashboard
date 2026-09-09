@@ -376,6 +376,111 @@ button.habit-cell.is-today {
   padding-left: 16px;
 }
 
+.habit-note-editor {
+  min-width: 0;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--parity-border);
+}
+
+.habit-note-editor > strong {
+  color: #303633;
+  font-size: 9px;
+}
+
+.habit-note-association,
+.habit-note-records > p,
+.habit-note-status {
+  margin: 4px 0 0;
+  color: var(--parity-muted);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.habit-note-record {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.habit-note-record > p {
+  margin: 0 0 3px;
+  color: #303633;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.habit-note-record small,
+.habit-note-record details,
+.habit-note-editor form > small {
+  display: block;
+  color: var(--parity-muted);
+  font-size: 7px;
+  line-height: 1.45;
+}
+
+.habit-note-record button {
+  min-height: 0;
+  margin-top: 4px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--parity-accent);
+  font-size: 8px;
+}
+
+.habit-note-record summary {
+  margin-top: 4px;
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.habit-note-editor form {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.habit-note-editor label {
+  display: grid;
+  gap: 4px;
+  color: var(--parity-muted);
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.habit-note-editor input {
+  width: 100%;
+  min-width: 0;
+  min-height: 29px;
+  padding: 5px 7px;
+  border: 1px solid rgb(35 39 36 / 18%);
+  border-radius: 6px;
+  background: #fff;
+  color: #232724;
+  font: inherit;
+  font-size: 9px;
+}
+
+.habit-note-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.habit-note-actions button {
+  min-height: 28px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 8px;
+}
+
+.habit-note-status[data-state="ready"] {
+  color: var(--parity-success);
+}
+
+.habit-note-status[data-state="error"] {
+  color: var(--parity-warning);
+}
+
 @media (max-width: 900px) {
   .habits-destination {
     padding-right: 20px;
