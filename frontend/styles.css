@@ -169,7 +169,7 @@
 
 .habit-snapshot-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) 68px 136px 42px;
+  grid-template-columns: minmax(130px, 1fr) 68px minmax(190px, 0.9fr) 42px;
   gap: 12px;
   align-items: center;
   padding: 13px 0;
@@ -309,10 +309,11 @@ button.habit-cell.is-today {
 }
 
 .habit-history {
-  grid-column: 1 / -1;
-  padding: 13px 14px;
-  border-left: 2px solid var(--parity-accent);
-  background: var(--parity-surface-soft);
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 1px solid var(--parity-border);
 }
 
 .habit-history-grid {
@@ -428,6 +429,11 @@ button.habit-cell.is-today {
 
   .habit-history {
     grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 6px;
+    padding: 10px 0 0;
+    border-top: 1px solid var(--parity-border);
+    border-left: 0;
   }
 }
 

@@ -299,6 +299,26 @@ fn next_day_sleep_is_attributed_to_the_lived_day_and_no_goal_is_excluded() {
 }
 
 #[test]
+fn weekly_habit_without_a_goal_keeps_its_known_count_outside_the_summary() {
+    let vault = TempDirectory::new("habit-snapshot-weekly-no-goal");
+    let document = include_str!("fixtures/habits-v1-complete.json").replace(
+        "\"goal\": { \"kind\": \"weekly-count\", \"standard\": 3 },",
+        "\"goal\": null,",
+    );
+    write_snapshot(vault.path(), &document);
+
+    let view = application(Some(vault.path())).habits().unwrap();
+    let exercise = view.habit("exercise").unwrap();
+
+    assert_eq!(exercise.completed_count, Some(1));
+    assert_eq!(exercise.weekly_target, None);
+    assert_eq!(exercise.goal_label, "未配置目标 · 不计入汇总");
+    assert_eq!(view.summary.known_completions, 2);
+    assert_eq!(view.summary.target_completions, 12);
+    assert_eq!(view.summary.excluded_no_goal, 1);
+}
+
+#[test]
 fn future_generated_snapshot_is_rejected_without_synthesizing_data() {
     let vault = TempDirectory::new("habit-snapshot-future-generation");
     let document = include_str!("fixtures/habits-v1-complete.json")

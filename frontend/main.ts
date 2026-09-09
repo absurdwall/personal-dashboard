@@ -2919,8 +2919,10 @@ function habitProgressLabel(habit: HabitView): string {
   if (habit.completedCount === null) {
     return habit.today.actualTimeLabel ?? "实际未知";
   }
-  const target = habit.weeklyTarget ?? "—";
-  return `${habit.completedCount} / ${target}`;
+  if (habit.weeklyTarget === null) {
+    return `${habit.completedCount} 次 · 无目标`;
+  }
+  return `${habit.completedCount} / ${habit.weeklyTarget}`;
 }
 
 function habitCellButton(

@@ -393,20 +393,20 @@ pub fn project_snapshot(
         if current_cells.iter().any(|cell| cell.coverage != "complete") {
             current_week_has_incomplete_coverage = true;
         }
-        let completed_count = match habit.goal {
-            Some(Goal::WeeklyCount { standard }) => {
-                let count = current_cells
-                    .iter()
-                    .filter(|cell| cell.counts_as_completion)
-                    .count() as u32;
+        let completed_count = (habit.tracking_kind == TrackingKind::WeeklyCount).then(|| {
+            current_cells
+                .iter()
+                .filter(|cell| cell.counts_as_completion)
+                .count() as u32
+        });
+        if let Some(Goal::WeeklyCount { standard }) = habit.goal {
+            if let Some(count) = completed_count {
                 if habit.active && standard > 0 {
                     summary.known_completions += count;
                     summary.target_completions += standard;
                 }
-                Some(count)
             }
-            _ => None,
-        };
+        }
         if habit.active && habit.goal.is_none() {
             summary.excluded_no_goal += 1;
         }
