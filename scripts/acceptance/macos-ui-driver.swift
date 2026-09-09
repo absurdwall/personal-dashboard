@@ -1627,7 +1627,14 @@ func selectOption(
     timeout: TimeInterval,
     allowUnchanged: Bool = false
 ) throws {
-    let destinationOption = Set(["History", "Settings", "This Week", "Today"]).contains(text)
+    let destinationOption = Set([
+        "History",
+        "Settings",
+        "This Week",
+        "Today",
+        "Calendar",
+        "Habits",
+    ]).contains(text)
     let calendarField = text.hasSuffix(" 年")
         ? "年份"
         : text.hasSuffix(" 月")

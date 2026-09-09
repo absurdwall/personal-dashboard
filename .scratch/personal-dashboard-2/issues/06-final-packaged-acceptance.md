@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 — 通过 Calendar 回看某一天, 03 — 在当天或历史日期补记与更正, 05 — 从 Habits 记录健身短句
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] 从包含全部前置提交的候选分支重新构建 Mac app；不使用旧 bundle 代替当前实现。
 - [ ] 完整合成日程覆盖基准、纯记录、日间调整、晚间回顾、Calendar 历史／空日、Habits 新增／更正与重启刷新。

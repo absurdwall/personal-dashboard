@@ -333,12 +333,12 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle habits; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits dashboard-2; do
     run_bounded_scenario "$scenario"
   done
 
-  echo "Packaged IPC This Week delivery gate passed"
-  echo "Coverage: list-first, direct scheduled record, unresolved state, unscheduled 0-to-3 progress, exceptions, compact workflows, responsive viewports, keyboard Accessibility, and week-close History"
+  echo "Packaged IPC Personal Dashboard 2.0 FINAL gate passed"
+  echo "Coverage: retained Exercise safety, installed Today lifecycle, Calendar history, Habits notes, and one continuous FINAL Today/Calendar/Habits schedule"
   echo "Persistence: each workflow runs in an isolated packaged profile and verifies relaunch where required"
   echo "Budget: ${scenario_budget_seconds}s per scenario, ${suite_budget_seconds}s overall"
 }
@@ -497,8 +497,12 @@ launch_app_waiting_for_text() {
   for attempt in 1 2; do
     launch_app
     if output="$("$driver_binary" "$app_pid" wait-text "$expected_text" "$timeout_seconds" 2>&1)"; then
-      printf '%s\n' "$output"
-      return 0
+      sleep 0.3
+      if pid_is_running "$app_pid"; then
+        printf '%s\n' "$output"
+        return 0
+      fi
+      output="the isolated packaged app exited immediately after Accessibility readiness"
     fi
     if (( attempt == 1 )); then
       current_step="retrying packaged app after Accessibility readiness delay"
@@ -2243,6 +2247,192 @@ EOF
   echo "Viewport: Habits remained readable at 960x720 and 640x520"
 }
 
+run_dashboard_2_scenario() {
+  local vault_directory="$acceptance_directory/tortilla-flat-vault"
+  local snapshot_directory="$vault_directory/.personal-dashboard/derived"
+  local record_directory="$vault_directory/life/Journal/Daily/2026/2026-09"
+  local record_file="$record_directory/2026-09-08.md"
+  local before_record_hash
+  local before_snapshot_hash
+
+  current_step="preparing one continuous FINAL synthetic schedule"
+  fixed_now_epoch_millis="1788917400000"
+  mkdir -p "$vault_directory/.obsidian" "$snapshot_directory" "$record_directory" "$acceptance_data_directory"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_directory" > "$acceptance_data_directory/today-workspace.json"
+  /bin/cp "$repository_root/src-tauri/tests/fixtures/habits-v1-complete.json" \
+    "$snapshot_directory/habits-v1.json"
+  cat > "$record_file" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+source: final-dashboard-2-acceptance
+---
+# 2026-09-08
+
+## 早间基准
+
+### 初始安排
+
+- **上午：** 完成固定工作与报销；学习完成量保持未知。
+- **下午：** 继续原定项目。
+- **晚上：** 17:30 取饭，并保留跑步选项。
+
+### 初始计划依据
+
+#### 固定安排
+
+- 10:00 工作 check-in
+
+#### Tasks / Habits
+
+- Insurance reimbursement
+- Exercise
+
+## 今天的大致安排
+
+- **下午：** 先处理 17:00 前必须完成的紧急工作。
+- **晚上：** 17:30 取饭，之后保护恢复空间。
+
+## 计划依据
+
+### 固定安排
+
+- 10:00 工作 check-in
+
+### Tasks（任务）
+
+- Insurance reimbursement
+
+### Habits（习惯）
+
+- Exercise
+
+## 白天更新
+
+### 07:18 — 有意义的记录
+
+- 观察事实：07:18 起床。
+
+### 10:00 — 有意义的记录
+
+- 观察事实：参加工作 check-in，并处理报销。
+
+### 13:40 — 有意义的事件
+
+- 观察事实：出现紧急工作，打断原安排。
+
+### 14:10 — 重大调整
+
+- 原计划意图：下午继续原定项目。
+- 变化原因：临时工作需要先处理。
+- 修订方向：17:00 前完成紧急工作；17:30 取饭；晚间保留恢复空间。
+
+## 晚间复盘
+
+### 今天发生了什么
+
+- 07:18 起床。
+- 10:00 参加工作 check-in，上午处理报销。
+- 13:40 临时工作打断原安排，14:10 将下午改为先处理急事。
+- 17:30 取饭，19:00 跑步 30 分钟，之后休息。
+- 原定项目没有继续，早间学习完成量没有记录。
+
+### 计划与实际
+
+下午因紧急工作偏离早间基准，完成急事后保护了恢复时间。
+
+### 简单总结（可选）
+
+完成了必要事项，也保留了恢复空间。
+EOF
+  before_record_hash="$(shasum -a 256 "$record_file")"
+  before_snapshot_hash="$(shasum -a 256 "$snapshot_directory/habits-v1.json")"
+
+  current_step="checking wide FINAL Today with complete schedule content"
+  launch_app_waiting_for_text "Log workout now" 30
+  run_driver set-size "1180x820" 10
+  run_driver assert-size "1180x820" 10
+  run_driver press "Today" 10
+  run_driver wait-text "完成固定工作与报销" 20
+  run_driver assert-semantic "today"
+  run_driver assert-text "Today · 2026-09-08"
+  run_driver assert-text "继续原定项目"
+  run_driver press "Daytime" 10
+  run_driver assert-semantic "today-daytime"
+  run_driver assert-text "07:18 起床"
+  run_driver assert-text "先处理 17:00 前必须完成的紧急工作"
+  run_driver assert-text "下午继续原定项目"
+  run_driver press "Evening" 10
+  run_driver assert-semantic "today-evening"
+  run_driver assert-text "19:00 跑步 30 分钟"
+  run_driver assert-text "早间学习完成量没有记录"
+  run_driver assert-text "完成了必要事项，也保留了恢复空间"
+  run_driver assert-document-fixed "document" 10
+
+  current_step="checking wide FINAL Calendar against the same schedule"
+  run_driver press "Calendar" 10
+  run_driver wait-text "2026 年 9 月" 20
+  run_driver assert-semantic "calendar"
+  run_driver assert-text "有复盘"
+  run_driver assert-text "07:18 起床"
+  run_driver assert-document-fixed "document" 10
+
+  current_step="checking wide FINAL Habits against the same schedule"
+  run_driver press "Habits" 10
+  run_driver wait-text "3 / 15" 20
+  run_driver assert-semantic "habits"
+  run_driver assert-text "07:18"
+  run_driver assert-text "仅阈值证据"
+  run_driver press-contains "2026-09-08 · Exercise" 10
+  run_driver assert-text "已知完成"
+  run_driver assert-text "Dida365 打卡"
+  run_driver assert-document-fixed "document" 10
+
+  current_step="checking intermediate FINAL layouts and complete content"
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver assert-semantic "habits"
+  run_driver assert-text "近 12 周记录"
+  run_driver press "Calendar" 10
+  run_driver assert-semantic "calendar"
+  run_driver assert-text "Selected day"
+  run_driver press "Today" 10
+  run_driver press "Daytime" 10
+  run_driver assert-semantic "today-daytime"
+  run_driver assert-text "17:30 取饭"
+  run_driver assert-document-fixed "document" 10
+
+  current_step="checking narrow FINAL layouts, hierarchy, and primary actions"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver assert-semantic "today-daytime"
+  run_driver assert-text "Destination"
+  run_driver select-contains "Calendar" 10
+  run_driver assert-semantic "calendar"
+  run_driver assert-text "打开完整 Today"
+  run_driver select-contains "Habits" 10
+  run_driver wait-text "3 / 15" 20
+  run_driver assert-semantic "habits"
+  run_driver press-contains "2026-09-08 · Exercise" 10
+  run_driver assert-text "近 12 周记录"
+  run_driver select-contains "Today" 10
+  run_driver press "Evening" 10
+  run_driver assert-semantic "today-evening"
+  run_driver assert-text "完成了必要事项，也保留了恢复空间"
+  run_driver assert-document-fixed "document" 10
+
+  [[ "$(shasum -a 256 "$record_file")" == "$before_record_hash" ]] ||
+    fail "FINAL visual reading changed the canonical Daily Record"
+  [[ "$(shasum -a 256 "$snapshot_directory/habits-v1.json")" == "$before_snapshot_hash" ]] ||
+    fail "FINAL visual reading changed the Habits snapshot"
+
+  echo "Packaged IPC Personal Dashboard 2.0 FINAL composite acceptance passed"
+  echo "Continuity: one complete 2026-09-08 schedule crossed Today, Calendar, and Habits without changing source bytes"
+  echo "Content: baseline, explicit facts, daytime replan, actual evening account, unknown learning, and sourced habit evidence remained distinct"
+  echo "Viewport: semantic hierarchy, complete content, and primary actions passed at 1180x820, 800x640, and 640x520"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -2361,10 +2551,14 @@ if [[ "$acceptance_scenario" == "habits" ]]; then
   run_habits_scenario
   exit 0
 fi
+if [[ "$acceptance_scenario" == "dashboard-2" ]]; then
+  run_dashboard_2_scenario
+  exit 0
+fi
 if [[ "$acceptance_scenario" == "live-cycle" ]]; then
   run_live_daily_cycle_scenario
   exit 0
 fi
-if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "compact" && "$acceptance_scenario" != "keyboard" && "$acceptance_scenario" != "week-close" && "$acceptance_scenario" != "today" && "$acceptance_scenario" != "today-write" && "$acceptance_scenario" != "installed-cycle" && "$acceptance_scenario" != "calendar" && "$acceptance_scenario" != "habits" && "$acceptance_scenario" != "live-cycle" ]]; then
+if [[ "$acceptance_scenario" != "shell" && "$acceptance_scenario" != "direct" && "$acceptance_scenario" != "state-semantics" && "$acceptance_scenario" != "progress" && "$acceptance_scenario" != "workouts" && "$acceptance_scenario" != "exceptions" && "$acceptance_scenario" != "responsive" && "$acceptance_scenario" != "compact" && "$acceptance_scenario" != "keyboard" && "$acceptance_scenario" != "week-close" && "$acceptance_scenario" != "today" && "$acceptance_scenario" != "today-write" && "$acceptance_scenario" != "installed-cycle" && "$acceptance_scenario" != "calendar" && "$acceptance_scenario" != "habits" && "$acceptance_scenario" != "dashboard-2" && "$acceptance_scenario" != "live-cycle" ]]; then
   fail "unknown acceptance scenario: $acceptance_scenario"
 fi

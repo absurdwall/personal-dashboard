@@ -3,8 +3,9 @@
 This check drives the shipped Personal Dashboard window through rendered
 controls and observes the resulting accessible UI state. Scenarios that cover
 persistence relaunch the same isolated app copy; the focused review-fix
-`list-first` scenario is limited to shell and navigation evidence. It does not
-use the browser prototype, a development server, or a direct Rust application
+`list-first` scenario is limited to shell and navigation evidence. The
+`dashboard-2` scenario is the continuous FINAL candidate check. It does not use
+the browser prototype, a development server, or a direct Rust application
 object.
 
 1. Build the packaged app with `npm run build:mac`.
@@ -25,6 +26,37 @@ object.
 4. The focused `list-first` scenario ends after the future and due detail
    sheets are opened and closed. It does not record a workout or relaunch the
    app; direct recording and persistence are covered by separate scenarios.
+
+## Personal Dashboard 2.0 FINAL scenario
+
+Run the composite candidate check with:
+
+```sh
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-2 \
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=300 \
+scripts/acceptance/macos-ipc-workflow.sh
+```
+
+The scenario creates one isolated synthetic vault, one complete Daily Record,
+and the checked-in complete Habits snapshot. The record contains a preserved
+morning baseline, explicit event-only facts, a daytime replan, and a complete
+evening account. The same date then crosses **Today**, **Calendar**, and
+**Habits** at 1180×820, 800×640, and 640×520. The checks cover semantic
+hierarchy, complete representative content, compact destination switching,
+expanded habit evidence, primary actions, and fixed-document scrolling. Source
+hashes must remain unchanged throughout this reading-only pass.
+
+The recursive `gate` runs these scenarios in order:
+
+```text
+list-first direct state-semantics progress workouts exceptions responsive
+compact keyboard week-close installed-cycle calendar habits dashboard-2
+```
+
+The installed-cycle, Calendar, and Habits scenarios retain their own missing,
+malformed, empty, write, correction, and relaunch checks. `dashboard-2` adds the
+single-schedule integration proof; it does not replace those focused
+regressions.
 
 The driver is compiled from the macOS system `ApplicationServices` and
 `Foundation` frameworks into the temporary acceptance directory. It adds no
@@ -55,13 +87,14 @@ PERSONAL_DASHBOARD_ACCEPTANCE_SUITE_TIMEOUT_SECONDS=1800 \
 scripts/acceptance/macos-ipc-workflow.sh
 ```
 
-The review-fix pass uses the focused `list-first` scenario only. It does not
-run picker or time-selection workflows, the `exceptions` scenario, or the
-recursive `gate`.
+The review-fix pass may use the focused scenario closest to the change. It does
+not substitute for the recursive `gate`, which is run once on the rebuilt FINAL
+candidate after review findings are resolved.
 
 ## Review-fix evidence boundary
 
-The review-fix pass records only the fresh packaged shell/navigation result and
-direct visual inspection of History and Settings at 960×720 and 640×520. It
-does not claim workout recording, relaunch persistence, picker, `exceptions`,
-or recursive `gate` coverage; those remain separate scenario boundaries.
+Focused runs record only their named behavior and direct visual observations.
+They do not imply coverage from another scenario. Final candidate evidence must
+name the rebuilt bundle, the scenarios actually run, and the separate visual
+comparison; Accessibility semantics alone do not prove typography, palette,
+spacing, or rendered hierarchy.
