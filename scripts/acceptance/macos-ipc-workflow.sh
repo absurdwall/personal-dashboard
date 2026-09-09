@@ -1547,6 +1547,10 @@ notes: |
 
 ## 白天更新
 
+### 13:40 — 重大调整
+
+- 修订方向：先暂停原定项目。
+
 ### 14:10 — 重大调整
 
 突然出现紧急工作，同时能量很低。放弃原本的下午安排。
@@ -1617,6 +1621,8 @@ EOF
   run_driver assert-text "接下来计划"
   run_driver assert-text "当日简短记录"
   run_driver assert-text "安排变化"
+  run_driver assert-text "先暂停原定项目"
+  run_driver assert-text "不依据先后顺序判断哪一条仍然有效"
   run_driver assert-text "先处理需要 17:00 前完成的紧急工作"
   run_driver assert-absent-text "完成原定项目"
   run_driver assert-text "14:10 — 重大调整"
@@ -1767,7 +1773,7 @@ EOF
   run_driver press "Daytime" 10
   run_driver wait-text "今天还没有明确记录的安排变化" 10
   run_driver assert-text "当前安排 · 未按时间推断"
-  run_driver assert-text "尚未明确记录接下来方向"
+  run_driver assert-text "尚未明确记录修订方向"
   run_driver assert-text "先处理已更新的紧急工作"
   run_driver assert-absent-text "这是外部更新后的受约束一天"
 

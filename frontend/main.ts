@@ -1994,7 +1994,7 @@ function renderToday(view: TodayView): void {
     (update) => !daytimeHasArrangementChange(update),
   );
   if (todayDaytimeCount) {
-    todayDaytimeCount.textContent = `${knownUpdates.length} 条已知 · ${directionCount} 项接下来`;
+    todayDaytimeCount.textContent = `${knownUpdates.length} 条已知 · ${directionCount} 条修订方向`;
   }
   if (todayDaytimeKnown) {
     todayDaytimeKnown.replaceChildren(...knownUpdates.map(daytimeKnownArticle));

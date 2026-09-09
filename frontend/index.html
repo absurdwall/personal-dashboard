@@ -207,7 +207,7 @@
                           <div class="today-axis-legend" aria-label="时间轴图例">
                             <span>已发生 / 已确认</span>
                             <span>未按时间推断</span>
-                            <span>接下来方向</span>
+                            <span>修订方向记录</span>
                           </div>
                           <section class="today-axis-zone" aria-labelledby="today-known-heading">
                             <p id="today-known-heading" class="today-zone-label">已发生 / 已确认</p>
@@ -236,16 +236,19 @@
                           </div>
                           <section class="today-axis-zone today-future-zone" aria-labelledby="today-future-heading">
                             <div class="today-zone-heading">
-                              <p id="today-future-heading" class="today-zone-label">接下来计划</p>
+                              <p id="today-future-heading" class="today-zone-label">接下来计划 · 修订记录</p>
                               <span id="today-future-count" class="today-count"></span>
                             </div>
                             <div id="today-future-directions" class="today-future-directions"></div>
                             <p id="today-future-empty" class="today-phase-empty" hidden>
-                              尚未明确记录接下来方向；不会按钟点从当前安排猜测。
+                              尚未明确记录修订方向；不会按钟点从当前安排猜测。
+                            </p>
+                            <p class="today-direction-boundary">
+                              修订方向按记录保留，不依据先后顺序判断哪一条仍然有效；当前安排以上方中性区域为准。
                             </p>
                           </section>
                           <p class="today-axis-note">
-                            时间轴只整理明确事实和接下来方向；没有记录的活动继续保持未知。
+                            时间轴只整理明确事实、当前安排线索和修订记录；没有记录的活动继续保持未知。
                           </p>
                         </section>
                         <aside class="today-update-rail" aria-label="Daytime update rail">

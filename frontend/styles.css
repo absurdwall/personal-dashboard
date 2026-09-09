@@ -2231,6 +2231,13 @@ body {
   line-height: 1.55;
 }
 
+.today-direction-boundary {
+  margin: 10px 0 0;
+  color: var(--parity-muted);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
 .today-update-boundary {
   margin: 12px 0 0;
   color: var(--parity-muted);
