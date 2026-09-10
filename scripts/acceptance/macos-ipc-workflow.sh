@@ -538,7 +538,7 @@ run_keyboard_scenario() {
   run_driver assert-visible-focus "History" 10
   run_driver press-key "return" 10
   run_driver assert-text "Previous weeks"
-  run_driver focus "Settings" 10
+  run_driver focus "Profile & data" 10
   run_driver press-key "return" 10
   run_driver assert-text "Profile & data"
   run_driver assert-semantic "settings"
@@ -661,10 +661,9 @@ run_direct_record_scenario() {
   if ! stop_app; then
     fail "app process did not exit after termination"
   fi
-  launch_app
+  launch_app_waiting_for_text "1 of 3 completed" 30
 
   current_step="checking direct-record persistence after relaunch"
-  run_driver wait-text "1 of 3 completed" 30
   run_driver assert-text "Completed"
   run_driver press-contains "Monday" 10
   run_driver assert-text "Elliptical"
@@ -970,7 +969,7 @@ run_list_first_scenario() {
   run_driver assert-text "Previous weeks"
   run_driver assert-destination-inset "History" 10
   run_driver assert-document-fixed "history" 10
-  run_driver press "Settings" 10
+  run_driver press "Profile & data" 10
   run_driver assert-text "Profile & data"
   run_driver assert-semantic "settings"
   run_driver assert-text "This device keeps one versioned profile"
@@ -1094,8 +1093,7 @@ run_exception_scenario() {
   if ! stop_app; then
     fail "app process did not exit after saving the direct skip"
   fi
-  launch_app
-  run_driver wait-text "Undo skip" 30
+  launch_app_waiting_for_text "Undo skip" 30
   run_driver press "Undo skip" 10
   run_driver assert-text "0 of 3 completed"
   run_driver assert-state "Monday|pressed" 10
@@ -1104,13 +1102,14 @@ run_exception_scenario() {
   run_driver assert-text "Record workout"
   run_driver assert-text "Change to another time"
 
-  current_step="opening the change-time editor with logical keyboard focus"
+  current_step="opening the change-time editor and checking its choices"
   run_driver press "Change to another time" 10
   run_driver assert-text "Change this workout time"
   run_driver assert-text "Check this time"
   run_driver assert-select-option "Monday · August 10" 10
-  run_driver select-contains "Monday · August 10" 10
-  run_driver select-contains "Saturday · August 15" 10
+  # Native menu enumeration may already leave this target selected; the
+  # contract is the resulting Saturday value, not a mandatory value delta.
+  run_driver select-contains-allow-unchanged "Saturday · August 15" 10
   # Saturday preserves the source 4:00 PM value as its suggested time.
   run_driver select-contains-allow-unchanged "4:00 PM" 10
   run_driver wait-text "Saturday · August 15" 10
@@ -1287,7 +1286,7 @@ run_responsive_scenario() {
   run_driver set-size "800x640" 10
   run_driver assert-size "800x640" 10
   run_driver assert-absent-text "Wednesday workout"
-  run_driver press "Settings" 10
+  run_driver press "Profile & data" 10
   run_driver assert-text "Profile & data"
   run_driver assert-semantic "settings"
   run_driver assert-text "This device keeps one versioned profile"
@@ -1466,8 +1465,8 @@ run_today_scenario() {
       fail "the native folder picker closed without persisting a workspace selection"
     [[ "$(/usr/bin/plutil -extract selectedVault raw "$acceptance_data_directory/today-workspace.json" 2>/dev/null)" == "$vault_directory" ]] ||
       fail "the native folder picker persisted a different workspace selection"
-    run_driver wait-text "Today 需要一份 Daily Record" 20
-    run_driver assert-text "请让 Codex 运行早间流程"
+    run_driver wait-text "2026-08-10 还没有 Daily Record" 20
+    run_driver assert-text "只有明确保存一句记录时才会建立最小记录"
 
     current_step="surfacing malformed Daily Record identity without guessing"
     cat > "$record_file" <<'EOF'

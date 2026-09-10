@@ -539,6 +539,37 @@ func waitForFocusedPickerTextField(
     throw DriverError.timeout("focused native folder path field")
 }
 
+func openPickerPathField(
+    _ application: AXUIElement,
+    picker: AXUIElement,
+    pid: pid_t,
+    timeout: TimeInterval
+) throws -> AXUIElement {
+    let deadline = Date().addingTimeInterval(timeout)
+    var lastError: Error = DriverError.timeout("focused native folder path field")
+    for _ in 1...3 {
+        try activateApplication(
+            application,
+            pid: pid,
+            timeout: min(2, max(0.1, deadline.timeIntervalSinceNow))
+        )
+        try postGlobalShortcut(keyCode: 5, flags: [.maskCommand, .maskShift])
+        do {
+            return try waitForFocusedPickerTextField(
+                application,
+                picker: picker,
+                timeout: min(3, max(0.1, deadline.timeIntervalSinceNow))
+            )
+        } catch {
+            lastError = error
+        }
+        if Date() >= deadline {
+            break
+        }
+    }
+    throw lastError
+}
+
 func waitForTextFieldValue(
     _ field: AXUIElement,
     value: String,
@@ -634,7 +665,11 @@ func chooseFolder(
     timeout: TimeInterval
 ) throws {
     let deadline = Date().addingTimeInterval(timeout)
-    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows])
+    try activateApplication(
+        application,
+        pid: pid,
+        timeout: max(0.1, deadline.timeIntervalSinceNow)
+    )
     let picker = try waitForPickerSheet(
         application,
         timeout: max(0.1, deadline.timeIntervalSinceNow)
@@ -644,10 +679,10 @@ func chooseFolder(
             "identifier=\(stringAttribute(picker, "AXIdentifier")) open=enabled"
     )
 
-    try postGlobalShortcut(keyCode: 5, flags: [.maskCommand, .maskShift])
-    let pathField = try waitForFocusedPickerTextField(
+    let pathField = try openPickerPathField(
         application,
         picker: picker,
+        pid: pid,
         timeout: max(0.1, deadline.timeIntervalSinceNow)
     )
     reportNativePickerTransition(
@@ -893,6 +928,41 @@ func waitForPickerValue(
     )
 }
 
+func waitForExceptionPickerValue(
+    _ application: AXUIElement,
+    pickerIndex: Int,
+    text: String,
+    timeout: TimeInterval,
+    changedFrom previousState: PickerState,
+    requireChange: Bool = true
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    var lastValue = "<none>"
+    var matchedUnchanged = false
+    repeat {
+        let pickers = findExceptionSchedulePickers(application)
+        if pickers.indices.contains(pickerIndex) {
+            let currentState = pickerState(pickers[pickerIndex])
+            lastValue = currentState.summary
+            if pickerStateMatches(currentState, text) {
+                if !requireChange || currentState != previousState {
+                    return
+                }
+                matchedUnchanged = true
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    if matchedUnchanged {
+        throw DriverError.unexpectedText(
+            "specific picker value remained unchanged: \(text)"
+        )
+    }
+    throw DriverError.timeout(
+        "specific picker value: \(text) (actual: \(lastValue))"
+    )
+}
+
 func scrollSurface(for path: AccessibilityPath) -> AXUIElement? {
     if let informationSurface = path.ancestors.reversed().first(where: { element in
         visibleAttribute(element, "AXHidden") &&
@@ -1002,12 +1072,22 @@ func assertSemanticContract(
     let compactMode = mode == "compact" || mode == "detail-compact" ||
         mode == "settings" || mode == "recording" || todayMode || calendarMode || habitsMode
     let minimumButtonCount = compactViewport ? 1 : 4
+    let buttonDescriptions = findRolesWithin(application, ["AXButton"]).map(nodeText)
     guard (counts["AXWindow"] ?? 0) > 0,
           (counts["AXWebArea"] ?? 0) > 0,
           (counts["AXButton"] ?? 0) >= minimumButtonCount,
           (counts["AXStaticText"] ?? 0) > 0,
           compactMode || (counts["AXList"] ?? 0) > 0 else {
-        throw DriverError.timeout("semantic workspace roles")
+        throw DriverError.timeout(
+            "semantic workspace roles " +
+                "(window=\(counts["AXWindow"] ?? 0), " +
+                "webArea=\(counts["AXWebArea"] ?? 0), " +
+                "button=\(counts["AXButton"] ?? 0), " +
+                "staticText=\(counts["AXStaticText"] ?? 0), " +
+                "list=\(counts["AXList"] ?? 0), " +
+                "minimumButtons=\(minimumButtonCount), " +
+                "buttons=\(buttonDescriptions))"
+        )
     }
 
     let requiresDestinationSwitcher = Set([
@@ -1135,6 +1215,25 @@ func assertSemanticContract(
     }
 }
 
+func waitForSemanticContract(
+    _ application: AXUIElement,
+    _ mode: String,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    var lastError: Error = DriverError.timeout("semantic contract: \(mode)")
+    repeat {
+        do {
+            try assertSemanticContract(application, mode)
+            return
+        } catch {
+            lastError = error
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw lastError
+}
+
 func normalizedAttributeValue(_ raw: CFTypeRef) -> String {
     if let value = raw as? Bool {
         return value ? "true" : "false"
@@ -1182,6 +1281,26 @@ func assertState(
             "\(text) did not expose state \(expected) (role=\(stringAttribute(element, "AXRole")); \(details))"
         )
     }
+}
+
+func waitForState(
+    _ application: AXUIElement,
+    _ text: String,
+    _ expected: String,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    var lastError: Error = DriverError.timeout("stateful rendered control: \(text)")
+    repeat {
+        do {
+            try assertState(application, text, expected)
+            return
+        } catch {
+            lastError = error
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw lastError
 }
 
 func assertLiveSemantics(
@@ -1724,7 +1843,15 @@ func selectOption(
         throw DriverError.timeout("Calendar option: \(text)")
     }
 
-    for picker in pickers {
+    for pickerIndex in pickers.indices {
+        let currentPickers = try waitForExceptionSchedulePickers(
+            application,
+            timeout: timeout
+        )
+        guard currentPickers.indices.contains(pickerIndex) else {
+            throw DriverError.timeout("exception schedule picker at index \(pickerIndex)")
+        }
+        let picker = currentPickers[pickerIndex]
         let previousState = pickerState(picker)
         try performAccessibilityAction(picker, "AXPress", "open schedule picker")
         let deadline = Date().addingTimeInterval(timeout)
@@ -1739,17 +1866,19 @@ func selectOption(
                         "AXPress",
                         "select schedule option \(text)"
                     )
-                    try pressKey(pid, "return")
-                    try waitForPickerValue(
-                        picker,
-                        text,
+                    if findVisibleMenu(application) != nil {
+                        try pressKey(pid, "return")
+                    }
+                    try waitForExceptionPickerValue(
+                        application,
+                        pickerIndex: pickerIndex,
+                        text: text,
                         timeout: timeout,
                         changedFrom: previousState,
                         requireChange: !allowUnchanged
                     )
                     return
                 }
-                try pressKey(pid, "escape")
                 break
             }
             Thread.sleep(forTimeInterval: 0.1)
@@ -1761,7 +1890,11 @@ func selectOption(
         }
     }
 
-    for picker in pickers {
+    let currentPickers = try waitForExceptionSchedulePickers(
+        application,
+        timeout: timeout
+    )
+    for (pickerIndex, picker) in currentPickers.enumerated() {
         let previousState = pickerState(picker)
         try setAccessibilityAttribute(
             picker,
@@ -1769,9 +1902,10 @@ func selectOption(
             text as CFTypeRef,
             "set schedule picker to \(text)"
         )
-        try waitForPickerValue(
-            picker,
-            text,
+        try waitForExceptionPickerValue(
+            application,
+            pickerIndex: pickerIndex,
+            text: text,
             timeout: timeout,
             changedFrom: previousState,
             requireChange: !allowUnchanged
@@ -2104,6 +2238,7 @@ do {
         try assertAbsentText(application, text)
         print("Rendered state does not contain: \(text)")
     case "assert-focused-text":
+        try activateApplication(application, pid: pid, timeout: min(2, timeout))
         try waitForFocusedText(application, text, timeout: timeout)
         print("Focused rendered control contains: \(text)")
     case "focus":
@@ -2132,17 +2267,23 @@ do {
         try chooseFolder(application, pid: pid, path: text, timeout: timeout)
         print("Selected native folder: \(text)")
     case "assert-visible-focus":
+        try activateApplication(application, pid: pid, timeout: min(2, timeout))
         try assertVisibleFocus(application, text, timeout: timeout)
         print("Focused rendered control is visible: \(text)")
     case "assert-semantic":
-        try assertSemanticContract(application, text)
+        try waitForSemanticContract(application, text, timeout: timeout)
         print("Rendered semantic contract passed: \(text)")
     case "assert-state":
         let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
         guard parts.count == 2 else {
             throw DriverError.usage
         }
-        try assertState(application, parts[0], parts[1])
+        try waitForState(
+            application,
+            parts[0],
+            parts[1],
+            timeout: timeout
+        )
         print("Rendered state passed: \(parts[0]) is \(parts[1])")
     case "assert-live":
         let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
