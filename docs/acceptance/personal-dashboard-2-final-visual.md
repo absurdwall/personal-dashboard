@@ -73,8 +73,32 @@ SHA-256 values.
 | Complete content | Five morning blocks, the full plan basis, explicit facts, low-energy replan, unknown learning/reset evidence, evening account, 3/15 habit summary, exact-time versus threshold evidence, and sourced Exercise detail were all visible in the rebuilt package. |
 
 Native title-bar treatment and prototype-only `FINAL · 合成演示` / developer
-notices are not product requirements. The candidate intentionally still exposes
-the 1.0 This Week, History, Settings/Profile, and compact destination selector;
-ticket 07 owns their authorized retirement and must repeat installed visual
-acceptance after removal. Their presence is not evidence that the 2.0 cutover
-has occurred.
+notices are not product requirements.
+
+## 2026-09-10 post-cutover repeat
+
+The reviewed 2.0 executable from candidate `00bd65f` (SHA-256
+`498c1d4252a8745e1ed1590d4e4a1bd302dd6e908d6d7d5a26562f168fec4a42`)
+was relaunched against isolated synthetic app-data and vault roots. Today,
+Calendar, and Habits were captured at all three required window sizes and
+directly compared with the frozen FINAL references. Native Retina capture
+stored the product windows at 2× pixels. AX checks independently confirmed the
+expected entry and expanded-detail semantics. All nine rendered comparisons
+passed for palette, typography, spacing, hierarchy, responsive behavior, and
+action reachability.
+
+| Entry | Window / stored pixels | Product SHA-256 | Result |
+| --- | --- | --- | --- |
+| Today | 1180×820 / 2360×1640 | `4f9bf27740061941ae50b9ec23b7af1b1b3da708a54122c895fe69889e0555a5` | PASS |
+| Today | 800×640 / 1600×1280 | `d911c7656e341e308ab1968bbc737e709d588aaf274553b464fa59c5e1e82770` | PASS |
+| Today | 640×520 / 1280×1040 | `5e66772885a202e91d362ea55fbea26d9f6617109cfadc12d76726bb25c5c38d` | PASS |
+| Calendar | 1180×820 / 2360×1640 | `0f642f82567dbbfd97e36635578595667562119f4e74bff2541af84f393e7e6f` | PASS |
+| Calendar | 800×640 / 1600×1280 | `a0eda178ce2a55ef1e50e8afb56fb1e6602495d0be1a295572d9dfc9e1498d4e` | PASS |
+| Calendar | 640×520 / 1280×1040 | `2e5eb73af2e5010b305fb51e14a0aa0bc8296be3493fc8e695ea1fab5ffb04a9` | PASS |
+| Habits | 1180×820 / 2360×1640 | `765bf35ddd9f36a5e2203a2f4bc468d95c2e3ff944d9d1727536c4d8a4fc167d` | PASS |
+| Habits | 800×640 / 1600×1280 | `de2f09c67ebab8161b4c184a6a6cf792fe091f9e347612e4c6855e4ac8099071` | PASS |
+| Habits | 640×520 / 1280×1040 | `34c1104d57de55cb8d9078439e818f2e6e48e5e00c61f2c7c59ce560bdd00381` | PASS |
+
+The post-cutover UI exposes only Today, Calendar, and Habits; the retired 1.0
+destinations are absent. This closes ticket 07's installed visual repeat while
+keeping the rendered evidence separate from the packaged AX workflow.

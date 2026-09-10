@@ -4,15 +4,15 @@
 
 **Blocked by:** 06 — 完成 FINAL 的整体验收
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] 核对实际前置验收和候选提交，保留 FINAL 三入口，删除旧 History／Settings／Profile 管理与重复运动提醒界面，不删除 vault 能力。
 - [x] 按当前实现枚举明确 app-owned 的旧 Exercise/Profile 数据与通知；仅清理这些对象，保留 vault、Daily Records、其他位置导出文件及未识别内容。
 - [x] 用户已明确旧数据无需保留，无迁移要求；清理幂等，记录完成标识，重启不再导回旧数据，旧 app 管理的提醒不再发送。
 - [x] 通过隔离切换演练证明安全范围、失败状态与重启结果；完成该代码的 review 和提交后才触及真实安装。
-- [ ] 落实前置基准写入与按需快照生产契约。现有会话禁止修改 live skill／运行 Dida365／自动化的边界仍有效：若实际切换必须改变这些，先说明具体变更并取得明确授权；不得静默激活。
-- [ ] 必要的尚未授权运行操作未完成时保持 ticket 未完成，并交代可执行代码与实际运行验收的区别；不以合成 evidence 宣称真实闭环完成。
-- [ ] 切换后重新检查 installed app、三入口、刷新、数据生成兼容、旧数据清理和通知停用；记录结果与最终独立 review。
+- [x] 落实前置基准写入与按需快照生产契约。用户明确授权后，live skill 以独立提交 `2171410` 激活；Dida365 仅只读，两个旧自动化保持 PAUSED。
+- [x] 在明确授权后执行真实 preflight、旧进程退出、live cutover、marker 重入和无 cutover 环境变量的正常重启；合成 evidence 与真实运行结果继续分开记录。
+- [x] 切换后重新检查实际 2.0 bundle、三入口、快照刷新、旧数据清理、launchd／通知停用和正常重启；记录结果与最终独立 review。
 
 ## Handoff notes
 
@@ -52,7 +52,38 @@ Exercise-first／自动迁移决定。最终 Standards review 无剩余 finding�
 提出的 stale resume、marker-only success、preflight 字段、launchctl 错误分类、
 缺 plist bootout 与恢复期 runner reload 问题均已修复。
 
-本票仍保持 `claimed`：live daily-loop writer、12 周 snapshot producer、Dida365、
-自动化、真实安装替换、真实旧数据删除、真实 launchd job 与真实通知均未触碰。
-后三项验收只能在用户分别授权 producer/外部系统变更并确认 exact installed 1.0
-bundle 后执行；此前 isolated/package evidence 不等于 live cutover 完成。
+用户随后明确授权直接退役 1.0，并在同一 release bundle 路径直接使用 2.0。
+live `life-daily-loop` 在父 vault 提交 `2171410` 中加入早间基准保存和严格、原子
+Habits v1 writer，并在 `61c33b3` 要求调用方声明完整 source／habit scope 及每个
+习惯的完整日期范围；隔离 dry run 证明 material replan／晚间复盘不覆盖基准，
+空或坏候选不会替换最后一份有效快照。Dida365 只进行了只读的 habit catalog 与
+有界 check-in 读取；生成结果覆盖声明的完整语义目录与日期窗口，有来源的观察被
+保留，缺失仍为 unknown。具体习惯名称、数量与完成数据只保存在私有 vault 中。
+
+真实只读 preflight 对候选 `00bd65f` 与 bundle SHA-256
+`498c1d4252a8745e1ed1590d4e4a1bd302dd6e908d6d7d5a26562f168fec4a42`
+报告仅有预期的 owned paths、没有 unknown path、完整重建的旧通知标识、缺席的
+Python runner 目录与未加载的 launchd job，且没有写 progress／marker。随后旧
+1.0 进程退出；execute 只删除 live app-data 下的 `exercise.json`、`profile.json`
+并写入 completed marker。`today-workspace.json` 与 Habits snapshot 前后 hash
+不变，vault 与 Daily Records 未被切换流程写入。
+
+完成 marker 的 execute 重入再次通过 launchd／pending notification 检查，精确
+launchd label 仍报告不存在。无 cutover 环境变量正常重启后，运行中 bundle 为
+2.0.0；Accessibility 只见 Today、
+Calendar、Habits，不见 This Week 或 Profile & data。进入 Habits 并按“刷新快照”
+后仍显示 `Life Daily Loop · agent-derived` 且来源覆盖一致。两个已弃用的 Morning
+planning／Evening review 自动化维持 PAUSED，未创建替代自动化。
+
+授权的一次真实 Morning generation 读取了 Dida365 Today 与一条 overdue Task
+（标题只保留在私有 Daily Record），并复用已成功读取的相关 Habits/check-ins；它创建
+`2026-09-10.md`，同时写入相符的 `早间基准` 与当前计划，未把缺失打卡推断为
+未完成。正常 2.0 重启后 Today 显示 5 个时间块与初始计划依据，Calendar 将当天
+识别为有 Daily Record、无晚间复盘，Habits 仍可刷新原快照。
+
+同一 live 2.0 executable 随后在可删除的隔离 app-data／vault root 完成 dated
+Exercise 验收：从 Habits 为 2026-09-10 新增明确标注的合成短句 v1，再更正为 v2；
+Markdown 仍只有一个 stable entry，并保留原文／新文修改记录。Calendar 与 Today
+读取更正结果，重启后 Habits 继续显示 v2 和一条修改记录，snapshot hash 不变。
+隔离 root 随后删除，真实 Daily Record 未写入该合成 Exercise 内容。最后恢复无
+环境变量的正常 2.0 进程并保持运行。

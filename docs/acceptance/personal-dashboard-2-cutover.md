@@ -65,11 +65,65 @@ This is packaged synthetic evidence, not a live cutover. Its notification IDs
 are synthetic and were not pre-scheduled, so it proves the native cancellation
 and verification path but not removal from the user's real pending list.
 
-## Live status
+## Live cutover
 
-The live installation, live app-owned state, Python launchd job, real pending
-notifications, live daily-loop skill, Dida365, and automations were not changed
-by this implementation. The exact installed bundle and the producer changes
-still require the separate explicit authorizations described in the cutover
-plan. Until those operations and their post-cutover checks complete, ticket 07
-must remain incomplete.
+The user subsequently authorized direct retirement of 1.0 and continued use of
+2.0 at the same release-bundle path. The live producer was activated separately
+in the parent vault at commit `2171410` and hardened at `61c33b3`:
+`life-daily-loop` now preserves an independent morning baseline and validates
+and atomically replaces the Habits v1 snapshot. The writer requires the caller
+to declare the complete expected source and habit key sets and requires every
+habit to cover the full snapshot date range. Its isolated dry run proved that
+replanning and evening review preserve the baseline and that an empty-scope or
+invalid candidate leaves the canonical snapshot bytes unchanged. The standard
+skill validator could not start because its own Python
+environment lacks `yaml`; equivalent YAML frontmatter validation, Python compile,
+the dry run, and `git diff --check` passed without installing a dependency.
+
+Dida365 was read only: one catalog read and one bounded check-in read for the
+complete source scope declared in the private vault. The resulting snapshot
+covers the full expected semantic catalog and bounded date window, retains
+sourced observations, and leaves missing observations unknown rather than
+implicit non-completion. Habit names, counts, and completion details remain in
+the private vault and are intentionally omitted from this public evidence.
+
+The live read-only preflight used reviewed candidate `00bd65f` and executable
+SHA-256 `498c1d4252a8745e1ed1590d4e4a1bd302dd6e908d6d7d5a26562f168fec4a42`.
+It reported the selected Tortilla Flat vault, `exercise.json` and `profile.json`
+as the only owned paths, no unknown paths, an absent legacy Python directory,
+an unloaded exact launchd job, and the complete reconstructed notification ID
+set. It exited without a progress or completion record.
+
+After stopping the old 1.0 process, the reviewed 2.0 executable performed the
+live cutover. It removed only
+`exercise.json` and `profile.json`, wrote the completed marker, preserved the
+`today-workspace.json` and Habits snapshot hashes, and left no progress journal.
+A second execute-mode launch successfully revalidated the completion marker,
+launchd state, and pending notifications. A direct `launchctl print` for
+`com.tortillaflat.exercise-habit-tracker.reminders` returned exit 113/not found.
+
+A subsequent normal launch with no cutover variables runs version 2.0.0.
+Accessibility observes only Today, Calendar, and
+Habits and confirms This Week and Profile & data are absent. Habits loads the
+live `Life Daily Loop · agent-derived` snapshot, and the visible refresh action
+retains the same source coverage. The normal 2.0 process remains running. The
+two deprecated Morning planning and Evening review Codex automations remain
+PAUSED and were not replaced or modified.
+
+An authorized live Morning generation then read Dida365 Today and one overdue
+Task whose title remains only in the private Daily Record, and reused the already
+successful relevant Habit/check-in reads. It created the canonical 2026-09-10 Daily Record
+with matching independent baseline and current-plan sections; missing check-ins
+remain unknown. After a normal 2.0 relaunch, Today rendered its five plan blocks
+and initial basis, Calendar classified 2026-09-10 as a Daily Record without an
+evening review, and Habits continued to refresh the same snapshot.
+
+The same reviewed live 2.0 executable was also launched against disposable,
+isolated app-data and vault roots for the write-path portion of post-cutover
+acceptance. From Habits it created a clearly synthetic dated Exercise note for
+2026-09-10, corrected v1 to v2, and retained one stable Markdown entry with an
+append-only original/new-text trace. Calendar and Today read the correction;
+after a process relaunch Habits still showed v2 and one correction, while the
+snapshot SHA-256 remained unchanged. The disposable roots were then removed, so
+no synthetic Exercise claim entered the real Daily Record. A final normal launch
+restored the real selected vault and remains running.
