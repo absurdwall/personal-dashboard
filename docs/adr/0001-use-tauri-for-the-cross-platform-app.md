@@ -1,8 +1,11 @@
 ---
-status: accepted
+status: superseded by ADR-0002
 ---
 
 # Use Tauri 2 for the cross-platform app
+
+The Tauri foundation remains current. ADR-0002 supersedes this record's
+Exercise-first scope and automatic Exercise/Profile migration decision.
 
 Evolve Personal Dashboard in this repository into a Tauri 2 app. Exercise tracking is its current feature area, but the product name and application boundary allow later functions without requiring a speculative generic framework now. Tauri provides one credible application foundation for a launchable Mac app and later standalone iPad and Android apps while allowing a shared interface that need not imitate native controls. The shipping app will replace the Python localhost runtime rather than permanently wrap it; the completed web version remains recoverable through Git history, its behavioral contract, and automatic data migration.
 

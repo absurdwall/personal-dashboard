@@ -17,7 +17,7 @@ pub(crate) enum CompletedBaselineError {
 impl CompletedBaselineExercise {
     pub(crate) fn parse<C: ExerciseClock>(
         document: &[u8],
-        clock: &C,
+        _clock: &C,
     ) -> Result<Self, CompletedBaselineError> {
         let baseline = serde_json::from_slice::<BaselineDocument>(document)
             .map_err(|_| CompletedBaselineError::Invalid)?;
@@ -100,7 +100,7 @@ impl CompletedBaselineExercise {
         .validate()
         .map_err(|_| CompletedBaselineError::Invalid)?;
         state
-            .validate_timestamps(clock)
+            .validate_timestamps()
             .map_err(|_| CompletedBaselineError::Invalid)?;
         Ok(Self {
             source_schema_version: baseline.schema_version,

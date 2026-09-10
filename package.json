@@ -1,7 +1,7 @@
 {
   "name": "personal-dashboard",
   "private": true,
-  "version": "0.1.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "build": "node scripts/prepare-frontend.mjs && tsc",
@@ -11,7 +11,7 @@
     "prototype:mac-workspace": "node .scratch/personal-dashboard-mac-workspace/prototype/serve.mjs",
     "build:mac": "tauri build --bundles app",
     "accept:mac": "scripts/acceptance/macos-packaged-launch.sh",
-    "accept:cutover": "scripts/acceptance/tauri-only-source.sh && npm run accept:mac",
+    "accept:cutover": "scripts/acceptance/tauri-only-source.sh && scripts/acceptance/macos-cutover-workflow.sh",
     "tauri": "tauri"
   },
   "devDependencies": {

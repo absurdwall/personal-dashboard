@@ -234,7 +234,7 @@ where
             return Ok(ProfileMoveSelection::cancelled());
         };
         let moved = parse_move(&document)?;
-        moved.exercise.validate_timestamps(&self.clock)?;
+        moved.exercise.validate_timestamps()?;
         *self
             .pending_import
             .lock()
@@ -313,7 +313,7 @@ where
             .load()?
             .ok_or_else(|| "The active exercise profile is not initialized.".to_string())?;
         let (exercise, _) = crate::exercise::parse_state(&document)?;
-        exercise.validate_timestamps(&self.clock)?;
+        exercise.validate_timestamps()?;
         Ok(exercise)
     }
 

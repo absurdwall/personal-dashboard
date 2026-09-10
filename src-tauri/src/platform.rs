@@ -574,6 +574,20 @@ pub fn baseline_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, Stri
         .map_err(|error| format!("Could not locate the completed baseline state: {error}"))
 }
 
+pub fn legacy_exercise_directory_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    if let Some(override_directory) = std::env::var_os("PERSONAL_DASHBOARD_LEGACY_EXERCISE_DIR") {
+        return Ok(PathBuf::from(override_directory));
+    }
+    app.path()
+        .home_dir()
+        .map(|home| {
+            home.join("Library")
+                .join("Application Support")
+                .join("Exercise Habit Tracker")
+        })
+        .map_err(|error| format!("Could not locate the legacy Exercise data directory: {error}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

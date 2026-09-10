@@ -268,6 +268,14 @@ pub(crate) fn parse_profile(document: &[u8]) -> Result<Profile, String> {
     decode_profile(document)?.validate()
 }
 
+pub fn legacy_notification_ids(document: &[u8]) -> Result<Vec<String>, String> {
+    let profile = parse_profile(document)?;
+    let mut notification_ids = profile.pending_notification_cancellations;
+    notification_ids.sort();
+    notification_ids.dedup();
+    Ok(notification_ids)
+}
+
 fn decode_profile(document: &[u8]) -> Result<Profile, String> {
     serde_json::from_slice::<Profile>(document)
         .map_err(|_| "The selected file is not a valid Personal Dashboard profile.".to_string())

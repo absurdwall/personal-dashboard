@@ -1,7 +1,7 @@
 # Personal Dashboard
 
-Personal Dashboard is a private, offline, local-first application. Exercise
-tracking is its current feature area.
+Personal Dashboard 2.0 is a private, offline, local-first Daily Record reader
+with Today, Calendar, and Habits destinations.
 
 ## Build and install the Mac application
 
@@ -42,32 +42,18 @@ identity, and confirms that the app uses neither Python nor a listening TCP
 socket. The private release targets the current Apple Silicon Mac and macOS
 environment. It is ad-hoc signed but is not Developer ID signed or notarized.
 
-## Exercise week and departure reminder
+## 2.0 workspace
 
-The packaged app opens on the current exercise week. A fresh profile uses the
-established Monday, Wednesday, and Friday 4:00 PM primary departures, followed
-by Saturday and Sunday 4:00 PM fallback availability, with a weekly goal of
-three qualifying workouts. The dashboard shows current progress and the next
-planned departure before profile capability controls.
+The packaged app opens on Today and exposes exactly three primary destinations:
+Today, Calendar, and Habits. Today and Calendar read the selected Tortilla Flat
+vault's Daily Records; Habits reads the validated, on-demand projection at
+`<selected-vault>/.personal-dashboard/derived/habits-v1.json`. The app does not
+call Dida365 or run a producer itself.
 
-The repeating routine, generated weeks, and native-reminder scheduling state
-are stored as versioned JSON at:
-
-```text
-~/Library/Application Support/com.tortillaflat.personal-dashboard/exercise.json
-```
-
-When notification permission is granted, the Rust application core emits the
-next departure reminder through the native platform adapter. macOS owns an
-already scheduled reminder, so closing the Personal Dashboard window does not
-cancel it. Exercise state and reminder eligibility do not depend on Python, a
-localhost server, a browser, an account, or network access.
-
-Run the application-workflow seam with:
-
-```sh
-cargo test --manifest-path src-tauri/Cargo.toml --test application_workflow
-```
+The retired This Week, History, Settings/Profile, and exercise-reminder
+surfaces are not registered by the 2.0 application runtime. Historical modules
+remain in source only to validate and enumerate old state during the bounded
+cutover and to preserve prior regression evidence.
 
 ## Today Daily Record recovery
 
@@ -114,84 +100,30 @@ record behavior is documented in
 [`docs/daily-record-baseline.md`](docs/daily-record-baseline.md). Reader support
 does not by itself activate or prove the future production writer.
 
-## Complete profile backup and restore
+## Retiring the old Exercise runtime
 
-The packaged app keeps the profile label and exercise state as versioned,
-app-owned JSON at:
+Normal 2.0 startup never reads, creates, imports, or schedules from the retired
+Profile/Exercise state. A separately gated cutover path is available only when
+`PERSONAL_DASHBOARD_2_CUTOVER_CANDIDATE` names the exact reviewed candidate.
+It validates the old state, stops only the exact historical Python launchd job,
+cancels and verifies the complete derived notification set, deletes only the
+approved app-owned objects, and writes an atomic completion marker. Unknown
+files stop the operation without mutation. Set
+`PERSONAL_DASHBOARD_DATA_DIR` and
+`PERSONAL_DASHBOARD_LEGACY_EXERCISE_DIR` for an isolated rehearsal.
 
-```text
-~/Library/Application Support/com.tortillaflat.personal-dashboard/profile.json
-~/Library/Application Support/com.tortillaflat.personal-dashboard/exercise.json
-```
-
-Use **Back up profile…** to create one user-selected recovery file containing
-the label, routine, current and prior weeks, schedule exceptions, departure
-outcomes, decisions, workout history changes, and derived progress. The source
-profile remains active. **Restore profile…** opens a native file panel, fully
-validates the selected backup, and then requires **Confirm restore** before it
-atomically replaces both active documents. An interrupted replacement is
-rolled back from a local recovery journal on the next launch. Cancelling,
-selecting an invalid or unsupported file, or encountering a replacement error
-leaves the active profile unchanged. Backup writes also replace a selected
-destination atomically. These operations are fully offline and do not require
-an account, cloud store, or synchronization.
-
-Run the deterministic application seam with:
+The complete owned-state inventory, authorization boundary, ordered procedure,
+and failure semantics are documented in
+[`docs/acceptance/personal-dashboard-2-cutover-plan.md`](docs/acceptance/personal-dashboard-2-cutover-plan.md).
+The deterministic application seam is:
 
 ```sh
-cargo test --manifest-path src-tauri/Cargo.toml --test profile_backup_workflow
+cargo test --manifest-path src-tauri/Cargo.toml --test cutover_workflow
 ```
 
-The packaged acceptance procedure for native save/open interactions is recorded
-in
-[`docs/acceptance/macos-minimal-profile.md`](docs/acceptance/macos-minimal-profile.md).
-
-## Automatic completed-profile migration
-
-On its first launch, Personal Dashboard looks for the completed Python
-exercise profile at its established Mac location:
-
-```text
-~/Library/Application Support/Exercise Habit Tracker/state.json
-```
-
-When a valid schema-v5 profile exists, the Rust application core converts its
-routine, weeks, progress, fallback assignments, departure outcomes, reminder
-delivery markers, in-progress choice, workout draft, and history into one
-app-owned profile. The paired profile and exercise documents are activated
-atomically, and the profile records its completed-baseline origin so later
-launches do not reconvert or duplicate data. Existing pre-migration Tauri data
-is replaced only during this one adoption; a profile already marked as
-migrated wins without rereading the baseline.
-
-The Python `state.json` is read-only migration input and remains byte-for-byte
-unchanged for rollback. Invalid, unsupported, unreadable, incomplete, or
-interrupted input blocks use of a partial result and shows a controlled status
-in the packaged app. There is no dual-write path back to the Python profile.
-
-Run the deterministic migration seam with:
-
-```sh
-cargo test --manifest-path src-tauri/Cargo.toml --test baseline_migration_workflow
-```
-
-The isolated packaged migration procedure is recorded in
-[`docs/acceptance/macos-baseline-migration.md`](docs/acceptance/macos-baseline-migration.md).
-
-## Mac notification capability
-
-The packaged app can request macOS notification permission and schedule one
-bounded capability notification for ten seconds later. Closing the red window
-control hides the window without quitting, so macOS can deliver the scheduled
-notification; choosing **Personal Dashboard → Quit Personal Dashboard** still
-performs a normal Quit.
-
-The packaged acceptance procedure and the observed closed-window and
-normal-Quit results are recorded in
-[`docs/acceptance/macos-notification-capability.md`](docs/acceptance/macos-notification-capability.md).
-Already scheduled notifications were observed after both window close and a
-normal Quit. After-Quit delivery remains desirable rather than a guaranteed
-release gate; no background runner or launch-at-login service is required.
+A live cutover additionally requires explicit approval for the exact installed
+bundle and for any live daily-loop skill, Dida365, or automation change. Building
+or running the isolated seam does not grant that approval.
 
 ## Cutover evidence and limitations
 
@@ -204,10 +136,11 @@ notifications, profile transfer, and production layouts remain future work.
 
 ## Recoverable completed baseline
 
-Personal Dashboard is now the sole active product implementation. Normal use,
-testing, backup, restore, reminders, and profile moves run through the packaged
-Tauri application; the current checkout contains no Python dashboard,
-localhost server, or separate reminder runner.
+Personal Dashboard 2.0 is the sole active product implementation in this
+checkout. Normal use runs through the packaged Tauri application; the current
+checkout contains no Python dashboard, localhost server, or separate reminder
+runner. Old Exercise/Profile behavior remains covered as historical validation
+code, but is not registered by normal 2.0 startup.
 
 The completed pre-Tauri application remains immutable and recoverable through
 the annotated Git tag `python-exercise-tracker-complete`. Its behavior, data

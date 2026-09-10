@@ -1547,7 +1547,7 @@ impl<
         match self.persistence.load()? {
             Some(document) => {
                 let (state, migrated) = parse_state(&document)?;
-                state.validate_timestamps(&self.clock)?;
+                state.validate_timestamps()?;
                 Ok((state, migrated))
             }
             None => Ok((ExerciseState::new(), false)),
@@ -1789,7 +1789,7 @@ impl ExerciseState {
             .collect()
     }
 
-    pub(crate) fn validate_timestamps<C: ExerciseClock>(&self, _clock: &C) -> Result<(), String> {
+    pub(crate) fn validate_timestamps(&self) -> Result<(), String> {
         for week in &self.weeks {
             for departure in all_departures(week) {
                 let optional_timestamps_are_valid = [
@@ -2172,6 +2172,28 @@ pub(crate) fn parse_state(document: &[u8]) -> Result<(ExerciseState, bool), Stri
         .map_err(|_| "The local exercise state is not valid.".to_string())?;
     let migrated = state.schema_version != EXERCISE_SCHEMA_VERSION;
     Ok((state.validate()?, migrated))
+}
+
+pub fn legacy_notification_ids(document: &[u8]) -> Result<Vec<String>, String> {
+    let (state, _) = parse_state(document)?;
+    state.validate_timestamps()?;
+    let mut notification_ids = Vec::new();
+    for week in &state.weeks {
+        for departure in all_departures(week) {
+            notification_ids.extend([
+                format!("exercise-departure-{}", departure.id),
+                format!("exercise-follow-up-{}", departure.id),
+                format!("exercise-record-workout-{}", departure.id),
+            ]);
+        }
+    }
+    if let Some(reconciliation) = state.pending_reminder_reconciliation {
+        notification_ids.extend(reconciliation.cancel_notification_ids);
+        notification_ids.extend(reconciliation.desired_notification_ids);
+    }
+    notification_ids.sort();
+    notification_ids.dedup();
+    Ok(notification_ids)
 }
 
 fn valid_utc_offset_minutes(offset_minutes: i32) -> bool {

@@ -5,19 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Personal Dashboard, a private and offline exercise tracker."
+      content="Personal Dashboard, a private and offline Daily Record viewer."
     />
     <title>Personal Dashboard</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app-shell" data-workspace-destination="this-week">
+    <main class="app-shell" data-workspace-destination="today">
       <aside class="workspace-sidebar" aria-label="Primary">
         <div class="workspace-brand">
           <div class="feature-mark" aria-hidden="true">P</div>
           <div>
             <p class="eyebrow" data-product-name>Personal Dashboard</p>
-            <p class="sidebar-feature" data-feature-area>Exercise tracking</p>
+            <p class="sidebar-feature" data-feature-area>Daily Record</p>
           </div>
         </div>
         <nav class="workspace-navigation" aria-label="Workspace destinations">
@@ -26,6 +26,7 @@
             class="destination-button"
             data-workspace-destination="today"
             aria-controls="workspace-destination-today"
+            aria-current="page"
           >
             <span class="destination-icon" aria-hidden="true">☀</span>
             <span>Today</span>
@@ -48,44 +49,13 @@
             <span class="destination-icon" aria-hidden="true">◉</span>
             <span>Habits</span>
           </button>
-          <button
-            type="button"
-            class="destination-button"
-            data-workspace-destination="this-week"
-            aria-controls="workspace-destination-this-week"
-            aria-current="page"
-          >
-            <span class="destination-icon" aria-hidden="true">◷</span>
-            <span>This Week</span>
-          </button>
-          <button
-            type="button"
-            class="destination-button"
-            data-workspace-destination="history"
-            aria-controls="workspace-destination-history"
-          >
-            <span class="destination-icon" aria-hidden="true">↺</span>
-            <span>History</span>
-          </button>
-          <button
-            type="button"
-            class="destination-button"
-            data-workspace-destination="settings"
-            aria-controls="workspace-destination-settings"
-          >
-            <span class="destination-icon" aria-hidden="true">⚙</span>
-            <span>Settings</span>
-          </button>
         </nav>
         <div class="workspace-compact-navigation">
           <label for="workspace-destination-select">Destination</label>
           <select id="workspace-destination-select" aria-label="Destination">
-            <option value="this-week">This Week</option>
             <option value="today">Today</option>
             <option value="calendar">Calendar</option>
             <option value="habits">Habits</option>
-            <option value="history">History</option>
-            <option value="settings">Settings</option>
           </select>
         </div>
         <div class="sidebar-status">
@@ -99,14 +69,14 @@
       <section class="workspace-shell" aria-label="Personal Dashboard workspace">
         <header class="workspace-header">
           <div>
-            <p class="section-label" data-feature-area>Exercise tracking</p>
-            <h1 id="workspace-title">This Week</h1>
+            <p class="section-label" data-feature-area>Daily Record</p>
+            <h1 id="workspace-title">Today</h1>
             <p id="workspace-description" class="workspace-description">
-              See this week's plan and record what happened.
+              查看今天 Daily Record 里的大致安排。
             </p>
           </div>
           <div id="workspace-context-status" class="workspace-context-status" role="status" aria-live="polite" aria-atomic="true">
-            This Week is the current destination.
+            Today is the current destination.
           </div>
         </header>
 
@@ -571,437 +541,7 @@
               </section>
             </section>
 
-            <section
-              id="workspace-destination-this-week"
-              class="workspace-destination"
-              data-workspace-panel="this-week"
-              aria-labelledby="workspace-title"
-            >
-
-        <section id="exercise-dashboard" class="exercise-dashboard" aria-labelledby="exercise-plan-heading">
-          <p id="inactive-profile-notice" class="inactive-profile-notice" role="status" hidden></p>
-          <header class="week-header" aria-label="This Week summary">
-            <div class="title-block">
-              <p id="exercise-week" class="eyebrow" aria-label="Week of this week">Loading this week…</p>
-              <h2 id="exercise-plan-heading">Exercise plan</h2>
-              <p id="exercise-progress" class="progress-summary">Loading exercise progress…</p>
-            </div>
-            <div id="exercise-progress-chip" class="progress-chip" role="status" aria-label="Weekly progress: 0 of 3 completed">
-              <strong id="exercise-progress-chip-value">0/3</strong>
-              <span>completed</span>
-            </div>
-            <div id="next-departure-card" class="next-card" role="status" aria-label="Next departure">
-              <span id="next-departure-label">Next workout</span>
-              <strong id="next-departure">Loading…</strong>
-              <small id="next-departure-date">This week</small>
-            </div>
-          </header>
-          <section class="manual-workout" aria-labelledby="manual-workout-heading">
-            <div class="manual-workout-copy">
-              <p class="eyebrow">Any time this week</p>
-              <h4 id="manual-workout-heading">Extra workout</h4>
-              <p class="manual-workout-help">Record an unscheduled workout without attaching it to a planned time.</p>
-            </div>
-            <button
-              id="log-workout-now"
-              type="button"
-              aria-controls="workspace-detail"
-              aria-expanded="false"
-            >
-              Log workout now
-            </button>
           </section>
-          <div class="agenda-layout">
-            <section class="agenda-group primary-agenda" aria-labelledby="primary-departures-heading">
-              <div class="agenda-group-heading">
-                <div>
-                  <p class="agenda-kicker">Planned schedule</p>
-                  <h4 id="primary-departures-heading">Primary departures</h4>
-                </div>
-                <span class="agenda-count">3 planned</span>
-              </div>
-              <ol
-                id="primary-departures"
-                class="departure-list agenda-list"
-                role="list"
-                aria-label="Primary planned workouts"
-              ></ol>
-            </section>
-            <section id="adjusted-agenda" class="agenda-group adjusted-agenda" aria-labelledby="adjusted-departures-heading" hidden>
-              <div class="agenda-group-heading">
-                <div>
-                  <p class="agenda-kicker">One-off changes</p>
-                  <h4 id="adjusted-departures-heading">Changed this week</h4>
-                </div>
-                <span class="agenda-count">As scheduled</span>
-              </div>
-              <ol
-                id="adjusted-departures"
-                class="departure-list agenda-list"
-                role="list"
-                aria-label="Workouts changed this week"
-              ></ol>
-            </section>
-            <section class="agenda-group fallback-agenda" aria-labelledby="fallback-departures-heading">
-              <div class="agenda-group-heading">
-                <div>
-                  <p class="agenda-kicker">Other times this week</p>
-                  <h4 id="fallback-departures-heading">Open capacity</h4>
-                </div>
-                <span id="fallback-count" class="availability-count">—</span>
-              </div>
-              <ol
-                id="fallback-departures"
-                class="departure-list agenda-list"
-                role="list"
-                aria-label="Open capacity this week"
-              ></ol>
-            </section>
-          </div>
-          <p id="exercise-reminder-status" class="exercise-reminder-status" role="status" aria-live="polite">
-            Preparing the next departure reminder…
-          </p>
-          <p id="weekly-goal-status" class="goal-success" role="status" aria-live="polite" hidden></p>
-        </section>
-            </section>
-
-            <section
-              id="workspace-destination-history"
-              class="workspace-destination"
-              data-workspace-panel="history"
-              aria-labelledby="history-heading"
-              hidden
-            >
-              <div
-                class="workspace-destination-content-boundary"
-                role="group"
-                aria-label="History content"
-              >
-                <p class="section-label">Completed weeks</p>
-                <h2 id="history-heading" class="destination-heading">History</h2>
-                <p class="destination-introduction">
-                  Review this week's recorded workouts and decisions from earlier weeks.
-                </p>
-                <section
-                  id="current-week-history"
-                  class="exercise-history"
-                  aria-labelledby="current-week-history-heading"
-                  hidden
-                >
-                  <p class="section-label">This week</p>
-                  <h4 id="current-week-history-heading">Recorded workouts</h4>
-                  <ol id="current-week-workout-records" class="workout-records"></ol>
-                </section>
-                <p id="history-empty-state" class="history-empty-state">
-                  This week's records and previous weeks will appear here as you log workouts.
-                </p>
-                <section id="exercise-history" class="exercise-history" aria-labelledby="exercise-history-heading" hidden>
-                  <p class="section-label">History</p>
-                  <h4 id="exercise-history-heading">Previous weeks</h4>
-                  <div id="exercise-history-weeks" class="exercise-history-weeks"></div>
-                </section>
-              </div>
-            </section>
-
-            <section
-              id="workspace-destination-settings"
-              class="workspace-destination workspace-settings"
-              data-workspace-panel="settings"
-              aria-labelledby="settings-heading"
-              hidden
-            >
-              <div
-                class="workspace-destination-content-boundary"
-                role="group"
-                aria-label="Settings content"
-              >
-                <p class="section-label">Workspace controls</p>
-                <h2 id="settings-heading" class="destination-heading">Profile &amp; data</h2>
-                <p class="destination-introduction">
-                  Keep this device's profile, routine, reminders, and local files under your control.
-                </p>
-                <section class="routine-settings" aria-labelledby="routine-settings-action">
-                  <details>
-                    <summary id="routine-settings-action">Change repeating routine</summary>
-                    <p id="routine-settings-guidance"></p>
-                    <ol id="routine-departures" class="routine-departures"></ol>
-                  </details>
-                </section>
-
-        <section class="profile-panel" aria-labelledby="profile-heading">
-          <div class="profile-copy">
-            <p class="section-label">Local profile</p>
-            <h3 id="profile-heading">This device keeps one versioned profile.</h3>
-            <p>
-              A local backup includes the label, exercise routine, current and
-              prior weeks, decisions, workout records, and derived progress.
-              Restore validates the complete file before asking to replace this
-              device's active profile.
-            </p>
-            <p class="schema-chip">Schema version <span id="schema-version">—</span></p>
-            <p class="authority-chip">
-              Authority: <strong id="profile-authority">Loading…</strong>
-            </p>
-            <p id="profile-authority-message" class="authority-message"></p>
-          </div>
-
-          <form id="profile-form" class="profile-form">
-            <label for="profile-label">Profile label</label>
-            <div class="profile-field-row">
-              <input
-                id="profile-label"
-                name="profile-label"
-                autocomplete="off"
-              />
-              <button id="save-profile-label" type="submit">Save label</button>
-            </div>
-            <p class="saved-value">
-              Saved locally as <output id="profile-label-display">Loading…</output>
-            </p>
-            <div class="exchange-actions" aria-label="Profile file actions">
-              <button id="backup-profile" type="button" class="secondary-button">
-                Back up profile…
-              </button>
-              <button id="select-profile-restore" type="button" class="secondary-button">
-                Restore profile…
-              </button>
-            </div>
-            <div class="move-actions" aria-label="Profile move actions">
-              <button id="prepare-profile-move" type="button">Move profile…</button>
-              <button
-                id="select-profile-move-import"
-                type="button"
-                class="secondary-button"
-              >
-                Import moved profile…
-              </button>
-            </div>
-            <section
-              id="profile-move-export-confirmation"
-              class="profile-restore-confirmation"
-              aria-labelledby="profile-move-export-prompt"
-              hidden
-            >
-              <p id="profile-move-export-prompt">
-                Move this profile and make this device inactive? Exercise activity and
-                reminders will pause here after the move file is saved.
-              </p>
-              <div class="exchange-actions">
-                <button id="confirm-profile-move" type="button">Save move and deactivate</button>
-                <button id="cancel-profile-move" type="button" class="secondary-button">
-                  Cancel
-                </button>
-              </div>
-            </section>
-            <section
-              id="profile-move-import-confirmation"
-              class="profile-restore-confirmation"
-              aria-labelledby="profile-move-import-prompt"
-              hidden
-            >
-              <p id="profile-move-import-prompt">
-                Activate this moved profile here? It will replace this device's profile.
-                Histories will not be merged.
-              </p>
-              <div class="exchange-actions">
-                <button id="confirm-profile-move-import" type="button">Replace and activate</button>
-                <button
-                  id="cancel-profile-move-import"
-                  type="button"
-                  class="secondary-button"
-                >
-                  Cancel
-                </button>
-              </div>
-            </section>
-            <section id="profile-reactivation" class="profile-reactivation" hidden>
-              <p>
-                Reactivate only if the transfer failed. Using both copies after
-                reactivation can create conflicting histories that cannot be merged.
-              </p>
-              <button id="prepare-profile-reactivation" type="button">
-                Reactivate this profile…
-              </button>
-              <div id="profile-reactivation-confirmation" hidden>
-                <p>Confirm that the moved profile was not activated on another device.</p>
-                <div class="exchange-actions">
-                  <button id="confirm-profile-reactivation" type="button">Reactivate here</button>
-                  <button
-                    id="cancel-profile-reactivation"
-                    type="button"
-                    class="secondary-button"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </section>
-            <section
-              id="profile-restore-confirmation"
-              class="profile-restore-confirmation"
-              aria-labelledby="profile-restore-prompt"
-              hidden
-            >
-              <p id="profile-restore-prompt">
-                Restore this backup? The active profile will be replaced.
-              </p>
-              <dl id="profile-restore-preview" class="profile-restore-preview" hidden>
-                <div>
-                  <dt>Profile</dt>
-                  <dd id="profile-restore-preview-profile"></dd>
-                </div>
-                <div>
-                  <dt>Authority</dt>
-                  <dd id="profile-restore-preview-authority"></dd>
-                </div>
-                <div>
-                  <dt>This week</dt>
-                  <dd id="profile-restore-preview-week"></dd>
-                </div>
-                <div>
-                  <dt>Progress</dt>
-                  <dd id="profile-restore-preview-progress"></dd>
-                </div>
-                <div>
-                  <dt>History</dt>
-                  <dd id="profile-restore-preview-history"></dd>
-                </div>
-                <div>
-                  <dt>Reminders</dt>
-                  <dd id="profile-restore-preview-reminders"></dd>
-                </div>
-              </dl>
-              <div class="exchange-actions">
-                <button id="confirm-profile-restore" type="button">Confirm restore</button>
-                <button
-                  id="cancel-profile-restore"
-                  type="button"
-                  class="secondary-button"
-                >
-                  Cancel
-                </button>
-              </div>
-            </section>
-            <p id="profile-status" class="profile-status" role="status" aria-live="polite">
-              Loading the local profile…
-            </p>
-          </form>
-        </section>
-
-        <section class="notification-panel" aria-labelledby="notification-heading">
-          <div class="notification-copy">
-            <p class="section-label">Departure reminders</p>
-            <h3 id="notification-heading">Stay on time with the window closed.</h3>
-            <p>
-              Personal Dashboard schedules the next exercise departure through
-              the device notification system. Grant access once; the app does
-              not need an open window to deliver an already scheduled reminder.
-            </p>
-          </div>
-
-          <div class="notification-controls">
-            <dl class="capability-status-list">
-              <div>
-                <dt>Permission</dt>
-                <dd id="notification-permission">Checking…</dd>
-              </div>
-              <div>
-                <dt>Next planned departure</dt>
-                <dd id="notification-scheduled-time">Loading…</dd>
-              </div>
-            </dl>
-            <div class="notification-actions">
-              <button id="request-notification-permission" type="button">
-                Allow notifications
-              </button>
-              <details class="capability-check">
-                <summary>Run notification capability check</summary>
-                <button
-                  id="schedule-capability-notification"
-                  type="button"
-                  class="secondary-button"
-                  disabled
-                >
-                  Schedule for 10 seconds
-                </button>
-              </details>
-            </div>
-            <p
-              id="notification-status"
-              class="profile-status"
-              role="status"
-              aria-live="polite"
-            >
-              Checking notification permission…
-            </p>
-          </div>
-        </section>
-
-        <dl class="boundary-list">
-          <div>
-            <dt>Privacy</dt>
-            <dd>Local to this device</dd>
-          </div>
-          <div>
-            <dt>Connection</dt>
-            <dd>No account or network required</dd>
-          </div>
-          <div>
-            <dt>Application</dt>
-            <dd>Native Mac window</dd>
-          </div>
-        </dl>
-              </div>
-            </section>
-          </section>
-
-          <div id="workspace-sheet-backdrop" class="workspace-sheet-backdrop" hidden></div>
-          <aside
-            id="workspace-detail"
-            class="workspace-detail"
-            role="dialog"
-            aria-modal="false"
-            aria-label="Selected workout detail"
-            aria-labelledby="workspace-detail-heading"
-            aria-describedby="workspace-detail-copy"
-            hidden
-          >
-            <header class="workspace-detail-header">
-              <div class="workspace-detail-title">
-                <div id="workspace-detail-date-tile" class="date-tile" hidden>
-                  <strong id="workspace-detail-date-day">—</strong>
-                  <small id="workspace-detail-date-label">—</small>
-                </div>
-                <div>
-                  <p id="workspace-detail-kicker" class="eyebrow">Selected workout</p>
-                  <h2 id="workspace-detail-heading">Selected workout</h2>
-                  <p id="workspace-detail-time">—</p>
-                </div>
-              </div>
-              <button
-                id="workspace-detail-close"
-                class="workspace-detail-close secondary-button"
-                type="button"
-              >
-                Close
-              </button>
-            </header>
-            <p id="workspace-detail-copy">Choose a planned workout to inspect it.</p>
-            <div id="workspace-detail-status" class="workspace-detail-status" role="status" aria-live="polite"></div>
-            <div id="workspace-detail-actions" class="workspace-detail-actions"></div>
-            <div id="workspace-exception" class="workspace-exception" hidden></div>
-            <section id="workout-recording" class="workout-flow" aria-labelledby="workout-recording-heading" hidden>
-              <p class="section-label">Record workout</p>
-              <h4 id="workout-recording-heading"></h4>
-              <p id="workout-recording-guidance" class="workout-guidance"></p>
-              <div id="workout-recording-choices" class="workout-choices"></div>
-            </section>
-            <section id="workout-history" class="workout-history" aria-labelledby="workout-history-heading" hidden>
-              <p class="section-label">This week</p>
-              <h4 id="workout-history-heading">Recorded workouts</h4>
-              <ol id="workout-records" class="workout-records"></ol>
-            </section>
-          </aside>
         </div>
       </section>
     </main>

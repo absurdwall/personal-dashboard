@@ -112,7 +112,7 @@ where
             return Ok(ProfileRestoreSelection::cancelled());
         };
         let backup = parse_backup(&document)?;
-        backup.exercise.validate_timestamps(&self.clock)?;
+        backup.exercise.validate_timestamps()?;
         let current_profile_document = self.current_profile_document()?;
         let current_profile = crate::profile::parse_profile(&current_profile_document)?;
         let replacement_profile = backup.profile.clone().with_local_authority(
@@ -201,7 +201,7 @@ where
         let exercise_document = self.current_exercise_document()?;
         let profile = crate::profile::parse_profile(&profile_document)?;
         let (exercise, _) = crate::exercise::parse_state(&exercise_document)?;
-        exercise.validate_timestamps(&self.clock)?;
+        exercise.validate_timestamps()?;
         Ok(ProfileBackupDocument {
             schema_version: BACKUP_SCHEMA_VERSION,
             profile,

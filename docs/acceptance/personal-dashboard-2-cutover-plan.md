@@ -134,3 +134,21 @@ sufficient.
 - Never mark completion from the existence of a marker alone. Verify the
   marker, actual file inventory, launchd state, notification state, producer
   output, and installed UI together.
+
+## Implemented execution gate
+
+The reviewed 2.0 bundle performs no retirement work during normal startup.
+Both cutover modes require
+`PERSONAL_DASHBOARD_2_CUTOVER_COMMIT=<reviewed-commit>` and
+`PERSONAL_DASHBOARD_2_CUTOVER_BUNDLE_SHA256=<64-hex-digest>`.
+`PERSONAL_DASHBOARD_2_CUTOVER_MODE=preflight` prints one JSON preflight record
+and exits without writing progress or deleting state; the record includes the
+commit, bundle digest, selected vault, exact owned and unknown inventories,
+launchd state, and reconstructed notification identifiers.
+`PERSONAL_DASHBOARD_2_CUTOVER_MODE=execute` runs the cutover and records the
+same candidate fields in both the progress journal and completion marker.
+`PERSONAL_DASHBOARD_DATA_DIR` and
+`PERSONAL_DASHBOARD_LEGACY_EXERCISE_DIR` may redirect both owned roots for an
+isolated rehearsal. This mechanism is an execution gate, not authorization by
+itself: the live operator must still satisfy step 1 before setting it against
+the installed application.

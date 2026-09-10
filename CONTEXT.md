@@ -1,65 +1,61 @@
 # Personal Dashboard
 
-This context defines the product language for the private, local-first Personal Dashboard as it evolves across supported devices and feature areas.
+This context defines the product language for the private, local-first Personal Dashboard 2.0 and its boundary with the user's Tortilla Flat vault and external daily flow.
 
 ## Language
 
 **Personal Dashboard**:
-The product and installed application. Its current feature area is exercise tracking, and later product decisions may add other personal-dashboard functions.
+The installed application for reading and making bounded updates to Daily Records, reviewing calendar history, and viewing sourced habit evidence.
 _Avoid_: Exercise Habit Tracker, generic habit engine
 
-**Exercise tracker**:
-The current Personal Dashboard feature area, comprising the established exercise-planning, reminder, recording, history, and backup behavior. It is not the permanent boundary of the product.
-_Avoid_: Product name, generic habit framework
+**Selected vault**:
+The Tortilla Flat Obsidian vault explicitly chosen as the source of canonical Daily Records and the derived habit snapshot. It remains user-owned data outside the application-data directory.
+_Avoid_: App database, imported vault
+
+**Daily Record**:
+The canonical Markdown record for one lived calendar day in the selected vault.
+_Avoid_: App note, dashboard ledger
+
+**Today**:
+The Personal Dashboard destination that presents the selected day's Daily Record as morning, daytime, and evening phases and permits only bounded documented updates.
+_Avoid_: Exercise dashboard, daily planner
+
+**Calendar**:
+The Personal Dashboard destination for locating and opening a dated Daily Record without creating a second history store.
+_Avoid_: Exercise history, event calendar
 
 **Habits**:
-A Personal Dashboard feature area for reviewing sourced habit evidence across the current week, recent days, and bounded history. It may add or correct dated exercise Short records, but it does not record habit completion or schedule activity.
+The Personal Dashboard destination for reviewing sourced habit evidence across the current week, recent days, and bounded history. It may add or correct dated exercise Short records, but it does not record habit completion or schedule activity.
 _Avoid_: Exercise tracker, habit check-in, generic habit framework
 
 **Habit snapshot**:
-A bounded, dated set of derived habit evidence with explicit provenance and coverage, prepared outside Personal Dashboard for Habits to read. It is not an authoritative task store or a live source connection.
+A bounded, dated projection of habit evidence with explicit provenance and coverage, prepared outside Personal Dashboard for Habits to read.
 _Avoid_: Habit database, live sync, Dida365 mirror
 
 **Short record**:
-A dated free-text Daily Record entry with a stable identity, an optional exercise association, and an append-only correction trace. An associated Short record can mark a Habits date as having context, but it is not completion evidence.
+A dated free-text Daily Record entry with a stable identity, an optional exercise association, and an append-only correction trace. It can provide visible context but is not habit-completion evidence.
 _Avoid_: Habit completion, workout log, check-in
 
-**Baseline behavior**:
-The user-visible exercise workflows already provided by the completed local web version and protected as the product evolves.
-_Avoid_: Old web edition, legacy product
+**Morning baseline**:
+The independently retained initial arrangement and its contemporaneous basis for a lived day.
+_Avoid_: Current plan, reconstructed plan
 
-**Standalone app**:
-A complete local Personal Dashboard installation that can operate on its device without depending on another device, an account, or synchronization.
-_Avoid_: Companion, remote control
+**Current arrangement**:
+The latest explicit arrangement for the lived day; daytime replanning may change it while preserving the morning baseline.
+_Avoid_: Morning baseline, inferred schedule
 
-**Profile**:
-One coherent collection of the user's Personal Dashboard data, currently comprising the exercise schedule, decisions, and history. A profile is local data, not an account.
-_Avoid_: Account, cloud identity
+**Daily-flow producer**:
+The external Agent flow that writes compatible Daily Records and atomically publishes validated habit snapshots from already-read sources. Personal Dashboard is not this producer.
+_Avoid_: Dashboard sync, background poller
 
-**Authoritative device**:
-The one device on which a profile is actively recorded and reminders are acted upon. Until synchronization exists, another device must receive the profile through a deliberate transfer before becoming authoritative.
-_Avoid_: Primary device, synced device
+**Retired Exercise runtime**:
+The former Profile, weekly exercise planner, workout history, backup/move, baseline-migration, and reminder behavior retained only for historical validation and bounded cutover parsing.
+_Avoid_: Current feature area, fallback UI
+
+**2.0 cutover**:
+The explicitly authorized, idempotent retirement of the exact old app-owned Exercise/Profile state and reminders before the reviewed 2.0 candidate becomes the active installation.
+_Avoid_: Automatic migration, broad cleanup
 
 **Native app behavior**:
-Operating-system installation, launch, local file access, notifications, and lifecycle integration. It does not require the interface to use each platform's native visual controls.
+Operating-system installation, launch, local file access, and lifecycle integration without requiring each interface element to use native visual controls.
 _Avoid_: Fully native UI
-
-**Mac workspace**:
-The action-first Personal Dashboard surface where current exercise state and timely actions are available together in a typical Mac window, while history and administration remain reachable as secondary destinations.
-_Avoid_: Landing page, whole-window scrolling document
-
-**Baseline migration**:
-The automatic, one-time, rollback-safe adoption of the completed local web version's data by the evolving Mac app.
-_Avoid_: Manual re-entry, destructive conversion
-
-**Profile backup**:
-A recovery copy of a profile that leaves its authoritative device active.
-_Avoid_: Profile move, synchronization
-
-**Profile move**:
-A deliberate transfer that makes the source profile inactive and activates the imported profile on the destination device.
-_Avoid_: Backup, merge, synchronization
-
-**Inactive profile**:
-A retained profile that does not accept new exercise activity or issue reminders while another device is authoritative.
-_Avoid_: Deleted profile, synced replica

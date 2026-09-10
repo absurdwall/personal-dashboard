@@ -17,6 +17,30 @@ impl NativeNotificationPlatform {
     pub fn new() -> Self {
         Self
     }
+
+    pub(crate) fn pending_notification_ids(&self, ids: &[String]) -> Result<Vec<String>, String> {
+        let requested = ids
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashSet<_>>();
+        let center = UNUserNotificationCenter::currentNotificationCenter();
+        let (sender, receiver) = mpsc::channel();
+        let completion = RcBlock::new(move |requests: NonNull<NSArray<UNNotificationRequest>>| {
+            let requests = unsafe { requests.as_ref() };
+            let mut pending = Vec::new();
+            for index in 0..requests.count() {
+                let identifier = requests.objectAtIndex(index).identifier().to_string();
+                if requested.contains(&identifier) {
+                    pending.push(identifier);
+                }
+            }
+            let _ = sender.send(pending);
+        });
+        center.getPendingNotificationRequestsWithCompletionHandler(&completion);
+        receiver
+            .recv_timeout(Duration::from_secs(5))
+            .map_err(|_| "Timed out while verifying macOS notifications.".to_string())
+    }
 }
 
 impl NotificationPlatform for NativeNotificationPlatform {
