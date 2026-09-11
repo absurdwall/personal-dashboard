@@ -58,9 +58,10 @@ test("Vault reselection invalidates and refreshes the active Calendar or Habits 
   }
 
   const vaultBody = functionBody(main, "selectTodayVault");
-  assert.match(vaultBody, /resetVaultScopedWorkspaceState\(\)/);
-  assert.match(vaultBody, /await openCalendar\(\)/);
-  assert.match(vaultBody, /await refreshHabits\(\)/);
+  assert.match(vaultBody, /selectVaultAndRefresh\(/);
+  assert.match(vaultBody, /prepareForVaultSwitch:[\s\S]*resetVaultScopedWorkspaceState\(\)/);
+  assert.match(vaultBody, /openCalendar,/);
+  assert.match(vaultBody, /refreshHabits,/);
   assert.match(resetBody, /calendarSummaryHeading\.textContent = "正在读取选中日期…"/);
   assert.match(resetBody, /renderWorkspaceRailContext\(currentWorkspaceDestination\)/);
 });

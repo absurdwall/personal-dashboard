@@ -658,6 +658,13 @@ pub struct TodayView {
     pub evening: EveningView,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultSelectionResult {
+    pub view: TodayView,
+    pub changed: bool,
+}
+
 pub struct TodayApplication<P, E, C, S = FileTodayRecordStore, H = FileHabitSnapshotStore> {
     persistence: P,
     exchange: E,
@@ -853,12 +860,22 @@ where
         self.open_vault(&vault, date.to_owned())
     }
 
-    pub fn select_vault(&self) -> Result<TodayView, String> {
+    pub fn select_vault(&self) -> Result<VaultSelectionResult, String> {
+        let previous_vault = self.persistence.load_selected_vault()?;
         let Some(vault) = self.exchange.select_vault()? else {
-            return self.open();
+            return Ok(VaultSelectionResult {
+                view: self.open()?,
+                changed: false,
+            });
         };
-        self.persistence.save_selected_vault(&vault)?;
-        self.open_vault(&vault, self.clock.current_date())
+        let changed = previous_vault.as_deref() != Some(vault.as_path());
+        if changed {
+            self.persistence.save_selected_vault(&vault)?;
+        }
+        Ok(VaultSelectionResult {
+            view: self.open_vault(&vault, self.clock.current_date())?,
+            changed,
+        })
     }
 
     pub fn calendar_month(&self, year: i32, month: u32) -> Result<CalendarMonthView, String> {

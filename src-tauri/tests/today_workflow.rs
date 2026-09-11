@@ -1832,11 +1832,11 @@ impl TodayWorkspacePersistence for MutableSelection {
     }
 }
 
-struct ChosenVault(PathBuf);
+struct ChosenVault(Option<PathBuf>);
 
 impl TodayWorkspaceExchange for ChosenVault {
     fn select_vault(&self) -> Result<Option<PathBuf>, String> {
-        Ok(Some(self.0.clone()))
+        Ok(self.0.clone())
     }
 }
 
@@ -1856,7 +1856,7 @@ date: 2026-08-10
     let selected = Rc::new(RefCell::new(None));
     let app = TodayApplication::new(
         MutableSelection(selected.clone()),
-        ChosenVault(vault.path().to_path_buf()),
+        ChosenVault(Some(vault.path().to_path_buf())),
         FixedClock,
     );
 
@@ -1864,11 +1864,121 @@ date: 2026-08-10
         app.open().expect("unconfigured state should open").state,
         TodayState::Unconfigured
     );
-    let view = app
+    let result = app
         .select_vault()
         .expect("selected vault should be saved and opened");
 
-    assert_eq!(view.state, TodayState::Ready);
-    assert_eq!(view.timeline[0].title, "选择后可见");
+    assert!(result.changed);
+    assert_eq!(result.view.state, TodayState::Ready);
+    assert_eq!(result.view.timeline[0].title, "选择后可见");
     assert_eq!(selected.borrow().as_deref(), Some(vault.path()));
+}
+
+#[derive(Clone)]
+struct CountingSelection {
+    selected: Rc<RefCell<Option<PathBuf>>>,
+    saves: Rc<RefCell<usize>>,
+}
+
+impl TodayWorkspacePersistence for CountingSelection {
+    fn load_selected_vault(&self) -> Result<Option<PathBuf>, String> {
+        Ok(self.selected.borrow().clone())
+    }
+
+    fn save_selected_vault(&self, vault: &Path) -> Result<(), String> {
+        *self.saves.borrow_mut() += 1;
+        *self.selected.borrow_mut() = Some(vault.to_path_buf());
+        Ok(())
+    }
+}
+
+fn selection_app(
+    selected: Rc<RefCell<Option<PathBuf>>>,
+    saves: Rc<RefCell<usize>>,
+    choice: Option<PathBuf>,
+) -> TodayApplication<CountingSelection, ChosenVault, FixedClock> {
+    TodayApplication::new(
+        CountingSelection { selected, saves },
+        ChosenVault(choice),
+        FixedClock,
+    )
+}
+
+#[test]
+fn cancelling_vault_selection_returns_current_view_without_persisting() {
+    let vault = TempDirectory::new("today-select-cancel");
+    write_record(
+        vault.path(),
+        "---\ntype: daily-record\ndate: 2026-08-10\n---\n## 今天的大致安排\n- **上午：** 原 Vault 内容。\n",
+    );
+    let selected = Rc::new(RefCell::new(Some(vault.path().to_path_buf())));
+    let saves = Rc::new(RefCell::new(0));
+    let app = selection_app(selected.clone(), saves.clone(), None);
+
+    let result = app
+        .select_vault()
+        .expect("cancelling should return the current view");
+
+    assert!(!result.changed);
+    assert_eq!(result.view.timeline[0].title, "原 Vault 内容。");
+    assert_eq!(selected.borrow().as_deref(), Some(vault.path()));
+    assert_eq!(*saves.borrow(), 0);
+}
+
+#[test]
+fn reselecting_current_vault_returns_unchanged_without_persisting() {
+    let vault = TempDirectory::new("today-select-same");
+    write_record(
+        vault.path(),
+        "---\ntype: daily-record\ndate: 2026-08-10\n---\n## 今天的大致安排\n- **上午：** 当前 Vault 内容。\n",
+    );
+    let selected = Rc::new(RefCell::new(Some(vault.path().to_path_buf())));
+    let saves = Rc::new(RefCell::new(0));
+    let app = selection_app(
+        selected.clone(),
+        saves.clone(),
+        Some(vault.path().to_path_buf()),
+    );
+
+    let result = app
+        .select_vault()
+        .expect("reselecting the current vault should return its view");
+
+    assert!(!result.changed);
+    assert_eq!(result.view.timeline[0].title, "当前 Vault 内容。");
+    assert_eq!(selected.borrow().as_deref(), Some(vault.path()));
+    assert_eq!(*saves.borrow(), 0);
+}
+
+#[test]
+fn switching_vault_reports_changed_and_reads_only_the_new_vault() {
+    let old_vault = TempDirectory::new("today-select-old");
+    let new_vault = TempDirectory::new("today-select-new");
+    write_record(
+        old_vault.path(),
+        "---\ntype: daily-record\ndate: 2026-08-10\n---\n## 今天的大致安排\n- **上午：** 旧 Vault 内容。\n",
+    );
+    write_record(
+        new_vault.path(),
+        "---\ntype: daily-record\ndate: 2026-08-10\n---\n## 今天的大致安排\n- **上午：** 新 Vault 内容。\n",
+    );
+    let selected = Rc::new(RefCell::new(Some(old_vault.path().to_path_buf())));
+    let saves = Rc::new(RefCell::new(0));
+    let app = selection_app(
+        selected.clone(),
+        saves.clone(),
+        Some(new_vault.path().to_path_buf()),
+    );
+
+    let result = app.select_vault().expect("a new vault should be selected");
+
+    assert!(result.changed);
+    assert_eq!(result.view.timeline[0].title, "新 Vault 内容。");
+    assert_eq!(selected.borrow().as_deref(), Some(new_vault.path()));
+    assert_eq!(*saves.borrow(), 1);
+    assert!(!result
+        .view
+        .timeline
+        .iter()
+        .any(|block| block.title == "旧 Vault 内容。"));
 }

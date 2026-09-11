@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|cancel-folder|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -738,6 +738,33 @@ func chooseFolder(
         timeout: max(0.1, deadline.timeIntervalSinceNow)
     )
     reportNativePickerTransition("picker closed")
+}
+
+func cancelFolder(
+    _ application: AXUIElement,
+    pid: pid_t,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    try activateApplication(
+        application,
+        pid: pid,
+        timeout: max(0.1, deadline.timeIntervalSinceNow)
+    )
+    let picker = try waitForPickerSheet(
+        application,
+        timeout: max(0.1, deadline.timeIntervalSinceNow)
+    )
+    if let cancel = findPressable(picker, "Cancel") {
+        try performAccessibilityAction(cancel, "AXPress", "cancel native folder picker")
+    } else {
+        try pressKey(pid, "escape")
+    }
+    try waitForPickerToClose(
+        application,
+        timeout: max(0.1, deadline.timeIntervalSinceNow)
+    )
+    reportNativePickerTransition("picker cancelled")
 }
 
 func characterKeyCode(_ character: Character) -> CGKeyCode? {
@@ -2427,6 +2454,9 @@ do {
     case "choose-folder":
         try chooseFolder(application, pid: pid, path: text, timeout: timeout)
         print("Selected native folder: \(text)")
+    case "cancel-folder":
+        try cancelFolder(application, pid: pid, timeout: timeout)
+        print("Cancelled native folder selection")
     case "assert-visible-focus":
         try activateApplication(application, pid: pid, timeout: min(2, timeout))
         try assertVisibleFocus(application, text, timeout: timeout)

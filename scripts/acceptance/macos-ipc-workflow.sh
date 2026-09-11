@@ -333,7 +333,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits dashboard-2; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection dashboard-2; do
     run_bounded_scenario "$scenario"
   done
 
@@ -2248,6 +2248,152 @@ EOF
   echo "Viewport: Habits remained readable at 960x720 and 640x520"
 }
 
+run_vault_selection_scenario() {
+  local vault_a="$acceptance_directory/vault-a"
+  local vault_b="$acceptance_directory/vault-b"
+  local snapshot_relative=".personal-dashboard/derived/habits-v1.json"
+  local record_relative="life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local record_a="$vault_a/$record_relative"
+  local record_b="$vault_b/$record_relative"
+  local before_a_hash
+  local before_b_hash
+
+  current_step="preparing two isolated Vault selection fixtures"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p \
+    "$vault_a/.obsidian" "$vault_b/.obsidian" \
+    "$vault_a/$(dirname "$record_relative")" "$vault_b/$(dirname "$record_relative")" \
+    "$vault_a/$(dirname "$snapshot_relative")" "$vault_b/$(dirname "$snapshot_relative")" \
+    "$acceptance_data_directory"
+  /bin/cp "$repository_root/src-tauri/tests/fixtures/habits-v1-complete.json" \
+    "$vault_a/$snapshot_relative"
+  /bin/cp "$repository_root/src-tauri/tests/fixtures/habits-v1-complete.json" \
+    "$vault_b/$snapshot_relative"
+  cat > "$record_a" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## 早间基准
+
+### 初始安排
+
+- **上午：** A Vault 的安排。
+
+### 初始计划依据
+
+## 今天的大致安排
+
+- **上午：** A Vault 的当前安排。
+
+## 白天更新
+
+### 简短记录
+
+<!-- personal-dashboard:short-record id=run-a category=exercise created-at=2026-09-08T12:00:00-04:00 needs-review=false -->
+- A Vault 的原始短句。
+
+## 晚间复盘
+EOF
+  cat > "$record_b" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## 早间基准
+
+### 初始安排
+
+- **上午：** B Vault 的安排。
+
+### 初始计划依据
+
+## 今天的大致安排
+
+- **上午：** B Vault 的当前安排。
+
+## 白天更新
+
+## 晚间复盘
+
+### 今天发生了什么
+
+- B Vault 的复盘。
+EOF
+  before_a_hash="$(shasum -a 256 "$record_a" | awk '{print $1}')"
+  before_b_hash="$(shasum -a 256 "$record_b" | awk '{print $1}')"
+
+  current_step="launching the isolated Vault selection behavior scenario"
+  launch_app_waiting_for_text "Today" 30
+  run_driver wait-text "连接 Tortilla Flat vault" 20
+  run_driver press "选择 Vault…" 10
+  run_driver choose-folder "$vault_a" 20
+  run_driver wait-text "Vault: vault-a" 20
+  run_driver press "Daytime" 10
+  run_driver wait-text "A Vault 的当前安排" 20
+
+  current_step="preserving a Daytime draft when Vault selection is cancelled"
+  run_driver type-text "Short record text|取消选择后仍保留的日间草稿" 10
+  run_driver press "设置：选择 Vault" 10
+  run_driver cancel-folder 20
+  run_driver assert-state "Daytime|selected" 10
+  run_driver assert-text "取消选择后仍保留的日间草稿"
+
+  current_step="preserving a Daytime draft when the current Vault is reselected"
+  run_driver press "设置：选择 Vault" 10
+  run_driver choose-folder "$vault_a" 20
+  run_driver assert-state "Daytime|selected" 10
+  run_driver assert-text "取消选择后仍保留的日间草稿"
+
+  current_step="preserving correction state when Vault selection is cancelled"
+  run_driver press "更正这条" 10
+  run_driver type-text "Short record text|取消选择后仍保留的更正" 10
+  run_driver press "设置：选择 Vault" 10
+  run_driver cancel-folder 20
+  run_driver assert-state "Daytime|selected" 10
+  run_driver assert-text "取消选择后仍保留的更正"
+  run_driver assert-text "保存更正"
+
+  current_step="preserving a Habits draft and selected history date on Vault cancellation"
+  run_driver press "Habits" 10
+  run_driver wait-text "3 / 15" 20
+  run_driver press-contains "2026-09-08 · Exercise" 10
+  run_driver wait-text "写一句 · 2026-09-08" 20
+  run_driver type-text "Exercise note text|取消选择后仍保留的健身草稿" 10
+  run_driver press "设置：选择 Vault" 10
+  run_driver cancel-folder 20
+  run_driver assert-text "取消选择后仍保留的健身草稿"
+  run_driver assert-text "2026-09-08 · Exercise"
+
+  current_step="proving a real Vault switch clears old state before reading the new Vault"
+  run_driver press "设置：选择 Vault" 10
+  run_driver choose-folder "$vault_b" 20
+  run_driver press "Calendar" 10
+  run_driver wait-text "B Vault 的复盘" 20
+  run_driver assert-text "有复盘"
+  run_driver assert-absent-text "取消选择后仍保留的健身草稿"
+  run_driver assert-absent-text "A Vault 的当前安排"
+  run_driver press "Today" 10
+  run_driver wait-text "Vault: vault-b" 20
+  run_driver press "Daytime" 10
+  run_driver wait-text "B Vault 的当前安排" 20
+
+  [[ "$(shasum -a 256 "$record_a" | awk '{print $1}')" == "$before_a_hash" ]] ||
+    fail "Vault selection behavior changed the old Vault Daily Record"
+  [[ "$(shasum -a 256 "$record_b" | awk '{print $1}')" == "$before_b_hash" ]] ||
+    fail "Vault selection behavior changed the new Vault Daily Record"
+
+  echo "Packaged IPC Vault selection behavior acceptance passed"
+  echo "Cancel: native picker cancellation preserved Today draft, correction, Habits draft, and selected date"
+  echo "Same Vault: reselecting the active Vault preserved the Daytime draft and phase"
+  echo "Switch: selecting a different Vault cleared old projections before Calendar/Today read the new source"
+  echo "Data: both synthetic Vault Daily Records remained byte-identical"
+}
+
 run_dashboard_2_scenario() {
   local vault_directory="$acceptance_directory/tortilla-flat-vault"
   local snapshot_directory="$vault_directory/.personal-dashboard/derived"
@@ -2557,6 +2703,7 @@ case "$acceptance_scenario" in
   today | today-write | installed-cycle) run_today_scenario ;;
   calendar) run_calendar_scenario ;;
   habits) run_habits_scenario ;;
+  vault-selection) run_vault_selection_scenario ;;
   dashboard-2) run_dashboard_2_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;

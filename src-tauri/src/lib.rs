@@ -31,7 +31,7 @@ use platform::{
 };
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DaytimeUpdateInput,
-    EveningUpdateInput, HabitSnapshotView, TodayApplication, TodayView,
+    EveningUpdateInput, HabitSnapshotView, TodayApplication, TodayView, VaultSelectionResult,
 };
 
 type DesktopTodayApplication = TodayApplication<
@@ -89,7 +89,7 @@ fn habit_snapshot(
 #[tauri::command]
 async fn select_today_vault(
     application: State<'_, DesktopTodayApplication>,
-) -> Result<TodayView, String> {
+) -> Result<VaultSelectionResult, String> {
     application.select_vault()
 }
 

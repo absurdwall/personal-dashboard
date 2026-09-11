@@ -3,6 +3,10 @@ import {
   submitDatedNote,
 } from "./dated-note-command.js";
 import { LatestRequest } from "./latest-request.js";
+import {
+  selectVaultAndRefresh,
+  type VaultSelectionResult,
+} from "./vault-selection.js";
 
 type ApplicationIdentity = Readonly<{
   productName: string;
@@ -423,6 +427,7 @@ function resetVaultScopedWorkspaceState(): void {
   habitDateRequests.invalidate();
   currentCalendarMonth = null;
   selectedCalendarDate = null;
+  currentTodayView = null;
   currentHabitSnapshot = null;
   selectedHabitCell = null;
   currentHabitDateView = null;
@@ -1128,20 +1133,26 @@ async function selectTodayVault(): Promise<void> {
   const presentationRequest = todayPresentationRequests.begin();
   updateTodayOperationState(1);
   try {
-    const view = await window.__TAURI__.core.invoke<TodayView>("select_today_vault");
-    if (!todayPresentationRequests.isCurrent(presentationRequest)) {
-      return;
-    }
-    resetVaultScopedWorkspaceState();
-    selectedTodayDate = null;
-    currentTodayPhase = view.defaultPhase;
-    renderToday(view);
-    renderWorkspaceContextStatus(currentWorkspaceDestination);
-    if (currentWorkspaceDestination === "calendar") {
-      await openCalendar();
-    } else if (currentWorkspaceDestination === "habits") {
-      await refreshHabits();
-    }
+    await selectVaultAndRefresh(
+      () =>
+        window.__TAURI__.core.invoke<VaultSelectionResult<TodayView>>(
+          "select_today_vault",
+        ),
+      {
+        isCurrent: () => todayPresentationRequests.isCurrent(presentationRequest),
+        currentDestination: () => currentWorkspaceDestination,
+        prepareForVaultSwitch: (view) => {
+          resetVaultScopedWorkspaceState();
+          selectedTodayDate = null;
+          currentTodayPhase = view.defaultPhase;
+        },
+        renderToday,
+        renderWorkspaceContextStatus: () =>
+          renderWorkspaceContextStatus(currentWorkspaceDestination),
+        openCalendar,
+        refreshHabits,
+      },
+    );
   } catch (error) {
     if (todayPresentationRequests.isCurrent(presentationRequest) && todayStatus) {
       todayStatus.textContent = `无法选择 Vault：${String(error)}`;
