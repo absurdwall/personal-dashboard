@@ -208,3 +208,34 @@ relaxed. Source regressions, Rust tests, the shell syntax check, Swift parser
 check, and `npm run build:mac` all passed. Ticket 09 remains `ready-for-human`:
 the repaired candidate is ready for the user's final product acceptance, which
 is intentionally not claimed here.
+
+## 2026-09-11 final behavior repair — Vault selection state boundary
+
+The last code-review finding was reproduced against the pre-fix packaged app:
+canceling the native Vault picker reset the selected `Daytime` phase and lost
+the in-progress composer state even though the backend returned the current
+view. The repair is committed as
+`4bef154ef2688eab019673afea525d0a81ed6fe0`.
+
+The command now returns `{ view, changed }`. Cancel and same-Vault reselect are
+true no-ops for UI state; a changed path alone clears Vault-scoped Today,
+Calendar, and Habits state, clears `currentTodayView`, renders the new view,
+and refreshes the active secondary destination. The real behavior tests cover
+the branches and callback order; they are not source-string checks.
+
+The final Mac bundle passed `npm run build:mac` with executable SHA-256
+`19c4e20b4f17c760475871f64abbd4290ce830733ae0cbe32b9c9621c1681a3f`.
+On that exact bundle:
+
+- `vault-selection` passed native cancellation, same-Vault reselect, Daytime
+  draft/correction retention, Habits draft/history-date retention, B-Vault
+  Calendar/Today isolation, and byte-identical synthetic source checks.
+- `calendar`, `habits`, and `dashboard-2` packaged scenarios passed; the latter
+  covered 1180×820, 800×640, and 640×520 logical windows.
+- `npm run test:frontend` passed 16 tests; the full Rust suite passed 145 tests
+  plus doc-tests; shell/Swift checks and `cargo fmt --check` passed.
+
+This follow-up does not close ticket 09 or overall 2.0 product acceptance.
+The frozen FINAL prototype, real vault, producer, Dida365/TickTick, skills,
+automations, and user-owned repair notes were not changed. Final visual/product
+sign-off remains with the user.

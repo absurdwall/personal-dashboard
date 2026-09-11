@@ -100,3 +100,44 @@ Using `a76f3b4` as the fixed review point:
 
 Ticket 09 remains `ready-for-human`. The final product acceptance and closure
 decision remain with the user.
+
+## 2026-09-11 final behavior follow-up — unchanged Vault selection
+
+The remaining review finding was reproduced before the repair: cancelling the
+native Vault picker caused the packaged frontend to reset the selected
+`Daytime` phase, which also cleared the unsaved Daytime/Habits composer and
+correction state. The backend response was not enough because the frontend
+treated every `select_today_vault` result as a changed Vault.
+
+Implementation commit `4bef154ef2688eab019673afea525d0a81ed6fe0` changes the
+command contract to `{ view, changed }` and moves the frontend behavior into an
+executable `selectVaultAndRefresh` seam. `changed: false` is a no-op for UI
+state; `changed: true` invalidates and clears Vault-scoped projections before
+rendering Today and refreshing the active secondary destination. The reset also
+clears `currentTodayView` so an old Vault composer cannot be re-stashed while a
+new Vault view is rendered.
+
+### Behavior and packaged evidence
+
+- Rust tests: cancel returns the current view without persistence, same-Vault
+  reselect does not persist, and a real switch persists once and reads only the
+  new Vault.
+- Frontend behavior tests: four executable paths pass for cancel, same-Vault
+  reselect, Calendar switch, and Habits switch; the tests assert state values
+  and callback order, not source strings.
+- Final packaged executable:
+  `19c4e20b4f17c760475871f64abbd4290ce830733ae0cbe32b9c9621c1681a3f`.
+- Final packaged `vault-selection` passed through the real native folder picker:
+  cancellation preserved Today draft, correction, Habits draft, and selected
+  history date; reselecting the current Vault preserved the Daytime draft and
+  phase; switching to B cleared old projections before Calendar/Today read B;
+  both synthetic Daily Records remained byte-identical.
+- Final packaged Calendar, Habits, and dashboard-2 scenarios also passed on the
+  same bundle. Full frontend and Rust suites, shell/Swift syntax checks, and
+  Mac packaging passed.
+
+The review found no new Standards- or Spec-axis blocking issue against fixed
+point `7e5be6765aa6ced8b2c00ecb8be66701e5c2067d`. Ticket 08 remains `resolved`.
+Ticket 09 remains `ready-for-human`: no implementation finding from this repair
+is left open, but the final visual/product acceptance and closure decision are
+still intentionally left to the user.

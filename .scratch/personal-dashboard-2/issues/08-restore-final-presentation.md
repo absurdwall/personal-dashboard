@@ -100,3 +100,47 @@ untracked `repair-decisions.md`.
 
 This implementation ticket remains `resolved`; final visual/product sign-off
 continues to belong to ticket 09.
+
+## 2026-09-11 follow-up repair — unchanged Vault selection state
+
+The final 09 review found one remaining behavior boundary: the backend already
+returned the current view when the native Vault picker was cancelled, but the
+frontend unconditionally reset Today, Calendar, Habits, drafts, corrections,
+and browsing state. The pre-fix packaged scenario reproduced this by losing the
+selected `Daytime` phase immediately after picker cancellation.
+
+Implementation commit `4bef154ef2688eab019673afea525d0a81ed6fe0`
+(`fix(dashboard): preserve state on unchanged Vault selection`) now returns a
+serialized `{ view, changed }` result from `select_today_vault`. Cancellation
+and reselecting the persisted Vault return `changed: false`; the frontend
+leaves the current view, phase, selected Calendar date, Habits date, drafts,
+and correction state untouched. A real path change returns `changed: true`,
+clears all Vault-scoped state including `currentTodayView`, renders the new
+Today view, and refreshes only the active Calendar or Habits destination.
+
+Behavior evidence is executable rather than source-only: Rust workflow tests
+cover cancel, same-path reselect, and old/new Vault isolation; frontend tests
+execute the unchanged and changed branches for Today, Calendar, and Habits;
+and the packaged `vault-selection` scenario uses the native picker to verify
+Daytime draft/correction preservation, Habits draft and selected-history-date
+preservation, B-Vault Calendar/Today content, and byte-identical synthetic
+Daily Records.
+
+Final validation:
+
+- `npm run test:frontend` — 16 tests passed.
+- `cargo test --manifest-path src-tauri/Cargo.toml` — all 145 Rust tests and doc-tests passed; the focused Today workflow contains 41 passing tests.
+- `bash -n scripts/acceptance/macos-ipc-workflow.sh`, Swift parser validation,
+  and `cargo fmt --check` — passed.
+- `npm run build:mac` — passed. Final packaged executable SHA-256:
+  `19c4e20b4f17c760475871f64abbd4290ce830733ae0cbe32b9c9621c1681a3f`.
+- On that final bundle, packaged `vault-selection`, `calendar`, `habits`, and
+  `dashboard-2` scenarios passed. The Calendar/Habits paths retained their
+  reviewed, unreviewed, malformed, empty, edit/correction, relaunch, retained
+  snapshot, and narrow-window checks; the new Vault path also verified native
+  cancellation and same-Vault reselect.
+
+The frozen FINAL prototype, real vault data, producer skills, TickTick,
+automations, and user-owned `.scratch/personal-dashboard-2/repair-decisions.md`
+were not changed. Ticket 08 remains `resolved`; final product acceptance is
+still owned by ticket 09 and the user.
