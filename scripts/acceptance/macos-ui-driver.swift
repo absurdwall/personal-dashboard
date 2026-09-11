@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -1064,6 +1064,11 @@ func assertSemanticContract(
     _ application: AXUIElement,
     _ mode: String
 ) throws {
+    if mode.hasPrefix("dashboard-2-") {
+        try assertDashboard2SemanticContract(application, mode)
+        return
+    }
+
     let counts = roleCounts(application)
     let compactViewport = mainWindow(application).flatMap(windowSize).map { $0.width <= 680 } ?? false
     let todayMode = mode == "today" || mode == "today-daytime" || mode == "today-evening"
@@ -1212,6 +1217,108 @@ func assertSemanticContract(
         }
     } else {
         throw DriverError.usage
+    }
+}
+
+func assertDashboard2SemanticContract(
+    _ application: AXUIElement,
+    _ mode: String
+) throws {
+    let counts = roleCounts(application)
+    let compactViewport = mainWindow(application).flatMap(windowSize).map { $0.width <= 680 } ?? false
+    let todayMode = mode == "dashboard-2-today" ||
+        mode == "dashboard-2-today-daytime" ||
+        mode == "dashboard-2-today-evening"
+    let calendarMode = mode == "dashboard-2-calendar"
+    let habitsMode = mode == "dashboard-2-habits"
+    let minimumButtonCount = compactViewport ? 1 : 4
+
+    guard (counts["AXWindow"] ?? 0) > 0,
+          (counts["AXWebArea"] ?? 0) > 0,
+          (counts["AXButton"] ?? 0) >= minimumButtonCount,
+          (counts["AXStaticText"] ?? 0) > 0 else {
+        throw DriverError.timeout(
+            "dashboard-2 semantic workspace roles " +
+                "(window=\(counts["AXWindow"] ?? 0), " +
+                "webArea=\(counts["AXWebArea"] ?? 0), " +
+                "button=\(counts["AXButton"] ?? 0), " +
+                "staticText=\(counts["AXStaticText"] ?? 0), " +
+                "minimumButtons=\(minimumButtonCount))"
+        )
+    }
+
+    if compactViewport {
+        let expectedDestination = calendarMode ? "Calendar" : habitsMode ? "Habits" : "Today"
+        let switcherRoles = Set(["AXComboBox", "AXPopUpButton"])
+        let switcherDescriptions = findRolesWithin(application, switcherRoles).map(nodeText)
+        guard switcherDescriptions.contains(where: {
+                  $0.localizedCaseInsensitiveContains(expectedDestination)
+              }),
+              findText(application, "Destination") != nil else {
+            throw DriverError.timeout(
+                "dashboard-2 compact destination switcher " +
+                    "(expected: \(expectedDestination), found: \(switcherDescriptions))"
+            )
+        }
+    } else {
+        for text in ["Today", "Calendar", "Habits"] {
+            guard findPressable(application, text, contains: true) != nil else {
+                throw DriverError.timeout("dashboard-2 navigation control: \(text)")
+            }
+        }
+    }
+
+    if calendarMode {
+        guard findText(application, "Month view") != nil,
+              findText(application, "Selected day") != nil,
+              findPressable(application, "上个月", contains: true) != nil,
+              findPressable(application, "下个月", contains: true) != nil,
+              findPressable(application, "今天", contains: true) != nil else {
+            throw DriverError.timeout("dashboard-2 Calendar reading surface")
+        }
+        return
+    }
+
+    if habitsMode {
+        guard findText(application, "本周统计") != nil,
+              findText(application, "每日锚点") != nil,
+              findText(application, "本周习惯在今天") != nil,
+              findPressable(application, "刷新快照", contains: true) != nil else {
+            throw DriverError.timeout("dashboard-2 Habits snapshot surface")
+        }
+        return
+    }
+
+    guard todayMode else {
+        throw DriverError.usage
+    }
+    for text in ["Morning", "Daytime", "Evening"] {
+        guard findPressable(application, text, contains: true) != nil else {
+            throw DriverError.timeout("dashboard-2 Today phase control: \(text)")
+        }
+    }
+    guard findPressable(application, "刷新", contains: true) != nil else {
+        throw DriverError.timeout("dashboard-2 Today refresh control")
+    }
+    if mode == "dashboard-2-today" {
+        guard findText(application, "当天的初始安排") != nil,
+              findPressable(application, "初始计划依据", contains: true) != nil else {
+            throw DriverError.timeout("dashboard-2 Today morning baseline")
+        }
+    } else if mode == "dashboard-2-today-daytime" {
+        guard findText(application, "时间轴 + 记录") != nil,
+              findText(application, "现在怎么走") != nil,
+              findText(application, "已发生 / 已确认") != nil,
+              findText(application, "当前安排 · 未按时间推断") != nil,
+              findText(application, "接下来计划") != nil,
+              findText(application, "当日简短记录") != nil,
+              findText(application, "安排变化") != nil else {
+            throw DriverError.timeout("dashboard-2 Today daytime reading surface")
+        }
+    } else {
+        guard findText(application, "晚间复盘") != nil else {
+            throw DriverError.timeout("dashboard-2 Today evening reading surface")
+        }
     }
 }
 
@@ -1549,6 +1656,8 @@ func assertScrollableSurface(
         anchorText = "Change this workout time"
     case "workout detail":
         anchorText = "About how long was the workout?"
+    case "today":
+        anchorText = "晚间复盘"
     default:
         throw DriverError.usage
     }
@@ -1735,6 +1844,69 @@ func assertScrollableSurface(
         throw DriverError.timeout(
             "scroll position changed: \(label) (\(details))"
         )
+    }
+    try assertDocumentFixed(application)
+}
+
+func scrollSurfaceToBottom(
+    _ application: AXUIElement,
+    _ label: String,
+    pid: pid_t
+) throws {
+    guard label.lowercased() == "today" else {
+        throw DriverError.usage
+    }
+    let surfaceAndFrame = findTextPaths(application, "晚间复盘")
+        .compactMap { path -> (AXUIElement, CGRect)? in
+            guard let surface = scrollSurface(for: path),
+                  let surfaceFrame = frame(surface),
+                  surfaceFrame.width > 0,
+                  surfaceFrame.height > 0 else {
+                return nil
+            }
+            return (surface, surfaceFrame)
+        }
+        .max { left, right in
+            left.1.minY < right.1.minY
+        }
+    guard let (surface, surfaceFrame) = surfaceAndFrame else {
+        throw DriverError.timeout("scrollable active surface: \(label)")
+    }
+
+    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    for _ in 0..<8 {
+        let pageError = AXUIElementPerformAction(
+            surface,
+            "AXScrollDownByPage" as CFString
+        )
+        if pageError == .success {
+            Thread.sleep(forTimeInterval: 0.15)
+            continue
+        }
+        guard let source = CGEventSource(stateID: .combinedSessionState),
+              let move = CGEvent(
+                  mouseEventSource: source,
+                  mouseType: .mouseMoved,
+                  mouseCursorPosition: CGPoint(
+                      x: surfaceFrame.midX,
+                      y: surfaceFrame.midY
+                  ),
+                  mouseButton: .left
+              ),
+              let scroll = CGEvent(
+                  scrollWheelEvent2Source: source,
+                  units: .pixel,
+                  wheelCount: 1,
+                  wheel1: -8,
+                  wheel2: 0,
+                  wheel3: 0
+              ) else {
+            throw DriverError.actionFailed("scroll \(label) to bottom", pageError)
+        }
+        move.postToPid(pid)
+        Thread.sleep(forTimeInterval: 0.05)
+        scroll.postToPid(pid)
+        Thread.sleep(forTimeInterval: 0.2)
     }
     try assertDocumentFixed(application)
 }
@@ -2298,6 +2470,9 @@ do {
     case "assert-scroll-surface":
         try assertScrollableSurface(application, text, pid: pid)
         print("Rendered active surface scrolled without document scroll: \(text)")
+    case "scroll-to-bottom":
+        try scrollSurfaceToBottom(application, text, pid: pid)
+        print("Rendered active surface moved to bottom without document scroll: \(text)")
     case "assert-destination-inset":
         try assertDestinationInset(application, text)
     case "assert-select-option":

@@ -2371,12 +2371,18 @@ EOF
   before_snapshot_hash="$(shasum -a 256 "$snapshot_directory/habits-v1.json")"
 
   current_step="checking wide FINAL Today with complete schedule content"
-  launch_app_waiting_for_text "Log workout now" 30
+  launch_app_waiting_for_text "Today" 30
   run_driver set-size "1180x820" 10
   run_driver assert-size "1180x820" 10
+  run_driver assert-text "Personal Dashboard"
+  run_driver assert-text "Daily life"
+  run_driver assert-text "设置"
+  run_driver assert-text "更多选项暂不可用"
+  run_driver assert-text "TODAY · 2026-09-08"
+  run_driver assert-text "9 月 8 日"
   run_driver press "Today" 10
   run_driver wait-text "先学习，再处理上午的固定安排" 20
-  run_driver assert-semantic "today"
+  run_driver assert-semantic "dashboard-2-today"
   run_driver assert-text "Today · 2026-09-08"
   run_driver assert-text "5 个时间块"
   run_driver assert-text "取饭、Exercise、自由恢复"
@@ -2384,23 +2390,28 @@ EOF
   run_driver assert-text "Options"
   run_driver assert-text "小型 Vibe code"
   run_driver press "Daytime" 10
-  run_driver assert-semantic "today-daytime"
+  run_driver assert-state "Daytime|selected" 10
+  run_driver assert-semantic "dashboard-2-today-daytime"
   run_driver assert-text "07:18 起床"
   run_driver assert-text "处理需要 17:00 前完成的紧急工作"
   run_driver assert-text "下午原本推进 apartment-renewal"
   run_driver assert-text "Exercise 退到 low-energy baseline"
   run_driver assert-text "Reset living space 均未记录"
   run_driver press "Evening" 10
-  run_driver assert-semantic "today-evening"
-  run_driver assert-text "19:00 跑步 30 分钟"
-  run_driver assert-text "早间学习完成量没有记录"
-  run_driver assert-text "完成了必要事项，也保留了恢复空间"
+  run_driver assert-state "Evening|selected" 10
+  run_driver focus "Evening" 10
+  run_driver assert-semantic "dashboard-2-today-evening"
+  run_driver wait-text "19:00 跑步 30 分钟" 10
+  run_driver wait-text "19:00 跑步 30 分钟" 10
+  run_driver scroll-to-bottom "today" 10
+  run_driver wait-text "早间学习完成量没有记录" 10
+  run_driver wait-text "完成了必要事项，也保留了恢复空间" 10
   run_driver assert-document-fixed "document" 10
 
   current_step="checking wide FINAL Calendar against the same schedule"
   run_driver press "Calendar" 10
   run_driver wait-text "2026 年 9 月" 20
-  run_driver assert-semantic "calendar"
+  run_driver assert-semantic "dashboard-2-calendar"
   run_driver assert-text "有复盘"
   run_driver assert-text "07:18 起床"
   run_driver assert-document-fixed "document" 10
@@ -2408,7 +2419,7 @@ EOF
   current_step="checking wide FINAL Habits against the same schedule"
   run_driver press "Habits" 10
   run_driver wait-text "3 / 15" 20
-  run_driver assert-semantic "habits"
+  run_driver assert-semantic "dashboard-2-habits"
   run_driver assert-text "07:18"
   run_driver assert-text "仅阈值证据"
   run_driver press-contains "2026-09-08 · Exercise" 10
@@ -2419,14 +2430,15 @@ EOF
   current_step="checking intermediate FINAL layouts and complete content"
   run_driver set-size "800x640" 10
   run_driver assert-size "800x640" 10
-  run_driver assert-semantic "habits"
+  run_driver assert-semantic "dashboard-2-habits"
   run_driver assert-text "近 12 周记录"
   run_driver press "Calendar" 10
-  run_driver assert-semantic "calendar"
+  run_driver assert-semantic "dashboard-2-calendar"
   run_driver assert-text "Selected day"
   run_driver press "Today" 10
   run_driver press "Daytime" 10
-  run_driver assert-semantic "today-daytime"
+  run_driver assert-state "Daytime|selected" 10
+  run_driver assert-semantic "dashboard-2-today-daytime"
   run_driver assert-text "17:30 取饭"
   run_driver assert-text "Exercise 退到 low-energy baseline"
   run_driver assert-document-fixed "document" 10
@@ -2434,20 +2446,22 @@ EOF
   current_step="checking narrow FINAL layouts, hierarchy, and primary actions"
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
-  run_driver assert-semantic "today-daytime"
+  run_driver assert-semantic "dashboard-2-today-daytime"
   run_driver assert-text "Destination"
   run_driver assert-text "Reset living space 均未记录"
   run_driver select-contains "Calendar" 10
-  run_driver assert-semantic "calendar"
+  run_driver assert-semantic "dashboard-2-calendar"
   run_driver assert-text "打开完整 Today"
   run_driver select-contains "Habits" 10
   run_driver wait-text "3 / 15" 20
-  run_driver assert-semantic "habits"
+  run_driver assert-semantic "dashboard-2-habits"
   run_driver press-contains "2026-09-08 · Exercise" 10
   run_driver assert-text "近 12 周记录"
   run_driver select-contains "Today" 10
   run_driver press "Evening" 10
-  run_driver assert-semantic "today-evening"
+  run_driver assert-state "Evening|selected" 10
+  run_driver scroll-to-bottom "today" 10
+  run_driver assert-semantic "dashboard-2-today-evening"
   run_driver assert-text "完成了必要事项，也保留了恢复空间"
   run_driver assert-document-fixed "document" 10
 

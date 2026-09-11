@@ -12,13 +12,42 @@
   </head>
   <body>
     <main class="app-shell" data-workspace-destination="today">
-      <aside class="workspace-sidebar" aria-label="Primary">
-        <div class="workspace-brand">
+      <header class="product-toolbar" aria-label="Workspace toolbar">
+        <div class="product-toolbar-brand">
           <div class="feature-mark" aria-hidden="true">P</div>
           <div>
-            <p class="eyebrow" data-product-name>Personal Dashboard</p>
-            <p class="sidebar-feature" data-feature-area>Daily Record</p>
+            <p class="product-toolbar-name" data-product-name>Personal Dashboard</p>
+            <p class="product-toolbar-area">Daily life</p>
           </div>
+        </div>
+        <span class="product-toolbar-space" aria-hidden="true"></span>
+        <div class="product-toolbar-actions">
+          <button
+            id="workspace-settings"
+            type="button"
+            class="product-toolbar-button"
+            aria-label="设置：选择 Vault"
+            title="设置：选择 Vault"
+          >
+            设置
+          </button>
+          <button
+            id="workspace-more"
+            type="button"
+            class="product-toolbar-button product-toolbar-more"
+            aria-label="更多选项暂不可用"
+            title="更多选项暂不可用"
+          >
+            •••
+          </button>
+          <span class="product-toolbar-caption">本地</span>
+        </div>
+      </header>
+      <aside class="workspace-sidebar" aria-label="Primary">
+        <div id="workspace-rail-context" class="workspace-rail-context" aria-live="polite">
+          <p id="workspace-rail-context-kicker" class="section-label">TODAY · —</p>
+          <strong id="workspace-rail-context-title">Today</strong>
+          <small id="workspace-rail-context-detail">Morning · Daytime · Evening</small>
         </div>
         <nav class="workspace-navigation" aria-label="Workspace destinations">
           <button
@@ -385,25 +414,6 @@
                       <p class="today-reading-introduction">
                         先读一个保守的 first pass；不要求完整重建整天。
                       </p>
-                      <form id="today-evening-form" class="today-bounded-form">
-                        <div class="today-form-row">
-                          <label>
-                            更新方式
-                            <select id="today-evening-mode">
-                              <option value="addition">补充遗漏信息</option>
-                              <option value="correction">修正已有复盘</option>
-                            </select>
-                          </label>
-                        </div>
-                        <label>
-                          简短内容
-                          <input id="today-evening-content" type="text" maxlength="500" autocomplete="off" aria-label="Evening update text" required />
-                        </label>
-                        <div class="today-form-actions">
-                          <button id="save-evening-update" type="submit">保存晚间更新</button>
-                          <p>这会写入受控小节，不会关闭今天，也不会改写整份 Markdown。</p>
-                        </div>
-                      </form>
                       <section id="today-evening-account-section" class="today-review-section" hidden>
                         <h4>今天发生了什么</h4>
                         <div id="today-evening-account"></div>
@@ -439,6 +449,25 @@
                       <p id="today-evening-empty" class="today-phase-empty" hidden>
                         Agent 还没有准备晚间复盘。今晚可以不复盘，也不会形成补写债务。
                       </p>
+                      <form id="today-evening-form" class="today-bounded-form">
+                        <div class="today-form-row">
+                          <label>
+                            更新方式
+                            <select id="today-evening-mode">
+                              <option value="addition">补充遗漏信息</option>
+                              <option value="correction">修正已有复盘</option>
+                            </select>
+                          </label>
+                        </div>
+                        <label>
+                          简短内容
+                          <input id="today-evening-content" type="text" maxlength="500" autocomplete="off" aria-label="Evening update text" required />
+                        </label>
+                        <div class="today-form-actions">
+                          <button id="save-evening-update" type="submit">保存晚间更新</button>
+                          <p>这会写入受控小节，不会关闭今天，也不会改写整份 Markdown。</p>
+                        </div>
+                      </form>
                     </section>
                   </div>
 

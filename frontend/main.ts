@@ -248,6 +248,18 @@ const workspaceDestinationPanels = document.querySelectorAll<HTMLElement>(
 const workspaceDestinationSelect = document.querySelector<HTMLSelectElement>(
   "#workspace-destination-select",
 );
+const workspaceSettingsButton = document.querySelector<HTMLButtonElement>(
+  "#workspace-settings",
+);
+const workspaceRailContextKicker = document.querySelector<HTMLElement>(
+  "#workspace-rail-context-kicker",
+);
+const workspaceRailContextTitle = document.querySelector<HTMLElement>(
+  "#workspace-rail-context-title",
+);
+const workspaceRailContextDetail = document.querySelector<HTMLElement>(
+  "#workspace-rail-context-detail",
+);
 const workspaceTitle = document.querySelector<HTMLElement>("#workspace-title");
 const workspaceDescription = document.querySelector<HTMLElement>("#workspace-description");
 const workspaceContextStatus = document.querySelector<HTMLElement>(
@@ -621,7 +633,15 @@ function showTodayPhase(phase: TodayPhase, focus = false): void {
     }
   });
   todayPhasePanels.forEach((panel) => {
-    panel.hidden = panel.dataset.todayPhasePanel !== phase;
+    const selected = panel.dataset.todayPhasePanel === phase;
+    panel.hidden = !selected;
+    panel.setAttribute("aria-hidden", String(!selected));
+    if (selected) {
+      // WebKit can retain a stale AX subtree after a hidden tabpanel is revealed.
+      // Re-attaching the active panel makes the newly visible reading surface
+      // available to VoiceOver and the packaged accessibility checks.
+      panel.parentElement?.append(panel);
+    }
   });
   if (todayEvidenceRegion) {
     todayEvidenceRegion.hidden = phase !== "morning";
@@ -695,6 +715,7 @@ function renderToday(view: TodayView): void {
     stashDatedNoteDraft();
   }
   currentTodayView = view;
+  renderWorkspaceRailContext("today");
   renderDatedNoteComposer(view);
   if (todayDate) {
     todayDate.textContent = `${view.isToday ? "Today" : "Selected day"} · ${view.date}`;
@@ -873,7 +894,6 @@ function renderToday(view: TodayView): void {
   if (todayEveningEmpty) {
     todayEveningEmpty.hidden = eveningHasContent;
   }
-
   if (!ready) {
     todayEvidenceToggle?.setAttribute("aria-expanded", "false");
     if (todayEvidenceContent) {
@@ -1173,9 +1193,11 @@ function renderCalendarGrid(month: CalendarMonthView): void {
       }),
     );
   }
+  renderWorkspaceRailContext("calendar");
 }
 
 function renderCalendarSummary(view: TodayView): void {
+  renderWorkspaceRailContext("calendar");
   if (calendarSummaryHeading) {
     calendarSummaryHeading.textContent = calendarDateLabel(view.date);
   }
@@ -1814,6 +1836,7 @@ async function saveHabitExerciseNote(): Promise<boolean> {
 
 function renderHabitSnapshot(view: HabitSnapshotView): void {
   currentHabitSnapshot = view;
+  renderWorkspaceRailContext("habits");
   if (habitsStatus) {
     habitsStatus.textContent = view.message;
     habitsStatus.dataset.state = view.state;
@@ -1918,6 +1941,41 @@ function renderWorkspaceFeatureArea(destination: WorkspaceDestination): void {
   });
 }
 
+function renderWorkspaceRailContext(destination: WorkspaceDestination): void {
+  if (!workspaceRailContextKicker || !workspaceRailContextTitle || !workspaceRailContextDetail) {
+    return;
+  }
+
+  if (destination === "today") {
+    const date = currentTodayView?.date ?? selectedTodayDate;
+    workspaceRailContextKicker.textContent = `TODAY · ${date ?? "—"}`;
+    workspaceRailContextTitle.textContent = date
+      ? calendarDateLabel(date).split(" · ")[0]
+      : "Today";
+    workspaceRailContextDetail.textContent = "Morning · Daytime · Evening";
+    return;
+  }
+
+  if (destination === "calendar") {
+    const month = currentCalendarMonth;
+    workspaceRailContextKicker.textContent = "MONTH VIEW";
+    workspaceRailContextTitle.textContent = month
+      ? `${month.year} 年 ${month.month} 月`
+      : "Calendar";
+    workspaceRailContextDetail.textContent = selectedCalendarDate
+      ? `${calendarDateLabel(selectedCalendarDate)} · 当前选中`
+      : "选择一个日期";
+    return;
+  }
+
+  const summary = currentHabitSnapshot?.summary;
+  workspaceRailContextKicker.textContent = "HABITS · 本周";
+  workspaceRailContextTitle.textContent = summary
+    ? `${summary.knownCompletions} / ${summary.targetCompletions} 已知`
+    : "Habits";
+  workspaceRailContextDetail.textContent = "weekly count · daily target";
+}
+
 function showWorkspaceDestination(
   destination: WorkspaceDestination,
   focus = false,
@@ -1998,6 +2056,7 @@ function showWorkspaceDestination(
     workspaceContextStatus.textContent = `${details.title} is the current destination.`;
   }
   renderWorkspaceFeatureArea(destination);
+  renderWorkspaceRailContext(destination);
   if (destination === "today") {
     selectedTodayDate = dailyDate;
     if (dailyDate !== null) {
@@ -2071,6 +2130,10 @@ showWorkspaceDestination("today");
 
 selectTodayVaultButton?.addEventListener("click", () => {
   void selectTodayVault();
+});
+
+workspaceSettingsButton?.addEventListener("click", () => {
+  selectTodayVaultButton?.click();
 });
 
 refreshTodayButton?.addEventListener("click", () => {
