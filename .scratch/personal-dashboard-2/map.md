@@ -14,11 +14,11 @@
 
 - [Repair decisions and evidence limits](repair-decisions.md)
 - [08 — Restore FINAL shell and destination presentation](issues/08-restore-final-presentation.md) — resolved
-- [09 — Independently verify FINAL parity and close 2.0](issues/09-review-final-parity-and-close.md) — ready-for-human; fresh review found responsive, Calendar, and Habits visual departures
+- [09 — Independently verify FINAL parity and close 2.0](issues/09-review-final-parity-and-close.md) — ready-for-human; 2026-09-11 repair follow-up passed the listed parity checks, final product acceptance remains with the user
 
-Prior resolved tickets record earlier delivery work; ticket 09's fresh review is
-complete, but overall visual acceptance remains open pending the concrete parity
-findings and user acceptance.
+Prior resolved tickets record earlier delivery work; ticket 09's repair
+follow-up is complete, but overall visual acceptance remains open pending direct
+user acceptance.
 
 ## Original dependency notes
 

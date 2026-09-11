@@ -166,3 +166,45 @@ Conclusion: the visual review is recorded, but ticket 09 remains `ready-for-huma
 and overall 2.0 visual acceptance remains open until the unresolved departures
 are repaired or explicitly accepted and the not-checked states receive fresh
 evidence.
+
+## 2026-09-11 ticket 08 repair follow-up
+
+The five departures in the preceding section were repaired in implementation
+commit `8910d96abe914c873d1bca2ecf27bc2d8118c210` and rechecked against the frozen FINAL prototype. The reviewed
+Mac executable is Personal Dashboard `2.0.0` / build `2.0.0`, with SHA-256
+`fab01e5905809bf6119e6331e23308a4664b6a11e3274c6d5dcda30657cd0675`.
+
+The paired inspection used the same synthetic dashboard-2 content and the
+logical sizes 1180×820, 800×640, and 640×520. It confirmed the text navigation
+at the intermediate and narrow sizes, flat/month-first Calendar composition,
+the Habits top-right weekly metric and heading hierarchy, and active Calendar /
+Habits refresh after Vault reselection. The frozen FINAL route was opened
+directly from the existing local server; the product was launched from the
+rebuilt bundle in disposable acceptance profiles. No prototype file or real
+vault was changed.
+
+The ignored evidence set is under `output/playwright/final-acceptance/`:
+
+- `ticket09-final-product-today-daytime-{wide,medium,narrow}.png`
+- `ticket09-final-product-calendar-reviewed-{wide,medium,narrow}.png`
+- `ticket09-final-product-habits-{wide,medium,narrow}.png`
+- `ticket09-repair-product-calendar-{reviewed-wide,unreviewed-wide,empty-wide}.png`
+- `ticket09-repair-product-habits-correction-{wide-editor,narrow-editor}.png`
+
+The final packaged behavior runs passed separately from visual inspection:
+
+- Calendar: reviewed, unreviewed, malformed, empty, and current days at
+  960×720 and 640×520; no source record was changed by browsing.
+- Habits: sourced conflict draft preservation, dated note creation, Calendar /
+  Today / Evening cross-entry correction, direct Habits correction, relaunch,
+  640×520 navigation, and malformed snapshot retention.
+- Dashboard-2: final Today / Calendar / Habits continuity at 1180×820,
+  800×640, and 640×520.
+
+The first Habits rerun encountered a post-relaunch Accessibility readiness
+timeout. A direct isolated launch of the same bundle succeeded, and one
+complete diagnosed rerun passed; no timeout was widened and no assertion was
+relaxed. Source regressions, Rust tests, the shell syntax check, Swift parser
+check, and `npm run build:mac` all passed. Ticket 09 remains `ready-for-human`:
+the repaired candidate is ready for the user's final product acceptance, which
+is intentionally not claimed here.

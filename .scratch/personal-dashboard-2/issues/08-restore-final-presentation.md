@@ -47,3 +47,56 @@ Implemented on 2026-09-11 from base commit `a38869073a0a389d7107fb79ab659c842459
 Implementation commit: final delivery commit reported with the task result below.
 
 Ticket 09 remains responsible for an independent fresh paired visual review and overall 2.0 closure. This ticket does not claim that closure.
+
+## 2026-09-11 follow-up repair
+
+The independent 09 review found five concrete parity defects. They were repaired
+in implementation commit `8910d96abe914c873d1bca2ecf27bc2d8118c210` (`fix(dashboard): restore final secondary
+destination parity`), without changing the frozen prototype or the existing
+untracked `repair-decisions.md`.
+
+- The final scoped cascade now keeps text destinations visible at 800×640 and
+  640×520, removes the hidden icon track, and keeps Calendar/Habits in the
+  three-destination shell.
+- Vault reselection invalidates Calendar and Habits request generations and
+  clears their selected month/date, snapshot, detail, drafts, and visible
+  projection before refreshing the active destination.
+- Calendar now uses the FINAL flat selected-day summary, serif heading, quiet
+  status treatment, and month-first narrow ordering.
+- Habits now exposes the right-side `3 / 15` / `本周已知` metric, restores the
+  subdued `WEEK OF · SOURCED SNAPSHOT` hierarchy, and constrains intermediate
+  rows so the history/detail columns remain readable.
+- Calendar and Habits packaged scenarios now start from `Today` and use the
+  live 2.0 destination controls; their targeted slices no longer wait for the
+  retired `Log workout now` surface. The scenarios also cover reviewed,
+  unreviewed, malformed, empty, edit, correction, relaunch, and retained
+  snapshot states.
+
+## Follow-up evidence
+
+- `npm run build` — passed.
+- `npm run test:frontend` — 12 tests passed, including the new FINAL parity
+  source regressions.
+- `cargo test --manifest-path src-tauri/Cargo.toml` — passed across the Rust
+  unit, workflow, and doc-test suites.
+- `bash -n scripts/acceptance/macos-ipc-workflow.sh` and
+  `swift -frontend -parse scripts/acceptance/macos-ui-driver.swift` — passed.
+- `npm run build:mac` — produced Personal Dashboard `2.0.0` / build `2.0.0`;
+  the reviewed executable SHA-256 is
+  `fab01e5905809bf6119e6331e23308a4664b6a11e3274c6d5dcda30657cd0675`.
+- The final bundle was opened in an isolated temporary profile and compared
+  with the frozen FINAL prototype at 1180×820, 800×640, and 640×520. The
+  ignored paired capture set is under
+  `output/playwright/final-acceptance/ticket09-final-product-*.png`; the
+  additional state captures are the `ticket09-repair-product-*` files.
+- The final packaged Calendar scenario passed for reviewed, unreviewed,
+  malformed, empty, and current dates at 960×720 and 640×520. The final
+  packaged Habits scenario passed on its diagnosed rerun, including the
+  conflict draft, two correction paths, relaunch, and 640×520 retention check.
+  One earlier rerun hit a post-relaunch Accessibility readiness timeout; a
+  direct isolated launch of the same final bundle succeeded, and the complete
+  scenario then passed without changing the product timeout or relaxing an
+  assertion.
+
+This implementation ticket remains `resolved`; final visual/product sign-off
+continues to belong to ticket 09.
