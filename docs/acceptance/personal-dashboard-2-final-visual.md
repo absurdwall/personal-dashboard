@@ -102,3 +102,67 @@ action reachability.
 The post-cutover UI exposes only Today, Calendar, and Habits; the retired 1.0
 destinations are absent. This closes ticket 07's installed visual repeat while
 keeping the rendered evidence separate from the packaged AX workflow.
+
+## 2026-09-11 ticket 09 independent review — correction, not closure
+
+The 2026-09-09 and 2026-09-10 tables above remain historical reports. This
+section records a fresh paired inspection of the frozen FINAL prototype and the
+rebuilt Mac candidate after ticket 08; it supersedes neither historical result
+nor the prototype.
+
+- Reviewed commit: `b8bf3808d4bdc86e68b8301acf9eb47b38aba0e1`.
+- Packaged version/build: `2.0.0` / `2.0.0`.
+- Packaged executable SHA-256:
+  `ac19a7de661193fd74a33c6a374b1ff0b9c485dcc54405fbfc7f1f3445448c46`.
+- Synthetic source: the dashboard-2 `2026-09-08` Daily Record plus the checked-in complete Habits snapshot, under a disposable acceptance directory. The frozen FINAL prototype was opened from the existing local server; no prototype file was changed.
+- Fresh product captures: ignored local files named `ticket09-product-*.png` in this directory. Retina captures include native title-bar chrome; the asserted logical window sizes were 1180×820, 800×640, and 640×520.
+
+| Page/state | Logical window | Frozen FINAL reference | Fresh packaged capture | Visual result |
+| --- | --- | --- | --- | --- |
+| Today / Daytime | 1180×820 | `reference-final-wide.png` | `ticket09-product-today-daytime-wide.png` · `d8de9e784c38a27423749444bd34605fde2f04e596e1524c3e492adb0c5d9120` | Shell, hierarchy, timeline and update rail restored; native chrome/banner differences accepted. |
+| Today / Daytime | 800×640 | `reference-final-medium.png` | `ticket09-product-today-medium.png` · `36c0db16fa18119f9058345441ec5d2207ec564d82dc6fa8047216da0aea0076` | Unresolved icon-only sidebar departure. |
+| Today / Daytime | 640×520 | `reference-final-narrow.png` | `ticket09-product-today-narrow.png` · `a9e47ef3bc538f783f6e07d7a402b338fd0bc3515edce0f5c292e70429001764` | Unresolved missing visible date/destination row. |
+| Calendar / reviewed 2026-09-08 | 1180×820 | `reference-final-calendar-wide.png` | `ticket09-product-calendar-wide.png` · `d8872e97d7b7af67555b9d79c2fced00f60e65793631902edd4b0d4bff512b8b` | Grid and selected-day reading are present; production status text/card differs from FINAL. |
+| Calendar / reviewed 2026-09-08 | 800×640 | `reference-final-calendar-medium.png` | `ticket09-product-calendar-medium.png` · `4323e49a468c072c0bafc343eed2774e13f5560e2dc64eb81c96bd77cd43ea5a` | Same confirmed status/card departure plus icon-only sidebar. |
+| Calendar / reviewed 2026-09-08 | 640×520 | `reference-final-calendar-narrow.png` | `ticket09-product-calendar-narrow.png` · `f12dcb5ab8cde98cf2ab1c9c50b02728baa24c1e4845697e66e3f1bb2a00489c` | Unresolved navigation row and summary-before-month ordering. |
+| Habits / default snapshot | 1180×820 | `reference-final-habits-wide.png` | `ticket09-product-habits-wide.png` · `b2cf731d4a652ee0a81dd5b984f4022b50ab6b0c669f876e02448cd450aa8305` | Snapshot and two-column reading restored; header metric/hierarchy differs from FINAL. |
+| Habits / default snapshot | 800×640 | `reference-final-habits-medium.png` | `ticket09-product-habits-medium.png` · `6fe3ad588f26d624ca2567efc2a116c1d513d1a200276efc4eef59800661044c` | Same header departure plus icon-only sidebar. |
+| Habits / default snapshot | 640×520 | `reference-final-habits-narrow.png` | `ticket09-product-habits-narrow.png` · `e04eaafec08a0ba5073d554a66e045ca85acfa56ddf6ff714c167747a5adc003` | Single-column content remains readable, but navigation row and header hierarchy depart from FINAL. |
+
+### Paired deviation ledger
+
+Restored/confirmed: the shared toolbar, Today/Calendar/Habits destinations,
+Today's three phase projections and update rail, Calendar's month grid and
+selected-day summary, and Habits' sourced snapshot/recent marks/expanded detail
+are present. The fresh packaged AX companion independently passed the complete
+dashboard-2 synthetic matrix, including Morning, Daytime, Evening, Evening
+bottom-surface scrolling, Calendar selection, Habits expansion, and all three
+logical sizes.
+
+Explicitly accepted: native macOS title-bar chrome, production `本地` in place
+of prototype `本地原型`, and the prototype-only FINAL synthetic-data notice.
+These do not silently approve other layout differences.
+
+Unresolved confirmed departures: the 68px icon-only 800px sidebar; the missing
+visible 640px context/destination row; Calendar's production-only status copy,
+rounded summary card, and narrow summary ordering; and Habits' missing FINAL
+header metric plus stronger sourced-snapshot/week heading hierarchy.
+
+Not checked in this review: fresh visual captures for Calendar unreviewed/empty
+states and Habits edit/correction states. The existing legacy `calendar` and
+`habits` shell scenarios still start by waiting for retired `Log workout now`,
+so they are not fresh pass evidence for this candidate.
+
+### Separate non-visual evidence
+
+- `npm run build` — passed.
+- `npm run test:frontend` — 7 tests passed.
+- `cargo test --manifest-path src-tauri/Cargo.toml` — passed, including unit, workflow, and doc-test suites.
+- `npm run build:mac` — passed and produced the reviewed bundle/hash above.
+- `PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-2 PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=300 caffeinate -is scripts/acceptance/macos-ipc-workflow.sh` — passed in an isolated synthetic directory; source Daily Record and Habits snapshot hashes remained unchanged.
+- No real-data observation or write was performed; no producer, Dida365, automation, or cutover action was used.
+
+Conclusion: the visual review is recorded, but ticket 09 remains `ready-for-human`
+and overall 2.0 visual acceptance remains open until the unresolved departures
+are repaired or explicitly accepted and the not-checked states receive fresh
+evidence.

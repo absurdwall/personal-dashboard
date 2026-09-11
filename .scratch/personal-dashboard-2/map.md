@@ -10,7 +10,17 @@
 - [06 — 完成 FINAL 的整体验收](issues/06-final-packaged-acceptance.md) — resolved
 - [07 — 切换 2.0，退役旧 Exercise 功能与数据](issues/07-cutover-and-retire-exercise.md) — resolved
 
-## Dependency notes
+## 2.0 presentation repair frontier (2026-09-11)
+
+- [Repair decisions and evidence limits](repair-decisions.md)
+- [08 — Restore FINAL shell and destination presentation](issues/08-restore-final-presentation.md) — resolved
+- [09 — Independently verify FINAL parity and close 2.0](issues/09-review-final-parity-and-close.md) — ready-for-human; fresh review found responsive, Calendar, and Habits visual departures
+
+Prior resolved tickets record earlier delivery work; ticket 09's fresh review is
+complete, but overall visual acceptance remains open pending the concrete parity
+findings and user acceptance.
+
+## Original dependency notes
 
 - Ticket 05 depends on 03 and 04.
 - Ticket 06 depends on 02, 03, and 05.
