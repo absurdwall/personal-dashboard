@@ -1969,7 +1969,7 @@ EOF
   before_hashes="$(shasum -a 256 "$reviewed_file" "$unreviewed_file" "$malformed_file" "$today_file")"
 
   current_step="opening the FINAL Calendar month and selected-day summary"
-  launch_app_waiting_for_text "Log workout now" 30
+  launch_app_waiting_for_text "Today" 30
   run_driver set-size "960x720" 10
   run_driver press "Calendar" 10
   run_driver wait-text "2026 年 8 月" 20
@@ -2032,7 +2032,7 @@ EOF
   run_driver press "打开完整 Today" 10
   run_driver wait-text "Selected day · 2026-08-06" 20
   run_driver assert-state "Daytime|selected" 10
-  run_driver assert-semantic "today-daytime"
+  run_driver assert-semantic "dashboard-2-today-daytime"
   run_driver assert-absent-text "保存白天更新"
   run_driver press "Morning" 10
   run_driver assert-state "Morning|selected" 10
@@ -2052,7 +2052,7 @@ EOF
   run_driver assert-focused-text "8 月 9 日" 10
 
   current_step="returning to the current local Today"
-  run_driver select-contains "Today" 10
+  run_driver press "Today" 10
   run_driver wait-text "今天的初始安排" 20
   run_driver assert-text "Today · 2026-08-10"
   run_driver assert-state "Morning|selected" 10
@@ -2101,7 +2101,7 @@ EOF
   before_snapshot_hash="$(shasum -a 256 "$snapshot_file")"
 
   current_step="opening the FINAL Habits snapshot surface"
-  launch_app_waiting_for_text "Log workout now" 30
+  launch_app_waiting_for_text "Today" 30
   run_driver set-size "960x720" 10
   run_driver press "Habits" 10
   run_driver wait-text "3 / 15" 20
@@ -2166,7 +2166,7 @@ EOF
   run_driver press "打开完整 Today" 10
   run_driver wait-text "跑步 30 分钟" 20
   run_driver assert-state "Daytime|selected" 10
-  run_driver assert-semantic "today-daytime"
+  run_driver assert-semantic "dashboard-2-today-daytime"
   run_driver press "更正这条" 10
   run_driver type-text "Short record text|跑步 20 分钟" 10
   run_driver press "保存更正" 10
@@ -2183,7 +2183,7 @@ EOF
   if ! stop_app; then
     fail "app process did not exit after the cross-entry correction"
   fi
-  launch_app_waiting_for_text "Log workout now" 30
+  launch_app_waiting_for_text "Today" 30
   run_driver press "Habits" 10
   run_driver wait-text "3 / 15" 20
   run_driver press-contains "2026-09-06 · Exercise" 10
@@ -2225,7 +2225,9 @@ EOF
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
   run_driver assert-semantic "habits"
-  run_driver assert-text "Destination"
+  run_driver assert-text "Today"
+  run_driver assert-text "Calendar"
+  run_driver assert-text "Habits"
   run_driver assert-text "3 / 15"
   run_driver assert-text "近 12 周记录"
 
@@ -2447,17 +2449,19 @@ EOF
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
   run_driver assert-semantic "dashboard-2-today-daytime"
-  run_driver assert-text "Destination"
+  run_driver assert-text "Today"
+  run_driver assert-text "Calendar"
+  run_driver assert-text "Habits"
   run_driver assert-text "Reset living space 均未记录"
-  run_driver select-contains "Calendar" 10
+  run_driver press "Calendar" 10
   run_driver assert-semantic "dashboard-2-calendar"
   run_driver assert-text "打开完整 Today"
-  run_driver select-contains "Habits" 10
+  run_driver press "Habits" 10
   run_driver wait-text "3 / 15" 20
   run_driver assert-semantic "dashboard-2-habits"
   run_driver press-contains "2026-09-08 · Exercise" 10
   run_driver assert-text "近 12 周记录"
-  run_driver select-contains "Today" 10
+  run_driver press "Today" 10
   run_driver press "Evening" 10
   run_driver assert-state "Evening|selected" 10
   run_driver scroll-to-bottom "today" 10

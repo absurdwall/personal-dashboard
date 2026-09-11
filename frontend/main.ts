@@ -233,8 +233,8 @@ const workspaceDestinationDetails: Record<
   },
   habits: {
     title: "Habits",
-    description: "查看按需快照里的周次数、每日时刻与 12 周记录。",
-    featureArea: "Habits",
+    description: "周次数与每日目标时刻放在同一份轻量列表里。",
+    featureArea: "HABITS · 平级入口",
   },
 };
 
@@ -415,6 +415,41 @@ let currentHabitDateView: TodayView | null = null;
 let habitDateOperationCount = 0;
 let habitNoteStatus: Readonly<{ message: string; state: "ready" | "error" }> | null = null;
 const habitNoteDrafts = new Map<string, HabitNoteDraft>();
+
+function resetVaultScopedWorkspaceState(): void {
+  calendarMonthRequests.invalidate();
+  calendarSelectionRequests.invalidate();
+  habitSnapshotRequests.invalidate();
+  habitDateRequests.invalidate();
+  currentCalendarMonth = null;
+  selectedCalendarDate = null;
+  currentHabitSnapshot = null;
+  selectedHabitCell = null;
+  currentHabitDateView = null;
+  habitNoteStatus = null;
+  datedNoteDrafts.clear();
+  habitNoteDrafts.clear();
+  correctingShortRecordId = null;
+  calendarGrid?.replaceChildren();
+  habitsReady?.toggleAttribute("hidden", true);
+  habitsEmpty?.toggleAttribute("hidden", true);
+  habitsSummaryRows?.replaceChildren();
+  if (habitsSummaryTotal) habitsSummaryTotal.textContent = "—";
+  if (habitsRange) habitsRange.textContent = "正在读取按需快照…";
+  if (calendarSummaryHeading) calendarSummaryHeading.textContent = "正在读取选中日期…";
+  if (calendarSummaryStatus) {
+    calendarSummaryStatus.textContent = "读取中";
+    calendarSummaryStatus.dataset.availability = "unknown";
+  }
+  calendarSummaryCopy?.replaceChildren();
+  if (calendarOpenDay) calendarOpenDay.disabled = true;
+  if (calendarStatus) {
+    calendarStatus.textContent = "正在读取新 Vault 的 Calendar…";
+    calendarStatus.dataset.state = "loading";
+  }
+  renderWorkspaceRailContext(currentWorkspaceDestination);
+}
+
 function syncWorkspaceViewportMode(): void {
   appShell?.setAttribute("data-detail-open", "false");
   workspaceInformation?.removeAttribute("aria-hidden");
@@ -1097,9 +1132,16 @@ async function selectTodayVault(): Promise<void> {
     if (!todayPresentationRequests.isCurrent(presentationRequest)) {
       return;
     }
+    resetVaultScopedWorkspaceState();
     selectedTodayDate = null;
     currentTodayPhase = view.defaultPhase;
     renderToday(view);
+    renderWorkspaceContextStatus(currentWorkspaceDestination);
+    if (currentWorkspaceDestination === "calendar") {
+      await openCalendar();
+    } else if (currentWorkspaceDestination === "habits") {
+      await refreshHabits();
+    }
   } catch (error) {
     if (todayPresentationRequests.isCurrent(presentationRequest) && todayStatus) {
       todayStatus.textContent = `无法选择 Vault：${String(error)}`;
@@ -1837,6 +1879,7 @@ async function saveHabitExerciseNote(): Promise<boolean> {
 function renderHabitSnapshot(view: HabitSnapshotView): void {
   currentHabitSnapshot = view;
   renderWorkspaceRailContext("habits");
+  renderWorkspaceContextStatus(currentWorkspaceDestination);
   if (habitsStatus) {
     habitsStatus.textContent = view.message;
     habitsStatus.dataset.state = view.state;
@@ -1976,6 +2019,24 @@ function renderWorkspaceRailContext(destination: WorkspaceDestination): void {
   workspaceRailContextDetail.textContent = "weekly count · daily target";
 }
 
+function renderWorkspaceContextStatus(destination: WorkspaceDestination): void {
+  if (!workspaceContextStatus) {
+    return;
+  }
+  const summary = currentHabitSnapshot?.summary;
+  if (destination === "habits" && currentHabitSnapshot?.habits.length && summary) {
+    const total = document.createElement("strong");
+    total.textContent = `${summary.knownCompletions} / ${summary.targetCompletions}`;
+    const label = document.createElement("small");
+    label.textContent = "本周已知";
+    workspaceContextStatus.replaceChildren(total, label);
+    workspaceContextStatus.dataset.state = "habits-summary";
+    return;
+  }
+  workspaceContextStatus.textContent = `${workspaceDestinationDetails[destination].title} is the current destination.`;
+  workspaceContextStatus.dataset.state = "default";
+}
+
 function showWorkspaceDestination(
   destination: WorkspaceDestination,
   focus = false,
@@ -2052,9 +2113,7 @@ function showWorkspaceDestination(
   if (workspaceDescription) {
     workspaceDescription.textContent = details.description;
   }
-  if (workspaceContextStatus) {
-    workspaceContextStatus.textContent = `${details.title} is the current destination.`;
-  }
+  renderWorkspaceContextStatus(destination);
   renderWorkspaceFeatureArea(destination);
   renderWorkspaceRailContext(destination);
   if (destination === "today") {

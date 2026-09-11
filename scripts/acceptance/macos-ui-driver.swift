@@ -1074,6 +1074,7 @@ func assertSemanticContract(
     let todayMode = mode == "today" || mode == "today-daytime" || mode == "today-evening"
     let calendarMode = mode == "calendar"
     let habitsMode = mode == "habits"
+    let dashboardDestinationMode = calendarMode || habitsMode
     let compactMode = mode == "compact" || mode == "detail-compact" ||
         mode == "settings" || mode == "recording" || todayMode || calendarMode || habitsMode
     let minimumButtonCount = compactViewport ? 1 : 4
@@ -1098,7 +1099,7 @@ func assertSemanticContract(
     let requiresDestinationSwitcher = Set([
         "default", "compact", "settings", "calendar", "habits", "today", "today-daytime", "today-evening",
     ]).contains(mode)
-    if compactViewport && requiresDestinationSwitcher {
+    if compactViewport && requiresDestinationSwitcher && !dashboardDestinationMode {
         let expectedDestination = mode == "settings"
             ? "Settings"
             : calendarMode ? "Calendar"
@@ -1117,8 +1118,11 @@ func assertSemanticContract(
         }
     }
 
-    if !compactViewport {
-        for text in ["Today", "Calendar", "Habits", "This Week", "History", "Settings"] {
+    if dashboardDestinationMode || !compactViewport {
+        let destinations = dashboardDestinationMode
+            ? ["Today", "Calendar", "Habits"]
+            : ["Today", "Calendar", "Habits", "This Week", "History", "Settings"]
+        for text in destinations {
             guard findPressable(application, text, contains: true) != nil else {
                 throw DriverError.timeout("semantic navigation control: \(text)")
             }
@@ -1247,24 +1251,9 @@ func assertDashboard2SemanticContract(
         )
     }
 
-    if compactViewport {
-        let expectedDestination = calendarMode ? "Calendar" : habitsMode ? "Habits" : "Today"
-        let switcherRoles = Set(["AXComboBox", "AXPopUpButton"])
-        let switcherDescriptions = findRolesWithin(application, switcherRoles).map(nodeText)
-        guard switcherDescriptions.contains(where: {
-                  $0.localizedCaseInsensitiveContains(expectedDestination)
-              }),
-              findText(application, "Destination") != nil else {
-            throw DriverError.timeout(
-                "dashboard-2 compact destination switcher " +
-                    "(expected: \(expectedDestination), found: \(switcherDescriptions))"
-            )
-        }
-    } else {
-        for text in ["Today", "Calendar", "Habits"] {
-            guard findPressable(application, text, contains: true) != nil else {
-                throw DriverError.timeout("dashboard-2 navigation control: \(text)")
-            }
+    for text in ["Today", "Calendar", "Habits"] {
+        guard findPressable(application, text, contains: true) != nil else {
+            throw DriverError.timeout("dashboard-2 navigation control: \(text)")
         }
     }
 

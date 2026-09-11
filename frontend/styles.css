@@ -5519,3 +5519,267 @@ body {
     pointer-events: none;
   }
 }
+
+/* Ticket 09 final cascade: keep the restored FINAL shell ahead of legacy rules. */
+.app-shell[data-workspace-destination] .destination-icon {
+  display: none;
+}
+
+.app-shell[data-workspace-destination] .destination-button {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.app-shell[data-workspace-destination] .destination-button > span:not(.destination-icon) {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 0;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+  border: 0;
+}
+
+.app-shell[data-workspace-destination="calendar"] #workspace-destination-calendar > #calendar-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.app-shell[data-workspace-destination="calendar"] .calendar-summary {
+  padding: 0 0 0 1.25rem;
+  border: 0;
+  border-left: 1px solid var(--parity-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.app-shell[data-workspace-destination="calendar"] .calendar-header h2 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 3vw, 2.35rem);
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+}
+
+.app-shell[data-workspace-destination="calendar"] .calendar-summary-status {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.56rem;
+  font-weight: 800;
+}
+
+.app-shell[data-workspace-destination="calendar"] .calendar-summary-status[data-availability="reviewed"] {
+  color: var(--parity-accent-strong);
+}
+
+.app-shell[data-workspace-destination="calendar"] .calendar-summary-status[data-availability="unreviewed"] {
+  color: var(--parity-warning);
+}
+
+.app-shell[data-workspace-destination="calendar"] .calendar-summary-status[data-availability="error"] {
+  color: #873d32;
+}
+
+.app-shell[data-workspace-destination="habits"] .workspace-context-status[data-state="habits-summary"] {
+  display: grid;
+  min-width: 4rem;
+  max-width: 7rem;
+  gap: 0.15rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--parity-accent-strong);
+  text-align: right;
+}
+
+.app-shell[data-workspace-destination="habits"] .workspace-context-status[data-state="habits-summary"] strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.35rem;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.app-shell[data-workspace-destination="habits"] .workspace-context-status[data-state="habits-summary"] small {
+  color: var(--parity-muted);
+  font-size: 0.56rem;
+  line-height: 1.2;
+}
+
+.app-shell[data-workspace-destination="habits"] .habits-header {
+  align-items: flex-end;
+  padding: 0.65rem 0 0.7rem;
+}
+
+.app-shell[data-workspace-destination="habits"] .habits-header .section-label {
+  font-size: 0.56rem;
+  letter-spacing: 0.13em;
+}
+
+.app-shell[data-workspace-destination="habits"] .habits-header .destination-heading {
+  margin-bottom: 0.2rem;
+  font-size: 0.76rem;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.app-shell[data-workspace-destination="habits"] .workspace-header h1 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 500;
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+}
+
+.app-shell[data-workspace-destination="habits"] .habits-header p:last-child {
+  font-size: 0.56rem;
+  line-height: 1.4;
+}
+
+.app-shell[data-workspace-destination="habits"] .habits-layout,
+.app-shell[data-workspace-destination="habits"] .habit-snapshot-row,
+.app-shell[data-workspace-destination="habits"] .habit-snapshot-row > * {
+  min-width: 0;
+}
+
+@media (min-width: 681px) and (max-width: 900px) {
+  .app-shell[data-workspace-destination="habits"] .habit-snapshot-row {
+    grid-template-columns: minmax(5rem, 1fr) 3.25rem minmax(0, 0.85fr) 2rem;
+    gap: 0.5rem;
+  }
+}
+
+@media (min-width: 681px) and (max-width: 900px) {
+  .app-shell[data-workspace-destination] {
+    grid-template-columns: 10rem minmax(0, 1fr);
+  }
+
+  .app-shell[data-workspace-destination] > .workspace-sidebar {
+    display: flex;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0;
+    padding: 0.9rem 0.6rem 1rem;
+    border-right: 1px solid var(--parity-border);
+    border-bottom: 0;
+  }
+
+  .app-shell[data-workspace-destination] .workspace-navigation {
+    display: grid;
+    width: auto;
+    padding: 1rem 0.1rem;
+  }
+
+  .app-shell[data-workspace-destination] .workspace-compact-navigation {
+    display: none;
+  }
+
+  .app-shell[data-workspace-destination] .destination-button {
+    display: block;
+    justify-content: initial;
+    min-height: 2.25rem;
+    padding: 0.55rem 0.7rem;
+    text-align: left;
+  }
+
+  .app-shell[data-workspace-destination] .destination-icon {
+    display: none;
+  }
+
+  .app-shell[data-workspace-destination] .workspace-context-status[data-state="habits-summary"] {
+    display: grid;
+  }
+}
+
+@media (max-width: 680px) {
+  .app-shell[data-workspace-destination] {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  .app-shell[data-workspace-destination] > .workspace-sidebar {
+    display: grid;
+    grid-column: 1;
+    grid-row: 2;
+    grid-template-areas: "context navigation";
+    grid-template-columns: minmax(5rem, auto) minmax(0, 1fr);
+    align-items: center;
+    gap: 0.8rem;
+    min-height: 4.5rem;
+    padding: 0.65rem 0.75rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--parity-border);
+  }
+
+  .app-shell[data-workspace-destination] .workspace-rail-context {
+    grid-area: context;
+    gap: 0;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .app-shell[data-workspace-destination] .workspace-rail-context .section-label,
+  .app-shell[data-workspace-destination] .workspace-rail-context small {
+    display: none;
+  }
+
+  .app-shell[data-workspace-destination] .workspace-rail-context strong {
+    font-size: 0.66rem;
+    white-space: nowrap;
+  }
+
+  .app-shell[data-workspace-destination] .workspace-navigation {
+    display: flex;
+    grid-area: navigation;
+    min-width: 0;
+    gap: 0.15rem;
+    padding: 0;
+  }
+
+  .app-shell[data-workspace-destination] .workspace-compact-navigation,
+  .app-shell[data-workspace-destination] .sidebar-status {
+    display: none;
+  }
+
+  .app-shell[data-workspace-destination] .destination-button {
+    display: block;
+    min-height: 2.45rem;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.64rem;
+    text-align: left;
+  }
+
+  .app-shell[data-workspace-destination] .destination-icon {
+    display: none;
+  }
+
+  .app-shell[data-workspace-destination] .workspace-shell {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .app-shell[data-workspace-destination="calendar"] .calendar-summary {
+    order: 0;
+    padding: 1rem 0 0;
+    border-top: 1px solid var(--parity-border);
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+  }
+
+  .app-shell[data-workspace-destination="habits"] .workspace-context-status[data-state="habits-summary"] {
+    display: grid;
+    min-width: 4.25rem;
+    text-align: right;
+  }
+}
