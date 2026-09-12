@@ -61,3 +61,32 @@ test("normal 2.0 startup registers no retired Exercise, Profile, migration, or r
     assert.doesNotMatch(runBoundary, new RegExp(retiredCommand));
   }
 });
+
+test("Calendar and Habits summaries use the non-receiving daily read command", () => {
+  const calendarSelection = main.slice(
+    main.indexOf("async function selectCalendarDate"),
+    main.indexOf("async function refreshCalendarMonth"),
+  );
+  const calendarOpen = main.slice(
+    main.indexOf("async function openCalendar"),
+    main.indexOf("async function chooseCalendarMonth"),
+  );
+  const calendarToday = main.slice(
+    main.indexOf("async function showCalendarToday"),
+    main.indexOf("const habitStatusLabels"),
+  );
+  const habitDate = main.slice(
+    main.indexOf("async function loadSelectedHabitDate"),
+    main.indexOf("function stashHabitNoteDraft"),
+  );
+
+  for (const readOnlySurface of [
+    calendarSelection,
+    calendarOpen,
+    calendarToday,
+    habitDate,
+  ]) {
+    assert.match(readOnlySurface, /"read_daily_view"/);
+    assert.doesNotMatch(readOnlySurface, /"daily_view"|"today_view"/);
+  }
+});

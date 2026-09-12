@@ -446,6 +446,8 @@ const englishDiagnosticLabels: Readonly<Record<string, string>> = {
   "任务标识": "Task identifier",
   "任务修改标识": "Task-change identifier",
   "任务来源标识": "Task source identifier",
+  "规划任务来源标识": "Planning-task source identifier",
+  "规划任务身份": "Planning-task identity",
 };
 
 const englishApplicationErrors: Readonly<Record<string, string>> = {
@@ -553,6 +555,16 @@ const englishApplicationErrors: Readonly<Record<string, string>> = {
     "This day task is deleted; its old identity will not be reactivated.",
   "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。":
     "The canonical day-task document changed externally. The operation remains retryable; refresh before saving again. External content was not overwritten.",
+  "请选择 Vault，以读取规划所需的当天任务。":
+    "Choose a Vault before reading day tasks for planning.",
+  "规划任务输入包含重复来源标识；未接收任何候选。":
+    "The planning-task input contains duplicate source references; no candidates were accepted.",
+  "规划任务输入包含重复任务身份；未接收任何候选。":
+    "The planning-task input contains duplicate task identities; no candidates were accepted.",
+  "规划任务来源身份已绑定到另一任务；旧候选不会被重新解释。":
+    "The planning-task source identity is already bound to another task; the old candidate was not reinterpreted.",
+  "规划任务身份已用于另一来源；未写入任何候选。":
+    "The planning-task identity is already used by another source; no candidates were written.",
 };
 
 function englishApplicationDiagnostic(message: string): string | null {
@@ -611,6 +623,18 @@ function englishApplicationDiagnostic(message: string): string | null {
   const invalidTaskTimestamp = /^当天任务正本包含无效时间戳：([\s\S]*)$/.exec(message);
   if (invalidTaskTimestamp) {
     return `The canonical day-task document contains an invalid timestamp: ${invalidTaskTimestamp[1]}`;
+  }
+  const planRead = /^无法读取规划任务输入：([\s\S]+)$/.exec(message);
+  if (planRead) return `Could not read the planning-task input: ${planRead[1]}`;
+  const invalidPlanJson = /^规划任务输入不是有效 JSON：([\s\S]+)$/.exec(message);
+  if (invalidPlanJson) return `The planning-task input is not valid JSON: ${invalidPlanJson[1]}`;
+  const unsupportedPlanSchema = /^规划任务输入使用不支持的 schema 版本 (\d+)；未接收任何候选。$/.exec(message);
+  if (unsupportedPlanSchema) {
+    return `The planning-task input uses unsupported schema version ${unsupportedPlanSchema[1]}; no candidates were accepted.`;
+  }
+  const planDateMismatch = /^规划任务输入归属 ([\s\S]*)，与所选日期 (\d{4}-\d{2}-\d{2}) 不一致。$/.exec(message);
+  if (planDateMismatch) {
+    return `The planning-task input belongs to ${planDateMismatch[1]}, not the selected date ${planDateMismatch[2]}.`;
   }
   const encodedTask = /^无法编码当天任务正本：(.+)$/.exec(message);
   if (encodedTask) return `Could not encode the canonical day-task document: ${encodedTask[1]}`;

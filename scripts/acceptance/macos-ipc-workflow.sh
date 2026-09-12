@@ -333,7 +333,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors interface-language background-image day-tasks; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors interface-language background-image day-tasks planning-tasks; do
     run_bounded_scenario "$scenario"
   done
 
@@ -3520,6 +3520,150 @@ EOF
   echo "Presentation: the B-layout rail remained visible across all Today phases at 1120x760 and 800x640 with bilingual fixed copy"
 }
 
+run_planning_tasks_scenario() {
+  local vault="$acceptance_directory/planning-task-vault"
+  local record="$vault/life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local plan="$vault/life/.personal-dashboard/day-task-plans/v1/2026/2026-09-08.json"
+  local plan_candidate="$plan.candidate"
+  local tasks="$vault/life/.personal-dashboard/day-tasks/v1/2026/2026-09-08.json"
+  local before_record_hash
+  local original_a="整理厨房 · Flow A"
+  local renamed_a="整理厨房与餐桌 · User rename"
+  local renamed_after_error="整理厨房与餐桌 · Rename while input invalid"
+  local completed_b="洗衣服 · Flow B"
+  local reordered_c="启动扫地机器人 · Flow C"
+  local suggestion="如果有空可以散步 · Suggestion only"
+  local rearranged_c="再次明确安排扫地 · Flow C2"
+
+  current_step="preparing the isolated planning-task contract fixture"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p "$vault/.obsidian" "$(dirname "$record")" "$(dirname "$plan")" \
+    "$acceptance_data_directory"
+  cat > "$record" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## 晚间复盘
+
+This existing review must remain byte-identical.
+EOF
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  before_record_hash="$(shasum -a 256 "$record" | awk '{print $1}')"
+
+  current_step="receiving structured actions while excluding a suggestion"
+  launch_app_waiting_for_text "当天任务" 30
+  run_driver assert-active-absent-text "$original_a"
+  cat > "$plan_candidate" <<EOF
+{
+  "schemaVersion": 1,
+  "date": "2026-09-08",
+  "candidates": [
+    {"kind":"action","taskId":"flow-a","sourceReference":"plan-a","text":"$original_a"},
+    {"kind":"action","taskId":"flow-b","sourceReference":"plan-b","text":"$completed_b"},
+    {"kind":"suggestion","sourceReference":"plan-suggestion","text":"$suggestion"}
+  ]
+}
+EOF
+  /bin/mv "$plan_candidate" "$plan"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "$original_a" 20
+  run_driver assert-active-text "$completed_b"
+  run_driver assert-active-absent-text "$suggestion"
+  run_driver assert-active-text "每日流程导入"
+  wait_for_file_text "$tasks" '"reference": "plan-a"' ||
+    fail "the packaged reread did not merge the structured action"
+  [[ "$(grep -Fc '"reference": "plan-a"' "$tasks")" == "1" ]] ||
+    fail "the first structured action was duplicated"
+
+  current_step="preserving user rename and completion through a replan"
+  run_driver type-text "重命名任务|$renamed_a" 10
+  run_driver press "保存任务" 10
+  run_driver wait-active-text "$renamed_a" 20
+  run_driver press "切换“${completed_b}”的完成状态" 10
+  run_driver assert-state "切换“${completed_b}”的完成状态|selected" 10
+  cat > "$plan_candidate" <<EOF
+{
+  "schemaVersion": 1,
+  "date": "2026-09-08",
+  "candidates": [
+    {"kind":"action","taskId":"flow-c","sourceReference":"plan-c","text":"$reordered_c"},
+    {"kind":"action","taskId":"flow-a","sourceReference":"plan-a","text":"上游新文字不能覆盖用户改名"},
+    {"kind":"action","taskId":"flow-b","sourceReference":"plan-b","text":"$completed_b"}
+  ]
+}
+EOF
+  /bin/mv "$plan_candidate" "$plan"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "$reordered_c" 20
+  run_driver assert-active-text "$renamed_a"
+  run_driver assert-state "切换“${completed_b}”的完成状态|selected" 10
+
+  current_step="retaining deletion intent and requiring a distinct rearrangement identity"
+  run_driver press "删除任务“${reordered_c}”" 10
+  run_driver assert-active-absent-text "$reordered_c"
+  run_driver press "刷新" 10
+  run_driver assert-active-absent-text "$reordered_c"
+  cat > "$plan_candidate" <<EOF
+{
+  "schemaVersion": 1,
+  "date": "2026-09-08",
+  "candidates": [
+    {"kind":"action","taskId":"flow-c-2","sourceReference":"plan-c","text":"不能借旧来源复活"}
+  ]
+}
+EOF
+  /bin/mv "$plan_candidate" "$plan"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "规划任务来源身份已绑定到另一任务" 20
+  run_driver assert-active-text "$renamed_a"
+  run_driver assert-active-absent-text "不能借旧来源复活"
+  run_driver type-text "重命名任务|$renamed_after_error" 10
+  run_driver press "保存任务" 10
+  run_driver wait-active-text "$renamed_after_error" 20
+  run_driver assert-active-text "规划任务来源身份已绑定到另一任务"
+  cat > "$plan_candidate" <<EOF
+{
+  "schemaVersion": 1,
+  "date": "2026-09-08",
+  "candidates": [
+    {"kind":"action","taskId":"flow-c-2","sourceReference":"plan-c-2","text":"$rearranged_c"},
+    {"kind":"action","taskId":"flow-a","sourceReference":"plan-a","text":"仍不覆盖用户改名"}
+  ]
+}
+EOF
+  /bin/mv "$plan_candidate" "$plan"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "$rearranged_c" 20
+  run_driver assert-active-text "$renamed_after_error"
+  run_driver assert-state "切换“${completed_b}”的完成状态|selected" 10
+  [[ "$(grep -Fc '"reference": "plan-a"' "$tasks")" == "1" ]] ||
+    fail "repeated planning input duplicated an existing task"
+  grep -Fq '"deletedAt": "2026-09-08T' "$tasks" ||
+    fail "the packaged replan lost the deleted task tombstone"
+
+  current_step="proving relaunch persistence and bilingual source copy"
+  if ! stop_app; then
+    fail "app process did not exit before planning-task relaunch"
+  fi
+  launch_app_waiting_for_text "$rearranged_c" 30
+  run_driver assert-active-text "$renamed_after_error"
+  run_driver assert-state "切换“${completed_b}”的完成状态|selected" 10
+  run_driver press "切换为英文" 10
+  run_driver wait-active-text "Imported by the daily flow" 10
+  run_driver assert-active-text "$renamed_after_error"
+  [[ "$(shasum -a 256 "$record" | awk '{print $1}')" == "$before_record_hash" ]] ||
+    fail "planning-task receipt or task clicks changed the existing evening review"
+
+  echo "Packaged IPC planning-task acceptance passed"
+  echo "Contract: structured actions entered Today, suggestions stayed out, and repeated reads remained idempotent"
+  echo "Preservation: reorder retained completion and user text; tombstones blocked the old identity until a distinct rearrangement arrived"
+  echo "Boundary: only synthetic Vault input was used; no Agent, skill, Dida365, MCP, automation, or Daily Record review was changed"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -3605,6 +3749,7 @@ case "$acceptance_scenario" in
   interface-language) run_interface_language_scenario ;;
   background-image) run_background_image_scenario ;;
   day-tasks) run_day_tasks_scenario ;;
+  planning-tasks) run_planning_tasks_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;
 esac

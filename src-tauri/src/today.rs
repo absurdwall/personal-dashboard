@@ -889,6 +889,7 @@ fn daily_record_availability(state: TodayState, evening: &EveningView) -> DailyR
 }
 
 const DAY_TASK_SCHEMA_VERSION: u32 = 1;
+const DAY_TASK_PLAN_SCHEMA_VERSION: u32 = 1;
 const DAY_TASK_TEXT_LIMIT: usize = 160;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -945,11 +946,40 @@ pub enum DayTaskState {
     Error,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PlanningDayTaskStatus {
+    Unconfirmed,
+    Completed,
+    Deleted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanningDayTaskView {
+    pub id: String,
+    pub text: String,
+    pub source: DayTaskSourceView,
+    pub status: PlanningDayTaskStatus,
+    pub modified_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanningDayTaskContextView {
+    pub schema_version: u32,
+    pub date: String,
+    pub revision: Option<String>,
+    pub target_binding: String,
+    pub tasks: Vec<PlanningDayTaskView>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DayTaskListView {
     pub state: DayTaskState,
     pub message: String,
+    pub plan_error: Option<String>,
     pub revision: Option<String>,
     pub target_binding: Option<String>,
     pub tasks: Vec<DayTaskView>,
@@ -960,6 +990,7 @@ impl DayTaskListView {
         Self {
             state: DayTaskState::Unconfigured,
             message: "请选择 Vault，以读取当天任务。".into(),
+            plan_error: None,
             revision: None,
             target_binding: None,
             tasks: Vec::new(),
@@ -970,6 +1001,7 @@ impl DayTaskListView {
         Self {
             state: DayTaskState::Error,
             message: message.into(),
+            plan_error: None,
             revision: None,
             target_binding,
             tasks: Vec::new(),
@@ -1027,7 +1059,7 @@ struct DayTaskDocument {
     tasks: Vec<DayTaskRecord>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct DayTaskRecord {
     id: String,
@@ -1038,6 +1070,33 @@ struct DayTaskRecord {
     completed_at: Option<String>,
     deleted_at: Option<String>,
     changes: Vec<DayTaskChangeView>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DayTaskPlanDocument {
+    schema_version: u32,
+    date: String,
+    candidates: Vec<DayTaskPlanCandidate>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+enum DayTaskPlanCandidate {
+    Action {
+        task_id: String,
+        source_reference: String,
+        text: String,
+    },
+    Suggestion {
+        source_reference: String,
+        text: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1192,18 +1251,29 @@ where
     H: HabitSnapshotStore,
     D: DayTaskStore,
 {
-    fn day_tasks_for(&self, vault: &Path, date: &str) -> DayTaskListView {
+    fn day_tasks_for(
+        &self,
+        vault: &Path,
+        date: &str,
+        receive_planning_input: bool,
+    ) -> DayTaskListView {
         let path = match canonical_day_task_path(vault, date) {
             Ok(path) => path,
             Err(error) => return DayTaskListView::error(error, None),
         };
         let target_binding = Some(day_task_target_binding(&path));
+        let plan_error = receive_planning_input
+            .then(|| self.merge_day_task_plan(vault, date, &path).err())
+            .flatten();
         let bytes = match self.day_task_store.load(&path) {
             Ok(Some(bytes)) => bytes,
             Ok(None) => {
                 return DayTaskListView {
                     state: DayTaskState::Empty,
-                    message: "这一天没有任务；未勾选事项不会自动顺延。".into(),
+                    message: plan_error
+                        .clone()
+                        .unwrap_or_else(|| "这一天没有任务；未勾选事项不会自动顺延。".into()),
+                    plan_error,
                     revision: None,
                     target_binding,
                     tasks: Vec::new(),
@@ -1226,11 +1296,14 @@ where
                     } else {
                         DayTaskState::Ready
                     },
-                    message: if tasks.is_empty() {
-                        "这一天没有任务；未勾选事项不会自动顺延。".into()
-                    } else {
-                        "已读取这一天的任务。".into()
-                    },
+                    message: plan_error.clone().unwrap_or_else(|| {
+                        if tasks.is_empty() {
+                            "这一天没有任务；未勾选事项不会自动顺延。".into()
+                        } else {
+                            "已读取这一天的任务。".into()
+                        }
+                    }),
+                    plan_error,
                     revision: Some(revision),
                     target_binding,
                     tasks,
@@ -1238,6 +1311,168 @@ where
             }
             Err(error) => DayTaskListView::error(error, target_binding),
         }
+    }
+
+    fn merge_day_task_plan(
+        &self,
+        vault: &Path,
+        date: &str,
+        task_path: &Path,
+    ) -> Result<(), String> {
+        let plan_path = canonical_day_task_plan_path(vault, date)?;
+        let plan_bytes = match fs::read(&plan_path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(format!("无法读取规划任务输入：{error}")),
+        };
+        let plan = parse_day_task_plan_document(&plan_bytes, date)?;
+        let current = self.day_task_store.load(task_path)?;
+        let mut document = match current.as_deref() {
+            Some(bytes) => parse_day_task_document(bytes, date)?,
+            None => DayTaskDocument {
+                schema_version: DAY_TASK_SCHEMA_VERSION,
+                date: date.into(),
+                tasks: Vec::new(),
+            },
+        };
+        let now = self.clock.current_timestamp_label();
+        validate_timestamp_label(&now)?;
+        let original_tasks = document.tasks.clone();
+        let mut reordered = Vec::new();
+        let mut reordered_ids = std::collections::HashSet::new();
+        for candidate in plan.candidates {
+            let DayTaskPlanCandidate::Action {
+                task_id,
+                source_reference,
+                text,
+            } = candidate
+            else {
+                continue;
+            };
+            if let Some(existing) = document
+                .tasks
+                .iter()
+                .find(|task| task.source.reference.as_deref() == Some(&source_reference))
+            {
+                if existing.id != task_id || existing.source.kind != DayTaskSourceKind::DailyFlow {
+                    return Err("规划任务来源身份已绑定到另一任务；旧候选不会被重新解释。".into());
+                }
+                if existing.deleted_at.is_none()
+                    && existing.completed_at.is_none()
+                    && reordered_ids.insert(existing.id.clone())
+                {
+                    reordered.push(existing.clone());
+                }
+                continue;
+            }
+            if document.tasks.iter().any(|task| task.id == task_id) {
+                return Err("规划任务身份已用于另一来源；未写入任何候选。".into());
+            }
+            let task = DayTaskRecord {
+                id: task_id,
+                text: text.trim().into(),
+                source: DayTaskSourceView {
+                    kind: DayTaskSourceKind::DailyFlow,
+                    reference: Some(source_reference),
+                },
+                created_at: now.clone(),
+                modified_at: now.clone(),
+                completed_at: None,
+                deleted_at: None,
+                changes: Vec::new(),
+            };
+            reordered_ids.insert(task.id.clone());
+            reordered.push(task);
+        }
+
+        for task in &document.tasks {
+            if task.source.kind == DayTaskSourceKind::DailyFlow
+                && task.completed_at.is_none()
+                && task.deleted_at.is_none()
+                && reordered_ids.insert(task.id.clone())
+            {
+                reordered.push(task.clone());
+            }
+        }
+        let reorder_slots = document
+            .tasks
+            .iter()
+            .enumerate()
+            .filter_map(|(index, task)| {
+                (task.source.kind == DayTaskSourceKind::DailyFlow
+                    && task.completed_at.is_none()
+                    && task.deleted_at.is_none())
+                .then_some(index)
+            })
+            .collect::<Vec<_>>();
+        for (slot, task) in reorder_slots.iter().copied().zip(reordered.iter().cloned()) {
+            document.tasks[slot] = task;
+        }
+        let additions = reordered.into_iter().skip(reorder_slots.len());
+        if let Some(last_slot) = reorder_slots.last().copied() {
+            document
+                .tasks
+                .splice(last_slot + 1..last_slot + 1, additions);
+        } else {
+            document.tasks.extend(additions);
+        }
+
+        if document.tasks == original_tasks {
+            return Ok(());
+        }
+        let updated = encode_day_task_document(&document)?;
+        match current {
+            Some(bytes) => self
+                .day_task_store
+                .save_if_unchanged(task_path, &bytes, &updated),
+            None => self.day_task_store.create_new(task_path, &updated),
+        }
+    }
+
+    pub fn planning_day_task_context(
+        &self,
+        date: &str,
+    ) -> Result<PlanningDayTaskContextView, String> {
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or_else(|| "请选择 Vault，以读取规划所需的当天任务。".to_string())?;
+        validate_compatible_vault(&vault)?;
+        let path = canonical_day_task_path(&vault, date)?;
+        let target_binding = day_task_target_binding(&path);
+        let Some(bytes) = self.day_task_store.load(&path)? else {
+            return Ok(PlanningDayTaskContextView {
+                schema_version: DAY_TASK_SCHEMA_VERSION,
+                date: date.into(),
+                revision: None,
+                target_binding,
+                tasks: Vec::new(),
+            });
+        };
+        let document = parse_day_task_document(&bytes, date)?;
+        Ok(PlanningDayTaskContextView {
+            schema_version: DAY_TASK_SCHEMA_VERSION,
+            date: date.into(),
+            revision: Some(document_revision(&bytes)),
+            target_binding,
+            tasks: document
+                .tasks
+                .into_iter()
+                .map(|task| PlanningDayTaskView {
+                    id: task.id,
+                    text: task.text,
+                    source: task.source,
+                    status: if task.deleted_at.is_some() {
+                        PlanningDayTaskStatus::Deleted
+                    } else if task.completed_at.is_some() {
+                        PlanningDayTaskStatus::Completed
+                    } else {
+                        PlanningDayTaskStatus::Unconfirmed
+                    },
+                    modified_at: task.modified_at,
+                })
+                .collect(),
+        })
     }
 
     pub fn add_day_task(&self, input: DayTaskAddInput) -> Result<TodayView, String> {
@@ -1273,7 +1508,7 @@ where
                         && existing.text == task.text
                         && existing.source == task.source
                     {
-                        return self.open_vault(&vault, input.date);
+                        return self.reload_vault(&vault, input.date);
                     }
                     return Err(
                         "该任务标识已用于其他任务或已删除任务；请重新添加为新的稳定身份。".into(),
@@ -1301,7 +1536,7 @@ where
                 self.day_task_store.create_new(&path, &encoded)?;
             }
         }
-        self.open_vault(&vault, input.date)
+        self.reload_vault(&vault, input.date)
     }
 
     pub fn rename_day_task(&self, input: DayTaskRenameInput) -> Result<TodayView, String> {
@@ -1316,14 +1551,14 @@ where
                 && change.kind == DayTaskChangeKind::Renamed
                 && change.new_text.as_deref() == Some(input.text.trim())
             {
-                return self.open_vault(&vault, input.date);
+                return self.reload_vault(&vault, input.date);
             }
             return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
         }
         require_day_task_revision(&bytes, &input.expected_revision, &input.date)?;
         let task = active_day_task_mut(&mut document, &input.task_id)?;
         if task.text == input.text.trim() {
-            return self.open_vault(&vault, input.date);
+            return self.reload_vault(&vault, input.date);
         }
         let now = self.clock.current_timestamp_label();
         validate_timestamp_label(&now)?;
@@ -1340,7 +1575,7 @@ where
         let updated = encode_day_task_document(&document)?;
         self.day_task_store
             .save_if_unchanged(&path, &bytes, &updated)?;
-        self.open_vault(&vault, input.date)
+        self.reload_vault(&vault, input.date)
     }
 
     pub fn set_day_task_completion(
@@ -1359,14 +1594,14 @@ where
         };
         if let Some((task, change)) = find_day_task_change(&document, &input.change_id) {
             if task.id == input.task_id && change.kind == intended_kind {
-                return self.open_vault(&vault, input.date);
+                return self.reload_vault(&vault, input.date);
             }
             return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
         }
         require_day_task_revision(&bytes, &input.expected_revision, &input.date)?;
         let task = active_day_task_mut(&mut document, &input.task_id)?;
         if task.completed_at.is_some() == input.completed {
-            return self.open_vault(&vault, input.date);
+            return self.reload_vault(&vault, input.date);
         }
         let now = self.clock.current_timestamp_label();
         validate_timestamp_label(&now)?;
@@ -1382,7 +1617,7 @@ where
         let updated = encode_day_task_document(&document)?;
         self.day_task_store
             .save_if_unchanged(&path, &bytes, &updated)?;
-        self.open_vault(&vault, input.date)
+        self.reload_vault(&vault, input.date)
     }
 
     pub fn delete_day_task(&self, input: DayTaskDeleteInput) -> Result<TodayView, String> {
@@ -1393,7 +1628,7 @@ where
             self.load_day_task_mutation_target(&input.date, &input.target_binding)?;
         if let Some((task, change)) = find_day_task_change(&document, &input.change_id) {
             if task.id == input.task_id && change.kind == DayTaskChangeKind::Deleted {
-                return self.open_vault(&vault, input.date);
+                return self.reload_vault(&vault, input.date);
             }
             return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
         }
@@ -1413,7 +1648,7 @@ where
         let updated = encode_day_task_document(&document)?;
         self.day_task_store
             .save_if_unchanged(&path, &bytes, &updated)?;
-        self.open_vault(&vault, input.date)
+        self.reload_vault(&vault, input.date)
     }
 
     fn load_day_task_mutation_target(
@@ -1546,6 +1781,19 @@ where
     }
 
     pub fn open_date(&self, date: &str) -> Result<TodayView, String> {
+        self.view_date(date, true)
+    }
+
+    pub fn read(&self) -> Result<TodayView, String> {
+        let date = self.clock.current_date();
+        self.read_date(&date)
+    }
+
+    pub fn read_date(&self, date: &str) -> Result<TodayView, String> {
+        self.view_date(date, false)
+    }
+
+    fn view_date(&self, date: &str, receive_planning_input: bool) -> Result<TodayView, String> {
         canonical_record_path(Path::new("."), date)?;
         let is_today = date == self.clock.current_date();
         let Some(vault) = self.persistence.load_selected_vault()? else {
@@ -1574,7 +1822,11 @@ where
                 day_tasks: DayTaskListView::unconfigured(),
             });
         };
-        self.open_vault(&vault, date.to_owned())
+        if receive_planning_input {
+            self.open_vault(&vault, date.to_owned())
+        } else {
+            self.reload_vault(&vault, date.to_owned())
+        }
     }
 
     pub fn select_vault(&self) -> Result<VaultSelectionResult, String> {
@@ -1619,7 +1871,7 @@ where
             let date_label = date.to_string();
             let availability = match vault.as_deref() {
                 None => DailyRecordAvailability::Missing,
-                Some(vault) => match self.open_vault(vault, date_label.clone()) {
+                Some(vault) => match self.reload_vault(vault, date_label.clone()) {
                     Ok(view) => view.daily_record_availability,
                     Err(_) => DailyRecordAvailability::Error,
                 },
@@ -1655,7 +1907,7 @@ where
                 let records = parse_short_records(&document, &input.date)?;
                 if let Some(record) = records.iter().find(|record| record.id == input.entry_id) {
                     if record.category == input.category && record.text == input.content.trim() {
-                        return self.open_vault(&vault, input.date);
+                        return self.reload_vault(&vault, input.date);
                     }
                     return Err(
                         "该记录标识已经用于另一条内容。请刷新后重试；未写入任何内容。".into(),
@@ -1701,7 +1953,7 @@ where
                 self.record_store.create_new(&path, document.as_bytes())?;
             }
         }
-        self.open_vault(&vault, input.date)
+        self.reload_vault(&vault, input.date)
     }
 
     pub fn correct_dated_note(&self, input: DatedNoteCorrectionInput) -> Result<TodayView, String> {
@@ -1723,7 +1975,7 @@ where
             .find(|change| change.view.id == input.change_id)
         {
             if change.entry_id == input.entry_id && change.view.new_text == input.content.trim() {
-                return self.open_vault(&vault, input.date);
+                return self.reload_vault(&vault, input.date);
             }
             return Err("该修改标识已经用于另一项更正。请刷新后重试；未写入任何内容。".into());
         }
@@ -1763,7 +2015,7 @@ where
         validate_writable_daily_record(&updated, &input.date)?;
         self.record_store
             .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
-        self.open_vault(&vault, input.date)
+        self.reload_vault(&vault, input.date)
     }
 
     fn validate_event_date(&self, date: &str) -> Result<(), String> {
@@ -1809,7 +2061,7 @@ where
         validate_writable_daily_record(&updated, &self.clock.current_date())?;
         self.record_store
             .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
-        self.open_vault(&vault, self.clock.current_date())
+        self.reload_vault(&vault, self.clock.current_date())
     }
 
     pub fn update_evening_review(&self, input: EveningUpdateInput) -> Result<TodayView, String> {
@@ -1834,7 +2086,7 @@ where
         validate_writable_daily_record(&updated, &self.clock.current_date())?;
         self.record_store
             .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
-        self.open_vault(&vault, self.clock.current_date())
+        self.reload_vault(&vault, self.clock.current_date())
     }
 
     fn load_writable_record(&self) -> Result<(PathBuf, PathBuf, String), String> {
@@ -1853,6 +2105,19 @@ where
     }
 
     fn open_vault(&self, vault: &Path, date: String) -> Result<TodayView, String> {
+        self.render_vault(vault, date, true)
+    }
+
+    fn reload_vault(&self, vault: &Path, date: String) -> Result<TodayView, String> {
+        self.render_vault(vault, date, false)
+    }
+
+    fn render_vault(
+        &self,
+        vault: &Path,
+        date: String,
+        receive_planning_input: bool,
+    ) -> Result<TodayView, String> {
         let is_today = date == self.clock.current_date();
         let can_record = CalendarDate::parse(&date).is_some_and(|selected| {
             CalendarDate::parse(&self.clock.current_date())
@@ -1883,7 +2148,7 @@ where
                 format!("{error}。请重新选择兼容 Vault；未转换或写入任何文件。"),
             ));
         }
-        let day_tasks = self.day_tasks_for(vault, &date);
+        let day_tasks = self.day_tasks_for(vault, &date, receive_planning_input);
         let path = canonical_record_path(vault, &date)?;
         let target_binding = record_target_binding(&path);
         let bytes = match self.record_store.load(&path)? {
@@ -2110,6 +2375,15 @@ fn canonical_day_task_path(vault: &Path, date: &str) -> Result<PathBuf, String> 
         .join(format!("{date}.json")))
 }
 
+fn canonical_day_task_plan_path(vault: &Path, date: &str) -> Result<PathBuf, String> {
+    let parsed = CalendarDate::parse(date)
+        .ok_or_else(|| "The selected date is not a valid YYYY-MM-DD calendar date.".to_string())?;
+    Ok(vault
+        .join("life/.personal-dashboard/day-task-plans/v1")
+        .join(format!("{:04}", parsed.year))
+        .join(format!("{date}.json")))
+}
+
 fn day_task_target_binding(path: &Path) -> String {
     format!(
         "day-task-target-{}",
@@ -2128,6 +2402,53 @@ fn validate_day_task_text(value: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+fn parse_day_task_plan_document(
+    bytes: &[u8],
+    expected_date: &str,
+) -> Result<DayTaskPlanDocument, String> {
+    let document: DayTaskPlanDocument = serde_json::from_slice(bytes)
+        .map_err(|error| format!("规划任务输入不是有效 JSON：{error}"))?;
+    if document.schema_version != DAY_TASK_PLAN_SCHEMA_VERSION {
+        return Err(format!(
+            "规划任务输入使用不支持的 schema 版本 {}；未接收任何候选。",
+            document.schema_version
+        ));
+    }
+    if document.date != expected_date {
+        return Err(format!(
+            "规划任务输入归属 {}，与所选日期 {expected_date} 不一致。",
+            document.date
+        ));
+    }
+    let mut task_ids = std::collections::HashSet::new();
+    let mut source_references = std::collections::HashSet::new();
+    for candidate in &document.candidates {
+        let (task_id, source_reference, text) = match candidate {
+            DayTaskPlanCandidate::Action {
+                task_id,
+                source_reference,
+                text,
+            } => (Some(task_id), source_reference, text),
+            DayTaskPlanCandidate::Suggestion {
+                source_reference,
+                text,
+            } => (None, source_reference, text),
+        };
+        validate_local_identifier(source_reference, "规划任务来源标识")?;
+        validate_day_task_text(text)?;
+        if !source_references.insert(source_reference.as_str()) {
+            return Err("规划任务输入包含重复来源标识；未接收任何候选。".into());
+        }
+        if let Some(task_id) = task_id {
+            validate_local_identifier(task_id, "规划任务身份")?;
+            if !task_ids.insert(task_id.as_str()) {
+                return Err("规划任务输入包含重复任务身份；未接收任何候选。".into());
+            }
+        }
+    }
+    Ok(document)
 }
 
 fn parse_day_task_document(bytes: &[u8], expected_date: &str) -> Result<DayTaskDocument, String> {

@@ -42,7 +42,8 @@ use platform::{
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
     DayTaskCompletionInput, DayTaskDeleteInput, DayTaskRenameInput, DaytimeUpdateInput,
-    EveningUpdateInput, HabitSnapshotView, TodayApplication, TodayView, VaultSelectionResult,
+    EveningUpdateInput, HabitSnapshotView, PlanningDayTaskContextView, TodayApplication, TodayView,
+    VaultSelectionResult,
 };
 
 type DesktopTodayApplication = TodayApplication<
@@ -138,6 +139,17 @@ fn daily_view(
 }
 
 #[tauri::command]
+fn read_daily_view(
+    application: State<'_, DesktopTodayApplication>,
+    date: Option<String>,
+) -> Result<TodayView, String> {
+    match date {
+        Some(date) => application.read_date(&date),
+        None => application.read(),
+    }
+}
+
+#[tauri::command]
 fn calendar_month(
     application: State<'_, DesktopTodayApplication>,
     year: i32,
@@ -215,6 +227,14 @@ fn delete_day_task(
     input: DayTaskDeleteInput,
 ) -> Result<TodayView, String> {
     application.delete_day_task(input)
+}
+
+#[tauri::command]
+fn planning_day_task_context(
+    application: State<'_, DesktopTodayApplication>,
+    date: String,
+) -> Result<PlanningDayTaskContextView, String> {
+    application.planning_day_task_context(&date)
 }
 
 #[tauri::command]
@@ -321,6 +341,7 @@ pub fn run() {
             set_interface_language,
             today_view,
             daily_view,
+            read_daily_view,
             calendar_month,
             habit_snapshot,
             select_today_vault,
@@ -331,6 +352,7 @@ pub fn run() {
             rename_day_task,
             set_day_task_completion,
             delete_day_task,
+            planning_day_task_context,
             update_evening_review
         ]);
 
@@ -346,6 +368,7 @@ pub fn run() {
         set_interface_language,
         today_view,
         daily_view,
+        read_daily_view,
         calendar_month,
         habit_snapshot,
         select_today_vault,
@@ -356,6 +379,7 @@ pub fn run() {
         rename_day_task,
         set_day_task_completion,
         delete_day_task,
+        planning_day_task_context,
         update_evening_review
     ]);
 

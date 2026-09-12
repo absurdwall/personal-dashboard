@@ -211,6 +211,23 @@ test("fixed error details switch language without changing their source diagnost
   );
 });
 
+test("planning task input diagnostics have complete English equivalents", () => {
+  for (const diagnostic of [
+    "无法读取规划任务输入：permission denied",
+    "规划任务输入不是有效 JSON：missing field `text`",
+    "规划任务输入使用不支持的 schema 版本 2；未接收任何候选。",
+    "规划任务输入归属 ，与所选日期 2026-09-08 不一致。",
+    "规划任务输入包含重复来源标识；未接收任何候选。",
+    "规划任务输入包含重复任务身份；未接收任何候选。",
+    "规划任务来源标识格式无效；未写入任何内容。",
+    "规划任务身份格式无效；未写入任何内容。",
+    "规划任务来源身份已绑定到另一任务；旧候选不会被重新解释。",
+    "规划任务身份已用于另一来源；未写入任何候选。",
+  ]) {
+    assert.doesNotMatch(localizeApplicationError(diagnostic, "en"), /[一-龥]/);
+  }
+});
+
 test("Habits translates generated detail grammar but preserves source-owned text", () => {
   const detail = {
     kind: "observation" as const,

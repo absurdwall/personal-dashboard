@@ -34,6 +34,7 @@ import {
   type InterfaceLanguage,
   type InterfaceLanguagePreferences,
 } from "./interface-language.js";
+import { preserveTodayDayTaskPlanError } from "./day-task-presentation.js";
 
 type ApplicationIdentity = Readonly<{
   productName: string;
@@ -144,6 +145,7 @@ type DayTaskView = Readonly<{
 type DayTaskListView = Readonly<{
   state: "unconfigured" | "empty" | "ready" | "error";
   message: string;
+  planError: string | null;
   revision: string | null;
   targetBinding: string | null;
   tasks: readonly DayTaskView[];
@@ -1484,12 +1486,12 @@ function renderDayTasks(dayTasks: DayTaskListView): void {
     setCopy(dayTaskCount, "dayTasks.count", { count: dayTasks.tasks.length });
   }
   if (dayTaskStatus) {
-    if (dayTasks.state === "error") {
+    if (dayTasks.state === "error" || dayTasks.planError) {
       setAppMessage(dayTaskStatus, dayTasks.message);
     } else {
       setCopy(dayTaskStatus, dayTasks.state === "ready" ? "dayTasks.ready" : "dayTasks.emptyStatus");
     }
-    dayTaskStatus.dataset.state = dayTasks.state;
+    dayTaskStatus.dataset.state = dayTasks.planError ? "error" : dayTasks.state;
   }
   if (dayTaskEmpty) {
     dayTaskEmpty.hidden = dayTasks.tasks.length > 0 || dayTasks.state === "error";
@@ -1636,9 +1638,16 @@ async function saveDayTaskMutation(
     const view = await window.__TAURI__.core.invoke<TodayView>(command, { input });
     dayTaskOperationIds.delete(operationSignature);
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
-      renderToday(view);
-      setCopy(dayTaskStatus, "dayTasks.saved");
-      if (dayTaskStatus) dayTaskStatus.dataset.state = "ready";
+      const presentedView = preserveTodayDayTaskPlanError(loaded, view);
+      const dayTasks = presentedView.dayTasks;
+      renderToday(presentedView);
+      if (dayTasks.planError) {
+        setAppMessage(dayTaskStatus, dayTasks.planError);
+        if (dayTaskStatus) dayTaskStatus.dataset.state = "error";
+      } else {
+        setCopy(dayTaskStatus, "dayTasks.saved");
+        if (dayTaskStatus) dayTaskStatus.dataset.state = "ready";
+      }
     }
     return true;
   } catch (error) {
@@ -1761,7 +1770,7 @@ async function saveDatedNote(): Promise<boolean> {
     datedNoteDrafts.delete(loaded.targetBinding);
     correctingShortRecordId = null;
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
-      renderToday(view);
+      renderToday(preserveTodayDayTaskPlanError(loaded, view));
       showTodayMutationCopy(
         correctionId ? "today.correctionSaved" : "today.noteSaved",
         "ready",
@@ -1792,11 +1801,12 @@ async function saveTodayMutation(
   input: Record<string, unknown>,
   successMessage: InterfaceCopyKey,
 ): Promise<boolean> {
-  if (!currentTodayView?.revision || todayOperationCount > 0) {
+  const loaded = currentTodayView;
+  if (!loaded?.revision || todayOperationCount > 0) {
     showTodayMutationCopy("today.refreshBeforeSave", "error");
     return false;
   }
-  const expectedRevision = currentTodayView.revision;
+  const expectedRevision = loaded.revision;
   const presentationRequest = todayPresentationRequests.begin();
   updateTodayOperationState(1);
   try {
@@ -1804,7 +1814,7 @@ async function saveTodayMutation(
       input: { ...input, expectedRevision },
     });
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
-      renderToday(view);
+      renderToday(preserveTodayDayTaskPlanError(loaded, view));
       showTodayMutationCopy(successMessage, "ready");
     }
     return true;
@@ -2116,7 +2126,7 @@ async function selectCalendarDate(date: string): Promise<void> {
     renderCalendarGrid(currentCalendarMonth);
   }
   try {
-    const view = await window.__TAURI__.core.invoke<TodayView>("daily_view", { date });
+    const view = await window.__TAURI__.core.invoke<TodayView>("read_daily_view", { date });
     if (
       !calendarSelectionRequests.isCurrent(selectionRequest) ||
       selectedCalendarDate !== date
@@ -2194,7 +2204,9 @@ async function openCalendar(): Promise<void> {
   try {
     if (!selectedCalendarDate) {
       const selectionRequest = calendarSelectionRequests.begin();
-      const today = await window.__TAURI__.core.invoke<TodayView>("today_view");
+      const today = await window.__TAURI__.core.invoke<TodayView>("read_daily_view", {
+        date: null,
+      });
       if (
         !calendarSelectionRequests.isCurrent(selectionRequest) ||
         currentWorkspaceDestination !== "calendar" ||
@@ -2260,7 +2272,9 @@ async function moveCalendarMonth(delta: number): Promise<void> {
 
 async function showCalendarToday(): Promise<void> {
   const selectionRequest = calendarSelectionRequests.begin();
-  const today = await window.__TAURI__.core.invoke<TodayView>("today_view");
+  const today = await window.__TAURI__.core.invoke<TodayView>("read_daily_view", {
+    date: null,
+  });
   if (!calendarSelectionRequests.isCurrent(selectionRequest)) {
     return;
   }
@@ -2657,7 +2671,7 @@ async function loadSelectedHabitDate(habitKey: string, date: string): Promise<vo
   if (habitKey !== "exercise") return;
   const request = habitDateRequests.begin();
   try {
-    const view = await window.__TAURI__.core.invoke<TodayView>("daily_view", { date });
+    const view = await window.__TAURI__.core.invoke<TodayView>("read_daily_view", { date });
     if (
       !habitDateRequests.isCurrent(request) ||
       selectedHabitCell?.habitKey !== habitKey ||

@@ -53,7 +53,7 @@ list-first direct state-semantics progress workouts exceptions responsive
 compact keyboard week-close installed-cycle calendar habits vault-selection
 vault-recovery final-state-matrix dashboard-2 settings-vault-colors
 interface-language background-image
-day-tasks
+day-tasks planning-tasks
 ```
 
 ## Personal Dashboard 3.0 Settings, Vault, and color scenario
@@ -162,6 +162,36 @@ The packaged scenario manufactures a safe external-revision conflict. The Rust
 application workflow tests separately inject create and replacement failures;
 the acceptance run does not change directory permissions or risk unrelated
 files to simulate a filesystem failure.
+
+## Personal Dashboard 3.0 planning-task scenario
+
+Run the ticket-05 packaged check with:
+
+```sh
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=planning-tasks \
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=360 \
+scripts/acceptance/macos-ipc-workflow.sh
+```
+
+The scenario starts the packaged app against an isolated synthetic Vault, then
+atomically replaces only the synthetic planning input and uses the real Today
+refresh entry to receive it. It proves that actions enter the task rail,
+suggestions do not, daily-flow provenance is visible, and repeated source
+identities remain unique. After a user rename and completion, a replan adds and
+reorders unconfirmed work without replacing either state. A deletion remains a
+tombstone across rereads; reusing its old source reference with a new task ID is
+rejected, while a later action with both identities changed is accepted.
+While that producer rejection remains active, a local rename stays writable and
+the producer diagnostic remains visible; the local mutation does not implicitly
+retry or receive the changed planning input. Only the next explicit refresh
+does so.
+
+The retained result is checked after packaged relaunch and in both interface
+languages. The pre-existing synthetic evening review is hash-checked throughout.
+Only synthetic files are used: the scenario does not invoke or modify any Agent,
+skill, Dida365 data, MCP connection, or automation. Application workflow tests
+separately cover whole-input validation, yesterday's reader context, and an
+interleaved canonical write at the conditional replacement boundary.
 
 The driver is compiled from the macOS system `ApplicationServices` and
 `Foundation` frameworks into the temporary acceptance directory. It adds no
