@@ -215,6 +215,29 @@ const interfaceCopies = {
   "today.noteTargetCurrent": { zh: "保存在当前所选日期的日记录中；不替你打卡。", en: "Saved in the selected day's Daily Record; this does not check in for you." },
   "today.noteTarget": { zh: "保存在 {date} 的日记录中；不替你打卡。", en: "Saved in the Daily Record for {date}; this does not check in for you." },
   "today.futureBoundary": { zh: "未来日期不能记录已经发生的事实。", en: "Facts that already happened cannot be recorded on a future date." },
+  "today.sideRegion": { zh: "当天任务与初始计划依据", en: "Day tasks and initial planning evidence" },
+  "dayTasks.section": { zh: "当天 · 任务", en: "DAY · TASKS" },
+  "dayTasks.heading": { zh: "当天任务", en: "Day tasks" },
+  "dayTasks.count": { zh: "{count} 项", en: "{count} tasks" },
+  "dayTasks.ready": { zh: "已读取这一天的任务。", en: "Loaded tasks for this day." },
+  "dayTasks.emptyStatus": { zh: "这一天没有任务。", en: "There are no tasks for this day." },
+  "dayTasks.empty": { zh: "当天还没有任务；昨天的任务不会自动带入。", en: "No tasks for this day. Yesterday's list is not carried over." },
+  "dayTasks.addLabel": { zh: "添加当天任务", en: "Add a day task" },
+  "dayTasks.addPlaceholder": { zh: "添加当天任务", en: "Add a task for this day" },
+  "dayTasks.add": { zh: "添加", en: "Add" },
+  "dayTasks.saveRename": { zh: "保存", en: "Save" },
+  "dayTasks.saveRenameLabel": { zh: "保存任务“{task}”的改名", en: "Save the new name for task {task}" },
+  "dayTasks.delete": { zh: "删除", en: "Delete" },
+  "dayTasks.boundary": { zh: "未勾选表示尚未确认；任务不会自动跨天带入。", en: "Unchecked means unconfirmed. Tasks are never carried over automatically." },
+  "dayTasks.sourceManual": { zh: "手动添加", en: "Added manually" },
+  "dayTasks.sourceDailyFlow": { zh: "每日流程导入", en: "Imported by the daily flow" },
+  "dayTasks.completionLabel": { zh: "切换“{task}”的完成状态", en: "Toggle completion for {task}" },
+  "dayTasks.renameLabel": { zh: "重命名任务“{task}”", en: "Rename task {task}" },
+  "dayTasks.deleteLabel": { zh: "删除任务“{task}”", en: "Delete task {task}" },
+  "dayTasks.saved": { zh: "当天任务已保存到所选 Vault。", en: "Day tasks were saved to the selected Vault." },
+  "dayTasks.notSaved": { zh: "任务未保存：{error}", en: "Task not saved: {error}" },
+  "dayTasks.refreshFirst": { zh: "请先刷新有效的当天任务，再重试。", en: "Refresh the valid day-task list before trying again." },
+  "dayTasks.enterTask": { zh: "请输入一条当天任务。", en: "Enter a task for this day." },
   "today.shortRecords": { zh: "当日简短记录", en: "Short notes for the day" },
   "today.noShortRecords": { zh: "还没有简短记录。", en: "No short notes yet." },
   "today.arrangementChanges": { zh: "安排变化", en: "Arrangement changes" },
@@ -392,6 +415,10 @@ const englishApplicationMessages: Readonly<Record<string, string>> = {
     "Current-week coverage is incomplete; the known count is a lower bound, and unknown does not mean incomplete.",
   "当前周截至快照范围的来源覆盖完整；未来日期仍保持未知。":
     "Source coverage is complete through the snapshot range for the current week; future dates remain unknown.",
+  "请选择 Vault，以读取当天任务。": "Choose a Vault to read day tasks.",
+  "这一天没有任务；未勾选事项不会自动顺延。":
+    "There are no tasks for this day. Unchecked tasks are not carried over automatically.",
+  "已读取这一天的任务。": "Loaded tasks for this day.",
 };
 
 const englishDailyRecordHeadings: Readonly<Record<string, string>> = {
@@ -416,6 +443,9 @@ const englishDiagnosticLabels: Readonly<Record<string, string>> = {
   "白天更新": "Daytime update",
   "晚间复盘更新": "Evening-review update",
   "Habit 名称": "Habit name",
+  "任务标识": "Task identifier",
+  "任务修改标识": "Task-change identifier",
+  "任务来源标识": "Task source identifier",
 };
 
 const englishApplicationErrors: Readonly<Record<string, string>> = {
@@ -471,6 +501,58 @@ const englishApplicationErrors: Readonly<Record<string, string>> = {
     "Today's Daily Record changed externally. Refresh Today before saving again; external content was not overwritten.",
   "Habit 结果只能是 normal、baseline、partial 或 not_done；未选择仍表示 unknown。":
     "Habit outcome must be normal, baseline, partial, or not_done; no selection still means unknown.",
+  "任务文字不能为空。": "Task text cannot be empty.",
+  "该任务修改标识已用于其他操作；未写入任何内容。":
+    "That task-change identifier was used for another operation; nothing was written.",
+  "这一天还没有任务正本。请刷新后再操作；未创建替代数据。":
+    "This day has no canonical task document yet. Refresh before retrying; no replacement data was created.",
+  "请先选择 Vault，再保存当天任务。": "Choose a Vault before saving day tasks.",
+  "Vault 或任务日期已经变化。操作仍可重试；请返回原日期或刷新后再保存。":
+    "The Vault or task date changed. The operation remains retryable; return to the original date or refresh before saving.",
+  "该任务标识已用于其他任务或已删除任务；请重新添加为新的稳定身份。":
+    "That task identifier belongs to a different or deleted task. Add this as a new stable identity.",
+  "这一天的任务正本已被创建。请刷新后重试；现有任务未被覆盖。":
+    "This day's canonical task document was created externally. Refresh and retry; existing tasks were not overwritten.",
+  "这一天的任务正本已不存在。请刷新后重试；未创建替代数据。":
+    "This day's canonical task document no longer exists. Refresh and retry; no replacement data was created.",
+  "这一天的任务正本已被另一个写入创建。请刷新后重试；现有任务未被覆盖。":
+    "This day's canonical task document was created by another writer. Refresh and retry; existing tasks were not overwritten.",
+  "当天任务正本包含重复任务标识；未将其当作空任务。":
+    "The canonical day-task document contains duplicate task identifiers; it was not treated as empty.",
+  "当天任务正本包含重复修改标识；未将其当作空任务。":
+    "The canonical day-task document contains duplicate change identifiers; it was not treated as empty.",
+  "手动任务不能声明 producer 来源标识。":
+    "A manual task cannot declare a producer source reference.",
+  "当天任务正本包含重复 producer 来源标识；无法稳定合并任务。":
+    "The canonical day-task document contains a duplicate producer reference, so tasks cannot be merged stably.",
+  "当天任务正本在删除记录之后仍包含修改；未将其当作有效数据。":
+    "The canonical day-task document contains a change after deletion and was rejected.",
+  "任务改名记录必须同时保留原文字与新文字。":
+    "A task rename must retain both the previous and new text.",
+  "任务改名记录的原文字与新文字不能相同。":
+    "A task rename cannot use identical previous and new text.",
+  "当天任务正本包含不连续的改名记录。":
+    "The canonical day-task document contains a discontinuous rename history.",
+  "完成、取消完成或删除记录不能携带任务文字。":
+    "Completion, reopening, and deletion changes cannot carry task text.",
+  "当天任务正本包含重复的完成记录。":
+    "The canonical day-task document contains a duplicate completion change.",
+  "当天任务正本在未完成状态下包含取消完成记录。":
+    "The canonical day-task document reopens a task that was not complete.",
+  "当天任务正本的当前文字与最后一次改名记录不一致。":
+    "The current task text does not match the final rename change.",
+  "当天任务正本的完成状态与修改记录不一致。":
+    "The current completion state does not match the task change history.",
+  "当天任务正本的删除标记与修改记录不一致。":
+    "The deletion tombstone does not match the task change history.",
+  "当天任务正本的修改时间与最后一条修改记录不一致。":
+    "The task modified time does not match its final change.",
+  "找不到要修改的当天任务。请刷新后确认该任务仍然存在。":
+    "The day task to change could not be found. Refresh and confirm that it still exists.",
+  "该当天任务已经删除；旧身份不会被重新激活。":
+    "This day task is deleted; its old identity will not be reactivated.",
+  "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。":
+    "The canonical day-task document changed externally. The operation remains retryable; refresh before saving again. External content was not overwritten.",
 };
 
 function englishApplicationDiagnostic(message: string): string | null {
@@ -505,6 +587,36 @@ function englishApplicationDiagnostic(message: string): string | null {
   const tooLong = /^(.+)只能是一条不超过 500 字的简短内容。$/.exec(message);
   if (tooLong) {
     return `${englishDiagnosticLabels[tooLong[1]] ?? tooLong[1]} must be a single short entry of no more than 500 characters.`;
+  }
+  const taskTooLong = /^任务文字只能是一条不超过 160 字的内容。$/.exec(message);
+  if (taskTooLong) {
+    return "Task text must be one line of no more than 160 characters.";
+  }
+  const staleTask = /^(\d{4}-\d{2}-\d{2}) 的任务已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。$/.exec(message);
+  if (staleTask) {
+    return `Tasks for ${staleTask[1]} changed externally. The operation remains retryable; refresh before saving again. External content was not overwritten.`;
+  }
+  const invalidTaskJson = /^当天任务正本不是有效 JSON：(.+)$/.exec(message);
+  if (invalidTaskJson) return `The canonical day-task document is not valid JSON: ${invalidTaskJson[1]}`;
+  const taskRead = /^无法读取当天任务正本：(.+)$/.exec(message);
+  if (taskRead) return `Could not read the canonical day-task document: ${taskRead[1]}`;
+  const unsupportedTaskSchema = /^当天任务正本使用不支持的 schema 版本 (\d+)；未将其当作空任务。$/.exec(message);
+  if (unsupportedTaskSchema) {
+    return `The canonical day-task document uses unsupported schema version ${unsupportedTaskSchema[1]}; it was not treated as empty.`;
+  }
+  const taskDateMismatch = /^当天任务正本归属 ([\s\S]*)，与所选日期 (\d{4}-\d{2}-\d{2}) 不一致。$/.exec(message);
+  if (taskDateMismatch) {
+    return `The canonical day-task document belongs to ${taskDateMismatch[1]}, not the selected date ${taskDateMismatch[2]}.`;
+  }
+  const invalidTaskTimestamp = /^当天任务正本包含无效时间戳：([\s\S]*)$/.exec(message);
+  if (invalidTaskTimestamp) {
+    return `The canonical day-task document contains an invalid timestamp: ${invalidTaskTimestamp[1]}`;
+  }
+  const encodedTask = /^无法编码当天任务正本：(.+)$/.exec(message);
+  if (encodedTask) return `Could not encode the canonical day-task document: ${encodedTask[1]}`;
+  const taskRecovery = /^当天任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 (.+)。请检查后刷新当天任务。$/.exec(message);
+  if (taskRecovery) {
+    return `The canonical day-task document changed at the save boundary. Interleaved content was not silently discarded; a recovery snapshot remains at ${taskRecovery[1]}. Inspect it, then refresh day tasks.`;
   }
   const invalidIdentifier = /^(.+)格式无效；未写入任何内容。$/.exec(message);
   if (invalidIdentifier) {
@@ -601,6 +713,12 @@ const englishErrorFragments: readonly Readonly<[string, string]>[] = [
   ["未写入任何内容。", "Nothing was written."],
   ["草稿仍保留", "The draft is preserved"],
   ["请刷新后重试", "Refresh and try again"],
+  ["当天任务正本不是有效 JSON：", "The canonical day-task document is not valid JSON: "],
+  ["当天任务正本使用不支持的 schema 版本", "The canonical day-task document uses unsupported schema version "],
+  ["未将其当作空任务", "It was not treated as an empty task list"],
+  ["操作仍可重试", "The operation remains retryable"],
+  ["外部内容未被覆盖", "External content was not overwritten"],
+  ["；任务操作仍可重试，未写入任何内容。", "; the task operation remains retryable and nothing was written."],
 ];
 
 const chineseErrorPrefixes: readonly Readonly<[string, string]>[] = [
@@ -629,6 +747,28 @@ const chineseErrorPrefixes: readonly Readonly<[string, string]>[] = [
   ["Could not write today's daily record update: ", "无法写入今天的 Daily Record 更新："],
   ["Could not prepare today's daily record update: ", "无法准备今天的 Daily Record 更新："],
   ["Could not sync today's daily record directory: ", "无法同步今天的 Daily Record 目录："],
+  ["Could not re-read the day-task document: ", "无法重新读取当天任务正本："],
+  ["Could not create the day-task document directory: ", "无法创建当天任务正本目录："],
+  ["Could not prepare the new day-task document: ", "无法准备新的当天任务正本："],
+  ["Could not exclusively activate the new day-task document: ", "无法以独占方式启用新的当天任务正本："],
+  ["Could not inspect the day-task document permissions: ", "无法检查当天任务正本权限："],
+  ["Could not preserve the day-task document permissions: ", "无法保留当天任务正本权限："],
+  ["Could not write the day-task document update: ", "无法写入当天任务正本更新："],
+  ["Could not prepare the day-task document update: ", "无法准备当天任务正本更新："],
+  ["Could not create the day-task recovery directory; no write was attempted: ", "无法创建当天任务恢复目录；未尝试写入："],
+  ["Could not create the day-task recovery directory: ", "无法创建当天任务恢复目录："],
+  ["Could not create a day-task recovery snapshot nonce: ", "无法创建当天任务恢复快照 nonce："],
+  ["Could not create a day-task update nonce: ", "无法创建当天任务更新 nonce："],
+  ["Could not create a day-task conflict snapshot nonce: ", "无法创建当天任务冲突快照 nonce："],
+  ["Could not preserve the day-task document inode actually displaced during activation: ", "无法保留启用时实际移出的当天任务正本 inode："],
+  ["Could not preserve the concurrent day-task snapshot: ", "无法保留并发当天任务快照："],
+  ["Could not finalize the day-task conflict recovery snapshot: ", "无法完成当天任务冲突恢复快照："],
+  ["Could not remove the completed day-task snapshot: ", "无法移除已完成的当天任务快照："],
+  ["Could not verify the day-task document after conflict rollback: ", "无法在冲突回滚后验证当天任务正本："],
+  ["Could not verify the rejected day-task candidate: ", "无法验证被拒绝的当天任务候选："],
+  ["Could not remove the rejected day-task candidate: ", "无法移除被拒绝的当天任务候选："],
+  ["Could not atomically exchange the day-task document: ", "无法原子交换当天任务正本："],
+  ["Could not sync the day-task document directory: ", "无法同步当天任务正本目录："],
   ["The local appearance preference is invalid: ", "本机外观偏好无效："],
   ["The Today workspace setting is invalid: ", "Today 工作区设置无效："],
   ["Could not create the Daily Record recovery directory; no write was attempted: ", "无法创建 Daily Record 恢复目录；未尝试写入："],
@@ -685,7 +825,38 @@ const chineseApplicationErrors: Readonly<Record<string, string>> = {
     "所选日历月份无效。",
   "Atomic conditional Daily Record replacement is currently supported only on macOS.":
     "Daily Record 原子条件替换目前仅支持 macOS。",
+  "The day-task document has no parent directory.": "当天任务正本没有父目录。",
+  "The temporary day-task document path contains a NUL byte.": "临时当天任务正本路径包含 NUL 字节。",
+  "The day-task document path contains a NUL byte.": "当天任务正本路径包含 NUL 字节。",
+  "The day-task document has no location for a same-volume recovery snapshot.":
+    "当天任务正本没有可用于同卷恢复快照的位置。",
+  "Could not reserve a unique temporary day-task document path.":
+    "无法保留唯一的临时当天任务正本路径。",
+  "Could not reserve a unique recovery path for the day-task document inode actually displaced during activation.":
+    "无法为启用时实际移出的当天任务正本 inode 保留唯一恢复路径。",
+  "Could not reserve a unique day-task conflict snapshot path.":
+    "无法保留唯一的当天任务冲突快照路径。",
+  "Atomic conditional day-task replacement is currently supported only on macOS.":
+    "当天任务原子条件替换目前仅支持 macOS。",
 };
+
+function chineseDayTaskStorageDiagnostic(message: string): string | null {
+  const complete = /^(.+); the complete new day-task document is present at (.+) and can be verified by refreshing$/.exec(message);
+  if (complete) return `${localizeApplicationError(complete[1], "zh")}；完整的新当天任务正本位于 ${complete[2]}，可通过刷新验证`;
+  const active = /^The new day-task document is active, but its temporary hard link remains at (.+): (.+)$/.exec(message);
+  if (active) return `新的当天任务正本已启用，但临时硬链接仍保留在 ${active[1]}：${active[2]}`;
+  const rolledBack = /^(.+); activation was rolled back and the rejected day-task candidate remains at (.+)$/.exec(message);
+  if (rolledBack) return `${localizeApplicationError(rolledBack[1], "zh")}；启用已回滚，被拒绝的当天任务候选仍保留在 ${rolledBack[2]}`;
+  const rollbackFailed = /^(.+); rollback also failed \((.+)\); the actual displaced day-task document inode remains linked at (.+)$/.exec(message);
+  if (rollbackFailed) return `${localizeApplicationError(rollbackFailed[1], "zh")}；回滚也失败（${localizeApplicationError(rollbackFailed[2], "zh")}）；实际移出的当天任务正本 inode 仍链接在 ${rollbackFailed[3]}`;
+  const displaced = /^Could not verify the displaced day-task document after atomic exchange; its durable recovery link remains at (.+): (.+)$/.exec(message);
+  if (displaced) return `原子交换后无法验证移出的当天任务正本；其持久恢复链接仍保留在 ${displaced[1]}：${displaced[2]}`;
+  const activeRecovery = /^Could not verify the day-task document after atomic exchange; the actual displaced inode remains recoverable at (.+): (.+)$/.exec(message);
+  if (activeRecovery) return `原子交换后无法验证当天任务正本；实际移出的 inode 仍可在 ${activeRecovery[1]} 恢复：${activeRecovery[2]}`;
+  const displacedExternal = /^(.+); the displaced external day-task document remains at (.+) for recovery$/.exec(message);
+  if (displacedExternal) return `${localizeApplicationError(displacedExternal[1], "zh")}；移出的外部当天任务正本仍保留在 ${displacedExternal[2]} 以供恢复`;
+  return null;
+}
 
 function chineseDailyRecordDiagnostic(message: string): string | null {
   const completeNewRecord = /^(.+); the complete new Daily Record is present at (.+) and can be verified by refreshing$/.exec(message);
@@ -728,6 +899,8 @@ export function localizeApplicationError(
     if (exact) return exact;
     const dailyRecordDiagnostic = chineseDailyRecordDiagnostic(error);
     if (dailyRecordDiagnostic) return dailyRecordDiagnostic;
+    const dayTaskStorageDiagnostic = chineseDayTaskStorageDiagnostic(error);
+    if (dayTaskStorageDiagnostic) return dayTaskStorageDiagnostic;
     const prefix = chineseErrorPrefixes.find(([source]) => error.startsWith(source));
     if (prefix) return `${prefix[1]}${error.slice(prefix[0].length)}`;
     const localWrite = /^Could not (prepare|write|activate) the local (appearance preference|interface language|Today workspace setting|background image): (.+)$/.exec(error);

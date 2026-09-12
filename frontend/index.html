@@ -560,23 +560,50 @@
                     </section>
                   </div>
 
-                  <aside class="today-evidence-region" aria-labelledby="today-evidence-heading">
-                    <button
-                      id="today-evidence-toggle"
-                      class="today-evidence-toggle"
-                      type="button"
-                      aria-expanded="false"
-                      aria-controls="today-evidence-content"
-                    >
-                      <span id="today-evidence-heading" data-i18n="today.initialEvidence">初始计划依据</span>
-                      <span id="today-evidence-count" class="today-count"></span>
-                    </button>
-                    <div id="today-evidence-content" hidden>
-                      <div id="today-evidence-groups" class="today-evidence-groups"></div>
-                      <p id="today-evidence-empty" class="today-evidence-empty" data-i18n="today.noInitialEvidence" hidden>
-                        尚未记录初始计划依据。
+                  <aside class="today-side-region" aria-label="当天任务与初始计划依据" data-i18n-aria-label="today.sideRegion">
+                    <section class="day-task-panel" aria-labelledby="day-task-heading">
+                      <div class="day-task-heading">
+                        <div>
+                          <p class="section-label" data-i18n="dayTasks.section">当天 · 任务</p>
+                          <h3 id="day-task-heading" data-i18n="dayTasks.heading">当天任务</h3>
+                        </div>
+                        <span id="day-task-count" class="today-count"></span>
+                      </div>
+                      <p id="day-task-status" class="day-task-status" role="status" aria-live="polite"></p>
+                      <div id="day-task-list" class="day-task-list"></div>
+                      <p id="day-task-empty" class="day-task-empty" data-i18n="dayTasks.empty" hidden>
+                        当天还没有任务；昨天的任务不会自动带入。
                       </p>
-                    </div>
+                      <form id="day-task-add-form" class="day-task-add-form">
+                        <label>
+                          <span class="visually-hidden" data-i18n="dayTasks.addLabel">添加当天任务</span>
+                          <input id="day-task-add-input" type="text" maxlength="160" autocomplete="off" placeholder="添加当天任务" data-i18n-placeholder="dayTasks.addPlaceholder" required />
+                        </label>
+                        <button id="day-task-add-button" type="submit" data-i18n="dayTasks.add">添加</button>
+                      </form>
+                      <p class="day-task-boundary" data-i18n="dayTasks.boundary">
+                        未勾选表示尚未确认；任务不会自动跨天带入。
+                      </p>
+                    </section>
+
+                    <section class="today-evidence-region" aria-labelledby="today-evidence-heading">
+                      <button
+                        id="today-evidence-toggle"
+                        class="today-evidence-toggle"
+                        type="button"
+                        aria-expanded="false"
+                        aria-controls="today-evidence-content"
+                      >
+                        <span id="today-evidence-heading" data-i18n="today.initialEvidence">初始计划依据</span>
+                        <span id="today-evidence-count" class="today-count"></span>
+                      </button>
+                      <div id="today-evidence-content" hidden>
+                        <div id="today-evidence-groups" class="today-evidence-groups"></div>
+                        <p id="today-evidence-empty" class="today-evidence-empty" data-i18n="today.noInitialEvidence" hidden>
+                          尚未记录初始计划依据。
+                        </p>
+                      </div>
+                    </section>
                   </aside>
                 </div>
               </div>

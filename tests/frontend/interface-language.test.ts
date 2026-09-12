@@ -159,6 +159,36 @@ test("fixed error details switch language without changing their source diagnost
   );
   assert.equal(
     localizeApplicationError(
+      "2026-09-08 的任务已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。",
+      "en",
+    ),
+    "Tasks for 2026-09-08 changed externally. The operation remains retryable; refresh before saving again. External content was not overwritten.",
+  );
+  assert.equal(
+    localizeApplicationError("任务文字只能是一条不超过 160 字的内容。", "en"),
+    "Task text must be one line of no more than 160 characters.",
+  );
+  for (const diagnostic of [
+    "当天任务正本归属 2026-09-07，与所选日期 2026-09-08 不一致。",
+    "当天任务正本归属 not-a-date，与所选日期 2026-09-08 不一致。",
+    "当天任务正本归属 ，与所选日期 2026-09-08 不一致。",
+    "当天任务正本包含重复任务标识；未将其当作空任务。",
+    "当天任务正本包含重复 producer 来源标识；无法稳定合并任务。",
+    "当天任务正本的完成状态与修改记录不一致。",
+    "当天任务正本包含无效时间戳：2026-99-99T99:99+99:99",
+    "当天任务正本包含无效时间戳：",
+  ]) {
+    assert.doesNotMatch(localizeApplicationError(diagnostic, "en"), /[一-龥]/);
+  }
+  assert.equal(
+    localizeApplicationError(
+      "Could not write the day-task document update: disk full",
+      "zh",
+    ),
+    "无法写入当天任务正本更新：disk full",
+  );
+  assert.equal(
+    localizeApplicationError(
       "该日期的 Daily Record 包含多个“简短记录”段落。请先合并重复段落；未写入任何内容。",
       "en",
     ),

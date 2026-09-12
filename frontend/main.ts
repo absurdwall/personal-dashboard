@@ -123,6 +123,32 @@ type EveningView = Readonly<{
   hasLaterRecordRevision: boolean;
 }>;
 
+type DayTaskChangeView = Readonly<{
+  id: string;
+  kind: "renamed" | "completed" | "reopened" | "deleted";
+  changedAt: string;
+  previousText: string | null;
+  newText: string | null;
+}>;
+
+type DayTaskView = Readonly<{
+  id: string;
+  text: string;
+  source: Readonly<{ kind: "manual" | "daily-flow"; reference: string | null }>;
+  createdAt: string;
+  modifiedAt: string;
+  completedAt: string | null;
+  changes: readonly DayTaskChangeView[];
+}>;
+
+type DayTaskListView = Readonly<{
+  state: "unconfigured" | "empty" | "ready" | "error";
+  message: string;
+  revision: string | null;
+  targetBinding: string | null;
+  tasks: readonly DayTaskView[];
+}>;
+
 type TodayView = Readonly<{
   state: TodayState;
   date: string;
@@ -141,6 +167,7 @@ type TodayView = Readonly<{
   evidence: readonly PlanningEvidenceView[];
   daytime: DaytimeView;
   evening: EveningView;
+  dayTasks: DayTaskListView;
 }>;
 
 type TodayPhase = "morning" | "daytime" | "evening";
@@ -452,6 +479,12 @@ const todayEvidenceContent = document.querySelector<HTMLElement>("#today-evidenc
 const todayEvidenceCount = document.querySelector<HTMLElement>("#today-evidence-count");
 const todayEvidenceGroups = document.querySelector<HTMLElement>("#today-evidence-groups");
 const todayEvidenceEmpty = document.querySelector<HTMLElement>("#today-evidence-empty");
+const dayTaskStatus = document.querySelector<HTMLElement>("#day-task-status");
+const dayTaskCount = document.querySelector<HTMLElement>("#day-task-count");
+const dayTaskList = document.querySelector<HTMLElement>("#day-task-list");
+const dayTaskEmpty = document.querySelector<HTMLElement>("#day-task-empty");
+const dayTaskAddForm = document.querySelector<HTMLFormElement>("#day-task-add-form");
+const dayTaskAddInput = document.querySelector<HTMLInputElement>("#day-task-add-input");
 const todayHandoff = document.querySelector<HTMLElement>("#today-handoff");
 const todayHandoffHeading = document.querySelector<HTMLElement>("#today-handoff-heading");
 const todayHandoffCopy = document.querySelector<HTMLElement>("#today-handoff-copy");
@@ -472,6 +505,9 @@ const todayPresentationRequests = new LatestRequest();
 const vaultSelectionRequests = new LatestRequest();
 let currentTodayPhase: TodayPhase = "morning";
 let currentTodayView: TodayView | null = null;
+const dayTaskRenameDrafts = new Map<string, string>();
+const dayTaskAddDrafts = new Map<string, string>();
+const dayTaskOperationIds = new Map<string, string>();
 let selectedTodayDate: string | null = null;
 type DatedNoteDraft = {
   content: string;
@@ -569,6 +605,7 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
   if (currentCalendarMonth) renderCalendarGrid(currentCalendarMonth);
   if (currentCalendarSummaryView) renderCalendarSummary(currentCalendarSummaryView);
   if (currentHabitSnapshot) renderHabitSnapshot(currentHabitSnapshot);
+  if (currentTodayView) renderDayTasks(currentTodayView.dayTasks);
   renderWorkspaceNavigationLanguage();
   renderWorkspaceFeatureArea(currentWorkspaceDestination);
   renderWorkspaceRailContext(currentWorkspaceDestination);
@@ -609,6 +646,10 @@ function resetVaultScopedWorkspaceState(): void {
   currentHabitDateView = null;
   habitNoteStatus = null;
   datedNoteDrafts.clear();
+  dayTaskRenameDrafts.clear();
+  dayTaskAddDrafts.clear();
+  dayTaskOperationIds.clear();
+  if (dayTaskAddInput) dayTaskAddInput.value = "";
   habitNoteDrafts.clear();
   correctingShortRecordId = null;
   calendarGrid?.replaceChildren();
@@ -1178,10 +1219,14 @@ function renderToday(view: TodayView): void {
   if (currentTodayView?.date !== view.date) {
     stashDatedNoteDraft();
   }
+  if (currentTodayView?.dayTasks.targetBinding !== view.dayTasks.targetBinding) {
+    stashDayTaskAddDraft();
+  }
   currentTodayView = view;
   renderWorkspaceRailContext(currentWorkspaceDestination);
   renderVaultSettings(view);
   renderDatedNoteComposer(view);
+  renderDayTasks(view.dayTasks);
   if (todayDate) {
     setCopy(todayDate, view.isToday ? "today.currentDate" : "today.selectedDate", {
       date: view.date,
@@ -1418,6 +1463,99 @@ function renderTodayEvidence(): void {
   }
 }
 
+function dayTaskDraftKey(taskId: string): string | null {
+  const binding = currentTodayView?.dayTasks.targetBinding;
+  return binding ? `${binding}:${taskId}` : null;
+}
+
+function stashDayTaskAddDraft(): void {
+  const binding = currentTodayView?.dayTasks.targetBinding;
+  if (!binding || !dayTaskAddInput) return;
+  if (dayTaskAddInput.value) {
+    dayTaskAddDrafts.set(binding, dayTaskAddInput.value);
+  } else {
+    dayTaskAddDrafts.delete(binding);
+  }
+}
+
+function renderDayTasks(dayTasks: DayTaskListView): void {
+  const writable = Boolean(dayTasks.targetBinding) && dayTasks.state !== "error" && Boolean(currentTodayView?.canRecord);
+  if (dayTaskCount) {
+    setCopy(dayTaskCount, "dayTasks.count", { count: dayTasks.tasks.length });
+  }
+  if (dayTaskStatus) {
+    if (dayTasks.state === "error") {
+      setAppMessage(dayTaskStatus, dayTasks.message);
+    } else {
+      setCopy(dayTaskStatus, dayTasks.state === "ready" ? "dayTasks.ready" : "dayTasks.emptyStatus");
+    }
+    dayTaskStatus.dataset.state = dayTasks.state;
+  }
+  if (dayTaskEmpty) {
+    dayTaskEmpty.hidden = dayTasks.tasks.length > 0 || dayTasks.state === "error";
+  }
+  if (dayTaskAddForm) {
+    dayTaskAddForm.hidden = !writable;
+  }
+  if (dayTaskAddInput) {
+    dayTaskAddInput.value = dayTasks.targetBinding
+      ? (dayTaskAddDrafts.get(dayTasks.targetBinding) ?? "")
+      : "";
+  }
+  if (!dayTaskList) return;
+  dayTaskList.replaceChildren(
+    ...dayTasks.tasks.map((task) => {
+      const row = document.createElement("article");
+      row.className = "day-task-item";
+      row.dataset.dayTaskId = task.id;
+      row.classList.toggle("is-complete", task.completedAt !== null);
+
+      const completion = document.createElement("input");
+      completion.type = "checkbox";
+      completion.checked = task.completedAt !== null;
+      completion.disabled = !writable;
+      completion.dataset.dayTaskCompletion = task.id;
+      completion.setAttribute("aria-label", t("dayTasks.completionLabel", { task: task.text }));
+
+      const body = document.createElement("div");
+      body.className = "day-task-body";
+      const rename = document.createElement("form");
+      rename.className = "day-task-rename-form";
+      rename.dataset.dayTaskRename = task.id;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.maxLength = 160;
+      input.required = true;
+      input.disabled = !writable;
+      input.value = dayTaskRenameDrafts.get(dayTaskDraftKey(task.id) ?? "") ?? task.text;
+      input.dataset.dayTaskRenameInput = task.id;
+      input.setAttribute("aria-label", t("dayTasks.renameLabel", { task: task.text }));
+      const save = document.createElement("button");
+      save.type = "submit";
+      save.className = "day-task-save";
+      save.disabled = !writable;
+      save.setAttribute("aria-label", t("dayTasks.saveRenameLabel", { task: task.text }));
+      setCopy(save, "dayTasks.saveRename");
+      rename.append(input, save);
+
+      const meta = document.createElement("p");
+      meta.className = "day-task-meta";
+      setCopy(meta, task.source.kind === "manual" ? "dayTasks.sourceManual" : "dayTasks.sourceDailyFlow");
+      body.append(rename, meta);
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "day-task-delete";
+      remove.disabled = !writable;
+      remove.dataset.dayTaskDelete = task.id;
+      remove.setAttribute("aria-label", t("dayTasks.deleteLabel", { task: task.text }));
+      setCopy(remove, "dayTasks.delete");
+      row.append(completion, body, remove);
+      return row;
+    }),
+  );
+}
+
 function showTodayMutationCopy(
   key: InterfaceCopyKey,
   state: "ready" | "error",
@@ -1453,10 +1591,143 @@ function updateTodayOperationState(delta: number): void {
   refreshTodayButton?.toggleAttribute("disabled", busy);
   todayDaytimeForm?.querySelector("button")?.toggleAttribute("disabled", busy);
   todayEveningForm?.querySelector("button")?.toggleAttribute("disabled", busy);
+  const dayTasksWritable = Boolean(
+    currentTodayView?.canRecord &&
+      currentTodayView.dayTasks.targetBinding &&
+      currentTodayView.dayTasks.state !== "error",
+  );
+  dayTaskAddForm?.querySelectorAll("input, button").forEach((element) => {
+    (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !dayTasksWritable;
+  });
+  dayTaskList?.querySelectorAll("input, button").forEach((element) => {
+    (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !dayTasksWritable;
+  });
 }
 
 function localOperationId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
+}
+
+function stableDayTaskOperationId(signature: string, prefix: string): string {
+  const existing = dayTaskOperationIds.get(signature);
+  if (existing) return existing;
+  const created = localOperationId(prefix);
+  dayTaskOperationIds.set(signature, created);
+  return created;
+}
+
+async function saveDayTaskMutation(
+  command: "add_day_task" | "rename_day_task" | "set_day_task_completion" | "delete_day_task",
+  loaded: TodayView,
+  operationSignature: string,
+  input: Record<string, unknown>,
+): Promise<boolean> {
+  if (
+    todayOperationCount > 0 ||
+    !loaded.dayTasks.targetBinding ||
+    loaded.dayTasks.state === "error"
+  ) {
+    setCopyError(dayTaskStatus, "dayTasks.notSaved", t("dayTasks.refreshFirst"));
+    return false;
+  }
+  const presentationRequest = todayPresentationRequests.begin();
+  updateTodayOperationState(1);
+  try {
+    const view = await window.__TAURI__.core.invoke<TodayView>(command, { input });
+    dayTaskOperationIds.delete(operationSignature);
+    if (todayPresentationRequests.isCurrent(presentationRequest)) {
+      renderToday(view);
+      setCopy(dayTaskStatus, "dayTasks.saved");
+      if (dayTaskStatus) dayTaskStatus.dataset.state = "ready";
+    }
+    return true;
+  } catch (error) {
+    if (todayPresentationRequests.isCurrent(presentationRequest)) {
+      renderDayTasks(loaded.dayTasks);
+      setCopyError(dayTaskStatus, "dayTasks.notSaved", error);
+      if (dayTaskStatus) dayTaskStatus.dataset.state = "error";
+    }
+    return false;
+  } finally {
+    updateTodayOperationState(-1);
+  }
+}
+
+async function addDayTask(): Promise<boolean> {
+  const loaded = currentTodayView;
+  const text = dayTaskAddInput?.value.trim() ?? "";
+  const binding = loaded?.dayTasks.targetBinding;
+  if (!loaded || !binding || !text || !loaded.canRecord) {
+    setCopy(dayTaskStatus, "dayTasks.enterTask");
+    if (dayTaskStatus) dayTaskStatus.dataset.state = "error";
+    return false;
+  }
+  const signature = `${binding}:add:${text}`;
+  const taskId = stableDayTaskOperationId(signature, "manual-task");
+  const saved = await saveDayTaskMutation("add_day_task", loaded, signature, {
+    date: loaded.date,
+    targetBinding: binding,
+    expectedRevision: loaded.dayTasks.revision,
+    taskId,
+    text,
+  });
+  if (saved) {
+    dayTaskAddDrafts.delete(binding);
+    if (dayTaskAddInput) dayTaskAddInput.value = "";
+  }
+  return saved;
+}
+
+async function renameDayTask(taskId: string, text: string): Promise<boolean> {
+  const loaded = currentTodayView;
+  const binding = loaded?.dayTasks.targetBinding;
+  const revision = loaded?.dayTasks.revision;
+  if (!loaded || !binding || !revision || !text) return false;
+  const signature = `${binding}:rename:${taskId}:${text}`;
+  const changeId = stableDayTaskOperationId(signature, "rename-task");
+  const saved = await saveDayTaskMutation("rename_day_task", loaded, signature, {
+    date: loaded.date,
+    targetBinding: binding,
+    expectedRevision: revision,
+    taskId,
+    changeId,
+    text,
+  });
+  if (saved) dayTaskRenameDrafts.delete(`${binding}:${taskId}`);
+  return saved;
+}
+
+async function setDayTaskCompletion(taskId: string, completed: boolean): Promise<boolean> {
+  const loaded = currentTodayView;
+  const binding = loaded?.dayTasks.targetBinding;
+  const revision = loaded?.dayTasks.revision;
+  if (!loaded || !binding || !revision) return false;
+  const signature = `${binding}:completion:${taskId}:${completed}`;
+  const changeId = stableDayTaskOperationId(signature, "complete-task");
+  return saveDayTaskMutation("set_day_task_completion", loaded, signature, {
+    date: loaded.date,
+    targetBinding: binding,
+    expectedRevision: revision,
+    taskId,
+    changeId,
+    completed,
+  });
+}
+
+async function deleteDayTask(taskId: string): Promise<boolean> {
+  const loaded = currentTodayView;
+  const binding = loaded?.dayTasks.targetBinding;
+  const revision = loaded?.dayTasks.revision;
+  if (!loaded || !binding || !revision) return false;
+  const signature = `${binding}:delete:${taskId}`;
+  const changeId = stableDayTaskOperationId(signature, "delete-task");
+  return saveDayTaskMutation("delete_day_task", loaded, signature, {
+    date: loaded.date,
+    targetBinding: binding,
+    expectedRevision: revision,
+    taskId,
+    changeId,
+  });
 }
 
 async function saveDatedNote(): Promise<boolean> {
@@ -2750,6 +3021,7 @@ function showWorkspaceDestination(
   if (destination === "today") {
     selectedTodayDate = dailyDate;
     if (dailyDate !== null) {
+      stashDayTaskAddDraft();
       currentTodayView = null;
       if (todayDate) {
         setCopy(todayDate, "today.selectedDate", { date: dailyDate });
@@ -3051,6 +3323,56 @@ habitsDestination?.addEventListener("submit", (event) => {
 
 todayDaytimeContent?.addEventListener("input", stashDatedNoteDraft);
 todayDaytimeKind?.addEventListener("change", stashDatedNoteDraft);
+
+dayTaskAddForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void pendingWrites.track(addDayTask());
+});
+dayTaskAddInput?.addEventListener("input", stashDayTaskAddDraft);
+
+dayTaskList?.addEventListener("input", (event) => {
+  const input = (event.target as HTMLElement).closest<HTMLInputElement>(
+    "input[data-day-task-rename-input]",
+  );
+  const taskId = input?.dataset.dayTaskRenameInput;
+  const key = taskId ? dayTaskDraftKey(taskId) : null;
+  if (input && key) dayTaskRenameDrafts.set(key, input.value);
+});
+
+dayTaskList?.addEventListener("submit", (event) => {
+  const form = (event.target as HTMLElement).closest<HTMLFormElement>(
+    "form[data-day-task-rename]",
+  );
+  const taskId = form?.dataset.dayTaskRename;
+  const input = form?.querySelector<HTMLInputElement>("input[data-day-task-rename-input]");
+  if (!form || !taskId || !input) return;
+  event.preventDefault();
+  const text = input.value.trim();
+  if (!text) {
+    setCopy(dayTaskStatus, "dayTasks.enterTask");
+    if (dayTaskStatus) dayTaskStatus.dataset.state = "error";
+    return;
+  }
+  void pendingWrites.track(renameDayTask(taskId, text));
+});
+
+dayTaskList?.addEventListener("change", (event) => {
+  const input = (event.target as HTMLElement).closest<HTMLInputElement>(
+    "input[data-day-task-completion]",
+  );
+  const taskId = input?.dataset.dayTaskCompletion;
+  if (!input || !taskId) return;
+  void pendingWrites.track(setDayTaskCompletion(taskId, input.checked));
+});
+
+dayTaskList?.addEventListener("click", (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-day-task-delete]",
+  );
+  const taskId = button?.dataset.dayTaskDelete;
+  if (!taskId) return;
+  void pendingWrites.track(deleteDayTask(taskId));
+});
 
 todayDaytimeForm?.addEventListener("submit", (event) => {
   event.preventDefault();

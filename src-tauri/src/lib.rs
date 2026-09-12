@@ -40,7 +40,8 @@ use platform::{
     NativeAppearanceImageLibrary, NativeTodayWorkspaceExchange,
 };
 use today::{
-    CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DaytimeUpdateInput,
+    CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
+    DayTaskCompletionInput, DayTaskDeleteInput, DayTaskRenameInput, DaytimeUpdateInput,
     EveningUpdateInput, HabitSnapshotView, TodayApplication, TodayView, VaultSelectionResult,
 };
 
@@ -185,6 +186,38 @@ fn correct_dated_note(
 }
 
 #[tauri::command]
+fn add_day_task(
+    application: State<'_, DesktopTodayApplication>,
+    input: DayTaskAddInput,
+) -> Result<TodayView, String> {
+    application.add_day_task(input)
+}
+
+#[tauri::command]
+fn rename_day_task(
+    application: State<'_, DesktopTodayApplication>,
+    input: DayTaskRenameInput,
+) -> Result<TodayView, String> {
+    application.rename_day_task(input)
+}
+
+#[tauri::command]
+fn set_day_task_completion(
+    application: State<'_, DesktopTodayApplication>,
+    input: DayTaskCompletionInput,
+) -> Result<TodayView, String> {
+    application.set_day_task_completion(input)
+}
+
+#[tauri::command]
+fn delete_day_task(
+    application: State<'_, DesktopTodayApplication>,
+    input: DayTaskDeleteInput,
+) -> Result<TodayView, String> {
+    application.delete_day_task(input)
+}
+
+#[tauri::command]
 fn update_evening_review(
     application: State<'_, DesktopTodayApplication>,
     input: EveningUpdateInput,
@@ -294,6 +327,10 @@ pub fn run() {
             append_daytime_update,
             add_dated_note,
             correct_dated_note,
+            add_day_task,
+            rename_day_task,
+            set_day_task_completion,
+            delete_day_task,
             update_evening_review
         ]);
 
@@ -315,6 +352,10 @@ pub fn run() {
         append_daytime_update,
         add_dated_note,
         correct_dated_note,
+        add_day_task,
+        rename_day_task,
+        set_day_task_completion,
+        delete_day_task,
         update_evening_review
     ]);
 

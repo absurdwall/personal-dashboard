@@ -53,6 +53,7 @@ list-first direct state-semantics progress workouts exceptions responsive
 compact keyboard week-close installed-cycle calendar habits vault-selection
 vault-recovery final-state-matrix dashboard-2 settings-vault-colors
 interface-language background-image
+day-tasks
 ```
 
 ## Personal Dashboard 3.0 Settings, Vault, and color scenario
@@ -138,6 +139,29 @@ The installed-cycle, Calendar, and Habits scenarios retain their own missing,
 malformed, empty, write, correction, and relaunch checks. `dashboard-2` adds the
 single-schedule integration proof; it does not replace those focused
 regressions.
+
+## Personal Dashboard 3.0 day-task scenario
+
+Run the ticket-04 packaged check with:
+
+```sh
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=day-tasks \
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=360 \
+scripts/acceptance/macos-ipc-workflow.sh
+```
+
+The scenario uses two isolated synthetic Vaults and drives the always-visible
+Today task rail through add, rename, complete, reopen, delete, refresh, conflict
+retry, Vault switching, and packaged relaunch. It verifies a deletion tombstone,
+independent per-Vault task documents, preserved rename text after a stale-revision
+failure, all three Today phases at 1120x760, the responsive 800x640 layout, and
+Chinese/English fixed copy without translating personal task text. Both
+synthetic Daily Record files are hash-checked to remain byte-identical.
+
+The packaged scenario manufactures a safe external-revision conflict. The Rust
+application workflow tests separately inject create and replacement failures;
+the acceptance run does not change directory permissions or risk unrelated
+files to simulate a filesystem failure.
 
 The driver is compiled from the macOS system `ApplicationServices` and
 `Foundation` frameworks into the temporary acceptance directory. It adds no

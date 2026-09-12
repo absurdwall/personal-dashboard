@@ -333,7 +333,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors interface-language background-image; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors interface-language background-image day-tasks; do
     run_bounded_scenario "$scenario"
   done
 
@@ -3367,6 +3367,159 @@ EOF
   echo "Presentation: light, complex, and no-image states covered blue, clay, and forest accents across Today, Calendar, and Habits at 1120x760 and 800x640"
 }
 
+run_day_tasks_scenario() {
+  local vault_a="$acceptance_directory/day-tasks-vault-a"
+  local vault_b="$acceptance_directory/day-tasks-vault-b"
+  local record_relative="life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local record_a="$vault_a/$record_relative"
+  local record_b="$vault_b/$record_relative"
+  local task_relative="life/.personal-dashboard/day-tasks/v1/2026/2026-09-08.json"
+  local tasks_a="$vault_a/$task_relative"
+  local tasks_b="$vault_b/$task_relative"
+  local previous_tasks_a="$vault_a/life/.personal-dashboard/day-tasks/v1/2026/2026-09-07.json"
+  local before_a_hash
+  local before_b_hash
+  local task_a="整理厨房 · Task A"
+  local renamed_a="整理厨房与餐桌 · Task A"
+  local conflict_draft="冲突后保留草稿 · Retry me"
+  local add_draft_a="仅属于第一库的未保存新增草稿"
+  local task_b="第二库任务 · Task B"
+  local disposable="待删除任务 · Delete me"
+
+  current_step="preparing isolated day-task fixtures"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p \
+    "$vault_a/.obsidian" "$vault_b/.obsidian" \
+    "$vault_a/$(dirname "$record_relative")" "$vault_b/$(dirname "$record_relative")" \
+    "$acceptance_data_directory"
+  cat > "$record_a" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## User section
+
+Vault A Markdown must remain byte-identical.
+EOF
+  cat > "$record_b" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## User section
+
+Vault B Markdown must remain byte-identical.
+EOF
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_a" > "$acceptance_data_directory/today-workspace.json"
+  before_a_hash="$(shasum -a 256 "$record_a" | awk '{print $1}')"
+  before_b_hash="$(shasum -a 256 "$record_b" | awk '{print $1}')"
+
+  current_step="adding, renaming, completing, reopening, and deleting through the packaged UI"
+  launch_app_waiting_for_text "当天任务" 30
+  run_driver set-size "1120x760" 10
+  run_driver assert-active-text "昨天的任务不会自动带入"
+  run_driver type-text "添加当天任务|$task_a" 10
+  run_driver press "添加" 10
+  run_driver wait-active-text "$task_a" 20
+  run_driver type-text "重命名任务|$renamed_a" 10
+  run_driver press "保存任务" 10
+  run_driver wait-active-text "$renamed_a" 20
+  run_driver press "切换“${renamed_a}”的完成状态" 10
+  run_driver assert-state "切换“${renamed_a}”的完成状态|selected" 10
+  wait_for_file_text "$tasks_a" '"completedAt": "2026-09-08T' ||
+    fail "packaged completion was not persisted"
+  run_driver press "切换“${renamed_a}”的完成状态" 10
+  wait_for_file_text "$tasks_a" '"completedAt": null' ||
+    fail "packaged reopening was not persisted"
+  run_driver type-text "添加当天任务|$disposable" 10
+  run_driver press "添加" 10
+  run_driver wait-active-text "$disposable" 20
+  run_driver press "删除任务“${disposable}”" 10
+  run_driver assert-active-absent-text "$disposable"
+  wait_for_file_text "$tasks_a" '"deletedAt": "2026-09-08T' ||
+    fail "packaged delete did not retain a tombstone"
+
+  current_step="keeping the task rail visible across phases and recovering a stale revision"
+  run_driver press "当日进展" 10
+  run_driver assert-active-text "$renamed_a"
+  run_driver press "晚间复盘" 10
+  run_driver assert-active-text "$renamed_a"
+  run_driver press "早间基准" 10
+  run_driver type-text "重命名任务|$conflict_draft" 10
+  printf ' ' >> "$tasks_a"
+  run_driver press "保存任务" 10
+  run_driver wait-active-text "任务未保存" 20
+  run_driver assert-active-text "$conflict_draft"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "$conflict_draft" 20
+  run_driver press "保存任务" 10
+  run_driver wait-active-text "当天任务已保存" 20
+  wait_for_file_text "$tasks_a" "$conflict_draft" ||
+    fail "retry after the packaged conflict did not save the preserved rename draft"
+  run_driver type-text "添加当天任务|$add_draft_a" 10
+  run_driver assert-active-text "$add_draft_a"
+
+  current_step="binding an unsaved add draft to its original date"
+  run_driver press "日历" 10
+  run_driver wait-active-text "2026年9月" 20
+  run_driver press-contains "9月7日" 10
+  run_driver press "打开完整 Today" 10
+  run_driver wait-active-text "所选日期 · 2026-09-07" 20
+  run_driver assert-active-absent-text "$add_draft_a"
+  [[ ! -e "$previous_tasks_a" ]] ||
+    fail "date navigation created or wrote a task document for the wrong date"
+  run_driver press "日历" 10
+  run_driver press-contains "9月8日" 10
+  run_driver press "打开完整 Today" 10
+  run_driver wait-active-text "今天 · 2026-09-08" 20
+  run_driver assert-active-text "$add_draft_a"
+
+  current_step="switching isolated Vaults and proving independent relaunch persistence"
+  open_vault_picker_from_settings
+  run_driver choose-folder "$vault_b" 35
+  run_driver press "今天" 10
+  run_driver wait-active-text "day-tasks-vault-b" 20
+  run_driver assert-active-text "昨天的任务不会自动带入"
+  run_driver assert-active-absent-text "$conflict_draft"
+  run_driver assert-active-absent-text "$add_draft_a"
+  run_driver type-text "添加当天任务|$task_b" 10
+  run_driver press "添加" 10
+  run_driver wait-active-text "$task_b" 20
+  if ! stop_app; then
+    fail "app process did not exit before day-task relaunch"
+  fi
+  launch_app_waiting_for_text "$task_b" 30
+  grep -Fq "$task_b" "$tasks_b" || fail "Vault B task did not survive relaunch"
+  run_driver set-size "800x640" 10
+  run_driver assert-active-text "当天任务"
+  open_vault_picker_from_settings
+  run_driver choose-folder "$vault_a" 35
+  run_driver press "今天" 10
+  run_driver wait-active-text "$conflict_draft" 20
+  run_driver assert-active-absent-text "$task_b"
+
+  current_step="checking English fixed copy without translating personal task text"
+  run_driver press "切换为英文" 10
+  run_driver wait-active-text "Day tasks" 10
+  run_driver assert-active-text "Unchecked means unconfirmed"
+  run_driver assert-active-text "$conflict_draft"
+
+  [[ "$(shasum -a 256 "$record_a" | awk '{print $1}')" == "$before_a_hash" ]] ||
+    fail "day-task operations changed unrelated Vault A Markdown"
+  [[ "$(shasum -a 256 "$record_b" | awk '{print $1}')" == "$before_b_hash" ]] ||
+    fail "day-task operations changed unrelated Vault B Markdown"
+
+  echo "Packaged IPC day-task acceptance passed"
+  echo "Lifecycle: add, rename, complete, reopen, delete, refresh, conflict retry, and relaunch used the real Today task rail"
+  echo "Isolation: two synthetic Vaults retained independent versioned task documents and byte-identical Markdown"
+  echo "Presentation: the B-layout rail remained visible across all Today phases at 1120x760 and 800x640 with bilingual fixed copy"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -3451,6 +3604,7 @@ case "$acceptance_scenario" in
   settings-vault-colors) run_settings_vault_colors_scenario ;;
   interface-language) run_interface_language_scenario ;;
   background-image) run_background_image_scenario ;;
+  day-tasks) run_day_tasks_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;
 esac

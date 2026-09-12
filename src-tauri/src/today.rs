@@ -68,6 +68,72 @@ pub trait TodayRecordStore {
     }
 }
 
+pub trait DayTaskStore {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String>;
+    fn save_if_unchanged(&self, path: &Path, expected: &[u8], updated: &[u8])
+        -> Result<(), String>;
+    fn create_new(&self, path: &Path, document: &[u8]) -> Result<(), String>;
+}
+
+#[derive(Clone, Copy)]
+enum StorageDocumentKind {
+    DailyRecord,
+    DayTasks,
+}
+
+impl StorageDocumentKind {
+    fn text(self, daily_record: &str, day_tasks: &str) -> String {
+        match self {
+            Self::DailyRecord => daily_record,
+            Self::DayTasks => day_tasks,
+        }
+        .into()
+    }
+
+    fn error(self, daily_record: &str, day_tasks: &str, error: impl std::fmt::Display) -> String {
+        format!(
+            "{}{}",
+            match self {
+                Self::DailyRecord => daily_record,
+                Self::DayTasks => day_tasks,
+            },
+            error
+        )
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct FileDayTaskStore;
+
+impl DayTaskStore for FileDayTaskStore {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
+        match fs::read(path) {
+            Ok(document) => Ok(Some(document)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!("无法读取当天任务正本：{error}")),
+        }
+    }
+
+    fn save_if_unchanged(
+        &self,
+        path: &Path,
+        expected: &[u8],
+        updated: &[u8],
+    ) -> Result<(), String> {
+        save_file_if_unchanged(
+            path,
+            expected,
+            updated,
+            StorageDocumentKind::DayTasks,
+            |_| Ok(()),
+        )
+    }
+
+    fn create_new(&self, path: &Path, document: &[u8]) -> Result<(), String> {
+        create_new_file(path, document, StorageDocumentKind::DayTasks)
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct FileTodayRecordStore;
 
@@ -86,80 +152,132 @@ impl TodayRecordStore for FileTodayRecordStore {
         expected: &[u8],
         updated: &[u8],
     ) -> Result<(), String> {
-        save_file_if_unchanged(path, expected, updated, |_| Ok(()))
+        save_file_if_unchanged(
+            path,
+            expected,
+            updated,
+            StorageDocumentKind::DailyRecord,
+            |_| Ok(()),
+        )
     }
 
     fn create_new(&self, path: &Path, document: &[u8]) -> Result<(), String> {
-        let parent = path
-            .parent()
-            .ok_or_else(|| "The Daily Record has no parent directory.".to_string())?;
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("Could not create the Daily Record directory: {error}"))?;
-        let (temporary, mut output) = create_temporary_file(path)?;
-        let prepared = output
-            .write_all(document)
-            .and_then(|_| output.sync_all())
-            .map_err(|error| format!("Could not prepare the new Daily Record: {error}"));
-        drop(output);
-        if let Err(error) = prepared {
-            let _ = fs::remove_file(&temporary);
-            return Err(error);
-        }
-        if let Err(error) = fs::hard_link(&temporary, path) {
-            let _ = fs::remove_file(&temporary);
-            return Err(if error.kind() == std::io::ErrorKind::AlreadyExists {
-                "该日期的 Daily Record 已被另一个写入创建。请刷新后重试；现有内容未被覆盖。"
-                    .to_string()
-            } else {
-                format!("Could not exclusively activate the new Daily Record: {error}")
-            });
-        }
-        sync_parent(path).map_err(|error| {
-            format!(
-                "{error}; the complete new Daily Record is present at {} and can be verified by refreshing",
-                path.display()
-            )
-        })?;
-        fs::remove_file(&temporary).map_err(|error| {
-            format!(
-                "The new Daily Record is active, but its temporary hard link remains at {}: {error}",
-                temporary.display()
-            )
-        })?;
-        sync_parent(path)
+        create_new_file(path, document, StorageDocumentKind::DailyRecord)
     }
+}
+
+fn create_new_file(path: &Path, document: &[u8], kind: StorageDocumentKind) -> Result<(), String> {
+    let parent = path.parent().ok_or_else(|| {
+        kind.text(
+            "The Daily Record has no parent directory.",
+            "The day-task document has no parent directory.",
+        )
+    })?;
+    fs::create_dir_all(parent).map_err(|error| {
+        kind.error(
+            "Could not create the Daily Record directory: ",
+            "Could not create the day-task document directory: ",
+            error,
+        )
+    })?;
+    let (temporary, mut output) = create_temporary_file(path, kind)?;
+    let prepared = output
+        .write_all(document)
+        .and_then(|_| output.sync_all())
+        .map_err(|error| {
+            kind.error(
+                "Could not prepare the new Daily Record: ",
+                "Could not prepare the new day-task document: ",
+                error,
+            )
+        });
+    drop(output);
+    if let Err(error) = prepared {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+    if let Err(error) = fs::hard_link(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(if error.kind() == std::io::ErrorKind::AlreadyExists {
+            kind.text(
+                "该日期的 Daily Record 已被另一个写入创建。请刷新后重试；现有内容未被覆盖。",
+                "这一天的任务正本已被另一个写入创建。请刷新后重试；现有任务未被覆盖。",
+            )
+        } else {
+            kind.error(
+                "Could not exclusively activate the new Daily Record: ",
+                "Could not exclusively activate the new day-task document: ",
+                error,
+            )
+        });
+    }
+    sync_parent(path, kind).map_err(|error| {
+            match kind {
+                StorageDocumentKind::DailyRecord => format!("{error}; the complete new Daily Record is present at {} and can be verified by refreshing", path.display()),
+                StorageDocumentKind::DayTasks => format!("{error}; the complete new day-task document is present at {} and can be verified by refreshing", path.display()),
+            }
+        })?;
+    fs::remove_file(&temporary).map_err(|error| {
+            match kind {
+                StorageDocumentKind::DailyRecord => format!("The new Daily Record is active, but its temporary hard link remains at {}: {error}", temporary.display()),
+                StorageDocumentKind::DayTasks => format!("The new day-task document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
+            }
+        })?;
+    sync_parent(path, kind)
 }
 
 fn save_file_if_unchanged<F>(
     path: &Path,
     expected: &[u8],
     updated: &[u8],
+    kind: StorageDocumentKind,
     before_exchange: F,
 ) -> Result<(), String>
 where
     F: FnOnce(&Path) -> Result<(), String>,
 {
-    let current = fs::read(path)
-        .map_err(|error| format!("Could not re-read today's daily record: {error}"))?;
+    let current = fs::read(path).map_err(|error| {
+        kind.error(
+            "Could not re-read today's daily record: ",
+            "Could not re-read the day-task document: ",
+            error,
+        )
+    })?;
     if current != expected {
-        return Err(external_change_message(None));
+        return Err(external_change_message(None, kind));
     }
-    prepare_recovery_directory(path)?;
-    let (temporary, mut output) = create_temporary_file(path)?;
+    prepare_recovery_directory(path, kind)?;
+    let (temporary, mut output) = create_temporary_file(path, kind)?;
     let preparation = (|| {
         fs::set_permissions(
             &temporary,
             fs::metadata(path)
                 .map_err(|error| {
-                    format!("Could not inspect today's daily record permissions: {error}")
+                    kind.error(
+                        "Could not inspect today's daily record permissions: ",
+                        "Could not inspect the day-task document permissions: ",
+                        error,
+                    )
                 })?
                 .permissions(),
         )
-        .map_err(|error| format!("Could not preserve today's daily record permissions: {error}"))?;
+        .map_err(|error| {
+            kind.error(
+                "Could not preserve today's daily record permissions: ",
+                "Could not preserve the day-task document permissions: ",
+                error,
+            )
+        })?;
         output
             .write_all(updated)
             .and_then(|_| output.sync_all())
-            .map_err(|error| format!("Could not write today's daily record update: {error}"))?;
+            .map_err(|error| {
+                kind.error(
+                    "Could not write today's daily record update: ",
+                    "Could not write the day-task document update: ",
+                    error,
+                )
+            })?;
         drop(output);
         before_exchange(&temporary)
     })();
@@ -168,43 +286,47 @@ where
         return Err(error);
     }
 
-    if let Err(error) = atomic_exchange(&temporary, path) {
+    if let Err(error) = atomic_exchange(&temporary, path, kind) {
         let _ = fs::remove_file(&temporary);
         return Err(error);
     }
-    let recovery = preserve_displaced_inode(path, &temporary).or_else(|preservation_error| {
-        match atomic_exchange(&temporary, path) {
+    let recovery = preserve_displaced_inode(path, &temporary, kind).or_else(|preservation_error| {
+        match atomic_exchange(&temporary, path, kind) {
             Ok(()) => {
-                let _ = sync_parent(path);
-                Err(format!(
-                    "{preservation_error}; activation was rolled back and the rejected Dashboard candidate remains at {}",
-                    temporary.display()
-                ))
+                let _ = sync_parent(path, kind);
+                Err(match kind {
+                    StorageDocumentKind::DailyRecord => format!("{preservation_error}; activation was rolled back and the rejected Dashboard candidate remains at {}", temporary.display()),
+                    StorageDocumentKind::DayTasks => format!("{preservation_error}; activation was rolled back and the rejected day-task candidate remains at {}", temporary.display()),
+                })
             }
             Err(rollback_error) => Err(format!(
-                "{preservation_error}; rollback also failed ({rollback_error}); the actual displaced Daily Record inode remains linked at {}",
-                temporary.display()
+                "{preservation_error}; rollback also failed ({rollback_error}); the actual displaced {} inode remains linked at {}",
+                match kind { StorageDocumentKind::DailyRecord => "Daily Record", StorageDocumentKind::DayTasks => "day-task document" }, temporary.display()
             )),
         }
     })?;
     let displaced = fs::read(&temporary).map_err(|error| {
-        format!(
-            "Could not verify the displaced daily record after atomic exchange; its durable recovery link remains at {}: {error}",
-            recovery.display()
-        )
+        match kind {
+            StorageDocumentKind::DailyRecord => format!("Could not verify the displaced daily record after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
+            StorageDocumentKind::DayTasks => format!("Could not verify the displaced day-task document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
+        }
     })?;
     if displaced == expected {
         let active = fs::read(path).map_err(|error| {
-            format!(
-                "Could not verify today's daily record after atomic exchange; the actual displaced inode remains recoverable at {}: {error}",
-                recovery.display()
-            )
-        })?;
+                match kind {
+                    StorageDocumentKind::DailyRecord => format!("Could not verify today's daily record after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
+                    StorageDocumentKind::DayTasks => format!("Could not verify the day-task document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
+                }
+            })?;
         if active == updated {
-            sync_parent(path)?;
-            sync_parent(&recovery)?;
+            sync_parent(path, kind)?;
+            sync_parent(&recovery, kind)?;
             fs::remove_file(&temporary).map_err(|error| {
-                format!("Could not remove the completed daily record snapshot: {error}")
+                kind.error(
+                    "Could not remove the completed daily record snapshot: ",
+                    "Could not remove the completed day-task snapshot: ",
+                    error,
+                )
             })?;
             return Ok(());
         }
@@ -212,57 +334,88 @@ where
         // An external writer superseded our complete atomic activation. Its bytes remain
         // canonical; the inode displaced by our activation remains linked in recovery.
         let _ = fs::remove_file(&temporary);
-        return Err(external_change_message(Some(&recovery)));
+        return Err(external_change_message(Some(&recovery), kind));
     }
 
     // The canonical path changed after the initial read. Swap the exact displaced version
     // back instead of overwriting it with our candidate.
-    atomic_exchange(&temporary, path).map_err(|error| {
+    atomic_exchange(&temporary, path, kind).map_err(|error| {
         format!(
-            "{error}; the displaced external record remains at {} for recovery",
+            "{error}; the displaced external {} remains at {} for recovery",
+            match kind {
+                StorageDocumentKind::DailyRecord => "record",
+                StorageDocumentKind::DayTasks => "day-task document",
+            },
             temporary.display()
         )
     })?;
     let active_after_rollback = fs::read(path).map_err(|error| {
-        format!("Could not verify today's daily record after conflict rollback: {error}")
+        kind.error(
+            "Could not verify today's daily record after conflict rollback: ",
+            "Could not verify the day-task document after conflict rollback: ",
+            error,
+        )
     })?;
     let exchanged_candidate = fs::read(&temporary).map_err(|error| {
-        format!("Could not verify the rejected daily record candidate: {error}")
+        kind.error(
+            "Could not verify the rejected daily record candidate: ",
+            "Could not verify the rejected day-task candidate: ",
+            error,
+        )
     })?;
     if active_after_rollback == displaced && exchanged_candidate == updated {
         fs::remove_file(&temporary).map_err(|error| {
-            format!("Could not remove the rejected daily record candidate: {error}")
+            kind.error(
+                "Could not remove the rejected daily record candidate: ",
+                "Could not remove the rejected day-task candidate: ",
+                error,
+            )
         })?;
-        sync_parent(path)?;
-        return Err(external_change_message(Some(&recovery)));
+        sync_parent(path, kind)?;
+        return Err(external_change_message(Some(&recovery), kind));
     }
 
     // A second uncoordinated save crossed the rollback itself. Never delete the bytes that
     // were exchanged out; retain them beside the record for explicit recovery.
-    let recovery = preserve_conflict_snapshot(path, &temporary)?;
-    sync_parent(path)?;
-    Err(external_change_message(Some(&recovery)))
+    let recovery = preserve_conflict_snapshot(path, &temporary, kind)?;
+    sync_parent(path, kind)?;
+    Err(external_change_message(Some(&recovery), kind))
 }
 
-fn prepare_recovery_directory(path: &Path) -> Result<(), String> {
-    let recovery_directory = recovery_directory_for(path)?;
+fn prepare_recovery_directory(path: &Path, kind: StorageDocumentKind) -> Result<(), String> {
+    let recovery_directory = recovery_directory_for(path, kind)?;
     fs::create_dir_all(&recovery_directory).map_err(|error| {
-        format!(
-            "Could not create the Daily Record recovery directory; no write was attempted: {error}"
+        kind.error(
+            "Could not create the Daily Record recovery directory; no write was attempted: ",
+            "Could not create the day-task recovery directory; no write was attempted: ",
+            error,
         )
     })
 }
 
-fn preserve_displaced_inode(path: &Path, displaced: &Path) -> Result<PathBuf, String> {
-    let recovery_directory = recovery_directory_for(path)?;
+fn preserve_displaced_inode(
+    path: &Path,
+    displaced: &Path,
+    kind: StorageDocumentKind,
+) -> Result<PathBuf, String> {
+    let recovery_directory = recovery_directory_for(path, kind)?;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|error| format!("Could not create a recovery snapshot nonce: {error}"))?
+        .map_err(|error| {
+            kind.error(
+                "Could not create a recovery snapshot nonce: ",
+                "Could not create a day-task recovery snapshot nonce: ",
+                error,
+            )
+        })?
         .as_nanos();
     let record_name = path
         .file_stem()
         .and_then(|name| name.to_str())
-        .unwrap_or("daily-record");
+        .unwrap_or(match kind {
+            StorageDocumentKind::DailyRecord => "daily-record",
+            StorageDocumentKind::DayTasks => "day-tasks",
+        });
     for attempt in 0..32u8 {
         let recovery = recovery_directory.join(format!(
             "{record_name}-{nonce}-{}-{attempt}.snapshot",
@@ -270,42 +423,56 @@ fn preserve_displaced_inode(path: &Path, displaced: &Path) -> Result<PathBuf, St
         ));
         match fs::hard_link(displaced, &recovery) {
             Ok(()) => {
-                sync_parent(&recovery)?;
+                sync_parent(&recovery, kind)?;
                 return Ok(recovery);
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => {
-                return Err(format!(
-                    "Could not preserve the Daily Record inode actually displaced during activation: {error}"
-                ))
+                return Err(kind.error("Could not preserve the Daily Record inode actually displaced during activation: ", "Could not preserve the day-task document inode actually displaced during activation: ", error))
             }
         }
     }
-    Err(
-        "Could not reserve a unique recovery path for the Daily Record inode actually displaced during activation."
-            .into(),
-    )
+    Err(kind.text(
+        "Could not reserve a unique recovery path for the Daily Record inode actually displaced during activation.",
+        "Could not reserve a unique recovery path for the day-task document inode actually displaced during activation.",
+    ))
 }
 
-fn recovery_directory_for(path: &Path) -> Result<PathBuf, String> {
+fn recovery_directory_for(path: &Path, kind: StorageDocumentKind) -> Result<PathBuf, String> {
     let vault = path
         .ancestors()
         .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "life"))
         .and_then(Path::parent);
     let root = vault.or_else(|| path.parent()).ok_or_else(|| {
-        "Today's Daily Record has no location for a same-volume recovery snapshot.".to_string()
+        kind.text(
+            "Today's Daily Record has no location for a same-volume recovery snapshot.",
+            "The day-task document has no location for a same-volume recovery snapshot.",
+        )
     })?;
     Ok(root.join(".personal-dashboard-recovery").join("today"))
 }
 
-fn create_temporary_file(path: &Path) -> Result<(PathBuf, fs::File), String> {
+fn create_temporary_file(
+    path: &Path,
+    kind: StorageDocumentKind,
+) -> Result<(PathBuf, fs::File), String> {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|error| format!("Could not create a daily record update nonce: {error}"))?
+        .map_err(|error| {
+            kind.error(
+                "Could not create a daily record update nonce: ",
+                "Could not create a day-task update nonce: ",
+                error,
+            )
+        })?
         .as_nanos();
     for attempt in 0..32u8 {
         let temporary = path.with_extension(format!(
-            "md.personal-dashboard-tmp-{}-{nonce}-{attempt}",
+            "{}.personal-dashboard-tmp-{}-{nonce}-{attempt}",
+            match kind {
+                StorageDocumentKind::DailyRecord => "md",
+                StorageDocumentKind::DayTasks => "json",
+            },
             std::process::id()
         ));
         match OpenOptions::new()
@@ -316,39 +483,60 @@ fn create_temporary_file(path: &Path) -> Result<(PathBuf, fs::File), String> {
             Ok(output) => return Ok((temporary, output)),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => {
-                return Err(format!(
-                    "Could not prepare today's daily record update: {error}"
+                return Err(kind.error(
+                    "Could not prepare today's daily record update: ",
+                    "Could not prepare the day-task document update: ",
+                    error,
                 ))
             }
         }
     }
-    Err("Could not reserve a unique temporary daily record path.".into())
+    Err(kind.text(
+        "Could not reserve a unique temporary daily record path.",
+        "Could not reserve a unique temporary day-task document path.",
+    ))
 }
 
-fn external_change_message(recovery: Option<&Path>) -> String {
-    match recovery {
-        Some(path) => format!(
-            "今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请在 Obsidian 中检查后刷新 Today。",
-            path.display()
-        ),
-        None => "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。".into(),
+fn external_change_message(recovery: Option<&Path>, kind: StorageDocumentKind) -> String {
+    match (recovery, kind) {
+        (Some(path), StorageDocumentKind::DailyRecord) => format!("今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请在 Obsidian 中检查后刷新 Today。", path.display()),
+        (Some(path), StorageDocumentKind::DayTasks) => format!("当天任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新当天任务。", path.display()),
+        (None, StorageDocumentKind::DailyRecord) => "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。".into(),
+        (None, StorageDocumentKind::DayTasks) => "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。".into(),
     }
 }
 
-fn preserve_conflict_snapshot(path: &Path, temporary: &Path) -> Result<PathBuf, String> {
-    let recovery_directory = recovery_directory_for(path)?;
+fn preserve_conflict_snapshot(
+    path: &Path,
+    temporary: &Path,
+    kind: StorageDocumentKind,
+) -> Result<PathBuf, String> {
+    let recovery_directory = recovery_directory_for(path, kind)?;
     fs::create_dir_all(&recovery_directory).map_err(|error| {
-        format!("Could not create the Daily Record recovery directory: {error}")
+        kind.error(
+            "Could not create the Daily Record recovery directory: ",
+            "Could not create the day-task recovery directory: ",
+            error,
+        )
     })?;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|error| format!("Could not create a conflict snapshot nonce: {error}"))?
+        .map_err(|error| {
+            kind.error(
+                "Could not create a conflict snapshot nonce: ",
+                "Could not create a day-task conflict snapshot nonce: ",
+                error,
+            )
+        })?
         .as_nanos();
     for attempt in 0..32u8 {
         let record_name = path
             .file_stem()
             .and_then(|name| name.to_str())
-            .unwrap_or("daily-record");
+            .unwrap_or(match kind {
+                StorageDocumentKind::DailyRecord => "daily-record",
+                StorageDocumentKind::DayTasks => "day-tasks",
+            });
         let recovery = recovery_directory.join(format!(
             "{record_name}-conflict-{nonce}-{}-{attempt}.snapshot",
             std::process::id()
@@ -356,32 +544,50 @@ fn preserve_conflict_snapshot(path: &Path, temporary: &Path) -> Result<PathBuf, 
         match fs::hard_link(temporary, &recovery) {
             Ok(()) => {
                 fs::remove_file(temporary).map_err(|error| {
-                    format!("Could not finalize the conflict recovery snapshot: {error}")
+                    kind.error(
+                        "Could not finalize the conflict recovery snapshot: ",
+                        "Could not finalize the day-task conflict recovery snapshot: ",
+                        error,
+                    )
                 })?;
                 return Ok(recovery);
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => {
-                return Err(format!(
-                    "Could not preserve the concurrent daily record snapshot: {error}"
+                return Err(kind.error(
+                    "Could not preserve the concurrent daily record snapshot: ",
+                    "Could not preserve the concurrent day-task snapshot: ",
+                    error,
                 ))
             }
         }
     }
-    Err("Could not reserve a unique daily record conflict snapshot path.".into())
+    Err(kind.text(
+        "Could not reserve a unique daily record conflict snapshot path.",
+        "Could not reserve a unique day-task conflict snapshot path.",
+    ))
 }
 
-fn sync_parent(path: &Path) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "Today's daily record has no parent directory.".to_string())?;
+fn sync_parent(path: &Path, kind: StorageDocumentKind) -> Result<(), String> {
+    let parent = path.parent().ok_or_else(|| {
+        kind.text(
+            "Today's daily record has no parent directory.",
+            "The day-task document has no parent directory.",
+        )
+    })?;
     fs::File::open(parent)
         .and_then(|directory| directory.sync_all())
-        .map_err(|error| format!("Could not sync today's daily record directory: {error}"))
+        .map_err(|error| {
+            kind.error(
+                "Could not sync today's daily record directory: ",
+                "Could not sync the day-task document directory: ",
+                error,
+            )
+        })
 }
 
 #[cfg(target_os = "macos")]
-fn atomic_exchange(left: &Path, right: &Path) -> Result<(), String> {
+fn atomic_exchange(left: &Path, right: &Path, kind: StorageDocumentKind) -> Result<(), String> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
 
@@ -394,25 +600,37 @@ fn atomic_exchange(left: &Path, right: &Path) -> Result<(), String> {
         ) -> i32;
     }
 
-    let left = CString::new(left.as_os_str().as_bytes())
-        .map_err(|_| "The temporary daily record path contains a NUL byte.".to_string())?;
-    let right = CString::new(right.as_os_str().as_bytes())
-        .map_err(|_| "The daily record path contains a NUL byte.".to_string())?;
+    let left = CString::new(left.as_os_str().as_bytes()).map_err(|_| {
+        kind.text(
+            "The temporary daily record path contains a NUL byte.",
+            "The temporary day-task document path contains a NUL byte.",
+        )
+    })?;
+    let right = CString::new(right.as_os_str().as_bytes()).map_err(|_| {
+        kind.text(
+            "The daily record path contains a NUL byte.",
+            "The day-task document path contains a NUL byte.",
+        )
+    })?;
     // SAFETY: both C strings are NUL-terminated and remain alive for the duration of the call.
     let result = unsafe { renamex_np(left.as_ptr(), right.as_ptr(), RENAME_SWAP) };
     if result == 0 {
         Ok(())
     } else {
-        Err(format!(
-            "Could not atomically exchange today's daily record: {}",
-            std::io::Error::last_os_error()
+        Err(kind.error(
+            "Could not atomically exchange today's daily record: ",
+            "Could not atomically exchange the day-task document: ",
+            std::io::Error::last_os_error(),
         ))
     }
 }
 
 #[cfg(not(target_os = "macos"))]
-fn atomic_exchange(_left: &Path, _right: &Path) -> Result<(), String> {
-    Err("Atomic conditional Daily Record replacement is currently supported only on macOS.".into())
+fn atomic_exchange(_left: &Path, _right: &Path, kind: StorageDocumentKind) -> Result<(), String> {
+    Err(kind.text(
+        "Atomic conditional Daily Record replacement is currently supported only on macOS.",
+        "Atomic conditional day-task replacement is currently supported only on macOS.",
+    ))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -670,6 +888,158 @@ fn daily_record_availability(state: TodayState, evening: &EveningView) -> DailyR
     }
 }
 
+const DAY_TASK_SCHEMA_VERSION: u32 = 1;
+const DAY_TASK_TEXT_LIMIT: usize = 160;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DayTaskSourceKind {
+    Manual,
+    DailyFlow,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DayTaskSourceView {
+    pub kind: DayTaskSourceKind,
+    pub reference: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DayTaskChangeKind {
+    Renamed,
+    Completed,
+    Reopened,
+    Deleted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DayTaskChangeView {
+    pub id: String,
+    pub kind: DayTaskChangeKind,
+    pub changed_at: String,
+    pub previous_text: Option<String>,
+    pub new_text: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DayTaskView {
+    pub id: String,
+    pub text: String,
+    pub source: DayTaskSourceView,
+    pub created_at: String,
+    pub modified_at: String,
+    pub completed_at: Option<String>,
+    pub changes: Vec<DayTaskChangeView>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DayTaskState {
+    Unconfigured,
+    Empty,
+    Ready,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DayTaskListView {
+    pub state: DayTaskState,
+    pub message: String,
+    pub revision: Option<String>,
+    pub target_binding: Option<String>,
+    pub tasks: Vec<DayTaskView>,
+}
+
+impl DayTaskListView {
+    fn unconfigured() -> Self {
+        Self {
+            state: DayTaskState::Unconfigured,
+            message: "请选择 Vault，以读取当天任务。".into(),
+            revision: None,
+            target_binding: None,
+            tasks: Vec::new(),
+        }
+    }
+
+    fn error(message: impl Into<String>, target_binding: Option<String>) -> Self {
+        Self {
+            state: DayTaskState::Error,
+            message: message.into(),
+            revision: None,
+            target_binding,
+            tasks: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DayTaskAddInput {
+    pub date: String,
+    pub target_binding: String,
+    pub expected_revision: Option<String>,
+    pub task_id: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DayTaskRenameInput {
+    pub date: String,
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub task_id: String,
+    pub change_id: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DayTaskCompletionInput {
+    pub date: String,
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub task_id: String,
+    pub change_id: String,
+    pub completed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DayTaskDeleteInput {
+    pub date: String,
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub task_id: String,
+    pub change_id: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DayTaskDocument {
+    schema_version: u32,
+    date: String,
+    tasks: Vec<DayTaskRecord>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DayTaskRecord {
+    id: String,
+    text: String,
+    source: DayTaskSourceView,
+    created_at: String,
+    modified_at: String,
+    completed_at: Option<String>,
+    deleted_at: Option<String>,
+    changes: Vec<DayTaskChangeView>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TodayView {
@@ -690,6 +1060,7 @@ pub struct TodayView {
     pub evidence: Vec<PlanningEvidenceView>,
     pub daytime: DaytimeView,
     pub evening: EveningView,
+    pub day_tasks: DayTaskListView,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -699,16 +1070,25 @@ pub struct VaultSelectionResult {
     pub changed: bool,
 }
 
-pub struct TodayApplication<P, E, C, S = FileTodayRecordStore, H = FileHabitSnapshotStore> {
+pub struct TodayApplication<
+    P,
+    E,
+    C,
+    S = FileTodayRecordStore,
+    H = FileHabitSnapshotStore,
+    D = FileDayTaskStore,
+> {
     persistence: P,
     exchange: E,
     clock: C,
     record_store: S,
     habit_snapshot_store: H,
+    day_task_store: D,
     habit_cache: Mutex<HashMap<PathBuf, HabitSnapshotView>>,
 }
 
-impl<P, E, C> TodayApplication<P, E, C, FileTodayRecordStore, FileHabitSnapshotStore>
+impl<P, E, C>
+    TodayApplication<P, E, C, FileTodayRecordStore, FileHabitSnapshotStore, FileDayTaskStore>
 where
     P: TodayWorkspacePersistence,
     E: TodayWorkspaceExchange,
@@ -721,12 +1101,13 @@ where
             clock,
             record_store: FileTodayRecordStore,
             habit_snapshot_store: FileHabitSnapshotStore,
+            day_task_store: FileDayTaskStore,
             habit_cache: Mutex::new(HashMap::new()),
         }
     }
 }
 
-impl<P, E, C, S> TodayApplication<P, E, C, S, FileHabitSnapshotStore>
+impl<P, E, C, S> TodayApplication<P, E, C, S, FileHabitSnapshotStore, FileDayTaskStore>
 where
     P: TodayWorkspacePersistence,
     E: TodayWorkspaceExchange,
@@ -740,12 +1121,13 @@ where
             clock,
             record_store,
             habit_snapshot_store: FileHabitSnapshotStore,
+            day_task_store: FileDayTaskStore,
             habit_cache: Mutex::new(HashMap::new()),
         }
     }
 }
 
-impl<P, E, C, S, H> TodayApplication<P, E, C, S, H>
+impl<P, E, C, S, H> TodayApplication<P, E, C, S, H, FileDayTaskStore>
 where
     P: TodayWorkspacePersistence,
     E: TodayWorkspaceExchange,
@@ -766,8 +1148,306 @@ where
             clock,
             record_store,
             habit_snapshot_store,
+            day_task_store: FileDayTaskStore,
             habit_cache: Mutex::new(HashMap::new()),
         }
+    }
+}
+
+impl<P, E, C, S, H, D> TodayApplication<P, E, C, S, H, D>
+where
+    P: TodayWorkspacePersistence,
+    E: TodayWorkspaceExchange,
+    C: TodayClock,
+    S: TodayRecordStore,
+    H: HabitSnapshotStore,
+    D: DayTaskStore,
+{
+    pub fn with_all_stores(
+        persistence: P,
+        exchange: E,
+        clock: C,
+        record_store: S,
+        habit_snapshot_store: H,
+        day_task_store: D,
+    ) -> Self {
+        Self {
+            persistence,
+            exchange,
+            clock,
+            record_store,
+            habit_snapshot_store,
+            day_task_store,
+            habit_cache: Mutex::new(HashMap::new()),
+        }
+    }
+}
+
+impl<P, E, C, S, H, D> TodayApplication<P, E, C, S, H, D>
+where
+    P: TodayWorkspacePersistence,
+    E: TodayWorkspaceExchange,
+    C: TodayClock,
+    S: TodayRecordStore,
+    H: HabitSnapshotStore,
+    D: DayTaskStore,
+{
+    fn day_tasks_for(&self, vault: &Path, date: &str) -> DayTaskListView {
+        let path = match canonical_day_task_path(vault, date) {
+            Ok(path) => path,
+            Err(error) => return DayTaskListView::error(error, None),
+        };
+        let target_binding = Some(day_task_target_binding(&path));
+        let bytes = match self.day_task_store.load(&path) {
+            Ok(Some(bytes)) => bytes,
+            Ok(None) => {
+                return DayTaskListView {
+                    state: DayTaskState::Empty,
+                    message: "这一天没有任务；未勾选事项不会自动顺延。".into(),
+                    revision: None,
+                    target_binding,
+                    tasks: Vec::new(),
+                }
+            }
+            Err(error) => return DayTaskListView::error(error, target_binding),
+        };
+        let revision = document_revision(&bytes);
+        match parse_day_task_document(&bytes, date) {
+            Ok(document) => {
+                let tasks = document
+                    .tasks
+                    .into_iter()
+                    .filter(|task| task.deleted_at.is_none())
+                    .map(day_task_view)
+                    .collect::<Vec<_>>();
+                DayTaskListView {
+                    state: if tasks.is_empty() {
+                        DayTaskState::Empty
+                    } else {
+                        DayTaskState::Ready
+                    },
+                    message: if tasks.is_empty() {
+                        "这一天没有任务；未勾选事项不会自动顺延。".into()
+                    } else {
+                        "已读取这一天的任务。".into()
+                    },
+                    revision: Some(revision),
+                    target_binding,
+                    tasks,
+                }
+            }
+            Err(error) => DayTaskListView::error(error, target_binding),
+        }
+    }
+
+    pub fn add_day_task(&self, input: DayTaskAddInput) -> Result<TodayView, String> {
+        validate_day_task_text(&input.text)?;
+        validate_local_identifier(&input.task_id, "任务标识")?;
+        self.validate_event_date(&input.date)?;
+        let (vault, path) = self.bound_day_task_target(&input.date, &input.target_binding)?;
+        let now = self.clock.current_timestamp_label();
+        validate_timestamp_label(&now)?;
+        let task = DayTaskRecord {
+            id: input.task_id.clone(),
+            text: input.text.trim().into(),
+            source: DayTaskSourceView {
+                kind: DayTaskSourceKind::Manual,
+                reference: None,
+            },
+            created_at: now.clone(),
+            modified_at: now,
+            completed_at: None,
+            deleted_at: None,
+            changes: Vec::new(),
+        };
+
+        match self.day_task_store.load(&path)? {
+            Some(bytes) => {
+                let mut document = parse_day_task_document(&bytes, &input.date)?;
+                if let Some(existing) = document
+                    .tasks
+                    .iter()
+                    .find(|existing| existing.id == input.task_id)
+                {
+                    if existing.deleted_at.is_none()
+                        && existing.text == task.text
+                        && existing.source == task.source
+                    {
+                        return self.open_vault(&vault, input.date);
+                    }
+                    return Err(
+                        "该任务标识已用于其他任务或已删除任务；请重新添加为新的稳定身份。".into(),
+                    );
+                }
+                let expected = input.expected_revision.as_deref().ok_or_else(|| {
+                    "这一天的任务正本已被创建。请刷新后重试；现有任务未被覆盖。".to_string()
+                })?;
+                require_day_task_revision(&bytes, expected, &input.date)?;
+                document.tasks.push(task);
+                let updated = encode_day_task_document(&document)?;
+                self.day_task_store
+                    .save_if_unchanged(&path, &bytes, &updated)?;
+            }
+            None => {
+                if input.expected_revision.is_some() {
+                    return Err("这一天的任务正本已不存在。请刷新后重试；未创建替代数据。".into());
+                }
+                let document = DayTaskDocument {
+                    schema_version: DAY_TASK_SCHEMA_VERSION,
+                    date: input.date.clone(),
+                    tasks: vec![task],
+                };
+                let encoded = encode_day_task_document(&document)?;
+                self.day_task_store.create_new(&path, &encoded)?;
+            }
+        }
+        self.open_vault(&vault, input.date)
+    }
+
+    pub fn rename_day_task(&self, input: DayTaskRenameInput) -> Result<TodayView, String> {
+        validate_day_task_text(&input.text)?;
+        validate_local_identifier(&input.task_id, "任务标识")?;
+        validate_local_identifier(&input.change_id, "任务修改标识")?;
+        self.validate_event_date(&input.date)?;
+        let (vault, path, bytes, mut document) =
+            self.load_day_task_mutation_target(&input.date, &input.target_binding)?;
+        if let Some((task, change)) = find_day_task_change(&document, &input.change_id) {
+            if task.id == input.task_id
+                && change.kind == DayTaskChangeKind::Renamed
+                && change.new_text.as_deref() == Some(input.text.trim())
+            {
+                return self.open_vault(&vault, input.date);
+            }
+            return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
+        }
+        require_day_task_revision(&bytes, &input.expected_revision, &input.date)?;
+        let task = active_day_task_mut(&mut document, &input.task_id)?;
+        if task.text == input.text.trim() {
+            return self.open_vault(&vault, input.date);
+        }
+        let now = self.clock.current_timestamp_label();
+        validate_timestamp_label(&now)?;
+        let previous_text = task.text.clone();
+        task.text = input.text.trim().into();
+        task.modified_at = now.clone();
+        task.changes.push(DayTaskChangeView {
+            id: input.change_id,
+            kind: DayTaskChangeKind::Renamed,
+            changed_at: now,
+            previous_text: Some(previous_text),
+            new_text: Some(task.text.clone()),
+        });
+        let updated = encode_day_task_document(&document)?;
+        self.day_task_store
+            .save_if_unchanged(&path, &bytes, &updated)?;
+        self.open_vault(&vault, input.date)
+    }
+
+    pub fn set_day_task_completion(
+        &self,
+        input: DayTaskCompletionInput,
+    ) -> Result<TodayView, String> {
+        validate_local_identifier(&input.task_id, "任务标识")?;
+        validate_local_identifier(&input.change_id, "任务修改标识")?;
+        self.validate_event_date(&input.date)?;
+        let (vault, path, bytes, mut document) =
+            self.load_day_task_mutation_target(&input.date, &input.target_binding)?;
+        let intended_kind = if input.completed {
+            DayTaskChangeKind::Completed
+        } else {
+            DayTaskChangeKind::Reopened
+        };
+        if let Some((task, change)) = find_day_task_change(&document, &input.change_id) {
+            if task.id == input.task_id && change.kind == intended_kind {
+                return self.open_vault(&vault, input.date);
+            }
+            return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
+        }
+        require_day_task_revision(&bytes, &input.expected_revision, &input.date)?;
+        let task = active_day_task_mut(&mut document, &input.task_id)?;
+        if task.completed_at.is_some() == input.completed {
+            return self.open_vault(&vault, input.date);
+        }
+        let now = self.clock.current_timestamp_label();
+        validate_timestamp_label(&now)?;
+        task.modified_at = now.clone();
+        task.completed_at = input.completed.then(|| now.clone());
+        task.changes.push(DayTaskChangeView {
+            id: input.change_id,
+            kind: intended_kind,
+            changed_at: now,
+            previous_text: None,
+            new_text: None,
+        });
+        let updated = encode_day_task_document(&document)?;
+        self.day_task_store
+            .save_if_unchanged(&path, &bytes, &updated)?;
+        self.open_vault(&vault, input.date)
+    }
+
+    pub fn delete_day_task(&self, input: DayTaskDeleteInput) -> Result<TodayView, String> {
+        validate_local_identifier(&input.task_id, "任务标识")?;
+        validate_local_identifier(&input.change_id, "任务修改标识")?;
+        self.validate_event_date(&input.date)?;
+        let (vault, path, bytes, mut document) =
+            self.load_day_task_mutation_target(&input.date, &input.target_binding)?;
+        if let Some((task, change)) = find_day_task_change(&document, &input.change_id) {
+            if task.id == input.task_id && change.kind == DayTaskChangeKind::Deleted {
+                return self.open_vault(&vault, input.date);
+            }
+            return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
+        }
+        require_day_task_revision(&bytes, &input.expected_revision, &input.date)?;
+        let task = active_day_task_mut(&mut document, &input.task_id)?;
+        let now = self.clock.current_timestamp_label();
+        validate_timestamp_label(&now)?;
+        task.modified_at = now.clone();
+        task.deleted_at = Some(now.clone());
+        task.changes.push(DayTaskChangeView {
+            id: input.change_id,
+            kind: DayTaskChangeKind::Deleted,
+            changed_at: now,
+            previous_text: None,
+            new_text: None,
+        });
+        let updated = encode_day_task_document(&document)?;
+        self.day_task_store
+            .save_if_unchanged(&path, &bytes, &updated)?;
+        self.open_vault(&vault, input.date)
+    }
+
+    fn load_day_task_mutation_target(
+        &self,
+        date: &str,
+        binding: &str,
+    ) -> Result<(PathBuf, PathBuf, Vec<u8>, DayTaskDocument), String> {
+        let (vault, path) = self.bound_day_task_target(date, binding)?;
+        let bytes = self
+            .day_task_store
+            .load(&path)?
+            .ok_or_else(|| "这一天还没有任务正本。请刷新后再操作；未创建替代数据。".to_string())?;
+        let document = parse_day_task_document(&bytes, date)?;
+        Ok((vault, path, bytes, document))
+    }
+
+    fn bound_day_task_target(
+        &self,
+        date: &str,
+        binding: &str,
+    ) -> Result<(PathBuf, PathBuf), String> {
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or_else(|| "请先选择 Vault，再保存当天任务。".to_string())?;
+        validate_compatible_vault(&vault)
+            .map_err(|error| format!("{error}；任务操作仍可重试，未写入任何内容。"))?;
+        let path = canonical_day_task_path(&vault, date)?;
+        if day_task_target_binding(&path) != binding {
+            return Err(
+                "Vault 或任务日期已经变化。操作仍可重试；请返回原日期或刷新后再保存。".into(),
+            );
+        }
+        Ok((vault, path))
     }
 
     pub fn habits(&self) -> Result<HabitSnapshotView, String> {
@@ -891,6 +1571,7 @@ where
                 evidence: Vec::new(),
                 daytime: DaytimeView::default(),
                 evening: EveningView::default(),
+                day_tasks: DayTaskListView::unconfigured(),
             });
         };
         self.open_vault(&vault, date.to_owned())
@@ -1202,6 +1883,7 @@ where
                 format!("{error}。请重新选择兼容 Vault；未转换或写入任何文件。"),
             ));
         }
+        let day_tasks = self.day_tasks_for(vault, &date);
         let path = canonical_record_path(vault, &date)?;
         let target_binding = record_target_binding(&path);
         let bytes = match self.record_store.load(&path)? {
@@ -1231,6 +1913,7 @@ where
                     evidence: Vec::new(),
                     daytime: DaytimeView::default(),
                     evening: EveningView::default(),
+                    day_tasks,
                 });
             }
         };
@@ -1286,6 +1969,7 @@ where
                     evidence,
                     daytime,
                     evening,
+                    day_tasks,
                 })
             }
             Err(message) => Ok(TodayView {
@@ -1310,6 +1994,7 @@ where
                 evidence: Vec::new(),
                 daytime: DaytimeView::default(),
                 evening: EveningView::default(),
+                day_tasks,
             }),
         }
     }
@@ -1347,7 +2032,7 @@ fn vault_error_view(
         vault_name,
         vault_path,
         vault_availability,
-        message,
+        message: message.clone(),
         revision: None,
         target_binding: None,
         baseline: MorningBaselineView::missing(),
@@ -1355,6 +2040,7 @@ fn vault_error_view(
         evidence: Vec::new(),
         daytime: DaytimeView::default(),
         evening: EveningView::default(),
+        day_tasks: DayTaskListView::error(message.clone(), None),
     }
 }
 
@@ -1413,6 +2099,223 @@ fn require_revision_for_date(document: &str, expected: &str, date: &str) -> Resu
 fn record_target_binding(path: &Path) -> String {
     let normalized = path.to_string_lossy();
     format!("target-{}", document_revision(normalized.as_bytes()))
+}
+
+fn canonical_day_task_path(vault: &Path, date: &str) -> Result<PathBuf, String> {
+    let parsed = CalendarDate::parse(date)
+        .ok_or_else(|| "The selected date is not a valid YYYY-MM-DD calendar date.".to_string())?;
+    Ok(vault
+        .join("life/.personal-dashboard/day-tasks/v1")
+        .join(format!("{:04}", parsed.year))
+        .join(format!("{date}.json")))
+}
+
+fn day_task_target_binding(path: &Path) -> String {
+    format!(
+        "day-task-target-{}",
+        document_revision(path.to_string_lossy().as_bytes())
+    )
+}
+
+fn validate_day_task_text(value: &str) -> Result<(), String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("任务文字不能为空。".into());
+    }
+    if value.chars().count() > DAY_TASK_TEXT_LIMIT || value.contains(['\n', '\r']) {
+        return Err(format!(
+            "任务文字只能是一条不超过 {DAY_TASK_TEXT_LIMIT} 字的内容。"
+        ));
+    }
+    Ok(())
+}
+
+fn parse_day_task_document(bytes: &[u8], expected_date: &str) -> Result<DayTaskDocument, String> {
+    let document: DayTaskDocument = serde_json::from_slice(bytes)
+        .map_err(|error| format!("当天任务正本不是有效 JSON：{error}"))?;
+    if document.schema_version != DAY_TASK_SCHEMA_VERSION {
+        return Err(format!(
+            "当天任务正本使用不支持的 schema 版本 {}；未将其当作空任务。",
+            document.schema_version
+        ));
+    }
+    if document.date != expected_date {
+        return Err(format!(
+            "当天任务正本归属 {}，与所选日期 {expected_date} 不一致。",
+            document.date
+        ));
+    }
+    let mut task_ids = std::collections::HashSet::new();
+    let mut change_ids = std::collections::HashSet::new();
+    let mut producer_references = std::collections::HashSet::new();
+    for task in &document.tasks {
+        validate_local_identifier(&task.id, "任务标识")?;
+        validate_day_task_text(&task.text)?;
+        if !task_ids.insert(task.id.as_str()) {
+            return Err("当天任务正本包含重复任务标识；未将其当作空任务。".into());
+        }
+        match task.source.kind {
+            DayTaskSourceKind::Manual if task.source.reference.is_some() => {
+                return Err("手动任务不能声明 producer 来源标识。".into())
+            }
+            DayTaskSourceKind::DailyFlow => {
+                let reference = task.source.reference.as_deref().unwrap_or("");
+                validate_local_identifier(reference, "任务来源标识")?;
+                if !producer_references.insert(reference) {
+                    return Err("当天任务正本包含重复 producer 来源标识；无法稳定合并任务。".into());
+                }
+            }
+            DayTaskSourceKind::Manual => {}
+        }
+        validate_day_task_timestamp(&task.created_at)?;
+        validate_day_task_timestamp(&task.modified_at)?;
+        if let Some(timestamp) = &task.completed_at {
+            validate_day_task_timestamp(timestamp)?;
+        }
+        if let Some(timestamp) = &task.deleted_at {
+            validate_day_task_timestamp(timestamp)?;
+        }
+        let mut completion_state = false;
+        let mut deletion_change_at = None;
+        let mut last_completion_at = None;
+        let mut last_renamed_text: Option<&str> = None;
+        for change in &task.changes {
+            validate_local_identifier(&change.id, "任务修改标识")?;
+            if !change_ids.insert(change.id.as_str()) {
+                return Err("当天任务正本包含重复修改标识；未将其当作空任务。".into());
+            }
+            validate_day_task_timestamp(&change.changed_at)?;
+            if let Some(text) = &change.previous_text {
+                validate_day_task_text(text)?;
+            }
+            if let Some(text) = &change.new_text {
+                validate_day_task_text(text)?;
+            }
+            if deletion_change_at.is_some() {
+                return Err("当天任务正本在删除记录之后仍包含修改；未将其当作有效数据。".into());
+            }
+            match change.kind {
+                DayTaskChangeKind::Renamed => {
+                    let previous = change
+                        .previous_text
+                        .as_deref()
+                        .ok_or_else(|| "任务改名记录必须同时保留原文字与新文字。".to_string())?;
+                    let updated = change
+                        .new_text
+                        .as_deref()
+                        .ok_or_else(|| "任务改名记录必须同时保留原文字与新文字。".to_string())?;
+                    if previous == updated {
+                        return Err("任务改名记录的原文字与新文字不能相同。".into());
+                    }
+                    if let Some(expected_previous) = last_renamed_text {
+                        if previous != expected_previous {
+                            return Err("当天任务正本包含不连续的改名记录。".into());
+                        }
+                    }
+                    last_renamed_text = Some(updated);
+                }
+                DayTaskChangeKind::Completed => {
+                    if change.previous_text.is_some() || change.new_text.is_some() {
+                        return Err("完成、取消完成或删除记录不能携带任务文字。".into());
+                    }
+                    if completion_state {
+                        return Err("当天任务正本包含重复的完成记录。".into());
+                    }
+                    completion_state = true;
+                    last_completion_at = Some(change.changed_at.as_str());
+                }
+                DayTaskChangeKind::Reopened => {
+                    if change.previous_text.is_some() || change.new_text.is_some() {
+                        return Err("完成、取消完成或删除记录不能携带任务文字。".into());
+                    }
+                    if !completion_state {
+                        return Err("当天任务正本在未完成状态下包含取消完成记录。".into());
+                    }
+                    completion_state = false;
+                    last_completion_at = None;
+                }
+                DayTaskChangeKind::Deleted => {
+                    if change.previous_text.is_some() || change.new_text.is_some() {
+                        return Err("完成、取消完成或删除记录不能携带任务文字。".into());
+                    }
+                    deletion_change_at = Some(change.changed_at.as_str());
+                }
+            }
+        }
+        if last_renamed_text.is_some_and(|text| text != task.text) {
+            return Err("当天任务正本的当前文字与最后一次改名记录不一致。".into());
+        }
+        if completion_state != task.completed_at.is_some()
+            || last_completion_at != task.completed_at.as_deref()
+        {
+            return Err("当天任务正本的完成状态与修改记录不一致。".into());
+        }
+        if deletion_change_at != task.deleted_at.as_deref() {
+            return Err("当天任务正本的删除标记与修改记录不一致。".into());
+        }
+        if let Some(last_change) = task.changes.last() {
+            if last_change.changed_at != task.modified_at {
+                return Err("当天任务正本的修改时间与最后一条修改记录不一致。".into());
+            }
+        }
+    }
+    Ok(document)
+}
+
+fn encode_day_task_document(document: &DayTaskDocument) -> Result<Vec<u8>, String> {
+    let mut encoded = serde_json::to_vec_pretty(document)
+        .map_err(|error| format!("无法编码当天任务正本：{error}"))?;
+    encoded.push(b'\n');
+    Ok(encoded)
+}
+
+fn require_day_task_revision(bytes: &[u8], expected: &str, date: &str) -> Result<(), String> {
+    if document_revision(bytes) == expected {
+        Ok(())
+    } else {
+        Err(format!(
+            "{date} 的任务已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。"
+        ))
+    }
+}
+
+fn day_task_view(task: DayTaskRecord) -> DayTaskView {
+    DayTaskView {
+        id: task.id,
+        text: task.text,
+        source: task.source,
+        created_at: task.created_at,
+        modified_at: task.modified_at,
+        completed_at: task.completed_at,
+        changes: task.changes,
+    }
+}
+
+fn find_day_task_change<'a>(
+    document: &'a DayTaskDocument,
+    change_id: &str,
+) -> Option<(&'a DayTaskRecord, &'a DayTaskChangeView)> {
+    document.tasks.iter().find_map(|task| {
+        task.changes
+            .iter()
+            .find(|change| change.id == change_id)
+            .map(|change| (task, change))
+    })
+}
+
+fn active_day_task_mut<'a>(
+    document: &'a mut DayTaskDocument,
+    task_id: &str,
+) -> Result<&'a mut DayTaskRecord, String> {
+    let task = document
+        .tasks
+        .iter_mut()
+        .find(|task| task.id == task_id)
+        .ok_or_else(|| "找不到要修改的当天任务。请刷新后确认该任务仍然存在。".to_string())?;
+    if task.deleted_at.is_some() {
+        return Err("该当天任务已经删除；旧身份不会被重新激活。".into());
+    }
+    Ok(task)
 }
 
 fn validate_short_text(value: &str, label: &str) -> Result<(), String> {
@@ -1478,13 +2381,62 @@ fn validate_local_identifier(value: &str, label: &str) -> Result<(), String> {
 }
 
 fn validate_timestamp_label(value: &str) -> Result<(), String> {
-    let has_offset = value
-        .get(16..)
-        .is_some_and(|suffix| suffix.starts_with('+') || suffix.starts_with('-'));
-    if value.len() < 22 || value.as_bytes().get(10) != Some(&b'T') || !has_offset {
+    if !is_valid_timestamp_label(value) {
         return Err("当前本地时间缺少 UTC offset；未写入记录。".into());
     }
     Ok(())
+}
+
+fn validate_day_task_timestamp(value: &str) -> Result<(), String> {
+    if is_valid_timestamp_label(value) {
+        Ok(())
+    } else {
+        Err(format!("当天任务正本包含无效时间戳：{value}"))
+    }
+}
+
+fn is_valid_timestamp_label(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let (offset_index, second) = match bytes.len() {
+        22 => (16, None),
+        25 if bytes.get(16) == Some(&b':') => (19, decimal_pair(bytes, 17)),
+        _ => return false,
+    };
+    if bytes.get(4) != Some(&b'-')
+        || bytes.get(7) != Some(&b'-')
+        || bytes.get(10) != Some(&b'T')
+        || bytes.get(13) != Some(&b':')
+        || bytes.get(offset_index + 3) != Some(&b':')
+        || !matches!(bytes.get(offset_index), Some(b'+') | Some(b'-'))
+    {
+        return false;
+    }
+    if value.get(..10).and_then(CalendarDate::parse).is_none() {
+        return false;
+    }
+    let Some(hour) = decimal_pair(bytes, 11) else {
+        return false;
+    };
+    let Some(minute) = decimal_pair(bytes, 14) else {
+        return false;
+    };
+    let Some(offset_hour) = decimal_pair(bytes, offset_index + 1) else {
+        return false;
+    };
+    let Some(offset_minute) = decimal_pair(bytes, offset_index + 4) else {
+        return false;
+    };
+    hour <= 23
+        && minute <= 59
+        && second.is_none_or(|value| value <= 59)
+        && offset_hour <= 23
+        && offset_minute <= 59
+}
+
+fn decimal_pair(bytes: &[u8], start: usize) -> Option<u8> {
+    let first = bytes.get(start)?.checked_sub(b'0')?;
+    let second = bytes.get(start + 1)?.checked_sub(b'0')?;
+    (first <= 9 && second <= 9).then_some(first * 10 + second)
 }
 
 fn short_record_marker(
@@ -2675,7 +3627,7 @@ fn clean_inline_markdown(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::save_file_if_unchanged;
+    use super::{save_file_if_unchanged, StorageDocumentKind};
     use std::cell::RefCell;
     use std::fs;
     use std::io::{Seek, SeekFrom, Write};
@@ -2714,9 +3666,13 @@ mod tests {
         let updated = b"dashboard candidate\n";
         fs::write(&path, original).expect("original should be written");
 
-        let error = save_file_if_unchanged(&path, original, updated, |_| {
-            fs::write(&path, external).map_err(|error| error.to_string())
-        })
+        let error = save_file_if_unchanged(
+            &path,
+            original,
+            updated,
+            StorageDocumentKind::DailyRecord,
+            |_| fs::write(&path, external).map_err(|error| error.to_string()),
+        )
         .expect_err("the save crossing candidate preparation must conflict");
 
         assert!(error.contains("并发变化"), "{error}");
@@ -2746,16 +3702,22 @@ mod tests {
         fs::write(&path, original).expect("original should be written");
         let retained_descriptor = RefCell::new(None);
 
-        save_file_if_unchanged(&path, original, updated, |_| {
-            fs::write(&replacement, original).map_err(|error| error.to_string())?;
-            fs::rename(&replacement, &path).map_err(|error| error.to_string())?;
-            let descriptor = fs::OpenOptions::new()
-                .write(true)
-                .open(&path)
-                .map_err(|error| error.to_string())?;
-            retained_descriptor.replace(Some(descriptor));
-            Ok(())
-        })
+        save_file_if_unchanged(
+            &path,
+            original,
+            updated,
+            StorageDocumentKind::DailyRecord,
+            |_| {
+                fs::write(&replacement, original).map_err(|error| error.to_string())?;
+                fs::rename(&replacement, &path).map_err(|error| error.to_string())?;
+                let descriptor = fs::OpenOptions::new()
+                    .write(true)
+                    .open(&path)
+                    .map_err(|error| error.to_string())?;
+                retained_descriptor.replace(Some(descriptor));
+                Ok(())
+            },
+        )
         .expect("same-byte replacement may be activated after its inode is preserved");
 
         let mut descriptor = retained_descriptor
