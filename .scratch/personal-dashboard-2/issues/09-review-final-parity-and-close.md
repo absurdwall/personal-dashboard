@@ -172,3 +172,32 @@ Spec-axis issue. Full regression, packaged build, and the targeted packaged
 scenarios passed. Ticket 09 remains `ready-for-human` because the unchecked
 product-acceptance criterion and final closure decision remain with the user;
 the agent does not claim final product acceptance.
+
+## 2026-09-11 final recovery follow-up — failed pending Habits save
+
+The final Ticket 10 review replayed one remaining Vault-switch loss path:
+`waitForPendingHabitSave()` waited for a pending Habits save but ignored a
+`false` result, allowing the picker and a later Vault reset to discard the
+unsaved draft and correction state.
+
+Commit `a728ddf` carries that result through the frontend behavior seam. A
+failed deferred save now aborts the selection before the picker is invoked,
+keeps the Habits draft, correction, selected date, phase, and current Vault
+view, and displays an error in the active page. A successful deferred save
+continues to the picker and preserves the established real-switch refresh
+order. The two paths are executable behavior regressions, not source-string
+checks.
+
+The final check set passed: 20 frontend tests; 152 Rust tests plus doc-tests;
+Rust formatting, shell syntax, and diff checks; Mac packaging; and packaged
+`vault-selection` on executable SHA-256
+`cdad1c24bb0970ea5791c515366007fe8db33538d20a6543ec42489b96a69744`.
+Packaged coverage revalidated cancellation, same-Vault reselect, and real
+cross-Vault isolation; the deferred failed/successful save paths remain
+honestly attributed to the frontend behavior tests because the packaged
+scenario does not synthesize a delayed save failure.
+
+The Standards- and Spec-axis review of `55ad50d..a728ddf` found no blocking
+finding. Ticket 08 remains `resolved`; Ticket 10 remains `resolved`; Ticket 09
+stays `ready-for-human`. Final visual/product acceptance and closure remain the
+user's responsibility, as requested.

@@ -68,3 +68,44 @@ TickTick, automation, dependency, or cutover state was changed.
 
 Ticket 09 is no longer blocked by this issue, but remains `ready-for-human`:
 the user retains final product acceptance and closure.
+
+## 2026-09-11 follow-up — failed pending Habits save blocks Vault selection
+
+The final review replayed a remaining loss path: `waitForPendingHabitSave()`
+awaited the in-flight `Promise<boolean>` but discarded its `false` result, so a
+failed Habits save could still open the native Vault picker and then clear the
+unsaved draft during a real switch.
+
+Implementation commit `a728ddf` (`fix(dashboard): block Vault switch after
+failed habit save`) now carries the save result through the executable
+`selectVaultAndRefresh` seam. A failed pending write returns `blocked`, renders
+an error in the active Today, Calendar, or Habits status surface, and never
+invokes the picker. The Habits editor keeps its draft, correction identity,
+selected date, phase, and current Vault view. A successful pending write still
+waits for completion before opening the picker and performs the existing
+cross-Vault reset and refresh only after a real switch.
+
+The regression tests execute both deferred paths rather than checking source
+strings: a delayed `false` asserts no picker invocation, `blocked`, visible
+failure rendering, and preserved editor state; a delayed `true` asserts the
+picker is invoked only after release and that the real switch refresh order is
+unchanged.
+
+Final validation:
+
+- `npm run test:frontend` — 20 tests passed, including both deferred pending-
+  Habits-save paths.
+- `cargo test --manifest-path src-tauri/Cargo.toml` — 152 Rust tests passed;
+  doc-tests passed. `cargo fmt --check`, shell syntax, and `git diff --check`
+  passed.
+- `npm run build:mac` — passed. Final packaged executable SHA-256:
+  `cdad1c24bb0970ea5791c515366007fe8db33538d20a6543ec42489b96a69744`.
+- Packaged `vault-selection` passed on that bundle for cancellation,
+  same-Vault reselect, and real cross-Vault isolation. The deferred failure and
+  success paths are covered by the executable frontend behavior tests; the
+  packaged scenario does not claim to manufacture a native delayed save
+  failure.
+
+Standards- and Spec-axis review of `55ad50d..a728ddf` found no blocking issue.
+Ticket 10 remains `resolved`; Ticket 09 remains `ready-for-human` because the
+final product acceptance and closure decision remain with the user.
