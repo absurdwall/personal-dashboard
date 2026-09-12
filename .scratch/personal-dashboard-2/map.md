@@ -14,15 +14,16 @@
 
 - [Repair decisions and evidence limits](repair-decisions.md)
 - [08 — Restore FINAL shell and destination presentation](issues/08-restore-final-presentation.md) — resolved
-- [09 — Independently verify FINAL parity and close 2.0](issues/09-review-final-parity-and-close.md) — ready-for-human; behavior/evidence follow-up complete; user visual acceptance received
+- [09 — Independently verify FINAL parity and close 2.0](issues/09-review-final-parity-and-close.md) — resolved; behavior/evidence follow-up complete; user visual acceptance received
 - [10 — Recover Vault selection failures and reconcile transitions](issues/10-vault-recovery-and-review-closure.md) — resolved
 - [Final independent review follow-up](final-review-follow-up.md)
 
 Prior resolved tickets record earlier delivery work; ticket 09's repair
-follow-up is complete, including the unchanged-Vault state boundary, but
-user visual acceptance has now been received. Overall closure remains open for
-the user's final product acceptance; ticket 10's independent-review behavior
-and evidence findings are resolved.
+follow-up is complete, including the unchanged-Vault state boundary and the
+failed pending-save Calendar error surface. User visual acceptance has been
+received and remains valid; ticket 10's independent-review behavior and
+evidence findings are resolved. Final product sign-off remains user-owned,
+but there is no implementation or evidence blocker left in this frontier.
 
 ## Original dependency notes
 

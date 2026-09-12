@@ -1,8 +1,8 @@
 # 09: Independently verify FINAL parity and close 2.0
 
 Type: task
-Status: ready-for-human
-Blocked by: none; behavior and evidence follow-up is complete, final product acceptance remains with the user
+Status: resolved
+Blocked by: none; user visual acceptance is recorded and all implementation/evidence follow-up is complete
 
 ## What to verify
 
@@ -16,7 +16,7 @@ Directly inspect the rebuilt Mac candidate against the frozen FINAL after ticket
 - [x] Independently open both prototype and packaged product, then walk the ticket 08 state/size matrix with matched synthetic content. Compare toolbar, sidebar, margins, typography, hierarchy, timeline, forms, dots and expanded panels.
 - [x] Produce a concise paired deviation ledger: restored, explicitly accepted difference, unresolved defect, or not checked. Separate subjective alternatives from confirmed departures; never silently mark an unapproved departure PASS.
 - [x] Verify relevant behavior regressions and packaged operations in isolated data. Report visual evidence separately from AX/tests and from real-data observations.
-- [ ] Present the resulting product comparison to the user. Close the 2.0 visual acceptance only after the user accepts remaining intentional differences and no required unchecked/failed items remain.
+- [x] Present the resulting product comparison to the user. Close the 2.0 visual acceptance only after the user accepts remaining intentional differences and no required unchecked/failed items remain.
 - [x] Update the map and append a dated correction to prior acceptance documentation without erasing historical results. If blocked, leave the ticket unresolved with concrete findings.
 
 No prototype changes, real-data writes, producer changes, Dida365 calls, automation changes or repeat cutover are authorized by this review ticket.
@@ -102,6 +102,64 @@ Using `a76f3b4` as the fixed review point:
 
 Ticket 09 remains `ready-for-human`. The final product acceptance and closure
 decision remain with the user.
+
+## 2026-09-11 closure — Calendar pending-save failure is visible
+
+The last review finding was reproduced in the real built frontend: when a
+pending Habits save failed after the user had moved to Calendar, the active
+Calendar status had `data-state="error"` but the FINAL cascade clipped the
+element to a 1×1 pixel. The repair is in commit `4cd9a4c`:
+
+- Calendar keeps the existing compact hidden status for normal states, while
+  the error state alone returns to normal flow with automatic dimensions and
+  visible overflow. Normal Calendar layout is unchanged.
+- The fallback message no longer repeats the `Habits 保存失败` prefix when
+  the invalidated Habits request cannot update its old page status.
+- The deferred cross-page behavior regression executes the sequence, asserts
+  the native picker callback is not invoked, and preserves the draft,
+  correction identity, selected date, phase, current Vault view, and visible
+  failure destination.
+
+Direct browser validation against the rebuilt frontend (actual DOM and layout,
+not source matching or AX text presence alone) completed the requested path:
+Habits correction input was entered, Vault selection was started, the page was
+moved to Calendar, the pending save was rejected, and the Calendar error was
+measured at `position: static`, `overflow: visible`, `clip: auto`, and about
+`922×18` pixels. The test picker counter stayed `0`. Returning to Habits kept
+`更正记录 · 2026-09-08`, the input `延迟失败后仍保留的更正`, and the visible
+`保存更正` action.
+
+The rebuilt packaged candidate is Personal Dashboard `2.0.0` / build `2.0.0`,
+arm64 executable SHA-256
+`e346644c084f1845c6d10b08ecd354afe16ed9e053044c59d3e03936a3fd868d`.
+Packaged `vault-selection` and `vault-recovery` passed through the native
+folder picker with disposable synthetic Vaults; packaged launch acceptance
+also passed. The first recovery attempt hit the known native AX focus timing
+boundary; one controlled isolated rerun with the explicit scenario and an
+awake interactive session passed end to end. No acceptance assertion was
+removed or broadened.
+
+### Code review
+
+The Standards and Spec review of `7c021eb..4cd9a4c` found no blocking issue.
+The CSS override is scoped to Calendar's error state and is paired with an
+executable deferred behavior regression plus direct browser layout evidence;
+no prototype, real data, producer, Dida365, TickTick, automation, dependency,
+skill, or cutover state changed.
+
+Final verification:
+
+- `npm run test:frontend` — 22 passed.
+- `cargo fmt --manifest-path src-tauri/Cargo.toml --check` and
+  `cargo test --manifest-path src-tauri/Cargo.toml` — 152 Rust tests passed;
+  doc-tests passed.
+- `npm run build:mac` and `scripts/acceptance/macos-packaged-launch.sh` —
+  passed.
+- Packaged `vault-selection` and `vault-recovery` — passed.
+- Shell/Swift syntax checks and `git diff --check` — passed.
+
+The user's existing visual acceptance remains valid and was not re-requested.
+Ticket 09 is now `resolved`; final product sign-off remains user-owned.
 
 ## 2026-09-11 final behavior follow-up — unchanged Vault selection
 

@@ -2,7 +2,7 @@
 
 Type: task
 Status: resolved
-Blocked by: none; require reviewed tip ee0467d or its descendants
+Blocked by: none; reviewed tip `4cd9a4c` is a descendant of `ee0467d`
 
 ## Scope
 
@@ -109,3 +109,40 @@ Final validation:
 Standards- and Spec-axis review of `55ad50d..a728ddf` found no blocking issue.
 Ticket 10 remains `resolved`; Ticket 09 remains `ready-for-human` because the
 final product acceptance and closure decision remain with the user.
+
+## 2026-09-11 follow-up — Calendar exposes a failed pending-save state
+
+The remaining presentation defect in the failed pending-Habits-save path was
+reproduced and repaired in commit `4cd9a4c` (`fix(dashboard): expose Calendar
+save failures`). `renderPendingHabitSaveFailure()` now has a visible Calendar
+error surface: only normal Calendar status is clipped by the existing FINAL
+compact-status rule; `data-state="error"` restores normal flow, dimensions,
+overflow, and clipping. The ordinary Calendar layout remains unchanged.
+
+The executable frontend behavior regression runs a deferred failed save,
+changes the active destination to Calendar before resolving it, and verifies
+that Vault selection is blocked, the picker callback is not called, the old
+Vault view and Habits draft/correction state remain intact, and the failure is
+rendered for Calendar. The matching deferred-success path still opens the
+picker only after the save resolves successfully.
+
+Direct browser validation against the rebuilt frontend measured the actual
+Calendar DOM after the rejection: `data-state="error"`, `position: static`,
+`overflow: visible`, `clip: auto`, and approximately `922×18` pixels, with a
+rendered failure message. The synthetic picker counter was `0`. Returning to
+Habits preserved `更正记录 · 2026-09-08`, the correction input value, and the
+visible `保存更正` action. This is layout evidence, not an AX-only or
+source-string assertion.
+
+The packaged arm64 executable is SHA-256
+`e346644c084f1845c6d10b08ecd354afe16ed9e053044c59d3e03936a3fd868d`.
+Packaged `vault-selection`, `vault-recovery`, and launch acceptance passed
+using disposable synthetic profiles. The Standards and Spec review of
+`7c021eb..4cd9a4c` found no blocking issue. Full frontend/Rust regression,
+formatting, shell/Swift syntax, and diff checks passed. No prototype, real
+data, producer, Dida365, TickTick, automation, dependency, skill, or cutover
+state changed.
+
+Ticket 10 remains `resolved`; Ticket 09 is now also `resolved` because the
+existing user visual acceptance remains valid and no implementation or
+evidence blocker remains.
