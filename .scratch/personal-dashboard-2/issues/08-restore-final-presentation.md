@@ -10,14 +10,14 @@ Restore the selected FINAL product toolbar, sidebar relationship and Today / Cal
 
 ## Acceptance criteria
 
-- [ ] Before editing, run the frozen FINAL locally and directly compare it with the current Mac app using matched logical sizes, dates, phases, synthetic content and expansion states. Record deviations with paired images; neither old reports nor AX checks substitute for looking.
-- [ ] Restore the full-width product toolbar and shared shell. Preserve its elastic space and extension positions even when unused. Settings provides existing Vault selection; refresh remains on relevant pages. The more-menu may remain a clearly indicated placeholder with no data-changing behavior, as explicitly accepted by the user. Do not substitute the native title bar or restore retired settings.
-- [ ] Restore Today hierarchy, timeline, update rail, text scale and reading density; remove unapproved repeated headings and intrusive implementation explanations while preserving the baseline/current/fact distinctions.
-- [ ] Restore Habits left padding, heading hierarchy, lightweight summary, recent-day marks and expanded history layout. No narrow squeezed history column, accidental heading wraps or large empty area beside vertically centered row content.
-- [ ] Check Calendar structure and selected-day summary against FINAL; historical pages must accurately name the selected day rather than claim it is today.
-- [ ] Inventory every intentional difference. Preserve explicitly agreed functional extensions, including both short-record entry points and correction traces, in FINAL's visual language. Unapproved design differences remain open; do not redesign FINAL or copy synthetic goals into real data.
-- [ ] Verify all three Today phases, Calendar reviewed/unreviewed/empty dates, Habits collapsed/expanded/detail/edit states, long text and focus at 1180x820, 800x640 and 640x520 logical window sizes. Account for Retina/capture scale explicitly.
-- [ ] Run appropriate existing behavior checks and packaged Mac checks; preserve data-writing safeguards and snapshot semantics. No changes to real records, producer skills, Dida365, automations or legacy cleanup.
+- [x] Before editing, run the frozen FINAL locally and directly compare it with the current Mac app using matched logical sizes, dates, phases, synthetic content and expansion states. Record deviations with paired images; neither old reports nor AX checks substitute for looking.
+- [x] Restore the full-width product toolbar and shared shell. Preserve its elastic space and extension positions even when unused. Settings provides existing Vault selection; refresh remains on relevant pages. The more-menu may remain a clearly indicated placeholder with no data-changing behavior, as explicitly accepted by the user. Do not substitute the native title bar or restore retired settings.
+- [x] Restore Today hierarchy, timeline, update rail, text scale and reading density; remove unapproved repeated headings and intrusive implementation explanations while preserving the baseline/current/fact distinctions.
+- [x] Restore Habits left padding, heading hierarchy, lightweight summary, recent-day marks and expanded history layout. No narrow squeezed history column, accidental heading wraps or large empty area beside vertically centered row content.
+- [x] Check Calendar structure and selected-day summary against FINAL; historical pages must accurately name the selected day rather than claim it is today.
+- [x] Inventory every intentional difference. Preserve explicitly agreed functional extensions, including both short-record entry points and correction traces, in FINAL's visual language. Unapproved design differences remain open; do not redesign FINAL or copy synthetic goals into real data.
+- [x] Verify all three Today phases, Calendar reviewed/unreviewed/empty dates, Habits collapsed/expanded/detail/edit states, long text and focus at 1180x820, 800x640 and 640x520 logical window sizes. Account for Retina/capture scale explicitly.
+- [x] Run appropriate existing behavior checks and packaged Mac checks; preserve data-writing safeguards and snapshot semantics. No changes to real records, producer skills, Dida365, automations or legacy cleanup.
 
 ## Handoff
 
@@ -100,6 +100,36 @@ untracked `repair-decisions.md`.
 
 This implementation ticket remains `resolved`; final visual/product sign-off
 continues to belong to ticket 09.
+
+## 2026-09-11 final recovery and matrix reconciliation
+
+The remaining 09 engineering findings were closed without changing the frozen
+FINAL or the accepted presentation. The executable behavior repair is in
+`0799c34` (`fix(dashboard): reconcile Vault selection failures`); the final
+state-size evidence extension is in `5e4ddf4` (`test(dashboard): expand final
+state matrix evidence`).
+
+- The app-owned Today workspace setting now distinguishes missing,
+  recoverable malformed/unsupported JSON, and hard filesystem I/O errors.
+  Explicit native Vault selection repairs recoverable settings; an arbitrary
+  read error is not treated as an empty setting.
+- A selected Vault is opened and validated before persistence. Failed new-Vault
+  reads or failed setting commits leave the previously committed selection
+  intact. The frontend separates global Vault-selection freshness from Today
+  presentation freshness, waits for an in-flight Habits save, and reports
+  Calendar failures in the visible active destination.
+- Packaged `vault-recovery` covered malformed-setting recovery, initial active
+  Calendar failure, unreadable-new-Vault failure with the setting still on A,
+  and subsequent recovery to B. Packaged `vault-selection` rechecked cancel,
+  same-Vault, and real-switch state boundaries.
+- Packaged `final-state-matrix` executed Calendar reviewed/unreviewed/empty
+  summaries, Habits edit/correction states, long Today text, and Daytime focus
+  at 1180x820, 800x640, and 640x520. AX assertions for these new checks are
+  scoped to visible active-destination content.
+
+The visual/product acceptance decision remains owned by ticket 09 and the
+user; this ticket records implementation and evidence closure, not final
+product sign-off.
 
 ## 2026-09-11 follow-up repair — unchanged Vault selection state
 

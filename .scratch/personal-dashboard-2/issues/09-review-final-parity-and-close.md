@@ -2,9 +2,11 @@
 
 Type: task
 Status: ready-for-human
-Blocked by: none (08 resolved)
+Blocked by: none; behavior and evidence follow-up is complete, final product acceptance remains with the user
 
 ## What to verify
+
+Latest disposition: user visual acceptance has been received. Independent final review found remaining recovery/transition and evidence gaps; see [final review follow-up](../final-review-follow-up.md) and ticket 10. Historical ready-for-human statements below predate this disposition. Do not ask again for unchanged visual acceptance.
 
 Directly inspect the rebuilt Mac candidate against the frozen FINAL after ticket 08. Read ../repair-decisions.md. Prior PASS reports are historical evidence, not this review's conclusion.
 
@@ -141,3 +143,32 @@ point `7e5be6765aa6ced8b2c00ecb8be66701e5c2067d`. Ticket 08 remains `resolved`.
 Ticket 09 remains `ready-for-human`: no implementation finding from this repair
 is left open, but the final visual/product acceptance and closure decision are
 still intentionally left to the user.
+
+## 2026-09-11 final recovery/evidence follow-up — ready-for-human
+
+Ticket 10's recovery and evidence gaps are complete. The implementation commits
+are `0799c34` (`fix(dashboard): reconcile Vault selection failures`) and
+`5e4ddf4` (`test(dashboard): expand final state matrix evidence`); the packaged
+Mac executable reviewed for these checks is Personal Dashboard 2.0.0/build
+2.0.0 with SHA-256
+`d93c586aaaf5fbd0a23b66215b2e6a05094cef7618c830e87b91506ba14e9e0c`.
+
+The new executable behavior tests cover recoverable malformed/unsupported
+workspace settings, hard workspace I/O errors, read-before-commit and commit
+failure semantics, superseded presentation results, in-flight Habits saves,
+and the existing stale-binding rejection. The isolated packaged checks passed
+for native malformed-setting recovery, active Calendar errors, failed new-Vault
+selection without persistence drift, subsequent recovery, and cancel/same-Vault
+state preservation.
+
+The missing state/size evidence was then executed rather than inferred:
+Calendar empty and unreviewed summaries, Habits edit/correction composers,
+long Today text, and Daytime focus all passed in the visible active destination
+at 1180x820, 800x640, and 640x520. The old `Log workout now` path was not
+reintroduced or used.
+
+Independent review of `ee0467d..5e4ddf4` found no blocking Standards- or
+Spec-axis issue. Full regression, packaged build, and the targeted packaged
+scenarios passed. Ticket 09 remains `ready-for-human` because the unchecked
+product-acceptance criterion and final closure decision remain with the user;
+the agent does not claim final product acceptance.

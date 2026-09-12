@@ -14,11 +14,15 @@
 
 - [Repair decisions and evidence limits](repair-decisions.md)
 - [08 — Restore FINAL shell and destination presentation](issues/08-restore-final-presentation.md) — resolved
-- [09 — Independently verify FINAL parity and close 2.0](issues/09-review-final-parity-and-close.md) — ready-for-human; 2026-09-11 Vault-selection behavior repair and packaged regressions passed, final product acceptance remains with the user
+- [09 — Independently verify FINAL parity and close 2.0](issues/09-review-final-parity-and-close.md) — ready-for-human; behavior/evidence follow-up complete; user visual acceptance received
+- [10 — Recover Vault selection failures and reconcile transitions](issues/10-vault-recovery-and-review-closure.md) — resolved
+- [Final independent review follow-up](final-review-follow-up.md)
 
 Prior resolved tickets record earlier delivery work; ticket 09's repair
 follow-up is complete, including the unchanged-Vault state boundary, but
-overall visual acceptance remains open pending direct user acceptance.
+user visual acceptance has now been received. Overall closure remains open for
+the user's final product acceptance; ticket 10's independent-review behavior
+and evidence findings are resolved.
 
 ## Original dependency notes
 
