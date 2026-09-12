@@ -3,7 +3,9 @@ use crate::exercise::ExercisePersistence;
 use crate::migration::{BaselinePersistence, CompleteProfileAdoption, CompleteProfileDocuments};
 use crate::move_profile::ProfileMoveExchange;
 use crate::profile::{ProfileExchange, ProfilePersistence};
-use crate::today::{TodayWorkspaceExchange, TodayWorkspacePersistence};
+use crate::today::{
+    TodayWorkspaceExchange, TodayWorkspacePersistence, TodayWorkspaceSelectionState,
+};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -323,25 +325,49 @@ impl FileTodayWorkspacePersistence {
     pub fn new(workspace_file: PathBuf) -> Self {
         Self { workspace_file }
     }
-}
 
-impl TodayWorkspacePersistence for FileTodayWorkspacePersistence {
-    fn load_selected_vault(&self) -> Result<Option<PathBuf>, String> {
+    fn inspect_document(&self) -> Result<TodayWorkspaceSelectionState, String> {
         let document = match fs::read(&self.workspace_file) {
             Ok(document) => document,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(TodayWorkspaceSelectionState::Missing)
+            }
             Err(error) => {
                 return Err(format!(
                     "Could not read the Today workspace setting: {error}"
                 ))
             }
         };
-        let document: TodayWorkspaceDocument = serde_json::from_slice(&document)
-            .map_err(|error| format!("The Today workspace setting is invalid: {error}"))?;
+        let document: TodayWorkspaceDocument = match serde_json::from_slice(&document) {
+            Ok(document) => document,
+            Err(error) => {
+                return Ok(TodayWorkspaceSelectionState::Recoverable(format!(
+                    "The Today workspace setting is invalid: {error}"
+                )))
+            }
+        };
         if document.schema_version != 1 {
-            return Err("The Today workspace setting uses an unsupported schema version.".into());
+            return Ok(TodayWorkspaceSelectionState::Recoverable(
+                "The Today workspace setting uses an unsupported schema version.".into(),
+            ));
         }
-        Ok(Some(document.selected_vault))
+        Ok(TodayWorkspaceSelectionState::Selected(
+            document.selected_vault,
+        ))
+    }
+}
+
+impl TodayWorkspacePersistence for FileTodayWorkspacePersistence {
+    fn load_selected_vault(&self) -> Result<Option<PathBuf>, String> {
+        match self.inspect_document()? {
+            TodayWorkspaceSelectionState::Missing => Ok(None),
+            TodayWorkspaceSelectionState::Selected(vault) => Ok(Some(vault)),
+            TodayWorkspaceSelectionState::Recoverable(error) => Err(error),
+        }
+    }
+
+    fn inspect_selected_vault(&self) -> Result<TodayWorkspaceSelectionState, String> {
+        self.inspect_document()
     }
 
     fn save_selected_vault(&self, vault: &Path) -> Result<(), String> {
@@ -591,7 +617,81 @@ pub fn legacy_exercise_directory_for<R: Runtime>(app: &AppHandle<R>) -> Result<P
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::today::TodayWorkspaceSelectionState;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TemporaryWorkspaceDirectory(PathBuf);
+
+    impl TemporaryWorkspaceDirectory {
+        fn new(label: &str) -> Self {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let directory = std::env::temp_dir().join(format!(
+                "personal-dashboard-{label}-{}-{unique}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&directory).unwrap();
+            Self(directory)
+        }
+
+        fn file(&self) -> PathBuf {
+            self.0.join(TODAY_WORKSPACE_FILE_NAME)
+        }
+    }
+
+    impl Drop for TemporaryWorkspaceDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn malformed_today_workspace_settings_are_recoverable_only_after_explicit_choice() {
+        let directory = TemporaryWorkspaceDirectory::new("today-workspace-malformed");
+        fs::write(directory.file(), b"{not-json").unwrap();
+        let persistence = FileTodayWorkspacePersistence::new(directory.file());
+
+        assert!(persistence.load_selected_vault().is_err());
+        assert!(matches!(
+            persistence.inspect_selected_vault(),
+            Ok(TodayWorkspaceSelectionState::Recoverable(message))
+                if message.contains("invalid")
+        ));
+    }
+
+    #[test]
+    fn unsupported_today_workspace_schema_is_recoverable_without_being_empty() {
+        let directory = TemporaryWorkspaceDirectory::new("today-workspace-schema");
+        fs::write(
+            directory.file(),
+            br#"{"schemaVersion":2,"selectedVault":"/tmp/old"}"#,
+        )
+        .unwrap();
+        let persistence = FileTodayWorkspacePersistence::new(directory.file());
+
+        assert!(matches!(
+            persistence.inspect_selected_vault(),
+            Ok(TodayWorkspaceSelectionState::Recoverable(message))
+                if message.contains("unsupported schema")
+        ));
+        assert!(persistence.load_selected_vault().is_err());
+    }
+
+    #[test]
+    fn today_workspace_io_failures_remain_hard_errors() {
+        let directory = TemporaryWorkspaceDirectory::new("today-workspace-io");
+        let not_a_directory = directory.0.join("not-a-directory");
+        fs::write(&not_a_directory, b"occupied").unwrap();
+        let persistence =
+            FileTodayWorkspacePersistence::new(not_a_directory.join(TODAY_WORKSPACE_FILE_NAME));
+
+        let error = persistence
+            .inspect_selected_vault()
+            .expect_err("a path I/O error must not look recoverable");
+        assert!(error.contains("Could not read the Today workspace setting"));
+    }
 
     #[test]
     fn interrupted_complete_replacement_recovers_both_previous_documents() {

@@ -1,7 +1,7 @@
 use personal_dashboard_lib::today::{
     BaselineAvailability, DaytimeUpdateInput, DaytimeUpdateKind, EveningUpdateInput,
     EveningUpdateMode, FileTodayRecordStore, TodayApplication, TodayClock, TodayRecordStore,
-    TodayState, TodayWorkspaceExchange, TodayWorkspacePersistence,
+    TodayState, TodayWorkspaceExchange, TodayWorkspacePersistence, TodayWorkspaceSelectionState,
 };
 use std::cell::RefCell;
 use std::fs;
@@ -1892,6 +1892,56 @@ impl TodayWorkspacePersistence for CountingSelection {
     }
 }
 
+#[derive(Clone)]
+struct RecoverableSelection {
+    selected: Rc<RefCell<Option<PathBuf>>>,
+    saves: Rc<RefCell<usize>>,
+    state: TodayWorkspaceSelectionState,
+    inspection_error: Option<String>,
+}
+
+impl TodayWorkspacePersistence for RecoverableSelection {
+    fn load_selected_vault(&self) -> Result<Option<PathBuf>, String> {
+        match &self.state {
+            TodayWorkspaceSelectionState::Missing => Ok(None),
+            TodayWorkspaceSelectionState::Selected(vault) => Ok(Some(vault.clone())),
+            TodayWorkspaceSelectionState::Recoverable(error) => Err(error.clone()),
+        }
+    }
+
+    fn inspect_selected_vault(&self) -> Result<TodayWorkspaceSelectionState, String> {
+        if let Some(error) = &self.inspection_error {
+            return Err(error.clone());
+        }
+        Ok(self.state.clone())
+    }
+
+    fn save_selected_vault(&self, vault: &Path) -> Result<(), String> {
+        *self.saves.borrow_mut() += 1;
+        *self.selected.borrow_mut() = Some(vault.to_path_buf());
+        Ok(())
+    }
+}
+
+fn recoverable_selection_app(
+    selected: Rc<RefCell<Option<PathBuf>>>,
+    saves: Rc<RefCell<usize>>,
+    state: TodayWorkspaceSelectionState,
+    choice: Option<PathBuf>,
+    inspection_error: Option<String>,
+) -> TodayApplication<RecoverableSelection, ChosenVault, FixedClock> {
+    TodayApplication::new(
+        RecoverableSelection {
+            selected,
+            saves,
+            state,
+            inspection_error,
+        },
+        ChosenVault(choice),
+        FixedClock,
+    )
+}
+
 fn selection_app(
     selected: Rc<RefCell<Option<PathBuf>>>,
     saves: Rc<RefCell<usize>>,
@@ -1981,4 +2031,141 @@ fn switching_vault_reports_changed_and_reads_only_the_new_vault() {
         .timeline
         .iter()
         .any(|block| block.title == "旧 Vault 内容。"));
+}
+
+#[test]
+fn selecting_a_vault_recovers_a_malformed_workspace_setting_only_after_explicit_choice() {
+    let vault = TempDirectory::new("today-select-recoverable-setting");
+    write_record(
+        vault.path(),
+        "---\ntype: daily-record\ndate: 2026-08-10\n---\n## 今天的大致安排\n- **上午：** 修复后可见。\n",
+    );
+    let selected = Rc::new(RefCell::new(None));
+    let saves = Rc::new(RefCell::new(0));
+    let app = recoverable_selection_app(
+        selected.clone(),
+        saves.clone(),
+        TodayWorkspaceSelectionState::Recoverable(
+            "The Today workspace setting is invalid: malformed JSON".into(),
+        ),
+        Some(vault.path().to_path_buf()),
+        None,
+    );
+
+    let result = app
+        .select_vault()
+        .expect("an explicit choice should repair a malformed workspace setting");
+
+    assert!(result.changed);
+    assert_eq!(result.view.timeline[0].title, "修复后可见。");
+    assert_eq!(selected.borrow().as_deref(), Some(vault.path()));
+    assert_eq!(*saves.borrow(), 1);
+}
+
+#[test]
+fn a_workspace_io_failure_never_overwrites_the_previous_selection() {
+    let old_vault = TempDirectory::new("today-select-io-old");
+    let new_vault = TempDirectory::new("today-select-io-new");
+    write_record(
+        old_vault.path(),
+        "---\ntype: daily-record\ndate: 2026-08-10\n---\n## 今天的大致安排\n- **上午：** 旧内容仍保留。\n",
+    );
+    write_record(
+        new_vault.path(),
+        "---\ntype: daily-record\ndate: 2026-08-10\n---\n## 今天的大致安排\n- **上午：** 不应打开。\n",
+    );
+    let selected = Rc::new(RefCell::new(Some(old_vault.path().to_path_buf())));
+    let saves = Rc::new(RefCell::new(0));
+    let app = recoverable_selection_app(
+        selected.clone(),
+        saves.clone(),
+        TodayWorkspaceSelectionState::Recoverable(
+            "Could not read the Today workspace setting: permission denied".into(),
+        ),
+        Some(new_vault.path().to_path_buf()),
+        Some("Could not read the Today workspace setting: permission denied".into()),
+    );
+
+    let error = app
+        .select_vault()
+        .expect_err("an arbitrary workspace I/O failure must remain visible");
+
+    assert!(error.contains("permission denied"));
+    assert_eq!(selected.borrow().as_deref(), Some(old_vault.path()));
+    assert_eq!(*saves.borrow(), 0);
+}
+
+#[test]
+fn a_failed_new_vault_read_preserves_the_previous_selection_and_does_not_commit_it() {
+    let old_vault = TempDirectory::new("today-select-read-old");
+    let new_vault = TempDirectory::new("today-select-read-new");
+    write_record(
+        old_vault.path(),
+        "---\ntype: daily-record\ndate: 2026-08-10\n---\n## 今天的大致安排\n- **上午：** 旧内容仍可读。\n",
+    );
+    let invalid_path = new_vault
+        .path()
+        .join("life/Journal/Daily/2026/2026-08/2026-08-10.md");
+    fs::create_dir_all(invalid_path.parent().expect("record parent should exist"))
+        .expect("record parent should be created");
+    fs::write(&invalid_path, [0xff, 0xfe]).expect("invalid record should be written");
+    let selected = Rc::new(RefCell::new(Some(old_vault.path().to_path_buf())));
+    let saves = Rc::new(RefCell::new(0));
+    let app = selection_app(
+        selected.clone(),
+        saves.clone(),
+        Some(new_vault.path().to_path_buf()),
+    );
+
+    let error = app
+        .select_vault()
+        .expect_err("an unreadable new Vault must not commit");
+
+    assert!(error.contains("UTF-8"));
+    assert_eq!(selected.borrow().as_deref(), Some(old_vault.path()));
+    assert_eq!(*saves.borrow(), 0);
+}
+
+#[derive(Clone)]
+struct FailingSaveSelection {
+    selected: Rc<RefCell<Option<PathBuf>>>,
+}
+
+impl TodayWorkspacePersistence for FailingSaveSelection {
+    fn load_selected_vault(&self) -> Result<Option<PathBuf>, String> {
+        Ok(self.selected.borrow().clone())
+    }
+
+    fn save_selected_vault(&self, _vault: &Path) -> Result<(), String> {
+        Err("Could not activate the Today workspace setting: disk full".into())
+    }
+}
+
+#[test]
+fn a_workspace_selection_commit_failure_preserves_the_previous_selection() {
+    let old_vault = TempDirectory::new("today-select-save-old");
+    let new_vault = TempDirectory::new("today-select-save-new");
+    write_record(
+        old_vault.path(),
+        "---\ntype: daily-record\ndate: 2026-08-10\n---\n## 今天的大致安排\n- **上午：** 旧 Vault 仍是已提交选择。\n",
+    );
+    write_record(
+        new_vault.path(),
+        "---\ntype: daily-record\ndate: 2026-08-10\n---\n## 今天的大致安排\n- **上午：** 新 Vault 只能在提交成功后可见。\n",
+    );
+    let selected = Rc::new(RefCell::new(Some(old_vault.path().to_path_buf())));
+    let app = TodayApplication::new(
+        FailingSaveSelection {
+            selected: selected.clone(),
+        },
+        ChosenVault(Some(new_vault.path().to_path_buf())),
+        FixedClock,
+    );
+
+    let error = app
+        .select_vault()
+        .expect_err("a failed workspace commit must be surfaced");
+
+    assert!(error.contains("disk full"));
+    assert_eq!(selected.borrow().as_deref(), Some(old_vault.path()));
 }

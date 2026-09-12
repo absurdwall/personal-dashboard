@@ -395,6 +395,7 @@ const appShell = document.querySelector<HTMLElement>(".app-shell");
 let currentWorkspaceDestination: WorkspaceDestination = "today";
 let todayOperationCount = 0;
 const todayPresentationRequests = new LatestRequest();
+const vaultSelectionRequests = new LatestRequest();
 let currentTodayPhase: TodayPhase = "morning";
 let currentTodayView: TodayView | null = null;
 let selectedTodayDate: string | null = null;
@@ -417,6 +418,7 @@ type HabitNoteDraft = Readonly<{ content: string; correctionId: string | null }>
 let selectedHabitCell: HabitCellSelection | null = null;
 let currentHabitDateView: TodayView | null = null;
 let habitDateOperationCount = 0;
+let pendingHabitNoteSave: Promise<boolean> | null = null;
 let habitNoteStatus: Readonly<{ message: string; state: "ready" | "error" }> | null = null;
 const habitNoteDrafts = new Map<string, HabitNoteDraft>();
 
@@ -453,6 +455,18 @@ function resetVaultScopedWorkspaceState(): void {
     calendarStatus.dataset.state = "loading";
   }
   renderWorkspaceRailContext(currentWorkspaceDestination);
+}
+
+async function waitForPendingHabitSave(): Promise<void> {
+  const pending = pendingHabitNoteSave;
+  if (!pending) {
+    return;
+  }
+  if (currentWorkspaceDestination === "habits" && habitsStatus) {
+    habitsStatus.textContent = "正在完成当前 Habits 保存，再切换 Vault…";
+    habitsStatus.dataset.state = "loading";
+  }
+  await pending;
 }
 
 function syncWorkspaceViewportMode(): void {
@@ -1130,6 +1144,7 @@ async function selectTodayVault(): Promise<void> {
   if (todayOperationCount > 0) {
     return;
   }
+  const selectionRequest = vaultSelectionRequests.begin();
   const presentationRequest = todayPresentationRequests.begin();
   updateTodayOperationState(1);
   try {
@@ -1139,8 +1154,10 @@ async function selectTodayVault(): Promise<void> {
           "select_today_vault",
         ),
       {
-        isCurrent: () => todayPresentationRequests.isCurrent(presentationRequest),
+        isCurrent: () => vaultSelectionRequests.isCurrent(selectionRequest),
+        isPresentationCurrent: () => todayPresentationRequests.isCurrent(presentationRequest),
         currentDestination: () => currentWorkspaceDestination,
+        waitForPendingWrites: waitForPendingHabitSave,
         prepareForVaultSwitch: (view) => {
           resetVaultScopedWorkspaceState();
           selectedTodayDate = null;
@@ -1154,12 +1171,35 @@ async function selectTodayVault(): Promise<void> {
       },
     );
   } catch (error) {
-    if (todayPresentationRequests.isCurrent(presentationRequest) && todayStatus) {
-      todayStatus.textContent = `无法选择 Vault：${String(error)}`;
-      todayStatus.dataset.state = "error";
+    if (vaultSelectionRequests.isCurrent(selectionRequest)) {
+      renderVaultSelectionError(error);
     }
   } finally {
     updateTodayOperationState(-1);
+  }
+}
+
+function renderVaultSelectionError(error: unknown): void {
+  const message = `无法选择 Vault：${String(error)}`;
+  if (currentWorkspaceDestination === "calendar") {
+    calendarMonthRequests.invalidate();
+    calendarSelectionRequests.invalidate();
+    renderCalendarReadError(error, "无法选择 Vault", false);
+    return;
+  }
+  if (currentWorkspaceDestination === "habits") {
+    habitSnapshotRequests.invalidate();
+    habitDateRequests.invalidate();
+    if (habitsStatus) {
+      habitsStatus.textContent = message;
+      habitsStatus.dataset.state = "error";
+    }
+    return;
+  }
+  todayPresentationRequests.invalidate();
+  if (todayStatus) {
+    todayStatus.textContent = message;
+    todayStatus.dataset.state = "error";
   }
 }
 
@@ -1296,6 +1336,42 @@ function renderCalendarSummary(view: TodayView): void {
   calendarSummaryCopy.replaceChildren(heading, copy, detail);
 }
 
+function renderCalendarReadError(
+  error: unknown,
+  prefix = "无法读取 Calendar",
+  clearContent = true,
+): void {
+  if (clearContent) {
+    calendarGrid?.replaceChildren();
+    currentCalendarMonth = null;
+  }
+  if (calendarStatus) {
+    calendarStatus.textContent = `${prefix}：${String(error)}`;
+    calendarStatus.dataset.state = "error";
+  }
+  if (calendarSummaryHeading) {
+    calendarSummaryHeading.textContent = prefix === "无法选择 Vault"
+      ? "Vault 选择失败"
+      : "Calendar 读取失败";
+  }
+  if (calendarSummaryStatus) {
+    calendarSummaryStatus.textContent = "读取错误";
+    calendarSummaryStatus.dataset.availability = "error";
+  }
+  if (calendarSummaryCopy) {
+    const heading = document.createElement("strong");
+    heading.textContent = prefix === "无法选择 Vault" ? "Vault 选择失败" : "读取错误";
+    const copy = document.createElement("p");
+    copy.textContent = String(error);
+    const detail = document.createElement("small");
+    detail.textContent = "当前页面没有完成这次读取；请修复后重试。";
+    calendarSummaryCopy.replaceChildren(heading, copy, detail);
+  }
+  if (calendarOpenDay) {
+    calendarOpenDay.disabled = true;
+  }
+}
+
 async function selectCalendarDate(date: string): Promise<void> {
   const selectionRequest = calendarSelectionRequests.begin();
   selectedCalendarDate = date;
@@ -1377,51 +1453,59 @@ async function refreshCalendarMonth(
     }
     return view;
   } catch (error) {
-    if (calendarMonthRequests.isCurrent(monthRequest) && calendarStatus) {
-      calendarStatus.textContent = `无法读取月份：${String(error)}`;
-      calendarStatus.dataset.state = "error";
+    if (
+      calendarMonthRequests.isCurrent(monthRequest) &&
+      currentWorkspaceDestination === "calendar"
+    ) {
+      renderCalendarReadError(error, "无法读取月份");
     }
     return null;
   }
 }
 
 async function openCalendar(): Promise<void> {
-  if (!selectedCalendarDate) {
-    const selectionRequest = calendarSelectionRequests.begin();
-    const today = await window.__TAURI__.core.invoke<TodayView>("today_view");
-    if (
-      !calendarSelectionRequests.isCurrent(selectionRequest) ||
-      currentWorkspaceDestination !== "calendar" ||
-      selectedCalendarDate
-    ) {
+  try {
+    if (!selectedCalendarDate) {
+      const selectionRequest = calendarSelectionRequests.begin();
+      const today = await window.__TAURI__.core.invoke<TodayView>("today_view");
+      if (
+        !calendarSelectionRequests.isCurrent(selectionRequest) ||
+        currentWorkspaceDestination !== "calendar" ||
+        selectedCalendarDate
+      ) {
+        return;
+      }
+      selectedCalendarDate = today.date;
+      const [year, month] = today.date.split("-").map(Number);
+      populateCalendarYears(year);
+      const monthView = await refreshCalendarMonth(year, month);
+      if (
+        !monthView ||
+        !calendarSelectionRequests.isCurrent(selectionRequest) ||
+        currentWorkspaceDestination !== "calendar" ||
+        selectedCalendarDate !== today.date
+      ) {
+        return;
+      }
+      renderCalendarSummary(today);
       return;
     }
-    selectedCalendarDate = today.date;
-    const [year, month] = today.date.split("-").map(Number);
-    populateCalendarYears(year);
+    const date = selectedCalendarDate;
+    const [year, month] = date.split("-").map(Number);
     const monthView = await refreshCalendarMonth(year, month);
     if (
       !monthView ||
-      !calendarSelectionRequests.isCurrent(selectionRequest) ||
       currentWorkspaceDestination !== "calendar" ||
-      selectedCalendarDate !== today.date
+      selectedCalendarDate !== date
     ) {
       return;
     }
-    renderCalendarSummary(today);
-    return;
+    await selectCalendarDate(date);
+  } catch (error) {
+    if (currentWorkspaceDestination === "calendar") {
+      renderCalendarReadError(error);
+    }
   }
-  const date = selectedCalendarDate;
-  const [year, month] = date.split("-").map(Number);
-  const monthView = await refreshCalendarMonth(year, month);
-  if (
-    !monthView ||
-    currentWorkspaceDestination !== "calendar" ||
-    selectedCalendarDate !== date
-  ) {
-    return;
-  }
-  await selectCalendarDate(date);
 }
 
 async function chooseCalendarMonth(
@@ -2365,7 +2449,16 @@ habitsDestination?.addEventListener("submit", (event) => {
   if (!form) return;
   event.preventDefault();
   stashHabitNoteDraft();
-  void saveHabitExerciseNote();
+  const save = saveHabitExerciseNote();
+  pendingHabitNoteSave = save;
+  void save.then(
+    () => {
+      if (pendingHabitNoteSave === save) pendingHabitNoteSave = null;
+    },
+    () => {
+      if (pendingHabitNoteSave === save) pendingHabitNoteSave = null;
+    },
+  );
 });
 
 todayDaytimeContent?.addEventListener("input", stashDatedNoteDraft);

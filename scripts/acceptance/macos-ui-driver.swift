@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|cancel-folder|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|cancel-folder|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -236,6 +236,35 @@ func waitForText(_ application: AXUIElement, _ text: String, timeout: TimeInterv
 func assertAbsentText(_ application: AXUIElement, _ text: String) throws {
     guard findText(application, text) == nil else {
         throw DriverError.unexpectedText(text)
+    }
+}
+
+func visibleText(_ application: AXUIElement, _ text: String) -> AXUIElement? {
+    findTextPaths(application, text).first { path in
+        (path.ancestors + [path.element]).allSatisfy { element in
+            visibleAttribute(element, "AXHidden")
+        }
+    }?.element
+}
+
+func waitForVisibleText(
+    _ application: AXUIElement,
+    _ text: String,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if visibleText(application, text) != nil {
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout("visible active-destination text: \(text)")
+}
+
+func assertAbsentVisibleText(_ application: AXUIElement, _ text: String) throws {
+    guard visibleText(application, text) == nil else {
+        throw DriverError.unexpectedText("visible active-destination text: \(text)")
     }
 }
 
@@ -2425,6 +2454,15 @@ do {
     case "assert-absent-text":
         try assertAbsentText(application, text)
         print("Rendered state does not contain: \(text)")
+    case "wait-active-text":
+        try waitForVisibleText(application, text, timeout: timeout)
+        print("Found visible active-destination text: \(text)")
+    case "assert-active-text":
+        try waitForVisibleText(application, text, timeout: 0.5)
+        print("Visible active-destination state contains: \(text)")
+    case "assert-active-absent-text":
+        try assertAbsentVisibleText(application, text)
+        print("Visible active-destination state does not contain: \(text)")
     case "assert-focused-text":
         try activateApplication(application, pid: pid, timeout: min(2, timeout))
         try waitForFocusedText(application, text, timeout: timeout)

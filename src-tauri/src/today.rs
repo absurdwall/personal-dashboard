@@ -22,7 +22,22 @@ const CANONICAL_SECTIONS: [&str; 5] = [
 
 pub trait TodayWorkspacePersistence {
     fn load_selected_vault(&self) -> Result<Option<PathBuf>, String>;
+
+    fn inspect_selected_vault(&self) -> Result<TodayWorkspaceSelectionState, String> {
+        self.load_selected_vault().map(|selected| match selected {
+            Some(vault) => TodayWorkspaceSelectionState::Selected(vault),
+            None => TodayWorkspaceSelectionState::Missing,
+        })
+    }
+
     fn save_selected_vault(&self, vault: &Path) -> Result<(), String>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TodayWorkspaceSelectionState {
+    Missing,
+    Selected(PathBuf),
+    Recoverable(String),
 }
 
 pub trait TodayWorkspaceExchange {
@@ -861,21 +876,24 @@ where
     }
 
     pub fn select_vault(&self) -> Result<VaultSelectionResult, String> {
-        let previous_vault = self.persistence.load_selected_vault()?;
         let Some(vault) = self.exchange.select_vault()? else {
             return Ok(VaultSelectionResult {
                 view: self.open()?,
                 changed: false,
             });
         };
-        let changed = previous_vault.as_deref() != Some(vault.as_path());
+        let changed = match self.persistence.inspect_selected_vault()? {
+            TodayWorkspaceSelectionState::Missing
+            | TodayWorkspaceSelectionState::Recoverable(_) => true,
+            TodayWorkspaceSelectionState::Selected(previous_vault) => {
+                previous_vault.as_path() != vault.as_path()
+            }
+        };
+        let view = self.open_vault(&vault, self.clock.current_date())?;
         if changed {
             self.persistence.save_selected_vault(&vault)?;
         }
-        Ok(VaultSelectionResult {
-            view: self.open_vault(&vault, self.clock.current_date())?,
-            changed,
-        })
+        Ok(VaultSelectionResult { view, changed })
     }
 
     pub fn calendar_month(&self, year: i32, month: u32) -> Result<CalendarMonthView, String> {

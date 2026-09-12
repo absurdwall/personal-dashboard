@@ -7,7 +7,9 @@ export type VaultSelectionResult<View> = Readonly<{
 
 export type VaultSelectionActions<View> = Readonly<{
   isCurrent: () => boolean;
+  isPresentationCurrent: () => boolean;
   currentDestination: () => VaultSelectionDestination;
+  waitForPendingWrites: () => Promise<void>;
   prepareForVaultSwitch: (view: View) => void;
   renderToday: (view: View) => void;
   renderWorkspaceContextStatus: () => void;
@@ -18,13 +20,14 @@ export type VaultSelectionActions<View> = Readonly<{
 export async function selectVaultAndRefresh<View>(
   invoke: () => Promise<VaultSelectionResult<View>>,
   actions: VaultSelectionActions<View>,
-): Promise<"unchanged" | "changed" | "superseded"> {
+): Promise<"unchanged" | "changed" | "reconciled" | "superseded"> {
+  await actions.waitForPendingWrites();
   const result = await invoke();
   if (!actions.isCurrent()) {
     return "superseded";
   }
   if (!result.changed) {
-    return "unchanged";
+    return actions.isPresentationCurrent() ? "unchanged" : "superseded";
   }
 
   actions.prepareForVaultSwitch(result.view);
@@ -35,5 +38,5 @@ export async function selectVaultAndRefresh<View>(
   } else if (actions.currentDestination() === "habits") {
     await actions.refreshHabits();
   }
-  return "changed";
+  return actions.isPresentationCurrent() ? "changed" : "reconciled";
 }

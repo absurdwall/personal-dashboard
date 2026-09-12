@@ -333,7 +333,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection dashboard-2; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2; do
     run_bounded_scenario "$scenario"
   done
 
@@ -2394,6 +2394,230 @@ EOF
   echo "Data: both synthetic Vault Daily Records remained byte-identical"
 }
 
+run_vault_recovery_scenario() {
+  local vault_a="$acceptance_directory/vault-a"
+  local vault_bad="$acceptance_directory/vault-bad"
+  local record_relative="life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local record_a="$vault_a/$record_relative"
+  local record_bad="$vault_bad/$record_relative"
+  local workspace_file="$acceptance_data_directory/today-workspace.json"
+
+  current_step="preparing malformed workspace and unreadable selected Vault fixtures"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p \
+    "$vault_a/.obsidian" "$vault_bad/.obsidian" \
+    "$vault_a/$(dirname "$record_relative")" "$vault_bad/$(dirname "$record_relative")" \
+    "$acceptance_data_directory"
+  cat > "$record_a" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## 早间基准
+
+### 初始安排
+
+- **上午：** Recovery A 的安排。
+
+### 初始计划依据
+
+## 今天的大致安排
+
+- **上午：** Recovery A 的当前安排。
+
+## 白天更新
+
+## 晚间复盘
+
+### 今天发生了什么
+
+- Recovery A 的复盘。
+EOF
+  printf '\377\376' > "$record_bad"
+  printf '{not-json\n' > "$workspace_file"
+
+  current_step="surfacing malformed workspace failures on the active Calendar destination"
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Calendar" 10
+  run_driver wait-active-text "Calendar 读取失败" 20
+  run_driver assert-active-text "无法读取 Calendar" 10
+  run_driver assert-active-text "The Today workspace setting is invalid" 10
+  run_driver press "Today" 10
+  run_driver wait-active-text "The Today workspace setting is invalid" 20
+
+  current_step="recovering malformed workspace settings through explicit native selection"
+  run_driver press "设置：选择 Vault" 10
+  run_driver choose-folder "$vault_a" 20
+  run_driver wait-active-text "Vault: vault-a" 20
+  run_driver press "Daytime" 10
+  run_driver wait-active-text "Recovery A 的当前安排" 20
+  grep -Fq '"selectedVault": "'"$vault_a"'"' "$workspace_file" ||
+    fail "explicit Vault selection did not repair the malformed workspace setting"
+
+  current_step="surfacing an unreadable new Vault without switching the active Calendar source"
+  run_driver press "Calendar" 10
+  run_driver wait-active-text "Recovery A 的复盘" 20
+  run_driver press "设置：选择 Vault" 10
+  run_driver choose-folder "$vault_bad" 20
+  run_driver wait-active-text "Vault 选择失败" 20
+  run_driver assert-active-text "无法选择 Vault" 10
+  run_driver assert-active-text "UTF-8" 10
+  grep -Fq '"selectedVault": "'"$vault_a"'"' "$workspace_file" ||
+    fail "failed new Vault read changed the committed workspace selection"
+
+  current_step="recovering the failed new Vault selection after its record becomes readable"
+  cat > "$record_bad" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## 早间基准
+
+### 初始安排
+
+- **上午：** Recovery B 的安排。
+
+### 初始计划依据
+
+## 今天的大致安排
+
+- **上午：** Recovery B 的当前安排。
+
+## 白天更新
+
+## 晚间复盘
+
+### 今天发生了什么
+
+- Recovery B 的复盘。
+EOF
+  run_driver press "设置：选择 Vault" 10
+  run_driver choose-folder "$vault_bad" 20
+  run_driver wait-active-text "Recovery B 的复盘" 20
+  grep -Fq '"selectedVault": "'"$vault_bad"'"' "$workspace_file" ||
+    fail "successful Vault recovery did not commit the new workspace selection"
+  run_driver press "Today" 10
+  run_driver wait-active-text "Vault: vault-bad" 20
+  run_driver press "Daytime" 10
+  run_driver wait-active-text "Recovery B 的当前安排" 20
+
+  echo "Packaged IPC Vault recovery acceptance passed"
+  echo "Malformed settings: Calendar surfaced an active-destination error and explicit native selection repaired the setting"
+  echo "Commit semantics: an unreadable new Vault preserved the previous committed selection and active Calendar error"
+  echo "Recovery: the same synthetic Vault became selectable after its Daily Record was repaired"
+}
+
+run_final_state_matrix_scenario() {
+  local vault_directory="$acceptance_directory/vault-final-state-matrix"
+  local snapshot_directory="$vault_directory/.personal-dashboard/derived"
+  local record_directory="$vault_directory/life/Journal/Daily/2026/2026-09"
+  local reviewed_file="$record_directory/2026-09-08.md"
+  local unreviewed_file="$record_directory/2026-09-07.md"
+
+  current_step="preparing the missing Calendar and Habits state-size matrix"
+  fixed_now_epoch_millis="1788917400000"
+  mkdir -p "$vault_directory/.obsidian" "$snapshot_directory" "$record_directory" \
+    "$acceptance_data_directory"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_directory" > "$acceptance_data_directory/today-workspace.json"
+  /bin/cp "$repository_root/src-tauri/tests/fixtures/habits-v1-complete.json" \
+    "$snapshot_directory/habits-v1.json"
+  cat > "$reviewed_file" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## 早间基准
+
+### 初始安排
+
+- **上午：** 矩阵测试的初始安排。
+
+### 初始计划依据
+
+## 今天的大致安排
+
+- **上午：** 矩阵测试的当前安排。
+
+## 白天更新
+
+### 简短记录
+
+<!-- personal-dashboard:short-record id=matrix-1 category=exercise created-at=2026-09-08T12:00:00-04:00 needs-review=false -->
+- 矩阵测试的原始健身记录。
+
+## 晚间复盘
+
+### 今天发生了什么
+
+- 矩阵测试的复盘。
+EOF
+  cat > "$unreviewed_file" <<'EOF'
+---
+type: daily-record
+date: 2026-09-07
+---
+# 2026-09-07
+
+## 今天的大致安排
+
+- **上午：** 矩阵测试的无复盘日。
+
+## 白天更新
+
+### 12:00 — 一条记录
+
+- 观察事实：这是一个有 Daily Record 但没有晚间复盘的日期。
+EOF
+
+  launch_app_waiting_for_text "Today" 30
+  for viewport in 1180x820 800x640 640x520; do
+    current_step="checking Calendar empty and unreviewed states at ${viewport}"
+    run_driver set-size "$viewport" 10
+    run_driver assert-size "$viewport" 10
+    run_driver press "Calendar" 10
+    run_driver wait-active-text "2026 年 9 月" 20
+    run_driver assert-active-text "Month view" 10
+    run_driver assert-active-text "Selected day" 10
+    run_driver press-contains "9 月 7 日" 10
+    run_driver wait-active-text "这一天有 Daily Record，但没有晚间复盘" 10
+    run_driver press-contains "9 月 6 日" 10
+    run_driver wait-active-text "没有 Daily Record；保持空白" 10
+    run_driver press-contains "9 月 8 日" 10
+    run_driver wait-active-text "矩阵测试的复盘" 10
+
+    current_step="checking Habits edit and correction states at ${viewport}"
+    run_driver press "Habits" 10
+    run_driver wait-active-text "3 / 15" 20
+    run_driver assert-active-text "本周统计" 10
+    run_driver assert-active-text "本周习惯在今天" 10
+    run_driver press-contains "2026-09-08 · Exercise" 10
+    run_driver wait-active-text "写一句 · 2026-09-08" 20
+    run_driver type-text "Exercise note text|矩阵 ${viewport} 新记录" 10
+    run_driver press "保存记录" 10
+    run_driver wait-active-text "健身短句已写入 Daily Record" 20
+    run_driver press "更正这条" 10
+    run_driver wait-active-text "更正记录 · 2026-09-08" 10
+    run_driver type-text "Exercise note text|矩阵 ${viewport} 更正" 10
+    run_driver press "保存更正" 10
+    run_driver wait-active-text "更正及修改记录已写入 Daily Record" 20
+    run_driver assert-active-text "修改记录" 10
+  done
+
+  grep -Fq "矩阵 640x520 更正" "$reviewed_file" ||
+    fail "Habits edit/correction matrix did not reach the disposable Daily Record"
+
+  echo "Packaged IPC Calendar/Habits state-size matrix acceptance passed"
+  echo "Calendar: empty and unreviewed summaries were checked in the visible active destination at 1180x820, 800x640, and 640x520"
+  echo "Habits: edit and correction composer states were executed in the visible active destination at all required sizes"
+}
+
 run_dashboard_2_scenario() {
   local vault_directory="$acceptance_directory/tortilla-flat-vault"
   local snapshot_directory="$vault_directory/.personal-dashboard/derived"
@@ -2704,6 +2928,8 @@ case "$acceptance_scenario" in
   calendar) run_calendar_scenario ;;
   habits) run_habits_scenario ;;
   vault-selection) run_vault_selection_scenario ;;
+  vault-recovery) run_vault_recovery_scenario ;;
+  final-state-matrix) run_final_state_matrix_scenario ;;
   dashboard-2) run_dashboard_2_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;
