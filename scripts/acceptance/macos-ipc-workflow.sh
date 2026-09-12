@@ -341,13 +341,15 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections; do
+  for scenario in settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections dashboard-3; do
     run_bounded_scenario "$scenario"
   done
 
-  echo "Packaged IPC Personal Dashboard 2.0 FINAL gate passed"
-  echo "Coverage: retained Exercise safety, installed Today lifecycle, Calendar history, Habits notes, and one continuous FINAL Today/Calendar/Habits schedule"
+  echo "Packaged IPC Personal Dashboard 3.0 local candidate gate passed"
+  echo "Coverage: integrated bilingual Today, Calendar, Habits, Settings, task, appearance, and history workflows"
+  echo "Retirement: former 2.0 cutover and Exercise/Profile runtime scenarios remain explicit historical seams and are not part of normal-startup 3.0 acceptance"
   echo "Persistence: each workflow runs in an isolated packaged profile and verifies relaunch where required"
+  echo "Boundary: actual Drive cloud/version/trash acceptance remains a separate dependency and is not implied by this local gate"
   echo "Budget: ${scenario_budget_seconds}s per scenario, ${suite_budget_seconds}s overall"
 }
 
@@ -507,6 +509,27 @@ run_driver() {
   printf '%s\n' "$output" | sanitize_acceptance_output
 }
 
+open_native_picker_with_retry() {
+  local control_label="$1"
+  local expected_title="$2"
+  local output=""
+
+  for attempt in 1 2; do
+    run_driver press "$control_label" 10
+    if output="$("$driver_binary" "$app_pid" assert-picker-title "$expected_title" 10 2>&1)"; then
+      printf '%s\n' "$output" | sanitize_acceptance_output
+      return 0
+    fi
+    if (( attempt == 1 )); then
+      echo "Native picker was not ready; closing any partial panel and retrying once" >&2
+      "$driver_binary" "$app_pid" cancel-folder picker 5 >/dev/null 2>&1 || true
+      sleep 1
+    fi
+  done
+
+  fail "$output"
+}
+
 capture_background_signature() {
   local output
   if ! output="$("$driver_binary" "$app_pid" content-background-signature "Personal Dashboard 工作区" 10 2>&1)"; then
@@ -518,7 +541,7 @@ capture_background_signature() {
 open_vault_picker_from_settings() {
   run_driver press "设置" 10
   run_driver press "数据与 Vault" 10
-  run_driver press "更换 Vault…" 10
+  open_native_picker_with_retry "更换 Vault…" "选择 Tortilla Flat Vault"
 }
 
 launch_app_waiting_for_text() {
@@ -3322,7 +3345,7 @@ EOF
   run_driver assert-active-text "无需 Dashboard 账号"
   run_driver assert-active-text "本地已保存"
   run_driver assert-active-text "云端已同步"
-  run_driver press "更换 Vault…" 10
+  open_native_picker_with_retry "更换 Vault…" "选择 Tortilla Flat Vault"
   run_driver choose-folder "$vault_a" 35
   run_driver wait-active-text "$vault_a" 20
   run_driver assert-active-text "本地位置可用"
@@ -3332,11 +3355,11 @@ EOF
   run_driver press "雾蓝" 10
   run_driver wait-active-text "颜色已保存在这台 Mac" 10
   run_driver assert-same-rendered-color "全局主题色样本|雾蓝" 10
-  run_driver press "Today" 10
+  run_driver press "今天" 10
   run_driver assert-same-rendered-color "刷新|全局主题色样本" 10
-  run_driver press "Calendar" 10
+  run_driver press "日历" 10
   run_driver assert-same-rendered-color "今天|全局主题色样本" 10
-  run_driver press "Habits" 10
+  run_driver press "习惯" 10
   run_driver assert-same-rendered-color "刷新快照|全局主题色样本" 10
   run_driver press "设置" 10
   grep -Fq '"accentColor": "blue"' "$appearance_file" ||
@@ -3344,24 +3367,22 @@ EOF
   if ! stop_app; then
     fail "app process did not exit before color persistence relaunch"
   fi
-  launch_app_waiting_for_text "Today" 30
+  launch_app_waiting_for_text "早间基准" 30
   run_driver assert-same-rendered-color "刷新|全局主题色样本" 10
-  run_driver wait-active-text "Vault: settings-vault-a" 20
-  run_driver press "Daytime" 10
+  run_driver press "当日进展" 10
   run_driver wait-active-text "Settings Vault A 的合成安排" 20
   run_driver press "设置" 10
   run_driver assert-state "雾蓝|pressed" 10
 
   current_step="switching Vault without changing the Mac-local color preference"
   run_driver press "数据与 Vault" 10
-  run_driver press "更换 Vault…" 10
+  open_native_picker_with_retry "更换 Vault…" "选择 Tortilla Flat Vault"
   run_driver choose-folder "$vault_b" 35
   run_driver wait-active-text "$vault_b" 20
   grep -Fq '"accentColor": "blue"' "$appearance_file" ||
     fail "Vault switch changed the Mac-local accent preference"
-  run_driver press "Today" 10
-  run_driver wait-active-text "Vault: settings-vault-b" 20
-  run_driver press "Daytime" 10
+  run_driver press "今天" 10
+  run_driver press "当日进展" 10
   run_driver wait-active-text "Settings Vault B 的合成安排" 20
 
   current_step="showing unavailable-Vault recovery and restoring defaults safely"
@@ -3375,13 +3396,13 @@ EOF
   run_driver press "数据与 Vault" 10
   run_driver assert-active-text "$vault_b"
   run_driver assert-active-text "本地位置不可用"
-  run_driver press "更换 Vault…" 10
+  open_native_picker_with_retry "更换 Vault…" "选择 Tortilla Flat Vault"
   run_driver choose-folder "$vault_a" 35
   run_driver press "外观" 10
   run_driver press "恢复默认外观" 10
   run_driver wait-active-text "Vault 数据未更改" 10
-  run_driver assert-same-rendered-color "全局主题色样本|松绿" 10
-  run_driver press "Today" 10
+  run_driver assert-state "松绿|pressed" 10
+  run_driver press "今天" 10
   run_driver assert-same-rendered-color "刷新|全局主题色样本" 10
   grep -Fq '"accentColor": "forest"' "$appearance_file" ||
     fail "default appearance was not persisted"
@@ -3457,8 +3478,7 @@ EOF
   current_step="checking the Chinese native Vault picker title without changing Vault"
   run_driver press "设置" 10
   run_driver press "数据与 Vault" 10
-  run_driver press "更换 Vault…" 10
-  run_driver assert-picker-title "选择 Tortilla Flat Vault" 10
+  open_native_picker_with_retry "更换 Vault…" "选择 Tortilla Flat Vault"
   run_driver cancel-folder "picker" 10
   run_driver press "今天" 10
   run_driver press "当日进展" 10
@@ -3509,8 +3529,7 @@ EOF
   current_step="switching Vault while retaining the independent English preference"
   run_driver press "Settings" 10
   run_driver press "Data & Vault" 10
-  run_driver press "Change Vault…" 10
-  run_driver assert-picker-title "Select the Tortilla Flat Vault" 10
+  open_native_picker_with_retry "Change Vault…" "Select the Tortilla Flat Vault"
   run_driver choose-folder "$vault_b" 35
   run_driver wait-active-text "$vault_b" 20
   grep -Fq '"interfaceLanguage": "en"' "$language_file" ||
@@ -3614,8 +3633,7 @@ EOF
   run_driver wait-active-text "默认：无背景图片" 10
   run_driver press "雾蓝" 10
   run_driver wait-active-text "颜色已保存在这台 Mac" 10
-  run_driver press "选择图片…" 10
-  run_driver assert-picker-title "选择本地背景图片" 10
+  open_native_picker_with_retry "选择图片…" "选择本地背景图片"
   run_driver choose-file "$light_source" 35
   run_driver wait-active-text "背景图片副本已保存在这台 Mac" 20
   run_driver assert-active-text "背景图片已保存在这台 Mac"
@@ -4058,6 +4076,312 @@ EOF
   echo "Boundary: only synthetic Vault input was used; no Agent, skill, Dida365, MCP, automation, or Daily Record review was changed"
 }
 
+run_dashboard_3_scenario() {
+  local vault_directory="$acceptance_directory/dashboard-3-vault"
+  local record_directory="$vault_directory/life/Journal/Daily/2026/2026-09"
+  local record_file="$record_directory/2026-09-08.md"
+  local reviewed_file="$record_directory/2026-09-07.md"
+  local snapshot_directory="$vault_directory/.personal-dashboard/derived"
+  local snapshot_file="$snapshot_directory/habits-v1.json"
+  local plan_file="$vault_directory/life/.personal-dashboard/day-task-plans/v1/2026/2026-09-08.json"
+  local background_source="$acceptance_directory/dashboard-3-background.png"
+  local moved_background_source="$acceptance_directory/dashboard-3-background-moved.png"
+  local capture_root="$repository_root/output/playwright"
+  local capture_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory/dashboard-3-captures}"
+  local capture_parent
+  local before_record_hash
+  local before_reviewed_hash
+  local before_snapshot_hash
+  local long_drive_copy='Ordinary local Vaults also work. Dashboard does not convert arbitrary notes, manage Google accounts, or upload files. “Saved locally” does not mean “synced to the cloud.” Google Drive manages versions and trash.'
+
+  current_step="preparing the integrated 3.0 candidate fixtures and capture boundary"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p "$vault_directory/.obsidian" "$record_directory" "$snapshot_directory" \
+    "$(dirname "$plan_file")" "$acceptance_data_directory"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_directory" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+  /bin/cp "$repository_root/src-tauri/tests/fixtures/habits-v1-complete.json" "$snapshot_file"
+  cat > "$record_file" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+source: dashboard-3-packaged-candidate
+---
+# 2026-09-08
+
+## 早间基准
+
+### 初始安排
+
+- **早上（07:30–10:00）：** 早餐后学习一小时，再为工作 check-in 做准备。
+- **上午（10:00–12:00）：** 工作 check-in 后完成 insurance reimbursement。
+- **中午（12:00–13:30）：** 午饭、留白和 buffer，不把空档填满。
+- **下午（13:30–17:00）：** 推进 apartment-renewal，预留连续工作块。
+- **晚上（17:30 以后）：** 取饭、Exercise 和自由恢复。
+
+### 初始计划依据
+
+#### 固定安排
+
+- 10:00 工作 check-in
+- 17:30 取晚饭
+
+#### Tasks（任务）
+
+- Insurance reimbursement · 今天到期
+- Apartment-renewal · 周五到期
+
+#### Habits（习惯）
+
+- Exercise · normal 30 分钟 / low-energy baseline 走 10 分钟
+- Reset living space · 10 分钟
+
+## 今天的大致安排
+
+- **现在：** 处理需要 17:00 前完成的紧急工作。
+- **17:30：** 取晚饭仍然保留。
+- **Exercise：** 退到 low-energy baseline，走 10 分钟即可。
+- **晚饭后：** 不再安排必须事项，保护恢复空间。
+- **未知：** 上午学习实际完成量没有记录。
+
+## 白天更新
+
+### 07:18 — 有意义的记录
+
+- 观察事实：07:18 起床。
+
+### 13:40 — 有意义的事件
+
+- 观察事实：出现紧急工作，打断原安排。
+
+### 14:10 — 重大调整
+
+- 原计划意图：下午原本推进 apartment-renewal。
+- 变化原因：能量很低，加上临时出现紧急工作。
+- 修订方向：紧急工作优先；Exercise 退到 low-energy baseline；晚饭后保护休息。
+
+## 晚间复盘
+
+### 今天发生了什么
+
+- 07:18 起床，上午完成工作 check-in 和报销。
+- 13:40 临时工作打断原安排，14:10 调整下午计划。
+- 17:30 取饭，19:00 跑步 30 分钟，之后休息。
+- 原定项目没有继续，早间学习完成量没有记录。
+
+### 计划与实际
+
+下午因紧急工作偏离早间基准，完成急事后保护了恢复时间。
+
+### 简单总结（可选）
+
+完成了必要事项，也保留了恢复空间。
+EOF
+  cat > "$reviewed_file" <<'EOF'
+---
+type: daily-record
+date: 2026-09-07
+source: dashboard-3-packaged-candidate
+---
+# 2026-09-07
+
+## 今天的大致安排
+
+- **下午：** 完成历史更正验收前的合成安排。
+
+## 白天更新
+
+### 18:10 — 有意义的记录
+
+- 观察事实：完成一次 Exercise，并保留当日来源说明。
+
+## 晚间复盘
+
+### 今天发生了什么
+
+- 完成安排，并在晚间核对历史记录。
+
+### 简单总结（可选）
+
+历史日有可读复盘。
+EOF
+  cat > "$plan_file" <<'EOF'
+{
+  "schemaVersion": 1,
+  "date": "2026-09-08",
+  "candidates": [
+    {
+      "kind": "action",
+      "taskId": "candidate-review",
+      "sourceReference": "dashboard-3-candidate-action",
+      "text": "Review candidate evidence"
+    },
+    {
+      "kind": "suggestion",
+      "sourceReference": "dashboard-3-candidate-suggestion",
+      "text": "Optional suggestion must not become a task"
+    }
+  ]
+}
+EOF
+  "$driver_binary" 0 make-image-fixture "complex|$background_source" 10 >/dev/null ||
+    fail "could not generate the candidate background fixture"
+
+  if [[ -n "${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-}" ]]; then
+    [[ "$capture_directory" == /* ]] ||
+      fail "candidate capture directory must be absolute"
+    [[ ! -e "$capture_directory" ]] ||
+      fail "candidate capture directory already exists: $capture_directory"
+    mkdir -p "$capture_root"
+    capture_root="$(cd "$capture_root" && pwd -P)"
+    capture_parent="$(dirname "$capture_directory")"
+    [[ -d "$capture_parent" ]] ||
+      fail "candidate capture parent directory does not exist: $capture_parent"
+    capture_parent="$(cd "$capture_parent" && pwd -P)"
+    case "$capture_parent" in
+      "$capture_root" | "$capture_root"/*) ;;
+      *) fail "candidate captures must stay under $capture_root" ;;
+    esac
+    mkdir "$capture_directory"
+    capture_directory="$(cd "$capture_directory" && pwd -P)"
+    case "$capture_directory" in
+      "$capture_root"/*) ;;
+      *) fail "candidate captures must stay under $capture_root" ;;
+    esac
+  else
+    mkdir -p "$capture_directory"
+  fi
+  "$driver_binary" 0 assert-capture-non-overwrite \
+    "$acceptance_directory/capture-race-sentinel" 10 >/dev/null ||
+    fail "window capture could overwrite a destination created by another writer"
+
+  before_record_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
+  before_reviewed_hash="$(shasum -a 256 "$reviewed_file" | awk '{print $1}')"
+  before_snapshot_hash="$(shasum -a 256 "$snapshot_file" | awk '{print $1}')"
+
+  current_step="selecting the candidate color and background through the real picker"
+  launch_app_waiting_for_text "Review candidate evidence" 30
+  run_driver set-size "1120x760" 10
+  run_driver assert-size "1120x760" 10
+  run_driver assert-active-absent-text "Optional suggestion must not become a task"
+  run_driver press "设置" 10
+  run_driver wait-active-text "外观" 10
+  run_driver press "雾蓝" 10
+  run_driver wait-active-text "颜色已保存在这台 Mac" 10
+  open_native_picker_with_retry "选择图片…" "选择本地背景图片"
+  run_driver choose-file "$background_source" 35
+  run_driver wait-active-text "背景图片副本已保存在这台 Mac" 20
+  run_driver assert-rendered-variation "背景图片预览|20" 10
+  /bin/mv "$background_source" "$moved_background_source"
+
+  current_step="capturing the Chinese wide B layout and shared background layers"
+  run_driver press "今天" 10
+  run_driver press "早间基准" 10
+  run_driver wait-active-text "早餐后学习一小时" 20
+  run_driver assert-active-text "Review candidate evidence"
+  run_driver capture-window "$capture_directory/product-zh-today-morning-wide.png" 10
+  run_driver press "当日进展" 10
+  run_driver wait-active-text "紧急工作优先" 10
+  run_driver assert-active-text "Review candidate evidence"
+  run_driver capture-window "$capture_directory/product-zh-today-daytime-wide.png" 10
+  run_driver press "晚间复盘" 10
+  run_driver wait-active-text "19:00 跑步 30 分钟" 10
+  run_driver assert-active-text "Review candidate evidence"
+  run_driver capture-window "$capture_directory/product-zh-today-evening-wide.png" 10
+  run_driver press "日历" 10
+  run_driver wait-active-text "2026年9月" 20
+  run_driver press-contains "9月7日" 10
+  run_driver wait-active-text "完成安排，并在晚间核对历史记录" 10
+  run_driver assert-calendar-cells-transparent "2026年9月|4" 10
+  run_driver capture-window "$capture_directory/product-zh-calendar-wide.png" 10
+  run_driver press "习惯" 10
+  run_driver wait-active-text "4 / 15" 20
+  run_driver press-contains "2026-09-07 · Exercise" 10
+  run_driver wait-active-text "近 12 周记录" 10
+  run_driver capture-window "$capture_directory/product-zh-habits-expanded-wide.png" 10
+  run_driver press "设置" 10
+  run_driver wait-active-text "外观" 10
+  run_driver assert-state "雾蓝|pressed" 10
+  run_driver capture-window "$capture_directory/product-zh-settings-appearance-wide.png" 10
+
+  current_step="relaunching after the source image moved and retaining local appearance"
+  if ! stop_app; then
+    fail "app process did not exit before 3.0 candidate relaunch"
+  fi
+  launch_app_waiting_for_text "Review candidate evidence" 30
+  run_driver press "设置" 10
+  run_driver wait-active-text "背景图片已保存在这台 Mac" 20
+  run_driver assert-state "雾蓝|pressed" 10
+  run_driver assert-rendered-variation "背景图片预览|20" 10
+  [[ -f "$moved_background_source" ]] ||
+    fail "moving the user source removed it instead of leaving the app-owned copy independent"
+
+  current_step="capturing the bilingual medium candidate surfaces"
+  run_driver press "切换为英文" 10
+  run_driver wait-active-text "Appearance" 10
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver press "Today" 10
+  run_driver press "Morning baseline" 10
+  run_driver wait-active-text "早餐后学习一小时" 10
+  run_driver assert-active-text "Day tasks"
+  run_driver assert-active-text "Unchecked means unconfirmed"
+  run_driver capture-window "$capture_directory/product-en-today-morning-medium.png" 10
+  run_driver press "Calendar" 10
+  run_driver wait-active-text "September 2026" 20
+  run_driver capture-window "$capture_directory/product-en-calendar-medium.png" 10
+  run_driver press "Habits" 10
+  run_driver wait-active-text "4 / 15" 20
+  run_driver press-contains "2026-09-07 · Exercise" 10
+  run_driver wait-active-text "Past 12 weeks" 10
+  run_driver capture-window "$capture_directory/product-en-habits-expanded-medium.png" 10
+  run_driver press "Settings" 10
+  run_driver wait-active-text "Appearance" 10
+  run_driver press "Data & Vault" 10
+  run_driver scroll-text-visible "$long_drive_copy" 10
+  run_driver assert-long-text-fits "$long_drive_copy" 10
+  run_driver assert-document-fixed "document" 10
+  run_driver capture-window "$capture_directory/product-en-settings-vault-medium.png" 10
+
+  current_step="capturing the narrow candidate without flattening Habits"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver press "Today" 10
+  run_driver press "Daytime progress" 10
+  run_driver wait-active-text "紧急工作优先" 10
+  run_driver assert-active-text "Review candidate evidence"
+  run_driver capture-window "$capture_directory/product-en-today-daytime-narrow.png" 10
+  run_driver press "Calendar" 10
+  run_driver wait-active-text "September 2026" 20
+  run_driver capture-window "$capture_directory/product-en-calendar-narrow.png" 10
+  run_driver press "Habits" 10
+  run_driver wait-active-text "4 / 15" 20
+  run_driver press-contains "2026-09-07 · Exercise" 10
+  run_driver wait-active-text "Past 12 weeks" 10
+  run_driver assert-document-fixed "document" 10
+  run_driver capture-window "$capture_directory/product-en-habits-expanded-narrow.png" 10
+  run_driver press "Settings" 10
+  run_driver wait-active-text "Appearance" 10
+  run_driver capture-window "$capture_directory/product-en-settings-appearance-narrow.png" 10
+
+  [[ "$(find "$capture_directory" -type f -name '*.png' | wc -l | tr -d ' ')" == "14" ]] ||
+    fail "candidate capture matrix did not produce exactly 14 non-overwritten screenshots"
+  [[ "$(shasum -a 256 "$record_file" | awk '{print $1}')" == "$before_record_hash" ]] ||
+    fail "3.0 visual acceptance changed the current Daily Record"
+  [[ "$(shasum -a 256 "$reviewed_file" | awk '{print $1}')" == "$before_reviewed_hash" ]] ||
+    fail "3.0 visual acceptance changed the reviewed Daily Record"
+  [[ "$(shasum -a 256 "$snapshot_file" | awk '{print $1}')" == "$before_snapshot_hash" ]] ||
+    fail "3.0 visual acceptance changed the external Habits snapshot"
+
+  echo "Packaged IPC Personal Dashboard 3.0 integrated local candidate acceptance passed"
+  echo "Capture directory: $capture_directory"
+  echo "Visuals: Chinese wide Today phases, Calendar, expanded Habits, and Appearance plus English medium/narrow surfaces were captured from the real app"
+  echo "Persistence: Mist blue and the app-owned background survived relaunch after the synthetic source image moved"
+  echo "Boundary: focused gate scenarios cover task replan, habit OR, historical corrections, errors, and late responses; Drive cloud/version/trash evidence remains separate and incomplete"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -4146,6 +4470,7 @@ case "$acceptance_scenario" in
   planning-tasks) run_planning_tasks_scenario ;;
   local-habit-completion) run_local_habit_completion_scenario ;;
   historical-corrections) run_historical_corrections_scenario ;;
+  dashboard-3) run_dashboard_3_scenario ;;
   drive-compatibility) run_drive_compatibility_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;

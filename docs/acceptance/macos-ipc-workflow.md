@@ -49,12 +49,15 @@ hashes must remain unchanged throughout this reading-only pass.
 The recursive `gate` runs these scenarios in order:
 
 ```text
-list-first direct state-semantics progress workouts exceptions responsive
-compact keyboard week-close installed-cycle calendar habits vault-selection
-vault-recovery final-state-matrix dashboard-2 settings-vault-colors
-interface-language background-image
+settings-vault-colors interface-language background-image
 day-tasks planning-tasks local-habit-completion historical-corrections
+dashboard-3
 ```
+
+The older 2.0 cutover and Exercise/Profile packaged scenarios remain
+individually callable as historical acceptance seams, but ADR-0002 excludes
+their old shell from the normal-startup 3.0 candidate gate. A current gate must
+not require the retired runtime or its hybrid-language navigation to reappear.
 
 ## Personal Dashboard 3.0 Settings, Vault, and color scenario
 
@@ -192,6 +195,26 @@ Only synthetic files are used: the scenario does not invoke or modify any Agent,
 skill, Dida365 data, MCP connection, or automation. Application workflow tests
 separately cover whole-input validation, yesterday's reader context, and an
 interleaved canonical write at the conditional replacement boundary.
+
+## Personal Dashboard 3.0 integrated candidate scenario
+
+Run the ticket-09 packaged and screenshot check with a new capture directory:
+
+```sh
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-3 \
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=300 \
+PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-3-candidate-YYYYMMDD" \
+scripts/acceptance/macos-ipc-workflow.sh
+```
+
+The scenario uses one isolated synthetic Vault to capture the accepted B task
+rail, all three Today phases, Calendar, expanded Habits, Appearance, and the
+long English Data & Vault guidance at 1120x760, 800x640, and 640x520. It imports
+a synthetic background through the real picker, moves the source, relaunches,
+and verifies the app-owned copy plus color preference. The capture directory
+must be new and remain under `output/playwright/`; exclusive creation prevents
+the driver from replacing another writer's file. The recursive local gate runs
+the focused behavior scenarios before this integrated reading/visual pass.
 
 ## Personal Dashboard 3.0 Drive compatibility scenario
 

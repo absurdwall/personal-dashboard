@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -975,6 +975,78 @@ func renderedBitmap(in sampleRect: CGRect) -> NSBitmapImageRep? {
         return nil
     }
     return bitmap
+}
+
+func captureOutputURL(_ outputPath: String) throws -> URL {
+    let outputURL = URL(fileURLWithPath: outputPath)
+    guard outputURL.path == outputPath,
+          outputURL.path.hasPrefix("/") else {
+        throw DriverError.unexpectedText("window capture path must be absolute")
+    }
+    guard !FileManager.default.fileExists(atPath: outputPath) else {
+        throw DriverError.unexpectedText("window capture destination already exists")
+    }
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(
+        atPath: outputURL.deletingLastPathComponent().path,
+        isDirectory: &isDirectory
+    ), isDirectory.boolValue else {
+        throw DriverError.unexpectedText("window capture directory does not exist")
+    }
+    return outputURL
+}
+
+func writeNewCapture(
+    _ data: Data,
+    to outputURL: URL,
+    afterAvailabilityCheck: (() throws -> Void)? = nil
+) throws {
+    guard !FileManager.default.fileExists(atPath: outputURL.path) else {
+        throw DriverError.unexpectedText("window capture destination already exists")
+    }
+    try afterAvailabilityCheck?()
+    do {
+        try data.write(to: outputURL, options: .withoutOverwriting)
+    } catch {
+        throw DriverError.unexpectedText("window capture destination already exists or could not be created")
+    }
+}
+
+func captureWindow(_ application: AXUIElement, pid: pid_t, outputPath: String) throws {
+    let outputURL = try captureOutputURL(outputPath)
+    guard let window = mainWindow(application),
+          let windowFrame = frame(window) else {
+        throw DriverError.timeout("main window frame for capture")
+    }
+    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    Thread.sleep(forTimeInterval: 0.25)
+    guard let bitmap = renderedBitmap(in: windowFrame),
+          let png = bitmap.representation(using: .png, properties: [:]) else {
+        throw DriverError.timeout("rendered main window bitmap")
+    }
+    try writeNewCapture(png, to: outputURL)
+}
+
+func assertCaptureNonOverwrite(_ outputPath: String) throws {
+    let outputURL = try captureOutputURL(outputPath)
+    let sentinel = Data("capture destination owned by another writer".utf8)
+    var rejected = false
+    do {
+        try writeNewCapture(Data("replacement bytes".utf8), to: outputURL) {
+            guard FileManager.default.createFile(
+                atPath: outputURL.path,
+                contents: sentinel
+            ) else {
+                throw DriverError.unexpectedText("could not create the competing capture destination")
+            }
+        }
+    } catch {
+        rejected = true
+    }
+    guard rejected,
+          try Data(contentsOf: outputURL) == sentinel else {
+        throw DriverError.unexpectedText("window capture replaced a competing destination")
+    }
 }
 
 func dominantRenderedColor(in sampleRect: CGRect) -> (red: Int, green: Int, blue: Int)? {
@@ -2856,7 +2928,8 @@ func requireArguments() throws -> (pid_t, String, String, TimeInterval) {
 do {
     let (pid, command, text, timeout) = try requireArguments()
     let application = AXUIElementCreateApplication(pid)
-    if command != "choose-folder" && command != "choose-file" && command != "make-image-fixture" {
+    if command != "choose-folder" && command != "choose-file" &&
+        command != "make-image-fixture" && command != "assert-capture-non-overwrite" {
         try activateApplication(application, pid: pid, timeout: timeout)
     }
     Thread.sleep(forTimeInterval: 0.05)
@@ -2979,6 +3052,12 @@ do {
         }
         try assertCalendarCellsTransparent(application, label: parts[0], tolerance: tolerance)
         print("Calendar cells preserve the translucent page background: \(parts[0])")
+    case "capture-window":
+        try captureWindow(application, pid: pid, outputPath: text)
+        print("Captured rendered app window: \(text)")
+    case "assert-capture-non-overwrite":
+        try assertCaptureNonOverwrite(text)
+        print("Capture write rejected a destination created after its availability check")
     case "make-image-fixture":
         try makeImageFixture(text)
         print("Created synthetic background image fixture")
@@ -3013,7 +3092,8 @@ do {
         let deadline = Date().addingTimeInterval(timeout)
         var pressed = false
         repeat {
-            if let element = findPressable(application, text, contains: true) {
+            if let element = findPressable(application, text, contains: true),
+               (attribute(element, "AXEnabled") as? NSNumber)?.boolValue == true {
                 _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
                 Thread.sleep(forTimeInterval: 0.05)
                 let error = AXUIElementPerformAction(element, "AXPress" as CFString)
@@ -3033,7 +3113,8 @@ do {
         let deadline = Date().addingTimeInterval(timeout)
         var pressed = false
         repeat {
-            if let element = findPressable(application, text, contains: true) {
+            if let element = findPressable(application, text, contains: true),
+               (attribute(element, "AXEnabled") as? NSNumber)?.boolValue == true {
                 _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
                 Thread.sleep(forTimeInterval: 0.05)
                 let error = AXUIElementPerformAction(element, "AXPress" as CFString)
