@@ -53,7 +53,7 @@ list-first direct state-semantics progress workouts exceptions responsive
 compact keyboard week-close installed-cycle calendar habits vault-selection
 vault-recovery final-state-matrix dashboard-2 settings-vault-colors
 interface-language background-image
-day-tasks planning-tasks
+day-tasks planning-tasks local-habit-completion historical-corrections
 ```
 
 ## Personal Dashboard 3.0 Settings, Vault, and color scenario
@@ -192,6 +192,51 @@ Only synthetic files are used: the scenario does not invoke or modify any Agent,
 skill, Dida365 data, MCP connection, or automation. Application workflow tests
 separately cover whole-input validation, yesterday's reader context, and an
 interleaved canonical write at the conditional replacement boundary.
+
+## Personal Dashboard 3.0 Drive compatibility scenario
+
+The Drive scenario is intentionally outside the recursive gate because it needs
+an actual Google Drive desktop-client File Provider root and a fresh, dedicated
+synthetic Vault. A normal temporary directory is rejected. Prepare the synthetic
+Daily Records, Habits snapshot, and planning input under a unique child of
+`~/Library/CloudStorage/GoogleDrive-…/My Drive`, then add this exact marker file:
+
+```text
+.personal-dashboard-drive-acceptance
+personal-dashboard-drive-compatibility-v1
+```
+
+Validate the fixture before stopping the Drive client:
+
+```sh
+node scripts/acceptance/drive-vault-policy.mjs "$PERSONAL_DASHBOARD_DRIVE_VAULT"
+```
+
+After the client has uploaded the seed fixture, stop the client explicitly and
+run the packaged local/offline phase:
+
+```sh
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=drive-compatibility \
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=360 \
+PERSONAL_DASHBOARD_DRIVE_VAULT="$PERSONAL_DASHBOARD_DRIVE_VAULT" \
+scripts/acceptance/macos-ipc-workflow.sh
+```
+
+The scenario selects the folder with the native picker, receives the structured
+producer action while excluding its suggestion, saves a task and local habit
+completion, records a historical correction, and proves offline relaunch. It
+then atomically replaces a synthetic record, verifies explicit stale-write
+failure and retry, and switches to a local-only Vault strictly as an isolation
+control. Logs redact the Drive account portion of the selected path.
+
+This packaged pass proves local app behavior in a materialized Drive File
+Provider directory only. After restarting the Drive client, separately require
+File Provider or remote-web evidence that the changed files are uploaded, then
+perform remote update/download plus version/trash recovery on disposable files.
+Do not call the ticket complete when the client stays in an uploading state or
+when only local filesystem changes are available. See
+`docs/acceptance/personal-dashboard-3-drive-compatibility.md` for the current
+environment result and exact support boundary.
 
 The driver is compiled from the macOS system `ApplicationServices` and
 `Foundation` frameworks into the temporary acceptance directory. It adds no

@@ -15,6 +15,7 @@ acceptance_data_directory=""
 acceptance_baseline_file=""
 driver_binary=""
 current_step="setup"
+drive_acceptance_vault=""
 
 fixed_now_epoch_millis="${PERSONAL_DASHBOARD_ACCEPTANCE_NOW_EPOCH_MILLIS:-1786406400000}"
 fixed_utc_offset_minutes="${PERSONAL_DASHBOARD_ACCEPTANCE_UTC_OFFSET_MINUTES:--240}"
@@ -25,8 +26,15 @@ main_shell_pid="$$"
 scenario_watchdog_pid=""
 suite_deadline_monotonic_millis=0
 
+sanitize_acceptance_output() {
+  sed -E 's#GoogleDrive-[^/[:space:]]+#GoogleDrive-<account>#g'
+}
+
 fail() {
-  echo "Packaged IPC acceptance failed at ${current_step}: $1" >&2
+  local sanitized_message
+  sanitized_message="$(printf '%s' "$1" | sanitize_acceptance_output)"
+  printf 'Packaged IPC acceptance failed at %s: %s\n' \
+    "$current_step" "$sanitized_message" >&2
   exit 1
 }
 
@@ -352,6 +360,16 @@ fi
 
 require_positive_integer "scenario budget" "$scenario_budget_seconds"
 
+if [[ "$acceptance_scenario" == "drive-compatibility" ]]; then
+  drive_acceptance_vault="${PERSONAL_DASHBOARD_DRIVE_VAULT:-}"
+  [[ -n "$drive_acceptance_vault" ]] ||
+    fail "drive-compatibility requires PERSONAL_DASHBOARD_DRIVE_VAULT"
+  node "$script_directory/drive-vault-policy.mjs" "$drive_acceptance_vault" ||
+    fail "Drive acceptance Vault failed the marker and File Provider path policy"
+  drive_acceptance_vault="$(cd "$drive_acceptance_vault" && pwd -P)" ||
+    fail "could not resolve the Drive acceptance Vault"
+fi
+
 stop_app() {
   local app_process_pids=""
 
@@ -486,7 +504,7 @@ run_driver() {
   if ! output="$("$driver_binary" "$app_pid" "$@" 2>&1)"; then
     fail "$output"
   fi
-  printf '%s\n' "$output"
+  printf '%s\n' "$output" | sanitize_acceptance_output
 }
 
 capture_background_signature() {
@@ -2488,6 +2506,156 @@ EOF
   echo "Presentation: the Calendar-to-Today correction surface was verified in Chinese and English"
 }
 
+run_drive_compatibility_scenario() {
+  local vault="$drive_acceptance_vault"
+  local record="$vault/life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local record_candidate="$record.drive-candidate"
+  local past_record="$vault/life/Journal/Daily/2026/2026-09/2026-09-07.md"
+  local task_document="$vault/life/.personal-dashboard/day-tasks/v1/2026/2026-09-08.json"
+  local completion_document="$vault/life/.personal-dashboard/habit-completions/v1/completions.json"
+  local control_vault="$acceptance_directory/local-isolation-control-vault"
+  local control_record="$control_vault/life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local local_task="Drive 离线本地任务 · Synthetic"
+  local conflict_draft="Drive 冲突后草稿 · Preserved"
+  local historical_task="Drive 历史更正 · Synthetic"
+  local habit_label='记录“Reset living space”今天完成'
+  local historical_habit_label='更正 2026-09-07 的“Reset living space”本地完成'
+  local current_review_hash
+  local past_review_hash
+
+  current_step="checking the explicitly stopped Drive client and fresh marker-owned fixture"
+  fixed_now_epoch_millis="1788891000000"
+  ! pgrep -x "Google Drive" >/dev/null ||
+    fail "Drive desktop client must be stopped for the offline-save phase"
+  [[ -f "$record" && -f "$past_record" ]] ||
+    fail "Drive acceptance fixture is missing its synthetic Daily Records"
+  [[ ! -e "$task_document" && ! -e "$completion_document" ]] ||
+    fail "Drive acceptance fixture must be fresh; use a new marker-owned folder"
+  current_review_hash="$(shasum -a 256 "$record" | awk '{print $1}')"
+  past_review_hash="$(shasum -a 256 "$past_record" | awk '{print $1}')"
+
+  current_step="selecting and reading the cached Drive Vault through the packaged app"
+  launch_app_waiting_for_text "连接 Tortilla Flat vault" 30
+  run_driver set-size "1120x760" 10
+  run_driver press "设置" 10
+  run_driver press "数据与 Vault" 10
+  run_driver press "更换 Vault…" 10
+  run_driver choose-folder "$vault" 35
+  current_step="opening Today from the selected cached Drive Vault"
+  run_driver press "今天" 10
+  run_driver press "当日进展" 10
+  run_driver wait-active-text "Drive 隔离验收的当前安排" 20
+  run_driver wait-active-text "Drive 生产者任务 · Synthetic" 20
+  run_driver assert-active-absent-text "Drive 建议不得成为任务"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "Drive 生产者任务 · Synthetic" 20
+  run_driver assert-active-absent-text "Drive 建议不得成为任务"
+  run_driver assert-active-text "每日流程导入"
+
+  current_step="saving task and habit completion while the Drive client is stopped"
+  run_driver type-text "添加当天任务|$local_task" 10
+  run_driver press "添加" 10
+  run_driver wait-active-text "$local_task" 20
+  run_driver press "切换“${local_task}”的完成状态" 10
+  run_driver assert-state "切换“${local_task}”的完成状态|selected" 10
+  wait_for_file_text "$task_document" "$local_task" ||
+    fail "offline task save did not reach the selected Drive fixture"
+  run_driver press "习惯" 10
+  run_driver wait-text "Reset living space" 20
+  run_driver press "$habit_label" 10
+  run_driver wait-text "本地完成已保存到所选 Vault" 20
+  wait_for_file_text "$completion_document" '"kind": "completed"' ||
+    fail "offline habit completion did not reach the selected Drive fixture"
+
+  current_step="recording a historical correction without changing either review"
+  run_driver press "日历" 10
+  run_driver wait-active-text "2026年9月" 20
+  run_driver press-contains "9月7日" 10
+  run_driver press "打开完整 Today" 10
+  run_driver wait-active-text "所选日期 · 2026-09-07" 20
+  run_driver type-text "添加当天任务|$historical_task" 10
+  run_driver press "添加" 10
+  run_driver wait-active-text "$historical_task" 20
+  run_driver press "$historical_habit_label" 10
+  run_driver wait-active-text "本地完成已保存到所选 Vault" 20
+  run_driver assert-state "$historical_habit_label|selected" 10
+  run_driver press "$historical_habit_label" 10
+  run_driver wait-active-text "本地完成已取消" 20
+  run_driver assert-active-text "本地更正记录 · 2"
+  [[ "$(shasum -a 256 "$record" | awk '{print $1}')" == "$current_review_hash" ]] ||
+    fail "offline writes changed the current synthetic Daily Record"
+  [[ "$(shasum -a 256 "$past_record" | awk '{print $1}')" == "$past_review_hash" ]] ||
+    fail "historical correction changed the synthetic historical review"
+
+  current_step="relaunching offline and rereading local state"
+  if ! stop_app; then
+    fail "app process did not exit before the offline Drive relaunch"
+  fi
+  launch_app_waiting_for_text "当天任务" 30
+  run_driver wait-active-text "$local_task" 20
+  run_driver assert-state "切换“${local_task}”的完成状态|selected" 10
+  run_driver press "习惯" 10
+  run_driver wait-text "Dashboard 本地完成" 20
+  run_driver assert-state "$habit_label|selected" 10
+  run_driver press "日历" 10
+  run_driver press-contains "9月7日" 10
+  run_driver press "打开完整 Today" 10
+  run_driver wait-active-text "$historical_task" 20
+  run_driver assert-active-text "本地更正记录 · 2"
+
+  current_step="rereading an atomic external replacement and rejecting a stale save"
+  /bin/cp "$record" "$record_candidate"
+  /usr/bin/perl -0pi -e \
+    's/- Drive 隔离验收的当前复盘。/- Drive 隔离验收的当前复盘。\n- Drive 外部替换已重读 · Synthetic/' \
+    "$record_candidate"
+  /bin/mv "$record_candidate" "$record"
+  run_driver press "今天" 10
+  run_driver press "刷新" 10
+  run_driver press "晚间复盘" 10
+  run_driver wait-active-text "Drive 外部替换已重读 · Synthetic" 20
+  run_driver type-text "重命名任务|$conflict_draft" 10
+  printf ' ' >> "$task_document"
+  run_driver press "保存任务" 10
+  run_driver wait-active-text "任务未保存" 20
+  run_driver assert-active-text "$conflict_draft"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "$conflict_draft" 20
+  run_driver press "保存任务" 10
+  run_driver wait-active-text "当天任务已保存" 20
+  wait_for_file_text "$task_document" "$conflict_draft" ||
+    fail "retry after the external replacement did not save the preserved draft"
+
+  current_step="using a local-only Vault strictly as a cross-Vault isolation control"
+  mkdir -p "$control_vault/.obsidian" "$(dirname "$control_record")"
+  printf '%s\n' \
+    '---' \
+    'type: daily-record' \
+    'date: 2026-09-08' \
+    '---' \
+    '# 2026-09-08' \
+    '' \
+    '## 今天的大致安排' \
+    '' \
+    '- **上午：** 仅用于隔离控制的本地 Vault。' > "$control_record"
+  open_vault_picker_from_settings
+  run_driver choose-folder "$control_vault" 35
+  run_driver press "今天" 10
+  run_driver press "当日进展" 10
+  run_driver wait-active-text "仅用于隔离控制的本地 Vault" 20
+  run_driver assert-active-absent-text "$conflict_draft"
+  open_vault_picker_from_settings
+  run_driver choose-folder "$vault" 35
+  run_driver press "今天" 10
+  run_driver wait-active-text "$conflict_draft" 20
+  run_driver assert-active-absent-text "仅用于隔离控制的本地 Vault"
+
+  echo "Packaged IPC Drive compatibility local phase passed"
+  echo "Offline: native Vault selection, producer receipt, task save, habit completion, historical correction, and relaunch succeeded while the Drive client was stopped"
+  echo "Conflict: an external atomic replacement was reread; a stale task write failed visibly and retained its draft for explicit refresh and retry"
+  echo "Isolation: the ordinary temporary Vault was used only as a negative cross-Vault control, never as Drive sync evidence"
+  echo "Cloud boundary: this scenario proves local application behavior inside a Drive File Provider root; File Provider upload and remote recovery require separate evidence"
+}
+
 run_vault_selection_scenario() {
   local vault_a="$acceptance_directory/vault-a"
   local vault_b="$acceptance_directory/vault-b"
@@ -3978,6 +4146,7 @@ case "$acceptance_scenario" in
   planning-tasks) run_planning_tasks_scenario ;;
   local-habit-completion) run_local_habit_completion_scenario ;;
   historical-corrections) run_historical_corrections_scenario ;;
+  drive-compatibility) run_drive_compatibility_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;
 esac
