@@ -1,6 +1,7 @@
 use crate::habits::{
-    project_snapshot, snapshot_dates, FileHabitSnapshotStore, HabitSnapshotStore,
-    LocalHabitCompletion, LocalHabitRecord, SNAPSHOT_RELATIVE_PATH,
+    project_habit_corrections, project_snapshot, project_uncatalogued_habit_corrections,
+    snapshot_dates, FileHabitSnapshotStore, HabitCorrectionView, HabitLocalCompletionChangeView,
+    HabitSnapshotStore, LocalHabitCompletion, LocalHabitRecord, SNAPSHOT_RELATIVE_PATH,
 };
 pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
@@ -1027,6 +1028,7 @@ pub struct DayTaskView {
     pub created_at: String,
     pub modified_at: String,
     pub completed_at: Option<String>,
+    pub deleted_at: Option<String>,
     pub changes: Vec<DayTaskChangeView>,
 }
 
@@ -1268,6 +1270,7 @@ pub struct TodayView {
     pub daytime: DaytimeView,
     pub evening: EveningView,
     pub day_tasks: DayTaskListView,
+    pub habit_corrections: HabitCorrectionView,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -1294,6 +1297,7 @@ pub struct TodayApplication<
     day_task_store: D,
     habit_completion_store: L,
     habit_cache: Mutex<HashMap<PathBuf, HabitSnapshotView>>,
+    habit_correction_cache: Mutex<HashMap<(PathBuf, String), HabitCorrectionView>>,
 }
 
 impl<P, E, C>
@@ -1321,6 +1325,7 @@ where
             day_task_store: FileDayTaskStore,
             habit_completion_store: FileHabitCompletionStore,
             habit_cache: Mutex::new(HashMap::new()),
+            habit_correction_cache: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -1343,6 +1348,7 @@ where
             day_task_store: FileDayTaskStore,
             habit_completion_store: FileHabitCompletionStore,
             habit_cache: Mutex::new(HashMap::new()),
+            habit_correction_cache: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -1371,6 +1377,7 @@ where
             day_task_store: FileDayTaskStore,
             habit_completion_store: FileHabitCompletionStore,
             habit_cache: Mutex::new(HashMap::new()),
+            habit_correction_cache: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -1401,6 +1408,7 @@ where
             day_task_store,
             habit_completion_store: FileHabitCompletionStore,
             habit_cache: Mutex::new(HashMap::new()),
+            habit_correction_cache: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -1433,6 +1441,7 @@ where
             day_task_store,
             habit_completion_store,
             habit_cache: Mutex::new(HashMap::new()),
+            habit_correction_cache: Mutex::new(HashMap::new()),
         }
     }
 
@@ -1472,7 +1481,7 @@ where
                 let tasks = document
                     .tasks
                     .into_iter()
-                    .filter(|task| task.deleted_at.is_none())
+                    .filter(|task| task.deleted_at.is_none() || date != self.clock.current_date())
                     .map(day_task_view)
                     .collect::<Vec<_>>();
                 DayTaskListView {
@@ -1870,25 +1879,246 @@ where
         Ok((vault, path))
     }
 
+    fn habit_corrections_for(&self, vault: &Path, date: &str) -> HabitCorrectionView {
+        let snapshot_path = vault.join(SNAPSHOT_RELATIVE_PATH);
+        let completion_path = canonical_habit_completion_path(vault);
+        let completion_target_binding = habit_completion_target_binding(&completion_path);
+        let (completion_revision, local_completions) =
+            match self.habit_completion_store.load(&completion_path) {
+                Ok(Some(bytes)) => {
+                    let parsed = match parse_habit_completion_document(
+                        &bytes,
+                        &self.clock.current_timestamp_label(),
+                    ) {
+                        Ok(parsed) => parsed,
+                        Err(error) => {
+                            return self.retained_habit_correction_or(
+                                &snapshot_path,
+                                date,
+                                HabitSnapshotState::Error,
+                                error,
+                            )
+                        }
+                    };
+                    let local = parsed
+                        .completions
+                        .into_iter()
+                        .map(local_habit_completion)
+                        .collect();
+                    (Some(document_revision(&bytes)), local)
+                }
+                Ok(None) => (None, Vec::new()),
+                Err(error) => {
+                    return self.retained_habit_correction_or(
+                        &snapshot_path,
+                        date,
+                        HabitSnapshotState::Error,
+                        error,
+                    )
+                }
+            };
+        let document = match self.habit_snapshot_store.load(&snapshot_path) {
+            Ok(Some(document)) => document,
+            Ok(None) => {
+                if self.has_cached_habit_correction(&snapshot_path, date) {
+                    return self.retained_habit_correction_or(
+                        &snapshot_path,
+                        date,
+                        HabitSnapshotState::Missing,
+                        "Habits 快照文件已不存在；可能正在等待下一次原子替换。",
+                    );
+                }
+                return self.uncatalogued_habit_corrections(
+                    date,
+                    HabitSnapshotState::Missing,
+                    "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+                    completion_revision,
+                    completion_target_binding,
+                    local_completions,
+                );
+            }
+            Err(error) => {
+                if self.has_cached_habit_correction(&snapshot_path, date) {
+                    return self.retained_habit_correction_or(
+                        &snapshot_path,
+                        date,
+                        HabitSnapshotState::Error,
+                        error,
+                    );
+                }
+                return self.uncatalogued_habit_corrections(
+                    date,
+                    HabitSnapshotState::Error,
+                    format!("{error}；外部状态与历史目标未知。"),
+                    completion_revision,
+                    completion_target_binding,
+                    local_completions,
+                );
+            }
+        };
+        let record_path = match canonical_record_path(vault, date) {
+            Ok(path) => path,
+            Err(error) => {
+                return self.retained_habit_correction_or(
+                    &snapshot_path,
+                    date,
+                    HabitSnapshotState::Error,
+                    error,
+                )
+            }
+        };
+        let local_records = self
+            .record_store
+            .load(&record_path)
+            .ok()
+            .flatten()
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+            .and_then(|record| parse_short_records(&record, date).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|record| record.category == ShortRecordCategory::Exercise)
+            .map(|record| LocalHabitRecord {
+                id: record.id,
+                key: "exercise".into(),
+                date: record.date,
+                source_label: "Dashboard Daily Record".into(),
+                text: record.text,
+            })
+            .collect();
+        match project_habit_corrections(
+            &document,
+            &self.clock.current_date(),
+            date,
+            local_records,
+            local_completions.clone(),
+        ) {
+            Ok(mut view) => {
+                view.completion_revision = completion_revision;
+                view.completion_target_binding = Some(completion_target_binding);
+                let mut cache = match self.habit_correction_cache.lock() {
+                    Ok(cache) => cache,
+                    Err(_) => {
+                        return HabitCorrectionView::empty(
+                            date,
+                            HabitSnapshotState::Error,
+                            "历史习惯缓存不可用。",
+                        )
+                    }
+                };
+                cache.insert((snapshot_path, date.into()), view.clone());
+                view
+            }
+            Err(error) => {
+                if self.has_cached_habit_correction(&snapshot_path, date) {
+                    self.retained_habit_correction_or(
+                        &snapshot_path,
+                        date,
+                        HabitSnapshotState::Error,
+                        error,
+                    )
+                } else {
+                    self.uncatalogued_habit_corrections(
+                        date,
+                        HabitSnapshotState::Error,
+                        format!("{error}；外部状态与历史目标未知。"),
+                        completion_revision,
+                        completion_target_binding,
+                        local_completions,
+                    )
+                }
+            }
+        }
+    }
+
+    fn uncatalogued_habit_corrections(
+        &self,
+        date: &str,
+        state: HabitSnapshotState,
+        message: impl Into<String>,
+        completion_revision: Option<String>,
+        completion_target_binding: String,
+        local_completions: Vec<LocalHabitCompletion>,
+    ) -> HabitCorrectionView {
+        match project_uncatalogued_habit_corrections(
+            &self.clock.current_date(),
+            date,
+            state,
+            message,
+            local_completions,
+        ) {
+            Ok(mut view) => {
+                view.completion_revision = completion_revision;
+                view.completion_target_binding = Some(completion_target_binding);
+                view
+            }
+            Err(error) => HabitCorrectionView::empty(date, HabitSnapshotState::Error, error),
+        }
+    }
+
+    fn has_cached_habit_correction(&self, snapshot_path: &Path, date: &str) -> bool {
+        self.habit_correction_cache
+            .lock()
+            .is_ok_and(|cache| cache.contains_key(&(snapshot_path.to_path_buf(), date.into())))
+    }
+
+    fn retained_habit_correction_or(
+        &self,
+        snapshot_path: &Path,
+        date: &str,
+        fallback_state: HabitSnapshotState,
+        error: impl Into<String>,
+    ) -> HabitCorrectionView {
+        let error = error.into();
+        let cache = match self.habit_correction_cache.lock() {
+            Ok(cache) => cache,
+            Err(_) => {
+                return HabitCorrectionView::empty(
+                    date,
+                    HabitSnapshotState::Error,
+                    "历史习惯缓存不可用。",
+                )
+            }
+        };
+        if let Some(previous) = cache.get(&(snapshot_path.to_path_buf(), date.into())) {
+            let mut retained = previous.clone();
+            retained.state = HabitSnapshotState::Retained;
+            retained.can_record = false;
+            retained.message = format!("刷新失败，继续显示上个有效历史读数：{error}");
+            retained
+        } else {
+            HabitCorrectionView::empty(date, fallback_state, error)
+        }
+    }
+
     pub fn set_local_habit_completion(
         &self,
         input: HabitCompletionMutationInput,
+    ) -> Result<HabitSnapshotView, String> {
+        self.set_local_habit_completion_internal(input, false)
+    }
+
+    fn set_local_habit_completion_internal(
+        &self,
+        input: HabitCompletionMutationInput,
+        allow_existing_without_catalog: bool,
     ) -> Result<HabitSnapshotView, String> {
         validate_habit_key(&input.habit_key)?;
         self.validate_event_date(&input.lived_date)?;
         validate_local_identifier(&input.change_id, "习惯完成修改标识")?;
         let catalog = self.habits()?;
-        if !matches!(
+        let has_verifiable_catalog = matches!(
             catalog.state,
             HabitSnapshotState::Ready | HabitSnapshotState::Stale
-        ) {
-            return Err("当前没有可验证的 Habits catalog；请刷新有效快照后再记录。".into());
-        }
-        let habit = catalog
-            .habit(&input.habit_key)
-            .ok_or_else(|| "Habits catalog 中没有这个稳定习惯 key；未写入任何内容。".to_string())?;
-        if !habit.can_record_completion {
-            return Err("该习惯不是 completion 型；时刻和阈值证据不能用本地完成框记录。".into());
+        );
+        if has_verifiable_catalog {
+            let habit = catalog.habit(&input.habit_key).ok_or_else(|| {
+                "Habits catalog 中没有这个稳定习惯 key；未写入任何内容。".to_string()
+            })?;
+            if !habit.can_record_completion {
+                return Err(
+                    "该习惯不是 completion 型；时刻和阈值证据不能用本地完成框记录。".into(),
+                );
+            }
         }
 
         let vault = self
@@ -1950,6 +2180,10 @@ where
         let existing_index = document.completions.iter().position(|record| {
             record.habit_key == input.habit_key && record.lived_date == input.lived_date
         });
+        if !has_verifiable_catalog && !(allow_existing_without_catalog && existing_index.is_some())
+        {
+            return Err("当前没有可验证的 Habits catalog；请刷新有效快照后再记录。".into());
+        }
         let currently_completed = existing_index
             .map(|index| document.completions[index].completed_at.is_some())
             .unwrap_or(false);
@@ -2017,6 +2251,15 @@ where
         self.habits()
     }
 
+    pub fn set_historical_habit_completion(
+        &self,
+        input: HabitCompletionMutationInput,
+    ) -> Result<TodayView, String> {
+        let date = input.lived_date.clone();
+        self.set_local_habit_completion_internal(input, true)?;
+        self.read_date(&date)
+    }
+
     pub fn habits(&self) -> Result<HabitSnapshotView, String> {
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(HabitSnapshotView::unconfigured());
@@ -2059,16 +2302,7 @@ where
                     let completions = completion_document
                         .completions
                         .into_iter()
-                        .map(|completion| LocalHabitCompletion {
-                            key: completion.habit_key,
-                            date: completion.lived_date,
-                            state: if completion.completed_at.is_some() {
-                                HabitLocalCompletionState::Completed
-                            } else {
-                                HabitLocalCompletionState::Withdrawn
-                            },
-                            changed_at: completion.modified_at,
-                        })
+                        .map(local_habit_completion)
                         .collect();
                     (Some(document_revision(&bytes)), completions)
                 }
@@ -2184,6 +2418,11 @@ where
                 daytime: DaytimeView::default(),
                 evening: EveningView::default(),
                 day_tasks: DayTaskListView::unconfigured(),
+                habit_corrections: HabitCorrectionView::empty(
+                    date,
+                    HabitSnapshotState::Unconfigured,
+                    "请选择 Vault，以读取历史习惯。",
+                ),
             });
         };
         if receive_planning_input {
@@ -2513,6 +2752,7 @@ where
             ));
         }
         let day_tasks = self.day_tasks_for(vault, &date, receive_planning_input);
+        let habit_corrections = self.habit_corrections_for(vault, &date);
         let path = canonical_record_path(vault, &date)?;
         let target_binding = record_target_binding(&path);
         let bytes = match self.record_store.load(&path)? {
@@ -2543,6 +2783,7 @@ where
                     daytime: DaytimeView::default(),
                     evening: EveningView::default(),
                     day_tasks,
+                    habit_corrections,
                 });
             }
         };
@@ -2599,6 +2840,7 @@ where
                     daytime,
                     evening,
                     day_tasks,
+                    habit_corrections,
                 })
             }
             Err(message) => Ok(TodayView {
@@ -2624,6 +2866,7 @@ where
                 daytime: DaytimeView::default(),
                 evening: EveningView::default(),
                 day_tasks,
+                habit_corrections,
             }),
         }
     }
@@ -2647,6 +2890,8 @@ fn vault_error_view(
     vault_availability: VaultAvailability,
     message: String,
 ) -> TodayView {
+    let habit_corrections =
+        HabitCorrectionView::empty(date.clone(), HabitSnapshotState::Error, message.clone());
     TodayView {
         state: TodayState::Error,
         date,
@@ -2670,6 +2915,7 @@ fn vault_error_view(
         daytime: DaytimeView::default(),
         evening: EveningView::default(),
         day_tasks: DayTaskListView::error(message.clone(), None),
+        habit_corrections,
     }
 }
 
@@ -3100,7 +3346,33 @@ fn day_task_view(task: DayTaskRecord) -> DayTaskView {
         created_at: task.created_at,
         modified_at: task.modified_at,
         completed_at: task.completed_at,
+        deleted_at: task.deleted_at,
         changes: task.changes,
+    }
+}
+
+fn local_habit_completion(completion: HabitCompletionRecord) -> LocalHabitCompletion {
+    LocalHabitCompletion {
+        change_count: completion.changes.len(),
+        changes: completion
+            .changes
+            .iter()
+            .map(|change| HabitLocalCompletionChangeView {
+                state: match change.kind {
+                    HabitCompletionChangeKind::Completed => HabitLocalCompletionState::Completed,
+                    HabitCompletionChangeKind::Withdrawn => HabitLocalCompletionState::Withdrawn,
+                },
+                changed_at: change.changed_at.clone(),
+            })
+            .collect(),
+        key: completion.habit_key,
+        date: completion.lived_date,
+        state: if completion.completed_at.is_some() {
+            HabitLocalCompletionState::Completed
+        } else {
+            HabitLocalCompletionState::Withdrawn
+        },
+        changed_at: completion.modified_at,
     }
 }
 

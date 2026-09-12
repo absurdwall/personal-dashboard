@@ -174,6 +174,14 @@ fn set_local_habit_completion(
 }
 
 #[tauri::command]
+fn set_historical_habit_completion(
+    application: State<'_, DesktopTodayApplication>,
+    input: HabitCompletionMutationInput,
+) -> Result<TodayView, String> {
+    application.set_historical_habit_completion(input)
+}
+
+#[tauri::command]
 async fn select_today_vault(
     application: State<'_, DesktopTodayApplication>,
     interface_language: InterfaceLanguage,
@@ -353,6 +361,7 @@ pub fn run() {
             calendar_month,
             habit_snapshot,
             set_local_habit_completion,
+            set_historical_habit_completion,
             select_today_vault,
             append_daytime_update,
             add_dated_note,
@@ -381,6 +390,7 @@ pub fn run() {
         calendar_month,
         habit_snapshot,
         set_local_habit_completion,
+        set_historical_habit_completion,
         select_today_vault,
         append_daytime_update,
         add_dated_note,

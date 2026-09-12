@@ -172,6 +172,60 @@ pub struct HabitSnapshotView {
     pub habits: Vec<HabitView>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitCorrectionHabitView {
+    pub key: String,
+    pub name: String,
+    pub name_known: bool,
+    pub can_record_completion: bool,
+    pub goal_label: Option<String>,
+    pub local_change_count: usize,
+    pub local_changes: Vec<HabitLocalCompletionChangeView>,
+    pub cell: HabitCellView,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitLocalCompletionChangeView {
+    pub state: HabitLocalCompletionState,
+    pub changed_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitCorrectionView {
+    pub state: HabitSnapshotState,
+    pub message: String,
+    pub date: String,
+    pub can_record: bool,
+    pub completion_revision: Option<String>,
+    pub completion_target_binding: Option<String>,
+    pub habits: Vec<HabitCorrectionHabitView>,
+}
+
+impl HabitCorrectionView {
+    pub fn habit(&self, key: &str) -> Option<&HabitCorrectionHabitView> {
+        self.habits.iter().find(|habit| habit.key == key)
+    }
+
+    pub fn empty(
+        date: impl Into<String>,
+        state: HabitSnapshotState,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            state,
+            message: message.into(),
+            date: date.into(),
+            can_record: false,
+            completion_revision: None,
+            completion_target_binding: None,
+            habits: Vec::new(),
+        }
+    }
+}
+
 impl HabitSnapshotView {
     pub fn habit(&self, key: &str) -> Option<&HabitView> {
         self.habits.iter().find(|habit| habit.key == key)
@@ -226,6 +280,8 @@ pub struct LocalHabitCompletion {
     pub date: String,
     pub state: HabitLocalCompletionState,
     pub changed_at: String,
+    pub change_count: usize,
+    pub changes: Vec<HabitLocalCompletionChangeView>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -603,6 +659,169 @@ pub fn project_snapshot(
         completion_target_binding: None,
         summary,
         habits: projected,
+    })
+}
+
+pub fn project_habit_corrections(
+    document: &[u8],
+    today: &str,
+    selected_date: &str,
+    local_records: Vec<LocalHabitRecord>,
+    local_completions: Vec<LocalHabitCompletion>,
+) -> Result<HabitCorrectionView, String> {
+    let snapshot = parse_and_validate(document, today)?;
+    let today_date = CalendarDate::parse(today)
+        .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
+    let selected = CalendarDate::parse(selected_date)
+        .ok_or_else(|| "The selected date is not a valid YYYY-MM-DD calendar date.".to_string())?;
+    let source_by_key: HashMap<&str, &Source> = snapshot
+        .sources
+        .iter()
+        .map(|source| (source.key.as_str(), source))
+        .collect();
+    let local_by_key: HashMap<&str, Vec<&LocalHabitRecord>> =
+        local_records
+            .iter()
+            .fold(HashMap::new(), |mut records, record| {
+                if record.date == selected_date {
+                    records.entry(record.key.as_str()).or_default().push(record);
+                }
+                records
+            });
+    let local_completion_by_key: HashMap<&str, &LocalHabitCompletion> = local_completions
+        .iter()
+        .filter(|completion| completion.date == selected_date)
+        .map(|completion| (completion.key.as_str(), completion))
+        .collect();
+    let selected_week = selected.monday();
+    let selected_week_label = selected_week.to_string();
+    let current_week = today_date.monday();
+    let can_record = selected <= today_date;
+    let habits = snapshot
+        .habits
+        .iter()
+        .map(|habit| {
+            let day = habit
+                .days
+                .iter()
+                .find(|day| day.lived_date == selected_date);
+            let local = local_by_key
+                .get(habit.key.as_str())
+                .cloned()
+                .unwrap_or_default();
+            let local_completion = local_completion_by_key.get(habit.key.as_str()).copied();
+            let historical_goal = if selected_week == current_week {
+                habit.goal.as_ref()
+            } else {
+                habit
+                    .goal_history
+                    .iter()
+                    .find(|context| context.week_of == selected_week_label)
+                    .map(|context| &context.goal)
+            };
+            HabitCorrectionHabitView {
+                key: habit.key.clone(),
+                name: habit.name.clone(),
+                name_known: true,
+                can_record_completion: habit.tracking_kind == TrackingKind::WeeklyCount,
+                goal_label: historical_goal.map(goal_label),
+                local_change_count: local_completion
+                    .map(|completion| completion.change_count)
+                    .unwrap_or(0),
+                local_changes: local_completion
+                    .map(|completion| completion.changes.clone())
+                    .unwrap_or_default(),
+                cell: project_cell(
+                    selected_date,
+                    day,
+                    &source_by_key,
+                    &local,
+                    local_completion,
+                    today_date,
+                ),
+            }
+        })
+        .collect();
+    let generated_date = snapshot.generated_at.get(..10).unwrap_or_default();
+    let outside_coverage = selected < CalendarDate::parse(&snapshot.range.from).unwrap()
+        || selected > CalendarDate::parse(&snapshot.range.to).unwrap();
+    let (state, message) = if selected > today_date {
+        (
+            HabitSnapshotState::Ready,
+            "未来日期仅供查看；不能记录尚未发生的本地习惯完成。".to_string(),
+        )
+    } else if outside_coverage {
+        (
+            HabitSnapshotState::Ready,
+            "所选日期不在外部快照覆盖内；外部状态未知，本地更正仍按稳定习惯 key 保存。".to_string(),
+        )
+    } else if generated_date < today {
+        (
+            HabitSnapshotState::Stale,
+            "正在使用过期但有效的 catalog；所选日期的外部证据可能不是最新。".to_string(),
+        )
+    } else {
+        (
+            HabitSnapshotState::Ready,
+            "已读取所选日期的习惯证据与本地更正。".to_string(),
+        )
+    };
+    Ok(HabitCorrectionView {
+        state,
+        message,
+        date: selected_date.into(),
+        can_record,
+        completion_revision: None,
+        completion_target_binding: None,
+        habits,
+    })
+}
+
+pub fn project_uncatalogued_habit_corrections(
+    today: &str,
+    selected_date: &str,
+    state: HabitSnapshotState,
+    message: impl Into<String>,
+    local_completions: Vec<LocalHabitCompletion>,
+) -> Result<HabitCorrectionView, String> {
+    let today_date = CalendarDate::parse(today)
+        .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
+    let selected = CalendarDate::parse(selected_date)
+        .ok_or_else(|| "The selected date is not a valid YYYY-MM-DD calendar date.".to_string())?;
+    let source_by_key: HashMap<&str, &Source> = HashMap::new();
+    let mut completions = local_completions
+        .iter()
+        .filter(|completion| completion.date == selected_date)
+        .collect::<Vec<_>>();
+    completions.sort_by(|left, right| left.key.cmp(&right.key));
+    let habits = completions
+        .into_iter()
+        .map(|completion| HabitCorrectionHabitView {
+            key: completion.key.clone(),
+            name: completion.key.clone(),
+            name_known: false,
+            can_record_completion: true,
+            goal_label: None,
+            local_change_count: completion.change_count,
+            local_changes: completion.changes.clone(),
+            cell: project_cell(
+                selected_date,
+                None,
+                &source_by_key,
+                &[],
+                Some(completion),
+                today_date,
+            ),
+        })
+        .collect();
+    Ok(HabitCorrectionView {
+        state,
+        message: message.into(),
+        date: selected_date.into(),
+        can_record: selected <= today_date,
+        completion_revision: None,
+        completion_target_binding: None,
+        habits,
     })
 }
 

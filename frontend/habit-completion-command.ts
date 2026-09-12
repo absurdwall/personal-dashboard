@@ -1,7 +1,7 @@
 type HabitCompletionWriteLifecycle<T> = Readonly<{
   onPersisted: () => void;
   isPresentationCurrent: () => boolean;
-  isHabitsVisible: () => boolean;
+  isTargetVisible: () => boolean;
   present: (view: T) => void;
   refresh: () => Promise<void>;
 }>;
@@ -14,7 +14,7 @@ export async function reconcileHabitCompletionWrite<T>(
   lifecycle.onPersisted();
   if (lifecycle.isPresentationCurrent()) {
     lifecycle.present(view);
-  } else if (lifecycle.isHabitsVisible()) {
+  } else if (lifecycle.isTargetVisible()) {
     await lifecycle.refresh();
   }
   return view;

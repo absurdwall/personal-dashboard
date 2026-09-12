@@ -238,6 +238,25 @@ const interfaceCopies = {
   "dayTasks.notSaved": { zh: "任务未保存：{error}", en: "Task not saved: {error}" },
   "dayTasks.refreshFirst": { zh: "请先刷新有效的当天任务，再重试。", en: "Refresh the valid day-task list before trying again." },
   "dayTasks.enterTask": { zh: "请输入一条当天任务。", en: "Enter a task for this day." },
+  "dayTasks.changeHistory": { zh: "更正记录 · {count}", en: "Correction history · {count}" },
+  "dayTasks.changeRenamed": { zh: "{changedAt} · 改名：{previous} → {next}", en: "{changedAt} · Renamed: {previous} → {next}" },
+  "dayTasks.changeCompleted": { zh: "{changedAt} · 标记完成", en: "{changedAt} · Marked complete" },
+  "dayTasks.changeReopened": { zh: "{changedAt} · 取消完成", en: "{changedAt} · Completion cancelled" },
+  "dayTasks.changeDeleted": { zh: "{changedAt} · 删除", en: "{changedAt} · Deleted" },
+  "dayTasks.deletedHistorical": { zh: "已删除", en: "Deleted" },
+  "history.section": { zh: "历史 · 更正", en: "HISTORY · CORRECTIONS" },
+  "history.habitHeading": { zh: "本地习惯更正", en: "Local habit corrections" },
+  "history.habitBoundary": { zh: "只更正所选日期的 Dashboard 本地完成；不会改写外部来源或已有复盘。", en: "Only the selected date's Dashboard-local completion is corrected. External sources and the existing review are not rewritten." },
+  "history.futureBoundary": { zh: "未来日期不能记录已发生的任务或习惯完成。", en: "Task or habit completion cannot be recorded as having happened on a future date." },
+  "history.recordHabitCompletion": { zh: "更正 {date} 的“{habit}”本地完成", en: "Correct the Dashboard-local completion for {habit} on {date}" },
+  "history.goal": { zh: "当周目标：{goal}", en: "Target for that week: {goal}" },
+  "history.goalUnknown": { zh: "当周目标未知 · 不回填", en: "Target for that week unknown · Not backfilled" },
+  "history.unknownHabitName": { zh: "显示名称未知 · 稳定 key：{key}", en: "Display name unknown · Stable key: {key}" },
+  "history.changeHistory": { zh: "本地更正记录 · {count}", en: "Local correction history · {count}" },
+  "history.localCompletedAt": { zh: "{changedAt} · 补记本地完成", en: "{changedAt} · Local completion recorded" },
+  "history.localWithdrawnAt": { zh: "{changedAt} · 撤回本地完成", en: "{changedAt} · Local completion withdrawn" },
+  "history.noCompletionHabits": { zh: "没有可验证的 completion 型习惯；外部状态保持未知。", en: "No completion-type habits can be verified; external state remains unknown." },
+  "history.completionUnavailable": { zh: "当前不能更正这一天的本地习惯完成；请刷新所选日期。", en: "This day's Dashboard-local habit completion cannot be corrected now. Refresh the selected date." },
   "today.shortRecords": { zh: "当日简短记录", en: "Short notes for the day" },
   "today.noShortRecords": { zh: "还没有简短记录。", en: "No short notes yet." },
   "today.arrangementChanges": { zh: "安排变化", en: "Arrangement changes" },
@@ -569,6 +588,22 @@ const englishApplicationErrors: Readonly<Record<string, string>> = {
     "This day task is deleted; its old identity will not be reactivated.",
   "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。":
     "The canonical day-task document changed externally. The operation remains retryable; refresh before saving again. External content was not overwritten.",
+  "请选择 Vault，以读取历史习惯。":
+    "Choose a Vault to read historical habits.",
+  "没有可验证的 Habits catalog；所选日期的外部状态未知。":
+    "There is no valid Habits catalog. External state for the selected date is unknown.",
+  "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。":
+    "There is no valid Habits catalog. External state and the historical target for the selected date are unknown.",
+  "正在使用过期但有效的 catalog；所选日期的外部证据可能不是最新。":
+    "A stale but valid catalog is in use. External evidence for the selected date may not be current.",
+  "所选日期不在外部快照覆盖内；外部状态未知，本地更正仍按稳定习惯 key 保存。":
+    "The selected date is outside external snapshot coverage. External state is unknown; Dashboard-local corrections still use the stable habit key.",
+  "未来日期仅供查看；不能记录尚未发生的本地习惯完成。":
+    "Future dates are view-only; a Dashboard-local completion cannot be recorded before it happens.",
+  "历史习惯缓存不可用。":
+    "The historical habit cache is unavailable.",
+  "已读取所选日期的习惯证据与本地更正。":
+    "Loaded habit evidence and Dashboard-local corrections for the selected date.",
   "当前没有可验证的 Habits catalog；请刷新有效快照后再记录。":
     "There is no valid Habits catalog to verify against. Refresh a valid snapshot before recording.",
   "Habits catalog 中没有这个稳定习惯 key；未写入任何内容。":
@@ -1047,6 +1082,13 @@ export function localizeApplicationMessage(
   }
   if (message.startsWith("刷新失败，继续显示上个有效快照：")) {
     return `Refresh failed; continuing to show the last valid snapshot: ${localizeApplicationError(message.slice("刷新失败，继续显示上个有效快照：".length), language)}`;
+  }
+  if (message.startsWith("刷新失败，继续显示上个有效历史读数：")) {
+    return `Refresh failed; continuing to show the last valid historical reading: ${localizeApplicationError(message.slice("刷新失败，继续显示上个有效历史读数：".length), language)}`;
+  }
+  const unknownHistoricalSuffix = "；外部状态与历史目标未知。";
+  if (message.endsWith(unknownHistoricalSuffix)) {
+    return `${localizeApplicationError(message.slice(0, -unknownHistoricalSuffix.length), language)}; external state and the historical target are unknown.`;
   }
   if (message.startsWith("Habits 快照无效；没有可保留的旧读数：")) {
     return `The Habits snapshot is invalid and there is no previous valid reading to retain: ${localizeApplicationError(message.slice("Habits 快照无效；没有可保留的旧读数：".length), language)}`;

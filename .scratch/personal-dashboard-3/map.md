@@ -1,6 +1,6 @@
 # Personal Dashboard 3.0 — ticket map
 
-用户已批准九票拆分及依赖；所有票已发布，01、02、03、04、05、06 已完成，其余尚未执行。
+用户已批准九票拆分及依赖；所有票已发布，01、02、03、04、05、06、07 已完成，其余尚未执行。
 
 父规格：[spec](spec.md)。设计／认可原型：[原型说明](../../../.scratch/personal-dashboard-3/prototype/README.md)、[设计收敛稿](../../../.scratch/personal-dashboard-3/design-summary.md)。
 
@@ -14,7 +14,7 @@
 | [04 Today 右侧当天任务](issues/04-day-tasks.md) | None | resolved |
 | [05 规划任务增量接收与重排保留](issues/05-planning-task-merge.md) | 04 | resolved |
 | [06 Habits 本地打勾与来源合并](issues/06-local-habit-completion.md) | None | resolved |
-| [07 Calendar 历史任务与习惯更正](issues/07-historical-corrections.md) | 04, 06 | ready-for-agent |
+| [07 Calendar 历史任务与习惯更正](issues/07-historical-corrections.md) | 04, 06 | resolved |
 | [08 Google Drive 同步目录兼容验收](issues/08-drive-compatibility.md) | 01, 05, 07 | ready-for-agent |
 | [09 Packaged Mac 整体验收与原型对照](issues/09-packaged-acceptance.md) | 02, 03, 08 | ready-for-agent |
 

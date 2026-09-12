@@ -37,6 +37,7 @@ import {
 import { preserveTodayDayTaskPlanError } from "./day-task-presentation.js";
 import {
   habitCompletionPresentation,
+  historicalHabitCorrectionPresentation,
   type HabitCompletionExplanation,
   type HabitLocalCompletionState,
 } from "./habit-completion.js";
@@ -145,6 +146,7 @@ type DayTaskView = Readonly<{
   createdAt: string;
   modifiedAt: string;
   completedAt: string | null;
+  deletedAt: string | null;
   changes: readonly DayTaskChangeView[];
 }>;
 
@@ -176,6 +178,7 @@ type TodayView = Readonly<{
   daytime: DaytimeView;
   evening: EveningView;
   dayTasks: DayTaskListView;
+  habitCorrections: HabitCorrectionView;
 }>;
 
 type TodayPhase = "morning" | "daytime" | "evening";
@@ -272,6 +275,30 @@ type HabitSnapshotView = Readonly<{
     excludedNoGoal: number;
   }>;
   habits: readonly HabitView[];
+}>;
+
+type HabitCorrectionHabitView = Readonly<{
+  key: string;
+  name: string;
+  nameKnown: boolean;
+  canRecordCompletion: boolean;
+  goalLabel: string | null;
+  localChangeCount: number;
+  localChanges: readonly Readonly<{
+    state: HabitLocalCompletionState;
+    changedAt: string;
+  }>[];
+  cell: HabitCellView;
+}>;
+
+type HabitCorrectionView = Readonly<{
+  state: HabitSnapshotState;
+  message: string;
+  date: string;
+  canRecord: boolean;
+  completionRevision: string | null;
+  completionTargetBinding: string | null;
+  habits: readonly HabitCorrectionHabitView[];
 }>;
 
 function isTodayPhase(value: string | undefined): value is TodayPhase {
@@ -499,6 +526,15 @@ const dayTaskList = document.querySelector<HTMLElement>("#day-task-list");
 const dayTaskEmpty = document.querySelector<HTMLElement>("#day-task-empty");
 const dayTaskAddForm = document.querySelector<HTMLFormElement>("#day-task-add-form");
 const dayTaskAddInput = document.querySelector<HTMLInputElement>("#day-task-add-input");
+const historicalHabitCorrections = document.querySelector<HTMLElement>(
+  "#historical-habit-corrections",
+);
+const historicalHabitDate = document.querySelector<HTMLElement>("#historical-habit-date");
+const historicalHabitStatus = document.querySelector<HTMLElement>("#historical-habit-status");
+const historicalHabitList = document.querySelector<HTMLElement>("#historical-habit-list");
+const historicalHabitBoundary = document.querySelector<HTMLElement>(
+  "#historical-habit-boundary",
+);
 const todayHandoff = document.querySelector<HTMLElement>("#today-handoff");
 const todayHandoffHeading = document.querySelector<HTMLElement>("#today-handoff-heading");
 const todayHandoffCopy = document.querySelector<HTMLElement>("#today-handoff-copy");
@@ -564,6 +600,7 @@ type HabitNoteStatus = Readonly<{
 
 let habitNoteStatus: HabitNoteStatus | null = null;
 let habitCompletionStatus: HabitNoteStatus | null = null;
+let historicalHabitCompletionStatus: HabitNoteStatus | null = null;
 const habitNoteDrafts = new Map<string, HabitNoteDraft>();
 
 function t(
@@ -623,7 +660,10 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
   if (currentCalendarMonth) renderCalendarGrid(currentCalendarMonth);
   if (currentCalendarSummaryView) renderCalendarSummary(currentCalendarSummaryView);
   if (currentHabitSnapshot) renderHabitSnapshot(currentHabitSnapshot);
-  if (currentTodayView) renderDayTasks(currentTodayView.dayTasks);
+  if (currentTodayView) {
+    renderDayTasks(currentTodayView.dayTasks);
+    renderHistoricalHabitCorrections(currentTodayView);
+  }
   renderWorkspaceNavigationLanguage();
   renderWorkspaceFeatureArea(currentWorkspaceDestination);
   renderWorkspaceRailContext(currentWorkspaceDestination);
@@ -665,6 +705,7 @@ function resetVaultScopedWorkspaceState(): void {
   currentHabitDateView = null;
   habitNoteStatus = null;
   habitCompletionStatus = null;
+  historicalHabitCompletionStatus = null;
   datedNoteDrafts.clear();
   dayTaskRenameDrafts.clear();
   dayTaskAddDrafts.clear();
@@ -677,6 +718,8 @@ function resetVaultScopedWorkspaceState(): void {
   habitsReady?.toggleAttribute("hidden", true);
   habitsEmpty?.toggleAttribute("hidden", true);
   habitsSummaryRows?.replaceChildren();
+  historicalHabitList?.replaceChildren();
+  historicalHabitCorrections?.toggleAttribute("hidden", true);
   if (habitsSummaryTotal) habitsSummaryTotal.textContent = "—";
   setCopy(habitsRange, "habits.loadingOnDemand");
   setCopy(calendarSummaryHeading, "calendar.loadingSelectedDate");
@@ -1239,6 +1282,7 @@ function renderDatedNoteComposer(view: TodayView): void {
 function renderToday(view: TodayView): void {
   if (currentTodayView?.date !== view.date) {
     stashDatedNoteDraft();
+    historicalHabitCompletionStatus = null;
   }
   if (currentTodayView?.dayTasks.targetBinding !== view.dayTasks.targetBinding) {
     stashDayTaskAddDraft();
@@ -1248,6 +1292,7 @@ function renderToday(view: TodayView): void {
   renderVaultSettings(view);
   renderDatedNoteComposer(view);
   renderDayTasks(view.dayTasks);
+  renderHistoricalHabitCorrections(view);
   if (todayDate) {
     setCopy(todayDate, view.isToday ? "today.currentDate" : "today.selectedDate", {
       date: view.date,
@@ -1499,10 +1544,45 @@ function stashDayTaskAddDraft(): void {
   }
 }
 
+function dayTaskChangeDescription(change: DayTaskChangeView): string {
+  if (change.kind === "renamed") {
+    return t("dayTasks.changeRenamed", {
+      changedAt: change.changedAt,
+      previous: change.previousText ?? "",
+      next: change.newText ?? "",
+    });
+  }
+  const labels: Record<Exclude<DayTaskChangeView["kind"], "renamed">, InterfaceCopyKey> = {
+    completed: "dayTasks.changeCompleted",
+    reopened: "dayTasks.changeReopened",
+    deleted: "dayTasks.changeDeleted",
+  };
+  return t(labels[change.kind], { changedAt: change.changedAt });
+}
+
+function dayTaskChangeHistory(task: DayTaskView): HTMLElement | null {
+  if (currentTodayView?.isToday || task.changes.length === 0) return null;
+  const history = document.createElement("details");
+  history.className = "day-task-change-history";
+  const summary = document.createElement("summary");
+  setCopy(summary, "dayTasks.changeHistory", { count: task.changes.length });
+  const changes = document.createElement("ul");
+  changes.replaceChildren(
+    ...task.changes.map((change) => {
+      const item = document.createElement("li");
+      item.textContent = dayTaskChangeDescription(change);
+      return item;
+    }),
+  );
+  history.append(summary, changes);
+  return history;
+}
+
 function renderDayTasks(dayTasks: DayTaskListView): void {
   const writable = Boolean(dayTasks.targetBinding) && dayTasks.state !== "error" && Boolean(currentTodayView?.canRecord);
+  const activeTasks = dayTasks.tasks.filter((task) => task.deletedAt === null);
   if (dayTaskCount) {
-    setCopy(dayTaskCount, "dayTasks.count", { count: dayTasks.tasks.length });
+    setCopy(dayTaskCount, "dayTasks.count", { count: activeTasks.length });
   }
   if (dayTaskStatus) {
     if (dayTasks.state === "error" || dayTasks.planError) {
@@ -1530,6 +1610,25 @@ function renderDayTasks(dayTasks: DayTaskListView): void {
       row.className = "day-task-item";
       row.dataset.dayTaskId = task.id;
       row.classList.toggle("is-complete", task.completedAt !== null);
+
+      if (task.deletedAt) {
+        row.classList.add("is-deleted");
+        const marker = document.createElement("span");
+        marker.className = "day-task-deleted-marker";
+        setCopy(marker, "dayTasks.deletedHistorical");
+        const body = document.createElement("div");
+        body.className = "day-task-body";
+        const name = document.createElement("strong");
+        name.textContent = task.text;
+        const meta = document.createElement("p");
+        meta.className = "day-task-meta";
+        setCopy(meta, task.source.kind === "manual" ? "dayTasks.sourceManual" : "dayTasks.sourceDailyFlow");
+        body.append(name, meta);
+        const history = dayTaskChangeHistory(task);
+        if (history) body.append(history);
+        row.append(marker, body);
+        return row;
+      }
 
       const completion = document.createElement("input");
       completion.type = "checkbox";
@@ -1563,6 +1662,8 @@ function renderDayTasks(dayTasks: DayTaskListView): void {
       meta.className = "day-task-meta";
       setCopy(meta, task.source.kind === "manual" ? "dayTasks.sourceManual" : "dayTasks.sourceDailyFlow");
       body.append(rename, meta);
+      const history = dayTaskChangeHistory(task);
+      if (history) body.append(history);
 
       const remove = document.createElement("button");
       remove.type = "button";
@@ -1575,6 +1676,115 @@ function renderDayTasks(dayTasks: DayTaskListView): void {
       return row;
     }),
   );
+}
+
+function renderHistoricalHabitCorrections(view: TodayView): void {
+  if (!historicalHabitCorrections) return;
+  historicalHabitCorrections.hidden = view.isToday;
+  if (view.isToday) return;
+  const corrections = view.habitCorrections;
+  if (historicalHabitDate) historicalHabitDate.textContent = corrections.date;
+  if (historicalHabitStatus) {
+    if (historicalHabitCompletionStatus?.copyKey && historicalHabitCompletionStatus.error) {
+      setCopyError(
+        historicalHabitStatus,
+        historicalHabitCompletionStatus.copyKey,
+        historicalHabitCompletionStatus.error,
+      );
+    } else if (historicalHabitCompletionStatus?.copyKey) {
+      setCopy(historicalHabitStatus, historicalHabitCompletionStatus.copyKey);
+    } else {
+      setAppMessage(historicalHabitStatus, corrections.message);
+    }
+    historicalHabitStatus.dataset.state =
+      historicalHabitCompletionStatus?.state ?? corrections.state;
+  }
+  if (historicalHabitBoundary) {
+    setCopy(
+      historicalHabitBoundary,
+      corrections.canRecord ? "history.habitBoundary" : "history.futureBoundary",
+    );
+  }
+  if (!historicalHabitList) return;
+  const habits = corrections.habits.filter((habit) => habit.canRecordCompletion);
+  historicalHabitList.replaceChildren(
+    ...habits.map((habit) => {
+      const presentation = historicalHabitCorrectionPresentation(habit);
+      const row = document.createElement("article");
+      row.className = "historical-habit-item";
+      row.dataset.historicalHabitKey = habit.key;
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = presentation.checked;
+      checkbox.disabled =
+        todayOperationCount > 0 ||
+        !corrections.canRecord ||
+        !presentation.writable ||
+        !corrections.completionTargetBinding;
+      checkbox.dataset.historicalHabitCompletionKey = habit.key;
+      checkbox.dataset.historicalHabitCompletionDate = corrections.date;
+      checkbox.setAttribute(
+        "aria-label",
+        t("history.recordHabitCompletion", {
+          habit: habit.nameKnown ? habit.name : habit.key,
+          date: corrections.date,
+        }),
+      );
+
+      const body = document.createElement("div");
+      const name = document.createElement("strong");
+      name.textContent = habit.nameKnown
+        ? habit.name
+        : t("history.unknownHabitName", { key: habit.key });
+      const meta = document.createElement("p");
+      meta.className = "day-task-meta";
+      meta.textContent = habit.goalLabel
+        ? t("history.goal", {
+            goal: localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage),
+          })
+        : t("history.goalUnknown");
+      const explanation = document.createElement("small");
+      setCopy(explanation, habitCompletionExplanationLabels[presentation.explanation], {
+        sources:
+          presentation.sourceLabels.join(currentInterfaceLanguage === "zh" ? "、" : ", ") ||
+          t("habits.notDeclared"),
+      });
+      body.append(name, meta, explanation);
+
+      if (habit.localChanges.length > 0) {
+        const history = document.createElement("div");
+        history.className = "historical-habit-change-history";
+        const summary = document.createElement("p");
+        summary.className = "historical-habit-change-summary";
+        setCopy(summary, "history.changeHistory", { count: habit.localChangeCount });
+        const changes = document.createElement("ul");
+        changes.replaceChildren(
+          ...habit.localChanges.map((change) => {
+            const item = document.createElement("li");
+            setCopy(
+              item,
+              change.state === "completed"
+                ? "history.localCompletedAt"
+                : "history.localWithdrawnAt",
+              { changedAt: change.changedAt },
+            );
+            return item;
+          }),
+        );
+        history.append(summary, changes);
+        body.append(history);
+      }
+      row.append(checkbox, body);
+      return row;
+    }),
+  );
+  if (habits.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "day-task-empty";
+    setCopy(empty, "history.noCompletionHabits");
+    historicalHabitList.append(empty);
+  }
 }
 
 function showTodayMutationCopy(
@@ -1622,6 +1832,13 @@ function updateTodayOperationState(delta: number): void {
   });
   dayTaskList?.querySelectorAll("input, button").forEach((element) => {
     (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !dayTasksWritable;
+  });
+  historicalHabitList?.querySelectorAll("input").forEach((element) => {
+    const correction = currentTodayView?.habitCorrections;
+    (element as HTMLInputElement).disabled =
+      busy ||
+      !correction?.canRecord ||
+      !correction.completionTargetBinding;
   });
 }
 
@@ -1756,6 +1973,117 @@ async function deleteDayTask(taskId: string): Promise<boolean> {
     taskId,
     changeId,
   });
+}
+
+async function setHistoricalHabitCompletion(
+  habitKey: string,
+  livedDate: string,
+  completed: boolean,
+): Promise<boolean> {
+  const loaded = currentTodayView;
+  const corrections = loaded?.habitCorrections;
+  const habit = corrections?.habits.find((candidate) => candidate.key === habitKey);
+  if (
+    !loaded ||
+    loaded.isToday ||
+    loaded.date !== livedDate ||
+    !corrections?.completionTargetBinding ||
+    !corrections.canRecord ||
+    !habit?.canRecordCompletion ||
+    todayOperationCount > 0
+  ) {
+    historicalHabitCompletionStatus = {
+      copyKey: "history.completionUnavailable",
+      state: "error",
+    };
+    if (loaded) renderHistoricalHabitCorrections(loaded);
+    return false;
+  }
+  const signature = `${corrections.completionTargetBinding}:${habitKey}:${livedDate}:${completed}`;
+  const changeId = stableHabitCompletionOperationId(signature);
+  const request = todayPresentationRequests.begin();
+  updateTodayOperationState(1);
+  let operationSettled = false;
+  const finishOperation = () => {
+    if (operationSettled) return;
+    operationSettled = true;
+    updateTodayOperationState(-1);
+  };
+  historicalHabitCompletionStatus = {
+    copyKey: "habits.completionSaving",
+    state: "ready",
+  };
+  renderHistoricalHabitCorrections(loaded);
+  try {
+    await reconcileHabitCompletionWrite(
+      window.__TAURI__.core.invoke<TodayView>("set_historical_habit_completion", {
+        input: {
+          habitKey,
+          livedDate,
+          completed,
+          changeId,
+          targetBinding: corrections.completionTargetBinding,
+          expectedRevision: corrections.completionRevision,
+        },
+      }),
+      {
+        onPersisted: () => {
+          finishOperation();
+          habitCompletionOperationIds.delete(signature);
+          if (!todayPresentationRequests.isCurrent(request)) {
+            historicalHabitCompletionStatus = null;
+          }
+        },
+        isPresentationCurrent: () => todayPresentationRequests.isCurrent(request),
+        isTargetVisible: () =>
+          currentWorkspaceDestination === "today" && currentTodayView?.date === livedDate,
+        present: (view) => {
+          const updatedHabit = view.habitCorrections.habits.find(
+            (candidate) => candidate.key === habitKey,
+          );
+          const explanation = updatedHabit
+            ? historicalHabitCorrectionPresentation(updatedHabit).explanation
+            : "unknown";
+          historicalHabitCompletionStatus = {
+            copyKey:
+              !completed && explanation === "withdrawn-external"
+                ? "habits.completionWithdrawnStillExternal"
+                : !completed && explanation === "external"
+                  ? "habits.completionExternalUnchanged"
+                  : completed
+                    ? "habits.completionSaved"
+                    : "habits.completionRemoved",
+            state: "ready",
+          };
+          renderToday(view);
+        },
+        refresh: async () => {
+          historicalHabitCompletionStatus = null;
+          await refreshToday(livedDate, true);
+        },
+      },
+    );
+    return true;
+  } catch (error) {
+    finishOperation();
+    if (todayPresentationRequests.isCurrent(request)) {
+      historicalHabitCompletionStatus = {
+        copyKey: "habits.completionSaveFailed",
+        error: String(error),
+        state: "error",
+      };
+      renderHistoricalHabitCorrections(loaded);
+    } else if (
+      currentWorkspaceDestination === "today" &&
+      currentTodayView?.date === livedDate
+    ) {
+      historicalHabitCompletionStatus = null;
+      await refreshToday(livedDate, true);
+    }
+    return false;
+  } finally {
+    finishOperation();
+  }
 }
 
 async function saveDatedNote(): Promise<boolean> {
@@ -2891,7 +3219,7 @@ async function setLocalHabitCompletion(
           }
         },
         isPresentationCurrent: () => habitCompletionRequests.isCurrent(request),
-        isHabitsVisible: () => currentWorkspaceDestination === "habits",
+        isTargetVisible: () => currentWorkspaceDestination === "habits",
         present: (view) => {
           const updatedHabit = view.habits.find((candidate) => candidate.key === habitKey);
           const explanation = updatedHabit
@@ -3580,6 +3908,18 @@ dayTaskList?.addEventListener("click", (event) => {
   const taskId = button?.dataset.dayTaskDelete;
   if (!taskId) return;
   void pendingWrites.track(deleteDayTask(taskId));
+});
+
+historicalHabitList?.addEventListener("change", (event) => {
+  const input = (event.target as HTMLElement).closest<HTMLInputElement>(
+    "input[data-historical-habit-completion-key][data-historical-habit-completion-date]",
+  );
+  const habitKey = input?.dataset.historicalHabitCompletionKey;
+  const livedDate = input?.dataset.historicalHabitCompletionDate;
+  if (!input || !habitKey || !livedDate) return;
+  void pendingWrites.track(
+    setHistoricalHabitCompletion(habitKey, livedDate, input.checked),
+  );
 });
 
 todayDaytimeForm?.addEventListener("submit", (event) => {

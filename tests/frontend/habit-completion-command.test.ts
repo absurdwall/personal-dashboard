@@ -26,7 +26,7 @@ test("a successful write that finishes after leave-and-return clears retry ident
       persisted = true;
     },
     isPresentationCurrent: () => presentationCurrent,
-    isHabitsVisible: () => habitsVisible,
+    isTargetVisible: () => habitsVisible,
     present: (view) => {
       presentedRevision = view.revision;
     },
@@ -56,7 +56,7 @@ test("a successful write finishing while Habits is hidden defers presentation bu
       persisted = true;
     },
     isPresentationCurrent: () => false,
-    isHabitsVisible: () => false,
+    isTargetVisible: () => false,
     present: () => assert.fail("a superseded response must not render"),
     refresh: async () => {
       refreshCount += 1;

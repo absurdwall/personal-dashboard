@@ -66,4 +66,10 @@ The pair contributes at most one count. An external `not-done` does not veto a v
 
 Snapshot refresh replaces the entire external projection, so removed external evidence does not accumulate. Local records remain keyed by habit/date across app restarts, snapshot renames, snapshot replacement, stale snapshots, and 12-week display-window movement. The reader does not delete records merely because their date leaves the visible window.
 
+## Historical corrections
+
+Calendar can open a past date in Today and expose completion-type habits for that exact lived date. The merged checkbox still follows the same OR rule, while the UI separately explains external evidence, current Dashboard-local state, and every local completion or withdrawal with its actual `changedAt` time. Withdrawing a historical local completion therefore does not erase or rewrite external evidence, and an external completion can keep the merged checkbox selected.
+
+The current week uses the catalog's current goal. An earlier week uses only an exact matching `goalHistory.weekOf`; if none exists, the UI says that the historical goal is unknown and does not backfill one. Outside snapshot coverage, external state remains unknown even when a retained local completion is still correctable by stable habit key. If no catalog survives a restart, persisted local habit/date pairs remain visible under their stable keys and may be completed or withdrawn, while their display name, external state, and historical goal remain explicitly unknown; no new habit/date pair may be created without a verifiable catalog. Merely opening an empty past date creates no completion document or Daily Record; an explicit local correction creates only the versioned completion document. Future lived-date completions are rejected.
+
 If a refresh damages or makes the local document unreadable, an already-running application retains its last valid merged view and reports the error. After restart, an invalid local document fails closed rather than hiding the damage. Recovery snapshots from conditional atomic writes live outside the canonical path and are never interpreted as current completion state.

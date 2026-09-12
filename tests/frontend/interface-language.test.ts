@@ -277,6 +277,51 @@ test("local habit completion labels, details, and diagnostics are bilingual", ()
   }
 });
 
+test("historical correction copy and catalog boundaries are bilingual", () => {
+  assert.equal(
+    interfaceCopy("history.goalUnknown", "en"),
+    "Target for that week unknown · Not backfilled",
+  );
+  assert.equal(
+    interfaceCopy("history.unknownHabitName", "en", { key: "reset" }),
+    "Display name unknown · Stable key: reset",
+  );
+  assert.equal(
+    interfaceCopy("dayTasks.changeRenamed", "en", {
+      changedAt: "2026-09-08T14:10-04:00",
+      previous: "旧任务",
+      next: "新任务",
+    }),
+    "2026-09-08T14:10-04:00 · Renamed: 旧任务 → 新任务",
+  );
+  for (const message of [
+    "请选择 Vault，以读取历史习惯。",
+    "没有可验证的 Habits catalog；所选日期的外部状态未知。",
+    "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+    "正在使用过期但有效的 catalog；所选日期的外部证据可能不是最新。",
+    "所选日期不在外部快照覆盖内；外部状态未知，本地更正仍按稳定习惯 key 保存。",
+    "未来日期仅供查看；不能记录尚未发生的本地习惯完成。",
+    "历史习惯缓存不可用。",
+    "已读取所选日期的习惯证据与本地更正。",
+  ]) {
+    assert.doesNotMatch(localizeApplicationMessage(message, "en"), /[一-龥]/);
+  }
+  assert.doesNotMatch(
+    localizeApplicationMessage(
+      "刷新失败，继续显示上个有效历史读数：Habits snapshot is invalid.",
+      "en",
+    ),
+    /[一-龥]/,
+  );
+  assert.doesNotMatch(
+    localizeApplicationMessage(
+      "无法读取 Habits 快照：bad JSON；外部状态与历史目标未知。",
+      "en",
+    ),
+    /[一-龥]/,
+  );
+});
+
 test("Habits translates generated detail grammar but preserves source-owned text", () => {
   const detail = {
     kind: "observation" as const,

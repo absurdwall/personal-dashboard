@@ -4359,11 +4359,69 @@ body {
   min-width: 0;
 }
 
-.day-task-panel {
+.day-task-panel,
+.historical-habit-corrections {
   padding: 16px;
   border: 1px solid var(--parity-border);
   border-radius: 10px;
   background: color-mix(in srgb, var(--parity-surface) 94%, transparent);
+}
+
+.historical-habit-list {
+  display: grid;
+  gap: 2px;
+}
+
+.historical-habit-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.historical-habit-item > input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--parity-accent);
+}
+
+.historical-habit-item strong,
+.historical-habit-item small {
+  display: block;
+}
+
+.historical-habit-item small {
+  margin: 4px 7px 0;
+  color: var(--parity-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.day-task-change-history,
+.historical-habit-change-history {
+  margin: 6px 7px 0;
+  color: var(--parity-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.day-task-change-history summary,
+.historical-habit-change-summary {
+  cursor: pointer;
+}
+
+.historical-habit-change-summary {
+  margin: 0;
+  cursor: default;
+}
+
+.day-task-change-history ul,
+.historical-habit-change-history ul {
+  margin: 5px 0 0;
+  padding-left: 17px;
 }
 
 .day-task-heading {
@@ -4448,6 +4506,25 @@ body {
 
 .day-task-item.is-complete .day-task-rename-form input {
   color: var(--parity-muted);
+  text-decoration: line-through;
+}
+
+.day-task-item.is-deleted {
+  grid-template-columns: auto minmax(0, 1fr);
+  opacity: 0.72;
+}
+
+.day-task-deleted-marker {
+  margin-top: 2px;
+  padding: 2px 5px;
+  border: 1px solid var(--parity-border);
+  border-radius: 999px;
+  color: var(--parity-muted);
+  font-size: 8px;
+  line-height: 1.2;
+}
+
+.day-task-item.is-deleted strong {
   text-decoration: line-through;
 }
 

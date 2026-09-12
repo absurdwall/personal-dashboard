@@ -333,7 +333,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections; do
     run_bounded_scenario "$scenario"
   done
 
@@ -2358,6 +2358,136 @@ run_local_habit_completion_scenario() {
   echo "Presentation: the compact checkbox and source explanation were verified in Chinese and English"
 }
 
+run_historical_corrections_scenario() {
+  local vault="$acceptance_directory/historical-corrections-vault"
+  local snapshot="$vault/.personal-dashboard/derived/habits-v1.json"
+  local past_record="$vault/life/Journal/Daily/2026/2026-09/2026-09-07.md"
+  local past_tasks="$vault/life/.personal-dashboard/day-tasks/v1/2026/2026-09-07.json"
+  local today_tasks="$vault/life/.personal-dashboard/day-tasks/v1/2026/2026-09-08.json"
+  local completions="$vault/life/.personal-dashboard/habit-completions/v1/completions.json"
+  local past_task="补记历史任务 · Past task"
+  local renamed_task="更正后的历史任务 · Past task"
+  local disposable_task="待删除的历史任务 · Delete"
+  local completion_label='更正 2026-09-07 的“Reset living space”本地完成'
+  local record_hash
+  local snapshot_hash
+
+  current_step="preparing an isolated historical-correction Vault"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p "$vault/.obsidian" "$(dirname "$past_record")" "$(dirname "$snapshot")" \
+    "$acceptance_data_directory"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  /bin/cp "$repository_root/src-tauri/tests/fixtures/habits-v1-complete.json" "$snapshot"
+  cat > "$past_record" <<'EOF'
+---
+type: daily-record
+date: 2026-09-07
+---
+# 2026-09-07
+
+## 今天的大致安排
+
+- **下午：** 历史日原安排。
+
+## 晚间复盘
+
+### 今天发生了什么
+
+- 历史复盘正文必须逐字保留。
+EOF
+  record_hash="$(shasum -a 256 "$past_record" | awk '{print $1}')"
+  snapshot_hash="$(shasum -a 256 "$snapshot" | awk '{print $1}')"
+
+  current_step="opening the selected past date without mutating its review"
+  launch_app_waiting_for_text "当天任务" 30
+  run_driver set-size "1120x760" 10
+  run_driver press "日历" 10
+  run_driver wait-active-text "2026年9月" 20
+  run_driver press-contains "9月7日" 10
+  run_driver wait-active-text "历史复盘正文必须逐字保留" 20
+  run_driver press "打开完整 Today" 10
+  run_driver wait-active-text "所选日期 · 2026-09-07" 20
+  run_driver assert-active-text "本地习惯更正"
+  run_driver assert-active-text "当周目标：每周 5 次"
+  [[ "$(shasum -a 256 "$past_record" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "opening the historical correction surface changed the existing review"
+
+  current_step="correcting past tasks with visible actual-time history"
+  run_driver type-text "添加当天任务|$past_task" 10
+  run_driver press "添加" 10
+  run_driver wait-active-text "$past_task" 20
+  run_driver type-text "重命名任务|$renamed_task" 10
+  run_driver press "保存任务" 10
+  run_driver wait-active-text "$renamed_task" 20
+  run_driver press "切换“${renamed_task}”的完成状态" 10
+  run_driver assert-state "切换“${renamed_task}”的完成状态|selected" 10
+  run_driver press "切换“${renamed_task}”的完成状态" 10
+  run_driver press "更正记录 · 3" 10
+  run_driver assert-active-text "2026-09-08T14:10-04:00 · 改名"
+  run_driver assert-active-text "2026-09-08T14:10-04:00 · 标记完成"
+  run_driver assert-active-text "2026-09-08T14:10-04:00 · 取消完成"
+  run_driver type-text "添加当天任务|$disposable_task" 10
+  run_driver press "添加" 10
+  run_driver wait-active-text "$disposable_task" 20
+  run_driver press "删除任务“${disposable_task}”" 10
+  run_driver wait-active-text "已删除" 20
+  run_driver assert-active-text "$disposable_task"
+  run_driver press "更正记录 · 1" 10
+  run_driver assert-active-text "2026-09-08T14:10-04:00 · 删除"
+  wait_for_file_text "$past_tasks" '"kind": "deleted"' ||
+    fail "historical task deletion did not preserve a tombstone change"
+
+  current_step="recording and withdrawing the selected date local habit completion"
+  run_driver press "$completion_label" 10
+  run_driver wait-active-text "本地完成已保存到所选 Vault" 20
+  run_driver assert-state "$completion_label|selected" 10
+  run_driver press "$completion_label" 10
+  run_driver wait-active-text "本地完成已取消" 20
+  run_driver assert-active-text "本地更正记录 · 2"
+  run_driver scroll-text-visible "2026-09-08T14:10-04:00 · 补记本地完成" 10
+  run_driver scroll-text-visible "2026-09-08T14:10-04:00 · 撤回本地完成" 10
+  wait_for_file_text "$completions" '"livedDate": "2026-09-07"' ||
+    fail "historical habit completion was not bound to the selected lived date"
+  [[ "$(shasum -a 256 "$past_record" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "historical corrections rewrote the existing Daily Record review"
+  [[ "$(shasum -a 256 "$snapshot" | awk '{print $1}')" == "$snapshot_hash" ]] ||
+    fail "historical corrections rewrote the external habit snapshot"
+
+  current_step="returning to current Today without carrying the historical task"
+  run_driver press "今天" 10
+  run_driver wait-active-text "今天 · 2026-09-08" 20
+  run_driver assert-active-absent-text "$renamed_task"
+  run_driver assert-active-absent-text "本地习惯更正"
+  [[ ! -e "$today_tasks" ]] || fail "historical task correction created today's task document"
+
+  current_step="relaunching and verifying historical traces in English"
+  if ! stop_app; then
+    fail "app process did not exit before historical-correction relaunch"
+  fi
+  launch_app_waiting_for_text "当天任务" 30
+  run_driver press "日历" 10
+  run_driver press-contains "9月7日" 10
+  run_driver press "打开完整 Today" 10
+  run_driver wait-active-text "$renamed_task" 20
+  run_driver assert-active-text "$disposable_task"
+  run_driver assert-active-text "已删除"
+  run_driver assert-active-text "更正记录 · 3"
+  run_driver assert-active-text "本地更正记录 · 2"
+  run_driver press "切换为英文" 10
+  run_driver wait-active-text "Local habit corrections" 20
+  run_driver assert-active-text "Deleted"
+  run_driver assert-active-text "Target for that week: 5 times per week"
+  run_driver assert-active-text "Correction history · 3"
+  run_driver assert-active-text "Local correction history · 2"
+
+  echo "Packaged IPC historical-corrections acceptance passed"
+  echo "Binding: task and habit changes stayed on 2026-09-07 while Today remained clean"
+  echo "Trace: actual 2026-09-08 modification times and append-only task/habit histories remained visible after relaunch"
+  echo "Boundary: the reviewed Daily Record and external snapshot remained byte-identical; no Agent or external service ran"
+  echo "Presentation: the Calendar-to-Today correction surface was verified in Chinese and English"
+}
+
 run_vault_selection_scenario() {
   local vault_a="$acceptance_directory/vault-a"
   local vault_b="$acceptance_directory/vault-b"
@@ -3847,6 +3977,7 @@ case "$acceptance_scenario" in
   day-tasks) run_day_tasks_scenario ;;
   planning-tasks) run_planning_tasks_scenario ;;
   local-habit-completion) run_local_habit_completion_scenario ;;
+  historical-corrections) run_historical_corrections_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;
 esac

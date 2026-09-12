@@ -35,3 +35,33 @@ export function habitCompletionPresentation(cell: HabitCompletionCell): Readonly
     sourceLabels: cell.completionSourceLabels,
   };
 }
+
+type HistoricalHabitCorrection = Readonly<{
+  canRecordCompletion: boolean;
+  goalLabel: string | null;
+  localChangeCount: number;
+  cell: HabitCompletionCell;
+}>;
+
+export function historicalHabitCorrectionPresentation(
+  habit: HistoricalHabitCorrection,
+): Readonly<{
+  checked: boolean;
+  writable: boolean;
+  localState: HabitLocalCompletionState;
+  explanation: HabitCompletionExplanation;
+  sourceLabels: readonly string[];
+  goalKnown: boolean;
+  localChangeCount: number;
+}> {
+  const completion = habitCompletionPresentation(habit.cell);
+  return {
+    checked: completion.checked,
+    writable: habit.canRecordCompletion,
+    localState: habit.cell.localCompletionState,
+    explanation: completion.explanation,
+    sourceLabels: completion.sourceLabels,
+    goalKnown: habit.goalLabel !== null,
+    localChangeCount: habit.localChangeCount,
+  };
+}

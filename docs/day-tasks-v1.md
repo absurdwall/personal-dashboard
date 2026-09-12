@@ -94,6 +94,12 @@ The order of action candidates reorders only active, unconfirmed `daily-flow` ta
 
 Dashboard reads this structured document only when the date is explicitly opened in Today or Today is explicitly refreshed. Calendar and Habits summaries use a read-only date view and never receive planning input. Local task or Daily Record saves reload confirmed state without receiving the input; an existing producer diagnostic remains visible until the next explicit Today refresh. Dashboard never guesses tasks from Daily Record prose, calls an Agent, polls Dida365, or rewrites an evening review.
 
+## Historical corrections
+
+Opening a past date from Calendar reuses the same Today task rail and the same date-bound application operations. Add, rename, complete, reopen, and delete always target the selected lived date; returning to Today opens the current date rather than carrying the historical task state forward. Merely opening a blank date creates neither a task document nor a Daily Record. An explicit task action may create only that date's day-task document and still does not create or rewrite a Daily Record.
+
+The task belongs to the selected lived date, while `createdAt`, `modifiedAt`, and every appended `changedAt` record the actual clock time at which the correction was made. The historical UI exposes the append-only change list, including a read-only deleted-task tombstone, so a backdated correction is not presented as if it happened on that earlier day. Future dates are readable but reject task mutations. No historical task action invokes a planning Agent or receives producer input unless the user explicitly refreshes the full Today date.
+
 ## Planning reader context
 
 The public `planning_day_task_context` application operation returns schema version, lived date, canonical revision, target binding, and every canonical task with its stable identity, source, current text, modification time, and one explicit status:
