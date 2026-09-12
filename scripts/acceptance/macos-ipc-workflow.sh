@@ -2544,6 +2544,7 @@ date: 2026-09-08
 ## 今天的大致安排
 
 - **上午：** 矩阵测试的当前安排。
+- **下午：** 矩阵验收的长文本用于检查窄窗口换行与阅读密度；这段内容保持在当前安排语义内，不生成额外状态。
 
 ## 白天更新
 
@@ -2608,6 +2609,12 @@ EOF
     run_driver press "保存更正" 10
     run_driver wait-active-text "更正及修改记录已写入 Daily Record" 20
     run_driver assert-active-text "修改记录" 10
+    current_step="checking long Today text and keyboard focus at ${viewport}"
+    run_driver press "Today" 10
+    run_driver press "Daytime" 10
+    run_driver wait-active-text "矩阵验收的长文本用于检查窄窗口换行" 10
+    run_driver focus "Daytime" 10
+    run_driver assert-state "Daytime|selected" 10
   done
 
   grep -Fq "矩阵 640x520 更正" "$reviewed_file" ||
