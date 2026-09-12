@@ -472,7 +472,7 @@ async function waitForPendingHabitSave(): Promise<boolean> {
 function renderPendingHabitSaveFailure(): void {
   const habitMessage = habitNoteStatus?.state === "error"
     ? habitNoteStatus.message
-    : "Habits 保存失败，Vault 尚未切换；草稿与更正状态仍保留。";
+    : "保存失败；草稿与更正状态仍保留。";
   if (currentWorkspaceDestination === "habits") {
     if (habitsStatus) {
       habitsStatus.textContent = habitMessage;

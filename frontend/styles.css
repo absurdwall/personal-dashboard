@@ -5554,6 +5554,18 @@ body {
   border: 0;
 }
 
+.app-shell[data-workspace-destination="calendar"] #workspace-destination-calendar > #calendar-status[data-state="error"] {
+  position: static;
+  width: auto;
+  height: auto;
+  padding: 0;
+  margin: 0 0 20px;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+  border: 0;
+}
+
 .app-shell[data-workspace-destination="calendar"] .calendar-summary {
   padding: 0 0 0 1.25rem;
   border: 0;

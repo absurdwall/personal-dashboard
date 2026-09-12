@@ -42,6 +42,24 @@ test("the final scoped responsive rules keep text navigation visible", () => {
   assert.match(finalRules, /\.app-shell\[data-workspace-destination="habits"\]/);
 });
 
+test("Calendar keeps normal status compact but exposes pending-save errors", () => {
+  const marker = css.lastIndexOf("Ticket 09 final cascade: keep the restored FINAL shell ahead of legacy rules");
+  const finalRules = css.slice(marker);
+
+  assert.match(
+    finalRules,
+    /#workspace-destination-calendar > #calendar-status\[data-state="error"\][\s\S]*position: static;/,
+  );
+  assert.match(
+    finalRules,
+    /#workspace-destination-calendar > #calendar-status\[data-state="error"\][\s\S]*width: auto;/,
+  );
+  assert.match(
+    finalRules,
+    /#workspace-destination-calendar > #calendar-status\[data-state="error"\][\s\S]*clip: auto;/,
+  );
+});
+
 test("Vault reselection invalidates and refreshes the active Calendar or Habits projection", () => {
   const resetBody = functionBody(main, "resetVaultScopedWorkspaceState");
   for (const token of [
