@@ -2,6 +2,7 @@ use personal_dashboard_lib::today::{
     BaselineAvailability, DaytimeUpdateInput, DaytimeUpdateKind, EveningUpdateInput,
     EveningUpdateMode, FileTodayRecordStore, TodayApplication, TodayClock, TodayRecordStore,
     TodayState, TodayWorkspaceExchange, TodayWorkspacePersistence, TodayWorkspaceSelectionState,
+    VaultAvailability,
 };
 use std::cell::RefCell;
 use std::fs;
@@ -83,7 +84,14 @@ impl TodayClock for FixedClock {
     }
 }
 
+fn prepare_compatible_vault(vault: &Path) {
+    fs::create_dir_all(vault.join(".obsidian")).expect("synthetic Vault marker should be created");
+    fs::create_dir_all(vault.join("life/Journal/Daily"))
+        .expect("synthetic Daily Record root should be created");
+}
+
 fn write_record(vault: &Path, document: &str) {
+    prepare_compatible_vault(vault);
     let path = vault.join("life/Journal/Daily/2026/2026-08/2026-08-10.md");
     fs::create_dir_all(path.parent().expect("record parent should exist"))
         .expect("record directory should be created");
@@ -92,6 +100,58 @@ fn write_record(vault: &Path, document: &str) {
 
 fn application_for(vault: &Path) -> TodayApplication<SelectedVault, NoSelection, FixedClock> {
     TodayApplication::new(SelectedVault(vault.to_path_buf()), NoSelection, FixedClock)
+}
+
+#[test]
+fn unavailable_selected_vault_reports_its_local_path_and_a_recoverable_error() {
+    let directory = TempDirectory::new("today-unavailable-vault");
+    let unavailable = directory.path().join("moved-vault");
+
+    let view = application_for(&unavailable)
+        .open()
+        .expect("an unavailable Vault should remain a renderable state");
+
+    assert_eq!(view.state, TodayState::Error);
+    assert_eq!(view.vault_availability, VaultAvailability::Unavailable);
+    assert_eq!(view.vault_path.as_deref(), unavailable.to_str());
+    assert!(view.message.contains("Vault"));
+    assert!(view.message.contains("不可用"));
+}
+
+#[test]
+fn persisted_incompatible_folder_is_renderable_but_never_writable() {
+    let folder = TempDirectory::new("today-persisted-incompatible");
+    let record = folder
+        .path()
+        .join("life/Journal/Daily/2026/2026-08/2026-08-10.md");
+    fs::create_dir_all(record.parent().expect("record parent should exist"))
+        .expect("record directory should be created");
+    let original = "---\ntype: daily-record\ndate: 2026-08-10\n---\n## 今天的大致安排\n- **上午：** 不应允许写入。\n";
+    fs::write(&record, original).expect("synthetic record should be written");
+    let app = application_for(folder.path());
+
+    let view = app
+        .open()
+        .expect("an incompatible persisted folder should remain recoverable");
+
+    assert_eq!(view.state, TodayState::Error);
+    assert_eq!(view.vault_availability, VaultAvailability::Incompatible);
+    assert!(!view.can_record);
+    assert!(view.message.contains("不兼容"));
+    let error = app
+        .append_daytime_update(DaytimeUpdateInput {
+            expected_revision: "ignored".into(),
+            kind: DaytimeUpdateKind::MaterialChange,
+            content: "不应出现。".into(),
+            habit_name: None,
+            habit_outcome: None,
+        })
+        .expect_err("an incompatible persisted folder must not be writable");
+    assert!(error.contains("不兼容"));
+    assert_eq!(
+        fs::read_to_string(record).expect("record should remain"),
+        original
+    );
 }
 
 #[test]
@@ -1182,6 +1242,7 @@ fn malformed_identity_and_duplicate_targets_refuse_writes_without_changing_bytes
 #[test]
 fn valid_daily_record_returns_a_presentation_ready_morning_plan() {
     let vault = TempDirectory::new("today-valid");
+    prepare_compatible_vault(vault.path());
     let record_path = vault
         .path()
         .join("life/Journal/Daily/2026/2026-08/2026-08-10.md");
@@ -1550,6 +1611,7 @@ date: 2026-08-10
 #[test]
 fn missing_record_returns_an_honest_empty_state() {
     let vault = TempDirectory::new("today-missing");
+    prepare_compatible_vault(vault.path());
 
     let view = application_for(vault.path())
         .open()
@@ -1620,6 +1682,7 @@ date: 2026-08-09
         .expect("identity failure should be presented, not thrown");
 
     assert_eq!(view.state, TodayState::Error);
+    assert_eq!(view.vault_availability, VaultAvailability::Available);
     assert!(view.message.contains("修复 type 和 date"));
     assert!(view.timeline.is_empty());
 }
@@ -2034,6 +2097,33 @@ fn switching_vault_reports_changed_and_reads_only_the_new_vault() {
 }
 
 #[test]
+fn selecting_an_arbitrary_folder_does_not_replace_the_compatible_vault() {
+    let old_vault = TempDirectory::new("today-compatible-old");
+    let unrelated_folder = TempDirectory::new("today-unrelated-folder");
+    write_record(
+        old_vault.path(),
+        "---\ntype: daily-record\ndate: 2026-08-10\n---\n## 今天的大致安排\n- **上午：** 原 Vault 继续保留。\n",
+    );
+    fs::create_dir_all(unrelated_folder.path().join(".obsidian"))
+        .expect("ordinary Obsidian marker should be created");
+    let selected = Rc::new(RefCell::new(Some(old_vault.path().to_path_buf())));
+    let saves = Rc::new(RefCell::new(0));
+    let app = selection_app(
+        selected.clone(),
+        saves.clone(),
+        Some(unrelated_folder.path().to_path_buf()),
+    );
+
+    let error = app
+        .select_vault()
+        .expect_err("an unrelated Obsidian folder is not a compatible Vault");
+
+    assert!(error.contains("兼容"));
+    assert_eq!(selected.borrow().as_deref(), Some(old_vault.path()));
+    assert_eq!(*saves.borrow(), 0);
+}
+
+#[test]
 fn selecting_a_vault_recovers_a_malformed_workspace_setting_only_after_explicit_choice() {
     let vault = TempDirectory::new("today-select-recoverable-setting");
     write_record(
@@ -2106,6 +2196,8 @@ fn a_failed_new_vault_read_preserves_the_previous_selection_and_does_not_commit_
     let invalid_path = new_vault
         .path()
         .join("life/Journal/Daily/2026/2026-08/2026-08-10.md");
+    fs::create_dir_all(new_vault.path().join(".obsidian"))
+        .expect("synthetic Vault marker should be created");
     fs::create_dir_all(invalid_path.parent().expect("record parent should exist"))
         .expect("record parent should be created");
     fs::write(&invalid_path, [0xff, 0xfe]).expect("invalid record should be written");

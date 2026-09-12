@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|cancel-folder|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|cancel-folder|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-same-rendered-color|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -549,23 +549,32 @@ func waitForPickerSheet(
     throw DriverError.timeout("native folder picker")
 }
 
-func waitForFocusedPickerTextField(
+func waitForPickerPathField(
     _ application: AXUIElement,
     picker: AXUIElement,
     timeout: TimeInterval
 ) throws -> AXUIElement {
     let deadline = Date().addingTimeInterval(timeout)
     repeat {
+        let pickerTextFields = findRolesWithin(picker, ["AXTextField"])
         if let field = focusedElement(application),
            stringAttribute(field, "AXRole") == "AXTextField" {
-            let pickerTextFields = findRolesWithin(picker, ["AXTextField"])
             if pickerTextFields.contains(where: { CFEqual($0, field) }) {
                 return field
             }
         }
+        // Finder can expose the Go to Folder field before AXFocused catches up.
+        // Its stable identifier is a stronger signal than waiting on that
+        // eventually-consistent focus attribute alone.
+        if let field = pickerTextFields.first(where: {
+            stringAttribute($0, "AXIdentifier") == "PathTextField" &&
+                visibleAttribute($0, "AXHidden")
+        }) {
+            return field
+        }
         Thread.sleep(forTimeInterval: 0.1)
     } while Date() < deadline
-    throw DriverError.timeout("focused native folder path field")
+    throw DriverError.timeout("native folder path field")
 }
 
 func openPickerPathField(
@@ -575,8 +584,8 @@ func openPickerPathField(
     timeout: TimeInterval
 ) throws -> AXUIElement {
     let deadline = Date().addingTimeInterval(timeout)
-    var lastError: Error = DriverError.timeout("focused native folder path field")
-    for _ in 1...3 {
+    var lastError: Error = DriverError.timeout("native folder path field")
+    repeat {
         try activateApplication(
             application,
             pid: pid,
@@ -584,7 +593,7 @@ func openPickerPathField(
         )
         try postGlobalShortcut(keyCode: 5, flags: [.maskCommand, .maskShift])
         do {
-            return try waitForFocusedPickerTextField(
+            return try waitForPickerPathField(
                 application,
                 picker: picker,
                 timeout: min(3, max(0.1, deadline.timeIntervalSinceNow))
@@ -595,7 +604,8 @@ func openPickerPathField(
         if Date() >= deadline {
             break
         }
-    }
+        Thread.sleep(forTimeInterval: 0.2)
+    } while Date() < deadline
     throw lastError
 }
 
@@ -898,6 +908,108 @@ func frame(_ element: AXUIElement) -> CGRect? {
         return nil
     }
     return CGRect(origin: origin, size: size)
+}
+
+func renderedBitmap(in sampleRect: CGRect) -> NSBitmapImageRep? {
+    let sampleFile = FileManager.default.temporaryDirectory
+        .appendingPathComponent("personal-dashboard-color-\(UUID().uuidString).png")
+    defer { try? FileManager.default.removeItem(at: sampleFile) }
+    let capture = Process()
+    capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+    capture.arguments = [
+        "-x",
+        "-R",
+        "\(Int(floor(sampleRect.minX))),\(Int(floor(sampleRect.minY)))," +
+            "\(Int(ceil(sampleRect.width))),\(Int(ceil(sampleRect.height)))",
+        sampleFile.path,
+    ]
+    do {
+        try capture.run()
+        capture.waitUntilExit()
+    } catch {
+        return nil
+    }
+    guard capture.terminationStatus == 0,
+          let data = try? Data(contentsOf: sampleFile),
+          let bitmap = NSBitmapImageRep(data: data) else {
+        return nil
+    }
+    return bitmap
+}
+
+func dominantRenderedColor(in sampleRect: CGRect) -> (red: Int, green: Int, blue: Int)? {
+    guard let bitmap = renderedBitmap(in: sampleRect) else { return nil }
+    var counts: [Int: Int] = [:]
+    for y in 0..<bitmap.pixelsHigh {
+        for x in 0..<bitmap.pixelsWide {
+            guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
+                continue
+            }
+            let red = Int((color.redComponent * 255).rounded())
+            let green = Int((color.greenComponent * 255).rounded())
+            let blue = Int((color.blueComponent * 255).rounded())
+            let key = (red << 16) | (green << 8) | blue
+            counts[key, default: 0] += 1
+        }
+    }
+    guard let key = counts.max(by: { $0.value < $1.value })?.key else { return nil }
+    return (red: (key >> 16) & 0xff, green: (key >> 8) & 0xff, blue: key & 0xff)
+}
+
+func visibleRenderedElement(_ application: AXUIElement, label: String) -> AXUIElement? {
+    findTextPaths(application, label)
+        .filter { path in
+            (path.ancestors + [path.element]).allSatisfy {
+                visibleAttribute($0, "AXHidden")
+            }
+        }
+        .compactMap { path -> (element: AXUIElement, frame: CGRect)? in
+            guard let elementFrame = frame(path.element),
+                  elementFrame.width >= 2,
+                  elementFrame.height >= 2 else {
+                return nil
+            }
+            return (path.element, elementFrame)
+        }
+        .min(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })?
+        .element
+}
+
+func waitForMatchingRenderedColors(
+    _ application: AXUIElement,
+    firstLabel: String,
+    secondLabel: String,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    var lastActual = "unavailable"
+    repeat {
+        if let first = visibleRenderedElement(application, label: firstLabel),
+           let second = visibleRenderedElement(application, label: secondLabel),
+           let firstFrame = frame(first),
+           let secondFrame = frame(second),
+           let firstColor = dominantRenderedColor(in: firstFrame),
+           let secondColor = dominantRenderedColor(in: secondFrame) {
+            lastActual = String(
+                format: "#%02x%02x%02x vs #%02x%02x%02x",
+                firstColor.red,
+                firstColor.green,
+                firstColor.blue,
+                secondColor.red,
+                secondColor.green,
+                secondColor.blue
+            )
+            if abs(firstColor.red - secondColor.red) <= 3 &&
+                abs(firstColor.green - secondColor.green) <= 3 &&
+                abs(firstColor.blue - secondColor.blue) <= 3 {
+                return
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.timeout(
+        "matching rendered colors \(firstLabel) and \(secondLabel) (actual: \(lastActual))"
+    )
 }
 
 func performAccessibilityAction(
@@ -2521,6 +2633,18 @@ do {
         }
         try assertLiveSemantics(application, parts[0], parts[1])
         print("Rendered live semantics passed: \(parts[0]) is \(parts[1])")
+    case "assert-same-rendered-color":
+        let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else {
+            throw DriverError.usage
+        }
+        try waitForMatchingRenderedColors(
+            application,
+            firstLabel: parts[0],
+            secondLabel: parts[1],
+            timeout: timeout
+        )
+        print("Rendered colors match: \(parts[0]) and \(parts[1])")
     case "assert-document-fixed":
         try assertDocumentFixed(application)
         print("Rendered document has no visible vertical scroll")

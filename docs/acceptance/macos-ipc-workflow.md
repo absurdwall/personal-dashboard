@@ -50,8 +50,31 @@ The recursive `gate` runs these scenarios in order:
 
 ```text
 list-first direct state-semantics progress workouts exceptions responsive
-compact keyboard week-close installed-cycle calendar habits dashboard-2
+compact keyboard week-close installed-cycle calendar habits vault-selection
+vault-recovery final-state-matrix dashboard-2 settings-vault-colors
 ```
+
+## Personal Dashboard 3.0 Settings, Vault, and color scenario
+
+Run the ticket-01 packaged check with:
+
+```sh
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=settings-vault-colors \
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=360 \
+scripts/acceptance/macos-ipc-workflow.sh
+```
+
+The scenario uses isolated app data and two synthetic Vaults. It opens the
+Appearance and Data & Vault categories, checks the Drive desktop-client and
+local-save wording, selects folders through the native picker, switches Vaults,
+and exercises unavailable-folder recovery. It also selects an accent color,
+relaunches the packaged app, confirms the preference survives the relaunch and
+Vault switch, verifies the active preference from Today, Calendar, and Habits,
+then restores the default while proving both Vault records remain byte-identical.
+The driver samples the rendered theme chips and compares them with the selected
+swatch, so this proves page-level color application rather than only serialized
+preference state. Final whole-interface prototype parity remains a separate
+acceptance concern.
 
 The installed-cycle, Calendar, and Habits scenarios retain their own missing,
 malformed, empty, write, correction, and relaunch checks. `dashboard-2` adds the

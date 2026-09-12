@@ -1,4 +1,21 @@
-export type VaultSelectionDestination = "today" | "calendar" | "habits";
+export type VaultSelectionDestination = "today" | "calendar" | "habits" | "settings";
+
+export class PendingWriteBarrier {
+  readonly #pending = new Set<Promise<boolean>>();
+
+  track(write: Promise<boolean>): Promise<boolean> {
+    const tracked = write.catch(() => false).finally(() => {
+      this.#pending.delete(tracked);
+    });
+    this.#pending.add(tracked);
+    return tracked;
+  }
+
+  async wait(): Promise<boolean> {
+    const results = await Promise.all([...this.#pending]);
+    return results.every(Boolean);
+  }
+}
 
 export type VaultSelectionResult<View> = Readonly<{
   view: View;

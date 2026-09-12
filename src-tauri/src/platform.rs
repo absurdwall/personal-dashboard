@@ -1,3 +1,4 @@
+use crate::appearance::AppearancePersistence;
 use crate::backup::CompleteProfileReplacement;
 use crate::exercise::ExercisePersistence;
 use crate::migration::{BaselinePersistence, CompleteProfileAdoption, CompleteProfileDocuments};
@@ -16,6 +17,7 @@ use tauri_plugin_dialog::DialogExt;
 const PROFILE_FILE_NAME: &str = "profile.json";
 const EXERCISE_FILE_NAME: &str = "exercise.json";
 const TODAY_WORKSPACE_FILE_NAME: &str = "today-workspace.json";
+const APPEARANCE_FILE_NAME: &str = "appearance.json";
 const MAX_PROFILE_DOCUMENT_BYTES: u64 = 10 * 1024 * 1024;
 const RESTORE_TRANSACTION_DIRECTORY: &str = ".profile-restore-transaction";
 const RESTORE_PREPARED_MARKER: &str = "prepared";
@@ -122,6 +124,33 @@ fn atomic_save(path: &Path, document: &[u8], label: &str) -> Result<(), String> 
         .map_err(|error| format!("Could not write the local {label}: {error}"))?;
     fs::rename(&temporary_file, path)
         .map_err(|error| format!("Could not activate the local {label}: {error}"))
+}
+
+#[derive(Clone)]
+pub struct FileAppearancePersistence {
+    appearance_file: PathBuf,
+}
+
+impl FileAppearancePersistence {
+    pub fn new(appearance_file: PathBuf) -> Self {
+        Self { appearance_file }
+    }
+}
+
+impl AppearancePersistence for FileAppearancePersistence {
+    fn load(&self) -> Result<Option<Vec<u8>>, String> {
+        match fs::read(&self.appearance_file) {
+            Ok(document) => Ok(Some(document)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!(
+                "Could not read the local appearance preference: {error}"
+            )),
+        }
+    }
+
+    fn save(&self, document: &[u8]) -> Result<(), String> {
+        atomic_save(&self.appearance_file, document, "appearance preference")
+    }
 }
 
 fn temporary_file_for(profile_file: &Path) -> PathBuf {
@@ -553,28 +582,25 @@ impl<R: Runtime> ProfileMoveExchange for NativeFileExchange<R> {
 }
 
 pub fn profile_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
-    let data_directory = match std::env::var_os("PERSONAL_DASHBOARD_DATA_DIR") {
-        Some(override_directory) => PathBuf::from(override_directory),
-        None => app
-            .path()
-            .app_data_dir()
-            .map_err(|error| format!("Could not locate the app data directory: {error}"))?,
-    };
-    Ok(data_directory.join(PROFILE_FILE_NAME))
+    application_data_file_for(app, PROFILE_FILE_NAME)
 }
 
 pub fn exercise_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
-    let data_directory = match std::env::var_os("PERSONAL_DASHBOARD_DATA_DIR") {
-        Some(override_directory) => PathBuf::from(override_directory),
-        None => app
-            .path()
-            .app_data_dir()
-            .map_err(|error| format!("Could not locate the app data directory: {error}"))?,
-    };
-    Ok(data_directory.join(EXERCISE_FILE_NAME))
+    application_data_file_for(app, EXERCISE_FILE_NAME)
 }
 
 pub fn today_workspace_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    application_data_file_for(app, TODAY_WORKSPACE_FILE_NAME)
+}
+
+pub fn appearance_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    application_data_file_for(app, APPEARANCE_FILE_NAME)
+}
+
+fn application_data_file_for<R: Runtime>(
+    app: &AppHandle<R>,
+    file_name: &str,
+) -> Result<PathBuf, String> {
     let data_directory = match std::env::var_os("PERSONAL_DASHBOARD_DATA_DIR") {
         Some(override_directory) => PathBuf::from(override_directory),
         None => app
@@ -582,7 +608,7 @@ pub fn today_workspace_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBu
             .app_data_dir()
             .map_err(|error| format!("Could not locate the app data directory: {error}"))?,
     };
-    Ok(data_directory.join(TODAY_WORKSPACE_FILE_NAME))
+    Ok(data_directory.join(file_name))
 }
 
 pub fn baseline_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {

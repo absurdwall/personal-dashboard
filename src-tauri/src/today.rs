@@ -490,6 +490,15 @@ pub enum TodayState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub enum VaultAvailability {
+    Unconfigured,
+    Available,
+    Unavailable,
+    Incompatible,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum DailyPhase {
     Morning,
     Daytime,
@@ -663,6 +672,8 @@ pub struct TodayView {
     pub default_phase: DailyPhase,
     pub daily_record_availability: DailyRecordAvailability,
     pub vault_name: Option<String>,
+    pub vault_path: Option<String>,
+    pub vault_availability: VaultAvailability,
     pub message: String,
     pub revision: Option<String>,
     pub target_binding: Option<String>,
@@ -862,6 +873,8 @@ where
                 },
                 daily_record_availability: DailyRecordAvailability::Missing,
                 vault_name: None,
+                vault_path: None,
+                vault_availability: VaultAvailability::Unconfigured,
                 message: "请选择 Tortilla Flat vault，以读取 Daily Record。".into(),
                 revision: None,
                 target_binding: None,
@@ -882,6 +895,8 @@ where
                 changed: false,
             });
         };
+        validate_compatible_vault(&vault)
+            .map_err(|error| format!("{error}；原有选择未更改，未转换或写入任何文件。"))?;
         let changed = match self.persistence.inspect_selected_vault()? {
             TodayWorkspaceSelectionState::Missing
             | TodayWorkspaceSelectionState::Recoverable(_) => true,
@@ -1072,6 +1087,8 @@ where
             .persistence
             .load_selected_vault()?
             .ok_or_else(|| "请先选择 Tortilla Flat vault，再保存简短记录。".to_string())?;
+        validate_compatible_vault(&vault)
+            .map_err(|error| format!("{error}；草稿仍保留，未写入任何内容。"))?;
         let path = canonical_record_path(&vault, date)?;
         if record_target_binding(&path) != binding {
             return Err(
@@ -1128,6 +1145,7 @@ where
         let vault = self.persistence.load_selected_vault()?.ok_or_else(|| {
             "请先选择 Tortilla Flat vault，再更新今天的 Daily Record。".to_string()
         })?;
+        validate_compatible_vault(&vault).map_err(|error| format!("{error}；未写入任何内容。"))?;
         let path = canonical_record_path(&vault, &self.clock.current_date())?;
         let bytes = self.record_store.load(&path)?.ok_or_else(|| {
             "今天还没有 Daily Record。请先让 Codex 运行早间流程，然后刷新 Today。".to_string()
@@ -1148,6 +1166,27 @@ where
             .file_name()
             .and_then(|name| name.to_str())
             .map(str::to_owned);
+        let vault_path = Some(vault.to_string_lossy().into_owned());
+        if !vault.is_dir() {
+            return Ok(vault_error_view(
+                date,
+                is_today,
+                vault_name,
+                vault_path,
+                VaultAvailability::Unavailable,
+                "当前 Vault 文件夹不可用。请检查本地位置，或重新选择 Vault。".into(),
+            ));
+        }
+        if let Err(error) = validate_compatible_vault(vault) {
+            return Ok(vault_error_view(
+                date,
+                is_today,
+                vault_name,
+                vault_path,
+                VaultAvailability::Incompatible,
+                format!("{error}。请重新选择兼容 Vault；未转换或写入任何文件。"),
+            ));
+        }
         let path = canonical_record_path(vault, &date)?;
         let target_binding = record_target_binding(&path);
         let bytes = match self.record_store.load(&path)? {
@@ -1167,6 +1206,8 @@ where
                     },
                     daily_record_availability: DailyRecordAvailability::Missing,
                     vault_name,
+                    vault_path,
+                    vault_availability: VaultAvailability::Available,
                     message,
                     revision: None,
                     target_binding: Some(target_binding),
@@ -1220,6 +1261,8 @@ where
                         &evening,
                     ),
                     vault_name,
+                    vault_path,
+                    vault_availability: VaultAvailability::Available,
                     message: message.into(),
                     revision: Some(revision),
                     target_binding: Some(target_binding),
@@ -1242,6 +1285,8 @@ where
                 },
                 daily_record_availability: DailyRecordAvailability::Error,
                 vault_name,
+                vault_path,
+                vault_availability: VaultAvailability::Available,
                 message,
                 revision: None,
                 target_binding: Some(target_binding),
@@ -1252,6 +1297,49 @@ where
                 evening: EveningView::default(),
             }),
         }
+    }
+}
+
+fn validate_compatible_vault(vault: &Path) -> Result<(), String> {
+    if !vault.is_dir() {
+        return Err("所选 Vault 文件夹不可用".into());
+    }
+    if !vault.join(".obsidian").is_dir() || !vault.join("life/Journal/Daily").is_dir() {
+        return Err("Vault 不兼容：需要 Obsidian Vault 标记和 life/Journal/Daily 目录".into());
+    }
+    Ok(())
+}
+
+fn vault_error_view(
+    date: String,
+    is_today: bool,
+    vault_name: Option<String>,
+    vault_path: Option<String>,
+    vault_availability: VaultAvailability,
+    message: String,
+) -> TodayView {
+    TodayView {
+        state: TodayState::Error,
+        date,
+        is_today,
+        can_record: false,
+        default_phase: if is_today {
+            DailyPhase::Morning
+        } else {
+            DailyPhase::Daytime
+        },
+        daily_record_availability: DailyRecordAvailability::Error,
+        vault_name,
+        vault_path,
+        vault_availability,
+        message,
+        revision: None,
+        target_binding: None,
+        baseline: MorningBaselineView::missing(),
+        timeline: Vec::new(),
+        evidence: Vec::new(),
+        daytime: DaytimeView::default(),
+        evening: EveningView::default(),
     }
 }
 

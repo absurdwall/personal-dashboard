@@ -4,9 +4,15 @@ import {
 } from "./dated-note-command.js";
 import { LatestRequest } from "./latest-request.js";
 import {
+  PendingWriteBarrier,
   selectVaultAndRefresh,
   type VaultSelectionResult,
 } from "./vault-selection.js";
+import {
+  applyAccentColor,
+  SerializedLatestMutation,
+  type AccentColor,
+} from "./appearance.js";
 
 type ApplicationIdentity = Readonly<{
   productName: string;
@@ -104,6 +110,8 @@ type TodayView = Readonly<{
   defaultPhase: TodayPhase;
   dailyRecordAvailability: DailyRecordAvailability;
   vaultName: string | null;
+  vaultPath: string | null;
+  vaultAvailability: "unconfigured" | "available" | "unavailable" | "incompatible";
   message: string;
   revision: string | null;
   targetBinding: string | null;
@@ -207,13 +215,14 @@ function isTodayPhase(value: string | undefined): value is TodayPhase {
   return value === "morning" || value === "daytime" || value === "evening";
 }
 
-type WorkspaceDestination = "today" | "calendar" | "habits";
+type WorkspaceDestination = "today" | "calendar" | "habits" | "settings";
 
 function isWorkspaceDestination(value: string | undefined): value is WorkspaceDestination {
   return (
     value === "today" ||
     value === "calendar" ||
-    value === "habits"
+    value === "habits" ||
+    value === "settings"
   );
 }
 
@@ -240,7 +249,14 @@ const workspaceDestinationDetails: Record<
     description: "周次数与每日目标时刻放在同一份轻量列表里。",
     featureArea: "HABITS · 平级入口",
   },
+  settings: {
+    title: "设置",
+    description: "外观与本地 Vault 设置。",
+    featureArea: "SETTINGS · 本机偏好",
+  },
 };
+
+type AppearancePreferences = Readonly<{ accentColor: AccentColor }>;
 
 const runtimeStatus = document.querySelector<HTMLElement>("#runtime-status");
 const workspaceDestinationButtons = document.querySelectorAll<HTMLButtonElement>(
@@ -254,6 +270,18 @@ const workspaceDestinationSelect = document.querySelector<HTMLSelectElement>(
 );
 const workspaceSettingsButton = document.querySelector<HTMLButtonElement>(
   "#workspace-settings",
+);
+const settingsCategoryButtons = document.querySelectorAll<HTMLButtonElement>(
+  "[data-settings-section]",
+);
+const settingsPanels = document.querySelectorAll<HTMLElement>("[data-settings-panel]");
+const accentColorButtons = document.querySelectorAll<HTMLButtonElement>("[data-accent-color]");
+const restoreAppearanceButton = document.querySelector<HTMLButtonElement>("#restore-appearance");
+const appearanceStatus = document.querySelector<HTMLElement>("#appearance-status");
+const settingsVaultPath = document.querySelector<HTMLElement>("#settings-vault-path");
+const settingsVaultStatus = document.querySelector<HTMLElement>("#settings-vault-status");
+const settingsSelectVaultButton = document.querySelector<HTMLButtonElement>(
+  "#settings-select-vault",
 );
 const workspaceRailContextKicker = document.querySelector<HTMLElement>(
   "#workspace-rail-context-kicker",
@@ -393,7 +421,9 @@ const selectTodayVaultButton = document.querySelector<HTMLButtonElement>("#selec
 const refreshTodayButton = document.querySelector<HTMLButtonElement>("#refresh-today");
 const appShell = document.querySelector<HTMLElement>(".app-shell");
 let currentWorkspaceDestination: WorkspaceDestination = "today";
+let currentAppearance: AppearancePreferences = { accentColor: "forest" };
 let todayOperationCount = 0;
+let vaultSelectionInProgress = false;
 const todayPresentationRequests = new LatestRequest();
 const vaultSelectionRequests = new LatestRequest();
 let currentTodayPhase: TodayPhase = "morning";
@@ -418,7 +448,10 @@ type HabitNoteDraft = Readonly<{ content: string; correctionId: string | null }>
 let selectedHabitCell: HabitCellSelection | null = null;
 let currentHabitDateView: TodayView | null = null;
 let habitDateOperationCount = 0;
-let pendingHabitNoteSave: Promise<boolean> | null = null;
+const pendingWrites = new PendingWriteBarrier();
+const appearanceMutations = new SerializedLatestMutation<AppearancePreferences>({
+  accentColor: "forest",
+});
 let habitNoteStatus: Readonly<{ message: string; state: "ready" | "error" }> | null = null;
 const habitNoteDrafts = new Map<string, HabitNoteDraft>();
 
@@ -457,35 +490,130 @@ function resetVaultScopedWorkspaceState(): void {
   renderWorkspaceRailContext(currentWorkspaceDestination);
 }
 
-async function waitForPendingHabitSave(): Promise<boolean> {
-  const pending = pendingHabitNoteSave;
-  if (!pending) {
-    return true;
-  }
-  if (currentWorkspaceDestination === "habits" && habitsStatus) {
-    habitsStatus.textContent = "正在完成当前 Habits 保存，再切换 Vault…";
-    habitsStatus.dataset.state = "loading";
-  }
-  return await pending;
+function renderAppearance(preferences: AppearancePreferences): void {
+  currentAppearance = preferences;
+  applyAccentColor(preferences.accentColor, document.documentElement.style);
+  accentColorButtons.forEach((button) => {
+    const selected = button.dataset.accentColor === preferences.accentColor;
+    button.setAttribute("aria-pressed", String(selected));
+  });
 }
 
-function renderPendingHabitSaveFailure(): void {
-  const habitMessage = habitNoteStatus?.state === "error"
+async function persistAppearanceChange(
+  optimistic: AppearancePreferences,
+  command: "set_accent_color" | "restore_appearance_defaults",
+  arguments_: Record<string, unknown> | undefined,
+  progressMessage: string,
+  successMessage: string,
+): Promise<void> {
+  renderAppearance(optimistic);
+  if (appearanceStatus) appearanceStatus.textContent = progressMessage;
+  await appearanceMutations.enqueue(
+    () => window.__TAURI__.core.invoke<AppearancePreferences>(command, arguments_),
+    (saved) => {
+      renderAppearance(saved);
+      if (appearanceStatus) {
+        appearanceStatus.textContent = successMessage;
+        delete appearanceStatus.dataset.state;
+      }
+    },
+    (error, confirmed) => {
+      renderAppearance(confirmed);
+      if (appearanceStatus) {
+        appearanceStatus.textContent = `无法更新外观偏好：${String(error)}`;
+        appearanceStatus.dataset.state = "error";
+      }
+    },
+  );
+}
+
+async function chooseAccentColor(accentColor: AccentColor): Promise<void> {
+  await persistAppearanceChange(
+    { accentColor },
+    "set_accent_color",
+    { accentColor },
+    "正在保存本机外观偏好…",
+    "颜色已保存在这台 Mac。",
+  );
+}
+
+async function restoreAppearance(): Promise<void> {
+  await persistAppearanceChange(
+    { accentColor: "forest" },
+    "restore_appearance_defaults",
+    undefined,
+    "正在恢复默认外观…",
+    "已恢复默认外观；Vault 数据未更改。",
+  );
+}
+
+function showSettingsSection(section: "appearance" | "data"): void {
+  settingsCategoryButtons.forEach((button) => {
+    const current = button.dataset.settingsSection === section;
+    button.toggleAttribute("aria-current", current);
+    if (current) button.setAttribute("aria-current", "page");
+  });
+  settingsPanels.forEach((panel) => {
+    panel.hidden = panel.dataset.settingsPanel !== section;
+  });
+}
+
+type VaultSettingsView = Pick<TodayView, "vaultPath" | "vaultAvailability" | "message">;
+
+function renderVaultSettings(view: VaultSettingsView): void {
+  if (settingsVaultPath) {
+    settingsVaultPath.textContent = view.vaultPath ?? "尚未选择 Vault。";
+  }
+  if (settingsVaultStatus) {
+    if (view.vaultAvailability === "unconfigured") {
+      settingsVaultStatus.textContent = "尚未配置本地 Vault。";
+    } else if (view.vaultAvailability === "unavailable") {
+      settingsVaultStatus.textContent = `本地位置不可用：${view.message}`;
+    } else if (view.vaultAvailability === "incompatible") {
+      settingsVaultStatus.textContent = `Vault 不兼容：${view.message}`;
+    } else {
+      settingsVaultStatus.textContent = "本地位置可用；这里只确认 Mac 文件状态，不代表 Google Drive 已完成云端同步。";
+    }
+    settingsVaultStatus.dataset.state = view.vaultAvailability;
+  }
+}
+
+async function waitForPendingWrites(): Promise<boolean> {
+  if (currentWorkspaceDestination === "habits" && habitsStatus) {
+    habitsStatus.textContent = "正在完成当前保存，再切换 Vault…";
+    habitsStatus.dataset.state = "loading";
+  }
+  if (currentWorkspaceDestination === "settings" && settingsVaultStatus) {
+    settingsVaultStatus.textContent = "正在完成当前保存，再打开 Vault 选择器…";
+    settingsVaultStatus.dataset.state = "loading";
+  }
+  return await pendingWrites.wait();
+}
+
+function renderPendingWriteFailure(): void {
+  const writeMessage = habitNoteStatus?.state === "error"
     ? habitNoteStatus.message
     : "保存失败；草稿与更正状态仍保留。";
   if (currentWorkspaceDestination === "habits") {
     if (habitsStatus) {
-      habitsStatus.textContent = habitMessage;
+      habitsStatus.textContent = writeMessage;
       habitsStatus.dataset.state = "error";
     }
     renderSelectedHabitCell();
     return;
   }
-  const message = `Habits 保存失败，Vault 尚未切换；${habitMessage}`;
+  const message = `当前保存失败，Vault 尚未切换；${writeMessage}`;
   if (currentWorkspaceDestination === "calendar") {
     if (calendarStatus) {
       calendarStatus.textContent = message;
       calendarStatus.dataset.state = "error";
+    }
+    return;
+  }
+  if (currentWorkspaceDestination === "settings") {
+    if (settingsVaultStatus) {
+      settingsVaultStatus.textContent = message;
+      settingsVaultStatus.dataset.state = "error";
     }
     return;
   }
@@ -795,7 +923,8 @@ function renderToday(view: TodayView): void {
     stashDatedNoteDraft();
   }
   currentTodayView = view;
-  renderWorkspaceRailContext("today");
+  renderWorkspaceRailContext(currentWorkspaceDestination);
+  renderVaultSettings(view);
   renderDatedNoteComposer(view);
   if (todayDate) {
     todayDate.textContent = `${view.isToday ? "Today" : "Selected day"} · ${view.date}`;
@@ -808,6 +937,9 @@ function renderToday(view: TodayView): void {
   if (todayStatus) {
     todayStatus.textContent = view.message;
     todayStatus.dataset.state = view.state;
+  }
+  if (selectTodayVaultButton) {
+    selectTodayVaultButton.hidden = view.vaultAvailability === "available";
   }
 
   const ready = view.state === "ready";
@@ -1167,9 +1299,10 @@ async function refreshToday(
 }
 
 async function selectTodayVault(): Promise<void> {
-  if (todayOperationCount > 0) {
+  if (vaultSelectionInProgress) {
     return;
   }
+  vaultSelectionInProgress = true;
   const selectionRequest = vaultSelectionRequests.begin();
   const presentationRequest = todayPresentationRequests.begin();
   updateTodayOperationState(1);
@@ -1183,8 +1316,8 @@ async function selectTodayVault(): Promise<void> {
         isCurrent: () => vaultSelectionRequests.isCurrent(selectionRequest),
         isPresentationCurrent: () => todayPresentationRequests.isCurrent(presentationRequest),
         currentDestination: () => currentWorkspaceDestination,
-        waitForPendingWrites: waitForPendingHabitSave,
-        renderPendingWriteFailure: renderPendingHabitSaveFailure,
+        waitForPendingWrites,
+        renderPendingWriteFailure,
         prepareForVaultSwitch: (view) => {
           resetVaultScopedWorkspaceState();
           selectedTodayDate = null;
@@ -1202,6 +1335,7 @@ async function selectTodayVault(): Promise<void> {
       renderVaultSelectionError(error);
     }
   } finally {
+    vaultSelectionInProgress = false;
     updateTodayOperationState(-1);
   }
 }
@@ -1220,6 +1354,13 @@ function renderVaultSelectionError(error: unknown): void {
     if (habitsStatus) {
       habitsStatus.textContent = message;
       habitsStatus.dataset.state = "error";
+    }
+    return;
+  }
+  if (currentWorkspaceDestination === "settings") {
+    if (settingsVaultStatus) {
+      settingsVaultStatus.textContent = message;
+      settingsVaultStatus.dataset.state = "error";
     }
     return;
   }
@@ -2133,6 +2274,13 @@ function renderWorkspaceRailContext(destination: WorkspaceDestination): void {
     return;
   }
 
+  if (destination === "settings") {
+    workspaceRailContextKicker.textContent = "SETTINGS · MAC";
+    workspaceRailContextTitle.textContent = "设置";
+    workspaceRailContextDetail.textContent = "外观 · 数据与 Vault";
+    return;
+  }
+
   const summary = currentHabitSnapshot?.summary;
   workspaceRailContextKicker.textContent = "HABITS · 本周";
   workspaceRailContextTitle.textContent = summary
@@ -2279,6 +2427,18 @@ async function connectToApplication(): Promise<void> {
       element.textContent = identity.productName;
     });
     renderWorkspaceFeatureArea(currentWorkspaceDestination);
+    try {
+      const preferences = await window.__TAURI__.core.invoke<AppearancePreferences>(
+        "appearance_preferences",
+      );
+      appearanceMutations.confirm(preferences);
+      renderAppearance(preferences);
+    } catch (error) {
+      if (appearanceStatus) {
+        appearanceStatus.textContent = `无法读取外观偏好：${String(error)}`;
+        appearanceStatus.dataset.state = "error";
+      }
+    }
   } catch {
     runtimeStatus.textContent = "The local application boundary is unavailable.";
     runtimeStatus.dataset.state = "error";
@@ -2314,7 +2474,31 @@ selectTodayVaultButton?.addEventListener("click", () => {
 });
 
 workspaceSettingsButton?.addEventListener("click", () => {
-  selectTodayVaultButton?.click();
+  showWorkspaceDestination("settings");
+});
+
+settingsCategoryButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const section = button.dataset.settingsSection;
+    if (section === "appearance" || section === "data") showSettingsSection(section);
+  });
+});
+
+accentColorButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const accentColor = button.dataset.accentColor;
+    if (accentColor === "forest" || accentColor === "blue" || accentColor === "clay" || accentColor === "lilac") {
+      void chooseAccentColor(accentColor);
+    }
+  });
+});
+
+restoreAppearanceButton?.addEventListener("click", () => {
+  void restoreAppearance();
+});
+
+settingsSelectVaultButton?.addEventListener("click", () => {
+  void selectTodayVault();
 });
 
 refreshTodayButton?.addEventListener("click", () => {
@@ -2477,15 +2661,7 @@ habitsDestination?.addEventListener("submit", (event) => {
   event.preventDefault();
   stashHabitNoteDraft();
   const save = saveHabitExerciseNote();
-  pendingHabitNoteSave = save;
-  void save.then(
-    () => {
-      if (pendingHabitNoteSave === save) pendingHabitNoteSave = null;
-    },
-    () => {
-      if (pendingHabitNoteSave === save) pendingHabitNoteSave = null;
-    },
-  );
+  void pendingWrites.track(save);
 });
 
 todayDaytimeContent?.addEventListener("input", stashDatedNoteDraft);
@@ -2493,7 +2669,7 @@ todayDaytimeKind?.addEventListener("change", stashDatedNoteDraft);
 
 todayDaytimeForm?.addEventListener("submit", (event) => {
   event.preventDefault();
-  void saveDatedNote();
+  void pendingWrites.track(saveDatedNote());
 });
 
 todayDaytimeShortRecords?.addEventListener("click", (event) => {
@@ -2536,7 +2712,7 @@ todayEveningForm?.addEventListener("submit", (event) => {
   if (!todayEveningMode || !todayEveningContent) {
     return;
   }
-  void (async () => {
+  void pendingWrites.track((async () => {
     const saved = await saveTodayMutation(
       "update_evening_review",
       { mode: todayEveningMode.value, content: todayEveningContent.value },
@@ -2545,7 +2721,8 @@ todayEveningForm?.addEventListener("submit", (event) => {
     if (saved) {
       todayEveningContent.value = "";
     }
-  })();
+    return saved;
+  })());
 });
 
 todayEvidenceToggle?.addEventListener("click", () => {

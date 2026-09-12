@@ -84,6 +84,7 @@ fn record_path(vault: &Path, date: &str) -> PathBuf {
 }
 
 fn write_record(vault: &Path, date: &str, body: &str) -> PathBuf {
+    fs::create_dir_all(vault.join(".obsidian")).expect("synthetic Vault marker should be created");
     let path = record_path(vault, date);
     fs::create_dir_all(path.parent().expect("record parent should exist"))
         .expect("record directory should be created");

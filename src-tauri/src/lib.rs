@@ -5,6 +5,7 @@ use tauri::{Manager, State};
 #[cfg(target_os = "macos")]
 use tauri::{RunEvent, WindowEvent};
 
+pub mod appearance;
 pub mod backup;
 mod clock;
 pub mod cutover;
@@ -20,14 +21,15 @@ mod platform;
 pub mod profile;
 pub mod today;
 
+use appearance::{AccentColor, AppearanceApplication, AppearancePreferences};
 use clock::SystemClock;
 #[cfg(target_os = "macos")]
 use cutover::{
     CutoverApplication, CutoverPaths, MacLegacyCutoverRuntime, ReviewedCandidateIdentity,
 };
 use platform::{
-    legacy_exercise_directory_for, profile_file_for, today_workspace_file_for,
-    FileTodayWorkspacePersistence, NativeTodayWorkspaceExchange,
+    appearance_file_for, legacy_exercise_directory_for, profile_file_for, today_workspace_file_for,
+    FileAppearancePersistence, FileTodayWorkspacePersistence, NativeTodayWorkspaceExchange,
 };
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DaytimeUpdateInput,
@@ -39,6 +41,7 @@ type DesktopTodayApplication = TodayApplication<
     NativeTodayWorkspaceExchange<tauri::Wry>,
     SystemClock,
 >;
+type DesktopAppearanceApplication = AppearanceApplication<FileAppearancePersistence>;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,6 +58,28 @@ fn application_identity() -> ApplicationIdentity {
         feature_area: "Daily records and habits",
         boundary_message: "Local Rust application ready · Offline",
     }
+}
+
+#[tauri::command]
+fn appearance_preferences(
+    application: State<'_, DesktopAppearanceApplication>,
+) -> Result<AppearancePreferences, String> {
+    application.load()
+}
+
+#[tauri::command]
+fn set_accent_color(
+    application: State<'_, DesktopAppearanceApplication>,
+    accent_color: AccentColor,
+) -> Result<AppearancePreferences, String> {
+    application.set_accent_color(accent_color)
+}
+
+#[tauri::command]
+fn restore_appearance_defaults(
+    application: State<'_, DesktopAppearanceApplication>,
+) -> Result<AppearancePreferences, String> {
+    application.restore_defaults()
 }
 
 #[tauri::command]
@@ -132,6 +157,7 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
             let today_workspace_file = today_workspace_file_for(&app_handle)?;
+            let appearance_file = appearance_file_for(&app_handle)?;
             #[cfg(target_os = "macos")]
             if let Some(cutover_mode) = std::env::var_os("PERSONAL_DASHBOARD_2_CUTOVER_MODE") {
                 use crate::notification::Clock;
@@ -186,6 +212,9 @@ pub fn run() {
                 NativeTodayWorkspaceExchange::new(app_handle.clone()),
                 SystemClock,
             ));
+            app.manage(AppearanceApplication::new(FileAppearancePersistence::new(
+                appearance_file,
+            )));
             Ok(())
         });
 
@@ -199,6 +228,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             application_identity,
+            appearance_preferences,
+            set_accent_color,
+            restore_appearance_defaults,
             today_view,
             daily_view,
             calendar_month,
@@ -213,6 +245,9 @@ pub fn run() {
     #[cfg(not(target_os = "macos"))]
     let application = application.invoke_handler(tauri::generate_handler![
         application_identity,
+        appearance_preferences,
+        set_accent_color,
+        restore_appearance_defaults,
         today_view,
         daily_view,
         calendar_month,

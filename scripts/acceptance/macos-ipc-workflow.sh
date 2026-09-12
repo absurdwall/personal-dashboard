@@ -333,7 +333,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors; do
     run_bounded_scenario "$scenario"
   done
 
@@ -487,6 +487,12 @@ run_driver() {
     fail "$output"
   fi
   printf '%s\n' "$output"
+}
+
+open_vault_picker_from_settings() {
+  run_driver press "设置" 10
+  run_driver press "数据与 Vault" 10
+  run_driver press "更换 Vault…" 10
 }
 
 launch_app_waiting_for_text() {
@@ -2338,22 +2344,27 @@ EOF
 
   current_step="preserving a Daytime draft when Vault selection is cancelled"
   run_driver type-text "Short record text|取消选择后仍保留的日间草稿" 10
-  run_driver press "设置：选择 Vault" 10
+  open_vault_picker_from_settings
   run_driver cancel-folder 20
+  run_driver press "Today" 10
   run_driver assert-state "Daytime|selected" 10
   run_driver assert-text "取消选择后仍保留的日间草稿"
 
   current_step="preserving a Daytime draft when the current Vault is reselected"
-  run_driver press "设置：选择 Vault" 10
+  open_vault_picker_from_settings
   run_driver choose-folder "$vault_a" 20
+  run_driver press "Today" 10
+  run_driver press "Daytime" 10
   run_driver assert-state "Daytime|selected" 10
   run_driver assert-text "取消选择后仍保留的日间草稿"
 
   current_step="preserving correction state when Vault selection is cancelled"
   run_driver press "更正这条" 10
   run_driver type-text "Short record text|取消选择后仍保留的更正" 10
-  run_driver press "设置：选择 Vault" 10
+  open_vault_picker_from_settings
   run_driver cancel-folder 20
+  run_driver press "Today" 10
+  run_driver press "Daytime" 10
   run_driver assert-state "Daytime|selected" 10
   run_driver assert-text "取消选择后仍保留的更正"
   run_driver assert-text "保存更正"
@@ -2364,13 +2375,14 @@ EOF
   run_driver press-contains "2026-09-08 · Exercise" 10
   run_driver wait-text "写一句 · 2026-09-08" 20
   run_driver type-text "Exercise note text|取消选择后仍保留的健身草稿" 10
-  run_driver press "设置：选择 Vault" 10
+  open_vault_picker_from_settings
   run_driver cancel-folder 20
+  run_driver press "Habits" 10
   run_driver assert-text "取消选择后仍保留的健身草稿"
   run_driver assert-text "2026-09-08 · Exercise"
 
   current_step="proving a real Vault switch clears old state before reading the new Vault"
-  run_driver press "设置：选择 Vault" 10
+  open_vault_picker_from_settings
   run_driver choose-folder "$vault_b" 20
   run_driver press "Calendar" 10
   run_driver wait-text "B Vault 的复盘" 20
@@ -2857,6 +2869,132 @@ EOF
   echo "Viewport: semantic hierarchy, complete content, and primary actions passed at 1180x820, 800x640, and 640x520"
 }
 
+run_settings_vault_colors_scenario() {
+  local vault_a="$acceptance_directory/settings-vault-a"
+  local vault_b="$acceptance_directory/settings-vault-b"
+  local record_relative="life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local record_a="$vault_a/$record_relative"
+  local record_b="$vault_b/$record_relative"
+  local appearance_file="$acceptance_data_directory/appearance.json"
+  local before_a_hash
+  local before_b_hash
+
+  current_step="preparing isolated Settings, Vault, and color fixtures"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p \
+    "$vault_a/.obsidian" "$vault_b/.obsidian" \
+    "$vault_a/$(dirname "$record_relative")" "$vault_b/$(dirname "$record_relative")" \
+    "$acceptance_data_directory"
+  cat > "$record_a" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## 今天的大致安排
+
+- **上午：** Settings Vault A 的合成安排。
+EOF
+  cat > "$record_b" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## 今天的大致安排
+
+- **上午：** Settings Vault B 的合成安排。
+EOF
+  before_a_hash="$(shasum -a 256 "$record_a" | awk '{print $1}')"
+  before_b_hash="$(shasum -a 256 "$record_b" | awk '{print $1}')"
+
+  current_step="opening Settings and selecting an isolated local Vault"
+  launch_app_waiting_for_text "连接 Tortilla Flat vault" 30
+  run_driver press "设置" 10
+  run_driver wait-active-text "外观" 10
+  run_driver assert-active-text "保存在这台 Mac，不随 Vault 切换"
+  run_driver press "数据与 Vault" 10
+  run_driver assert-active-text "尚未配置本地 Vault"
+  run_driver assert-active-text "无需 Dashboard 账号"
+  run_driver assert-active-text "本地已保存"
+  run_driver assert-active-text "云端已同步"
+  run_driver press "更换 Vault…" 10
+  run_driver choose-folder "$vault_a" 35
+  run_driver wait-active-text "$vault_a" 20
+  run_driver assert-active-text "本地位置可用"
+
+  current_step="saving a shared accent color and proving packaged relaunch persistence"
+  run_driver press "外观" 10
+  run_driver press "雾蓝" 10
+  run_driver wait-active-text "颜色已保存在这台 Mac" 10
+  run_driver assert-same-rendered-color "全局主题色样本|雾蓝" 10
+  run_driver press "Today" 10
+  run_driver assert-same-rendered-color "刷新|全局主题色样本" 10
+  run_driver press "Calendar" 10
+  run_driver assert-same-rendered-color "今天|全局主题色样本" 10
+  run_driver press "Habits" 10
+  run_driver assert-same-rendered-color "刷新快照|全局主题色样本" 10
+  run_driver press "设置" 10
+  grep -Fq '"accentColor": "blue"' "$appearance_file" ||
+    fail "packaged color choice was not persisted in isolated app data"
+  if ! stop_app; then
+    fail "app process did not exit before color persistence relaunch"
+  fi
+  launch_app_waiting_for_text "Today" 30
+  run_driver assert-same-rendered-color "刷新|全局主题色样本" 10
+  run_driver wait-active-text "Vault: settings-vault-a" 20
+  run_driver press "Daytime" 10
+  run_driver wait-active-text "Settings Vault A 的合成安排" 20
+  run_driver press "设置" 10
+  run_driver assert-state "雾蓝|pressed" 10
+
+  current_step="switching Vault without changing the Mac-local color preference"
+  run_driver press "数据与 Vault" 10
+  run_driver press "更换 Vault…" 10
+  run_driver choose-folder "$vault_b" 35
+  run_driver wait-active-text "$vault_b" 20
+  grep -Fq '"accentColor": "blue"' "$appearance_file" ||
+    fail "Vault switch changed the Mac-local accent preference"
+  run_driver press "Today" 10
+  run_driver wait-active-text "Vault: settings-vault-b" 20
+  run_driver press "Daytime" 10
+  run_driver wait-active-text "Settings Vault B 的合成安排" 20
+
+  current_step="showing unavailable-Vault recovery and restoring defaults safely"
+  if ! stop_app; then
+    fail "app process did not exit before unavailable-Vault check"
+  fi
+  /bin/mv "$vault_b" "$acceptance_directory/settings-vault-b-moved"
+  launch_app_waiting_for_text "当前 Vault 文件夹不可用" 30
+  run_driver assert-active-text "选择 Vault…"
+  run_driver press "设置" 10
+  run_driver press "数据与 Vault" 10
+  run_driver assert-active-text "$vault_b"
+  run_driver assert-active-text "本地位置不可用"
+  run_driver press "更换 Vault…" 10
+  run_driver choose-folder "$vault_a" 35
+  run_driver press "外观" 10
+  run_driver press "恢复默认外观" 10
+  run_driver wait-active-text "Vault 数据未更改" 10
+  run_driver assert-same-rendered-color "全局主题色样本|松绿" 10
+  run_driver press "Today" 10
+  run_driver assert-same-rendered-color "刷新|全局主题色样本" 10
+  grep -Fq '"accentColor": "forest"' "$appearance_file" ||
+    fail "default appearance was not persisted"
+
+  [[ "$(shasum -a 256 "$record_a" | awk '{print $1}')" == "$before_a_hash" ]] ||
+    fail "Settings or appearance actions changed Vault A data"
+  [[ "$(shasum -a 256 "$acceptance_directory/settings-vault-b-moved/$record_relative" | awk '{print $1}')" == "$before_b_hash" ]] ||
+    fail "Settings or appearance actions changed Vault B data"
+
+  echo "Packaged IPC Settings, Vault, and color acceptance passed"
+  echo "Settings: Appearance and Data & Vault remained distinct and exposed the local path/status plus Drive desktop-client boundary"
+  echo "Vault: native selection, cross-Vault reading, and unavailable-location recovery used isolated synthetic records"
+  echo "Appearance: rendered theme pixels matched the selected swatch across all three pages and relaunch; restoring defaults left both Vault records byte-identical"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -2938,6 +3076,7 @@ case "$acceptance_scenario" in
   vault-recovery) run_vault_recovery_scenario ;;
   final-state-matrix) run_final_state_matrix_scenario ;;
   dashboard-2) run_dashboard_2_scenario ;;
+  settings-vault-colors) run_settings_vault_colors_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;
 esac

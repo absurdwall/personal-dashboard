@@ -108,6 +108,8 @@ fn snapshot_path(vault: &Path) -> PathBuf {
 }
 
 fn write_snapshot(vault: &Path, document: &str) {
+    fs::create_dir_all(vault.join(".obsidian")).unwrap();
+    fs::create_dir_all(vault.join("life/Journal/Daily")).unwrap();
     let path = snapshot_path(vault);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, document).unwrap();

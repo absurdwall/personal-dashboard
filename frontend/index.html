@@ -14,7 +14,7 @@
     <main class="app-shell" data-workspace-destination="today">
       <header class="product-toolbar" aria-label="Workspace toolbar">
         <div class="product-toolbar-brand">
-          <div class="feature-mark" aria-hidden="true">P</div>
+          <div class="feature-mark" role="img" aria-label="全局主题色样本">P</div>
           <div>
             <p class="product-toolbar-name" data-product-name>Personal Dashboard</p>
             <p class="product-toolbar-area">Daily life</p>
@@ -26,8 +26,8 @@
             id="workspace-settings"
             type="button"
             class="product-toolbar-button"
-            aria-label="设置：选择 Vault"
-            title="设置：选择 Vault"
+            aria-label="打开设置"
+            title="打开设置"
           >
             设置
           </button>
@@ -111,6 +111,66 @@
 
         <div class="workspace-regions">
           <section class="workspace-information" aria-label="Workspace information">
+            <section
+              id="workspace-destination-settings"
+              class="workspace-destination settings-destination"
+              data-workspace-panel="settings"
+              aria-labelledby="settings-heading"
+              hidden
+            >
+              <div class="settings-layout">
+                <nav class="settings-navigation" aria-label="设置分类">
+                  <button type="button" data-settings-section="appearance" aria-current="page">
+                    外观
+                  </button>
+                  <button type="button" data-settings-section="data">
+                    数据与 Vault
+                  </button>
+                </nav>
+                <div class="settings-content">
+                  <section data-settings-panel="appearance" aria-labelledby="settings-heading">
+                    <h2 id="settings-heading" class="destination-heading">外观</h2>
+                    <p class="settings-introduction">保存在这台 Mac，不随 Vault 切换。</p>
+                    <div class="setting-row">
+                      <h3>主题颜色</h3>
+                      <p>同一预设即时用于 Today、Calendar、Habits 与设置。</p>
+                      <div class="accent-swatches" role="group" aria-label="主题颜色">
+                        <button type="button" data-accent-color="forest" aria-label="松绿" aria-pressed="true"></button>
+                        <button type="button" data-accent-color="blue" aria-label="雾蓝" aria-pressed="false"></button>
+                        <button type="button" data-accent-color="clay" aria-label="赤陶" aria-pressed="false"></button>
+                        <button type="button" data-accent-color="lilac" aria-label="紫灰" aria-pressed="false"></button>
+                      </div>
+                    </div>
+                    <div class="setting-row">
+                      <button id="restore-appearance" type="button" class="secondary-button">恢复默认外观</button>
+                      <p>只恢复外观偏好，不清理 Vault 或个人记录。</p>
+                    </div>
+                    <p id="appearance-status" class="settings-status" role="status" aria-live="polite"></p>
+                  </section>
+                  <section data-settings-panel="data" aria-labelledby="data-vault-heading" hidden>
+                    <h2 id="data-vault-heading" class="destination-heading">数据与 Vault</h2>
+                    <p class="settings-introduction">你的记录仍属于自己选择的本地文件夹，无需 Dashboard 账号。</p>
+                    <div class="setting-row">
+                      <h3>当前 Vault</h3>
+                      <p>兼容 Vault 需要 Obsidian Vault 标记与 <code>life/Journal/Daily</code> 目录。</p>
+                      <p id="settings-vault-path" class="settings-vault-path">尚未选择 Vault。</p>
+                      <p id="settings-vault-status" class="settings-status" role="status" aria-live="polite">等待读取本地状态。</p>
+                      <button id="settings-select-vault" type="button">更换 Vault…</button>
+                    </div>
+                    <div class="setting-row">
+                      <h3>使用 Google Drive 中的 Vault</h3>
+                      <p>先让 Google Drive 桌面客户端把整个 Vault 保持为 Mac 上可用的本地文件夹，再在这里选择它。</p>
+                      <ol class="drive-steps">
+                        <li>在 Google Drive 桌面客户端登录。</li>
+                        <li>让整个 Vault 在这台 Mac 上保持本地可用。</li>
+                        <li>在 Dashboard 中选择该 Vault 文件夹。</li>
+                      </ol>
+                      <p class="settings-boundary">普通本地 Vault 也可使用。Dashboard 不会自动转换任意笔记，不管理 Google 账号或上传；“本地已保存”不代表“云端已同步”。版本与回收站由 Google Drive 管理。</p>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </section>
             <section
               id="workspace-destination-calendar"
               class="workspace-destination calendar-destination"

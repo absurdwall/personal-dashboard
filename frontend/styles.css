@@ -5,9 +5,9 @@
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --parity-accent: #35695c;
+  --parity-accent: #2d6c57;
   --parity-accent-strong: #214e43;
-  --parity-accent-soft: #e3eee9;
+  --parity-accent-soft: #e7f0eb;
   --parity-border: #d8dad6;
   --parity-muted: #606763;
   --parity-sidebar: #f7f7f5;
@@ -16,6 +16,14 @@
   --parity-warning: #a45d17;
   --parity-warning-soft: #fff3df;
   --parity-success: #3d774b;
+}
+
+#refresh-today,
+#refresh-habits,
+#calendar-today {
+  border-color: var(--parity-accent);
+  background: var(--parity-accent);
+  color: white;
 }
 
 /* Habits AG: summary rail, day-focused rows, recent dots, and inline 12-week history. */
@@ -2514,7 +2522,7 @@ body {
   flex: 0 0 auto;
   place-items: center;
   border-radius: 0.5rem;
-  background: var(--parity-accent-strong);
+  background: var(--parity-accent);
   color: #fff;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 1rem;
@@ -4375,6 +4383,162 @@ body {
   color: var(--parity-muted);
   font-size: 12px;
   line-height: 1.55;
+}
+
+/* Personal Dashboard 3.0 ticket 01: Mac-local appearance and Vault settings. */
+.settings-destination {
+  width: min(calc(100% - 3rem), 58.75rem);
+  margin: 0 auto;
+  padding: 1.7rem 1.7rem 3.7rem;
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  min-height: 26rem;
+  overflow: hidden;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.75rem;
+  background: var(--parity-surface);
+}
+
+.settings-navigation {
+  padding: 1.1rem 0.75rem;
+  border-right: 1px solid var(--parity-border);
+  background: var(--parity-surface-soft);
+}
+
+.settings-navigation button {
+  width: 100%;
+  margin-bottom: 0.35rem;
+  padding: 0.7rem 0.75rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #3c4741;
+  text-align: left;
+}
+
+.settings-navigation button[aria-current="page"] {
+  background: var(--parity-accent-soft);
+  color: var(--parity-accent-strong);
+}
+
+.settings-content {
+  width: 100%;
+  max-width: 47.5rem;
+  padding: 1.9rem;
+}
+
+.settings-content h2,
+.settings-content h3 {
+  color: #252a28;
+}
+
+.settings-content h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.45rem;
+}
+
+.settings-content h3 {
+  margin: 0 0 0.55rem;
+  font-size: 0.9rem;
+}
+
+.settings-introduction,
+.setting-row > p,
+.settings-status,
+.settings-boundary,
+.drive-steps {
+  color: var(--parity-muted);
+  font-size: 0.76rem;
+  line-height: 1.65;
+}
+
+.setting-row {
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.setting-row:last-of-type {
+  border-bottom: 0;
+}
+
+.accent-swatches {
+  display: flex;
+  gap: 0.85rem;
+  margin-top: 0.9rem;
+}
+
+.accent-swatches button {
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 0.2rem solid white;
+  border-radius: 50%;
+  outline: 1px solid var(--parity-border);
+}
+
+.accent-swatches button[data-accent-color="forest"] { background: #2d6c57; }
+.accent-swatches button[data-accent-color="blue"] { background: #4d6f91; }
+.accent-swatches button[data-accent-color="clay"] { background: #a66348; }
+.accent-swatches button[data-accent-color="lilac"] { background: #78638a; }
+
+.accent-swatches button[aria-pressed="true"] {
+  outline: 2px solid #252a28;
+  outline-offset: 0.18rem;
+}
+
+.settings-vault-path {
+  margin: 0.7rem 0;
+  padding: 0.7rem 0.8rem;
+  overflow-wrap: anywhere;
+  border-radius: 0.4rem;
+  background: var(--parity-surface-soft);
+  color: #303633;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+}
+
+.settings-status[data-state="error"],
+.appearance-status[data-state="error"] {
+  color: #8a3d31;
+}
+
+.drive-steps {
+  padding-left: 1.25rem;
+}
+
+.settings-boundary {
+  padding: 0.75rem;
+  border-left: 2px solid var(--parity-accent);
+  background: var(--parity-accent-soft);
+}
+
+@media (max-width: 760px) {
+  .settings-destination {
+    width: 100%;
+    padding: 1rem;
+  }
+
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-navigation {
+    display: flex;
+    gap: 0.4rem;
+    border-right: 0;
+    border-bottom: 1px solid var(--parity-border);
+  }
+
+  .settings-navigation button {
+    margin: 0;
+  }
+
+  .settings-content {
+    padding: 1.2rem;
+  }
 }
 
 @media (max-width: 900px) {

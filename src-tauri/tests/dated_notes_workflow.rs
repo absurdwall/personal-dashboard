@@ -94,7 +94,14 @@ fn record_path(vault: &Path, date: &str) -> PathBuf {
         .join(format!("{date}.md"))
 }
 
+fn prepare_compatible_vault(vault: &Path) {
+    fs::create_dir_all(vault.join(".obsidian")).expect("synthetic Vault marker should be created");
+    fs::create_dir_all(vault.join("life/Journal/Daily"))
+        .expect("synthetic Daily Record root should be created");
+}
+
 fn write_record(vault: &Path, date: &str, body: &str) {
+    prepare_compatible_vault(vault);
     let path = record_path(vault, date);
     fs::create_dir_all(path.parent().expect("record parent should exist"))
         .expect("record directory should exist");
@@ -249,6 +256,7 @@ fn add_and_multiple_corrections_keep_one_id_and_an_append_only_trace() {
 #[test]
 fn explicit_save_exclusively_creates_a_minimal_past_record_but_never_a_future_fact() {
     let vault = TempDirectory::new("dated-note-create");
+    prepare_compatible_vault(vault.path());
     let clock = AdjustableClock::new("2026-08-10", "2026-08-10T14:10-04:00");
     let application = app(vault.path(), clock);
     let missing = application
@@ -292,6 +300,54 @@ fn explicit_save_exclusively_creates_a_minimal_past_record_but_never_a_future_fa
         .expect_err("future happened fact must be rejected");
     assert!(error.contains("未来日期"));
     assert!(!record_path(vault.path(), "2026-08-11").exists());
+}
+
+#[test]
+fn compatibility_loss_blocks_bound_note_creation_and_correction() {
+    let vault = TempDirectory::new("dated-note-compatibility-loss");
+    prepare_compatible_vault(vault.path());
+    let application = app(
+        vault.path(),
+        AdjustableClock::new("2026-08-10", "2026-08-10T14:10-04:00"),
+    );
+    let missing = application
+        .open()
+        .expect("compatible missing day should open");
+    fs::remove_dir(vault.path().join(".obsidian"))
+        .expect("compatibility marker should be removable");
+
+    let error = application
+        .add_dated_note(add_input(&missing, "不应创建"))
+        .expect_err("compatibility loss must block a bound create");
+    assert!(error.contains("不兼容"));
+    assert!(!record_path(vault.path(), "2026-08-10").exists());
+
+    fs::create_dir(vault.path().join(".obsidian"))
+        .expect("compatibility marker should be restorable");
+    let reopened = application.open().expect("restored Vault should reopen");
+    let added = application
+        .add_dated_note(add_input(&reopened, "可更正记录"))
+        .expect("compatible Vault should accept the note");
+    let record = record_path(vault.path(), "2026-08-10");
+    let before = fs::read(&record).expect("created record should be readable");
+    fs::remove_dir(vault.path().join(".obsidian"))
+        .expect("compatibility marker should be removable again");
+
+    let error = application
+        .correct_dated_note(DatedNoteCorrectionInput {
+            date: added.date.clone(),
+            target_binding: added.target_binding.clone().unwrap(),
+            expected_revision: added.revision.clone().unwrap(),
+            entry_id: "note-1".into(),
+            change_id: "change-after-compatibility-loss".into(),
+            content: "不应更正".into(),
+        })
+        .expect_err("compatibility loss must block a bound correction");
+    assert!(error.contains("不兼容"));
+    assert_eq!(
+        fs::read(record).expect("record should remain readable"),
+        before
+    );
 }
 
 #[test]

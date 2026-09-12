@@ -2,10 +2,34 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  PendingWriteBarrier,
   selectVaultAndRefresh,
   type VaultSelectionActions,
   type VaultSelectionDestination,
 } from "../../frontend/vault-selection.ts";
+
+test("Vault switching waits for an in-flight write and observes its failure", async () => {
+  const writes = new PendingWriteBarrier();
+  let release!: (saved: boolean) => void;
+  const write = new Promise<boolean>((resolve) => {
+    release = resolve;
+  });
+  writes.track(write);
+
+  const waiting = writes.wait();
+  release(false);
+
+  assert.equal(await waiting, false);
+  assert.equal(await writes.wait(), true);
+});
+
+test("a rejected write blocks Vault switching without leaking a rejection", async () => {
+  const writes = new PendingWriteBarrier();
+  writes.track(Promise.reject(new Error("synthetic write failure")));
+
+  assert.equal(await writes.wait(), false);
+  assert.equal(await writes.wait(), true);
+});
 
 type View = Readonly<{ vault: string; date: string; defaultPhase: string }>;
 
