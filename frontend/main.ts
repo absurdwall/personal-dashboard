@@ -457,16 +457,42 @@ function resetVaultScopedWorkspaceState(): void {
   renderWorkspaceRailContext(currentWorkspaceDestination);
 }
 
-async function waitForPendingHabitSave(): Promise<void> {
+async function waitForPendingHabitSave(): Promise<boolean> {
   const pending = pendingHabitNoteSave;
   if (!pending) {
-    return;
+    return true;
   }
   if (currentWorkspaceDestination === "habits" && habitsStatus) {
     habitsStatus.textContent = "正在完成当前 Habits 保存，再切换 Vault…";
     habitsStatus.dataset.state = "loading";
   }
-  await pending;
+  return await pending;
+}
+
+function renderPendingHabitSaveFailure(): void {
+  const habitMessage = habitNoteStatus?.state === "error"
+    ? habitNoteStatus.message
+    : "Habits 保存失败，Vault 尚未切换；草稿与更正状态仍保留。";
+  if (currentWorkspaceDestination === "habits") {
+    if (habitsStatus) {
+      habitsStatus.textContent = habitMessage;
+      habitsStatus.dataset.state = "error";
+    }
+    renderSelectedHabitCell();
+    return;
+  }
+  const message = `Habits 保存失败，Vault 尚未切换；${habitMessage}`;
+  if (currentWorkspaceDestination === "calendar") {
+    if (calendarStatus) {
+      calendarStatus.textContent = message;
+      calendarStatus.dataset.state = "error";
+    }
+    return;
+  }
+  if (todayStatus) {
+    todayStatus.textContent = message;
+    todayStatus.dataset.state = "error";
+  }
 }
 
 function syncWorkspaceViewportMode(): void {
@@ -1158,6 +1184,7 @@ async function selectTodayVault(): Promise<void> {
         isPresentationCurrent: () => todayPresentationRequests.isCurrent(presentationRequest),
         currentDestination: () => currentWorkspaceDestination,
         waitForPendingWrites: waitForPendingHabitSave,
+        renderPendingWriteFailure: renderPendingHabitSaveFailure,
         prepareForVaultSwitch: (view) => {
           resetVaultScopedWorkspaceState();
           selectedTodayDate = null;

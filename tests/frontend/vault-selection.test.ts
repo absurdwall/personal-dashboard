@@ -23,7 +23,9 @@ type State = {
   order: string[];
   current: boolean;
   presentationCurrent: boolean;
-  pendingWrites: Promise<void> | null;
+  pendingWrites: Promise<boolean> | null;
+  pendingWriteFailureRenders: number;
+  pendingWriteError: string | null;
 };
 
 function actionsFor(state: State): VaultSelectionActions<View> {
@@ -31,8 +33,11 @@ function actionsFor(state: State): VaultSelectionActions<View> {
     isCurrent: () => state.current,
     isPresentationCurrent: () => state.presentationCurrent,
     currentDestination: () => state.destination,
-    waitForPendingWrites: async () => {
-      if (state.pendingWrites) await state.pendingWrites;
+    waitForPendingWrites: async () => state.pendingWrites ? await state.pendingWrites : true,
+    renderPendingWriteFailure: () => {
+      state.pendingWriteFailureRenders += 1;
+      state.pendingWriteError = "Habits 保存失败，草稿仍保留。";
+      state.order.push("write-failed");
     },
     prepareForVaultSwitch: (view) => {
       state.order.push("reset");
@@ -78,6 +83,8 @@ function stateFor(destination: VaultSelectionDestination): State {
     current: true,
     presentationCurrent: true,
     pendingWrites: null,
+    pendingWriteFailureRenders: 0,
+    pendingWriteError: null,
   };
 }
 
@@ -194,10 +201,10 @@ test("an obsolete Vault result cannot clear a newer selection state", async () =
   assert.deepEqual(state.order, []);
 });
 
-test("Vault selection waits for an in-flight Habits write before invoking the picker", async () => {
+test("a delayed failed Habits save aborts Vault selection and preserves the editor state", async () => {
   const state = stateFor("habits");
-  let release!: () => void;
-  state.pendingWrites = new Promise<void>((resolve) => {
+  let release!: (saved: boolean) => void;
+  state.pendingWrites = new Promise<boolean>((resolve) => {
     release = resolve;
   });
   let invoked = false;
@@ -215,10 +222,46 @@ test("Vault selection waits for an in-flight Habits write before invoking the pi
 
   await Promise.resolve();
   assert.equal(invoked, false);
-  release();
+  release(false);
+  assert.equal(await selection, "blocked");
+  assert.equal(invoked, false);
+  assert.equal(state.draft, "未保存输入");
+  assert.equal(state.correctionId, "correction-1");
+  assert.equal(state.selectedDate, "2026-09-07");
+  assert.equal(state.phase, "evening");
+  assert.equal(state.currentView?.vault, "vault-a");
+  assert.equal(state.pendingWriteFailureRenders, 1);
+  assert.equal(state.pendingWriteError, "Habits 保存失败，草稿仍保留。");
+  assert.deepEqual(state.order, ["write-failed"]);
+});
+
+test("a delayed successful Habits save allows the Vault picker and switch", async () => {
+  const state = stateFor("habits");
+  let release!: (saved: boolean) => void;
+  state.pendingWrites = new Promise<boolean>((resolve) => {
+    release = resolve;
+  });
+  let invoked = false;
+
+  const selection = selectVaultAndRefresh(
+    async () => {
+      invoked = true;
+      return {
+        changed: true,
+        view: { vault: "vault-b", date: "2026-09-10", defaultPhase: "morning" },
+      };
+    },
+    actionsFor(state),
+  );
+
+  await Promise.resolve();
+  assert.equal(invoked, false);
+  release(true);
   assert.equal(await selection, "changed");
   assert.equal(invoked, true);
   assert.equal(state.currentView?.vault, "vault-b");
   assert.equal(state.draft, "");
+  assert.equal(state.pendingWriteFailureRenders, 0);
+  assert.equal(state.pendingWriteError, null);
   assert.deepEqual(state.order, ["reset", "today", "status", "habits"]);
 });
