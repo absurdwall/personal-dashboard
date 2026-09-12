@@ -5963,3 +5963,89 @@ body {
     text-align: right;
   }
 }
+
+/* Personal Dashboard 3.0 ticket 03: Mac-local background image. */
+.background-image-preview {
+  width: min(100%, 18rem);
+  aspect-ratio: 16 / 7;
+  margin-top: 0.9rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(rgb(245 245 242 / 90%), rgb(245 245 242 / 90%)),
+    var(--background-image) center / cover no-repeat,
+    var(--parity-surface-soft);
+}
+
+.app-shell[data-background-image-state="ready"] .background-image-preview {
+  background:
+    linear-gradient(rgb(245 245 242 / 10%), rgb(245 245 242 / 10%)),
+    var(--background-image) center / cover no-repeat;
+}
+
+.background-image-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
+.app-shell[data-background-image-state="ready"] {
+  background:
+    linear-gradient(rgb(245 245 242 / 90%), rgb(245 245 242 / 90%)),
+    var(--background-image) center / cover fixed no-repeat;
+}
+
+.app-shell[data-background-image-state="ready"] > .workspace-sidebar {
+  background: rgb(250 251 249 / 88%);
+}
+
+.app-shell[data-background-image-state="ready"] .workspace-shell,
+.app-shell[data-background-image-state="ready"] .workspace-regions,
+.app-shell[data-background-image-state="ready"] .workspace-information {
+  background: transparent;
+}
+
+.app-shell[data-background-image-state="ready"] .workspace-header {
+  background: rgb(255 255 255 / 90%);
+}
+
+.app-shell[data-background-image-state="ready"] #workspace-destination-today,
+.app-shell[data-background-image-state="ready"] #workspace-destination-calendar,
+.app-shell[data-background-image-state="ready"] .settings-layout {
+  border: 1px solid rgb(255 255 255 / 54%);
+  border-radius: 0.75rem;
+  background: rgb(255 255 255 / 32%);
+}
+
+.app-shell[data-background-image-state="ready"] #workspace-destination-habits {
+  background: transparent;
+}
+
+.app-shell[data-background-image-state="ready"] .calendar-grid,
+.app-shell[data-background-image-state="ready"] .calendar-day,
+.app-shell[data-background-image-state="ready"] .calendar-summary,
+.app-shell[data-background-image-state="ready"] .calendar-summary-status {
+  background: transparent;
+}
+
+.app-shell[data-background-image-state="ready"] .calendar-day:hover {
+  background: rgb(255 255 255 / 20%);
+}
+
+.app-shell[data-background-image-state="ready"] .calendar-day[data-selected] {
+  background: color-mix(in srgb, var(--parity-accent-soft) 72%, transparent);
+}
+
+.app-shell[data-background-image-state="ready"] .settings-navigation {
+  background: rgb(250 251 249 / 58%);
+}
+
+@media (max-width: 680px) {
+  .app-shell[data-background-image-state="ready"] #workspace-destination-today,
+  .app-shell[data-background-image-state="ready"] #workspace-destination-calendar {
+    border-right: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+}

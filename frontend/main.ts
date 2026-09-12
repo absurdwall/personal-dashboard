@@ -10,8 +10,11 @@ import {
 } from "./vault-selection.js";
 import {
   applyAccentColor,
+  applyBackgroundImage,
+  resolveBackgroundImagePresentation,
   SerializedLatestMutation,
   type AccentColor,
+  type AppearancePreferences,
 } from "./appearance.js";
 import {
   applyInterfaceLanguage,
@@ -275,7 +278,10 @@ const workspaceDestinationDetails: Record<
   },
 };
 
-type AppearancePreferences = Readonly<{ accentColor: AccentColor }>;
+type AppearanceSelectionResult = Readonly<{
+  preferences: AppearancePreferences;
+  changed: boolean;
+}>;
 
 const runtimeStatus = document.querySelector<HTMLElement>("#runtime-status");
 const workspaceDestinationButtons = document.querySelectorAll<HTMLButtonElement>(
@@ -303,6 +309,13 @@ const settingsPanels = document.querySelectorAll<HTMLElement>("[data-settings-pa
 const accentColorButtons = document.querySelectorAll<HTMLButtonElement>("[data-accent-color]");
 const restoreAppearanceButton = document.querySelector<HTMLButtonElement>("#restore-appearance");
 const appearanceStatus = document.querySelector<HTMLElement>("#appearance-status");
+const chooseBackgroundImageButton = document.querySelector<HTMLButtonElement>(
+  "#choose-background-image",
+);
+const removeBackgroundImageButton = document.querySelector<HTMLButtonElement>(
+  "#remove-background-image",
+);
+const backgroundImageStatus = document.querySelector<HTMLElement>("#background-image-status");
 const settingsVaultPath = document.querySelector<HTMLElement>("#settings-vault-path");
 const settingsVaultStatus = document.querySelector<HTMLElement>("#settings-vault-status");
 const settingsSelectVaultButton = document.querySelector<HTMLButtonElement>(
@@ -446,7 +459,12 @@ const selectTodayVaultButton = document.querySelector<HTMLButtonElement>("#selec
 const refreshTodayButton = document.querySelector<HTMLButtonElement>("#refresh-today");
 const appShell = document.querySelector<HTMLElement>(".app-shell");
 let currentWorkspaceDestination: WorkspaceDestination = "today";
-let currentAppearance: AppearancePreferences = { accentColor: "forest" };
+let currentAppearance: AppearancePreferences = {
+  accentColor: "forest",
+  backgroundImageState: "none",
+  backgroundImageUrl: null,
+  cleanupWarning: null,
+};
 let currentInterfaceLanguage: InterfaceLanguage = "zh";
 let todayOperationCount = 0;
 let vaultSelectionInProgress = false;
@@ -478,6 +496,9 @@ let habitDateOperationCount = 0;
 const pendingWrites = new PendingWriteBarrier();
 const appearanceMutations = new SerializedLatestMutation<AppearancePreferences>({
   accentColor: "forest",
+  backgroundImageState: "none",
+  backgroundImageUrl: null,
+  cleanupWarning: null,
 });
 const interfaceLanguageMutations =
   new SerializedLatestMutation<InterfaceLanguagePreferences>({ interfaceLanguage: "zh" });
@@ -610,18 +631,55 @@ function resetVaultScopedWorkspaceState(): void {
   renderWorkspaceRailContext(currentWorkspaceDestination);
 }
 
+let backgroundPresentationGeneration = 0;
+
+function renderBackgroundPresentation(preferences: AppearancePreferences): void {
+  if (appShell) applyBackgroundImage(preferences, appShell);
+  if (removeBackgroundImageButton) {
+    removeBackgroundImageButton.disabled = currentAppearance.backgroundImageState === "none";
+  }
+  setCopy(
+    backgroundImageStatus,
+    preferences.backgroundImageState === "ready"
+      ? "settings.backgroundReady"
+      : preferences.backgroundImageState === "unavailable"
+        ? "settings.backgroundUnavailable"
+        : "settings.backgroundNone",
+  );
+  backgroundImageStatus?.toggleAttribute(
+    "data-state",
+    preferences.backgroundImageState === "unavailable",
+  );
+  if (backgroundImageStatus && preferences.backgroundImageState === "unavailable") {
+    backgroundImageStatus.dataset.state = "error";
+  }
+}
+
 function renderAppearance(preferences: AppearancePreferences): void {
   currentAppearance = preferences;
+  const presentationGeneration = ++backgroundPresentationGeneration;
   applyAccentColor(preferences.accentColor, document.documentElement.style);
+  renderBackgroundPresentation(preferences);
   accentColorButtons.forEach((button) => {
     const selected = button.dataset.accentColor === preferences.accentColor;
     button.setAttribute("aria-pressed", String(selected));
   });
+  if (preferences.cleanupWarning && appearanceStatus) {
+    setCopyError(appearanceStatus, "appearance.cleanupPending", preferences.cleanupWarning);
+    appearanceStatus.dataset.state = "error";
+  }
+  if (preferences.backgroundImageState === "ready") {
+    void resolveBackgroundImagePresentation(preferences).then((presentation) => {
+      if (presentationGeneration === backgroundPresentationGeneration) {
+        renderBackgroundPresentation(presentation);
+      }
+    });
+  }
 }
 
 async function persistAppearanceChange(
   optimistic: AppearancePreferences,
-  command: "set_accent_color" | "restore_appearance_defaults",
+  command: "set_accent_color" | "remove_background_image" | "restore_appearance_defaults",
   arguments_: Record<string, unknown> | undefined,
   progressMessage: InterfaceCopyKey,
   successMessage: InterfaceCopyKey,
@@ -633,8 +691,13 @@ async function persistAppearanceChange(
     (saved) => {
       renderAppearance(saved);
       if (appearanceStatus) {
-        setCopy(appearanceStatus, successMessage);
-        delete appearanceStatus.dataset.state;
+        if (saved.cleanupWarning) {
+          setCopyError(appearanceStatus, "appearance.cleanupPending", saved.cleanupWarning);
+          appearanceStatus.dataset.state = "error";
+        } else {
+          setCopy(appearanceStatus, successMessage);
+          delete appearanceStatus.dataset.state;
+        }
       }
     },
     (error, confirmed) => {
@@ -649,7 +712,7 @@ async function persistAppearanceChange(
 
 async function chooseAccentColor(accentColor: AccentColor): Promise<void> {
   await persistAppearanceChange(
-    { accentColor },
+    { ...currentAppearance, accentColor },
     "set_accent_color",
     { accentColor },
     "appearance.saving",
@@ -659,11 +722,68 @@ async function chooseAccentColor(accentColor: AccentColor): Promise<void> {
 
 async function restoreAppearance(): Promise<void> {
   await persistAppearanceChange(
-    { accentColor: "forest" },
+    {
+      accentColor: "forest",
+      backgroundImageState: "none",
+      backgroundImageUrl: null,
+      cleanupWarning: null,
+    },
     "restore_appearance_defaults",
     undefined,
     "appearance.restoring",
     "appearance.restored",
+  );
+}
+
+async function chooseBackgroundImage(): Promise<void> {
+  setCopy(appearanceStatus, "appearance.importingBackground");
+  let changed = false;
+  await appearanceMutations.enqueue(
+    async () => {
+      const result = await window.__TAURI__.core.invoke<AppearanceSelectionResult>(
+        "select_background_image",
+        { interfaceLanguage: currentInterfaceLanguage },
+      );
+      changed = result.changed;
+      return result.preferences;
+    },
+    (saved) => {
+      renderAppearance(saved);
+      if (saved.cleanupWarning && appearanceStatus) {
+        setCopyError(appearanceStatus, "appearance.cleanupPending", saved.cleanupWarning);
+        appearanceStatus.dataset.state = "error";
+      } else {
+        setCopy(
+          appearanceStatus,
+          changed
+            ? "appearance.backgroundImported"
+            : "appearance.backgroundSelectionCancelled",
+        );
+        appearanceStatus?.removeAttribute("data-state");
+      }
+    },
+    (error, confirmed) => {
+      renderAppearance(confirmed);
+      if (appearanceStatus) {
+        setCopyError(appearanceStatus, "appearance.updateFailed", error);
+        appearanceStatus.dataset.state = "error";
+      }
+    },
+  );
+}
+
+async function removeBackgroundImage(): Promise<void> {
+  await persistAppearanceChange(
+    {
+      ...currentAppearance,
+      backgroundImageState: "none",
+      backgroundImageUrl: null,
+      cleanupWarning: null,
+    },
+    "remove_background_image",
+    undefined,
+    "appearance.removingBackground",
+    "appearance.backgroundRemoved",
   );
 }
 
@@ -2752,6 +2872,14 @@ accentColorButtons.forEach((button) => {
 
 restoreAppearanceButton?.addEventListener("click", () => {
   void restoreAppearance();
+});
+
+chooseBackgroundImageButton?.addEventListener("click", () => {
+  void chooseBackgroundImage();
+});
+
+removeBackgroundImageButton?.addEventListener("click", () => {
+  void removeBackgroundImage();
 });
 
 settingsSelectVaultButton?.addEventListener("click", () => {

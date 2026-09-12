@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-same-rendered-color|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -712,6 +712,7 @@ func chooseFolder(
     _ application: AXUIElement,
     pid: pid_t,
     path: String,
+    isFile: Bool = false,
     timeout: TimeInterval
 ) throws {
     let deadline = Date().addingTimeInterval(timeout)
@@ -761,13 +762,41 @@ func chooseFolder(
     // while this sheet was still open.
     try postGlobalKey("return")
     let targetName = URL(fileURLWithPath: path).lastPathComponent
-    try waitForPickerTarget(
-        picker,
-        targetName: targetName,
-        timeout: max(0.1, deadline.timeIntervalSinceNow)
-    )
-    reportNativePickerTransition("folder target visible name=\(targetName)")
-    try postGlobalKey("return")
+    if isFile {
+        let targetDeadline = Date().addingTimeInterval(
+            min(2, max(0.1, deadline.timeIntervalSinceNow))
+        )
+        var targetVisible = false
+        repeat {
+            let pathFieldPresent = findRolesWithin(picker, ["AXTextField"])
+                .contains(where: { CFEqual($0, pathField) })
+            if !pathFieldPresent { break }
+            targetVisible = findTextPaths(picker, targetName).contains(where: { path in
+                stringAttribute(path.element, "AXRole") != "AXTextField" &&
+                    visibleAttribute(path.element, "AXHidden")
+            })
+            if targetVisible { break }
+            Thread.sleep(forTimeInterval: 0.1)
+        } while Date() < targetDeadline
+        let pathFieldPresent = findRolesWithin(picker, ["AXTextField"])
+            .contains(where: { CFEqual($0, pathField) })
+        if pathFieldPresent {
+            reportNativePickerTransition(
+                targetVisible
+                    ? "file target visible name=\(targetName)"
+                    : "confirming exact file path without an AX target row name=\(targetName)"
+            )
+            try postGlobalKey("return")
+        }
+    } else {
+        try waitForPickerTarget(
+            picker,
+            targetName: targetName,
+            timeout: max(0.1, deadline.timeIntervalSinceNow)
+        )
+        reportNativePickerTransition("folder target visible name=\(targetName)")
+        try postGlobalKey("return")
+    }
     try waitForTextFieldToClose(
         picker,
         field: pathField,
@@ -1118,6 +1147,174 @@ func waitForMatchingRenderedColors(
     throw DriverError.timeout(
         "matching rendered colors \(firstLabel) and \(secondLabel) (actual: \(lastActual))"
     )
+}
+
+func assertRenderedVariation(
+    _ application: AXUIElement,
+    label: String,
+    minimumDistance: Int
+) throws {
+    guard let element = visibleRenderedElement(application, label: label),
+          let elementFrame = frame(element),
+          let bitmap = renderedBitmap(in: elementFrame) else {
+        throw DriverError.timeout("rendered color variation sample: \(label)")
+    }
+    var minimum = (red: 255, green: 255, blue: 255)
+    var maximum = (red: 0, green: 0, blue: 0)
+    let insetX = max(3, bitmap.pixelsWide / 20)
+    let insetY = max(3, bitmap.pixelsHigh / 20)
+    for y in stride(from: insetY, to: bitmap.pixelsHigh - insetY, by: 3) {
+        for x in stride(from: insetX, to: bitmap.pixelsWide - insetX, by: 3) {
+            guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
+                continue
+            }
+            let red = Int((color.redComponent * 255).rounded())
+            let green = Int((color.greenComponent * 255).rounded())
+            let blue = Int((color.blueComponent * 255).rounded())
+            minimum.red = min(minimum.red, red)
+            minimum.green = min(minimum.green, green)
+            minimum.blue = min(minimum.blue, blue)
+            maximum.red = max(maximum.red, red)
+            maximum.green = max(maximum.green, green)
+            maximum.blue = max(maximum.blue, blue)
+        }
+    }
+    let distance = maximum.red - minimum.red +
+        maximum.green - minimum.green +
+        maximum.blue - minimum.blue
+    guard distance >= minimumDistance else {
+        throw DriverError.timeout(
+            "rendered color variation for \(label) was \(distance), expected at least \(minimumDistance); " +
+                "frame=\(elementFrame) minimum=\(minimum) maximum=\(maximum)"
+        )
+    }
+}
+
+func renderedContentBackgroundSignature(
+    _ application: AXUIElement,
+    workspaceLabel: String
+) throws -> String {
+    guard let workspace = visibleRenderedElement(application, label: workspaceLabel),
+          let workspaceFrame = frame(workspace) else {
+        throw DriverError.timeout("main workspace frame for rendered background signature")
+    }
+    let sampleXs = [workspaceFrame.maxX - 42]
+    let sampleYs: [CGFloat] = [0.54, 0.66, 0.78]
+    let colors = sampleXs.flatMap { sampleX in
+        sampleYs.compactMap { normalizedY in
+            dominantRenderedColor(
+                in: CGRect(
+                    x: sampleX,
+                    y: workspaceFrame.minY + workspaceFrame.height * normalizedY,
+                    width: 5,
+                    height: 5
+                )
+            )
+        }
+    }
+    guard colors.count == sampleXs.count * sampleYs.count else {
+        throw DriverError.timeout("rendered main-content background signature pixels")
+    }
+    return colors.map { color in
+        String(format: "%02x%02x%02x", color.red, color.green, color.blue)
+    }.joined(separator: "-")
+}
+
+func assertCalendarCellsTransparent(
+    _ application: AXUIElement,
+    label: String,
+    tolerance: Int
+) throws {
+    let gridFrame = findTextPaths(application, label)
+        .filter { path in
+            (path.ancestors + [path.element]).allSatisfy {
+                visibleAttribute($0, "AXHidden")
+            }
+        }
+        .compactMap { frame($0.element) }
+        .filter { $0.width >= 200 && $0.height >= 100 }
+        .max(by: { $0.width * $0.height < $1.width * $1.height })
+    guard let gridFrame,
+          let window = mainWindow(application),
+          let windowFrame = frame(window) else {
+        throw DriverError.timeout("visible Calendar grid for transparency sampling: \(label)")
+    }
+    let visibleGrid = gridFrame.intersection(windowFrame.insetBy(dx: 2, dy: 2))
+    guard !visibleGrid.isNull, visibleGrid.height >= 40 else {
+        throw DriverError.timeout("enough visible Calendar grid for transparency sampling")
+    }
+    let outsideX = gridFrame.minX - 8
+    let insideX = gridFrame.minX + 10
+    let sampleYs: [CGFloat] = [0.18, 0.37, 0.63, 0.82]
+    var matchingSamples = 0
+    var comparisons: [String] = []
+    for normalizedY in sampleYs {
+        let sampleY = visibleGrid.minY + visibleGrid.height * normalizedY
+        guard let outside = dominantRenderedColor(
+            in: CGRect(x: outsideX, y: sampleY, width: 5, height: 5)
+        ), let inside = dominantRenderedColor(
+            in: CGRect(x: insideX, y: sampleY, width: 5, height: 5)
+        ) else {
+            continue
+        }
+        let distance = max(
+            abs(outside.red - inside.red),
+            abs(outside.green - inside.green),
+            abs(outside.blue - inside.blue)
+        )
+        comparisons.append("\(distance)")
+        if distance <= tolerance { matchingSamples += 1 }
+    }
+    guard matchingSamples >= 3 else {
+        throw DriverError.timeout(
+            "Calendar cells add an opaque surface over the page background; " +
+                "matching=\(matchingSamples) channelDistances=\(comparisons) tolerance=\(tolerance)"
+        )
+    }
+}
+
+func makeImageFixture(_ value: String) throws {
+    let parts = value.split(separator: "|", maxSplits: 1).map(String.init)
+    guard parts.count == 2 else { throw DriverError.usage }
+    let colors: (NSColor, NSColor)
+    switch parts[0] {
+    case "light":
+        colors = (
+            NSColor(calibratedRed: 0.97, green: 0.91, blue: 0.80, alpha: 1),
+            NSColor(calibratedRed: 0.84, green: 0.92, blue: 0.88, alpha: 1)
+        )
+    case "complex":
+        colors = (
+            NSColor(calibratedRed: 0.12, green: 0.25, blue: 0.38, alpha: 1),
+            NSColor(calibratedRed: 0.78, green: 0.35, blue: 0.16, alpha: 1)
+        )
+    default:
+        throw DriverError.usage
+    }
+    guard let bitmap = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: 320,
+        pixelsHigh: 140,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ) else {
+        throw DriverError.timeout("create background image fixture")
+    }
+    for y in 0..<bitmap.pixelsHigh {
+        for x in 0..<bitmap.pixelsWide {
+            let stripe = (x / 40 + y / 35) % 2 == 0
+            bitmap.setColor(stripe ? colors.0 : colors.1, atX: x, y: y)
+        }
+    }
+    guard let png = bitmap.representation(using: .png, properties: [:]) else {
+        throw DriverError.timeout("encode background image fixture")
+    }
+    try png.write(to: URL(fileURLWithPath: parts[1]), options: .atomic)
 }
 
 func performAccessibilityAction(
@@ -2659,7 +2856,7 @@ func requireArguments() throws -> (pid_t, String, String, TimeInterval) {
 do {
     let (pid, command, text, timeout) = try requireArguments()
     let application = AXUIElementCreateApplication(pid)
-    if command != "choose-folder" {
+    if command != "choose-folder" && command != "choose-file" && command != "make-image-fixture" {
         try activateApplication(application, pid: pid, timeout: timeout)
     }
     Thread.sleep(forTimeInterval: 0.05)
@@ -2709,9 +2906,15 @@ do {
             timeout: timeout
         )
         print("Entered text in rendered control: \(parts[0])")
-    case "choose-folder":
-        try chooseFolder(application, pid: pid, path: text, timeout: timeout)
-        print("Selected native folder: \(text)")
+    case "choose-folder", "choose-file":
+        try chooseFolder(
+            application,
+            pid: pid,
+            path: text,
+            isFile: command == "choose-file",
+            timeout: timeout
+        )
+        print("Selected native path: \(text)")
     case "cancel-folder":
         try cancelFolder(application, pid: pid, timeout: timeout)
         print("Cancelled native folder selection")
@@ -2756,6 +2959,29 @@ do {
             timeout: timeout
         )
         print("Rendered colors match: \(parts[0]) and \(parts[1])")
+    case "assert-rendered-variation":
+        let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let minimumDistance = Int(parts[1]) else {
+            throw DriverError.usage
+        }
+        try assertRenderedVariation(
+            application,
+            label: parts[0],
+            minimumDistance: minimumDistance
+        )
+        print("Rendered image variation passed: \(parts[0])")
+    case "content-background-signature":
+        print(try renderedContentBackgroundSignature(application, workspaceLabel: text))
+    case "assert-calendar-cells-transparent":
+        let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let tolerance = Int(parts[1]) else {
+            throw DriverError.usage
+        }
+        try assertCalendarCellsTransparent(application, label: parts[0], tolerance: tolerance)
+        print("Calendar cells preserve the translucent page background: \(parts[0])")
+    case "make-image-fixture":
+        try makeImageFixture(text)
+        print("Created synthetic background image fixture")
     case "scroll-text-visible":
         try scrollTextIntoWindow(application, text: text, pid: pid)
         print("Scrolled rendered text into the visible window: \(text)")

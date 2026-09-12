@@ -1,8 +1,20 @@
 export type AccentColor = "forest" | "blue" | "clay" | "lilac";
+export type BackgroundImageState = "none" | "ready" | "unavailable";
+export type AppearancePreferences = Readonly<{
+  accentColor: AccentColor;
+  backgroundImageState: BackgroundImageState;
+  backgroundImageUrl: string | null;
+  cleanupWarning: string | null;
+}>;
 
 type StyleTarget = Readonly<{
   setProperty: (name: string, value: string) => void;
 }>;
+
+type BackgroundTarget = {
+  dataset: Record<string, string | undefined>;
+  style: StyleTarget;
+};
 
 const accentTokens: Record<
   AccentColor,
@@ -55,4 +67,47 @@ export function applyAccentColor(color: AccentColor, target: StyleTarget): void 
   target.setProperty("--parity-accent", tokens.accent);
   target.setProperty("--parity-accent-strong", tokens.strong);
   target.setProperty("--parity-accent-soft", tokens.soft);
+}
+
+export function applyBackgroundImage(
+  preferences: AppearancePreferences,
+  target: BackgroundTarget,
+): void {
+  const ready = preferences.backgroundImageState === "ready" &&
+    preferences.backgroundImageUrl !== null;
+  target.style.setProperty(
+    "--background-image",
+    ready ? `url("${preferences.backgroundImageUrl}")` : "none",
+  );
+  target.dataset.backgroundImageState = preferences.backgroundImageState;
+}
+
+export async function resolveBackgroundImagePresentation(
+  preferences: AppearancePreferences,
+  decode: (url: string) => Promise<void> = decodeBackgroundImage,
+): Promise<AppearancePreferences> {
+  if (preferences.backgroundImageState !== "ready" || preferences.backgroundImageUrl === null) {
+    return preferences;
+  }
+  try {
+    await decode(preferences.backgroundImageUrl);
+    return preferences;
+  } catch {
+    return {
+      ...preferences,
+      backgroundImageState: "unavailable",
+      backgroundImageUrl: null,
+    };
+  }
+}
+
+function decodeBackgroundImage(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => resolve(), { once: true });
+    image.addEventListener("error", () => reject(new Error("background image decode failed")), {
+      once: true,
+    });
+    image.src = url;
+  });
 }

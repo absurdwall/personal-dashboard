@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
   applyAccentColor,
+  applyBackgroundImage,
+  resolveBackgroundImagePresentation,
   SerializedLatestMutation,
 } from "../../frontend/appearance.ts";
 
@@ -20,6 +23,72 @@ test("an accent selection updates the shared page color tokens immediately", () 
     "--parity-accent-strong": "#3d5f80",
     "--parity-accent-soft": "#eaf0f8",
   });
+});
+
+test("a ready background applies one shared image layer and recoverable states clear it", () => {
+  const properties = new Map<string, string>();
+  const target = {
+    dataset: {} as Record<string, string>,
+    style: {
+      setProperty(name: string, value: string) {
+        properties.set(name, value);
+      },
+    },
+  };
+
+  applyBackgroundImage({
+    accentColor: "forest",
+    backgroundImageState: "ready",
+    backgroundImageUrl: "data:image/png;base64,c3ludGhldGlj",
+    cleanupWarning: null,
+  }, target);
+
+  assert.equal(
+    properties.get("--background-image"),
+    'url("data:image/png;base64,c3ludGhldGlj")',
+  );
+  assert.equal(target.dataset.backgroundImageState, "ready");
+
+  applyBackgroundImage({
+    accentColor: "forest",
+    backgroundImageState: "unavailable",
+    backgroundImageUrl: null,
+    cleanupWarning: null,
+  }, target);
+
+  assert.equal(properties.get("--background-image"), "none");
+  assert.equal(target.dataset.backgroundImageState, "unavailable");
+});
+
+test("an image WebKit cannot decode becomes a recoverable presentation state", async () => {
+  const preferences = {
+    accentColor: "forest" as const,
+    backgroundImageState: "ready" as const,
+    backgroundImageUrl: "data:image/png;base64,broken",
+    cleanupWarning: null,
+  };
+
+  const presentation = await resolveBackgroundImagePresentation(
+    preferences,
+    async () => { throw new Error("synthetic decode failure"); },
+  );
+
+  assert.deepEqual(presentation, {
+    ...preferences,
+    backgroundImageState: "unavailable",
+    backgroundImageUrl: null,
+  });
+});
+
+test("the packaged image policy admits the local data URL renderer", () => {
+  const configuration = JSON.parse(
+    readFileSync(new URL("../../src-tauri/tauri.conf.json", import.meta.url), "utf8"),
+  ) as { app: { security: { csp: string } } };
+  const imageDirective = configuration.app.security.csp
+    .split(";")
+    .find((directive) => directive.trimStart().startsWith("img-src"));
+
+  assert.match(imageDirective ?? "", /(?:^|\s)data:(?:\s|$)/);
 });
 
 test("appearance writes are serialized and only the latest response is presented", async () => {

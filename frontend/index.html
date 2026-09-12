@@ -158,6 +158,16 @@
                         <button type="button" data-accent-color="lilac" aria-label="紫灰" data-i18n-aria-label="settings.colorLilac" aria-pressed="false"></button>
                       </div>
                     </div>
+                    <div class="setting-row background-image-setting">
+                      <h3 data-i18n="settings.backgroundImage">背景图片</h3>
+                      <p data-i18n="settings.backgroundDescription">选择一张本地图片，以淡化方式用于所有页面。应用会保留自己的副本。</p>
+                      <div class="background-image-preview" role="img" aria-label="背景图片预览" data-i18n-aria-label="settings.backgroundPreview"></div>
+                      <div class="background-image-actions">
+                        <button id="choose-background-image" type="button" data-i18n="settings.chooseBackground">选择图片…</button>
+                        <button id="remove-background-image" type="button" class="secondary-button" data-i18n="settings.removeBackground" disabled>移除图片</button>
+                      </div>
+                      <p id="background-image-status" class="settings-status" role="status" aria-live="polite" data-i18n="settings.backgroundNone">默认：无背景图片。</p>
+                    </div>
                     <div class="setting-row">
                       <button id="restore-appearance" type="button" class="secondary-button" data-i18n="settings.restoreAppearance">恢复默认外观</button>
                       <p data-i18n="settings.restoreBoundary">只恢复外观偏好，不清理 Vault 或个人记录。</p>

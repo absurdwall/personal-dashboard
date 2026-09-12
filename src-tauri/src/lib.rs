@@ -22,7 +22,9 @@ mod platform;
 pub mod profile;
 pub mod today;
 
-use appearance::{AccentColor, AppearanceApplication, AppearancePreferences};
+use appearance::{
+    AccentColor, AppearanceApplication, AppearancePreferences, AppearanceSelectionResult,
+};
 use clock::SystemClock;
 #[cfg(target_os = "macos")]
 use cutover::{
@@ -32,9 +34,10 @@ use interface_language::{
     InterfaceLanguage, InterfaceLanguageApplication, InterfaceLanguagePreferences,
 };
 use platform::{
-    appearance_file_for, interface_language_file_for, legacy_exercise_directory_for,
-    profile_file_for, today_workspace_file_for, FileAppearancePersistence,
-    FileInterfaceLanguagePersistence, FileTodayWorkspacePersistence, NativeTodayWorkspaceExchange,
+    appearance_background_directory_for, appearance_file_for, interface_language_file_for,
+    legacy_exercise_directory_for, profile_file_for, today_workspace_file_for,
+    FileAppearancePersistence, FileInterfaceLanguagePersistence, FileTodayWorkspacePersistence,
+    NativeAppearanceImageLibrary, NativeTodayWorkspaceExchange,
 };
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DaytimeUpdateInput,
@@ -46,7 +49,8 @@ type DesktopTodayApplication = TodayApplication<
     NativeTodayWorkspaceExchange<tauri::Wry>,
     SystemClock,
 >;
-type DesktopAppearanceApplication = AppearanceApplication<FileAppearancePersistence>;
+type DesktopAppearanceApplication =
+    AppearanceApplication<FileAppearancePersistence, NativeAppearanceImageLibrary<tauri::Wry>>;
 type DesktopInterfaceLanguageApplication =
     InterfaceLanguageApplication<FileInterfaceLanguagePersistence>;
 
@@ -87,6 +91,21 @@ fn restore_appearance_defaults(
     application: State<'_, DesktopAppearanceApplication>,
 ) -> Result<AppearancePreferences, String> {
     application.restore_defaults()
+}
+
+#[tauri::command]
+async fn select_background_image(
+    application: State<'_, DesktopAppearanceApplication>,
+    interface_language: InterfaceLanguage,
+) -> Result<AppearanceSelectionResult, String> {
+    application.select_background_image(interface_language)
+}
+
+#[tauri::command]
+fn remove_background_image(
+    application: State<'_, DesktopAppearanceApplication>,
+) -> Result<AppearancePreferences, String> {
+    application.remove_background_image()
 }
 
 #[tauri::command]
@@ -181,6 +200,7 @@ pub fn run() {
             let app_handle = app.handle().clone();
             let today_workspace_file = today_workspace_file_for(&app_handle)?;
             let appearance_file = appearance_file_for(&app_handle)?;
+            let appearance_background_directory = appearance_background_directory_for(&app_handle)?;
             let interface_language_file = interface_language_file_for(&app_handle)?;
             #[cfg(target_os = "macos")]
             if let Some(cutover_mode) = std::env::var_os("PERSONAL_DASHBOARD_2_CUTOVER_MODE") {
@@ -236,9 +256,13 @@ pub fn run() {
                 NativeTodayWorkspaceExchange::new(app_handle.clone()),
                 SystemClock,
             ));
-            app.manage(AppearanceApplication::new(FileAppearancePersistence::new(
-                appearance_file,
-            )));
+            app.manage(AppearanceApplication::with_image_library(
+                FileAppearancePersistence::new(appearance_file),
+                NativeAppearanceImageLibrary::new(
+                    app_handle.clone(),
+                    appearance_background_directory,
+                ),
+            ));
             app.manage(InterfaceLanguageApplication::new(
                 FileInterfaceLanguagePersistence::new(interface_language_file),
             ));
@@ -258,6 +282,8 @@ pub fn run() {
             appearance_preferences,
             set_accent_color,
             restore_appearance_defaults,
+            select_background_image,
+            remove_background_image,
             interface_language_preferences,
             set_interface_language,
             today_view,
@@ -277,6 +303,8 @@ pub fn run() {
         appearance_preferences,
         set_accent_color,
         restore_appearance_defaults,
+        select_background_image,
+        remove_background_image,
         interface_language_preferences,
         set_interface_language,
         today_view,

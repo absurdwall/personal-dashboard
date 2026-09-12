@@ -1,4 +1,7 @@
-use crate::appearance::AppearancePersistence;
+use crate::appearance::{
+    owned_background_file_name_is_safe, AppearanceImageLibrary, AppearancePersistence,
+    SelectedBackgroundImage, MAX_BACKGROUND_IMAGE_BYTES,
+};
 use crate::backup::CompleteProfileReplacement;
 use crate::exercise::ExercisePersistence;
 use crate::interface_language::{InterfaceLanguage, InterfaceLanguagePersistence};
@@ -10,7 +13,7 @@ use crate::today::{
 };
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager, Runtime};
 use tauri_plugin_dialog::DialogExt;
@@ -153,6 +156,171 @@ impl AppearancePersistence for FileAppearancePersistence {
     fn save(&self, document: &[u8]) -> Result<(), String> {
         atomic_save(&self.appearance_file, document, "appearance preference")
     }
+}
+
+#[derive(Clone)]
+pub struct NativeAppearanceImageLibrary<R: Runtime> {
+    app: AppHandle<R>,
+    background_directory: PathBuf,
+}
+
+impl<R: Runtime> NativeAppearanceImageLibrary<R> {
+    pub fn new(app: AppHandle<R>, background_directory: PathBuf) -> Self {
+        Self {
+            app,
+            background_directory,
+        }
+    }
+
+    fn owned_path(&self, file_name: &str) -> Result<PathBuf, String> {
+        if !owned_background_file_name_is_safe(file_name) {
+            return Err("The app-owned background image name is invalid.".into());
+        }
+        Ok(self.background_directory.join(file_name))
+    }
+}
+
+fn background_picker_copy(interface_language: InterfaceLanguage) -> (&'static str, &'static str) {
+    match interface_language {
+        InterfaceLanguage::Zh => ("选择本地背景图片", "图片"),
+        InterfaceLanguage::En => ("Choose a local background image", "Images"),
+    }
+}
+
+impl<R: Runtime> AppearanceImageLibrary for NativeAppearanceImageLibrary<R> {
+    fn select_image(
+        &self,
+        interface_language: InterfaceLanguage,
+    ) -> Result<Option<SelectedBackgroundImage>, String> {
+        let (title, filter_label) = background_picker_copy(interface_language);
+        let Some(selected_file) = self
+            .app
+            .dialog()
+            .file()
+            .set_title(title)
+            .add_filter(filter_label, &["png", "jpg", "jpeg", "gif", "webp"])
+            .blocking_pick_file()
+        else {
+            return Ok(None);
+        };
+        let selected_path = selected_file
+            .into_path()
+            .map_err(|_| "The selected background image is unavailable.".to_string())?;
+        read_bounded_background_image(&selected_path, "selected")
+            .map(|bytes| Some(SelectedBackgroundImage { bytes }))
+    }
+
+    fn load_owned(&self, file_name: &str) -> Result<Option<Vec<u8>>, String> {
+        let path = self.owned_path(file_name)?;
+        let file = match fs::File::open(&path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => {
+                return Err(format!(
+                    "Could not read the app-owned background image: {error}"
+                ))
+            }
+        };
+        read_bounded_open_background_image(file, "app-owned").map(Some)
+    }
+
+    fn image_is_decodable(&self, bytes: &[u8]) -> bool {
+        native_image_is_decodable(bytes)
+    }
+
+    fn save_owned(&self, file_name: &str, document: &[u8]) -> Result<(), String> {
+        let path = self.owned_path(file_name)?;
+        atomic_save(&path, document, "background image")
+    }
+
+    fn remove_owned(&self, file_name: &str) -> Result<(), String> {
+        let path = self.owned_path(file_name)?;
+        match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!(
+                "Could not remove the app-owned background image: {error}"
+            )),
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn native_image_is_decodable(bytes: &[u8]) -> bool {
+    use std::ffi::c_void;
+
+    type CFTypeRef = *const c_void;
+    type CFDataRef = *const c_void;
+    type CGImageSourceRef = *const c_void;
+    type CGImageRef = *const c_void;
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFDataCreate(allocator: *const c_void, bytes: *const u8, length: isize) -> CFDataRef;
+        fn CFRelease(value: CFTypeRef);
+    }
+    #[link(name = "ImageIO", kind = "framework")]
+    extern "C" {
+        fn CGImageSourceCreateWithData(data: CFDataRef, options: *const c_void)
+            -> CGImageSourceRef;
+        fn CGImageSourceCreateImageAtIndex(
+            source: CGImageSourceRef,
+            index: usize,
+            options: *const c_void,
+        ) -> CGImageRef;
+    }
+
+    unsafe {
+        let data = CFDataCreate(std::ptr::null(), bytes.as_ptr(), bytes.len() as isize);
+        if data.is_null() {
+            return false;
+        }
+        let source = CGImageSourceCreateWithData(data, std::ptr::null());
+        CFRelease(data);
+        if source.is_null() {
+            return false;
+        }
+        let image = CGImageSourceCreateImageAtIndex(source, 0, std::ptr::null());
+        CFRelease(source);
+        if image.is_null() {
+            return false;
+        }
+        CFRelease(image);
+        true
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn native_image_is_decodable(_bytes: &[u8]) -> bool {
+    true
+}
+
+fn read_bounded_background_image(path: &Path, ownership: &str) -> Result<Vec<u8>, String> {
+    let file = fs::File::open(path)
+        .map_err(|error| format!("Could not read the {ownership} background image: {error}"))?;
+    read_bounded_open_background_image(file, ownership)
+}
+
+fn read_bounded_open_background_image(
+    mut file: fs::File,
+    ownership: &str,
+) -> Result<Vec<u8>, String> {
+    let length = file
+        .metadata()
+        .map_err(|error| format!("Could not read the {ownership} background image: {error}"))?
+        .len();
+    if length > MAX_BACKGROUND_IMAGE_BYTES as u64 {
+        return Err("The selected background image is empty or larger than 20 MB.".into());
+    }
+    let mut bytes = Vec::with_capacity(length as usize);
+    Read::by_ref(&mut file)
+        .take(MAX_BACKGROUND_IMAGE_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("Could not read the {ownership} background image: {error}"))?;
+    if bytes.len() > MAX_BACKGROUND_IMAGE_BYTES {
+        return Err("The selected background image is empty or larger than 20 MB.".into());
+    }
+    Ok(bytes)
 }
 
 #[derive(Clone)]
@@ -640,6 +808,16 @@ pub fn appearance_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, St
     application_data_file_for(app, APPEARANCE_FILE_NAME)
 }
 
+pub fn appearance_background_directory_for<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<PathBuf, String> {
+    let appearance_file = appearance_file_for(app)?;
+    appearance_file
+        .parent()
+        .map(|directory| directory.join("background-images"))
+        .ok_or_else(|| "The local appearance preference has no parent directory.".into())
+}
+
 pub fn interface_language_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     application_data_file_for(app, INTERFACE_LANGUAGE_FILE_NAME)
 }
@@ -702,6 +880,18 @@ mod tests {
         assert_eq!(
             vault_picker_title(InterfaceLanguage::En),
             "Select the Tortilla Flat Vault"
+        );
+    }
+
+    #[test]
+    fn background_picker_copy_follows_the_current_interface_language() {
+        assert_eq!(
+            background_picker_copy(InterfaceLanguage::Zh),
+            ("选择本地背景图片", "图片")
+        );
+        assert_eq!(
+            background_picker_copy(InterfaceLanguage::En),
+            ("Choose a local background image", "Images")
         );
     }
 

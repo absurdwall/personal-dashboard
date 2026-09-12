@@ -333,7 +333,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors interface-language; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors interface-language background-image; do
     run_bounded_scenario "$scenario"
   done
 
@@ -484,6 +484,14 @@ launch_app() {
 run_driver() {
   local output
   if ! output="$("$driver_binary" "$app_pid" "$@" 2>&1)"; then
+    fail "$output"
+  fi
+  printf '%s\n' "$output"
+}
+
+capture_background_signature() {
+  local output
+  if ! output="$("$driver_binary" "$app_pid" content-background-signature "Personal Dashboard 工作区" 10 2>&1)"; then
     fail "$output"
   fi
   printf '%s\n' "$output"
@@ -3152,6 +3160,213 @@ EOF
   echo "Persistence: English survived Vault switching and relaunch; an invalid local preference recovered to Chinese without changing either Vault"
 }
 
+run_background_image_scenario() {
+  local vault_directory="$acceptance_directory/background-vault"
+  local record_file="$vault_directory/life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local appearance_file="$acceptance_data_directory/appearance.json"
+  local language_file="$acceptance_data_directory/interface-language.json"
+  local vault_preference_file="$acceptance_data_directory/today-workspace.json"
+  local background_directory="$acceptance_data_directory/background-images"
+  local light_source="$acceptance_directory/light-background.png"
+  local moved_light_source="$acceptance_directory/light-background-moved.png"
+  local complex_source="$acceptance_directory/complex-background.png"
+  local invalid_source="$acceptance_directory/invalid-background.png"
+  local before_record_hash
+  local before_language_hash
+  local before_vault_preference_hash
+  local before_selection_hash
+  local owned_image
+  local no_image_wide_signature
+  local today_wide_signature
+  local calendar_wide_signature
+  local habits_wide_signature
+  local today_intermediate_signature
+  local calendar_intermediate_signature
+  local habits_intermediate_signature
+  local restored_intermediate_signature
+
+  current_step="preparing isolated background-image fixtures"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p "$vault_directory/.obsidian" "$(dirname "$record_file")" "$acceptance_data_directory"
+  cat > "$record_file" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## 今天的大致安排
+
+- **上午：** 背景图片验收的合成安排。
+EOF
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_directory" > "$vault_preference_file"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' > "$language_file"
+  "$driver_binary" 0 make-image-fixture "light|$light_source" 10 >/dev/null ||
+    fail "could not generate the light background fixture"
+  "$driver_binary" 0 make-image-fixture "complex|$complex_source" 10 >/dev/null ||
+    fail "could not generate the complex background fixture"
+  printf '\211PNG\r\n\032\nsynthetic corrupt bodyIEND\256B\140\202' > "$invalid_source"
+  before_record_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
+  before_language_hash="$(shasum -a 256 "$language_file" | awk '{print $1}')"
+  before_vault_preference_hash="$(shasum -a 256 "$vault_preference_file" | awk '{print $1}')"
+
+  current_step="importing a light image through the real Mac picker"
+  launch_app_waiting_for_text "早间基准" 30
+  run_driver set-size "1120x760" 10
+  run_driver assert-size "1120x760" 10
+  no_image_wide_signature="$(capture_background_signature)"
+  run_driver press "设置" 10
+  run_driver wait-active-text "默认：无背景图片" 10
+  run_driver press "雾蓝" 10
+  run_driver wait-active-text "颜色已保存在这台 Mac" 10
+  run_driver press "选择图片…" 10
+  run_driver assert-picker-title "选择本地背景图片" 10
+  run_driver choose-file "$light_source" 35
+  run_driver wait-active-text "背景图片副本已保存在这台 Mac" 20
+  run_driver assert-active-text "背景图片已保存在这台 Mac"
+  run_driver assert-rendered-variation "背景图片预览|20" 10
+  run_driver assert-same-rendered-color "全局主题色样本|雾蓝" 10
+  grep -Fq '"accentColor": "blue"' "$appearance_file" ||
+    fail "background import did not preserve the selected accent color"
+  grep -Fq '"backgroundImage"' "$appearance_file" ||
+    fail "background import did not persist an app-owned reference"
+  [[ "$(find "$background_directory" -type f | wc -l | tr -d ' ')" == "1" ]] ||
+    fail "background import did not create exactly one app-owned image"
+
+  current_step="checking the shared wide-page backdrop and cancelling safely"
+  run_driver press "今天" 10
+  run_driver press "当日进展" 10
+  run_driver wait-active-text "背景图片验收的合成安排" 20
+  run_driver assert-same-rendered-color "刷新|全局主题色样本" 10
+  today_wide_signature="$(capture_background_signature)"
+  run_driver press "日历" 10
+  run_driver wait-active-text "2026年9月" 20
+  run_driver assert-same-rendered-color "今天|全局主题色样本" 10
+  run_driver assert-calendar-cells-transparent "2026年9月|4" 10
+  calendar_wide_signature="$(capture_background_signature)"
+  run_driver press "习惯" 10
+  run_driver wait-active-text "尚无 Habits 快照" 20
+  run_driver assert-same-rendered-color "刷新快照|全局主题色样本" 10
+  habits_wide_signature="$(capture_background_signature)"
+  [[ "$today_wide_signature" != "$no_image_wide_signature" ]] ||
+    fail "the selected image did not change the rendered page backdrop"
+  [[ "$calendar_wide_signature" != "$no_image_wide_signature" &&
+    "$habits_wide_signature" != "$no_image_wide_signature" ]] ||
+    fail "the selected image did not reach every destination's main content surface"
+  [[ "$today_wide_signature" == "$calendar_wide_signature" ]] ||
+    fail "Today and Calendar did not share the same translucent main-content layer: Today=$today_wide_signature Calendar=$calendar_wide_signature"
+  run_driver press "设置" 10
+  before_selection_hash="$(shasum -a 256 "$appearance_file" | awk '{print $1}')"
+  run_driver press "选择图片…" 10
+  run_driver cancel-folder "picker" 10
+  run_driver wait-active-text "已取消选择；当前背景未更改" 10
+  [[ "$(shasum -a 256 "$appearance_file" | awk '{print $1}')" == "$before_selection_hash" ]] ||
+    fail "cancelling the background picker changed the confirmed preference"
+
+  current_step="rejecting an invalid import while keeping the current image"
+  run_driver press "选择图片…" 10
+  run_driver choose-file "$invalid_source" 35
+  run_driver wait-active-text "无法解码所选背景图片" 20
+  run_driver assert-active-text "背景图片已保存在这台 Mac"
+  [[ "$(shasum -a 256 "$appearance_file" | awk '{print $1}')" == "$before_selection_hash" ]] ||
+    fail "a rejected background import changed the confirmed preference"
+  [[ -f "$invalid_source" ]] || fail "a rejected import removed the user's source file"
+
+  current_step="removing only the app-owned light image"
+  run_driver press "移除图片" 10
+  run_driver wait-active-text "背景图片已移除；原始图片未更改" 20
+  run_driver assert-active-text "默认：无背景图片"
+  [[ -f "$light_source" ]] || fail "removing a background deleted the user's original image"
+  [[ -z "$(find "$background_directory" -type f -print 2>/dev/null)" ]] ||
+    fail "removing a background left the referenced app-owned copy behind"
+
+  current_step="reimporting, moving the source, and proving relaunch persistence"
+  run_driver press "选择图片…" 10
+  run_driver choose-file "$light_source" 35
+  run_driver wait-active-text "背景图片副本已保存在这台 Mac" 20
+  /bin/mv "$light_source" "$moved_light_source"
+  if ! stop_app; then
+    fail "app process did not exit before owned-copy relaunch"
+  fi
+  launch_app_waiting_for_text "早间基准" 30
+  run_driver press "设置" 10
+  run_driver wait-active-text "背景图片已保存在这台 Mac" 20
+  run_driver assert-rendered-variation "背景图片预览|20" 10
+  [[ -f "$moved_light_source" ]] || fail "the moved user source image is missing"
+
+  current_step="showing damaged-copy recovery and importing a complex replacement"
+  if ! stop_app; then
+    fail "app process did not exit before damaged-copy recovery"
+  fi
+  owned_image="$(find "$background_directory" -type f -print -quit)"
+  [[ -n "$owned_image" ]] || fail "could not locate the app-owned background copy"
+  printf 'damaged app-owned bytes' > "$owned_image"
+  launch_app_waiting_for_text "早间基准" 30
+  run_driver press "设置" 10
+  run_driver wait-active-text "背景图片已损坏或不可用" 20
+  run_driver press "赤陶" 10
+  run_driver wait-active-text "颜色已保存在这台 Mac" 10
+  run_driver press "选择图片…" 10
+  run_driver choose-file "$complex_source" 35
+  run_driver wait-active-text "背景图片副本已保存在这台 Mac" 20
+  run_driver assert-rendered-variation "背景图片预览|100" 10
+  run_driver assert-same-rendered-color "全局主题色样本|赤陶" 10
+
+  current_step="checking complex-image readability at the intermediate width"
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver press "今天" 10
+  run_driver press "当日进展" 10
+  run_driver wait-active-text "背景图片验收的合成安排" 20
+  run_driver assert-document-fixed "document" 10
+  today_intermediate_signature="$(capture_background_signature)"
+  run_driver press "日历" 10
+  run_driver wait-active-text "2026年9月" 20
+  run_driver assert-document-fixed "document" 10
+  run_driver assert-calendar-cells-transparent "2026年9月|4" 10
+  calendar_intermediate_signature="$(capture_background_signature)"
+  run_driver press "习惯" 10
+  run_driver wait-active-text "尚无 Habits 快照" 20
+  run_driver assert-document-fixed "document" 10
+  habits_intermediate_signature="$(capture_background_signature)"
+  [[ "$today_intermediate_signature" == "$calendar_intermediate_signature" ]] ||
+    fail "Today and Calendar did not share the same intermediate-width content layer: Today=$today_intermediate_signature Calendar=$calendar_intermediate_signature"
+
+  current_step="restoring no-image defaults without touching language or Vault data"
+  run_driver press "设置" 10
+  run_driver press "恢复默认外观" 10
+  run_driver wait-active-text "已恢复默认外观；Vault 数据未更改" 20
+  run_driver assert-active-text "默认：无背景图片"
+  run_driver press "今天" 10
+  run_driver assert-same-rendered-color "刷新|全局主题色样本" 10
+  restored_intermediate_signature="$(capture_background_signature)"
+  [[ "$restored_intermediate_signature" != "$today_intermediate_signature" ]] ||
+    fail "restoring no-image defaults did not change the rendered backdrop"
+  [[ "$restored_intermediate_signature" != "$calendar_intermediate_signature" &&
+    "$restored_intermediate_signature" != "$habits_intermediate_signature" ]] ||
+    fail "restoring no-image defaults did not clear every destination's content backdrop"
+  grep -Fq '"accentColor": "forest"' "$appearance_file" ||
+    fail "restoring appearance did not restore the forest accent"
+  grep -Fq '"backgroundImage": null' "$appearance_file" ||
+    fail "restoring appearance did not clear the background reference"
+  [[ -z "$(find "$background_directory" -type f -print 2>/dev/null)" ]] ||
+    fail "restoring appearance left an app-owned background copy behind"
+  [[ -f "$moved_light_source" && -f "$complex_source" ]] ||
+    fail "background actions removed a user's source image"
+  [[ "$(shasum -a 256 "$record_file" | awk '{print $1}')" == "$before_record_hash" ]] ||
+    fail "background actions changed Vault-owned Markdown"
+  [[ "$(shasum -a 256 "$language_file" | awk '{print $1}')" == "$before_language_hash" ]] ||
+    fail "restoring appearance changed the interface-language preference"
+  [[ "$(shasum -a 256 "$vault_preference_file" | awk '{print $1}')" == "$before_vault_preference_hash" ]] ||
+    fail "background actions changed the selected-Vault preference"
+
+  echo "Packaged IPC background-image acceptance passed"
+  echo "Ownership: native imports used app-owned copies; moving, rejecting, removing, damaging, and restoring never changed user or Vault files"
+  echo "Persistence: the light image survived source movement and packaged relaunch; damaged state remained recoverable with a complex replacement"
+  echo "Presentation: light, complex, and no-image states covered blue, clay, and forest accents across Today, Calendar, and Habits at 1120x760 and 800x640"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -3235,6 +3450,7 @@ case "$acceptance_scenario" in
   dashboard-2) run_dashboard_2_scenario ;;
   settings-vault-colors) run_settings_vault_colors_scenario ;;
   interface-language) run_interface_language_scenario ;;
+  background-image) run_background_image_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;
 esac

@@ -57,6 +57,14 @@ const interfaceCopies = {
   "settings.accentColor": { zh: "主题颜色", en: "Accent color" },
   "settings.accentGroup": { zh: "主题颜色预设", en: "Accent color presets" },
   "settings.accentScope": { zh: "同一预设即时用于 Today、Calendar、Habits 与设置。", en: "One preset applies immediately to Today, Calendar, Habits, and Settings." },
+  "settings.backgroundImage": { zh: "背景图片", en: "Background image" },
+  "settings.backgroundDescription": { zh: "选择一张本地图片，以淡化方式用于所有页面。应用会保留自己的副本。", en: "Choose a local image as a softened backdrop on every page. The app keeps its own copy." },
+  "settings.backgroundPreview": { zh: "背景图片预览", en: "Background image preview" },
+  "settings.chooseBackground": { zh: "选择图片…", en: "Choose image…" },
+  "settings.removeBackground": { zh: "移除图片", en: "Remove image" },
+  "settings.backgroundNone": { zh: "默认：无背景图片。", en: "Default: no background image." },
+  "settings.backgroundReady": { zh: "背景图片已保存在这台 Mac，并以淡化方式显示。", en: "The background image is saved on this Mac and displayed with a soft treatment." },
+  "settings.backgroundUnavailable": { zh: "背景图片已损坏或不可用。请选择另一张图片，或移除当前引用。", en: "The background image is damaged or unavailable. Choose another image or remove the current reference." },
   "settings.colorForest": { zh: "松绿", en: "Forest" },
   "settings.colorBlue": { zh: "雾蓝", en: "Mist blue" },
   "settings.colorClay": { zh: "赤陶", en: "Clay" },
@@ -89,6 +97,12 @@ const interfaceCopies = {
   "appearance.saved": { zh: "颜色已保存在这台 Mac。", en: "The color is saved on this Mac." },
   "appearance.restoring": { zh: "正在恢复默认外观…", en: "Restoring the default appearance…" },
   "appearance.restored": { zh: "已恢复默认外观；Vault 数据未更改。", en: "Default appearance restored; Vault data was not changed." },
+  "appearance.importingBackground": { zh: "正在导入背景图片…", en: "Importing the background image…" },
+  "appearance.backgroundImported": { zh: "背景图片副本已保存在这台 Mac。", en: "A copy of the background image is saved on this Mac." },
+  "appearance.backgroundSelectionCancelled": { zh: "已取消选择；当前背景未更改。", en: "Selection cancelled; the current background was not changed." },
+  "appearance.removingBackground": { zh: "正在移除背景图片…", en: "Removing the background image…" },
+  "appearance.backgroundRemoved": { zh: "背景图片已移除；原始图片未更改。", en: "The background image was removed; the original image was not changed." },
+  "appearance.cleanupPending": { zh: "外观已更新，但应用自有图片仍待清理：{error}", en: "Appearance was updated, but an app-owned image is still pending cleanup: {error}" },
   "appearance.updateFailed": { zh: "无法更新外观偏好：{error}", en: "Could not update the appearance preference: {error}" },
   "appearance.loadFailed": { zh: "无法读取外观偏好：{error}", en: "Could not load the appearance preference: {error}" },
   "language.saveFailed": { zh: "无法保存界面语言：{error}", en: "Could not save the interface language: {error}" },
@@ -590,6 +604,11 @@ const englishErrorFragments: readonly Readonly<[string, string]>[] = [
 ];
 
 const chineseErrorPrefixes: readonly Readonly<[string, string]>[] = [
+  ["Could not read the app-owned background image: ", "无法读取应用自有的背景图片："],
+  ["Could not read the selected background image: ", "无法读取所选背景图片："],
+  ["Could not import the background image: ", "无法导入背景图片："],
+  ["Could not remove the app-owned background image: ", "无法移除应用自有的背景图片："],
+  ["Could not update the pending background-image cleanup record: ", "无法更新待清理背景图片记录："],
   ["Could not read the local interface language: ", "无法读取本机界面语言："],
   ["Could not save the interface language: ", "无法保存本机界面语言："],
   ["Could not encode the local interface language: ", "无法编码本机界面语言："],
@@ -628,6 +647,14 @@ const chineseErrorPrefixes: readonly Readonly<[string, string]>[] = [
 ];
 
 const chineseApplicationErrors: Readonly<Record<string, string>> = {
+  "Background image selection is unavailable.": "背景图片选择目前不可用。",
+  "Background image storage is unavailable.": "背景图片存储目前不可用。",
+  "The selected background image is unavailable.": "所选背景图片不可用。",
+  "The selected background image is empty or larger than 20 MB.": "所选背景图片为空或大于 20 MB。",
+  "The selected background image is not a supported PNG, JPEG, GIF, or WebP file.": "所选背景图片不是受支持的 PNG、JPEG、GIF 或 WebP 文件。",
+  "The selected background image could not be decoded.": "无法解码所选背景图片。",
+  "The app-owned background image name is invalid.": "应用自有的背景图片名称无效。",
+  "The local appearance preference has no parent directory.": "本机外观偏好没有父目录。",
   "The selected date is not a valid YYYY-MM-DD calendar date.":
     "所选日期不是有效的 YYYY-MM-DD 日历日期。",
   "The system clock did not provide a valid calendar date.":
@@ -703,13 +730,14 @@ export function localizeApplicationError(
     if (dailyRecordDiagnostic) return dailyRecordDiagnostic;
     const prefix = chineseErrorPrefixes.find(([source]) => error.startsWith(source));
     if (prefix) return `${prefix[1]}${error.slice(prefix[0].length)}`;
-    const localWrite = /^Could not (prepare|write|activate) the local (appearance preference|interface language|Today workspace setting): (.+)$/.exec(error);
+    const localWrite = /^Could not (prepare|write|activate) the local (appearance preference|interface language|Today workspace setting|background image): (.+)$/.exec(error);
     if (localWrite) {
       const action = { prepare: "准备", write: "写入", activate: "启用" }[localWrite[1]];
       const document = {
         "appearance preference": "本机外观偏好",
         "interface language": "本机界面语言",
         "Today workspace setting": " Today 工作区设置",
+        "background image": "背景图片",
       }[localWrite[2]];
       return `无法${action}${document}：${localWrite[3]}`;
     }

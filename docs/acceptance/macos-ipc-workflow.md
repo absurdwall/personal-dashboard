@@ -52,7 +52,7 @@ The recursive `gate` runs these scenarios in order:
 list-first direct state-semantics progress workouts exceptions responsive
 compact keyboard week-close installed-cycle calendar habits vault-selection
 vault-recovery final-state-matrix dashboard-2 settings-vault-colors
-interface-language
+interface-language background-image
 ```
 
 ## Personal Dashboard 3.0 Settings, Vault, and color scenario
@@ -101,6 +101,38 @@ After scrolling only the Settings content surface, the long-copy check requires
 the full AX text frame to remain inside the app window and to wrap to multiple
 lines; the document itself must remain fixed without page-level vertical
 scrolling.
+
+## Personal Dashboard 3.0 background-image scenario
+
+Run the ticket-03 packaged check with:
+
+```sh
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=background-image \
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=360 \
+scripts/acceptance/macos-ipc-workflow.sh
+```
+
+The scenario generates synthetic light and complex PNGs in the isolated
+acceptance directory and imports them through the real macOS file picker. It
+checks the rendered preview pixels, accent colors, and an actual page-backdrop
+pixel signature shared by Today, Calendar, and Habits at 1120x760 and 800x640.
+The main-content signature must differ from the no-image state; Today and
+Calendar must share the same translucent outer layer. A second rendered check
+compares Calendar cell interiors with the adjacent page layer to reject stacked
+opaque white cells. The light image must survive moving its source and restarting
+the packaged app. Picker cancellation and a marker-only corrupt PNG must retain
+the current preference; a damaged app-owned copy must expose a recoverable state
+before a complex replacement is selected.
+
+Removal and Restore default appearance must clear only the app-owned copy and
+reference. The moved light source, complex source, interface-language file,
+selected-Vault file, and synthetic Vault Markdown are hash-checked or checked
+for continued existence. The scenario therefore covers local ownership and
+packaged persistence without treating a browser object URL as evidence.
+Deletion failures are persisted as pending cleanup, surfaced in Settings, and
+retried at the next appearance load; Rust workflow tests exercise that recovery
+path because an isolated packaged run cannot safely manufacture a filesystem
+permission failure inside the app-owned directory.
 
 The installed-cycle, Calendar, and Habits scenarios retain their own missing,
 malformed, empty, write, correction, and relaunch checks. `dashboard-2` adds the
