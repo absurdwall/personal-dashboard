@@ -1,6 +1,6 @@
 # Personal Dashboard 3.0 — ticket map
 
-用户已批准九票拆分及依赖；所有票已发布，01、02、03、04、05、06、07 已完成，08 已认领且本地／离线阶段完成、云端恢复证据受当前客户端状态阻塞，09 尚未执行。
+用户已批准九票拆分及依赖；所有票已发布，01、02、03、04、05、06、07 已完成，08 已认领且本地／离线阶段完成、云端恢复证据受当前客户端状态阻塞，09 已认领并须保留该前置缺口。
 
 父规格：[spec](spec.md)。设计／认可原型：[原型说明](../../../.scratch/personal-dashboard-3/prototype/README.md)、[设计收敛稿](../../../.scratch/personal-dashboard-3/design-summary.md)。
 
@@ -16,6 +16,6 @@
 | [06 Habits 本地打勾与来源合并](issues/06-local-habit-completion.md) | None | resolved |
 | [07 Calendar 历史任务与习惯更正](issues/07-historical-corrections.md) | 04, 06 | resolved |
 | [08 Google Drive 同步目录兼容验收](issues/08-drive-compatibility.md) | 01, 05, 07 | claimed |
-| [09 Packaged Mac 整体验收与原型对照](issues/09-packaged-acceptance.md) | 02, 03, 08 | ready-for-agent |
+| [09 Packaged Mac 整体验收与原型对照](issues/09-packaged-acceptance.md) | 02, 03, 08 | claimed |
 
 08 的实际客户端环境及 09 的 packaged 证据是验收要求，缺失时保持未完成；05 仅覆盖兼容契约和合成 producer，真实日常工作流接入仍为后续范围。发布不启动实现或替换安装。
