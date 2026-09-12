@@ -13,6 +13,24 @@ import {
   SerializedLatestMutation,
   type AccentColor,
 } from "./appearance.js";
+import {
+  applyInterfaceLanguage,
+  formatInterfaceDate,
+  formatInterfaceMonth,
+  interfaceCopy,
+  localizeApplicationMessage,
+  localizeHabitActualTimeLabel,
+  localizeHabitCoverageLabel,
+  localizeHabitDetail,
+  localizeHabitGoalLabel,
+  setApplicationMessage,
+  setInterfaceCopy,
+  setInterfaceError,
+  type HabitDetail,
+  type InterfaceCopyKey,
+  type InterfaceLanguage,
+  type InterfaceLanguagePreferences,
+} from "./interface-language.js";
 
 type ApplicationIdentity = Readonly<{
   productName: string;
@@ -167,7 +185,7 @@ type HabitCellView = Readonly<{
   hasRecord: boolean;
   countsAsCompletion: boolean;
   actualTimeLabel: string | null;
-  details: readonly string[];
+  details: readonly HabitDetail[];
   localRecords: readonly Readonly<{
     id: string;
     sourceLabel: string;
@@ -198,6 +216,7 @@ type HabitView = Readonly<{
 type HabitSnapshotView = Readonly<{
   state: HabitSnapshotState;
   message: string;
+  readError?: string;
   generatedAt: string | null;
   displayRangeLabel: string | null;
   rangeLabel: string | null;
@@ -229,30 +248,30 @@ function isWorkspaceDestination(value: string | undefined): value is WorkspaceDe
 const workspaceDestinationDetails: Record<
   WorkspaceDestination,
   Readonly<{
-    title: string;
-    description: string;
-    featureArea: string;
+    title: InterfaceCopyKey;
+    description: InterfaceCopyKey;
+    featureArea: InterfaceCopyKey;
   }>
 > = {
   today: {
-    title: "Today",
-    description: "查看今天 Daily Record 里的大致安排。",
-    featureArea: "Daily Record",
+    title: "destination.today",
+    description: "workspace.todayDescription",
+    featureArea: "workspace.todayFeature",
   },
   calendar: {
-    title: "Calendar",
-    description: "先看整个月，再进入某一天。",
-    featureArea: "Calendar",
+    title: "destination.calendar",
+    description: "workspace.calendarDescription",
+    featureArea: "workspace.calendarFeature",
   },
   habits: {
-    title: "Habits",
-    description: "周次数与每日目标时刻放在同一份轻量列表里。",
-    featureArea: "HABITS · 平级入口",
+    title: "destination.habits",
+    description: "workspace.habitsDescription",
+    featureArea: "workspace.habitsFeature",
   },
   settings: {
-    title: "设置",
-    description: "外观与本地 Vault 设置。",
-    featureArea: "SETTINGS · 本机偏好",
+    title: "destination.settings",
+    description: "workspace.settingsDescription",
+    featureArea: "workspace.settingsFeature",
   },
 };
 
@@ -270,6 +289,12 @@ const workspaceDestinationSelect = document.querySelector<HTMLSelectElement>(
 );
 const workspaceSettingsButton = document.querySelector<HTMLButtonElement>(
   "#workspace-settings",
+);
+const workspaceLanguageButton = document.querySelector<HTMLButtonElement>(
+  "#workspace-language",
+);
+const interfaceLanguageStatus = document.querySelector<HTMLElement>(
+  "#interface-language-status",
 );
 const settingsCategoryButtons = document.querySelectorAll<HTMLButtonElement>(
   "[data-settings-section]",
@@ -422,6 +447,7 @@ const refreshTodayButton = document.querySelector<HTMLButtonElement>("#refresh-t
 const appShell = document.querySelector<HTMLElement>(".app-shell");
 let currentWorkspaceDestination: WorkspaceDestination = "today";
 let currentAppearance: AppearancePreferences = { accentColor: "forest" };
+let currentInterfaceLanguage: InterfaceLanguage = "zh";
 let todayOperationCount = 0;
 let vaultSelectionInProgress = false;
 const todayPresentationRequests = new LatestRequest();
@@ -437,6 +463,7 @@ type DatedNoteDraft = {
 const datedNoteDrafts = new Map<string, DatedNoteDraft>();
 let correctingShortRecordId: string | null = null;
 let currentCalendarMonth: CalendarMonthView | null = null;
+let currentCalendarSummaryView: TodayView | null = null;
 let selectedCalendarDate: string | null = null;
 const calendarMonthRequests = new LatestRequest();
 const calendarSelectionRequests = new LatestRequest();
@@ -452,8 +479,100 @@ const pendingWrites = new PendingWriteBarrier();
 const appearanceMutations = new SerializedLatestMutation<AppearancePreferences>({
   accentColor: "forest",
 });
-let habitNoteStatus: Readonly<{ message: string; state: "ready" | "error" }> | null = null;
+const interfaceLanguageMutations =
+  new SerializedLatestMutation<InterfaceLanguagePreferences>({ interfaceLanguage: "zh" });
+type HabitNoteStatus = Readonly<{
+  state: "ready" | "error";
+  copyKey?: InterfaceCopyKey;
+  error?: string;
+  applicationMessage?: string;
+}>;
+
+let habitNoteStatus: HabitNoteStatus | null = null;
 const habitNoteDrafts = new Map<string, HabitNoteDraft>();
+
+function t(
+  key: InterfaceCopyKey,
+  variables: Readonly<Record<string, string | number>> = {},
+): string {
+  return interfaceCopy(key, currentInterfaceLanguage, variables);
+}
+
+function applicationMessage(message: string): string {
+  return localizeApplicationMessage(message, currentInterfaceLanguage);
+}
+
+function setCopy(
+  element: HTMLElement | null,
+  key: InterfaceCopyKey,
+  variables: Readonly<Record<string, string | number>> = {},
+): void {
+  setInterfaceCopy(element, key, currentInterfaceLanguage, variables);
+}
+
+function setCopyError(
+  element: HTMLElement | null,
+  key: InterfaceCopyKey,
+  error: unknown,
+): void {
+  setInterfaceError(element, key, String(error), currentInterfaceLanguage);
+}
+
+function setAppMessage(element: HTMLElement | null, message: string): void {
+  setApplicationMessage(element, message, currentInterfaceLanguage);
+}
+
+function setRawText(element: HTMLElement | null, value: string): void {
+  if (!element) return;
+  delete element.dataset.i18n;
+  delete element.dataset.i18nVariables;
+  delete element.dataset.applicationMessage;
+  element.textContent = value;
+}
+
+function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): void {
+  currentInterfaceLanguage = preferences.interfaceLanguage;
+  applyInterfaceLanguage(currentInterfaceLanguage);
+  if (workspaceLanguageButton) {
+    const chinese = currentInterfaceLanguage === "zh";
+    setCopy(
+      workspaceLanguageButton,
+      chinese ? "toolbar.languageChineseActive" : "toolbar.languageEnglishActive",
+    );
+    const nextLanguageKey = chinese ? "toolbar.switchToEnglish" : "toolbar.switchToChinese";
+    workspaceLanguageButton.dataset.i18nAriaLabel = nextLanguageKey;
+    workspaceLanguageButton.dataset.i18nTitle = nextLanguageKey;
+    workspaceLanguageButton.setAttribute("aria-label", t(nextLanguageKey));
+    workspaceLanguageButton.title = t(nextLanguageKey);
+  }
+  if (currentCalendarMonth) renderCalendarGrid(currentCalendarMonth);
+  if (currentCalendarSummaryView) renderCalendarSummary(currentCalendarSummaryView);
+  if (currentHabitSnapshot) renderHabitSnapshot(currentHabitSnapshot);
+  renderWorkspaceNavigationLanguage();
+  renderWorkspaceFeatureArea(currentWorkspaceDestination);
+  renderWorkspaceRailContext(currentWorkspaceDestination);
+  renderWorkspaceContextStatus(currentWorkspaceDestination);
+}
+
+async function chooseInterfaceLanguage(interfaceLanguage: InterfaceLanguage): Promise<void> {
+  renderInterfaceLanguage({ interfaceLanguage });
+  await interfaceLanguageMutations.enqueue(
+    () => window.__TAURI__.core.invoke<InterfaceLanguagePreferences>(
+      "set_interface_language",
+      { interfaceLanguage },
+    ),
+    (saved) => {
+      renderInterfaceLanguage(saved);
+      setRawText(interfaceLanguageStatus, "");
+    },
+    (error, confirmed) => {
+      renderInterfaceLanguage(confirmed);
+      if (interfaceLanguageStatus) {
+        setCopyError(interfaceLanguageStatus, "language.saveFailed", error);
+      }
+    },
+  );
+}
 
 function resetVaultScopedWorkspaceState(): void {
   calendarMonthRequests.invalidate();
@@ -461,6 +580,7 @@ function resetVaultScopedWorkspaceState(): void {
   habitSnapshotRequests.invalidate();
   habitDateRequests.invalidate();
   currentCalendarMonth = null;
+  currentCalendarSummaryView = null;
   selectedCalendarDate = null;
   currentTodayView = null;
   currentHabitSnapshot = null;
@@ -475,16 +595,16 @@ function resetVaultScopedWorkspaceState(): void {
   habitsEmpty?.toggleAttribute("hidden", true);
   habitsSummaryRows?.replaceChildren();
   if (habitsSummaryTotal) habitsSummaryTotal.textContent = "—";
-  if (habitsRange) habitsRange.textContent = "正在读取按需快照…";
-  if (calendarSummaryHeading) calendarSummaryHeading.textContent = "正在读取选中日期…";
+  setCopy(habitsRange, "habits.loadingOnDemand");
+  setCopy(calendarSummaryHeading, "calendar.loadingSelectedDate");
   if (calendarSummaryStatus) {
-    calendarSummaryStatus.textContent = "读取中";
+    setCopy(calendarSummaryStatus, "common.loading");
     calendarSummaryStatus.dataset.availability = "unknown";
   }
   calendarSummaryCopy?.replaceChildren();
   if (calendarOpenDay) calendarOpenDay.disabled = true;
   if (calendarStatus) {
-    calendarStatus.textContent = "正在读取新 Vault 的 Calendar…";
+    setCopy(calendarStatus, "calendar.loadingNewVault");
     calendarStatus.dataset.state = "loading";
   }
   renderWorkspaceRailContext(currentWorkspaceDestination);
@@ -503,24 +623,24 @@ async function persistAppearanceChange(
   optimistic: AppearancePreferences,
   command: "set_accent_color" | "restore_appearance_defaults",
   arguments_: Record<string, unknown> | undefined,
-  progressMessage: string,
-  successMessage: string,
+  progressMessage: InterfaceCopyKey,
+  successMessage: InterfaceCopyKey,
 ): Promise<void> {
   renderAppearance(optimistic);
-  if (appearanceStatus) appearanceStatus.textContent = progressMessage;
+  setCopy(appearanceStatus, progressMessage);
   await appearanceMutations.enqueue(
     () => window.__TAURI__.core.invoke<AppearancePreferences>(command, arguments_),
     (saved) => {
       renderAppearance(saved);
       if (appearanceStatus) {
-        appearanceStatus.textContent = successMessage;
+        setCopy(appearanceStatus, successMessage);
         delete appearanceStatus.dataset.state;
       }
     },
     (error, confirmed) => {
       renderAppearance(confirmed);
       if (appearanceStatus) {
-        appearanceStatus.textContent = `无法更新外观偏好：${String(error)}`;
+        setCopyError(appearanceStatus, "appearance.updateFailed", error);
         appearanceStatus.dataset.state = "error";
       }
     },
@@ -532,8 +652,8 @@ async function chooseAccentColor(accentColor: AccentColor): Promise<void> {
     { accentColor },
     "set_accent_color",
     { accentColor },
-    "正在保存本机外观偏好…",
-    "颜色已保存在这台 Mac。",
+    "appearance.saving",
+    "appearance.saved",
   );
 }
 
@@ -542,8 +662,8 @@ async function restoreAppearance(): Promise<void> {
     { accentColor: "forest" },
     "restore_appearance_defaults",
     undefined,
-    "正在恢复默认外观…",
-    "已恢复默认外观；Vault 数据未更改。",
+    "appearance.restoring",
+    "appearance.restored",
   );
 }
 
@@ -562,17 +682,33 @@ type VaultSettingsView = Pick<TodayView, "vaultPath" | "vaultAvailability" | "me
 
 function renderVaultSettings(view: VaultSettingsView): void {
   if (settingsVaultPath) {
-    settingsVaultPath.textContent = view.vaultPath ?? "尚未选择 Vault。";
+    if (view.vaultPath) {
+      delete settingsVaultPath.dataset.i18n;
+      delete settingsVaultPath.dataset.i18nVariables;
+      settingsVaultPath.textContent = view.vaultPath;
+    } else {
+      setCopy(settingsVaultPath, "settings.noVault");
+    }
   }
   if (settingsVaultStatus) {
     if (view.vaultAvailability === "unconfigured") {
-      settingsVaultStatus.textContent = "尚未配置本地 Vault。";
+      setCopy(settingsVaultStatus, "settings.vaultUnconfigured");
     } else if (view.vaultAvailability === "unavailable") {
-      settingsVaultStatus.textContent = `本地位置不可用：${view.message}`;
+      setRawText(settingsVaultStatus, "");
+      const prefix = document.createElement("span");
+      const detail = document.createElement("span");
+      setCopy(prefix, "settings.vaultUnavailablePrefix");
+      setAppMessage(detail, view.message);
+      settingsVaultStatus.replaceChildren(prefix, detail);
     } else if (view.vaultAvailability === "incompatible") {
-      settingsVaultStatus.textContent = `Vault 不兼容：${view.message}`;
+      setRawText(settingsVaultStatus, "");
+      const prefix = document.createElement("span");
+      const detail = document.createElement("span");
+      setCopy(prefix, "settings.vaultIncompatiblePrefix");
+      setAppMessage(detail, view.message);
+      settingsVaultStatus.replaceChildren(prefix, detail);
     } else {
-      settingsVaultStatus.textContent = "本地位置可用；这里只确认 Mac 文件状态，不代表 Google Drive 已完成云端同步。";
+      setCopy(settingsVaultStatus, "settings.vaultAvailable");
     }
     settingsVaultStatus.dataset.state = view.vaultAvailability;
   }
@@ -580,45 +716,41 @@ function renderVaultSettings(view: VaultSettingsView): void {
 
 async function waitForPendingWrites(): Promise<boolean> {
   if (currentWorkspaceDestination === "habits" && habitsStatus) {
-    habitsStatus.textContent = "正在完成当前保存，再切换 Vault…";
+    setCopy(habitsStatus, "today.waitingWrites");
     habitsStatus.dataset.state = "loading";
   }
   if (currentWorkspaceDestination === "settings" && settingsVaultStatus) {
-    settingsVaultStatus.textContent = "正在完成当前保存，再打开 Vault 选择器…";
+    setCopy(settingsVaultStatus, "settings.waitingWrites");
     settingsVaultStatus.dataset.state = "loading";
   }
   return await pendingWrites.wait();
 }
 
 function renderPendingWriteFailure(): void {
-  const writeMessage = habitNoteStatus?.state === "error"
-    ? habitNoteStatus.message
-    : "保存失败；草稿与更正状态仍保留。";
   if (currentWorkspaceDestination === "habits") {
     if (habitsStatus) {
-      habitsStatus.textContent = writeMessage;
+      setCopy(habitsStatus, "settings.pendingWriteFailed");
       habitsStatus.dataset.state = "error";
     }
     renderSelectedHabitCell();
     return;
   }
-  const message = `当前保存失败，Vault 尚未切换；${writeMessage}`;
   if (currentWorkspaceDestination === "calendar") {
     if (calendarStatus) {
-      calendarStatus.textContent = message;
+      setCopy(calendarStatus, "settings.vaultNotSwitchedAfterSaveFailure");
       calendarStatus.dataset.state = "error";
     }
     return;
   }
   if (currentWorkspaceDestination === "settings") {
     if (settingsVaultStatus) {
-      settingsVaultStatus.textContent = message;
+      setCopy(settingsVaultStatus, "settings.vaultNotSwitchedAfterSaveFailure");
       settingsVaultStatus.dataset.state = "error";
     }
     return;
   }
   if (todayStatus) {
-    todayStatus.textContent = message;
+    setCopy(todayStatus, "settings.vaultNotSwitchedAfterSaveFailure");
     todayStatus.dataset.state = "error";
   }
 }
@@ -682,7 +814,7 @@ function daytimeUpdateArticle(update: DaytimeUpdateView): HTMLElement {
   ) {
     const contextLabel = document.createElement("p");
     contextLabel.className = "today-update-label";
-    contextLabel.textContent = "背景";
+    setCopy(contextLabel, "today.background");
     article.append(contextLabel);
   }
   update.context.forEach((line) => {
@@ -690,11 +822,11 @@ function daytimeUpdateArticle(update: DaytimeUpdateView): HTMLElement {
     paragraph.textContent = line;
     article.append(paragraph);
   });
-  appendDaytimeGroup(article, "记录内容", update.neutral);
-  appendDaytimeGroup(article, "观察到的事实", update.observedFacts);
-  appendDaytimeGroup(article, "原计划意图", update.originalIntent);
-  appendDaytimeGroup(article, "变化原因", update.changeReasons);
-  appendDaytimeGroup(article, "接下来这样安排", update.revisedDirection);
+  appendDaytimeGroup(article, "today.recordContent", update.neutral);
+  appendDaytimeGroup(article, "today.observedFacts", update.observedFacts);
+  appendDaytimeGroup(article, "today.originalIntent", update.originalIntent);
+  appendDaytimeGroup(article, "today.changeReasons", update.changeReasons);
+  appendDaytimeGroup(article, "today.revisedDirection", update.revisedDirection);
   return article;
 }
 
@@ -704,20 +836,24 @@ function shortRecordArticle(record: ShortRecordView, editable = true): HTMLEleme
   const body = document.createElement("p");
   body.textContent = record.text;
   const meta = document.createElement("small");
-  meta.textContent = `${record.category === "exercise" ? "健身" : "日常记录"} · 目标 ${record.date} · 记录于 ${record.createdAt}`;
+  setCopy(meta, "today.recordMeta", {
+    category: t(record.category === "exercise" ? "today.exercise" : "today.ordinaryRecord"),
+    date: record.date,
+    createdAt: record.createdAt,
+  });
   article.append(body, meta);
   if (editable) {
     const correct = document.createElement("button");
     correct.type = "button";
     correct.className = "today-correct-record secondary-button";
     correct.dataset.correctRecordId = record.id;
-    correct.textContent = "更正这条";
+    setCopy(correct, "today.correctThis");
     article.append(correct);
   }
   if (record.changes.length > 0) {
     const details = document.createElement("details");
     const summary = document.createElement("summary");
-    summary.textContent = `修改记录 · ${record.changes.length}`;
+    setCopy(summary, "today.changeHistory", { count: record.changes.length });
     details.append(summary);
     record.changes.forEach((change) => {
       const changeRow = document.createElement("p");
@@ -773,13 +909,13 @@ function daytimeHasArrangementChange(update: DaytimeUpdateView): boolean {
 
 function appendDaytimeGroup(
   article: HTMLElement,
-  heading: string,
+  heading: InterfaceCopyKey,
   lines: readonly string[],
 ): void {
   if (lines.length > 0) {
     const label = document.createElement("p");
     label.className = "today-update-label";
-    label.textContent = heading;
+    setCopy(label, heading);
     const list = document.createElement("ul");
     list.append(
       ...lines.map((line) => {
@@ -824,14 +960,12 @@ function showTodayPhase(phase: TodayPhase, focus = false): void {
   if (todayReady) {
     todayReady.dataset.phase = phase;
   }
-  const labels: Record<TodayPhase, string> = {
-    morning: "早间基准",
-    daytime: "当日进展",
-    evening: "晚间复盘",
+  const labels: Record<TodayPhase, InterfaceCopyKey> = {
+    morning: "today.morning",
+    daytime: "today.daytime",
+    evening: "today.evening",
   };
-  if (todayHeading) {
-    todayHeading.textContent = labels[phase];
-  }
+  setCopy(todayHeading, labels[phase]);
   todayPhaseButtons.forEach((button) => {
     const selected = button.dataset.todayPhase === phase;
     button.setAttribute("aria-selected", String(selected));
@@ -905,16 +1039,18 @@ function renderDatedNoteComposer(view: TodayView): void {
     todayDaytimeKind.disabled = correctingShortRecordId !== null;
   }
   if (todayNoteFormLabel) {
-    todayNoteFormLabel.textContent = correctingShortRecordId ? "更正记录" : "写一句";
+    setCopy(todayNoteFormLabel, correctingShortRecordId ? "today.correctRecord" : "today.writeShort");
   }
   if (saveDaytimeUpdateButton) {
-    saveDaytimeUpdateButton.textContent = correctingShortRecordId ? "保存更正" : "保存记录";
+    setCopy(saveDaytimeUpdateButton, correctingShortRecordId ? "today.saveCorrection" : "today.saveRecord");
   }
   cancelNoteCorrectionButton?.toggleAttribute("hidden", correctingShortRecordId === null);
   if (todayNoteTarget) {
-    todayNoteTarget.textContent = view.canRecord
-      ? `保存在 ${view.date} 的日记录中；不替你打卡。`
-      : "未来日期不能记录已经发生的事实。";
+    setCopy(
+      todayNoteTarget,
+      view.canRecord ? "today.noteTarget" : "today.futureBoundary",
+      view.canRecord ? { date: view.date } : {},
+    );
   }
 }
 
@@ -927,15 +1063,19 @@ function renderToday(view: TodayView): void {
   renderVaultSettings(view);
   renderDatedNoteComposer(view);
   if (todayDate) {
-    todayDate.textContent = `${view.isToday ? "Today" : "Selected day"} · ${view.date}`;
+    setCopy(todayDate, view.isToday ? "today.currentDate" : "today.selectedDate", {
+      date: view.date,
+    });
   }
   if (todayVault) {
-    todayVault.textContent = view.vaultName
-      ? `Vault: ${view.vaultName}`
-      : "尚未选择 Vault。";
+    setCopy(
+      todayVault,
+      view.vaultName ? "today.vaultName" : "settings.noVault",
+      view.vaultName ? { name: view.vaultName } : {},
+    );
   }
   if (todayStatus) {
-    todayStatus.textContent = view.message;
+    setAppMessage(todayStatus, view.message);
     todayStatus.dataset.state = view.state;
   }
   if (selectTodayVaultButton) {
@@ -954,24 +1094,24 @@ function renderToday(view: TodayView): void {
     todayTimeline.replaceChildren(...view.baseline.timeline.map(todayTimelineItem));
   }
   if (todayBlockCount) {
-    todayBlockCount.textContent = `${view.baseline.timeline.length} 个时间块`;
+    setCopy(todayBlockCount, "count.timeBlocks", { count: view.baseline.timeline.length });
   }
   if (todayBaselineStatus) {
-    todayBaselineStatus.textContent = view.baseline.message;
+    setAppMessage(todayBaselineStatus, view.baseline.message);
     todayBaselineStatus.dataset.availability = view.baseline.availability;
   }
   if (todayPlanEmpty) {
     todayPlanEmpty.hidden = view.baseline.timeline.length > 0;
-    todayPlanEmpty.textContent =
-      view.baseline.availability === "missing"
-        ? "这份 Daily Record 未独立保存早间基准；不会用当前安排补造起点。"
-        : "早间基准已建立，但初始安排仍为空。";
+    setCopy(
+      todayPlanEmpty,
+      view.baseline.availability === "missing" ? "today.noBaselineStart" : "today.emptyBaseline",
+    );
   }
   if (todayCurrentTimeline) {
     todayCurrentTimeline.replaceChildren(...view.timeline.map(todayTimelineItem));
   }
   if (todayCurrentCount) {
-    todayCurrentCount.textContent = `${view.timeline.length} 个时间块`;
+    setCopy(todayCurrentCount, "count.timeBlocks", { count: view.timeline.length });
   }
   if (todayCurrentEmpty) {
     todayCurrentEmpty.hidden = view.timeline.length > 0;
@@ -999,7 +1139,10 @@ function renderToday(view: TodayView): void {
     (update) => !daytimeHasArrangementChange(update),
   );
   if (todayDaytimeCount) {
-    todayDaytimeCount.textContent = `${knownUpdates.length} 条已知 · ${directionCount} 条修订方向`;
+    setCopy(todayDaytimeCount, "count.knownDirections", {
+      known: knownUpdates.length,
+      directions: directionCount,
+    });
   }
   if (todayDaytimeKnown) {
     todayDaytimeKnown.replaceChildren(...knownUpdates.map(daytimeKnownArticle));
@@ -1013,7 +1156,7 @@ function renderToday(view: TodayView): void {
     );
   }
   if (todayFutureCount) {
-    todayFutureCount.textContent = `${directionCount} 项`;
+    setCopy(todayFutureCount, "count.items", { count: directionCount });
   }
   if (todayFutureEmpty) {
     todayFutureEmpty.hidden = directionCount > 0;
@@ -1025,7 +1168,9 @@ function renderToday(view: TodayView): void {
     );
   }
   if (todayShortRecordCount) {
-    todayShortRecordCount.textContent = `${shortRecords.length + legacyShortRecords.length} 条`;
+    setCopy(todayShortRecordCount, "count.records", {
+      count: shortRecords.length + legacyShortRecords.length,
+    });
   }
   if (todayShortRecordsEmpty) {
     todayShortRecordsEmpty.hidden = shortRecords.length + legacyShortRecords.length > 0;
@@ -1036,7 +1181,7 @@ function renderToday(view: TodayView): void {
     );
   }
   if (todayChangeCount) {
-    todayChangeCount.textContent = `${arrangementChanges.length} 条`;
+    setCopy(todayChangeCount, "count.records", { count: arrangementChanges.length });
   }
   if (todayDaytimeEmpty) {
     todayDaytimeEmpty.hidden = arrangementChanges.length > 0;
@@ -1115,16 +1260,14 @@ function renderToday(view: TodayView): void {
 
   if (todayHandoffHeading && todayHandoffCopy) {
     if (view.state === "unconfigured") {
-      todayHandoffHeading.textContent = "连接 Tortilla Flat vault。";
-      todayHandoffCopy.textContent =
-        "只需选择一次 vault 文件夹。Personal Dashboard 只保存这个 workspace 设置，并直接读取规范 Daily Record。";
+      setCopy(todayHandoffHeading, "today.connectVault");
+      setCopy(todayHandoffCopy, "today.connectVaultCopy");
     } else if (view.state === "missing") {
-      todayHandoffHeading.textContent = "Today 需要一份 Daily Record。";
-      todayHandoffCopy.textContent =
-        "请让 Codex 运行早间流程，然后回到这里刷新 Today。";
+      setCopy(todayHandoffHeading, "today.needsRecord");
+      setCopy(todayHandoffCopy, "today.runMorning");
     } else if (view.state === "error") {
-      todayHandoffHeading.textContent = "今天的 Daily Record 需要修复。";
-      todayHandoffCopy.textContent = view.message;
+      setCopy(todayHandoffHeading, "today.repairRecord");
+      setAppMessage(todayHandoffCopy, view.message);
     }
   }
   showTodayPhase(currentTodayPhase);
@@ -1141,23 +1284,44 @@ function renderTodayEvidence(): void {
     0,
   );
   if (todayEvidenceHeading) {
-    todayEvidenceHeading.textContent = "初始计划依据";
+    setCopy(todayEvidenceHeading, "today.initialEvidence");
   }
   if (todayEvidenceCount) {
-    todayEvidenceCount.textContent = `${evidenceItemCount} 项`;
+    setCopy(todayEvidenceCount, "count.items", { count: evidenceItemCount });
   }
   if (todayEvidenceGroups) {
     todayEvidenceGroups.replaceChildren(...evidence.map(todayEvidenceGroup));
   }
   if (todayEvidenceEmpty) {
     todayEvidenceEmpty.hidden = evidenceItemCount > 0;
-    todayEvidenceEmpty.textContent = "尚未记录初始计划依据。";
+    setCopy(todayEvidenceEmpty, "today.noInitialEvidence");
   }
 }
 
-function showTodayMutationStatus(message: string, state: "ready" | "error"): void {
+function showTodayMutationCopy(
+  key: InterfaceCopyKey,
+  state: "ready" | "error",
+  variables: Readonly<Record<string, string | number>> = {},
+): void {
   if (todayStatus) {
-    todayStatus.textContent = message;
+    setCopy(todayStatus, key, variables);
+    todayStatus.dataset.state = state;
+  }
+}
+
+function showTodayMutationError(key: InterfaceCopyKey, error: unknown): void {
+  if (todayStatus) {
+    setCopyError(todayStatus, key, error);
+    todayStatus.dataset.state = "error";
+  }
+}
+
+function showTodayMutationApplicationMessage(
+  message: string,
+  state: "ready" | "error",
+): void {
+  if (todayStatus) {
+    setAppMessage(todayStatus, message);
     todayStatus.dataset.state = state;
   }
 }
@@ -1184,7 +1348,7 @@ async function saveDatedNote(): Promise<boolean> {
     !content ||
     todayOperationCount > 0
   ) {
-    showTodayMutationStatus("请先打开可记录的日期，并填写一句内容。", "error");
+    showTodayMutationCopy("today.openRecordFirst", "error");
     return false;
   }
   const category = selectedShortRecordCategory();
@@ -1207,8 +1371,8 @@ async function saveDatedNote(): Promise<boolean> {
     correctingShortRecordId = null;
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
       renderToday(view);
-      showTodayMutationStatus(
-        correctionId ? "更正及修改记录已写入 Daily Record。" : "简短记录已写入 Daily Record。",
+      showTodayMutationCopy(
+        correctionId ? "today.correctionSaved" : "today.noteSaved",
         "ready",
       );
     }
@@ -1220,12 +1384,11 @@ async function saveDatedNote(): Promise<boolean> {
       correctionId,
     });
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
-      showTodayMutationStatus(
-        error instanceof DatedNoteTargetChangedError
-          ? error.message
-          : `未保存：${String(error)}`,
-        "error",
-      );
+      if (error instanceof DatedNoteTargetChangedError) {
+        showTodayMutationApplicationMessage(error.message, "error");
+      } else {
+        showTodayMutationError("today.notSaved", error);
+      }
     }
     return false;
   } finally {
@@ -1236,10 +1399,10 @@ async function saveDatedNote(): Promise<boolean> {
 async function saveTodayMutation(
   command: "append_daytime_update" | "update_evening_review",
   input: Record<string, unknown>,
-  successMessage: string,
+  successMessage: InterfaceCopyKey,
 ): Promise<boolean> {
   if (!currentTodayView?.revision || todayOperationCount > 0) {
-    showTodayMutationStatus("请先刷新有效的 Daily Record，再保存。", "error");
+    showTodayMutationCopy("today.refreshBeforeSave", "error");
     return false;
   }
   const expectedRevision = currentTodayView.revision;
@@ -1251,12 +1414,12 @@ async function saveTodayMutation(
     });
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
       renderToday(view);
-      showTodayMutationStatus(successMessage, "ready");
+      showTodayMutationCopy(successMessage, "ready");
     }
     return true;
   } catch (error) {
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
-      showTodayMutationStatus(`未保存：${String(error)}`, "error");
+      showTodayMutationError("today.notSaved", error);
     }
     return false;
   } finally {
@@ -1290,7 +1453,7 @@ async function refreshToday(
       return;
     }
     if (todayStatus) {
-      todayStatus.textContent = `无法读取 Today：${String(error)}`;
+      setCopyError(todayStatus, "today.loadFailed", error);
       todayStatus.dataset.state = "error";
     }
   } finally {
@@ -1311,6 +1474,7 @@ async function selectTodayVault(): Promise<void> {
       () =>
         window.__TAURI__.core.invoke<VaultSelectionResult<TodayView>>(
           "select_today_vault",
+          { interfaceLanguage: currentInterfaceLanguage },
         ),
       {
         isCurrent: () => vaultSelectionRequests.isCurrent(selectionRequest),
@@ -1341,53 +1505,47 @@ async function selectTodayVault(): Promise<void> {
 }
 
 function renderVaultSelectionError(error: unknown): void {
-  const message = `无法选择 Vault：${String(error)}`;
   if (currentWorkspaceDestination === "calendar") {
     calendarMonthRequests.invalidate();
     calendarSelectionRequests.invalidate();
-    renderCalendarReadError(error, "无法选择 Vault", false);
+    renderCalendarReadError(error, true, false);
     return;
   }
   if (currentWorkspaceDestination === "habits") {
     habitSnapshotRequests.invalidate();
     habitDateRequests.invalidate();
     if (habitsStatus) {
-      habitsStatus.textContent = message;
+      setCopyError(habitsStatus, "settings.vaultSelectionError", error);
       habitsStatus.dataset.state = "error";
     }
     return;
   }
   if (currentWorkspaceDestination === "settings") {
     if (settingsVaultStatus) {
-      settingsVaultStatus.textContent = message;
+      setCopyError(settingsVaultStatus, "settings.vaultSelectionError", error);
       settingsVaultStatus.dataset.state = "error";
     }
     return;
   }
   todayPresentationRequests.invalidate();
   if (todayStatus) {
-    todayStatus.textContent = message;
+    setCopyError(todayStatus, "settings.vaultSelectionError", error);
     todayStatus.dataset.state = "error";
   }
 }
 
 const calendarAvailabilityLabels: Record<
   DailyRecordAvailability,
-  Readonly<{ label: string; marker: string }>
+  Readonly<{ label: InterfaceCopyKey; marker: InterfaceCopyKey | null }>
 > = {
-  missing: { label: "无记录", marker: "" },
-  unreviewed: { label: "无复盘", marker: "记" },
-  reviewed: { label: "有复盘", marker: "复" },
-  error: { label: "读取错误", marker: "!" },
+  missing: { label: "calendar.noRecord", marker: null },
+  unreviewed: { label: "calendar.unreviewed", marker: "calendar.markerUnreviewed" },
+  reviewed: { label: "calendar.reviewed", marker: "calendar.markerReviewed" },
+  error: { label: "calendar.readError", marker: null },
 };
 
 function calendarDateLabel(date: string): string {
-  const [year, month, day] = date.split("-").map(Number);
-  const weekday = new Intl.DateTimeFormat("zh-CN", {
-    weekday: "short",
-    timeZone: "UTC",
-  }).format(new Date(Date.UTC(year, month - 1, day)));
-  return `${month} 月 ${day} 日 · ${weekday}`;
+  return formatInterfaceDate(date, currentInterfaceLanguage);
 }
 
 function populateCalendarYears(centerYear: number): void {
@@ -1398,7 +1556,7 @@ function populateCalendarYears(centerYear: number): void {
     ...[centerYear - 1, centerYear, centerYear + 1].map((year) => {
       const option = document.createElement("option");
       option.value = String(year);
-      option.textContent = `${year} 年`;
+      option.textContent = currentInterfaceLanguage === "zh" ? `${year} 年` : String(year);
       return option;
     }),
   );
@@ -1407,7 +1565,11 @@ function populateCalendarYears(centerYear: number): void {
 
 function renderCalendarGrid(month: CalendarMonthView): void {
   if (calendarMonthHeading) {
-    calendarMonthHeading.textContent = `${month.year} 年 ${month.month} 月`;
+    calendarMonthHeading.textContent = formatInterfaceMonth(
+      month.year,
+      month.month,
+      currentInterfaceLanguage,
+    );
   }
   if (calendarYear) {
     if (!Array.from(calendarYear.options).some((option) => Number(option.value) === month.year)) {
@@ -1419,7 +1581,10 @@ function renderCalendarGrid(month: CalendarMonthView): void {
     calendarMonth.value = String(month.month);
   }
   if (calendarGrid) {
-    calendarGrid.setAttribute("aria-label", `${month.year} 年 ${month.month} 月`);
+    calendarGrid.setAttribute(
+      "aria-label",
+      formatInterfaceMonth(month.year, month.month, currentInterfaceLanguage),
+    );
     calendarGrid.replaceChildren(
       ...month.days.map((day) => {
         const button = document.createElement("button");
@@ -1434,7 +1599,7 @@ function renderCalendarGrid(month: CalendarMonthView): void {
         button.toggleAttribute("data-selected", selected);
         button.setAttribute(
           "aria-label",
-          `${calendarDateLabel(day.date)} · ${day.isToday ? "今天 · " : ""}${status.label}`,
+          `${calendarDateLabel(day.date)} · ${day.isToday ? `${t("calendar.today")} · ` : ""}${t(status.label)}`,
         );
         button.setAttribute("aria-pressed", String(selected));
         const top = document.createElement("span");
@@ -1442,12 +1607,12 @@ function renderCalendarGrid(month: CalendarMonthView): void {
         const number = document.createElement("strong");
         number.textContent = String(dayNumber);
         const todayLabel = document.createElement("small");
-        todayLabel.textContent = day.isToday ? "今天" : "";
+        if (day.isToday) setCopy(todayLabel, "calendar.today");
         top.append(number, todayLabel);
         const marker = document.createElement("span");
         marker.className = "calendar-day-marker";
         marker.dataset.availability = day.availability;
-        marker.textContent = status.marker;
+        if (status.marker) setCopy(marker, status.marker);
         marker.setAttribute("aria-hidden", "true");
         button.append(top, marker);
         return button;
@@ -1458,13 +1623,14 @@ function renderCalendarGrid(month: CalendarMonthView): void {
 }
 
 function renderCalendarSummary(view: TodayView): void {
+  currentCalendarSummaryView = view;
   renderWorkspaceRailContext("calendar");
   if (calendarSummaryHeading) {
     calendarSummaryHeading.textContent = calendarDateLabel(view.date);
   }
   const availability = view.dailyRecordAvailability;
   if (calendarSummaryStatus) {
-    calendarSummaryStatus.textContent = calendarAvailabilityLabels[availability].label;
+    setCopy(calendarSummaryStatus, calendarAvailabilityLabels[availability].label);
     calendarSummaryStatus.dataset.availability = availability;
   }
   if (calendarOpenDay) {
@@ -1477,36 +1643,36 @@ function renderCalendarSummary(view: TodayView): void {
   const copy = document.createElement("p");
   const detail = document.createElement("small");
   if (view.state === "ready" && availability === "reviewed") {
-    heading.textContent = "晚间复盘";
+    setCopy(heading, "calendar.eveningSummary");
     copy.textContent =
       view.evening.account[0] ??
       view.evening.summary[0] ??
       view.evening.comparison[0] ??
-      "这一天有晚间复盘。";
-    detail.textContent = `${view.daytime.updates.length} 条日间记录 · 默认打开晚间复盘`;
+      t("calendar.hasReview");
+    setCopy(detail, "calendar.reviewDetail", { count: view.daytime.updates.length });
   } else if (view.state === "ready") {
-    heading.textContent = "当日状态";
-    copy.textContent = "这一天有 Daily Record，但没有晚间复盘。";
-    detail.textContent = `${view.daytime.updates.length} 条日间记录 · 默认打开当日进展`;
+    setCopy(heading, "calendar.dayStatus");
+    setCopy(copy, "calendar.noReviewCopy");
+    setCopy(detail, "calendar.daytimeDetail", { count: view.daytime.updates.length });
   } else if (view.state === "error") {
-    heading.textContent = "读取错误";
-    copy.textContent = view.message;
-    detail.textContent = "这一天的异常不会阻断其他日期。";
+    setCopy(heading, "calendar.readError");
+    setAppMessage(copy, view.message);
+    setCopy(detail, "calendar.errorIsolation");
   } else if (view.state === "unconfigured") {
-    heading.textContent = "尚未选择 Vault";
-    copy.textContent = "请先到 Today 选择 Tortilla Flat vault。";
-    detail.textContent = "Calendar 浏览不会创建文件。";
+    setCopy(heading, "calendar.vaultNotSelected");
+    setCopy(copy, "calendar.chooseVaultInToday");
+    setCopy(detail, "calendar.readOnly");
   } else {
-    heading.textContent = "空白日期";
-    copy.textContent = "没有 Daily Record；保持空白，不制造补记义务。";
-    detail.textContent = "未记录不解释成未完成。";
+    setCopy(heading, "calendar.blankDate");
+    setCopy(copy, "calendar.blankCopy");
+    setCopy(detail, "calendar.unknownBoundary");
   }
   calendarSummaryCopy.replaceChildren(heading, copy, detail);
 }
 
 function renderCalendarReadError(
   error: unknown,
-  prefix = "无法读取 Calendar",
+  vaultSelectionFailed = false,
   clearContent = true,
 ): void {
   if (clearContent) {
@@ -1514,25 +1680,26 @@ function renderCalendarReadError(
     currentCalendarMonth = null;
   }
   if (calendarStatus) {
-    calendarStatus.textContent = `${prefix}：${String(error)}`;
+    setCopyError(calendarStatus, "calendar.loadFailed", error);
     calendarStatus.dataset.state = "error";
   }
   if (calendarSummaryHeading) {
-    calendarSummaryHeading.textContent = prefix === "无法选择 Vault"
-      ? "Vault 选择失败"
-      : "Calendar 读取失败";
+    setCopy(
+      calendarSummaryHeading,
+      vaultSelectionFailed ? "calendar.vaultSelectionFailed" : "calendar.readFailed",
+    );
   }
   if (calendarSummaryStatus) {
-    calendarSummaryStatus.textContent = "读取错误";
+    setCopy(calendarSummaryStatus, "calendar.readError");
     calendarSummaryStatus.dataset.availability = "error";
   }
   if (calendarSummaryCopy) {
     const heading = document.createElement("strong");
-    heading.textContent = prefix === "无法选择 Vault" ? "Vault 选择失败" : "读取错误";
+    setCopy(heading, vaultSelectionFailed ? "calendar.vaultSelectionFailed" : "calendar.readError");
     const copy = document.createElement("p");
-    copy.textContent = String(error);
+    setCopyError(copy, "common.errorDetail", error);
     const detail = document.createElement("small");
-    detail.textContent = "当前页面没有完成这次读取；请修复后重试。";
+    setCopy(detail, "calendar.retry");
     calendarSummaryCopy.replaceChildren(heading, copy, detail);
   }
   if (calendarOpenDay) {
@@ -1567,7 +1734,7 @@ async function selectCalendarDate(date: string): Promise<void> {
     }
     renderCalendarSummary(view);
     if (calendarStatus) {
-      calendarStatus.textContent = `已选择 ${calendarDateLabel(date)}。`;
+      setCopy(calendarStatus, "calendar.selected", { date: calendarDateLabel(date) });
       calendarStatus.dataset.state = view.state;
     }
   } catch (error) {
@@ -1581,18 +1748,18 @@ async function selectCalendarDate(date: string): Promise<void> {
       calendarSummaryHeading.textContent = calendarDateLabel(date);
     }
     if (calendarSummaryStatus) {
-      calendarSummaryStatus.textContent = "读取错误";
+      setCopy(calendarSummaryStatus, "calendar.readError");
       calendarSummaryStatus.dataset.availability = "error";
     }
     if (calendarSummaryCopy) {
       const heading = document.createElement("strong");
-      heading.textContent = "读取错误";
+      setCopy(heading, "calendar.readError");
       const copy = document.createElement("p");
-      copy.textContent = String(error);
+      setCopyError(copy, "common.errorDetail", error);
       calendarSummaryCopy.replaceChildren(heading, copy);
     }
     if (calendarStatus) {
-      calendarStatus.textContent = `无法读取 ${date}；其他日期仍可选择。`;
+      setCopy(calendarStatus, "calendar.dateFailed", { date });
       calendarStatus.dataset.state = "error";
     }
   }
@@ -1614,9 +1781,10 @@ async function refreshCalendarMonth(
     currentCalendarMonth = view;
     renderCalendarGrid(view);
     if (calendarStatus) {
-      calendarStatus.textContent = view.configured
-        ? "选择日期可预览摘要；Calendar 浏览不会修改 Daily Record。"
-        : "尚未选择 Vault；请先到 Today 连接 Tortilla Flat vault。";
+      setCopy(
+        calendarStatus,
+        view.configured ? "calendar.previewStatus" : "calendar.connectStatus",
+      );
       calendarStatus.dataset.state = view.configured ? "ready" : "unconfigured";
     }
     return view;
@@ -1625,7 +1793,7 @@ async function refreshCalendarMonth(
       calendarMonthRequests.isCurrent(monthRequest) &&
       currentWorkspaceDestination === "calendar"
     ) {
-      renderCalendarReadError(error, "无法读取月份");
+      renderCalendarReadError(error);
     }
     return null;
   }
@@ -1715,25 +1883,27 @@ async function showCalendarToday(): Promise<void> {
   }
 }
 
-const habitStatusLabels: Record<HabitCellStatus, string> = {
-  unknown: "未知",
-  completed: "已知完成",
-  notDone: "明确未完成",
-  conflict: "来源冲突 · 不计次",
-  partial: "partial · 不计次",
-  baseline: "baseline · 不计次",
-  unavailable: "来源不可用",
-  actualTime: "明确实际时刻",
-  thresholdOnly: "仅阈值证据",
-  recordOnly: "有文字记录 · 不计次",
+const habitStatusLabels: Record<HabitCellStatus, InterfaceCopyKey> = {
+  unknown: "habits.unknown",
+  completed: "habits.completed",
+  notDone: "habits.notDone",
+  conflict: "habits.conflict",
+  partial: "habits.partial",
+  baseline: "habits.baseline",
+  unavailable: "habits.unavailable",
+  actualTime: "habits.actualTime",
+  thresholdOnly: "habits.thresholdOnly",
+  recordOnly: "habits.recordOnly",
 };
 
 function habitProgressLabel(habit: HabitView): string {
   if (habit.completedCount === null) {
-    return habit.today.actualTimeLabel ?? "实际未知";
+    return habit.today.actualTimeLabel
+      ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage)
+      : t("habits.actualUnknown");
   }
   if (habit.weeklyTarget === null) {
-    return `${habit.completedCount} 次 · 无目标`;
+    return t("habits.noGoal", { count: habit.completedCount });
   }
   return `${habit.completedCount} / ${habit.weeklyTarget}`;
 }
@@ -1753,17 +1923,27 @@ function habitCellButton(
   button.dataset.habitDetails = JSON.stringify(cell.details);
   button.setAttribute(
     "aria-label",
-    `${cell.date} · ${habit.name} · ${habitStatusLabels[cell.status]} · coverage ${cell.coverage}${
-      cell.date === habit.today.date ? " · 今天锚点" : ""
+    `${cell.date} · ${habit.name} · ${t(habitStatusLabels[cell.status])} · ${t(
+      "habits.coverageAria",
+      { coverage: cell.coverage },
+    )}${
+      cell.date === habit.today.date ? ` · ${t("calendar.today")}` : ""
     }`,
   );
-  button.title = `${cell.date} · ${habitStatusLabels[cell.status]}`;
+  button.title = `${cell.date} · ${t(habitStatusLabels[cell.status])}`;
   if (compact) {
-    const weekday = ["日", "一", "二", "三", "四", "五", "六"][
-      new Date(`${cell.date}T00:00:00Z`).getUTCDay()
+    const weekdayKeys: InterfaceCopyKey[] = [
+      "calendar.weekSun",
+      "calendar.weekMon",
+      "calendar.weekTue",
+      "calendar.weekWed",
+      "calendar.weekThu",
+      "calendar.weekFri",
+      "calendar.weekSat",
     ];
+    const weekday = weekdayKeys[new Date(`${cell.date}T00:00:00Z`).getUTCDay()];
     const label = document.createElement("small");
-    label.textContent = weekday;
+    if (weekday) setCopy(label, weekday);
     button.append(label);
   }
   const mark = document.createElement("span");
@@ -1783,8 +1963,12 @@ function habitRow(habit: HabitView): HTMLElement {
   const metadata = document.createElement("p");
   const sources = document.createElement("small");
   name.textContent = habit.name;
-  metadata.textContent = `${habit.goalLabel} · ${habit.coverageLabel}`;
-  sources.textContent = `来源：${habit.sourceLabels.join("、") || "未声明"}`;
+  metadata.textContent = `${localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage)} · ${
+    localizeHabitCoverageLabel(habit.coverageLabel, currentInterfaceLanguage)
+  }`;
+  setCopy(sources, "habits.sources", {
+    sources: habit.sourceLabels.join(currentInterfaceLanguage === "zh" ? "、" : ", ") || t("habits.notDeclared"),
+  });
   identity.append(name, metadata, sources);
 
   const value = document.createElement("div");
@@ -1792,13 +1976,13 @@ function habitRow(habit: HabitView): HTMLElement {
   const progress = document.createElement("strong");
   const todayState = document.createElement("small");
   progress.textContent = habitProgressLabel(habit);
-  todayState.textContent = `今天：${habitStatusLabels[habit.today.status]}`;
+  setCopy(todayState, "habits.todayStatus", { status: t(habitStatusLabels[habit.today.status]) });
   value.append(progress, todayState);
 
   const recent = document.createElement("div");
   recent.className = "habit-recent";
   const recentLabel = document.createElement("span");
-  recentLabel.textContent = "近 7 天";
+  setCopy(recentLabel, "habits.recent");
   const recentCells = document.createElement("div");
   recentCells.className = "habit-recent-cells";
   recentCells.replaceChildren(
@@ -1811,7 +1995,7 @@ function habitRow(habit: HabitView): HTMLElement {
   expand.className = "habit-expand";
   expand.dataset.habitExpand = habit.key;
   expand.setAttribute("aria-expanded", "false");
-  expand.textContent = "展开";
+  setCopy(expand, "habits.expand");
 
   const history = document.createElement("section");
   history.className = "habit-history";
@@ -1822,8 +2006,8 @@ function habitRow(habit: HabitView): HTMLElement {
   historyHeading.className = "habit-history-heading";
   const heading = document.createElement("strong");
   const caption = document.createElement("small");
-  heading.textContent = "近 12 周记录";
-  caption.textContent = "点 = 有来源记录；实心完成与文字记录状态不同";
+  setCopy(heading, "habits.history");
+  setCopy(caption, "habits.historyCaption");
   historyHeading.append(heading, caption);
   const grid = document.createElement("div");
   grid.className = "habit-history-grid";
@@ -1838,15 +2022,28 @@ function habitRow(habit: HabitView): HTMLElement {
     const label = document.createElement("span");
     const month = week[0]?.date.slice(5, 7);
     const previousMonth = weeks[index - 1]?.[0]?.date.slice(5, 7);
-    label.textContent = index === 0 || month !== previousMonth ? `${Number(month)} 月` : "";
+    label.textContent = index === 0 || month !== previousMonth
+      ? currentInterfaceLanguage === "zh"
+        ? `${Number(month)} 月`
+        : new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" })
+            .format(new Date(Date.UTC(2026, Number(month) - 1, 1)))
+      : "";
     return label;
   });
   months.replaceChildren(monthCorner, ...monthLabels);
-  const weekdayLabels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+  const weekdayLabels: InterfaceCopyKey[] = [
+    "calendar.weekMon",
+    "calendar.weekTue",
+    "calendar.weekWed",
+    "calendar.weekThu",
+    "calendar.weekFri",
+    "calendar.weekSat",
+    "calendar.weekSun",
+  ];
   for (const [weekday, weekdayLabel] of weekdayLabels.entries()) {
     const label = document.createElement("span");
     label.className = "habit-history-weekday";
-    label.textContent = weekdayLabel;
+    setCopy(label, weekdayLabel);
     grid.append(label);
     for (const week of weeks) {
       const cell = week[weekday];
@@ -1855,16 +2052,24 @@ function habitRow(habit: HabitView): HTMLElement {
   }
   const goalContext = document.createElement("p");
   goalContext.className = "habit-goal-context";
-  goalContext.textContent = habit.goalHistory.length
-    ? `历史目标 context：${habit.goalHistory
-        .map((context) => `${context.weekOf} ${context.label} ${context.goalLabel}`)
-        .join("；")}`
-    : "历史目标 context：快照未提供；不回填历史达标率。";
+  setCopy(
+    goalContext,
+    habit.goalHistory.length ? "habits.historyContext" : "habits.noHistoryContext",
+    habit.goalHistory.length
+      ? {
+          context: habit.goalHistory
+            .map((context) => `${context.weekOf} ${context.label} ${
+              localizeHabitGoalLabel(context.goalLabel, currentInterfaceLanguage)
+            }`)
+            .join(currentInterfaceLanguage === "zh" ? "；" : "; "),
+        }
+      : {},
+  );
   const detail = document.createElement("div");
   detail.className = "habit-cell-detail";
   detail.dataset.habitDetail = habit.key;
   detail.setAttribute("role", "status");
-  detail.textContent = "选择一个日期点，查看来源、coverage 与记录。";
+  setCopy(detail, "habits.chooseHistory");
   history.append(historyHeading, months, grid, goalContext, detail);
   article.append(identity, value, recent, expand, history);
   return article;
@@ -1896,16 +2101,20 @@ function habitExerciseRecordArticle(record: ShortRecordView): HTMLElement {
   const text = document.createElement("p");
   text.textContent = record.text;
   const meta = document.createElement("small");
-  meta.textContent = `健身 · 目标 ${record.date} · 记录于 ${record.createdAt}`;
+  setCopy(meta, "today.recordMeta", {
+    category: t("today.exercise"),
+    date: record.date,
+    createdAt: record.createdAt,
+  });
   const correct = document.createElement("button");
   correct.type = "button";
   correct.dataset.habitCorrectRecordId = record.id;
-  correct.textContent = "更正这条";
+  setCopy(correct, "today.correctThis");
   article.append(text, meta, correct);
   if (record.changes.length > 0) {
     const changes = document.createElement("details");
     const summary = document.createElement("summary");
-    summary.textContent = `修改记录 · ${record.changes.length}`;
+    setCopy(summary, "today.changeHistory", { count: record.changes.length });
     changes.append(summary);
     for (const change of record.changes) {
       const line = document.createElement("p");
@@ -1927,10 +2136,10 @@ function habitExerciseEditor(date: string, cell: HabitCellView): HTMLElement {
     (record) => record.category === "exercise",
   );
   const heading = document.createElement("strong");
-  heading.textContent = `${draft?.correctionId ? "更正记录" : "写一句"} · ${date}`;
+  heading.textContent = `${t(draft?.correctionId ? "today.correctRecord" : "today.writeShort")} · ${date}`;
   const association = document.createElement("p");
   association.className = "habit-note-association";
-  association.textContent = "健身 · 日期与关联已预设";
+  setCopy(association, "habits.exerciseAssociation");
   panel.append(heading, association);
 
   const records = document.createElement("div");
@@ -1940,7 +2149,7 @@ function habitExerciseEditor(date: string, cell: HabitCellView): HTMLElement {
       records.replaceChildren(...exerciseRecords.map(habitExerciseRecordArticle));
     } else {
       const empty = document.createElement("p");
-      empty.textContent = "还没有健身短句。";
+      setCopy(empty, "habits.noExerciseNotes");
       records.replaceChildren(empty);
     }
   } else if (cell.localRecords.length > 0) {
@@ -1952,7 +2161,7 @@ function habitExerciseEditor(date: string, cell: HabitCellView): HTMLElement {
       }),
     );
   } else {
-    records.textContent = "正在读取所选日期…";
+    setCopy(records, "habits.loadingDate");
   }
   panel.append(records);
 
@@ -1960,14 +2169,17 @@ function habitExerciseEditor(date: string, cell: HabitCellView): HTMLElement {
     const form = document.createElement("form");
     form.dataset.habitNoteForm = "";
     const label = document.createElement("label");
-    label.textContent = "记录内容";
+    setCopy(label, "habits.recordContent");
     const input = document.createElement("input");
     input.type = "text";
     input.maxLength = 500;
     input.required = true;
     input.autocomplete = "off";
-    input.placeholder = "例如：跑步 30 分钟";
-    input.setAttribute("aria-label", "Exercise note text");
+    input.placeholder = t("habits.exercisePlaceholder");
+    input.dataset.i18nPlaceholder = "habits.exercisePlaceholder";
+    input.dataset.habitNoteInput = "";
+    input.dataset.i18nAriaLabel = "habits.exerciseNoteText";
+    input.setAttribute("aria-label", t("habits.exerciseNoteText"));
     input.value = draft?.content ?? "";
     label.append(input);
     const actions = document.createElement("div");
@@ -1975,23 +2187,23 @@ function habitExerciseEditor(date: string, cell: HabitCellView): HTMLElement {
     const save = document.createElement("button");
     save.type = "submit";
     save.disabled = habitDateOperationCount > 0;
-    save.textContent = draft?.correctionId ? "保存更正" : "保存记录";
+    setCopy(save, draft?.correctionId ? "today.saveCorrection" : "today.saveRecord");
     actions.append(save);
     if (draft?.correctionId) {
       const cancel = document.createElement("button");
       cancel.type = "button";
       cancel.className = "secondary-button";
       cancel.dataset.habitCancelCorrection = "";
-      cancel.textContent = "取消更正";
+      setCopy(cancel, "today.cancelCorrection");
       actions.append(cancel);
     }
     const target = document.createElement("small");
-    target.textContent = `保存在 ${date} 的日记录中；不替你打卡。`;
+    setCopy(target, "today.noteTarget", { date });
     form.append(label, actions, target);
     panel.append(form);
   } else if (view && !view.canRecord) {
     const boundary = document.createElement("p");
-    boundary.textContent = "未来日期不能记录已经发生的事实。";
+    setCopy(boundary, "habits.futureBoundary");
     panel.append(boundary);
   }
 
@@ -2000,7 +2212,13 @@ function habitExerciseEditor(date: string, cell: HabitCellView): HTMLElement {
     status.className = "habit-note-status";
     status.dataset.state = habitNoteStatus.state;
     status.setAttribute("role", "status");
-    status.textContent = habitNoteStatus.message;
+    if (habitNoteStatus.copyKey && habitNoteStatus.error) {
+      setCopyError(status, habitNoteStatus.copyKey, habitNoteStatus.error);
+    } else if (habitNoteStatus.copyKey) {
+      setCopy(status, habitNoteStatus.copyKey);
+    } else if (habitNoteStatus.applicationMessage) {
+      setAppMessage(status, habitNoteStatus.applicationMessage);
+    }
     panel.append(status);
   }
   return panel;
@@ -2017,17 +2235,20 @@ function renderSelectedHabitCell(): void {
   if (recent) recent.hidden = true;
   row.classList.add("is-expanded");
   expand?.setAttribute("aria-expanded", "true");
-  if (expand) expand.textContent = "收起";
+  if (expand) setCopy(expand, "habits.collapse");
 
   const heading = document.createElement("strong");
   const state = document.createElement("span");
   const details = document.createElement("ul");
   heading.textContent = `${cell.date} · ${habit.name}`;
-  state.textContent = `${habitStatusLabels[cell.status]} · coverage ${cell.coverage}`;
+  setCopy(state, "habits.statusCoverage", {
+    status: t(habitStatusLabels[cell.status]),
+    coverage: cell.coverage,
+  });
   details.replaceChildren(
     ...cell.details.map((line) => {
       const item = document.createElement("li");
-      item.textContent = line;
+      item.textContent = localizeHabitDetail(line, currentInterfaceLanguage);
       return item;
     }),
   );
@@ -2057,7 +2278,11 @@ async function loadSelectedHabitDate(habitKey: string, date: string): Promise<vo
     renderSelectedHabitCell();
   } catch (error) {
     if (!habitDateRequests.isCurrent(request)) return;
-    habitNoteStatus = { message: `无法读取所选日期：${String(error)}`, state: "error" };
+    habitNoteStatus = {
+      copyKey: "habits.loadDateFailed",
+      error: String(error),
+      state: "error",
+    };
     renderSelectedHabitCell();
   }
 }
@@ -2065,7 +2290,7 @@ async function loadSelectedHabitDate(habitKey: string, date: string): Promise<vo
 function stashHabitNoteDraft(): void {
   const binding = currentHabitDateView?.targetBinding;
   const input = habitsDestination?.querySelector<HTMLInputElement>(
-    "input[aria-label='Exercise note text']",
+    "input[data-habit-note-input]",
   );
   if (!binding || !input) return;
   const previous = habitNoteDrafts.get(binding);
@@ -2082,10 +2307,10 @@ function stashHabitNoteDraft(): void {
 async function saveHabitExerciseNote(): Promise<boolean> {
   const loaded = currentHabitDateView;
   const content = habitsDestination
-    ?.querySelector<HTMLInputElement>("input[aria-label='Exercise note text']")
+    ?.querySelector<HTMLInputElement>("input[data-habit-note-input]")
     ?.value.trim() ?? "";
   if (!loaded?.targetBinding || !loaded.canRecord || !content || habitDateOperationCount > 0) {
-    habitNoteStatus = { message: "请先打开可记录的日期，并填写一句内容。", state: "error" };
+    habitNoteStatus = { copyKey: "today.openRecordFirst", state: "error" };
     renderSelectedHabitCell();
     return false;
   }
@@ -2114,9 +2339,7 @@ async function saveHabitExerciseNote(): Promise<boolean> {
     if (habitDateRequests.isCurrent(request)) {
       currentHabitDateView = view;
       habitNoteStatus = {
-        message: correctionId
-          ? "更正及修改记录已写入 Daily Record；未更新滴答或完成次数。"
-          : "健身短句已写入 Daily Record；未更新滴答或完成次数。",
+        copyKey: correctionId ? "habits.correctionSaved" : "habits.noteSaved",
         state: "ready",
       };
     }
@@ -2125,9 +2348,9 @@ async function saveHabitExerciseNote(): Promise<boolean> {
   } catch (error) {
     if (habitDateRequests.isCurrent(request)) {
       habitNoteStatus = {
-        message: error instanceof DatedNoteTargetChangedError
-          ? error.message
-          : `未保存：${String(error)}`,
+        ...(error instanceof DatedNoteTargetChangedError
+          ? { applicationMessage: error.message }
+          : { copyKey: "today.notSaved" as const, error: String(error) }),
         state: "error",
       };
       renderSelectedHabitCell();
@@ -2144,23 +2367,37 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
   renderWorkspaceRailContext("habits");
   renderWorkspaceContextStatus(currentWorkspaceDestination);
   if (habitsStatus) {
-    habitsStatus.textContent = view.message;
+    if (view.readError) {
+      setCopyError(habitsStatus, "habits.loadFailed", view.readError);
+    } else {
+      setAppMessage(habitsStatus, view.message);
+    }
     habitsStatus.dataset.state = view.state;
   }
   if (habitsRange) {
-    habitsRange.textContent = view.displayRangeLabel && view.rangeLabel
-      ? `12 周显示窗口 · ${view.displayRangeLabel} · 来源覆盖 · ${view.rangeLabel}`
-      : "等待有效的 bounded snapshot。";
+    setCopy(
+      habitsRange,
+      view.displayRangeLabel && view.rangeLabel ? "habits.range" : "habits.waitingSnapshot",
+      view.displayRangeLabel && view.rangeLabel
+        ? { display: view.displayRangeLabel, range: view.rangeLabel }
+        : {},
+    );
   }
   const hasSnapshot = view.habits.length > 0;
   if (habitsReady) habitsReady.hidden = !hasSnapshot;
   if (habitsEmpty) habitsEmpty.hidden = hasSnapshot;
   if (!hasSnapshot) {
     if (habitsEmptyHeading) {
-      habitsEmptyHeading.textContent =
-        view.state === "unconfigured" ? "尚未选择 Vault。" : "尚无可显示的 Habits 快照。";
+      setCopy(
+        habitsEmptyHeading,
+        view.state === "unconfigured" ? "settings.noVault" : "habits.noHabitsSnapshot",
+      );
     }
-    if (habitsEmptyCopy) habitsEmptyCopy.textContent = view.message;
+    if (view.readError) {
+      setCopyError(habitsEmptyCopy, "habits.loadFailed", view.readError);
+    } else {
+      setAppMessage(habitsEmptyCopy, view.message);
+    }
     return;
   }
   if (habitsSummaryTotal) {
@@ -2168,12 +2405,12 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
   }
   if (habitsSummaryNote) {
     const noGoal = view.summary.excludedNoGoal
-      ? ` ${view.summary.excludedNoGoal} 个无目标习惯未计入分母。`
+      ? t("habits.noGoalExcluded", { count: view.summary.excludedNoGoal })
       : "";
-    habitsSummaryNote.textContent = `${view.summary.coverageNote}${noGoal}`;
+    habitsSummaryNote.textContent = `${applicationMessage(view.summary.coverageNote)}${noGoal}`;
   }
-  if (habitsGeneratedAt) habitsGeneratedAt.textContent = view.generatedAt ?? "未知";
-  if (habitsProducer) habitsProducer.textContent = view.producerLabel ?? "未知";
+  if (habitsGeneratedAt) habitsGeneratedAt.textContent = view.generatedAt ?? t("common.unknown");
+  if (habitsProducer) habitsProducer.textContent = view.producerLabel ?? t("common.unknown");
   if (habitsTodayDate) habitsTodayDate.textContent = view.habits[0]?.today.date ?? "—";
   if (habitsSummaryRows) {
     habitsSummaryRows.replaceChildren(
@@ -2187,7 +2424,7 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
           row.className = "habits-summary-row";
           label.textContent = habit.name;
           value.textContent = habitProgressLabel(habit);
-          kind.textContent = habit.goalLabel;
+          kind.textContent = localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage);
           row.append(label, value, kind);
           return row;
         }),
@@ -2213,7 +2450,7 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
 async function refreshHabits(): Promise<void> {
   const request = habitSnapshotRequests.begin();
   if (habitsStatus) {
-    habitsStatus.textContent = "正在读取本地 Habits 快照…";
+    setCopy(habitsStatus, "habits.loadingLocal");
     habitsStatus.dataset.state = "loading";
   }
   try {
@@ -2224,7 +2461,8 @@ async function refreshHabits(): Promise<void> {
     if (!habitSnapshotRequests.isCurrent(request)) return;
     renderHabitSnapshot({
       state: "error",
-      message: `无法读取 Habits 快照：${String(error)}`,
+      message: String(error),
+      readError: String(error),
       generatedAt: null,
       displayRangeLabel: null,
       rangeLabel: null,
@@ -2243,7 +2481,27 @@ async function refreshHabits(): Promise<void> {
 function renderWorkspaceFeatureArea(destination: WorkspaceDestination): void {
   const featureArea = workspaceDestinationDetails[destination].featureArea;
   document.querySelectorAll<HTMLElement>("[data-feature-area]").forEach((element) => {
-    element.textContent = featureArea;
+    setCopy(element, featureArea);
+  });
+}
+
+function renderWorkspaceNavigationLanguage(focus = false): void {
+  workspaceDestinationButtons.forEach((button) => {
+    const buttonDestination = button.dataset.workspaceDestination;
+    const isCurrent = buttonDestination === currentWorkspaceDestination;
+    const buttonLabel = isWorkspaceDestination(buttonDestination)
+      ? t(workspaceDestinationDetails[buttonDestination].title)
+      : t("destination.unknown");
+    button.toggleAttribute("aria-current", isCurrent);
+    if (isCurrent) button.setAttribute("aria-current", "page");
+    button.setAttribute("aria-pressed", String(isCurrent));
+    button.setAttribute(
+      "aria-label",
+      isCurrent
+        ? t("navigation.currentDestination", { destination: buttonLabel })
+        : buttonLabel,
+    );
+    if (focus && isCurrent) button.focus();
   });
 }
 
@@ -2254,39 +2512,44 @@ function renderWorkspaceRailContext(destination: WorkspaceDestination): void {
 
   if (destination === "today") {
     const date = currentTodayView?.date ?? selectedTodayDate;
-    workspaceRailContextKicker.textContent = `TODAY · ${date ?? "—"}`;
-    workspaceRailContextTitle.textContent = date
-      ? calendarDateLabel(date).split(" · ")[0]
-      : "Today";
-    workspaceRailContextDetail.textContent = "Morning · Daytime · Evening";
+    setCopy(workspaceRailContextKicker, "workspace.todayDate", { date: date ?? "—" });
+    workspaceRailContextTitle.textContent = date ? calendarDateLabel(date) : t("destination.today");
+    setCopy(workspaceRailContextDetail, "workspace.todayRail");
     return;
   }
 
   if (destination === "calendar") {
     const month = currentCalendarMonth;
-    workspaceRailContextKicker.textContent = "MONTH VIEW";
+    setCopy(workspaceRailContextKicker, "workspace.monthView");
     workspaceRailContextTitle.textContent = month
-      ? `${month.year} 年 ${month.month} 月`
-      : "Calendar";
-    workspaceRailContextDetail.textContent = selectedCalendarDate
-      ? `${calendarDateLabel(selectedCalendarDate)} · 当前选中`
-      : "选择一个日期";
+      ? formatInterfaceMonth(month.year, month.month, currentInterfaceLanguage)
+      : t("destination.calendar");
+    setCopy(
+      workspaceRailContextDetail,
+      selectedCalendarDate ? "workspace.selected" : "calendar.chooseDate",
+      selectedCalendarDate ? { date: calendarDateLabel(selectedCalendarDate) } : {},
+    );
     return;
   }
 
   if (destination === "settings") {
-    workspaceRailContextKicker.textContent = "SETTINGS · MAC";
-    workspaceRailContextTitle.textContent = "设置";
-    workspaceRailContextDetail.textContent = "外观 · 数据与 Vault";
+    setCopy(workspaceRailContextKicker, "workspace.settingsMac");
+    setCopy(workspaceRailContextTitle, "destination.settings");
+    setCopy(workspaceRailContextDetail, "workspace.settingsRail");
     return;
   }
 
   const summary = currentHabitSnapshot?.summary;
-  workspaceRailContextKicker.textContent = "HABITS · 本周";
-  workspaceRailContextTitle.textContent = summary
-    ? `${summary.knownCompletions} / ${summary.targetCompletions} 已知`
-    : "Habits";
-  workspaceRailContextDetail.textContent = "weekly count · daily target";
+  setCopy(workspaceRailContextKicker, "workspace.habitsWeek");
+  if (summary) {
+    setCopy(workspaceRailContextTitle, "workspace.knownCount", {
+      known: summary.knownCompletions,
+      target: summary.targetCompletions,
+    });
+  } else {
+    setCopy(workspaceRailContextTitle, "destination.habits");
+  }
+  setCopy(workspaceRailContextDetail, "workspace.habitsRail");
 }
 
 function renderWorkspaceContextStatus(destination: WorkspaceDestination): void {
@@ -2298,12 +2561,14 @@ function renderWorkspaceContextStatus(destination: WorkspaceDestination): void {
     const total = document.createElement("strong");
     total.textContent = `${summary.knownCompletions} / ${summary.targetCompletions}`;
     const label = document.createElement("small");
-    label.textContent = "本周已知";
+    setCopy(label, "workspace.weekKnown");
     workspaceContextStatus.replaceChildren(total, label);
     workspaceContextStatus.dataset.state = "habits-summary";
     return;
   }
-  workspaceContextStatus.textContent = `${workspaceDestinationDetails[destination].title} is the current destination.`;
+  setCopy(workspaceContextStatus, "workspace.current", {
+    destination: t(workspaceDestinationDetails[destination].title),
+  });
   workspaceContextStatus.dataset.state = "default";
 }
 
@@ -2332,27 +2597,7 @@ function showWorkspaceDestination(
   currentWorkspaceDestination = destination;
   appShell?.setAttribute("data-workspace-destination", destination);
   const details = workspaceDestinationDetails[destination];
-  workspaceDestinationButtons.forEach((button) => {
-    const buttonDestination = button.dataset.workspaceDestination;
-    const isCurrent = buttonDestination === destination;
-    const buttonLabel = isWorkspaceDestination(buttonDestination)
-      ? workspaceDestinationDetails[buttonDestination].title
-      : "Unknown destination";
-    button.toggleAttribute("aria-current", isCurrent);
-    if (isCurrent) {
-      button.setAttribute("aria-current", "page");
-    }
-    button.setAttribute("aria-pressed", String(isCurrent));
-    button.setAttribute(
-      "aria-label",
-      isCurrent
-        ? `${buttonLabel}, current destination`
-        : buttonLabel,
-    );
-    if (focus && isCurrent) {
-      button.focus();
-    }
-  });
+  renderWorkspaceNavigationLanguage(focus);
   let activeDestinationPanel: HTMLElement | null = null;
   workspaceDestinationPanels.forEach((panel) => {
     const isActive = panel.dataset.workspacePanel === destination;
@@ -2377,12 +2622,8 @@ function showWorkspaceDestination(
   if (workspaceDestinationSelect) {
     workspaceDestinationSelect.value = destination;
   }
-  if (workspaceTitle) {
-    workspaceTitle.textContent = details.title;
-  }
-  if (workspaceDescription) {
-    workspaceDescription.textContent = details.description;
-  }
+  setCopy(workspaceTitle, details.title);
+  setCopy(workspaceDescription, details.description);
   renderWorkspaceContextStatus(destination);
   renderWorkspaceFeatureArea(destination);
   renderWorkspaceRailContext(destination);
@@ -2391,10 +2632,10 @@ function showWorkspaceDestination(
     if (dailyDate !== null) {
       currentTodayView = null;
       if (todayDate) {
-        todayDate.textContent = `Selected day · ${dailyDate}`;
+        setCopy(todayDate, "today.selectedDate", { date: dailyDate });
       }
       if (todayStatus) {
-        todayStatus.textContent = `正在读取 ${dailyDate} 的 Daily Record…`;
+        setCopy(todayStatus, "today.loadingDate", { date: dailyDate });
         todayStatus.dataset.state = "loading";
       }
     }
@@ -2420,7 +2661,18 @@ async function connectToApplication(): Promise<void> {
     const identity = await window.__TAURI__.core.invoke<ApplicationIdentity>(
       "application_identity",
     );
-    runtimeStatus.textContent = identity.boundaryMessage;
+    try {
+      const language = await window.__TAURI__.core.invoke<InterfaceLanguagePreferences>(
+        "interface_language_preferences",
+      );
+      interfaceLanguageMutations.confirm(language);
+      renderInterfaceLanguage(language);
+    } catch (error) {
+      if (interfaceLanguageStatus) {
+        setCopyError(interfaceLanguageStatus, "language.saveFailed", error);
+      }
+    }
+    setCopy(runtimeStatus, "runtime.ready");
     runtimeStatus.dataset.state = "ready";
     document.title = identity.productName;
     document.querySelectorAll<HTMLElement>("[data-product-name]").forEach((element) => {
@@ -2435,12 +2687,12 @@ async function connectToApplication(): Promise<void> {
       renderAppearance(preferences);
     } catch (error) {
       if (appearanceStatus) {
-        appearanceStatus.textContent = `无法读取外观偏好：${String(error)}`;
+        setCopyError(appearanceStatus, "appearance.loadFailed", error);
         appearanceStatus.dataset.state = "error";
       }
     }
   } catch {
-    runtimeStatus.textContent = "The local application boundary is unavailable.";
+    setCopy(runtimeStatus, "runtime.unavailable");
     runtimeStatus.dataset.state = "error";
     return;
   }
@@ -2463,6 +2715,7 @@ workspaceDestinationSelect?.addEventListener("change", () => {
   }
 });
 
+renderInterfaceLanguage({ interfaceLanguage: "zh" });
 syncWorkspaceViewportMode();
 window.addEventListener("resize", () => {
   syncWorkspaceViewportMode();
@@ -2475,6 +2728,10 @@ selectTodayVaultButton?.addEventListener("click", () => {
 
 workspaceSettingsButton?.addEventListener("click", () => {
   showWorkspaceDestination("settings");
+});
+
+workspaceLanguageButton?.addEventListener("click", () => {
+  void chooseInterfaceLanguage(currentInterfaceLanguage === "zh" ? "en" : "zh");
 });
 
 settingsCategoryButtons.forEach((button) => {
@@ -2600,7 +2857,7 @@ habitsDestination?.addEventListener("click", (event) => {
     habitNoteStatus = null;
     renderSelectedHabitCell();
     habitsDestination
-      .querySelector<HTMLInputElement>("input[aria-label='Exercise note text']")
+      .querySelector<HTMLInputElement>("input[data-habit-note-input]")
       ?.focus();
     return;
   }
@@ -2612,7 +2869,7 @@ habitsDestination?.addEventListener("click", (event) => {
     habitNoteStatus = null;
     renderSelectedHabitCell();
     habitsDestination
-      .querySelector<HTMLInputElement>("input[aria-label='Exercise note text']")
+      .querySelector<HTMLInputElement>("input[data-habit-note-input]")
       ?.focus();
     return;
   }
@@ -2628,7 +2885,7 @@ habitsDestination?.addEventListener("click", (event) => {
     if (recent) recent.hidden = !history.hidden;
     row?.classList.toggle("is-expanded", !history.hidden);
     expand.setAttribute("aria-expanded", String(!history.hidden));
-    expand.textContent = history.hidden ? "展开" : "收起";
+    setCopy(expand, history.hidden ? "habits.expand" : "habits.collapse");
     if (history.hidden && selectedHabitCell?.habitKey === row?.dataset.habitKey) {
       habitDateRequests.invalidate();
       selectedHabitCell = null;
@@ -2648,7 +2905,7 @@ habitsDestination?.addEventListener("click", (event) => {
 });
 
 habitsDestination?.addEventListener("input", (event) => {
-  if ((event.target as HTMLElement).matches("input[aria-label='Exercise note text']")) {
+  if ((event.target as HTMLElement).matches("input[data-habit-note-input]")) {
     stashHabitNoteDraft();
   }
 });
@@ -2716,7 +2973,7 @@ todayEveningForm?.addEventListener("submit", (event) => {
     const saved = await saveTodayMutation(
       "update_evening_review",
       { mode: todayEveningMode.value, content: todayEveningContent.value },
-      "晚间更新已写入 Daily Record。",
+      "today.eveningSaved",
     );
     if (saved) {
       todayEveningContent.value = "";

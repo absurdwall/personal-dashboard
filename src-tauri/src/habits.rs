@@ -60,8 +60,36 @@ pub struct HabitCellView {
     pub has_record: bool,
     pub counts_as_completion: bool,
     pub actual_time_label: Option<String>,
-    pub details: Vec<String>,
+    pub details: Vec<HabitDetailView>,
     pub local_records: Vec<HabitLocalRecordView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum HabitDetailView {
+    Future,
+    Observation {
+        source_label: String,
+        status: ObservationStatus,
+        evidence: EvidenceKind,
+        observed_at: String,
+        note: Option<String>,
+    },
+    ActualTime {
+        day_relation: DayRelation,
+        local_time: String,
+        utc_offset_minutes: Option<i32>,
+    },
+    LocalRecord {
+        source_label: String,
+        text: String,
+    },
+    Conflict,
+    NoRecord,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -283,9 +311,9 @@ struct HabitDay {
     observations: Vec<Observation>,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-enum ObservationStatus {
+pub enum ObservationStatus {
     Completed,
     NotDone,
     Partial,
@@ -295,18 +323,18 @@ enum ObservationStatus {
     ThresholdMet,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-enum EvidenceKind {
+pub enum EvidenceKind {
     CheckIn,
     ManualCompletion,
     ExplicitTime,
     ThresholdCheckIn,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
-enum DayRelation {
+pub enum DayRelation {
     SameDay,
     NextDay,
     Unresolved,
@@ -542,7 +570,7 @@ fn project_cell(
             has_record: false,
             counts_as_completion: false,
             actual_time_label: None,
-            details: vec!["未来日期 · unknown".into()],
+            details: vec![HabitDetailView::Future],
             local_records: Vec::new(),
         };
     }
@@ -641,41 +669,32 @@ fn project_cell(
             .get(observation.source.as_str())
             .map(|source| source.label.as_str())
             .unwrap_or(observation.source.as_str());
-        let status_label = observation_status_label(observation.status);
-        let evidence = evidence_label(observation.evidence);
-        let note = observation
-            .note
-            .as_deref()
-            .map(|note| format!(" · {note}"))
-            .unwrap_or_default();
-        details.push(format!(
-            "{source} · {status_label} · {evidence} · observedAt {}{note}",
-            observation.observed_at
-        ));
+        details.push(HabitDetailView::Observation {
+            source_label: source.to_string(),
+            status: observation.status,
+            evidence: observation.evidence,
+            observed_at: observation.observed_at.clone(),
+            note: observation.note.clone(),
+        });
         if let Some(actual) = &observation.actual_time {
-            let relation = match actual.day_relation {
-                DayRelation::SameDay => actual.local_time.clone(),
-                DayRelation::NextDay => format!("次日 {}", actual.local_time),
-                DayRelation::Unresolved => format!("待解释 {}", actual.local_time),
-            };
-            let offset = actual
-                .utc_offset_minutes
-                .map(|minutes| format!("UTC offset {minutes} 分钟"))
-                .unwrap_or_else(|| "UTC offset 未知".into());
-            details.push(format!("明确时刻 {relation} · {offset}"));
+            details.push(HabitDetailView::ActualTime {
+                day_relation: actual.day_relation,
+                local_time: actual.local_time.clone(),
+                utc_offset_minutes: actual.utc_offset_minutes,
+            });
         }
     }
     for record in local {
-        details.push(format!(
-            "{} · 文字记录 · {}",
-            record.source_label, record.text
-        ));
+        details.push(HabitDetailView::LocalRecord {
+            source_label: record.source_label.clone(),
+            text: record.text.clone(),
+        });
     }
     if conflict {
-        details.push("来源冲突 · 暂不计入完成次数".into());
+        details.push(HabitDetailView::Conflict);
     }
     if details.is_empty() {
-        details.push("未读取或没有记录 · unknown，不等于 not_done".into());
+        details.push(HabitDetailView::NoRecord);
     }
     HabitCellView {
         date: date.into(),
@@ -964,26 +983,5 @@ fn goal_label(goal: &Goal) -> String {
             DayRelation::NextDay => format!("每日 次日 {standard}"),
             DayRelation::Unresolved => format!("每日 {standard} · 日期归属待解释"),
         },
-    }
-}
-
-fn observation_status_label(status: ObservationStatus) -> &'static str {
-    match status {
-        ObservationStatus::Completed => "completed",
-        ObservationStatus::NotDone => "not_done",
-        ObservationStatus::Partial => "partial · 不计次",
-        ObservationStatus::Baseline => "baseline · 不计次",
-        ObservationStatus::Unavailable => "unavailable",
-        ObservationStatus::ActualTime => "actual_time",
-        ObservationStatus::ThresholdMet => "threshold_met · 不编造分钟",
-    }
-}
-
-fn evidence_label(evidence: EvidenceKind) -> &'static str {
-    match evidence {
-        EvidenceKind::CheckIn => "打卡证据",
-        EvidenceKind::ManualCompletion => "人工明确补报",
-        EvidenceKind::ExplicitTime => "明确时刻证据",
-        EvidenceKind::ThresholdCheckIn => "阈值打卡证据",
     }
 }

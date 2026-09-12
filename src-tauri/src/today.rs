@@ -3,6 +3,7 @@ use crate::habits::{
     SNAPSHOT_RELATIVE_PATH,
 };
 pub use crate::habits::{HabitCellStatus, HabitSnapshotState, HabitSnapshotView};
+use crate::interface_language::InterfaceLanguage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
@@ -42,6 +43,13 @@ pub enum TodayWorkspaceSelectionState {
 
 pub trait TodayWorkspaceExchange {
     fn select_vault(&self) -> Result<Option<PathBuf>, String>;
+
+    fn select_vault_in_language(
+        &self,
+        _interface_language: InterfaceLanguage,
+    ) -> Result<Option<PathBuf>, String> {
+        self.select_vault()
+    }
 }
 
 pub trait TodayClock {
@@ -889,7 +897,14 @@ where
     }
 
     pub fn select_vault(&self) -> Result<VaultSelectionResult, String> {
-        let Some(vault) = self.exchange.select_vault()? else {
+        self.select_vault_in_language(InterfaceLanguage::Zh)
+    }
+
+    pub fn select_vault_in_language(
+        &self,
+        interface_language: InterfaceLanguage,
+    ) -> Result<VaultSelectionResult, String> {
+        let Some(vault) = self.exchange.select_vault_in_language(interface_language)? else {
             return Ok(VaultSelectionResult {
                 view: self.open()?,
                 changed: false,

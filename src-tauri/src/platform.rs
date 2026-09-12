@@ -1,6 +1,7 @@
 use crate::appearance::AppearancePersistence;
 use crate::backup::CompleteProfileReplacement;
 use crate::exercise::ExercisePersistence;
+use crate::interface_language::{InterfaceLanguage, InterfaceLanguagePersistence};
 use crate::migration::{BaselinePersistence, CompleteProfileAdoption, CompleteProfileDocuments};
 use crate::move_profile::ProfileMoveExchange;
 use crate::profile::{ProfileExchange, ProfilePersistence};
@@ -18,6 +19,7 @@ const PROFILE_FILE_NAME: &str = "profile.json";
 const EXERCISE_FILE_NAME: &str = "exercise.json";
 const TODAY_WORKSPACE_FILE_NAME: &str = "today-workspace.json";
 const APPEARANCE_FILE_NAME: &str = "appearance.json";
+const INTERFACE_LANGUAGE_FILE_NAME: &str = "interface-language.json";
 const MAX_PROFILE_DOCUMENT_BYTES: u64 = 10 * 1024 * 1024;
 const RESTORE_TRANSACTION_DIRECTORY: &str = ".profile-restore-transaction";
 const RESTORE_PREPARED_MARKER: &str = "prepared";
@@ -150,6 +152,33 @@ impl AppearancePersistence for FileAppearancePersistence {
 
     fn save(&self, document: &[u8]) -> Result<(), String> {
         atomic_save(&self.appearance_file, document, "appearance preference")
+    }
+}
+
+#[derive(Clone)]
+pub struct FileInterfaceLanguagePersistence {
+    preference_file: PathBuf,
+}
+
+impl FileInterfaceLanguagePersistence {
+    pub fn new(preference_file: PathBuf) -> Self {
+        Self { preference_file }
+    }
+}
+
+impl InterfaceLanguagePersistence for FileInterfaceLanguagePersistence {
+    fn load(&self) -> Result<Option<Vec<u8>>, String> {
+        match fs::read(&self.preference_file) {
+            Ok(document) => Ok(Some(document)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!(
+                "Could not read the local interface language: {error}"
+            )),
+        }
+    }
+
+    fn save(&self, document: &[u8]) -> Result<(), String> {
+        atomic_save(&self.preference_file, document, "interface language")
     }
 }
 
@@ -422,11 +451,18 @@ impl<R: Runtime> NativeTodayWorkspaceExchange<R> {
 
 impl<R: Runtime> TodayWorkspaceExchange for NativeTodayWorkspaceExchange<R> {
     fn select_vault(&self) -> Result<Option<PathBuf>, String> {
+        self.select_vault_in_language(InterfaceLanguage::Zh)
+    }
+
+    fn select_vault_in_language(
+        &self,
+        interface_language: InterfaceLanguage,
+    ) -> Result<Option<PathBuf>, String> {
         let Some(selected_folder) = self
             .app
             .dialog()
             .file()
-            .set_title("Select the Tortilla Flat vault")
+            .set_title(vault_picker_title(interface_language))
             .blocking_pick_folder()
         else {
             return Ok(None);
@@ -435,6 +471,13 @@ impl<R: Runtime> TodayWorkspaceExchange for NativeTodayWorkspaceExchange<R> {
             .into_path()
             .map(Some)
             .map_err(|_| "The selected vault folder is unavailable.".into())
+    }
+}
+
+fn vault_picker_title(interface_language: InterfaceLanguage) -> &'static str {
+    match interface_language {
+        InterfaceLanguage::Zh => "选择 Tortilla Flat Vault",
+        InterfaceLanguage::En => "Select the Tortilla Flat Vault",
     }
 }
 
@@ -597,6 +640,10 @@ pub fn appearance_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, St
     application_data_file_for(app, APPEARANCE_FILE_NAME)
 }
 
+pub fn interface_language_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    application_data_file_for(app, INTERFACE_LANGUAGE_FILE_NAME)
+}
+
 fn application_data_file_for<R: Runtime>(
     app: &AppHandle<R>,
     file_name: &str,
@@ -645,6 +692,18 @@ mod tests {
     use super::*;
     use crate::today::TodayWorkspaceSelectionState;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn vault_picker_title_follows_the_current_interface_language() {
+        assert_eq!(
+            vault_picker_title(InterfaceLanguage::Zh),
+            "选择 Tortilla Flat Vault"
+        );
+        assert_eq!(
+            vault_picker_title(InterfaceLanguage::En),
+            "Select the Tortilla Flat Vault"
+        );
+    }
 
     struct TemporaryWorkspaceDirectory(PathBuf);
 

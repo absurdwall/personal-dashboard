@@ -11,6 +11,7 @@ mod clock;
 pub mod cutover;
 pub mod exercise;
 pub mod habits;
+pub mod interface_language;
 pub mod migration;
 pub mod move_profile;
 pub mod notification;
@@ -27,9 +28,13 @@ use clock::SystemClock;
 use cutover::{
     CutoverApplication, CutoverPaths, MacLegacyCutoverRuntime, ReviewedCandidateIdentity,
 };
+use interface_language::{
+    InterfaceLanguage, InterfaceLanguageApplication, InterfaceLanguagePreferences,
+};
 use platform::{
-    appearance_file_for, legacy_exercise_directory_for, profile_file_for, today_workspace_file_for,
-    FileAppearancePersistence, FileTodayWorkspacePersistence, NativeTodayWorkspaceExchange,
+    appearance_file_for, interface_language_file_for, legacy_exercise_directory_for,
+    profile_file_for, today_workspace_file_for, FileAppearancePersistence,
+    FileInterfaceLanguagePersistence, FileTodayWorkspacePersistence, NativeTodayWorkspaceExchange,
 };
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DaytimeUpdateInput,
@@ -42,6 +47,8 @@ type DesktopTodayApplication = TodayApplication<
     SystemClock,
 >;
 type DesktopAppearanceApplication = AppearanceApplication<FileAppearancePersistence>;
+type DesktopInterfaceLanguageApplication =
+    InterfaceLanguageApplication<FileInterfaceLanguagePersistence>;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,6 +90,21 @@ fn restore_appearance_defaults(
 }
 
 #[tauri::command]
+fn interface_language_preferences(
+    application: State<'_, DesktopInterfaceLanguageApplication>,
+) -> Result<InterfaceLanguagePreferences, String> {
+    application.load()
+}
+
+#[tauri::command]
+fn set_interface_language(
+    application: State<'_, DesktopInterfaceLanguageApplication>,
+    interface_language: InterfaceLanguage,
+) -> Result<InterfaceLanguagePreferences, String> {
+    application.set_language(interface_language)
+}
+
+#[tauri::command]
 fn today_view(application: State<'_, DesktopTodayApplication>) -> Result<TodayView, String> {
     application.open()
 }
@@ -114,8 +136,9 @@ fn habit_snapshot(
 #[tauri::command]
 async fn select_today_vault(
     application: State<'_, DesktopTodayApplication>,
+    interface_language: InterfaceLanguage,
 ) -> Result<VaultSelectionResult, String> {
-    application.select_vault()
+    application.select_vault_in_language(interface_language)
 }
 
 #[tauri::command]
@@ -158,6 +181,7 @@ pub fn run() {
             let app_handle = app.handle().clone();
             let today_workspace_file = today_workspace_file_for(&app_handle)?;
             let appearance_file = appearance_file_for(&app_handle)?;
+            let interface_language_file = interface_language_file_for(&app_handle)?;
             #[cfg(target_os = "macos")]
             if let Some(cutover_mode) = std::env::var_os("PERSONAL_DASHBOARD_2_CUTOVER_MODE") {
                 use crate::notification::Clock;
@@ -215,6 +239,9 @@ pub fn run() {
             app.manage(AppearanceApplication::new(FileAppearancePersistence::new(
                 appearance_file,
             )));
+            app.manage(InterfaceLanguageApplication::new(
+                FileInterfaceLanguagePersistence::new(interface_language_file),
+            ));
             Ok(())
         });
 
@@ -231,6 +258,8 @@ pub fn run() {
             appearance_preferences,
             set_accent_color,
             restore_appearance_defaults,
+            interface_language_preferences,
+            set_interface_language,
             today_view,
             daily_view,
             calendar_month,
@@ -248,6 +277,8 @@ pub fn run() {
         appearance_preferences,
         set_accent_color,
         restore_appearance_defaults,
+        interface_language_preferences,
+        set_interface_language,
         today_view,
         daily_view,
         calendar_month,

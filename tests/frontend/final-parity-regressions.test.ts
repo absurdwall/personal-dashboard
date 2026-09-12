@@ -4,6 +4,10 @@ import test from "node:test";
 
 const html = readFileSync(new URL("../../frontend/index.html", import.meta.url), "utf8");
 const main = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
+const interfaceLanguage = readFileSync(
+  new URL("../../frontend/interface-language.ts", import.meta.url),
+  "utf8",
+);
 const css = readFileSync(new URL("../../frontend/styles.css", import.meta.url), "utf8");
 const driver = readFileSync(
   new URL("../../scripts/acceptance/macos-ui-driver.swift", import.meta.url),
@@ -80,16 +84,29 @@ test("Vault reselection invalidates and refreshes the active Calendar or Habits 
   assert.match(vaultBody, /prepareForVaultSwitch:[\s\S]*resetVaultScopedWorkspaceState\(\)/);
   assert.match(vaultBody, /openCalendar,/);
   assert.match(vaultBody, /refreshHabits,/);
-  assert.match(resetBody, /calendarSummaryHeading\.textContent = "正在读取选中日期…"/);
+  assert.match(resetBody, /setCopy\(calendarSummaryHeading, "calendar\.loadingSelectedDate"\)/);
+  assert.match(interfaceLanguage, /"calendar\.loadingSelectedDate": \{ zh: "正在读取选中日期…", en: "Loading the selected date…" \}/);
   assert.match(resetBody, /renderWorkspaceRailContext\(currentWorkspaceDestination\)/);
 });
 
 test("Habits exposes the FINAL header metric while keeping the week label secondary", () => {
   assert.match(html, /id="workspace-context-status"/);
-  assert.match(main, /本周已知/);
-  assert.match(main, /featureArea: "HABITS · 平级入口"/);
-  assert.match(main, /description: "周次数与每日目标时刻放在同一份轻量列表里。"/);
-  assert.match(html, /WEEK OF · SOURCED SNAPSHOT/);
+  assert.match(main, /setCopy\(label, "workspace\.weekKnown"\)/);
+  assert.match(main, /featureArea: "workspace\.habitsFeature"/);
+  assert.match(main, /description: "workspace\.habitsDescription"/);
+  assert.match(html, /data-i18n="habits\.weekSnapshot"/);
+  for (const copy of [
+    "本周已知",
+    "Known this week",
+    "习惯 · 平级入口",
+    "HABITS · PRIMARY DESTINATION",
+    "周次数与每日目标时刻放在同一份轻量列表里。",
+    "Weekly counts and daily target times share one compact list.",
+    "本周 · 来源快照",
+    "WEEK OF · SOURCED SNAPSHOT",
+  ]) {
+    assert.match(interfaceLanguage, new RegExp(copy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
   assert.match(css, /workspace-context-status\[data-state="habits-summary"\]/);
   assert.match(css, /\.habits-header \.destination-heading[\s\S]*font-size: 0\.76rem/);
   assert.match(css, /data-workspace-destination="habits"\] \.workspace-header h1[\s\S]*font-family: Georgia/);
@@ -119,4 +136,13 @@ test("Calendar and Habits semantic checks no longer require retired destinations
   assert.match(driver, /let dashboardDestinationMode = calendarMode \|\| habitsMode/);
   assert.match(driver, /requiresDestinationSwitcher && !dashboardDestinationMode/);
   assert.match(driver, /\["Today", "Calendar", "Habits"\]/);
+});
+
+test("interface-language packaged acceptance checks long copy geometry", () => {
+  assert.match(driver, /func assertLongTextFits/);
+  assert.match(driver, /textFrame\.height >= 28/);
+  assert.match(driver, /visibleWindow\.contains/);
+  assert.match(acceptance, /run_driver scroll-text-visible "\$long_drive_copy"/);
+  assert.match(acceptance, /run_driver assert-long-text-fits "\$long_drive_copy"/);
+  assert.match(acceptance, /run_driver assert-document-fixed "document"/);
 });

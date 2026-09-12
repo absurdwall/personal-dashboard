@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|cancel-folder|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-same-rendered-color|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-same-rendered-color|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -549,6 +549,17 @@ func waitForPickerSheet(
     throw DriverError.timeout("native folder picker")
 }
 
+func assertPickerTitle(
+    _ application: AXUIElement,
+    title: String,
+    timeout: TimeInterval
+) throws {
+    let picker = try waitForPickerSheet(application, timeout: timeout)
+    guard findText(picker, title) != nil else {
+        throw DriverError.timeout("native folder picker title: \(title)")
+    }
+}
+
 func waitForPickerPathField(
     _ application: AXUIElement,
     picker: AXUIElement,
@@ -973,6 +984,103 @@ func visibleRenderedElement(_ application: AXUIElement, label: String) -> AXUIEl
         }
         .min(by: { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height })?
         .element
+}
+
+func assertLongTextFits(_ application: AXUIElement, text: String) throws {
+    guard text.count >= 80,
+          let element = visibleRenderedElement(application, label: text),
+          let textFrame = frame(element),
+          let window = mainWindow(application),
+          let windowFrame = frame(window) else {
+        throw DriverError.timeout("long rendered text with measurable bounds: \(text)")
+    }
+    let tolerance: CGFloat = 2
+    let visibleWindow = windowFrame.insetBy(dx: -tolerance, dy: -tolerance)
+    guard visibleWindow.contains(
+        CGPoint(x: textFrame.minX, y: textFrame.minY)
+    ), visibleWindow.contains(
+        CGPoint(x: textFrame.maxX, y: textFrame.maxY)
+    ) else {
+        throw DriverError.timeout(
+            "long rendered text clipped outside the window: \(text) " +
+                "frame=\(textFrame) window=\(windowFrame)"
+        )
+    }
+    guard textFrame.height >= 28,
+          textFrame.width <= windowFrame.width - 24 else {
+        throw DriverError.timeout(
+            "long rendered text did not wrap within the available layout: \(text) " +
+                "frame=\(textFrame) window=\(windowFrame)"
+        )
+    }
+}
+
+func scrollTextIntoWindow(
+    _ application: AXUIElement,
+    text: String,
+    pid: pid_t
+) throws {
+    guard let path = findTextPaths(application, text).first(where: { candidate in
+        (candidate.ancestors + [candidate.element]).allSatisfy {
+            visibleAttribute($0, "AXHidden")
+        } && frame(candidate.element) != nil && scrollSurface(for: candidate) != nil
+    }), let surface = scrollSurface(for: path),
+       let window = mainWindow(application), let windowFrame = frame(window) else {
+        throw DriverError.timeout("scroll target with measurable bounds: \(text)")
+    }
+    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    let visibleWindow = windowFrame.insetBy(dx: -2, dy: -2)
+    for _ in 0..<8 {
+        guard let textElement = visibleRenderedElement(application, label: text),
+              let textFrame = frame(textElement) else {
+            break
+        }
+        if
+           visibleWindow.contains(CGPoint(x: textFrame.minX, y: textFrame.minY)),
+           visibleWindow.contains(CGPoint(x: textFrame.maxX, y: textFrame.maxY)) {
+            try assertDocumentFixed(application)
+            return
+        }
+        let action = textFrame.maxY > windowFrame.maxY
+            ? "AXScrollDownByPage"
+            : "AXScrollUpByPage"
+        let scrollError = AXUIElementPerformAction(surface, action as CFString)
+        guard scrollError == .success else {
+            throw DriverError.actionFailed("scroll text into the window", scrollError)
+        }
+        Thread.sleep(forTimeInterval: 0.15)
+        let afterActionY = visibleRenderedElement(application, label: text)
+            .flatMap(frame)?.minY
+        if afterActionY == nil || abs(afterActionY! - textFrame.minY) < 1 {
+            guard let surfaceFrame = frame(surface),
+                  let source = CGEventSource(stateID: .combinedSessionState),
+                  let move = CGEvent(
+                    mouseEventSource: source,
+                    mouseType: .mouseMoved,
+                    mouseCursorPosition: CGPoint(x: surfaceFrame.midX, y: surfaceFrame.midY),
+                    mouseButton: .left
+                  ),
+                  let scroll = CGEvent(
+                    scrollWheelEvent2Source: source,
+                    units: .pixel,
+                    wheelCount: 1,
+                    wheel1: textFrame.maxY > windowFrame.maxY ? -420 : 420,
+                    wheel2: 0,
+                    wheel3: 0
+                  ) else {
+                throw DriverError.timeout("scroll event for long rendered text: \(text)")
+            }
+            move.post(tap: .cghidEventTap)
+            Thread.sleep(forTimeInterval: 0.05)
+            scroll.post(tap: .cghidEventTap)
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+    }
+    throw DriverError.timeout(
+        "scroll text into the visible window: \(text) " +
+            "frame=\(String(describing: visibleRenderedElement(application, label: text).flatMap(frame))) " +
+            "window=\(windowFrame) surface=\(String(describing: frame(surface)))"
+    )
 }
 
 func waitForMatchingRenderedColors(
@@ -2607,6 +2715,9 @@ do {
     case "cancel-folder":
         try cancelFolder(application, pid: pid, timeout: timeout)
         print("Cancelled native folder selection")
+    case "assert-picker-title":
+        try assertPickerTitle(application, title: text, timeout: timeout)
+        print("Native folder picker title is localized: \(text)")
     case "assert-visible-focus":
         try activateApplication(application, pid: pid, timeout: min(2, timeout))
         try assertVisibleFocus(application, text, timeout: timeout)
@@ -2645,6 +2756,12 @@ do {
             timeout: timeout
         )
         print("Rendered colors match: \(parts[0]) and \(parts[1])")
+    case "scroll-text-visible":
+        try scrollTextIntoWindow(application, text: text, pid: pid)
+        print("Scrolled rendered text into the visible window: \(text)")
+    case "assert-long-text-fits":
+        try assertLongTextFits(application, text: text)
+        print("Long rendered text wraps within the visible window: \(text)")
     case "assert-document-fixed":
         try assertDocumentFixed(application)
         print("Rendered document has no visible vertical scroll")

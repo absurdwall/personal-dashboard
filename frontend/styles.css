@@ -2567,6 +2567,10 @@ body {
   font-weight: 650;
 }
 
+.language-button {
+  white-space: nowrap;
+}
+
 .product-toolbar-button:hover,
 .product-toolbar-button:focus-visible {
   border-color: transparent;

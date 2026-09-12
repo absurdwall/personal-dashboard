@@ -1,0 +1,234 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  applyInterfaceLanguage,
+  formatInterfaceDate,
+  formatInterfaceMonth,
+  interfaceCopy,
+  localizeApplicationError,
+  localizeApplicationMessage,
+  localizeHabitActualTimeLabel,
+  localizeHabitCoverageLabel,
+  localizeHabitDetail,
+  localizeHabitGoalLabel,
+  setInterfaceError,
+  type InterfaceLanguage,
+} from "../../frontend/interface-language.ts";
+
+type FakeElement = {
+  dataset: Record<string, string | undefined>;
+  textContent: string;
+};
+
+function languageRoot(elements: FakeElement[]) {
+  return {
+    documentElement: {
+      lang: "zh-CN",
+    },
+    querySelectorAll: (selector: string) => {
+      if (selector === "[data-i18n]") {
+        return elements.filter((element) => element.dataset.i18n);
+      }
+      if (selector === "[data-application-message]") {
+        return elements.filter((element) => element.dataset.applicationMessage);
+      }
+      return [];
+    },
+  };
+}
+
+test("fixed interface copy switches language while personal content and drafts stay unchanged", () => {
+  const navigation: FakeElement = {
+    dataset: { i18n: "destination.today" },
+    textContent: "今天",
+  };
+  const personalRecord: FakeElement = {
+    dataset: {},
+    textContent: "用户写的 Markdown · Do not translate",
+  };
+  const operationStatus: FakeElement = {
+    dataset: { i18n: "today.noteSaved", state: "ready" },
+    textContent: "简短记录已保存到绑定的 Daily Record。",
+  };
+  const draft = { value: "未保存草稿 · Keep this wording" };
+  const selectedDate = "2026-09-12";
+  const phase = "daytime";
+
+  applyInterfaceLanguage(
+    "en",
+    languageRoot([navigation, personalRecord, operationStatus]),
+  );
+
+  assert.equal(navigation.textContent, "Today");
+  assert.equal(personalRecord.textContent, "用户写的 Markdown · Do not translate");
+  assert.equal(operationStatus.textContent, "The short note was saved to the Daily Record.");
+  assert.equal(operationStatus.dataset.state, "ready");
+  assert.equal(draft.value, "未保存草稿 · Keep this wording");
+  assert.equal(selectedDate, "2026-09-12");
+  assert.equal(phase, "daytime");
+});
+
+test("fixed application statuses and generated habit labels have English equivalents", () => {
+  assert.equal(
+    localizeApplicationMessage(
+      "已读取按需生成的本地快照；Dashboard 未连接或轮询外部服务。",
+      "en",
+    ),
+    "Loaded the locally generated on-demand snapshot; Dashboard is not connected to or polling external services.",
+  );
+  assert.equal(
+    localizeApplicationMessage(
+      "要更正的记录已经变化。草稿仍保留；请重新读取该日期后重试。",
+      "en",
+    ),
+    "The record being corrected has changed. The draft is preserved; reload that date and try again.",
+  );
+  assert.equal(
+    localizeApplicationMessage(
+      "今天的 Daily Record 缺少有效 frontmatter。请修复 type 和 date，然后刷新 Today。",
+      "en",
+    ),
+    "The Daily Record is missing valid frontmatter. Repair type and date, then refresh Today.",
+  );
+  assert.equal(
+    localizeApplicationMessage(
+      "今天的 Daily Record 身份与 2026-09-12 不一致。请修复 type 和 date，然后刷新 Today。",
+      "en",
+    ),
+    "The Daily Record identity does not match 2026-09-12. Repair type and date, then refresh Today.",
+  );
+  assert.equal(
+    localizeApplicationMessage(
+      "今天的 Daily Record 包含多个“晚间复盘”段落。请合并重复段落，然后刷新 Today。",
+      "en",
+    ),
+    "The Daily Record contains multiple “Evening review” sections. Merge the duplicates, then refresh Today.",
+  );
+  assert.equal(localizeHabitGoalLabel("每周 3 次", "en"), "3 times per week");
+  assert.equal(
+    localizeHabitCoverageLabel("2026-09-01 — 2026-09-12 · 4 个 complete 日期", "en"),
+    "2026-09-01 — 2026-09-12 · 4 complete dates",
+  );
+});
+
+test("fixed error details switch language without changing their source diagnostic", () => {
+  const status: FakeElement = { dataset: {}, textContent: "" };
+  const sourceError = "Vault 不兼容：需要 Obsidian Vault 标记和 life/Journal/Daily 目录";
+
+  setInterfaceError(status, "settings.vaultSelectionError", sourceError, "zh");
+  applyInterfaceLanguage("en", languageRoot([status]));
+
+  assert.equal(
+    status.textContent,
+    "Could not choose a Vault: Incompatible Vault: an Obsidian Vault marker and life/Journal/Daily directory are required",
+  );
+  assert.equal(status.dataset.i18nError, sourceError);
+  assert.doesNotMatch(status.textContent, /[一-龥]/);
+  assert.equal(
+    localizeApplicationError("Could not read the local interface language: permission denied", "zh"),
+    "无法读取本机界面语言：permission denied",
+  );
+  assert.equal(
+    localizeApplicationError("今天的 Daily Record 不是有效的 UTF-8 文本。", "en"),
+    "The Daily Record is not valid UTF-8 text.",
+  );
+  assert.equal(
+    localizeApplicationError("Daily Record 的简短记录正文格式无效。", "en"),
+    "The Daily Record short-note body has an invalid format.",
+  );
+  assert.equal(
+    localizeApplicationError("Could not read today's daily record: permission denied", "zh"),
+    "无法读取今天的 Daily Record：permission denied",
+  );
+  assert.equal(
+    localizeApplicationError("简短记录不能为空。", "en"),
+    "Short note cannot be empty.",
+  );
+  assert.equal(
+    localizeApplicationError("记录标识格式无效；未写入任何内容。", "en"),
+    "Record identifier has an invalid format; nothing was written.",
+  );
+  assert.equal(
+    localizeApplicationError("The local appearance preference is invalid: bad JSON", "zh"),
+    "本机外观偏好无效：bad JSON",
+  );
+  assert.equal(
+    localizeApplicationError("Could not create the Daily Record recovery directory: permission denied", "zh"),
+    "无法创建 Daily Record 恢复目录：permission denied",
+  );
+  assert.equal(
+    localizeApplicationError(
+      "该日期的 Daily Record 包含多个“简短记录”段落。请先合并重复段落；未写入任何内容。",
+      "en",
+    ),
+    "The Daily Record contains multiple “Short notes” sections. Merge the duplicates first; nothing was written.",
+  );
+  assert.equal(
+    localizeApplicationError("Could not write the local Today workspace setting: disk full", "zh"),
+    "无法写入 Today 工作区设置：disk full",
+  );
+  assert.equal(
+    localizeApplicationError("The selected calendar month is invalid.", "zh"),
+    "所选日历月份无效。",
+  );
+  assert.equal(
+    localizeApplicationError(
+      "无法读取 Habits 快照：Habits 快照 range.from 不是有效日期。",
+      "en",
+    ),
+    "Could not read the Habits snapshot: Habits snapshot range.from is not a valid date.",
+  );
+});
+
+test("Habits translates generated detail grammar but preserves source-owned text", () => {
+  const detail = {
+    kind: "observation" as const,
+    sourceLabel: "TickTick · 文字记录 · 来源",
+    status: "partial" as const,
+    evidence: "check-in" as const,
+    observedAt: "2026-09-12",
+    note: "用户备注：次日 30 分钟 · 待解释",
+  };
+
+  assert.equal(
+    localizeHabitDetail(detail, "en"),
+    "TickTick · 文字记录 · 来源 · partial · excluded from counts · check-in evidence · Observed at 2026-09-12 · 用户备注：次日 30 分钟 · 待解释",
+  );
+  assert.equal(
+    localizeHabitDetail({
+      kind: "localRecord",
+      sourceLabel: "Dashboard · partial · 打卡证据 · observedAt fake",
+      text: "次日 30 分钟 · 待解释",
+    }, "en"),
+    "Dashboard · partial · 打卡证据 · observedAt fake · text record · 次日 30 分钟 · 待解释",
+  );
+  assert.equal(localizeHabitDetail({ kind: "conflict" }, "en"), "Source conflict · excluded from completion counts");
+  assert.equal(localizeHabitActualTimeLabel("次日 08:00", "en"), "Next day 08:00");
+  assert.equal(localizeHabitGoalLabel("每日 次日 08:00", "en"), "Daily by 08:00 next day");
+  assert.equal(
+    localizeHabitGoalLabel("每日 07:00 · 日期归属待解释", "en"),
+    "Daily 07:00 · date attribution unresolved",
+  );
+});
+
+test("date labels change locale without changing the selected calendar value", () => {
+  const selectedDate = "2026-09-12";
+
+  assert.equal(formatInterfaceDate(selectedDate, "zh"), "9月12日周六");
+  assert.equal(formatInterfaceDate(selectedDate, "en"), "Sat, Sep 12");
+  assert.equal(formatInterfaceMonth(2026, 9, "zh"), "2026年9月");
+  assert.equal(formatInterfaceMonth(2026, 9, "en"), "September 2026");
+  assert.equal(selectedDate, "2026-09-12");
+});
+
+test("the shared copy entry provides both languages and variable interpolation", () => {
+  const examples: Array<[InterfaceLanguage, string]> = [
+    ["zh", "3 个时间块"],
+    ["en", "3 time blocks"],
+  ];
+
+  for (const [language, expected] of examples) {
+    assert.equal(interfaceCopy("count.timeBlocks", language, { count: 3 }), expected);
+  }
+});

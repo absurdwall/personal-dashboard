@@ -1,3 +1,4 @@
+use personal_dashboard_lib::habits::{HabitDetailView, ObservationStatus};
 use personal_dashboard_lib::today::{
     DailyRecordAvailability, DatedNoteCorrectionInput, DatedNoteInput, HabitCellStatus,
     HabitSnapshotState, ShortRecordCategory, TodayApplication, TodayClock, TodayWorkspaceExchange,
@@ -170,10 +171,11 @@ fn sourced_snapshot_projects_correct_week_counts_time_evidence_and_record_dots()
     assert!(monday.has_record);
     assert!(!monday.counts_as_completion);
     assert_eq!(monday.status, HabitCellStatus::Conflict);
-    assert!(monday
-        .details
-        .iter()
-        .any(|line| line.contains("Dashboard") && line.contains("只是文字记录")));
+    assert!(monday.details.iter().any(|detail| matches!(
+        detail,
+        HabitDetailView::LocalRecord { source_label, text }
+            if source_label.contains("Dashboard") && text.contains("只是文字记录")
+    )));
     assert_eq!(monday.local_records.len(), 1);
     assert_eq!(monday.local_records[0].id, "run-1");
     assert_eq!(monday.local_records[0].text, "只是文字记录，不自动计次");
@@ -186,10 +188,16 @@ fn sourced_snapshot_projects_correct_week_counts_time_evidence_and_record_dots()
         .today
         .details
         .iter()
-        .any(|line| line.contains("明确时刻")));
+        .any(|detail| matches!(detail, HabitDetailView::ActualTime { .. })));
     let sleep = view.habit("sleep").expect("sleep habit");
     assert_eq!(sleep.today.actual_time_label, None);
-    assert!(sleep.today.details.iter().any(|line| line.contains("阈值")));
+    assert!(sleep.today.details.iter().any(|detail| matches!(
+        detail,
+        HabitDetailView::Observation {
+            status: ObservationStatus::ThresholdMet,
+            ..
+        }
+    )));
 
     assert_eq!(exercise.history.len(), 84);
     assert_eq!(exercise.recent.len(), 7);
@@ -468,5 +476,5 @@ fn conflicting_exact_times_remain_unresolved_instead_of_choosing_a_source() {
         .today
         .details
         .iter()
-        .any(|line| line.contains("来源冲突")));
+        .any(|detail| matches!(detail, HabitDetailView::Conflict)));
 }

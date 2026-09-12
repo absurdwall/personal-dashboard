@@ -52,6 +52,7 @@ The recursive `gate` runs these scenarios in order:
 list-first direct state-semantics progress workouts exceptions responsive
 compact keyboard week-close installed-cycle calendar habits vault-selection
 vault-recovery final-state-matrix dashboard-2 settings-vault-colors
+interface-language
 ```
 
 ## Personal Dashboard 3.0 Settings, Vault, and color scenario
@@ -75,6 +76,31 @@ The driver samples the rendered theme chips and compares them with the selected
 swatch, so this proves page-level color application rather than only serialized
 preference state. Final whole-interface prototype parity remains a separate
 acceptance concern.
+
+## Personal Dashboard 3.0 interface-language scenario
+
+Run the ticket-02 packaged check with:
+
+```sh
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=interface-language \
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=360 \
+scripts/acceptance/macos-ipc-workflow.sh
+```
+
+The scenario uses isolated app data and two synthetic Vaults. At 800×640 it
+switches the top-toolbar control from Chinese to English, checks navigation,
+Today phases, localized Calendar dates, empty Habits status, and the longest
+Data & Vault guidance. It keeps an unsaved bilingual draft and selected phase
+through the switch, saves the draft verbatim, and verifies existing bilingual
+Markdown remains unchanged. The native Vault picker title is checked in both
+languages; English must survive the Vault change and a packaged relaunch.
+Finally, an invalid local language document must recover to the usable Chinese
+default without changing either Vault.
+
+After scrolling only the Settings content surface, the long-copy check requires
+the full AX text frame to remain inside the app window and to wrap to multiple
+lines; the document itself must remain fixed without page-level vertical
+scrolling.
 
 The installed-cycle, Calendar, and Habits scenarios retain their own missing,
 malformed, empty, write, correction, and relaunch checks. `dashboard-2` adds the

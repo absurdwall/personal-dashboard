@@ -333,7 +333,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors interface-language; do
     run_bounded_scenario "$scenario"
   done
 
@@ -2139,7 +2139,7 @@ EOF
 
   current_step="preserving a Habits draft across an external record conflict"
   printf '\n<!-- external Habits conflict marker -->\n' >> "$record_file"
-  run_driver type-text "Exercise note text|这条 Habits 冲突草稿不能覆盖外部编辑" 10
+  run_driver type-text "健身记录内容|这条 Habits 冲突草稿不能覆盖外部编辑" 10
   run_driver press "保存记录" 10
   run_driver wait-text "外部发生变化" 10
   run_driver assert-text "这条 Habits 冲突草稿不能覆盖外部编辑"
@@ -2153,7 +2153,7 @@ EOF
   [[ ! -e "$new_record_file" ]] || fail "missing-date Habits fixture already exists"
   run_driver press-contains "2026-09-06 · Exercise" 10
   run_driver wait-text "写一句 · 2026-09-06" 10
-  run_driver type-text "Exercise note text|跑步 30 分钟" 10
+  run_driver type-text "健身记录内容|跑步 30 分钟" 10
   run_driver press "保存记录" 10
   run_driver wait-text "健身短句已写入 Daily Record" 20
   run_driver assert-text "跑步 30 分钟"
@@ -2199,7 +2199,7 @@ EOF
 
   current_step="correcting the shared stable entry directly from Habits"
   run_driver press "更正这条" 10
-  run_driver type-text "Exercise note text|跑步 25 分钟" 10
+  run_driver type-text "健身记录内容|跑步 25 分钟" 10
   run_driver press "保存更正" 10
   run_driver wait-text "更正及修改记录已写入 Daily Record" 20
   run_driver assert-text "跑步 25 分钟"
@@ -2374,7 +2374,7 @@ EOF
   run_driver wait-text "3 / 15" 20
   run_driver press-contains "2026-09-08 · Exercise" 10
   run_driver wait-text "写一句 · 2026-09-08" 20
-  run_driver type-text "Exercise note text|取消选择后仍保留的健身草稿" 10
+  run_driver type-text "健身记录内容|取消选择后仍保留的健身草稿" 10
   open_vault_picker_from_settings
   run_driver cancel-folder 20
   run_driver press "Habits" 10
@@ -2612,12 +2612,12 @@ EOF
     run_driver assert-active-text "本周习惯在今天" 10
     run_driver press-contains "2026-09-08 · Exercise" 10
     run_driver wait-active-text "写一句 · 2026-09-08" 20
-    run_driver type-text "Exercise note text|矩阵 ${viewport} 新记录" 10
+    run_driver type-text "健身记录内容|矩阵 ${viewport} 新记录" 10
     run_driver press "保存记录" 10
     run_driver wait-active-text "健身短句已写入 Daily Record" 20
     run_driver press "更正这条" 10
     run_driver wait-active-text "更正记录 · 2026-09-08" 10
-    run_driver type-text "Exercise note text|矩阵 ${viewport} 更正" 10
+    run_driver type-text "健身记录内容|矩阵 ${viewport} 更正" 10
     run_driver press "保存更正" 10
     run_driver wait-active-text "更正及修改记录已写入 Daily Record" 20
     run_driver assert-active-text "修改记录" 10
@@ -2995,6 +2995,163 @@ EOF
   echo "Appearance: rendered theme pixels matched the selected swatch across all three pages and relaunch; restoring defaults left both Vault records byte-identical"
 }
 
+run_interface_language_scenario() {
+  local vault_a="$acceptance_directory/language-vault-a"
+  local vault_b="$acceptance_directory/language-vault-b"
+  local record_relative="life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local record_a="$vault_a/$record_relative"
+  local record_b="$vault_b/$record_relative"
+  local language_file="$acceptance_data_directory/interface-language.json"
+  local before_b_hash
+  local after_save_hash
+  local draft_text="未保存草稿 · Keep my words exactly"
+  local long_drive_copy='Ordinary local Vaults also work. Dashboard does not convert arbitrary notes, manage Google accounts, or upload files. “Saved locally” does not mean “synced to the cloud.” Google Drive manages versions and trash.'
+
+  current_step="preparing isolated bilingual-interface fixtures"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p \
+    "$vault_a/.obsidian" "$vault_b/.obsidian" \
+    "$vault_a/$(dirname "$record_relative")" "$vault_b/$(dirname "$record_relative")" \
+    "$acceptance_data_directory"
+  cat > "$record_a" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## 今天的大致安排
+
+- **上午：** 中文个人内容 · Keep source English unchanged.
+EOF
+  cat > "$record_b" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## 今天的大致安排
+
+- **上午：** 第二份中文个人内容 · Keep source English unchanged.
+EOF
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_a" > "$acceptance_data_directory/today-workspace.json"
+  before_b_hash="$(shasum -a 256 "$record_b" | awk '{print $1}')"
+
+  current_step="checking the Chinese interface and preserving an in-progress draft"
+  launch_app_waiting_for_text "早间基准" 30
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver assert-active-text "今天"
+  run_driver assert-active-text "日历"
+  run_driver assert-active-text "习惯"
+  run_driver press "当日进展" 10
+  run_driver assert-active-text "中文个人内容 · Keep source English unchanged"
+  run_driver type-text "简短记录内容|$draft_text" 10
+  run_driver assert-active-text "$draft_text"
+  run_driver assert-state "当日进展|selected" 10
+
+  current_step="checking the Chinese native Vault picker title without changing Vault"
+  run_driver press "设置" 10
+  run_driver press "数据与 Vault" 10
+  run_driver press "更换 Vault…" 10
+  run_driver assert-picker-title "选择 Tortilla Flat Vault" 10
+  run_driver cancel-folder "picker" 10
+  run_driver press "今天" 10
+  run_driver press "当日进展" 10
+  run_driver assert-active-text "$draft_text"
+
+  current_step="switching the live packaged interface to English without replacing state"
+  run_driver press "切换为英文" 10
+  run_driver wait-active-text "Settings" 10
+  run_driver assert-active-text "Today"
+  run_driver assert-active-text "Calendar"
+  run_driver assert-active-text "Habits"
+  run_driver assert-active-text "Daytime progress"
+  run_driver assert-state "Daytime progress|selected" 10
+  run_driver assert-active-text "$draft_text"
+  run_driver assert-active-text "中文个人内容 · Keep source English unchanged"
+  run_driver assert-active-absent-text "保存记录"
+
+  current_step="checking long English Settings copy and localized Calendar and Habits states"
+  run_driver press "Settings" 10
+  run_driver wait-active-text "Appearance" 10
+  run_driver press "Data & Vault" 10
+  run_driver assert-active-text "Your records remain in the local folder you choose"
+  run_driver assert-active-text "Saved locally"
+  run_driver assert-active-text "synced to the cloud"
+  run_driver scroll-text-visible "$long_drive_copy" 10
+  run_driver assert-long-text-fits "$long_drive_copy" 10
+  run_driver assert-document-fixed "document" 10
+  run_driver press "Calendar" 10
+  run_driver wait-active-text "September 2026" 20
+  run_driver assert-active-text "Tue, Sep 8"
+  run_driver assert-active-text "Choose a date to preview its summary"
+  run_driver press "Habits" 10
+  run_driver wait-active-text "No Habits snapshot exists" 20
+  run_driver assert-active-text "Habits this week"
+
+  current_step="saving the preserved draft verbatim after returning to Today"
+  run_driver press "Today" 10
+  run_driver press "Daytime progress" 10
+  run_driver assert-active-text "$draft_text"
+  run_driver press "Save note" 10
+  run_driver wait-active-text "short note was saved" 20
+  wait_for_file_text "$record_a" "$draft_text" ||
+    fail "the preserved bilingual draft was not saved verbatim"
+  grep -Fq "中文个人内容 · Keep source English unchanged" "$record_a" ||
+    fail "language switching rewrote existing personal Markdown"
+  after_save_hash="$(shasum -a 256 "$record_a" | awk '{print $1}')"
+
+  current_step="switching Vault while retaining the independent English preference"
+  run_driver press "Settings" 10
+  run_driver press "Data & Vault" 10
+  run_driver press "Change Vault…" 10
+  run_driver assert-picker-title "Select the Tortilla Flat Vault" 10
+  run_driver choose-folder "$vault_b" 35
+  run_driver wait-active-text "$vault_b" 20
+  grep -Fq '"interfaceLanguage": "en"' "$language_file" ||
+    fail "the packaged English preference was not persisted"
+  run_driver press "Today" 10
+  run_driver press "Daytime progress" 10
+  run_driver wait-active-text "第二份中文个人内容 · Keep source English unchanged" 20
+  run_driver assert-state "Daytime progress|selected" 10
+  [[ "$(shasum -a 256 "$record_b" | awk '{print $1}')" == "$before_b_hash" ]] ||
+    fail "language or Vault switching changed Vault B Markdown"
+
+  current_step="proving English relaunch persistence"
+  if ! stop_app; then
+    fail "app process did not exit before language persistence relaunch"
+  fi
+  launch_app_waiting_for_text "Morning baseline" 30
+  run_driver assert-active-text "Settings"
+  run_driver press "Daytime progress" 10
+  run_driver assert-active-text "第二份中文个人内容 · Keep source English unchanged"
+  grep -Fq '"interfaceLanguage": "en"' "$language_file" ||
+    fail "English preference did not survive packaged relaunch"
+
+  current_step="recovering an invalid local preference to usable Chinese defaults"
+  if ! stop_app; then
+    fail "app process did not exit before invalid-language recovery"
+  fi
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "fr"\n}\n' > "$language_file"
+  launch_app_waiting_for_text "早间基准" 30
+  run_driver assert-active-text "设置"
+  run_driver press "当日进展" 10
+  run_driver assert-active-text "第二份中文个人内容 · Keep source English unchanged"
+  run_driver assert-active-absent-text "Daytime progress"
+  [[ "$(shasum -a 256 "$record_a" | awk '{print $1}')" == "$after_save_hash" ]] ||
+    fail "language preference recovery changed Vault A Markdown"
+  [[ "$(shasum -a 256 "$record_b" | awk '{print $1}')" == "$before_b_hash" ]] ||
+    fail "language preference recovery changed Vault B Markdown"
+
+  echo "Packaged IPC interface-language acceptance passed"
+  echo "Language: Chinese and English fixed copy covered navigation, Today, Calendar, Habits, Settings, statuses, and long Drive guidance"
+  echo "State: the selected phase, date, and unsaved draft survived switching; the draft and existing source content remained verbatim"
+  echo "Persistence: English survived Vault switching and relaunch; an invalid local preference recovered to Chinese without changing either Vault"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -3077,6 +3234,7 @@ case "$acceptance_scenario" in
   final-state-matrix) run_final_state_matrix_scenario ;;
   dashboard-2) run_dashboard_2_scenario ;;
   settings-vault-colors) run_settings_vault_colors_scenario ;;
+  interface-language) run_interface_language_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;
 esac
