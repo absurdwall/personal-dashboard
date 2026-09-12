@@ -333,7 +333,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors interface-language background-image day-tasks planning-tasks; do
+  for scenario in list-first direct state-semantics progress workouts exceptions responsive compact keyboard week-close installed-cycle calendar habits vault-selection vault-recovery final-state-matrix dashboard-2 settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion; do
     run_bounded_scenario "$scenario"
   done
 
@@ -2117,12 +2117,12 @@ EOF
   current_step="opening the FINAL Habits snapshot surface"
   launch_app_waiting_for_text "Today" 30
   run_driver set-size "960x720" 10
-  run_driver press "Habits" 10
-  run_driver wait-text "3 / 15" 20
+  run_driver press "习惯" 10
+  run_driver wait-text "4 / 15" 20
   run_driver assert-semantic "habits"
   run_driver assert-text "已知次数 / 目标次数"
   run_driver assert-text "Exercise"
-  run_driver assert-text "1 / 3"
+  run_driver assert-text "2 / 3"
   run_driver assert-text "营养药"
   run_driver assert-text "2 / 7"
   run_driver assert-text "Reset living space"
@@ -2134,12 +2134,12 @@ EOF
   run_driver assert-text "2026-09-08T14:10:00-04:00"
   run_driver assert-text "今天锚点"
 
-  current_step="opening a sourced conflict date and 12-week history"
+  current_step="opening a cross-source OR-completion date and 12-week history"
   run_driver press-contains "2026-09-07 · Exercise" 10
   run_driver wait-text "近 12 周记录" 10
   run_driver assert-text "6 月"
   run_driver assert-text "周一"
-  run_driver assert-text "来源冲突 · 不计次"
+  run_driver assert-text "已知完成"
   run_driver assert-text "只是文字记录，不自动计次"
   run_driver assert-text "历史目标 context"
   run_driver wait-text "写一句 · 2026-09-07" 10
@@ -2165,7 +2165,7 @@ EOF
   run_driver press "保存记录" 10
   run_driver wait-text "健身短句已写入 Daily Record" 20
   run_driver assert-text "跑步 30 分钟"
-  run_driver assert-text "1 / 3"
+  run_driver assert-text "2 / 3"
   wait_for_file_text "$new_record_file" "跑步 30 分钟" ||
     fail "Habits note save did not create the canonical dated Daily Record"
   [[ "$(shasum -a 256 "$snapshot_file")" == "$before_snapshot_hash" ]] ||
@@ -2198,12 +2198,12 @@ EOF
     fail "app process did not exit after the cross-entry correction"
   fi
   launch_app_waiting_for_text "Today" 30
-  run_driver press "Habits" 10
-  run_driver wait-text "3 / 15" 20
+  run_driver press "习惯" 10
+  run_driver wait-text "4 / 15" 20
   run_driver press-contains "2026-09-06 · Exercise" 10
   run_driver wait-text "跑步 20 分钟" 20
   run_driver assert-text "修改记录 · 1"
-  run_driver assert-text "1 / 3"
+  run_driver assert-text "2 / 3"
 
   current_step="correcting the shared stable entry directly from Habits"
   run_driver press "更正这条" 10
@@ -2232,8 +2232,8 @@ EOF
   run_driver assert-text "修改记录 · 2"
 
   current_step="returning to Habits for compact and retention checks"
-  run_driver press "Habits" 10
-  run_driver wait-text "3 / 15" 20
+  run_driver press "习惯" 10
+  run_driver wait-text "4 / 15" 20
 
   current_step="checking compact Habits layout and destination switcher"
   run_driver set-size "640x520" 10
@@ -2242,7 +2242,7 @@ EOF
   run_driver assert-text "Today"
   run_driver assert-text "Calendar"
   run_driver assert-text "Habits"
-  run_driver assert-text "3 / 15"
+  run_driver assert-text "4 / 15"
   run_driver assert-text "近 12 周记录"
 
   current_step="retaining the last valid reading after malformed refresh"
@@ -2250,16 +2250,112 @@ EOF
   printf '{"schemaVersion":2}\n' > "$snapshot_file"
   run_driver press "刷新快照" 10
   run_driver wait-text "继续显示上个有效快照" 20
-  run_driver assert-text "3 / 15"
+  run_driver assert-text "4 / 15"
   [[ "$(shasum -a 256 "$record_file" "$new_record_file")" == "$before_malformed_record_hashes" ]] ||
     fail "Habits refresh changed Daily Record content"
 
   echo "Packaged IPC Habits snapshot acceptance passed"
-  echo "Projection: corrected 3 / 15 summary, daily actual-time evidence, recent dots, and 12-week history crossed real Tauri IPC"
+  echo "Projection: corrected 4 / 15 OR-merged summary, daily actual-time evidence, recent dots, and 12-week history crossed real Tauri IPC"
   echo "Entry: Habits created and corrected one dated Exercise note; Calendar, Today, and Evening read the same stable entry across relaunch"
   echo "Boundary: the note changed only the canonical Daily Record; no producer, Dida365 call, polling, snapshot count, or snapshot write"
   echo "Failure: malformed refresh retained the last valid in-process reading with visible status"
   echo "Viewport: Habits remained readable at 960x720 and 640x520"
+}
+
+run_local_habit_completion_scenario() {
+  local vault_directory="$acceptance_directory/local-habit-vault"
+  local snapshot_directory="$vault_directory/.personal-dashboard/derived"
+  local snapshot_file="$snapshot_directory/habits-v1.json"
+  local snapshot_candidate="$snapshot_directory/habits-v1.candidate.json"
+  local completion_file="$vault_directory/life/.personal-dashboard/habit-completions/v1/completions.json"
+  local checkbox_label='记录“Reset living space”今天完成'
+  local snapshot_hash
+
+  current_step="preparing an isolated local-habit Vault and external snapshot"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p "$vault_directory/.obsidian" "$vault_directory/life/Journal/Daily" \
+    "$snapshot_directory" "$acceptance_data_directory"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_directory" > "$acceptance_data_directory/today-workspace.json"
+  /bin/cp "$repository_root/src-tauri/tests/fixtures/habits-v1-complete.json" "$snapshot_file"
+  snapshot_hash="$(shasum -a 256 "$snapshot_file" | awk '{print $1}')"
+
+  current_step="recording a local completion through the compact Habits row"
+  launch_app_waiting_for_text "Today" 30
+  run_driver set-size "1120x760" 10
+  run_driver press "习惯" 10
+  run_driver wait-text "4 / 15" 20
+  run_driver assert-text "Reset living space"
+  run_driver assert-text "0 / 5"
+  run_driver assert-text "尚无完成证据"
+  run_driver press "$checkbox_label" 10
+  run_driver wait-text "本地完成已保存到所选 Vault" 20
+  run_driver assert-text "1 / 5"
+  run_driver assert-text "Dashboard 本地完成"
+  run_driver assert-state "$checkbox_label|selected" 10
+  wait_for_file_text "$completion_file" '"habitKey": "reset"' ||
+    fail "packaged habit completion did not create the canonical local document"
+  wait_for_file_text "$completion_file" '"kind": "completed"' ||
+    fail "packaged habit completion did not append a completion change"
+  [[ "$(shasum -a 256 "$snapshot_file" | awk '{print $1}')" == "$snapshot_hash" ]] ||
+    fail "recording a local completion changed the external snapshot"
+
+  current_step="relaunching with the local completion still selected"
+  if ! stop_app; then
+    fail "app process did not exit before local-habit relaunch"
+  fi
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "习惯" 10
+  run_driver wait-text "1 / 5" 20
+  run_driver assert-state "$checkbox_label|selected" 10
+  run_driver assert-text "Dashboard 本地完成"
+
+  current_step="replacing only the external projection and OR-merging both sources"
+  /bin/cp "$snapshot_file" "$snapshot_candidate"
+  /usr/bin/perl -0pi -e \
+    's/2026-09-08T09:00:00-04:00", "status": "partial"/2026-09-08T09:00:00-04:00", "status": "completed"/' \
+    "$snapshot_candidate"
+  /bin/mv "$snapshot_candidate" "$snapshot_file"
+  snapshot_hash="$(shasum -a 256 "$snapshot_file" | awk '{print $1}')"
+  run_driver press "刷新快照" 10
+  run_driver wait-text "本地 + 外部：Dida365 打卡、Personal Dashboard local" 20
+  run_driver assert-text "1 / 5"
+  run_driver assert-state "$checkbox_label|selected" 10
+
+  current_step="withdrawing only local state while external completion remains"
+  run_driver press "$checkbox_label" 10
+  run_driver wait-text "本地完成已取消；外部来源仍标记完成" 20
+  run_driver assert-text "本地已取消；外部仍完成：Dida365 打卡"
+  run_driver assert-text "1 / 5"
+  run_driver assert-state "$checkbox_label|selected" 10
+  wait_for_file_text "$completion_file" '"kind": "withdrawn"' ||
+    fail "packaged local withdrawal was not appended"
+  [[ "$(shasum -a 256 "$snapshot_file" | awk '{print $1}')" == "$snapshot_hash" ]] ||
+    fail "withdrawing a local completion changed the external snapshot"
+
+  current_step="checking the merged completion in the compact Habits layout"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver assert-state "$checkbox_label|selected" 10
+  run_driver assert-text "本地已取消；外部仍完成：Dida365 打卡"
+
+  current_step="checking English source explanation and final relaunch persistence"
+  run_driver press "切换为英文" 10
+  run_driver wait-text "Local withdrawn; external remains: Dida365 打卡" 10
+  run_driver assert-state 'Record “Reset living space” complete today|selected' 10
+  if ! stop_app; then
+    fail "app process did not exit before final local-habit relaunch"
+  fi
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Habits" 10
+  run_driver wait-text "Local withdrawn; external remains: Dida365 打卡" 20
+  run_driver assert-state 'Record “Reset living space” complete today|selected' 10
+
+  echo "Packaged IPC local habit-completion acceptance passed"
+  echo "Persistence: local completion and withdrawal survived relaunch in the selected synthetic Vault"
+  echo "Merge: external replacement was OR-merged; local withdrawal remained distinct while the merged checkbox stayed selected"
+  echo "Boundary: completion operations never changed the rebuildable external snapshot"
+  echo "Presentation: the compact checkbox and source explanation were verified in Chinese and English"
 }
 
 run_vault_selection_scenario() {
@@ -3750,6 +3846,7 @@ case "$acceptance_scenario" in
   background-image) run_background_image_scenario ;;
   day-tasks) run_day_tasks_scenario ;;
   planning-tasks) run_planning_tasks_scenario ;;
+  local-habit-completion) run_local_habit_completion_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;
 esac

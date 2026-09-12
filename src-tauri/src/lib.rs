@@ -42,8 +42,8 @@ use platform::{
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
     DayTaskCompletionInput, DayTaskDeleteInput, DayTaskRenameInput, DaytimeUpdateInput,
-    EveningUpdateInput, HabitSnapshotView, PlanningDayTaskContextView, TodayApplication, TodayView,
-    VaultSelectionResult,
+    EveningUpdateInput, HabitCompletionMutationInput, HabitSnapshotView,
+    PlanningDayTaskContextView, TodayApplication, TodayView, VaultSelectionResult,
 };
 
 type DesktopTodayApplication = TodayApplication<
@@ -163,6 +163,14 @@ fn habit_snapshot(
     application: State<'_, DesktopTodayApplication>,
 ) -> Result<HabitSnapshotView, String> {
     application.habits()
+}
+
+#[tauri::command]
+fn set_local_habit_completion(
+    application: State<'_, DesktopTodayApplication>,
+    input: HabitCompletionMutationInput,
+) -> Result<HabitSnapshotView, String> {
+    application.set_local_habit_completion(input)
 }
 
 #[tauri::command]
@@ -344,6 +352,7 @@ pub fn run() {
             read_daily_view,
             calendar_month,
             habit_snapshot,
+            set_local_habit_completion,
             select_today_vault,
             append_daytime_update,
             add_dated_note,
@@ -371,6 +380,7 @@ pub fn run() {
         read_daily_view,
         calendar_month,
         habit_snapshot,
+        set_local_habit_completion,
         select_today_vault,
         append_daytime_update,
         add_dated_note,

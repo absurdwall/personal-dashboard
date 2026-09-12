@@ -1,8 +1,10 @@
 use crate::habits::{
-    project_snapshot, snapshot_dates, FileHabitSnapshotStore, HabitSnapshotStore, LocalHabitRecord,
-    SNAPSHOT_RELATIVE_PATH,
+    project_snapshot, snapshot_dates, FileHabitSnapshotStore, HabitSnapshotStore,
+    LocalHabitCompletion, LocalHabitRecord, SNAPSHOT_RELATIVE_PATH,
 };
-pub use crate::habits::{HabitCellStatus, HabitSnapshotState, HabitSnapshotView};
+pub use crate::habits::{
+    HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
+};
 use crate::interface_language::InterfaceLanguage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -75,30 +77,78 @@ pub trait DayTaskStore {
     fn create_new(&self, path: &Path, document: &[u8]) -> Result<(), String>;
 }
 
+pub trait HabitCompletionStore {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String>;
+    fn save_if_unchanged(&self, path: &Path, expected: &[u8], updated: &[u8])
+        -> Result<(), String>;
+    fn create_new(&self, path: &Path, document: &[u8]) -> Result<(), String>;
+}
+
 #[derive(Clone, Copy)]
 enum StorageDocumentKind {
     DailyRecord,
     DayTasks,
+    HabitCompletions,
 }
 
 impl StorageDocumentKind {
-    fn text(self, daily_record: &str, day_tasks: &str) -> String {
+    fn text(self, daily_record: &str, day_tasks: &str, habit_completions: &str) -> String {
         match self {
             Self::DailyRecord => daily_record,
             Self::DayTasks => day_tasks,
+            Self::HabitCompletions => habit_completions,
         }
         .into()
     }
 
-    fn error(self, daily_record: &str, day_tasks: &str, error: impl std::fmt::Display) -> String {
+    fn error(
+        self,
+        daily_record: &str,
+        day_tasks: &str,
+        habit_completions: &str,
+        error: impl std::fmt::Display,
+    ) -> String {
         format!(
             "{}{}",
             match self {
                 Self::DailyRecord => daily_record,
                 Self::DayTasks => day_tasks,
+                Self::HabitCompletions => habit_completions,
             },
             error
         )
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct FileHabitCompletionStore;
+
+impl HabitCompletionStore for FileHabitCompletionStore {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
+        match fs::read(path) {
+            Ok(document) => Ok(Some(document)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!("无法读取本地习惯完成正本：{error}")),
+        }
+    }
+
+    fn save_if_unchanged(
+        &self,
+        path: &Path,
+        expected: &[u8],
+        updated: &[u8],
+    ) -> Result<(), String> {
+        save_file_if_unchanged(
+            path,
+            expected,
+            updated,
+            StorageDocumentKind::HabitCompletions,
+            |_| Ok(()),
+        )
+    }
+
+    fn create_new(&self, path: &Path, document: &[u8]) -> Result<(), String> {
+        create_new_file(path, document, StorageDocumentKind::HabitCompletions)
     }
 }
 
@@ -171,12 +221,14 @@ fn create_new_file(path: &Path, document: &[u8], kind: StorageDocumentKind) -> R
         kind.text(
             "The Daily Record has no parent directory.",
             "The day-task document has no parent directory.",
+            "The local habit-completion document has no parent directory.",
         )
     })?;
     fs::create_dir_all(parent).map_err(|error| {
         kind.error(
             "Could not create the Daily Record directory: ",
             "Could not create the day-task document directory: ",
+            "Could not create the local habit-completion document directory: ",
             error,
         )
     })?;
@@ -188,6 +240,7 @@ fn create_new_file(path: &Path, document: &[u8], kind: StorageDocumentKind) -> R
             kind.error(
                 "Could not prepare the new Daily Record: ",
                 "Could not prepare the new day-task document: ",
+                "Could not prepare the new local habit-completion document: ",
                 error,
             )
         });
@@ -202,11 +255,13 @@ fn create_new_file(path: &Path, document: &[u8], kind: StorageDocumentKind) -> R
             kind.text(
                 "该日期的 Daily Record 已被另一个写入创建。请刷新后重试；现有内容未被覆盖。",
                 "这一天的任务正本已被另一个写入创建。请刷新后重试；现有任务未被覆盖。",
+                "本地习惯完成正本已被另一个写入创建。请刷新 Habits 后重试；现有内容未被覆盖。",
             )
         } else {
             kind.error(
                 "Could not exclusively activate the new Daily Record: ",
                 "Could not exclusively activate the new day-task document: ",
+                "Could not exclusively activate the new local habit-completion document: ",
                 error,
             )
         });
@@ -215,12 +270,14 @@ fn create_new_file(path: &Path, document: &[u8], kind: StorageDocumentKind) -> R
             match kind {
                 StorageDocumentKind::DailyRecord => format!("{error}; the complete new Daily Record is present at {} and can be verified by refreshing", path.display()),
                 StorageDocumentKind::DayTasks => format!("{error}; the complete new day-task document is present at {} and can be verified by refreshing", path.display()),
+                StorageDocumentKind::HabitCompletions => format!("{error}; the complete new local habit-completion document is present at {} and can be verified by refreshing", path.display()),
             }
         })?;
     fs::remove_file(&temporary).map_err(|error| {
             match kind {
                 StorageDocumentKind::DailyRecord => format!("The new Daily Record is active, but its temporary hard link remains at {}: {error}", temporary.display()),
                 StorageDocumentKind::DayTasks => format!("The new day-task document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
+                StorageDocumentKind::HabitCompletions => format!("The new local habit-completion document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
             }
         })?;
     sync_parent(path, kind)
@@ -240,6 +297,7 @@ where
         kind.error(
             "Could not re-read today's daily record: ",
             "Could not re-read the day-task document: ",
+            "Could not re-read the local habit-completion document: ",
             error,
         )
     })?;
@@ -256,6 +314,7 @@ where
                     kind.error(
                         "Could not inspect today's daily record permissions: ",
                         "Could not inspect the day-task document permissions: ",
+                        "Could not inspect the local habit-completion document permissions: ",
                         error,
                     )
                 })?
@@ -265,6 +324,7 @@ where
             kind.error(
                 "Could not preserve today's daily record permissions: ",
                 "Could not preserve the day-task document permissions: ",
+                "Could not preserve the local habit-completion document permissions: ",
                 error,
             )
         })?;
@@ -275,6 +335,7 @@ where
                 kind.error(
                     "Could not write today's daily record update: ",
                     "Could not write the day-task document update: ",
+                    "Could not write the local habit-completion document update: ",
                     error,
                 )
             })?;
@@ -297,11 +358,12 @@ where
                 Err(match kind {
                     StorageDocumentKind::DailyRecord => format!("{preservation_error}; activation was rolled back and the rejected Dashboard candidate remains at {}", temporary.display()),
                     StorageDocumentKind::DayTasks => format!("{preservation_error}; activation was rolled back and the rejected day-task candidate remains at {}", temporary.display()),
+                    StorageDocumentKind::HabitCompletions => format!("{preservation_error}; activation was rolled back and the rejected local habit-completion candidate remains at {}", temporary.display()),
                 })
             }
             Err(rollback_error) => Err(format!(
                 "{preservation_error}; rollback also failed ({rollback_error}); the actual displaced {} inode remains linked at {}",
-                match kind { StorageDocumentKind::DailyRecord => "Daily Record", StorageDocumentKind::DayTasks => "day-task document" }, temporary.display()
+                match kind { StorageDocumentKind::DailyRecord => "Daily Record", StorageDocumentKind::DayTasks => "day-task document", StorageDocumentKind::HabitCompletions => "local habit-completion document" }, temporary.display()
             )),
         }
     })?;
@@ -309,6 +371,7 @@ where
         match kind {
             StorageDocumentKind::DailyRecord => format!("Could not verify the displaced daily record after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
             StorageDocumentKind::DayTasks => format!("Could not verify the displaced day-task document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
+            StorageDocumentKind::HabitCompletions => format!("Could not verify the displaced local habit-completion document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
         }
     })?;
     if displaced == expected {
@@ -316,6 +379,7 @@ where
                 match kind {
                     StorageDocumentKind::DailyRecord => format!("Could not verify today's daily record after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                     StorageDocumentKind::DayTasks => format!("Could not verify the day-task document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
+                    StorageDocumentKind::HabitCompletions => format!("Could not verify the local habit-completion document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                 }
             })?;
         if active == updated {
@@ -325,6 +389,7 @@ where
                 kind.error(
                     "Could not remove the completed daily record snapshot: ",
                     "Could not remove the completed day-task snapshot: ",
+                    "Could not remove the completed local habit-completion snapshot: ",
                     error,
                 )
             })?;
@@ -345,6 +410,7 @@ where
             match kind {
                 StorageDocumentKind::DailyRecord => "record",
                 StorageDocumentKind::DayTasks => "day-task document",
+                StorageDocumentKind::HabitCompletions => "local habit-completion document",
             },
             temporary.display()
         )
@@ -353,6 +419,7 @@ where
         kind.error(
             "Could not verify today's daily record after conflict rollback: ",
             "Could not verify the day-task document after conflict rollback: ",
+            "Could not verify the local habit-completion document after conflict rollback: ",
             error,
         )
     })?;
@@ -360,6 +427,7 @@ where
         kind.error(
             "Could not verify the rejected daily record candidate: ",
             "Could not verify the rejected day-task candidate: ",
+            "Could not verify the rejected local habit-completion candidate: ",
             error,
         )
     })?;
@@ -368,6 +436,7 @@ where
             kind.error(
                 "Could not remove the rejected daily record candidate: ",
                 "Could not remove the rejected day-task candidate: ",
+                "Could not remove the rejected local habit-completion candidate: ",
                 error,
             )
         })?;
@@ -388,6 +457,7 @@ fn prepare_recovery_directory(path: &Path, kind: StorageDocumentKind) -> Result<
         kind.error(
             "Could not create the Daily Record recovery directory; no write was attempted: ",
             "Could not create the day-task recovery directory; no write was attempted: ",
+            "Could not create the local habit-completion recovery directory; no write was attempted: ",
             error,
         )
     })
@@ -405,6 +475,7 @@ fn preserve_displaced_inode(
             kind.error(
                 "Could not create a recovery snapshot nonce: ",
                 "Could not create a day-task recovery snapshot nonce: ",
+                "Could not create a local habit-completion recovery snapshot nonce: ",
                 error,
             )
         })?
@@ -415,6 +486,7 @@ fn preserve_displaced_inode(
         .unwrap_or(match kind {
             StorageDocumentKind::DailyRecord => "daily-record",
             StorageDocumentKind::DayTasks => "day-tasks",
+            StorageDocumentKind::HabitCompletions => "habit-completions",
         });
     for attempt in 0..32u8 {
         let recovery = recovery_directory.join(format!(
@@ -428,13 +500,14 @@ fn preserve_displaced_inode(
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(error) => {
-                return Err(kind.error("Could not preserve the Daily Record inode actually displaced during activation: ", "Could not preserve the day-task document inode actually displaced during activation: ", error))
+                return Err(kind.error("Could not preserve the Daily Record inode actually displaced during activation: ", "Could not preserve the day-task document inode actually displaced during activation: ", "Could not preserve the local habit-completion document inode actually displaced during activation: ", error))
             }
         }
     }
     Err(kind.text(
         "Could not reserve a unique recovery path for the Daily Record inode actually displaced during activation.",
         "Could not reserve a unique recovery path for the day-task document inode actually displaced during activation.",
+        "Could not reserve a unique recovery path for the local habit-completion document inode actually displaced during activation.",
     ))
 }
 
@@ -447,6 +520,7 @@ fn recovery_directory_for(path: &Path, kind: StorageDocumentKind) -> Result<Path
         kind.text(
             "Today's Daily Record has no location for a same-volume recovery snapshot.",
             "The day-task document has no location for a same-volume recovery snapshot.",
+            "The local habit-completion document has no location for a same-volume recovery snapshot.",
         )
     })?;
     Ok(root.join(".personal-dashboard-recovery").join("today"))
@@ -462,6 +536,7 @@ fn create_temporary_file(
             kind.error(
                 "Could not create a daily record update nonce: ",
                 "Could not create a day-task update nonce: ",
+                "Could not create a local habit-completion update nonce: ",
                 error,
             )
         })?
@@ -472,6 +547,7 @@ fn create_temporary_file(
             match kind {
                 StorageDocumentKind::DailyRecord => "md",
                 StorageDocumentKind::DayTasks => "json",
+                StorageDocumentKind::HabitCompletions => "json",
             },
             std::process::id()
         ));
@@ -486,6 +562,7 @@ fn create_temporary_file(
                 return Err(kind.error(
                     "Could not prepare today's daily record update: ",
                     "Could not prepare the day-task document update: ",
+                    "Could not prepare the local habit-completion document update: ",
                     error,
                 ))
             }
@@ -494,6 +571,7 @@ fn create_temporary_file(
     Err(kind.text(
         "Could not reserve a unique temporary daily record path.",
         "Could not reserve a unique temporary day-task document path.",
+        "Could not reserve a unique temporary local habit-completion document path.",
     ))
 }
 
@@ -501,8 +579,10 @@ fn external_change_message(recovery: Option<&Path>, kind: StorageDocumentKind) -
     match (recovery, kind) {
         (Some(path), StorageDocumentKind::DailyRecord) => format!("今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请在 Obsidian 中检查后刷新 Today。", path.display()),
         (Some(path), StorageDocumentKind::DayTasks) => format!("当天任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新当天任务。", path.display()),
+        (Some(path), StorageDocumentKind::HabitCompletions) => format!("本地习惯完成正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Habits。", path.display()),
         (None, StorageDocumentKind::DailyRecord) => "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::DayTasks) => "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。".into(),
+        (None, StorageDocumentKind::HabitCompletions) => "本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。".into(),
     }
 }
 
@@ -516,6 +596,7 @@ fn preserve_conflict_snapshot(
         kind.error(
             "Could not create the Daily Record recovery directory: ",
             "Could not create the day-task recovery directory: ",
+            "Could not create the local habit-completion recovery directory: ",
             error,
         )
     })?;
@@ -525,6 +606,7 @@ fn preserve_conflict_snapshot(
             kind.error(
                 "Could not create a conflict snapshot nonce: ",
                 "Could not create a day-task conflict snapshot nonce: ",
+                "Could not create a local habit-completion conflict snapshot nonce: ",
                 error,
             )
         })?
@@ -536,6 +618,7 @@ fn preserve_conflict_snapshot(
             .unwrap_or(match kind {
                 StorageDocumentKind::DailyRecord => "daily-record",
                 StorageDocumentKind::DayTasks => "day-tasks",
+                StorageDocumentKind::HabitCompletions => "habit-completions",
             });
         let recovery = recovery_directory.join(format!(
             "{record_name}-conflict-{nonce}-{}-{attempt}.snapshot",
@@ -547,6 +630,7 @@ fn preserve_conflict_snapshot(
                     kind.error(
                         "Could not finalize the conflict recovery snapshot: ",
                         "Could not finalize the day-task conflict recovery snapshot: ",
+                        "Could not finalize the local habit-completion conflict recovery snapshot: ",
                         error,
                     )
                 })?;
@@ -557,6 +641,7 @@ fn preserve_conflict_snapshot(
                 return Err(kind.error(
                     "Could not preserve the concurrent daily record snapshot: ",
                     "Could not preserve the concurrent day-task snapshot: ",
+                    "Could not preserve the concurrent local habit-completion snapshot: ",
                     error,
                 ))
             }
@@ -565,6 +650,7 @@ fn preserve_conflict_snapshot(
     Err(kind.text(
         "Could not reserve a unique daily record conflict snapshot path.",
         "Could not reserve a unique day-task conflict snapshot path.",
+        "Could not reserve a unique local habit-completion conflict snapshot path.",
     ))
 }
 
@@ -573,6 +659,7 @@ fn sync_parent(path: &Path, kind: StorageDocumentKind) -> Result<(), String> {
         kind.text(
             "Today's daily record has no parent directory.",
             "The day-task document has no parent directory.",
+            "The local habit-completion document has no parent directory.",
         )
     })?;
     fs::File::open(parent)
@@ -581,6 +668,7 @@ fn sync_parent(path: &Path, kind: StorageDocumentKind) -> Result<(), String> {
             kind.error(
                 "Could not sync today's daily record directory: ",
                 "Could not sync the day-task document directory: ",
+                "Could not sync the local habit-completion document directory: ",
                 error,
             )
         })
@@ -604,12 +692,14 @@ fn atomic_exchange(left: &Path, right: &Path, kind: StorageDocumentKind) -> Resu
         kind.text(
             "The temporary daily record path contains a NUL byte.",
             "The temporary day-task document path contains a NUL byte.",
+            "The temporary local habit-completion document path contains a NUL byte.",
         )
     })?;
     let right = CString::new(right.as_os_str().as_bytes()).map_err(|_| {
         kind.text(
             "The daily record path contains a NUL byte.",
             "The day-task document path contains a NUL byte.",
+            "The local habit-completion document path contains a NUL byte.",
         )
     })?;
     // SAFETY: both C strings are NUL-terminated and remain alive for the duration of the call.
@@ -620,6 +710,7 @@ fn atomic_exchange(left: &Path, right: &Path, kind: StorageDocumentKind) -> Resu
         Err(kind.error(
             "Could not atomically exchange today's daily record: ",
             "Could not atomically exchange the day-task document: ",
+            "Could not atomically exchange the local habit-completion document: ",
             std::io::Error::last_os_error(),
         ))
     }
@@ -630,6 +721,7 @@ fn atomic_exchange(_left: &Path, _right: &Path, kind: StorageDocumentKind) -> Re
     Err(kind.text(
         "Atomic conditional Daily Record replacement is currently supported only on macOS.",
         "Atomic conditional day-task replacement is currently supported only on macOS.",
+        "Atomic conditional local habit-completion replacement is currently supported only on macOS.",
     ))
 }
 
@@ -891,6 +983,7 @@ fn daily_record_availability(state: TodayState, evening: &EveningView) -> DailyR
 const DAY_TASK_SCHEMA_VERSION: u32 = 1;
 const DAY_TASK_PLAN_SCHEMA_VERSION: u32 = 1;
 const DAY_TASK_TEXT_LIMIT: usize = 160;
+const HABIT_COMPLETION_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -1051,6 +1144,61 @@ pub struct DayTaskDeleteInput {
     pub change_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitCompletionMutationInput {
+    pub habit_key: String,
+    pub lived_date: String,
+    pub completed: bool,
+    pub change_id: String,
+    pub target_binding: String,
+    pub expected_revision: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum HabitCompletionChangeKind {
+    Completed,
+    Withdrawn,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HabitCompletionChange {
+    id: String,
+    kind: HabitCompletionChangeKind,
+    changed_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HabitCompletionRecord {
+    habit_key: String,
+    lived_date: String,
+    completed_at: Option<String>,
+    modified_at: String,
+    changes: Vec<HabitCompletionChange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HabitCompletionNoOpReceipt {
+    id: String,
+    habit_key: String,
+    lived_date: String,
+    completed: bool,
+    accepted_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HabitCompletionDocument {
+    schema_version: u32,
+    completions: Vec<HabitCompletionRecord>,
+    #[serde(default)]
+    no_op_receipts: Vec<HabitCompletionNoOpReceipt>,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct DayTaskDocument {
@@ -1136,6 +1284,7 @@ pub struct TodayApplication<
     S = FileTodayRecordStore,
     H = FileHabitSnapshotStore,
     D = FileDayTaskStore,
+    L = FileHabitCompletionStore,
 > {
     persistence: P,
     exchange: E,
@@ -1143,11 +1292,20 @@ pub struct TodayApplication<
     record_store: S,
     habit_snapshot_store: H,
     day_task_store: D,
+    habit_completion_store: L,
     habit_cache: Mutex<HashMap<PathBuf, HabitSnapshotView>>,
 }
 
 impl<P, E, C>
-    TodayApplication<P, E, C, FileTodayRecordStore, FileHabitSnapshotStore, FileDayTaskStore>
+    TodayApplication<
+        P,
+        E,
+        C,
+        FileTodayRecordStore,
+        FileHabitSnapshotStore,
+        FileDayTaskStore,
+        FileHabitCompletionStore,
+    >
 where
     P: TodayWorkspacePersistence,
     E: TodayWorkspaceExchange,
@@ -1161,12 +1319,14 @@ where
             record_store: FileTodayRecordStore,
             habit_snapshot_store: FileHabitSnapshotStore,
             day_task_store: FileDayTaskStore,
+            habit_completion_store: FileHabitCompletionStore,
             habit_cache: Mutex::new(HashMap::new()),
         }
     }
 }
 
-impl<P, E, C, S> TodayApplication<P, E, C, S, FileHabitSnapshotStore, FileDayTaskStore>
+impl<P, E, C, S>
+    TodayApplication<P, E, C, S, FileHabitSnapshotStore, FileDayTaskStore, FileHabitCompletionStore>
 where
     P: TodayWorkspacePersistence,
     E: TodayWorkspaceExchange,
@@ -1181,12 +1341,13 @@ where
             record_store,
             habit_snapshot_store: FileHabitSnapshotStore,
             day_task_store: FileDayTaskStore,
+            habit_completion_store: FileHabitCompletionStore,
             habit_cache: Mutex::new(HashMap::new()),
         }
     }
 }
 
-impl<P, E, C, S, H> TodayApplication<P, E, C, S, H, FileDayTaskStore>
+impl<P, E, C, S, H> TodayApplication<P, E, C, S, H, FileDayTaskStore, FileHabitCompletionStore>
 where
     P: TodayWorkspacePersistence,
     E: TodayWorkspaceExchange,
@@ -1208,12 +1369,13 @@ where
             record_store,
             habit_snapshot_store,
             day_task_store: FileDayTaskStore,
+            habit_completion_store: FileHabitCompletionStore,
             habit_cache: Mutex::new(HashMap::new()),
         }
     }
 }
 
-impl<P, E, C, S, H, D> TodayApplication<P, E, C, S, H, D>
+impl<P, E, C, S, H, D> TodayApplication<P, E, C, S, H, D, FileHabitCompletionStore>
 where
     P: TodayWorkspacePersistence,
     E: TodayWorkspaceExchange,
@@ -1237,12 +1399,13 @@ where
             record_store,
             habit_snapshot_store,
             day_task_store,
+            habit_completion_store: FileHabitCompletionStore,
             habit_cache: Mutex::new(HashMap::new()),
         }
     }
 }
 
-impl<P, E, C, S, H, D> TodayApplication<P, E, C, S, H, D>
+impl<P, E, C, S, H, D, L> TodayApplication<P, E, C, S, H, D, L>
 where
     P: TodayWorkspacePersistence,
     E: TodayWorkspaceExchange,
@@ -1250,7 +1413,29 @@ where
     S: TodayRecordStore,
     H: HabitSnapshotStore,
     D: DayTaskStore,
+    L: HabitCompletionStore,
 {
+    pub fn with_every_store(
+        persistence: P,
+        exchange: E,
+        clock: C,
+        record_store: S,
+        habit_snapshot_store: H,
+        day_task_store: D,
+        habit_completion_store: L,
+    ) -> Self {
+        Self {
+            persistence,
+            exchange,
+            clock,
+            record_store,
+            habit_snapshot_store,
+            day_task_store,
+            habit_completion_store,
+            habit_cache: Mutex::new(HashMap::new()),
+        }
+    }
+
     fn day_tasks_for(
         &self,
         vault: &Path,
@@ -1685,6 +1870,153 @@ where
         Ok((vault, path))
     }
 
+    pub fn set_local_habit_completion(
+        &self,
+        input: HabitCompletionMutationInput,
+    ) -> Result<HabitSnapshotView, String> {
+        validate_habit_key(&input.habit_key)?;
+        self.validate_event_date(&input.lived_date)?;
+        validate_local_identifier(&input.change_id, "习惯完成修改标识")?;
+        let catalog = self.habits()?;
+        if !matches!(
+            catalog.state,
+            HabitSnapshotState::Ready | HabitSnapshotState::Stale
+        ) {
+            return Err("当前没有可验证的 Habits catalog；请刷新有效快照后再记录。".into());
+        }
+        let habit = catalog
+            .habit(&input.habit_key)
+            .ok_or_else(|| "Habits catalog 中没有这个稳定习惯 key；未写入任何内容。".to_string())?;
+        if !habit.can_record_completion {
+            return Err("该习惯不是 completion 型；时刻和阈值证据不能用本地完成框记录。".into());
+        }
+
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or_else(|| "请先选择 Vault，再记录本地习惯完成。".to_string())?;
+        validate_compatible_vault(&vault)
+            .map_err(|error| format!("{error}；本地习惯操作仍可重试，未写入任何内容。"))?;
+        let path = canonical_habit_completion_path(&vault);
+        if habit_completion_target_binding(&path) != input.target_binding {
+            return Err(
+                "Vault 或本地习惯完成目标已经变化。操作仍可重试；请刷新 Habits 后再保存。".into(),
+            );
+        }
+        let current = self.habit_completion_store.load(&path)?;
+        let mut document = match current.as_deref() {
+            Some(bytes) => {
+                parse_habit_completion_document(bytes, &self.clock.current_timestamp_label())?
+            }
+            None => HabitCompletionDocument {
+                schema_version: HABIT_COMPLETION_SCHEMA_VERSION,
+                completions: Vec::new(),
+                no_op_receipts: Vec::new(),
+            },
+        };
+        let intended_kind = if input.completed {
+            HabitCompletionChangeKind::Completed
+        } else {
+            HabitCompletionChangeKind::Withdrawn
+        };
+        if let Some((record, change)) = document.completions.iter().find_map(|record| {
+            record
+                .changes
+                .iter()
+                .find(|change| change.id == input.change_id)
+                .map(|change| (record, change))
+        }) {
+            if record.habit_key == input.habit_key
+                && record.lived_date == input.lived_date
+                && change.kind == intended_kind
+            {
+                return self.habits();
+            }
+            return Err("该习惯完成修改标识已用于其他操作；未写入任何内容。".into());
+        }
+        if let Some(receipt) = document
+            .no_op_receipts
+            .iter()
+            .find(|receipt| receipt.id == input.change_id)
+        {
+            if receipt.habit_key == input.habit_key
+                && receipt.lived_date == input.lived_date
+                && receipt.completed == input.completed
+            {
+                return self.habits();
+            }
+            return Err("该习惯完成修改标识已用于其他操作；未写入任何内容。".into());
+        }
+        let existing_index = document.completions.iter().position(|record| {
+            record.habit_key == input.habit_key && record.lived_date == input.lived_date
+        });
+        let currently_completed = existing_index
+            .map(|index| document.completions[index].completed_at.is_some())
+            .unwrap_or(false);
+        match current.as_deref() {
+            Some(bytes) => {
+                let expected = input.expected_revision.as_deref().ok_or_else(|| {
+                    "本地习惯完成正本已存在。请刷新 Habits 后重试；现有记录未被覆盖。".to_string()
+                })?;
+                if document_revision(bytes) != expected {
+                    return Err("本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。".into());
+                }
+            }
+            None if input.expected_revision.is_some() => {
+                return Err(
+                    "本地习惯完成正本已不存在。请刷新 Habits 后重试；未创建替代数据。".into(),
+                )
+            }
+            None => {}
+        }
+        let now = self.clock.current_timestamp_label();
+        validate_timestamp_label(&now)?;
+        if currently_completed == input.completed {
+            document.no_op_receipts.push(HabitCompletionNoOpReceipt {
+                id: input.change_id,
+                habit_key: input.habit_key,
+                lived_date: input.lived_date,
+                completed: input.completed,
+                accepted_at: now,
+            });
+            let updated = encode_habit_completion_document(&document)?;
+            match current {
+                Some(bytes) => self
+                    .habit_completion_store
+                    .save_if_unchanged(&path, &bytes, &updated)?,
+                None => self.habit_completion_store.create_new(&path, &updated)?,
+            }
+            return self.habits();
+        }
+        let change = HabitCompletionChange {
+            id: input.change_id,
+            kind: intended_kind,
+            changed_at: now.clone(),
+        };
+        if let Some(index) = existing_index {
+            let record = &mut document.completions[index];
+            record.modified_at = now.clone();
+            record.completed_at = input.completed.then(|| now.clone());
+            record.changes.push(change);
+        } else {
+            document.completions.push(HabitCompletionRecord {
+                habit_key: input.habit_key,
+                lived_date: input.lived_date,
+                completed_at: Some(now.clone()),
+                modified_at: now,
+                changes: vec![change],
+            });
+        }
+        let updated = encode_habit_completion_document(&document)?;
+        match current {
+            Some(bytes) => self
+                .habit_completion_store
+                .save_if_unchanged(&path, &bytes, &updated)?,
+            None => self.habit_completion_store.create_new(&path, &updated)?,
+        }
+        self.habits()
+    }
+
     pub fn habits(&self) -> Result<HabitSnapshotView, String> {
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(HabitSnapshotView::unconfigured());
@@ -1709,10 +2041,40 @@ where
             }
         };
         let today = self.clock.current_date();
+        let current_timestamp = self.clock.current_timestamp_label();
         let dates = match snapshot_dates(&document, &today) {
             Ok(dates) => dates,
             Err(error) => return Ok(self.retained_or_error(&path, error)?),
         };
+        let completion_path = canonical_habit_completion_path(&vault);
+        let completion_target_binding = habit_completion_target_binding(&completion_path);
+        let (completion_revision, local_completions) =
+            match self.habit_completion_store.load(&completion_path) {
+                Ok(Some(bytes)) => {
+                    let completion_document =
+                        match parse_habit_completion_document(&bytes, &current_timestamp) {
+                            Ok(document) => document,
+                            Err(error) => return Ok(self.retained_or_error(&path, error)?),
+                        };
+                    let completions = completion_document
+                        .completions
+                        .into_iter()
+                        .map(|completion| LocalHabitCompletion {
+                            key: completion.habit_key,
+                            date: completion.lived_date,
+                            state: if completion.completed_at.is_some() {
+                                HabitLocalCompletionState::Completed
+                            } else {
+                                HabitLocalCompletionState::Withdrawn
+                            },
+                            changed_at: completion.modified_at,
+                        })
+                        .collect();
+                    (Some(document_revision(&bytes)), completions)
+                }
+                Ok(None) => (None, Vec::new()),
+                Err(error) => return Ok(self.retained_or_error(&path, error)?),
+            };
         let mut local_records = Vec::new();
         for date in dates {
             let record_path = canonical_record_path(&vault, &date)?;
@@ -1738,8 +2100,10 @@ where
                 });
             }
         }
-        match project_snapshot(&document, &today, local_records) {
-            Ok(view) => {
+        match project_snapshot(&document, &today, local_records, local_completions) {
+            Ok(mut view) => {
+                view.completion_revision = completion_revision;
+                view.completion_target_binding = Some(completion_target_binding);
                 self.habit_cache
                     .lock()
                     .map_err(|_| "Habits 快照缓存不可用。".to_string())?
@@ -2391,6 +2755,134 @@ fn day_task_target_binding(path: &Path) -> String {
     )
 }
 
+fn canonical_habit_completion_path(vault: &Path) -> PathBuf {
+    vault.join("life/.personal-dashboard/habit-completions/v1/completions.json")
+}
+
+fn habit_completion_target_binding(path: &Path) -> String {
+    format!(
+        "habit-completion-target-{}",
+        document_revision(path.to_string_lossy().as_bytes())
+    )
+}
+
+fn validate_habit_key(value: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.len() > 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+    {
+        return Err("习惯标识必须是 catalog 中稳定的小写语义 key；未写入任何内容。".into());
+    }
+    Ok(())
+}
+
+fn parse_habit_completion_document(
+    bytes: &[u8],
+    current_timestamp: &str,
+) -> Result<HabitCompletionDocument, String> {
+    let document: HabitCompletionDocument = serde_json::from_slice(bytes)
+        .map_err(|error| format!("本地习惯完成正本不是有效 JSON：{error}"))?;
+    if document.schema_version != HABIT_COMPLETION_SCHEMA_VERSION {
+        return Err(format!(
+            "本地习惯完成正本使用不支持的 schema 版本 {}；未将其当作空记录。",
+            document.schema_version
+        ));
+    }
+    let current_epoch_seconds = timestamp_label_epoch_seconds(current_timestamp)
+        .ok_or_else(|| "The system clock did not provide a valid timestamp.".to_string())?;
+    let today = current_timestamp
+        .get(..10)
+        .and_then(CalendarDate::parse)
+        .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
+    let mut records = std::collections::HashSet::new();
+    let mut change_ids = std::collections::HashSet::new();
+    for record in &document.completions {
+        validate_habit_key(&record.habit_key)?;
+        let date = CalendarDate::parse(&record.lived_date)
+            .ok_or_else(|| "本地习惯完成正本包含无效 lived date。".to_string())?;
+        if date > today {
+            return Err("本地习惯完成正本不能把未来日期记为已经完成。".into());
+        }
+        if !records.insert((record.habit_key.as_str(), record.lived_date.as_str())) {
+            return Err("本地习惯完成正本包含重复的习惯与日期。".into());
+        }
+        if record.changes.is_empty() {
+            return Err("本地习惯完成正本缺少修改记录。".into());
+        }
+        validate_habit_completion_timestamp(&record.modified_at, current_epoch_seconds)?;
+        if let Some(completed_at) = &record.completed_at {
+            validate_habit_completion_timestamp(completed_at, current_epoch_seconds)?;
+        }
+        let mut completed = false;
+        let mut latest_completion = None;
+        let mut previous_changed_at = None;
+        for change in &record.changes {
+            validate_local_identifier(&change.id, "习惯完成修改标识")?;
+            let changed_at =
+                validate_habit_completion_timestamp(&change.changed_at, current_epoch_seconds)?;
+            if previous_changed_at.is_some_and(|previous| previous > changed_at) {
+                return Err("本地习惯完成正本的修改记录时间顺序倒置。".into());
+            }
+            previous_changed_at = Some(changed_at);
+            if !change_ids.insert(change.id.as_str()) {
+                return Err("本地习惯完成正本包含重复修改标识。".into());
+            }
+            match change.kind {
+                HabitCompletionChangeKind::Completed => {
+                    if completed {
+                        return Err("本地习惯完成正本包含重复完成记录。".into());
+                    }
+                    completed = true;
+                    latest_completion = Some(change.changed_at.as_str());
+                }
+                HabitCompletionChangeKind::Withdrawn => {
+                    if !completed {
+                        return Err("本地习惯完成正本在没有本地完成时包含撤回记录。".into());
+                    }
+                    completed = false;
+                    latest_completion = None;
+                }
+            }
+        }
+        if completed != record.completed_at.is_some()
+            || latest_completion != record.completed_at.as_deref()
+        {
+            return Err("本地习惯完成状态与修改记录不一致。".into());
+        }
+        if record
+            .changes
+            .last()
+            .map(|change| change.changed_at.as_str())
+            != Some(record.modified_at.as_str())
+        {
+            return Err("本地习惯完成修改时间与最后一条修改记录不一致。".into());
+        }
+    }
+    for receipt in &document.no_op_receipts {
+        validate_local_identifier(&receipt.id, "习惯完成修改标识")?;
+        validate_habit_key(&receipt.habit_key)?;
+        let date = CalendarDate::parse(&receipt.lived_date)
+            .ok_or_else(|| "本地习惯完成正本包含无效 lived date。".to_string())?;
+        if date > today {
+            return Err("本地习惯完成正本不能把未来日期记为已经完成。".into());
+        }
+        validate_habit_completion_timestamp(&receipt.accepted_at, current_epoch_seconds)?;
+        if !change_ids.insert(receipt.id.as_str()) {
+            return Err("本地习惯完成正本包含重复修改标识。".into());
+        }
+    }
+    Ok(document)
+}
+
+fn encode_habit_completion_document(document: &HabitCompletionDocument) -> Result<Vec<u8>, String> {
+    let mut encoded = serde_json::to_vec_pretty(document)
+        .map_err(|error| format!("无法编码本地习惯完成正本：{error}"))?;
+    encoded.push(b'\n');
+    Ok(encoded)
+}
+
 fn validate_day_task_text(value: &str) -> Result<(), String> {
     let value = value.trim();
     if value.is_empty() {
@@ -2714,6 +3206,44 @@ fn validate_day_task_timestamp(value: &str) -> Result<(), String> {
     } else {
         Err(format!("当天任务正本包含无效时间戳：{value}"))
     }
+}
+
+fn validate_habit_completion_timestamp(
+    value: &str,
+    current_epoch_seconds: i64,
+) -> Result<i64, String> {
+    let timestamp = timestamp_label_epoch_seconds(value)
+        .ok_or_else(|| format!("本地习惯完成正本包含无效时间戳：{value}"))?;
+    if timestamp > current_epoch_seconds {
+        return Err(format!("本地习惯完成正本包含未来修改时间：{value}"));
+    }
+    Ok(timestamp)
+}
+
+fn timestamp_label_epoch_seconds(value: &str) -> Option<i64> {
+    if !is_valid_timestamp_label(value) {
+        return None;
+    }
+    let bytes = value.as_bytes();
+    let (offset_index, second) = match bytes.len() {
+        22 => (16, 0),
+        25 => (19, i64::from(decimal_pair(bytes, 17)?)),
+        _ => return None,
+    };
+    let date = CalendarDate::parse(value.get(..10)?)?;
+    let hour = i64::from(decimal_pair(bytes, 11)?);
+    let minute = i64::from(decimal_pair(bytes, 14)?);
+    let sign = if bytes.get(offset_index) == Some(&b'+') {
+        1
+    } else {
+        -1
+    };
+    let offset_hour = i64::from(decimal_pair(bytes, offset_index + 1)?);
+    let offset_minute = i64::from(decimal_pair(bytes, offset_index + 4)?);
+    Some(
+        date.unix_days() * 86_400 + hour * 3_600 + minute * 60 + second
+            - sign * (offset_hour * 3_600 + offset_minute * 60),
+    )
 }
 
 fn is_valid_timestamp_label(value: &str) -> bool {

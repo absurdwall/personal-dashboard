@@ -159,18 +159,18 @@ fn sourced_snapshot_projects_correct_week_counts_time_evidence_and_record_dots()
         Some("2026-09-08T14:10:00-04:00")
     );
     assert_eq!(view.range_label.as_deref(), Some("2026-06-22 — 2026-09-08"));
-    assert_eq!(view.summary.known_completions, 3);
+    assert_eq!(view.summary.known_completions, 4);
     assert_eq!(view.summary.target_completions, 15);
     assert!(view.summary.coverage_note.contains("下界"));
 
     let exercise = view.habit("exercise").expect("exercise habit");
-    assert_eq!(exercise.completed_count, Some(1));
+    assert_eq!(exercise.completed_count, Some(2));
     assert_eq!(exercise.goal_label, "每周 3 次");
     assert!(exercise.source_labels.contains(&"Dida365 打卡".to_string()));
     let monday = exercise.cell("2026-09-07").expect("Monday history cell");
     assert!(monday.has_record);
-    assert!(!monday.counts_as_completion);
-    assert_eq!(monday.status, HabitCellStatus::Conflict);
+    assert!(monday.counts_as_completion);
+    assert_eq!(monday.status, HabitCellStatus::Completed);
     assert!(monday.details.iter().any(|detail| matches!(
         detail,
         HabitDetailView::LocalRecord { source_label, text }
@@ -230,7 +230,7 @@ fn exercise_note_identity_is_shared_by_habits_and_today_without_counting_as_comp
     let projected = app.habits().unwrap();
     let exercise = projected.habit("exercise").unwrap();
     let cell = exercise.cell("2026-09-06").unwrap();
-    assert_eq!(exercise.completed_count, Some(1));
+    assert_eq!(exercise.completed_count, Some(2));
     assert_eq!(cell.status, HabitCellStatus::RecordOnly);
     assert!(!cell.counts_as_completion);
     assert_eq!(cell.local_records[0].id, first_record.id);
@@ -397,7 +397,7 @@ fn weekly_habit_without_a_goal_keeps_its_known_count_outside_the_summary() {
     let view = application(Some(vault.path())).habits().unwrap();
     let exercise = view.habit("exercise").unwrap();
 
-    assert_eq!(exercise.completed_count, Some(1));
+    assert_eq!(exercise.completed_count, Some(2));
     assert_eq!(exercise.weekly_target, None);
     assert_eq!(exercise.goal_label, "未配置目标 · 不计入汇总");
     assert_eq!(view.summary.known_completions, 2);
@@ -432,6 +432,23 @@ fn equal_timestamp_results_from_one_source_are_rejected_as_ambiguous() {
 
     assert_eq!(view.state, HabitSnapshotState::Error);
     assert!(view.message.contains("相同 observedAt"));
+}
+
+#[test]
+fn later_seconds_choose_the_latest_observation_from_one_source() {
+    let vault = TempDirectory::new("habit-snapshot-second-precision");
+    let document = include_str!("fixtures/habits-v1-complete.json").replace(
+        "{ \"source\": \"dida\", \"observedAt\": \"2026-09-08T09:00:00-04:00\", \"status\": \"partial\", \"evidence\": \"check-in\", \"note\": \"partial tier only\" }",
+        "{ \"source\": \"dida\", \"observedAt\": \"2026-09-08T09:00:10-04:00\", \"status\": \"completed\", \"evidence\": \"check-in\" }, { \"source\": \"dida\", \"observedAt\": \"2026-09-08T09:00:50-04:00\", \"status\": \"not-done\", \"evidence\": \"check-in\" }",
+    );
+    write_snapshot(vault.path(), &document);
+
+    let view = application(Some(vault.path())).habits().unwrap();
+    let reset = view.habit("reset").unwrap();
+
+    assert_eq!(view.state, HabitSnapshotState::Ready);
+    assert_eq!(reset.today.status, HabitCellStatus::NotDone);
+    assert!(!reset.today.counts_as_completion);
 }
 
 #[test]

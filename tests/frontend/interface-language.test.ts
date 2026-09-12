@@ -226,6 +226,55 @@ test("planning task input diagnostics have complete English equivalents", () => 
   ]) {
     assert.doesNotMatch(localizeApplicationError(diagnostic, "en"), /[一-龥]/);
   }
+  assert.equal(
+    localizeApplicationError(
+      "Could not write the local habit-completion document update: disk full",
+      "zh",
+    ),
+    "无法写入本地习惯完成正本更新：disk full",
+  );
+});
+
+test("local habit completion labels, details, and diagnostics are bilingual", () => {
+  assert.equal(
+    localizeApplicationError("The system clock did not provide a valid timestamp.", "zh"),
+    "系统时钟未提供有效的时间戳。",
+  );
+  assert.equal(
+    interfaceCopy("habits.recordCompletion", "zh", { habit: "Reset living space" }),
+    "记录“Reset living space”今天完成",
+  );
+  assert.equal(
+    interfaceCopy("habits.recordCompletion", "en", { habit: "Reset living space" }),
+    "Record “Reset living space” complete today",
+  );
+  assert.equal(
+    interfaceCopy("habits.completionWithdrawnExternal", "en", { sources: "Dida365" }),
+    "Local withdrawn; external remains: Dida365",
+  );
+  assert.equal(
+    localizeHabitDetail(
+      {
+        kind: "localCompletion",
+        state: "withdrawn",
+        changedAt: "2026-09-12T09:30-04:00",
+      },
+      "en",
+    ),
+    "Personal Dashboard local completion withdrawn · 2026-09-12T09:30-04:00",
+  );
+  for (const diagnostic of [
+    "当前没有可验证的 Habits catalog；请刷新有效快照后再记录。",
+    "Habits catalog 中没有这个稳定习惯 key；未写入任何内容。",
+    "该习惯不是 completion 型；时刻和阈值证据不能用本地完成框记录。",
+    "本地习惯完成正本包含重复修改标识。",
+    "本地习惯完成正本包含无效时间戳：not-a-time",
+    "本地习惯完成正本包含未来修改时间：2026-09-13T08:00-04:00",
+    "本地习惯完成正本的修改记录时间顺序倒置。",
+    "本地习惯完成正本不是有效 JSON：expected value",
+  ]) {
+    assert.doesNotMatch(localizeApplicationError(diagnostic, "en"), /[一-龥]/);
+  }
 });
 
 test("Habits translates generated detail grammar but preserves source-owned text", () => {

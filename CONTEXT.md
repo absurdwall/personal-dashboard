@@ -5,11 +5,11 @@ This context defines the product language for the private, local-first Personal 
 ## Language
 
 **Personal Dashboard**:
-The installed application for reading and making bounded updates to Daily Records, reviewing calendar history, and viewing sourced habit evidence.
+The installed application for reading and making bounded updates to Daily Records, reviewing calendar history, and merging explicit local habit completions with sourced habit evidence.
 _Avoid_: Exercise Habit Tracker, generic habit engine
 
 **Selected vault**:
-The Tortilla Flat Obsidian vault explicitly chosen as the source of canonical Daily Records and the derived habit snapshot. It remains user-owned data outside the application-data directory.
+The Tortilla Flat Obsidian vault explicitly chosen as the source of canonical Daily Records, canonical local habit completions, and the derived habit snapshot. It remains user-owned data outside the application-data directory.
 _Avoid_: App database, imported vault
 
 **Daily Record**:
@@ -25,8 +25,8 @@ The Personal Dashboard destination for locating and opening a dated Daily Record
 _Avoid_: Exercise history, event calendar
 
 **Habits**:
-The Personal Dashboard destination for reviewing sourced habit evidence across the current week, recent days, and bounded history. It may add or correct dated exercise Short records, but it does not record habit completion or schedule activity.
-_Avoid_: Exercise tracker, habit check-in, generic habit framework
+The Personal Dashboard destination for reviewing sourced habit evidence across the current week, recent days, and bounded history. It may record or withdraw explicit local completion for catalog completion-type habits and may add or correct dated exercise Short records, but it does not write back to an external source, edit goals, or schedule activity.
+_Avoid_: Exercise tracker, automatic external check-in, generic habit framework
 
 **Habit snapshot**:
 A bounded, dated projection of habit evidence with explicit provenance and coverage, prepared outside Personal Dashboard for Habits to read.

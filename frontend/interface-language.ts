@@ -323,6 +323,20 @@ const interfaceCopies = {
   "habits.sources": { zh: "来源：{sources}", en: "Sources: {sources}" },
   "habits.notDeclared": { zh: "未声明", en: "Not declared" },
   "habits.todayStatus": { zh: "今天：{status}", en: "Today: {status}" },
+  "habits.recordCompletion": { zh: "记录“{habit}”今天完成", en: "Record “{habit}” complete today" },
+  "habits.completionUnknown": { zh: "尚无完成证据", en: "No completion evidence" },
+  "habits.completionExternal": { zh: "外部来源：{sources}", en: "External: {sources}" },
+  "habits.completionLocal": { zh: "Dashboard 本地完成", en: "Dashboard local completion" },
+  "habits.completionLocalExternal": { zh: "本地 + 外部：{sources}", en: "Local + external: {sources}" },
+  "habits.completionWithdrawn": { zh: "已取消本地完成", en: "Local completion withdrawn" },
+  "habits.completionWithdrawnExternal": { zh: "本地已取消；外部仍完成：{sources}", en: "Local withdrawn; external remains: {sources}" },
+  "habits.completionSaving": { zh: "正在保存本地习惯完成…", en: "Saving the local habit completion…" },
+  "habits.completionSaved": { zh: "本地完成已保存到所选 Vault；外部快照未更改。", en: "Local completion saved to the selected Vault; the external snapshot was not changed." },
+  "habits.completionRemoved": { zh: "本地完成已取消；外部快照未更改。", en: "Local completion withdrawn; the external snapshot was not changed." },
+  "habits.completionWithdrawnStillExternal": { zh: "本地完成已取消；外部来源仍标记完成，因此合并结果保持勾选。", en: "Local completion withdrawn. An external source still marks it complete, so the merged result remains checked." },
+  "habits.completionExternalUnchanged": { zh: "没有活动的本地完成可取消；外部来源仍标记完成，因此合并结果保持勾选。", en: "There was no active local completion to withdraw. An external source still marks it complete, so the merged result remains checked." },
+  "habits.completionUnavailable": { zh: "当前不能记录这项本地完成；请刷新有效 Habits 快照。", en: "This local completion cannot be recorded now. Refresh a valid Habits snapshot." },
+  "habits.completionSaveFailed": { zh: "无法保存本地习惯完成：{error}", en: "Could not save the local habit completion: {error}" },
   "habits.recent": { zh: "近 7 天", en: "Past 7 days" },
   "habits.expand": { zh: "展开", en: "Expand" },
   "habits.collapse": { zh: "收起", en: "Collapse" },
@@ -555,6 +569,46 @@ const englishApplicationErrors: Readonly<Record<string, string>> = {
     "This day task is deleted; its old identity will not be reactivated.",
   "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。":
     "The canonical day-task document changed externally. The operation remains retryable; refresh before saving again. External content was not overwritten.",
+  "当前没有可验证的 Habits catalog；请刷新有效快照后再记录。":
+    "There is no valid Habits catalog to verify against. Refresh a valid snapshot before recording.",
+  "Habits catalog 中没有这个稳定习惯 key；未写入任何内容。":
+    "The stable habit key is not present in the Habits catalog; nothing was written.",
+  "该习惯不是 completion 型；时刻和阈值证据不能用本地完成框记录。":
+    "This is not a completion-type habit. Time and threshold evidence cannot be recorded with the local completion checkbox.",
+  "请先选择 Vault，再记录本地习惯完成。":
+    "Choose a Vault before recording a local habit completion.",
+  "Vault 或本地习惯完成目标已经变化。操作仍可重试；请刷新 Habits 后再保存。":
+    "The Vault or local habit-completion target changed. The operation remains retryable; refresh Habits before saving.",
+  "该习惯完成修改标识已用于其他操作；未写入任何内容。":
+    "That habit-completion change identifier was used for another operation; nothing was written.",
+  "本地习惯完成正本已存在。请刷新 Habits 后重试；现有记录未被覆盖。":
+    "The canonical local habit-completion document already exists. Refresh Habits and retry; existing records were not overwritten.",
+  "本地习惯完成正本已不存在。请刷新 Habits 后重试；未创建替代数据。":
+    "The canonical local habit-completion document no longer exists. Refresh Habits and retry; no replacement data was created.",
+  "本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。":
+    "The canonical local habit-completion document changed externally. The operation remains retryable; refresh Habits before saving. External content was not overwritten.",
+  "本地习惯完成正本包含无效 lived date。":
+    "The canonical local habit-completion document contains an invalid lived date.",
+  "本地习惯完成正本不能把未来日期记为已经完成。":
+    "The canonical local habit-completion document cannot record a future date as complete.",
+  "本地习惯完成正本包含重复的习惯与日期。":
+    "The canonical local habit-completion document contains a duplicate habit and date.",
+  "本地习惯完成正本缺少修改记录。":
+    "The canonical local habit-completion document is missing its change history.",
+  "本地习惯完成正本包含重复修改标识。":
+    "The canonical local habit-completion document contains a duplicate change identifier.",
+  "本地习惯完成正本包含重复完成记录。":
+    "The canonical local habit-completion document contains a duplicate completion change.",
+  "本地习惯完成正本在没有本地完成时包含撤回记录。":
+    "The canonical local habit-completion document withdraws a completion that was not locally complete.",
+  "本地习惯完成状态与修改记录不一致。":
+    "The local habit-completion state does not match its change history.",
+  "本地习惯完成修改时间与最后一条修改记录不一致。":
+    "The local habit-completion modified time does not match its final change.",
+  "本地习惯完成正本的修改记录时间顺序倒置。":
+    "The canonical local habit-completion document has reversed change chronology.",
+  "习惯标识必须是 catalog 中稳定的小写语义 key；未写入任何内容。":
+    "The habit identifier must be a stable lowercase semantic key from the catalog; nothing was written.",
   "请选择 Vault，以读取规划所需的当天任务。":
     "Choose a Vault before reading day tasks for planning.",
   "规划任务输入包含重复来源标识；未接收任何候选。":
@@ -716,6 +770,11 @@ function englishHabitValidationDiagnostic(message: string): string | null {
     [/^Habit (.+) 的完成结果必须带 check-in 或 manual-completion 证据。$/, (habit) => `Habit ${habit} completion results must include check-in or manual-completion evidence.`],
     [/^Habits 快照 (.+) 必须是稳定的小写语义 key。$/, (label) => `Habits snapshot ${label} must be a stable lowercase semantic key.`],
     [/^Habits 快照 (.+) 缺失或过长。$/, (label) => `Habits snapshot ${label} is missing or too long.`],
+    [/^本地习惯完成正本不是有效 JSON：(.+)$/, (reason) => `The canonical local habit-completion document is not valid JSON: ${reason}`],
+    [/^本地习惯完成正本使用不支持的 schema 版本 (.+)；未将其当作空记录。$/, (version) => `The canonical local habit-completion document uses unsupported schema version ${version}; it was not treated as empty.`],
+    [/^本地习惯完成正本包含无效时间戳：(.*)$/, (timestamp) => `The canonical local habit-completion document contains an invalid timestamp: ${timestamp}`],
+    [/^本地习惯完成正本包含未来修改时间：(.*)$/, (timestamp) => `The canonical local habit-completion document contains a future change timestamp: ${timestamp}`],
+    [/^习惯完成修改标识格式无效；未写入任何内容。$/, () => "The habit-completion change identifier has an invalid format; nothing was written."],
   ];
   for (const [pattern, render] of patterns) {
     const match = pattern.exec(message);
@@ -730,6 +789,9 @@ const englishErrorFragments: readonly Readonly<[string, string]>[] = [
   ["所选 Vault 文件夹不可用", "The selected Vault folder is unavailable"],
   ["当前 Vault 文件夹不可用。请检查本地位置，或重新选择 Vault。", "The current Vault folder is unavailable. Check the local location or choose another Vault."],
   ["无法读取 Habits 快照：", "Could not read the Habits snapshot: "],
+  ["无法读取本地习惯完成正本：", "Could not read the canonical local habit-completion document: "],
+  ["无法编码本地习惯完成正本：", "Could not encode the canonical local habit-completion document: "],
+  ["本地习惯完成正本不是有效 JSON：", "The canonical local habit-completion document is not valid JSON: "],
   ["Habits 快照缓存不可用。", "The Habits snapshot cache is unavailable."],
   ["原有选择未更改，未转换或写入任何文件。", "The previous selection was kept; no files were converted or written."],
   ["请重新选择兼容 Vault", "Choose a compatible Vault again"],
@@ -793,6 +855,17 @@ const chineseErrorPrefixes: readonly Readonly<[string, string]>[] = [
   ["Could not remove the rejected day-task candidate: ", "无法移除被拒绝的当天任务候选："],
   ["Could not atomically exchange the day-task document: ", "无法原子交换当天任务正本："],
   ["Could not sync the day-task document directory: ", "无法同步当天任务正本目录："],
+  ["Could not create the local habit-completion document directory: ", "无法创建本地习惯完成正本目录："],
+  ["Could not prepare the new local habit-completion document: ", "无法准备新的本地习惯完成正本："],
+  ["Could not exclusively activate the new local habit-completion document: ", "无法以独占方式启用新的本地习惯完成正本："],
+  ["Could not re-read the local habit-completion document: ", "无法重新读取本地习惯完成正本："],
+  ["Could not inspect the local habit-completion document permissions: ", "无法检查本地习惯完成正本权限："],
+  ["Could not preserve the local habit-completion document permissions: ", "无法保留本地习惯完成正本权限："],
+  ["Could not write the local habit-completion document update: ", "无法写入本地习惯完成正本更新："],
+  ["Could not prepare the local habit-completion document update: ", "无法准备本地习惯完成正本更新："],
+  ["Could not verify the local habit-completion document after conflict rollback: ", "无法在冲突回滚后验证本地习惯完成正本："],
+  ["Could not atomically exchange the local habit-completion document: ", "无法原子交换本地习惯完成正本："],
+  ["Could not sync the local habit-completion document directory: ", "无法同步本地习惯完成正本目录："],
   ["The local appearance preference is invalid: ", "本机外观偏好无效："],
   ["The Today workspace setting is invalid: ", "Today 工作区设置无效："],
   ["Could not create the Daily Record recovery directory; no write was attempted: ", "无法创建 Daily Record 恢复目录；未尝试写入："],
@@ -823,6 +896,8 @@ const chineseApplicationErrors: Readonly<Record<string, string>> = {
     "所选日期不是有效的 YYYY-MM-DD 日历日期。",
   "The system clock did not provide a valid calendar date.":
     "系统时钟未提供有效的日历日期。",
+  "The system clock did not provide a valid timestamp.":
+    "系统时钟未提供有效的时间戳。",
   "The Daily Record has no parent directory.":
     "Daily Record 没有父目录。",
   "The temporary daily record path contains a NUL byte.":
@@ -1007,6 +1082,11 @@ export type HabitDetail =
       utcOffsetMinutes: number | null;
     }>
   | Readonly<{ kind: "localRecord"; sourceLabel: string; text: string }>
+  | Readonly<{
+      kind: "localCompletion";
+      state: "completed" | "withdrawn";
+      changedAt: string;
+    }>
   | Readonly<{ kind: "conflict" }>
   | Readonly<{ kind: "noRecord" }>;
 
@@ -1030,6 +1110,16 @@ export function localizeHabitDetail(
   if (detail.kind === "localRecord") {
     const label = language === "zh" ? "文字记录" : "text record";
     return `${detail.sourceLabel} · ${label} · ${detail.text}`;
+  }
+  if (detail.kind === "localCompletion") {
+    if (detail.state === "completed") {
+      return language === "zh"
+        ? `Personal Dashboard 本地完成 · ${detail.changedAt}`
+        : `Personal Dashboard local completion · ${detail.changedAt}`;
+    }
+    return language === "zh"
+      ? `Personal Dashboard 本地完成已取消 · ${detail.changedAt}`
+      : `Personal Dashboard local completion withdrawn · ${detail.changedAt}`;
   }
   if (detail.kind === "actualTime") {
     const relation = {

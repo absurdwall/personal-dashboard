@@ -6,7 +6,7 @@ Personal Dashboard reads one rebuildable, on-demand JSON projection at:
 <selected Tortilla Flat vault>/.personal-dashboard/derived/habits-v1.json
 ```
 
-The Dashboard is a reader. It does not call Dida365, poll any source, start an Agent, or create this file. The external daily-flow Agent is the producer, but activating that producer belongs to the 2.0 cutover task. The checked-in [synthetic fixture](../src-tauri/tests/fixtures/habits-v1-complete.json) is the complete production shape and contains semantic keys only—never private external IDs.
+The Dashboard is a reader of this rebuildable external projection. It does not call Dida365, poll any source, start an Agent, or create this file. The external daily-flow Agent is the producer, but activating that producer belongs to the 2.0 cutover task. The Dashboard separately owns explicit [local habit completions](habit-completions-v1.md) in the selected Vault and merges them only while projecting the UI. The checked-in [synthetic fixture](../src-tauri/tests/fixtures/habits-v1-complete.json) is the complete production shape and contains semantic keys only—never private external IDs.
 
 ## Producer handoff
 
@@ -65,7 +65,8 @@ Every observation includes a declared source key, an offset-bearing `observedAt`
 For the same habit, lived date, and source, the newest `observedAt` replaces older observations from that source. Equal-timestamp contradictory observations are invalid. After same-source replacement:
 
 - multiple completion sources still contribute at most one completion for that habit and lived date;
-- a `completed` and `not-done` disagreement across Dida365/manual sources is a visible conflict and contributes zero;
+- any eligible source with a valid `completed` observation completes the habit/date even when another eligible source says `not-done`; negative evidence never vetoes positive evidence from another source;
+- an active Dashboard local completion is OR-merged after external per-source reduction; together all sources still contribute at most one completion, and withdrawing local state does not remove an external completion;
 - `partial`, `baseline`, threshold-only, unavailable, unclear duration text, and local Dashboard notes contribute zero;
 - weekly totals use Monday through Sunday lived dates, and future dates remain unknown;
 - the aggregate numerator is the sum of known completed days; the denominator is the sum of positive current standard goals for active weekly-count habits only. Daily-time targets and no-goal habits are excluded. Counts are not capped or cross-subsidized.

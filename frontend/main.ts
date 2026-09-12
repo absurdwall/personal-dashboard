@@ -35,6 +35,12 @@ import {
   type InterfaceLanguagePreferences,
 } from "./interface-language.js";
 import { preserveTodayDayTaskPlanError } from "./day-task-presentation.js";
+import {
+  habitCompletionPresentation,
+  type HabitCompletionExplanation,
+  type HabitLocalCompletionState,
+} from "./habit-completion.js";
+import { reconcileHabitCompletionWrite } from "./habit-completion-command.js";
 
 type ApplicationIdentity = Readonly<{
   productName: string;
@@ -217,6 +223,9 @@ type HabitCellView = Readonly<{
   hasRecord: boolean;
   countsAsCompletion: boolean;
   actualTimeLabel: string | null;
+  localCompletionState: HabitLocalCompletionState;
+  hasExternalCompletion: boolean;
+  completionSourceLabels: readonly string[];
   details: readonly HabitDetail[];
   localRecords: readonly Readonly<{
     id: string;
@@ -229,6 +238,7 @@ type HabitView = Readonly<{
   key: string;
   name: string;
   active: boolean;
+  canRecordCompletion: boolean;
   goalKind: "weekly-count" | "daily-time";
   goalLabel: string;
   weeklyTarget: number | null;
@@ -253,6 +263,8 @@ type HabitSnapshotView = Readonly<{
   displayRangeLabel: string | null;
   rangeLabel: string | null;
   producerLabel: string | null;
+  completionRevision: string | null;
+  completionTargetBinding: string | null;
   summary: Readonly<{
     knownCompletions: number;
     targetCompletions: number;
@@ -525,12 +537,15 @@ const calendarMonthRequests = new LatestRequest();
 const calendarSelectionRequests = new LatestRequest();
 const habitSnapshotRequests = new LatestRequest();
 const habitDateRequests = new LatestRequest();
+const habitCompletionRequests = new LatestRequest();
 let currentHabitSnapshot: HabitSnapshotView | null = null;
 type HabitCellSelection = Readonly<{ habitKey: string; date: string }>;
 type HabitNoteDraft = Readonly<{ content: string; correctionId: string | null }>;
 let selectedHabitCell: HabitCellSelection | null = null;
 let currentHabitDateView: TodayView | null = null;
 let habitDateOperationCount = 0;
+let habitCompletionOperationCount = 0;
+const habitCompletionOperationIds = new Map<string, string>();
 const pendingWrites = new PendingWriteBarrier();
 const appearanceMutations = new SerializedLatestMutation<AppearancePreferences>({
   accentColor: "forest",
@@ -548,6 +563,7 @@ type HabitNoteStatus = Readonly<{
 }>;
 
 let habitNoteStatus: HabitNoteStatus | null = null;
+let habitCompletionStatus: HabitNoteStatus | null = null;
 const habitNoteDrafts = new Map<string, HabitNoteDraft>();
 
 function t(
@@ -639,6 +655,7 @@ function resetVaultScopedWorkspaceState(): void {
   calendarSelectionRequests.invalidate();
   habitSnapshotRequests.invalidate();
   habitDateRequests.invalidate();
+  habitCompletionRequests.invalidate();
   currentCalendarMonth = null;
   currentCalendarSummaryView = null;
   selectedCalendarDate = null;
@@ -647,10 +664,12 @@ function resetVaultScopedWorkspaceState(): void {
   selectedHabitCell = null;
   currentHabitDateView = null;
   habitNoteStatus = null;
+  habitCompletionStatus = null;
   datedNoteDrafts.clear();
   dayTaskRenameDrafts.clear();
   dayTaskAddDrafts.clear();
   dayTaskOperationIds.clear();
+  habitCompletionOperationIds.clear();
   if (dayTaskAddInput) dayTaskAddInput.value = "";
   habitNoteDrafts.clear();
   correctingShortRecordId = null;
@@ -1915,6 +1934,7 @@ function renderVaultSelectionError(error: unknown): void {
   if (currentWorkspaceDestination === "habits") {
     habitSnapshotRequests.invalidate();
     habitDateRequests.invalidate();
+    habitCompletionRequests.invalidate();
     if (habitsStatus) {
       setCopyError(habitsStatus, "settings.vaultSelectionError", error);
       habitsStatus.dataset.state = "error";
@@ -2301,6 +2321,18 @@ const habitStatusLabels: Record<HabitCellStatus, InterfaceCopyKey> = {
   recordOnly: "habits.recordOnly",
 };
 
+const habitCompletionExplanationLabels: Record<
+  HabitCompletionExplanation,
+  InterfaceCopyKey
+> = {
+  unknown: "habits.completionUnknown",
+  external: "habits.completionExternal",
+  local: "habits.completionLocal",
+  "local-and-external": "habits.completionLocalExternal",
+  withdrawn: "habits.completionWithdrawn",
+  "withdrawn-external": "habits.completionWithdrawnExternal",
+};
+
 function habitProgressLabel(habit: HabitView): string {
   if (habit.completedCount === null) {
     return habit.today.actualTimeLabel
@@ -2358,6 +2390,35 @@ function habitCellButton(
   return button;
 }
 
+function habitCompletionControl(habit: HabitView): HTMLElement {
+  const control = document.createElement("div");
+  control.className = "habit-completion-control";
+  if (!habit.canRecordCompletion) {
+    control.setAttribute("aria-hidden", "true");
+    return control;
+  }
+  const presentation = habitCompletionPresentation(habit.today);
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.checked = presentation.checked;
+  input.disabled =
+    habitCompletionOperationCount > 0 ||
+    !currentHabitSnapshot?.completionTargetBinding ||
+    !["ready", "stale"].includes(currentHabitSnapshot.state);
+  input.dataset.habitCompletionKey = habit.key;
+  input.dataset.habitCompletionDate = habit.today.date;
+  input.setAttribute("aria-label", t("habits.recordCompletion", { habit: habit.name }));
+  input.title = t("habits.recordCompletion", { habit: habit.name });
+  const explanation = document.createElement("small");
+  setCopy(explanation, habitCompletionExplanationLabels[presentation.explanation], {
+    sources:
+      presentation.sourceLabels.join(currentInterfaceLanguage === "zh" ? "、" : ", ") ||
+      t("habits.notDeclared"),
+  });
+  control.append(input, explanation);
+  return control;
+}
+
 function habitRow(habit: HabitView): HTMLElement {
   const article = document.createElement("article");
   article.className = "habit-snapshot-row";
@@ -2383,6 +2444,8 @@ function habitRow(habit: HabitView): HTMLElement {
   progress.textContent = habitProgressLabel(habit);
   setCopy(todayState, "habits.todayStatus", { status: t(habitStatusLabels[habit.today.status]) });
   value.append(progress, todayState);
+
+  const completion = habitCompletionControl(habit);
 
   const recent = document.createElement("div");
   recent.className = "habit-recent";
@@ -2476,7 +2539,7 @@ function habitRow(habit: HabitView): HTMLElement {
   detail.setAttribute("role", "status");
   setCopy(detail, "habits.chooseHistory");
   history.append(historyHeading, months, grid, goalContext, detail);
-  article.append(identity, value, recent, expand, history);
+  article.append(identity, value, completion, recent, expand, history);
   return article;
 }
 
@@ -2767,17 +2830,131 @@ async function saveHabitExerciseNote(): Promise<boolean> {
   }
 }
 
+function stableHabitCompletionOperationId(signature: string): string {
+  const existing = habitCompletionOperationIds.get(signature);
+  if (existing) return existing;
+  const created = localOperationId("habit-completion");
+  habitCompletionOperationIds.set(signature, created);
+  return created;
+}
+
+async function setLocalHabitCompletion(
+  habitKey: string,
+  livedDate: string,
+  completed: boolean,
+): Promise<boolean> {
+  const loaded = currentHabitSnapshot;
+  const habit = loaded?.habits.find((candidate) => candidate.key === habitKey);
+  if (
+    !loaded?.completionTargetBinding ||
+    !habit?.canRecordCompletion ||
+    habit.today.date !== livedDate ||
+    habitCompletionOperationCount > 0
+  ) {
+    habitCompletionStatus = { copyKey: "habits.completionUnavailable", state: "error" };
+    if (loaded) renderHabitSnapshot(loaded);
+    return false;
+  }
+  const signature = `${loaded.completionTargetBinding}:${habitKey}:${livedDate}:${completed}`;
+  const changeId = stableHabitCompletionOperationId(signature);
+  const request = habitCompletionRequests.begin();
+  habitCompletionOperationCount += 1;
+  let operationSettled = false;
+  const finishOperation = () => {
+    if (operationSettled) return;
+    operationSettled = true;
+    habitCompletionOperationCount = Math.max(0, habitCompletionOperationCount - 1);
+  };
+  habitCompletionStatus = { copyKey: "habits.completionSaving", state: "ready" };
+  renderHabitSnapshot(loaded);
+  try {
+    await reconcileHabitCompletionWrite(
+      window.__TAURI__.core.invoke<HabitSnapshotView>(
+        "set_local_habit_completion",
+        {
+          input: {
+            habitKey,
+            livedDate,
+            completed,
+            changeId,
+            targetBinding: loaded.completionTargetBinding,
+            expectedRevision: loaded.completionRevision,
+          },
+        },
+      ),
+      {
+        onPersisted: () => {
+          finishOperation();
+          habitCompletionOperationIds.delete(signature);
+          if (!habitCompletionRequests.isCurrent(request)) {
+            habitCompletionStatus = null;
+          }
+        },
+        isPresentationCurrent: () => habitCompletionRequests.isCurrent(request),
+        isHabitsVisible: () => currentWorkspaceDestination === "habits",
+        present: (view) => {
+          const updatedHabit = view.habits.find((candidate) => candidate.key === habitKey);
+          const explanation = updatedHabit
+            ? habitCompletionPresentation(updatedHabit.today).explanation
+            : "unknown";
+          habitCompletionStatus = {
+            copyKey:
+              !completed && explanation === "withdrawn-external"
+                ? "habits.completionWithdrawnStillExternal"
+                : !completed && explanation === "external"
+                  ? "habits.completionExternalUnchanged"
+                  : completed
+                    ? "habits.completionSaved"
+                    : "habits.completionRemoved",
+            state: "ready",
+          };
+          renderHabitSnapshot(view);
+        },
+        refresh: async () => {
+          habitCompletionStatus = null;
+          await refreshHabits();
+        },
+      },
+    );
+    return true;
+  } catch (error) {
+    finishOperation();
+    if (habitCompletionRequests.isCurrent(request)) {
+      habitCompletionStatus = {
+        copyKey: "habits.completionSaveFailed",
+        error: String(error),
+        state: "error",
+      };
+      renderHabitSnapshot(loaded);
+    } else if (currentWorkspaceDestination === "habits") {
+      habitCompletionStatus = null;
+      await refreshHabits();
+    }
+    return false;
+  } finally {
+    finishOperation();
+  }
+}
+
 function renderHabitSnapshot(view: HabitSnapshotView): void {
   currentHabitSnapshot = view;
   renderWorkspaceRailContext("habits");
   renderWorkspaceContextStatus(currentWorkspaceDestination);
   if (habitsStatus) {
-    if (view.readError) {
+    if (habitCompletionStatus?.copyKey && habitCompletionStatus.error) {
+      setCopyError(
+        habitsStatus,
+        habitCompletionStatus.copyKey,
+        habitCompletionStatus.error,
+      );
+    } else if (habitCompletionStatus?.copyKey) {
+      setCopy(habitsStatus, habitCompletionStatus.copyKey);
+    } else if (view.readError) {
       setCopyError(habitsStatus, "habits.loadFailed", view.readError);
     } else {
       setAppMessage(habitsStatus, view.message);
     }
-    habitsStatus.dataset.state = view.state;
+    habitsStatus.dataset.state = habitCompletionStatus?.state ?? view.state;
   }
   if (habitsRange) {
     setCopy(
@@ -2872,6 +3049,8 @@ async function refreshHabits(): Promise<void> {
       displayRangeLabel: null,
       rangeLabel: null,
       producerLabel: null,
+      completionRevision: null,
+      completionTargetBinding: null,
       summary: {
         knownCompletions: 0,
         targetCompletions: 0,
@@ -2996,6 +3175,7 @@ function showWorkspaceDestination(
   if (leavingHabits) {
     habitSnapshotRequests.invalidate();
     habitDateRequests.invalidate();
+    habitCompletionRequests.invalidate();
     stashHabitNoteDraft();
     currentHabitDateView = null;
   }
@@ -3252,7 +3432,21 @@ calendarOpenDay?.addEventListener("click", () => {
 });
 
 refreshHabitsButton?.addEventListener("click", () => {
+  if (habitCompletionOperationCount > 0) return;
+  habitCompletionStatus = null;
   void refreshHabits();
+});
+
+habitsDestination?.addEventListener("change", (event) => {
+  const checkbox = (event.target as HTMLElement).closest<HTMLInputElement>(
+    "input[data-habit-completion-key][data-habit-completion-date]",
+  );
+  if (!checkbox) return;
+  const habitKey = checkbox.dataset.habitCompletionKey;
+  const livedDate = checkbox.dataset.habitCompletionDate;
+  if (!habitKey || !livedDate) return;
+  const operation = setLocalHabitCompletion(habitKey, livedDate, checkbox.checked);
+  void pendingWrites.track(operation);
 });
 
 habitsDestination?.addEventListener("click", (event) => {

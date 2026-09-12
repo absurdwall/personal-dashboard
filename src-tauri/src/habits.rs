@@ -51,6 +51,14 @@ pub enum HabitCellStatus {
     RecordOnly,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HabitLocalCompletionState {
+    None,
+    Completed,
+    Withdrawn,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HabitCellView {
@@ -59,6 +67,9 @@ pub struct HabitCellView {
     pub status: HabitCellStatus,
     pub has_record: bool,
     pub counts_as_completion: bool,
+    pub local_completion_state: HabitLocalCompletionState,
+    pub has_external_completion: bool,
+    pub completion_source_labels: Vec<String>,
     pub actual_time_label: Option<String>,
     pub details: Vec<HabitDetailView>,
     pub local_records: Vec<HabitLocalRecordView>,
@@ -87,6 +98,10 @@ pub enum HabitDetailView {
     LocalRecord {
         source_label: String,
         text: String,
+    },
+    LocalCompletion {
+        state: HabitLocalCompletionState,
+        changed_at: String,
     },
     Conflict,
     NoRecord,
@@ -118,6 +133,7 @@ pub struct HabitView {
     pub goal_label: String,
     pub weekly_target: Option<u32>,
     pub completed_count: Option<u32>,
+    pub can_record_completion: bool,
     pub source_labels: Vec<String>,
     pub coverage_label: String,
     pub goal_history: Vec<HabitGoalContextView>,
@@ -150,6 +166,8 @@ pub struct HabitSnapshotView {
     pub display_range_label: Option<String>,
     pub range_label: Option<String>,
     pub producer_label: Option<String>,
+    pub completion_revision: Option<String>,
+    pub completion_target_binding: Option<String>,
     pub summary: HabitSummaryView,
     pub habits: Vec<HabitView>,
 }
@@ -185,6 +203,8 @@ impl HabitSnapshotView {
             display_range_label: None,
             range_label: None,
             producer_label: None,
+            completion_revision: None,
+            completion_target_binding: None,
             summary: HabitSummaryView::default(),
             habits: Vec::new(),
         }
@@ -198,6 +218,14 @@ pub struct LocalHabitRecord {
     pub date: String,
     pub source_label: String,
     pub text: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct LocalHabitCompletion {
+    pub key: String,
+    pub date: String,
+    pub state: HabitLocalCompletionState,
+    pub changed_at: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -378,6 +406,7 @@ pub fn project_snapshot(
     document: &[u8],
     today: &str,
     local_records: Vec<LocalHabitRecord>,
+    local_completions: Vec<LocalHabitCompletion>,
 ) -> Result<HabitSnapshotView, String> {
     let snapshot = parse_and_validate(document, today)?;
     let today_date = CalendarDate::parse(today).expect("validated current date");
@@ -396,6 +425,16 @@ pub fn project_snapshot(
             .or_default()
             .push(record);
     }
+    let local_completion_by_key_date: HashMap<(&str, &str), &LocalHabitCompletion> =
+        local_completions
+            .iter()
+            .map(|completion| {
+                (
+                    (completion.key.as_str(), completion.date.as_str()),
+                    completion,
+                )
+            })
+            .collect();
     let mut summary = HabitSummaryView::default();
     let mut projected = Vec::with_capacity(snapshot.habits.len());
     let mut current_week_has_incomplete_coverage = false;
@@ -413,11 +452,15 @@ pub fn project_snapshot(
                 .get(&(habit.key.as_str(), date.as_str()))
                 .cloned()
                 .unwrap_or_default();
+            let local_completion = local_completion_by_key_date
+                .get(&(habit.key.as_str(), date.as_str()))
+                .copied();
             history.push(project_cell(
                 &date,
                 days_by_date.get(date.as_str()).copied(),
                 &source_by_key,
                 &local,
+                local_completion,
                 today_date,
             ));
         }
@@ -470,6 +513,12 @@ pub fn project_snapshot(
         if local_records.iter().any(|record| record.key == habit.key) {
             source_labels.push("Dashboard Daily Record".into());
         }
+        if local_completions
+            .iter()
+            .any(|completion| completion.key == habit.key)
+        {
+            source_labels.push("Personal Dashboard local".into());
+        }
         source_labels.sort();
         source_labels.dedup();
         let complete_days = habit
@@ -502,6 +551,7 @@ pub fn project_snapshot(
                 _ => None,
             },
             completed_count,
+            can_record_completion: habit.tracking_kind == TrackingKind::WeeklyCount,
             source_labels,
             coverage_label: format!(
                 "{} — {} · {} 个 complete 日期",
@@ -549,6 +599,8 @@ pub fn project_snapshot(
             "{} · {}",
             snapshot.producer.label, snapshot.producer.kind
         )),
+        completion_revision: None,
+        completion_target_binding: None,
         summary,
         habits: projected,
     })
@@ -559,6 +611,7 @@ fn project_cell(
     day: Option<&HabitDay>,
     sources: &HashMap<&str, &Source>,
     local: &[&LocalHabitRecord],
+    local_completion: Option<&LocalHabitCompletion>,
     today: CalendarDate,
 ) -> HabitCellView {
     let date_value = CalendarDate::parse(date).expect("generated history date");
@@ -569,6 +622,9 @@ fn project_cell(
             status: HabitCellStatus::Unknown,
             has_record: false,
             counts_as_completion: false,
+            local_completion_state: HabitLocalCompletionState::None,
+            has_external_completion: false,
+            completion_source_labels: Vec::new(),
             actual_time_label: None,
             details: vec![HabitDetailView::Future],
             local_records: Vec::new(),
@@ -578,7 +634,7 @@ fn project_cell(
     let mut latest: BTreeMap<&str, (&Observation, i64)> = BTreeMap::new();
     if let Some(day) = day {
         for observation in &day.observations {
-            let timestamp = timestamp_epoch_minutes(&observation.observed_at).unwrap_or(i64::MIN);
+            let timestamp = timestamp_epoch_seconds(&observation.observed_at).unwrap_or(i64::MIN);
             match latest.get(observation.source.as_str()) {
                 Some((_, previous)) if *previous >= timestamp => {}
                 _ => {
@@ -588,23 +644,42 @@ fn project_cell(
         }
     }
     let observations: Vec<&Observation> = latest.values().map(|(item, _)| *item).collect();
-    let definitive: Vec<ObservationStatus> = observations
+    let definitive: Vec<(&Observation, &Source)> = observations
         .iter()
         .filter_map(|observation| {
             sources.get(observation.source.as_str()).and_then(|source| {
                 matches!(source.kind, SourceKind::Dida365 | SourceKind::Manual)
-                    .then_some(observation.status)
+                    .then_some((*observation, *source))
             })
         })
-        .filter(|status| {
+        .filter(|(observation, _)| {
             matches!(
-                status,
+                observation.status,
                 ObservationStatus::Completed | ObservationStatus::NotDone
             )
         })
         .collect();
-    let completed = definitive.contains(&ObservationStatus::Completed);
-    let not_done = definitive.contains(&ObservationStatus::NotDone);
+    let completed = definitive
+        .iter()
+        .any(|(observation, _)| observation.status == ObservationStatus::Completed);
+    let not_done = definitive
+        .iter()
+        .any(|(observation, _)| observation.status == ObservationStatus::NotDone);
+    let local_completion_state = local_completion
+        .map(|completion| completion.state)
+        .unwrap_or(HabitLocalCompletionState::None);
+    let locally_completed = local_completion_state == HabitLocalCompletionState::Completed;
+    let merged_completion = completed || locally_completed;
+    let mut completion_source_labels = definitive
+        .iter()
+        .filter(|(observation, _)| observation.status == ObservationStatus::Completed)
+        .map(|(_, source)| source.label.clone())
+        .collect::<Vec<_>>();
+    if locally_completed {
+        completion_source_labels.push("Personal Dashboard local".into());
+    }
+    completion_source_labels.sort();
+    completion_source_labels.dedup();
     let actual_candidates: Vec<&ActualTime> = observations
         .iter()
         .filter(|item| item.status == ObservationStatus::ActualTime)
@@ -623,9 +698,7 @@ fn project_cell(
             )
         })
         .collect();
-    let conflict = (completed && not_done)
-        || exact_times.len() > 1
-        || (!actual_candidates.is_empty() && not_done);
+    let conflict = exact_times.len() > 1 || (!actual_candidates.is_empty() && not_done);
     let actual = (!conflict)
         .then(|| actual_candidates.first().copied())
         .flatten();
@@ -633,7 +706,7 @@ fn project_cell(
         HabitCellStatus::Conflict
     } else if actual.is_some() {
         HabitCellStatus::ActualTime
-    } else if completed {
+    } else if merged_completion {
         HabitCellStatus::Completed
     } else if not_done {
         HabitCellStatus::NotDone
@@ -690,6 +763,12 @@ fn project_cell(
             text: record.text.clone(),
         });
     }
+    if let Some(completion) = local_completion {
+        details.push(HabitDetailView::LocalCompletion {
+            state: completion.state,
+            changed_at: completion.changed_at.clone(),
+        });
+    }
     if conflict {
         details.push(HabitDetailView::Conflict);
     }
@@ -700,8 +779,13 @@ fn project_cell(
         date: date.into(),
         coverage: coverage.label().into(),
         status,
-        has_record: !observations.is_empty() || !local.is_empty(),
-        counts_as_completion: completed && !conflict,
+        has_record: !observations.is_empty()
+            || !local.is_empty()
+            || local_completion_state != HabitLocalCompletionState::None,
+        counts_as_completion: merged_completion && !conflict,
+        local_completion_state,
+        has_external_completion: completed,
+        completion_source_labels,
         actual_time_label: actual.map(|time| match time.day_relation {
             DayRelation::SameDay => time.local_time.clone(),
             DayRelation::NextDay => format!("次日 {}", time.local_time),
@@ -732,7 +816,7 @@ fn parse_and_validate(document: &[u8], today: &str) -> Result<SnapshotDocument, 
     }
     validate_text(&snapshot.producer.kind, "producer.kind")?;
     validate_text(&snapshot.producer.label, "producer.label")?;
-    let generated_at = timestamp_epoch_minutes(&snapshot.generated_at).ok_or_else(|| {
+    let generated_at = timestamp_epoch_seconds(&snapshot.generated_at).ok_or_else(|| {
         "Habits 快照 generatedAt 必须是含 UTC offset 的完整本地时间。".to_string()
     })?;
     let generated_date = CalendarDate::parse(&snapshot.generated_at[..10])
@@ -813,7 +897,7 @@ fn parse_and_validate(document: &[u8], today: &str) -> Result<SnapshotDocument, 
                     ));
                 }
                 let observed_at =
-                    timestamp_epoch_minutes(&observation.observed_at).ok_or_else(|| {
+                    timestamp_epoch_seconds(&observation.observed_at).ok_or_else(|| {
                         format!("Habit {} 的 observedAt 缺少有效 UTC offset。", habit.key)
                     })?;
                 if observed_at > generated_at {
@@ -946,7 +1030,7 @@ fn valid_time(value: &str) -> bool {
         && value[3..].parse::<u32>().is_ok_and(|minute| minute < 60)
 }
 
-fn timestamp_epoch_minutes(value: &str) -> Option<i64> {
+fn timestamp_epoch_seconds(value: &str) -> Option<i64> {
     if value.len() != 25
         || &value[10..11] != "T"
         || &value[13..14] != ":"
@@ -969,7 +1053,10 @@ fn timestamp_epoch_minutes(value: &str) -> Option<i64> {
     if hour >= 24 || minute >= 60 || second >= 60 || offset_hour > 23 || offset_minute >= 60 {
         return None;
     }
-    Some(date.unix_days() * 1440 + hour * 60 + minute - sign * (offset_hour * 60 + offset_minute))
+    Some(
+        date.unix_days() * 86_400 + hour * 3_600 + minute * 60 + second
+            - sign * (offset_hour * 3_600 + offset_minute * 60),
+    )
 }
 
 fn goal_label(goal: &Goal) -> String {
