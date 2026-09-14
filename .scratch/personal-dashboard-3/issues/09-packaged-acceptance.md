@@ -4,12 +4,12 @@
 
 **Blocked by:** 02 固定界面中英切换, 03 本地背景图片与页面分层, 08 Google Drive 同步目录兼容验收
 
-**Status:** claimed
+**Status:** resolved
 
 Type: task
 
 - [x] 确认所有传递依赖成果在当前 checkout，记录候选提交与构建身份；运行约定行为测试及 packaged Mac 验收，区分浏览器／Rust／真实应用证据。
-- [ ] 完整覆盖语言／颜色／背景重启、图片原图移动、Vault 选择及隔离、任务重排、习惯 OR 与历史更正、错误及晚到响应；与 08 同步证据关联。除 08 的真实 Drive 云端／版本／废纸篓阶段外，本地覆盖已完成。
+- [x] 完整覆盖语言／颜色／背景重启、图片原图移动、Vault 选择及隔离、任务重排、习惯 OR 与历史更正、错误及晚到响应；与 08 同步证据关联。
 - [x] 对照认可 B 原型检查 Today 三阶段、Calendar、Habits 展开历史、设置、双语长文案、不同颜色／图片与窗口宽度；新增界面固定文案双语覆盖。
 - [x] 保留紧凑 Habits，不强行统一容器；三页背景底色一致，Today／Calendar 轻分层。记录实际截图及用户仍需查看的事项，不能把自动检查说成用户批准。
 - [x] 定位并定点修复范围内整合缺陷后回归；未通过的 packaged 或同步验收明确保留，不假 resolved。交付候选不自动替换用户正在使用的安装、不运行真实每日流程。
@@ -24,10 +24,11 @@ Type: task
 
 ## Answer
 
-本地 3.0 候选验收已经完成，但本票保持 `claimed`：08 的真实 Google
-Drive 云端更新、冲突副本、版本恢复和废纸篓恢复仍受客户端
-account-loading／File Provider 未完成上传状态阻塞，不能由普通本地 Vault
-或合成测试代替。详细证据见
+本票状态为 `resolved`：本地 3.0 候选验收已经完成，08 也已在匹配账户的隔离
+fixture 上补齐真实 Google Drive 远端更新、离线
+冲突后的版本保留、版本恢复与网页回收站恢复。Drive 没有产生 conflict copy，且
+网页 Trash 期间本地路径未在约 75 秒观察窗内消失；这些实际限制不影响已验证的
+版本／网页恢复路径，但明确限制支持承诺。详细证据见
 [`docs/acceptance/personal-dashboard-3-packaged-candidate.md`](../../../docs/acceptance/personal-dashboard-3-packaged-candidate.md)。
 
 - Candidate：产品代码基点 `135e660e03ed744f38e4f7ee7505bb1097956da6`；
@@ -45,3 +46,7 @@ account-loading／File Provider 未完成上传状态阻塞，不能由普通本
   通过。
 - Scope：只操作隔离 profile、合成 Vault 与合成图片；未运行真实每日流程、
   skill、Dida365、MCP 或自动化，未改个人记录，未新增依赖或外部服务。
+- Drive：远端版本 1 秒内到达本地；历史版本恢复后 155-byte 文件在 1 秒内同步，
+  SHA-256 为 `0f07e0803a561c7f58c66e3027a8a9752c67d979acd5e27c3b0bb5217b8ee6f4`；
+  网页 Trash／Restore 成功且恢复后本地哈希不变。另一个网页 canonical Daily
+  Record 版本在 2 秒内到达本地，并由独立 packaged app 在显式 Refresh 前后读取。

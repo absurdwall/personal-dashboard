@@ -1,10 +1,10 @@
 # Personal Dashboard 3.0 packaged candidate result
 
-Date: 2026-09-12
+Date: 2026-09-12 to 2026-09-14
 
-Status: **incomplete — the local packaged candidate and visual comparison
-passed, while ticket 08's actual Drive cloud/version/trash evidence remains
-blocked.**
+Status: **passed with documented Drive limitations — the local packaged
+candidate, visual comparison, and ticket 08's actual cloud/version/web-trash
+recovery evidence are complete.**
 
 ## Candidate identity
 
@@ -36,8 +36,9 @@ The layers below are deliberately separate:
 3. The accepted B browser prototype is only the visual reference. Playwright
    captured it at the same CSS viewport widths; browser interactions are not
    counted as packaged or persistence evidence.
-4. Ticket 08 is the only actual Drive-client evidence. Its incomplete cloud
-   phase is not replaced by an ordinary temporary Vault or by this local gate.
+4. Ticket 08 is the only actual Drive-client evidence. Its cloud phase used an
+   uploaded disposable file in a marker-owned fixture; it is not replaced by an
+   ordinary temporary Vault or by this local gate.
 
 ## Focused packaged result
 
@@ -142,17 +143,26 @@ comfort at Retina scale, and the narrow-window reading order/scroll position.
 The `2.0.0` package version is also recorded for an explicit release decision;
 it was not changed as an undocumented acceptance side effect.
 
-## Remaining blocker and support boundary
+## Drive completion and support boundary
 
-Ticket 08 remains `claimed`. Google Drive for desktop 123.0.1.0 stayed in its
-account-loading state and the representative File Provider files remained
-`isUploaded = 0`, `isUploading = 1` during its bounded attempt. Remote-to-local
-change, conflict-copy behavior, actual version restore, and trash restore are
-therefore still unproved. The local candidate does not add OAuth, uploads, a
-sync engine, or a whole-Vault recovery promise.
+Ticket 08 is resolved using Google Drive for desktop 123.0.1.0 and Drive web on
+the same intended account. A web-uploaded revision reached the local path in one
+second. The offline/remote conflict produced no conflict copy, but both revisions
+remained in version history; the older 155-byte remote revision was downloaded,
+SHA-verified, uploaded as current, and synchronized locally in one second. Drive
+web Trash and Restore also succeeded, with the restored local file retaining
+SHA-256 `0f07e0803a561c7f58c66e3027a8a9752c67d979acd5e27c3b0bb5217b8ee6f4`.
 
-Do not rerun that narrow cloud phase until the client leaves account-loading.
-Then use a fresh marker-owned disposable Drive fixture and first require a
-stable uploaded seed before remote update/version/trash checks. Until that
-happens, ticket 09 must remain incomplete even when the local packaged gate is
-green.
+The previously separate transport and application checks were also joined on a
+canonical synthetic Daily Record. An isolated packaged app confirmed the unique
+new marker absent; Drive web uploaded the 330-byte replacement; the local path
+reached SHA-256 `692ed027060bf2e7886c1bedf7d197e484ecd442b269491f0d633e6683dc444d`
+in two seconds; and the still-open app showed the new marker both before and
+after explicit Refresh while retaining the old review lines.
+
+The support boundary remains narrow and evidence-based. File Provider reports
+that fail-on-conflict upload is unsupported, and a web-trashed file remained at
+its mounted local path during approximately 75 seconds of observation before it
+was restored. The candidate therefore promises neither conflict-copy creation,
+immediate local trash propagation, nor whole-Vault point-in-time recovery. It
+does not add OAuth, uploads, a sync engine, or any external service.
