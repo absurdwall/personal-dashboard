@@ -215,7 +215,7 @@ const interfaceCopies = {
   "today.noteTargetCurrent": { zh: "保存在当前所选日期的日记录中；不替你打卡。", en: "Saved in the selected day's Daily Record; this does not check in for you." },
   "today.noteTarget": { zh: "保存在 {date} 的日记录中；不替你打卡。", en: "Saved in the Daily Record for {date}; this does not check in for you." },
   "today.futureBoundary": { zh: "未来日期不能记录已经发生的事实。", en: "Facts that already happened cannot be recorded on a future date." },
-  "today.sideRegion": { zh: "当天任务与初始计划依据", en: "Day tasks and initial planning evidence" },
+  "today.sideRegion": { zh: "当天任务、记录与计划依据", en: "Day tasks, notes and planning evidence" },
   "dayTasks.section": { zh: "当天 · 任务", en: "DAY · TASKS" },
   "dayTasks.heading": { zh: "当天任务", en: "Day tasks" },
   "dayTasks.count": { zh: "{count} 项", en: "{count} tasks" },

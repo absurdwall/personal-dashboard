@@ -1210,6 +1210,8 @@ function showTodayPhase(phase: TodayPhase, focus = false): void {
       panel.parentElement?.append(panel);
     }
   });
+  const updateRail = document.querySelector<HTMLElement>(".today-update-rail");
+  if (updateRail) updateRail.hidden = phase !== "daytime";
   if (todayEvidenceRegion) {
     todayEvidenceRegion.hidden = phase !== "morning";
   }

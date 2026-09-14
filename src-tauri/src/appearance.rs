@@ -388,7 +388,9 @@ fn validated_image(bytes: &[u8]) -> Result<ValidatedImage, String> {
             extension: "png",
         });
     }
-    if bytes.starts_with(&[0xff, 0xd8, 0xff]) && bytes.ends_with(&[0xff, 0xd9]) {
+    // JPEG may carry trailing bytes after EOI (for example exported metadata).
+    // Native decoding below validates the image; EOF is not a format boundary.
+    if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
         return Ok(ValidatedImage {
             media_type: "image/jpeg",
             extension: "jpg",

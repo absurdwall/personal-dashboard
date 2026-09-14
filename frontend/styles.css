@@ -6300,3 +6300,16 @@ body {
     border-radius: 0;
   }
 }
+
+/* Daytime shares the outer two-column layout: tasks then notes in the right rail. */
+.today-daytime-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+.today-side-region > .today-update-rail {
+  padding: 18px 0 0;
+  border-left: 0;
+  border-top: 1px solid var(--parity-border);
+}
+.today-side-region > .today-update-rail[hidden] {
+  display: none;
+}

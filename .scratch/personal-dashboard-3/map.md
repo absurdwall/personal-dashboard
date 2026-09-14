@@ -19,3 +19,7 @@
 | [09 Packaged Mac 整体验收与原型对照](issues/09-packaged-acceptance.md) | 02, 03, 08 | resolved |
 
 08 的实际客户端环境及 09 的 packaged 证据均已记录；05 仅覆盖兼容契约和合成 producer，真实日常工作流接入仍为后续范围。发布不启动实现或替换安装。Drive 的实际限制包括不生成 conflict copy、File Provider 不支持 upload fail-on-conflict，以及网页 Trash 期间本地路径可能不会立即消失；不承诺整 Vault 时间点恢复。
+
+## 3.0.0 release
+
+用户选择轻量收尾检查；最终 JPG／Daytime 反馈修复和版本更新见 [release record](../../docs/acceptance/personal-dashboard-3-release.md)。九票 resolved 状态保持，真实 producer skill 接线继续留后。

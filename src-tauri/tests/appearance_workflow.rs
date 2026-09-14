@@ -46,7 +46,7 @@ impl AppearanceImageLibrary for MemoryImageLibrary {
     }
 
     fn image_is_decodable(&self, bytes: &[u8]) -> bool {
-        bytes == sample_png()
+        bytes == sample_png() || bytes.starts_with(include_bytes!("fixtures/background-sample.jpg"))
     }
 
     fn save_owned(&self, file_name: &str, document: &[u8]) -> Result<(), String> {
@@ -377,4 +377,20 @@ fn restoring_default_appearance_does_not_touch_vault_owned_state() {
         restored
     );
     assert_eq!(&*vault_record.lock().unwrap(), b"user-owned daily record");
+}
+
+#[test]
+fn jpeg_with_trailing_bytes_imports_and_survives_relaunch() {
+    let preferences = MemoryAppearancePreferences::default();
+    let images = MemoryImageLibrary::default();
+    let mut bytes = include_bytes!("fixtures/background-sample.jpg").to_vec();
+    bytes.extend_from_slice(b"\r\n");
+    images.selections.lock().unwrap().push_back(Ok(Some(SelectedBackgroundImage { bytes })));
+    let app = AppearanceApplication::with_image_library(preferences.clone(), images.clone());
+    let selected = app.select_background_image(InterfaceLanguage::En)
+        .expect("decodable JPEG with trailing bytes should import");
+    assert_eq!(selected.preferences.background_image_state, BackgroundImageState::Ready);
+    let loaded = AppearanceApplication::with_image_library(preferences, images).load().unwrap();
+    assert_eq!(loaded.background_image_state, BackgroundImageState::Ready);
+    assert!(loaded.background_image_url.unwrap().starts_with("data:image/jpeg;base64,"));
 }

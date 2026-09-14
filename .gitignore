@@ -7,3 +7,6 @@ src-tauri/gen/
 src-tauri/target/
 .playwright-cli/
 output/playwright/
+
+# Disposable cloud acceptance uploads can contain account identifiers.
+.scratch/personal-dashboard-3/drive-acceptance/

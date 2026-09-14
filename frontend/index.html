@@ -438,51 +438,7 @@
                             时间轴只整理明确事实、当前安排线索和修订记录；没有记录的活动继续保持未知。
                           </p>
                         </section>
-                        <aside class="today-update-rail" aria-label="当日更新区" data-i18n-aria-label="today.daytimeRail">
-                      <form id="today-daytime-form" class="today-bounded-form">
-                        <div class="today-form-row">
-                          <label>
-                            <span data-i18n="today.recordCategory">记录类别</span>
-                            <select id="today-daytime-kind" name="kind">
-                              <option value="ordinary" data-i18n="today.ordinaryRecord">日常记录</option>
-                              <option value="exercise" data-i18n="today.exercise">健身</option>
-                            </select>
-                          </label>
-                        </div>
-                        <label>
-                          <span id="today-note-form-label" data-i18n="today.writeShort">写一句</span>
-                          <input id="today-daytime-content" type="text" maxlength="500" autocomplete="off" aria-label="简短记录内容" data-i18n-aria-label="today.shortRecordText" placeholder="跑步 30 分钟" data-i18n-placeholder="today.notePlaceholder" required />
-                        </label>
-                        <div class="today-form-actions">
-                          <button id="save-daytime-update" type="submit" data-i18n="today.saveRecord">保存记录</button>
-                          <button id="cancel-note-correction" type="button" class="secondary-button" data-i18n="today.cancelCorrection" hidden>取消更正</button>
-                          <p id="today-note-target" data-i18n="today.noteTargetCurrent">保存在当前所选日期的日记录中；不替你打卡。</p>
-                        </div>
-                      </form>
-                          <section class="today-rail-section" aria-labelledby="today-short-records-heading">
-                            <div class="today-rail-heading">
-                              <span id="today-short-records-heading" data-i18n="today.shortRecords">当日简短记录</span>
-                              <span id="today-short-record-count" class="today-count"></span>
-                            </div>
-                            <div id="today-daytime-short-records" class="today-daytime-updates"></div>
-                            <p id="today-short-records-empty" class="today-phase-empty" data-i18n="today.noShortRecords" hidden>
-                              还没有简短记录。
-                            </p>
-                          </section>
-                          <section class="today-rail-section" aria-labelledby="today-changes-heading">
-                            <div class="today-rail-heading">
-                              <span id="today-changes-heading" data-i18n="today.arrangementChanges">安排变化</span>
-                              <span id="today-change-count" class="today-count"></span>
-                            </div>
-                            <div id="today-daytime-updates" class="today-daytime-updates"></div>
-                            <p id="today-daytime-empty" class="today-phase-empty" data-i18n="today.noArrangementChanges" hidden>
-                              今天还没有明确记录的安排变化。
-                            </p>
-                          </section>
-                          <p class="today-update-boundary" data-i18n="today.updateBoundary">
-                            重排由外部 Agent 明确更新“当前安排”；这里的记录不会覆盖早间基准，也不会自动写回 Dida365。
-                          </p>
-                        </aside>
+
                       </div>
                     </section>
 
@@ -560,7 +516,7 @@
                     </section>
                   </div>
 
-                  <aside class="today-side-region" aria-label="当天任务与初始计划依据" data-i18n-aria-label="today.sideRegion">
+                  <aside class="today-side-region" aria-label="当天任务、记录与计划依据" data-i18n-aria-label="today.sideRegion">
                     <section class="day-task-panel" aria-labelledby="day-task-heading">
                       <div class="day-task-heading">
                         <div>
@@ -585,6 +541,52 @@
                         未勾选表示尚未确认；任务不会自动跨天带入。
                       </p>
                     </section>
+
+                        <aside class="today-update-rail" aria-label="当日更新区" data-i18n-aria-label="today.daytimeRail">
+                      <form id="today-daytime-form" class="today-bounded-form">
+                        <div class="today-form-row">
+                          <label>
+                            <span data-i18n="today.recordCategory">记录类别</span>
+                            <select id="today-daytime-kind" name="kind">
+                              <option value="ordinary" data-i18n="today.ordinaryRecord">日常记录</option>
+                              <option value="exercise" data-i18n="today.exercise">健身</option>
+                            </select>
+                          </label>
+                        </div>
+                        <label>
+                          <span id="today-note-form-label" data-i18n="today.writeShort">写一句</span>
+                          <input id="today-daytime-content" type="text" maxlength="500" autocomplete="off" aria-label="简短记录内容" data-i18n-aria-label="today.shortRecordText" placeholder="跑步 30 分钟" data-i18n-placeholder="today.notePlaceholder" required />
+                        </label>
+                        <div class="today-form-actions">
+                          <button id="save-daytime-update" type="submit" data-i18n="today.saveRecord">保存记录</button>
+                          <button id="cancel-note-correction" type="button" class="secondary-button" data-i18n="today.cancelCorrection" hidden>取消更正</button>
+                          <p id="today-note-target" data-i18n="today.noteTargetCurrent">保存在当前所选日期的日记录中；不替你打卡。</p>
+                        </div>
+                      </form>
+                          <section class="today-rail-section" aria-labelledby="today-short-records-heading">
+                            <div class="today-rail-heading">
+                              <span id="today-short-records-heading" data-i18n="today.shortRecords">当日简短记录</span>
+                              <span id="today-short-record-count" class="today-count"></span>
+                            </div>
+                            <div id="today-daytime-short-records" class="today-daytime-updates"></div>
+                            <p id="today-short-records-empty" class="today-phase-empty" data-i18n="today.noShortRecords" hidden>
+                              还没有简短记录。
+                            </p>
+                          </section>
+                          <section class="today-rail-section" aria-labelledby="today-changes-heading">
+                            <div class="today-rail-heading">
+                              <span id="today-changes-heading" data-i18n="today.arrangementChanges">安排变化</span>
+                              <span id="today-change-count" class="today-count"></span>
+                            </div>
+                            <div id="today-daytime-updates" class="today-daytime-updates"></div>
+                            <p id="today-daytime-empty" class="today-phase-empty" data-i18n="today.noArrangementChanges" hidden>
+                              今天还没有明确记录的安排变化。
+                            </p>
+                          </section>
+                          <p class="today-update-boundary" data-i18n="today.updateBoundary">
+                            重排由外部 Agent 明确更新“当前安排”；这里的记录不会覆盖早间基准，也不会自动写回 Dida365。
+                          </p>
+                        </aside>
 
                     <section id="historical-habit-corrections" class="historical-habit-corrections" aria-labelledby="historical-habit-heading" hidden>
                       <div class="day-task-heading">

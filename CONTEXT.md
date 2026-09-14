@@ -59,3 +59,17 @@ _Avoid_: Automatic migration, broad cleanup
 **Native app behavior**:
 Operating-system installation, launch, local file access, and lifecycle integration without requiring each interface element to use native visual controls.
 _Avoid_: Fully native UI
+
+## 3.0 design vocabulary
+
+**Day task**:
+A concrete action intended for one lived day, such as doing laundry or buying groceries, whose completion can be recorded. It is not automatically carried into the next day; later planning may suggest it again.
+_Avoid_: Backlog item, recurring habit, automatic carry-over
+
+**Local habit completion**:
+An explicit dated habit-completion record made by the user in Personal Dashboard, distinct from completion evidence read from Dida365.
+_Avoid_: Short record, habit snapshot, Dida365 write-back
+
+**Habit threshold check-in**:
+An explicit record that a habit's time target was met, such as getting up before a target time. It does not establish the actual time of the activity.
+_Avoid_: Actual time, timestamp of waking

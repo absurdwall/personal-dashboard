@@ -1063,3 +1063,14 @@ mod tests {
         fs::remove_dir_all(directory).unwrap();
     }
 }
+
+#[cfg(all(test, target_os = "macos"))]
+mod jpeg_regressions {
+    #[test]
+    fn native_decoder_accepts_jpeg_with_trailing_bytes() {
+        let mut bytes = include_bytes!("../tests/fixtures/background-sample.jpg").to_vec();
+        bytes.extend_from_slice(b"\r\n");
+        assert!(super::native_image_is_decodable(&bytes));
+        assert!(!super::native_image_is_decodable(&[0xff, 0xd8, 0xff, 0x00]));
+    }
+}
