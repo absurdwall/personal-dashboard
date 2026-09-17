@@ -290,7 +290,10 @@ fn real_cli_entry_reads_and_writes_a_synthetic_vault_across_processes() {
         lived_date,
     ));
     assert!(stale_error.contains("外部发生变化"));
-    assert_eq!(fs::read(task_path(vault.path())).unwrap(), before_stale_write);
+    assert_eq!(
+        fs::read(task_path(vault.path())).unwrap(),
+        before_stale_write
+    );
 
     let reread = run_cli(&read_request(vault.path(), lived_date));
     assert_eq!(reread["operation"], "read");
