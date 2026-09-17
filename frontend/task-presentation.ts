@@ -4,6 +4,25 @@ export type TaskSchedulePresentation = Readonly<{
   timeDisabled: boolean;
 }>;
 
+export type TaskStateFilter = "all" | "pending" | "completed" | "abandoned" | "deleted";
+
+export function taskVisibleInScope(
+  task: Readonly<{
+    listId: string;
+    state: Exclude<TaskStateFilter, "all" | "deleted">;
+    deletedAt: string | null;
+  }>,
+  listScope: "all" | "inbox",
+  stateScope: TaskStateFilter,
+): boolean {
+  if (listScope === "inbox" && task.listId !== "inbox") return false;
+  if (stateScope === "deleted") return task.deletedAt !== null;
+  return (
+    task.deletedAt === null &&
+    (stateScope === "all" || task.state === stateScope)
+  );
+}
+
 export function normalizeTaskSchedule(
   date: string | null | undefined,
   time: string | null | undefined,
@@ -28,4 +47,12 @@ export function isCurrentTaskResponse(
     currentDestination === "tasks" &&
     (expectedTargetBinding === null || expectedTargetBinding === responseTargetBinding)
   );
+}
+
+export function taskMutationConfirmed(
+  responseIsCurrent: boolean,
+  viewState: "unconfigured" | "empty" | "ready" | "error",
+  taskFound: boolean,
+): boolean {
+  return responseIsCurrent && viewState === "ready" && taskFound;
 }

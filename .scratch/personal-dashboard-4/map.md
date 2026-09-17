@@ -7,7 +7,7 @@
 | Ticket | Blocked by | Status |
 | --- | --- | --- |
 | [01 Tasks 入口与持久化收集箱](issues/01-persistent-task-inbox.md) | None | resolved |
-| [02 任务状态与可恢复历史](issues/02-task-state-history.md) | 01 | ready-for-agent |
+| [02 任务状态与可恢复历史](issues/02-task-state-history.md) | 01 | resolved |
 | [03 清单分类、归档与恢复](issues/03-task-lists-archive.md) | 01 | ready-for-agent |
 | [04 今日自动视图与 Today 任务栏](issues/04-today-shared-tasks.md) | 02, 03 | ready-for-agent |
 | [05 Calendar 任务摘要与右侧操作](issues/05-calendar-task-panel.md) | 02, 03 | ready-for-agent |

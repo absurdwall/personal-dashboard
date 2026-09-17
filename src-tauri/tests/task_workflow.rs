@@ -1,6 +1,7 @@
 use personal_dashboard_lib::tasks::{
-    FileTaskStore, TaskApplication, TaskChangeKind, TaskCreateInput, TaskDataState, TaskState,
-    TaskStore, TaskUpdateInput,
+    FileTaskStore, TaskApplication, TaskChangeKind, TaskCompletionCorrectionInput,
+    TaskCompletionSourceKind, TaskCreateInput, TaskDataState, TaskDeleteInput, TaskRestoreInput,
+    TaskState, TaskStateInput, TaskStore, TaskUpdateInput,
 };
 use personal_dashboard_lib::today::{TodayClock, TodayWorkspacePersistence};
 use std::fs;
@@ -157,6 +158,12 @@ fn app(vault: &Path) -> TaskApplication<SelectedVault, FixedClock, FileTaskStore
 
 fn task_path(vault: &Path) -> PathBuf {
     vault.join("life/.personal-dashboard/tasks/v1/tasks.json")
+}
+
+fn empty_task_document() -> Vec<u8> {
+    br#"{"schemaVersion":2,"lists":[{"id":"inbox","name":"Inbox","system":true,"archived":false}],"tasks":[]}
+"#
+    .to_vec()
 }
 
 fn create_input(
@@ -715,4 +722,843 @@ fn task_store_failure_does_not_report_a_saved_task() {
         .unwrap_err();
     assert!(error.contains("injected task create failure"));
     assert!(!task_path(vault.path()).exists());
+}
+
+#[test]
+fn task_state_history_keeps_task_date_and_records_actual_completion_context() {
+    let vault = TempVault::new("state-history");
+    let application = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        SequenceClock::new(&[
+            "2026-09-17T14:10-04:00",
+            "2026-09-19T18:25-04:00",
+            "2026-09-19T18:30-04:00",
+            "2026-09-19T18:35-04:00",
+            "2026-09-19T18:40-04:00",
+        ]),
+        FileTaskStore,
+    );
+    let opened = application.read().unwrap();
+    let created = application
+        .create(create_input(
+            &opened,
+            "stateful-task-1",
+            "保留原定日期",
+            Some("2026-09-17"),
+            Some("09:00"),
+        ))
+        .unwrap();
+
+    let completed = application
+        .set_state(TaskStateInput {
+            target_binding: created.target_binding.clone().unwrap(),
+            expected_revision: created.revision.clone().unwrap(),
+            task_id: "stateful-task-1".into(),
+            change_id: "complete-stateful-task-1".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap();
+    assert_eq!(
+        completed.state,
+        TaskDataState::Ready,
+        "{}",
+        completed.message
+    );
+    let task = &completed.tasks[0];
+    assert_eq!(task.state, TaskState::Completed);
+    assert_eq!(task.date.as_deref(), Some("2026-09-17"));
+    assert_eq!(task.time.as_deref(), Some("09:00"));
+    let completion = task.completion.as_ref().unwrap();
+    assert_eq!(completion.completed_on, "2026-09-19");
+    assert_eq!(completion.completed_time.as_deref(), Some("18:25"));
+    assert_eq!(completion.recorded_at, "2026-09-19T18:25-04:00");
+    assert_eq!(completion.source, TaskCompletionSourceKind::Checkbox);
+    assert_eq!(task.changes[0].kind, TaskChangeKind::Completed);
+    assert_eq!(task.changes[0].previous_state, Some(TaskState::Pending));
+    assert_eq!(task.changes[0].new_state, Some(TaskState::Completed));
+    assert!(task.changes[0].new_completion.is_some());
+
+    let completed_retry = application
+        .set_state(TaskStateInput {
+            target_binding: completed.target_binding.clone().unwrap(),
+            expected_revision: "stale-after-complete".into(),
+            task_id: "stateful-task-1".into(),
+            change_id: "complete-stateful-task-1".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap();
+    assert_eq!(completed_retry.revision, completed.revision);
+    assert_eq!(completed_retry.tasks[0].changes.len(), 1);
+
+    let reopened = application
+        .set_state(TaskStateInput {
+            target_binding: completed.target_binding.clone().unwrap(),
+            expected_revision: completed.revision.clone().unwrap(),
+            task_id: "stateful-task-1".into(),
+            change_id: "reopen-stateful-task-1".into(),
+            state: TaskState::Pending,
+        })
+        .unwrap();
+    assert_eq!(reopened.tasks[0].state, TaskState::Pending);
+    assert_eq!(reopened.tasks[0].completion, None);
+
+    let abandoned = application
+        .set_state(TaskStateInput {
+            target_binding: reopened.target_binding.clone().unwrap(),
+            expected_revision: reopened.revision.clone().unwrap(),
+            task_id: "stateful-task-1".into(),
+            change_id: "abandon-stateful-task-1".into(),
+            state: TaskState::Abandoned,
+        })
+        .unwrap();
+    assert_eq!(abandoned.tasks[0].state, TaskState::Abandoned);
+    let restored = application
+        .set_state(TaskStateInput {
+            target_binding: abandoned.target_binding.clone().unwrap(),
+            expected_revision: abandoned.revision.clone().unwrap(),
+            task_id: "stateful-task-1".into(),
+            change_id: "restore-stateful-task-1".into(),
+            state: TaskState::Pending,
+        })
+        .unwrap();
+    assert_eq!(restored.tasks[0].state, TaskState::Pending);
+    assert_eq!(
+        restored.tasks[0]
+            .changes
+            .iter()
+            .map(|change| change.kind)
+            .collect::<Vec<_>>(),
+        vec![
+            TaskChangeKind::Completed,
+            TaskChangeKind::Reopened,
+            TaskChangeKind::Abandoned,
+            TaskChangeKind::Restored,
+        ]
+    );
+
+    let relaunched = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        FixedClock,
+        FileTaskStore,
+    )
+    .read()
+    .unwrap();
+    assert_eq!(relaunched.tasks[0].state, TaskState::Pending);
+    assert_eq!(relaunched.tasks[0].changes.len(), 4);
+    assert_eq!(relaunched.tasks[0].date.as_deref(), Some("2026-09-17"));
+}
+
+#[test]
+fn task_deletion_keeps_a_tombstone_and_restore_keeps_identity_and_state() {
+    let vault = TempVault::new("delete-restore");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let created = application
+        .create(create_input(
+            &opened,
+            "recoverable-task-1",
+            "保留恢复资料",
+            Some("2026-09-20"),
+            None,
+        ))
+        .unwrap();
+    let deleted = application
+        .delete(TaskDeleteInput {
+            target_binding: created.target_binding.clone().unwrap(),
+            expected_revision: created.revision.clone().unwrap(),
+            task_id: "recoverable-task-1".into(),
+            change_id: "delete-recoverable-task-1".into(),
+        })
+        .unwrap();
+    assert_eq!(deleted.state, TaskDataState::Ready);
+    assert_eq!(deleted.tasks.len(), 1);
+    assert!(deleted.tasks[0].deleted_at.is_some());
+    assert_eq!(deleted.tasks[0].state, TaskState::Pending);
+    assert_eq!(deleted.tasks[0].list_id, "inbox");
+    assert_eq!(deleted.tasks[0].changes[0].kind, TaskChangeKind::Deleted);
+    assert_eq!(deleted.tasks[0].changes[0].previous_deleted_at, None);
+    assert!(deleted.tasks[0].changes[0].new_deleted_at.is_some());
+    let deleted_document = fs::read(task_path(vault.path())).unwrap();
+    let deleted_retry = application
+        .delete(TaskDeleteInput {
+            target_binding: deleted.target_binding.clone().unwrap(),
+            expected_revision: "stale-after-delete".into(),
+            task_id: "recoverable-task-1".into(),
+            change_id: "delete-recoverable-task-1".into(),
+        })
+        .unwrap();
+    assert_eq!(deleted_retry.revision, deleted.revision);
+    assert_eq!(deleted_retry.tasks[0].changes.len(), 1);
+    assert_eq!(fs::read(task_path(vault.path())).unwrap(), deleted_document);
+
+    let old_plan_retry = application
+        .create(TaskCreateInput {
+            target_binding: deleted.target_binding.clone().unwrap(),
+            expected_revision: deleted.revision.clone(),
+            task_id: "recoverable-task-1".into(),
+            name: "保留恢复资料".into(),
+            content: None,
+            date: Some("2026-09-20".into()),
+            time: None,
+            list_id: None,
+        })
+        .expect_err("old planning input must not reactivate a deleted task");
+    assert!(old_plan_retry.contains("删除") || old_plan_retry.contains("激活"));
+    assert_eq!(fs::read(task_path(vault.path())).unwrap(), deleted_document);
+
+    let restored = application
+        .restore(TaskRestoreInput {
+            target_binding: deleted.target_binding.clone().unwrap(),
+            expected_revision: deleted.revision.clone().unwrap(),
+            task_id: "recoverable-task-1".into(),
+            change_id: "restore-recoverable-task-1".into(),
+        })
+        .unwrap();
+    assert_eq!(restored.tasks.len(), 1);
+    assert_eq!(restored.tasks[0].id, "recoverable-task-1");
+    assert_eq!(restored.tasks[0].deleted_at, None);
+    assert_eq!(restored.tasks[0].state, TaskState::Pending);
+    assert_eq!(restored.tasks[0].list_id, "inbox");
+    assert_eq!(
+        restored.tasks[0]
+            .changes
+            .iter()
+            .map(|change| change.kind)
+            .collect::<Vec<_>>(),
+        vec![TaskChangeKind::Deleted, TaskChangeKind::Undeleted]
+    );
+    let restored_retry = application
+        .restore(TaskRestoreInput {
+            target_binding: restored.target_binding.clone().unwrap(),
+            expected_revision: "stale-after-restore".into(),
+            task_id: "recoverable-task-1".into(),
+            change_id: "restore-recoverable-task-1".into(),
+        })
+        .unwrap();
+    assert_eq!(restored_retry.revision, restored.revision);
+    assert_eq!(restored_retry.tasks[0].changes.len(), 2);
+
+    let relaunched = app(vault.path()).read().unwrap();
+    assert_eq!(relaunched.tasks[0].id, "recoverable-task-1");
+    assert_eq!(relaunched.tasks[0].deleted_at, None);
+    assert_eq!(relaunched.tasks[0].changes.len(), 2);
+}
+
+#[test]
+fn task_completion_correction_preserves_schedule_and_rejects_future_evidence() {
+    let vault = TempVault::new("completion-correction");
+    let application = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        SequenceClock::new(&[
+            "2026-09-17T14:10-04:00",
+            "2026-09-17T14:20-04:00",
+            "2026-09-17T15:10-04:00",
+            "2026-09-17T15:20-04:00",
+        ]),
+        FileTaskStore,
+    );
+    let opened = application.read().unwrap();
+    let created = application
+        .create(create_input(
+            &opened,
+            "correctable-task-1",
+            "提前完成的安排",
+            Some("2026-09-20"),
+            Some("09:00"),
+        ))
+        .unwrap();
+    let completed = application
+        .set_state(TaskStateInput {
+            target_binding: created.target_binding.clone().unwrap(),
+            expected_revision: created.revision.clone().unwrap(),
+            task_id: "correctable-task-1".into(),
+            change_id: "complete-correctable-task-1".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap();
+    assert_eq!(completed.tasks[0].date.as_deref(), Some("2026-09-20"));
+    assert_eq!(
+        completed.tasks[0].completion.as_ref().unwrap().completed_on,
+        "2026-09-17"
+    );
+
+    let corrected = application
+        .correct_completion(TaskCompletionCorrectionInput {
+            target_binding: completed.target_binding.clone().unwrap(),
+            expected_revision: completed.revision.clone().unwrap(),
+            task_id: "correctable-task-1".into(),
+            change_id: "correct-correctable-task-1".into(),
+            completed_on: "2026-09-16".into(),
+            completed_time: None,
+        })
+        .unwrap();
+    let task = &corrected.tasks[0];
+    assert_eq!(task.state, TaskState::Completed);
+    assert_eq!(task.date.as_deref(), Some("2026-09-20"));
+    let completion = task.completion.as_ref().unwrap();
+    assert_eq!(completion.completed_on, "2026-09-16");
+    assert_eq!(completion.completed_time, None);
+    assert_eq!(completion.recorded_at, "2026-09-17T15:10-04:00");
+    assert_eq!(completion.source, TaskCompletionSourceKind::DateCorrection);
+    assert_eq!(
+        task.changes.last().unwrap().kind,
+        TaskChangeKind::CompletionCorrected
+    );
+    assert_eq!(
+        task.changes.last().unwrap().previous_completion.as_ref(),
+        completed.tasks[0].completion.as_ref()
+    );
+    assert_eq!(
+        task.changes.last().unwrap().new_completion.as_ref(),
+        task.completion.as_ref()
+    );
+    let corrected_retry = application
+        .correct_completion(TaskCompletionCorrectionInput {
+            target_binding: corrected.target_binding.clone().unwrap(),
+            expected_revision: "stale-after-correction".into(),
+            task_id: "correctable-task-1".into(),
+            change_id: "correct-correctable-task-1".into(),
+            completed_on: "2026-09-16".into(),
+            completed_time: None,
+        })
+        .unwrap();
+    assert_eq!(corrected_retry.revision, corrected.revision);
+    assert_eq!(corrected_retry.tasks[0].changes.len(), 2);
+
+    let before_future_attempt = fs::read(task_path(vault.path())).unwrap();
+    let error = application
+        .correct_completion(TaskCompletionCorrectionInput {
+            target_binding: corrected.target_binding.clone().unwrap(),
+            expected_revision: corrected.revision.clone().unwrap(),
+            task_id: "correctable-task-1".into(),
+            change_id: "future-correctable-task-1".into(),
+            completed_on: "2026-09-18".into(),
+            completed_time: Some("08:00".into()),
+        })
+        .expect_err("future completion evidence must be rejected");
+    assert!(error.contains("未来"));
+    assert_eq!(
+        fs::read(task_path(vault.path())).unwrap(),
+        before_future_attempt
+    );
+}
+
+#[test]
+fn task_state_store_failure_keeps_state_and_history_together() {
+    let vault = TempVault::new("state-failure");
+    let initial = app(vault.path());
+    let opened = initial.read().unwrap();
+    let created = initial
+        .create(create_input(
+            &opened,
+            "state-failure-task",
+            "保存失败时仍是待办",
+            None,
+            None,
+        ))
+        .unwrap();
+    let before = fs::read(task_path(vault.path())).unwrap();
+    let failing = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        FixedClock,
+        FailingTaskStore,
+    );
+    let current = failing.read().unwrap();
+
+    let error = failing
+        .set_state(TaskStateInput {
+            target_binding: current.target_binding.clone().unwrap(),
+            expected_revision: current.revision.clone().unwrap(),
+            task_id: created.tasks[0].id.clone(),
+            change_id: "failed-state-change".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap_err();
+
+    assert!(error.contains("injected task save failure"));
+    assert_eq!(fs::read(task_path(vault.path())).unwrap(), before);
+    let after = initial.read().unwrap();
+    assert_eq!(after.tasks[0].state, TaskState::Pending);
+    assert!(after.tasks[0].completion.is_none());
+    assert!(after.tasks[0].changes.is_empty());
+}
+
+#[test]
+fn task_state_rejects_a_stale_external_document_without_partial_history() {
+    let vault = TempVault::new("state-conflict");
+    let initial = app(vault.path());
+    let opened = initial.read().unwrap();
+    let created = initial
+        .create(create_input(
+            &opened,
+            "state-conflict-task",
+            "不覆盖外部状态",
+            None,
+            None,
+        ))
+        .unwrap();
+    let external_document = br#"{"schemaVersion":1,"lists":[{"id":"inbox","name":"Inbox","system":true,"archived":false}],"tasks":[]}
+"#
+    .to_vec();
+    let application = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        FixedClock,
+        RacingTaskStore {
+            external_document: external_document.clone(),
+        },
+    );
+    let current = application.read().unwrap();
+
+    let error = application
+        .set_state(TaskStateInput {
+            target_binding: current.target_binding.clone().unwrap(),
+            expected_revision: created.revision.clone().unwrap(),
+            task_id: "state-conflict-task".into(),
+            change_id: "state-conflict-change".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap_err();
+
+    assert!(error.contains("外部发生变化"));
+    assert_eq!(
+        fs::read(task_path(vault.path())).unwrap(),
+        external_document
+    );
+}
+
+#[test]
+fn task_state_requires_explicit_restore_and_cannot_replay_an_inverse_change() {
+    let vault = TempVault::new("state-replay");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let created = application
+        .create(create_input(
+            &opened,
+            "state-replay-task",
+            "需要明确恢复",
+            None,
+            None,
+        ))
+        .unwrap();
+    let abandoned = application
+        .set_state(TaskStateInput {
+            target_binding: created.target_binding.clone().unwrap(),
+            expected_revision: created.revision.clone().unwrap(),
+            task_id: "state-replay-task".into(),
+            change_id: "abandon-state-replay-task".into(),
+            state: TaskState::Abandoned,
+        })
+        .unwrap();
+    let before_rejected_completion = fs::read(task_path(vault.path())).unwrap();
+    let error = application
+        .set_state(TaskStateInput {
+            target_binding: abandoned.target_binding.clone().unwrap(),
+            expected_revision: abandoned.revision.clone().unwrap(),
+            task_id: "state-replay-task".into(),
+            change_id: "complete-abandoned-state-replay-task".into(),
+            state: TaskState::Completed,
+        })
+        .expect_err("abandoned tasks must be restored before completion");
+    assert!(error.contains("恢复"));
+    assert_eq!(
+        fs::read(task_path(vault.path())).unwrap(),
+        before_rejected_completion
+    );
+
+    let restored = application
+        .set_state(TaskStateInput {
+            target_binding: abandoned.target_binding.clone().unwrap(),
+            expected_revision: abandoned.revision.clone().unwrap(),
+            task_id: "state-replay-task".into(),
+            change_id: "restore-state-replay-task".into(),
+            state: TaskState::Pending,
+        })
+        .unwrap();
+    let deleted = application
+        .delete(TaskDeleteInput {
+            target_binding: restored.target_binding.clone().unwrap(),
+            expected_revision: restored.revision.clone().unwrap(),
+            task_id: "state-replay-task".into(),
+            change_id: "delete-state-replay-task".into(),
+        })
+        .unwrap();
+    let before_old_restore_replay = fs::read(task_path(vault.path())).unwrap();
+    let error = application
+        .set_state(TaskStateInput {
+            target_binding: deleted.target_binding.clone().unwrap(),
+            expected_revision: deleted.revision.clone().unwrap(),
+            task_id: "state-replay-task".into(),
+            change_id: "restore-state-replay-task".into(),
+            state: TaskState::Pending,
+        })
+        .expect_err("an old restore id must not replay after deletion");
+    assert!(error.contains("修改标识"));
+    assert_eq!(
+        fs::read(task_path(vault.path())).unwrap(),
+        before_old_restore_replay
+    );
+
+    let restored_again = application
+        .restore(TaskRestoreInput {
+            target_binding: deleted.target_binding.clone().unwrap(),
+            expected_revision: deleted.revision.clone().unwrap(),
+            task_id: "state-replay-task".into(),
+            change_id: "undelete-state-replay-task".into(),
+        })
+        .unwrap();
+    let completed = application
+        .set_state(TaskStateInput {
+            target_binding: restored_again.target_binding.clone().unwrap(),
+            expected_revision: restored_again.revision.clone().unwrap(),
+            task_id: "state-replay-task".into(),
+            change_id: "complete-state-replay-task".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap();
+    let corrected = application
+        .correct_completion(TaskCompletionCorrectionInput {
+            target_binding: completed.target_binding.clone().unwrap(),
+            expected_revision: completed.revision.clone().unwrap(),
+            task_id: "state-replay-task".into(),
+            change_id: "correct-state-replay-task".into(),
+            completed_on: "2026-09-16".into(),
+            completed_time: None,
+        })
+        .unwrap();
+    let reopened = application
+        .set_state(TaskStateInput {
+            target_binding: corrected.target_binding.clone().unwrap(),
+            expected_revision: corrected.revision.clone().unwrap(),
+            task_id: "state-replay-task".into(),
+            change_id: "reopen-state-replay-task".into(),
+            state: TaskState::Pending,
+        })
+        .unwrap();
+    let before_old_correction_replay = fs::read(task_path(vault.path())).unwrap();
+    let error = application
+        .correct_completion(TaskCompletionCorrectionInput {
+            target_binding: reopened.target_binding.clone().unwrap(),
+            expected_revision: reopened.revision.clone().unwrap(),
+            task_id: "state-replay-task".into(),
+            change_id: "correct-state-replay-task".into(),
+            completed_on: "2026-09-16".into(),
+            completed_time: None,
+        })
+        .expect_err("an old completion correction id must not replay after reopen");
+    assert!(error.contains("修改标识"));
+    assert_eq!(
+        fs::read(task_path(vault.path())).unwrap(),
+        before_old_correction_replay
+    );
+}
+
+#[test]
+fn legacy_task_schema_is_read_and_upgraded_on_the_next_write() {
+    let vault = TempVault::new("legacy-schema");
+    let path = task_path(vault.path());
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(
+        &path,
+        r#"{
+  "schemaVersion": 1,
+  "lists": [{"id":"inbox","name":"Inbox","system":true,"archived":false}],
+  "tasks": [{
+    "id":"legacy-task",
+    "name":"旧 schema 任务",
+    "content":null,
+    "date":"2026-09-20",
+    "time":null,
+    "listId":"inbox",
+    "source":{"kind":"manual","reference":null},
+    "state":"pending",
+    "createdAt":"2026-09-17T14:10-04:00",
+    "modifiedAt":"2026-09-17T14:10-04:00",
+    "changes":[]
+  }]
+}
+"#,
+    )
+    .unwrap();
+
+    let application = app(vault.path());
+    let legacy = application.read().unwrap();
+    assert_eq!(legacy.schema_version, 2);
+    assert_eq!(legacy.tasks[0].state, TaskState::Pending);
+    assert_eq!(legacy.tasks[0].deleted_at, None);
+    assert_eq!(legacy.tasks[0].completion, None);
+
+    let upgraded = application
+        .set_state(TaskStateInput {
+            target_binding: legacy.target_binding.clone().unwrap(),
+            expected_revision: legacy.revision.clone().unwrap(),
+            task_id: "legacy-task".into(),
+            change_id: "complete-legacy-task".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap();
+    assert_eq!(upgraded.schema_version, 2);
+    let document: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    assert_eq!(document["schemaVersion"], serde_json::json!(2));
+    assert!(document["tasks"][0].get("deletedAt").is_some());
+    assert!(document["tasks"][0].get("completion").is_some());
+}
+
+#[test]
+fn task_delete_store_failure_preserves_the_existing_document() {
+    let vault = TempVault::new("delete-failure");
+    let initial = app(vault.path());
+    let opened = initial.read().unwrap();
+    let created = initial
+        .create(create_input(
+            &opened,
+            "failed-delete-task",
+            "删除保存失败",
+            None,
+            None,
+        ))
+        .unwrap();
+    let before = fs::read(task_path(vault.path())).unwrap();
+    let failing = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        FixedClock,
+        FailingTaskStore,
+    );
+    let current = failing.read().unwrap();
+    let error = failing
+        .delete(TaskDeleteInput {
+            target_binding: current.target_binding.clone().unwrap(),
+            expected_revision: current.revision.clone().unwrap(),
+            task_id: created.tasks[0].id.clone(),
+            change_id: "failed-delete-change".into(),
+        })
+        .unwrap_err();
+    assert!(error.contains("injected task save failure"));
+    assert_eq!(fs::read(task_path(vault.path())).unwrap(), before);
+    let after = initial.read().unwrap();
+    assert_eq!(after.tasks[0].deleted_at, None);
+    assert!(after.tasks[0].changes.is_empty());
+}
+
+#[test]
+fn task_delete_rejects_a_stale_external_document_without_partial_history() {
+    let vault = TempVault::new("delete-conflict");
+    let initial = app(vault.path());
+    let opened = initial.read().unwrap();
+    let created = initial
+        .create(create_input(
+            &opened,
+            "conflicted-delete-task",
+            "删除冲突",
+            None,
+            None,
+        ))
+        .unwrap();
+    let external_document = empty_task_document();
+    let application = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        FixedClock,
+        RacingTaskStore {
+            external_document: external_document.clone(),
+        },
+    );
+    let current = application.read().unwrap();
+    let error = application
+        .delete(TaskDeleteInput {
+            target_binding: current.target_binding.clone().unwrap(),
+            expected_revision: current.revision.clone().unwrap(),
+            task_id: created.tasks[0].id.clone(),
+            change_id: "conflicted-delete-change".into(),
+        })
+        .unwrap_err();
+    assert!(error.contains("外部发生变化"));
+    assert_eq!(
+        fs::read(task_path(vault.path())).unwrap(),
+        external_document
+    );
+}
+
+#[test]
+fn task_restore_store_failure_preserves_the_existing_tombstone() {
+    let vault = TempVault::new("restore-failure");
+    let initial = app(vault.path());
+    let opened = initial.read().unwrap();
+    let created = initial
+        .create(create_input(
+            &opened,
+            "failed-restore-task",
+            "恢复保存失败",
+            None,
+            None,
+        ))
+        .unwrap();
+    let deleted = initial
+        .delete(TaskDeleteInput {
+            target_binding: created.target_binding.clone().unwrap(),
+            expected_revision: created.revision.clone().unwrap(),
+            task_id: created.tasks[0].id.clone(),
+            change_id: "delete-before-failed-restore".into(),
+        })
+        .unwrap();
+    let before = fs::read(task_path(vault.path())).unwrap();
+    let failing = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        FixedClock,
+        FailingTaskStore,
+    );
+    let current = failing.read().unwrap();
+    let error = failing
+        .restore(TaskRestoreInput {
+            target_binding: current.target_binding.clone().unwrap(),
+            expected_revision: current.revision.clone().unwrap(),
+            task_id: deleted.tasks[0].id.clone(),
+            change_id: "failed-restore-change".into(),
+        })
+        .unwrap_err();
+    assert!(error.contains("injected task save failure"));
+    assert_eq!(fs::read(task_path(vault.path())).unwrap(), before);
+    let after = initial.read().unwrap();
+    assert!(after.tasks[0].deleted_at.is_some());
+    assert_eq!(after.tasks[0].changes.len(), 1);
+}
+
+#[test]
+fn task_restore_rejects_a_stale_external_document_without_partial_history() {
+    let vault = TempVault::new("restore-conflict");
+    let initial = app(vault.path());
+    let opened = initial.read().unwrap();
+    let created = initial
+        .create(create_input(
+            &opened,
+            "conflicted-restore-task",
+            "恢复冲突",
+            None,
+            None,
+        ))
+        .unwrap();
+    let deleted = initial
+        .delete(TaskDeleteInput {
+            target_binding: created.target_binding.clone().unwrap(),
+            expected_revision: created.revision.clone().unwrap(),
+            task_id: created.tasks[0].id.clone(),
+            change_id: "delete-before-conflicted-restore".into(),
+        })
+        .unwrap();
+    let external_document = empty_task_document();
+    let application = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        FixedClock,
+        RacingTaskStore {
+            external_document: external_document.clone(),
+        },
+    );
+    let current = application.read().unwrap();
+    let error = application
+        .restore(TaskRestoreInput {
+            target_binding: current.target_binding.clone().unwrap(),
+            expected_revision: current.revision.clone().unwrap(),
+            task_id: deleted.tasks[0].id.clone(),
+            change_id: "conflicted-restore-change".into(),
+        })
+        .unwrap_err();
+    assert!(error.contains("外部发生变化"));
+    assert_eq!(
+        fs::read(task_path(vault.path())).unwrap(),
+        external_document
+    );
+}
+
+#[test]
+fn task_completion_correction_store_failure_preserves_completion_and_history() {
+    let vault = TempVault::new("completion-correction-failure");
+    let initial = app(vault.path());
+    let opened = initial.read().unwrap();
+    let created = initial
+        .create(create_input(
+            &opened,
+            "failed-correction-task",
+            "更正保存失败",
+            None,
+            None,
+        ))
+        .unwrap();
+    let completed = initial
+        .set_state(TaskStateInput {
+            target_binding: created.target_binding.clone().unwrap(),
+            expected_revision: created.revision.clone().unwrap(),
+            task_id: created.tasks[0].id.clone(),
+            change_id: "complete-before-failed-correction".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap();
+    let before = fs::read(task_path(vault.path())).unwrap();
+    let failing = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        FixedClock,
+        FailingTaskStore,
+    );
+    let current = failing.read().unwrap();
+    let error = failing
+        .correct_completion(TaskCompletionCorrectionInput {
+            target_binding: current.target_binding.clone().unwrap(),
+            expected_revision: current.revision.clone().unwrap(),
+            task_id: completed.tasks[0].id.clone(),
+            change_id: "failed-correction-change".into(),
+            completed_on: "2026-09-16".into(),
+            completed_time: None,
+        })
+        .unwrap_err();
+    assert!(error.contains("injected task save failure"));
+    assert_eq!(fs::read(task_path(vault.path())).unwrap(), before);
+    let after = initial.read().unwrap();
+    assert_eq!(after.tasks[0].completion, completed.tasks[0].completion);
+    assert_eq!(after.tasks[0].changes.len(), 1);
+}
+
+#[test]
+fn task_completion_correction_rejects_a_stale_external_document_without_partial_history() {
+    let vault = TempVault::new("completion-correction-conflict");
+    let initial = app(vault.path());
+    let opened = initial.read().unwrap();
+    let created = initial
+        .create(create_input(
+            &opened,
+            "conflicted-correction-task",
+            "更正冲突",
+            None,
+            None,
+        ))
+        .unwrap();
+    let completed = initial
+        .set_state(TaskStateInput {
+            target_binding: created.target_binding.clone().unwrap(),
+            expected_revision: created.revision.clone().unwrap(),
+            task_id: created.tasks[0].id.clone(),
+            change_id: "complete-before-conflicted-correction".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap();
+    let external_document = empty_task_document();
+    let application = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        FixedClock,
+        RacingTaskStore {
+            external_document: external_document.clone(),
+        },
+    );
+    let current = application.read().unwrap();
+    let error = application
+        .correct_completion(TaskCompletionCorrectionInput {
+            target_binding: current.target_binding.clone().unwrap(),
+            expected_revision: current.revision.clone().unwrap(),
+            task_id: completed.tasks[0].id.clone(),
+            change_id: "conflicted-correction-change".into(),
+            completed_on: "2026-09-16".into(),
+            completed_time: None,
+        })
+        .unwrap_err();
+    assert!(error.contains("外部发生变化"));
+    assert_eq!(
+        fs::read(task_path(vault.path())).unwrap(),
+        external_document
+    );
 }

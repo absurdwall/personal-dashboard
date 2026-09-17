@@ -38,6 +38,8 @@ import { preserveTodayDayTaskPlanError } from "./day-task-presentation.js";
 import {
   isCurrentTaskResponse,
   normalizeTaskSchedule,
+  taskMutationConfirmed,
+  taskVisibleInScope,
 } from "./task-presentation.js";
 import {
   habitCompletionPresentation,
@@ -165,8 +167,21 @@ type DayTaskListView = Readonly<{
 
 type TaskChangeView = Readonly<{
   id: string;
-  kind: "renamed" | "content-edited" | "rescheduled" | "list-moved" | "edited";
+  kind:
+    | "renamed"
+    | "content-edited"
+    | "rescheduled"
+    | "list-moved"
+    | "edited"
+    | "completed"
+    | "reopened"
+    | "abandoned"
+    | "restored"
+    | "deleted"
+    | "undeleted"
+    | "completion-corrected";
   changedAt: string;
+  source: "user" | "daily-flow";
   previousName: string | null;
   newName: string | null;
   previousContent: string | null;
@@ -177,6 +192,19 @@ type TaskChangeView = Readonly<{
   newTime: string | null;
   previousListId: string | null;
   newListId: string | null;
+  previousState: "pending" | "completed" | "abandoned" | null;
+  newState: "pending" | "completed" | "abandoned" | null;
+  previousDeletedAt: string | null;
+  newDeletedAt: string | null;
+  previousCompletion: TaskCompletionView | null;
+  newCompletion: TaskCompletionView | null;
+}>;
+
+type TaskCompletionView = Readonly<{
+  completedOn: string;
+  completedTime: string | null;
+  recordedAt: string;
+  source: "checkbox" | "date-correction" | "daily-flow";
 }>;
 
 type TaskView = Readonly<{
@@ -188,6 +216,8 @@ type TaskView = Readonly<{
   listId: string;
   source: Readonly<{ kind: "manual" | "daily-flow"; reference: string | null }>;
   state: "pending" | "completed" | "abandoned";
+  deletedAt: string | null;
+  completion: TaskCompletionView | null;
   createdAt: string;
   modifiedAt: string;
   changes: readonly TaskChangeView[];
@@ -478,6 +508,7 @@ const calendarOpenDay = document.querySelector<HTMLButtonElement>("#calendar-ope
 const tasksDestination = document.querySelector<HTMLElement>("#workspace-destination-tasks");
 const tasksStatus = document.querySelector<HTMLElement>("#tasks-status");
 const tasksScopeButtons = document.querySelectorAll<HTMLButtonElement>("[data-task-scope]");
+const tasksStateButtons = document.querySelectorAll<HTMLButtonElement>("[data-task-state]");
 const tasksCount = document.querySelector<HTMLElement>("#tasks-count");
 const tasksList = document.querySelector<HTMLElement>("#tasks-list");
 const tasksEmpty = document.querySelector<HTMLElement>("#tasks-empty");
@@ -627,6 +658,7 @@ let currentTodayPhase: TodayPhase = "morning";
 let currentTodayView: TodayView | null = null;
 let currentTasksView: TasksView | null = null;
 let taskScope: "all" | "inbox" = "all";
+let taskStateScope: "all" | "pending" | "completed" | "abandoned" | "deleted" = "all";
 let taskOperationCount = 0;
 let taskRefreshQueued = false;
 const taskRequests = new LatestRequest();
@@ -635,6 +667,8 @@ type TaskDraft = Readonly<{
   content: string;
   date: string;
   time: string;
+  completionDate: string;
+  completionTime: string;
 }>;
 const taskCreateDrafts = new Map<string, TaskDraft>();
 const taskEditDrafts = new Map<string, TaskDraft>();
@@ -788,6 +822,7 @@ function resetVaultScopedWorkspaceState(): void {
   currentTodayView = null;
   currentTasksView = null;
   taskScope = "all";
+  taskStateScope = "all";
   taskRefreshQueued = false;
   currentHabitSnapshot = null;
   selectedHabitCell = null;
@@ -3525,11 +3560,22 @@ function readTaskDraft(form: HTMLFormElement): TaskDraft {
   const content = form.querySelector<HTMLTextAreaElement>("[data-task-content]")?.value ?? "";
   const date = form.querySelector<HTMLInputElement>("[data-task-date]")?.value ?? "";
   const time = form.querySelector<HTMLInputElement>("[data-task-time]")?.value ?? "";
-  return { name, content, date, time };
+  const completionDate =
+    form.querySelector<HTMLInputElement>("[data-task-completion-date]")?.value ?? "";
+  const completionTime =
+    form.querySelector<HTMLInputElement>("[data-task-completion-time]")?.value ?? "";
+  return { name, content, date, time, completionDate, completionTime };
 }
 
 function isBlankTaskDraft(draft: TaskDraft): boolean {
-  return !draft.name && !draft.content && !draft.date && !draft.time;
+  return (
+    !draft.name &&
+    !draft.content &&
+    !draft.date &&
+    !draft.time &&
+    !draft.completionDate &&
+    !draft.completionTime
+  );
 }
 
 function normalizeTaskDateTimeFields(
@@ -3568,11 +3614,66 @@ function stashTaskEditDraft(form: HTMLFormElement): void {
   }
 }
 
+function reconcileTaskCompletionDraft(
+  targetBinding: string,
+  taskId: string,
+  task: TaskView,
+): void {
+  const key = taskDraftKey(targetBinding, taskId);
+  const draft = taskEditDrafts.get(key);
+  if (!draft) return;
+  const next: TaskDraft = {
+    ...draft,
+    completionDate: task.completion?.completedOn ?? "",
+    completionTime: task.completion?.completedTime ?? "",
+  };
+  if (isBlankTaskDraft(next)) {
+    taskEditDrafts.delete(key);
+  } else {
+    taskEditDrafts.set(key, next);
+  }
+}
+
 function taskScheduleText(date: string | null, time: string | null): string {
   if (!date) return t("tasks.noDate");
   return time
     ? t("tasks.dateAt", { date: calendarDateLabel(date), time })
     : calendarDateLabel(date);
+}
+
+function taskStateCopyKey(
+  state: "pending" | "completed" | "abandoned",
+): InterfaceCopyKey {
+  return state === "pending"
+    ? "tasks.statePending"
+    : state === "completed"
+      ? "tasks.stateCompleted"
+      : "tasks.stateAbandoned";
+}
+
+function taskCompletionSourceText(source: TaskCompletionView["source"]): string {
+  const key: Record<TaskCompletionView["source"], InterfaceCopyKey> = {
+    checkbox: "tasks.completionSourceCheckbox",
+    "date-correction": "tasks.completionSourceCorrection",
+    "daily-flow": "tasks.completionSourceDailyFlow",
+  };
+  return t(key[source]);
+}
+
+function taskCompletionMoment(completion: TaskCompletionView | null): string {
+  if (!completion) return t("tasks.completionUnknown");
+  return completion.completedTime
+    ? t("tasks.dateAt", {
+        date: calendarDateLabel(completion.completedOn),
+        time: completion.completedTime,
+      })
+    : calendarDateLabel(completion.completedOn);
+}
+
+function taskChangeSourceText(source: TaskChangeView["source"]): string {
+  return t(
+    source === "user" ? "tasks.changeSourceUser" : "tasks.changeSourceDailyFlow",
+  );
 }
 
 function taskChangeDescription(change: TaskChangeView): string {
@@ -3581,10 +3682,69 @@ function taskChangeDescription(change: TaskChangeView): string {
       changedAt: change.changedAt,
       previous: taskScheduleText(change.previousDate, change.previousTime),
       next: taskScheduleText(change.newDate, change.newTime),
+      changeSource: taskChangeSourceText(change.source),
+    });
+  }
+  if (change.kind === "completed") {
+    return t("tasks.completedChange", {
+      changedAt: change.changedAt,
+      actual: taskCompletionMoment(change.newCompletion),
+      source: change.newCompletion
+        ? taskCompletionSourceText(change.newCompletion.source)
+        : t("tasks.completionUnknown"),
+      changeSource: taskChangeSourceText(change.source),
+    });
+  }
+  if (change.kind === "reopened") {
+    return t("tasks.reopenedChange", {
+      changedAt: change.changedAt,
+      changeSource: taskChangeSourceText(change.source),
+    });
+  }
+  if (change.kind === "abandoned") {
+    return t("tasks.abandonedChange", {
+      changedAt: change.changedAt,
+      changeSource: taskChangeSourceText(change.source),
+    });
+  }
+  if (change.kind === "restored") {
+    return t("tasks.restoredChange", {
+      changedAt: change.changedAt,
+      changeSource: taskChangeSourceText(change.source),
+    });
+  }
+  if (change.kind === "deleted") {
+    return t("tasks.deletedChange", {
+      changedAt: change.changedAt,
+      changeSource: taskChangeSourceText(change.source),
+    });
+  }
+  if (change.kind === "undeleted") {
+    return t("tasks.undeletedChange", {
+      changedAt: change.changedAt,
+      changeSource: taskChangeSourceText(change.source),
+    });
+  }
+  if (change.kind === "completion-corrected") {
+    return t("tasks.completionCorrectedChange", {
+      changedAt: change.changedAt,
+      previous: taskCompletionMoment(change.previousCompletion),
+      next: taskCompletionMoment(change.newCompletion),
+      changeSource: taskChangeSourceText(change.source),
     });
   }
   const labels: Record<
-    Exclude<TaskChangeView["kind"], "rescheduled">,
+    Exclude<
+      TaskChangeView["kind"],
+      | "rescheduled"
+      | "completed"
+      | "reopened"
+      | "abandoned"
+      | "restored"
+      | "deleted"
+      | "undeleted"
+      | "completion-corrected"
+    >,
     InterfaceCopyKey
   > = {
     renamed: "tasks.renamed",
@@ -3592,7 +3752,10 @@ function taskChangeDescription(change: TaskChangeView): string {
     "list-moved": "tasks.edited",
     edited: "tasks.edited",
   };
-  return t(labels[change.kind], { changedAt: change.changedAt });
+  return t(labels[change.kind], {
+    changedAt: change.changedAt,
+    changeSource: taskChangeSourceText(change.source),
+  });
 }
 
 function taskChangeHistory(task: TaskView): HTMLElement | null {
@@ -3618,16 +3781,88 @@ function taskEditor(task: TaskView, writable: boolean): HTMLElement {
   const draft = binding
     ? taskEditDrafts.get(taskDraftKey(binding, task.id))
     : undefined;
+  const deleted = task.deletedAt !== null;
+  const editable = writable && !deleted;
   const form = document.createElement("form");
   form.className = "task-form task-editor";
   form.dataset.taskEditor = task.id;
+  form.dataset.taskState = task.state;
+  form.classList.toggle("is-deleted", deleted);
+  form.classList.toggle("is-complete", task.state === "completed");
+  form.classList.toggle("is-abandoned", task.state === "abandoned");
   form.setAttribute("aria-label", t("tasks.editLabel", { task: task.name }));
 
   const heading = document.createElement("div");
   heading.className = "task-editor-heading";
   const source = document.createElement("small");
-  setCopy(source, task.listId === "inbox" ? "tasks.sourceManual" : "tasks.inbox");
-  heading.append(source);
+  setCopy(
+    source,
+    task.source.kind === "manual" ? "tasks.sourceManual" : "tasks.sourceDailyFlow",
+  );
+  const state = document.createElement("span");
+  state.className = "task-state-label";
+  setCopy(state, deleted ? "tasks.stateDeleted" : taskStateCopyKey(task.state));
+  heading.append(source, state);
+
+  const stateActions = document.createElement("div");
+  stateActions.className = "task-state-actions";
+  if (deleted) {
+    const restore = document.createElement("button");
+    restore.type = "button";
+    restore.dataset.taskRestore = task.id;
+    restore.disabled = !writable;
+    setCopy(restore, "tasks.undoDelete");
+    stateActions.append(restore);
+  } else {
+    if (task.state !== "abandoned") {
+      const completionLabel = document.createElement("label");
+      completionLabel.className = "task-completion-toggle";
+      const completion = document.createElement("input");
+      completion.type = "checkbox";
+      completion.checked = task.state === "completed";
+      completion.disabled = !writable;
+      completion.dataset.taskStateAction =
+        task.state === "completed" ? "pending" : "completed";
+      completion.dataset.taskStateTask = task.id;
+      completion.setAttribute(
+        "aria-label",
+        t(task.state === "completed" ? "tasks.reopen" : "tasks.complete"),
+      );
+      const completionText = document.createElement("span");
+      setCopy(
+        completionText,
+        task.state === "completed" ? "tasks.reopen" : "tasks.complete",
+      );
+      completionLabel.append(completion, completionText);
+      stateActions.append(completionLabel);
+    } else {
+      const restore = document.createElement("button");
+      restore.type = "button";
+      restore.dataset.taskStateAction = "pending";
+      restore.dataset.taskStateTask = task.id;
+      restore.disabled = !writable;
+      setCopy(restore, "tasks.restore");
+      stateActions.append(restore);
+    }
+    if (task.state !== "abandoned") {
+      const abandon = document.createElement("button");
+      abandon.type = "button";
+      abandon.className = "secondary-button";
+      abandon.dataset.taskStateAction = "abandoned";
+      abandon.dataset.taskStateTask = task.id;
+      abandon.disabled = !writable;
+      setCopy(abandon, "tasks.abandon");
+      stateActions.append(abandon);
+    }
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "secondary-button";
+    remove.dataset.taskDelete = task.id;
+    remove.disabled = !writable;
+    setCopy(remove, "tasks.delete");
+    stateActions.append(remove);
+  }
+  heading.append(stateActions);
 
   const grid = document.createElement("div");
   grid.className = "task-form-grid";
@@ -3639,7 +3874,7 @@ function taskEditor(task: TaskView, writable: boolean): HTMLElement {
   name.type = "text";
   name.maxLength = 160;
   name.required = true;
-  name.disabled = !writable;
+  name.disabled = !editable;
   name.value = draft?.name ?? task.name;
   name.dataset.taskName = "";
   nameCaption.append(name);
@@ -3651,7 +3886,7 @@ function taskEditor(task: TaskView, writable: boolean): HTMLElement {
   setCopy(contentCaption, "tasks.content");
   const content = document.createElement("textarea");
   content.rows = 2;
-  content.disabled = !writable;
+  content.disabled = !editable;
   content.value = draft?.content ?? task.content ?? "";
   content.dataset.taskContent = "";
   contentCaption.append(content);
@@ -3662,7 +3897,7 @@ function taskEditor(task: TaskView, writable: boolean): HTMLElement {
   setCopy(dateCaption, "tasks.date");
   const date = document.createElement("input");
   date.type = "date";
-  date.disabled = !writable;
+  date.disabled = !editable;
   date.value = draft?.date ?? task.date ?? "";
   date.dataset.taskDate = "";
   dateCaption.append(date);
@@ -3673,10 +3908,10 @@ function taskEditor(task: TaskView, writable: boolean): HTMLElement {
   setCopy(timeCaption, "tasks.time");
   const time = document.createElement("input");
   time.type = "time";
-  time.disabled = !writable || !(draft?.date ?? task.date);
+  time.disabled = !editable || !(draft?.date ?? task.date);
   time.value = draft?.time ?? task.time ?? "";
   time.dataset.taskTime = "";
-  normalizeTaskDateTimeFields(date, time, !writable);
+  normalizeTaskDateTimeFields(date, time, !editable);
   timeCaption.append(time);
   timeLabel.append(timeCaption);
 
@@ -3688,10 +3923,63 @@ function taskEditor(task: TaskView, writable: boolean): HTMLElement {
   schedule.textContent = taskScheduleText(task.date, task.time);
   const save = document.createElement("button");
   save.type = "submit";
-  save.disabled = !writable;
+  save.disabled = !editable;
   setCopy(save, "tasks.save");
   footer.append(schedule, save);
-  form.append(heading, grid, footer);
+  form.append(heading, grid);
+  if (task.completion) {
+    const completionDetails = document.createElement("section");
+    completionDetails.className = "task-completion-details";
+    const completionHeading = document.createElement("h4");
+    setCopy(completionHeading, "tasks.completionDetails");
+    const taskDate = document.createElement("p");
+    taskDate.className = "task-meta";
+    setCopy(taskDate, "tasks.taskDateDetails", {
+      schedule: taskScheduleText(task.date, task.time),
+    });
+    const actual = document.createElement("p");
+    actual.className = "task-meta";
+    setCopy(actual, "tasks.actualCompletionDetails", {
+      completed: taskCompletionMoment(task.completion),
+      source: taskCompletionSourceText(task.completion.source),
+    });
+    const recorded = document.createElement("p");
+    recorded.className = "task-meta";
+    setCopy(recorded, "tasks.recordedCompletionDetails", {
+      recordedAt: task.completion.recordedAt,
+    });
+    const correction = document.createElement("div");
+    correction.className = "task-completion-correction";
+    const correctionDateLabel = document.createElement("label");
+    const correctionDateCaption = document.createElement("span");
+    setCopy(correctionDateCaption, "tasks.completionDate");
+    const correctionDate = document.createElement("input");
+    correctionDate.type = "date";
+    correctionDate.disabled = !editable;
+    correctionDate.value = draft?.completionDate ?? task.completion.completedOn;
+    correctionDate.dataset.taskCompletionDate = "";
+    correctionDateCaption.append(correctionDate);
+    correctionDateLabel.append(correctionDateCaption);
+    const correctionTimeLabel = document.createElement("label");
+    const correctionTimeCaption = document.createElement("span");
+    setCopy(correctionTimeCaption, "tasks.completionTime");
+    const correctionTime = document.createElement("input");
+    correctionTime.type = "time";
+    correctionTime.disabled = !editable;
+    correctionTime.value = draft?.completionTime ?? task.completion.completedTime ?? "";
+    correctionTime.dataset.taskCompletionTime = "";
+    correctionTimeCaption.append(correctionTime);
+    correctionTimeLabel.append(correctionTimeCaption);
+    const correct = document.createElement("button");
+    correct.type = "button";
+    correct.dataset.taskCorrectCompletion = task.id;
+    correct.disabled = !editable;
+    setCopy(correct, "tasks.correctCompletion");
+    correction.append(correctionDateLabel, correctionTimeLabel, correct);
+    completionDetails.append(completionHeading, taskDate, actual, recorded, correction);
+    form.append(completionDetails);
+  }
+  form.append(footer);
   const history = taskChangeHistory(task);
   if (history) form.append(history);
   return form;
@@ -3700,10 +3988,15 @@ function taskEditor(task: TaskView, writable: boolean): HTMLElement {
 function renderTasks(view: TasksView): void {
   currentTasksView = view;
   const visibleTasks = view.tasks.filter((task) =>
-    taskScope === "inbox" ? task.listId === "inbox" : true,
+    taskVisibleInScope(task, taskScope, taskStateScope),
   );
   tasksScopeButtons.forEach((button) => {
     const selected = button.dataset.taskScope === taskScope;
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  });
+  tasksStateButtons.forEach((button) => {
+    const selected = button.dataset.taskState === taskStateScope;
     button.setAttribute("aria-selected", String(selected));
     button.tabIndex = selected ? 0 : -1;
   });
@@ -3729,14 +4022,22 @@ function renderTasks(view: TasksView): void {
       view.state === "error" ||
       view.state === "unconfigured";
     if (!tasksEmpty.hidden) {
-      setCopy(tasksEmpty, taskScope === "inbox" ? "tasks.empty" : "tasks.emptyAll");
+      setCopy(
+        tasksEmpty,
+        taskStateScope === "deleted"
+          ? "tasks.emptyDeleted"
+          : taskScope === "inbox"
+            ? "tasks.empty"
+            : "tasks.emptyAll",
+      );
     }
   }
-  const writable =
+  const canOperate =
     Boolean(view.targetBinding) &&
     view.state !== "error" &&
     view.state !== "unconfigured" &&
     taskOperationCount === 0;
+  const writable = canOperate && taskStateScope !== "deleted";
   if (taskCreateForm) {
     taskCreateForm.hidden = !writable;
     const draft = view.targetBinding
@@ -3749,7 +4050,7 @@ function renderTasks(view: TasksView): void {
     normalizeTaskDateTimeFields(taskCreateDate, taskCreateTime);
   }
   taskCreateSubmit?.toggleAttribute("disabled", !writable);
-  tasksList?.replaceChildren(...visibleTasks.map((task) => taskEditor(task, writable)));
+  tasksList?.replaceChildren(...visibleTasks.map((task) => taskEditor(task, canOperate)));
 }
 
 function stableTaskOperationId(signature: string, prefix: string): string {
@@ -3768,10 +4069,11 @@ function updateTaskOperationState(delta: number): void {
     busy || todayOperationCount > 0 || vaultSelectionInProgress,
   );
   refreshTasksButton?.toggleAttribute("disabled", busy);
-  const writable =
+  const canOperate =
     Boolean(currentTasksView?.targetBinding) &&
     currentTasksView?.state !== "error" &&
     currentTasksView?.state !== "unconfigured";
+  const writable = canOperate && taskStateScope !== "deleted";
   if (taskCreateForm) {
     taskCreateForm.hidden = !writable;
     taskCreateForm.querySelectorAll("input, textarea, button").forEach((element) => {
@@ -3781,7 +4083,20 @@ function updateTaskOperationState(delta: number): void {
     if (!busy) normalizeTaskDateTimeFields(taskCreateDate, taskCreateTime, !writable);
   }
   taskCreateSubmit?.toggleAttribute("disabled", busy || !writable);
-  tasksList?.querySelectorAll("input, textarea, button").forEach((element) => {
+  tasksScopeButtons.forEach((button) => button.toggleAttribute("disabled", busy));
+  tasksStateButtons.forEach((button) => button.toggleAttribute("disabled", busy));
+  tasksList?.querySelectorAll(
+    "input[data-task-state-action], button[data-task-state-action], button[data-task-delete], button[data-task-restore]",
+  ).forEach((element) => {
+    (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
+      busy || !canOperate;
+  });
+  tasksList?.querySelectorAll("button[data-task-correct-completion]").forEach((element) => {
+    (element as HTMLButtonElement).disabled = busy || !writable;
+  });
+  tasksList?.querySelectorAll(
+    "[data-task-name], [data-task-content], [data-task-date], [data-task-time], [data-task-completion-date], [data-task-completion-time], form[data-task-editor] button[type=submit]",
+  ).forEach((element) => {
     (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
       busy || !writable;
   });
@@ -3836,7 +4151,7 @@ async function refreshTasks(): Promise<void> {
     renderTasks({
       state: "error",
       message: String(error),
-      schemaVersion: 1,
+      schemaVersion: 2,
       revision: currentTasksView?.revision ?? null,
       targetBinding: currentTasksView?.targetBinding ?? null,
       vaultName: currentTasksView?.vaultName ?? null,
@@ -3907,7 +4222,11 @@ async function createTask(): Promise<boolean> {
         task.time === normalized.time &&
         task.listId === "inbox",
     );
-    const confirmed = responseIsCurrent && view.state === "ready" && Boolean(savedTask);
+    const confirmed = taskMutationConfirmed(
+      responseIsCurrent,
+      view.state,
+      Boolean(savedTask),
+    );
     if (confirmed) {
       taskOperationIds.delete(operationKey);
       taskCreateDrafts.delete(binding);
@@ -4001,7 +4320,11 @@ async function updateTask(taskId: string, form: HTMLFormElement): Promise<boolea
         candidate.time === normalized.time &&
         candidate.listId === task.listId,
     );
-    const confirmed = responseIsCurrent && view.state === "ready" && Boolean(savedTask);
+    const confirmed = taskMutationConfirmed(
+      responseIsCurrent,
+      view.state,
+      Boolean(savedTask),
+    );
     if (confirmed) {
       taskOperationIds.delete(operationKey);
       taskEditDrafts.delete(taskDraftKey(binding, taskId));
@@ -4030,6 +4353,221 @@ async function updateTask(taskId: string, form: HTMLFormElement): Promise<boolea
   } finally {
     updateTaskOperationState(-1);
   }
+}
+
+type TaskLifecycleCommand =
+  | "set_task_state"
+  | "delete_task"
+  | "restore_task"
+  | "correct_task_completion";
+
+async function saveTaskLifecycleMutation(
+  command: TaskLifecycleCommand,
+  loaded: TasksView,
+  taskId: string,
+  operationKey: string,
+  input: Record<string, unknown>,
+  confirms: (task: TaskView) => boolean,
+  draftForm: HTMLFormElement | null = null,
+): Promise<boolean> {
+  if (
+    !loaded.targetBinding ||
+    !loaded.revision ||
+    loaded.state === "error" ||
+    loaded.state === "unconfigured" ||
+    taskOperationCount > 0
+  ) {
+    setCopyError(tasksStatus, "tasks.notSaved", t("tasks.refreshFirst"));
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    return false;
+  }
+  const request = taskRequests.begin();
+  updateTaskOperationState(1);
+  try {
+    const view = await window.__TAURI__.core.invoke<TasksView>(command, { input });
+    const responseIsCurrent = isCurrentTaskResponse(
+      taskRequests,
+      request,
+      currentWorkspaceDestination,
+      loaded.targetBinding,
+      view.targetBinding,
+    );
+    const savedTask = view.tasks.find(
+      (task) => task.id === taskId && confirms(task),
+    );
+    const confirmed = taskMutationConfirmed(
+      responseIsCurrent,
+      view.state,
+      Boolean(savedTask),
+    );
+    if (confirmed) {
+      taskOperationIds.delete(operationKey);
+      if (loaded.targetBinding && savedTask) {
+        reconcileTaskCompletionDraft(loaded.targetBinding, taskId, savedTask);
+      }
+      renderTasks(view);
+      setCopy(tasksStatus, "tasks.saved");
+      if (tasksStatus) tasksStatus.dataset.state = "ready";
+    } else if (responseIsCurrent) {
+      if (draftForm) stashTaskEditDraft(draftForm);
+      renderTasks(view);
+      setCopyError(
+        tasksStatus,
+        "tasks.notSaved",
+        view.state === "error" ? view.message : t("tasks.confirmationFailed"),
+      );
+      if (tasksStatus) tasksStatus.dataset.state = "error";
+    }
+    return confirmed;
+  } catch (error) {
+    if (taskRequests.isCurrent(request) && currentWorkspaceDestination === "tasks") {
+      if (draftForm) stashTaskEditDraft(draftForm);
+      renderTasks(loaded);
+      setCopyError(tasksStatus, "tasks.notSaved", error);
+      if (tasksStatus) tasksStatus.dataset.state = "error";
+    }
+    return false;
+  } finally {
+    updateTaskOperationState(-1);
+  }
+}
+
+async function setTaskState(
+  taskId: string,
+  state: Exclude<TaskView["state"], "deleted">,
+): Promise<boolean> {
+  const loaded = currentTasksView;
+  const binding = loaded?.targetBinding;
+  const revision = loaded?.revision;
+  const task = loaded?.tasks.find((candidate) => candidate.id === taskId);
+  if (!loaded || !binding || !revision || !task || task.deletedAt !== null) {
+    setCopyError(tasksStatus, "tasks.notSaved", t("tasks.refreshFirst"));
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    return false;
+  }
+  const operationKey = JSON.stringify([binding, "state", taskId, state]);
+  const changeId = stableTaskOperationId(operationKey, "task-state");
+  return saveTaskLifecycleMutation(
+    "set_task_state",
+    loaded,
+    taskId,
+    operationKey,
+    {
+      targetBinding: binding,
+      expectedRevision: revision,
+      taskId,
+      changeId,
+      state,
+    },
+    (candidate) => candidate.state === state && candidate.deletedAt === null,
+  );
+}
+
+async function deleteTask(taskId: string): Promise<boolean> {
+  const loaded = currentTasksView;
+  const binding = loaded?.targetBinding;
+  const revision = loaded?.revision;
+  const task = loaded?.tasks.find((candidate) => candidate.id === taskId);
+  if (!loaded || !binding || !revision || !task || task.deletedAt !== null) {
+    setCopyError(tasksStatus, "tasks.notSaved", t("tasks.refreshFirst"));
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    return false;
+  }
+  const operationKey = JSON.stringify([binding, "delete", taskId]);
+  const changeId = stableTaskOperationId(operationKey, "delete-task");
+  return saveTaskLifecycleMutation(
+    "delete_task",
+    loaded,
+    taskId,
+    operationKey,
+    {
+      targetBinding: binding,
+      expectedRevision: revision,
+      taskId,
+      changeId,
+    },
+    (candidate) => candidate.deletedAt !== null,
+  );
+}
+
+async function restoreTask(taskId: string): Promise<boolean> {
+  const loaded = currentTasksView;
+  const binding = loaded?.targetBinding;
+  const revision = loaded?.revision;
+  const task = loaded?.tasks.find((candidate) => candidate.id === taskId);
+  if (!loaded || !binding || !revision || !task || task.deletedAt === null) {
+    setCopyError(tasksStatus, "tasks.notSaved", t("tasks.refreshFirst"));
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    return false;
+  }
+  const operationKey = JSON.stringify([binding, "restore", taskId]);
+  const changeId = stableTaskOperationId(operationKey, "restore-task");
+  return saveTaskLifecycleMutation(
+    "restore_task",
+    loaded,
+    taskId,
+    operationKey,
+    {
+      targetBinding: binding,
+      expectedRevision: revision,
+      taskId,
+      changeId,
+    },
+    (candidate) => candidate.deletedAt === null,
+  );
+}
+
+async function correctTaskCompletion(
+  taskId: string,
+  form: HTMLFormElement,
+): Promise<boolean> {
+  const loaded = currentTasksView;
+  const binding = loaded?.targetBinding;
+  const revision = loaded?.revision;
+  const task = loaded?.tasks.find((candidate) => candidate.id === taskId);
+  if (!loaded || !binding || !revision || !task || task.deletedAt !== null) {
+    setCopyError(tasksStatus, "tasks.notSaved", t("tasks.refreshFirst"));
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    return false;
+  }
+  const draft = readTaskDraft(form);
+  const completedOn = draft.completionDate.trim();
+  const completedTime = draft.completionTime.trim() || null;
+  stashTaskEditDraft(form);
+  if (!completedOn) {
+    setCopy(tasksStatus, "tasks.completionRequiredDate");
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    form.querySelector<HTMLInputElement>("[data-task-completion-date]")?.focus();
+    return false;
+  }
+  const operationKey = JSON.stringify([
+    binding,
+    "completion-correction",
+    taskId,
+    completedOn,
+    completedTime,
+  ]);
+  const changeId = stableTaskOperationId(operationKey, "completion-correction");
+  return saveTaskLifecycleMutation(
+    "correct_task_completion",
+    loaded,
+    taskId,
+    operationKey,
+    {
+      targetBinding: binding,
+      expectedRevision: revision,
+      taskId,
+      changeId,
+      completedOn,
+      completedTime,
+    },
+    (candidate) =>
+      candidate.state === "completed" &&
+      candidate.deletedAt === null &&
+      candidate.completion?.completedOn === completedOn &&
+      candidate.completion.completedTime === completedTime,
+    form,
+  );
 }
 
 function renderWorkspaceFeatureArea(destination: WorkspaceDestination): void {
@@ -4434,6 +4972,23 @@ tasksScopeButtons.forEach((button) => {
   });
 });
 
+tasksStateButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const state = button.dataset.taskState;
+    if (
+      state !== "all" &&
+      state !== "pending" &&
+      state !== "completed" &&
+      state !== "abandoned" &&
+      state !== "deleted"
+    ) {
+      return;
+    }
+    taskStateScope = state;
+    if (currentTasksView) renderTasks(currentTasksView);
+  });
+});
+
 refreshTasksButton?.addEventListener("click", () => {
   if (taskOperationCount === 0) void refreshTasks();
 });
@@ -4457,6 +5012,20 @@ tasksDestination?.addEventListener("input", (event) => {
 
 tasksDestination?.addEventListener("change", (event) => {
   const target = event.target as HTMLElement;
+  const stateAction = target.closest<HTMLInputElement>(
+    "input[data-task-state-action][data-task-state-task]",
+  );
+  if (stateAction) {
+    const taskId = stateAction.dataset.taskStateTask;
+    const state = stateAction.dataset.taskStateAction;
+    if (
+      taskId &&
+      (state === "pending" || state === "completed" || state === "abandoned")
+    ) {
+      void pendingWrites.track(setTaskState(taskId, state));
+    }
+    return;
+  }
   const form = target.closest<HTMLFormElement>("form[data-task-editor]");
   if (!form) return;
   if (target.matches("input[data-task-date]")) {
@@ -4466,6 +5035,43 @@ tasksDestination?.addEventListener("change", (event) => {
     );
   }
   stashTaskEditDraft(form);
+});
+
+tasksDestination?.addEventListener("click", (event) => {
+  const target = event.target as HTMLElement;
+  const stateAction = target.closest<HTMLButtonElement>(
+    "button[data-task-state-action][data-task-state-task]",
+  );
+  if (stateAction) {
+    const taskId = stateAction.dataset.taskStateTask;
+    const state = stateAction.dataset.taskStateAction;
+    if (
+      taskId &&
+      (state === "pending" || state === "completed" || state === "abandoned")
+    ) {
+      void pendingWrites.track(setTaskState(taskId, state));
+    }
+    return;
+  }
+  const remove = target.closest<HTMLButtonElement>("button[data-task-delete]");
+  if (remove?.dataset.taskDelete) {
+    void pendingWrites.track(deleteTask(remove.dataset.taskDelete));
+    return;
+  }
+  const restore = target.closest<HTMLButtonElement>("button[data-task-restore]");
+  if (restore?.dataset.taskRestore) {
+    void pendingWrites.track(restoreTask(restore.dataset.taskRestore));
+    return;
+  }
+  const correct = target.closest<HTMLButtonElement>(
+    "button[data-task-correct-completion]",
+  );
+  const form = correct?.closest<HTMLFormElement>("form[data-task-editor]");
+  if (correct?.dataset.taskCorrectCompletion && form) {
+    void pendingWrites.track(
+      correctTaskCompletion(correct.dataset.taskCorrectCompletion, form),
+    );
+  }
 });
 
 tasksDestination?.addEventListener("submit", (event) => {

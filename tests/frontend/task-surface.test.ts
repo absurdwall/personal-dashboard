@@ -49,6 +49,51 @@ test("task writes serialize refresh reconciliation and retain retry identity", (
   assert.match(refresh, /if \(taskOperationCount > 0\)/);
   assert.match(main, /taskRefreshQueued/);
   assert.match(main, /const operationKey = JSON\.stringify\(\[binding, "create"\]\)/);
-  assert.match(main, /view\.state === "ready" && Boolean\(savedTask\)/);
+  assert.match(main, /taskMutationConfirmed\(/);
+  assert.match(main, /Boolean\(savedTask\)/);
   assert.match(main, /tasks\.confirmationFailed/);
+});
+
+test("Tasks exposes explicit state, deletion recovery, and completion correction controls", () => {
+  for (const scope of ["all", "pending", "completed", "abandoned", "deleted"]) {
+    assert.match(html, new RegExp(`data-task-state="${scope}"`));
+  }
+  for (const marker of [
+    "data-task-state-action",
+    "data-task-delete",
+    "data-task-restore",
+    "data-task-correct-completion",
+    "data-task-completion-date",
+    "data-task-completion-time",
+  ]) {
+    assert.match(main, new RegExp(marker));
+  }
+  for (const command of [
+    "set_task_state",
+    "delete_task",
+    "restore_task",
+    "correct_task_completion",
+  ]) {
+    assert.match(main, new RegExp(`"${command}"`));
+  }
+  assert.match(main, /core\.invoke<TasksView>\(command/);
+  for (const key of [
+    "tasks.statePending",
+    "tasks.stateCompleted",
+    "tasks.stateAbandoned",
+    "tasks.stateDeleted",
+    "tasks.complete",
+    "tasks.reopen",
+    "tasks.abandon",
+    "tasks.restore",
+    "tasks.delete",
+    "tasks.undoDelete",
+    "tasks.correctCompletion",
+    "tasks.completionDetails",
+  ]) {
+    const line = copies.split("\n").find((candidate) => candidate.includes(`"${key}"`));
+    assert.ok(line, `missing copy ${key}`);
+    assert.match(line, /zh:/);
+    assert.match(line, /en:/);
+  }
 });

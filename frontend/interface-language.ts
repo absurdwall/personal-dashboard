@@ -255,11 +255,18 @@ const interfaceCopies = {
   "tasks.scope": { zh: "任务范围", en: "Task scope" },
   "tasks.scopeAll": { zh: "All", en: "All" },
   "tasks.scopeInbox": { zh: "Inbox", en: "Inbox" },
+  "tasks.stateScope": { zh: "任务状态", en: "Task state" },
+  "tasks.stateAll": { zh: "全部未删除", en: "All active" },
+  "tasks.statePending": { zh: "待办", en: "Pending" },
+  "tasks.stateCompleted": { zh: "已完成", en: "Completed" },
+  "tasks.stateAbandoned": { zh: "已放弃", en: "Abandoned" },
+  "tasks.stateDeleted": { zh: "已删除", en: "Deleted" },
   "tasks.count": { zh: "{count} 项", en: "{count} tasks" },
   "tasks.ready": { zh: "已读取任务正本。", en: "Loaded the task source." },
   "tasks.emptyStatus": { zh: "当前没有任务。", en: "There are no tasks here." },
   "tasks.empty": { zh: "Inbox 还是空的；先写下一件想保留的事。", en: "The Inbox is empty. Capture one thing worth keeping." },
   "tasks.emptyAll": { zh: "还没有任务；可以从 Inbox 开始。", en: "There are no tasks yet. Start in the Inbox." },
+  "tasks.emptyDeleted": { zh: "暂无可恢复的已删除任务。", en: "There are no deleted tasks to restore." },
   "tasks.addHeading": { zh: "新建任务", en: "New task" },
   "tasks.name": { zh: "名称", en: "Name" },
   "tasks.namePlaceholder": { zh: "例如：预约牙医", en: "For example: Book a dentist appointment" },
@@ -284,11 +291,40 @@ const interfaceCopies = {
   "tasks.timeNeedsDate": { zh: "时刻必须先绑定日期；清除日期会同时清除时刻。", en: "A time needs a date. Clearing the date also clears the time." },
   "tasks.savedToVault": { zh: "任务保存在当前 Vault 的独立正本中；不会写入 Daily Record。", en: "Tasks are saved in an independent source in the current Vault; Daily Records are unchanged." },
   "tasks.sourceManual": { zh: "手动任务 · Inbox", en: "Manual task · Inbox" },
+  "tasks.sourceDailyFlow": { zh: "每日流程任务", en: "Daily-flow task" },
+  "tasks.complete": { zh: "完成", en: "Complete" },
+  "tasks.reopen": { zh: "重开", en: "Reopen" },
+  "tasks.abandon": { zh: "放弃", en: "Abandon" },
+  "tasks.restore": { zh: "恢复待办", en: "Restore to pending" },
+  "tasks.delete": { zh: "删除", en: "Delete" },
+  "tasks.undoDelete": { zh: "撤销删除", en: "Restore task" },
+  "tasks.correctCompletion": { zh: "更正完成记录", en: "Correct completion" },
+  "tasks.completionDetails": { zh: "完成详情", en: "Completion details" },
+  "tasks.taskDateDetails": { zh: "任务日期：{schedule}", en: "Task date: {schedule}" },
+  "tasks.actualCompletionDetails": { zh: "实际完成：{completed} · 来源：{source}", en: "Actual completion: {completed} · Source: {source}" },
+  "tasks.recordedCompletionDetails": { zh: "实际补记时间：{recordedAt}", en: "Recorded at: {recordedAt}" },
+  "tasks.completionDate": { zh: "实际完成日期", en: "Actual completion date" },
+  "tasks.completionTime": { zh: "实际完成时刻（可空）", en: "Actual completion time (optional)" },
+  "tasks.completionSourceCheckbox": { zh: "手动打勾", en: "Checkbox" },
+  "tasks.completionSourceCorrection": { zh: "手动日期更正", en: "Date correction" },
+  "tasks.completionSourceDailyFlow": { zh: "每日流程", en: "Daily flow" },
+  "tasks.completionUnknown": { zh: "未知", en: "Unknown" },
+  "tasks.completionRequiredDate": { zh: "请输入实际完成日期。", en: "Enter the actual completion date." },
+  "tasks.changeSource": { zh: "变更来源：{source}", en: "Change source: {source}" },
+  "tasks.changeSourceUser": { zh: "用户操作", en: "User action" },
+  "tasks.changeSourceDailyFlow": { zh: "每日流程", en: "Daily flow" },
   "tasks.changes": { zh: "变更记录 · {count}", en: "Change history · {count}" },
-  "tasks.rescheduled": { zh: "{changedAt} · 改期：{previous} → {next}", en: "{changedAt} · Rescheduled: {previous} → {next}" },
-  "tasks.renamed": { zh: "{changedAt} · 改名", en: "{changedAt} · Renamed" },
-  "tasks.contentEdited": { zh: "{changedAt} · 更新内容", en: "{changedAt} · Content updated" },
-  "tasks.edited": { zh: "{changedAt} · 更新任务", en: "{changedAt} · Task updated" },
+  "tasks.rescheduled": { zh: "{changedAt} · 改期：{previous} → {next} · {changeSource}", en: "{changedAt} · Rescheduled: {previous} → {next} · {changeSource}" },
+  "tasks.renamed": { zh: "{changedAt} · 改名 · {changeSource}", en: "{changedAt} · Renamed · {changeSource}" },
+  "tasks.contentEdited": { zh: "{changedAt} · 更新内容 · {changeSource}", en: "{changedAt} · Content updated · {changeSource}" },
+  "tasks.edited": { zh: "{changedAt} · 更新任务 · {changeSource}", en: "{changedAt} · Task updated · {changeSource}" },
+  "tasks.completedChange": { zh: "{changedAt} · 完成：{actual} · 完成来源：{source} · {changeSource}", en: "{changedAt} · Completed: {actual} · Completion source: {source} · {changeSource}" },
+  "tasks.reopenedChange": { zh: "{changedAt} · 重开 · {changeSource}", en: "{changedAt} · Reopened · {changeSource}" },
+  "tasks.abandonedChange": { zh: "{changedAt} · 放弃 · {changeSource}", en: "{changedAt} · Abandoned · {changeSource}" },
+  "tasks.restoredChange": { zh: "{changedAt} · 恢复待办 · {changeSource}", en: "{changedAt} · Restored to pending · {changeSource}" },
+  "tasks.deletedChange": { zh: "{changedAt} · 删除 · {changeSource}", en: "{changedAt} · Deleted · {changeSource}" },
+  "tasks.undeletedChange": { zh: "{changedAt} · 撤销删除 · {changeSource}", en: "{changedAt} · Undeleted · {changeSource}" },
+  "tasks.completionCorrectedChange": { zh: "{changedAt} · 更正完成记录：{previous} → {next} · {changeSource}", en: "{changedAt} · Corrected completion: {previous} → {next} · {changeSource}" },
   "tasks.loadNewVault": { zh: "正在读取新 Vault 的 Tasks…", en: "Loading Tasks from the new Vault…" },
   "tasks.waitingWrites": { zh: "正在完成当前保存，再切换 Vault…", en: "Finishing the current save before switching Vaults…" },
   "tasks.selected": { zh: "Tasks · 当前工作区", en: "Tasks · Current workspace" },
@@ -881,6 +917,26 @@ function englishTaskDiagnostic(message: string): string | null {
       "That task-change identifier is already used by another operation; nothing was written.",
     "找不到要编辑的任务；未写入任何内容。":
       "The task to edit could not be found; nothing was written.",
+    "找不到要更新状态的任务；未写入任何内容。":
+      "The task whose state should be updated could not be found; nothing was written.",
+    "任务必须先从放弃状态恢复为待办，再标记完成；未写入任何内容。":
+      "An abandoned task must be restored to pending before it can be completed; nothing was written.",
+    "找不到要删除的任务；未写入任何内容。":
+      "The task to delete could not be found; nothing was written.",
+    "找不到要恢复的任务；未写入任何内容。":
+      "The task to restore could not be found; nothing was written.",
+    "找不到要更正完成记录的任务；未写入任何内容。":
+      "The task whose completion should be corrected could not be found; nothing was written.",
+    "该任务已经删除；旧规划输入不会重新激活它。请明确恢复或使用新的稳定身份。未写入任何内容。":
+      "That task is already deleted; an old planning input will not reactivate it. Restore it explicitly or use a new stable identity; nothing was written.",
+    "已删除任务不会被旧编辑操作重新激活；请先恢复任务。未写入任何内容。":
+      "A deleted task will not be reactivated by an old edit; restore it first; nothing was written.",
+    "已删除任务不会被旧操作重新激活；请先恢复任务。未写入任何内容。":
+      "A deleted task will not be reactivated by an old operation; restore it first; nothing was written.",
+    "任务已经删除；请使用恢复操作。未写入任何内容。":
+      "The task is already deleted; use the restore operation; nothing was written.",
+    "只有已明确完成的任务才能更正完成记录；未写入任何内容。":
+      "Only an explicitly completed task can have its completion corrected; nothing was written.",
     "Tasks 当前绑定的 Vault 或文件目标已经变化。请刷新 Tasks 后重试；未写入任何内容。":
       "The Vault or file target bound to Tasks changed. Refresh Tasks and try again; nothing was written.",
     "任务名称不能为空。": "Task name cannot be empty.",
@@ -893,6 +949,11 @@ function englishTaskDiagnostic(message: string): string | null {
       "Task time must use HH:MM and be bound to a date.",
     "任务时间无效。": "Task time is invalid.",
     "任务时间必须落在 00:00–23:59。": "Task time must be between 00:00 and 23:59.",
+    "任务完成日期必须是有效的 YYYY-MM-DD 日期。":
+      "Task completion date must be a valid YYYY-MM-DD date.",
+    "任务完成时刻无效。": "Task completion time is invalid.",
+    "任务完成记录不能使用未来日期或未来时刻。":
+      "Task completion evidence cannot use a future date or future time.",
     "任务列表不存在；此票仅支持 Inbox。未写入任何内容。":
       "The task list does not exist. This ticket supports Inbox only; nothing was written.",
     "任务没有可保存的变化。": "The task has no changes to save.",
@@ -928,6 +989,26 @@ function englishTaskDiagnostic(message: string): string | null {
     "任务正本包含无效修改时间。": "The task source contains an invalid change timestamp.",
     "当前本地时间缺少 UTC offset；未写入记录。":
       "The current local time has no UTC offset; nothing was written.",
+    "任务正本的已完成任务缺少完成记录。":
+      "A completed task in the task source is missing completion evidence.",
+    "任务正本的未完成或放弃任务不能携带当前完成记录。":
+      "A pending or abandoned task in the task source cannot carry current completion evidence.",
+    "任务完成记录的前后状态或完成证据无效。":
+      "A task-completion history entry has invalid state or completion evidence.",
+    "任务重开记录的前后状态无效。":
+      "A task-reopen history entry has invalid before-and-after states.",
+    "任务放弃记录的前后状态无效。":
+      "A task-abandon history entry has invalid before-and-after states.",
+    "任务恢复记录的前后状态无效。":
+      "A task-restore history entry has invalid before-and-after states.",
+    "任务删除记录的前后删除标记无效。":
+      "A task-deletion history entry has invalid deletion markers.",
+    "任务恢复记录的前后删除标记无效。":
+      "A task-undelete history entry has invalid deletion markers.",
+    "任务完成更正记录的前后状态或完成证据无效。":
+      "A task-completion-correction history entry has invalid state or completion evidence.",
+    "任务字段变更记录不能携带状态或完成生命周期字段。":
+      "A task-field history entry cannot carry state or completion-lifecycle fields.",
   };
   if (exact[message]) return exact[message];
 

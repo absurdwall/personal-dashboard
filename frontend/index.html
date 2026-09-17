@@ -229,6 +229,13 @@
                 <button type="button" role="tab" data-task-scope="inbox" aria-selected="false" data-i18n="tasks.scopeInbox">Inbox</button>
                 <span id="tasks-count" class="tasks-count" aria-live="polite"></span>
               </div>
+              <div class="tasks-state-toolbar" role="tablist" aria-label="任务状态" data-i18n-aria-label="tasks.stateScope">
+                <button type="button" role="tab" data-task-state="all" aria-selected="true" data-i18n="tasks.stateAll">All</button>
+                <button type="button" role="tab" data-task-state="pending" aria-selected="false" data-i18n="tasks.statePending">Pending</button>
+                <button type="button" role="tab" data-task-state="completed" aria-selected="false" data-i18n="tasks.stateCompleted">Completed</button>
+                <button type="button" role="tab" data-task-state="abandoned" aria-selected="false" data-i18n="tasks.stateAbandoned">Abandoned</button>
+                <button type="button" role="tab" data-task-state="deleted" aria-selected="false" data-i18n="tasks.stateDeleted">Deleted</button>
+              </div>
               <div id="tasks-list" class="tasks-list" aria-live="polite"></div>
               <p id="tasks-empty" class="task-empty" hidden data-i18n="tasks.emptyAll">还没有任务；可以从 Inbox 开始。</p>
               <form id="task-create-form" class="task-form task-create-form" hidden>

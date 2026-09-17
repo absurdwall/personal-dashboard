@@ -6,15 +6,18 @@ does not create a Daily Record.
 
 ## Location and schema boundary
 
-The canonical source is:
+The canonical source remains:
 
 ```text
 life/.personal-dashboard/tasks/v1/tasks.json
 ```
 
-The document is schema version `1` and contains `lists` and `tasks`. Every
-document has a permanent, unarchived system list with id `inbox`; ticket 01
-only writes to that list. The list and membership fields are kept in the
+Ticket 01 first wrote schema version `1`; the current document is schema
+version `2` and still contains `lists` and `tasks` at the same stable path.
+The reader accepts a legacy schema-1 document, supplies the new optional
+fields in memory, and the next successful write upgrades it to schema 2.
+Every document has a permanent, unarchived system list with id `inbox`; ticket
+01 only wrote to that list. The list and membership fields are kept in the
 document so later state/list operations can use the same persistence unit.
 
 Each Task has a stable `id`, required `name`, optional `content`, optional
@@ -25,10 +28,10 @@ reference. The reserved source kind `daily-flow` carries a stable producer
 reference.
 
 The v1 state vocabulary is `pending`, `completed`, and `abandoned`. Ticket 01
-stores new tasks as `pending`; completion and abandonment controls are outside
-this ticket. Change entries use stable ids and record the operation timestamp
-plus the before/after values for renamed, content-edited, rescheduled,
-list-moved, or combined edits.
+stores new tasks as `pending`; ticket 02 adds the lifecycle controls and
+completion evidence described in `docs/tasks-state-history-v1.md`. Change
+entries use stable ids and record the operation timestamp plus the before/after
+values for renamed, content-edited, rescheduled, list-moved, or combined edits.
 
 ## Read and write contract
 
@@ -47,5 +50,5 @@ snapshot for explicit inspection.
 
 This source is independent of Dida365, Google Drive APIs, and Daily Record
 Markdown. Local success is not cloud-sync evidence. The daily-flow adapter,
-state controls, list management, Today integration, Calendar integration, and
-packaged acceptance are later tickets.
+list management, Today integration, Calendar integration, and packaged
+acceptance are later tickets.

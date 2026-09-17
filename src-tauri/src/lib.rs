@@ -40,7 +40,10 @@ use platform::{
     FileAppearancePersistence, FileInterfaceLanguagePersistence, FileTodayWorkspacePersistence,
     NativeAppearanceImageLibrary, NativeTodayWorkspaceExchange,
 };
-use tasks::{FileTaskStore, TaskApplication, TaskCreateInput, TaskUpdateInput, TasksView};
+use tasks::{
+    FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput,
+    TaskDeleteInput, TaskRestoreInput, TaskStateInput, TaskUpdateInput, TasksView,
+};
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
     DayTaskCompletionInput, DayTaskDeleteInput, DayTaskRenameInput, DaytimeUpdateInput,
@@ -187,6 +190,38 @@ fn update_task(
     input: TaskUpdateInput,
 ) -> Result<TasksView, String> {
     application.update(input)
+}
+
+#[tauri::command]
+fn set_task_state(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskStateInput,
+) -> Result<TasksView, String> {
+    application.set_state(input)
+}
+
+#[tauri::command]
+fn delete_task(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskDeleteInput,
+) -> Result<TasksView, String> {
+    application.delete(input)
+}
+
+#[tauri::command]
+fn restore_task(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskRestoreInput,
+) -> Result<TasksView, String> {
+    application.restore(input)
+}
+
+#[tauri::command]
+fn correct_task_completion(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskCompletionCorrectionInput,
+) -> Result<TasksView, String> {
+    application.correct_completion(input)
 }
 
 #[tauri::command]
@@ -392,6 +427,10 @@ pub fn run() {
             tasks_view,
             create_task,
             update_task,
+            set_task_state,
+            delete_task,
+            restore_task,
+            correct_task_completion,
             set_local_habit_completion,
             set_historical_habit_completion,
             select_today_vault,
@@ -424,6 +463,10 @@ pub fn run() {
         tasks_view,
         create_task,
         update_task,
+        set_task_state,
+        delete_task,
+        restore_task,
+        correct_task_completion,
         set_local_habit_completion,
         set_historical_habit_completion,
         select_today_vault,

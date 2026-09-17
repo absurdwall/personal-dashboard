@@ -223,6 +223,12 @@ test("fixed error details switch language without changing their source diagnost
   for (const diagnostic of [
     "任务名称不能为空。",
     "任务时间必须先绑定日期。",
+    "找不到要更新状态的任务；未写入任何内容。",
+    "任务必须先从放弃状态恢复为待办，再标记完成；未写入任何内容。",
+    "任务完成日期必须是有效的 YYYY-MM-DD 日期。",
+    "任务完成记录不能使用未来日期或未来时刻。",
+    "已删除任务不会被旧操作重新激活；请先恢复任务。未写入任何内容。",
+    "只有已明确完成的任务才能更正完成记录；未写入任何内容。",
     "任务正本不是有效 JSON：missing field",
     "Tasks 当前绑定的 Vault 或文件目标已经变化。请刷新 Tasks 后重试；未写入任何内容。",
   ]) {

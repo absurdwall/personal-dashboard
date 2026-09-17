@@ -9,7 +9,8 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const TASK_SCHEMA_VERSION: u32 = 1;
+pub const TASK_SCHEMA_VERSION: u32 = 2;
+const LEGACY_TASK_SCHEMA_VERSION: u32 = 1;
 pub const TASK_DOCUMENT_RELATIVE_PATH: &str = "life/.personal-dashboard/tasks/v1/tasks.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -45,12 +46,49 @@ pub enum TaskState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum TaskChangeSourceKind {
+    User,
+    DailyFlow,
+}
+
+impl Default for TaskChangeSourceKind {
+    fn default() -> Self {
+        Self::User
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TaskCompletionSourceKind {
+    Checkbox,
+    DateCorrection,
+    DailyFlow,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskCompletionView {
+    pub completed_on: String,
+    pub completed_time: Option<String>,
+    pub recorded_at: String,
+    pub source: TaskCompletionSourceKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum TaskChangeKind {
     Renamed,
     ContentEdited,
     Rescheduled,
     ListMoved,
     Edited,
+    Completed,
+    Reopened,
+    Abandoned,
+    Restored,
+    Deleted,
+    Undeleted,
+    CompletionCorrected,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -59,6 +97,8 @@ pub struct TaskChangeView {
     pub id: String,
     pub kind: TaskChangeKind,
     pub changed_at: String,
+    #[serde(default)]
+    pub source: TaskChangeSourceKind,
     pub previous_name: Option<String>,
     pub new_name: Option<String>,
     pub previous_content: Option<String>,
@@ -69,6 +109,18 @@ pub struct TaskChangeView {
     pub new_time: Option<String>,
     pub previous_list_id: Option<String>,
     pub new_list_id: Option<String>,
+    #[serde(default)]
+    pub previous_state: Option<TaskState>,
+    #[serde(default)]
+    pub new_state: Option<TaskState>,
+    #[serde(default)]
+    pub previous_deleted_at: Option<String>,
+    #[serde(default)]
+    pub new_deleted_at: Option<String>,
+    #[serde(default)]
+    pub previous_completion: Option<TaskCompletionView>,
+    #[serde(default)]
+    pub new_completion: Option<TaskCompletionView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -91,6 +143,8 @@ pub struct TaskView {
     pub list_id: String,
     pub source: TaskSourceView,
     pub state: TaskState,
+    pub deleted_at: Option<String>,
+    pub completion: Option<TaskCompletionView>,
     pub created_at: String,
     pub modified_at: String,
     pub changes: Vec<TaskChangeView>,
@@ -135,6 +189,45 @@ pub struct TaskUpdateInput {
     pub date: Option<String>,
     pub time: Option<String>,
     pub list_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskStateInput {
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub task_id: String,
+    pub change_id: String,
+    pub state: TaskState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskDeleteInput {
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub task_id: String,
+    pub change_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskRestoreInput {
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub task_id: String,
+    pub change_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskCompletionCorrectionInput {
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub task_id: String,
+    pub change_id: String,
+    pub completed_on: String,
+    pub completed_time: Option<String>,
 }
 
 pub trait TaskStore {
@@ -265,6 +358,12 @@ where
                 let mut document = parse_task_document(&bytes)?;
                 ensure_task_list_exists(&document, &desired.list_id)?;
                 if let Some(existing) = document.tasks.iter().find(|task| task.id == desired.id) {
+                    if existing.deleted_at.is_some() {
+                        return Err(
+                            "该任务已经删除；旧规划输入不会重新激活它。请明确恢复或使用新的稳定身份。未写入任何内容。"
+                                .into(),
+                        );
+                    }
                     if task_matches(existing, &desired) {
                         return self.read();
                     }
@@ -320,6 +419,11 @@ where
             .iter_mut()
             .find(|task| task.id == input.task_id)
             .ok_or_else(|| "找不到要编辑的任务；未写入任何内容。".to_string())?;
+        if task.deleted_at.is_some() {
+            return Err(
+                "已删除任务不会被旧编辑操作重新激活；请先恢复任务。未写入任何内容。".into(),
+            );
+        }
         if task_matches(task, &desired) {
             return self.read();
         }
@@ -336,6 +440,260 @@ where
         let updated = encode_task_document(&document)?;
         self.ensure_bound_target_current(&path, &target_binding)?;
         self.store.save_if_unchanged(&path, &bytes, &updated)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.read()
+    }
+
+    pub fn set_state(&self, input: TaskStateInput) -> Result<TasksView, String> {
+        validate_local_identifier(&input.task_id, "任务标识")?;
+        validate_local_identifier(&input.change_id, "任务修改标识")?;
+        let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
+        let bytes = self
+            .store
+            .load(&path)?
+            .ok_or_else(|| "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string())?;
+        let mut document = parse_task_document(&bytes)?;
+        if let Some((task_index, change)) = find_task_change(&document, &input.change_id) {
+            if document.tasks[task_index].id == input.task_id
+                && state_change_matches(change, input.state)
+                && lifecycle_result_matches(&document.tasks[task_index], change)
+            {
+                return self.read();
+            }
+            return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
+        }
+        require_task_revision(&bytes, &input.expected_revision, &target_binding)?;
+        let task_index = document
+            .tasks
+            .iter()
+            .position(|task| task.id == input.task_id)
+            .ok_or_else(|| "找不到要更新状态的任务；未写入任何内容。".to_string())?;
+        if document.tasks[task_index].deleted_at.is_some() {
+            return Err("已删除任务不会被旧操作重新激活；请先恢复任务。未写入任何内容。".into());
+        }
+        if document.tasks[task_index].state == TaskState::Abandoned
+            && input.state == TaskState::Completed
+        {
+            return Err("任务必须先从放弃状态恢复为待办，再标记完成；未写入任何内容。".into());
+        }
+        if document.tasks[task_index].state == input.state {
+            return self.read();
+        }
+        let now = self.clock.current_timestamp_label();
+        validate_timestamp_label(&now)?;
+        let completion = if input.state == TaskState::Completed {
+            Some(completion_from_timestamp(
+                &now,
+                TaskCompletionSourceKind::Checkbox,
+            )?)
+        } else {
+            None
+        };
+        let previous = document.tasks[task_index].clone();
+        let updated = TaskRecord {
+            state: input.state,
+            completion,
+            modified_at: now.clone(),
+            ..previous.clone()
+        };
+        let change = task_state_change(
+            &previous,
+            &updated,
+            input.change_id,
+            now,
+            TaskChangeSourceKind::User,
+        )?;
+        document.tasks[task_index] = updated;
+        document.tasks[task_index].changes.push(change);
+        let updated_bytes = encode_task_document(&document)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.store
+            .save_if_unchanged(&path, &bytes, &updated_bytes)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.read()
+    }
+
+    pub fn delete(&self, input: TaskDeleteInput) -> Result<TasksView, String> {
+        validate_local_identifier(&input.task_id, "任务标识")?;
+        validate_local_identifier(&input.change_id, "任务修改标识")?;
+        let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
+        let bytes = self
+            .store
+            .load(&path)?
+            .ok_or_else(|| "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string())?;
+        let mut document = parse_task_document(&bytes)?;
+        if let Some((task_index, change)) = find_task_change(&document, &input.change_id) {
+            if document.tasks[task_index].id == input.task_id
+                && change.kind == TaskChangeKind::Deleted
+                && lifecycle_result_matches(&document.tasks[task_index], change)
+            {
+                return self.read();
+            }
+            return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
+        }
+        require_task_revision(&bytes, &input.expected_revision, &target_binding)?;
+        let task_index = document
+            .tasks
+            .iter()
+            .position(|task| task.id == input.task_id)
+            .ok_or_else(|| "找不到要删除的任务；未写入任何内容。".to_string())?;
+        if document.tasks[task_index].deleted_at.is_some() {
+            return Err("任务已经删除；请使用恢复操作。未写入任何内容。".into());
+        }
+        let now = self.clock.current_timestamp_label();
+        validate_timestamp_label(&now)?;
+        let previous = document.tasks[task_index].clone();
+        let updated = TaskRecord {
+            deleted_at: Some(now.clone()),
+            modified_at: now.clone(),
+            ..previous.clone()
+        };
+        let change = task_lifecycle_change(
+            &previous,
+            &updated,
+            input.change_id,
+            TaskChangeKind::Deleted,
+            now,
+            TaskChangeSourceKind::User,
+        );
+        document.tasks[task_index] = updated;
+        document.tasks[task_index].changes.push(change);
+        let updated_bytes = encode_task_document(&document)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.store
+            .save_if_unchanged(&path, &bytes, &updated_bytes)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.read()
+    }
+
+    pub fn restore(&self, input: TaskRestoreInput) -> Result<TasksView, String> {
+        validate_local_identifier(&input.task_id, "任务标识")?;
+        validate_local_identifier(&input.change_id, "任务修改标识")?;
+        let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
+        let bytes = self
+            .store
+            .load(&path)?
+            .ok_or_else(|| "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string())?;
+        let mut document = parse_task_document(&bytes)?;
+        if let Some((task_index, change)) = find_task_change(&document, &input.change_id) {
+            if document.tasks[task_index].id == input.task_id
+                && change.kind == TaskChangeKind::Undeleted
+                && lifecycle_result_matches(&document.tasks[task_index], change)
+            {
+                return self.read();
+            }
+            return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
+        }
+        require_task_revision(&bytes, &input.expected_revision, &target_binding)?;
+        let task_index = document
+            .tasks
+            .iter()
+            .position(|task| task.id == input.task_id)
+            .ok_or_else(|| "找不到要恢复的任务；未写入任何内容。".to_string())?;
+        if document.tasks[task_index].deleted_at.is_none() {
+            return self.read();
+        }
+        let now = self.clock.current_timestamp_label();
+        validate_timestamp_label(&now)?;
+        let previous = document.tasks[task_index].clone();
+        let updated = TaskRecord {
+            deleted_at: None,
+            modified_at: now.clone(),
+            ..previous.clone()
+        };
+        let change = task_lifecycle_change(
+            &previous,
+            &updated,
+            input.change_id,
+            TaskChangeKind::Undeleted,
+            now,
+            TaskChangeSourceKind::User,
+        );
+        document.tasks[task_index] = updated;
+        document.tasks[task_index].changes.push(change);
+        let updated_bytes = encode_task_document(&document)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.store
+            .save_if_unchanged(&path, &bytes, &updated_bytes)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.read()
+    }
+
+    pub fn correct_completion(
+        &self,
+        input: TaskCompletionCorrectionInput,
+    ) -> Result<TasksView, String> {
+        validate_local_identifier(&input.task_id, "任务标识")?;
+        validate_local_identifier(&input.change_id, "任务修改标识")?;
+        validate_completion_date(&input.completed_on)?;
+        if let Some(time) = input.completed_time.as_deref() {
+            validate_time(time)?;
+        }
+        let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
+        let bytes = self
+            .store
+            .load(&path)?
+            .ok_or_else(|| "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string())?;
+        let mut document = parse_task_document(&bytes)?;
+        if let Some((task_index, change)) = find_task_change(&document, &input.change_id) {
+            if document.tasks[task_index].id == input.task_id
+                && change.kind == TaskChangeKind::CompletionCorrected
+                && change.new_completion.as_ref().is_some_and(|completion| {
+                    completion.completed_on == input.completed_on
+                        && completion.completed_time == input.completed_time
+                })
+                && lifecycle_result_matches(&document.tasks[task_index], change)
+            {
+                return self.read();
+            }
+            return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
+        }
+        require_task_revision(&bytes, &input.expected_revision, &target_binding)?;
+        let task_index = document
+            .tasks
+            .iter()
+            .position(|task| task.id == input.task_id)
+            .ok_or_else(|| "找不到要更正完成记录的任务；未写入任何内容。".to_string())?;
+        let task = &document.tasks[task_index];
+        if task.deleted_at.is_some() {
+            return Err("已删除任务不会被旧操作重新激活；请先恢复任务。未写入任何内容。".into());
+        }
+        if task.state != TaskState::Completed || task.completion.is_none() {
+            return Err("只有已明确完成的任务才能更正完成记录；未写入任何内容。".into());
+        }
+        if task.completion.as_ref().is_some_and(|completion| {
+            completion.completed_on == input.completed_on
+                && completion.completed_time == input.completed_time
+        }) {
+            return self.read();
+        }
+        let recorded_at = self.clock.current_timestamp_label();
+        validate_timestamp_label(&recorded_at)?;
+        let completion = completion_from_correction(
+            &input.completed_on,
+            input.completed_time.as_deref(),
+            &recorded_at,
+        )?;
+        let previous = task.clone();
+        let updated = TaskRecord {
+            completion: Some(completion),
+            modified_at: recorded_at.clone(),
+            ..previous.clone()
+        };
+        let change = task_lifecycle_change(
+            &previous,
+            &updated,
+            input.change_id,
+            TaskChangeKind::CompletionCorrected,
+            recorded_at,
+            TaskChangeSourceKind::User,
+        );
+        document.tasks[task_index] = updated;
+        document.tasks[task_index].changes.push(change);
+        let updated_bytes = encode_task_document(&document)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.store
+            .save_if_unchanged(&path, &bytes, &updated_bytes)?;
         self.ensure_bound_target_current(&path, &target_binding)?;
         self.read()
     }
@@ -405,6 +763,10 @@ struct TaskRecord {
     list_id: String,
     source: TaskSourceView,
     state: TaskState,
+    #[serde(default)]
+    deleted_at: Option<String>,
+    #[serde(default)]
+    completion: Option<TaskCompletionView>,
     created_at: String,
     modified_at: String,
     changes: Vec<TaskChangeView>,
@@ -506,6 +868,8 @@ fn task_view(task: TaskRecord) -> TaskView {
         list_id: task.list_id,
         source: task.source,
         state: task.state,
+        deleted_at: task.deleted_at,
+        completion: task.completion,
         created_at: task.created_at,
         modified_at: task.modified_at,
         changes: task.changes,
@@ -619,6 +983,8 @@ fn task_from_create(input: &TaskCreateInput, now: &str) -> Result<TaskRecord, St
             reference: None,
         },
         state: TaskState::Pending,
+        deleted_at: None,
+        completion: None,
         created_at: now.into(),
         modified_at: now.into(),
         changes: Vec::new(),
@@ -644,6 +1010,8 @@ fn task_from_update(input: &TaskUpdateInput) -> Result<TaskRecord, String> {
             reference: None,
         },
         state: TaskState::Pending,
+        deleted_at: None,
+        completion: None,
         created_at: String::new(),
         modified_at: String::new(),
         changes: Vec::new(),
@@ -657,6 +1025,138 @@ fn task_matches(left: &TaskRecord, right: &TaskRecord) -> bool {
         && left.date == right.date
         && left.time == right.time
         && left.list_id == right.list_id
+}
+
+fn completion_from_timestamp(
+    timestamp: &str,
+    source: TaskCompletionSourceKind,
+) -> Result<TaskCompletionView, String> {
+    validate_timestamp_label(timestamp)?;
+    let completed_on = timestamp
+        .get(..10)
+        .filter(|value| CalendarDate::parse(value).is_some())
+        .ok_or_else(|| "任务完成日期无效。".to_string())?;
+    let completed_time = timestamp
+        .get(11..16)
+        .ok_or_else(|| "任务完成时刻无效。".to_string())?;
+    validate_time(completed_time)?;
+    Ok(TaskCompletionView {
+        completed_on: completed_on.to_owned(),
+        completed_time: Some(completed_time.to_owned()),
+        recorded_at: timestamp.to_owned(),
+        source,
+    })
+}
+
+fn validate_completion_date(value: &str) -> Result<(), String> {
+    if CalendarDate::parse(value).is_some() {
+        Ok(())
+    } else {
+        Err("任务完成日期必须是有效的 YYYY-MM-DD 日期。".into())
+    }
+}
+
+fn completion_from_correction(
+    completed_on: &str,
+    completed_time: Option<&str>,
+    recorded_at: &str,
+) -> Result<TaskCompletionView, String> {
+    validate_completion_date(completed_on)?;
+    if let Some(time) = completed_time {
+        validate_time(time)?;
+    }
+    let current_on = recorded_at
+        .get(..10)
+        .ok_or_else(|| "任务完成日期无效。".to_string())?;
+    let current_time = recorded_at
+        .get(11..16)
+        .ok_or_else(|| "任务完成时刻无效。".to_string())?;
+    let completed_date = CalendarDate::parse(completed_on).expect("validated completion date");
+    let current_date =
+        CalendarDate::parse(current_on).ok_or_else(|| "任务完成日期无效。".to_string())?;
+    if completed_date > current_date
+        || (completed_date == current_date
+            && completed_time.is_some_and(|time| time > current_time))
+    {
+        return Err("任务完成记录不能使用未来日期或未来时刻。".into());
+    }
+    Ok(TaskCompletionView {
+        completed_on: completed_on.to_owned(),
+        completed_time: completed_time.map(str::to_owned),
+        recorded_at: recorded_at.to_owned(),
+        source: TaskCompletionSourceKind::DateCorrection,
+    })
+}
+
+fn state_change_matches(change: &TaskChangeView, state: TaskState) -> bool {
+    change.new_state == Some(state)
+        && matches!(
+            (state, change.kind),
+            (TaskState::Completed, TaskChangeKind::Completed)
+                | (TaskState::Pending, TaskChangeKind::Reopened)
+                | (TaskState::Pending, TaskChangeKind::Restored)
+                | (TaskState::Abandoned, TaskChangeKind::Abandoned)
+        )
+}
+
+fn task_lifecycle_change(
+    previous: &TaskRecord,
+    updated: &TaskRecord,
+    id: String,
+    kind: TaskChangeKind,
+    changed_at: String,
+    source: TaskChangeSourceKind,
+) -> TaskChangeView {
+    TaskChangeView {
+        id,
+        kind,
+        changed_at,
+        source,
+        previous_name: None,
+        new_name: None,
+        previous_content: None,
+        new_content: None,
+        previous_date: None,
+        new_date: None,
+        previous_time: None,
+        new_time: None,
+        previous_list_id: None,
+        new_list_id: None,
+        previous_state: Some(previous.state),
+        new_state: Some(updated.state),
+        previous_deleted_at: previous.deleted_at.clone(),
+        new_deleted_at: updated.deleted_at.clone(),
+        previous_completion: previous.completion.clone(),
+        new_completion: updated.completion.clone(),
+    }
+}
+
+fn lifecycle_result_matches(task: &TaskRecord, change: &TaskChangeView) -> bool {
+    change.new_state == Some(task.state)
+        && change.new_deleted_at == task.deleted_at
+        && change.new_completion == task.completion
+}
+
+fn task_state_change(
+    previous: &TaskRecord,
+    updated: &TaskRecord,
+    id: String,
+    changed_at: String,
+    source: TaskChangeSourceKind,
+) -> Result<TaskChangeView, String> {
+    let kind = match (previous.state, updated.state) {
+        (TaskState::Abandoned, TaskState::Completed) => {
+            return Err("任务必须先从放弃状态恢复为待办，再标记完成；未写入任何内容。".into())
+        }
+        (_, TaskState::Completed) => TaskChangeKind::Completed,
+        (TaskState::Completed, TaskState::Pending) => TaskChangeKind::Reopened,
+        (_, TaskState::Abandoned) => TaskChangeKind::Abandoned,
+        (TaskState::Abandoned, TaskState::Pending) => TaskChangeKind::Restored,
+        _ => return Err("任务状态没有可保存的变化。".into()),
+    };
+    Ok(task_lifecycle_change(
+        previous, updated, id, kind, changed_at, source,
+    ))
 }
 
 fn ensure_task_list_exists(document: &TaskDocument, list_id: &str) -> Result<(), String> {
@@ -703,6 +1203,7 @@ fn task_change(
         id,
         kind,
         changed_at,
+        source: TaskChangeSourceKind::User,
         previous_name: name_changed.then(|| previous.name.clone()),
         new_name: name_changed.then(|| updated.name.clone()),
         previous_content: content_changed.then(|| previous.content.clone()).flatten(),
@@ -713,6 +1214,12 @@ fn task_change(
         new_time: schedule_changed.then(|| updated.time.clone()).flatten(),
         previous_list_id: list_changed.then(|| previous.list_id.clone()),
         new_list_id: list_changed.then(|| updated.list_id.clone()),
+        previous_state: None,
+        new_state: None,
+        previous_deleted_at: None,
+        new_deleted_at: None,
+        previous_completion: None,
+        new_completion: None,
     })
 }
 
@@ -736,13 +1243,19 @@ fn require_task_revision(
 }
 
 fn parse_task_document(bytes: &[u8]) -> Result<TaskDocument, String> {
-    let document: TaskDocument =
+    let mut document: TaskDocument =
         serde_json::from_slice(bytes).map_err(|error| format!("任务正本不是有效 JSON：{error}"))?;
-    if document.schema_version != TASK_SCHEMA_VERSION {
-        return Err(format!(
-            "任务正本使用不支持的 schema 版本 {}；未将其当作空任务。",
-            document.schema_version
-        ));
+    match document.schema_version {
+        LEGACY_TASK_SCHEMA_VERSION => {
+            document.schema_version = TASK_SCHEMA_VERSION;
+        }
+        TASK_SCHEMA_VERSION => {}
+        version => {
+            return Err(format!(
+                "任务正本使用不支持的 schema 版本 {}；未将其当作空任务。",
+                version
+            ));
+        }
     }
     let mut list_ids = HashSet::new();
     let mut inbox = false;
@@ -806,6 +1319,17 @@ fn validate_task_record(
         }
         TaskSourceKind::Manual => {}
     }
+    if let Some(deleted_at) = &task.deleted_at {
+        validate_timestamp_label(deleted_at)?;
+    }
+    match (task.state, task.completion.as_ref()) {
+        (TaskState::Completed, Some(completion)) => validate_completion(completion)?,
+        (TaskState::Completed, None) => return Err("任务正本的已完成任务缺少完成记录。".into()),
+        (TaskState::Pending | TaskState::Abandoned, Some(_)) => {
+            return Err("任务正本的未完成或放弃任务不能携带当前完成记录。".into())
+        }
+        (TaskState::Pending | TaskState::Abandoned, None) => {}
+    }
     if task.date.is_none() && task.time.is_some() {
         return Err("任务时间必须先绑定日期。".into());
     }
@@ -854,6 +1378,19 @@ fn validate_change(change: &TaskChangeView) -> Result<(), String> {
         change.previous_time.as_deref(),
     )?;
     normalize_schedule(change.new_date.as_deref(), change.new_time.as_deref())?;
+    if let Some(deleted_at) = &change.previous_deleted_at {
+        validate_timestamp_label(deleted_at)?;
+    }
+    if let Some(deleted_at) = &change.new_deleted_at {
+        validate_timestamp_label(deleted_at)?;
+    }
+    if let Some(completion) = &change.previous_completion {
+        validate_completion(completion)?;
+    }
+    if let Some(completion) = &change.new_completion {
+        validate_completion(completion)?;
+    }
+    validate_lifecycle_change(change)?;
     let has_change = change.previous_name.is_some()
         || change.new_name.is_some()
         || change.previous_content.is_some()
@@ -863,9 +1400,144 @@ fn validate_change(change: &TaskChangeView) -> Result<(), String> {
         || change.previous_time.is_some()
         || change.new_time.is_some()
         || change.previous_list_id.is_some()
-        || change.new_list_id.is_some();
+        || change.new_list_id.is_some()
+        || change.previous_state.is_some()
+        || change.new_state.is_some()
+        || change.previous_deleted_at.is_some()
+        || change.new_deleted_at.is_some()
+        || change.previous_completion.is_some()
+        || change.new_completion.is_some();
     if !has_change {
         return Err("任务修改记录缺少前后变化。".into());
+    }
+    Ok(())
+}
+
+fn validate_completion(completion: &TaskCompletionView) -> Result<(), String> {
+    validate_completion_date(&completion.completed_on)?;
+    if let Some(time) = completion.completed_time.as_deref() {
+        validate_time(time)?;
+    }
+    validate_timestamp_label(&completion.recorded_at)
+}
+
+fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
+    let has_field_change = change.previous_name.is_some()
+        || change.new_name.is_some()
+        || change.previous_content.is_some()
+        || change.new_content.is_some()
+        || change.previous_date.is_some()
+        || change.new_date.is_some()
+        || change.previous_time.is_some()
+        || change.new_time.is_some()
+        || change.previous_list_id.is_some()
+        || change.new_list_id.is_some();
+    match change.kind {
+        TaskChangeKind::Completed => {
+            if has_field_change
+                || change
+                    .previous_state
+                    .is_none_or(|state| state == TaskState::Completed)
+                || change.new_state != Some(TaskState::Completed)
+                || change.previous_completion.is_some()
+                || change.new_completion.is_none()
+                || change.previous_deleted_at.is_some()
+                || change.new_deleted_at.is_some()
+            {
+                return Err("任务完成记录的前后状态或完成证据无效。".into());
+            }
+        }
+        TaskChangeKind::Reopened => {
+            if has_field_change
+                || change.previous_state != Some(TaskState::Completed)
+                || change.new_state != Some(TaskState::Pending)
+                || change.previous_completion.is_none()
+                || change.new_completion.is_some()
+                || change.previous_deleted_at.is_some()
+                || change.new_deleted_at.is_some()
+            {
+                return Err("任务重开记录的前后状态无效。".into());
+            }
+        }
+        TaskChangeKind::Abandoned => {
+            let previous_state = change.previous_state;
+            let previous_completion_valid = match previous_state {
+                Some(TaskState::Pending) => change.previous_completion.is_none(),
+                Some(TaskState::Completed) => change.previous_completion.is_some(),
+                Some(TaskState::Abandoned) | None => false,
+            };
+            if has_field_change
+                || !previous_completion_valid
+                || change.new_state != Some(TaskState::Abandoned)
+                || change.new_completion.is_some()
+                || change.previous_deleted_at.is_some()
+                || change.new_deleted_at.is_some()
+            {
+                return Err("任务放弃记录的前后状态无效。".into());
+            }
+        }
+        TaskChangeKind::Restored => {
+            if has_field_change
+                || change.previous_state != Some(TaskState::Abandoned)
+                || change.new_state != Some(TaskState::Pending)
+                || change.previous_completion.is_some()
+                || change.new_completion.is_some()
+                || change.previous_deleted_at.is_some()
+                || change.new_deleted_at.is_some()
+            {
+                return Err("任务恢复记录的前后状态无效。".into());
+            }
+        }
+        TaskChangeKind::Deleted => {
+            if has_field_change
+                || change.previous_deleted_at.is_some()
+                || change.new_deleted_at.is_none()
+                || change.previous_state.is_none()
+                || change.previous_state != change.new_state
+                || change.previous_completion != change.new_completion
+            {
+                return Err("任务删除记录的前后删除标记无效。".into());
+            }
+        }
+        TaskChangeKind::Undeleted => {
+            if has_field_change
+                || change.previous_deleted_at.is_none()
+                || change.new_deleted_at.is_some()
+                || change.previous_state.is_none()
+                || change.previous_state != change.new_state
+                || change.previous_completion != change.new_completion
+            {
+                return Err("任务恢复记录的前后删除标记无效。".into());
+            }
+        }
+        TaskChangeKind::CompletionCorrected => {
+            if has_field_change
+                || change.previous_state != Some(TaskState::Completed)
+                || change.new_state != Some(TaskState::Completed)
+                || change.previous_completion.is_none()
+                || change.new_completion.is_none()
+                || change.previous_completion == change.new_completion
+                || change.previous_deleted_at.is_some()
+                || change.new_deleted_at.is_some()
+            {
+                return Err("任务完成更正记录的前后状态或完成证据无效。".into());
+            }
+        }
+        TaskChangeKind::Renamed
+        | TaskChangeKind::ContentEdited
+        | TaskChangeKind::Rescheduled
+        | TaskChangeKind::ListMoved
+        | TaskChangeKind::Edited => {
+            if change.previous_state.is_some()
+                || change.new_state.is_some()
+                || change.previous_deleted_at.is_some()
+                || change.new_deleted_at.is_some()
+                || change.previous_completion.is_some()
+                || change.new_completion.is_some()
+            {
+                return Err("任务字段变更记录不能携带状态或完成生命周期字段。".into());
+            }
+        }
     }
     Ok(())
 }
