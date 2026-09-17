@@ -6,6 +6,7 @@ import {
   taskListMutationConfirmed,
   taskListScopeForId,
   taskMutationConfirmed,
+  todayTaskGroups,
   taskVisibleInScope,
 } from "../../frontend/task-presentation.ts";
 
@@ -78,4 +79,42 @@ test("list mutation confirmation accepts an empty source when the list is presen
   assert.equal(taskListMutationConfirmed(true, "ready", true), true);
   assert.equal(taskListMutationConfirmed(true, "empty", false), false);
   assert.equal(taskListMutationConfirmed(true, "error", true), false);
+});
+
+test("Today groups dated active tasks and overdue pending work without pulling in undated or archived tasks", () => {
+  const tasks = [
+    { id: "today", listId: "inbox", date: "2026-09-17", state: "pending" as const, deletedAt: null, overdue: false },
+    { id: "overdue", listId: "work", date: "2026-09-16", state: "pending" as const, deletedAt: null, overdue: true },
+    { id: "completed", listId: "inbox", date: "2026-09-17", state: "completed" as const, deletedAt: null, overdue: false },
+    { id: "undated", listId: "inbox", date: null, state: "pending" as const, deletedAt: null, overdue: false },
+    { id: "abandoned", listId: "inbox", date: "2026-09-17", state: "abandoned" as const, deletedAt: null, overdue: false },
+    { id: "deleted", listId: "inbox", date: "2026-09-17", state: "pending" as const, deletedAt: "2026-09-17T10:00-04:00", overdue: false },
+    { id: "archived", listId: "work", date: "2026-09-17", state: "pending" as const, deletedAt: null, overdue: false },
+  ];
+
+  const groups = todayTaskGroups(tasks, "2026-09-17", true, new Set(["archived", "work"]));
+
+  assert.deepEqual(groups.scheduled.map((task) => task.id), ["today", "completed"]);
+  assert.deepEqual(groups.overdue.map((task) => task.id), []);
+
+  const currentWork = todayTaskGroups(tasks, "2026-09-17", true, new Set(["archived"]));
+  assert.deepEqual(currentWork.scheduled.map((task) => task.id), ["today", "completed", "archived"]);
+  assert.deepEqual(currentWork.overdue.map((task) => task.id), ["overdue"]);
+});
+
+test("a historical Today date keeps its dated tasks in the scheduled group", () => {
+  const groups = todayTaskGroups(
+    [
+      { id: "historical-pending", listId: "inbox", date: "2026-09-16", state: "pending" as const, deletedAt: null, overdue: false },
+      { id: "historical-late", listId: "inbox", date: "2026-09-16", state: "pending" as const, deletedAt: null, overdue: true },
+    ],
+    "2026-09-16",
+    false,
+    new Set(),
+  );
+  assert.deepEqual(
+    groups.scheduled.map((task) => task.id),
+    ["historical-pending", "historical-late"],
+  );
+  assert.deepEqual(groups.overdue, []);
 });

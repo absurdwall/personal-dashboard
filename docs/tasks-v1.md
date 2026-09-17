@@ -64,7 +64,23 @@ rewrite the tasks. Restoring one deleted task clears only that task's
 tombstone; it does not restore the archived list. New tasks and cross-list
 moves cannot target an archived list until the list itself is restored.
 
+## Today derived view
+
+Today is a date-based presentation over this same source, not another list or
+membership target. It shows active tasks dated for the selected lived date
+across unarchived lists. On the current date it also shows pending, unarchived
+tasks whose date or explicit time has passed, in a separate overdue group.
+Undated tasks, abandoned or deleted tasks, and tasks in archived lists do not
+enter the everyday Today view. A task date is never changed merely because it
+becomes overdue.
+
+The Tasks destination and Today use the same task id, target binding, revision,
+and mutation commands. Today creation defaults to the selected date and Inbox,
+but the user may clear or edit the date and choose another active list before
+saving. The old per-day `day-tasks` files remain a labeled, read-only historical
+read path; Today reads them without accepting the old planning input or writing
+those files during normal 4.0 reads.
+
 This source is independent of Dida365, Google Drive APIs, and Daily Record
 Markdown. Local success is not cloud-sync evidence. The daily-flow adapter,
-Today integration, Calendar integration, and packaged acceptance are later
-tickets.
+Calendar integration, and packaged acceptance remain later tickets.

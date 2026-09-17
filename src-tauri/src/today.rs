@@ -7,6 +7,7 @@ pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
 };
 use crate::interface_language::InterfaceLanguage;
+use crate::tasks::{FileTaskStore, TaskApplication, TasksView};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
@@ -37,6 +38,20 @@ pub trait TodayWorkspacePersistence {
     fn save_selected_vault(&self, vault: &Path) -> Result<(), String>;
 }
 
+impl<T: TodayWorkspacePersistence + ?Sized> TodayWorkspacePersistence for &T {
+    fn load_selected_vault(&self) -> Result<Option<PathBuf>, String> {
+        (**self).load_selected_vault()
+    }
+
+    fn inspect_selected_vault(&self) -> Result<TodayWorkspaceSelectionState, String> {
+        (**self).inspect_selected_vault()
+    }
+
+    fn save_selected_vault(&self, vault: &Path) -> Result<(), String> {
+        (**self).save_selected_vault(vault)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TodayWorkspaceSelectionState {
     Missing,
@@ -59,6 +74,20 @@ pub trait TodayClock {
     fn current_date(&self) -> String;
     fn current_time_label(&self) -> String;
     fn current_timestamp_label(&self) -> String;
+}
+
+impl<T: TodayClock + ?Sized> TodayClock for &T {
+    fn current_date(&self) -> String {
+        (**self).current_date()
+    }
+
+    fn current_time_label(&self) -> String {
+        (**self).current_time_label()
+    }
+
+    fn current_timestamp_label(&self) -> String {
+        (**self).current_timestamp_label()
+    }
 }
 
 pub trait TodayRecordStore {
@@ -1287,6 +1316,7 @@ pub struct TodayView {
     pub evidence: Vec<PlanningEvidenceView>,
     pub daytime: DaytimeView,
     pub evening: EveningView,
+    pub tasks: TasksView,
     pub day_tasks: DayTaskListView,
     pub habit_corrections: HabitCorrectionView,
 }
@@ -1460,6 +1490,14 @@ where
             habit_completion_store,
             habit_cache: Mutex::new(HashMap::new()),
             habit_correction_cache: Mutex::new(HashMap::new()),
+        }
+    }
+
+    fn shared_tasks_for(&self, vault: &Path) -> TasksView {
+        let application = TaskApplication::new(&self.persistence, &self.clock, FileTaskStore);
+        match application.read_for_vault(vault) {
+            Ok(view) => view,
+            Err(error) => TasksView::error(error, None, None, Some(vault.to_path_buf())),
         }
     }
 
@@ -2435,6 +2473,7 @@ where
                 evidence: Vec::new(),
                 daytime: DaytimeView::default(),
                 evening: EveningView::default(),
+                tasks: TasksView::unconfigured(),
                 day_tasks: DayTaskListView::unconfigured(),
                 habit_corrections: HabitCorrectionView::empty(
                     date,
@@ -2460,7 +2499,7 @@ where
     ) -> Result<VaultSelectionResult, String> {
         let Some(vault) = self.exchange.select_vault_in_language(interface_language)? else {
             return Ok(VaultSelectionResult {
-                view: self.open()?,
+                view: self.read()?,
                 changed: false,
             });
         };
@@ -2473,7 +2512,10 @@ where
                 previous_vault.as_path() != vault.as_path()
             }
         };
-        let view = self.open_vault(&vault, self.clock.current_date())?;
+        // The 4.0 page reads old day-task files without accepting their planning
+        // input. Legacy producer reconciliation remains available only through
+        // the explicit `open` compatibility path used by the old flow.
+        let view = self.reload_vault(&vault, self.clock.current_date())?;
         if changed {
             self.persistence.save_selected_vault(&vault)?;
         }
@@ -2769,6 +2811,7 @@ where
                 format!("{error}。请重新选择兼容 Vault；未转换或写入任何文件。"),
             ));
         }
+        let tasks = self.shared_tasks_for(vault);
         let day_tasks = self.day_tasks_for(vault, &date, receive_planning_input);
         let habit_corrections = self.habit_corrections_for(vault, &date);
         let path = canonical_record_path(vault, &date)?;
@@ -2800,6 +2843,7 @@ where
                     evidence: Vec::new(),
                     daytime: DaytimeView::default(),
                     evening: EveningView::default(),
+                    tasks,
                     day_tasks,
                     habit_corrections,
                 });
@@ -2857,6 +2901,7 @@ where
                     evidence,
                     daytime,
                     evening,
+                    tasks,
                     day_tasks,
                     habit_corrections,
                 })
@@ -2883,6 +2928,7 @@ where
                 evidence: Vec::new(),
                 daytime: DaytimeView::default(),
                 evening: EveningView::default(),
+                tasks,
                 day_tasks,
                 habit_corrections,
             }),
@@ -2922,7 +2968,7 @@ fn vault_error_view(
         },
         daily_record_availability: DailyRecordAvailability::Error,
         vault_name,
-        vault_path,
+        vault_path: vault_path.clone(),
         vault_availability,
         message: message.clone(),
         revision: None,
@@ -2932,6 +2978,12 @@ fn vault_error_view(
         evidence: Vec::new(),
         daytime: DaytimeView::default(),
         evening: EveningView::default(),
+        tasks: TasksView::error(
+            message.clone(),
+            None,
+            None,
+            vault_path.as_ref().map(PathBuf::from),
+        ),
         day_tasks: DayTaskListView::error(message.clone(), None),
         habit_corrections,
     }

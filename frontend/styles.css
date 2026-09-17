@@ -4582,6 +4582,34 @@ body {
   margin: 11px 0 0;
 }
 
+.today-task-group {
+  display: grid;
+  gap: 10px;
+}
+
+.today-task-group-section {
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--parity-border);
+}
+
+.today-task-group-section h4 {
+  margin: 2px 0 0;
+  color: var(--parity-ink);
+  font-size: 12px;
+}
+
+.today-task-create-form {
+  margin-top: 14px;
+}
+
+.today-legacy-task-history {
+  padding: 16px;
+  border: 1px solid var(--parity-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--parity-surface) 94%, transparent);
+}
+
 .today-evidence-toggle {
   width: 100%;
   min-height: 48px;

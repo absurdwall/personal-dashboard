@@ -6,7 +6,15 @@ export type TaskSchedulePresentation = Readonly<{
 
 export type TaskStateFilter = "all" | "pending" | "completed" | "abandoned" | "deleted";
 
-export type TaskListScope = "all" | "inbox" | "archived" | `list:${string}`;
+type TodayTaskCandidate = Readonly<{
+  listId: string;
+  date: string | null;
+  state: Exclude<TaskStateFilter, "all" | "deleted">;
+  deletedAt: string | null;
+  overdue: boolean;
+}>;
+
+export type TaskListScope = "all" | "today" | "inbox" | "archived" | `list:${string}`;
 
 export function taskListScopeForId(listId: string): TaskListScope {
   return `list:${listId}`;
@@ -26,6 +34,7 @@ export function taskVisibleInScope(
   listScope: TaskListScope,
   stateScope: TaskStateFilter,
 ): boolean {
+  if (listScope === "today") return false;
   const listMatches =
     listScope === "archived"
       ? task.listArchived === true
@@ -40,6 +49,36 @@ export function taskVisibleInScope(
     task.deletedAt === null &&
     (stateScope === "all" || task.state === stateScope)
   );
+}
+
+export function taskVisibleInToday(
+  task: TodayTaskCandidate,
+  selectedDate: string,
+  isToday: boolean,
+  listArchived: boolean,
+): boolean {
+  if (listArchived || task.deletedAt !== null || task.state === "abandoned") return false;
+  if (task.date === selectedDate) return true;
+  return isToday && task.state === "pending" && task.overdue;
+}
+
+export function todayTaskGroups<T extends TodayTaskCandidate>(
+  tasks: readonly T[],
+  selectedDate: string,
+  isToday: boolean,
+  archivedListIds: ReadonlySet<string>,
+): Readonly<{ scheduled: readonly T[]; overdue: readonly T[] }> {
+  const visible = tasks.filter((task) =>
+    taskVisibleInToday(task, selectedDate, isToday, archivedListIds.has(task.listId)),
+  );
+  return {
+    scheduled: visible.filter(
+      (task) => !isToday || task.state !== "pending" || !task.overdue,
+    ),
+    overdue: visible.filter(
+      (task) => isToday && task.state === "pending" && task.overdue,
+    ),
+  };
 }
 
 export function normalizeTaskSchedule(

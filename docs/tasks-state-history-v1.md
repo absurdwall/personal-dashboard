@@ -56,9 +56,15 @@ moving a task appends a `list-moved` entry, and archiving/restoring a list only
 changes the list's visibility flag. Restoring a task from an archived list
 does not implicitly restore that list.
 
+Today is only a presentation of these same task records. Its edits and state
+changes use the task id and revision from the shared source, so a mutation made
+there is immediately visible from Tasks without creating a second day-owned
+identity. A late completion keeps the scheduled date and is therefore still
+available from the scheduled-date history.
+
 ## Evidence boundary
 
 The contract is covered by isolated Rust workflow tests and frontend seam/static
 tests using synthetic Vaults. Those checks do not prove packaged macOS Tauri
-acceptance, real Vault/Drive synchronization, or later Daily Flow, Today, or
-Calendar integrations.
+acceptance, real Vault/Drive synchronization, later Daily Flow or Calendar
+integration, or the packaged shared-task interaction.

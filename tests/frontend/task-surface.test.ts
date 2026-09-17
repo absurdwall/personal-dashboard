@@ -14,6 +14,7 @@ test("Tasks is a real destination between Today and Calendar with Inbox and All 
   assert.deepEqual(destinations, ["today", "tasks", "calendar", "habits"]);
   assert.match(html, /id="workspace-destination-tasks"/);
   assert.match(html, /data-task-scope="all"/);
+  assert.match(html, /data-task-scope="today"/);
   assert.match(html, /data-task-scope="inbox"/);
   assert.match(html, /data-task-scope="archived"/);
   assert.match(html, /id="task-list-create-form"/);
@@ -32,6 +33,7 @@ test("Tasks fixed copy has Chinese and English counterparts", () => {
     "workspace.tasksDescription",
     "tasks.introduction",
     "tasks.scopeAll",
+    "tasks.scopeToday",
     "tasks.scopeInbox",
     "tasks.scopeArchived",
     "tasks.createList",
@@ -133,6 +135,56 @@ test("Tasks exposes stable list management commands and cross-list move controls
     "tasks.renameListLabel",
     "tasks.listCount",
     "tasks.permanentList",
+  ]) {
+    const line = copies.split("\n").find((candidate) => candidate.includes(`"${key}"`));
+    assert.ok(line, `missing copy ${key}`);
+    assert.match(line, /zh:/);
+    assert.match(line, /en:/);
+  }
+});
+
+test("Today presents the shared task view with a date default and read-only legacy history", () => {
+  for (const marker of [
+    'id="today-task-scheduled"',
+    'id="today-task-overdue-section"',
+    'id="today-task-create-form"',
+    'id="today-task-create-list"',
+    'id="today-task-create-date"',
+    'id="today-legacy-task-history"',
+    'data-i18n="today.legacyTasksReadOnly"',
+  ]) {
+    assert.match(html, new RegExp(marker));
+  }
+  assert.match(main, /todayTaskGroups\(/);
+  assert.match(main, /currentDate/);
+  assert.match(main, /taskScope === "today"/);
+  assert.match(main, /async function createTodayTask/);
+  assert.match(main, /updateTask\(taskId, form, "today"\)/);
+  assert.match(main, /setTaskState\(taskId, state, "today"\)/);
+  assert.match(main, /deleteTask\(remove\.dataset\.taskDelete, "today"\)/);
+  assert.match(main, /restoreTask\(restore\.dataset\.taskRestore, "today"\)/);
+  assert.match(main, /correctTaskCompletion\(correct\.dataset\.taskCorrectCompletion, form, "today"\)/);
+  assert.doesNotMatch(main, /core\.invoke(?:<[^>]+>)?\("add_day_task"/);
+  assert.doesNotMatch(main, /core\.invoke(?:<[^>]+>)?\("rename_day_task"/);
+  assert.doesNotMatch(main, /core\.invoke(?:<[^>]+>)?\("set_day_task_completion"/);
+  assert.doesNotMatch(main, /core\.invoke(?:<[^>]+>)?\("delete_day_task"/);
+  assert.doesNotMatch(html, /id="day-task-add-form"/);
+});
+
+test("Today shared task copy has Chinese and English counterparts", () => {
+  for (const key of [
+    "today.tasksSection",
+    "today.tasksHeading",
+    "today.tasksReady",
+    "today.tasksEmpty",
+    "today.overdueHeading",
+    "today.noOverdue",
+    "today.taskCreateDefault",
+    "today.tasksBoundary",
+    "today.legacyTasksSection",
+    "today.legacyTasksHeading",
+    "today.legacyTasksPresent",
+    "today.legacyTasksReadOnly",
   ]) {
     const line = copies.split("\n").find((candidate) => candidate.includes(`"${key}"`));
     assert.ok(line, `missing copy ${key}`);

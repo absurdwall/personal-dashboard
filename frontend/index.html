@@ -227,6 +227,7 @@
               <div class="tasks-scope-toolbar">
                 <div id="tasks-list-scopes" class="tasks-list-scopes" role="tablist" aria-label="任务范围" data-i18n-aria-label="tasks.scope">
                   <button type="button" role="tab" data-task-scope="all" aria-selected="true" data-i18n="tasks.scopeAll">All</button>
+                  <button type="button" role="tab" data-task-scope="today" aria-selected="false" data-i18n="tasks.scopeToday">Today</button>
                   <button type="button" role="tab" data-task-scope="inbox" aria-selected="false" data-i18n="tasks.scopeInbox">Inbox</button>
                   <button type="button" role="tab" data-task-scope="archived" aria-selected="false" data-i18n="tasks.scopeArchived">Archived</button>
                 </div>
@@ -266,11 +267,11 @@
                 <div class="task-form-grid">
                   <label class="task-form-wide">
                     <span data-i18n="tasks.name">名称</span>
-                    <input id="task-create-name" type="text" maxlength="160" required placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" />
+                    <input id="task-create-name" type="text" maxlength="160" required placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" data-task-name />
                   </label>
                   <label class="task-form-wide">
                     <span data-i18n="tasks.content">内容（可选）</span>
-                    <textarea id="task-create-content" rows="2" placeholder="补充必要背景或下一步" data-i18n-placeholder="tasks.contentPlaceholder"></textarea>
+                    <textarea id="task-create-content" rows="2" placeholder="补充必要背景或下一步" data-i18n-placeholder="tasks.contentPlaceholder" data-task-content></textarea>
                   </label>
                   <label>
                     <span data-i18n="tasks.list">清单</span>
@@ -278,11 +279,11 @@
                   </label>
                   <label>
                     <span data-i18n="tasks.date">日期（可选）</span>
-                    <input id="task-create-date" type="date" />
+                    <input id="task-create-date" type="date" data-task-date />
                   </label>
                   <label>
                     <span data-i18n="tasks.time">时刻（需要日期）</span>
-                    <input id="task-create-time" type="time" disabled />
+                    <input id="task-create-time" type="time" disabled data-task-time />
                   </label>
                 </div>
                 <p class="task-form-boundary" data-i18n="tasks.savedToVault">任务保存在当前 Vault 的独立正本中；不会写入 Daily Record。</p>
@@ -608,28 +609,79 @@
                   </div>
 
                   <aside class="today-side-region" aria-label="当天任务、记录与计划依据" data-i18n-aria-label="today.sideRegion">
-                    <section class="day-task-panel" aria-labelledby="day-task-heading">
+                    <section class="day-task-panel" aria-labelledby="today-task-heading">
                       <div class="day-task-heading">
                         <div>
-                          <p class="section-label" data-i18n="dayTasks.section">当天 · 任务</p>
-                          <h3 id="day-task-heading" data-i18n="dayTasks.heading">当天任务</h3>
+                          <p class="section-label" data-i18n="today.tasksSection">Today · 共享任务</p>
+                          <h3 id="today-task-heading" data-i18n="today.tasksHeading">Today 任务</h3>
                         </div>
-                        <span id="day-task-count" class="today-count"></span>
+                        <span id="today-task-count" class="today-count"></span>
                       </div>
-                      <p id="day-task-status" class="day-task-status" role="status" aria-live="polite"></p>
-                      <div id="day-task-list" class="day-task-list"></div>
-                      <p id="day-task-empty" class="day-task-empty" data-i18n="dayTasks.empty" hidden>
-                        当天还没有任务；昨天的任务不会自动带入。
+                      <p id="today-task-status" class="day-task-status" role="status" aria-live="polite"></p>
+                      <div id="today-task-scheduled" class="today-task-group"></div>
+                      <p id="today-task-empty" class="day-task-empty" data-i18n="today.tasksEmpty" hidden>
+                        所选日期还没有已安排任务。
                       </p>
-                      <form id="day-task-add-form" class="day-task-add-form">
-                        <label>
-                          <span class="visually-hidden" data-i18n="dayTasks.addLabel">添加当天任务</span>
-                          <input id="day-task-add-input" type="text" maxlength="160" autocomplete="off" placeholder="添加当天任务" data-i18n-placeholder="dayTasks.addPlaceholder" required />
-                        </label>
-                        <button id="day-task-add-button" type="submit" data-i18n="dayTasks.add">添加</button>
+                      <div id="today-task-overdue-section" class="today-task-group-section" hidden>
+                        <div class="day-task-heading">
+                          <h4 data-i18n="today.overdueHeading">逾期未完成</h4>
+                          <span id="today-task-overdue-count" class="today-count"></span>
+                        </div>
+                        <div id="today-task-overdue" class="today-task-group"></div>
+                      </div>
+                      <p id="today-task-overdue-empty" class="day-task-empty" data-i18n="today.noOverdue" hidden>
+                        没有未归档的逾期待办。
+                      </p>
+                      <form id="today-task-create-form" class="task-form today-task-create-form" hidden>
+                        <div class="task-form-heading">
+                          <h4 data-i18n="tasks.addHeading">新建任务</h4>
+                          <small data-i18n="today.taskCreateDefault">默认今天和 Inbox，可在保存前修改</small>
+                        </div>
+                        <div class="task-form-grid">
+                          <label class="task-form-wide">
+                            <span data-i18n="tasks.name">名称</span>
+                            <input id="today-task-create-name" type="text" maxlength="160" required placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" data-task-name />
+                          </label>
+                          <label class="task-form-wide">
+                            <span data-i18n="tasks.content">内容（可选）</span>
+                            <textarea id="today-task-create-content" rows="2" placeholder="补充必要背景或下一步" data-i18n-placeholder="tasks.contentPlaceholder" data-task-content></textarea>
+                          </label>
+                          <label>
+                            <span data-i18n="tasks.list">清单</span>
+                            <select id="today-task-create-list" data-task-list></select>
+                          </label>
+                          <label>
+                            <span data-i18n="tasks.date">日期（可选）</span>
+                            <input id="today-task-create-date" type="date" data-task-date />
+                          </label>
+                          <label>
+                            <span data-i18n="tasks.time">时刻（需要日期）</span>
+                            <input id="today-task-create-time" type="time" disabled data-task-time />
+                          </label>
+                        </div>
+                        <p class="task-form-boundary" data-i18n="today.tasksBoundary">保存后，Tasks、Today 与 Calendar 会共享这一个任务；不会写入 Daily Record。</p>
+                        <button id="today-task-create-submit" type="submit" data-i18n="tasks.add">加入 Inbox</button>
                       </form>
-                      <p class="day-task-boundary" data-i18n="dayTasks.boundary">
-                        未勾选表示尚未确认；任务不会自动跨天带入。
+                      <p class="day-task-boundary" data-i18n="today.tasksBoundary">
+                        未勾选表示尚未确认；无日期任务不会自动塞入今天，归档清单不进入日常待办。
+                      </p>
+                    </section>
+
+                    <section id="today-legacy-task-history" class="today-legacy-task-history" aria-labelledby="today-legacy-task-heading" hidden>
+                      <div class="day-task-heading">
+                        <div>
+                          <p class="section-label" data-i18n="today.legacyTasksSection">历史 · 旧 Day task</p>
+                          <h3 id="today-legacy-task-heading" data-i18n="today.legacyTasksHeading">旧 Day task 历史</h3>
+                        </div>
+                        <span id="today-legacy-task-count" class="today-count"></span>
+                      </div>
+                      <p id="today-legacy-task-status" class="day-task-status" role="status" aria-live="polite"></p>
+                      <div id="today-legacy-task-list" class="day-task-list"></div>
+                      <p id="today-legacy-task-empty" class="day-task-empty" data-i18n="today.legacyTasksEmpty" hidden>
+                        所选日期没有旧 Day task 文件。
+                      </p>
+                      <p class="day-task-boundary" data-i18n="today.legacyTasksReadOnly">
+                        这是保留的旧输入，只读展示；不会迁移为新任务，也不会解释为新的截止日期。
                       </p>
                     </section>
 

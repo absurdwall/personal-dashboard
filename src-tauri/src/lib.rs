@@ -134,7 +134,7 @@ fn set_interface_language(
 
 #[tauri::command]
 fn today_view(application: State<'_, DesktopTodayApplication>) -> Result<TodayView, String> {
-    application.open()
+    application.read()
 }
 
 #[tauri::command]
@@ -142,7 +142,7 @@ fn daily_view(
     application: State<'_, DesktopTodayApplication>,
     date: String,
 ) -> Result<TodayView, String> {
-    application.open_date(&date)
+    application.read_date(&date)
 }
 
 #[tauri::command]

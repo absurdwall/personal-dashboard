@@ -145,6 +145,7 @@ pub struct TaskView {
     pub state: TaskState,
     pub deleted_at: Option<String>,
     pub completion: Option<TaskCompletionView>,
+    pub overdue: bool,
     pub created_at: String,
     pub modified_at: String,
     pub changes: Vec<TaskChangeView>,
@@ -160,6 +161,7 @@ pub struct TasksView {
     pub target_binding: Option<String>,
     pub vault_name: Option<String>,
     pub vault_path: Option<String>,
+    pub current_date: Option<String>,
     pub lists: Vec<TaskListView>,
     pub tasks: Vec<TaskView>,
 }
@@ -331,25 +333,41 @@ where
 
     pub fn read(&self) -> Result<TasksView, String> {
         let Some(vault) = self.persistence.load_selected_vault()? else {
-            return Ok(TasksView::unconfigured());
+            return Ok(TasksView::unconfigured().with_current_date(Some(self.clock.current_date())));
         };
-        if let Err(error) = validate_compatible_vault(&vault) {
-            return Ok(TasksView::error(error, None, None, Some(vault)));
+        self.read_for_vault(&vault)
+    }
+
+    pub(crate) fn read_for_vault(&self, vault: &Path) -> Result<TasksView, String> {
+        let current_date = self.clock.current_date();
+        if let Err(error) = validate_compatible_vault(vault) {
+            return Ok(
+                TasksView::error(error, None, None, Some(vault.to_path_buf()))
+                    .with_current_date(Some(current_date)),
+            );
         }
         let path = task_document_path(&vault);
         let target_binding = task_target_binding(&path);
         let bytes = match self.store.load(&path) {
             Ok(Some(bytes)) => bytes,
-            Ok(None) => return Ok(TasksView::empty(Some(target_binding), Some(vault))),
+            Ok(None) => {
+                return Ok(
+                    TasksView::empty(Some(target_binding), Some(vault.to_path_buf()))
+                        .with_current_date(Some(current_date)),
+                )
+            }
             Err(error) => {
                 return Ok(TasksView::error(
                     error,
                     Some(target_binding),
                     None,
-                    Some(vault),
-                ))
+                    Some(vault.to_path_buf()),
+                )
+                .with_current_date(Some(current_date)))
             }
         };
+        let current_time = self.clock.current_time_label();
+        validate_timestamp_label(&format!("{current_date}T{current_time}+00:00"))?;
         let revision = document_revision(&bytes);
         match parse_task_document(&bytes) {
             Ok(document) => {
@@ -369,15 +387,18 @@ where
                     message.into(),
                     Some(revision),
                     Some(target_binding),
-                    Some(vault),
+                    Some(vault.to_path_buf()),
+                    &current_date,
+                    &current_time,
                 ))
             }
             Err(error) => Ok(TasksView::error(
                 error,
                 Some(target_binding),
                 Some(revision),
-                Some(vault),
-            )),
+                Some(vault.to_path_buf()),
+            )
+            .with_current_date(Some(current_date))),
         }
     }
 
@@ -958,7 +979,7 @@ struct TaskRecord {
 }
 
 impl TasksView {
-    fn unconfigured() -> Self {
+    pub(crate) fn unconfigured() -> Self {
         Self {
             state: TaskDataState::Unconfigured,
             message: "请选择 Vault，以读取 Tasks。".into(),
@@ -967,12 +988,13 @@ impl TasksView {
             target_binding: None,
             vault_name: None,
             vault_path: None,
+            current_date: None,
             lists: Vec::new(),
             tasks: Vec::new(),
         }
     }
 
-    fn empty(target_binding: Option<String>, vault: Option<PathBuf>) -> Self {
+    pub(crate) fn empty(target_binding: Option<String>, vault: Option<PathBuf>) -> Self {
         Self {
             state: TaskDataState::Empty,
             message: "Inbox 目前没有任务；新任务会先保存在 Inbox。".into(),
@@ -981,12 +1003,13 @@ impl TasksView {
             target_binding,
             vault_name: vault_name(&vault),
             vault_path: vault.map(|path| path.to_string_lossy().into_owned()),
+            current_date: None,
             lists: vec![task_list_view(inbox_record())],
             tasks: Vec::new(),
         }
     }
 
-    fn error(
+    pub(crate) fn error(
         message: impl Into<String>,
         target_binding: Option<String>,
         revision: Option<String>,
@@ -1000,9 +1023,15 @@ impl TasksView {
             target_binding,
             vault_name: vault_name(&vault),
             vault_path: vault.map(|path| path.to_string_lossy().into_owned()),
+            current_date: None,
             lists: Vec::new(),
             tasks: Vec::new(),
         }
+    }
+
+    fn with_current_date(mut self, current_date: Option<String>) -> Self {
+        self.current_date = current_date;
+        self
     }
 }
 
@@ -1043,21 +1072,22 @@ fn task_list_view(list: TaskListRecord) -> TaskListView {
     }
 }
 
-fn task_view(task: TaskRecord) -> TaskView {
+fn task_view_at(task: &TaskRecord, current_date: &str, current_time: &str) -> TaskView {
     TaskView {
-        id: task.id,
-        name: task.name,
-        content: task.content,
-        date: task.date,
-        time: task.time,
-        list_id: task.list_id,
-        source: task.source,
+        id: task.id.clone(),
+        name: task.name.clone(),
+        content: task.content.clone(),
+        date: task.date.clone(),
+        time: task.time.clone(),
+        list_id: task.list_id.clone(),
+        source: task.source.clone(),
         state: task.state,
-        deleted_at: task.deleted_at,
-        completion: task.completion,
-        created_at: task.created_at,
-        modified_at: task.modified_at,
-        changes: task.changes,
+        deleted_at: task.deleted_at.clone(),
+        completion: task.completion.clone(),
+        overdue: task_is_overdue(task, current_date, current_time),
+        created_at: task.created_at.clone(),
+        modified_at: task.modified_at.clone(),
+        changes: task.changes.clone(),
     }
 }
 
@@ -1068,6 +1098,8 @@ fn tasks_view(
     revision: Option<String>,
     target_binding: Option<String>,
     vault: Option<PathBuf>,
+    current_date: &str,
+    current_time: &str,
 ) -> TasksView {
     TasksView {
         state,
@@ -1077,9 +1109,31 @@ fn tasks_view(
         target_binding,
         vault_name: vault_name(&vault),
         vault_path: vault.map(|path| path.to_string_lossy().into_owned()),
+        current_date: Some(current_date.to_owned()),
         lists: document.lists.into_iter().map(task_list_view).collect(),
-        tasks: document.tasks.into_iter().map(task_view).collect(),
+        tasks: document
+            .tasks
+            .iter()
+            .map(|task| task_view_at(task, current_date, current_time))
+            .collect(),
     }
+}
+
+fn task_is_overdue(task: &TaskRecord, current_date: &str, current_time: &str) -> bool {
+    if task.state != TaskState::Pending || task.deleted_at.is_some() {
+        return false;
+    }
+    let Some(date) = task.date.as_deref() else {
+        return false;
+    };
+    let Some(task_date) = CalendarDate::parse(date) else {
+        return false;
+    };
+    let Some(today) = CalendarDate::parse(current_date) else {
+        return false;
+    };
+    task_date.unix_days() < today.unix_days()
+        || (task_date == today && task.time.as_deref().is_some_and(|time| time < current_time))
 }
 
 fn normalize_name(value: &str) -> Result<String, String> {
