@@ -4,7 +4,8 @@ This check drives the shipped Personal Dashboard window through rendered
 controls and observes the resulting accessible UI state. Scenarios that cover
 persistence relaunch the same isolated app copy; the focused review-fix
 `list-first` scenario is limited to shell and navigation evidence. The
-`dashboard-2` scenario is the continuous FINAL candidate check. It does not use
+`dashboard-4` scenario is the continuous FINAL candidate check for the current
+4.0 task surface. It does not use
 the browser prototype, a development server, or a direct Rust application
 object.
 
@@ -52,6 +53,7 @@ The recursive `gate` runs these scenarios in order:
 settings-vault-colors interface-language background-image
 day-tasks planning-tasks local-habit-completion historical-corrections
 dashboard-3
+dashboard-4
 ```
 
 The older 2.0 cutover and Exercise/Profile packaged scenarios remain
@@ -260,6 +262,45 @@ Do not call the ticket complete when the client stays in an uploading state or
 when only local filesystem changes are available. See
 `docs/acceptance/personal-dashboard-3-drive-compatibility.md` for the current
 environment result and exact support boundary.
+
+## Personal Dashboard 4.0 integrated packaged scenario
+
+Run the current ticket-09 packaged check after rebuilding the Mac bundle. Pass
+a new capture directory under `output/playwright/` when retaining visual
+evidence:
+
+```sh
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 \
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 \
+PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-candidate-YYYYMMDD" \
+scripts/acceptance/macos-ipc-workflow.sh
+```
+
+The scenario uses two temporary synthetic Vaults and the real packaged Tauri
+bundle. It verifies Inbox/no-date creation from Tasks, Today-date creation,
+selected-Calendar-date creation, future and overdue placement, late completion
+with explicit date/time correction, abandon and restore,
+delete/restore tombstones, list archive/restore across relaunch, and one task
+identity across Tasks, Today, Calendar, and the Calendar `+N` panel. It also
+checks bilingual Habit names and invalid-config fallback, a Vault switch,
+external task-file conflict recovery with a retained draft, and the unchanged
+Daily Record, Habit names sidecar, and Habit snapshot bytes.
+
+The visual matrix captures Chinese wide Tasks/Today/Calendar/Habits and English
+640x520 Tasks/Calendar/Today/Habits. The Calendar overflow panel is opened by
+an Accessibility focus plus Space key event, so the packaged proof includes a
+keyboard interaction. The driver selects visible rendered controls and text
+fields when hidden shared projections expose duplicate labels; date/time
+correction handles WebKit's native AX date segments without adding a product
+dependency. This scenario is synthetic packaged evidence only: it does not
+run the personal daily loop, write Dida365, or change the user's installed
+Vault or automation.
+
+The Drive portion remains outside the local gate. Reuse the 3.0 Drive result
+only for its already-bounded materialized-client and cloud/version/trash
+evidence; a current 4.0 run still requires a fresh marker-owned fixture for
+changed task/config writes. A missing fixture leaves ticket 09 pending human
+acceptance rather than implying that local writes were uploaded.
 
 The driver is compiled from the macOS system `ApplicationServices` and
 `Foundation` frameworks into the temporary acceptance directory. It adds no

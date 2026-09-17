@@ -262,6 +262,7 @@ const interfaceCopies = {
   "tasks.refresh": { zh: "刷新任务", en: "Refresh tasks" },
   "tasks.scope": { zh: "任务范围", en: "Task scope" },
   "tasks.scopeAll": { zh: "All", en: "All" },
+  "tasks.scopeAllList": { zh: "全部任务范围", en: "All task scope" },
   "tasks.scopeToday": { zh: "Today", en: "Today" },
   "tasks.scopeInbox": { zh: "Inbox", en: "Inbox" },
   "tasks.scopeArchived": { zh: "已归档", en: "Archived" },

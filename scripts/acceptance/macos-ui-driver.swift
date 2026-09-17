@@ -185,6 +185,42 @@ func findPressable(
     return match
 }
 
+func findVisiblePressable(
+    _ application: AXUIElement,
+    _ text: String,
+    contains: Bool = false
+) -> AXUIElement? {
+    let pressableRoles = Set([
+        "AXButton",
+        "AXCheckBox",
+        "AXComboBox",
+        "AXDisclosureTriangle",
+        "AXMenuItem",
+        "AXPopUpButton",
+        "AXRadioButton",
+    ])
+    return findTextPaths(application, text, contains: contains)
+        .first { path in
+            pressableRoles.contains(stringAttribute(path.element, "AXRole")) &&
+                (path.ancestors + [path.element]).allSatisfy {
+                    visibleAttribute($0, "AXHidden")
+                }
+        }?
+        .element
+}
+
+func findVisibleTextField(
+    _ application: AXUIElement,
+    _ label: String
+) -> AXUIElement? {
+    findTextPaths(application, label).first { path in
+        ["AXTextField", "AXTextArea", "AXDateTimeArea"].contains(stringAttribute(path.element, "AXRole")) &&
+            (path.ancestors + [path.element]).allSatisfy {
+                visibleAttribute($0, "AXHidden")
+            }
+    }?.element
+}
+
 func findRole(_ application: AXUIElement, _ roles: Set<String>) -> AXUIElement? {
     var match: AXUIElement?
     _ = walk(application) { element in
@@ -305,7 +341,7 @@ func focusPressable(
 ) throws {
     let deadline = Date().addingTimeInterval(timeout)
     repeat {
-        if let element = findPressable(application, text, contains: contains) {
+        if let element = findVisiblePressable(application, text, contains: contains) {
             _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
             Thread.sleep(forTimeInterval: 0.05)
             let error = AXUIElementSetAttributeValue(
@@ -430,6 +466,85 @@ func postGlobalText(_ text: String) throws {
     keyUp.post(tap: .cghidEventTap)
 }
 
+func dateSegmentOrder() -> [String] {
+    let format = DateFormatter.dateFormat(
+        fromTemplate: "yyyyMMdd",
+        options: 0,
+        locale: Locale.current
+    ) ?? "MM/dd/yyyy"
+    var order: [String] = []
+    for scalar in format.unicodeScalars {
+        let name: String?
+        switch scalar {
+        case "y": name = "year"
+        case "M", "L": name = "month"
+        case "d": name = "day"
+        default: name = nil
+        }
+        if let name, !order.contains(name) {
+            order.append(name)
+        }
+    }
+    return order.count == 3 ? order : ["month", "day", "year"]
+}
+
+func usesTwelveHourClock() -> Bool {
+    let format = DateFormatter.dateFormat(
+        fromTemplate: "jmm",
+        options: 0,
+        locale: Locale.current
+    ) ?? "HH:mm"
+    return format.contains("a") || format.contains("h") || format.contains("K")
+}
+
+func meridiemState(_ value: String) -> Bool? {
+    let normalized = value
+        .lowercased()
+        .replacingOccurrences(of: ".", with: "")
+        .replacingOccurrences(of: " ", with: "")
+    if ["pm", "p.m", "下午", "午後", "nachmittag"].contains(where: normalized.contains) {
+        return true
+    }
+    if ["am", "a.m", "上午", "午前", "vormittag"].contains(where: normalized.contains) {
+        return false
+    }
+    return nil
+}
+
+func meridiemText(_ element: AXUIElement) -> String {
+    ["AXValue", "AXTitle", "AXDescription"]
+        .map { stringAttribute(element, $0) }
+        .filter { !$0.isEmpty }
+        .joined(separator: " ")
+}
+
+func setMeridiem(
+    _ element: AXUIElement,
+    pid: pid_t,
+    afternoon: Bool
+) throws {
+    let current = meridiemState(meridiemText(element))
+    if current == afternoon {
+        return
+    }
+    if current != nil {
+        try pressKey(pid, "up")
+        Thread.sleep(forTimeInterval: 0.1)
+        if meridiemState(meridiemText(element)) == afternoon {
+            return
+        }
+        try pressKey(pid, "down")
+        Thread.sleep(forTimeInterval: 0.1)
+    }
+    try postGlobalCharacters(afternoon ? "p" : "a")
+    Thread.sleep(forTimeInterval: 0.1)
+    guard meridiemState(meridiemText(element)) == afternoon else {
+        throw DriverError.unexpectedText(
+            "date/time field did not accept \(afternoon ? "PM" : "AM")"
+        )
+    }
+}
+
 func typeText(
     _ application: AXUIElement,
     pid: pid_t,
@@ -437,20 +552,105 @@ func typeText(
     value: String,
     timeout: TimeInterval
 ) throws {
+    func dateTimeSegments(_ value: String) -> (kind: String, values: [(String, String)])? {
+        let dateParts = value.split(separator: "-").compactMap { Int($0) }
+        if dateParts.count == 3, dateParts[0] >= 1000 {
+            let values: [String: String] = [
+                "year": String(format: "%04d", dateParts[0]),
+                "month": String(format: "%02d", dateParts[1]),
+                "day": String(format: "%02d", dateParts[2]),
+            ]
+            return (
+                "date",
+                dateSegmentOrder().compactMap { name in
+                    values[name].map { (name, $0) }
+                }
+            )
+        }
+        let timeParts = value.split(separator: ":").compactMap { Int($0) }
+        if timeParts.count == 2 {
+            let hour = usesTwelveHourClock()
+                ? (timeParts[0] % 12 == 0 ? 12 : timeParts[0] % 12)
+                : timeParts[0]
+            var values: [(String, String)] = [
+                ("hour", String(format: "%02d", hour)),
+                ("minutes", String(format: "%02d", timeParts[1])),
+            ]
+            if usesTwelveHourClock() {
+                values.append(("meridiem", timeParts[0] >= 12 ? "PM" : "AM"))
+            }
+            return ("time", values)
+        }
+        return nil
+    }
+
     let deadline = Date().addingTimeInterval(timeout)
     repeat {
-        if let element = findTextPaths(application, label).first(where: { path in
-            Set(["AXTextField", "AXTextArea"]).contains(
-                stringAttribute(path.element, "AXRole")
-            )
-        })?.element {
+        if let element = findVisibleTextField(application, label) {
             _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+            let role = stringAttribute(element, "AXRole")
             try setAccessibilityAttribute(
                 element,
                 "AXFocused",
                 kCFBooleanTrue,
                 "focus text field \(label)"
             )
+            if role == "AXDateTimeArea" {
+                guard let plan = dateTimeSegments(value) else {
+                    throw DriverError.actionFailed("parse date/time \(label)", .failure)
+                }
+                guard let fieldFrame = frame(element) else {
+                    throw DriverError.timeout("date/time field frame: \(label)")
+                }
+                var candidates: [(element: AXUIElement, frame: CGRect)] = []
+                _ = walk(application) { candidate in
+                    guard stringAttribute(candidate, "AXRole") == "AXIncrementor",
+                          visibleAttribute(candidate, "AXHidden"),
+                          let candidateFrame = frame(candidate),
+                          fieldFrame.contains(
+                              CGPoint(x: candidateFrame.midX, y: candidateFrame.midY)
+                          ) else {
+                        return false
+                    }
+                    candidates.append((candidate, candidateFrame))
+                    return false
+                }
+                candidates.sort { left, right in
+                    if abs(left.frame.minX - right.frame.minX) < 1 {
+                        return left.frame.minY < right.frame.minY
+                    }
+                    return left.frame.minX < right.frame.minX
+                }
+                guard candidates.count >= plan.values.count else {
+                    throw DriverError.timeout("date/time segments: \(label)")
+                }
+                for (index, segmentData) in plan.values.enumerated() {
+                    let (segmentName, segmentValue) = segmentData
+                    let titleMatch = candidates.first { candidate in
+                        let title = stringAttribute(candidate.element, "AXTitle")
+                            .lowercased()
+                        return title == segmentName ||
+                            (segmentName == "minutes" && title.contains("minute")) ||
+                            (segmentName == "month" && title.contains("month")) ||
+                            (segmentName == "day" && title.contains("day")) ||
+                            (segmentName == "year" && title.contains("year"))
+                    }
+                    let segment = titleMatch?.element ?? candidates[index].element
+                    try clickElement(segment, pid: pid)
+                    if segmentName == "meridiem" {
+                        try setMeridiem(
+                            segment,
+                            pid: pid,
+                            afternoon: segmentValue == "PM"
+                        )
+                    } else {
+                        try postGlobalCharacters(segmentValue)
+                    }
+                    Thread.sleep(forTimeInterval: 0.1)
+                }
+                Thread.sleep(forTimeInterval: 0.25)
+                return
+            }
             try setAccessibilityAttribute(
                 element,
                 "AXValue",
@@ -849,6 +1049,16 @@ func cancelFolder(
 func characterKeyCode(_ character: Character) -> CGKeyCode? {
     switch character.lowercased() {
     case "a": return 0
+    case "0": return 29
+    case "1": return 18
+    case "2": return 19
+    case "3": return 20
+    case "4": return 21
+    case "5": return 23
+    case "6": return 22
+    case "7": return 26
+    case "8": return 28
+    case "9": return 25
     case "b": return 11
     case "c": return 8
     case "d": return 2
@@ -1509,9 +1719,12 @@ func waitForExceptionPickerValue(
 }
 
 func scrollSurface(for path: AccessibilityPath) -> AXUIElement? {
+    let informationLabels = ["Workspace information", "工作区信息"]
     if let informationSurface = path.ancestors.reversed().first(where: { element in
         visibleAttribute(element, "AXHidden") &&
-            nodeText(element).localizedCaseInsensitiveContains("Workspace information")
+            informationLabels.contains { label in
+                nodeText(element).localizedCaseInsensitiveContains(label)
+            }
     }) {
         return informationSurface
     }
@@ -3092,7 +3305,7 @@ do {
         let deadline = Date().addingTimeInterval(timeout)
         var pressed = false
         repeat {
-            if let element = findPressable(application, text, contains: true),
+            if let element = findVisiblePressable(application, text, contains: true),
                (attribute(element, "AXEnabled") as? NSNumber)?.boolValue == true {
                 _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
                 Thread.sleep(forTimeInterval: 0.05)
@@ -3113,7 +3326,7 @@ do {
         let deadline = Date().addingTimeInterval(timeout)
         var pressed = false
         repeat {
-            if let element = findPressable(application, text, contains: true),
+            if let element = findVisiblePressable(application, text, contains: true),
                (attribute(element, "AXEnabled") as? NSNumber)?.boolValue == true {
                 _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
                 Thread.sleep(forTimeInterval: 0.05)

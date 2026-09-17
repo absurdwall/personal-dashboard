@@ -4024,6 +4024,10 @@ function renderTaskListScopeButtons(view: TasksView): void {
     button.role = "tab";
     button.dataset.taskScope = scope;
     setCopy(button, copyKey);
+    if (scope === "all") {
+      button.dataset.i18nAriaLabel = "tasks.scopeAllList";
+      button.setAttribute("aria-label", t("tasks.scopeAllList"));
+    }
     buttons.push(button);
   };
   addButton("all", "tasks.scopeAll");
@@ -4176,6 +4180,7 @@ function taskEditor(
     restore.type = "button";
     restore.dataset.taskRestore = task.id;
     restore.disabled = !writable;
+    restore.setAttribute("aria-label", `${t("tasks.undoDelete")} · ${task.name}`);
     setCopy(restore, "tasks.undoDelete");
     stateActions.append(restore);
   } else {
@@ -4191,7 +4196,7 @@ function taskEditor(
       completion.dataset.taskStateTask = task.id;
       completion.setAttribute(
         "aria-label",
-        t(task.state === "completed" ? "tasks.reopen" : "tasks.complete"),
+        `${t(task.state === "completed" ? "tasks.reopen" : "tasks.complete")} · ${task.name}`,
       );
       const completionText = document.createElement("span");
       setCopy(
@@ -4206,6 +4211,7 @@ function taskEditor(
       restore.dataset.taskStateAction = "pending";
       restore.dataset.taskStateTask = task.id;
       restore.disabled = !writable;
+      restore.setAttribute("aria-label", `${t("tasks.restore")} · ${task.name}`);
       setCopy(restore, "tasks.restore");
       stateActions.append(restore);
     }
@@ -4216,6 +4222,7 @@ function taskEditor(
       abandon.dataset.taskStateAction = "abandoned";
       abandon.dataset.taskStateTask = task.id;
       abandon.disabled = !writable;
+      abandon.setAttribute("aria-label", `${t("tasks.abandon")} · ${task.name}`);
       setCopy(abandon, "tasks.abandon");
       stateActions.append(abandon);
     }
@@ -4224,6 +4231,7 @@ function taskEditor(
     remove.className = "secondary-button";
     remove.dataset.taskDelete = task.id;
     remove.disabled = !writable;
+    remove.setAttribute("aria-label", `${t("tasks.delete")} · ${task.name}`);
     setCopy(remove, "tasks.delete");
     stateActions.append(remove);
   }
@@ -4335,6 +4343,10 @@ function taskEditor(
     correctionDate.disabled = !editable;
     correctionDate.value = draft?.completionDate ?? task.completion.completedOn;
     correctionDate.dataset.taskCompletionDate = "";
+    correctionDate.setAttribute(
+      "aria-label",
+      `${t("tasks.completionDate")} · ${task.name}`,
+    );
     correctionDateCaption.append(correctionDate);
     correctionDateLabel.append(correctionDateCaption);
     const correctionTimeLabel = document.createElement("label");
@@ -4345,12 +4357,17 @@ function taskEditor(
     correctionTime.disabled = !editable;
     correctionTime.value = draft?.completionTime ?? task.completion.completedTime ?? "";
     correctionTime.dataset.taskCompletionTime = "";
+    correctionTime.setAttribute(
+      "aria-label",
+      `${t("tasks.completionTime")} · ${task.name}`,
+    );
     correctionTimeCaption.append(correctionTime);
     correctionTimeLabel.append(correctionTimeCaption);
     const correct = document.createElement("button");
     correct.type = "button";
     correct.dataset.taskCorrectCompletion = task.id;
     correct.disabled = !editable;
+    correct.setAttribute("aria-label", `${t("tasks.correctCompletion")} · ${task.name}`);
     setCopy(correct, "tasks.correctCompletion");
     correction.append(correctionDateLabel, correctionTimeLabel, correct);
     completionDetails.append(completionHeading, taskDate, actual, recorded, correction);
