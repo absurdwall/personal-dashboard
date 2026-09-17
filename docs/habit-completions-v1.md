@@ -10,7 +10,7 @@ This is the canonical Dashboard-owned completion record. It is independent of th
 
 ## Identity and write boundary
 
-- `habitKey` is the stable lowercase semantic key from the current valid or stale snapshot catalog. Display names and goals are not copied into this document.
+- `habitKey` is the stable lowercase semantic key from the current valid or stale snapshot catalog. Display names and goals are not copied into this document; optional bilingual display names live in the separate [Vault name configuration](habit-names-v1.md).
 - `livedDate` is the day the completion belongs to. Today and past dates are valid; future facts are rejected.
 - Only catalog habits with `trackingKind: "weekly-count"` accept this operation. Daily-time targets, threshold evidence, and Short records have separate meanings.
 - The selected-Vault path is bound into `targetBinding`, and an existing document revision must match `expectedRevision`. A changed target, stale revision, or concurrent external write fails without silently overwriting the current bytes.

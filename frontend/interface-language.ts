@@ -504,6 +504,7 @@ const interfaceCopies = {
   "habits.noGoalExcluded": { zh: " {count} 个无目标习惯未计入分母。", en: " {count} habits without goals are excluded from the denominator." },
   "habits.loadingLocal": { zh: "正在读取本地 Habits 快照…", en: "Loading the local Habits snapshot…" },
   "habits.loadFailed": { zh: "无法读取 Habits 快照：{error}", en: "Could not load the Habits snapshot: {error}" },
+  "habits.namesConfigInvalid": { zh: "习惯名称配置无效；已回退快照中的原始名称。", en: "The habit-name configuration is invalid; the snapshot's source names are shown instead." },
   "habits.loadDateFailed": { zh: "无法读取所选日期：{error}", en: "Could not load the selected date: {error}" },
   "habits.correctionSaved": { zh: "更正及修改记录已写入 Daily Record；未更新滴答或完成次数。", en: "The correction and change history were saved to the Daily Record; Dida and completion counts were not updated." },
   "habits.noteSaved": { zh: "健身短句已写入 Daily Record；未更新滴答或完成次数。", en: "The exercise note was saved to the Daily Record; Dida and completion counts were not updated." },

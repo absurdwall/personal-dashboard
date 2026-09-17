@@ -5,7 +5,9 @@ use std::fs;
 use std::path::Path;
 
 pub const SNAPSHOT_RELATIVE_PATH: &str = ".personal-dashboard/derived/habits-v1.json";
+pub const HABIT_NAMES_RELATIVE_PATH: &str = "life/.personal-dashboard/habit-names/v1/names.json";
 const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
+const HABIT_NAMES_SCHEMA_VERSION: u32 = 1;
 const HISTORY_WEEKS: i64 = 12;
 
 pub trait HabitSnapshotStore {
@@ -23,6 +25,104 @@ impl HabitSnapshotStore for FileHabitSnapshotStore {
             Err(error) => Err(format!("无法读取 Habits 快照：{error}")),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HabitNamesConfigurationState {
+    Missing,
+    Ready,
+    Invalid,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HabitLocalizedNames {
+    #[serde(default)]
+    pub zh: Option<String>,
+    #[serde(default)]
+    pub en: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HabitNamesConfiguration {
+    pub state: HabitNamesConfigurationState,
+    pub names: BTreeMap<String, HabitLocalizedNames>,
+}
+
+impl Default for HabitNamesConfiguration {
+    fn default() -> Self {
+        Self {
+            state: HabitNamesConfigurationState::Missing,
+            names: BTreeMap::new(),
+        }
+    }
+}
+
+impl HabitNamesConfiguration {
+    fn names_for(&self, key: &str) -> HabitLocalizedNames {
+        self.names.get(key).cloned().unwrap_or_default()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HabitNamesDocument {
+    schema_version: u32,
+    habits: BTreeMap<String, HabitLocalizedNames>,
+}
+
+pub fn load_habit_names(vault: &Path) -> HabitNamesConfiguration {
+    let path = vault.join(HABIT_NAMES_RELATIVE_PATH);
+    let document = match fs::read(path) {
+        Ok(document) => document,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return HabitNamesConfiguration::default()
+        }
+        Err(_) => {
+            return HabitNamesConfiguration {
+                state: HabitNamesConfigurationState::Invalid,
+                names: BTreeMap::new(),
+            }
+        }
+    };
+    match parse_habit_names_document(&document) {
+        Ok(names) => HabitNamesConfiguration {
+            state: HabitNamesConfigurationState::Ready,
+            names,
+        },
+        Err(_) => HabitNamesConfiguration {
+            state: HabitNamesConfigurationState::Invalid,
+            names: BTreeMap::new(),
+        },
+    }
+}
+
+fn parse_habit_names_document(
+    document: &[u8],
+) -> Result<BTreeMap<String, HabitLocalizedNames>, String> {
+    let document: HabitNamesDocument = serde_json::from_slice(document)
+        .map_err(|error| format!("习惯名称配置不是有效 JSON：{error}"))?;
+    if document.schema_version != HABIT_NAMES_SCHEMA_VERSION {
+        return Err(format!(
+            "习惯名称配置使用不支持的 schema 版本 {}。",
+            document.schema_version
+        ));
+    }
+    for (key, names) in &document.habits {
+        if !is_valid_habit_key(key) {
+            return Err("习惯名称配置包含无效的稳定 habit key。".into());
+        }
+        if names.zh.is_none() && names.en.is_none() {
+            return Err(format!("习惯 {key} 至少需要一个本地化名称。"));
+        }
+        for name in [&names.zh, &names.en].into_iter().flatten() {
+            if name.trim().is_empty() || name.len() > 200 {
+                return Err(format!("习惯 {key} 的本地化名称缺失或过长。"));
+            }
+        }
+    }
+    Ok(document.habits)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -128,6 +228,7 @@ pub struct HabitGoalContextView {
 pub struct HabitView {
     pub key: String,
     pub name: String,
+    pub localized_names: HabitLocalizedNames,
     pub active: bool,
     pub goal_kind: String,
     pub goal_label: String,
@@ -168,6 +269,7 @@ pub struct HabitSnapshotView {
     pub producer_label: Option<String>,
     pub completion_revision: Option<String>,
     pub completion_target_binding: Option<String>,
+    pub names_configuration_state: HabitNamesConfigurationState,
     pub summary: HabitSummaryView,
     pub habits: Vec<HabitView>,
 }
@@ -177,6 +279,7 @@ pub struct HabitSnapshotView {
 pub struct HabitCorrectionHabitView {
     pub key: String,
     pub name: String,
+    pub localized_names: HabitLocalizedNames,
     pub name_known: bool,
     pub can_record_completion: bool,
     pub goal_label: Option<String>,
@@ -201,6 +304,7 @@ pub struct HabitCorrectionView {
     pub can_record: bool,
     pub completion_revision: Option<String>,
     pub completion_target_binding: Option<String>,
+    pub names_configuration_state: HabitNamesConfigurationState,
     pub habits: Vec<HabitCorrectionHabitView>,
 }
 
@@ -221,6 +325,7 @@ impl HabitCorrectionView {
             can_record: false,
             completion_revision: None,
             completion_target_binding: None,
+            names_configuration_state: HabitNamesConfigurationState::Missing,
             habits: Vec::new(),
         }
     }
@@ -259,6 +364,7 @@ impl HabitSnapshotView {
             producer_label: None,
             completion_revision: None,
             completion_target_binding: None,
+            names_configuration_state: HabitNamesConfigurationState::Missing,
             summary: HabitSummaryView::default(),
             habits: Vec::new(),
         }
@@ -464,6 +570,22 @@ pub fn project_snapshot(
     local_records: Vec<LocalHabitRecord>,
     local_completions: Vec<LocalHabitCompletion>,
 ) -> Result<HabitSnapshotView, String> {
+    project_snapshot_with_names(
+        document,
+        today,
+        local_records,
+        local_completions,
+        &HabitNamesConfiguration::default(),
+    )
+}
+
+pub fn project_snapshot_with_names(
+    document: &[u8],
+    today: &str,
+    local_records: Vec<LocalHabitRecord>,
+    local_completions: Vec<LocalHabitCompletion>,
+    names_configuration: &HabitNamesConfiguration,
+) -> Result<HabitSnapshotView, String> {
     let snapshot = parse_and_validate(document, today)?;
     let today_date = CalendarDate::parse(today).expect("validated current date");
     let week_start = today_date.monday();
@@ -599,6 +721,7 @@ pub fn project_snapshot(
         projected.push(HabitView {
             key: habit.key.clone(),
             name: habit.name.clone(),
+            localized_names: names_configuration.names_for(&habit.key),
             active: habit.active,
             goal_kind,
             goal_label: current_goal_label,
@@ -657,6 +780,7 @@ pub fn project_snapshot(
         )),
         completion_revision: None,
         completion_target_binding: None,
+        names_configuration_state: names_configuration.state,
         summary,
         habits: projected,
     })
@@ -668,6 +792,24 @@ pub fn project_habit_corrections(
     selected_date: &str,
     local_records: Vec<LocalHabitRecord>,
     local_completions: Vec<LocalHabitCompletion>,
+) -> Result<HabitCorrectionView, String> {
+    project_habit_corrections_with_names(
+        document,
+        today,
+        selected_date,
+        local_records,
+        local_completions,
+        &HabitNamesConfiguration::default(),
+    )
+}
+
+pub fn project_habit_corrections_with_names(
+    document: &[u8],
+    today: &str,
+    selected_date: &str,
+    local_records: Vec<LocalHabitRecord>,
+    local_completions: Vec<LocalHabitCompletion>,
+    names_configuration: &HabitNamesConfiguration,
 ) -> Result<HabitCorrectionView, String> {
     let snapshot = parse_and_validate(document, today)?;
     let today_date = CalendarDate::parse(today)
@@ -722,6 +864,7 @@ pub fn project_habit_corrections(
             HabitCorrectionHabitView {
                 key: habit.key.clone(),
                 name: habit.name.clone(),
+                localized_names: names_configuration.names_for(&habit.key),
                 name_known: true,
                 can_record_completion: habit.tracking_kind == TrackingKind::WeeklyCount,
                 goal_label: historical_goal.map(goal_label),
@@ -773,6 +916,7 @@ pub fn project_habit_corrections(
         can_record,
         completion_revision: None,
         completion_target_binding: None,
+        names_configuration_state: names_configuration.state,
         habits,
     })
 }
@@ -799,6 +943,7 @@ pub fn project_uncatalogued_habit_corrections(
         .map(|completion| HabitCorrectionHabitView {
             key: completion.key.clone(),
             name: completion.key.clone(),
+            localized_names: HabitLocalizedNames::default(),
             name_known: false,
             can_record_completion: true,
             goal_label: None,
@@ -821,6 +966,7 @@ pub fn project_uncatalogued_habit_corrections(
         can_record: selected <= today_date,
         completion_revision: None,
         completion_target_binding: None,
+        names_configuration_state: HabitNamesConfigurationState::Missing,
         habits,
     })
 }
@@ -1224,15 +1370,18 @@ fn validate_observation(
 }
 
 fn validate_key(value: &str, label: &str) -> Result<(), String> {
-    if value.is_empty()
-        || value.len() > 64
-        || !value
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-    {
+    if !is_valid_habit_key(value) {
         return Err(format!("Habits 快照 {label} 必须是稳定的小写语义 key。"));
     }
     Ok(())
+}
+
+fn is_valid_habit_key(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
 fn validate_text(value: &str, label: &str) -> Result<(), String> {

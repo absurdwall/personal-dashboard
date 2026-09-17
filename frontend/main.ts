@@ -54,6 +54,10 @@ import {
   type HabitLocalCompletionState,
 } from "./habit-completion.js";
 import { reconcileHabitCompletionWrite } from "./habit-completion-command.js";
+import {
+  localizedHabitName,
+  type HabitLocalizedNames,
+} from "./habit-presentation.js";
 
 type ApplicationIdentity = Readonly<{
   productName: string;
@@ -315,6 +319,8 @@ type HabitCellStatus =
   | "thresholdOnly"
   | "recordOnly";
 
+type HabitNamesConfigurationState = "missing" | "ready" | "invalid";
+
 type HabitCellView = Readonly<{
   date: string;
   coverage: string;
@@ -336,6 +342,7 @@ type HabitCellView = Readonly<{
 type HabitView = Readonly<{
   key: string;
   name: string;
+  localizedNames: HabitLocalizedNames;
   active: boolean;
   canRecordCompletion: boolean;
   goalKind: "weekly-count" | "daily-time";
@@ -364,6 +371,7 @@ type HabitSnapshotView = Readonly<{
   producerLabel: string | null;
   completionRevision: string | null;
   completionTargetBinding: string | null;
+  namesConfigurationState: HabitNamesConfigurationState;
   summary: Readonly<{
     knownCompletions: number;
     targetCompletions: number;
@@ -376,6 +384,7 @@ type HabitSnapshotView = Readonly<{
 type HabitCorrectionHabitView = Readonly<{
   key: string;
   name: string;
+  localizedNames: HabitLocalizedNames;
   nameKnown: boolean;
   canRecordCompletion: boolean;
   goalLabel: string | null;
@@ -394,6 +403,7 @@ type HabitCorrectionView = Readonly<{
   canRecord: boolean;
   completionRevision: string | null;
   completionTargetBinding: string | null;
+  namesConfigurationState: HabitNamesConfigurationState;
   habits: readonly HabitCorrectionHabitView[];
 }>;
 
@@ -798,6 +808,12 @@ function t(
   variables: Readonly<Record<string, string | number>> = {},
 ): string {
   return interfaceCopy(key, currentInterfaceLanguage, variables);
+}
+
+function displayHabitName(
+  habit: Readonly<{ name: string; localizedNames?: HabitLocalizedNames | null }>,
+): string {
+  return localizedHabitName(habit.name, habit.localizedNames, currentInterfaceLanguage);
 }
 
 function applicationMessage(message: string): string {
@@ -1983,6 +1999,8 @@ function renderHistoricalHabitCorrections(view: TodayView): void {
       );
     } else if (historicalHabitCompletionStatus?.copyKey) {
       setCopy(historicalHabitStatus, historicalHabitCompletionStatus.copyKey);
+    } else if (corrections.namesConfigurationState === "invalid") {
+      setCopy(historicalHabitStatus, "habits.namesConfigInvalid");
     } else {
       setAppMessage(historicalHabitStatus, corrections.message);
     }
@@ -2017,7 +2035,7 @@ function renderHistoricalHabitCorrections(view: TodayView): void {
       checkbox.setAttribute(
         "aria-label",
         t("history.recordHabitCompletion", {
-          habit: habit.nameKnown ? habit.name : habit.key,
+          habit: habit.nameKnown ? displayHabitName(habit) : habit.key,
           date: corrections.date,
         }),
       );
@@ -2025,7 +2043,7 @@ function renderHistoricalHabitCorrections(view: TodayView): void {
       const body = document.createElement("div");
       const name = document.createElement("strong");
       name.textContent = habit.nameKnown
-        ? habit.name
+        ? displayHabitName(habit)
         : t("history.unknownHabitName", { key: habit.key });
       const meta = document.createElement("p");
       meta.className = "day-task-meta";
@@ -3015,7 +3033,7 @@ function habitCellButton(
   button.dataset.habitDetails = JSON.stringify(cell.details);
   button.setAttribute(
     "aria-label",
-    `${cell.date} · ${habit.name} · ${t(habitStatusLabels[cell.status])} · ${t(
+    `${cell.date} · ${displayHabitName(habit)} · ${t(habitStatusLabels[cell.status])} · ${t(
       "habits.coverageAria",
       { coverage: cell.coverage },
     )}${
@@ -3062,8 +3080,8 @@ function habitCompletionControl(habit: HabitView): HTMLElement {
     !["ready", "stale"].includes(currentHabitSnapshot.state);
   input.dataset.habitCompletionKey = habit.key;
   input.dataset.habitCompletionDate = habit.today.date;
-  input.setAttribute("aria-label", t("habits.recordCompletion", { habit: habit.name }));
-  input.title = t("habits.recordCompletion", { habit: habit.name });
+  input.setAttribute("aria-label", t("habits.recordCompletion", { habit: displayHabitName(habit) }));
+  input.title = t("habits.recordCompletion", { habit: displayHabitName(habit) });
   const explanation = document.createElement("small");
   setCopy(explanation, habitCompletionExplanationLabels[presentation.explanation], {
     sources:
@@ -3083,7 +3101,7 @@ function habitRow(habit: HabitView): HTMLElement {
   const name = document.createElement("strong");
   const metadata = document.createElement("p");
   const sources = document.createElement("small");
-  name.textContent = habit.name;
+  name.textContent = displayHabitName(habit);
   metadata.textContent = `${localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage)} · ${
     localizeHabitCoverageLabel(habit.coverageLabel, currentInterfaceLanguage)
   }`;
@@ -3363,7 +3381,7 @@ function renderSelectedHabitCell(): void {
   const heading = document.createElement("strong");
   const state = document.createElement("span");
   const details = document.createElement("ul");
-  heading.textContent = `${cell.date} · ${habit.name}`;
+  heading.textContent = `${cell.date} · ${displayHabitName(habit)}`;
   setCopy(state, "habits.statusCoverage", {
     status: t(habitStatusLabels[cell.status]),
     coverage: cell.coverage,
@@ -3604,6 +3622,8 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
       );
     } else if (habitCompletionStatus?.copyKey) {
       setCopy(habitsStatus, habitCompletionStatus.copyKey);
+    } else if (view.namesConfigurationState === "invalid") {
+      setCopy(habitsStatus, "habits.namesConfigInvalid");
     } else if (view.readError) {
       setCopyError(habitsStatus, "habits.loadFailed", view.readError);
     } else {
@@ -3659,7 +3679,7 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
           const value = document.createElement("strong");
           const kind = document.createElement("small");
           row.className = "habits-summary-row";
-          label.textContent = habit.name;
+          label.textContent = displayHabitName(habit);
           value.textContent = habitProgressLabel(habit);
           kind.textContent = localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage);
           row.append(label, value, kind);
@@ -3706,6 +3726,7 @@ async function refreshHabits(): Promise<void> {
       producerLabel: null,
       completionRevision: null,
       completionTargetBinding: null,
+      namesConfigurationState: "missing",
       summary: {
         knownCompletions: 0,
         targetCompletions: 0,

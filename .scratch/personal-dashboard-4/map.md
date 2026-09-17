@@ -1,6 +1,6 @@
 # Personal Dashboard 4.0 — ticket map
 
-用户已批准九票拆分与依赖；正式发布，01–05 已完成实现，其余票仍为 ready-for-agent。
+用户已批准九票拆分与依赖；正式发布，01–06 已完成实现，其余票仍为 ready-for-agent。
 
 父规格：[spec](spec.md)。设计来源：[原型认可与固定捕获](prototype-review.md)、[设计问答](design-discussion.md)。认可原型本地分支 `codex/personal-dashboard-4-prototype`，提交 `501e5f7`；不要将原型直接合入产品。
 
@@ -11,7 +11,7 @@
 | [03 清单分类、归档与恢复](issues/03-task-lists-archive.md) | 01 | resolved |
 | [04 今日自动视图与 Today 任务栏](issues/04-today-shared-tasks.md) | 02, 03 | resolved |
 | [05 Calendar 任务摘要与右侧操作](issues/05-calendar-task-panel.md) | 02, 03 | resolved |
-| [06 Habit 名称中英切换](issues/06-habit-localized-names.md) | None | ready-for-agent |
+| [06 Habit 名称中英切换](issues/06-habit-localized-names.md) | None | resolved |
 | [07 外部任务读写与幂等规划接收](issues/07-external-task-adapter.md) | 02, 03 | ready-for-agent |
 | [08 真实早晚流程接线与权限边界](issues/08-daily-flow-integration.md) | 07 | ready-for-agent |
 | [09 Packaged Mac 整体验收与交付核对](issues/09-packaged-acceptance.md) | 04, 05, 06, 08 | ready-for-agent |

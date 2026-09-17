@@ -1,7 +1,8 @@
 use crate::habits::{
-    project_habit_corrections, project_snapshot, project_uncatalogued_habit_corrections,
-    snapshot_dates, FileHabitSnapshotStore, HabitCorrectionView, HabitLocalCompletionChangeView,
-    HabitSnapshotStore, LocalHabitCompletion, LocalHabitRecord, SNAPSHOT_RELATIVE_PATH,
+    load_habit_names, project_habit_corrections_with_names, project_snapshot_with_names,
+    project_uncatalogued_habit_corrections, snapshot_dates, FileHabitSnapshotStore,
+    HabitCorrectionView, HabitLocalCompletionChangeView, HabitSnapshotStore, LocalHabitCompletion,
+    LocalHabitRecord, SNAPSHOT_RELATIVE_PATH,
 };
 pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
@@ -2071,12 +2072,14 @@ where
                 text: record.text,
             })
             .collect();
-        match project_habit_corrections(
+        let names_configuration = load_habit_names(vault);
+        match project_habit_corrections_with_names(
             &document,
             &self.clock.current_date(),
             date,
             local_records,
             local_completions.clone(),
+            &names_configuration,
         ) {
             Ok(mut view) => {
                 view.completion_revision = completion_revision;
@@ -2420,7 +2423,14 @@ where
                 });
             }
         }
-        match project_snapshot(&document, &today, local_records, local_completions) {
+        let names_configuration = load_habit_names(&vault);
+        match project_snapshot_with_names(
+            &document,
+            &today,
+            local_records,
+            local_completions,
+            &names_configuration,
+        ) {
             Ok(mut view) => {
                 view.completion_revision = completion_revision;
                 view.completion_target_binding = Some(completion_target_binding);
