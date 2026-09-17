@@ -1,4 +1,6 @@
-use personal_dashboard_lib::tasks::{TaskApplication, TaskUpdateInput};
+use personal_dashboard_lib::tasks::{
+    TaskApplication, TaskCreateInput, TaskListArchiveInput, TaskListCreateInput, TaskUpdateInput,
+};
 use personal_dashboard_lib::today::{TodayClock, TodayWorkspacePersistence};
 use serde_json::{json, Value};
 use std::fs;
@@ -102,10 +104,55 @@ impl SimulatedDida {
             .map(Vec::as_slice)
             .map_err(|error| *error)
     }
+
+    fn morning_report(&self) -> Value {
+        match self.read_morning() {
+            Ok(items) => json!({
+                "source": "Dida365",
+                "phase": "morning",
+                "state": "ready",
+                "items": items,
+            }),
+            Err(error) => json!({
+                "source": "Dida365",
+                "phase": "morning",
+                "state": "failed",
+                "items": Value::Null,
+                "error": error,
+            }),
+        }
+    }
+
+    fn evening_report(&self) -> Value {
+        match self.read_evening() {
+            Ok(items) => json!({
+                "source": "Dida365",
+                "phase": "evening",
+                "state": "ready",
+                "items": items,
+            }),
+            Err(error) => json!({
+                "source": "Dida365",
+                "phase": "evening",
+                "state": "failed",
+                "items": Value::Null,
+                "error": error,
+            }),
+        }
+    }
 }
 
 fn task_path(vault: &Path) -> PathBuf {
     vault.join("life/.personal-dashboard/tasks/v1/tasks.json")
+}
+
+fn daily_record_path(vault: &Path, lived_date: &str) -> PathBuf {
+    vault.join(format!(
+        "life/Journal/Daily/{}/{}/{}.md",
+        &lived_date[..4],
+        &lived_date[..7],
+        lived_date
+    ))
 }
 
 fn run_cli(request: Value) -> Value {
@@ -178,7 +225,12 @@ fn apply_request(
     })
 }
 
-fn action(task_id: &str, source_reference: &str, name: &str, date: &str) -> Value {
+fn action_with_date(
+    task_id: &str,
+    source_reference: &str,
+    name: &str,
+    date: Option<&str>,
+) -> Value {
     json!({
         "kind": "action",
         "taskId": task_id,
@@ -189,6 +241,10 @@ fn action(task_id: &str, source_reference: &str, name: &str, date: &str) -> Valu
         "time": null,
         "listId": null,
     })
+}
+
+fn action(task_id: &str, source_reference: &str, name: &str, date: &str) -> Value {
+    action_with_date(task_id, source_reference, name, Some(date))
 }
 
 fn suggestion(source_reference: &str, name: &str, date: &str) -> Value {
@@ -242,12 +298,28 @@ fn real_daily_loop_rehearsal_uses_dashboard_for_local_actions_and_keeps_dida_ref
         dida.read_morning().unwrap(),
         &["外部今天参考", "外部逾期参考"]
     );
+    assert_eq!(dida.morning_report()["state"], "ready");
+    assert_eq!(dida.evening_report()["items"][0], "外部完成参考");
 
     let initial = run_cli(read_request(vault.path(), "2000-01-01"));
     let initial_read = &initial["result"];
     assert_eq!(initial["operation"], "read");
     assert_eq!(initial_read["state"], "empty");
     let lived_date = initial_read["currentDate"].as_str().unwrap().to_owned();
+
+    let record_path = daily_record_path(vault.path(), &lived_date);
+    fs::create_dir_all(record_path.parent().unwrap()).unwrap();
+    fs::write(
+        &record_path,
+        format!(
+            "---\ntype: daily-record\ndate: {lived_date}\n---\n\n# {lived_date}\n\n## 早间基准\n\n用户确认的早间基准。\n\n## 今天的大致安排\n\n保留当前安排。\n\n## 用户自己的附加内容\n\n这段 Markdown 必须原样保留。\n\n## 白天更新\n\n## 晚间复盘\n"
+        ),
+    )
+    .unwrap();
+    let record_before_task_writes = fs::read(&record_path).unwrap();
+    let unrelated_path = vault.path().join("life/manual-notes.md");
+    let unrelated_before = "与任务适配器无关的 Markdown。\n".as_bytes().to_vec();
+    fs::write(&unrelated_path, &unrelated_before).unwrap();
 
     let suggestion_only = run_cli(apply_request(
         vault.path(),
@@ -267,18 +339,112 @@ fn real_daily_loop_rehearsal_uses_dashboard_for_local_actions_and_keeps_dida_ref
         vault.path(),
         initial_read,
         &lived_date,
-        vec![action(
-            "morning-laundry",
-            "morning-laundry-source",
-            "洗衣服",
-            &lived_date,
-        )],
+        vec![
+            action(
+                "morning-laundry",
+                "morning-laundry-source",
+                "洗衣服",
+                &lived_date,
+            ),
+            action(
+                "overdue-candidate",
+                "overdue-candidate-source",
+                "逾期候选",
+                "2000-01-01",
+            ),
+        ],
         vec![],
     ));
     assert!(first_morning["result"]["changed"].as_bool().unwrap());
     assert_eq!(first_morning["result"]["actions"][0]["outcome"], "created");
+    assert!(
+        task(&first_morning["result"]["read"], "overdue-candidate")["reasons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|reason| reason == "overdue")
+    );
+    let local_application = TaskApplication::with_file_store(
+        SelectedVault(vault.path().to_path_buf()),
+        RehearsalClock {
+            date: lived_date.clone(),
+        },
+    );
+    let undated_seed = local_application
+        .create(TaskCreateInput {
+            target_binding: first_morning["result"]["read"]["targetBinding"]
+                .as_str()
+                .unwrap()
+                .into(),
+            expected_revision: first_morning["result"]["read"]["revision"]
+                .as_str()
+                .map(str::to_owned),
+            task_id: "undated-candidate".into(),
+            name: "未安排候选".into(),
+            content: None,
+            date: None,
+            time: None,
+            list_id: None,
+        })
+        .unwrap();
+    let after_undated = run_cli(read_request(vault.path(), &lived_date));
+    assert_eq!(
+        undated_seed.target_binding.as_deref(),
+        after_undated["result"]["targetBinding"].as_str()
+    );
+    assert!(
+        task(&after_undated["result"], "undated-candidate")["reasons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|reason| reason == "undatedCandidate")
+    );
 
-    let repeated_read = run_cli(read_request(vault.path(), &lived_date));
+    let archive_list = local_application
+        .create_list(TaskListCreateInput {
+            target_binding: after_undated["result"]["targetBinding"]
+                .as_str()
+                .unwrap()
+                .into(),
+            expected_revision: after_undated["result"]["revision"]
+                .as_str()
+                .map(str::to_owned),
+            list_id: "archive-list".into(),
+            name: "Archive list".into(),
+        })
+        .unwrap();
+    let archived_task = local_application
+        .create(TaskCreateInput {
+            target_binding: archive_list.target_binding.clone().unwrap(),
+            expected_revision: archive_list.revision.clone(),
+            task_id: "archived-pending".into(),
+            name: "归档待办".into(),
+            content: None,
+            date: Some(lived_date.clone()),
+            time: None,
+            list_id: Some("archive-list".into()),
+        })
+        .unwrap();
+    let archived = local_application
+        .archive_list(TaskListArchiveInput {
+            target_binding: archived_task.target_binding.clone().unwrap(),
+            expected_revision: archived_task.revision.clone().unwrap(),
+            list_id: "archive-list".into(),
+        })
+        .unwrap();
+    let after_archive = run_cli(read_request(vault.path(), &lived_date));
+    assert_eq!(after_archive["result"]["excludedArchivedPending"], 1);
+    assert!(after_archive["result"]["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|value| value["id"] != "archived-pending"));
+    assert_eq!(
+        archived.target_binding.as_deref(),
+        after_archive["result"]["targetBinding"].as_str()
+    );
+
+    let repeated_read = after_archive;
     let repeated_morning = run_cli(apply_request(
         vault.path(),
         &repeated_read["result"],
@@ -344,6 +510,7 @@ fn real_daily_loop_rehearsal_uses_dashboard_for_local_actions_and_keeps_dida_ref
     assert_eq!(preserved["content"], "用户自己的内容");
     assert_eq!(preserved["time"], "09:00");
 
+    let task_bytes_before_suggestion = fs::read(task_path(vault.path())).unwrap();
     let proposed_reschedule = run_cli(apply_request(
         vault.path(),
         &repeat_after_edit["result"]["read"],
@@ -359,6 +526,11 @@ fn real_daily_loop_rehearsal_uses_dashboard_for_local_actions_and_keeps_dida_ref
     assert_eq!(
         task(&proposed_reschedule["result"]["read"], "morning-laundry")["date"],
         lived_date
+    );
+    assert_eq!(
+        fs::read(task_path(vault.path())).unwrap(),
+        task_bytes_before_suggestion,
+        "an unconfirmed reschedule remains a suggestion"
     );
 
     let confirmed_reschedule = run_cli(apply_request(
@@ -380,6 +552,22 @@ fn real_daily_loop_rehearsal_uses_dashboard_for_local_actions_and_keeps_dida_ref
     assert_eq!(
         task(&confirmed_reschedule["result"]["read"], "morning-laundry")["time"],
         "18:00"
+    );
+    let repeated_reschedule = run_cli(apply_request(
+        vault.path(),
+        &confirmed_reschedule["result"]["read"],
+        &lived_date,
+        vec![],
+        vec![command(
+            "reschedule",
+            "morning-laundry",
+            "daytime-reschedule-1",
+            Some(&lived_date),
+        )],
+    ));
+    assert_eq!(
+        repeated_reschedule["result"]["commands"][0]["outcome"],
+        "idempotent"
     );
 
     let late_created = run_cli(apply_request(
@@ -482,6 +670,10 @@ fn real_daily_loop_rehearsal_uses_dashboard_for_local_actions_and_keeps_dida_ref
     let source_unavailable = SimulatedDida::unavailable();
     assert!(source_unavailable.read_morning().is_err());
     assert!(source_unavailable.read_evening().is_err());
+    assert_eq!(source_unavailable.morning_report()["state"], "failed");
+    assert!(source_unavailable.morning_report()["items"].is_null());
+    assert_eq!(source_unavailable.evening_report()["state"], "failed");
+    assert!(source_unavailable.evening_report()["items"].is_null());
 
     let stale_read = run_cli(read_request(vault.path(), &lived_date));
     let changed_again = run_cli(apply_request(
@@ -524,4 +716,6 @@ fn real_daily_loop_rehearsal_uses_dashboard_for_local_actions_and_keeps_dida_ref
     let damaged = run_cli(read_request(vault.path(), &lived_date));
     assert_eq!(damaged["result"]["state"], "damaged");
     assert!(damaged["result"]["tasks"].as_array().unwrap().is_empty());
+    assert_eq!(fs::read(&record_path).unwrap(), record_before_task_writes);
+    assert_eq!(fs::read(&unrelated_path).unwrap(), unrelated_before);
 }
