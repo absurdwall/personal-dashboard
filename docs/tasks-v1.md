@@ -103,6 +103,7 @@ source; it does not create or modify a Daily Record or Review.
 
 This source is independent of Dida365, Google Drive APIs, and Daily Record
 Markdown. Local success is not cloud-sync evidence. The bounded daily-flow
-adapter is specified in [daily-flow-task-adapter-v1.md](daily-flow-task-adapter-v1.md);
-ticket 08 may wire that entry into the real daily loop, while packaged
-acceptance remains a separate gate.
+adapter is specified in [daily-flow-task-adapter-v1.md](daily-flow-task-adapter-v1.md),
+and its canonical daily-loop wiring is documented in
+[daily-flow-integration-v1.md](daily-flow-integration-v1.md); packaged acceptance
+remains a separate gate.

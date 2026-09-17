@@ -134,8 +134,15 @@ Apply 将“可考虑的建议”和“明确授权的写入”分开：
 
 ## Scope for ticket 08
 
-Ticket 08 可以把早间/晚间流程接到 `read` 和 `apply`：早间读取 lived-date、
-逾期、未安排候选，经过用户确认后发送 action；晚间读取完成上下文，必要时发送
-明确的 completion、abandon 或 correction command。Dida365、Agent、自动化和
-真实个人流程不属于本票；本票也不执行任何 Dida 读取或写回。实际 skill 接线、
-真实个人资料和 packaged macOS acceptance 分别留给后续范围。
+Ticket 08 now wires the canonical `life-daily-loop` and `everyday` Life
+Companion entries to `read` and `apply`: morning reads lived-date, overdue,
+and undated candidates and sends actions after user confirmation; evening reads
+completion context and may send explicit completion, abandonment, or correction
+commands. The phase sequence, authority table, and synthetic rehearsal are
+documented in [`daily-flow-integration-v1.md`](daily-flow-integration-v1.md).
+
+Dida365 remains the external source of truth for its own records and is read-only
+in this bridge; no Dida read or write was performed during implementation.
+The implementation does not run an Agent in the Dashboard, change automation,
+write real personal data, or claim packaged macOS or real personal-flow
+acceptance. Those remain separate evidence gates.

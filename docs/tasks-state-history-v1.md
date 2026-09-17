@@ -75,6 +75,7 @@ read-only.
 ## Evidence boundary
 
 The contract is covered by isolated Rust workflow tests and frontend seam/static
-tests using synthetic Vaults. Those checks do not prove packaged macOS Tauri
-acceptance, real Vault/Drive synchronization, later Daily Flow integration, or
-packaged visual/keyboard shared-task interaction.
+tests using synthetic Vaults. The daily-flow integration adds a separate
+synthetic CLI rehearsal, but these checks do not prove packaged macOS Tauri
+acceptance, real Vault/Drive synchronization, or packaged visual/keyboard
+shared-task interaction.
