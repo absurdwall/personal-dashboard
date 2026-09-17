@@ -86,10 +86,11 @@ pub trait HabitCompletionStore {
 }
 
 #[derive(Clone, Copy)]
-enum StorageDocumentKind {
+pub(crate) enum StorageDocumentKind {
     DailyRecord,
     DayTasks,
     HabitCompletions,
+    Tasks,
 }
 
 impl StorageDocumentKind {
@@ -98,6 +99,7 @@ impl StorageDocumentKind {
             Self::DailyRecord => daily_record,
             Self::DayTasks => day_tasks,
             Self::HabitCompletions => habit_completions,
+            Self::Tasks => "任务正本操作失败。",
         }
         .into()
     }
@@ -115,6 +117,7 @@ impl StorageDocumentKind {
                 Self::DailyRecord => daily_record,
                 Self::DayTasks => day_tasks,
                 Self::HabitCompletions => habit_completions,
+                Self::Tasks => "任务正本操作失败：",
             },
             error
         )
@@ -217,7 +220,11 @@ impl TodayRecordStore for FileTodayRecordStore {
     }
 }
 
-fn create_new_file(path: &Path, document: &[u8], kind: StorageDocumentKind) -> Result<(), String> {
+pub(crate) fn create_new_file(
+    path: &Path,
+    document: &[u8],
+    kind: StorageDocumentKind,
+) -> Result<(), String> {
     let parent = path.parent().ok_or_else(|| {
         kind.text(
             "The Daily Record has no parent directory.",
@@ -272,6 +279,7 @@ fn create_new_file(path: &Path, document: &[u8], kind: StorageDocumentKind) -> R
                 StorageDocumentKind::DailyRecord => format!("{error}; the complete new Daily Record is present at {} and can be verified by refreshing", path.display()),
                 StorageDocumentKind::DayTasks => format!("{error}; the complete new day-task document is present at {} and can be verified by refreshing", path.display()),
                 StorageDocumentKind::HabitCompletions => format!("{error}; the complete new local habit-completion document is present at {} and can be verified by refreshing", path.display()),
+                StorageDocumentKind::Tasks => format!("{error}; the complete task document is present at {} and can be verified by refreshing", path.display()),
             }
         })?;
     fs::remove_file(&temporary).map_err(|error| {
@@ -279,12 +287,13 @@ fn create_new_file(path: &Path, document: &[u8], kind: StorageDocumentKind) -> R
                 StorageDocumentKind::DailyRecord => format!("The new Daily Record is active, but its temporary hard link remains at {}: {error}", temporary.display()),
                 StorageDocumentKind::DayTasks => format!("The new day-task document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
                 StorageDocumentKind::HabitCompletions => format!("The new local habit-completion document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
+                StorageDocumentKind::Tasks => format!("The new task document is active, but its temporary hard link remains at {}: {error}", temporary.display()),
             }
         })?;
     sync_parent(path, kind)
 }
 
-fn save_file_if_unchanged<F>(
+pub(crate) fn save_file_if_unchanged<F>(
     path: &Path,
     expected: &[u8],
     updated: &[u8],
@@ -360,11 +369,12 @@ where
                     StorageDocumentKind::DailyRecord => format!("{preservation_error}; activation was rolled back and the rejected Dashboard candidate remains at {}", temporary.display()),
                     StorageDocumentKind::DayTasks => format!("{preservation_error}; activation was rolled back and the rejected day-task candidate remains at {}", temporary.display()),
                     StorageDocumentKind::HabitCompletions => format!("{preservation_error}; activation was rolled back and the rejected local habit-completion candidate remains at {}", temporary.display()),
+                    StorageDocumentKind::Tasks => format!("{preservation_error}; activation was rolled back and the rejected task candidate remains at {}", temporary.display()),
                 })
             }
             Err(rollback_error) => Err(format!(
                 "{preservation_error}; rollback also failed ({rollback_error}); the actual displaced {} inode remains linked at {}",
-                match kind { StorageDocumentKind::DailyRecord => "Daily Record", StorageDocumentKind::DayTasks => "day-task document", StorageDocumentKind::HabitCompletions => "local habit-completion document" }, temporary.display()
+                match kind { StorageDocumentKind::DailyRecord => "Daily Record", StorageDocumentKind::DayTasks => "day-task document", StorageDocumentKind::HabitCompletions => "local habit-completion document", StorageDocumentKind::Tasks => "task document" }, temporary.display()
             )),
         }
     })?;
@@ -373,6 +383,7 @@ where
             StorageDocumentKind::DailyRecord => format!("Could not verify the displaced daily record after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
             StorageDocumentKind::DayTasks => format!("Could not verify the displaced day-task document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
             StorageDocumentKind::HabitCompletions => format!("Could not verify the displaced local habit-completion document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
+            StorageDocumentKind::Tasks => format!("Could not verify the displaced task document after atomic exchange; its durable recovery link remains at {}: {error}", recovery.display()),
         }
     })?;
     if displaced == expected {
@@ -381,6 +392,7 @@ where
                     StorageDocumentKind::DailyRecord => format!("Could not verify today's daily record after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                     StorageDocumentKind::DayTasks => format!("Could not verify the day-task document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                     StorageDocumentKind::HabitCompletions => format!("Could not verify the local habit-completion document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
+                    StorageDocumentKind::Tasks => format!("Could not verify the task document after atomic exchange; the actual displaced inode remains recoverable at {}: {error}", recovery.display()),
                 }
             })?;
         if active == updated {
@@ -412,6 +424,7 @@ where
                 StorageDocumentKind::DailyRecord => "record",
                 StorageDocumentKind::DayTasks => "day-task document",
                 StorageDocumentKind::HabitCompletions => "local habit-completion document",
+                StorageDocumentKind::Tasks => "task document",
             },
             temporary.display()
         )
@@ -488,6 +501,7 @@ fn preserve_displaced_inode(
             StorageDocumentKind::DailyRecord => "daily-record",
             StorageDocumentKind::DayTasks => "day-tasks",
             StorageDocumentKind::HabitCompletions => "habit-completions",
+            StorageDocumentKind::Tasks => "tasks",
         });
     for attempt in 0..32u8 {
         let recovery = recovery_directory.join(format!(
@@ -549,6 +563,7 @@ fn create_temporary_file(
                 StorageDocumentKind::DailyRecord => "md",
                 StorageDocumentKind::DayTasks => "json",
                 StorageDocumentKind::HabitCompletions => "json",
+                StorageDocumentKind::Tasks => "json",
             },
             std::process::id()
         ));
@@ -581,9 +596,11 @@ fn external_change_message(recovery: Option<&Path>, kind: StorageDocumentKind) -
         (Some(path), StorageDocumentKind::DailyRecord) => format!("今天的 Daily Record 在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请在 Obsidian 中检查后刷新 Today。", path.display()),
         (Some(path), StorageDocumentKind::DayTasks) => format!("当天任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新当天任务。", path.display()),
         (Some(path), StorageDocumentKind::HabitCompletions) => format!("本地习惯完成正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请检查后刷新 Habits。", path.display()),
+        (Some(path), StorageDocumentKind::Tasks) => format!("任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 {}。请刷新 Tasks 后重试。", path.display()),
         (None, StorageDocumentKind::DailyRecord) => "今天的 Daily Record 已在外部发生变化。请刷新 Today 后再保存；外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::DayTasks) => "当天任务正本已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。".into(),
         (None, StorageDocumentKind::HabitCompletions) => "本地习惯完成正本已在外部发生变化。操作仍可重试；请刷新 Habits 后再保存，外部内容未被覆盖。".into(),
+        (None, StorageDocumentKind::Tasks) => "任务正本已在外部发生变化。操作仍可重试；请刷新 Tasks 后再保存，外部内容未被覆盖。".into(),
     }
 }
 
@@ -620,6 +637,7 @@ fn preserve_conflict_snapshot(
                 StorageDocumentKind::DailyRecord => "daily-record",
                 StorageDocumentKind::DayTasks => "day-tasks",
                 StorageDocumentKind::HabitCompletions => "habit-completions",
+                StorageDocumentKind::Tasks => "tasks",
             });
         let recovery = recovery_directory.join(format!(
             "{record_name}-conflict-{nonce}-{}-{attempt}.snapshot",
@@ -2872,7 +2890,7 @@ where
     }
 }
 
-fn validate_compatible_vault(vault: &Path) -> Result<(), String> {
+pub(crate) fn validate_compatible_vault(vault: &Path) -> Result<(), String> {
     if !vault.is_dir() {
         return Err("所选 Vault 文件夹不可用".into());
     }
@@ -2941,7 +2959,7 @@ fn validate_writable_daily_record(document: &str, expected_date: &str) -> Result
     Ok(())
 }
 
-fn document_revision(document: &[u8]) -> String {
+pub(crate) fn document_revision(document: &[u8]) -> String {
     let mut hash = 0xcbf29ce484222325u64;
     for byte in document {
         hash ^= u64::from(*byte);
@@ -3453,7 +3471,7 @@ fn literal_line(value: &str) -> String {
     value.to_owned()
 }
 
-fn validate_local_identifier(value: &str, label: &str) -> Result<(), String> {
+pub(crate) fn validate_local_identifier(value: &str, label: &str) -> Result<(), String> {
     if value.is_empty()
         || value.len() > 96
         || !value
@@ -3465,7 +3483,7 @@ fn validate_local_identifier(value: &str, label: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_timestamp_label(value: &str) -> Result<(), String> {
+pub(crate) fn validate_timestamp_label(value: &str) -> Result<(), String> {
     if !is_valid_timestamp_label(value) {
         return Err("当前本地时间缺少 UTC offset；未写入记录。".into());
     }
@@ -3492,7 +3510,7 @@ fn validate_habit_completion_timestamp(
     Ok(timestamp)
 }
 
-fn timestamp_label_epoch_seconds(value: &str) -> Option<i64> {
+pub(crate) fn timestamp_label_epoch_seconds(value: &str) -> Option<i64> {
     if !is_valid_timestamp_label(value) {
         return None;
     }

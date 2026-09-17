@@ -209,6 +209,25 @@ test("fixed error details switch language without changing their source diagnost
     ),
     "Could not read the Habits snapshot: Habits snapshot range.from is not a valid date.",
   );
+  assert.equal(
+    localizeApplicationError("无法读取任务正本：permission denied", "en"),
+    "Could not read the canonical task source: permission denied",
+  );
+  assert.equal(
+    localizeApplicationError(
+      "任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 /tmp/tasks.snapshot。请刷新 Tasks 后重试。",
+      "en",
+    ),
+    "The task source changed concurrently at the save boundary. Interleaved content was not silently discarded; a recovery snapshot remains at /tmp/tasks.snapshot. Refresh Tasks and try again.",
+  );
+  for (const diagnostic of [
+    "任务名称不能为空。",
+    "任务时间必须先绑定日期。",
+    "任务正本不是有效 JSON：missing field",
+    "Tasks 当前绑定的 Vault 或文件目标已经变化。请刷新 Tasks 后重试；未写入任何内容。",
+  ]) {
+    assert.doesNotMatch(localizeApplicationError(diagnostic, "en"), /[一-龥]/);
+  }
 });
 
 test("planning task input diagnostics have complete English equivalents", () => {

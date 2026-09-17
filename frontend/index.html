@@ -80,6 +80,15 @@
           <button
             type="button"
             class="destination-button"
+            data-workspace-destination="tasks"
+            aria-controls="workspace-destination-tasks"
+          >
+            <span class="destination-icon" aria-hidden="true">□</span>
+            <span data-i18n="destination.tasks">任务</span>
+          </button>
+          <button
+            type="button"
+            class="destination-button"
             data-workspace-destination="calendar"
             aria-controls="workspace-destination-calendar"
           >
@@ -100,6 +109,7 @@
           <label for="workspace-destination-select" data-i18n="navigation.destination">页面</label>
           <select id="workspace-destination-select" aria-label="页面" data-i18n-aria-label="navigation.destination">
             <option value="today" data-i18n="destination.today">今天</option>
+            <option value="tasks" data-i18n="destination.tasks">任务</option>
             <option value="calendar" data-i18n="destination.calendar">日历</option>
             <option value="habits" data-i18n="destination.habits">习惯</option>
           </select>
@@ -197,6 +207,56 @@
                   </section>
                 </div>
               </div>
+            </section>
+            <section
+              id="workspace-destination-tasks"
+              class="workspace-destination tasks-destination"
+              data-workspace-panel="tasks"
+              aria-labelledby="tasks-heading"
+              hidden
+            >
+              <header class="tasks-header">
+                <div>
+                  <p class="section-label" data-i18n="tasks.section">任务 · 收集箱</p>
+                  <h2 id="tasks-heading" class="destination-heading" data-i18n="tasks.heading">任务</h2>
+                  <p data-i18n="tasks.introduction">先把事情放进 Inbox；日期与时刻是可选安排，不会创建 Daily Record。</p>
+                </div>
+                <button id="refresh-tasks" type="button" class="secondary-button" data-i18n="tasks.refresh">刷新任务</button>
+              </header>
+              <p id="tasks-status" class="today-status" role="status" aria-live="polite"></p>
+              <div class="tasks-scope-toolbar" role="tablist" aria-label="任务范围" data-i18n-aria-label="tasks.scope">
+                <button type="button" role="tab" data-task-scope="all" aria-selected="true" data-i18n="tasks.scopeAll">All</button>
+                <button type="button" role="tab" data-task-scope="inbox" aria-selected="false" data-i18n="tasks.scopeInbox">Inbox</button>
+                <span id="tasks-count" class="tasks-count" aria-live="polite"></span>
+              </div>
+              <div id="tasks-list" class="tasks-list" aria-live="polite"></div>
+              <p id="tasks-empty" class="task-empty" hidden data-i18n="tasks.emptyAll">还没有任务；可以从 Inbox 开始。</p>
+              <form id="task-create-form" class="task-form task-create-form" hidden>
+                <div class="task-form-heading">
+                  <h3 data-i18n="tasks.addHeading">新建任务</h3>
+                  <small data-i18n="tasks.inbox">Inbox</small>
+                </div>
+                <div class="task-form-grid">
+                  <label class="task-form-wide">
+                    <span data-i18n="tasks.name">名称</span>
+                    <input id="task-create-name" type="text" maxlength="160" required placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" />
+                  </label>
+                  <label class="task-form-wide">
+                    <span data-i18n="tasks.content">内容（可选）</span>
+                    <textarea id="task-create-content" rows="2" placeholder="补充必要背景或下一步" data-i18n-placeholder="tasks.contentPlaceholder"></textarea>
+                  </label>
+                  <label>
+                    <span data-i18n="tasks.date">日期（可选）</span>
+                    <input id="task-create-date" type="date" />
+                  </label>
+                  <label>
+                    <span data-i18n="tasks.time">时刻（需要日期）</span>
+                    <input id="task-create-time" type="time" disabled />
+                  </label>
+                </div>
+                <p class="task-form-boundary" data-i18n="tasks.savedToVault">任务保存在当前 Vault 的独立正本中；不会写入 Daily Record。</p>
+                <button id="task-create-submit" type="submit" data-i18n="tasks.add">加入 Inbox</button>
+              </form>
             </section>
             <section
               id="workspace-destination-calendar"

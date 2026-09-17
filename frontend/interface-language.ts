@@ -21,6 +21,7 @@ const interfaceCopies = {
   "navigation.destination": { zh: "页面", en: "Destination" },
   "navigation.currentDestination": { zh: "{destination}，当前页面", en: "{destination}, current destination" },
   "destination.today": { zh: "今天", en: "Today" },
+  "destination.tasks": { zh: "任务", en: "Tasks" },
   "destination.calendar": { zh: "日历", en: "Calendar" },
   "destination.habits": { zh: "习惯", en: "Habits" },
   "destination.settings": { zh: "设置", en: "Settings" },
@@ -32,10 +33,12 @@ const interfaceCopies = {
   "workspace.label": { zh: "Personal Dashboard 工作区", en: "Personal Dashboard workspace" },
   "workspace.information": { zh: "工作区信息", en: "Workspace information" },
   "workspace.todayDescription": { zh: "查看今天 Daily Record 里的大致安排。", en: "Review today's overall plan in the Daily Record." },
+  "workspace.tasksDescription": { zh: "在独立 Inbox 中收集、安排和编辑任务。", en: "Capture, schedule, and edit tasks in an independent Inbox." },
   "workspace.calendarDescription": { zh: "先看整个月，再进入某一天。", en: "Review the month, then open a specific day." },
   "workspace.habitsDescription": { zh: "周次数与每日目标时刻放在同一份轻量列表里。", en: "Weekly counts and daily target times share one compact list." },
   "workspace.settingsDescription": { zh: "外观与本地 Vault 设置。", en: "Appearance and local Vault settings." },
   "workspace.todayFeature": { zh: "DAILY RECORD", en: "DAILY RECORD" },
+  "workspace.tasksFeature": { zh: "任务 · 独立正本", en: "TASKS · INDEPENDENT SOURCE" },
   "workspace.calendarFeature": { zh: "日历", en: "CALENDAR" },
   "workspace.habitsFeature": { zh: "习惯 · 平级入口", en: "HABITS · PRIMARY DESTINATION" },
   "workspace.settingsFeature": { zh: "设置 · 本机偏好", en: "SETTINGS · MAC PREFERENCES" },
@@ -43,6 +46,7 @@ const interfaceCopies = {
   "workspace.weekKnown": { zh: "本周已知", en: "Known this week" },
   "workspace.knownCount": { zh: "{known} / {target} 已知", en: "{known} / {target} known" },
   "workspace.todayRail": { zh: "早间 · 当日 · 晚间", en: "Morning · Daytime · Evening" },
+  "workspace.tasksRail": { zh: "Inbox · All · 独立保存", en: "Inbox · All · Independently saved" },
   "workspace.monthView": { zh: "月视图", en: "MONTH VIEW" },
   "workspace.selected": { zh: "{date} · 当前选中", en: "{date} · Selected" },
   "workspace.settingsRail": { zh: "外观 · 数据与 Vault", en: "Appearance · Data & Vault" },
@@ -56,7 +60,7 @@ const interfaceCopies = {
   "settings.localPreference": { zh: "保存在这台 Mac，不随 Vault 切换。", en: "Saved on this Mac, separately from the selected Vault." },
   "settings.accentColor": { zh: "主题颜色", en: "Accent color" },
   "settings.accentGroup": { zh: "主题颜色预设", en: "Accent color presets" },
-  "settings.accentScope": { zh: "同一预设即时用于 Today、Calendar、Habits 与设置。", en: "One preset applies immediately to Today, Calendar, Habits, and Settings." },
+  "settings.accentScope": { zh: "同一预设即时用于 Today、Tasks、Calendar、Habits 与设置。", en: "One preset applies immediately to Today, Tasks, Calendar, Habits, and Settings." },
   "settings.backgroundImage": { zh: "背景图片", en: "Background image" },
   "settings.backgroundDescription": { zh: "选择一张本地图片，以淡化方式用于所有页面。应用会保留自己的副本。", en: "Choose a local image as a softened backdrop on every page. The app keeps its own copy." },
   "settings.backgroundPreview": { zh: "背景图片预览", en: "Background image preview" },
@@ -244,6 +248,50 @@ const interfaceCopies = {
   "dayTasks.changeReopened": { zh: "{changedAt} · 取消完成", en: "{changedAt} · Completion cancelled" },
   "dayTasks.changeDeleted": { zh: "{changedAt} · 删除", en: "{changedAt} · Deleted" },
   "dayTasks.deletedHistorical": { zh: "已删除", en: "Deleted" },
+  "tasks.section": { zh: "任务 · 收集箱", en: "TASKS · INBOX" },
+  "tasks.heading": { zh: "任务", en: "Tasks" },
+  "tasks.introduction": { zh: "先把事情放进 Inbox；日期与时刻是可选安排，不会创建 Daily Record。", en: "Put work in the Inbox first. Dates and times are optional scheduling; they never create a Daily Record." },
+  "tasks.refresh": { zh: "刷新任务", en: "Refresh tasks" },
+  "tasks.scope": { zh: "任务范围", en: "Task scope" },
+  "tasks.scopeAll": { zh: "All", en: "All" },
+  "tasks.scopeInbox": { zh: "Inbox", en: "Inbox" },
+  "tasks.count": { zh: "{count} 项", en: "{count} tasks" },
+  "tasks.ready": { zh: "已读取任务正本。", en: "Loaded the task source." },
+  "tasks.emptyStatus": { zh: "当前没有任务。", en: "There are no tasks here." },
+  "tasks.empty": { zh: "Inbox 还是空的；先写下一件想保留的事。", en: "The Inbox is empty. Capture one thing worth keeping." },
+  "tasks.emptyAll": { zh: "还没有任务；可以从 Inbox 开始。", en: "There are no tasks yet. Start in the Inbox." },
+  "tasks.addHeading": { zh: "新建任务", en: "New task" },
+  "tasks.name": { zh: "名称", en: "Name" },
+  "tasks.namePlaceholder": { zh: "例如：预约牙医", en: "For example: Book a dentist appointment" },
+  "tasks.content": { zh: "内容（可选）", en: "Content (optional)" },
+  "tasks.contentPlaceholder": { zh: "补充必要背景或下一步", en: "Add useful context or the next step" },
+  "tasks.date": { zh: "日期（可选）", en: "Date (optional)" },
+  "tasks.time": { zh: "时刻（需要日期）", en: "Time (requires a date)" },
+  "tasks.clearSchedule": { zh: "清除日期与时刻", en: "Clear date and time" },
+  "tasks.save": { zh: "保存", en: "Save" },
+  "tasks.add": { zh: "加入 Inbox", en: "Add to Inbox" },
+  "tasks.inbox": { zh: "Inbox", en: "Inbox" },
+  "tasks.noDate": { zh: "未安排日期", en: "No date" },
+  "tasks.dateAt": { zh: "{date} · {time}", en: "{date} · {time}" },
+  "tasks.editLabel": { zh: "编辑任务“{task}”", en: "Edit task {task}" },
+  "tasks.createLabel": { zh: "新建任务名称", en: "New task name" },
+  "tasks.saved": { zh: "任务已保存到所选 Vault。", en: "Task saved to the selected Vault." },
+  "tasks.notSaved": { zh: "任务未保存：{error}", en: "Task not saved: {error}" },
+  "tasks.confirmationFailed": { zh: "任务写入结果无法确认；草稿仍保留，请刷新后检查。", en: "The task write could not be confirmed; the draft is preserved. Refresh to check." },
+  "tasks.loadFailed": { zh: "无法读取 Tasks：{error}", en: "Could not load Tasks: {error}" },
+  "tasks.refreshFirst": { zh: "请先刷新有效的任务正本，再重试。", en: "Refresh the valid task source before trying again." },
+  "tasks.enterName": { zh: "请输入任务名称。", en: "Enter a task name." },
+  "tasks.timeNeedsDate": { zh: "时刻必须先绑定日期；清除日期会同时清除时刻。", en: "A time needs a date. Clearing the date also clears the time." },
+  "tasks.savedToVault": { zh: "任务保存在当前 Vault 的独立正本中；不会写入 Daily Record。", en: "Tasks are saved in an independent source in the current Vault; Daily Records are unchanged." },
+  "tasks.sourceManual": { zh: "手动任务 · Inbox", en: "Manual task · Inbox" },
+  "tasks.changes": { zh: "变更记录 · {count}", en: "Change history · {count}" },
+  "tasks.rescheduled": { zh: "{changedAt} · 改期：{previous} → {next}", en: "{changedAt} · Rescheduled: {previous} → {next}" },
+  "tasks.renamed": { zh: "{changedAt} · 改名", en: "{changedAt} · Renamed" },
+  "tasks.contentEdited": { zh: "{changedAt} · 更新内容", en: "{changedAt} · Content updated" },
+  "tasks.edited": { zh: "{changedAt} · 更新任务", en: "{changedAt} · Task updated" },
+  "tasks.loadNewVault": { zh: "正在读取新 Vault 的 Tasks…", en: "Loading Tasks from the new Vault…" },
+  "tasks.waitingWrites": { zh: "正在完成当前保存，再切换 Vault…", en: "Finishing the current save before switching Vaults…" },
+  "tasks.selected": { zh: "Tasks · 当前工作区", en: "Tasks · Current workspace" },
   "history.section": { zh: "历史 · 更正", en: "HISTORY · CORRECTIONS" },
   "history.habitHeading": { zh: "本地习惯更正", en: "Local habit corrections" },
   "history.habitBoundary": { zh: "只更正所选日期的 Dashboard 本地完成；不会改写外部来源或已有复盘。", en: "Only the selected date's Dashboard-local completion is corrected. External sources and the existing review are not rewritten." },
@@ -479,6 +527,7 @@ const englishDiagnosticLabels: Readonly<Record<string, string>> = {
   "任务标识": "Task identifier",
   "任务修改标识": "Task-change identifier",
   "任务来源标识": "Task source identifier",
+  "任务列表标识": "Task-list identifier",
   "规划任务来源标识": "Planning-task source identifier",
   "规划任务身份": "Planning-task identity",
 };
@@ -818,6 +867,87 @@ function englishHabitValidationDiagnostic(message: string): string | null {
   return null;
 }
 
+function englishTaskDiagnostic(message: string): string | null {
+  const exact: Readonly<Record<string, string>> = {
+    "请选择 Vault，以读取 Tasks。": "Choose a Vault to read Tasks.",
+    "任务正本操作失败。": "The task source operation failed.",
+    "该任务标识已用于其他任务；请使用新的稳定身份。未写入任何内容。":
+      "That task identifier is already used by another task. Use a new stable identity; nothing was written.",
+    "任务正本已不存在。请刷新 Tasks 后重试；未创建替代数据。":
+      "The task source no longer exists. Refresh Tasks and try again; no replacement data was created.",
+    "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。":
+      "The task source does not exist yet. Refresh Tasks and try again; nothing was written.",
+    "该任务修改标识已用于其他操作；未写入任何内容。":
+      "That task-change identifier is already used by another operation; nothing was written.",
+    "找不到要编辑的任务；未写入任何内容。":
+      "The task to edit could not be found; nothing was written.",
+    "Tasks 当前绑定的 Vault 或文件目标已经变化。请刷新 Tasks 后重试；未写入任何内容。":
+      "The Vault or file target bound to Tasks changed. Refresh Tasks and try again; nothing was written.",
+    "任务名称不能为空。": "Task name cannot be empty.",
+    "任务名称不能超过 160 个字符，也不能换行。":
+      "Task name cannot exceed 160 characters or contain line breaks.",
+    "任务日期必须是有效的 YYYY-MM-DD 日期。":
+      "Task date must be a valid YYYY-MM-DD date.",
+    "任务时间必须先绑定日期。": "A task time must be bound to a date first.",
+    "任务时间必须是 HH:MM，并且必须绑定日期。":
+      "Task time must use HH:MM and be bound to a date.",
+    "任务时间无效。": "Task time is invalid.",
+    "任务时间必须落在 00:00–23:59。": "Task time must be between 00:00 and 23:59.",
+    "任务列表不存在；此票仅支持 Inbox。未写入任何内容。":
+      "The task list does not exist. This ticket supports Inbox only; nothing was written.",
+    "任务没有可保存的变化。": "The task has no changes to save.",
+    "任务正本已经存在。请刷新 Tasks 后重试；现有任务未被覆盖。":
+      "The task source already exists. Refresh Tasks and try again; the existing task source was not overwritten.",
+    "任务正本已在外部发生变化。请刷新 Tasks 后再保存；外部内容未被覆盖。":
+      "The task source changed externally. Refresh Tasks before saving again; external content was not overwritten.",
+    "任务正本包含空的任务列表名称。": "The task source contains an empty task-list name.",
+    "任务正本包含重复任务列表标识。": "The task source contains duplicate task-list identifiers.",
+    "任务正本的 Inbox 列表必须是未归档的系统列表。":
+      "The Inbox list in the task source must be an unarchived system list.",
+    "任务正本缺少 Inbox 列表。": "The task source is missing its Inbox list.",
+    "任务正本包含重复任务标识；未将其当作空任务。":
+      "The task source contains duplicate task identifiers; it was not treated as empty.",
+    "任务正本包含无效任务名称。": "The task source contains an invalid task name.",
+    "任务正本包含带换行的任务名称。": "The task source contains a task name with line breaks.",
+    "任务正本不能保存空白任务内容。": "The task source cannot save blank task content.",
+    "任务正本包含不存在的任务列表归属。":
+      "The task source contains a task assigned to a missing task list.",
+    "手动任务不能声明 producer 来源标识。":
+      "A manual task cannot declare a producer source identifier.",
+    "任务正本包含重复任务修改标识。":
+      "The task source contains duplicate task-change identifiers.",
+    "任务正本的修改记录时间顺序倒置。":
+      "The task source has change-history timestamps in reverse order.",
+    "任务正本的修改时间与最后一条修改记录不一致。":
+      "The task source modified time does not match its last change entry.",
+    "任务改名记录不能保存相同的原名称与新名称。":
+      "A task rename entry cannot keep the same old and new name.",
+    "任务移动记录不能保存相同的原列表与新列表。":
+      "A task move entry cannot keep the same old and new list.",
+    "任务修改记录缺少前后变化。": "A task change entry is missing its before-and-after change.",
+    "任务正本包含无效修改时间。": "The task source contains an invalid change timestamp.",
+    "当前本地时间缺少 UTC offset；未写入记录。":
+      "The current local time has no UTC offset; nothing was written.",
+  };
+  if (exact[message]) return exact[message];
+
+  const patterns: readonly Readonly<[RegExp, (...values: string[]) => string]>[] = [
+    [/^无法读取任务正本：([\s\S]+)$/, (reason) => `Could not read the canonical task source: ${reason}`],
+    [/^无法编码任务正本：([\s\S]+)$/, (reason) => `Could not encode the canonical task source: ${reason}`],
+    [/^任务正本操作失败：([\s\S]+)$/, (reason) => `The task source operation failed: ${reason}`],
+    [/^任务正本不是有效 JSON：([\s\S]+)$/, (reason) => `The canonical task source is not valid JSON: ${reason}`],
+    [/^任务正本使用不支持的 schema 版本 (.+)；未将其当作空任务。$/, (version) => `The canonical task source uses unsupported schema version ${version}; it was not treated as empty.`],
+    [/^任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 (.+)。请刷新 Tasks 后重试。$/, (path) => `The task source changed concurrently at the save boundary. Interleaved content was not silently discarded; a recovery snapshot remains at ${path}. Refresh Tasks and try again.`],
+    [/^任务正本包含无效原日期。$/, () => "The task source contains an invalid previous date."],
+    [/^任务正本包含无效新日期。$/, () => "The task source contains an invalid new date."],
+  ];
+  for (const [pattern, render] of patterns) {
+    const match = pattern.exec(message);
+    if (match) return render(...match.slice(1));
+  }
+  return null;
+}
+
 const englishErrorFragments: readonly Readonly<[string, string]>[] = [
   ["Vault 不兼容：", "Incompatible Vault: "],
   ["需要 Obsidian Vault 标记和 life/Journal/Daily 目录", "an Obsidian Vault marker and life/Journal/Daily directory are required"],
@@ -1055,6 +1185,8 @@ export function localizeApplicationError(
     }
     return error;
   }
+  const taskDiagnostic = englishTaskDiagnostic(error);
+  if (taskDiagnostic) return taskDiagnostic;
   const fixedDiagnostic = englishApplicationDiagnostic(error);
   if (fixedDiagnostic) return fixedDiagnostic;
   const habitDiagnostic = englishHabitValidationDiagnostic(error);

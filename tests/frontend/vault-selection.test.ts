@@ -43,6 +43,7 @@ type State = {
   renderedView: View | null;
   statusRenders: number;
   calendarRefreshes: number;
+  tasksRefreshes: number;
   habitsRefreshes: number;
   order: string[];
   current: boolean;
@@ -92,6 +93,10 @@ function actionsFor(state: State): VaultSelectionActions<View> {
       state.order.push("habits");
       state.habitsRefreshes += 1;
     },
+    refreshTasks: async () => {
+      state.order.push("tasks");
+      state.tasksRefreshes += 1;
+    },
   };
 }
 
@@ -106,6 +111,7 @@ function stateFor(destination: VaultSelectionDestination): State {
     renderedView: null,
     statusRenders: 0,
     calendarRefreshes: 0,
+    tasksRefreshes: 0,
     habitsRefreshes: 0,
     order: [],
     current: true,
@@ -191,6 +197,23 @@ test("switching Vault clears old state before refreshing Habits with the new vie
   assert.equal(state.habitsRefreshes, 1);
   assert.equal(state.calendarRefreshes, 0);
   assert.deepEqual(state.order, ["reset", "today", "status", "habits"]);
+});
+
+test("switching Vault clears old state before refreshing Tasks with the new view", async () => {
+  const state = stateFor("tasks");
+  const result = await selectVaultAndRefresh(
+    async () => ({
+      changed: true,
+      view: { vault: "vault-b", date: "2026-09-10", defaultPhase: "morning" },
+    }),
+    actionsFor(state),
+  );
+
+  assert.equal(result, "changed");
+  assert.equal(state.tasksRefreshes, 1);
+  assert.equal(state.calendarRefreshes, 0);
+  assert.equal(state.habitsRefreshes, 0);
+  assert.deepEqual(state.order, ["reset", "today", "status", "tasks"]);
 });
 
 test("a current Vault result still reconciles globally after its Today presentation is superseded", async () => {

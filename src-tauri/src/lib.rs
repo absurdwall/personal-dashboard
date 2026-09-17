@@ -20,6 +20,7 @@ mod notification_platform;
 #[allow(dead_code)] // Retained only for historical regression and cutover parsing boundaries.
 mod platform;
 pub mod profile;
+pub mod tasks;
 pub mod today;
 
 use appearance::{
@@ -39,6 +40,7 @@ use platform::{
     FileAppearancePersistence, FileInterfaceLanguagePersistence, FileTodayWorkspacePersistence,
     NativeAppearanceImageLibrary, NativeTodayWorkspaceExchange,
 };
+use tasks::{FileTaskStore, TaskApplication, TaskCreateInput, TaskUpdateInput, TasksView};
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
     DayTaskCompletionInput, DayTaskDeleteInput, DayTaskRenameInput, DaytimeUpdateInput,
@@ -55,6 +57,7 @@ type DesktopAppearanceApplication =
     AppearanceApplication<FileAppearancePersistence, NativeAppearanceImageLibrary<tauri::Wry>>;
 type DesktopInterfaceLanguageApplication =
     InterfaceLanguageApplication<FileInterfaceLanguagePersistence>;
+type DesktopTaskApplication = TaskApplication<FileTodayWorkspacePersistence, SystemClock>;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -163,6 +166,27 @@ fn habit_snapshot(
     application: State<'_, DesktopTodayApplication>,
 ) -> Result<HabitSnapshotView, String> {
     application.habits()
+}
+
+#[tauri::command]
+fn tasks_view(application: State<'_, DesktopTaskApplication>) -> Result<TasksView, String> {
+    application.read()
+}
+
+#[tauri::command]
+fn create_task(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskCreateInput,
+) -> Result<TasksView, String> {
+    application.create(input)
+}
+
+#[tauri::command]
+fn update_task(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskUpdateInput,
+) -> Result<TasksView, String> {
+    application.update(input)
 }
 
 #[tauri::command]
@@ -321,9 +345,14 @@ pub fn run() {
                 }
             }
             app.manage(TodayApplication::new(
-                FileTodayWorkspacePersistence::new(today_workspace_file),
+                FileTodayWorkspacePersistence::new(today_workspace_file.clone()),
                 NativeTodayWorkspaceExchange::new(app_handle.clone()),
                 SystemClock,
+            ));
+            app.manage(TaskApplication::new(
+                FileTodayWorkspacePersistence::new(today_workspace_file),
+                SystemClock,
+                FileTaskStore,
             ));
             app.manage(AppearanceApplication::with_image_library(
                 FileAppearancePersistence::new(appearance_file),
@@ -360,6 +389,9 @@ pub fn run() {
             read_daily_view,
             calendar_month,
             habit_snapshot,
+            tasks_view,
+            create_task,
+            update_task,
             set_local_habit_completion,
             set_historical_habit_completion,
             select_today_vault,
@@ -389,6 +421,9 @@ pub fn run() {
         read_daily_view,
         calendar_month,
         habit_snapshot,
+        tasks_view,
+        create_task,
+        update_task,
         set_local_habit_completion,
         set_historical_habit_completion,
         select_today_vault,

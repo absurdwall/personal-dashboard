@@ -6,13 +6,13 @@ const html = readFileSync(new URL("../../frontend/index.html", import.meta.url),
 const main = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
 const rust = readFileSync(new URL("../../src-tauri/src/lib.rs", import.meta.url), "utf8");
 
-test("3.0 preserves the three daily destinations and adds Settings without retired runtime surfaces", () => {
+test("4.0 preserves the existing destinations and adds Tasks without retired runtime surfaces", () => {
   const destinations = Array.from(
     html.matchAll(/class="destination-button"[\s\S]*?data-workspace-destination="([^"]+)"/g),
     (match) => match[1],
   );
 
-  assert.deepEqual(destinations, ["today", "calendar", "habits"]);
+  assert.deepEqual(destinations, ["today", "tasks", "calendar", "habits"]);
   assert.match(html, /id="workspace-destination-settings"/);
   for (const retiredId of [
     "workspace-destination-this-week",

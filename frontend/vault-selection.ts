@@ -1,4 +1,9 @@
-export type VaultSelectionDestination = "today" | "calendar" | "habits" | "settings";
+export type VaultSelectionDestination =
+  | "today"
+  | "tasks"
+  | "calendar"
+  | "habits"
+  | "settings";
 
 export class PendingWriteBarrier {
   readonly #pending = new Set<Promise<boolean>>();
@@ -33,6 +38,7 @@ export type VaultSelectionActions<View> = Readonly<{
   renderWorkspaceContextStatus: () => void;
   openCalendar: () => Promise<void>;
   refreshHabits: () => Promise<void>;
+  refreshTasks: () => Promise<void>;
 }>;
 
 export async function selectVaultAndRefresh<View>(
@@ -59,6 +65,8 @@ export async function selectVaultAndRefresh<View>(
   actions.renderWorkspaceContextStatus();
   if (actions.currentDestination() === "calendar") {
     await actions.openCalendar();
+  } else if (actions.currentDestination() === "tasks") {
+    await actions.refreshTasks();
   } else if (actions.currentDestination() === "habits") {
     await actions.refreshHabits();
   }
