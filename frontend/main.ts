@@ -189,7 +189,8 @@ type TaskChangeView = Readonly<{
     | "restored"
     | "deleted"
     | "undeleted"
-    | "completion-corrected";
+    | "completion-corrected"
+    | "noop";
   changedAt: string;
   source: "user" | "daily-flow";
   previousName: string | null;
@@ -208,6 +209,19 @@ type TaskChangeView = Readonly<{
   newDeletedAt: string | null;
   previousCompletion: TaskCompletionView | null;
   newCompletion: TaskCompletionView | null;
+  operation?:
+    | Readonly<{
+        kind: "reschedule";
+        date: string | null;
+        time: string | null;
+      }>
+    | Readonly<{ kind: "setState"; state: "pending" | "completed" | "abandoned" }>
+    | Readonly<{
+        kind: "correctCompletion";
+        completedOn: string;
+        completedTime: string | null;
+      }>
+    | null;
 }>;
 
 type TaskCompletionView = Readonly<{
@@ -3937,6 +3951,12 @@ function taskChangeDescription(change: TaskChangeView): string {
       changeSource: taskChangeSourceText(change.source),
     });
   }
+  if (change.kind === "noop") {
+    return t("tasks.noopChange", {
+      changedAt: change.changedAt,
+      changeSource: taskChangeSourceText(change.source),
+    });
+  }
   const labels: Record<
     Exclude<
       TaskChangeView["kind"],
@@ -3948,6 +3968,7 @@ function taskChangeDescription(change: TaskChangeView): string {
       | "deleted"
       | "undeleted"
       | "completion-corrected"
+      | "noop"
     >,
     InterfaceCopyKey
   > = {

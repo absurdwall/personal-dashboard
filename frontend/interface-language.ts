@@ -353,6 +353,7 @@ const interfaceCopies = {
   "tasks.deletedChange": { zh: "{changedAt} · 删除 · {changeSource}", en: "{changedAt} · Deleted · {changeSource}" },
   "tasks.undeletedChange": { zh: "{changedAt} · 撤销删除 · {changeSource}", en: "{changedAt} · Undeleted · {changeSource}" },
   "tasks.completionCorrectedChange": { zh: "{changedAt} · 更正完成记录：{previous} → {next} · {changeSource}", en: "{changedAt} · Corrected completion: {previous} → {next} · {changeSource}" },
+  "tasks.noopChange": { zh: "{changedAt} · 已记录重复的每日流程操作（任务状态未改变）· {changeSource}", en: "{changedAt} · Recorded a repeated daily-flow operation (task state unchanged) · {changeSource}" },
   "tasks.loadNewVault": { zh: "正在读取新 Vault 的 Tasks…", en: "Loading Tasks from the new Vault…" },
   "tasks.waitingWrites": { zh: "正在完成当前保存，再切换 Vault…", en: "Finishing the current save before switching Vaults…" },
   "tasks.selected": { zh: "Tasks · 当前工作区", en: "Tasks · Current workspace" },
@@ -576,6 +577,15 @@ const englishApplicationMessages: Readonly<Record<string, string>> = {
     "Current-week coverage is incomplete; the known count is a lower bound, and unknown does not mean incomplete.",
   "当前周截至快照范围的来源覆盖完整；未来日期仍保持未知。":
     "Source coverage is complete through the snapshot range for the current week; future dates remain unknown.",
+  "Inbox 目前没有任务；新任务会先保存在 Inbox。":
+    "Inbox has no tasks yet; new tasks will be saved in Inbox first.",
+  "已读取任务正本。": "Loaded the canonical task source.",
+  "没有需要写入的 daily-flow 行动；建议仍保持为建议。":
+    "There are no daily-flow actions to write; suggestions remain suggestions.",
+  "daily-flow 明确行动已写入任务正本。":
+    "The explicit daily-flow action was written to the canonical task source.",
+  "daily-flow 行动没有改变任务正本。":
+    "The daily-flow action did not change the canonical task source.",
   "请选择 Vault，以读取当天任务。": "Choose a Vault to read day tasks.",
   "这一天没有任务；未勾选事项不会自动顺延。":
     "There are no tasks for this day. Unchecked tasks are not carried over automatically.",
@@ -822,6 +832,18 @@ function englishApplicationDiagnostic(message: string): string | null {
   if (taskTooLong) {
     return "Task text must be one line of no more than 160 characters.";
   }
+  const unsupportedDailyFlowSchema = /^daily-flow task adapter 使用不支持的 schema 版本 (\d+)。$/.exec(message);
+  if (unsupportedDailyFlowSchema) {
+    return `The daily-flow task adapter uses unsupported schema version ${unsupportedDailyFlowSchema[1]}.`;
+  }
+  const unavailableDailyFlowClock = /^daily-flow adapter 无法读取当前时间上下文：(.+)$/.exec(message);
+  if (unavailableDailyFlowClock) {
+    const detail =
+      englishTaskDiagnostic(unavailableDailyFlowClock[1]) ??
+      englishApplicationDiagnostic(unavailableDailyFlowClock[1]) ??
+      unavailableDailyFlowClock[1];
+    return `The daily-flow adapter could not read the current time context: ${detail}`;
+  }
   const staleTask = /^(\d{4}-\d{2}-\d{2}) 的任务已在外部发生变化。操作仍可重试；请刷新后再保存，外部内容未被覆盖。$/.exec(message);
   if (staleTask) {
     return `Tasks for ${staleTask[1]} changed externally. The operation remains retryable; refresh before saving again. External content was not overwritten.`;
@@ -950,6 +972,30 @@ function englishHabitValidationDiagnostic(message: string): string | null {
 function englishTaskDiagnostic(message: string): string | null {
   const exact: Readonly<Record<string, string>> = {
     "请选择 Vault，以读取 Tasks。": "Choose a Vault to read Tasks.",
+    "daily-flow adapter 使用调用方明确提供的 Vault；不会改变 Dashboard 的已选 Vault。":
+      "The daily-flow adapter uses the caller-provided Vault; it does not change Dashboard's selected Vault.",
+    "lived date 必须是有效的 YYYY-MM-DD 日期。":
+      "The lived date must be a valid YYYY-MM-DD date.",
+    "daily-flow task adapter 必须明确提供 Vault 路径。":
+      "The daily-flow task adapter requires an explicit Vault path.",
+    "daily-flow 请求的 Vault 与任务正本当前目标不一致；未写入任何内容。":
+      "The Vault in the daily-flow request does not match the current task-source target; nothing was written.",
+    "同一 daily-flow 请求不能重复声明任务标识；未写入任何内容。":
+      "One daily-flow request cannot declare the same task identifier twice; nothing was written.",
+    "同一 daily-flow 请求不能重复声明来源标识；未写入任何内容。":
+      "One daily-flow request cannot declare the same source reference twice; nothing was written.",
+    "同一 daily-flow 请求不能重复使用操作标识；未写入任何内容。":
+      "One daily-flow request cannot reuse the same operation identifier; nothing was written.",
+    "该 daily-flow 来源标识已经绑定到其他任务；旧输入不会改绑对象。未写入任何内容。":
+      "That daily-flow source reference is already bound to another task; old input will not rebind it; nothing was written.",
+    "该 daily-flow 操作标识已用于其他操作；未写入任何内容。":
+      "That daily-flow operation identifier is already used by another operation; nothing was written.",
+    "任务正本已经存在。请先读取最新任务正本，再提交 daily-flow 写命令；未写入任何内容。":
+      "The task source already exists. Read the latest task source before submitting a daily-flow write command; nothing was written.",
+    "任务无变化操作记录不能携带字段前后值。":
+      "A no-op task-operation record cannot carry before-and-after field values.",
+    "任务无变化操作记录缺少操作内容。":
+      "A no-op task-operation record is missing its operation details.",
     "任务正本操作失败。": "The task source operation failed.",
     "该任务标识已用于其他任务；请使用新的稳定身份。未写入任何内容。":
       "That task identifier is already used by another task. Use a new stable identity; nothing was written.",

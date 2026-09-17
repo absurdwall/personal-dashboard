@@ -35,6 +35,9 @@ stores new tasks as `pending`; ticket 02 adds the lifecycle controls and
 completion evidence described in `docs/tasks-state-history-v1.md`. Change
 entries use stable ids and record the operation timestamp plus the before/after
 values for renamed, content-edited, rescheduled, list-moved, or combined edits.
+An explicit daily-flow command that is already satisfied records a `noop` history
+entry with its operation payload so the same operation id remains idempotent after
+later user edits.
 
 ## Read and write contract
 
@@ -99,5 +102,7 @@ and Inbox. Reading Calendar or saving a task only reads or writes the task
 source; it does not create or modify a Daily Record or Review.
 
 This source is independent of Dida365, Google Drive APIs, and Daily Record
-Markdown. Local success is not cloud-sync evidence. The daily-flow adapter and
-packaged acceptance remain later tickets.
+Markdown. Local success is not cloud-sync evidence. The bounded daily-flow
+adapter is specified in [daily-flow-task-adapter-v1.md](daily-flow-task-adapter-v1.md);
+ticket 08 may wire that entry into the real daily loop, while packaged
+acceptance remains a separate gate.

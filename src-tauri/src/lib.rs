@@ -20,6 +20,7 @@ mod notification_platform;
 #[allow(dead_code)] // Retained only for historical regression and cutover parsing boundaries.
 mod platform;
 pub mod profile;
+pub mod task_adapter;
 pub mod tasks;
 pub mod today;
 

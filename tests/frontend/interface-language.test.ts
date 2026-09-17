@@ -86,6 +86,17 @@ test("fixed application statuses and generated habit labels have English equival
   );
   assert.equal(
     localizeApplicationMessage(
+      "没有需要写入的 daily-flow 行动；建议仍保持为建议。",
+      "en",
+    ),
+    "There are no daily-flow actions to write; suggestions remain suggestions.",
+  );
+  assert.equal(
+    localizeApplicationMessage("daily-flow 明确行动已写入任务正本。", "en"),
+    "The explicit daily-flow action was written to the canonical task source.",
+  );
+  assert.equal(
+    localizeApplicationMessage(
       "今天的 Daily Record 缺少有效 frontmatter。请修复 type 和 date，然后刷新 Today。",
       "en",
     ),
@@ -238,6 +249,20 @@ test("fixed error details switch language without changing their source diagnost
     "只有已明确完成的任务才能更正完成记录；未写入任何内容。",
     "任务正本不是有效 JSON：missing field",
     "Tasks 当前绑定的 Vault 或文件目标已经变化。请刷新 Tasks 后重试；未写入任何内容。",
+    "daily-flow adapter 使用调用方明确提供的 Vault；不会改变 Dashboard 的已选 Vault。",
+    "lived date 必须是有效的 YYYY-MM-DD 日期。",
+    "daily-flow task adapter 使用不支持的 schema 版本 2。",
+    "daily-flow task adapter 必须明确提供 Vault 路径。",
+    "daily-flow 请求的 Vault 与任务正本当前目标不一致；未写入任何内容。",
+    "daily-flow adapter 无法读取当前时间上下文：任务正本包含无效修改时间。",
+    "同一 daily-flow 请求不能重复声明任务标识；未写入任何内容。",
+    "同一 daily-flow 请求不能重复声明来源标识；未写入任何内容。",
+    "同一 daily-flow 请求不能重复使用操作标识；未写入任何内容。",
+    "该 daily-flow 来源标识已经绑定到其他任务；旧输入不会改绑对象。未写入任何内容。",
+    "该 daily-flow 操作标识已用于其他操作；未写入任何内容。",
+    "任务正本已经存在。请先读取最新任务正本，再提交 daily-flow 写命令；未写入任何内容。",
+    "任务无变化操作记录不能携带字段前后值。",
+    "任务无变化操作记录缺少操作内容。",
   ]) {
     assert.doesNotMatch(localizeApplicationError(diagnostic, "en"), /[一-龥]/);
   }

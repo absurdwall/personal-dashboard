@@ -22,6 +22,13 @@ pub enum TaskDataState {
     Error,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TaskDataErrorKind {
+    Damaged,
+    Unavailable,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TaskSourceKind {
@@ -89,6 +96,23 @@ pub enum TaskChangeKind {
     Deleted,
     Undeleted,
     CompletionCorrected,
+    Noop,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", tag = "kind", deny_unknown_fields)]
+pub enum TaskChangeOperation {
+    Reschedule {
+        date: Option<String>,
+        time: Option<String>,
+    },
+    SetState {
+        state: TaskState,
+    },
+    CorrectCompletion {
+        completed_on: String,
+        completed_time: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -121,6 +145,8 @@ pub struct TaskChangeView {
     pub previous_completion: Option<TaskCompletionView>,
     #[serde(default)]
     pub new_completion: Option<TaskCompletionView>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operation: Option<TaskChangeOperation>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -155,6 +181,7 @@ pub struct TaskView {
 #[serde(rename_all = "camelCase")]
 pub struct TasksView {
     pub state: TaskDataState,
+    pub error_kind: Option<TaskDataErrorKind>,
     pub message: String,
     pub schema_version: u32,
     pub revision: Option<String>,
@@ -273,6 +300,56 @@ pub trait TaskStore {
     fn create_new(&self, path: &Path, document: &[u8]) -> Result<(), String>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum DailyFlowMutation {
+    Create {
+        task_id: String,
+        source_reference: String,
+        name: String,
+        content: Option<String>,
+        date: Option<String>,
+        time: Option<String>,
+        list_id: Option<String>,
+    },
+    Reschedule {
+        task_id: String,
+        change_id: String,
+        date: Option<String>,
+        time: Option<String>,
+    },
+    SetState {
+        task_id: String,
+        change_id: String,
+        state: TaskState,
+    },
+    CorrectCompletion {
+        task_id: String,
+        change_id: String,
+        completed_on: String,
+        completed_time: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DailyFlowBatchResult {
+    pub view: TasksView,
+    pub changed: bool,
+    pub created_task_ids: Vec<String>,
+    pub preserved_task_ids: Vec<String>,
+    pub applied_operation_ids: Vec<String>,
+    pub idempotent_operation_ids: Vec<String>,
+    pub unchanged_operation_ids: Vec<String>,
+}
+
+#[derive(Default)]
+struct DailyFlowBatchOutcome {
+    created_task_ids: Vec<String>,
+    preserved_task_ids: Vec<String>,
+    applied_operation_ids: Vec<String>,
+    idempotent_operation_ids: Vec<String>,
+    unchanged_operation_ids: Vec<String>,
+}
+
 #[derive(Clone, Copy)]
 pub struct FileTaskStore;
 
@@ -343,6 +420,7 @@ where
         if let Err(error) = validate_compatible_vault(vault) {
             return Ok(
                 TasksView::error(error, None, None, Some(vault.to_path_buf()))
+                    .with_error_kind(TaskDataErrorKind::Unavailable)
                     .with_current_date(Some(current_date)),
             );
         }
@@ -363,6 +441,7 @@ where
                     None,
                     Some(vault.to_path_buf()),
                 )
+                .with_error_kind(TaskDataErrorKind::Unavailable)
                 .with_current_date(Some(current_date)))
             }
         };
@@ -398,8 +477,17 @@ where
                 Some(revision),
                 Some(vault.to_path_buf()),
             )
+            .with_error_kind(TaskDataErrorKind::Damaged)
             .with_current_date(Some(current_date))),
         }
+    }
+
+    pub(crate) fn current_time_context(&self) -> Result<(String, String, String), String> {
+        let current_date = self.clock.current_date();
+        let current_time = self.clock.current_time_label();
+        let current_timestamp = self.clock.current_timestamp_label();
+        validate_timestamp_label(&current_timestamp)?;
+        Ok((current_date, current_time, current_timestamp))
     }
 
     pub fn create(&self, input: TaskCreateInput) -> Result<TasksView, String> {
@@ -904,6 +992,87 @@ where
         self.read()
     }
 
+    pub(crate) fn apply_daily_flow_batch(
+        &self,
+        supplied_binding: &str,
+        expected_revision: Option<&str>,
+        mutations: &[DailyFlowMutation],
+    ) -> Result<DailyFlowBatchResult, String> {
+        let (_vault, path, target_binding) = self.bound_target(supplied_binding)?;
+        let bytes = self.store.load(&path)?;
+        let (mut document, original_bytes) = match bytes {
+            Some(bytes) => {
+                let document = parse_task_document(&bytes)?;
+                let expected = expected_revision.ok_or_else(|| {
+                    "任务正本已经存在。请先读取最新任务正本，再提交 daily-flow 写命令；未写入任何内容。"
+                        .to_string()
+                })?;
+                require_task_revision(&bytes, expected, &target_binding)?;
+                (document, Some(bytes))
+            }
+            None => {
+                if expected_revision.is_some() {
+                    return Err("任务正本已不存在。请刷新 Tasks 后重试；未创建替代数据。".into());
+                }
+                (
+                    TaskDocument {
+                        schema_version: TASK_SCHEMA_VERSION,
+                        lists: vec![inbox_record()],
+                        tasks: Vec::new(),
+                    },
+                    None,
+                )
+            }
+        };
+        if mutations.is_empty() {
+            return Ok(DailyFlowBatchResult {
+                view: self.read()?,
+                changed: false,
+                created_task_ids: Vec::new(),
+                preserved_task_ids: Vec::new(),
+                applied_operation_ids: Vec::new(),
+                idempotent_operation_ids: Vec::new(),
+                unchanged_operation_ids: Vec::new(),
+            });
+        }
+
+        let now = self.clock.current_timestamp_label();
+        validate_timestamp_label(&now)?;
+        let mut outcome = DailyFlowBatchOutcome::default();
+        let mut changed = false;
+        for mutation in mutations {
+            changed |= apply_daily_flow_mutation(&mut document, mutation, &now, &mut outcome)?;
+        }
+        if !changed {
+            return Ok(DailyFlowBatchResult {
+                view: self.read()?,
+                changed: false,
+                created_task_ids: outcome.created_task_ids,
+                preserved_task_ids: outcome.preserved_task_ids,
+                applied_operation_ids: outcome.applied_operation_ids,
+                idempotent_operation_ids: outcome.idempotent_operation_ids,
+                unchanged_operation_ids: outcome.unchanged_operation_ids,
+            });
+        }
+
+        let updated = encode_task_document(&document)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        match original_bytes {
+            Some(bytes) => self.store.save_if_unchanged(&path, &bytes, &updated)?,
+            None => self.store.create_new(&path, &updated)?,
+        }
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        Ok(DailyFlowBatchResult {
+            view: self.read()?,
+            changed: true,
+            created_task_ids: outcome.created_task_ids,
+            preserved_task_ids: outcome.preserved_task_ids,
+            applied_operation_ids: outcome.applied_operation_ids,
+            idempotent_operation_ids: outcome.idempotent_operation_ids,
+            unchanged_operation_ids: outcome.unchanged_operation_ids,
+        })
+    }
+
     fn ensure_bound_target_current(&self, path: &Path, target_binding: &str) -> Result<(), String> {
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Err(
@@ -982,6 +1151,7 @@ impl TasksView {
     pub(crate) fn unconfigured() -> Self {
         Self {
             state: TaskDataState::Unconfigured,
+            error_kind: None,
             message: "请选择 Vault，以读取 Tasks。".into(),
             schema_version: TASK_SCHEMA_VERSION,
             revision: None,
@@ -997,6 +1167,7 @@ impl TasksView {
     pub(crate) fn empty(target_binding: Option<String>, vault: Option<PathBuf>) -> Self {
         Self {
             state: TaskDataState::Empty,
+            error_kind: None,
             message: "Inbox 目前没有任务；新任务会先保存在 Inbox。".into(),
             schema_version: TASK_SCHEMA_VERSION,
             revision: None,
@@ -1017,6 +1188,7 @@ impl TasksView {
     ) -> Self {
         Self {
             state: TaskDataState::Error,
+            error_kind: None,
             message: message.into(),
             schema_version: TASK_SCHEMA_VERSION,
             revision,
@@ -1031,6 +1203,11 @@ impl TasksView {
 
     fn with_current_date(mut self, current_date: Option<String>) -> Self {
         self.current_date = current_date;
+        self
+    }
+
+    fn with_error_kind(mut self, error_kind: TaskDataErrorKind) -> Self {
+        self.error_kind = Some(error_kind);
         self
     }
 }
@@ -1103,6 +1280,7 @@ fn tasks_view(
 ) -> TasksView {
     TasksView {
         state,
+        error_kind: None,
         message,
         schema_version: document.schema_version,
         revision,
@@ -1136,7 +1314,7 @@ fn task_is_overdue(task: &TaskRecord, current_date: &str, current_time: &str) ->
         || (task_date == today && task.time.as_deref().is_some_and(|time| time < current_time))
 }
 
-fn normalize_name(value: &str) -> Result<String, String> {
+pub(crate) fn normalize_name(value: &str) -> Result<String, String> {
     let name = value.trim();
     if name.is_empty() {
         return Err("任务名称不能为空。".into());
@@ -1158,14 +1336,14 @@ fn normalize_list_name(value: &str) -> Result<String, String> {
     Ok(name.into())
 }
 
-fn normalize_content(value: Option<&str>) -> Option<String> {
+pub(crate) fn normalize_content(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_owned)
 }
 
-fn normalize_schedule(
+pub(crate) fn normalize_schedule(
     date: Option<&str>,
     time: Option<&str>,
 ) -> Result<(Option<String>, Option<String>), String> {
@@ -1192,7 +1370,7 @@ fn normalize_schedule(
     Ok((date, time))
 }
 
-fn validate_time(value: &str) -> Result<(), String> {
+pub(crate) fn validate_time(value: &str) -> Result<(), String> {
     let bytes = value.as_bytes();
     if bytes.len() != 5
         || bytes[2] != b':'
@@ -1216,29 +1394,328 @@ fn validate_time(value: &str) -> Result<(), String> {
 }
 
 fn task_from_create(input: &TaskCreateInput, now: &str) -> Result<TaskRecord, String> {
-    validate_local_identifier(&input.task_id, "任务标识")?;
-    let name = normalize_name(&input.name)?;
-    let (date, time) = normalize_schedule(input.date.as_deref(), input.time.as_deref())?;
-    let list_id = input.list_id.clone().unwrap_or_else(|| "inbox".into());
+    task_from_draft(TaskRecordDraft {
+        task_id: &input.task_id,
+        source_reference: None,
+        name: &input.name,
+        content: input.content.as_deref(),
+        date: input.date.as_deref(),
+        time: input.time.as_deref(),
+        list_id: input.list_id.as_deref(),
+        source_kind: TaskSourceKind::Manual,
+        now,
+    })
+}
+
+struct TaskRecordDraft<'a> {
+    task_id: &'a str,
+    source_reference: Option<&'a str>,
+    name: &'a str,
+    content: Option<&'a str>,
+    date: Option<&'a str>,
+    time: Option<&'a str>,
+    list_id: Option<&'a str>,
+    source_kind: TaskSourceKind,
+    now: &'a str,
+}
+
+fn task_from_draft(draft: TaskRecordDraft<'_>) -> Result<TaskRecord, String> {
+    validate_local_identifier(draft.task_id, "任务标识")?;
+    if draft.source_kind == TaskSourceKind::DailyFlow {
+        validate_local_identifier(draft.source_reference.unwrap_or_default(), "任务来源标识")?;
+    }
+    let name = normalize_name(draft.name)?;
+    let (date, time) = normalize_schedule(draft.date, draft.time)?;
+    let list_id = draft.list_id.unwrap_or("inbox").to_owned();
     validate_local_identifier(&list_id, "任务列表标识")?;
     Ok(TaskRecord {
-        id: input.task_id.clone(),
+        id: draft.task_id.to_owned(),
         name,
-        content: normalize_content(input.content.as_deref()),
+        content: normalize_content(draft.content),
         date,
         time,
         list_id,
         source: TaskSourceView {
-            kind: TaskSourceKind::Manual,
-            reference: None,
+            kind: draft.source_kind,
+            reference: draft.source_reference.map(str::to_owned),
         },
         state: TaskState::Pending,
         deleted_at: None,
         completion: None,
-        created_at: now.into(),
-        modified_at: now.into(),
+        created_at: draft.now.to_owned(),
+        modified_at: draft.now.to_owned(),
         changes: Vec::new(),
     })
+}
+
+fn apply_daily_flow_mutation(
+    document: &mut TaskDocument,
+    mutation: &DailyFlowMutation,
+    now: &str,
+    outcome: &mut DailyFlowBatchOutcome,
+) -> Result<bool, String> {
+    match mutation {
+        DailyFlowMutation::Create {
+            task_id,
+            source_reference,
+            name,
+            content,
+            date,
+            time,
+            list_id,
+        } => {
+            let desired = task_from_draft(TaskRecordDraft {
+                task_id,
+                source_reference: Some(source_reference),
+                name,
+                content: content.as_deref(),
+                date: date.as_deref(),
+                time: time.as_deref(),
+                list_id: list_id.as_deref(),
+                source_kind: TaskSourceKind::DailyFlow,
+                now,
+            })?;
+            if let Some(existing) = document.tasks.iter().find(|task| task.id == desired.id) {
+                if existing.source.kind == TaskSourceKind::DailyFlow
+                    && existing.source.reference.as_deref() == Some(source_reference.as_str())
+                {
+                    outcome.preserved_task_ids.push(task_id.clone());
+                    return Ok(false);
+                }
+                return Err(
+                    "该任务标识已用于其他任务；请使用新的稳定身份。未写入任何内容。".into(),
+                );
+            }
+            if document.tasks.iter().any(|task| {
+                task.source.kind == TaskSourceKind::DailyFlow
+                    && task.source.reference.as_deref() == Some(source_reference.as_str())
+            }) {
+                return Err(
+                    "该 daily-flow 来源标识已经绑定到其他任务；旧输入不会改绑对象。未写入任何内容。"
+                        .into(),
+                );
+            }
+            ensure_active_task_list_exists(document, &desired.list_id)?;
+            outcome.created_task_ids.push(task_id.clone());
+            document.tasks.push(desired);
+            Ok(true)
+        }
+        DailyFlowMutation::Reschedule {
+            task_id,
+            change_id,
+            date,
+            time,
+        } => {
+            validate_local_identifier(task_id, "任务标识")?;
+            validate_local_identifier(change_id, "任务修改标识")?;
+            let (date, time) = normalize_schedule(date.as_deref(), time.as_deref())?;
+            if let Some((task_index, change)) = find_task_change(document, change_id) {
+                if document.tasks[task_index].id == *task_id
+                    && reschedule_operation_matches(change, &date, &time)
+                {
+                    outcome.idempotent_operation_ids.push(change_id.clone());
+                    return Ok(false);
+                }
+                return Err("该 daily-flow 操作标识已用于其他操作；未写入任何内容。".into());
+            }
+            let task_index = document
+                .tasks
+                .iter()
+                .position(|task| task.id == *task_id)
+                .ok_or_else(|| "找不到要改期的任务；未写入任何内容。".to_string())?;
+            if document.tasks[task_index].deleted_at.is_some() {
+                return Err(
+                    "已删除任务不会被旧操作重新激活；请先恢复任务。未写入任何内容。".into(),
+                );
+            }
+            if document.tasks[task_index].date == date && document.tasks[task_index].time == time {
+                let task = &mut document.tasks[task_index];
+                task.modified_at = now.to_owned();
+                task.changes.push(task_noop_change(
+                    change_id.clone(),
+                    now.to_owned(),
+                    TaskChangeSourceKind::DailyFlow,
+                    TaskChangeOperation::Reschedule {
+                        date: date.clone(),
+                        time: time.clone(),
+                    },
+                ));
+                outcome.applied_operation_ids.push(change_id.clone());
+                return Ok(true);
+            }
+            let previous = document.tasks[task_index].clone();
+            let updated = TaskRecord {
+                date,
+                time,
+                modified_at: now.to_owned(),
+                ..previous.clone()
+            };
+            let change = task_change_with_source(
+                &previous,
+                &updated,
+                change_id.clone(),
+                now.to_owned(),
+                TaskChangeSourceKind::DailyFlow,
+            )?;
+            document.tasks[task_index] = updated;
+            document.tasks[task_index].changes.push(change);
+            outcome.applied_operation_ids.push(change_id.clone());
+            Ok(true)
+        }
+        DailyFlowMutation::SetState {
+            task_id,
+            change_id,
+            state,
+        } => {
+            validate_local_identifier(task_id, "任务标识")?;
+            validate_local_identifier(change_id, "任务修改标识")?;
+            if let Some((task_index, change)) = find_task_change(document, change_id) {
+                if document.tasks[task_index].id == *task_id
+                    && change.source == TaskChangeSourceKind::DailyFlow
+                    && state_change_matches(change, *state)
+                {
+                    outcome.idempotent_operation_ids.push(change_id.clone());
+                    return Ok(false);
+                }
+                return Err("该 daily-flow 操作标识已用于其他操作；未写入任何内容。".into());
+            }
+            let task_index = document
+                .tasks
+                .iter()
+                .position(|task| task.id == *task_id)
+                .ok_or_else(|| "找不到要更新状态的任务；未写入任何内容。".to_string())?;
+            if document.tasks[task_index].deleted_at.is_some() {
+                return Err(
+                    "已删除任务不会被旧操作重新激活；请先恢复任务。未写入任何内容。".into(),
+                );
+            }
+            if document.tasks[task_index].state == *state {
+                let task = &mut document.tasks[task_index];
+                task.modified_at = now.to_owned();
+                task.changes.push(task_noop_change(
+                    change_id.clone(),
+                    now.to_owned(),
+                    TaskChangeSourceKind::DailyFlow,
+                    TaskChangeOperation::SetState { state: *state },
+                ));
+                outcome.applied_operation_ids.push(change_id.clone());
+                return Ok(true);
+            }
+            if document.tasks[task_index].state == TaskState::Abandoned
+                && *state == TaskState::Completed
+            {
+                return Err(
+                    "放弃任务不会被旧 daily-flow 操作重新激活；请先明确恢复意图。未写入任何内容。"
+                        .into(),
+                );
+            }
+            let completion = if *state == TaskState::Completed {
+                Some(completion_from_timestamp(
+                    now,
+                    TaskCompletionSourceKind::DailyFlow,
+                )?)
+            } else {
+                None
+            };
+            let previous = document.tasks[task_index].clone();
+            let updated = TaskRecord {
+                state: *state,
+                completion,
+                modified_at: now.to_owned(),
+                ..previous.clone()
+            };
+            let change = task_state_change(
+                &previous,
+                &updated,
+                change_id.clone(),
+                now.to_owned(),
+                TaskChangeSourceKind::DailyFlow,
+            )?;
+            document.tasks[task_index] = updated;
+            document.tasks[task_index].changes.push(change);
+            outcome.applied_operation_ids.push(change_id.clone());
+            Ok(true)
+        }
+        DailyFlowMutation::CorrectCompletion {
+            task_id,
+            change_id,
+            completed_on,
+            completed_time,
+        } => {
+            validate_local_identifier(task_id, "任务标识")?;
+            validate_local_identifier(change_id, "任务修改标识")?;
+            validate_completion_date(completed_on)?;
+            if let Some(time) = completed_time.as_deref() {
+                validate_time(time)?;
+            }
+            if let Some((task_index, change)) = find_task_change(document, change_id) {
+                if document.tasks[task_index].id == *task_id
+                    && change.source == TaskChangeSourceKind::DailyFlow
+                    && completion_correction_matches(change, completed_on, completed_time)
+                {
+                    outcome.idempotent_operation_ids.push(change_id.clone());
+                    return Ok(false);
+                }
+                return Err("该 daily-flow 操作标识已用于其他操作；未写入任何内容。".into());
+            }
+            let task_index = document
+                .tasks
+                .iter()
+                .position(|task| task.id == *task_id)
+                .ok_or_else(|| "找不到要更正完成记录的任务；未写入任何内容。".to_string())?;
+            let task = &document.tasks[task_index];
+            if task.deleted_at.is_some() {
+                return Err(
+                    "已删除任务不会被旧操作重新激活；请先恢复任务。未写入任何内容。".into(),
+                );
+            }
+            if task.state != TaskState::Completed || task.completion.is_none() {
+                return Err("只有已明确完成的任务才能更正完成记录；未写入任何内容。".into());
+            }
+            if task.completion.as_ref().is_some_and(|completion| {
+                completion.completed_on == *completed_on
+                    && completion.completed_time == *completed_time
+            }) {
+                let task = &mut document.tasks[task_index];
+                task.modified_at = now.to_owned();
+                task.changes.push(task_noop_change(
+                    change_id.clone(),
+                    now.to_owned(),
+                    TaskChangeSourceKind::DailyFlow,
+                    TaskChangeOperation::CorrectCompletion {
+                        completed_on: completed_on.clone(),
+                        completed_time: completed_time.clone(),
+                    },
+                ));
+                outcome.applied_operation_ids.push(change_id.clone());
+                return Ok(true);
+            }
+            let completion = completion_from_correction_with_source(
+                completed_on,
+                completed_time.as_deref(),
+                now,
+                TaskCompletionSourceKind::DateCorrection,
+            )?;
+            let previous = task.clone();
+            let updated = TaskRecord {
+                completion: Some(completion),
+                modified_at: now.to_owned(),
+                ..previous.clone()
+            };
+            let change = task_lifecycle_change(
+                &previous,
+                &updated,
+                change_id.clone(),
+                TaskChangeKind::CompletionCorrected,
+                now.to_owned(),
+                TaskChangeSourceKind::DailyFlow,
+            );
+            document.tasks[task_index] = updated;
+            document.tasks[task_index].changes.push(change);
+            outcome.applied_operation_ids.push(change_id.clone());
+            Ok(true)
+        }
+    }
 }
 
 fn task_from_update(input: &TaskUpdateInput, current_list_id: &str) -> Result<TaskRecord, String> {
@@ -1301,7 +1778,7 @@ fn completion_from_timestamp(
     })
 }
 
-fn validate_completion_date(value: &str) -> Result<(), String> {
+pub(crate) fn validate_completion_date(value: &str) -> Result<(), String> {
     if CalendarDate::parse(value).is_some() {
         Ok(())
     } else {
@@ -1313,6 +1790,20 @@ fn completion_from_correction(
     completed_on: &str,
     completed_time: Option<&str>,
     recorded_at: &str,
+) -> Result<TaskCompletionView, String> {
+    completion_from_correction_with_source(
+        completed_on,
+        completed_time,
+        recorded_at,
+        TaskCompletionSourceKind::DateCorrection,
+    )
+}
+
+fn completion_from_correction_with_source(
+    completed_on: &str,
+    completed_time: Option<&str>,
+    recorded_at: &str,
+    source: TaskCompletionSourceKind,
 ) -> Result<TaskCompletionView, String> {
     validate_completion_date(completed_on)?;
     if let Some(time) = completed_time {
@@ -1337,19 +1828,69 @@ fn completion_from_correction(
         completed_on: completed_on.to_owned(),
         completed_time: completed_time.map(str::to_owned),
         recorded_at: recorded_at.to_owned(),
-        source: TaskCompletionSourceKind::DateCorrection,
+        source,
     })
 }
 
 fn state_change_matches(change: &TaskChangeView, state: TaskState) -> bool {
-    change.new_state == Some(state)
+    (change.new_state == Some(state)
         && matches!(
             (state, change.kind),
             (TaskState::Completed, TaskChangeKind::Completed)
                 | (TaskState::Pending, TaskChangeKind::Reopened)
                 | (TaskState::Pending, TaskChangeKind::Restored)
                 | (TaskState::Abandoned, TaskChangeKind::Abandoned)
-        )
+        ))
+        || (change.kind == TaskChangeKind::Noop
+            && change.source == TaskChangeSourceKind::DailyFlow
+            && change.operation == Some(TaskChangeOperation::SetState { state }))
+}
+
+fn reschedule_operation_matches(
+    change: &TaskChangeView,
+    date: &Option<String>,
+    time: &Option<String>,
+) -> bool {
+    if change.source != TaskChangeSourceKind::DailyFlow {
+        return false;
+    }
+    match change.kind {
+        TaskChangeKind::Rescheduled => change.new_date == *date && change.new_time == *time,
+        TaskChangeKind::Noop => matches!(
+            change.operation.as_ref(),
+            Some(TaskChangeOperation::Reschedule {
+                date: recorded_date,
+                time: recorded_time,
+            }) if recorded_date == date && recorded_time == time
+        ),
+        _ => false,
+    }
+}
+
+fn completion_correction_matches(
+    change: &TaskChangeView,
+    completed_on: &str,
+    completed_time: &Option<String>,
+) -> bool {
+    if change.source != TaskChangeSourceKind::DailyFlow {
+        return false;
+    }
+    match change.kind {
+        TaskChangeKind::CompletionCorrected => {
+            change.new_completion.as_ref().is_some_and(|completion| {
+                completion.completed_on == completed_on
+                    && completion.completed_time == *completed_time
+            })
+        }
+        TaskChangeKind::Noop => matches!(
+            change.operation.as_ref(),
+            Some(TaskChangeOperation::CorrectCompletion {
+                completed_on: recorded_date,
+                completed_time: recorded_time,
+            }) if recorded_date == completed_on && recorded_time == completed_time
+        ),
+        _ => false,
+    }
 }
 
 fn task_lifecycle_change(
@@ -1381,6 +1922,38 @@ fn task_lifecycle_change(
         new_deleted_at: updated.deleted_at.clone(),
         previous_completion: previous.completion.clone(),
         new_completion: updated.completion.clone(),
+        operation: None,
+    }
+}
+
+fn task_noop_change(
+    id: String,
+    changed_at: String,
+    source: TaskChangeSourceKind,
+    operation: TaskChangeOperation,
+) -> TaskChangeView {
+    TaskChangeView {
+        id,
+        kind: TaskChangeKind::Noop,
+        changed_at,
+        source,
+        previous_name: None,
+        new_name: None,
+        previous_content: None,
+        new_content: None,
+        previous_date: None,
+        new_date: None,
+        previous_time: None,
+        new_time: None,
+        previous_list_id: None,
+        new_list_id: None,
+        previous_state: None,
+        new_state: None,
+        previous_deleted_at: None,
+        new_deleted_at: None,
+        previous_completion: None,
+        new_completion: None,
+        operation: Some(operation),
     }
 }
 
@@ -1444,6 +2017,22 @@ fn task_change(
     id: String,
     changed_at: String,
 ) -> Result<TaskChangeView, String> {
+    task_change_with_source(
+        previous,
+        updated,
+        id,
+        changed_at,
+        TaskChangeSourceKind::User,
+    )
+}
+
+fn task_change_with_source(
+    previous: &TaskRecord,
+    updated: &TaskRecord,
+    id: String,
+    changed_at: String,
+    source: TaskChangeSourceKind,
+) -> Result<TaskChangeView, String> {
     let name_changed = previous.name != updated.name;
     let content_changed = previous.content != updated.content;
     let schedule_changed = previous.date != updated.date || previous.time != updated.time;
@@ -1474,7 +2063,7 @@ fn task_change(
         id,
         kind,
         changed_at,
-        source: TaskChangeSourceKind::User,
+        source,
         previous_name: name_changed.then(|| previous.name.clone()),
         new_name: name_changed.then(|| updated.name.clone()),
         previous_content: content_changed.then(|| previous.content.clone()).flatten(),
@@ -1491,6 +2080,7 @@ fn task_change(
         new_deleted_at: None,
         previous_completion: None,
         new_completion: None,
+        operation: None,
     })
 }
 
@@ -1550,8 +2140,14 @@ fn parse_task_document(bytes: &[u8]) -> Result<TaskDocument, String> {
     }
     let mut task_ids = HashSet::new();
     let mut change_ids = HashSet::new();
+    let mut daily_flow_references = HashSet::new();
     for task in &document.tasks {
         validate_task_record(task, &list_ids, &mut task_ids, &mut change_ids)?;
+        if task.source.kind == TaskSourceKind::DailyFlow
+            && !daily_flow_references.insert(task.source.reference.clone())
+        {
+            return Err("任务正本包含重复的 daily-flow 来源标识。".into());
+        }
     }
     Ok(document)
 }
@@ -1677,7 +2273,8 @@ fn validate_change(change: &TaskChangeView) -> Result<(), String> {
         || change.previous_deleted_at.is_some()
         || change.new_deleted_at.is_some()
         || change.previous_completion.is_some()
-        || change.new_completion.is_some();
+        || change.new_completion.is_some()
+        || change.operation.is_some();
     if !has_change {
         return Err("任务修改记录缺少前后变化。".into());
     }
@@ -1794,6 +2391,37 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
                 return Err("任务完成更正记录的前后状态或完成证据无效。".into());
             }
         }
+        TaskChangeKind::Noop => {
+            if change.source != TaskChangeSourceKind::DailyFlow
+                || has_field_change
+                || change.previous_state.is_some()
+                || change.new_state.is_some()
+                || change.previous_deleted_at.is_some()
+                || change.new_deleted_at.is_some()
+                || change.previous_completion.is_some()
+                || change.new_completion.is_some()
+            {
+                return Err("任务无变化操作记录不能携带字段前后值。".into());
+            }
+            match change.operation.as_ref() {
+                Some(TaskChangeOperation::Reschedule { date, time }) => {
+                    normalize_schedule(date.as_deref(), time.as_deref())?;
+                }
+                Some(TaskChangeOperation::SetState { .. }) => {}
+                Some(TaskChangeOperation::CorrectCompletion {
+                    completed_on,
+                    completed_time,
+                }) => {
+                    validate_completion_date(completed_on)?;
+                    if let Some(time) = completed_time.as_deref() {
+                        validate_time(time)?;
+                    }
+                }
+                None => {
+                    return Err("任务无变化操作记录缺少操作内容。".into());
+                }
+            }
+        }
         TaskChangeKind::Renamed
         | TaskChangeKind::ContentEdited
         | TaskChangeKind::Rescheduled
@@ -1805,6 +2433,7 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
                 || change.new_deleted_at.is_some()
                 || change.previous_completion.is_some()
                 || change.new_completion.is_some()
+                || change.operation.is_some()
             {
                 return Err("任务字段变更记录不能携带状态或完成生命周期字段。".into());
             }

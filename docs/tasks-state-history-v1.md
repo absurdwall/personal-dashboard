@@ -47,6 +47,9 @@ identity cannot reactivate a tombstoned task.
 
 History entries carry a `source` (`user` or `daily-flow`) and, for lifecycle
 changes, the previous and new state, deletion marker, and completion evidence.
+An already-satisfied daily-flow command appends a `noop` entry containing its
+operation payload; the first receipt is auditable and later reuse of that
+operation id remains idempotent after user edits.
 Missing optional fields in older schema-1 history entries default to the
 ticket-01 shape; malformed lifecycle combinations are rejected rather than
 treated as empty data.
