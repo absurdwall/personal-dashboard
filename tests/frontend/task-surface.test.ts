@@ -4,6 +4,7 @@ import test from "node:test";
 
 const html = readFileSync(new URL("../../frontend/index.html", import.meta.url), "utf8");
 const main = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
+const css = readFileSync(new URL("../../frontend/styles.css", import.meta.url), "utf8");
 const copies = readFileSync(new URL("../../frontend/interface-language.ts", import.meta.url), "utf8");
 
 test("Tasks is a real destination between Today and Calendar with Inbox and All editing", () => {
@@ -185,6 +186,52 @@ test("Today shared task copy has Chinese and English counterparts", () => {
     "today.legacyTasksHeading",
     "today.legacyTasksPresent",
     "today.legacyTasksReadOnly",
+  ]) {
+    const line = copies.split("\n").find((candidate) => candidate.includes(`"${key}"`));
+    assert.ok(line, `missing copy ${key}`);
+    assert.match(line, /zh:/);
+    assert.match(line, /en:/);
+  }
+});
+
+test("Calendar shows task previews and an editable shared task panel", () => {
+  for (const marker of [
+    'id="calendar-task-panel"',
+    'id="calendar-task-list"',
+    'id="calendar-task-create-form"',
+    'id="calendar-task-create-date"',
+    'id="calendar-task-create-list"',
+  ]) {
+    assert.match(html, new RegExp(marker));
+  }
+  assert.match(main, /calendarTaskSummary/);
+  assert.match(main, /calendarTaskOverflow/);
+  assert.match(main, /dataset\.taskState = task\.state/);
+  assert.match(main, /calendarTasksForDate\(/);
+  assert.match(main, /taskEditor\(task, writable, shared, "calendar"\)/);
+  assert.match(main, /async function createCalendarTask/);
+  assert.match(main, /updateTask\(taskId, form, "calendar"\)/);
+  assert.match(main, /setTaskState\(taskId, state, "calendar"\)/);
+  assert.match(main, /deleteTask\(remove\.dataset\.taskDelete, "calendar"\)/);
+  assert.match(main, /correctTaskCompletion\(correct\.dataset\.taskCorrectCompletion, form, "calendar"\)/);
+});
+
+test("Calendar isolates task selection changes and keeps state styles distinguishable", () => {
+  assert.match(main, /calendarTaskRequests\.invalidate\(\)/);
+  assert.match(main, /selectedCalendarDate !== date/);
+  assert.match(main, /currentCalendarSummaryView\?\.date === expectedDate/);
+  assert.match(css, /calendar-day-task-summary\[data-task-state="completed"\]/);
+  assert.match(css, /calendar-day-task-summary\[data-task-state="abandoned"\]/);
+});
+
+test("Calendar keeps the Daily Record entry and fixed copy bilingual", () => {
+  assert.match(html, /id="calendar-open-day"/);
+  for (const key of [
+    "calendar.taskSection",
+    "calendar.taskCount",
+    "calendar.taskEmpty",
+    "calendar.taskCreateDefault",
+    "calendar.taskOverflow",
   ]) {
     const line = copies.split("\n").find((candidate) => candidate.includes(`"${key}"`));
     assert.ok(line, `missing copy ${key}`);

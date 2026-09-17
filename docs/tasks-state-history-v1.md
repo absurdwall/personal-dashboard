@@ -62,9 +62,16 @@ there is immediately visible from Tasks without creating a second day-owned
 identity. A late completion keeps the scheduled date and is therefore still
 available from the scheduled-date history.
 
+Calendar is another presentation of the same records. Month cells show bounded
+previews for dated, non-deleted tasks, including tasks in archived lists; the
+selected-date panel exposes the full dated history and uses the same task
+identity for edits, state changes, rescheduling and completion correction. A
+future task does not require a Daily Record, and browsing an empty date remains
+read-only.
+
 ## Evidence boundary
 
 The contract is covered by isolated Rust workflow tests and frontend seam/static
 tests using synthetic Vaults. Those checks do not prove packaged macOS Tauri
-acceptance, real Vault/Drive synchronization, later Daily Flow or Calendar
-integration, or the packaged shared-task interaction.
+acceptance, real Vault/Drive synchronization, later Daily Flow integration, or
+packaged visual/keyboard shared-task interaction.

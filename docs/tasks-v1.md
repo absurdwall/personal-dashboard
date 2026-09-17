@@ -81,6 +81,23 @@ saving. The old per-day `day-tasks` files remain a labeled, read-only historical
 read path; Today reads them without accepting the old planning input or writing
 those files during normal 4.0 reads.
 
+## Calendar derived view
+
+Calendar keeps its existing Daily Record availability and Review semantics. Its
+month response adds up to two dated, non-deleted task title previews per cell
+plus an overflow count. The previews retain the task state so completed and
+abandoned work can be distinguished; archived-list tasks remain eligible for
+historical Calendar lookup. Undated tasks have no month-cell placement, and
+late completion does not move a task away from its scheduled date.
+
+Selecting a date, including its `+N` overflow label, reads that date through
+the existing `TodayApplication::read_date` boundary and presents the complete
+dated task set in the existing right-side panel. The panel uses the shared
+task id, binding, revision and mutation commands for editing, state changes,
+completion correction and rescheduling. New tasks default to the selected date
+and Inbox. Reading Calendar or saving a task only reads or writes the task
+source; it does not create or modify a Daily Record or Review.
+
 This source is independent of Dida365, Google Drive APIs, and Daily Record
-Markdown. Local success is not cloud-sync evidence. The daily-flow adapter,
-Calendar integration, and packaged acceptance remain later tickets.
+Markdown. Local success is not cloud-sync evidence. The daily-flow adapter and
+packaged acceptance remain later tickets.

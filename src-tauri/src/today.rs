@@ -7,7 +7,7 @@ pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
 };
 use crate::interface_language::InterfaceLanguage;
-use crate::tasks::{FileTaskStore, TaskApplication, TasksView};
+use crate::tasks::{FileTaskStore, TaskApplication, TaskState, TasksView};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
@@ -882,11 +882,21 @@ pub enum DailyRecordAvailability {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CalendarTaskSummaryView {
+    pub id: String,
+    pub name: String,
+    pub state: TaskState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CalendarDayView {
     pub date: String,
     pub in_month: bool,
     pub is_today: bool,
     pub availability: DailyRecordAvailability,
+    pub task_summaries: Vec<CalendarTaskSummaryView>,
+    pub task_overflow_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -902,6 +912,26 @@ impl CalendarMonthView {
     pub fn day(&self, date: &str) -> Option<&CalendarDayView> {
         self.days.iter().find(|day| day.date == date)
     }
+}
+
+fn calendar_task_summaries(view: &TasksView, date: &str) -> (Vec<CalendarTaskSummaryView>, usize) {
+    let mut summaries = Vec::new();
+    let mut total = 0usize;
+    for task in view
+        .tasks
+        .iter()
+        .filter(|task| task.date.as_deref() == Some(date) && task.deleted_at.is_none())
+    {
+        total += 1;
+        if summaries.len() < 2 {
+            summaries.push(CalendarTaskSummaryView {
+                id: task.id.clone(),
+                name: task.name.clone(),
+                state: task.state,
+            });
+        }
+    }
+    (summaries, total.saturating_sub(2))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -2528,6 +2558,7 @@ where
         let current_date = self.clock.current_date();
         let start = first_day.unix_days() - first_day.weekday_from_sunday();
         let vault = self.persistence.load_selected_vault()?;
+        let tasks = vault.as_deref().map(|vault| self.shared_tasks_for(vault));
         let mut days = Vec::with_capacity(42);
         for offset in 0..42 {
             let date = CalendarDate::from_unix_days(start + offset);
@@ -2539,11 +2570,17 @@ where
                     Err(_) => DailyRecordAvailability::Error,
                 },
             };
+            let (task_summaries, task_overflow_count) = tasks
+                .as_ref()
+                .map(|view| calendar_task_summaries(view, &date_label))
+                .unwrap_or_default();
             days.push(CalendarDayView {
                 date: date_label.clone(),
                 in_month: date.year == year && date.month == month,
                 is_today: date_label == current_date,
                 availability,
+                task_summaries,
+                task_overflow_count,
             });
         }
         Ok(CalendarMonthView {

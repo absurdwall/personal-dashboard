@@ -366,6 +366,52 @@
                   <button id="calendar-open-day" type="button" class="calendar-open-day" disabled>
                     <span data-i18n="calendar.openFullToday">打开完整 Today</span> <span aria-hidden="true">↗</span>
                   </button>
+                  <section id="calendar-task-panel" class="calendar-task-panel" aria-labelledby="calendar-task-heading">
+                    <div class="calendar-task-heading">
+                      <div>
+                        <p class="section-label" data-i18n="calendar.taskSection">选中日期 · 任务</p>
+                        <h3 id="calendar-task-heading" data-i18n="calendar.taskHeading">这一天的任务</h3>
+                      </div>
+                      <span id="calendar-task-count" class="tasks-count" aria-live="polite"></span>
+                    </div>
+                    <p id="calendar-task-status" class="today-status" role="status" aria-live="polite"></p>
+                    <div id="calendar-task-list" class="tasks-list calendar-task-list" aria-live="polite"></div>
+                    <p id="calendar-task-empty" class="task-empty" hidden data-i18n="calendar.taskEmpty">
+                      这一天还没有任务。
+                    </p>
+                    <form id="calendar-task-create-form" class="task-form task-create-form calendar-task-create-form" data-task-surface="calendar" hidden>
+                      <div class="task-form-heading">
+                        <h4 data-i18n="tasks.addHeading">新建任务</h4>
+                        <small data-i18n="calendar.taskCreateDefault">默认日期为选中日期，清单为 Inbox。</small>
+                      </div>
+                      <div class="task-form-grid">
+                        <label class="task-form-wide">
+                          <span data-i18n="tasks.name">名称</span>
+                          <input id="calendar-task-create-name" type="text" maxlength="160" required placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" data-task-name />
+                        </label>
+                        <label class="task-form-wide">
+                          <span data-i18n="tasks.content">内容（可选）</span>
+                          <textarea id="calendar-task-create-content" rows="2" placeholder="补充必要背景或下一步" data-i18n-placeholder="tasks.contentPlaceholder" data-task-content></textarea>
+                        </label>
+                        <label>
+                          <span data-i18n="tasks.list">清单</span>
+                          <select id="calendar-task-create-list" data-task-list></select>
+                        </label>
+                        <label>
+                          <span data-i18n="tasks.date">日期（可选）</span>
+                          <input id="calendar-task-create-date" type="date" data-task-date />
+                        </label>
+                        <label>
+                          <span data-i18n="tasks.time">时刻（需要日期）</span>
+                          <input id="calendar-task-create-time" type="time" data-task-time />
+                        </label>
+                      </div>
+                      <p class="task-form-boundary" data-i18n="calendar.taskBoundary">
+                        任务保存到独立正本；浏览 Calendar 不会创建或修改 Daily Record。
+                      </p>
+                      <button id="calendar-task-create-submit" type="submit" data-i18n="tasks.add">加入 Inbox</button>
+                    </form>
+                  </section>
                 </aside>
               </div>
             </section>

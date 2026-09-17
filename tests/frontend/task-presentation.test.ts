@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  calendarTasksForDate,
   isCurrentTaskResponse,
   normalizeTaskSchedule,
   taskListMutationConfirmed,
@@ -117,4 +118,19 @@ test("a historical Today date keeps its dated tasks in the scheduled group", () 
     ["historical-pending", "historical-late"],
   );
   assert.deepEqual(groups.overdue, []);
+});
+
+test("Calendar keeps dated history, including archived-list tasks, without deleted or undated work", () => {
+  const tasks = [
+    { id: "active", date: "2026-09-05", deletedAt: null },
+    { id: "archived", date: "2026-09-05", deletedAt: null },
+    { id: "deleted", date: "2026-09-05", deletedAt: "2026-09-06T09:00-04:00" },
+    { id: "undated", date: null, deletedAt: null },
+    { id: "other-day", date: "2026-09-06", deletedAt: null },
+  ];
+
+  assert.deepEqual(
+    calendarTasksForDate(tasks, "2026-09-05").map((task) => task.id),
+    ["active", "archived"],
+  );
 });

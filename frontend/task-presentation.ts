@@ -24,6 +24,13 @@ export function taskListIdFromScope(scope: TaskListScope): string | null {
   return scope.startsWith("list:") ? scope.slice("list:".length) : null;
 }
 
+export function calendarTasksForDate<T extends Readonly<{
+  date: string | null;
+  deletedAt: string | null;
+}>>(tasks: readonly T[], date: string): readonly T[] {
+  return tasks.filter((task) => task.date === date && task.deletedAt === null);
+}
+
 export function taskVisibleInScope(
   task: Readonly<{
     listId: string;

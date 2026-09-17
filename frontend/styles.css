@@ -6895,3 +6895,142 @@ body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Personal Dashboard 4.0 ticket 05: Calendar task previews and shared editor. */
+.app-shell[data-workspace-destination="calendar"] .calendar-day {
+  min-height: 100px;
+}
+
+.calendar-day-task-summaries {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 0.15rem;
+  margin-top: 0.25rem;
+}
+
+.calendar-day-task-summaries:empty,
+.calendar-day-task-overflow:empty {
+  display: none;
+}
+
+.calendar-day-task-summary {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  padding-left: 0.35rem;
+  border-left: 2px solid var(--parity-accent);
+  color: var(--parity-ink);
+  font-size: 0.56rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-day-task-summary[data-task-state="completed"] {
+  border-left-color: var(--parity-accent-strong);
+  color: var(--parity-muted);
+  text-decoration: line-through;
+}
+
+.calendar-day-task-summary[data-task-state="abandoned"] {
+  border-left-style: dashed;
+  border-left-color: #a95649;
+  color: var(--parity-muted);
+  opacity: 0.9;
+}
+
+.calendar-day-task-overflow {
+  min-height: 0.72rem;
+  margin-top: 0.12rem;
+  color: var(--parity-accent-strong);
+  font-size: 0.56rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.calendar-day.has-calendar-tasks .calendar-day-marker {
+  margin-top: 0.15rem;
+}
+
+.app-shell[data-workspace-destination="calendar"] .calendar-task-panel {
+  margin-top: 1.25rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--parity-border);
+}
+
+.calendar-task-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.calendar-task-heading .section-label {
+  margin-bottom: 0.35rem;
+  color: var(--parity-accent-strong);
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.calendar-task-heading h3 {
+  margin: 0;
+  color: var(--parity-ink);
+  font-size: 0.92rem;
+}
+
+.calendar-task-heading .tasks-count {
+  flex: 0 0 auto;
+  margin-left: 0;
+  font-size: 0.6rem;
+  text-align: right;
+}
+
+.calendar-task-panel > .today-status {
+  margin: 0.65rem 0 0;
+  color: var(--parity-muted);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+.calendar-task-panel > .today-status[data-state="error"] {
+  color: #8a3d31;
+}
+
+.calendar-task-list {
+  margin-top: 0.8rem;
+}
+
+.calendar-task-list:empty {
+  display: none;
+}
+
+.calendar-task-create-form {
+  margin-top: 1rem;
+}
+
+@media (max-width: 680px) {
+  .app-shell[data-workspace-destination="calendar"] .calendar-day {
+    min-height: 82px;
+    padding: 0.45rem;
+  }
+
+  .calendar-day-task-summaries .calendar-day-task-summary:nth-child(n + 2) {
+    display: none;
+  }
+
+  .calendar-day-task-summary,
+  .calendar-day-task-overflow {
+    font-size: 0.52rem;
+  }
+
+  .calendar-task-heading {
+    align-items: start;
+  }
+
+  .calendar-task-heading .tasks-count {
+    max-width: 5rem;
+  }
+}
