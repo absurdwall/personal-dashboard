@@ -51,9 +51,14 @@ Missing optional fields in older schema-1 history entries default to the
 ticket-01 shape; malformed lifecycle combinations are rejected rather than
 treated as empty data.
 
+Task list changes do not rewrite task history. Renaming preserves the list id,
+moving a task appends a `list-moved` entry, and archiving/restoring a list only
+changes the list's visibility flag. Restoring a task from an archived list
+does not implicitly restore that list.
+
 ## Evidence boundary
 
 The contract is covered by isolated Rust workflow tests and frontend seam/static
 tests using synthetic Vaults. Those checks do not prove packaged macOS Tauri
-acceptance, real Vault/Drive synchronization, or later Daily Flow, list, Today,
-or Calendar integrations.
+acceptance, real Vault/Drive synchronization, or later Daily Flow, Today, or
+Calendar integrations.

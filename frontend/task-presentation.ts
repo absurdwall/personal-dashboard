@@ -6,16 +6,35 @@ export type TaskSchedulePresentation = Readonly<{
 
 export type TaskStateFilter = "all" | "pending" | "completed" | "abandoned" | "deleted";
 
+export type TaskListScope = "all" | "inbox" | "archived" | `list:${string}`;
+
+export function taskListScopeForId(listId: string): TaskListScope {
+  return `list:${listId}`;
+}
+
+export function taskListIdFromScope(scope: TaskListScope): string | null {
+  return scope.startsWith("list:") ? scope.slice("list:".length) : null;
+}
+
 export function taskVisibleInScope(
   task: Readonly<{
     listId: string;
+    listArchived?: boolean;
     state: Exclude<TaskStateFilter, "all" | "deleted">;
     deletedAt: string | null;
   }>,
-  listScope: "all" | "inbox",
+  listScope: TaskListScope,
   stateScope: TaskStateFilter,
 ): boolean {
-  if (listScope === "inbox" && task.listId !== "inbox") return false;
+  const listMatches =
+    listScope === "archived"
+      ? task.listArchived === true
+      : listScope === "all"
+        ? task.listArchived !== true
+        : listScope === "inbox"
+          ? task.listId === "inbox" && task.listArchived !== true
+          : task.listId === taskListIdFromScope(listScope) && task.listArchived !== true;
+  if (!listMatches) return false;
   if (stateScope === "deleted") return task.deletedAt !== null;
   return (
     task.deletedAt === null &&
@@ -55,4 +74,12 @@ export function taskMutationConfirmed(
   taskFound: boolean,
 ): boolean {
   return responseIsCurrent && viewState === "ready" && taskFound;
+}
+
+export function taskListMutationConfirmed(
+  responseIsCurrent: boolean,
+  viewState: "unconfigured" | "empty" | "ready" | "error",
+  listFound: boolean,
+): boolean {
+  return responseIsCurrent && (viewState === "ready" || viewState === "empty") && listFound;
 }

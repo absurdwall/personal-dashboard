@@ -42,7 +42,8 @@ use platform::{
 };
 use tasks::{
     FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput,
-    TaskDeleteInput, TaskRestoreInput, TaskStateInput, TaskUpdateInput, TasksView,
+    TaskDeleteInput, TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput,
+    TaskListRestoreInput, TaskRestoreInput, TaskStateInput, TaskUpdateInput, TasksView,
 };
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
@@ -182,6 +183,38 @@ fn create_task(
     input: TaskCreateInput,
 ) -> Result<TasksView, String> {
     application.create(input)
+}
+
+#[tauri::command]
+fn create_task_list(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskListCreateInput,
+) -> Result<TasksView, String> {
+    application.create_list(input)
+}
+
+#[tauri::command]
+fn rename_task_list(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskListRenameInput,
+) -> Result<TasksView, String> {
+    application.rename_list(input)
+}
+
+#[tauri::command]
+fn archive_task_list(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskListArchiveInput,
+) -> Result<TasksView, String> {
+    application.archive_list(input)
+}
+
+#[tauri::command]
+fn restore_task_list(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskListRestoreInput,
+) -> Result<TasksView, String> {
+    application.restore_list(input)
 }
 
 #[tauri::command]
@@ -426,6 +459,10 @@ pub fn run() {
             habit_snapshot,
             tasks_view,
             create_task,
+            create_task_list,
+            rename_task_list,
+            archive_task_list,
+            restore_task_list,
             update_task,
             set_task_state,
             delete_task,
@@ -462,6 +499,10 @@ pub fn run() {
         habit_snapshot,
         tasks_view,
         create_task,
+        create_task_list,
+        rename_task_list,
+        archive_task_list,
+        restore_task_list,
         update_task,
         set_task_state,
         delete_task,

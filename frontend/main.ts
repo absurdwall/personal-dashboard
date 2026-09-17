@@ -38,8 +38,12 @@ import { preserveTodayDayTaskPlanError } from "./day-task-presentation.js";
 import {
   isCurrentTaskResponse,
   normalizeTaskSchedule,
+  taskListIdFromScope,
+  taskListMutationConfirmed,
+  taskListScopeForId,
   taskMutationConfirmed,
   taskVisibleInScope,
+  type TaskListScope,
 } from "./task-presentation.js";
 import {
   habitCompletionPresentation,
@@ -507,7 +511,6 @@ const calendarSummaryCopy = document.querySelector<HTMLElement>("#calendar-summa
 const calendarOpenDay = document.querySelector<HTMLButtonElement>("#calendar-open-day");
 const tasksDestination = document.querySelector<HTMLElement>("#workspace-destination-tasks");
 const tasksStatus = document.querySelector<HTMLElement>("#tasks-status");
-const tasksScopeButtons = document.querySelectorAll<HTMLButtonElement>("[data-task-scope]");
 const tasksStateButtons = document.querySelectorAll<HTMLButtonElement>("[data-task-state]");
 const tasksCount = document.querySelector<HTMLElement>("#tasks-count");
 const tasksList = document.querySelector<HTMLElement>("#tasks-list");
@@ -515,9 +518,15 @@ const tasksEmpty = document.querySelector<HTMLElement>("#tasks-empty");
 const taskCreateForm = document.querySelector<HTMLFormElement>("#task-create-form");
 const taskCreateName = document.querySelector<HTMLInputElement>("#task-create-name");
 const taskCreateContent = document.querySelector<HTMLTextAreaElement>("#task-create-content");
+const taskCreateList = document.querySelector<HTMLSelectElement>("#task-create-list");
+const taskCreateListLabel = document.querySelector<HTMLElement>("#task-create-list-label");
 const taskCreateDate = document.querySelector<HTMLInputElement>("#task-create-date");
 const taskCreateTime = document.querySelector<HTMLInputElement>("#task-create-time");
 const taskCreateSubmit = document.querySelector<HTMLButtonElement>("#task-create-submit");
+const taskListScopes = document.querySelector<HTMLElement>("#tasks-list-scopes");
+const taskListCreateForm = document.querySelector<HTMLFormElement>("#task-list-create-form");
+const taskListCreateName = document.querySelector<HTMLInputElement>("#task-list-create-name");
+const taskListsManagement = document.querySelector<HTMLElement>("#tasks-lists-management");
 const refreshTasksButton = document.querySelector<HTMLButtonElement>("#refresh-tasks");
 const habitsStatus = document.querySelector<HTMLElement>("#habits-status");
 const habitsDestination = document.querySelector<HTMLElement>("#workspace-destination-habits");
@@ -657,7 +666,7 @@ const vaultSelectionRequests = new LatestRequest();
 let currentTodayPhase: TodayPhase = "morning";
 let currentTodayView: TodayView | null = null;
 let currentTasksView: TasksView | null = null;
-let taskScope: "all" | "inbox" = "all";
+let taskScope: TaskListScope = "all";
 let taskStateScope: "all" | "pending" | "completed" | "abandoned" | "deleted" = "all";
 let taskOperationCount = 0;
 let taskRefreshQueued = false;
@@ -667,11 +676,14 @@ type TaskDraft = Readonly<{
   content: string;
   date: string;
   time: string;
+  listId: string | null;
   completionDate: string;
   completionTime: string;
 }>;
 const taskCreateDrafts = new Map<string, TaskDraft>();
 const taskEditDrafts = new Map<string, TaskDraft>();
+const taskListCreateDrafts = new Map<string, string>();
+const taskListRenameDrafts = new Map<string, string>();
 const taskOperationIds = new Map<string, string>();
 const dayTaskRenameDrafts = new Map<string, string>();
 const dayTaskAddDrafts = new Map<string, string>();
@@ -833,6 +845,8 @@ function resetVaultScopedWorkspaceState(): void {
   datedNoteDrafts.clear();
   taskCreateDrafts.clear();
   taskEditDrafts.clear();
+  taskListCreateDrafts.clear();
+  taskListRenameDrafts.clear();
   taskOperationIds.clear();
   dayTaskRenameDrafts.clear();
   dayTaskAddDrafts.clear();
@@ -840,6 +854,13 @@ function resetVaultScopedWorkspaceState(): void {
   habitCompletionOperationIds.clear();
   if (dayTaskAddInput) dayTaskAddInput.value = "";
   taskCreateForm?.reset();
+  taskListCreateForm?.reset();
+  taskCreateForm?.toggleAttribute("hidden", true);
+  taskListCreateForm?.toggleAttribute("hidden", true);
+  taskListScopes?.replaceChildren();
+  taskListsManagement?.replaceChildren();
+  setCopy(taskCreateListLabel, "tasks.inbox");
+  setCopy(taskCreateSubmit, "tasks.add");
   normalizeTaskDateTimeFields(taskCreateDate, taskCreateTime);
   tasksList?.replaceChildren();
   if (tasksCount) tasksCount.textContent = "";
@@ -3560,11 +3581,12 @@ function readTaskDraft(form: HTMLFormElement): TaskDraft {
   const content = form.querySelector<HTMLTextAreaElement>("[data-task-content]")?.value ?? "";
   const date = form.querySelector<HTMLInputElement>("[data-task-date]")?.value ?? "";
   const time = form.querySelector<HTMLInputElement>("[data-task-time]")?.value ?? "";
+  const listId = form.querySelector<HTMLSelectElement>("[data-task-list]")?.value || null;
   const completionDate =
     form.querySelector<HTMLInputElement>("[data-task-completion-date]")?.value ?? "";
   const completionTime =
     form.querySelector<HTMLInputElement>("[data-task-completion-time]")?.value ?? "";
-  return { name, content, date, time, completionDate, completionTime };
+  return { name, content, date, time, listId, completionDate, completionTime };
 }
 
 function isBlankTaskDraft(draft: TaskDraft): boolean {
@@ -3776,6 +3798,139 @@ function taskChangeHistory(task: TaskView): HTMLElement | null {
   return history;
 }
 
+type TaskListView = TasksView["lists"][number];
+
+function taskListForId(view: TasksView, listId: string): TaskListView | undefined {
+  return view.lists.find((list) => list.id === listId);
+}
+
+function activeTaskLists(view: TasksView): readonly TaskListView[] {
+  return view.lists.filter((list) => !list.archived);
+}
+
+function taskListCount(view: TasksView, listId: string): number {
+  return view.tasks.filter((task) => task.listId === listId && task.deletedAt === null).length;
+}
+
+function renderTaskListScopeButtons(view: TasksView): void {
+  if (!taskListScopes) return;
+  const buttons: HTMLButtonElement[] = [];
+  const addButton = (scope: TaskListScope, copyKey: InterfaceCopyKey): void => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.role = "tab";
+    button.dataset.taskScope = scope;
+    setCopy(button, copyKey);
+    buttons.push(button);
+  };
+  addButton("all", "tasks.scopeAll");
+  addButton("inbox", "tasks.scopeInbox");
+  for (const list of view.lists.filter((candidate) => !candidate.isSystem && !candidate.archived)) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.role = "tab";
+    button.dataset.taskScope = taskListScopeForId(list.id);
+    button.textContent = list.name;
+    button.title = list.name;
+    buttons.push(button);
+  }
+  addButton("archived", "tasks.scopeArchived");
+  taskListScopes.replaceChildren(...buttons);
+}
+
+function renderTaskListSelect(
+  select: HTMLSelectElement | null,
+  view: TasksView,
+  selectedListId: string | null,
+  includeArchivedCurrent = false,
+): void {
+  if (!select) return;
+  const options = activeTaskLists(view).slice();
+  if (includeArchivedCurrent && selectedListId) {
+    const current = taskListForId(view, selectedListId);
+    if (current?.archived) options.push(current);
+  }
+  select.replaceChildren(
+    ...options.map((list) => {
+      const option = document.createElement("option");
+      option.value = list.id;
+      option.textContent = list.archived ? `${list.name} · ${t("tasks.archivedLabel")}` : list.name;
+      option.disabled = list.archived && list.id !== selectedListId;
+      return option;
+    }),
+  );
+  const fallback = options.find((list) => list.id === "inbox")?.id ?? options[0]?.id ?? "";
+  select.value = options.some((list) => list.id === selectedListId)
+    ? selectedListId ?? ""
+    : fallback;
+}
+
+function taskCreateListDefault(view: TasksView): string {
+  const scopedListId = taskListIdFromScope(taskScope);
+  const scopedList = scopedListId ? taskListForId(view, scopedListId) : undefined;
+  return scopedList && !scopedList.archived ? scopedList.id : "inbox";
+}
+
+function taskListRenameDraftKey(binding: string, listId: string): string {
+  return `${binding}:${listId}`;
+}
+
+function renderTaskListManagement(view: TasksView, canOperate: boolean): void {
+  if (!taskListsManagement) return;
+  const rows = view.lists.map((list) => {
+    const row = document.createElement("article");
+    row.className = "task-list-row";
+    row.classList.toggle("is-archived", list.archived);
+    const heading = document.createElement("div");
+    heading.className = "task-list-row-heading";
+    const title = document.createElement("strong");
+    title.textContent = list.name;
+    const count = document.createElement("small");
+    count.className = "task-meta";
+    setCopy(count, "tasks.listCount", { count: taskListCount(view, list.id) });
+    heading.append(title, count);
+    row.append(heading);
+    if (list.isSystem) {
+      const permanent = document.createElement("small");
+      setCopy(permanent, "tasks.permanentList");
+      permanent.className = "task-meta";
+      row.append(permanent);
+      return row;
+    }
+    const form = document.createElement("form");
+    form.className = "task-list-row-form";
+    form.dataset.taskListEditor = list.id;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.maxLength = 80;
+    input.required = true;
+    input.value = currentTasksView?.targetBinding
+      ? taskListRenameDrafts.get(taskListRenameDraftKey(currentTasksView.targetBinding, list.id)) ?? list.name
+      : list.name;
+    input.dataset.taskListName = "";
+    input.setAttribute("aria-label", t("tasks.renameListLabel", { list: list.name }));
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.disabled = !canOperate;
+    setCopy(save, "tasks.saveList");
+    const archive = document.createElement("button");
+    archive.type = "button";
+    archive.className = "secondary-button";
+    archive.disabled = !canOperate;
+    if (list.archived) {
+      archive.dataset.taskListRestore = list.id;
+      setCopy(archive, "tasks.restoreList");
+    } else {
+      archive.dataset.taskListArchive = list.id;
+      setCopy(archive, "tasks.archiveList");
+    }
+    form.append(input, save, archive);
+    row.append(form);
+    return row;
+  });
+  taskListsManagement.replaceChildren(...rows);
+}
+
 function taskEditor(task: TaskView, writable: boolean): HTMLElement {
   const binding = currentTasksView?.targetBinding;
   const draft = binding
@@ -3915,7 +4070,19 @@ function taskEditor(task: TaskView, writable: boolean): HTMLElement {
   timeCaption.append(time);
   timeLabel.append(timeCaption);
 
-  grid.append(nameLabel, contentLabel, dateLabel, timeLabel);
+  const listLabel = document.createElement("label");
+  const listCaption = document.createElement("span");
+  setCopy(listCaption, "tasks.list");
+  const list = document.createElement("select");
+  list.disabled = !editable;
+  list.dataset.taskList = "";
+  if (currentTasksView) {
+    renderTaskListSelect(list, currentTasksView, draft?.listId ?? task.listId, true);
+  }
+  listCaption.append(list);
+  listLabel.append(listCaption);
+
+  grid.append(nameLabel, contentLabel, listLabel, dateLabel, timeLabel);
   const footer = document.createElement("div");
   footer.className = "task-editor-footer";
   const schedule = document.createElement("small");
@@ -3987,10 +4154,25 @@ function taskEditor(task: TaskView, writable: boolean): HTMLElement {
 
 function renderTasks(view: TasksView): void {
   currentTasksView = view;
-  const visibleTasks = view.tasks.filter((task) =>
-    taskVisibleInScope(task, taskScope, taskStateScope),
+  const scopedListId = taskListIdFromScope(taskScope);
+  const scopedList = scopedListId ? taskListForId(view, scopedListId) : undefined;
+  if (taskScope !== "all" && taskScope !== "inbox" && taskScope !== "archived" && !scopedList) {
+    taskScope = "all";
+  } else if (scopedList?.archived) {
+    taskScope = "archived";
+  }
+  renderTaskListScopeButtons(view);
+  const archivedListIds = new Set(
+    view.lists.filter((list) => list.archived).map((list) => list.id),
   );
-  tasksScopeButtons.forEach((button) => {
+  const visibleTasks = view.tasks.filter((task) =>
+    taskVisibleInScope(
+      { ...task, listArchived: archivedListIds.has(task.listId) },
+      taskScope,
+      taskStateScope,
+    ),
+  );
+  taskListScopes?.querySelectorAll<HTMLButtonElement>("[data-task-scope]").forEach((button) => {
     const selected = button.dataset.taskScope === taskScope;
     button.setAttribute("aria-selected", String(selected));
     button.tabIndex = selected ? 0 : -1;
@@ -4028,6 +4210,8 @@ function renderTasks(view: TasksView): void {
           ? "tasks.emptyDeleted"
           : taskScope === "inbox"
             ? "tasks.empty"
+            : taskScope === "archived"
+              ? "tasks.emptyArchived"
             : "tasks.emptyAll",
       );
     }
@@ -4038,18 +4222,45 @@ function renderTasks(view: TasksView): void {
     view.state !== "unconfigured" &&
     taskOperationCount === 0;
   const writable = canOperate && taskStateScope !== "deleted";
+  renderTaskListManagement(view, canOperate);
+  if (taskListCreateForm) {
+    taskListCreateForm.hidden = !canOperate;
+    if (view.targetBinding && taskListCreateName) {
+      taskListCreateName.value = taskListCreateDrafts.get(view.targetBinding) ?? "";
+    }
+  }
   if (taskCreateForm) {
-    taskCreateForm.hidden = !writable;
+    taskCreateForm.hidden = !writable || taskScope === "archived";
     const draft = view.targetBinding
       ? taskCreateDrafts.get(view.targetBinding)
       : undefined;
+    renderTaskListSelect(
+      taskCreateList,
+      view,
+      draft?.listId ?? taskCreateListDefault(view),
+    );
+    const selectedCreateList = taskListForId(view, taskCreateList?.value ?? "inbox");
+    if (selectedCreateList && taskCreateListLabel) {
+      setRawText(taskCreateListLabel, selectedCreateList.name);
+      if (taskCreateSubmit) {
+        setRawText(
+          taskCreateSubmit,
+          selectedCreateList.id === "inbox"
+            ? t("tasks.add")
+            : t("tasks.addToList", { list: selectedCreateList.name }),
+        );
+      }
+    }
     if (taskCreateName) taskCreateName.value = draft?.name ?? "";
     if (taskCreateContent) taskCreateContent.value = draft?.content ?? "";
     if (taskCreateDate) taskCreateDate.value = draft?.date ?? "";
     if (taskCreateTime) taskCreateTime.value = draft?.time ?? "";
     normalizeTaskDateTimeFields(taskCreateDate, taskCreateTime);
   }
-  taskCreateSubmit?.toggleAttribute("disabled", !writable);
+  taskCreateSubmit?.toggleAttribute(
+    "disabled",
+    !writable || taskScope === "archived",
+  );
   tasksList?.replaceChildren(...visibleTasks.map((task) => taskEditor(task, canOperate)));
 }
 
@@ -4075,16 +4286,27 @@ function updateTaskOperationState(delta: number): void {
     currentTasksView?.state !== "unconfigured";
   const writable = canOperate && taskStateScope !== "deleted";
   if (taskCreateForm) {
-    taskCreateForm.hidden = !writable;
-    taskCreateForm.querySelectorAll("input, textarea, button").forEach((element) => {
+    taskCreateForm.hidden = !writable || taskScope === "archived";
+    taskCreateForm.querySelectorAll("input, textarea, select, button").forEach((element) => {
       (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
         busy;
     });
     if (!busy) normalizeTaskDateTimeFields(taskCreateDate, taskCreateTime, !writable);
   }
-  taskCreateSubmit?.toggleAttribute("disabled", busy || !writable);
-  tasksScopeButtons.forEach((button) => button.toggleAttribute("disabled", busy));
+  taskCreateSubmit?.toggleAttribute(
+    "disabled",
+    busy || !writable || taskScope === "archived",
+  );
+  taskListCreateForm?.querySelectorAll("input, button").forEach((element) => {
+    (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !canOperate;
+  });
+  taskListScopes?.querySelectorAll<HTMLButtonElement>("[data-task-scope]").forEach((button) =>
+    button.toggleAttribute("disabled", busy),
+  );
   tasksStateButtons.forEach((button) => button.toggleAttribute("disabled", busy));
+  taskListsManagement?.querySelectorAll("input, button").forEach((element) => {
+    (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !canOperate;
+  });
   tasksList?.querySelectorAll(
     "input[data-task-state-action], button[data-task-state-action], button[data-task-delete], button[data-task-restore]",
   ).forEach((element) => {
@@ -4188,6 +4410,7 @@ async function createTask(): Promise<boolean> {
     taskCreateTime?.value,
   );
   const content = taskCreateContent?.value ?? "";
+  const listId = taskCreateList?.value || "inbox";
   const operationKey = JSON.stringify([binding, "create"]);
   const taskId = stableTaskOperationId(operationKey, "manual-task");
   const request = taskRequests.begin();
@@ -4202,7 +4425,7 @@ async function createTask(): Promise<boolean> {
         content: content.trim() || null,
         date: normalized.date,
         time: normalized.time,
-        listId: "inbox",
+        listId,
       },
     });
     const responseIsCurrent =
@@ -4220,7 +4443,7 @@ async function createTask(): Promise<boolean> {
         task.content === (content.trim() || null) &&
         task.date === normalized.date &&
         task.time === normalized.time &&
-        task.listId === "inbox",
+        task.listId === listId,
     );
     const confirmed = taskMutationConfirmed(
       responseIsCurrent,
@@ -4258,6 +4481,189 @@ async function createTask(): Promise<boolean> {
   }
 }
 
+type TaskListCommand =
+  | "create_task_list"
+  | "rename_task_list"
+  | "archive_task_list"
+  | "restore_task_list";
+
+async function saveTaskListMutation(
+  command: TaskListCommand,
+  loaded: TasksView,
+  listId: string,
+  operationKey: string,
+  input: Record<string, unknown>,
+  confirms: (list: TaskListView) => boolean,
+  preserveDraft: (() => void) | null = null,
+  clearDraft: (() => void) | null = null,
+): Promise<boolean> {
+  if (
+    !loaded.targetBinding ||
+    loaded.state === "error" ||
+    loaded.state === "unconfigured" ||
+    taskOperationCount > 0
+  ) {
+    setCopyError(tasksStatus, "tasks.notSaved", t("tasks.refreshFirst"));
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    return false;
+  }
+  const request = taskRequests.begin();
+  updateTaskOperationState(1);
+  try {
+    const view = await window.__TAURI__.core.invoke<TasksView>(command, { input });
+    const responseIsCurrent = isCurrentTaskResponse(
+      taskRequests,
+      request,
+      currentWorkspaceDestination,
+      loaded.targetBinding,
+      view.targetBinding,
+    );
+    const savedList = view.lists.find((list) => list.id === listId && confirms(list));
+    const confirmed = taskListMutationConfirmed(
+      responseIsCurrent,
+      view.state,
+      Boolean(savedList),
+    );
+    if (confirmed) {
+      taskOperationIds.delete(operationKey);
+      clearDraft?.();
+      renderTasks(view);
+      setCopy(tasksStatus, "tasks.listSaved");
+      if (tasksStatus) tasksStatus.dataset.state = "ready";
+    } else if (responseIsCurrent) {
+      preserveDraft?.();
+      renderTasks(view);
+      setCopyError(
+        tasksStatus,
+        "tasks.notSaved",
+        view.state === "error" ? view.message : t("tasks.confirmationFailed"),
+      );
+      if (tasksStatus) tasksStatus.dataset.state = "error";
+    }
+    return confirmed;
+  } catch (error) {
+    if (taskRequests.isCurrent(request) && currentWorkspaceDestination === "tasks") {
+      preserveDraft?.();
+      renderTasks(loaded);
+      setCopyError(tasksStatus, "tasks.notSaved", error);
+      if (tasksStatus) tasksStatus.dataset.state = "error";
+    }
+    return false;
+  } finally {
+    updateTaskOperationState(-1);
+  }
+}
+
+async function createTaskList(): Promise<boolean> {
+  const loaded = currentTasksView;
+  const binding = loaded?.targetBinding;
+  if (
+    !loaded ||
+    !binding ||
+    loaded.state === "error" ||
+    loaded.state === "unconfigured" ||
+    taskOperationCount > 0
+  ) {
+    setCopyError(tasksStatus, "tasks.notSaved", t("tasks.refreshFirst"));
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    return false;
+  }
+  const name = taskListCreateName?.value.trim() ?? "";
+  if (!name) {
+    setCopy(tasksStatus, "tasks.enterListName");
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    taskListCreateName?.focus();
+    return false;
+  }
+  const operationKey = JSON.stringify([binding, "list-create"]);
+  const listId = stableTaskOperationId(operationKey, "task-list");
+  taskListCreateDrafts.set(binding, name);
+  return saveTaskListMutation(
+    "create_task_list",
+    loaded,
+    listId,
+    operationKey,
+    {
+      targetBinding: binding,
+      expectedRevision: loaded.revision,
+      listId,
+      name,
+    },
+    (list) => list.name === name && !list.archived,
+    () => {
+      taskListCreateDrafts.set(binding, name);
+    },
+    () => {
+      taskListCreateDrafts.delete(binding);
+      if (taskListCreateForm) taskListCreateForm.reset();
+    },
+  );
+}
+
+async function renameTaskList(listId: string, form: HTMLFormElement): Promise<boolean> {
+  const loaded = currentTasksView;
+  const binding = loaded?.targetBinding;
+  const revision = loaded?.revision;
+  const name = form.querySelector<HTMLInputElement>("[data-task-list-name]")?.value.trim() ?? "";
+  if (!loaded || !binding || !revision || loaded.state === "error" || loaded.state === "unconfigured") {
+    setCopyError(tasksStatus, "tasks.notSaved", t("tasks.refreshFirst"));
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    return false;
+  }
+  if (!name) {
+    setCopy(tasksStatus, "tasks.enterListName");
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    form.querySelector<HTMLInputElement>("[data-task-list-name]")?.focus();
+    return false;
+  }
+  const operationKey = JSON.stringify([binding, "list-rename", listId]);
+  const draftKey = taskListRenameDraftKey(binding, listId);
+  taskListRenameDrafts.set(draftKey, name);
+  return saveTaskListMutation(
+    "rename_task_list",
+    loaded,
+    listId,
+    operationKey,
+    {
+      targetBinding: binding,
+      expectedRevision: revision,
+      listId,
+      name,
+    },
+    (list) => list.name === name,
+    () => taskListRenameDrafts.set(draftKey, name),
+    () => taskListRenameDrafts.delete(draftKey),
+  );
+}
+
+async function setTaskListArchived(listId: string, archived: boolean): Promise<boolean> {
+  const loaded = currentTasksView;
+  const binding = loaded?.targetBinding;
+  const revision = loaded?.revision;
+  if (!loaded || !binding || !revision || loaded.state === "error" || loaded.state === "unconfigured") {
+    setCopyError(tasksStatus, "tasks.notSaved", t("tasks.refreshFirst"));
+    if (tasksStatus) tasksStatus.dataset.state = "error";
+    return false;
+  }
+  const operationKey = JSON.stringify([
+    binding,
+    archived ? "list-archive" : "list-restore",
+    listId,
+  ]);
+  return saveTaskListMutation(
+    archived ? "archive_task_list" : "restore_task_list",
+    loaded,
+    listId,
+    operationKey,
+    {
+      targetBinding: binding,
+      expectedRevision: revision,
+      listId,
+    },
+    (list) => list.archived === archived,
+  );
+}
+
 async function updateTask(taskId: string, form: HTMLFormElement): Promise<boolean> {
   const loaded = currentTasksView;
   const binding = loaded?.targetBinding;
@@ -4285,6 +4691,7 @@ async function updateTask(taskId: string, form: HTMLFormElement): Promise<boolea
     return false;
   }
   const normalized = normalizeTaskSchedule(draft.date, draft.time);
+  const listId = draft.listId ?? task.listId;
   const operationKey = JSON.stringify([binding, "update", taskId]);
   const changeId = stableTaskOperationId(operationKey, "edit-task");
   const request = taskRequests.begin();
@@ -4300,7 +4707,7 @@ async function updateTask(taskId: string, form: HTMLFormElement): Promise<boolea
         content: draft.content.trim() || null,
         date: normalized.date,
         time: normalized.time,
-        listId: task.listId,
+        listId,
       },
     });
     const responseIsCurrent =
@@ -4318,7 +4725,7 @@ async function updateTask(taskId: string, form: HTMLFormElement): Promise<boolea
         candidate.content === (draft.content.trim() || null) &&
         candidate.date === normalized.date &&
         candidate.time === normalized.time &&
-        candidate.listId === task.listId,
+        candidate.listId === listId,
     );
     const confirmed = taskMutationConfirmed(
       responseIsCurrent,
@@ -4963,15 +5370,6 @@ refreshHabitsButton?.addEventListener("click", () => {
   void refreshHabits();
 });
 
-tasksScopeButtons.forEach((button) => {
-  button.addEventListener("click", () => {
-    const scope = button.dataset.taskScope;
-    if (scope !== "all" && scope !== "inbox") return;
-    taskScope = scope;
-    if (currentTasksView) renderTasks(currentTasksView);
-  });
-});
-
 tasksStateButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const state = button.dataset.taskState;
@@ -4997,15 +5395,48 @@ taskCreateDate?.addEventListener("change", () => {
   normalizeTaskDateTimeFields(taskCreateDate, taskCreateTime);
   stashTaskCreateDraft();
 });
+taskCreateList?.addEventListener("change", () => {
+  const selected = currentTasksView && taskListForId(currentTasksView, taskCreateList.value);
+  if (selected && taskCreateListLabel && taskCreateSubmit) {
+    setRawText(taskCreateListLabel, selected.name);
+    setRawText(
+      taskCreateSubmit,
+      selected.id === "inbox"
+        ? t("tasks.add")
+        : t("tasks.addToList", { list: selected.name }),
+    );
+  }
+  stashTaskCreateDraft();
+});
 taskCreateForm?.addEventListener("input", stashTaskCreateDraft);
 taskCreateForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   stashTaskCreateDraft();
   void pendingWrites.track(createTask());
 });
+taskListCreateForm?.addEventListener("input", () => {
+  const binding = currentTasksView?.targetBinding;
+  if (binding && taskListCreateName) {
+    taskListCreateDrafts.set(binding, taskListCreateName.value);
+  }
+});
+taskListCreateForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void pendingWrites.track(createTaskList());
+});
 
 tasksDestination?.addEventListener("input", (event) => {
   const target = event.target as HTMLElement;
+  const listForm = target.closest<HTMLFormElement>("form[data-task-list-editor]");
+  const listId = listForm?.dataset.taskListEditor;
+  const binding = currentTasksView?.targetBinding;
+  if (listForm && listId && binding && target.matches("[data-task-list-name]")) {
+    taskListRenameDrafts.set(
+      taskListRenameDraftKey(binding, listId),
+      (target as HTMLInputElement).value,
+    );
+    return;
+  }
   const form = target.closest<HTMLFormElement>("form[data-task-editor]");
   if (form) stashTaskEditDraft(form);
 });
@@ -5039,6 +5470,29 @@ tasksDestination?.addEventListener("change", (event) => {
 
 tasksDestination?.addEventListener("click", (event) => {
   const target = event.target as HTMLElement;
+  const scopeButton = target.closest<HTMLButtonElement>("button[data-task-scope]");
+  const scope = scopeButton?.dataset.taskScope;
+  if (
+    scope &&
+    (scope === "all" ||
+      scope === "inbox" ||
+      scope === "archived" ||
+      (scope.startsWith("list:") && Boolean(taskListIdFromScope(scope as TaskListScope))))
+  ) {
+    taskScope = scope as TaskListScope;
+    if (currentTasksView) renderTasks(currentTasksView);
+    return;
+  }
+  const archiveList = target.closest<HTMLButtonElement>("button[data-task-list-archive]");
+  if (archiveList?.dataset.taskListArchive) {
+    void pendingWrites.track(setTaskListArchived(archiveList.dataset.taskListArchive, true));
+    return;
+  }
+  const restoreList = target.closest<HTMLButtonElement>("button[data-task-list-restore]");
+  if (restoreList?.dataset.taskListRestore) {
+    void pendingWrites.track(setTaskListArchived(restoreList.dataset.taskListRestore, false));
+    return;
+  }
   const stateAction = target.closest<HTMLButtonElement>(
     "button[data-task-state-action][data-task-state-task]",
   );
@@ -5075,9 +5529,15 @@ tasksDestination?.addEventListener("click", (event) => {
 });
 
 tasksDestination?.addEventListener("submit", (event) => {
-  const form = (event.target as HTMLElement).closest<HTMLFormElement>(
-    "form[data-task-editor]",
-  );
+  const target = event.target as HTMLElement;
+  const listForm = target.closest<HTMLFormElement>("form[data-task-list-editor]");
+  const listId = listForm?.dataset.taskListEditor;
+  if (listForm && listId) {
+    event.preventDefault();
+    void pendingWrites.track(renameTaskList(listId, listForm));
+    return;
+  }
+  const form = target.closest<HTMLFormElement>("form[data-task-editor]");
   const taskId = form?.dataset.taskEditor;
   if (!form || !taskId) return;
   event.preventDefault();

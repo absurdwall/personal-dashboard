@@ -1,7 +1,8 @@
 use personal_dashboard_lib::tasks::{
     FileTaskStore, TaskApplication, TaskChangeKind, TaskCompletionCorrectionInput,
-    TaskCompletionSourceKind, TaskCreateInput, TaskDataState, TaskDeleteInput, TaskRestoreInput,
-    TaskState, TaskStateInput, TaskStore, TaskUpdateInput,
+    TaskCompletionSourceKind, TaskCreateInput, TaskDataState, TaskDeleteInput,
+    TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput, TaskListRestoreInput,
+    TaskRestoreInput, TaskState, TaskStateInput, TaskStore, TaskUpdateInput,
 };
 use personal_dashboard_lib::today::{TodayClock, TodayWorkspacePersistence};
 use std::fs;
@@ -1557,6 +1558,551 @@ fn task_completion_correction_rejects_a_stale_external_document_without_partial_
         })
         .unwrap_err();
     assert!(error.contains("外部发生变化"));
+    assert_eq!(
+        fs::read(task_path(vault.path())).unwrap(),
+        external_document
+    );
+}
+
+#[test]
+fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
+    let vault = TempVault::new("lists-identity");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+
+    let created_list = application
+        .create_list(TaskListCreateInput {
+            target_binding: opened.target_binding.clone().unwrap(),
+            expected_revision: opened.revision.clone(),
+            list_id: "planning".into(),
+            name: "计划".into(),
+        })
+        .unwrap();
+    assert_eq!(created_list.lists.len(), 2);
+    assert_eq!(
+        created_list
+            .lists
+            .iter()
+            .find(|list| list.id == "planning")
+            .unwrap()
+            .name,
+        "计划"
+    );
+
+    let created = application
+        .create(TaskCreateInput {
+            target_binding: created_list.target_binding.clone().unwrap(),
+            expected_revision: created_list.revision.clone(),
+            task_id: "planning-task".into(),
+            name: "整理计划".into(),
+            content: None,
+            date: None,
+            time: None,
+            list_id: Some("planning".into()),
+        })
+        .unwrap();
+    assert_eq!(created.tasks[0].list_id, "planning");
+    assert_eq!(created.tasks[0].date, None);
+
+    let edited_in_place = application
+        .update(TaskUpdateInput {
+            target_binding: created.target_binding.clone().unwrap(),
+            expected_revision: created.revision.clone().unwrap(),
+            task_id: "planning-task".into(),
+            change_id: "edit-planning-task-in-place".into(),
+            name: "整理计划（更新）".into(),
+            content: None,
+            date: None,
+            time: None,
+            list_id: None,
+        })
+        .unwrap();
+    assert_eq!(edited_in_place.tasks[0].list_id, "planning");
+
+    let renamed = application
+        .rename_list(TaskListRenameInput {
+            target_binding: edited_in_place.target_binding.clone().unwrap(),
+            expected_revision: edited_in_place.revision.clone().unwrap(),
+            list_id: "planning".into(),
+            name: "本周计划".into(),
+        })
+        .unwrap();
+    assert_eq!(renamed.tasks[0].id, "planning-task");
+    assert_eq!(renamed.tasks[0].list_id, "planning");
+    assert_eq!(renamed.tasks[0].name, "整理计划（更新）");
+    assert_eq!(
+        renamed
+            .lists
+            .iter()
+            .find(|list| list.id == "planning")
+            .unwrap()
+            .name,
+        "本周计划"
+    );
+    let renamed_retry = application
+        .rename_list(TaskListRenameInput {
+            target_binding: renamed.target_binding.clone().unwrap(),
+            expected_revision: "stale-after-rename".into(),
+            list_id: "planning".into(),
+            name: "本周计划".into(),
+        })
+        .unwrap();
+    assert_eq!(renamed_retry.tasks, renamed.tasks);
+
+    let moved = application
+        .update(TaskUpdateInput {
+            target_binding: renamed_retry.target_binding.clone().unwrap(),
+            expected_revision: renamed_retry.revision.clone().unwrap(),
+            task_id: "planning-task".into(),
+            change_id: "move-planning-task-to-inbox".into(),
+            name: "整理计划（更新）".into(),
+            content: None,
+            date: None,
+            time: None,
+            list_id: Some("inbox".into()),
+        })
+        .unwrap();
+    assert_eq!(moved.tasks.len(), 1);
+    assert_eq!(moved.tasks[0].id, "planning-task");
+    assert_eq!(moved.tasks[0].list_id, "inbox");
+    assert_eq!(moved.tasks[0].changes.len(), 2);
+    assert_eq!(moved.tasks[0].changes[1].kind, TaskChangeKind::ListMoved);
+    assert_eq!(
+        moved.tasks[0].changes[1].previous_list_id.as_deref(),
+        Some("planning")
+    );
+    assert_eq!(
+        moved.tasks[0].changes[1].new_list_id.as_deref(),
+        Some("inbox")
+    );
+
+    let retried = application
+        .create_list(TaskListCreateInput {
+            target_binding: moved.target_binding.clone().unwrap(),
+            expected_revision: Some("stale-after-list-create".into()),
+            list_id: "planning".into(),
+            name: "本周计划".into(),
+        })
+        .unwrap();
+    assert_eq!(retried.lists.len(), 2);
+
+    let relaunched = app(vault.path()).read().unwrap();
+    assert_eq!(relaunched.tasks.len(), 1);
+    assert_eq!(relaunched.tasks[0].id, "planning-task");
+    assert_eq!(relaunched.tasks[0].list_id, "inbox");
+    assert_eq!(relaunched.tasks[0].changes.len(), 2);
+    assert_eq!(
+        relaunched
+            .lists
+            .iter()
+            .find(|list| list.id == "planning")
+            .unwrap()
+            .name,
+        "本周计划"
+    );
+}
+
+#[test]
+fn archived_task_lists_preserve_states_history_and_single_task_restore_boundary() {
+    let vault = TempVault::new("lists-archive-restore");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let list = application
+        .create_list(TaskListCreateInput {
+            target_binding: opened.target_binding.clone().unwrap(),
+            expected_revision: opened.revision.clone(),
+            list_id: "side-project".into(),
+            name: "副项目".into(),
+        })
+        .unwrap();
+    let pending = application
+        .create(TaskCreateInput {
+            target_binding: list.target_binding.clone().unwrap(),
+            expected_revision: list.revision.clone(),
+            task_id: "side-pending".into(),
+            name: "保留待办".into(),
+            content: None,
+            date: None,
+            time: None,
+            list_id: Some("side-project".into()),
+        })
+        .unwrap();
+    let completed = application
+        .create(TaskCreateInput {
+            target_binding: pending.target_binding.clone().unwrap(),
+            expected_revision: pending.revision.clone(),
+            task_id: "side-completed".into(),
+            name: "保留完成".into(),
+            content: None,
+            date: None,
+            time: None,
+            list_id: Some("side-project".into()),
+        })
+        .unwrap();
+    let completed = application
+        .set_state(TaskStateInput {
+            target_binding: completed.target_binding.clone().unwrap(),
+            expected_revision: completed.revision.clone().unwrap(),
+            task_id: "side-completed".into(),
+            change_id: "complete-side-project".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap();
+    let abandoned = application
+        .create(TaskCreateInput {
+            target_binding: completed.target_binding.clone().unwrap(),
+            expected_revision: completed.revision.clone(),
+            task_id: "side-abandoned".into(),
+            name: "保留放弃".into(),
+            content: None,
+            date: None,
+            time: None,
+            list_id: Some("side-project".into()),
+        })
+        .unwrap();
+    let abandoned = application
+        .set_state(TaskStateInput {
+            target_binding: abandoned.target_binding.clone().unwrap(),
+            expected_revision: abandoned.revision.clone().unwrap(),
+            task_id: "side-abandoned".into(),
+            change_id: "abandon-side-project".into(),
+            state: TaskState::Abandoned,
+        })
+        .unwrap();
+    let before_archive = abandoned.tasks.clone();
+
+    let archived = application
+        .archive_list(TaskListArchiveInput {
+            target_binding: abandoned.target_binding.clone().unwrap(),
+            expected_revision: abandoned.revision.clone().unwrap(),
+            list_id: "side-project".into(),
+        })
+        .unwrap();
+    assert!(
+        archived
+            .lists
+            .iter()
+            .find(|list| list.id == "side-project")
+            .unwrap()
+            .archived
+    );
+    for task in &before_archive {
+        let current = archived
+            .tasks
+            .iter()
+            .find(|candidate| candidate.id == task.id)
+            .unwrap();
+        assert_eq!(current.state, task.state);
+        assert_eq!(current.completion, task.completion);
+        assert_eq!(current.changes, task.changes);
+        assert_eq!(current.list_id, "side-project");
+    }
+
+    let archived_retry = application
+        .archive_list(TaskListArchiveInput {
+            target_binding: archived.target_binding.clone().unwrap(),
+            expected_revision: "stale-archive-retry".into(),
+            list_id: "side-project".into(),
+        })
+        .unwrap();
+    assert_eq!(archived_retry.lists, archived.lists);
+    assert_eq!(archived_retry.tasks, archived.tasks);
+
+    let deleted = application
+        .delete(TaskDeleteInput {
+            target_binding: archived.target_binding.clone().unwrap(),
+            expected_revision: archived.revision.clone().unwrap(),
+            task_id: "side-pending".into(),
+            change_id: "delete-archived-pending".into(),
+        })
+        .unwrap();
+    let task_restored = application
+        .restore(TaskRestoreInput {
+            target_binding: deleted.target_binding.clone().unwrap(),
+            expected_revision: deleted.revision.clone().unwrap(),
+            task_id: "side-pending".into(),
+            change_id: "restore-archived-pending".into(),
+        })
+        .unwrap();
+    assert!(
+        task_restored
+            .lists
+            .iter()
+            .find(|list| list.id == "side-project")
+            .unwrap()
+            .archived,
+        "restoring one task must not unarchive its task list"
+    );
+    assert_eq!(
+        task_restored
+            .tasks
+            .iter()
+            .find(|task| task.id == "side-pending")
+            .unwrap()
+            .deleted_at,
+        None
+    );
+
+    let restored = application
+        .restore_list(TaskListRestoreInput {
+            target_binding: task_restored.target_binding.clone().unwrap(),
+            expected_revision: task_restored.revision.clone().unwrap(),
+            list_id: "side-project".into(),
+        })
+        .unwrap();
+    assert!(
+        !restored
+            .lists
+            .iter()
+            .find(|list| list.id == "side-project")
+            .unwrap()
+            .archived
+    );
+    assert_eq!(
+        restored
+            .tasks
+            .iter()
+            .find(|task| task.id == "side-completed")
+            .unwrap()
+            .state,
+        TaskState::Completed
+    );
+    assert_eq!(
+        restored
+            .tasks
+            .iter()
+            .find(|task| task.id == "side-completed")
+            .unwrap()
+            .changes,
+        before_archive
+            .iter()
+            .find(|task| task.id == "side-completed")
+            .unwrap()
+            .changes
+    );
+    let restored_retry = application
+        .restore_list(TaskListRestoreInput {
+            target_binding: restored.target_binding.clone().unwrap(),
+            expected_revision: "stale-after-restore".into(),
+            list_id: "side-project".into(),
+        })
+        .unwrap();
+    assert_eq!(restored_retry.lists, restored.lists);
+}
+
+#[test]
+fn task_lists_reject_inbox_and_archived_destinations_without_partial_writes() {
+    let vault = TempVault::new("lists-boundaries");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let list = application
+        .create_list(TaskListCreateInput {
+            target_binding: opened.target_binding.clone().unwrap(),
+            expected_revision: opened.revision.clone(),
+            list_id: "archive-destination".into(),
+            name: "归档目标".into(),
+        })
+        .unwrap();
+    let task = application
+        .create(create_input(&list, "boundary-task", "边界任务", None, None))
+        .unwrap();
+    let inbox_rename = application
+        .rename_list(TaskListRenameInput {
+            target_binding: task.target_binding.clone().unwrap(),
+            expected_revision: task.revision.clone().unwrap(),
+            list_id: "inbox".into(),
+            name: "不能改名".into(),
+        })
+        .unwrap_err();
+    assert!(inbox_rename.contains("Inbox"));
+    let inbox_archive = application
+        .archive_list(TaskListArchiveInput {
+            target_binding: task.target_binding.clone().unwrap(),
+            expected_revision: task.revision.clone().unwrap(),
+            list_id: "inbox".into(),
+        })
+        .unwrap_err();
+    assert!(inbox_archive.contains("Inbox"));
+
+    let archived = application
+        .archive_list(TaskListArchiveInput {
+            target_binding: task.target_binding.clone().unwrap(),
+            expected_revision: task.revision.clone().unwrap(),
+            list_id: "archive-destination".into(),
+        })
+        .unwrap();
+    let before_move = fs::read(task_path(vault.path())).unwrap();
+    let move_error = application
+        .update(TaskUpdateInput {
+            target_binding: archived.target_binding.clone().unwrap(),
+            expected_revision: archived.revision.clone().unwrap(),
+            task_id: "boundary-task".into(),
+            change_id: "move-into-archived-list".into(),
+            name: "边界任务".into(),
+            content: None,
+            date: None,
+            time: None,
+            list_id: Some("archive-destination".into()),
+        })
+        .unwrap_err();
+    assert!(move_error.contains("归档") || move_error.contains("活动"));
+    assert_eq!(fs::read(task_path(vault.path())).unwrap(), before_move);
+}
+
+#[test]
+fn task_list_writes_preserve_atomic_failure_and_vault_binding_boundaries() {
+    let vault = TempVault::new("lists-write-failure");
+    let initial = app(vault.path());
+    let opened = initial.read().unwrap();
+    let _created = initial
+        .create_list(TaskListCreateInput {
+            target_binding: opened.target_binding.clone().unwrap(),
+            expected_revision: opened.revision.clone(),
+            list_id: "failure-list".into(),
+            name: "失败保护".into(),
+        })
+        .unwrap();
+    let before = fs::read(task_path(vault.path())).unwrap();
+    let failing = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        FixedClock,
+        FailingTaskStore,
+    );
+    let current = failing.read().unwrap();
+    let error = failing
+        .rename_list(TaskListRenameInput {
+            target_binding: current.target_binding.clone().unwrap(),
+            expected_revision: current.revision.clone().unwrap(),
+            list_id: "failure-list".into(),
+            name: "不应写入".into(),
+        })
+        .unwrap_err();
+    assert!(error.contains("injected task save failure"));
+    assert_eq!(fs::read(task_path(vault.path())).unwrap(), before);
+
+    let external_document = empty_task_document();
+    let racing = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        FixedClock,
+        RacingTaskStore {
+            external_document: external_document.clone(),
+        },
+    );
+    let current = racing.read().unwrap();
+    let conflict = racing
+        .archive_list(TaskListArchiveInput {
+            target_binding: current.target_binding.clone().unwrap(),
+            expected_revision: current.revision.clone().unwrap(),
+            list_id: "failure-list".into(),
+        })
+        .unwrap_err();
+    assert!(conflict.contains("外部发生变化"));
+    assert_eq!(
+        fs::read(task_path(vault.path())).unwrap(),
+        external_document
+    );
+
+    let first_vault = TempVault::new("lists-first-vault");
+    let second_vault = TempVault::new("lists-second-vault");
+    let selection = SwitchingVault::new(first_vault.path());
+    let isolated = TaskApplication::new(selection.clone(), FixedClock, FileTaskStore);
+    let first_opened = isolated.read().unwrap();
+    let first_list = isolated
+        .create_list(TaskListCreateInput {
+            target_binding: first_opened.target_binding.clone().unwrap(),
+            expected_revision: first_opened.revision.clone(),
+            list_id: "first-only-list".into(),
+            name: "只属于第一 Vault".into(),
+        })
+        .unwrap();
+    selection.switch_to(second_vault.path());
+    let wrong_target = isolated
+        .archive_list(TaskListArchiveInput {
+            target_binding: first_list.target_binding.clone().unwrap(),
+            expected_revision: first_list.revision.clone().unwrap(),
+            list_id: "first-only-list".into(),
+        })
+        .unwrap_err();
+    assert!(wrong_target.contains("绑定") || wrong_target.contains("目标"));
+    assert!(!task_path(second_vault.path()).exists());
+    assert!(
+        !app(first_vault.path())
+            .read()
+            .unwrap()
+            .lists
+            .iter()
+            .find(|list| list.id == "first-only-list")
+            .unwrap()
+            .archived
+    );
+}
+
+#[test]
+fn task_list_creation_and_cross_list_move_use_the_same_atomic_write_boundary() {
+    let new_vault = TempVault::new("list-create-failure");
+    let failing = TaskApplication::new(
+        SelectedVault(new_vault.path().to_path_buf()),
+        FixedClock,
+        FailingTaskStore,
+    );
+    let opened = failing.read().unwrap();
+    let create_error = failing
+        .create_list(TaskListCreateInput {
+            target_binding: opened.target_binding.clone().unwrap(),
+            expected_revision: opened.revision.clone(),
+            list_id: "never-created".into(),
+            name: "不能落盘".into(),
+        })
+        .unwrap_err();
+    assert!(create_error.contains("injected task create failure"));
+    assert!(!task_path(new_vault.path()).exists());
+
+    let vault = TempVault::new("list-move-conflict");
+    let initial = app(vault.path());
+    let opened = initial.read().unwrap();
+    let list = initial
+        .create_list(TaskListCreateInput {
+            target_binding: opened.target_binding.clone().unwrap(),
+            expected_revision: opened.revision.clone(),
+            list_id: "move-source".into(),
+            name: "移动来源".into(),
+        })
+        .unwrap();
+    let task = initial
+        .create(TaskCreateInput {
+            target_binding: list.target_binding.clone().unwrap(),
+            expected_revision: list.revision.clone(),
+            task_id: "move-conflict-task".into(),
+            name: "不能覆盖外部正本".into(),
+            content: None,
+            date: None,
+            time: None,
+            list_id: Some("move-source".into()),
+        })
+        .unwrap();
+    let external_document = empty_task_document();
+    let racing = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        FixedClock,
+        RacingTaskStore {
+            external_document: external_document.clone(),
+        },
+    );
+    let current = racing.read().unwrap();
+    let move_error = racing
+        .update(TaskUpdateInput {
+            target_binding: current.target_binding.clone().unwrap(),
+            expected_revision: current.revision.clone().unwrap(),
+            task_id: task.tasks[0].id.clone(),
+            change_id: "conflicted-cross-list-move".into(),
+            name: task.tasks[0].name.clone(),
+            content: None,
+            date: None,
+            time: None,
+            list_id: Some("inbox".into()),
+        })
+        .unwrap_err();
+    assert!(move_error.contains("外部发生变化"));
     assert_eq!(
         fs::read(task_path(vault.path())).unwrap(),
         external_document

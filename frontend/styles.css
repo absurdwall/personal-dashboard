@@ -6374,6 +6374,13 @@ body {
   gap: 0.45rem;
 }
 
+.tasks-list-scopes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
 .tasks-scope-toolbar {
   margin: 1.1rem 0 1rem;
   padding-bottom: 0.7rem;
@@ -6406,6 +6413,126 @@ body {
   margin-left: auto;
   color: var(--parity-muted);
   font-size: 0.62rem;
+}
+
+.tasks-list-manager {
+  margin-bottom: 1.1rem;
+  padding: 0.9rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--parity-surface-soft) 72%, transparent);
+}
+
+.tasks-list-manager-heading,
+.task-list-row-heading,
+.task-list-row-form,
+.task-list-create-form {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.tasks-list-manager-heading {
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.tasks-list-manager-heading .section-label {
+  margin-bottom: 0.25rem;
+  color: var(--parity-accent-strong);
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.tasks-list-manager-heading h3 {
+  margin: 0;
+  color: var(--parity-ink);
+  font-size: 0.84rem;
+}
+
+.tasks-list-manager-heading > small {
+  max-width: 20rem;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.task-list-create-form {
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+
+.task-list-create-form label {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 0.35rem;
+  color: var(--parity-muted);
+  font-size: 0.62rem;
+}
+
+.task-list-create-form input,
+.task-list-row-form input {
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.42rem;
+  background: var(--parity-surface);
+  color: var(--parity-ink);
+  font: inherit;
+  font-size: 0.68rem;
+}
+
+.task-list-create-form input:focus,
+.task-list-row-form input:focus {
+  border-color: var(--parity-accent);
+  outline: 2px solid color-mix(in srgb, var(--parity-accent) 30%, transparent);
+  outline-offset: 1px;
+}
+
+.task-list-create-form button,
+.task-list-row-form button {
+  min-height: 2rem;
+  padding: 0.38rem 0.6rem;
+  font-size: 0.61rem;
+  white-space: nowrap;
+}
+
+.tasks-lists-management {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.task-list-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.7fr) minmax(0, 1.5fr);
+  align-items: center;
+  gap: 0.7rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--parity-border) 70%, transparent);
+}
+
+.task-list-row-heading {
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.task-list-row-heading strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--parity-ink);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-list-row-form input {
+  flex: 1 1 auto;
+}
+
+.task-list-row.is-archived {
+  opacity: 0.78;
 }
 
 .tasks-list {
@@ -6469,7 +6596,8 @@ body {
 }
 
 .task-form-grid input,
-.task-form-grid textarea {
+.task-form-grid textarea,
+.task-form-grid select {
   width: 100%;
   min-width: 0;
   padding: 0.58rem 0.65rem;
@@ -6487,14 +6615,16 @@ body {
 }
 
 .task-form-grid input:focus,
-.task-form-grid textarea:focus {
+.task-form-grid textarea:focus,
+.task-form-grid select:focus {
   border-color: var(--parity-accent);
   outline: 2px solid color-mix(in srgb, var(--parity-accent) 30%, transparent);
   outline-offset: 1px;
 }
 
 .task-form-grid input:disabled,
-.task-form-grid textarea:disabled {
+.task-form-grid textarea:disabled,
+.task-form-grid select:disabled {
   background: var(--parity-surface-soft);
   cursor: wait;
   opacity: 0.7;
@@ -6701,6 +6831,28 @@ body {
 
   .task-form-grid .task-form-wide {
     grid-column: auto;
+  }
+
+  .tasks-list-manager-heading,
+  .task-list-create-form,
+  .task-list-row-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tasks-list-manager-heading > small {
+    max-width: none;
+    text-align: left;
+  }
+
+  .task-list-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.4rem;
+  }
+
+  .task-list-row-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   .task-editor-heading {

@@ -33,7 +33,7 @@ const interfaceCopies = {
   "workspace.label": { zh: "Personal Dashboard 工作区", en: "Personal Dashboard workspace" },
   "workspace.information": { zh: "工作区信息", en: "Workspace information" },
   "workspace.todayDescription": { zh: "查看今天 Daily Record 里的大致安排。", en: "Review today's overall plan in the Daily Record." },
-  "workspace.tasksDescription": { zh: "在独立 Inbox 中收集、安排和编辑任务。", en: "Capture, schedule, and edit tasks in an independent Inbox." },
+  "workspace.tasksDescription": { zh: "在独立任务正本中用 Inbox 和清单收集、安排及编辑任务。", en: "Capture, schedule, and edit tasks in an independent source with Inbox and lists." },
   "workspace.calendarDescription": { zh: "先看整个月，再进入某一天。", en: "Review the month, then open a specific day." },
   "workspace.habitsDescription": { zh: "周次数与每日目标时刻放在同一份轻量列表里。", en: "Weekly counts and daily target times share one compact list." },
   "workspace.settingsDescription": { zh: "外观与本地 Vault 设置。", en: "Appearance and local Vault settings." },
@@ -248,13 +248,31 @@ const interfaceCopies = {
   "dayTasks.changeReopened": { zh: "{changedAt} · 取消完成", en: "{changedAt} · Completion cancelled" },
   "dayTasks.changeDeleted": { zh: "{changedAt} · 删除", en: "{changedAt} · Deleted" },
   "dayTasks.deletedHistorical": { zh: "已删除", en: "Deleted" },
-  "tasks.section": { zh: "任务 · 收集箱", en: "TASKS · INBOX" },
+  "tasks.section": { zh: "任务 · 清单", en: "TASKS · LISTS" },
   "tasks.heading": { zh: "任务", en: "Tasks" },
-  "tasks.introduction": { zh: "先把事情放进 Inbox；日期与时刻是可选安排，不会创建 Daily Record。", en: "Put work in the Inbox first. Dates and times are optional scheduling; they never create a Daily Record." },
+  "tasks.introduction": { zh: "先把事情放进 Inbox 或合适清单；日期与时刻是可选安排，不会创建 Daily Record。归档清单只在历史查看中出现。", en: "Put work in the Inbox or a suitable list. Dates and times are optional scheduling; they never create a Daily Record. Archived lists remain available for history." },
   "tasks.refresh": { zh: "刷新任务", en: "Refresh tasks" },
   "tasks.scope": { zh: "任务范围", en: "Task scope" },
   "tasks.scopeAll": { zh: "All", en: "All" },
   "tasks.scopeInbox": { zh: "Inbox", en: "Inbox" },
+  "tasks.scopeArchived": { zh: "已归档", en: "Archived" },
+  "tasks.listsSection": { zh: "清单 · 分类与归档", en: "LISTS · CLASSIFY AND ARCHIVE" },
+  "tasks.listsHeading": { zh: "任务清单", en: "Task lists" },
+  "tasks.listBoundary": { zh: "清单只做分类；归档不会改变任务状态或历史。", en: "Lists only classify work; archiving changes neither task state nor history." },
+  "tasks.newListName": { zh: "新清单名称", en: "New list name" },
+  "tasks.newListPlaceholder": { zh: "例如：家庭", en: "For example: Home" },
+  "tasks.createList": { zh: "新建清单", en: "Create list" },
+  "tasks.list": { zh: "清单", en: "List" },
+  "tasks.listCount": { zh: "{count} 项未删除任务", en: "{count} active tasks" },
+  "tasks.permanentList": { zh: "永久默认清单 · 不能改名或归档", en: "Permanent default list · Cannot rename or archive" },
+  "tasks.saveList": { zh: "保存清单", en: "Save list" },
+  "tasks.renameListLabel": { zh: "重命名清单“{list}”", en: "Rename list {list}" },
+  "tasks.archiveList": { zh: "归档清单", en: "Archive list" },
+  "tasks.restoreList": { zh: "恢复清单", en: "Restore list" },
+  "tasks.archivedLabel": { zh: "已归档", en: "Archived" },
+  "tasks.emptyArchived": { zh: "暂无归档清单中的任务。", en: "There are no tasks in archived lists." },
+  "tasks.enterListName": { zh: "请输入清单名称。", en: "Enter a list name." },
+  "tasks.listSaved": { zh: "清单已保存到所选 Vault。", en: "The list was saved to the selected Vault." },
   "tasks.stateScope": { zh: "任务状态", en: "Task state" },
   "tasks.stateAll": { zh: "全部未删除", en: "All active" },
   "tasks.statePending": { zh: "待办", en: "Pending" },
@@ -277,6 +295,7 @@ const interfaceCopies = {
   "tasks.clearSchedule": { zh: "清除日期与时刻", en: "Clear date and time" },
   "tasks.save": { zh: "保存", en: "Save" },
   "tasks.add": { zh: "加入 Inbox", en: "Add to Inbox" },
+  "tasks.addToList": { zh: "加入“{list}”", en: "Add to {list}" },
   "tasks.inbox": { zh: "Inbox", en: "Inbox" },
   "tasks.noDate": { zh: "未安排日期", en: "No date" },
   "tasks.dateAt": { zh: "{date} · {time}", en: "{date} · {time}" },
@@ -290,7 +309,7 @@ const interfaceCopies = {
   "tasks.enterName": { zh: "请输入任务名称。", en: "Enter a task name." },
   "tasks.timeNeedsDate": { zh: "时刻必须先绑定日期；清除日期会同时清除时刻。", en: "A time needs a date. Clearing the date also clears the time." },
   "tasks.savedToVault": { zh: "任务保存在当前 Vault 的独立正本中；不会写入 Daily Record。", en: "Tasks are saved in an independent source in the current Vault; Daily Records are unchanged." },
-  "tasks.sourceManual": { zh: "手动任务 · Inbox", en: "Manual task · Inbox" },
+  "tasks.sourceManual": { zh: "手动任务", en: "Manual task" },
   "tasks.sourceDailyFlow": { zh: "每日流程任务", en: "Daily-flow task" },
   "tasks.complete": { zh: "完成", en: "Complete" },
   "tasks.reopen": { zh: "重开", en: "Reopen" },
@@ -942,6 +961,9 @@ function englishTaskDiagnostic(message: string): string | null {
     "任务名称不能为空。": "Task name cannot be empty.",
     "任务名称不能超过 160 个字符，也不能换行。":
       "Task name cannot exceed 160 characters or contain line breaks.",
+    "任务列表名称不能为空。": "Task-list name cannot be empty.",
+    "任务列表名称不能超过 80 个字符，也不能换行。":
+      "Task-list name cannot exceed 80 characters or contain line breaks.",
     "任务日期必须是有效的 YYYY-MM-DD 日期。":
       "Task date must be a valid YYYY-MM-DD date.",
     "任务时间必须先绑定日期。": "A task time must be bound to a date first.",
@@ -954,8 +976,26 @@ function englishTaskDiagnostic(message: string): string | null {
     "任务完成时刻无效。": "Task completion time is invalid.",
     "任务完成记录不能使用未来日期或未来时刻。":
       "Task completion evidence cannot use a future date or future time.",
-    "任务列表不存在；此票仅支持 Inbox。未写入任何内容。":
-      "The task list does not exist. This ticket supports Inbox only; nothing was written.",
+    "任务列表不存在；未写入任何内容。":
+      "The task list does not exist; nothing was written.",
+    "该任务列表标识已用于其他清单；请使用新的稳定身份。未写入任何内容。":
+      "That task-list identifier is already used by another list. Use a new stable identity; nothing was written.",
+    "任务正本已经存在。请刷新 Tasks 后重试；现有清单未被覆盖。":
+      "The task source already exists. Refresh Tasks and try again; the existing list was not overwritten.",
+    "Inbox 是永久清单；不能重复创建。未写入任何内容。":
+      "Inbox is permanent and cannot be created again; nothing was written.",
+    "Inbox 是永久清单；不能改名。未写入任何内容。":
+      "Inbox is permanent and cannot be renamed; nothing was written.",
+    "Inbox 是永久清单；不能归档或恢复。未写入任何内容。":
+      "Inbox is permanent and cannot be archived or restored; nothing was written.",
+    "找不到要改名的任务列表；未写入任何内容。":
+      "The task list to rename could not be found; nothing was written.",
+    "找不到要更新的任务列表；未写入任何内容。":
+      "The task list to update could not be found; nothing was written.",
+    "归档清单不能作为新任务或移动任务的目标；请先恢复清单。未写入任何内容。":
+      "An archived list cannot receive new or moved tasks. Restore the list first; nothing was written.",
+    "任务正本只能将 Inbox 声明为系统列表。":
+      "Only Inbox may be declared as a system list in the task source.",
     "任务没有可保存的变化。": "The task has no changes to save.",
     "任务正本已经存在。请刷新 Tasks 后重试；现有任务未被覆盖。":
       "The task source already exists. Refresh Tasks and try again; the existing task source was not overwritten.",

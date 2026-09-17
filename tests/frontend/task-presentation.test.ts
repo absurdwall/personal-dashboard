@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   isCurrentTaskResponse,
   normalizeTaskSchedule,
+  taskListMutationConfirmed,
+  taskListScopeForId,
   taskMutationConfirmed,
   taskVisibleInScope,
 } from "../../frontend/task-presentation.ts";
@@ -48,9 +50,32 @@ test("task state filters keep deleted records out of active scopes", () => {
   assert.equal(taskVisibleInScope(deleted, "inbox", "all"), false);
 });
 
+test("task list scopes keep archived work out of active views and expose it for recall", () => {
+  const active = { listId: "planning", state: "pending" as const, deletedAt: null };
+  const archived = {
+    listId: "planning",
+    listArchived: true,
+    state: "completed" as const,
+    deletedAt: null,
+  };
+
+  assert.equal(taskVisibleInScope(active, "all", "pending"), true);
+  assert.equal(taskVisibleInScope(active, taskListScopeForId("planning"), "pending"), true);
+  assert.equal(taskVisibleInScope(archived, "all", "completed"), false);
+  assert.equal(taskVisibleInScope(archived, "archived", "completed"), true);
+  assert.equal(taskVisibleInScope(archived, taskListScopeForId("planning"), "completed"), false);
+});
+
 test("task mutation confirmation requires a current ready response and the saved task", () => {
   assert.equal(taskMutationConfirmed(true, "ready", true), true);
   assert.equal(taskMutationConfirmed(false, "ready", true), false);
   assert.equal(taskMutationConfirmed(true, "error", true), false);
   assert.equal(taskMutationConfirmed(true, "ready", false), false);
+});
+
+test("list mutation confirmation accepts an empty source when the list is present", () => {
+  assert.equal(taskListMutationConfirmed(true, "empty", true), true);
+  assert.equal(taskListMutationConfirmed(true, "ready", true), true);
+  assert.equal(taskListMutationConfirmed(true, "empty", false), false);
+  assert.equal(taskListMutationConfirmed(true, "error", true), false);
 });

@@ -179,6 +179,40 @@ pub struct TaskCreateInput {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TaskListCreateInput {
+    pub target_binding: String,
+    pub expected_revision: Option<String>,
+    pub list_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskListRenameInput {
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub list_id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskListArchiveInput {
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub list_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskListRestoreInput {
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub list_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskUpdateInput {
     pub target_binding: String,
     pub expected_revision: String,
@@ -356,7 +390,6 @@ where
         match bytes {
             Some(bytes) => {
                 let mut document = parse_task_document(&bytes)?;
-                ensure_task_list_exists(&document, &desired.list_id)?;
                 if let Some(existing) = document.tasks.iter().find(|task| task.id == desired.id) {
                     if existing.deleted_at.is_some() {
                         return Err(
@@ -371,6 +404,7 @@ where
                         "该任务标识已用于其他任务；请使用新的稳定身份。未写入任何内容。".into(),
                     );
                 }
+                ensure_active_task_list_exists(&document, &desired.list_id)?;
                 require_task_revision(&bytes, input_expected_revision(&input)?, &target_binding)?;
                 document.tasks.push(desired);
                 let updated = encode_task_document(&document)?;
@@ -386,7 +420,7 @@ where
                     lists: vec![inbox_record()],
                     tasks: vec![desired],
                 };
-                ensure_task_list_exists(&document, &document.tasks[0].list_id)?;
+                ensure_active_task_list_exists(&document, &document.tasks[0].list_id)?;
                 let encoded = encode_task_document(&document)?;
                 self.ensure_bound_target_current(&path, &target_binding)?;
                 self.store.create_new(&path, &encoded)?;
@@ -396,15 +430,166 @@ where
         self.read()
     }
 
-    pub fn update(&self, input: TaskUpdateInput) -> Result<TasksView, String> {
+    pub fn create_list(&self, input: TaskListCreateInput) -> Result<TasksView, String> {
+        validate_local_identifier(&input.list_id, "任务列表标识")?;
+        let name = normalize_list_name(&input.name)?;
+        if input.list_id == "inbox" {
+            return Err("Inbox 是永久清单；不能重复创建。未写入任何内容。".into());
+        }
         let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
-        let desired = task_from_update(&input)?;
+        let bytes = self.store.load(&path)?;
+        match bytes {
+            Some(bytes) => {
+                let mut document = parse_task_document(&bytes)?;
+                if let Some(existing) = document.lists.iter().find(|list| list.id == input.list_id)
+                {
+                    if !existing.system && existing.name == name && !existing.archived {
+                        self.ensure_bound_target_current(&path, &target_binding)?;
+                        return self.read();
+                    }
+                    return Err(
+                        "该任务列表标识已用于其他清单；请使用新的稳定身份。未写入任何内容。".into(),
+                    );
+                }
+                let expected_revision = input.expected_revision.as_deref().ok_or_else(|| {
+                    "任务正本已经存在。请刷新 Tasks 后重试；现有清单未被覆盖。".to_string()
+                })?;
+                require_task_revision(&bytes, expected_revision, &target_binding)?;
+                document.lists.push(TaskListRecord {
+                    id: input.list_id,
+                    name,
+                    system: false,
+                    archived: false,
+                });
+                let updated = encode_task_document(&document)?;
+                self.ensure_bound_target_current(&path, &target_binding)?;
+                self.store.save_if_unchanged(&path, &bytes, &updated)?;
+            }
+            None => {
+                if input.expected_revision.is_some() {
+                    return Err("任务正本已不存在。请刷新 Tasks 后重试；未创建替代数据。".into());
+                }
+                let document = TaskDocument {
+                    schema_version: TASK_SCHEMA_VERSION,
+                    lists: vec![
+                        inbox_record(),
+                        TaskListRecord {
+                            id: input.list_id,
+                            name,
+                            system: false,
+                            archived: false,
+                        },
+                    ],
+                    tasks: Vec::new(),
+                };
+                let encoded = encode_task_document(&document)?;
+                self.ensure_bound_target_current(&path, &target_binding)?;
+                self.store.create_new(&path, &encoded)?;
+            }
+        }
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.read()
+    }
+
+    pub fn rename_list(&self, input: TaskListRenameInput) -> Result<TasksView, String> {
+        validate_local_identifier(&input.list_id, "任务列表标识")?;
+        let name = normalize_list_name(&input.name)?;
+        let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
         let bytes = self
             .store
             .load(&path)?
             .ok_or_else(|| "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string())?;
         let mut document = parse_task_document(&bytes)?;
+        let list_index = task_list_index(&document, &input.list_id)
+            .ok_or_else(|| "找不到要改名的任务列表；未写入任何内容。".to_string())?;
+        if document.lists[list_index].system {
+            return Err("Inbox 是永久清单；不能改名。未写入任何内容。".into());
+        }
+        if document.lists[list_index].name == name {
+            self.ensure_bound_target_current(&path, &target_binding)?;
+            return self.read();
+        }
+        require_task_revision(&bytes, &input.expected_revision, &target_binding)?;
+        document.lists[list_index].name = name;
+        let updated = encode_task_document(&document)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.store.save_if_unchanged(&path, &bytes, &updated)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.read()
+    }
+
+    pub fn archive_list(&self, input: TaskListArchiveInput) -> Result<TasksView, String> {
+        self.set_list_archived(
+            input.target_binding,
+            input.expected_revision,
+            input.list_id,
+            true,
+        )
+    }
+
+    pub fn restore_list(&self, input: TaskListRestoreInput) -> Result<TasksView, String> {
+        self.set_list_archived(
+            input.target_binding,
+            input.expected_revision,
+            input.list_id,
+            false,
+        )
+    }
+
+    fn set_list_archived(
+        &self,
+        target_binding: String,
+        expected_revision: String,
+        list_id: String,
+        archived: bool,
+    ) -> Result<TasksView, String> {
+        validate_local_identifier(&list_id, "任务列表标识")?;
+        let (_vault, path, target_binding) = self.bound_target(&target_binding)?;
+        let bytes = self
+            .store
+            .load(&path)?
+            .ok_or_else(|| "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string())?;
+        let mut document = parse_task_document(&bytes)?;
+        let list_index = task_list_index(&document, &list_id)
+            .ok_or_else(|| "找不到要更新的任务列表；未写入任何内容。".to_string())?;
+        if document.lists[list_index].system {
+            return Err("Inbox 是永久清单；不能归档或恢复。未写入任何内容。".into());
+        }
+        if document.lists[list_index].archived == archived {
+            self.ensure_bound_target_current(&path, &target_binding)?;
+            return self.read();
+        }
+        require_task_revision(&bytes, &expected_revision, &target_binding)?;
+        document.lists[list_index].archived = archived;
+        let updated = encode_task_document(&document)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.store.save_if_unchanged(&path, &bytes, &updated)?;
+        self.ensure_bound_target_current(&path, &target_binding)?;
+        self.read()
+    }
+
+    pub fn update(&self, input: TaskUpdateInput) -> Result<TasksView, String> {
+        let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
+        let bytes = self
+            .store
+            .load(&path)?
+            .ok_or_else(|| "任务正本尚不存在。请刷新 Tasks 后重试；未写入任何内容。".to_string())?;
+        let mut document = parse_task_document(&bytes)?;
+        let current_list_id = document
+            .tasks
+            .iter()
+            .find(|task| task.id == input.task_id)
+            .map(|task| task.list_id.clone())
+            .unwrap_or_else(|| "inbox".into());
+        let desired = task_from_update(&input, &current_list_id)?;
         ensure_task_list_exists(&document, &desired.list_id)?;
+        if input
+            .list_id
+            .as_deref()
+            .is_some_and(|list_id| list_id != current_list_id)
+        {
+            ensure_active_task_list_exists(&document, &desired.list_id)?;
+        }
         if let Some((task_index, _change)) = find_task_change(&document, &input.change_id) {
             if document.tasks[task_index].id == input.task_id
                 && task_matches(&document.tasks[task_index], &desired)
@@ -908,6 +1093,17 @@ fn normalize_name(value: &str) -> Result<String, String> {
     Ok(name.into())
 }
 
+fn normalize_list_name(value: &str) -> Result<String, String> {
+    let name = value.trim();
+    if name.is_empty() {
+        return Err("任务列表名称不能为空。".into());
+    }
+    if name.chars().count() > 80 || name.contains(['\n', '\r']) {
+        return Err("任务列表名称不能超过 80 个字符，也不能换行。".into());
+    }
+    Ok(name.into())
+}
+
 fn normalize_content(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -991,12 +1187,15 @@ fn task_from_create(input: &TaskCreateInput, now: &str) -> Result<TaskRecord, St
     })
 }
 
-fn task_from_update(input: &TaskUpdateInput) -> Result<TaskRecord, String> {
+fn task_from_update(input: &TaskUpdateInput, current_list_id: &str) -> Result<TaskRecord, String> {
     validate_local_identifier(&input.task_id, "任务标识")?;
     validate_local_identifier(&input.change_id, "任务修改标识")?;
     let name = normalize_name(&input.name)?;
     let (date, time) = normalize_schedule(input.date.as_deref(), input.time.as_deref())?;
-    let list_id = input.list_id.clone().unwrap_or_else(|| "inbox".into());
+    let list_id = input
+        .list_id
+        .clone()
+        .unwrap_or_else(|| current_list_id.to_owned());
     validate_local_identifier(&list_id, "任务列表标识")?;
     Ok(TaskRecord {
         id: input.task_id.clone(),
@@ -1163,8 +1362,26 @@ fn ensure_task_list_exists(document: &TaskDocument, list_id: &str) -> Result<(),
     if document.lists.iter().any(|list| list.id == list_id) {
         Ok(())
     } else {
-        Err("任务列表不存在；此票仅支持 Inbox。未写入任何内容。".into())
+        Err("任务列表不存在；未写入任何内容。".into())
     }
+}
+
+fn ensure_active_task_list_exists(document: &TaskDocument, list_id: &str) -> Result<(), String> {
+    let list = document
+        .lists
+        .iter()
+        .find(|list| list.id == list_id)
+        .ok_or_else(|| "任务列表不存在；未写入任何内容。".to_string())?;
+    if list.archived {
+        return Err(
+            "归档清单不能作为新任务或移动任务的目标；请先恢复清单。未写入任何内容。".into(),
+        );
+    }
+    Ok(())
+}
+
+fn task_list_index(document: &TaskDocument, list_id: &str) -> Option<usize> {
+    document.lists.iter().position(|list| list.id == list_id)
 }
 
 fn task_change(
@@ -1261,9 +1478,7 @@ fn parse_task_document(bytes: &[u8]) -> Result<TaskDocument, String> {
     let mut inbox = false;
     for list in &document.lists {
         validate_local_identifier(&list.id, "任务列表标识")?;
-        if list.name.trim().is_empty() {
-            return Err("任务正本包含空的任务列表名称。".into());
-        }
+        normalize_list_name(&list.name)?;
         if !list_ids.insert(list.id.clone()) {
             return Err("任务正本包含重复任务列表标识。".into());
         }
@@ -1272,6 +1487,8 @@ fn parse_task_document(bytes: &[u8]) -> Result<TaskDocument, String> {
             if !list.system || list.archived {
                 return Err("任务正本的 Inbox 列表必须是未归档的系统列表。".into());
             }
+        } else if list.system {
+            return Err("任务正本只能将 Inbox 声明为系统列表。".into());
         }
     }
     if !inbox {

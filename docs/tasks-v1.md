@@ -16,9 +16,12 @@ Ticket 01 first wrote schema version `1`; the current document is schema
 version `2` and still contains `lists` and `tasks` at the same stable path.
 The reader accepts a legacy schema-1 document, supplies the new optional
 fields in memory, and the next successful write upgrades it to schema 2.
-Every document has a permanent, unarchived system list with id `inbox`; ticket
-01 only wrote to that list. The list and membership fields are kept in the
-document so later state/list operations can use the same persistence unit.
+Every document has a permanent, unarchived system list with id `inbox`. Ticket
+03 adds user-owned, single-level lists in the same document. A list has a
+stable id, a display name, and an `archived` flag; renaming never changes the
+id stored on its tasks. Inbox accepts dated and undated tasks. A new task in a
+user list defaults to that list without a date, while global and Inbox entry
+points default to Inbox. There is no nested folder or list-delete operation.
 
 Each Task has a stable `id`, required `name`, optional `content`, optional
 `date` and `time`, `listId`, `source`, `state`, creation and modification
@@ -44,11 +47,24 @@ Creates and edits validate both the target binding and expected revision before
 using the shared protected atomic file-write boundary. A stale revision or
 wrong Vault is rejected without overwriting external bytes. Repeating the same
 create by Task id or the same edit by change id is idempotent when its payload
-matches; a conflicting reuse is rejected. Failed writes retain the caller's
+matches; a conflicting reuse is rejected. List creation is similarly keyed by
+the stable list id, while rename and archive/restore are convergent retries of
+the requested current list metadata. Moving a task records a `list-moved`
+history entry without duplicating the task. Failed writes retain the caller's
 recoverable draft, and the shared recovery machinery may retain a recovery
 snapshot for explicit inspection.
 
+## List visibility
+
+Inbox and active user lists appear in the everyday `All`, `Inbox`, and
+user-list scopes. Archiving removes a list's tasks from those active scopes and
+exposes them through the `Archived` scope and the list management restore
+entry. Archive and restore never complete, abandon, delete, or otherwise
+rewrite the tasks. Restoring one deleted task clears only that task's
+tombstone; it does not restore the archived list. New tasks and cross-list
+moves cannot target an archived list until the list itself is restored.
+
 This source is independent of Dida365, Google Drive APIs, and Daily Record
 Markdown. Local success is not cloud-sync evidence. The daily-flow adapter,
-list management, Today integration, Calendar integration, and packaged
-acceptance are later tickets.
+Today integration, Calendar integration, and packaged acceptance are later
+tickets.

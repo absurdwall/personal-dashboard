@@ -15,7 +15,10 @@ test("Tasks is a real destination between Today and Calendar with Inbox and All 
   assert.match(html, /id="workspace-destination-tasks"/);
   assert.match(html, /data-task-scope="all"/);
   assert.match(html, /data-task-scope="inbox"/);
-  for (const field of ["task-create-name", "task-create-content", "task-create-date", "task-create-time"]) {
+  assert.match(html, /data-task-scope="archived"/);
+  assert.match(html, /id="task-list-create-form"/);
+  assert.match(html, /id="tasks-lists-management"/);
+  for (const field of ["task-create-name", "task-create-content", "task-create-list", "task-create-date", "task-create-time"]) {
     assert.match(html, new RegExp(`id="${field}"`));
   }
   assert.match(main, /core\.invoke<TasksView>\("tasks_view"\)/);
@@ -30,6 +33,11 @@ test("Tasks fixed copy has Chinese and English counterparts", () => {
     "tasks.introduction",
     "tasks.scopeAll",
     "tasks.scopeInbox",
+    "tasks.scopeArchived",
+    "tasks.createList",
+    "tasks.archiveList",
+    "tasks.restoreList",
+    "tasks.listBoundary",
     "tasks.namePlaceholder",
     "tasks.timeNeedsDate",
     "tasks.savedToVault",
@@ -90,6 +98,41 @@ test("Tasks exposes explicit state, deletion recovery, and completion correction
     "tasks.undoDelete",
     "tasks.correctCompletion",
     "tasks.completionDetails",
+  ]) {
+    const line = copies.split("\n").find((candidate) => candidate.includes(`"${key}"`));
+    assert.ok(line, `missing copy ${key}`);
+    assert.match(line, /zh:/);
+    assert.match(line, /en:/);
+  }
+});
+
+test("Tasks exposes stable list management commands and cross-list move controls", () => {
+  for (const command of [
+    "create_task_list",
+    "rename_task_list",
+    "archive_task_list",
+    "restore_task_list",
+  ]) {
+    assert.match(main, new RegExp(`"${command}"`));
+  }
+  for (const marker of [
+    "data-task-list-editor",
+    "data-task-list-name",
+    "data-task-list-archive",
+    "data-task-list-restore",
+    "taskListMutationConfirmed",
+    "listId",
+  ]) {
+    assert.match(main, new RegExp(marker));
+  }
+  for (const key of [
+    "tasks.listsHeading",
+    "tasks.newListName",
+    "tasks.createList",
+    "tasks.saveList",
+    "tasks.renameListLabel",
+    "tasks.listCount",
+    "tasks.permanentList",
   ]) {
     const line = copies.split("\n").find((candidate) => candidate.includes(`"${key}"`));
     assert.ok(line, `missing copy ${key}`);

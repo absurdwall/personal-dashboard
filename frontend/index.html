@@ -224,11 +224,31 @@
                 <button id="refresh-tasks" type="button" class="secondary-button" data-i18n="tasks.refresh">刷新任务</button>
               </header>
               <p id="tasks-status" class="today-status" role="status" aria-live="polite"></p>
-              <div class="tasks-scope-toolbar" role="tablist" aria-label="任务范围" data-i18n-aria-label="tasks.scope">
-                <button type="button" role="tab" data-task-scope="all" aria-selected="true" data-i18n="tasks.scopeAll">All</button>
-                <button type="button" role="tab" data-task-scope="inbox" aria-selected="false" data-i18n="tasks.scopeInbox">Inbox</button>
+              <div class="tasks-scope-toolbar">
+                <div id="tasks-list-scopes" class="tasks-list-scopes" role="tablist" aria-label="任务范围" data-i18n-aria-label="tasks.scope">
+                  <button type="button" role="tab" data-task-scope="all" aria-selected="true" data-i18n="tasks.scopeAll">All</button>
+                  <button type="button" role="tab" data-task-scope="inbox" aria-selected="false" data-i18n="tasks.scopeInbox">Inbox</button>
+                  <button type="button" role="tab" data-task-scope="archived" aria-selected="false" data-i18n="tasks.scopeArchived">Archived</button>
+                </div>
                 <span id="tasks-count" class="tasks-count" aria-live="polite"></span>
               </div>
+              <section class="tasks-list-manager" aria-labelledby="tasks-lists-heading">
+                <div class="tasks-list-manager-heading">
+                  <div>
+                    <p class="section-label" data-i18n="tasks.listsSection">清单 · 分类与归档</p>
+                    <h3 id="tasks-lists-heading" data-i18n="tasks.listsHeading">任务清单</h3>
+                  </div>
+                  <small class="task-meta" data-i18n="tasks.listBoundary">清单只做分类；归档不会改变任务状态或历史。</small>
+                </div>
+                <form id="task-list-create-form" class="task-list-create-form">
+                  <label>
+                    <span data-i18n="tasks.newListName">新清单名称</span>
+                    <input id="task-list-create-name" type="text" maxlength="80" required placeholder="例如：家庭" data-i18n-placeholder="tasks.newListPlaceholder" />
+                  </label>
+                  <button id="task-list-create-submit" type="submit" data-i18n="tasks.createList">新建清单</button>
+                </form>
+                <div id="tasks-lists-management" class="tasks-lists-management" aria-live="polite"></div>
+              </section>
               <div class="tasks-state-toolbar" role="tablist" aria-label="任务状态" data-i18n-aria-label="tasks.stateScope">
                 <button type="button" role="tab" data-task-state="all" aria-selected="true" data-i18n="tasks.stateAll">All</button>
                 <button type="button" role="tab" data-task-state="pending" aria-selected="false" data-i18n="tasks.statePending">Pending</button>
@@ -241,7 +261,7 @@
               <form id="task-create-form" class="task-form task-create-form" hidden>
                 <div class="task-form-heading">
                   <h3 data-i18n="tasks.addHeading">新建任务</h3>
-                  <small data-i18n="tasks.inbox">Inbox</small>
+                  <small id="task-create-list-label" data-i18n="tasks.inbox">Inbox</small>
                 </div>
                 <div class="task-form-grid">
                   <label class="task-form-wide">
@@ -251,6 +271,10 @@
                   <label class="task-form-wide">
                     <span data-i18n="tasks.content">内容（可选）</span>
                     <textarea id="task-create-content" rows="2" placeholder="补充必要背景或下一步" data-i18n-placeholder="tasks.contentPlaceholder"></textarea>
+                  </label>
+                  <label>
+                    <span data-i18n="tasks.list">清单</span>
+                    <select id="task-create-list" data-task-list></select>
                   </label>
                   <label>
                     <span data-i18n="tasks.date">日期（可选）</span>
