@@ -44,7 +44,7 @@ Settings offers forest/blue/clay/lilac. User observes that choosing purple chang
 
 ## Answer
 
-Implemented in commit `f17e5ca` (`feat: polish personal dashboard 3.0.1`). The reviewable candidate bundle is:
+Implemented in commits `f17e5ca` (`feat: polish personal dashboard 3.0.1`), `48070a2` (`fix: theme focus roles for all palettes`), and `9b81924` (`fix: align task form focus with theme role`). The final reviewed bundle is:
 
 `/Applications/Personal Dashboard.app`
 
@@ -53,10 +53,10 @@ Evidence:
 - All 105 frontend tests pass; `npm run build` and `cargo check --manifest-path src-tauri/Cargo.toml` pass.
 - `npm run build:mac` produced the 3.0.1 macOS app with the existing bundle identifier.
 - Playwright fallback rendered all four palettes. Computed New Task contrast was 9.39, 6.67, 6.87, and 7.60; Refresh Tasks was 6.98 across the palettes. Hover, keyboard focus, active, and disabled states were inspected. Browser plugin was unavailable.
-- The final isolated packaged Dashboard 4 workflow passed with eight wide/narrow Chinese/English screenshots under `output/playwright/pd301-final-captures/`, including lifecycle persistence across relaunch, Vault switching, and conflict-draft recovery. It used synthetic Vaults only.
+- The final isolated packaged Dashboard 4 workflow passed with eight wide/narrow Chinese/English screenshots under `output/playwright/pd301-final-focus-captures/`, including lifecycle persistence across relaunch, Vault switching, and conflict-draft recovery. It used synthetic Vaults only.
 - The selected Vault received only the authorized English Habit sidecar fields, with a user-local recoverable record of the pre-change missing-sidecar state; personal configuration remains outside Git and this ticket.
-- Two independent Luna Max reviews found no remaining code-level spec gap or standards violation. Remaining Drive acceptance is separate and unresolved.
-- Delivery: the backed-up 3.0.0 `/Applications` bundle was replaced with 3.0.1 and relaunched. The installed executable hash is `2a0b567aabfaf369fd004e2578682ea5965e7d6685d570cf4050c9cf12fb35c3`; the bundle identifier remains `com.tortillaflat.personal-dashboard`, the bundle verifies with `codesign --verify --deep --strict`, and exactly one installed process is running from `/Applications/Personal Dashboard.app/Contents/MacOS/personal-dashboard`.
+- The focused Luna Max review found and the implementation fixed higher-specificity focus-outline gaps for Habit cells, selected accent swatches, and task list/editor controls; the final re-review returned `no findings`. Remaining Drive acceptance is separate and unresolved.
+- Delivery: the backed-up 3.0.0 `/Applications` bundle and the pre-focus-fix 3.0.1 bundle were preserved, then the final 3.0.1 bundle was installed in place and relaunched. The installed executable hash is `1c3ddac60d177f3d42bfe9a8ded71bf573df36458b07bef5feaf10f208d66027`; the bundle identifier remains `com.tortillaflat.personal-dashboard`, the bundle verifies with `codesign --verify --deep --strict`, and exactly one installed process is running from `/Applications/Personal Dashboard.app/Contents/MacOS/personal-dashboard`.
 - Search cleanup: Spotlight exact-name search and a LaunchServices dump each resolve only `/Applications/Personal Dashboard.app`. The stale canonical/e99a build bundles were preserved under non-`.app` backup names, and stale temporary registrations were removed with targeted `lsregister -u` calls; no global index or LaunchServices reset was used.
 - The user-local `tortilla-flat-management` helper is not installed in the available skill roots; management reconciliation/setup remains required. A first archive attempt for old synthetic `/private/tmp` debug fixtures passed newline-separated names as one tar argument and produced an empty archive; the empty archive was removed and that synthetic-only cleanup is recorded separately. No personal Vault or app backup was affected.
 
