@@ -27,6 +27,23 @@ export function taskListDisplayName(
   return list.isSystem ? inboxLabel : list.name;
 }
 
+export function taskListCount<T extends Readonly<{
+  listId: string;
+  state: Exclude<TaskStateFilter, "all" | "deleted">;
+  deletedAt: string | null;
+}>>(
+  tasks: readonly T[],
+  listId: string,
+  stateScope: TaskStateFilter,
+): number {
+  return tasks.filter((task) => {
+    if (task.listId !== listId) return false;
+    if (stateScope === "deleted") return task.deletedAt !== null;
+    return task.deletedAt === null &&
+      (stateScope === "all" || task.state === stateScope);
+  }).length;
+}
+
 export function taskListIdFromScope(scope: TaskListScope): string | null {
   return scope.startsWith("list:") ? scope.slice("list:".length) : null;
 }

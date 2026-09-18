@@ -32,7 +32,17 @@ Type: task
 `ready-for-human`：Drive 方面仍缺少本票专用的新 fixture，因此 4.0 改动后的
 任务／Habit 配置写入尚未获得新的实际 Drive 客户端证据。
 
-- Follow-up command:
+- Latest local packaged follow-up: commit `a3042a7`, bundle executable SHA-256
+  `f2eba3cbd5bec59efbdf12da20ab9b3b98194a691d33dc4efb73b33ea19719c0`, CDHash
+  `5bb8a2037dddbbb581858b8beabbe5fee099d8a7`, and capture directory
+  `output/playwright/personal-dashboard-4-review-follow-up-20260918-v8/`.
+  The v8 run passed 102 frontend tests plus the full Rust suite and visibly
+  rendered the system Inbox as `收集箱` in Chinese; it remains synthetic-Vault
+  evidence only and does not resolve the Drive checkbox. The reproducible v8
+  command is:
+  `PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918-v8" scripts/acceptance/macos-ipc-workflow.sh`。
+
+- Previous v7 follow-up command:
   `PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918-v7" scripts/acceptance/macos-ipc-workflow.sh`。
 - Follow-up evidence: synthetic isolated Vaults covered the affected Tasks／Today／Calendar／Habits lifecycle, archive history, Vault switching, conflict draft recovery, bilingual labels and 640×520 surfaces, with eight non-overwritten captures under `output/playwright/personal-dashboard-4-review-follow-up-20260918-v7/`。这更新了 packaged 本地证据，但不改变 Drive fixture 仍待人工准备的边界。
 

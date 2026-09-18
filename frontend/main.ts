@@ -44,6 +44,7 @@ import {
   performTaskUpdateRequest,
   taskListIdFromScope,
   taskListDisplayName,
+  taskListCount,
   taskListMutationConfirmed,
   taskListScopeForId,
   taskScopeCount,
@@ -4047,10 +4048,6 @@ function activeTaskLists(view: TasksView): readonly TaskListView[] {
   return view.lists.filter((list) => !list.archived);
 }
 
-function taskListCount(view: TasksView, listId: string): number {
-  return view.tasks.filter((task) => task.listId === listId && task.deletedAt === null).length;
-}
-
 function renderTaskListScopeButtons(view: TasksView): void {
   if (!taskListScopes) return;
   const buttons: HTMLButtonElement[] = [];
@@ -4158,7 +4155,9 @@ function renderTaskListManagement(view: TasksView, canOperate: boolean): void {
     title.textContent = displayName;
     const count = document.createElement("small");
     count.className = "task-meta";
-    setCopy(count, "tasks.listCount", { count: taskListCount(view, list.id) });
+    setCopy(count, "tasks.listCount", {
+      count: taskListCount(view.tasks, list.id, taskStateScope),
+    });
     heading.append(title, count);
     row.append(heading);
     if (list.isSystem) {
@@ -6290,12 +6289,13 @@ taskCreateDate?.addEventListener("change", () => {
 taskCreateList?.addEventListener("change", () => {
   const selected = currentTasksView && taskListForId(currentTasksView, taskCreateList.value);
   if (selected && taskCreateListLabel && taskCreateSubmit) {
-    setRawText(taskCreateListLabel, selected.name);
+    const displayName = taskListDisplayName(selected, t("tasks.inbox"));
+    setRawText(taskCreateListLabel, displayName);
     setRawText(
       taskCreateSubmit,
       selected.id === "inbox"
         ? t("tasks.add")
-        : t("tasks.addToList", { list: selected.name }),
+        : t("tasks.addToList", { list: displayName }),
     );
   }
   stashTaskCreateDraft();

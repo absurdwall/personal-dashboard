@@ -34,17 +34,18 @@ Review evidence: `/Users/tingranwang/.codex/worktrees/e99a/personal-dashboard/re
 ## Answer
 
 Implemented and verified on `codex/dashboard-4-review-follow-up` in the isolated
-`e99a` worktree. The final code commit tested by the packaged run is `e74e2d4`
-(`test: drive task updates through the async seam`), with the preceding bounded
-repair commits `9d8b9a1`, `e7c07b3`, `42b818f`, and `a483493`.
+`e99a` worktree. The latest code commit tested by the packaged v8 run is
+`a3042a7` (`fix: close review evidence and localization gaps`), with the
+preceding bounded repair commits `9d8b9a1`, `e7c07b3`, `42b818f`, `a483493`,
+and `e74e2d4`.
 
 - F-01: Calendar now exposes task-source state separately from Daily Record state; corrupt and unknown-version task JSON remain untouched while Calendar review data remains available.
 - F-02: Edit identities include the full payload and target binding; normal navigation preserves uncertain retry identity, confirmed later edits retire older payload identities, Vault reset clears the store, and the frontend request/operation seam now captures the submitted payload while a stateful fake backend commits before the late response. Rust A/B/A contract regressions cover backend identity handling.
 - F-03/F-04: Fixed scope labels and reviewed diagnostics have exact Chinese/English output while task/list content remains source-owned.
 - F-05/F-06: Counts follow visible state filters, and empty/relative adapter Vault paths are rejected before any candidate-file mutation.
 - V-01/F-07: Daily-flow integration inputs resolve through the Git common directory or explicit workspace-root environment, fail loudly when absent, and `CONTEXT.md` reuses the existing 4.0 vocabulary for shipped behavior.
-- Verification: targeted frontend tests passed; `npm run test:frontend` passed 100/100; `npm run check` passed with the existing source-checkout TypeScript binary on `PATH`; full Rust tests passed, including 28 task workflow tests. Changed Rust files pass targeted rustfmt; the repository-wide check still reports the unrelated pre-existing `appearance_workflow.rs` formatting difference.
-- Packaged Mac v7 passed from `e74e2d4` after rebuilding `src-tauri/target/release/bundle/macos/Personal Dashboard.app`; eight non-overwritten captures are in `output/playwright/personal-dashboard-4-review-follow-up-20260918-v7/`. Evidence is synthetic-Vault only; ticket 09 remains `ready-for-human` because the Drive fixture is still missing.
+- Verification: targeted frontend tests passed; the latest `npm run test:frontend` passed 102/102; `npm run check` passed with the existing source-checkout TypeScript binary on `PATH`; full Rust tests passed, including 28 task workflow tests. Changed Rust files pass targeted rustfmt; the repository-wide check still reports the unrelated pre-existing `appearance_workflow.rs` formatting difference.
+- Packaged Mac v8 passed from `a3042a7` after rebuilding `src-tauri/target/release/bundle/macos/Personal Dashboard.app`; eight non-overwritten captures are in `output/playwright/personal-dashboard-4-review-follow-up-20260918-v8/`. Evidence is synthetic-Vault only; ticket 09 remains `ready-for-human` because the Drive fixture is still missing.
 
 ### Answer addendum: post-closeout daily app entry reconciliation
 
@@ -73,6 +74,12 @@ applications folder:
   contained exactly one persistent Personal Dashboard tile. No build bundle,
   Vault, or personal data was deleted or changed; only this concrete Dock
   persistent entry was intentionally rewritten.
+- After the v8 closeout build, the previous `/Applications/Personal Dashboard.app`
+  was moved reversibly to `/tmp/Personal Dashboard.app.before-a3042a7`, and the
+  bundle built from `a3042a7` was installed at the stable path. The installed
+  executable now has SHA-256
+  `f2eba3cbd5bec59efbdf12da20ab9b3b98194a691d33dc4efb73b33ea19719c0` and
+  CDHash `5bb8a2037dddbbb581858b8beabbe5fee099d8a7`.
 - Installed-bundle validation: `CFBundleIdentifier` is
   `com.tortillaflat.personal-dashboard`, version is `3.0.0`, and
   `codesign --verify --deep --strict` passes. The remaining code review and

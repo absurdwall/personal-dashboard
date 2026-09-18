@@ -278,7 +278,7 @@ const interfaceCopies = {
   "tasks.newListPlaceholder": { zh: "例如：家庭", en: "For example: Home" },
   "tasks.createList": { zh: "新建清单", en: "Create list" },
   "tasks.list": { zh: "清单", en: "List" },
-  "tasks.listCount": { zh: "{count} 项未删除任务", en: "{count} active tasks" },
+  "tasks.listCount": { zh: "{count} 项", en: "{count} tasks" },
   "tasks.permanentList": { zh: "永久默认清单 · 不能改名或归档", en: "Permanent default list · Cannot rename or archive" },
   "tasks.saveList": { zh: "保存清单", en: "Save list" },
   "tasks.renameListLabel": { zh: "重命名清单“{list}”", en: "Rename list {list}" },

@@ -2,9 +2,50 @@
 
 Date: 2026-09-18
 
-Status: **the isolated Dashboard 4.0 review-follow-up rerun passed at the final implementation commit; the broader multi-scenario gate was not rerun, and the Drive fixture-dependent recheck remains pending human acceptance.**
+Status: **the isolated Dashboard 4.0 review-follow-up rerun passed at the latest implementation commit; the broader multi-scenario gate was not rerun, and the Drive fixture-dependent recheck remains pending human acceptance.**
 
-## 2026-09-18 review-follow-up rerun
+## 2026-09-18 review-follow-up rerun (v8, after closeout fixes)
+
+- Branch/worktree: `codex/dashboard-4-review-follow-up` in the isolated `e99a`
+  worktree, built from commit `a3042a7` (`fix: close review evidence and
+  localization gaps`).
+- Bundle: `src-tauri/target/release/bundle/macos/Personal Dashboard.app`;
+  executable SHA-256
+  `f2eba3cbd5bec59efbdf12da20ab9b3b98194a691d33dc4efb73b33ea19719c0`, CDHash
+  `5bb8a2037dddbbb581858b8beabbe5fee099d8a7`; ad-hoc `codesign
+  --verify --deep --strict` passed.
+- Command:
+
+  ```sh
+  PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 \
+  PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 \
+  PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918-v8" \
+  scripts/acceptance/macos-ipc-workflow.sh
+  ```
+
+- Result: **passed**. The same isolated synthetic-Vault matrix passed after the
+  system Inbox display localization, stateful late-response seam test, and
+  adapter Apply-path regression. The Chinese Tasks capture now renders the
+  system list as `收集箱` while preserving user-created list names; eight
+  non-overwritten captures are under
+  `output/playwright/personal-dashboard-4-review-follow-up-20260918-v8/`.
+- Automated follow-up support at this commit: `npm run test:frontend` passed
+  101/101; `npm run check` passed; full Rust tests passed, including 11 adapter
+  and 28 task workflow tests. Drive remains outside this synthetic evidence.
+- Final capture manifest (SHA-256):
+
+  | Capture | SHA-256 |
+  | --- | --- |
+  | `product-zh-tasks-wide.png` | `4c824db7c5ed009c2180465f1827cf62fcad5f45688594df85d56a41be8835dd` |
+  | `product-zh-today-wide.png` | `231deff9b3ee189d24a7b4d2bd5fe7769afae8df03b4ad0066bc1d39442296bb` |
+  | `product-zh-calendar-wide.png` | `af23d7997b57844c5c45652c7cb42be5258d699ce23590fbde510a292a026981` |
+  | `product-zh-habits-wide.png` | `79bd15509e6e9e4006d18270dcc8e370679214f4574e425647855263efe45b53` |
+  | `product-en-tasks-narrow.png` | `ad670067c7ec63ccee8b70ee5328d7b2a0b10ce366b36d129d316ee78e67898b` |
+  | `product-en-calendar-narrow.png` | `949c671a5e07878f3aa92d244e85f8a5da4fbd9d69c335ae77bc18cb77776d56` |
+  | `product-en-today-narrow.png` | `7556239e2418b887f33b8d5880876c6e82db197a1809ecccb2e2e1ac3a5be85f` |
+  | `product-en-habits-narrow.png` | `f38661bd5c934c97e0820ea4adaea44174c609da0e121286828787410bdaccbc` |
+
+## 2026-09-18 review-follow-up rerun (v7, before closeout fixes)
 
 - Branch/worktree: `codex/dashboard-4-review-follow-up` in the isolated `e99a`
   worktree, built from review base `41289ff`.

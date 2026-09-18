@@ -9,6 +9,7 @@ import {
   taskListScopeForId,
   taskEditOperationKey,
   taskListDisplayName,
+  taskListCount,
   TaskOperationIdentityStore,
   taskMutationConfirmed,
   performTaskUpdateRequest,
@@ -32,6 +33,22 @@ test("system task lists use the localized Inbox display while user list names st
     taskListDisplayName({ name: "我的计划", isSystem: false }, "收集箱"),
     "我的计划",
   );
+});
+
+test("task list management counts follow the selected state filter", () => {
+  const tasks = [
+    { listId: "inbox", state: "pending" as const, deletedAt: null },
+    { listId: "inbox", state: "completed" as const, deletedAt: null },
+    { listId: "work", state: "abandoned" as const, deletedAt: null },
+    { listId: "inbox", state: "completed" as const, deletedAt: "2026-09-18T10:00-04:00" },
+  ];
+
+  assert.equal(taskListCount(tasks, "inbox", "all"), 2);
+  assert.equal(taskListCount(tasks, "inbox", "pending"), 1);
+  assert.equal(taskListCount(tasks, "inbox", "completed"), 1);
+  assert.equal(taskListCount(tasks, "inbox", "deleted"), 1);
+  assert.equal(taskListCount(tasks, "work", "abandoned"), 1);
+  assert.equal(taskListCount(tasks, "work", "completed"), 0);
 });
 
 test("clearing a task date also clears its time and disables the time control", () => {
