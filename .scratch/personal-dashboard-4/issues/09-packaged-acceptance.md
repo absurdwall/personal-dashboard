@@ -27,14 +27,14 @@ Type: task
 ## Answer
 
 上一轮 local packaged candidate 已通过；2026-09-18 在
-`codex/dashboard-4-review-follow-up` 的 `e7c07b3` 上，受影响的 Dashboard
+`codex/dashboard-4-review-follow-up` 的 `e74e2d4` 上，受影响的 Dashboard
 4.0 `dashboard-4` packaged follow-up 也已通过。本票仍保持
 `ready-for-human`：Drive 方面仍缺少本票专用的新 fixture，因此 4.0 改动后的
 任务／Habit 配置写入尚未获得新的实际 Drive 客户端证据。
 
 - Follow-up command:
-  `PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918-v3" scripts/acceptance/macos-ipc-workflow.sh`。
-- Follow-up evidence: synthetic isolated Vaults covered the affected Tasks／Today／Calendar／Habits lifecycle, archive history, Vault switching, conflict draft recovery, bilingual labels and 640×520 surfaces, with eight non-overwritten captures under `output/playwright/personal-dashboard-4-review-follow-up-20260918-v3/`。这更新了 packaged 本地证据，但不改变 Drive fixture 仍待人工准备的边界。
+  `PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918-v7" scripts/acceptance/macos-ipc-workflow.sh`。
+- Follow-up evidence: synthetic isolated Vaults covered the affected Tasks／Today／Calendar／Habits lifecycle, archive history, Vault switching, conflict draft recovery, bilingual labels and 640×520 surfaces, with eight non-overwritten captures under `output/playwright/personal-dashboard-4-review-follow-up-20260918-v7/`。这更新了 packaged 本地证据，但不改变 Drive fixture 仍待人工准备的边界。
 
 - 候选 checkout 为 `codex/management-daily-integration`，包含 01–08 的实现，基线提交为 `5341d25`；本票实现 patch fingerprint 为 `a7e8432202a43aa0cdb884f6b67c2328d1f9de4f56c54dc7d54e373bd8fd9b5f`，重建 bundle 内 executable fingerprint 为 `c1684d9299736042fd79a7c914294a5a55ae8715bc8f0018233731800dc9d02f`。通过 `caffeinate -is npm run build:mac` 重建了 `Personal Dashboard.app`。真实 packaged 命令为：
   `PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-candidate-20260917-final" scripts/acceptance/macos-ipc-workflow.sh`。

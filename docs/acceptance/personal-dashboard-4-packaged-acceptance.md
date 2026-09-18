@@ -2,13 +2,13 @@
 
 Date: 2026-09-18
 
-Status: **the pre-review local packaged candidate and the isolated Dashboard 4.0 review-follow-up rerun passed; the broader multi-scenario gate was not rerun, and the Drive fixture-dependent recheck remains pending human acceptance.**
+Status: **the isolated Dashboard 4.0 review-follow-up rerun passed at the final implementation commit; the broader multi-scenario gate was not rerun, and the Drive fixture-dependent recheck remains pending human acceptance.**
 
 ## 2026-09-18 review-follow-up rerun
 
 - Branch/worktree: `codex/dashboard-4-review-follow-up` in the isolated `e99a`
   worktree, built from review base `41289ff`.
-- Commit: `e7c07b3` (`fix: close Dashboard 4 review findings`).
+- Commit: `e74e2d4` (`test: drive task updates through the async seam`).
 - Bundle: `src-tauri/target/release/bundle/macos/Personal Dashboard.app`,
   built with the repository's existing Tauri CLI and the source checkout's
   existing TypeScript binary supplied on `PATH`; no dependency files were
@@ -18,7 +18,7 @@ Status: **the pre-review local packaged candidate and the isolated Dashboard 4.0
   ```sh
   PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 \
   PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 \
-  PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918-v3" \
+  PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918-v7" \
   scripts/acceptance/macos-ipc-workflow.sh
   ```
 
@@ -27,14 +27,26 @@ Status: **the pre-review local packaged candidate and the isolated Dashboard 4.0
   switching, conflict draft recovery, bilingual labels, and the narrow
   640×520 surface. It verified persistence across relaunch and produced eight
   non-overwritten captures under
-  `output/playwright/personal-dashboard-4-review-follow-up-20260918-v3/`.
+  `output/playwright/personal-dashboard-4-review-follow-up-20260918-v7/`.
 - Boundary: this was an isolated synthetic-Vault run. It did not touch a
   personal Vault, Drive, Dida365, automation, or an installed app. It is
   affected-path packaged evidence for ticket 11, not Drive proof and not a
   claim that ticket 09 is resolved.
+- Final capture manifest (SHA-256):
+
+  | Capture | SHA-256 |
+  | --- | --- |
+  | `product-zh-tasks-wide.png` | `593facb7e81aec2d9c5114fb9f9bcf3058675425fc46dd3a036781d386e3a169` |
+  | `product-zh-today-wide.png` | `16ccef95cd96b252e2ca5826b208d1a1a653ee4bb1853bdce8dd24780ddf0673` |
+  | `product-zh-calendar-wide.png` | `65919fc3a766921ac825838e70ac8d2582529f0fa91154e62d4660b1aeb3c93f` |
+  | `product-zh-habits-wide.png` | `01dca60c699ae2912ae5b20b948361c522bc74ea3275cde05b2efb96d8d2765f` |
+  | `product-en-tasks-narrow.png` | `bffd03d59367867373bc469cd7dc8050d782ef0a1aac86f69ea3724182ebf942` |
+  | `product-en-calendar-narrow.png` | `a2d17622e57a7f4c94fa6620799b19d5b6782e73bac0964418bc2d077b431928` |
+  | `product-en-today-narrow.png` | `40af7255ea43696f0ecb0f9b17082264e653131d4f849d6397022baa630c6573` |
+  | `product-en-habits-narrow.png` | `baef1446343ad7d5e920555562455cf3d3f0eb8e09a77d9db01f2147e811ec43` |
 - Automated follow-up support at this commit: `npm run check` passed with the
   existing source-checkout tool binaries supplied on `PATH`; `npm run
-  test:frontend` passed 98/98; `cargo test --manifest-path
+  test:frontend` passed 100/100; `cargo test --manifest-path
   src-tauri/Cargo.toml` passed; the changed Rust files passed targeted
   rustfmt checks. The repository-wide rustfmt check still reports an
   unrelated pre-existing formatting difference in
