@@ -69,6 +69,47 @@ test("fixed interface copy switches language while personal content and drafts s
   assert.equal(phase, "daytime");
 });
 
+test("Tasks scopes and reviewed backend diagnostics have real bilingual output", () => {
+  assert.equal(interfaceCopy("tasks.scopeAll", "zh"), "全部任务");
+  assert.equal(interfaceCopy("tasks.scopeToday", "zh"), "今日");
+  assert.equal(interfaceCopy("tasks.scopeInbox", "zh"), "收集箱");
+  assert.equal(interfaceCopy("tasks.inbox", "zh"), "收集箱");
+  assert.equal(interfaceCopy("tasks.scopeAll", "en"), "All");
+  assert.equal(interfaceCopy("tasks.scopeToday", "en"), "Today");
+  assert.equal(interfaceCopy("tasks.scopeInbox", "en"), "Inbox");
+  assert.equal(interfaceCopy("tasks.inbox", "en"), "Inbox");
+
+  const diagnostics: Array<[string, string]> = [
+    [
+      "找不到要改期的任务；未写入任何内容。",
+      "The task to reschedule could not be found; nothing was written.",
+    ],
+    [
+      "放弃任务不会被旧 daily-flow 操作重新激活；请先明确恢复意图。未写入任何内容。",
+      "An abandoned task will not be reactivated by an old daily-flow operation; restore it explicitly first; nothing was written.",
+    ],
+    ["任务完成日期无效。", "Task completion date is invalid."],
+    ["任务状态没有可保存的变化。", "The task state has no changes to save."],
+    [
+      "任务正本包含重复的 daily-flow 来源标识。",
+      "The task source contains a duplicate daily-flow source reference.",
+    ],
+    [
+      "Tasks 当前绑定的 Vault 或文件目标已经变化。请先读取最新任务正本；未写入任何内容。",
+      "The Vault or file target bound to Tasks changed. Read the latest task source before retrying; nothing was written.",
+    ],
+  ];
+
+  for (const [source, expected] of diagnostics) {
+    assert.equal(localizeApplicationError(source, "en"), expected);
+    assert.equal(localizeApplicationError(source, "zh"), source);
+  }
+  assert.equal(
+    localizeApplicationError("daily-flow task adapter 必须提供绝对 Vault 路径。", "en"),
+    "The daily-flow task adapter requires an absolute Vault path.",
+  );
+});
+
 test("fixed application statuses and generated habit labels have English equivalents", () => {
   assert.equal(
     localizeApplicationMessage(

@@ -16,6 +16,7 @@
 | [08 真实早晚流程接线与权限边界](issues/08-daily-flow-integration.md) | 07 | resolved |
 | [09 Packaged Mac 整体验收与交付核对](issues/09-packaged-acceptance.md) | 04, 05, 06, 08 | ready-for-human |
 | [10 Prototype 视觉对齐返工](issues/10-prototype-visual-parity.md) | 01–09 | resolved |
+| [11 Review 功能与双语修复](issues/11-review-follow-up.md) | 01–08, 10 | claimed |
 
 01、06 无前置；可按 01–09 顺序逐票执行。新执行任务须包含已完成前置代码，尤其不要从缺少依赖的旧默认分支起步。02 与 03、04 与 05 并无互相硬依赖，但共享模块修改仍需协调。08 已将 07 的任务适配器接入 canonical daily-loop；09 经传递依赖覆盖全体。
 

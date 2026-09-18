@@ -24,6 +24,29 @@ export function taskListIdFromScope(scope: TaskListScope): string | null {
   return scope.startsWith("list:") ? scope.slice("list:".length) : null;
 }
 
+export function taskEditOperationKey(
+  edit: Readonly<{
+    targetBinding: string;
+    taskId: string;
+    name: string;
+    content: string | null;
+    date: string | null;
+    time: string | null;
+    listId: string;
+  }>,
+): string {
+  return JSON.stringify([
+    edit.targetBinding,
+    "update",
+    edit.taskId,
+    edit.name,
+    edit.content,
+    edit.date,
+    edit.time,
+    edit.listId,
+  ]);
+}
+
 export function calendarTasksForDate<T extends Readonly<{
   date: string | null;
   deletedAt: string | null;
@@ -56,6 +79,29 @@ export function taskVisibleInScope(
     task.deletedAt === null &&
     (stateScope === "all" || task.state === stateScope)
   );
+}
+
+export function taskScopeCount<T extends TodayTaskCandidate>(
+  tasks: readonly T[],
+  listScope: TaskListScope,
+  stateScope: TaskStateFilter,
+  currentDate: string | null,
+  archivedListIds: ReadonlySet<string>,
+): number {
+  if (listScope === "today") {
+    if (!currentDate) return 0;
+    const groups = todayTaskGroups(tasks, currentDate, true, archivedListIds);
+    return [...groups.scheduled, ...groups.overdue].filter(
+      (task) => stateScope === "all" || task.state === stateScope,
+    ).length;
+  }
+  return tasks.filter((task) =>
+    taskVisibleInScope(
+      { ...task, listArchived: archivedListIds.has(task.listId) },
+      listScope,
+      stateScope,
+    ),
+  ).length;
 }
 
 export function taskVisibleInToday(

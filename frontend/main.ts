@@ -39,9 +39,11 @@ import {
   calendarTasksForDate,
   isCurrentTaskResponse,
   normalizeTaskSchedule,
+  taskEditOperationKey,
   taskListIdFromScope,
   taskListMutationConfirmed,
   taskListScopeForId,
+  taskScopeCount,
   taskMutationConfirmed,
   taskVisibleInScope,
   todayTaskGroups,
@@ -310,6 +312,8 @@ type CalendarMonthView = Readonly<{
   year: number;
   month: number;
   configured: boolean;
+  taskState: "unconfigured" | "empty" | "ready" | "error";
+  taskMessage: string;
   days: readonly CalendarDayView[];
 }>;
 
@@ -2908,11 +2912,16 @@ async function refreshCalendarMonth(
     currentCalendarMonth = view;
     renderCalendarGrid(view);
     if (calendarStatus) {
-      setCopy(
-        calendarStatus,
-        view.configured ? "calendar.previewStatus" : "calendar.connectStatus",
-      );
-      calendarStatus.dataset.state = view.configured ? "ready" : "unconfigured";
+      if (!view.configured) {
+        setCopy(calendarStatus, "calendar.connectStatus");
+        calendarStatus.dataset.state = "unconfigured";
+      } else if (view.taskState === "error") {
+        setCopyError(calendarStatus, "calendar.taskSourceLoadFailed", view.taskMessage);
+        calendarStatus.dataset.state = "error";
+      } else {
+        setCopy(calendarStatus, "calendar.previewStatus");
+        calendarStatus.dataset.state = "ready";
+      }
     }
     return view;
   } catch (error) {
@@ -4039,24 +4048,6 @@ function taskListCount(view: TasksView, listId: string): number {
   return view.tasks.filter((task) => task.listId === listId && task.deletedAt === null).length;
 }
 
-function taskScopeCount(view: TasksView, scope: TaskListScope): number {
-  const archivedListIds = new Set(
-    view.lists.filter((list) => list.archived).map((list) => list.id),
-  );
-  if (scope === "today") {
-    if (!view.currentDate) return 0;
-    const groups = todayTaskGroups(view.tasks, view.currentDate, true, archivedListIds);
-    return groups.scheduled.length + groups.overdue.length;
-  }
-  return view.tasks.filter((task) => {
-    if (task.deletedAt !== null) return false;
-    if (scope === "archived") return archivedListIds.has(task.listId);
-    if (scope === "all") return !archivedListIds.has(task.listId);
-    if (scope === "inbox") return task.listId === "inbox" && !archivedListIds.has(task.listId);
-    return task.listId === taskListIdFromScope(scope) && !archivedListIds.has(task.listId);
-  }).length;
-}
-
 function renderTaskListScopeButtons(view: TasksView): void {
   if (!taskListScopes) return;
   const buttons: HTMLButtonElement[] = [];
@@ -4069,7 +4060,12 @@ function renderTaskListScopeButtons(view: TasksView): void {
     const label = document.createElement("span");
     setCopy(label, copyKey);
     const count = document.createElement("strong");
-    count.textContent = String(taskScopeCount(view, scope));
+    const archivedListIds = new Set(
+      view.lists.filter((list) => list.archived).map((list) => list.id),
+    );
+    count.textContent = String(
+      taskScopeCount(view.tasks, scope, taskStateScope, view.currentDate, archivedListIds),
+    );
     button.append(label, count);
     if (scope === "all") {
       button.dataset.i18nAriaLabel = "tasks.scopeAllList";
@@ -4089,7 +4085,18 @@ function renderTaskListScopeButtons(view: TasksView): void {
     const label = document.createElement("span");
     label.textContent = list.name;
     const count = document.createElement("strong");
-    count.textContent = String(taskScopeCount(view, taskListScopeForId(list.id)));
+    const archivedListIds = new Set(
+      view.lists.filter((candidate) => candidate.archived).map((candidate) => candidate.id),
+    );
+    count.textContent = String(
+      taskScopeCount(
+        view.tasks,
+        taskListScopeForId(list.id),
+        taskStateScope,
+        view.currentDate,
+        archivedListIds,
+      ),
+    );
     button.append(label, count);
     button.title = list.name;
     buttons.push(button);
@@ -5473,7 +5480,15 @@ async function updateTask(
   }
   const normalized = normalizeTaskSchedule(draft.date, draft.time);
   const listId = draft.listId ?? task.listId;
-  const operationKey = JSON.stringify([binding, "update", taskId]);
+  const operationKey = taskEditOperationKey({
+    targetBinding: binding,
+    taskId,
+    name,
+    content: draft.content.trim() || null,
+    date: normalized.date,
+    time: normalized.time,
+    listId,
+  });
   const changeId = stableTaskOperationId(operationKey, "edit-task");
   const expectedDate =
     surface === "today"

@@ -149,6 +149,7 @@ const interfaceCopies = {
   "calendar.blankCopy": { zh: "没有 Daily Record；保持空白，不制造补记义务。", en: "There is no Daily Record. The date stays blank without creating a catch-up obligation." },
   "calendar.unknownBoundary": { zh: "未记录不解释成未完成。", en: "Not recorded does not mean not completed." },
   "calendar.loadFailed": { zh: "无法读取 Calendar：{error}", en: "Could not load Calendar: {error}" },
+  "calendar.taskSourceLoadFailed": { zh: "无法读取 Calendar 任务正本：{error}", en: "Could not read the Calendar task source: {error}" },
   "calendar.vaultSelectionFailed": { zh: "Vault 选择失败", en: "Vault selection failed" },
   "calendar.readFailed": { zh: "Calendar 读取失败", en: "Calendar load failed" },
   "calendar.retry": { zh: "当前页面没有完成这次读取；请修复后重试。", en: "This page did not complete the read. Fix the problem and try again." },
@@ -262,10 +263,10 @@ const interfaceCopies = {
   "tasks.newTask": { zh: "新建任务", en: "New task" },
   "tasks.refresh": { zh: "刷新任务", en: "Refresh tasks" },
   "tasks.scope": { zh: "任务范围", en: "Task scope" },
-  "tasks.scopeAll": { zh: "All", en: "All" },
+  "tasks.scopeAll": { zh: "全部任务", en: "All" },
   "tasks.scopeAllList": { zh: "全部任务范围", en: "All task scope" },
-  "tasks.scopeToday": { zh: "Today", en: "Today" },
-  "tasks.scopeInbox": { zh: "Inbox", en: "Inbox" },
+  "tasks.scopeToday": { zh: "今日", en: "Today" },
+  "tasks.scopeInbox": { zh: "收集箱", en: "Inbox" },
   "tasks.scopeArchived": { zh: "已归档", en: "Archived" },
   "tasks.listsNavHeading": { zh: "清单", en: "Lists" },
   "tasks.newList": { zh: "新建清单", en: "New list" },
@@ -313,7 +314,7 @@ const interfaceCopies = {
   "tasks.save": { zh: "保存", en: "Save" },
   "tasks.add": { zh: "加入 Inbox", en: "Add to Inbox" },
   "tasks.addToList": { zh: "加入“{list}”", en: "Add to {list}" },
-  "tasks.inbox": { zh: "Inbox", en: "Inbox" },
+  "tasks.inbox": { zh: "收集箱", en: "Inbox" },
   "tasks.noDate": { zh: "未安排日期", en: "No date" },
   "tasks.overdue": { zh: "逾期 · 未推断失败", en: "Overdue · no failure inferred" },
   "tasks.dateAt": { zh: "{date} · {time}", en: "{date} · {time}" },
@@ -988,6 +989,8 @@ function englishTaskDiagnostic(message: string): string | null {
       "The lived date must be a valid YYYY-MM-DD date.",
     "daily-flow task adapter 必须明确提供 Vault 路径。":
       "The daily-flow task adapter requires an explicit Vault path.",
+    "daily-flow task adapter 必须提供绝对 Vault 路径。":
+      "The daily-flow task adapter requires an absolute Vault path.",
     "daily-flow 请求的 Vault 与任务正本当前目标不一致；未写入任何内容。":
       "The Vault in the daily-flow request does not match the current task-source target; nothing was written.",
     "同一 daily-flow 请求不能重复声明任务标识；未写入任何内容。":
@@ -1017,10 +1020,14 @@ function englishTaskDiagnostic(message: string): string | null {
       "That task-change identifier is already used by another operation; nothing was written.",
     "找不到要编辑的任务；未写入任何内容。":
       "The task to edit could not be found; nothing was written.",
+    "找不到要改期的任务；未写入任何内容。":
+      "The task to reschedule could not be found; nothing was written.",
     "找不到要更新状态的任务；未写入任何内容。":
       "The task whose state should be updated could not be found; nothing was written.",
     "任务必须先从放弃状态恢复为待办，再标记完成；未写入任何内容。":
       "An abandoned task must be restored to pending before it can be completed; nothing was written.",
+    "放弃任务不会被旧 daily-flow 操作重新激活；请先明确恢复意图。未写入任何内容。":
+      "An abandoned task will not be reactivated by an old daily-flow operation; restore it explicitly first; nothing was written.",
     "找不到要删除的任务；未写入任何内容。":
       "The task to delete could not be found; nothing was written.",
     "找不到要恢复的任务；未写入任何内容。":
@@ -1039,6 +1046,8 @@ function englishTaskDiagnostic(message: string): string | null {
       "Only an explicitly completed task can have its completion corrected; nothing was written.",
     "Tasks 当前绑定的 Vault 或文件目标已经变化。请刷新 Tasks 后重试；未写入任何内容。":
       "The Vault or file target bound to Tasks changed. Refresh Tasks and try again; nothing was written.",
+    "Tasks 当前绑定的 Vault 或文件目标已经变化。请先读取最新任务正本；未写入任何内容。":
+      "The Vault or file target bound to Tasks changed. Read the latest task source before retrying; nothing was written.",
     "任务名称不能为空。": "Task name cannot be empty.",
     "任务名称不能超过 160 个字符，也不能换行。":
       "Task name cannot exceed 160 characters or contain line breaks.",
@@ -1054,6 +1063,7 @@ function englishTaskDiagnostic(message: string): string | null {
     "任务时间必须落在 00:00–23:59。": "Task time must be between 00:00 and 23:59.",
     "任务完成日期必须是有效的 YYYY-MM-DD 日期。":
       "Task completion date must be a valid YYYY-MM-DD date.",
+    "任务完成日期无效。": "Task completion date is invalid.",
     "任务完成时刻无效。": "Task completion time is invalid.",
     "任务完成记录不能使用未来日期或未来时刻。":
       "Task completion evidence cannot use a future date or future time.",
@@ -1078,6 +1088,7 @@ function englishTaskDiagnostic(message: string): string | null {
     "任务正本只能将 Inbox 声明为系统列表。":
       "Only Inbox may be declared as a system list in the task source.",
     "任务没有可保存的变化。": "The task has no changes to save.",
+    "任务状态没有可保存的变化。": "The task state has no changes to save.",
     "任务正本已经存在。请刷新 Tasks 后重试；现有任务未被覆盖。":
       "The task source already exists. Refresh Tasks and try again; the existing task source was not overwritten.",
     "任务正本已在外部发生变化。请刷新 Tasks 后再保存；外部内容未被覆盖。":
@@ -1089,6 +1100,8 @@ function englishTaskDiagnostic(message: string): string | null {
     "任务正本缺少 Inbox 列表。": "The task source is missing its Inbox list.",
     "任务正本包含重复任务标识；未将其当作空任务。":
       "The task source contains duplicate task identifiers; it was not treated as empty.",
+    "任务正本包含重复的 daily-flow 来源标识。":
+      "The task source contains a duplicate daily-flow source reference.",
     "任务正本包含无效任务名称。": "The task source contains an invalid task name.",
     "任务正本包含带换行的任务名称。": "The task source contains a task name with line breaks.",
     "任务正本不能保存空白任务内容。": "The task source cannot save blank task content.",

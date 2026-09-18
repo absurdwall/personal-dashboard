@@ -8,7 +8,7 @@ pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
 };
 use crate::interface_language::InterfaceLanguage;
-use crate::tasks::{FileTaskStore, TaskApplication, TaskState, TasksView};
+use crate::tasks::{FileTaskStore, TaskApplication, TaskDataState, TaskState, TasksView};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
@@ -906,6 +906,8 @@ pub struct CalendarMonthView {
     pub year: i32,
     pub month: u32,
     pub configured: bool,
+    pub task_state: TaskDataState,
+    pub task_message: String,
     pub days: Vec<CalendarDayView>,
 }
 
@@ -2569,6 +2571,13 @@ where
         let start = first_day.unix_days() - first_day.weekday_from_sunday();
         let vault = self.persistence.load_selected_vault()?;
         let tasks = vault.as_deref().map(|vault| self.shared_tasks_for(vault));
+        let (task_state, task_message) = match tasks.as_ref() {
+            Some(view) => (view.state, view.message.clone()),
+            None => (
+                TaskDataState::Unconfigured,
+                "请选择 Vault，以读取 Tasks。".to_string(),
+            ),
+        };
         let mut days = Vec::with_capacity(42);
         for offset in 0..42 {
             let date = CalendarDate::from_unix_days(start + offset);
@@ -2597,6 +2606,8 @@ where
             year,
             month,
             configured: vault.is_some(),
+            task_state,
+            task_message,
             days,
         })
     }

@@ -6,7 +6,9 @@ import {
   normalizeTaskSchedule,
   taskListMutationConfirmed,
   taskListScopeForId,
+  taskEditOperationKey,
   taskMutationConfirmed,
+  taskScopeCount,
   todayTaskGroups,
   taskVisibleInScope,
 } from "../../frontend/task-presentation.ts";
@@ -68,11 +70,55 @@ test("task list scopes keep archived work out of active views and expose it for 
   assert.equal(taskVisibleInScope(archived, taskListScopeForId("planning"), "completed"), false);
 });
 
+test("scope counts follow the active state filter without changing membership semantics", () => {
+  const tasks = [
+    { listId: "inbox", date: "2026-09-17", state: "pending" as const, deletedAt: null, overdue: false },
+    { listId: "inbox", date: "2026-09-17", state: "completed" as const, deletedAt: null, overdue: false },
+    { listId: "work", listArchived: true, date: "2026-09-17", state: "abandoned" as const, deletedAt: null, overdue: false },
+    { listId: "inbox", date: null, state: "completed" as const, deletedAt: "2026-09-18T10:00-04:00", overdue: false },
+  ];
+  const archivedListIds = new Set(["work"]);
+
+  assert.equal(taskScopeCount(tasks, "all", "all", "2026-09-17", archivedListIds), 2);
+  assert.equal(taskScopeCount(tasks, "all", "pending", "2026-09-17", archivedListIds), 1);
+  assert.equal(taskScopeCount(tasks, "all", "completed", "2026-09-17", archivedListIds), 1);
+  assert.equal(taskScopeCount(tasks, "all", "deleted", "2026-09-17", archivedListIds), 1);
+  assert.equal(taskScopeCount(tasks, "archived", "abandoned", "2026-09-17", archivedListIds), 1);
+  assert.equal(taskScopeCount(tasks, "today", "pending", "2026-09-17", archivedListIds), 1);
+  assert.equal(taskScopeCount(tasks, "today", "completed", "2026-09-17", archivedListIds), 1);
+  assert.equal(taskScopeCount(tasks, "today", "deleted", "2026-09-17", archivedListIds), 0);
+});
+
 test("task mutation confirmation requires a current ready response and the saved task", () => {
   assert.equal(taskMutationConfirmed(true, "ready", true), true);
   assert.equal(taskMutationConfirmed(false, "ready", true), false);
   assert.equal(taskMutationConfirmed(true, "error", true), false);
   assert.equal(taskMutationConfirmed(true, "ready", false), false);
+});
+
+test("a late committed edit can be retried idempotently without poisoning a new edit", () => {
+  const originalEdit = {
+    targetBinding: "vault-a",
+    taskId: "task-1",
+    name: "原任务（已保存）",
+    content: "原内容",
+    date: "2026-09-20",
+    time: "09:00",
+    listId: "inbox",
+  };
+  const nextEdit = { ...originalEdit, name: "原任务（再次编辑）" };
+
+  assert.equal(
+    taskEditOperationKey(originalEdit),
+    taskEditOperationKey(originalEdit),
+    "retrying the same uncertain write must retain its idempotency identity",
+  );
+  assert.notEqual(
+    taskEditOperationKey(originalEdit),
+    taskEditOperationKey(nextEdit),
+    "a later intentional payload must receive a new identity after a late response",
+  );
+  assert.equal(taskMutationConfirmed(false, "ready", true), false);
 });
 
 test("list mutation confirmation accepts an empty source when the list is present", () => {

@@ -1,8 +1,36 @@
 # Personal Dashboard 4.0 packaged acceptance result
 
-Date: 2026-09-17
+Date: 2026-09-18
 
-Status: **the pre-review local packaged candidate passed; the review-follow-up rerun is blocked by a locked macOS session, and the Drive fixture-dependent recheck remains pending human acceptance.**
+Status: **the pre-review local packaged candidate and the isolated Dashboard 4.0 review-follow-up rerun passed; the broader multi-scenario gate was not rerun, and the Drive fixture-dependent recheck remains pending human acceptance.**
+
+## 2026-09-18 review-follow-up rerun
+
+- Branch/worktree: `codex/dashboard-4-review-follow-up` in the isolated `e99a`
+  worktree, built from review base `41289ff`.
+- Bundle: `src-tauri/target/release/bundle/macos/Personal Dashboard.app`,
+  built with the repository's existing Tauri CLI and the source checkout's
+  existing TypeScript binary supplied on `PATH`; no dependency files were
+  added to this worktree.
+- Command:
+
+  ```sh
+  PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 \
+  PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 \
+  PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918" \
+  scripts/acceptance/macos-ipc-workflow.sh
+  ```
+
+- Result: **passed**. The synthetic run covered Tasks, Today, Calendar,
+  Habits, list archive/restore, task lifecycle history, Inbox defaults, Vault
+  switching, conflict draft recovery, bilingual labels, and the narrow
+  640×520 surface. It verified persistence across relaunch and produced eight
+  non-overwritten captures under
+  `output/playwright/personal-dashboard-4-review-follow-up-20260918/`.
+- Boundary: this was an isolated synthetic-Vault run. It did not touch a
+  personal Vault, Drive, Dida365, automation, or an installed app. It is
+  affected-path packaged evidence for ticket 11, not Drive proof and not a
+  claim that ticket 09 is resolved.
 
 ## Candidate and boundary
 
