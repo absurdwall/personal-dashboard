@@ -4,6 +4,6 @@ User approved this bounded follow-up after the Dashboard 4.0 workflow implementa
 
 | Ticket | Blocked by | Status |
 | --- | --- | --- |
-| [01 Habit English names and consistent theme controls](issues/01-habit-english-and-theme-consistency.md) | Dashboard 4 ticket 11, integrated | claimed |
+| [01 Habit English names and consistent theme controls](issues/01-habit-english-and-theme-consistency.md) | Dashboard 4 ticket 11, integrated | resolved |
 
 Review and user acceptance follow implementation. Existing ticket 09 Drive acceptance remains separate.
