@@ -371,6 +371,65 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
     assert_eq!(cleared.tasks[0].changes[1].new_time, None);
 }
 
+#[test]
+fn a_new_edit_can_revert_an_earlier_payload_after_a_late_operation() {
+    let vault = TempVault::new("late-edit-revert");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let created = application
+        .create(create_input(
+            &opened,
+            "late-edit-task",
+            "原始名称",
+            Some("2026-09-20"),
+            None,
+        ))
+        .unwrap();
+
+    let first_edit = application
+        .update(TaskUpdateInput {
+            target_binding: created.target_binding.clone().unwrap(),
+            expected_revision: created.revision.clone().unwrap(),
+            task_id: "late-edit-task".into(),
+            change_id: "late-edit-a".into(),
+            name: "第一版".into(),
+            content: None,
+            date: Some("2026-09-21".into()),
+            time: None,
+            list_id: None,
+        })
+        .unwrap();
+    let second_edit = application
+        .update(TaskUpdateInput {
+            target_binding: first_edit.target_binding.clone().unwrap(),
+            expected_revision: first_edit.revision.clone().unwrap(),
+            task_id: "late-edit-task".into(),
+            change_id: "late-edit-b".into(),
+            name: "第二版".into(),
+            content: None,
+            date: Some("2026-09-21".into()),
+            time: None,
+            list_id: None,
+        })
+        .unwrap();
+    let reverted = application
+        .update(TaskUpdateInput {
+            target_binding: second_edit.target_binding.clone().unwrap(),
+            expected_revision: second_edit.revision.clone().unwrap(),
+            task_id: "late-edit-task".into(),
+            change_id: "late-edit-c".into(),
+            name: "第一版".into(),
+            content: None,
+            date: Some("2026-09-21".into()),
+            time: None,
+            list_id: None,
+        })
+        .unwrap();
+
+    assert_eq!(reverted.tasks[0].name, "第一版");
+    assert_eq!(reverted.tasks[0].changes.len(), 3);
+}
+
 #[derive(Clone, Copy)]
 struct FailingTaskStore;
 

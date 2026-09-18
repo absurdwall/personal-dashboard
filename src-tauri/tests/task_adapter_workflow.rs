@@ -244,6 +244,49 @@ fn adapter_json_contract_is_tagged_and_rejects_unknown_fields() {
 }
 
 #[test]
+fn adapter_rejects_relative_and_empty_vault_paths_before_reading_or_writing() {
+    let vault = TempVault::new("path-validation");
+    let path = task_path(vault.path());
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let before = br#"{"schemaVersion":1,"lists":[],"tasks":[]}"#.to_vec();
+    fs::write(&path, &before).unwrap();
+
+    for (vault_path, expected_fragment) in [
+        (PathBuf::from("relative-vault"), "绝对"),
+        (PathBuf::new(), "Vault 路径"),
+    ] {
+        let error = adapter(vault.path())
+            .execute(DailyFlowTaskRequest::Read {
+                schema_version: DAILY_FLOW_TASK_ADAPTER_SCHEMA_VERSION,
+                vault_path: vault_path.clone(),
+                lived_date: "2026-09-17".into(),
+            })
+            .unwrap_err();
+        assert!(
+            error.contains(expected_fragment),
+            "unexpected error: {error}"
+        );
+        assert_eq!(fs::read(&path).unwrap(), before);
+
+        let error = adapter(vault.path())
+            .execute(apply_request(
+                &vault_path,
+                "target-binding",
+                None,
+                vec![action("rejected-write", "rejected-source", "不应写入")],
+                vec![],
+                "2026-09-17",
+            ))
+            .unwrap_err();
+        assert!(
+            error.contains(expected_fragment),
+            "unexpected apply error: {error}"
+        );
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
+}
+
+#[test]
 fn real_cli_entry_reads_and_writes_a_synthetic_vault_across_processes() {
     let vault = TempVault::new("cli-entry");
     let lived_date = "2000-01-01";

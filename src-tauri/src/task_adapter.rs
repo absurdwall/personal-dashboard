@@ -739,6 +739,8 @@ fn validate_request_header(
 fn validate_vault_path(vault_path: &Path) -> Result<(), String> {
     if vault_path.as_os_str().is_empty() {
         Err("daily-flow task adapter 必须明确提供 Vault 路径。".into())
+    } else if !vault_path.is_absolute() {
+        Err("daily-flow task adapter 必须提供绝对 Vault 路径。".into())
     } else {
         Ok(())
     }

@@ -1,10 +1,48 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
 const projectRoot = process.cwd();
-const workspaceRoot = resolve(projectRoot, "..");
+const requiredExternalInputs = (root: string): boolean =>
+  existsSync(`${root}/.agents/skills/life-daily-loop/SKILL.md`) &&
+  existsSync(`${root}/everyday/.agents/skills/life-companion/SKILL.md`) &&
+  existsSync(`${root}/everyday/.agents/skills/life-companion/references/tool-boundaries.md`) &&
+  existsSync(`${root}/everyday/AGENTS.md`);
+
+function resolveWorkspaceRoot(): string {
+  const configuredRoot = process.env.PERSONAL_DASHBOARD_WORKSPACE_ROOT?.trim();
+  if (configuredRoot) {
+    if (!requiredExternalInputs(configuredRoot)) {
+      throw new Error(
+        `PERSONAL_DASHBOARD_WORKSPACE_ROOT does not contain the required daily-flow inputs: ${configuredRoot}`,
+      );
+    }
+    return configuredRoot;
+  }
+
+  const gitCommonDir = execFileSync(
+    "git",
+    ["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    { cwd: projectRoot, encoding: "utf8" },
+  ).trim();
+  const candidates = [
+    resolve(projectRoot, ".."),
+    resolve(gitCommonDir, "../.."),
+    resolve(gitCommonDir, ".."),
+  ];
+  const workspaceRoot = candidates.find(requiredExternalInputs);
+  if (workspaceRoot) return workspaceRoot;
+  throw new Error(
+    "Daily-flow integration inputs are unavailable. Run from the Tortilla Flat source checkout or set PERSONAL_DASHBOARD_WORKSPACE_ROOT to its root.",
+  );
+}
+
+// This contract test intentionally reads the canonical life-daily-loop and
+// everyday instructions. A managed worktree resolves them through Git's
+// common directory; an explicit root is available for other checkout layouts.
+const workspaceRoot = resolveWorkspaceRoot();
 const integrationContract = readFileSync(
   `${projectRoot}/docs/daily-flow-integration-v1.md`,
   "utf8",

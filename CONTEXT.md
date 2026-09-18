@@ -76,7 +76,8 @@ _Avoid_: Actual time, timestamp of waking
 
 ## 4.0 design vocabulary
 
-The following terms describe the agreed future direction, not shipped behavior.
+These terms describe the shipped Dashboard 4.0 task workflow and its agreed
+boundary with the earlier lived-day model.
 
 **Task**:
 A persistent personal action with a name, optional content and one optional date/time, whose identity continues across edits, rescheduling and completion. Tasks, Today and Calendar present the same action.

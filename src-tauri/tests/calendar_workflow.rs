@@ -1,5 +1,5 @@
 use personal_dashboard_lib::tasks::{
-    FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput,
+    FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput, TaskDataState,
     TaskListArchiveInput, TaskListCreateInput, TaskState, TaskStateInput, TasksView,
 };
 use personal_dashboard_lib::today::{
@@ -460,4 +460,56 @@ fn calendar_month_includes_bounded_task_summaries_and_archived_history() {
     }));
     assert!(!record_path(vault.path(), "2026-09-05").exists());
     assert!(!record_path(vault.path(), "2026-09-25").exists());
+}
+
+#[test]
+fn calendar_month_distinguishes_damaged_tasks_from_a_healthy_empty_source() {
+    let vault = TempDirectory::new("calendar-task-source-errors");
+    fs::create_dir_all(vault.path().join(".obsidian")).unwrap();
+    write_record(
+        vault.path(),
+        "2026-09-05",
+        "## 今天的大致安排\n\n- **下午：** 有复盘。\n\n## 晚间复盘\n\n### 今天发生了什么\n\n- 明确记录。\n",
+    );
+    let task_path = vault
+        .path()
+        .join("life/.personal-dashboard/tasks/v1/tasks.json");
+    fs::create_dir_all(task_path.parent().unwrap()).unwrap();
+    let application = TodayApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        NoSelection,
+        MutableClock(Rc::new(RefCell::new("2026-09-09".into()))),
+    );
+
+    let empty = application
+        .calendar_month(2026, 9)
+        .expect("healthy empty task source should load");
+    assert_eq!(empty.task_state, TaskDataState::Empty);
+    assert!(empty.task_message.contains("任务"));
+    assert_eq!(
+        empty.day("2026-09-05").unwrap().availability,
+        DailyRecordAvailability::Reviewed
+    );
+
+    for (label, bytes, expected_fragment) in [
+        ("corrupt", br#"{not-json"#.to_vec(), "JSON"),
+        (
+            "unknown schema",
+            br#"{"schemaVersion":99,"lists":[],"tasks":[]}"#.to_vec(),
+            "schema",
+        ),
+    ] {
+        fs::write(&task_path, &bytes).unwrap();
+        let month = application.calendar_month(2026, 9).unwrap_or_else(|error| {
+            panic!("{label} task source should not fail the month: {error}")
+        });
+        assert_eq!(month.task_state, TaskDataState::Error);
+        assert!(month.task_message.contains(expected_fragment));
+        assert!(month.day("2026-09-05").unwrap().task_summaries.is_empty());
+        assert_eq!(
+            month.day("2026-09-05").unwrap().availability,
+            DailyRecordAvailability::Reviewed
+        );
+        assert_eq!(fs::read(&task_path).unwrap(), bytes);
+    }
 }

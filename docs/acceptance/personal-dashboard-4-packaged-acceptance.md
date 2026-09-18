@@ -1,10 +1,131 @@
 # Personal Dashboard 4.0 packaged acceptance result
 
-Date: 2026-09-17
+Date: 2026-09-18
 
-Status: **the pre-review local packaged candidate passed; the review-follow-up rerun is blocked by a locked macOS session, and the Drive fixture-dependent recheck remains pending human acceptance.**
+Status: **the isolated Dashboard 4.0 review-follow-up rerun passed at the latest implementation commit; the broader multi-scenario gate was not rerun, and the Drive fixture-dependent recheck remains pending human acceptance.**
 
-## Candidate and boundary
+## 2026-09-18 review-follow-up rerun (v9, after final display/count parity fixes)
+
+- Branch/worktree: `codex/dashboard-4-review-follow-up` in the isolated `e99a`
+  worktree, built from commit `3ca3bdb` (`fix: complete task display and count
+  parity`).
+- Bundle: `src-tauri/target/release/bundle/macos/Personal Dashboard.app`;
+  executable SHA-256
+  `de5dbde9443554526ddd75e9727b69e30b1170be85e6e08cca88332cd061c917`, CDHash
+  `66e18a1f1fbd647f577f985a5c2831ae183dbc68`; ad-hoc `codesign
+  --verify --deep --strict` passed.
+- Command:
+
+  ```sh
+  PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 \
+  PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 \
+  PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918-v9" \
+  scripts/acceptance/macos-ipc-workflow.sh
+  ```
+
+- Result: **passed**. The isolated synthetic-Vault matrix remained green after
+  the final Inbox display-name change-event and state-filtered list-management
+  count fixes: Tasks, Today, Calendar, Habits, lifecycle persistence, Vault
+  switching, conflict recovery, bilingual labels, and the narrow surface all
+  passed. The packaged scenario did not directly drive the selector transition
+  or assert management-row count text; those final paths are covered by the
+  102/102 frontend suite below. Eight non-overwritten captures are under
+  `output/playwright/personal-dashboard-4-review-follow-up-20260918-v9/`.
+- Automated support at this commit: `npm run test:frontend` passed 102/102,
+  `npm run check` passed, and the full Rust suite passed. The v9 capture hashes
+  match the v8 manifest below; the run remains synthetic-Vault evidence only and
+  does not resolve the Drive checkbox.
+
+## 2026-09-18 review-follow-up rerun (v8, after first closeout fixes)
+
+- Branch/worktree: `codex/dashboard-4-review-follow-up` in the isolated `e99a`
+  worktree, built from commit `a3042a7` (`fix: close review evidence and
+  localization gaps`).
+- Bundle: `src-tauri/target/release/bundle/macos/Personal Dashboard.app`;
+  executable SHA-256
+  `f2eba3cbd5bec59efbdf12da20ab9b3b98194a691d33dc4efb73b33ea19719c0`, CDHash
+  `5bb8a2037dddbbb581858b8beabbe5fee099d8a7`; ad-hoc `codesign
+  --verify --deep --strict` passed.
+- Command:
+
+  ```sh
+  PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 \
+  PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 \
+  PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918-v8" \
+  scripts/acceptance/macos-ipc-workflow.sh
+  ```
+
+- Result: **passed**. The same isolated synthetic-Vault matrix passed after the
+  system Inbox display localization, stateful late-response seam test, and
+  adapter Apply-path regression. The Chinese Tasks capture now renders the
+  system list as `收集箱` while preserving user-created list names; eight
+  non-overwritten captures are under
+  `output/playwright/personal-dashboard-4-review-follow-up-20260918-v8/`.
+- Automated follow-up support at this commit: `npm run test:frontend` passed
+  101/101; `npm run check` passed; full Rust tests passed, including 11 adapter
+  and 28 task workflow tests. Drive remains outside this synthetic evidence.
+- Final capture manifest (SHA-256):
+
+  | Capture | SHA-256 |
+  | --- | --- |
+  | `product-zh-tasks-wide.png` | `4c824db7c5ed009c2180465f1827cf62fcad5f45688594df85d56a41be8835dd` |
+  | `product-zh-today-wide.png` | `231deff9b3ee189d24a7b4d2bd5fe7769afae8df03b4ad0066bc1d39442296bb` |
+  | `product-zh-calendar-wide.png` | `af23d7997b57844c5c45652c7cb42be5258d699ce23590fbde510a292a026981` |
+  | `product-zh-habits-wide.png` | `79bd15509e6e9e4006d18270dcc8e370679214f4574e425647855263efe45b53` |
+  | `product-en-tasks-narrow.png` | `ad670067c7ec63ccee8b70ee5328d7b2a0b10ce366b36d129d316ee78e67898b` |
+  | `product-en-calendar-narrow.png` | `949c671a5e07878f3aa92d244e85f8a5da4fbd9d69c335ae77bc18cb77776d56` |
+  | `product-en-today-narrow.png` | `7556239e2418b887f33b8d5880876c6e82db197a1809ecccb2e2e1ac3a5be85f` |
+  | `product-en-habits-narrow.png` | `f38661bd5c934c97e0820ea4adaea44174c609da0e121286828787410bdaccbc` |
+
+## 2026-09-18 review-follow-up rerun (v7, before closeout fixes)
+
+- Branch/worktree: `codex/dashboard-4-review-follow-up` in the isolated `e99a`
+  worktree, built from review base `41289ff`.
+- Commit: `e74e2d4` (`test: drive task updates through the async seam`).
+- Bundle: `src-tauri/target/release/bundle/macos/Personal Dashboard.app`,
+  built with the repository's existing Tauri CLI and the source checkout's
+  existing TypeScript binary supplied on `PATH`; no dependency files were
+  added to this worktree.
+- Command:
+
+  ```sh
+  PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 \
+  PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 \
+  PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918-v7" \
+  scripts/acceptance/macos-ipc-workflow.sh
+  ```
+
+- Result: **passed**. The synthetic run covered Tasks, Today, Calendar,
+  Habits, list archive/restore, task lifecycle history, Inbox defaults, Vault
+  switching, conflict draft recovery, bilingual labels, and the narrow
+  640×520 surface. It verified persistence across relaunch and produced eight
+  non-overwritten captures under
+  `output/playwright/personal-dashboard-4-review-follow-up-20260918-v7/`.
+- Boundary: this was an isolated synthetic-Vault run. It did not touch a
+  personal Vault, Drive, Dida365, automation, or an installed app. It is
+  affected-path packaged evidence for ticket 11, not Drive proof and not a
+  claim that ticket 09 is resolved.
+- Final capture manifest (SHA-256):
+
+  | Capture | SHA-256 |
+  | --- | --- |
+  | `product-zh-tasks-wide.png` | `593facb7e81aec2d9c5114fb9f9bcf3058675425fc46dd3a036781d386e3a169` |
+  | `product-zh-today-wide.png` | `16ccef95cd96b252e2ca5826b208d1a1a653ee4bb1853bdce8dd24780ddf0673` |
+  | `product-zh-calendar-wide.png` | `65919fc3a766921ac825838e70ac8d2582529f0fa91154e62d4660b1aeb3c93f` |
+  | `product-zh-habits-wide.png` | `01dca60c699ae2912ae5b20b948361c522bc74ea3275cde05b2efb96d8d2765f` |
+  | `product-en-tasks-narrow.png` | `bffd03d59367867373bc469cd7dc8050d782ef0a1aac86f69ea3724182ebf942` |
+  | `product-en-calendar-narrow.png` | `a2d17622e57a7f4c94fa6620799b19d5b6782e73bac0964418bc2d077b431928` |
+  | `product-en-today-narrow.png` | `40af7255ea43696f0ecb0f9b17082264e653131d4f849d6397022baa630c6573` |
+  | `product-en-habits-narrow.png` | `baef1446343ad7d5e920555562455cf3d3f0eb8e09a77d9db01f2147e811ec43` |
+- Automated follow-up support at this commit: `npm run check` passed with the
+  existing source-checkout tool binaries supplied on `PATH`; `npm run
+  test:frontend` passed 100/100; `cargo test --manifest-path
+  src-tauri/Cargo.toml` passed; the changed Rust files passed targeted
+  rustfmt checks. The repository-wide rustfmt check still reports an
+  unrelated pre-existing formatting difference in
+  `src-tauri/tests/appearance_workflow.rs`.
+
+## Previous 2026-09-17 candidate and boundary
 
 - Branch: `codex/management-daily-integration`.
 - Candidate source included the completed 01–08 implementation on base commit
@@ -87,7 +208,7 @@ The retained visual evidence is recorded by file and stored pixel dimensions:
 | `product-en-today-narrow.png` | 1280×1040 | `5dce1f5485e6e8a043d2855281cca301dd44b2bfdd96f8629682bf96f3421734` |
 | `product-en-habits-narrow.png` | 1280×1040 | `22f55107b3a0997485faec6961517f1f117cbb769ba7477be325f4e8fcd58da0` |
 
-## Automated support
+## Historical 2026-09-17 automated support
 
 - `node --test tests/frontend/packaged-acceptance.test.ts`: 7 passed.
 - `npm run test:frontend`: 94 passed.

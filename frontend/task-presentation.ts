@@ -20,8 +20,219 @@ export function taskListScopeForId(listId: string): TaskListScope {
   return `list:${listId}`;
 }
 
+export function taskListDisplayName(
+  list: Readonly<{ name: string; isSystem: boolean }>,
+  inboxLabel: string,
+): string {
+  return list.isSystem ? inboxLabel : list.name;
+}
+
+export function taskListCount<T extends Readonly<{
+  listId: string;
+  state: Exclude<TaskStateFilter, "all" | "deleted">;
+  deletedAt: string | null;
+}>>(
+  tasks: readonly T[],
+  listId: string,
+  stateScope: TaskStateFilter,
+): number {
+  return tasks.filter((task) => {
+    if (task.listId !== listId) return false;
+    if (stateScope === "deleted") return task.deletedAt !== null;
+    return task.deletedAt === null &&
+      (stateScope === "all" || task.state === stateScope);
+  }).length;
+}
+
 export function taskListIdFromScope(scope: TaskListScope): string | null {
   return scope.startsWith("list:") ? scope.slice("list:".length) : null;
+}
+
+export function taskEditOperationKey(
+  edit: Readonly<{
+    targetBinding: string;
+    taskId: string;
+    name: string;
+    content: string | null;
+    date: string | null;
+    time: string | null;
+    listId: string;
+  }>,
+): string {
+  return JSON.stringify([
+    edit.targetBinding,
+    "update",
+    edit.taskId,
+    edit.name,
+    edit.content,
+    edit.date,
+    edit.time,
+    edit.listId,
+  ]);
+}
+
+export function taskOperationScope(targetBinding: string, taskId: string): string {
+  return JSON.stringify([targetBinding, taskId]);
+}
+
+export type TaskOperationRequestSource = Readonly<{
+  begin(): number;
+  isCurrent(token: number): boolean;
+}>;
+
+export type TaskOperationRequest = Readonly<{
+  signature: string;
+  changeId: string;
+  requestToken: number;
+  scope: string | null;
+}>;
+
+export class TaskOperationIdentityStore {
+  private readonly operationIds = new Map<
+    string,
+    Readonly<{ id: string; scope: string | null }>
+  >();
+
+  getOrCreate(
+    signature: string,
+    create: () => string,
+    scope: string | null = null,
+  ): string {
+    const existing = this.operationIds.get(signature)?.id;
+    if (existing) return existing;
+    const created = create();
+    this.operationIds.set(signature, { id: created, scope });
+    return created;
+  }
+
+  begin(
+    signature: string,
+    create: () => string,
+    requests: TaskOperationRequestSource,
+    scope: string | null = null,
+  ): TaskOperationRequest {
+    return {
+      signature,
+      changeId: this.getOrCreate(signature, create, scope),
+      requestToken: requests.begin(),
+      scope,
+    };
+  }
+
+  settleConfirmed(
+    operation: TaskOperationRequest,
+    requests: TaskOperationRequestSource,
+    confirmed: boolean,
+  ): boolean {
+    if (!confirmed || !requests.isCurrent(operation.requestToken)) return false;
+    this.delete(operation.signature);
+    if (operation.scope) this.retireOther(operation.scope, operation.signature);
+    return true;
+  }
+
+  delete(signature: string): void {
+    this.operationIds.delete(signature);
+  }
+
+  retireOther(scope: string, keepSignature: string): void {
+    for (const [signature, operation] of this.operationIds) {
+      if (operation.scope === scope && signature !== keepSignature) {
+        this.operationIds.delete(signature);
+      }
+    }
+  }
+
+  clear(): void {
+    this.operationIds.clear();
+  }
+}
+
+export type TaskUpdateEdit = Readonly<{
+  targetBinding: string;
+  taskId: string;
+  name: string;
+  content: string | null;
+  date: string | null;
+  time: string | null;
+  listId: string;
+}>;
+
+export type TaskUpdateInput = TaskUpdateEdit &
+  Readonly<{
+    expectedRevision: string;
+    changeId: string;
+  }>;
+
+export type TaskUpdateView = Readonly<{
+  state: "unconfigured" | "empty" | "ready" | "error";
+  targetBinding: string | null;
+  tasks: readonly Readonly<{
+    id: string;
+    name: string;
+    content: string | null;
+    date: string | null;
+    time: string | null;
+    listId: string;
+  }>[];
+}>;
+
+export type TaskUpdateOperationResult<View extends TaskUpdateView> = Readonly<{
+  view: View;
+  operation: TaskOperationRequest;
+  responseIsCurrent: boolean;
+  confirmed: boolean;
+}>;
+
+export async function performTaskUpdateRequest<View extends TaskUpdateView>(
+  edit: TaskUpdateEdit,
+  options: Readonly<{
+    expectedRevision: string;
+    requests: TaskOperationRequestSource;
+    identities: TaskOperationIdentityStore;
+    createChangeId: () => string;
+    invoke: (input: TaskUpdateInput) => Promise<View>;
+    isCurrent: (requestToken: number, view: View) => boolean;
+    onBegin?: (operation: TaskOperationRequest) => void;
+  }>,
+): Promise<TaskUpdateOperationResult<View>> {
+  const operationKey = taskEditOperationKey(edit);
+  const operation = options.identities.begin(
+    operationKey,
+    options.createChangeId,
+    options.requests,
+    taskOperationScope(edit.targetBinding, edit.taskId),
+  );
+  options.onBegin?.(operation);
+  const view = await options.invoke({
+    ...edit,
+    expectedRevision: options.expectedRevision,
+    changeId: operation.changeId,
+  });
+  const responseIsCurrent = options.isCurrent(operation.requestToken, view);
+  const savedTask = view.tasks.find(
+    (candidate) =>
+      candidate.id === edit.taskId &&
+      candidate.name === edit.name &&
+      candidate.content === edit.content &&
+      candidate.date === edit.date &&
+      candidate.time === edit.time &&
+      candidate.listId === edit.listId,
+  );
+  const confirmed = taskMutationConfirmed(
+    responseIsCurrent,
+    view.state,
+    Boolean(savedTask),
+  );
+  return {
+    view,
+    operation,
+    responseIsCurrent,
+    confirmed: options.identities.settleConfirmed(
+      operation,
+      options.requests,
+      confirmed,
+    ),
+  };
 }
 
 export function calendarTasksForDate<T extends Readonly<{
@@ -56,6 +267,29 @@ export function taskVisibleInScope(
     task.deletedAt === null &&
     (stateScope === "all" || task.state === stateScope)
   );
+}
+
+export function taskScopeCount<T extends TodayTaskCandidate>(
+  tasks: readonly T[],
+  listScope: TaskListScope,
+  stateScope: TaskStateFilter,
+  currentDate: string | null,
+  archivedListIds: ReadonlySet<string>,
+): number {
+  if (listScope === "today") {
+    if (!currentDate) return 0;
+    const groups = todayTaskGroups(tasks, currentDate, true, archivedListIds);
+    return [...groups.scheduled, ...groups.overdue].filter(
+      (task) => stateScope === "all" || task.state === stateScope,
+    ).length;
+  }
+  return tasks.filter((task) =>
+    taskVisibleInScope(
+      { ...task, listArchived: archivedListIds.has(task.listId) },
+      listScope,
+      stateScope,
+    ),
+  ).length;
 }
 
 export function taskVisibleInToday(

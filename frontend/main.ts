@@ -39,9 +39,15 @@ import {
   calendarTasksForDate,
   isCurrentTaskResponse,
   normalizeTaskSchedule,
+  taskOperationScope,
+  TaskOperationIdentityStore,
+  performTaskUpdateRequest,
   taskListIdFromScope,
+  taskListDisplayName,
+  taskListCount,
   taskListMutationConfirmed,
   taskListScopeForId,
+  taskScopeCount,
   taskMutationConfirmed,
   taskVisibleInScope,
   todayTaskGroups,
@@ -310,6 +316,8 @@ type CalendarMonthView = Readonly<{
   year: number;
   month: number;
   configured: boolean;
+  taskState: "unconfigured" | "empty" | "ready" | "error";
+  taskMessage: string;
   days: readonly CalendarDayView[];
 }>;
 
@@ -785,7 +793,7 @@ const calendarTaskCreateDrafts = new Map<string, TaskDraft>();
 const taskEditDrafts = new Map<string, TaskDraft>();
 const taskListCreateDrafts = new Map<string, string>();
 const taskListRenameDrafts = new Map<string, string>();
-const taskOperationIds = new Map<string, string>();
+const taskOperationIds = new TaskOperationIdentityStore();
 let selectedTodayDate: string | null = null;
 type DatedNoteDraft = {
   content: string;
@@ -2908,11 +2916,16 @@ async function refreshCalendarMonth(
     currentCalendarMonth = view;
     renderCalendarGrid(view);
     if (calendarStatus) {
-      setCopy(
-        calendarStatus,
-        view.configured ? "calendar.previewStatus" : "calendar.connectStatus",
-      );
-      calendarStatus.dataset.state = view.configured ? "ready" : "unconfigured";
+      if (!view.configured) {
+        setCopy(calendarStatus, "calendar.connectStatus");
+        calendarStatus.dataset.state = "unconfigured";
+      } else if (view.taskState === "error") {
+        setCopyError(calendarStatus, "calendar.taskSourceLoadFailed", view.taskMessage);
+        calendarStatus.dataset.state = "error";
+      } else {
+        setCopy(calendarStatus, "calendar.previewStatus");
+        calendarStatus.dataset.state = "ready";
+      }
     }
     return view;
   } catch (error) {
@@ -4035,31 +4048,12 @@ function activeTaskLists(view: TasksView): readonly TaskListView[] {
   return view.lists.filter((list) => !list.archived);
 }
 
-function taskListCount(view: TasksView, listId: string): number {
-  return view.tasks.filter((task) => task.listId === listId && task.deletedAt === null).length;
-}
-
-function taskScopeCount(view: TasksView, scope: TaskListScope): number {
-  const archivedListIds = new Set(
-    view.lists.filter((list) => list.archived).map((list) => list.id),
-  );
-  if (scope === "today") {
-    if (!view.currentDate) return 0;
-    const groups = todayTaskGroups(view.tasks, view.currentDate, true, archivedListIds);
-    return groups.scheduled.length + groups.overdue.length;
-  }
-  return view.tasks.filter((task) => {
-    if (task.deletedAt !== null) return false;
-    if (scope === "archived") return archivedListIds.has(task.listId);
-    if (scope === "all") return !archivedListIds.has(task.listId);
-    if (scope === "inbox") return task.listId === "inbox" && !archivedListIds.has(task.listId);
-    return task.listId === taskListIdFromScope(scope) && !archivedListIds.has(task.listId);
-  }).length;
-}
-
 function renderTaskListScopeButtons(view: TasksView): void {
   if (!taskListScopes) return;
   const buttons: HTMLButtonElement[] = [];
+  const archivedListIds = new Set(
+    view.lists.filter((list) => list.archived).map((list) => list.id),
+  );
   const addButton = (scope: TaskListScope, copyKey: InterfaceCopyKey): void => {
     const button = document.createElement("button");
     button.type = "button";
@@ -4069,7 +4063,9 @@ function renderTaskListScopeButtons(view: TasksView): void {
     const label = document.createElement("span");
     setCopy(label, copyKey);
     const count = document.createElement("strong");
-    count.textContent = String(taskScopeCount(view, scope));
+    count.textContent = String(
+      taskScopeCount(view.tasks, scope, taskStateScope, view.currentDate, archivedListIds),
+    );
     button.append(label, count);
     if (scope === "all") {
       button.dataset.i18nAriaLabel = "tasks.scopeAllList";
@@ -4089,7 +4085,15 @@ function renderTaskListScopeButtons(view: TasksView): void {
     const label = document.createElement("span");
     label.textContent = list.name;
     const count = document.createElement("strong");
-    count.textContent = String(taskScopeCount(view, taskListScopeForId(list.id)));
+    count.textContent = String(
+      taskScopeCount(
+        view.tasks,
+        taskListScopeForId(list.id),
+        taskStateScope,
+        view.currentDate,
+        archivedListIds,
+      ),
+    );
     button.append(label, count);
     button.title = list.name;
     buttons.push(button);
@@ -4114,7 +4118,10 @@ function renderTaskListSelect(
     ...options.map((list) => {
       const option = document.createElement("option");
       option.value = list.id;
-      option.textContent = list.archived ? `${list.name} · ${t("tasks.archivedLabel")}` : list.name;
+      const displayName = taskListDisplayName(list, t("tasks.inbox"));
+      option.textContent = list.archived
+        ? `${displayName} · ${t("tasks.archivedLabel")}`
+        : displayName;
       option.disabled = list.archived && list.id !== selectedListId;
       return option;
     }),
@@ -4144,10 +4151,13 @@ function renderTaskListManagement(view: TasksView, canOperate: boolean): void {
     const heading = document.createElement("div");
     heading.className = "task-list-row-heading";
     const title = document.createElement("strong");
-    title.textContent = list.name;
+    const displayName = taskListDisplayName(list, t("tasks.inbox"));
+    title.textContent = displayName;
     const count = document.createElement("small");
     count.className = "task-meta";
-    setCopy(count, "tasks.listCount", { count: taskListCount(view, list.id) });
+    setCopy(count, "tasks.listCount", {
+      count: taskListCount(view.tasks, list.id, taskStateScope),
+    });
     heading.append(title, count);
     row.append(heading);
     if (list.isSystem) {
@@ -4168,7 +4178,7 @@ function renderTaskListManagement(view: TasksView, canOperate: boolean): void {
       ? taskListRenameDrafts.get(taskListRenameDraftKey(currentTasksView.targetBinding, list.id)) ?? list.name
       : list.name;
     input.dataset.taskListName = "";
-    input.setAttribute("aria-label", t("tasks.renameListLabel", { list: list.name }));
+    input.setAttribute("aria-label", t("tasks.renameListLabel", { list: displayName }));
     const save = document.createElement("button");
     save.type = "submit";
     save.disabled = !canOperate;
@@ -4354,7 +4364,10 @@ function taskEditor(
   title.setAttribute("aria-expanded", String(Boolean(draft)));
   title.textContent = task.name;
   title.setAttribute("aria-label", `${t("tasks.details")} · ${task.name}`);
-  const listName = view ? taskListForId(view, task.listId)?.name ?? task.listId : task.listId;
+  const taskList = view ? taskListForId(view, task.listId) : undefined;
+  const listName = taskList
+    ? taskListDisplayName(taskList, t("tasks.inbox"))
+    : task.listId;
   const meta = document.createElement("p");
   meta.className = "task-row-meta";
   meta.append(source, document.createTextNode(" · "), document.createTextNode(listName));
@@ -4701,13 +4714,14 @@ function renderTasks(view: TasksView): void {
     );
     const selectedCreateList = taskListForId(view, taskCreateList?.value ?? "inbox");
     if (selectedCreateList && taskCreateListLabel) {
-      setRawText(taskCreateListLabel, selectedCreateList.name);
+      const displayName = taskListDisplayName(selectedCreateList, t("tasks.inbox"));
+      setRawText(taskCreateListLabel, displayName);
       if (taskCreateSubmit) {
         setRawText(
           taskCreateSubmit,
           selectedCreateList.id === "inbox"
             ? t("tasks.add")
-            : t("tasks.addToList", { list: selectedCreateList.name }),
+            : t("tasks.addToList", { list: displayName }),
         );
       }
     }
@@ -4730,12 +4744,12 @@ function renderTasks(view: TasksView): void {
   );
 }
 
-function stableTaskOperationId(signature: string, prefix: string): string {
-  const existing = taskOperationIds.get(signature);
-  if (existing) return existing;
-  const created = localOperationId(prefix);
-  taskOperationIds.set(signature, created);
-  return created;
+function stableTaskOperationId(
+  signature: string,
+  prefix: string,
+  scope: string | null = null,
+): string {
+  return taskOperationIds.getOrCreate(signature, () => localOperationId(prefix), scope);
 }
 
 function updateTaskEditorOperationState(
@@ -5473,8 +5487,15 @@ async function updateTask(
   }
   const normalized = normalizeTaskSchedule(draft.date, draft.time);
   const listId = draft.listId ?? task.listId;
-  const operationKey = JSON.stringify([binding, "update", taskId]);
-  const changeId = stableTaskOperationId(operationKey, "edit-task");
+  const edit = {
+    targetBinding: binding,
+    taskId,
+    name,
+    content: draft.content.trim() || null,
+    date: normalized.date,
+    time: normalized.time,
+    listId,
+  };
   const expectedDate =
     surface === "today"
       ? currentTodayView?.date ?? null
@@ -5487,46 +5508,31 @@ async function updateTask(
       : surface === "calendar"
         ? calendarTaskRequests
         : todayTaskRequests;
-  const request = requests.begin();
+  let request: number | null = null;
   updateTaskOperationState(1);
   try {
-    const view = await window.__TAURI__.core.invoke<TasksView>("update_task", {
-      input: {
-        targetBinding: binding,
-        expectedRevision: revision,
-        taskId,
-        changeId,
-        name,
-        content: draft.content.trim() || null,
-        date: normalized.date,
-        time: normalized.time,
-        listId,
+    const result = await performTaskUpdateRequest(edit, {
+      expectedRevision: revision,
+      requests,
+      identities: taskOperationIds,
+      createChangeId: () => localOperationId("edit-task"),
+      invoke: (input) =>
+        window.__TAURI__.core.invoke<TasksView>("update_task", { input }),
+      onBegin: (operation) => {
+        request = operation.requestToken;
       },
+      isCurrent: (requestToken, view) =>
+        taskSurfaceIsCurrent(
+          surface,
+          requestToken,
+          binding,
+          view.targetBinding,
+          expectedDate,
+          revision,
+        ),
     });
-    const responseIsCurrent = taskSurfaceIsCurrent(
-      surface,
-      request,
-      binding,
-      view.targetBinding,
-      expectedDate,
-      revision,
-    );
-    const savedTask = view.tasks.find(
-      (candidate) =>
-        candidate.id === taskId &&
-        candidate.name === name &&
-        candidate.content === (draft.content.trim() || null) &&
-        candidate.date === normalized.date &&
-        candidate.time === normalized.time &&
-        candidate.listId === listId,
-    );
-    const confirmed = taskMutationConfirmed(
-      responseIsCurrent,
-      view.state,
-      Boolean(savedTask),
-    );
+    const { view, responseIsCurrent, confirmed } = result;
     if (confirmed) {
-      taskOperationIds.delete(operationKey);
       taskEditDrafts.delete(taskDraftKey(binding, taskId));
       renderTaskSurface(surface, view);
       setCopy(status, "tasks.saved");
@@ -5543,7 +5549,10 @@ async function updateTask(
     }
     return view.state !== "error";
   } catch (error) {
-    if (taskSurfaceIsCurrent(surface, request, binding, binding, expectedDate, revision)) {
+    if (
+      request !== null &&
+      taskSurfaceIsCurrent(surface, request, binding, binding, expectedDate, revision)
+    ) {
       stashTaskSurfaceDraft(surface, form);
       renderTaskSurface(surface, loaded);
       setCopyError(status, "tasks.notSaved", error);
@@ -5617,6 +5626,10 @@ async function saveTaskLifecycleMutation(
     );
     if (confirmed) {
       taskOperationIds.delete(operationKey);
+      taskOperationIds.retireOther(
+        taskOperationScope(loaded.targetBinding, taskId),
+        operationKey,
+      );
       if (loaded.targetBinding && savedTask) {
         reconcileTaskCompletionDraft(loaded.targetBinding, taskId, savedTask);
       }
@@ -5672,7 +5685,11 @@ async function setTaskState(
     return false;
   }
   const operationKey = JSON.stringify([binding, "state", taskId, state]);
-  const changeId = stableTaskOperationId(operationKey, "task-state");
+  const changeId = stableTaskOperationId(
+    operationKey,
+    "task-state",
+    taskOperationScope(binding, taskId),
+  );
   return saveTaskLifecycleMutation(
     "set_task_state",
     loaded,
@@ -5703,7 +5720,11 @@ async function deleteTask(taskId: string, surface: TaskSurface = "tasks"): Promi
     return false;
   }
   const operationKey = JSON.stringify([binding, "delete", taskId]);
-  const changeId = stableTaskOperationId(operationKey, "delete-task");
+  const changeId = stableTaskOperationId(
+    operationKey,
+    "delete-task",
+    taskOperationScope(binding, taskId),
+  );
   return saveTaskLifecycleMutation(
     "delete_task",
     loaded,
@@ -5733,7 +5754,11 @@ async function restoreTask(taskId: string, surface: TaskSurface = "tasks"): Prom
     return false;
   }
   const operationKey = JSON.stringify([binding, "restore", taskId]);
-  const changeId = stableTaskOperationId(operationKey, "restore-task");
+  const changeId = stableTaskOperationId(
+    operationKey,
+    "restore-task",
+    taskOperationScope(binding, taskId),
+  );
   return saveTaskLifecycleMutation(
     "restore_task",
     loaded,
@@ -5783,7 +5808,11 @@ async function correctTaskCompletion(
     completedOn,
     completedTime,
   ]);
-  const changeId = stableTaskOperationId(operationKey, "completion-correction");
+  const changeId = stableTaskOperationId(
+    operationKey,
+    "completion-correction",
+    taskOperationScope(binding, taskId),
+  );
   return saveTaskLifecycleMutation(
     "correct_task_completion",
     loaded,
@@ -6260,12 +6289,13 @@ taskCreateDate?.addEventListener("change", () => {
 taskCreateList?.addEventListener("change", () => {
   const selected = currentTasksView && taskListForId(currentTasksView, taskCreateList.value);
   if (selected && taskCreateListLabel && taskCreateSubmit) {
-    setRawText(taskCreateListLabel, selected.name);
+    const displayName = taskListDisplayName(selected, t("tasks.inbox"));
+    setRawText(taskCreateListLabel, displayName);
     setRawText(
       taskCreateSubmit,
       selected.id === "inbox"
         ? t("tasks.add")
-        : t("tasks.addToList", { list: selected.name }),
+        : t("tasks.addToList", { list: displayName }),
     );
   }
   stashTaskCreateDraft();

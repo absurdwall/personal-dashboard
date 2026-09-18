@@ -22,6 +22,13 @@ planning and after every write. A write reuses the read response's
 task list. The complete request and response contract is in
 [`daily-flow-task-adapter-v1.md`](daily-flow-task-adapter-v1.md).
 
+The frontend contract test reads the canonical `life-daily-loop` skill and the
+`everyday` Life Companion boundary files as external integration inputs. It
+discovers the Tortilla Flat root from Git's common directory when running in a
+managed worktree; other checkout layouts may set
+`PERSONAL_DASHBOARD_WORKSPACE_ROOT`. Missing inputs fail the test loudly rather
+than being treated as an empty contract.
+
 ## Authority and phase boundaries
 
 | Concern | Authority | Daily-flow behavior |
