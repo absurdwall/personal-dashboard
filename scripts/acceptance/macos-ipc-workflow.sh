@@ -4658,10 +4658,10 @@ EOF
   run_driver press "任务" 10
   run_driver wait-active-text "$shared_task" 30
   run_driver press "新建任务" 10
-  run_driver assert-active-text "加入 Inbox"
+  run_driver assert-active-text "加入收集箱"
   run_driver assert-active-text "$future_task"
   run_driver type-text "新建任务名称|$new_task" 10
-  run_driver press "加入 Inbox" 10
+  run_driver press "加入收集箱" 10
   run_driver wait-active-text "任务已保存到所选 Vault" 20
   wait_for_file_text "$tasks_a" "\"name\": \"$new_task\"" ||
     fail "Tasks entry point did not persist the new Inbox task"
@@ -4743,7 +4743,7 @@ EOF
   run_driver assert-active-text "$overdue_task"
   run_driver assert-active-absent-text "$archived_task"
   run_driver assert-active-absent-text "$future_task"
-  run_driver assert-active-text "默认今天和 Inbox"
+  run_driver assert-active-text "默认今天和收集箱"
   run_driver capture-window "$capture_directory/product-zh-today-wide.png" 10
 
   # Mutate the shared task through Today, then observe the same canonical
@@ -4758,17 +4758,17 @@ EOF
   run_driver wait-active-text "2026年9月" 20
   run_driver assert-active-text "$shared_task"
   run_driver assert-active-text "已完成"
-  run_driver assert-active-text "默认日期为选中日期，清单为 Inbox"
+  run_driver assert-active-text "默认日期为选中日期，清单为收集箱"
   run_driver assert-active-text "+2"
   run_driver press-contains "+2" 10
   run_driver wait-active-text "$archived_task" 20
   run_driver assert-active-text "$shared_task"
   run_driver capture-window "$capture_directory/product-zh-calendar-wide.png" 10
 
-  run_driver scroll-text-visible "默认日期为选中日期，清单为 Inbox" 10
+  run_driver scroll-text-visible "默认日期为选中日期，清单为收集箱" 10
   run_driver scroll-text-visible "新建任务名称" 10
   run_driver type-text "新建任务名称|$calendar_new_task" 10
-  run_driver press "加入 Inbox" 10
+  run_driver press "加入收集箱" 10
   run_driver wait-active-text "任务已保存到所选 Vault" 20
   wait_for_file_text "$tasks_a" "\"name\": \"$calendar_new_task\"" ||
     fail "Calendar did not persist its selected-date task"
@@ -4781,10 +4781,10 @@ EOF
 
   run_driver press "今天" 10
   run_driver wait-active-text "$shared_task" 20
-  run_driver scroll-text-visible "默认今天和 Inbox" 10
+  run_driver scroll-text-visible "默认今天和收集箱" 10
   run_driver scroll-text-visible "新建任务名称" 10
   run_driver type-text "新建任务名称|$today_new_task" 10
-  run_driver press "加入 Inbox" 10
+  run_driver press "加入收集箱" 10
   run_driver wait-active-text "任务已保存到所选 Vault" 20
   wait_for_file_text "$tasks_a" "\"name\": \"$today_new_task\"" ||
     fail "Today did not persist its default-date task"

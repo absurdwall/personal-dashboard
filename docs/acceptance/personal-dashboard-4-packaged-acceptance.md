@@ -8,6 +8,7 @@ Status: **the pre-review local packaged candidate and the isolated Dashboard 4.0
 
 - Branch/worktree: `codex/dashboard-4-review-follow-up` in the isolated `e99a`
   worktree, built from review base `41289ff`.
+- Commit: `e7c07b3` (`fix: close Dashboard 4 review findings`).
 - Bundle: `src-tauri/target/release/bundle/macos/Personal Dashboard.app`,
   built with the repository's existing Tauri CLI and the source checkout's
   existing TypeScript binary supplied on `PATH`; no dependency files were
@@ -17,7 +18,7 @@ Status: **the pre-review local packaged candidate and the isolated Dashboard 4.0
   ```sh
   PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 \
   PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 \
-  PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918" \
+  PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918-v3" \
   scripts/acceptance/macos-ipc-workflow.sh
   ```
 
@@ -26,13 +27,20 @@ Status: **the pre-review local packaged candidate and the isolated Dashboard 4.0
   switching, conflict draft recovery, bilingual labels, and the narrow
   640×520 surface. It verified persistence across relaunch and produced eight
   non-overwritten captures under
-  `output/playwright/personal-dashboard-4-review-follow-up-20260918/`.
+  `output/playwright/personal-dashboard-4-review-follow-up-20260918-v3/`.
 - Boundary: this was an isolated synthetic-Vault run. It did not touch a
   personal Vault, Drive, Dida365, automation, or an installed app. It is
   affected-path packaged evidence for ticket 11, not Drive proof and not a
   claim that ticket 09 is resolved.
+- Automated follow-up support at this commit: `npm run check` passed with the
+  existing source-checkout tool binaries supplied on `PATH`; `npm run
+  test:frontend` passed 98/98; `cargo test --manifest-path
+  src-tauri/Cargo.toml` passed; the changed Rust files passed targeted
+  rustfmt checks. The repository-wide rustfmt check still reports an
+  unrelated pre-existing formatting difference in
+  `src-tauri/tests/appearance_workflow.rs`.
 
-## Candidate and boundary
+## Previous 2026-09-17 candidate and boundary
 
 - Branch: `codex/management-daily-integration`.
 - Candidate source included the completed 01–08 implementation on base commit
@@ -115,7 +123,7 @@ The retained visual evidence is recorded by file and stored pixel dimensions:
 | `product-en-today-narrow.png` | 1280×1040 | `5dce1f5485e6e8a043d2855281cca301dd44b2bfdd96f8629682bf96f3421734` |
 | `product-en-habits-narrow.png` | 1280×1040 | `22f55107b3a0997485faec6961517f1f117cbb769ba7477be325f4e8fcd58da0` |
 
-## Automated support
+## Historical 2026-09-17 automated support
 
 - `node --test tests/frontend/packaged-acceptance.test.ts`: 7 passed.
 - `npm run test:frontend`: 94 passed.

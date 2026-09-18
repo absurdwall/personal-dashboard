@@ -7,6 +7,7 @@ import {
   taskListMutationConfirmed,
   taskListScopeForId,
   taskEditOperationKey,
+  TaskOperationIdentityStore,
   taskMutationConfirmed,
   taskScopeCount,
   todayTaskGroups,
@@ -119,6 +120,36 @@ test("a late committed edit can be retried idempotently without poisoning a new 
     "a later intentional payload must receive a new identity after a late response",
   );
   assert.equal(taskMutationConfirmed(false, "ready", true), false);
+});
+
+test("operation identities reset with the task surface while same-surface retries stay stable", () => {
+  const identities = new TaskOperationIdentityStore();
+  let nextId = 0;
+  const create = () => `change-${++nextId}`;
+  const firstEdit = taskEditOperationKey({
+    targetBinding: "vault-a",
+    taskId: "task-1",
+    name: "第一版",
+    content: null,
+    date: null,
+    time: null,
+    listId: "inbox",
+  });
+  const secondEdit = taskEditOperationKey({
+    targetBinding: "vault-a",
+    taskId: "task-1",
+    name: "第二版",
+    content: null,
+    date: null,
+    time: null,
+    listId: "inbox",
+  });
+
+  const firstId = identities.getOrCreate(firstEdit, create);
+  assert.equal(identities.getOrCreate(firstEdit, create), firstId);
+  identities.clear();
+  assert.notEqual(identities.getOrCreate(secondEdit, create), firstId);
+  assert.notEqual(identities.getOrCreate(firstEdit, create), firstId);
 });
 
 test("list mutation confirmation accepts an empty source when the list is present", () => {

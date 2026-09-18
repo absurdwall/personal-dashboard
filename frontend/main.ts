@@ -40,6 +40,7 @@ import {
   isCurrentTaskResponse,
   normalizeTaskSchedule,
   taskEditOperationKey,
+  TaskOperationIdentityStore,
   taskListIdFromScope,
   taskListMutationConfirmed,
   taskListScopeForId,
@@ -789,7 +790,7 @@ const calendarTaskCreateDrafts = new Map<string, TaskDraft>();
 const taskEditDrafts = new Map<string, TaskDraft>();
 const taskListCreateDrafts = new Map<string, string>();
 const taskListRenameDrafts = new Map<string, string>();
-const taskOperationIds = new Map<string, string>();
+const taskOperationIds = new TaskOperationIdentityStore();
 let selectedTodayDate: string | null = null;
 type DatedNoteDraft = {
   content: string;
@@ -4051,6 +4052,9 @@ function taskListCount(view: TasksView, listId: string): number {
 function renderTaskListScopeButtons(view: TasksView): void {
   if (!taskListScopes) return;
   const buttons: HTMLButtonElement[] = [];
+  const archivedListIds = new Set(
+    view.lists.filter((list) => list.archived).map((list) => list.id),
+  );
   const addButton = (scope: TaskListScope, copyKey: InterfaceCopyKey): void => {
     const button = document.createElement("button");
     button.type = "button";
@@ -4060,9 +4064,6 @@ function renderTaskListScopeButtons(view: TasksView): void {
     const label = document.createElement("span");
     setCopy(label, copyKey);
     const count = document.createElement("strong");
-    const archivedListIds = new Set(
-      view.lists.filter((list) => list.archived).map((list) => list.id),
-    );
     count.textContent = String(
       taskScopeCount(view.tasks, scope, taskStateScope, view.currentDate, archivedListIds),
     );
@@ -4085,9 +4086,6 @@ function renderTaskListScopeButtons(view: TasksView): void {
     const label = document.createElement("span");
     label.textContent = list.name;
     const count = document.createElement("strong");
-    const archivedListIds = new Set(
-      view.lists.filter((candidate) => candidate.archived).map((candidate) => candidate.id),
-    );
     count.textContent = String(
       taskScopeCount(
         view.tasks,
@@ -4738,11 +4736,7 @@ function renderTasks(view: TasksView): void {
 }
 
 function stableTaskOperationId(signature: string, prefix: string): string {
-  const existing = taskOperationIds.get(signature);
-  if (existing) return existing;
-  const created = localOperationId(prefix);
-  taskOperationIds.set(signature, created);
-  return created;
+  return taskOperationIds.getOrCreate(signature, () => localOperationId(prefix));
 }
 
 function updateTaskEditorOperationState(
@@ -5936,6 +5930,9 @@ function showWorkspaceDestination(
   const changingTodaySelection =
     destination === "today" &&
     (destinationChanged || selectedTodayDate !== dailyDate);
+  if (leavingToday || changingTodaySelection || leavingTasks || leavingCalendar) {
+    taskOperationIds.clear();
+  }
   if (leavingToday || changingTodaySelection) {
     todayPresentationRequests.invalidate();
     todayTaskRequests.invalidate();

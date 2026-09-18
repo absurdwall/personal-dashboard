@@ -47,6 +47,26 @@ export function taskEditOperationKey(
   ]);
 }
 
+export class TaskOperationIdentityStore {
+  private readonly operationIds = new Map<string, string>();
+
+  getOrCreate(signature: string, create: () => string): string {
+    const existing = this.operationIds.get(signature);
+    if (existing) return existing;
+    const created = create();
+    this.operationIds.set(signature, created);
+    return created;
+  }
+
+  delete(signature: string): void {
+    this.operationIds.delete(signature);
+  }
+
+  clear(): void {
+    this.operationIds.clear();
+  }
+}
+
 export function calendarTasksForDate<T extends Readonly<{
   date: string | null;
   deletedAt: string | null;

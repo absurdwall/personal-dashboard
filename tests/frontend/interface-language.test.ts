@@ -74,6 +74,17 @@ test("Tasks scopes and reviewed backend diagnostics have real bilingual output",
   assert.equal(interfaceCopy("tasks.scopeToday", "zh"), "今日");
   assert.equal(interfaceCopy("tasks.scopeInbox", "zh"), "收集箱");
   assert.equal(interfaceCopy("tasks.inbox", "zh"), "收集箱");
+  for (const key of [
+    "workspace.tasksDescription",
+    "workspace.tasksRail",
+    "calendar.taskCreateDefault",
+    "tasks.empty",
+    "tasks.emptyAll",
+    "tasks.add",
+    "today.taskCreateDefault",
+  ] as const) {
+    assert.doesNotMatch(interfaceCopy(key, "zh"), /\bInbox\b/);
+  }
   assert.equal(interfaceCopy("tasks.scopeAll", "en"), "All");
   assert.equal(interfaceCopy("tasks.scopeToday", "en"), "Today");
   assert.equal(interfaceCopy("tasks.scopeInbox", "en"), "Inbox");
