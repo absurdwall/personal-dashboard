@@ -7625,6 +7625,14 @@ button.habit-cell:focus-visible {
   outline-offset: 0.18rem;
 }
 
+.task-list-create-form input:focus,
+.task-list-row-form input:focus,
+.task-form-grid input:focus,
+.task-form-grid textarea:focus,
+.task-form-grid select:focus {
+  outline: 2px solid var(--parity-focus);
+}
+
 .product-toolbar-brand .feature-mark {
   color: var(--parity-accent-on);
 }

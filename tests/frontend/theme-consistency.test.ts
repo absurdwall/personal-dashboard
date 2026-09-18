@@ -22,6 +22,8 @@ test("the theme role cascade keeps task actions and destinations on selected pal
   assert.match(roleSection, /:focus-visible[\s\S]*outline(?:-color)?:[\s\S]*var\(--parity-focus\)/);
   assert.match(roleSection, /button\.habit-cell:focus-visible[\s\S]*outline:\s*2px solid var\(--parity-focus\)/);
   assert.match(roleSection, /\.accent-swatches button\[aria-pressed="true"\][\s\S]*outline:\s*2px solid var\(--parity-focus\)/);
+  assert.match(roleSection, /\.task-list-create-form input:focus[\s\S]*outline:\s*2px solid var\(--parity-focus\)/);
+  assert.match(roleSection, /\.task-form-grid input:focus[\s\S]*outline:\s*2px solid var\(--parity-focus\)/);
   assert.doesNotMatch(roleSection, /#214c37|#e0ebe5|#183e34|#87a995/);
   assert.match(styles, /button\s*\{[\s\S]*background:\s*var\(--parity-accent-strong\)[\s\S]*color:\s*var\(--parity-accent-on\)/);
 });
