@@ -40,13 +40,13 @@ Settings offers forest/blue/clay/lilac. User observes that choosing purple chang
 - [x] Add focused behavioral regressions at current appearance/name seams; inspect rendered UI before/after with synthetic fixtures. Validate all palette options and wide/narrow layouts in Chinese/English, with unobstructed representative screenshots and contrast measurements. No new dependencies/services.
 - [x] Update app/package version declarations and applicable lock metadata consistently to 3.0.1 without dependency upgrades. Keep bundle ID unchanged and preserve all post-3.0 task features.
 - [x] Run relevant typecheck, frontend/Rust checks, build and isolated packaged verification as warranted by changes. Independently review the bounded diff using Luna Max; fix material findings before handing back for user acceptance. Identify exact commit and bundle path; distinguish fixture proof from real-data/config changes.
-- [x] Build a reviewable candidate, commit bounded source/test/doc work and update ticket/map evidence. Do not install a second daily App or launch/register a new everyday entry. Daily replacement/install and push are not part of this ticket's requested implementation handoff; leave the candidate ready for acceptance and preserve the stable /Applications entry. Do not mark the unrelated Drive acceptance complete.
+- [x] Build a reviewable candidate, commit bounded source/test/doc work and update ticket/map evidence. Do not install a second daily App or launch/register a new everyday entry. The later explicit delivery authorization replaced the candidate-only boundary: the single `/Applications` bundle was updated in place, with the old bundle preserved and no unrelated app installed. Do not mark the unrelated Drive acceptance complete.
 
 ## Answer
 
 Implemented in commit `f17e5ca` (`feat: polish personal dashboard 3.0.1`). The reviewable candidate bundle is:
 
-`src-tauri/target/release/bundle/macos/Personal Dashboard.app`
+`/Applications/Personal Dashboard.app`
 
 Evidence:
 
@@ -56,6 +56,9 @@ Evidence:
 - The final isolated packaged Dashboard 4 workflow passed with eight wide/narrow Chinese/English screenshots under `output/playwright/pd301-final-captures/`, including lifecycle persistence across relaunch, Vault switching, and conflict-draft recovery. It used synthetic Vaults only.
 - The selected Vault received only the authorized English Habit sidecar fields, with a user-local recoverable record of the pre-change missing-sidecar state; personal configuration remains outside Git and this ticket.
 - Two independent Luna Max reviews found no remaining code-level spec gap or standards violation. Remaining Drive acceptance is separate and unresolved.
+- Delivery: the backed-up 3.0.0 `/Applications` bundle was replaced with 3.0.1 and relaunched. The installed executable hash is `2a0b567aabfaf369fd004e2578682ea5965e7d6685d570cf4050c9cf12fb35c3`; the bundle identifier remains `com.tortillaflat.personal-dashboard`, the bundle verifies with `codesign --verify --deep --strict`, and exactly one installed process is running from `/Applications/Personal Dashboard.app/Contents/MacOS/personal-dashboard`.
+- Search cleanup: Spotlight exact-name search and a LaunchServices dump each resolve only `/Applications/Personal Dashboard.app`. The stale canonical/e99a build bundles were preserved under non-`.app` backup names, and stale temporary registrations were removed with targeted `lsregister -u` calls; no global index or LaunchServices reset was used.
+- The user-local `tortilla-flat-management` helper is not installed in the available skill roots; management reconciliation/setup remains required. A first archive attempt for old synthetic `/private/tmp` debug fixtures passed newline-separated names as one tar argument and produced an empty archive; the empty archive was removed and that synthetic-only cleanup is recorded separately. No personal Vault or app backup was affected.
 
 ## Working boundaries
 
