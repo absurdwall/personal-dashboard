@@ -73,3 +73,39 @@ _Avoid_: Short record, habit snapshot, Dida365 write-back
 **Habit threshold check-in**:
 An explicit record that a habit's time target was met, such as getting up before a target time. It does not establish the actual time of the activity.
 _Avoid_: Actual time, timestamp of waking
+
+## 4.0 design vocabulary
+
+The following terms describe the agreed future direction, not shipped behavior.
+
+**Task**:
+A persistent personal action with a name, optional content and one optional date/time, whose identity continues across edits, rescheduling and completion. Tasks, Today and Calendar present the same action.
+_Avoid_: Daily Record, copied day task, development ticket
+
+**Task list**:
+A named collection used to organize personal Tasks. Archiving a list retains its task history for later viewing.
+_Avoid_: Daily Record section, deleted collection
+
+**Inbox**:
+The default Task list for actions not assigned to another list. Inbox tasks may be dated or undated; Inbox is not a synonym for today or unscheduled work.
+_Avoid_: Today's list, all undated tasks
+
+**Today task view**:
+A date-based view aggregating Tasks across unarchived lists for the current lived date. It is a view, not a list a Task can belong to.
+_Avoid_: Today list, Inbox
+
+**Abandoned task**:
+A Task the user has explicitly decided not to pursue, retained as history rather than counted as completed. It is distinct from an unchecked Task whose completion remains unconfirmed.
+_Avoid_: Completed task, deleted task, inferred failure
+
+**Archived task list**:
+A Task list removed from everyday pending-work views while retaining its tasks and their existing states for historical viewing. Archiving does not complete or abandon its unfinished tasks.
+_Avoid_: Deleted list, batch completion, batch abandonment
+
+**Task date**:
+The single optional date, with an optional time, assigned to a Task and used for its Calendar placement; late completion does not change it. An undated Task remains a valid action without placement on a calendar date.
+_Avoid_: Separate start and deadline fields, completion time
+
+**Habit display name**:
+A language-specific name for the same Habit identity. Switching its displayed language does not duplicate the Habit or its completion history.
+_Avoid_: Translated diary, separate language-specific habit
