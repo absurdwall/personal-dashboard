@@ -258,13 +258,29 @@ fn adapter_rejects_relative_and_empty_vault_paths_before_reading_or_writing() {
         let error = adapter(vault.path())
             .execute(DailyFlowTaskRequest::Read {
                 schema_version: DAILY_FLOW_TASK_ADAPTER_SCHEMA_VERSION,
-                vault_path,
+                vault_path: vault_path.clone(),
                 lived_date: "2026-09-17".into(),
             })
             .unwrap_err();
         assert!(
             error.contains(expected_fragment),
             "unexpected error: {error}"
+        );
+        assert_eq!(fs::read(&path).unwrap(), before);
+
+        let error = adapter(vault.path())
+            .execute(apply_request(
+                &vault_path,
+                "target-binding",
+                None,
+                vec![action("rejected-write", "rejected-source", "不应写入")],
+                vec![],
+                "2026-09-17",
+            ))
+            .unwrap_err();
+        assert!(
+            error.contains(expected_fragment),
+            "unexpected apply error: {error}"
         );
         assert_eq!(fs::read(&path).unwrap(), before);
     }

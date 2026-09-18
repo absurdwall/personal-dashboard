@@ -43,6 +43,7 @@ import {
   TaskOperationIdentityStore,
   performTaskUpdateRequest,
   taskListIdFromScope,
+  taskListDisplayName,
   taskListMutationConfirmed,
   taskListScopeForId,
   taskScopeCount,
@@ -4120,7 +4121,10 @@ function renderTaskListSelect(
     ...options.map((list) => {
       const option = document.createElement("option");
       option.value = list.id;
-      option.textContent = list.archived ? `${list.name} · ${t("tasks.archivedLabel")}` : list.name;
+      const displayName = taskListDisplayName(list, t("tasks.inbox"));
+      option.textContent = list.archived
+        ? `${displayName} · ${t("tasks.archivedLabel")}`
+        : displayName;
       option.disabled = list.archived && list.id !== selectedListId;
       return option;
     }),
@@ -4150,7 +4154,8 @@ function renderTaskListManagement(view: TasksView, canOperate: boolean): void {
     const heading = document.createElement("div");
     heading.className = "task-list-row-heading";
     const title = document.createElement("strong");
-    title.textContent = list.name;
+    const displayName = taskListDisplayName(list, t("tasks.inbox"));
+    title.textContent = displayName;
     const count = document.createElement("small");
     count.className = "task-meta";
     setCopy(count, "tasks.listCount", { count: taskListCount(view, list.id) });
@@ -4174,7 +4179,7 @@ function renderTaskListManagement(view: TasksView, canOperate: boolean): void {
       ? taskListRenameDrafts.get(taskListRenameDraftKey(currentTasksView.targetBinding, list.id)) ?? list.name
       : list.name;
     input.dataset.taskListName = "";
-    input.setAttribute("aria-label", t("tasks.renameListLabel", { list: list.name }));
+    input.setAttribute("aria-label", t("tasks.renameListLabel", { list: displayName }));
     const save = document.createElement("button");
     save.type = "submit";
     save.disabled = !canOperate;
@@ -4360,7 +4365,10 @@ function taskEditor(
   title.setAttribute("aria-expanded", String(Boolean(draft)));
   title.textContent = task.name;
   title.setAttribute("aria-label", `${t("tasks.details")} · ${task.name}`);
-  const listName = view ? taskListForId(view, task.listId)?.name ?? task.listId : task.listId;
+  const taskList = view ? taskListForId(view, task.listId) : undefined;
+  const listName = taskList
+    ? taskListDisplayName(taskList, t("tasks.inbox"))
+    : task.listId;
   const meta = document.createElement("p");
   meta.className = "task-row-meta";
   meta.append(source, document.createTextNode(" · "), document.createTextNode(listName));
@@ -4707,13 +4715,14 @@ function renderTasks(view: TasksView): void {
     );
     const selectedCreateList = taskListForId(view, taskCreateList?.value ?? "inbox");
     if (selectedCreateList && taskCreateListLabel) {
-      setRawText(taskCreateListLabel, selectedCreateList.name);
+      const displayName = taskListDisplayName(selectedCreateList, t("tasks.inbox"));
+      setRawText(taskCreateListLabel, displayName);
       if (taskCreateSubmit) {
         setRawText(
           taskCreateSubmit,
           selectedCreateList.id === "inbox"
             ? t("tasks.add")
-            : t("tasks.addToList", { list: selectedCreateList.name }),
+            : t("tasks.addToList", { list: displayName }),
         );
       }
     }

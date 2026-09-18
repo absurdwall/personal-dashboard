@@ -8,14 +8,31 @@ import {
   taskListMutationConfirmed,
   taskListScopeForId,
   taskEditOperationKey,
+  taskListDisplayName,
   TaskOperationIdentityStore,
   taskMutationConfirmed,
   performTaskUpdateRequest,
   taskScopeCount,
   type TaskUpdateView,
+  type TaskUpdateInput,
   todayTaskGroups,
   taskVisibleInScope,
 } from "../../frontend/task-presentation.ts";
+
+test("system task lists use the localized Inbox display while user list names stay unchanged", () => {
+  assert.equal(
+    taskListDisplayName({ name: "Inbox", isSystem: true }, "收集箱"),
+    "收集箱",
+  );
+  assert.equal(
+    taskListDisplayName({ name: "Inbox", isSystem: true }, "Inbox"),
+    "Inbox",
+  );
+  assert.equal(
+    taskListDisplayName({ name: "我的计划", isSystem: false }, "收集箱"),
+    "我的计划",
+  );
+});
 
 test("clearing a task date also clears its time and disables the time control", () => {
   assert.deepEqual(normalizeTaskSchedule("", "09:30"), {
@@ -170,40 +187,52 @@ test("the update request seam keeps a late committed payload distinct from a lat
   const firstEdit = taskUpdateEdit("第一版");
   const secondEdit = taskUpdateEdit("第二版");
   const firstResponse = deferred<TaskUpdateView>();
+  const received: TaskUpdateInput[] = [];
+  let committedName = "初始任务";
+  const invoke = async (input: TaskUpdateInput): Promise<TaskUpdateView> => {
+    received.push(input);
+    if (received.length === 1) return firstResponse.promise;
+    committedName = input.name;
+    return taskUpdateView(committedName);
+  };
   const firstPromise = performTaskUpdateRequest(firstEdit, {
     expectedRevision: "revision-1",
     requests,
     identities,
     createChangeId: () => `change-${++nextId}`,
-    invoke: async () => firstResponse.promise,
+    invoke,
     isCurrent: (token, view) =>
       requests.isCurrent(token) && view.targetBinding === "vault-a",
   });
 
+  assert.equal(received[0]?.name, "第一版");
+  committedName = received[0]?.name ?? committedName;
   requests.invalidate();
-  firstResponse.resolve(taskUpdateView("第一版"));
+  firstResponse.resolve(taskUpdateView(committedName));
   const firstResult = await firstPromise;
   assert.equal(firstResult.responseIsCurrent, false);
   assert.equal(firstResult.confirmed, false);
+  assert.equal(committedName, "第一版");
 
   const secondResult = await performTaskUpdateRequest(secondEdit, {
     expectedRevision: "revision-1",
     requests,
     identities,
     createChangeId: () => `change-${++nextId}`,
-    invoke: async (input) => taskUpdateView(input.name),
+    invoke,
     isCurrent: (token, view) =>
       requests.isCurrent(token) && view.targetBinding === "vault-a",
   });
   assert.equal(secondResult.confirmed, true);
   assert.notEqual(secondResult.operation.changeId, firstResult.operation.changeId);
+  assert.equal(committedName, "第二版");
 
   const retryFirstResult = await performTaskUpdateRequest(firstEdit, {
     expectedRevision: "revision-1",
     requests,
     identities,
     createChangeId: () => `change-${++nextId}`,
-    invoke: async (input) => taskUpdateView(input.name),
+    invoke,
     isCurrent: (token, view) =>
       requests.isCurrent(token) && view.targetBinding === "vault-a",
   });

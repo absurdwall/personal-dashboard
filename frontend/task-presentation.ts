@@ -20,6 +20,13 @@ export function taskListScopeForId(listId: string): TaskListScope {
   return `list:${listId}`;
 }
 
+export function taskListDisplayName(
+  list: Readonly<{ name: string; isSystem: boolean }>,
+  inboxLabel: string,
+): string {
+  return list.isSystem ? inboxLabel : list.name;
+}
+
 export function taskListIdFromScope(scope: TaskListScope): string | null {
   return scope.startsWith("list:") ? scope.slice("list:".length) : null;
 }

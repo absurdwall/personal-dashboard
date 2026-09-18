@@ -39,12 +39,44 @@ Implemented and verified on `codex/dashboard-4-review-follow-up` in the isolated
 repair commits `9d8b9a1`, `e7c07b3`, `42b818f`, and `a483493`.
 
 - F-01: Calendar now exposes task-source state separately from Daily Record state; corrupt and unknown-version task JSON remain untouched while Calendar review data remains available.
-- F-02: Edit identities include the full payload and target binding; normal navigation preserves uncertain retry identity, confirmed later edits retire older payload identities, Vault reset clears the store, and the frontend request/operation seam plus Rust A/B/A contract regressions cover late responses and retries.
+- F-02: Edit identities include the full payload and target binding; normal navigation preserves uncertain retry identity, confirmed later edits retire older payload identities, Vault reset clears the store, and the frontend request/operation seam now captures the submitted payload while a stateful fake backend commits before the late response. Rust A/B/A contract regressions cover backend identity handling.
 - F-03/F-04: Fixed scope labels and reviewed diagnostics have exact Chinese/English output while task/list content remains source-owned.
 - F-05/F-06: Counts follow visible state filters, and empty/relative adapter Vault paths are rejected before any candidate-file mutation.
 - V-01/F-07: Daily-flow integration inputs resolve through the Git common directory or explicit workspace-root environment, fail loudly when absent, and `CONTEXT.md` reuses the existing 4.0 vocabulary for shipped behavior.
 - Verification: targeted frontend tests passed; `npm run test:frontend` passed 100/100; `npm run check` passed with the existing source-checkout TypeScript binary on `PATH`; full Rust tests passed, including 28 task workflow tests. Changed Rust files pass targeted rustfmt; the repository-wide check still reports the unrelated pre-existing `appearance_workflow.rs` formatting difference.
 - Packaged Mac v7 passed from `e74e2d4` after rebuilding `src-tauri/target/release/bundle/macos/Personal Dashboard.app`; eight non-overwritten captures are in `output/playwright/personal-dashboard-4-review-follow-up-20260918-v7/`. Evidence is synthetic-Vault only; ticket 09 remains `ready-for-human` because the Drive fixture is still missing.
+
+### Answer addendum: post-closeout daily app entry reconciliation
+
+The duplicate Personal Dashboard icons were caused by two different launch
+entries, not two copies of the Ticket 11 product being installed in the daily
+applications folder:
+
+- Before cleanup, `/Applications/Personal Dashboard.app` and the e99a bundle
+  were the same Ticket 11 build (`3.0.0`, executable SHA-256
+  `0d96ab2907b9f4d15b8dee53274702940bdab6263d8ffc454328937297cb1542`, CDHash
+  `9e494cf36909286a993f202edd26d7e3b5a90ad0`), while the canonical checkout
+  build at
+  `/Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/src-tauri/target/release/bundle/macos/Personal Dashboard.app`
+  was older (`3.0.0`, SHA-256
+  `37b2238351d7abcaecfd60810be8b1c0afa50f22c43f648cf9c14f15cc4dcfc2`, CDHash
+  `603077f96afbdf18d4d305b618ac18aaa577b8af`).
+- The Dock's sole persistent Personal Dashboard tile pointed to that older
+  canonical checkout bundle, while launching `/Applications` created the
+  current running process at `/Applications/Personal Dashboard.app/Contents/MacOS/personal-dashboard`.
+  LaunchServices confirmed the three on-disk registrations and separate stale
+  temporary test records; no global registration reset was warranted.
+- The Dock tile was changed in place to
+  `file:///Applications/Personal%20Dashboard.app/`, the Dock was restarted,
+  and the app was gracefully quit and relaunched from that absolute path. The
+  post-relaunch process was the `/Applications` executable, and the Dock plist
+  contained exactly one persistent Personal Dashboard tile. No build bundle,
+  Vault, or personal data was deleted or changed; only this concrete Dock
+  persistent entry was intentionally rewritten.
+- Installed-bundle validation: `CFBundleIdentifier` is
+  `com.tortillaflat.personal-dashboard`, version is `3.0.0`, and
+  `codesign --verify --deep --strict` passes. The remaining code review and
+  canonical-branch integration/push result is recorded in the comments below.
 
 ## Comments
 
@@ -54,3 +86,5 @@ repair commits `9d8b9a1`, `e7c07b3`, `42b818f`, and `a483493`.
 - 2026-09-18: Expanded the F-02 seam test to drive the actual update-request helper with deferred IPC responses, navigation invalidation, a later payload, and same-payload retry; committed as `e74e2d4`.
 - 2026-09-18: Packaged v7 passed from `e74e2d4`; ticket-09 evidence and the packaged acceptance report were updated to the exact tested commit and capture directory. Drive fixture acceptance remains intentionally pending.
 - 2026-09-18: Final Standards/Spec review passed the implementation and evidence; the stale map summary was corrected, while the preserved review-report whitespace remains an existing artifact rather than a product change.
+- 2026-09-18: Root-cause investigation found the duplicate icon was a stale Dock tile for the canonical checkout build plus the running `/Applications` build. The tile was redirected in place to `/Applications/Personal Dashboard.app`, then Dock and the app were restarted; the resulting persistent entry and process path are unique and stable. Re-review and canonical integration/push are pending this closeout pass.
+- 2026-09-18: Standards review requested a stateful F-02 seam and invalid-path Apply coverage; the seam now captures the submitted payload and models commit-before-late-response, and the adapter regression asserts both Read and Apply leave bytes unchanged. The system Inbox display was also localized through a presentation seam without translating user list names.
