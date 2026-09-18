@@ -28,11 +28,44 @@ test("Tasks is a real destination between Today and Calendar with Inbox and All 
   assert.match(main, /core\.invoke<TasksView>\("update_task"/);
 });
 
+test("Tasks keeps the accepted prototype hierarchy and defers heavy controls", () => {
+  for (const marker of [
+    'id="task-new"',
+    'class="tasks-layout"',
+    'class="tasks-list-sidebar"',
+    'class="tasks-content"',
+    'class="task-list-navigation"',
+    'id="task-filter"',
+    'id="tasks-list-management-panel"',
+    'id="task-create-cancel"',
+  ]) {
+    assert.match(html, new RegExp(marker));
+  }
+  assert.doesNotMatch(html, /class="tasks-scope-toolbar"/);
+  assert.doesNotMatch(html, /class="tasks-state-toolbar"/);
+  assert.match(html, /class="task-form task-create-form"[^>]*hidden/);
+  assert.match(main, /taskCreateOpen/);
+  assert.match(main, /taskListManagementOpen/);
+  assert.match(main, /toggleTaskEditorDetails/);
+  assert.match(main, /const dialog = surface === "tasks"/);
+  assert.match(main, /task-editor-inline/);
+  assert.match(css, /\.tasks-layout\s*\{/);
+  assert.match(css, /\.task-row\.task-editor\s*\{/);
+  assert.match(css, /\.task-editor-inline\s*\{/);
+});
+
 test("Tasks fixed copy has Chinese and English counterparts", () => {
   for (const key of [
     "destination.tasks",
     "workspace.tasksDescription",
     "tasks.introduction",
+    "tasks.newTask",
+    "tasks.listsNavHeading",
+    "tasks.newList",
+    "tasks.closeListManager",
+    "tasks.filter",
+    "tasks.allTasks",
+    "tasks.cancel",
     "tasks.scopeAll",
     "tasks.scopeToday",
     "tasks.scopeInbox",
@@ -67,7 +100,7 @@ test("task writes serialize refresh reconciliation and retain retry identity", (
 
 test("Tasks exposes explicit state, deletion recovery, and completion correction controls", () => {
   for (const scope of ["all", "pending", "completed", "abandoned", "deleted"]) {
-    assert.match(html, new RegExp(`data-task-state="${scope}"`));
+    assert.match(html, new RegExp(`<option value="${scope}"`));
   }
   for (const marker of [
     "data-task-state-action",

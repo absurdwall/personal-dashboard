@@ -4657,6 +4657,7 @@ EOF
   run_driver assert-size "1120x760" 10
   run_driver press "任务" 10
   run_driver wait-active-text "$shared_task" 30
+  run_driver press "新建任务" 10
   run_driver assert-active-text "加入 Inbox"
   run_driver assert-active-text "$future_task"
   run_driver type-text "新建任务名称|$new_task" 10
@@ -4677,6 +4678,7 @@ EOF
   wait_for_task_property "$tasks_a" "late-task" "date" "2026-09-07" ||
     fail "late completion moved the scheduled task date"
   run_driver wait-active-text "已完成" 20
+  run_driver press-contains "详情 · $late_task" 10
   run_driver type-text "实际完成日期 · $late_task|2026-09-07" 10
   run_driver type-text "实际完成时刻（可空） · $late_task|18:30" 10
   run_driver press-contains "更正完成记录 · $late_task" 10
@@ -4685,29 +4687,30 @@ EOF
   wait_for_task_property "$tasks_a" "late-task" "completion.completedTime" "18:30" ||
     fail "completion correction did not persist the explicit completion time"
 
-  run_driver press "待办" 10
+  run_driver select-contains "待办" 10
   run_driver press-contains "放弃 · $abandon_task" 10
   wait_for_task_property "$tasks_a" "abandon-task" "state" "abandoned" ||
     fail "abandon action did not persist"
-  run_driver press "已放弃" 10
+  run_driver select-contains "已放弃" 10
   run_driver wait-active-text "$abandon_task" 20
   run_driver assert-active-text "已放弃"
 
-  run_driver press "待办" 10
+  run_driver select-contains "待办" 10
   run_driver press-contains "删除 · $delete_task" 10
   wait_for_task_property "$tasks_a" "delete-task" "deletedAt" "not-null" ||
     fail "delete action did not persist a recoverable tombstone"
-  run_driver press "已删除" 10
+  run_driver select-contains "已删除" 10
   run_driver assert-active-text "$delete_task"
   run_driver assert-active-text "撤销删除"
   run_driver press-contains "撤销删除 · $delete_task" 10
-  run_driver press "待办" 10
+  run_driver select-contains "待办" 10
   run_driver assert-active-text "$delete_task"
   wait_for_task_property "$tasks_a" "delete-task" "deletedAt" "null" ||
     fail "restored task did not clear its tombstone"
 
   current_step="verifying list archive and restore without changing task state"
-  run_driver press "全部未删除" 10
+  run_driver select-contains "全部未删除" 10
+  run_driver press "新建清单" 10
   run_driver press "归档清单" 10
   wait_for_list_property "$tasks_a" "focus-list" "archived" "true" ||
     fail "archived task list did not persist before history verification"
@@ -4718,6 +4721,7 @@ EOF
   run_driver press "任务" 10
   run_driver press "已归档" 20
   run_driver assert-active-text "$shared_task"
+  run_driver press "新建清单" 10
   run_driver press "恢复清单" 10
   wait_for_list_property "$tasks_a" "focus-list" "archived" "false" ||
     fail "restored task list did not persist before scope verification"
@@ -4761,6 +4765,8 @@ EOF
   run_driver assert-active-text "$shared_task"
   run_driver capture-window "$capture_directory/product-zh-calendar-wide.png" 10
 
+  run_driver scroll-text-visible "默认日期为选中日期，清单为 Inbox" 10
+  run_driver scroll-text-visible "新建任务名称" 10
   run_driver type-text "新建任务名称|$calendar_new_task" 10
   run_driver press "加入 Inbox" 10
   run_driver wait-active-text "任务已保存到所选 Vault" 20
@@ -4775,6 +4781,8 @@ EOF
 
   run_driver press "今天" 10
   run_driver wait-active-text "$shared_task" 20
+  run_driver scroll-text-visible "默认今天和 Inbox" 10
+  run_driver scroll-text-visible "新建任务名称" 10
   run_driver type-text "新建任务名称|$today_new_task" 10
   run_driver press "加入 Inbox" 10
   run_driver wait-active-text "任务已保存到所选 Vault" 20
@@ -4827,6 +4835,7 @@ EOF
   run_driver set-size "640x520" 10
   run_driver assert-size "640x520" 10
   run_driver press "Tasks" 10
+  run_driver press "New task" 10
   run_driver wait-active-text "$shared_task" 20
   run_driver assert-active-text "New task name"
   run_driver assert-active-text "Add to Inbox"
@@ -4834,10 +4843,10 @@ EOF
   run_driver capture-window "$capture_directory/product-en-tasks-narrow.png" 10
   run_driver press "Calendar" 10
   run_driver wait-active-text "September 2026" 20
-  run_driver assert-active-text "+2"
+  run_driver assert-active-text "+4"
   run_driver assert-document-fixed "document" 10
-  run_driver focus-contains "+2" 10
-  run_driver assert-visible-focus "+2" 10
+  run_driver focus-contains "+4" 10
+  run_driver assert-visible-focus "+4" 10
   run_driver press-key "space" 10
   run_driver wait-active-text "$archived_task" 20
   run_driver assert-active-text "$shared_task"
@@ -4861,18 +4870,19 @@ EOF
   run_driver wait-active-text "$new_task" 20
   run_driver assert-active-text "$shared_task"
   run_driver assert-active-text "Completed"
-  run_driver press "Completed" 10
+  run_driver select-contains "Completed" 10
   run_driver wait-active-text "$late_task" 20
-  run_driver assert-active-text "2026-09-07"
-  run_driver assert-active-text "18:30"
-  run_driver press "Abandoned" 10
+  run_driver press-contains "Details · $late_task" 10
+  run_driver assert-active-text "Task date: Mon, Sep 7 · 09:00"
+  run_driver assert-active-text "Actual completion: Mon, Sep 7 · 18:30"
+  run_driver select-contains "Abandoned" 10
   run_driver wait-active-text "$abandon_task" 20
   run_driver assert-active-text "Abandoned"
-  run_driver press "Pending" 10
+  run_driver select-contains "Pending" 10
   run_driver wait-active-text "$delete_task" 20
   run_driver assert-active-text "Pending"
   run_driver press-contains "Delete · $delete_task" 10
-  run_driver press "Deleted" 10
+  run_driver select-contains "Deleted" 10
   run_driver wait-active-text "$delete_task" 20
   run_driver assert-active-text "Restore task"
 
@@ -4881,16 +4891,17 @@ EOF
   fi
   launch_app_waiting_for_text "$record_marker" 30
   run_driver press "Tasks" 10
-  run_driver press "Deleted" 10
+  run_driver select-contains "Deleted" 10
   run_driver wait-active-text "$delete_task" 20
   run_driver assert-active-text "Restore task"
   run_driver press-contains "Restore task · $delete_task" 10
-  run_driver press "Pending" 10
+  run_driver select-contains "Pending" 10
   run_driver wait-active-text "$delete_task" 20
   run_driver assert-active-text "Pending"
 
   current_step="proving a bounded external task change retains a recoverable draft"
-  run_driver press "All active" 10
+  run_driver select-contains "All active" 10
+  run_driver press "New task" 10
   run_driver type-text "New task name|Conflict draft preserved after refresh" 10
   /bin/cp "$tasks_a" "$external_candidate"
   /usr/bin/perl -0pi -e 's/\n\z/\n\n/' "$external_candidate"

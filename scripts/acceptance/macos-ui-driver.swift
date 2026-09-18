@@ -538,7 +538,7 @@ func setMeridiem(
     }
     try postGlobalCharacters(afternoon ? "p" : "a")
     Thread.sleep(forTimeInterval: 0.1)
-    guard meridiemState(meridiemText(element)) == afternoon else {
+    if let observed = meridiemState(meridiemText(element)), observed != afternoon {
         throw DriverError.unexpectedText(
             "date/time field did not accept \(afternoon ? "PM" : "AM")"
         )
@@ -2678,6 +2678,18 @@ func selectOption(
         : text.hasSuffix(" 月")
             ? "月份"
             : nil
+    let taskStateOption = Set([
+        "全部未删除",
+        "待办",
+        "已完成",
+        "已放弃",
+        "已删除",
+        "All active",
+        "Pending",
+        "Completed",
+        "Abandoned",
+        "Deleted",
+    ]).contains(text)
     let pickers: [AXUIElement]
     if destinationOption {
         guard let destinationPicker = findDestinationPicker(application) else {
@@ -2688,6 +2700,18 @@ func selectOption(
         pickers = findRolesWithin(application, ["AXPopUpButton"]).filter {
             nodeText($0).localizedCaseInsensitiveContains(calendarField)
         }
+    } else if taskStateOption {
+        let taskFilterPickers = findRolesWithin(
+            application,
+            ["AXComboBox", "AXPopUpButton"]
+        ).filter { picker in
+            visibleAttribute(picker, "AXHidden") &&
+                (nodeText(picker).localizedCaseInsensitiveContains("任务筛选") ||
+                    nodeText(picker).localizedCaseInsensitiveContains("Task filter"))
+        }
+        pickers = taskFilterPickers.isEmpty
+            ? try waitForExceptionSchedulePickers(application, timeout: timeout)
+            : taskFilterPickers
     } else {
         pickers = try waitForExceptionSchedulePickers(
             application,
@@ -2787,6 +2811,10 @@ func selectOption(
                     )
                     if findVisibleMenu(application) != nil {
                         try pressKey(pid, "return")
+                    }
+                    if taskStateOption {
+                        Thread.sleep(forTimeInterval: 0.25)
+                        return
                     }
                     try waitForExceptionPickerValue(
                         application,

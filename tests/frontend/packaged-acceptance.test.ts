@@ -81,6 +81,8 @@ test("the 4.0 packaged scenario exercises the shared task source and lifecycle",
   for (const marker of [
     "life/.personal-dashboard/tasks/v1/tasks.json",
     "Tasks",
+    "新建任务",
+    "New task",
     "Today",
     "Calendar",
     "Inbox",
@@ -91,6 +93,7 @@ test("the 4.0 packaged scenario exercises the shared task source and lifecycle",
     "Restore task",
     "Restore",
     "+2",
+    "+4",
     "Today 默认新建 · Today date",
     "Calendar 默认新建 · Selected date",
     "press-key \"space\"",
@@ -101,5 +104,8 @@ test("the 4.0 packaged scenario exercises the shared task source and lifecycle",
   ]) {
     assert.match(scenario, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+  assert.match(scenario, /select-contains "待办"/);
+  assert.match(scenario, /press-contains "详情 · \$late_task"/);
+  assert.match(scenario, /press-contains "Details · \$late_task"/);
   assert.doesNotMatch(scenario, /run_live_daily_cycle_scenario|PERSONAL_DASHBOARD_ACCEPTANCE_LIVE/);
 });
