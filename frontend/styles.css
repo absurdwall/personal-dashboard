@@ -7615,6 +7615,16 @@ textarea:focus-visible,
   outline-color: var(--parity-focus);
 }
 
+button.habit-cell:focus-visible {
+  outline: 2px solid var(--parity-focus);
+  outline-offset: 2px;
+}
+
+.accent-swatches button[aria-pressed="true"] {
+  outline: 2px solid var(--parity-focus);
+  outline-offset: 0.18rem;
+}
+
 .product-toolbar-brand .feature-mark {
   color: var(--parity-accent-on);
 }
