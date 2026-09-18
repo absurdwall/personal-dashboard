@@ -23,7 +23,7 @@
 #calendar-today {
   border-color: var(--parity-accent);
   background: var(--parity-accent);
-  color: white;
+  color: var(--parity-accent-on);
 }
 
 /* Habits AG: summary rail, day-focused rows, recent dots, and inline 12-week history. */
@@ -1265,10 +1265,10 @@ h1 {
 
 button {
   padding: 0.75rem 1rem;
-  border: 1px solid #214c37;
+  border: 1px solid var(--parity-accent-strong);
   border-radius: 0.6rem;
-  background: #214c37;
-  color: #fffef9;
+  background: var(--parity-accent-strong);
+  color: var(--parity-accent-on);
   cursor: pointer;
   font: inherit;
   font-size: 0.88rem;
@@ -1299,9 +1299,9 @@ select:focus-visible {
 }
 
 .secondary-button {
-  border-color: #9eaaa2;
-  background: transparent;
-  color: #294b38;
+  border-color: var(--parity-border);
+  background: var(--parity-surface-soft);
+  color: var(--parity-accent-strong);
 }
 
 .profile-restore-confirmation {
@@ -7577,4 +7577,123 @@ body {
 
 .task-editor-inline .task-editor-close {
   margin: 12px 0 0 auto;
+}
+
+/* Personal Dashboard 3.0.1: keep brand actions on the selected accent roles. */
+:root {
+  --parity-ink: #232724;
+  --parity-accent-on: #ffffff;
+  --parity-focus: #214e43;
+}
+
+#refresh-today,
+#calendar-today {
+  border-color: var(--parity-accent);
+  background: var(--parity-accent);
+  color: var(--parity-accent-on);
+}
+
+#refresh-habits {
+  border-color: var(--parity-border);
+  background: var(--parity-surface);
+  color: var(--parity-accent-strong);
+}
+
+#refresh-habits:hover,
+#refresh-habits:focus-visible,
+#refresh-habits:active {
+  border-color: var(--parity-accent);
+  background: var(--parity-accent-soft);
+  color: var(--parity-accent-strong);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.calendar-day:focus-visible {
+  outline-color: var(--parity-focus);
+}
+
+.product-toolbar-brand .feature-mark {
+  color: var(--parity-accent-on);
+}
+
+.destination-button:hover {
+  border-color: color-mix(in srgb, var(--parity-accent) 18%, transparent);
+  background: color-mix(in srgb, var(--parity-accent-soft) 60%, var(--parity-surface));
+  color: var(--parity-accent-strong);
+}
+
+.destination-button[aria-current="page"] {
+  border-color: color-mix(in srgb, var(--parity-accent) 20%, transparent);
+  background: var(--parity-accent-soft);
+  color: var(--parity-accent-strong);
+}
+
+.settings-navigation button[aria-current="page"],
+.today-phase-navigation button[aria-selected="true"],
+.task-list-button[aria-selected="true"] {
+  background: var(--parity-accent-soft);
+  color: var(--parity-accent-strong);
+}
+
+.workspace-detail-actions button:first-child {
+  color: var(--parity-accent-on);
+}
+
+.today-actions .secondary-button {
+  border-color: var(--parity-border);
+  background: var(--parity-surface-soft);
+  color: var(--parity-accent-strong);
+}
+
+#choose-background-image {
+  border-color: var(--parity-accent-strong);
+  background: var(--parity-accent-strong);
+  color: var(--parity-accent-on);
+}
+
+#choose-background-image:hover,
+#choose-background-image:focus-visible,
+#choose-background-image:active {
+  border-color: var(--parity-accent);
+  background: var(--parity-accent);
+  color: var(--parity-accent-on);
+}
+
+#task-new:disabled,
+.tasks-refresh-button:disabled,
+#choose-background-image:disabled,
+#refresh-habits:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+#task-new {
+  border-color: var(--parity-accent-strong);
+  background: var(--parity-accent-strong);
+  color: var(--parity-accent-on);
+}
+
+#task-new:hover,
+#task-new:focus-visible,
+#task-new:active {
+  border-color: var(--parity-accent);
+  background: var(--parity-accent);
+  color: var(--parity-accent-on);
+}
+
+.tasks-refresh-button {
+  border-color: var(--parity-border);
+  background: var(--parity-surface-soft);
+  color: var(--parity-ink);
+}
+
+.tasks-refresh-button:hover,
+.tasks-refresh-button:focus-visible,
+.tasks-refresh-button:active {
+  border-color: var(--parity-accent);
+  background: var(--parity-accent-soft);
+  color: var(--parity-accent-strong);
 }
