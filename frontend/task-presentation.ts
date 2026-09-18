@@ -47,19 +47,38 @@ export function taskEditOperationKey(
   ]);
 }
 
-export class TaskOperationIdentityStore {
-  private readonly operationIds = new Map<string, string>();
+export function taskOperationScope(targetBinding: string, taskId: string): string {
+  return JSON.stringify([targetBinding, taskId]);
+}
 
-  getOrCreate(signature: string, create: () => string): string {
-    const existing = this.operationIds.get(signature);
+export class TaskOperationIdentityStore {
+  private readonly operationIds = new Map<
+    string,
+    Readonly<{ id: string; scope: string | null }>
+  >();
+
+  getOrCreate(
+    signature: string,
+    create: () => string,
+    scope: string | null = null,
+  ): string {
+    const existing = this.operationIds.get(signature)?.id;
     if (existing) return existing;
     const created = create();
-    this.operationIds.set(signature, created);
+    this.operationIds.set(signature, { id: created, scope });
     return created;
   }
 
   delete(signature: string): void {
     this.operationIds.delete(signature);
+  }
+
+  retireOther(scope: string, keepSignature: string): void {
+    for (const [signature, operation] of this.operationIds) {
+      if (operation.scope === scope && signature !== keepSignature) {
+        this.operationIds.delete(signature);
+      }
+    }
   }
 
   clear(): void {

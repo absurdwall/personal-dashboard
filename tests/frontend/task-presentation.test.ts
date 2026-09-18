@@ -9,6 +9,7 @@ import {
   taskEditOperationKey,
   TaskOperationIdentityStore,
   taskMutationConfirmed,
+  taskOperationScope,
   taskScopeCount,
   todayTaskGroups,
   taskVisibleInScope,
@@ -122,7 +123,7 @@ test("a late committed edit can be retried idempotently without poisoning a new 
   assert.equal(taskMutationConfirmed(false, "ready", true), false);
 });
 
-test("operation identities reset with the task surface while same-surface retries stay stable", () => {
+test("operation identities survive navigation and retire after a confirmed task mutation", () => {
   const identities = new TaskOperationIdentityStore();
   let nextId = 0;
   const create = () => `change-${++nextId}`;
@@ -145,11 +146,22 @@ test("operation identities reset with the task surface while same-surface retrie
     listId: "inbox",
   });
 
-  const firstId = identities.getOrCreate(firstEdit, create);
-  assert.equal(identities.getOrCreate(firstEdit, create), firstId);
-  identities.clear();
-  assert.notEqual(identities.getOrCreate(secondEdit, create), firstId);
-  assert.notEqual(identities.getOrCreate(firstEdit, create), firstId);
+  const scope = taskOperationScope("vault-a", "task-1");
+  const firstId = identities.getOrCreate(firstEdit, create, scope);
+  assert.equal(
+    identities.getOrCreate(firstEdit, create, scope),
+    firstId,
+    "retrying the same uncertain edit after navigation must reuse its identity",
+  );
+  const secondId = identities.getOrCreate(secondEdit, create, scope);
+  assert.notEqual(secondId, firstId);
+  identities.retireOther(scope, secondEdit);
+  assert.equal(identities.getOrCreate(secondEdit, create, scope), secondId);
+  assert.notEqual(
+    identities.getOrCreate(firstEdit, create, scope),
+    firstId,
+    "a later confirmed edit must retire the earlier payload identity",
+  );
 });
 
 test("list mutation confirmation accepts an empty source when the list is present", () => {

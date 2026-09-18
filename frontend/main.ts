@@ -40,6 +40,7 @@ import {
   isCurrentTaskResponse,
   normalizeTaskSchedule,
   taskEditOperationKey,
+  taskOperationScope,
   TaskOperationIdentityStore,
   taskListIdFromScope,
   taskListMutationConfirmed,
@@ -4735,8 +4736,12 @@ function renderTasks(view: TasksView): void {
   );
 }
 
-function stableTaskOperationId(signature: string, prefix: string): string {
-  return taskOperationIds.getOrCreate(signature, () => localOperationId(prefix));
+function stableTaskOperationId(
+  signature: string,
+  prefix: string,
+  scope: string | null = null,
+): string {
+  return taskOperationIds.getOrCreate(signature, () => localOperationId(prefix), scope);
 }
 
 function updateTaskEditorOperationState(
@@ -5483,7 +5488,11 @@ async function updateTask(
     time: normalized.time,
     listId,
   });
-  const changeId = stableTaskOperationId(operationKey, "edit-task");
+  const changeId = stableTaskOperationId(
+    operationKey,
+    "edit-task",
+    taskOperationScope(binding, taskId),
+  );
   const expectedDate =
     surface === "today"
       ? currentTodayView?.date ?? null
@@ -5536,6 +5545,7 @@ async function updateTask(
     );
     if (confirmed) {
       taskOperationIds.delete(operationKey);
+      taskOperationIds.retireOther(taskOperationScope(binding, taskId), operationKey);
       taskEditDrafts.delete(taskDraftKey(binding, taskId));
       renderTaskSurface(surface, view);
       setCopy(status, "tasks.saved");
@@ -5626,6 +5636,10 @@ async function saveTaskLifecycleMutation(
     );
     if (confirmed) {
       taskOperationIds.delete(operationKey);
+      taskOperationIds.retireOther(
+        taskOperationScope(loaded.targetBinding, taskId),
+        operationKey,
+      );
       if (loaded.targetBinding && savedTask) {
         reconcileTaskCompletionDraft(loaded.targetBinding, taskId, savedTask);
       }
@@ -5681,7 +5695,11 @@ async function setTaskState(
     return false;
   }
   const operationKey = JSON.stringify([binding, "state", taskId, state]);
-  const changeId = stableTaskOperationId(operationKey, "task-state");
+  const changeId = stableTaskOperationId(
+    operationKey,
+    "task-state",
+    taskOperationScope(binding, taskId),
+  );
   return saveTaskLifecycleMutation(
     "set_task_state",
     loaded,
@@ -5712,7 +5730,11 @@ async function deleteTask(taskId: string, surface: TaskSurface = "tasks"): Promi
     return false;
   }
   const operationKey = JSON.stringify([binding, "delete", taskId]);
-  const changeId = stableTaskOperationId(operationKey, "delete-task");
+  const changeId = stableTaskOperationId(
+    operationKey,
+    "delete-task",
+    taskOperationScope(binding, taskId),
+  );
   return saveTaskLifecycleMutation(
     "delete_task",
     loaded,
@@ -5742,7 +5764,11 @@ async function restoreTask(taskId: string, surface: TaskSurface = "tasks"): Prom
     return false;
   }
   const operationKey = JSON.stringify([binding, "restore", taskId]);
-  const changeId = stableTaskOperationId(operationKey, "restore-task");
+  const changeId = stableTaskOperationId(
+    operationKey,
+    "restore-task",
+    taskOperationScope(binding, taskId),
+  );
   return saveTaskLifecycleMutation(
     "restore_task",
     loaded,
@@ -5792,7 +5818,11 @@ async function correctTaskCompletion(
     completedOn,
     completedTime,
   ]);
-  const changeId = stableTaskOperationId(operationKey, "completion-correction");
+  const changeId = stableTaskOperationId(
+    operationKey,
+    "completion-correction",
+    taskOperationScope(binding, taskId),
+  );
   return saveTaskLifecycleMutation(
     "correct_task_completion",
     loaded,
@@ -5930,9 +5960,6 @@ function showWorkspaceDestination(
   const changingTodaySelection =
     destination === "today" &&
     (destinationChanged || selectedTodayDate !== dailyDate);
-  if (leavingToday || changingTodaySelection || leavingTasks || leavingCalendar) {
-    taskOperationIds.clear();
-  }
   if (leavingToday || changingTodaySelection) {
     todayPresentationRequests.invalidate();
     todayTaskRequests.invalidate();
