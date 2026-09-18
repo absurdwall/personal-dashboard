@@ -10,8 +10,9 @@ import {
   taskEditOperationKey,
   TaskOperationIdentityStore,
   taskMutationConfirmed,
-  taskOperationScope,
+  performTaskUpdateRequest,
   taskScopeCount,
+  type TaskUpdateView,
   todayTaskGroups,
   taskVisibleInScope,
 } from "../../frontend/task-presentation.ts";
@@ -135,56 +136,118 @@ function deferred<T>(): {
   return { promise, resolve };
 }
 
-test("the update operation seam preserves retries across navigation and retires stale payloads", async () => {
+function taskUpdateView(name: string): TaskUpdateView {
+  return {
+    state: "ready",
+    targetBinding: "vault-a",
+    tasks: [{
+      id: "task-1",
+      name,
+      content: null,
+      date: null,
+      time: null,
+      listId: "inbox",
+    }],
+  };
+}
+
+function taskUpdateEdit(name: string) {
+  return {
+    targetBinding: "vault-a",
+    taskId: "task-1",
+    name,
+    content: null,
+    date: null,
+    time: null,
+    listId: "inbox",
+  };
+}
+
+test("the update request seam keeps a late committed payload distinct from a later edit", async () => {
   const identities = new TaskOperationIdentityStore();
   const requests = new LatestRequest();
   let nextId = 0;
-  const create = () => `change-${++nextId}`;
-  const firstEdit = taskEditOperationKey({
-    targetBinding: "vault-a",
-    taskId: "task-1",
-    name: "第一版",
-    content: null,
-    date: null,
-    time: null,
-    listId: "inbox",
-  });
-  const secondEdit = taskEditOperationKey({
-    targetBinding: "vault-a",
-    taskId: "task-1",
-    name: "第二版",
-    content: null,
-    date: null,
-    time: null,
-    listId: "inbox",
+  const firstEdit = taskUpdateEdit("第一版");
+  const secondEdit = taskUpdateEdit("第二版");
+  const firstResponse = deferred<TaskUpdateView>();
+  const firstPromise = performTaskUpdateRequest(firstEdit, {
+    expectedRevision: "revision-1",
+    requests,
+    identities,
+    createChangeId: () => `change-${++nextId}`,
+    invoke: async () => firstResponse.promise,
+    isCurrent: (token, view) =>
+      requests.isCurrent(token) && view.targetBinding === "vault-a",
   });
 
-  const scope = taskOperationScope("vault-a", "task-1");
-  const firstOperation = identities.begin(firstEdit, create, requests, scope);
-  const firstResponse = deferred<boolean>();
-  const firstCompletion = firstResponse.promise.then((confirmed) =>
-    identities.settleConfirmed(firstOperation, requests, confirmed),
-  );
   requests.invalidate();
-  const retryAfterNavigation = identities.begin(firstEdit, create, requests, scope);
-  assert.equal(
-    retryAfterNavigation.changeId,
-    firstOperation.changeId,
-    "retrying the same uncertain edit after navigation must reuse its identity",
-  );
-  const secondOperation = identities.begin(secondEdit, create, requests, scope);
-  assert.notEqual(secondOperation.changeId, firstOperation.changeId);
-  assert.equal(
-    identities.settleConfirmed(secondOperation, requests, true),
-    true,
-    "the current intentional edit must commit through the request seam",
-  );
-  firstResponse.resolve(true);
-  assert.equal(await firstCompletion, false, "the late response must stay stale");
+  firstResponse.resolve(taskUpdateView("第一版"));
+  const firstResult = await firstPromise;
+  assert.equal(firstResult.responseIsCurrent, false);
+  assert.equal(firstResult.confirmed, false);
+
+  const secondResult = await performTaskUpdateRequest(secondEdit, {
+    expectedRevision: "revision-1",
+    requests,
+    identities,
+    createChangeId: () => `change-${++nextId}`,
+    invoke: async (input) => taskUpdateView(input.name),
+    isCurrent: (token, view) =>
+      requests.isCurrent(token) && view.targetBinding === "vault-a",
+  });
+  assert.equal(secondResult.confirmed, true);
+  assert.notEqual(secondResult.operation.changeId, firstResult.operation.changeId);
+
+  const retryFirstResult = await performTaskUpdateRequest(firstEdit, {
+    expectedRevision: "revision-1",
+    requests,
+    identities,
+    createChangeId: () => `change-${++nextId}`,
+    invoke: async (input) => taskUpdateView(input.name),
+    isCurrent: (token, view) =>
+      requests.isCurrent(token) && view.targetBinding === "vault-a",
+  });
   assert.notEqual(
-    identities.begin(firstEdit, create, requests, scope).changeId,
-    firstOperation.changeId,
+    retryFirstResult.operation.changeId,
+    firstResult.operation.changeId,
     "a later confirmed edit must retire the earlier payload identity",
+  );
+});
+
+test("the update request seam reuses an uncertain payload identity for retry after navigation", async () => {
+  const identities = new TaskOperationIdentityStore();
+  const requests = new LatestRequest();
+  let nextId = 0;
+  const firstEdit = taskUpdateEdit("第一版");
+  const firstResponse = deferred<TaskUpdateView>();
+  const firstPromise = performTaskUpdateRequest(firstEdit, {
+    expectedRevision: "revision-1",
+    requests,
+    identities,
+    createChangeId: () => `change-${++nextId}`,
+    invoke: async () => firstResponse.promise,
+    isCurrent: (token, view) =>
+      requests.isCurrent(token) && view.targetBinding === "vault-a",
+  });
+  requests.invalidate();
+  firstResponse.resolve(taskUpdateView("第一版"));
+  const firstResult = await firstPromise;
+
+  const retryResult = await performTaskUpdateRequest(firstEdit, {
+    expectedRevision: "revision-1",
+    requests,
+    identities,
+    createChangeId: () => `change-${++nextId}`,
+    invoke: async (input) => taskUpdateView(input.name),
+    isCurrent: (token, view) =>
+      requests.isCurrent(token) && view.targetBinding === "vault-a",
+  });
+  assert.equal(firstResult.confirmed, false);
+  assert.equal(retryResult.confirmed, true);
+  assert.equal(
+    retryResult.operation.changeId,
+    firstResult.operation.changeId,
+    "retrying the same uncertain edit after navigation must reuse its identity",
   );
 });
 

@@ -39,9 +39,9 @@ import {
   calendarTasksForDate,
   isCurrentTaskResponse,
   normalizeTaskSchedule,
-  taskEditOperationKey,
   taskOperationScope,
   TaskOperationIdentityStore,
+  performTaskUpdateRequest,
   taskListIdFromScope,
   taskListMutationConfirmed,
   taskListScopeForId,
@@ -5479,7 +5479,7 @@ async function updateTask(
   }
   const normalized = normalizeTaskSchedule(draft.date, draft.time);
   const listId = draft.listId ?? task.listId;
-  const operationKey = taskEditOperationKey({
+  const edit = {
     targetBinding: binding,
     taskId,
     name,
@@ -5487,7 +5487,7 @@ async function updateTask(
     date: normalized.date,
     time: normalized.time,
     listId,
-  });
+  };
   const expectedDate =
     surface === "today"
       ? currentTodayView?.date ?? null
@@ -5500,52 +5500,31 @@ async function updateTask(
       : surface === "calendar"
         ? calendarTaskRequests
         : todayTaskRequests;
-  const operation = taskOperationIds.begin(
-    operationKey,
-    () => localOperationId("edit-task"),
-    requests,
-    taskOperationScope(binding, taskId),
-  );
-  const changeId = operation.changeId;
-  const request = operation.requestToken;
+  let request: number | null = null;
   updateTaskOperationState(1);
   try {
-    const view = await window.__TAURI__.core.invoke<TasksView>("update_task", {
-      input: {
-        targetBinding: binding,
-        expectedRevision: revision,
-        taskId,
-        changeId,
-        name,
-        content: draft.content.trim() || null,
-        date: normalized.date,
-        time: normalized.time,
-        listId,
+    const result = await performTaskUpdateRequest(edit, {
+      expectedRevision: revision,
+      requests,
+      identities: taskOperationIds,
+      createChangeId: () => localOperationId("edit-task"),
+      invoke: (input) =>
+        window.__TAURI__.core.invoke<TasksView>("update_task", { input }),
+      onBegin: (operation) => {
+        request = operation.requestToken;
       },
+      isCurrent: (requestToken, view) =>
+        taskSurfaceIsCurrent(
+          surface,
+          requestToken,
+          binding,
+          view.targetBinding,
+          expectedDate,
+          revision,
+        ),
     });
-    const responseIsCurrent = taskSurfaceIsCurrent(
-      surface,
-      request,
-      binding,
-      view.targetBinding,
-      expectedDate,
-      revision,
-    );
-    const savedTask = view.tasks.find(
-      (candidate) =>
-        candidate.id === taskId &&
-        candidate.name === name &&
-        candidate.content === (draft.content.trim() || null) &&
-        candidate.date === normalized.date &&
-        candidate.time === normalized.time &&
-        candidate.listId === listId,
-    );
-    const confirmed = taskMutationConfirmed(
-      responseIsCurrent,
-      view.state,
-      Boolean(savedTask),
-    );
-    if (taskOperationIds.settleConfirmed(operation, requests, confirmed)) {
+    const { view, responseIsCurrent, confirmed } = result;
+    if (confirmed) {
       taskEditDrafts.delete(taskDraftKey(binding, taskId));
       renderTaskSurface(surface, view);
       setCopy(status, "tasks.saved");
@@ -5562,7 +5541,10 @@ async function updateTask(
     }
     return view.state !== "error";
   } catch (error) {
-    if (taskSurfaceIsCurrent(surface, request, binding, binding, expectedDate, revision)) {
+    if (
+      request !== null &&
+      taskSurfaceIsCurrent(surface, request, binding, binding, expectedDate, revision)
+    ) {
       stashTaskSurfaceDraft(surface, form);
       renderTaskSurface(surface, loaded);
       setCopyError(status, "tasks.notSaved", error);

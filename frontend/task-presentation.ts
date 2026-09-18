@@ -123,6 +123,94 @@ export class TaskOperationIdentityStore {
   }
 }
 
+export type TaskUpdateEdit = Readonly<{
+  targetBinding: string;
+  taskId: string;
+  name: string;
+  content: string | null;
+  date: string | null;
+  time: string | null;
+  listId: string;
+}>;
+
+export type TaskUpdateInput = TaskUpdateEdit &
+  Readonly<{
+    expectedRevision: string;
+    changeId: string;
+  }>;
+
+export type TaskUpdateView = Readonly<{
+  state: "unconfigured" | "empty" | "ready" | "error";
+  targetBinding: string | null;
+  tasks: readonly Readonly<{
+    id: string;
+    name: string;
+    content: string | null;
+    date: string | null;
+    time: string | null;
+    listId: string;
+  }>[];
+}>;
+
+export type TaskUpdateOperationResult<View extends TaskUpdateView> = Readonly<{
+  view: View;
+  operation: TaskOperationRequest;
+  responseIsCurrent: boolean;
+  confirmed: boolean;
+}>;
+
+export async function performTaskUpdateRequest<View extends TaskUpdateView>(
+  edit: TaskUpdateEdit,
+  options: Readonly<{
+    expectedRevision: string;
+    requests: TaskOperationRequestSource;
+    identities: TaskOperationIdentityStore;
+    createChangeId: () => string;
+    invoke: (input: TaskUpdateInput) => Promise<View>;
+    isCurrent: (requestToken: number, view: View) => boolean;
+    onBegin?: (operation: TaskOperationRequest) => void;
+  }>,
+): Promise<TaskUpdateOperationResult<View>> {
+  const operationKey = taskEditOperationKey(edit);
+  const operation = options.identities.begin(
+    operationKey,
+    options.createChangeId,
+    options.requests,
+    taskOperationScope(edit.targetBinding, edit.taskId),
+  );
+  options.onBegin?.(operation);
+  const view = await options.invoke({
+    ...edit,
+    expectedRevision: options.expectedRevision,
+    changeId: operation.changeId,
+  });
+  const responseIsCurrent = options.isCurrent(operation.requestToken, view);
+  const savedTask = view.tasks.find(
+    (candidate) =>
+      candidate.id === edit.taskId &&
+      candidate.name === edit.name &&
+      candidate.content === edit.content &&
+      candidate.date === edit.date &&
+      candidate.time === edit.time &&
+      candidate.listId === edit.listId,
+  );
+  const confirmed = taskMutationConfirmed(
+    responseIsCurrent,
+    view.state,
+    Boolean(savedTask),
+  );
+  return {
+    view,
+    operation,
+    responseIsCurrent,
+    confirmed: options.identities.settleConfirmed(
+      operation,
+      options.requests,
+      confirmed,
+    ),
+  };
+}
+
 export function calendarTasksForDate<T extends Readonly<{
   date: string | null;
   deletedAt: string | null;
