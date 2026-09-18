@@ -5488,11 +5488,6 @@ async function updateTask(
     time: normalized.time,
     listId,
   });
-  const changeId = stableTaskOperationId(
-    operationKey,
-    "edit-task",
-    taskOperationScope(binding, taskId),
-  );
   const expectedDate =
     surface === "today"
       ? currentTodayView?.date ?? null
@@ -5505,7 +5500,14 @@ async function updateTask(
       : surface === "calendar"
         ? calendarTaskRequests
         : todayTaskRequests;
-  const request = requests.begin();
+  const operation = taskOperationIds.begin(
+    operationKey,
+    () => localOperationId("edit-task"),
+    requests,
+    taskOperationScope(binding, taskId),
+  );
+  const changeId = operation.changeId;
+  const request = operation.requestToken;
   updateTaskOperationState(1);
   try {
     const view = await window.__TAURI__.core.invoke<TasksView>("update_task", {
@@ -5543,9 +5545,7 @@ async function updateTask(
       view.state,
       Boolean(savedTask),
     );
-    if (confirmed) {
-      taskOperationIds.delete(operationKey);
-      taskOperationIds.retireOther(taskOperationScope(binding, taskId), operationKey);
+    if (taskOperationIds.settleConfirmed(operation, requests, confirmed)) {
       taskEditDrafts.delete(taskDraftKey(binding, taskId));
       renderTaskSurface(surface, view);
       setCopy(status, "tasks.saved");

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { LatestRequest } from "../../frontend/latest-request.ts";
 import {
   calendarTasksForDate,
   isCurrentTaskResponse,
@@ -123,8 +124,20 @@ test("a late committed edit can be retried idempotently without poisoning a new 
   assert.equal(taskMutationConfirmed(false, "ready", true), false);
 });
 
-test("operation identities survive navigation and retire after a confirmed task mutation", () => {
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
+test("the update operation seam preserves retries across navigation and retires stale payloads", async () => {
   const identities = new TaskOperationIdentityStore();
+  const requests = new LatestRequest();
   let nextId = 0;
   const create = () => `change-${++nextId}`;
   const firstEdit = taskEditOperationKey({
@@ -147,19 +160,30 @@ test("operation identities survive navigation and retire after a confirmed task 
   });
 
   const scope = taskOperationScope("vault-a", "task-1");
-  const firstId = identities.getOrCreate(firstEdit, create, scope);
+  const firstOperation = identities.begin(firstEdit, create, requests, scope);
+  const firstResponse = deferred<boolean>();
+  const firstCompletion = firstResponse.promise.then((confirmed) =>
+    identities.settleConfirmed(firstOperation, requests, confirmed),
+  );
+  requests.invalidate();
+  const retryAfterNavigation = identities.begin(firstEdit, create, requests, scope);
   assert.equal(
-    identities.getOrCreate(firstEdit, create, scope),
-    firstId,
+    retryAfterNavigation.changeId,
+    firstOperation.changeId,
     "retrying the same uncertain edit after navigation must reuse its identity",
   );
-  const secondId = identities.getOrCreate(secondEdit, create, scope);
-  assert.notEqual(secondId, firstId);
-  identities.retireOther(scope, secondEdit);
-  assert.equal(identities.getOrCreate(secondEdit, create, scope), secondId);
+  const secondOperation = identities.begin(secondEdit, create, requests, scope);
+  assert.notEqual(secondOperation.changeId, firstOperation.changeId);
+  assert.equal(
+    identities.settleConfirmed(secondOperation, requests, true),
+    true,
+    "the current intentional edit must commit through the request seam",
+  );
+  firstResponse.resolve(true);
+  assert.equal(await firstCompletion, false, "the late response must stay stale");
   assert.notEqual(
-    identities.getOrCreate(firstEdit, create, scope),
-    firstId,
+    identities.begin(firstEdit, create, requests, scope).changeId,
+    firstOperation.changeId,
     "a later confirmed edit must retire the earlier payload identity",
   );
 });

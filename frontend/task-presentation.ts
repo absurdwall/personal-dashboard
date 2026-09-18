@@ -51,6 +51,18 @@ export function taskOperationScope(targetBinding: string, taskId: string): strin
   return JSON.stringify([targetBinding, taskId]);
 }
 
+export type TaskOperationRequestSource = Readonly<{
+  begin(): number;
+  isCurrent(token: number): boolean;
+}>;
+
+export type TaskOperationRequest = Readonly<{
+  signature: string;
+  changeId: string;
+  requestToken: number;
+  scope: string | null;
+}>;
+
 export class TaskOperationIdentityStore {
   private readonly operationIds = new Map<
     string,
@@ -67,6 +79,31 @@ export class TaskOperationIdentityStore {
     const created = create();
     this.operationIds.set(signature, { id: created, scope });
     return created;
+  }
+
+  begin(
+    signature: string,
+    create: () => string,
+    requests: TaskOperationRequestSource,
+    scope: string | null = null,
+  ): TaskOperationRequest {
+    return {
+      signature,
+      changeId: this.getOrCreate(signature, create, scope),
+      requestToken: requests.begin(),
+      scope,
+    };
+  }
+
+  settleConfirmed(
+    operation: TaskOperationRequest,
+    requests: TaskOperationRequestSource,
+    confirmed: boolean,
+  ): boolean {
+    if (!confirmed || !requests.isCurrent(operation.requestToken)) return false;
+    this.delete(operation.signature);
+    if (operation.scope) this.retireOther(operation.scope, operation.signature);
+    return true;
   }
 
   delete(signature: string): void {
