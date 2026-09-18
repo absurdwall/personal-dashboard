@@ -341,13 +341,13 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections dashboard-3; do
+  for scenario in settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections dashboard-3 dashboard-4; do
     run_bounded_scenario "$scenario"
   done
 
-  echo "Packaged IPC Personal Dashboard 3.0 local candidate gate passed"
-  echo "Coverage: integrated bilingual Today, Calendar, Habits, Settings, task, appearance, and history workflows"
-  echo "Retirement: former 2.0 cutover and Exercise/Profile runtime scenarios remain explicit historical seams and are not part of normal-startup 3.0 acceptance"
+  echo "Packaged IPC Personal Dashboard 4.0 local candidate gate passed"
+  echo "Coverage: integrated bilingual Today, Calendar, Habits, Settings, Tasks, appearance, and history workflows"
+  echo "Retirement: former 2.0 cutover and Exercise/Profile runtime scenarios remain explicit historical seams and are not part of normal-startup 4.0 acceptance"
   echo "Persistence: each workflow runs in an isolated packaged profile and verifies relaunch where required"
   echo "Boundary: actual Drive cloud/version/trash acceptance remains a separate dependency and is not implied by this local gate"
   echo "Budget: ${scenario_budget_seconds}s per scenario, ${suite_budget_seconds}s overall"
@@ -577,6 +577,98 @@ wait_for_file_text() {
     sleep 0.1
   done
   return 1
+}
+
+task_id_for_name() {
+  local file="$1"
+  local task_name="$2"
+  node - "$file" "$task_name" <<'NODE'
+const fs = require("node:fs");
+const [file, taskName] = process.argv.slice(2);
+const document = JSON.parse(fs.readFileSync(file, "utf8"));
+const task = document.tasks.find((candidate) => candidate.name === taskName);
+if (!task) process.exit(1);
+process.stdout.write(task.id);
+NODE
+}
+
+assert_task_property() {
+  local file="$1"
+  local task_id="$2"
+  local property_path="$3"
+  local expected="$4"
+  node - "$file" "$task_id" "$property_path" "$expected" <<'NODE'
+const fs = require("node:fs");
+const [file, taskId, propertyPath, expected] = process.argv.slice(2);
+const document = JSON.parse(fs.readFileSync(file, "utf8"));
+const task = document.tasks.find((candidate) => candidate.id === taskId);
+if (!task) process.exit(1);
+const actual = propertyPath.split(".").reduce((value, key) => value?.[key], task);
+const matches = expected === "not-null"
+  ? actual !== null && actual !== undefined
+  : expected === "null"
+    ? actual === null
+    : actual === expected;
+if (!matches) {
+  process.stderr.write(`${taskId}.${propertyPath}: expected ${expected}, got ${JSON.stringify(actual)}\n`);
+  process.exit(1);
+}
+NODE
+}
+
+wait_for_task_property() {
+  local file="$1"
+  local task_id="$2"
+  local property_path="$3"
+  local expected="$4"
+  for _ in {1..50}; do
+    if assert_task_property "$file" "$task_id" "$property_path" "$expected" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+wait_for_list_property() {
+  local file="$1"
+  local list_id="$2"
+  local property="$3"
+  local expected="$4"
+  for _ in {1..50}; do
+    if assert_list_property "$file" "$list_id" "$property" "$expected" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+assert_list_property() {
+  local file="$1"
+  local list_id="$2"
+  local property="$3"
+  local expected="$4"
+  node - "$file" "$list_id" "$property" "$expected" <<'NODE'
+const fs = require("node:fs");
+const [file, listId, property, expected] = process.argv.slice(2);
+const document = JSON.parse(fs.readFileSync(file, "utf8"));
+const list = document.lists.find((candidate) => candidate.id === listId);
+if (!list) process.exit(1);
+const actual = list[property];
+const matches = expected === "true"
+  ? actual === true
+  : expected === "false"
+    ? actual === false
+    : actual === expected;
+if (!matches) {
+  process.stderr.write(
+    listId + "." + property + ": expected " + expected +
+      ", got " + JSON.stringify(actual) + "\n"
+  );
+  process.exit(1);
+}
+NODE
 }
 
 run_keyboard_scenario() {
@@ -4382,6 +4474,467 @@ EOF
   echo "Boundary: focused gate scenarios cover task replan, habit OR, historical corrections, errors, and late responses; Drive cloud/version/trash evidence remains separate and incomplete"
 }
 
+run_dashboard_4_scenario() {
+  local vault_a="$acceptance_directory/dashboard-4-vault-a"
+  local vault_b="$acceptance_directory/dashboard-4-vault-b"
+  local record_relative="life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local record_a="$vault_a/$record_relative"
+  local record_b="$vault_b/$record_relative"
+  local task_relative="life/.personal-dashboard/tasks/v1/tasks.json"
+  local tasks_a="$vault_a/$task_relative"
+  local tasks_b="$vault_b/$task_relative"
+  local names_a="$vault_a/life/.personal-dashboard/habit-names/v1/names.json"
+  local names_b="$vault_b/life/.personal-dashboard/habit-names/v1/names.json"
+  local snapshot_relative=".personal-dashboard/derived/habits-v1.json"
+  local snapshot_a="$vault_a/$snapshot_relative"
+  local snapshot_b="$vault_b/$snapshot_relative"
+  local capture_root="$repository_root/output/playwright"
+  local capture_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory/dashboard-4-captures}"
+  local capture_parent
+  local before_record_hash
+  local before_names_hash
+  local before_snapshot_hash
+  local external_candidate="$acceptance_directory/dashboard-4-external-tasks.json"
+  local new_task_id
+  local today_new_task_id
+  local calendar_new_task_id
+  local record_marker="Dashboard 4 synthetic morning baseline"
+  local late_task="晚到完成 · Late completion"
+  local overdue_task="仍待处理 · Overdue pending"
+  local abandon_task="放弃后可恢复 · Abandon and restore"
+  local delete_task="删除后可恢复 · Delete and restore"
+  local future_task="未来任务 · Future task"
+  local shared_task="共享身份 · Shared task · 窄窗口双语长名称验收"
+  local archived_task="归档仍可回看 · Archived Calendar task"
+  local new_task="Inbox 默认新建 · No date"
+  local today_new_task="Today 默认新建 · Today date"
+  local calendar_new_task="Calendar 默认新建 · Selected date"
+  local vault_b_task="Vault B sentinel · switched source"
+  local long_drive_copy_zh='普通本地 Vault 也可使用。Dashboard 不会自动转换任意笔记，不管理 Google 账号或上传；“本地已保存”不代表“云端已同步”。版本与回收站由 Google Drive 管理。'
+  local long_drive_copy_en='Ordinary local Vaults also work. Dashboard does not convert arbitrary notes, manage Google accounts, or upload files. “Saved locally” does not mean “synced to the cloud.” Google Drive manages versions and trash.'
+
+  current_step="preparing isolated 4.0 Tasks, Daily Record, Habits, and Vault-switch fixtures"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p \
+    "$vault_a/.obsidian" "$vault_b/.obsidian" \
+    "$vault_a/$(dirname "$record_relative")" "$vault_b/$(dirname "$record_relative")" \
+    "$(dirname "$tasks_a")" "$(dirname "$tasks_b")" \
+    "$(dirname "$names_a")" "$(dirname "$names_b")" \
+    "$(dirname "$snapshot_a")" "$(dirname "$snapshot_b")" \
+    "$acceptance_data_directory"
+  cat > "$record_a" <<EOF
+---
+type: daily-record
+date: 2026-09-08
+source: dashboard-4-packaged-candidate
+---
+# 2026-09-08
+
+## 早间基准
+
+### 初始安排
+
+- $record_marker
+- 共享 Tasks、Today 与 Calendar 的同一任务正本。
+
+## 今天的大致安排
+
+- 先核对任务状态，再保留晚间恢复空间。
+
+## 白天更新
+
+- 仅作合成验收背景；任务操作不应改写本记录。
+
+## 晚间复盘
+
+- 合成记录保持只读。
+EOF
+  cat > "$record_b" <<EOF
+---
+type: daily-record
+date: 2026-09-08
+source: dashboard-4-vault-b
+---
+# 2026-09-08
+
+## 早间基准
+
+### 初始安排
+
+- Vault B isolated marker.
+EOF
+  cat > "$tasks_a" <<'EOF'
+{
+  "schemaVersion": 2,
+  "lists": [
+    {"id":"inbox","name":"Inbox","system":true,"archived":false},
+    {"id":"focus-list","name":"Focus · 工作重点","system":false,"archived":false},
+    {"id":"archive-list","name":"Archive · 历史回看","system":false,"archived":true}
+  ],
+  "tasks": [
+    {
+      "id":"late-task","name":"晚到完成 · Late completion","content":"Scheduled yesterday; completion must retain the scheduled date.","date":"2026-09-07","time":"09:00","listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-07T08:00:00-04:00","modifiedAt":"2026-09-07T08:00:00-04:00","changes":[]
+    },
+    {
+      "id":"overdue-task","name":"仍待处理 · Overdue pending","content":"An overdue pending task belongs in Today until it is resolved.","date":"2026-09-07","time":"08:00","listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-07T07:00:00-04:00","modifiedAt":"2026-09-07T07:00:00-04:00","changes":[]
+    },
+    {
+      "id":"abandon-task","name":"放弃后可恢复 · Abandon and restore","content":null,"date":null,"time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:01:00-04:00","modifiedAt":"2026-09-08T08:01:00-04:00","changes":[]
+    },
+    {
+      "id":"delete-task","name":"删除后可恢复 · Delete and restore","content":null,"date":null,"time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:02:00-04:00","modifiedAt":"2026-09-08T08:02:00-04:00","changes":[]
+    },
+    {
+      "id":"future-task","name":"未来任务 · Future task","content":"A future date must not enter Today.","date":"2026-12-31","time":"09:30","listId":"focus-list","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:03:00-04:00","modifiedAt":"2026-09-08T08:03:00-04:00","changes":[]
+    },
+    {
+      "id":"shared-task","name":"共享身份 · Shared task · 窄窗口双语长名称验收","content":"One task identity across Tasks, Today, and Calendar.","date":"2026-09-08","time":"10:00","listId":"focus-list","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:04:00-04:00","modifiedAt":"2026-09-08T08:04:00-04:00","changes":[]
+    },
+    {
+      "id":"calendar-task-a","name":"Calendar preview A · Pending","content":null,"date":"2026-09-08","time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:05:00-04:00","modifiedAt":"2026-09-08T08:05:00-04:00","changes":[]
+    },
+    {
+      "id":"calendar-task-b","name":"Calendar preview B · Completed","content":null,"date":"2026-09-08","time":null,"listId":"focus-list","source":{"kind":"manual","reference":null},"state":"completed","deletedAt":null,"completion":{"completedOn":"2026-09-08","completedTime":"12:00","recordedAt":"2026-09-08T12:00:00-04:00","source":"date-correction"},"createdAt":"2026-09-08T08:06:00-04:00","modifiedAt":"2026-09-08T12:00:00-04:00","changes":[]
+    },
+    {
+      "id":"archived-task","name":"归档仍可回看 · Archived Calendar task","content":"Archiving a list does not remove historical Calendar lookup.","date":"2026-09-08","time":null,"listId":"archive-list","source":{"kind":"daily-flow","reference":"daily-flow-archive-check"},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:07:00-04:00","modifiedAt":"2026-09-08T08:07:00-04:00","changes":[]
+    }
+  ]
+}
+EOF
+  cat > "$tasks_b" <<EOF
+{
+  "schemaVersion": 2,
+  "lists": [{"id":"inbox","name":"Inbox","system":true,"archived":false}],
+  "tasks": [{"id":"vault-b-task","name":"$vault_b_task","content":"Vault switching must replace the shared source.","date":null,"time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:10:00-04:00","modifiedAt":"2026-09-08T08:10:00-04:00","changes":[]}]
+}
+EOF
+  /bin/cp "$repository_root/src-tauri/tests/fixtures/habits-v1-complete.json" "$snapshot_a"
+  /bin/cp "$snapshot_a" "$snapshot_b"
+  cat > "$names_a" <<'EOF'
+{
+  "schemaVersion": 1,
+  "habits": {
+    "exercise": {"zh":"锻炼 · 长名称习惯","en":"Exercise · Long localized habit"},
+    "nutrition": {"zh":"营养药"},
+    "reset": {"zh":"整理空间","en":"Reset living space"}
+  }
+}
+EOF
+  /bin/cp "$names_a" "$names_b"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_a" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+  before_record_hash="$(shasum -a 256 "$record_a" | awk '{print $1}')"
+  before_names_hash="$(shasum -a 256 "$names_a" | awk '{print $1}')"
+  before_snapshot_hash="$(shasum -a 256 "$snapshot_a" | awk '{print $1}')"
+
+  if [[ -n "${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-}" ]]; then
+    [[ "$capture_directory" == /* ]] ||
+      fail "4.0 candidate capture directory must be absolute"
+    [[ ! -e "$capture_directory" ]] ||
+      fail "4.0 candidate capture directory already exists: $capture_directory"
+    mkdir -p "$capture_root"
+    capture_root="$(cd "$capture_root" && pwd -P)"
+    capture_parent="$(dirname "$capture_directory")"
+    [[ -d "$capture_parent" ]] ||
+      fail "4.0 candidate capture parent directory does not exist: $capture_parent"
+    capture_parent="$(cd "$capture_parent" && pwd -P)"
+    case "$capture_parent" in
+      "$capture_root" | "$capture_root"/*) ;;
+      *) fail "4.0 candidate captures must stay under $capture_root" ;;
+    esac
+    mkdir "$capture_directory"
+    capture_directory="$(cd "$capture_directory" && pwd -P)"
+  else
+    mkdir -p "$capture_directory"
+  fi
+
+  current_step="verifying the Tasks destination, Inbox defaults, and persistent lifecycle history"
+  launch_app_waiting_for_text "$record_marker" 30
+  run_driver set-size "1120x760" 10
+  run_driver assert-size "1120x760" 10
+  run_driver press "任务" 10
+  run_driver wait-active-text "$shared_task" 30
+  run_driver press "新建任务" 10
+  run_driver assert-active-text "加入收集箱"
+  run_driver assert-active-text "$future_task"
+  run_driver type-text "新建任务名称|$new_task" 10
+  run_driver press "加入收集箱" 10
+  run_driver wait-active-text "任务已保存到所选 Vault" 20
+  wait_for_file_text "$tasks_a" "\"name\": \"$new_task\"" ||
+    fail "Tasks entry point did not persist the new Inbox task"
+  new_task_id="$(task_id_for_name "$tasks_a" "$new_task")" ||
+    fail "new Inbox task was not retained in the task document"
+  assert_task_property "$tasks_a" "$new_task_id" "listId" "inbox" ||
+    fail "new Inbox task did not keep its Inbox default"
+  assert_task_property "$tasks_a" "$new_task_id" "date" "null" ||
+    fail "new Inbox task did not keep its no-date default"
+
+  run_driver press-contains "完成 · $late_task" 10
+  wait_for_task_property "$tasks_a" "late-task" "state" "completed" ||
+    fail "late completion did not persist a completed state"
+  wait_for_task_property "$tasks_a" "late-task" "date" "2026-09-07" ||
+    fail "late completion moved the scheduled task date"
+  run_driver wait-active-text "已完成" 20
+  run_driver press-contains "详情 · $late_task" 10
+  run_driver type-text "实际完成日期 · $late_task|2026-09-07" 10
+  run_driver type-text "实际完成时刻（可空） · $late_task|18:30" 10
+  run_driver press-contains "更正完成记录 · $late_task" 10
+  wait_for_task_property "$tasks_a" "late-task" "completion.completedOn" "2026-09-07" ||
+    fail "completion correction did not persist the lived completion date"
+  wait_for_task_property "$tasks_a" "late-task" "completion.completedTime" "18:30" ||
+    fail "completion correction did not persist the explicit completion time"
+
+  run_driver select-contains "待办" 10
+  run_driver press-contains "放弃 · $abandon_task" 10
+  wait_for_task_property "$tasks_a" "abandon-task" "state" "abandoned" ||
+    fail "abandon action did not persist"
+  run_driver select-contains "已放弃" 10
+  run_driver wait-active-text "$abandon_task" 20
+  run_driver assert-active-text "已放弃"
+
+  run_driver select-contains "待办" 10
+  run_driver press-contains "删除 · $delete_task" 10
+  wait_for_task_property "$tasks_a" "delete-task" "deletedAt" "not-null" ||
+    fail "delete action did not persist a recoverable tombstone"
+  run_driver select-contains "已删除" 10
+  run_driver assert-active-text "$delete_task"
+  run_driver assert-active-text "撤销删除"
+  run_driver press-contains "撤销删除 · $delete_task" 10
+  run_driver select-contains "待办" 10
+  run_driver assert-active-text "$delete_task"
+  wait_for_task_property "$tasks_a" "delete-task" "deletedAt" "null" ||
+    fail "restored task did not clear its tombstone"
+
+  current_step="verifying list archive and restore without changing task state"
+  run_driver select-contains "全部未删除" 10
+  run_driver press "新建清单" 10
+  run_driver press "归档清单" 10
+  wait_for_list_property "$tasks_a" "focus-list" "archived" "true" ||
+    fail "archived task list did not persist before history verification"
+  if ! stop_app; then
+    fail "app process did not exit before archived-list relaunch"
+  fi
+  launch_app_waiting_for_text "$record_marker" 30
+  run_driver press "任务" 10
+  run_driver press "已归档" 20
+  run_driver assert-active-text "$shared_task"
+  run_driver press "新建清单" 10
+  run_driver press "恢复清单" 10
+  wait_for_list_property "$tasks_a" "focus-list" "archived" "false" ||
+    fail "restored task list did not persist before scope verification"
+  if ! stop_app; then
+    fail "app process did not exit before restored-list relaunch"
+  fi
+  launch_app_waiting_for_text "$record_marker" 30
+  run_driver press "任务" 10
+  run_driver wait-active-text "$shared_task" 20
+  assert_task_property "$tasks_a" "shared-task" "listId" "focus-list" ||
+    fail "list archive/restore changed the shared task identity"
+  assert_list_property "$tasks_a" "focus-list" "archived" "false" ||
+    fail "list archive/restore did not restore the list"
+
+  current_step="verifying shared Tasks, Today, and Calendar projections plus the overflow panel"
+  run_driver capture-window "$capture_directory/product-zh-tasks-wide.png" 10
+  run_driver press "今天" 10
+  run_driver wait-active-text "$shared_task" 20
+  run_driver assert-active-text "$overdue_task"
+  run_driver assert-active-absent-text "$archived_task"
+  run_driver assert-active-absent-text "$future_task"
+  run_driver assert-active-text "默认今天和收集箱"
+  run_driver capture-window "$capture_directory/product-zh-today-wide.png" 10
+
+  # Mutate the shared task through Today, then observe the same canonical
+  # identity in Calendar. This catches projections that only happen to render
+  # the same name while retaining independent state.
+  run_driver press-contains "完成 · $shared_task" 10
+  wait_for_task_property "$tasks_a" "shared-task" "state" "completed" ||
+    fail "Today completion did not persist through the shared task source"
+  run_driver wait-active-text "已完成" 20
+
+  run_driver press "日历" 10
+  run_driver wait-active-text "2026年9月" 20
+  run_driver assert-active-text "$shared_task"
+  run_driver assert-active-text "已完成"
+  run_driver assert-active-text "默认日期为选中日期，清单为收集箱"
+  run_driver assert-active-text "+2"
+  run_driver press-contains "+2" 10
+  run_driver wait-active-text "$archived_task" 20
+  run_driver assert-active-text "$shared_task"
+  run_driver capture-window "$capture_directory/product-zh-calendar-wide.png" 10
+
+  run_driver scroll-text-visible "默认日期为选中日期，清单为收集箱" 10
+  run_driver scroll-text-visible "新建任务名称" 10
+  run_driver type-text "新建任务名称|$calendar_new_task" 10
+  run_driver press "加入收集箱" 10
+  run_driver wait-active-text "任务已保存到所选 Vault" 20
+  wait_for_file_text "$tasks_a" "\"name\": \"$calendar_new_task\"" ||
+    fail "Calendar did not persist its selected-date task"
+  calendar_new_task_id="$(task_id_for_name "$tasks_a" "$calendar_new_task")" ||
+    fail "Calendar task was not retained in the task document"
+  assert_task_property "$tasks_a" "$calendar_new_task_id" "listId" "inbox" ||
+    fail "Calendar task did not keep its Inbox default"
+  assert_task_property "$tasks_a" "$calendar_new_task_id" "date" "2026-09-08" ||
+    fail "Calendar task did not inherit the selected date"
+
+  run_driver press "今天" 10
+  run_driver wait-active-text "$shared_task" 20
+  run_driver scroll-text-visible "默认今天和收集箱" 10
+  run_driver scroll-text-visible "新建任务名称" 10
+  run_driver type-text "新建任务名称|$today_new_task" 10
+  run_driver press "加入收集箱" 10
+  run_driver wait-active-text "任务已保存到所选 Vault" 20
+  wait_for_file_text "$tasks_a" "\"name\": \"$today_new_task\"" ||
+    fail "Today did not persist its default-date task"
+  today_new_task_id="$(task_id_for_name "$tasks_a" "$today_new_task")" ||
+    fail "Today task was not retained in the task document"
+  assert_task_property "$tasks_a" "$today_new_task_id" "listId" "inbox" ||
+    fail "Today task did not keep its Inbox default"
+  assert_task_property "$tasks_a" "$today_new_task_id" "date" "2026-09-08" ||
+    fail "Today task did not inherit the fixed current date"
+
+  current_step="checking bilingual long-name layout, Habits fallback, and external configuration recovery"
+  run_driver press "设置" 10
+  run_driver press "数据与 Vault" 10
+  run_driver scroll-text-visible "$long_drive_copy_zh" 10
+  run_driver assert-long-text-fits "$long_drive_copy_zh" 10
+  run_driver assert-document-fixed "document" 10
+  open_vault_picker_from_settings
+  run_driver choose-folder "$vault_b" 35
+  run_driver press "任务" 10
+  run_driver wait-active-text "$vault_b_task" 20
+  run_driver press "设置" 10
+  run_driver press "数据与 Vault" 10
+  open_vault_picker_from_settings
+  run_driver choose-folder "$vault_a" 35
+  run_driver wait-active-text "当前 Vault" 20
+  run_driver press "习惯" 10
+  run_driver wait-active-text "锻炼 · 长名称习惯" 20
+  run_driver assert-active-text "营养药"
+  run_driver capture-window "$capture_directory/product-zh-habits-wide.png" 10
+  printf '%s\n' '{"schemaVersion":99,"habits":{}}' > "$acceptance_directory/dashboard-4-invalid-names.json"
+  /bin/mv "$acceptance_directory/dashboard-4-invalid-names.json" "$names_a"
+  run_driver press "刷新快照" 10
+  run_driver wait-active-text "习惯名称配置无效；已回退快照中的原始名称" 20
+  run_driver assert-active-text "Exercise"
+  /bin/cp "$names_b" "$acceptance_directory/dashboard-4-valid-names.json"
+  /bin/mv "$acceptance_directory/dashboard-4-valid-names.json" "$names_a"
+  run_driver press "刷新快照" 10
+  run_driver wait-active-text "锻炼 · 长名称习惯" 20
+
+  current_step="capturing English and narrow surfaces, then proving packaged relaunch persistence"
+  run_driver press "设置" 10
+  run_driver press "切换为英文" 10
+  run_driver wait-active-text "Appearance" 20
+  run_driver press "Data & Vault" 10
+  run_driver scroll-text-visible "$long_drive_copy_en" 10
+  run_driver assert-long-text-fits "$long_drive_copy_en" 10
+  run_driver assert-document-fixed "document" 10
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver press "Tasks" 10
+  run_driver press "New task" 10
+  run_driver wait-active-text "$shared_task" 20
+  run_driver assert-active-text "New task name"
+  run_driver assert-active-text "Add to Inbox"
+  run_driver assert-document-fixed "document" 10
+  run_driver capture-window "$capture_directory/product-en-tasks-narrow.png" 10
+  run_driver press "Calendar" 10
+  run_driver wait-active-text "September 2026" 20
+  run_driver assert-active-text "+4"
+  run_driver assert-document-fixed "document" 10
+  run_driver focus-contains "+4" 10
+  run_driver assert-visible-focus "+4" 10
+  run_driver press-key "space" 10
+  run_driver wait-active-text "$archived_task" 20
+  run_driver assert-active-text "$shared_task"
+  run_driver capture-window "$capture_directory/product-en-calendar-narrow.png" 10
+  run_driver press "Today" 10
+  run_driver wait-active-text "$shared_task" 20
+  run_driver assert-active-text "Today tasks"
+  run_driver assert-active-text "Overdue pending"
+  run_driver capture-window "$capture_directory/product-en-today-narrow.png" 10
+  run_driver press "Habits" 10
+  run_driver wait-active-text "Exercise · Long localized habit" 20
+  run_driver assert-active-text "营养药"
+  run_driver assert-document-fixed "document" 10
+  run_driver capture-window "$capture_directory/product-en-habits-narrow.png" 10
+
+  if ! stop_app; then
+    fail "app process did not exit before 4.0 packaged relaunch"
+  fi
+  launch_app_waiting_for_text "$record_marker" 30
+  run_driver press "Tasks" 10
+  run_driver wait-active-text "$new_task" 20
+  run_driver assert-active-text "$shared_task"
+  run_driver assert-active-text "Completed"
+  run_driver select-contains "Completed" 10
+  run_driver wait-active-text "$late_task" 20
+  run_driver press-contains "Details · $late_task" 10
+  run_driver assert-active-text "Task date: Mon, Sep 7 · 09:00"
+  run_driver assert-active-text "Actual completion: Mon, Sep 7 · 18:30"
+  run_driver select-contains "Abandoned" 10
+  run_driver wait-active-text "$abandon_task" 20
+  run_driver assert-active-text "Abandoned"
+  run_driver select-contains "Pending" 10
+  run_driver wait-active-text "$delete_task" 20
+  run_driver assert-active-text "Pending"
+  run_driver press-contains "Delete · $delete_task" 10
+  run_driver select-contains "Deleted" 10
+  run_driver wait-active-text "$delete_task" 20
+  run_driver assert-active-text "Restore task"
+
+  if ! stop_app; then
+    fail "app process did not exit before deleted-task persistence relaunch"
+  fi
+  launch_app_waiting_for_text "$record_marker" 30
+  run_driver press "Tasks" 10
+  run_driver select-contains "Deleted" 10
+  run_driver wait-active-text "$delete_task" 20
+  run_driver assert-active-text "Restore task"
+  run_driver press-contains "Restore task · $delete_task" 10
+  run_driver select-contains "Pending" 10
+  run_driver wait-active-text "$delete_task" 20
+  run_driver assert-active-text "Pending"
+
+  current_step="proving a bounded external task change retains a recoverable draft"
+  run_driver select-contains "All active" 10
+  run_driver press "New task" 10
+  run_driver type-text "New task name|Conflict draft preserved after refresh" 10
+  /bin/cp "$tasks_a" "$external_candidate"
+  /usr/bin/perl -0pi -e 's/\n\z/\n\n/' "$external_candidate"
+  /bin/mv "$external_candidate" "$tasks_a"
+  run_driver press "Add to Inbox" 10
+  run_driver wait-active-text "Task not saved" 20
+  run_driver assert-active-text "Conflict draft preserved after refresh"
+  run_driver press "Refresh tasks" 10
+  run_driver wait-active-text "Conflict draft preserved after refresh" 20
+  run_driver press "Add to Inbox" 10
+  run_driver wait-active-text "Task saved to the selected Vault" 20
+  wait_for_file_text "$tasks_a" '"name": "Conflict draft preserved after refresh"' ||
+    fail "recoverable conflict draft was not saved after explicit refresh"
+
+  [[ "$(find "$capture_directory" -type f -name '*.png' | wc -l | tr -d ' ')" == "8" ]] ||
+    fail "4.0 candidate capture matrix did not produce exactly 8 screenshots"
+  [[ "$(shasum -a 256 "$record_a" | awk '{print $1}')" == "$before_record_hash" ]] ||
+    fail "Tasks, Today, Calendar, or Habits acceptance changed the Daily Record"
+  [[ "$(shasum -a 256 "$names_a" | awk '{print $1}')" == "$before_names_hash" ]] ||
+    fail "Habit name recovery did not restore the original sidecar bytes"
+  [[ "$(shasum -a 256 "$snapshot_a" | awk '{print $1}')" == "$before_snapshot_hash" ]] ||
+    fail "Habit snapshot acceptance changed the external snapshot"
+  [[ -f "$record_b" && -f "$tasks_b" ]] ||
+    fail "Vault-switch fixture was not retained for isolation checks"
+
+  echo "Packaged IPC Personal Dashboard 4.0 integrated local candidate acceptance passed"
+  echo "Coverage: Tasks, Today, Calendar, Habits, list archive, lifecycle history, default Inbox capture, Vault switch, conflict draft recovery, bilingual and narrow surfaces"
+  echo "Shared source: Tasks, Today, and Calendar reused the same task identity; archived tasks remained Calendar-readable and excluded from Today"
+  echo "Persistence: late completion, correction, abandonment, deletion/restore, list restore, and a new Inbox task survived packaged relaunch"
+  echo "Visuals: eight screenshots captured from the rebuilt packaged app at wide and 640x520 narrow sizes"
+  echo "Boundary: synthetic Vaults only; 08 daily-flow adapter evidence and 3.0 Drive evidence remain separate; no personal Vault, Dida365, automation, or live daily run"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -4471,6 +5024,7 @@ case "$acceptance_scenario" in
   local-habit-completion) run_local_habit_completion_scenario ;;
   historical-corrections) run_historical_corrections_scenario ;;
   dashboard-3) run_dashboard_3_scenario ;;
+  dashboard-4) run_dashboard_4_scenario ;;
   drive-compatibility) run_drive_compatibility_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;

@@ -6,7 +6,7 @@ Personal Dashboard reads one rebuildable, on-demand JSON projection at:
 <selected Tortilla Flat vault>/.personal-dashboard/derived/habits-v1.json
 ```
 
-The Dashboard is a reader of this rebuildable external projection. It does not call Dida365, poll any source, start an Agent, or create this file. The external daily-flow Agent is the producer, but activating that producer belongs to the 2.0 cutover task. The Dashboard separately owns explicit [local habit completions](habit-completions-v1.md) in the selected Vault and merges them only while projecting the UI. The checked-in [synthetic fixture](../src-tauri/tests/fixtures/habits-v1-complete.json) is the complete production shape and contains semantic keys only—never private external IDs.
+The Dashboard is a reader of this rebuildable external projection. It does not call Dida365, poll any source, start an Agent, or create this file. The external daily-flow Agent is the producer, but activating that producer belongs to the 2.0 cutover task. The Dashboard separately owns explicit [local habit completions](habit-completions-v1.md) and optional bilingual [Habit display names](habit-names-v1.md) in the selected Vault; both are merged only while projecting the UI. The checked-in [synthetic fixture](../src-tauri/tests/fixtures/habits-v1-complete.json) is the complete production shape and contains semantic keys only—never private external IDs.
 
 ## Producer handoff
 

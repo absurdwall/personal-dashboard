@@ -69,6 +69,58 @@ test("fixed interface copy switches language while personal content and drafts s
   assert.equal(phase, "daytime");
 });
 
+test("Tasks scopes and reviewed backend diagnostics have real bilingual output", () => {
+  assert.equal(interfaceCopy("tasks.scopeAll", "zh"), "全部任务");
+  assert.equal(interfaceCopy("tasks.scopeToday", "zh"), "今日");
+  assert.equal(interfaceCopy("tasks.scopeInbox", "zh"), "收集箱");
+  assert.equal(interfaceCopy("tasks.inbox", "zh"), "收集箱");
+  for (const key of [
+    "workspace.tasksDescription",
+    "workspace.tasksRail",
+    "calendar.taskCreateDefault",
+    "tasks.empty",
+    "tasks.emptyAll",
+    "tasks.add",
+    "today.taskCreateDefault",
+  ] as const) {
+    assert.doesNotMatch(interfaceCopy(key, "zh"), /\bInbox\b/);
+  }
+  assert.equal(interfaceCopy("tasks.scopeAll", "en"), "All");
+  assert.equal(interfaceCopy("tasks.scopeToday", "en"), "Today");
+  assert.equal(interfaceCopy("tasks.scopeInbox", "en"), "Inbox");
+  assert.equal(interfaceCopy("tasks.inbox", "en"), "Inbox");
+
+  const diagnostics: Array<[string, string]> = [
+    [
+      "找不到要改期的任务；未写入任何内容。",
+      "The task to reschedule could not be found; nothing was written.",
+    ],
+    [
+      "放弃任务不会被旧 daily-flow 操作重新激活；请先明确恢复意图。未写入任何内容。",
+      "An abandoned task will not be reactivated by an old daily-flow operation; restore it explicitly first; nothing was written.",
+    ],
+    ["任务完成日期无效。", "Task completion date is invalid."],
+    ["任务状态没有可保存的变化。", "The task state has no changes to save."],
+    [
+      "任务正本包含重复的 daily-flow 来源标识。",
+      "The task source contains a duplicate daily-flow source reference.",
+    ],
+    [
+      "Tasks 当前绑定的 Vault 或文件目标已经变化。请先读取最新任务正本；未写入任何内容。",
+      "The Vault or file target bound to Tasks changed. Read the latest task source before retrying; nothing was written.",
+    ],
+  ];
+
+  for (const [source, expected] of diagnostics) {
+    assert.equal(localizeApplicationError(source, "en"), expected);
+    assert.equal(localizeApplicationError(source, "zh"), source);
+  }
+  assert.equal(
+    localizeApplicationError("daily-flow task adapter 必须提供绝对 Vault 路径。", "en"),
+    "The daily-flow task adapter requires an absolute Vault path.",
+  );
+});
+
 test("fixed application statuses and generated habit labels have English equivalents", () => {
   assert.equal(
     localizeApplicationMessage(
@@ -83,6 +135,17 @@ test("fixed application statuses and generated habit labels have English equival
       "en",
     ),
     "The record being corrected has changed. The draft is preserved; reload that date and try again.",
+  );
+  assert.equal(
+    localizeApplicationMessage(
+      "没有需要写入的 daily-flow 行动；建议仍保持为建议。",
+      "en",
+    ),
+    "There are no daily-flow actions to write; suggestions remain suggestions.",
+  );
+  assert.equal(
+    localizeApplicationMessage("daily-flow 明确行动已写入任务正本。", "en"),
+    "The explicit daily-flow action was written to the canonical task source.",
   );
   assert.equal(
     localizeApplicationMessage(
@@ -209,6 +272,52 @@ test("fixed error details switch language without changing their source diagnost
     ),
     "Could not read the Habits snapshot: Habits snapshot range.from is not a valid date.",
   );
+  assert.equal(
+    localizeApplicationError("无法读取任务正本：permission denied", "en"),
+    "Could not read the canonical task source: permission denied",
+  );
+  assert.equal(
+    localizeApplicationError(
+      "任务正本在保存边界发生了并发变化。未静默丢弃交错内容；恢复副本保存在 /tmp/tasks.snapshot。请刷新 Tasks 后重试。",
+      "en",
+    ),
+    "The task source changed concurrently at the save boundary. Interleaved content was not silently discarded; a recovery snapshot remains at /tmp/tasks.snapshot. Refresh Tasks and try again.",
+  );
+  for (const diagnostic of [
+    "任务名称不能为空。",
+    "任务列表名称不能为空。",
+    "任务列表名称不能超过 80 个字符，也不能换行。",
+    "任务时间必须先绑定日期。",
+    "任务列表不存在；未写入任何内容。",
+    "该任务列表标识已用于其他清单；请使用新的稳定身份。未写入任何内容。",
+    "Inbox 是永久清单；不能改名。未写入任何内容。",
+    "Inbox 是永久清单；不能归档或恢复。未写入任何内容。",
+    "归档清单不能作为新任务或移动任务的目标；请先恢复清单。未写入任何内容。",
+    "找不到要更新状态的任务；未写入任何内容。",
+    "任务必须先从放弃状态恢复为待办，再标记完成；未写入任何内容。",
+    "任务完成日期必须是有效的 YYYY-MM-DD 日期。",
+    "任务完成记录不能使用未来日期或未来时刻。",
+    "已删除任务不会被旧操作重新激活；请先恢复任务。未写入任何内容。",
+    "只有已明确完成的任务才能更正完成记录；未写入任何内容。",
+    "任务正本不是有效 JSON：missing field",
+    "Tasks 当前绑定的 Vault 或文件目标已经变化。请刷新 Tasks 后重试；未写入任何内容。",
+    "daily-flow adapter 使用调用方明确提供的 Vault；不会改变 Dashboard 的已选 Vault。",
+    "lived date 必须是有效的 YYYY-MM-DD 日期。",
+    "daily-flow task adapter 使用不支持的 schema 版本 2。",
+    "daily-flow task adapter 必须明确提供 Vault 路径。",
+    "daily-flow 请求的 Vault 与任务正本当前目标不一致；未写入任何内容。",
+    "daily-flow adapter 无法读取当前时间上下文：任务正本包含无效修改时间。",
+    "同一 daily-flow 请求不能重复声明任务标识；未写入任何内容。",
+    "同一 daily-flow 请求不能重复声明来源标识；未写入任何内容。",
+    "同一 daily-flow 请求不能重复使用操作标识；未写入任何内容。",
+    "该 daily-flow 来源标识已经绑定到其他任务；旧输入不会改绑对象。未写入任何内容。",
+    "该 daily-flow 操作标识已用于其他操作；未写入任何内容。",
+    "任务正本已经存在。请先读取最新任务正本，再提交 daily-flow 写命令；未写入任何内容。",
+    "任务无变化操作记录不能携带字段前后值。",
+    "任务无变化操作记录缺少操作内容。",
+  ]) {
+    assert.doesNotMatch(localizeApplicationError(diagnostic, "en"), /[一-龥]/);
+  }
 });
 
 test("planning task input diagnostics have complete English equivalents", () => {

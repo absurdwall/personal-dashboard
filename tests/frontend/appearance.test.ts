@@ -22,7 +22,41 @@ test("an accent selection updates the shared page color tokens immediately", () 
     "--parity-accent": "#4d6f91",
     "--parity-accent-strong": "#3d5f80",
     "--parity-accent-soft": "#eaf0f8",
+    "--parity-accent-on": "#ffffff",
+    "--parity-focus": "#3d5f80",
   });
+});
+
+function contrastRatio(foreground: string, background: string): number {
+  const channel = (hex: string, offset: number): number => {
+    const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = (hex: string): number => (
+    0.2126 * channel(hex, 1) + 0.7152 * channel(hex, 3) + 0.0722 * channel(hex, 5)
+  );
+  const foregroundLuminance = luminance(foreground);
+  const backgroundLuminance = luminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+test("every accent supplies readable primary and focus roles", () => {
+  for (const color of ["forest", "blue", "clay", "lilac"] as const) {
+    const properties = new Map<string, string>();
+    applyAccentColor(color, {
+      setProperty(name, value) {
+        properties.set(name, value);
+      },
+    });
+
+    assert.ok(
+      contrastRatio(properties.get("--parity-accent-on") ?? "", properties.get("--parity-accent-strong") ?? "") >= 4.5,
+      `${color} primary text does not meet 4.5:1 contrast`,
+    );
+    assert.match(properties.get("--parity-focus") ?? "", /^#[0-9a-f]{6}$/);
+  }
 });
 
 test("a ready background applies one shared image layer and recoverable states clear it", () => {

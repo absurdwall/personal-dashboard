@@ -20,6 +20,8 @@ mod notification_platform;
 #[allow(dead_code)] // Retained only for historical regression and cutover parsing boundaries.
 mod platform;
 pub mod profile;
+pub mod task_adapter;
+pub mod tasks;
 pub mod today;
 
 use appearance::{
@@ -39,6 +41,11 @@ use platform::{
     FileAppearancePersistence, FileInterfaceLanguagePersistence, FileTodayWorkspacePersistence,
     NativeAppearanceImageLibrary, NativeTodayWorkspaceExchange,
 };
+use tasks::{
+    FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput,
+    TaskDeleteInput, TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput,
+    TaskListRestoreInput, TaskRestoreInput, TaskStateInput, TaskUpdateInput, TasksView,
+};
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
     DayTaskCompletionInput, DayTaskDeleteInput, DayTaskRenameInput, DaytimeUpdateInput,
@@ -55,6 +62,7 @@ type DesktopAppearanceApplication =
     AppearanceApplication<FileAppearancePersistence, NativeAppearanceImageLibrary<tauri::Wry>>;
 type DesktopInterfaceLanguageApplication =
     InterfaceLanguageApplication<FileInterfaceLanguagePersistence>;
+type DesktopTaskApplication = TaskApplication<FileTodayWorkspacePersistence, SystemClock>;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -127,7 +135,7 @@ fn set_interface_language(
 
 #[tauri::command]
 fn today_view(application: State<'_, DesktopTodayApplication>) -> Result<TodayView, String> {
-    application.open()
+    application.read()
 }
 
 #[tauri::command]
@@ -135,7 +143,7 @@ fn daily_view(
     application: State<'_, DesktopTodayApplication>,
     date: String,
 ) -> Result<TodayView, String> {
-    application.open_date(&date)
+    application.read_date(&date)
 }
 
 #[tauri::command]
@@ -163,6 +171,91 @@ fn habit_snapshot(
     application: State<'_, DesktopTodayApplication>,
 ) -> Result<HabitSnapshotView, String> {
     application.habits()
+}
+
+#[tauri::command]
+fn tasks_view(application: State<'_, DesktopTaskApplication>) -> Result<TasksView, String> {
+    application.read()
+}
+
+#[tauri::command]
+fn create_task(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskCreateInput,
+) -> Result<TasksView, String> {
+    application.create(input)
+}
+
+#[tauri::command]
+fn create_task_list(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskListCreateInput,
+) -> Result<TasksView, String> {
+    application.create_list(input)
+}
+
+#[tauri::command]
+fn rename_task_list(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskListRenameInput,
+) -> Result<TasksView, String> {
+    application.rename_list(input)
+}
+
+#[tauri::command]
+fn archive_task_list(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskListArchiveInput,
+) -> Result<TasksView, String> {
+    application.archive_list(input)
+}
+
+#[tauri::command]
+fn restore_task_list(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskListRestoreInput,
+) -> Result<TasksView, String> {
+    application.restore_list(input)
+}
+
+#[tauri::command]
+fn update_task(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskUpdateInput,
+) -> Result<TasksView, String> {
+    application.update(input)
+}
+
+#[tauri::command]
+fn set_task_state(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskStateInput,
+) -> Result<TasksView, String> {
+    application.set_state(input)
+}
+
+#[tauri::command]
+fn delete_task(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskDeleteInput,
+) -> Result<TasksView, String> {
+    application.delete(input)
+}
+
+#[tauri::command]
+fn restore_task(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskRestoreInput,
+) -> Result<TasksView, String> {
+    application.restore(input)
+}
+
+#[tauri::command]
+fn correct_task_completion(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskCompletionCorrectionInput,
+) -> Result<TasksView, String> {
+    application.correct_completion(input)
 }
 
 #[tauri::command]
@@ -321,9 +414,14 @@ pub fn run() {
                 }
             }
             app.manage(TodayApplication::new(
-                FileTodayWorkspacePersistence::new(today_workspace_file),
+                FileTodayWorkspacePersistence::new(today_workspace_file.clone()),
                 NativeTodayWorkspaceExchange::new(app_handle.clone()),
                 SystemClock,
+            ));
+            app.manage(TaskApplication::new(
+                FileTodayWorkspacePersistence::new(today_workspace_file),
+                SystemClock,
+                FileTaskStore,
             ));
             app.manage(AppearanceApplication::with_image_library(
                 FileAppearancePersistence::new(appearance_file),
@@ -360,6 +458,17 @@ pub fn run() {
             read_daily_view,
             calendar_month,
             habit_snapshot,
+            tasks_view,
+            create_task,
+            create_task_list,
+            rename_task_list,
+            archive_task_list,
+            restore_task_list,
+            update_task,
+            set_task_state,
+            delete_task,
+            restore_task,
+            correct_task_completion,
             set_local_habit_completion,
             set_historical_habit_completion,
             select_today_vault,
@@ -389,6 +498,17 @@ pub fn run() {
         read_daily_view,
         calendar_month,
         habit_snapshot,
+        tasks_view,
+        create_task,
+        create_task_list,
+        rename_task_list,
+        archive_task_list,
+        restore_task_list,
+        update_task,
+        set_task_state,
+        delete_task,
+        restore_task,
+        correct_task_completion,
         set_local_habit_completion,
         set_historical_habit_completion,
         select_today_vault,

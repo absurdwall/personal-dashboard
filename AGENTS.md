@@ -19,3 +19,16 @@ Use the default five-role triage vocabulary. See `docs/agents/triage-labels.md`.
 ### Domain docs
 
 Use a single-context domain documentation layout. See `docs/agents/domain.md`.
+
+## Shared management connection
+
+- Project id: `product-personal-dashboard`; canonical working directory:
+  `personal-dashboard` inside the Tortilla Flat workspace;
+  repository: `absurdwall/personal-dashboard`; source id:
+  `source-personal-dashboard-3`.
+- After actual publication, native claim, completion/blockage, or an explicit
+  reconcile request, use the user-local `tortilla-flat-management` skill and
+  its installed helper. If its install, version, or workspace binding is
+  missing, report setup required; do not infer identity from chat or create a
+  Registry. Preserve this repository's local issue workflow and approval
+  boundaries.

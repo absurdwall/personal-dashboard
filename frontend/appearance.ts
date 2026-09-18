@@ -18,12 +18,36 @@ type BackgroundTarget = {
 
 const accentTokens: Record<
   AccentColor,
-  Readonly<{ accent: string; strong: string; soft: string }>
+  Readonly<{ accent: string; strong: string; soft: string; onAccent: string; focus: string }>
 > = {
-  forest: { accent: "#2d6c57", strong: "#214e43", soft: "#e7f0eb" },
-  blue: { accent: "#4d6f91", strong: "#3d5f80", soft: "#eaf0f8" },
-  clay: { accent: "#a66348", strong: "#874a33", soft: "#f8eee7" },
-  lilac: { accent: "#78638a", strong: "#5f4c72", soft: "#f1ecf6" },
+  forest: {
+    accent: "#2d6c57",
+    strong: "#214e43",
+    soft: "#e7f0eb",
+    onAccent: "#ffffff",
+    focus: "#214e43",
+  },
+  blue: {
+    accent: "#4d6f91",
+    strong: "#3d5f80",
+    soft: "#eaf0f8",
+    onAccent: "#ffffff",
+    focus: "#3d5f80",
+  },
+  clay: {
+    accent: "#a66348",
+    strong: "#874a33",
+    soft: "#f8eee7",
+    onAccent: "#ffffff",
+    focus: "#874a33",
+  },
+  lilac: {
+    accent: "#78638a",
+    strong: "#5f4c72",
+    soft: "#f1ecf6",
+    onAccent: "#ffffff",
+    focus: "#5f4c72",
+  },
 };
 
 export class SerializedLatestMutation<Result> {
@@ -67,6 +91,8 @@ export function applyAccentColor(color: AccentColor, target: StyleTarget): void 
   target.setProperty("--parity-accent", tokens.accent);
   target.setProperty("--parity-accent-strong", tokens.strong);
   target.setProperty("--parity-accent-soft", tokens.soft);
+  target.setProperty("--parity-accent-on", tokens.onAccent);
+  target.setProperty("--parity-focus", tokens.focus);
 }
 
 export function applyBackgroundImage(

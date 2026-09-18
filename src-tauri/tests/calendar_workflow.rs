@@ -1,3 +1,7 @@
+use personal_dashboard_lib::tasks::{
+    FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput, TaskDataState,
+    TaskListArchiveInput, TaskListCreateInput, TaskState, TaskStateInput, TasksView,
+};
 use personal_dashboard_lib::today::{
     DailyPhase, DailyRecordAvailability, TodayApplication, TodayClock, TodayState,
     TodayWorkspaceExchange, TodayWorkspacePersistence,
@@ -240,4 +244,272 @@ fn impossible_or_malformed_selected_dates_are_rejected_before_file_access() {
         );
     }
     assert!(fs::read_dir(vault.path()).unwrap().next().is_none());
+}
+
+fn create_task(
+    application: &TaskApplication<SelectedVault, MutableClock, FileTaskStore>,
+    view: TasksView,
+    id: &str,
+    name: &str,
+    date: Option<&str>,
+    list_id: Option<&str>,
+) -> TasksView {
+    application
+        .create(TaskCreateInput {
+            target_binding: view.target_binding.expect("task target should be bound"),
+            expected_revision: view.revision,
+            task_id: id.into(),
+            name: name.into(),
+            content: None,
+            date: date.map(str::to_owned),
+            time: None,
+            list_id: list_id.map(str::to_owned),
+        })
+        .expect("synthetic task should be created")
+}
+
+#[test]
+fn calendar_month_includes_bounded_task_summaries_and_archived_history() {
+    let vault = TempDirectory::new("calendar-task-summary");
+    fs::create_dir_all(vault.path().join(".obsidian")).expect("Vault marker should exist");
+    fs::create_dir_all(vault.path().join("life/Journal/Daily"))
+        .expect("Daily Record directory should exist");
+    let clock = MutableClock(Rc::new(RefCell::new("2026-09-09".into())));
+    let persistence = SelectedVault(vault.path().to_path_buf());
+    let task_application = TaskApplication::new(persistence.clone(), clock.clone(), FileTaskStore);
+    let mut tasks = task_application
+        .read()
+        .expect("task source should be empty");
+    let binding = tasks
+        .target_binding
+        .clone()
+        .expect("task target should exist");
+    tasks = task_application
+        .create_list(TaskListCreateInput {
+            target_binding: binding,
+            expected_revision: tasks.revision.clone(),
+            list_id: "archive".into(),
+            name: "Archived work".into(),
+        })
+        .expect("archive list should be created");
+    tasks = create_task(
+        &task_application,
+        tasks,
+        "alpha",
+        "Alpha",
+        Some("2026-09-05"),
+        None,
+    );
+    tasks = create_task(
+        &task_application,
+        tasks,
+        "beta",
+        "Beta",
+        Some("2026-09-05"),
+        None,
+    );
+    tasks = create_task(
+        &task_application,
+        tasks,
+        "gamma",
+        "Gamma",
+        Some("2026-09-05"),
+        None,
+    );
+    tasks = create_task(
+        &task_application,
+        tasks,
+        "late",
+        "Late completion",
+        Some("2026-09-05"),
+        None,
+    );
+    tasks = create_task(
+        &task_application,
+        tasks,
+        "archived",
+        "Archived history",
+        Some("2026-09-05"),
+        Some("archive"),
+    );
+    tasks = create_task(
+        &task_application,
+        tasks,
+        "future",
+        "Future plan",
+        Some("2026-09-25"),
+        None,
+    );
+    tasks = create_task(
+        &task_application,
+        tasks,
+        "undated",
+        "Unscheduled",
+        None,
+        None,
+    );
+    tasks = create_task(
+        &task_application,
+        tasks,
+        "abandoned",
+        "Abandoned history",
+        Some("2026-09-05"),
+        None,
+    );
+
+    let late = tasks
+        .tasks
+        .iter()
+        .find(|task| task.id == "late")
+        .expect("late task should exist");
+    tasks = task_application
+        .set_state(TaskStateInput {
+            target_binding: tasks.target_binding.clone().unwrap(),
+            expected_revision: tasks.revision.clone().unwrap(),
+            task_id: late.id.clone(),
+            change_id: "complete-late".into(),
+            state: TaskState::Completed,
+        })
+        .expect("late task should be completed");
+    tasks = task_application
+        .correct_completion(TaskCompletionCorrectionInput {
+            target_binding: tasks.target_binding.clone().unwrap(),
+            expected_revision: tasks.revision.clone().unwrap(),
+            task_id: "late".into(),
+            change_id: "correct-late".into(),
+            completed_on: "2026-09-07".into(),
+            completed_time: None,
+        })
+        .expect("late completion should be correctable without rescheduling");
+    let abandoned = tasks
+        .tasks
+        .iter()
+        .find(|task| task.id == "abandoned")
+        .expect("abandoned task should exist");
+    tasks = task_application
+        .set_state(TaskStateInput {
+            target_binding: tasks.target_binding.clone().unwrap(),
+            expected_revision: tasks.revision.clone().unwrap(),
+            task_id: abandoned.id.clone(),
+            change_id: "abandon-history".into(),
+            state: TaskState::Abandoned,
+        })
+        .expect("task should be abandoned");
+    let _tasks = task_application
+        .archive_list(TaskListArchiveInput {
+            target_binding: tasks.target_binding.clone().unwrap(),
+            expected_revision: tasks.revision.clone().unwrap(),
+            list_id: "archive".into(),
+        })
+        .expect("archive list should be archived");
+
+    let restarted = TaskApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        MutableClock(Rc::new(RefCell::new("2026-09-09".into()))),
+        FileTaskStore,
+    )
+    .read()
+    .expect("restarted task application should read the same source");
+    assert!(restarted.tasks.iter().any(|task| {
+        task.id == "archived" && task.list_id == "archive" && task.deleted_at.is_none()
+    }));
+
+    let application = TodayApplication::new(persistence, NoSelection, clock);
+    let month = application
+        .calendar_month(2026, 9)
+        .expect("calendar month should load");
+    let dense = month.day("2026-09-05").expect("dense date should exist");
+    assert_eq!(
+        dense
+            .task_summaries
+            .iter()
+            .map(|task| task.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["alpha", "beta"]
+    );
+    assert_eq!(dense.task_overflow_count, 4);
+    assert_eq!(dense.task_summaries[0].state, TaskState::Pending);
+    assert_eq!(
+        month
+            .day("2026-09-25")
+            .expect("future date should exist")
+            .task_overflow_count,
+        0
+    );
+    assert_eq!(
+        month.day("2026-09-25").unwrap().task_summaries[0].id,
+        "future"
+    );
+    assert!(month.day("2026-09-09").unwrap().task_summaries.is_empty());
+
+    let selected = application
+        .read_date("2026-09-05")
+        .expect("selected date should read");
+    assert_eq!(selected.date, "2026-09-05");
+    assert!(selected.tasks.tasks.iter().any(|task| {
+        task.id == "archived" && task.list_id == "archive" && task.deleted_at.is_none()
+    }));
+    assert!(selected.tasks.tasks.iter().any(|task| {
+        task.id == "late"
+            && task.date.as_deref() == Some("2026-09-05")
+            && task.state == TaskState::Completed
+            && task
+                .completion
+                .as_ref()
+                .is_some_and(|completion| completion.completed_on == "2026-09-07")
+    }));
+    assert!(!record_path(vault.path(), "2026-09-05").exists());
+    assert!(!record_path(vault.path(), "2026-09-25").exists());
+}
+
+#[test]
+fn calendar_month_distinguishes_damaged_tasks_from_a_healthy_empty_source() {
+    let vault = TempDirectory::new("calendar-task-source-errors");
+    fs::create_dir_all(vault.path().join(".obsidian")).unwrap();
+    write_record(
+        vault.path(),
+        "2026-09-05",
+        "## 今天的大致安排\n\n- **下午：** 有复盘。\n\n## 晚间复盘\n\n### 今天发生了什么\n\n- 明确记录。\n",
+    );
+    let task_path = vault
+        .path()
+        .join("life/.personal-dashboard/tasks/v1/tasks.json");
+    fs::create_dir_all(task_path.parent().unwrap()).unwrap();
+    let application = TodayApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        NoSelection,
+        MutableClock(Rc::new(RefCell::new("2026-09-09".into()))),
+    );
+
+    let empty = application
+        .calendar_month(2026, 9)
+        .expect("healthy empty task source should load");
+    assert_eq!(empty.task_state, TaskDataState::Empty);
+    assert!(empty.task_message.contains("任务"));
+    assert_eq!(
+        empty.day("2026-09-05").unwrap().availability,
+        DailyRecordAvailability::Reviewed
+    );
+
+    for (label, bytes, expected_fragment) in [
+        ("corrupt", br#"{not-json"#.to_vec(), "JSON"),
+        (
+            "unknown schema",
+            br#"{"schemaVersion":99,"lists":[],"tasks":[]}"#.to_vec(),
+            "schema",
+        ),
+    ] {
+        fs::write(&task_path, &bytes).unwrap();
+        let month = application.calendar_month(2026, 9).unwrap_or_else(|error| {
+            panic!("{label} task source should not fail the month: {error}")
+        });
+        assert_eq!(month.task_state, TaskDataState::Error);
+        assert!(month.task_message.contains(expected_fragment));
+        assert!(month.day("2026-09-05").unwrap().task_summaries.is_empty());
+        assert_eq!(
+            month.day("2026-09-05").unwrap().availability,
+            DailyRecordAvailability::Reviewed
+        );
+        assert_eq!(fs::read(&task_path).unwrap(), bytes);
+    }
 }

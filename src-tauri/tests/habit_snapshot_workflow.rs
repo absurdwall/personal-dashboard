@@ -1,7 +1,10 @@
-use personal_dashboard_lib::habits::{HabitDetailView, ObservationStatus};
+use personal_dashboard_lib::habits::{
+    HabitDetailView, HabitLocalizedNames, HabitNamesConfigurationState, ObservationStatus,
+};
 use personal_dashboard_lib::today::{
     DailyRecordAvailability, DatedNoteCorrectionInput, DatedNoteInput, HabitCellStatus,
-    HabitSnapshotState, ShortRecordCategory, TodayApplication, TodayClock, TodayWorkspaceExchange,
+    HabitCompletionMutationInput, HabitLocalCompletionState, HabitSnapshotState,
+    ShortRecordCategory, TodayApplication, TodayClock, TodayWorkspaceExchange,
     TodayWorkspacePersistence,
 };
 use std::fs;
@@ -108,10 +111,20 @@ fn snapshot_path(vault: &Path) -> PathBuf {
     vault.join(".personal-dashboard/derived/habits-v1.json")
 }
 
+fn habit_names_path(vault: &Path) -> PathBuf {
+    vault.join("life/.personal-dashboard/habit-names/v1/names.json")
+}
+
 fn write_snapshot(vault: &Path, document: &str) {
     fs::create_dir_all(vault.join(".obsidian")).unwrap();
     fs::create_dir_all(vault.join("life/Journal/Daily")).unwrap();
     let path = snapshot_path(vault);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, document).unwrap();
+}
+
+fn write_habit_names(vault: &Path, document: &str) {
+    let path = habit_names_path(vault);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, document).unwrap();
 }
@@ -201,6 +214,179 @@ fn sourced_snapshot_projects_correct_week_counts_time_evidence_and_record_dots()
 
     assert_eq!(exercise.history.len(), 84);
     assert_eq!(exercise.recent.len(), 7);
+}
+
+#[test]
+fn localized_habit_names_follow_stable_keys_across_snapshot_refresh_and_restart() {
+    let vault = TempDirectory::new("habit-localized-names");
+    write_snapshot(
+        vault.path(),
+        &include_str!("fixtures/habits-v1-complete.json").replace(
+            "\"key\": \"exercise\", \"name\": \"Exercise\"",
+            "\"key\": \"exercise\", \"name\": \"外部快照改名\"",
+        ),
+    );
+    write_habit_names(
+        vault.path(),
+        r#"{
+  "schemaVersion": 1,
+  "habits": {
+    "exercise": { "zh": "锻炼", "en": "Exercise" },
+    "reset": { "en": "Reset home" }
+  }
+}
+"#,
+    );
+
+    let app = application(Some(vault.path()));
+    let first = app.habits().unwrap();
+    let exercise = first.habit("exercise").unwrap();
+    assert_eq!(
+        first.names_configuration_state,
+        HabitNamesConfigurationState::Ready
+    );
+    assert_eq!(exercise.name, "外部快照改名");
+    assert_eq!(exercise.localized_names.zh.as_deref(), Some("锻炼"));
+    assert_eq!(exercise.localized_names.en.as_deref(), Some("Exercise"));
+    assert_eq!(first.habit("reset").unwrap().localized_names.zh, None);
+
+    let historical = application(Some(vault.path()))
+        .open_date("2026-09-07")
+        .unwrap();
+    let historical_exercise = historical
+        .habit_corrections
+        .habit("exercise")
+        .expect("historical exercise habit");
+    assert_eq!(
+        historical.habit_corrections.names_configuration_state,
+        HabitNamesConfigurationState::Ready
+    );
+    assert_eq!(
+        historical_exercise.localized_names.en.as_deref(),
+        Some("Exercise")
+    );
+
+    let with_local_completion = app
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "reset".into(),
+            lived_date: "2026-09-08".into(),
+            completed: true,
+            change_id: "localized-names-local-completion".into(),
+            target_binding: first.completion_target_binding.clone().unwrap(),
+            expected_revision: first.completion_revision.clone(),
+        })
+        .unwrap();
+    assert_eq!(
+        with_local_completion
+            .habit("reset")
+            .unwrap()
+            .today
+            .local_completion_state,
+        HabitLocalCompletionState::Completed
+    );
+
+    write_snapshot(
+        vault.path(),
+        &include_str!("fixtures/habits-v1-complete.json").replace(
+            "\"key\": \"exercise\", \"name\": \"Exercise\"",
+            "\"key\": \"exercise\", \"name\": \"第二次外部改名\"",
+        ),
+    );
+    let refreshed = app.habits().unwrap();
+    assert_eq!(refreshed.habit("exercise").unwrap().name, "第二次外部改名");
+    assert_eq!(
+        refreshed
+            .habit("exercise")
+            .unwrap()
+            .localized_names
+            .zh
+            .as_deref(),
+        Some("锻炼")
+    );
+    assert_eq!(
+        refreshed
+            .habit("reset")
+            .unwrap()
+            .today
+            .local_completion_state,
+        HabitLocalCompletionState::Completed
+    );
+
+    let relaunched = application(Some(vault.path())).habits().unwrap();
+    assert_eq!(
+        relaunched.habit("exercise").unwrap().localized_names,
+        exercise.localized_names
+    );
+    assert_eq!(
+        relaunched
+            .habit("reset")
+            .unwrap()
+            .today
+            .local_completion_state,
+        HabitLocalCompletionState::Completed
+    );
+    assert_eq!(relaunched.habit("exercise").unwrap().history.len(), 84);
+
+    let isolated_vault = TempDirectory::new("habit-localized-names-isolated");
+    write_snapshot(
+        isolated_vault.path(),
+        include_str!("fixtures/habits-v1-complete.json"),
+    );
+    let isolated = application(Some(isolated_vault.path())).habits().unwrap();
+    assert_eq!(
+        isolated.names_configuration_state,
+        HabitNamesConfigurationState::Missing
+    );
+    assert_eq!(
+        isolated.habit("exercise").unwrap().localized_names,
+        HabitLocalizedNames::default()
+    );
+}
+
+#[test]
+fn missing_or_damaged_habit_names_config_falls_back_without_hiding_snapshot_data() {
+    let old_vault = TempDirectory::new("habit-localized-names-old-vault");
+    write_snapshot(
+        old_vault.path(),
+        include_str!("fixtures/habits-v1-complete.json"),
+    );
+    let old = application(Some(old_vault.path())).habits().unwrap();
+    assert_eq!(
+        old.names_configuration_state,
+        HabitNamesConfigurationState::Missing
+    );
+    assert_eq!(
+        old.habit("exercise").unwrap().localized_names,
+        HabitLocalizedNames::default()
+    );
+
+    let damaged_vault = TempDirectory::new("habit-localized-names-damaged");
+    write_snapshot(
+        damaged_vault.path(),
+        include_str!("fixtures/habits-v1-complete.json"),
+    );
+    write_habit_names(
+        damaged_vault.path(),
+        r#"{"schemaVersion": 99, "habits": {}}"#,
+    );
+    let damaged_config_before = fs::read(habit_names_path(damaged_vault.path())).unwrap();
+
+    let damaged = application(Some(damaged_vault.path())).habits().unwrap();
+    assert_eq!(damaged.state, HabitSnapshotState::Ready);
+    assert_eq!(
+        damaged.names_configuration_state,
+        HabitNamesConfigurationState::Invalid
+    );
+    assert_eq!(damaged.habit("exercise").unwrap().name, "Exercise");
+    assert_eq!(
+        damaged.habit("exercise").unwrap().localized_names,
+        HabitLocalizedNames::default()
+    );
+    assert_eq!(damaged.summary.known_completions, 4);
+    assert_eq!(
+        fs::read(habit_names_path(damaged_vault.path())).unwrap(),
+        damaged_config_before
+    );
 }
 
 #[test]
