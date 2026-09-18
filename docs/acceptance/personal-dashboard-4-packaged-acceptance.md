@@ -4,7 +4,39 @@ Date: 2026-09-18
 
 Status: **the isolated Dashboard 4.0 review-follow-up rerun passed at the latest implementation commit; the broader multi-scenario gate was not rerun, and the Drive fixture-dependent recheck remains pending human acceptance.**
 
-## 2026-09-18 review-follow-up rerun (v8, after closeout fixes)
+## 2026-09-18 review-follow-up rerun (v9, after final display/count parity fixes)
+
+- Branch/worktree: `codex/dashboard-4-review-follow-up` in the isolated `e99a`
+  worktree, built from commit `3ca3bdb` (`fix: complete task display and count
+  parity`).
+- Bundle: `src-tauri/target/release/bundle/macos/Personal Dashboard.app`;
+  executable SHA-256
+  `de5dbde9443554526ddd75e9727b69e30b1170be85e6e08cca88332cd061c917`, CDHash
+  `66e18a1f1fbd647f577f985a5c2831ae183dbc68`; ad-hoc `codesign
+  --verify --deep --strict` passed.
+- Command:
+
+  ```sh
+  PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=dashboard-4 \
+  PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 \
+  PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY="$PWD/output/playwright/personal-dashboard-4-review-follow-up-20260918-v9" \
+  scripts/acceptance/macos-ipc-workflow.sh
+  ```
+
+- Result: **passed**. The isolated synthetic-Vault matrix remained green after
+  the final Inbox display-name change-event and state-filtered list-management
+  count fixes: Tasks, Today, Calendar, Habits, lifecycle persistence, Vault
+  switching, conflict recovery, bilingual labels, and the narrow surface all
+  passed. The packaged scenario did not directly drive the selector transition
+  or assert management-row count text; those final paths are covered by the
+  102/102 frontend suite below. Eight non-overwritten captures are under
+  `output/playwright/personal-dashboard-4-review-follow-up-20260918-v9/`.
+- Automated support at this commit: `npm run test:frontend` passed 102/102,
+  `npm run check` passed, and the full Rust suite passed. The v9 capture hashes
+  match the v8 manifest below; the run remains synthetic-Vault evidence only and
+  does not resolve the Drive checkbox.
+
+## 2026-09-18 review-follow-up rerun (v8, after first closeout fixes)
 
 - Branch/worktree: `codex/dashboard-4-review-follow-up` in the isolated `e99a`
   worktree, built from commit `a3042a7` (`fix: close review evidence and

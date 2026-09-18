@@ -27,6 +27,7 @@ Review evidence: `/Users/tingranwang/.codex/worktrees/e99a/personal-dashboard/re
 ## Scope and delivery boundaries
 
 - No visual redesign, speculative refactor, new dependencies/services, 4.1 Habit management, real Vault/diary/Dida/automation writes, replacement of the daily app, push or merge.
+- Closeout exception recorded after the original scope was written: on 2026-09-18 the user explicitly superseded the original no-replacement/no-push boundary for this closeout only and authorized exactly four actions: update the stable `/Applications/Personal Dashboard.app`, reconcile its concrete Dock entry, integrate the reviewed branch into canonical, and perform a normal push. All other boundaries remain in force: no personal-data writes, LaunchServices reset, force-push, or deletion of build/Vault data.
 - Actual 4.0 Drive fixture verification remains ticket 09's pending human acceptance; this ticket does not authorize using personal data or declaring 09 resolved. Reconcile stale packaged status text against newer evidence without treating it as Drive proof.
 - Work in the existing review worktree, based on `41289ff` or a verified descendant. If detached, create a `codex/` repair branch there before committing. Preserve the review report and unrelated dirty files. Copy this ticket/map entry into the worktree as necessary and update its status there; do not implement product changes in the canonical source checkout.
 - Final answer must identify fixes, tests, remaining acceptance limits, branch and commit, and the implementation ticket location. Leave the result ready for integration; do not imply worktree commits have reached the user's daily checkout.
@@ -34,9 +35,9 @@ Review evidence: `/Users/tingranwang/.codex/worktrees/e99a/personal-dashboard/re
 ## Answer
 
 Implemented and verified on `codex/dashboard-4-review-follow-up` in the isolated
-`e99a` worktree. The latest code commit tested by the packaged v8 run is
-`a3042a7` (`fix: close review evidence and localization gaps`), with the
-preceding bounded repair commits `9d8b9a1`, `e7c07b3`, `42b818f`, `a483493`,
+`e99a` worktree. The latest code commit tested by the packaged v9 run is
+`3ca3bdb` (`fix: complete task display and count parity`), with the preceding
+bounded repair commits `a3042a7`, `9d8b9a1`, `e7c07b3`, `42b818f`, `a483493`,
 and `e74e2d4`.
 
 - F-01: Calendar now exposes task-source state separately from Daily Record state; corrupt and unknown-version task JSON remain untouched while Calendar review data remains available.
@@ -45,7 +46,7 @@ and `e74e2d4`.
 - F-05/F-06: Counts follow visible state filters, and empty/relative adapter Vault paths are rejected before any candidate-file mutation.
 - V-01/F-07: Daily-flow integration inputs resolve through the Git common directory or explicit workspace-root environment, fail loudly when absent, and `CONTEXT.md` reuses the existing 4.0 vocabulary for shipped behavior.
 - Verification: targeted frontend tests passed; the latest `npm run test:frontend` passed 102/102; `npm run check` passed with the existing source-checkout TypeScript binary on `PATH`; full Rust tests passed, including 28 task workflow tests. Changed Rust files pass targeted rustfmt; the repository-wide check still reports the unrelated pre-existing `appearance_workflow.rs` formatting difference.
-- Packaged Mac v8 passed from `a3042a7` after rebuilding `src-tauri/target/release/bundle/macos/Personal Dashboard.app`; eight non-overwritten captures are in `output/playwright/personal-dashboard-4-review-follow-up-20260918-v8/`. Evidence is synthetic-Vault only; ticket 09 remains `ready-for-human` because the Drive fixture is still missing.
+- Packaged Mac v9 passed from `3ca3bdb` after rebuilding `src-tauri/target/release/bundle/macos/Personal Dashboard.app`; eight non-overwritten captures are in `output/playwright/personal-dashboard-4-review-follow-up-20260918-v9/`. The final selector/count paths are directly covered by the 102/102 frontend suite; the packaged scenario itself did not drive that selector transition or assert management-row count text. Evidence is synthetic-Vault only; ticket 09 remains `ready-for-human` because the Drive fixture is still missing.
 
 ### Answer addendum: post-closeout daily app entry reconciliation
 
@@ -80,6 +81,12 @@ applications folder:
   executable now has SHA-256
   `f2eba3cbd5bec59efbdf12da20ab9b3b98194a691d33dc4efb73b33ea19719c0` and
   CDHash `5bb8a2037dddbbb581858b8beabbe5fee099d8a7`.
+- After the v9 closeout build, that installed bundle was moved reversibly to
+  `/tmp/Personal Dashboard.app.before-3ca3bdb`, and the bundle built from
+  `3ca3bdb` was installed at `/Applications/Personal Dashboard.app`. The final
+  installed executable has SHA-256
+  `de5dbde9443554526ddd75e9727b69e30b1170be85e6e08cca88332cd061c917` and
+  CDHash `66e18a1f1fbd647f577f985a5c2831ae183dbc68`.
 - Installed-bundle validation: `CFBundleIdentifier` is
   `com.tortillaflat.personal-dashboard`, version is `3.0.0`, and
   `codesign --verify --deep --strict` passes. The remaining code review and
@@ -92,6 +99,8 @@ applications folder:
 - 2026-09-18: Addressed the F-02 review follow-up by routing `updateTask` through the request/operation identity seam and adding a delayed-response/navigation regression; committed as `9d8b9a1`.
 - 2026-09-18: Expanded the F-02 seam test to drive the actual update-request helper with deferred IPC responses, navigation invalidation, a later payload, and same-payload retry; committed as `e74e2d4`.
 - 2026-09-18: Packaged v7 passed from `e74e2d4`; ticket-09 evidence and the packaged acceptance report were updated to the exact tested commit and capture directory. Drive fixture acceptance remains intentionally pending.
-- 2026-09-18: Final Standards/Spec review passed the implementation and evidence; the stale map summary was corrected, while the preserved review-report whitespace remains an existing artifact rather than a product change.
+- 2026-09-18: Earlier bounded Standards/Spec review passed the implementation and evidence before the final display/count parity fixes; the stale map summary was corrected, while the preserved review-report whitespace remains an existing artifact rather than a product change.
 - 2026-09-18: Root-cause investigation found the duplicate icon was a stale Dock tile for the canonical checkout build plus the running `/Applications` build. The tile was redirected in place to `/Applications/Personal Dashboard.app`, then Dock and the app were restarted; the resulting persistent entry and process path are unique and stable. Re-review and canonical integration/push are pending this closeout pass.
 - 2026-09-18: Standards review requested a stateful F-02 seam and invalid-path Apply coverage; the seam now captures the submitted payload and models commit-before-late-response, and the adapter regression asserts both Read and Apply leave bytes unchanged. The system Inbox display was also localized through a presentation seam without translating user list names.
+- 2026-09-18: Final v9 closeout from `3ca3bdb` passed the Dashboard 4 packaged matrix after the selector-change Inbox display and state-filtered list-management count fixes. Those final code paths are directly covered by the 102/102 frontend suite; the packaged scenario itself did not drive that selector transition or assert the management-row count text. The installed `/Applications/Personal Dashboard.app` was gracefully quit and relaunched twice; the final process, hash, signature, and one persistent Dock tile all point to the final bundle. At the time of this entry, final independent review and canonical integration/push remained pending.
+- 2026-09-18: Final independent Luna Max Standards/Spec review is clean with no actionable P0-P3 findings; the preserved review-report whitespace is explicitly excluded as an existing artifact. Drive remains `ready-for-human`; canonical integration and normal push are the remaining closeout actions.
