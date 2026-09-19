@@ -273,7 +273,7 @@ parity claims; it does not close the missing Drive or persistence evidence.
 
 The checked-in ticket 09 answer explicitly preserves the missing Drive fixture
 and human-acceptance boundary at
-`/Users/tingranwang/.codex/worktrees/e99a/personal-dashboard/.scratch/personal-dashboard-4/issues/09-packaged-acceptance.md:29-37`.
+[`issues/09-packaged-acceptance.md:29-37`](../issues/09-packaged-acceptance.md).
 The issue 10 answer reports a final packaged command and eight PNGs, but that
 does not supersede ticket 09's `ready-for-human` status or provide the absent
 Drive evidence.
@@ -299,4 +299,3 @@ contract issues, add regressions for the damaged Calendar source and late
 committed edit, make the contract test runnable from the intended checkout
 layout, and obtain the fresh Drive fixture plus unobstructed Chinese packaged
 captures required by ticket 09.
-

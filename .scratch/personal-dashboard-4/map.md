@@ -1,6 +1,8 @@
 # Personal Dashboard 4.0 — ticket map
 
-用户已批准九票拆分与依赖；正式发布，01–08 已完成实现，09 的上一轮本地 packaged candidate 已通过，11 的 review follow-up 已在解锁的 macOS 交互会话以合成 Vault 复跑通过，Drive fixture 仍需人验收。
+> 命名说明：这里的 `personal-dashboard-4`／“4.0”是当时第四轮规划与工作编号，不是曾发布的 App 4.0。该工作流的实现已随 App 3.0.1 交付；当前实际发布标识保持 3.0.1。未来面向用户的 release 以 `package.json`、Tauri、Cargo 一致版本和对应 release notes 为准。新工作目录尽量使用 feature slug；历史目录与命名保留以便追溯，不批量重命名 `docs/`、`.scratch/` 或改写历史版本。
+
+用户已批准九票拆分与依赖；这轮工作中 01–08 已完成实现，09 的上一轮本地 packaged candidate 已通过，11 的 review follow-up 已在解锁的 macOS 交互会话以合成 Vault 复跑通过，Drive fixture 仍需人验收。
 
 父规格：[spec](spec.md)。设计来源：[原型认可与固定捕获](prototype-review.md)、[设计问答](design-discussion.md)。认可原型本地分支 `codex/personal-dashboard-4-prototype`，提交 `501e5f7`；不要将原型直接合入产品。
 

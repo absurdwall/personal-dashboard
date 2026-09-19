@@ -18,6 +18,10 @@ When a skill says “publish to the issue tracker,” create the appropriate fil
 
 When a skill says “fetch the relevant ticket,” read the referenced local Markdown file.
 
+## Historical workstream and release naming
+
+The historical `.scratch/personal-dashboard-4/` directory and “Dashboard 4.0” wording identify a fourth planning/work round, not a released App 4.0. Its implementation shipped with App 3.0.1; the current release identity is the version aligned across `package.json`, the Tauri manifest, Cargo manifests/lockfile, and the corresponding release notes. For future user-facing releases, use that aligned version and release notes; prefer feature slugs for new work directories. Keep historical directories and names for traceability rather than bulk-renaming `docs/` or `.scratch/` or rewriting historical versions.
+
 ## Wayfinding
 
 - Map: `.scratch/<effort>/map.md`

@@ -10,7 +10,7 @@ Type: task
 
 Fix the confirmed functional and localization findings from the full-range review of `6c4854c...41289ff`, preserving the accepted prototype structure and existing task semantics. User approved this follow-up on 2026-09-18 and requested implementation in the existing Luna Max review task using `/Users/tingranwang/.agents/skills/implement/SKILL.md`.
 
-Review evidence: `/Users/tingranwang/.codex/worktrees/e99a/personal-dashboard/review-dashboard-4-full-range.md`. Canonical spec and prototype decisions are in this effort's `spec.md` and `prototype-review.md`; these planning files may exist only in the source checkout and must be read there.
+Review evidence: [full-range review](../reviews/full-range-2026-09-18.md). Canonical spec and prototype decisions are in this effort's `spec.md` and `prototype-review.md`; these planning files may exist only in the source checkout and must be read there.
 
 ## Acceptance criteria
 
