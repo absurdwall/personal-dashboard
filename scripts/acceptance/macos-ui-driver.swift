@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -2137,6 +2137,46 @@ func assertState(
     }
 }
 
+func assertCenteredElement(
+    _ application: AXUIElement,
+    label: String,
+    tolerance: CGFloat
+) throws {
+    guard let element = visibleRenderedElement(application, label: label),
+          let elementFrame = frame(element),
+          let window = mainWindow(application),
+          let windowFrame = frame(window) else {
+        throw DriverError.timeout("centered rendered element with measurable bounds: \(label)")
+    }
+    let distance = abs(elementFrame.midY - windowFrame.midY)
+    guard distance <= tolerance else {
+        throw DriverError.unexpectedText(
+            "rendered element is not near the window center: \(label) " +
+                "distance=\(distance) tolerance=\(tolerance) frame=\(elementFrame) window=\(windowFrame)"
+        )
+    }
+}
+
+func waitForCenteredElement(
+    _ application: AXUIElement,
+    label: String,
+    tolerance: CGFloat,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    var lastError: Error = DriverError.timeout("centered rendered element: \(label)")
+    repeat {
+        do {
+            try assertCenteredElement(application, label: label, tolerance: tolerance)
+            return
+        } catch {
+            lastError = error
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw lastError
+}
+
 func waitForState(
     _ application: AXUIElement,
     _ text: String,
@@ -3169,13 +3209,38 @@ func requireArguments() throws -> (pid_t, String, String, TimeInterval) {
 do {
     let (pid, command, text, timeout) = try requireArguments()
     let application = AXUIElementCreateApplication(pid)
-    if command != "choose-folder" && command != "choose-file" &&
+    if command != "choose-folder" && command != "choose-file" && command != "hide" &&
         command != "make-image-fixture" && command != "assert-capture-non-overwrite" {
         try activateApplication(application, pid: pid, timeout: timeout)
     }
     Thread.sleep(forTimeInterval: 0.05)
 
     switch command {
+    case "hide":
+        let runningApplication = NSRunningApplication(processIdentifier: pid)
+        guard runningApplication != nil else {
+            throw DriverError.actionFailed("hide packaged application", .failure)
+        }
+        let hideApplication = Process()
+        hideApplication.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        hideApplication.arguments = [
+            "-e",
+            "tell application \"System Events\" to set visible of " +
+                "(first process whose unix id is \(pid)) to false",
+        ]
+        let hideOutput = Pipe()
+        hideApplication.standardOutput = hideOutput
+        hideApplication.standardError = hideOutput
+        try hideApplication.run()
+        hideApplication.waitUntilExit()
+        guard hideApplication.terminationStatus == 0 else {
+            let output = String(
+                data: hideOutput.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
+            throw DriverError.actionFailed("hide packaged application: \(output)", .failure)
+        }
+        print("Hid packaged application: \(text)")
     case "wait-text":
         try waitForText(application, text, timeout: timeout)
         print("Found rendered text: \(text)")
@@ -3198,6 +3263,18 @@ do {
         try activateApplication(application, pid: pid, timeout: min(2, timeout))
         try waitForFocusedText(application, text, timeout: timeout)
         print("Focused rendered control contains: \(text)")
+    case "assert-centered":
+        let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let tolerance = Double(parts[1]), tolerance >= 0 else {
+            throw DriverError.usage
+        }
+        try waitForCenteredElement(
+            application,
+            label: parts[0],
+            tolerance: CGFloat(tolerance),
+            timeout: timeout
+        )
+        print("Rendered element is near the window center: \(parts[0])")
     case "focus":
         try focusPressable(application, pid: pid, text: text, contains: true, timeout: timeout)
         print("Focused rendered control: \(text)")

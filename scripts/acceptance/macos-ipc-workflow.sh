@@ -16,6 +16,7 @@ acceptance_baseline_file=""
 driver_binary=""
 current_step="setup"
 drive_acceptance_vault=""
+today_time_axis_real_clock=0
 
 fixed_now_epoch_millis="${PERSONAL_DASHBOARD_ACCEPTANCE_NOW_EPOCH_MILLIS:-1786406400000}"
 fixed_utc_offset_minutes="${PERSONAL_DASHBOARD_ACCEPTANCE_UTC_OFFSET_MINUTES:--240}"
@@ -341,7 +342,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections dashboard-3 dashboard-4; do
+  for scenario in settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections dashboard-3 dashboard-4 today-time-axis; do
     run_bounded_scenario "$scenario"
   done
 
@@ -489,11 +490,19 @@ frontmost_process_name="$(/usr/bin/osascript \
 
 launch_app() {
   current_step="launching isolated packaged app"
-  PERSONAL_DASHBOARD_DATA_DIR="$acceptance_data_directory" \
-    PERSONAL_DASHBOARD_BASELINE_FILE="$acceptance_baseline_file" \
-    PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS="$fixed_now_epoch_millis" \
-    PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES="$fixed_utc_offset_minutes" \
-    "$app_executable" >"$acceptance_directory/app.log" 2>&1 &
+  if [[ "$acceptance_scenario" == "today-time-axis" && "$today_time_axis_real_clock" == "1" ]]; then
+    /usr/bin/env -u PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS \
+      -u PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES \
+      PERSONAL_DASHBOARD_DATA_DIR="$acceptance_data_directory" \
+      PERSONAL_DASHBOARD_BASELINE_FILE="$acceptance_baseline_file" \
+      "$app_executable" >"$acceptance_directory/app.log" 2>&1 &
+  else
+    PERSONAL_DASHBOARD_DATA_DIR="$acceptance_data_directory" \
+      PERSONAL_DASHBOARD_BASELINE_FILE="$acceptance_baseline_file" \
+      PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS="$fixed_now_epoch_millis" \
+      PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES="$fixed_utc_offset_minutes" \
+      "$app_executable" >"$acceptance_directory/app.log" 2>&1 &
+  fi
   app_pid="$!"
   printf '%s\n' "$app_pid" > "$app_pid_file" || fail "could not record the isolated app PID"
   sleep 0.3
@@ -4206,6 +4215,231 @@ EOF
   echo "Boundary: only synthetic Vault input was used; no Agent, skill, Dida365, MCP, automation, or Daily Record review was changed"
 }
 
+wait_for_next_local_minute() {
+  local previous_minute="$1"
+  local current_minute=""
+
+  for _ in {1..360}; do
+    current_minute="$(/bin/date '+%H:%M')"
+    if [[ "$current_minute" != "$previous_minute" ]]; then
+      printf '%s\n' "$current_minute"
+      return 0
+    fi
+    sleep 0.2
+  done
+  fail "the local clock did not advance from $previous_minute within 72 seconds"
+}
+
+run_today_time_axis_scenario() {
+  local vault="$acceptance_directory/today-time-axis-vault"
+  local boundary_vault="$acceptance_directory/today-time-axis-boundary-vault"
+  local today_date="$(/bin/date '+%Y-%m-%d')"
+  local tomorrow_date="$(/bin/date -v+1d '+%Y-%m-%d')"
+  local history_date="$(/bin/date -v-1d '+%Y-%m-%d')"
+  local history_label="$(/bin/date -v-1d '+%-m月%-d日')"
+  local month_label="$(/bin/date '+%Y年%-m月')"
+  local today_record="$vault/life/Journal/Daily/${today_date:0:4}/${today_date:0:7}/$today_date.md"
+  local tomorrow_record="$vault/life/Journal/Daily/${tomorrow_date:0:4}/${tomorrow_date:0:7}/$tomorrow_date.md"
+  local history_record="$vault/life/Journal/Daily/${history_date:0:4}/${history_date:0:7}/$history_date.md"
+  local boundary_start="$boundary_vault/life/Journal/Daily/2026/2026-08/2026-08-10.md"
+  local boundary_end="$boundary_vault/life/Journal/Daily/2026/2026-08/2026-08-11.md"
+  local capture_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory/today-time-axis-captures}"
+  local long_entry_text='这是一段用于验证完整显示的长文本：即使备注包含多个句子、原始语义和补充说明，窄窗口中仍应保留完整内容并自然换行，不截断，不把句子里的时间当成新的事件。此备注来自合成 Daily Record，仅用于检查 A 时间轴中的计划与事实分栏、详细阅读和滚动定位。'
+  local live_hash
+  local tomorrow_hash
+  local boundary_start_hash
+  local boundary_end_hash
+  local history_clock_before
+  local current_clock
+  local epoch_before_midnight
+  local epoch_after_midnight
+  local capture_name
+
+  current_step="preparing a bilingual synthetic Daily Record for real-clock packaged acceptance"
+  mkdir -p "$vault/.obsidian" "$(dirname "$today_record")" "$(dirname "$tomorrow_record")" \
+    "$acceptance_data_directory" "$capture_directory"
+  for capture_name in today-time-axis-zh-wide.png today-time-axis-empty-history.png \
+    today-time-axis-midnight-before.png today-time-axis-midnight-after.png \
+    today-time-axis-en-narrow.png; do
+    [[ ! -e "$capture_directory/$capture_name" ]] ||
+      fail "refusing to overwrite packaged capture $capture_directory/$capture_name"
+  done
+  sed "s/2026-08-10/$today_date/g" \
+    "$repository_root/src-tauri/tests/fixtures/today-time-axis.md" > "$today_record"
+  sed "s/2026-08-10/$tomorrow_date/g" \
+    "$repository_root/src-tauri/tests/fixtures/today-time-axis.md" > "$tomorrow_record"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+  live_hash="$(shasum -a 256 "$today_record" | awk '{print $1}')"
+  tomorrow_hash="$(shasum -a 256 "$tomorrow_record" | awk '{print $1}')"
+
+  current_step="opening the synthetic current-day record in the packaged app with the system clock"
+  today_time_axis_real_clock=1
+  launch_app_waiting_for_text "Today" 30
+  run_driver set-size "1120x760" 10
+  run_driver assert-size "1120x760" 10
+  run_driver wait-active-text "今天 · $today_date" 20
+  run_driver assert-active-text "当前安排"
+  run_driver assert-active-text "已确认事实"
+  run_driver assert-centered "当前本地时间|100" 10
+  run_driver assert-text "09:30–10:45"
+  run_driver assert-text "10:55–10:56"
+  run_driver assert-text "13:00"
+  run_driver assert-text "14:20"
+  run_driver assert-text "继续今天的阅读安排"
+  run_driver assert-text "17:00 前"
+  run_driver assert-text "这条事实没有发生时刻"
+  current_clock="$(/bin/date '+%H:%M')"
+  run_driver assert-text "$current_clock" 3
+  run_driver press "定位现在" 10
+  run_driver assert-document-fixed "document" 10
+  run_driver capture-window "$capture_directory/today-time-axis-zh-wide.png" 10
+  run_driver scroll-text-visible "$long_entry_text" 10
+  run_driver assert-long-text-fits "$long_entry_text" 10
+
+  current_step="checking the packaged clock after the app regains the foreground"
+  run_driver hide "waiting for the next local minute" 10
+  current_clock="$(wait_for_next_local_minute "$(/bin/date '+%H:%M')")"
+  run_driver wait-text "$current_clock" 10
+  run_driver assert-long-text-fits "$long_entry_text" 10
+  run_driver assert-active-text "今天 · $today_date"
+
+  current_step="checking that historical Today remains selected without a current-time line"
+  run_driver press "日历" 10
+  run_driver wait-active-text "$month_label" 20
+  run_driver press-contains "$history_label" 10
+  run_driver wait-active-text "空白日期" 20
+  run_driver press "打开完整 Today" 10
+  run_driver wait-active-text "所选日期 · $history_date" 20
+  run_driver assert-active-absent-text "定位现在"
+  run_driver assert-absent-text "当前本地时间"
+  run_driver assert-active-text "这份 Daily Record 还没有当前安排。"
+  run_driver assert-active-text "今天还没有明确记录的已发生事实。"
+  run_driver assert-text "00:00"
+  run_driver assert-text "24:00"
+  run_driver capture-window "$capture_directory/today-time-axis-empty-history.png" 10
+  history_clock_before="$(/bin/date '+%H:%M')"
+  current_clock="$(wait_for_next_local_minute "$history_clock_before")"
+  run_driver assert-active-text "所选日期 · $history_date"
+  run_driver assert-active-absent-text "定位现在"
+  run_driver assert-absent-text "当前本地时间"
+  [[ ! -e "$history_record" ]] || fail "browsing an empty historical date created a Daily Record"
+  [[ "$(shasum -a 256 "$today_record" | awk '{print $1}')" == "$live_hash" ]] ||
+    fail "the current synthetic Daily Record changed during packaged reading"
+  [[ "$(shasum -a 256 "$tomorrow_record" | awk '{print $1}')" == "$tomorrow_hash" ]] ||
+    fail "the next-day synthetic Daily Record changed during packaged reading"
+
+  current_step="preparing explicit records on both sides of a deterministic packaged midnight"
+  if ! stop_app; then
+    fail "the real-clock packaged app did not exit before the midnight fixture"
+  fi
+  today_time_axis_real_clock=0
+  mkdir -p "$boundary_vault/.obsidian" "$(dirname "$boundary_start")" "$acceptance_data_directory"
+  cat > "$boundary_start" <<'EOF'
+---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 今天的大致安排
+
+- 2026-08-10 23:30–2026-08-11 00:30 跨午夜合成安排。
+
+## 白天更新
+
+### 23:50 — 确认事项
+
+- 观察事实：23:50 午夜前确认事实。
+EOF
+  cat > "$boundary_end" <<'EOF'
+---
+type: daily-record
+date: 2026-08-11
+---
+# 2026-08-11
+
+## 今天的大致安排
+
+- 2026-08-10 23:30–2026-08-11 00:30 跨午夜合成安排。
+EOF
+  boundary_start_hash="$(shasum -a 256 "$boundary_start" | awk '{print $1}')"
+  boundary_end_hash="$(shasum -a 256 "$boundary_end" | awk '{print $1}')"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$boundary_vault" > "$acceptance_data_directory/today-workspace.json"
+  epoch_before_midnight="$(/bin/date -u -j -f '%Y-%m-%d %H:%M:%S' '2026-08-11 03:59:00' '+%s')"
+  epoch_after_midnight="$(/bin/date -u -j -f '%Y-%m-%d %H:%M:%S' '2026-08-11 04:01:00' '+%s')"
+  fixed_utc_offset_minutes=-240
+  fixed_now_epoch_millis="$((epoch_before_midnight * 1000))"
+
+  current_step="checking the packaged 23:59 view and clipped cross-date arrangement"
+  launch_app_waiting_for_text "当日进展" 30
+  run_driver set-size "1120x760" 10
+  run_driver wait-active-text "今天 · 2026-08-10" 20
+  run_driver assert-text "23:59"
+  run_driver assert-text "23:30–24:00"
+  run_driver press-contains "跨午夜合成安排" 10
+  run_driver assert-text "来源日期：2026-08-10"
+  run_driver assert-text "延续至下一天"
+  run_driver assert-text "23:50"
+  run_driver capture-window "$capture_directory/today-time-axis-midnight-before.png" 10
+
+  current_step="reopening the packaged app after midnight and checking the next-day segment"
+  if ! stop_app; then
+    fail "the packaged 23:59 app did not exit before the midnight relaunch"
+  fi
+  fixed_now_epoch_millis="$((epoch_after_midnight * 1000))"
+  launch_app_waiting_for_text "当日进展" 30
+  run_driver wait-active-text "今天 · 2026-08-11" 20
+  run_driver assert-text "00:01"
+  run_driver assert-text "00:00–00:30"
+  run_driver press-contains "跨午夜合成安排" 10
+  run_driver assert-text "来源日期：2026-08-10"
+  run_driver assert-text "延续自前一天"
+  run_driver assert-absent-text "午夜前确认事实"
+  run_driver capture-window "$capture_directory/today-time-axis-midnight-after.png" 10
+  [[ "$(shasum -a 256 "$boundary_start" | awk '{print $1}')" == "$boundary_start_hash" ]] ||
+    fail "the packaged midnight reading changed its synthetic start-day record"
+  [[ "$(shasum -a 256 "$boundary_end" | awk '{print $1}')" == "$boundary_end_hash" ]] ||
+    fail "the packaged midnight reading changed its synthetic next-day record"
+
+  current_step="checking the narrow English A-lane layout and keyboard locator"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "en"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+  if ! stop_app; then
+    fail "the packaged midnight app did not exit before the narrow English view"
+  fi
+  today_time_axis_real_clock=1
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Today" 10
+  run_driver press "Daytime progress" 10
+  run_driver wait-active-text "Current arrangement" 20
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver assert-active-text "Confirmed facts"
+  run_driver assert-text "Items without a precise time"
+  run_driver press "Locate now" 10
+  run_driver focus "Locate now" 10
+  run_driver press-key "return"
+  run_driver assert-document-fixed "document" 10
+  run_driver capture-window "$capture_directory/today-time-axis-en-narrow.png" 10
+  [[ "$(shasum -a 256 "$today_record" | awk '{print $1}')" == "$live_hash" ]] ||
+    fail "the narrow packaged reading changed the synthetic Daily Record"
+
+  echo "Packaged IPC today-time-axis acceptance passed"
+  echo "Real clock: live packaged Today updated after one local minute and after foreground recovery"
+  echo "History: the selected prior date remained selected across a clock tick and exposed no current-time locator"
+  echo "Midnight: packaged 23:59 and 00:01 launches showed the correctly clipped cross-date plan; confirmed facts were not copied"
+  echo "Layout: bilingual A lanes remained accessible at 1120x760 and 640x520; the locator was keyboard activated"
+  echo "Records: synthetic Daily Records remained byte-identical and empty history did not create a file"
+  echo "Capture directory: $capture_directory"
+  echo "Clock boundary: the overnight packaged subcase used a deterministic -240 minute acceptance clock; live minute and foreground checks used the host clock"
+}
+
 run_dashboard_3_scenario() {
   local vault_directory="$acceptance_directory/dashboard-3-vault"
   local record_directory="$vault_directory/life/Journal/Daily/2026/2026-09"
@@ -5061,6 +5295,7 @@ case "$acceptance_scenario" in
   planning-tasks) run_planning_tasks_scenario ;;
   local-habit-completion) run_local_habit_completion_scenario ;;
   historical-corrections) run_historical_corrections_scenario ;;
+  today-time-axis) run_today_time_axis_scenario ;;
   dashboard-3) run_dashboard_3_scenario ;;
   dashboard-4) run_dashboard_4_scenario ;;
   drive-compatibility) run_drive_compatibility_scenario ;;

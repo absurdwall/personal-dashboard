@@ -198,6 +198,35 @@ skill, Dida365 data, MCP connection, or automation. Application workflow tests
 separately cover whole-input validation, yesterday's reader context, and an
 interleaved canonical write at the conditional replacement boundary.
 
+## Personal Dashboard 3.0 continuous Today time-axis scenario
+
+Run the ticket-02 packaged check after `npm run build:mac`:
+
+```sh
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=today-time-axis \
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 \
+scripts/acceptance/macos-ipc-workflow.sh
+```
+
+The scenario uses the packaged Tauri app, an isolated synthetic Vault, and
+temporary app data. It checks the first Today view is centered near the local
+clock, confirms planned and observed items occupy their named A lanes on the
+shared 00:00–24:00 axis, and exercises explicit intervals, overlapping points,
+short intervals, thresholds, coarse/unlocated content, and long copy. The real
+system clock advances while the app is hidden; foreground recovery must update
+the label without displacing the user's manual reading position. A previous
+empty date retains its selection and time scale across a tick without creating
+a Daily Record.
+
+The overnight subcase uses a deterministic packaged clock at 23:59 and 00:01
+to verify clipped cross-date plan segments, source-date/continuation labels,
+and that a confirmed fact from the start date is not copied. The wide Chinese
+and narrow English views use the packaged accessibility driver; Locate now is
+activated by keyboard. Synthetic Daily Records are hash-checked and remain
+byte-identical. This scenario does not modify the installed app or personal
+Vault. Optional screenshots go into a new capture directory supplied through
+`PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY`.
+
 ## Personal Dashboard 3.0 integrated candidate scenario
 
 Run the ticket-09 packaged and screenshot check with a new capture directory:

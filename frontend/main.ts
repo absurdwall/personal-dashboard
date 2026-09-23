@@ -4,6 +4,18 @@ import {
 } from "./dated-note-command.js";
 import { LatestRequest } from "./latest-request.js";
 import {
+  axisGeometry,
+  clockResultMatchesSession,
+  clockTickDecision,
+  hourTickMinutes,
+  locateNow,
+  minuteOfDay,
+  minutePosition,
+  onManualScroll,
+  type TodayAxisFollowState,
+  type TodayAxisSession,
+} from "./today-time-axis.js";
+import {
   PendingWriteBarrier,
   selectVaultAndRefresh,
   type VaultSelectionResult,
@@ -142,6 +154,25 @@ type DaytimeView = Readonly<{
   shortRecords: readonly ShortRecordView[];
 }>;
 
+type TimeAxisEntryView = Readonly<{
+  period: string | null;
+  text: string;
+  sourceDate: string;
+  startMinute: number | null;
+  endMinute: number | null;
+  continuesFromPreviousDay: boolean;
+  continuesIntoNextDay: boolean;
+}>;
+
+type TimeAxisView = Readonly<{
+  currentArrangement: readonly TimeAxisEntryView[];
+  confirmedFacts: readonly TimeAxisEntryView[];
+  unlocatedCurrentArrangement: readonly TimeAxisEntryView[];
+  unlocatedConfirmedFacts: readonly TimeAxisEntryView[];
+}>;
+
+type TodayClockView = Readonly<{ date: string; time: string }>;
+
 type EveningView = Readonly<{
   account: readonly string[];
   comparison: readonly string[];
@@ -277,6 +308,7 @@ type TodayView = Readonly<{
   state: TodayState;
   date: string;
   isToday: boolean;
+  currentTime: string | null;
   canRecord: boolean;
   defaultPhase: TodayPhase;
   dailyRecordAvailability: DailyRecordAvailability;
@@ -294,6 +326,7 @@ type TodayView = Readonly<{
   tasks: TasksView;
   dayTasks: DayTaskListView;
   habitCorrections: HabitCorrectionView;
+  timeAxis: TimeAxisView;
 }>;
 
 type TodayPhase = "morning" | "daytime" | "evening";
@@ -635,9 +668,20 @@ const todayBaselineStatus = document.querySelector<HTMLElement>("#today-baseline
 const todayTimeline = document.querySelector<HTMLOListElement>("#today-baseline-timeline");
 const todayBlockCount = document.querySelector<HTMLElement>("#today-block-count");
 const todayPlanEmpty = document.querySelector<HTMLElement>("#today-plan-empty");
-const todayCurrentTimeline = document.querySelector<HTMLOListElement>("#today-current-timeline");
-const todayCurrentCount = document.querySelector<HTMLElement>("#today-current-count");
-const todayCurrentEmpty = document.querySelector<HTMLElement>("#today-current-empty");
+const todayContinuousAxis = document.querySelector<HTMLElement>("#today-continuous-axis");
+const todayHourTicks = document.querySelector<HTMLElement>("#today-hour-ticks");
+const todayCurrentArrangementEvents = document.querySelector<HTMLOListElement>("#today-current-arrangement-events");
+const todayCurrentArrangementDurations = document.querySelector<HTMLElement>("#today-current-arrangement-duration");
+const todayCurrentArrangementEmpty = document.querySelector<HTMLElement>("#today-current-arrangement-empty");
+const todayCurrentArrangementUnlocated = document.querySelector<HTMLElement>("#today-current-arrangement-unlocated");
+const todayCurrentArrangementDetails = document.querySelector<HTMLElement>("#today-current-arrangement-details");
+const todayConfirmedFactsEvents = document.querySelector<HTMLOListElement>("#today-confirmed-facts-events");
+const todayConfirmedFactsDurations = document.querySelector<HTMLElement>("#today-confirmed-facts-duration");
+const todayConfirmedFactsEmpty = document.querySelector<HTMLElement>("#today-confirmed-facts-empty");
+const todayConfirmedFactsUnlocated = document.querySelector<HTMLElement>("#today-confirmed-facts-unlocated");
+const todayConfirmedFactsDetails = document.querySelector<HTMLElement>("#today-confirmed-facts-details");
+const todayCurrentTime = document.querySelector<HTMLTimeElement>("#today-current-time");
+const todayLocateNowButton = document.querySelector<HTMLButtonElement>("#today-locate-now");
 const todayPhaseButtons = document.querySelectorAll<HTMLButtonElement>("[data-today-phase]");
 const todayPhasePanels = document.querySelectorAll<HTMLElement>("[data-today-phase-panel]");
 const todayDaytimeCount = document.querySelector<HTMLElement>("#today-daytime-count");
@@ -766,8 +810,11 @@ let currentInterfaceLanguage: InterfaceLanguage = "zh";
 let todayOperationCount = 0;
 let vaultSelectionInProgress = false;
 const todayPresentationRequests = new LatestRequest();
+const todayClockRequests = new LatestRequest();
 const vaultSelectionRequests = new LatestRequest();
 let currentTodayPhase: TodayPhase = "morning";
+let todayAxisFollowState: TodayAxisFollowState = "following";
+let programmaticTodayAxisScrollUntil = 0;
 let currentTodayView: TodayView | null = null;
 let currentTasksView: TasksView | null = null;
 let taskScope: TaskListScope = "all";
@@ -1307,6 +1354,215 @@ function todayTimelineItem(block: MorningBlockView): HTMLLIElement {
   return item;
 }
 
+function formatAxisMinute(minute: number): string {
+  if (minute === 1440) return "24:00";
+  return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+}
+
+function axisEntryTimeLabel(entry: TimeAxisEntryView): string {
+  if (entry.startMinute === null) return t("today.unlocatedLabel");
+  const start = formatAxisMinute(entry.startMinute);
+  return entry.endMinute === null ? start : `${start}–${formatAxisMinute(entry.endMinute)}`;
+}
+
+function axisEntryDetails(
+  entry: TimeAxisEntryView,
+  lane: string,
+  index: number,
+): HTMLDetailsElement {
+  const details = document.createElement("details");
+  details.className = "today-axis-entry-detail";
+  details.id = `today-axis-${lane}-entry-${index}`;
+  const summary = document.createElement("summary");
+  const time = document.createElement("time");
+  time.textContent = axisEntryTimeLabel(entry);
+  if (entry.startMinute !== null) {
+    time.dateTime = `${entry.sourceDate}T${formatAxisMinute(entry.startMinute)}`;
+  }
+  const excerpt = document.createElement("span");
+  excerpt.textContent = entry.text;
+  summary.append(time, excerpt);
+  if (entry.continuesFromPreviousDay || entry.continuesIntoNextDay) {
+    const continuation = document.createElement("span");
+    continuation.className = "today-axis-entry-summary-metadata";
+    const sourceDate = document.createElement("span");
+    setCopy(sourceDate, "today.sourceDate", { date: entry.sourceDate });
+    continuation.append(sourceDate);
+    if (entry.continuesFromPreviousDay) {
+      const label = document.createElement("span");
+      setCopy(label, "today.continuesFromPrevious");
+      continuation.append(label);
+    }
+    if (entry.continuesIntoNextDay) {
+      const label = document.createElement("span");
+      setCopy(label, "today.continuesIntoNext");
+      continuation.append(label);
+    }
+    summary.append(continuation);
+  }
+  const copy = document.createElement("p");
+  copy.textContent = entry.text;
+  details.append(summary, copy);
+  const metadata = document.createElement("div");
+  metadata.className = "today-axis-entry-metadata";
+  if (entry.period) {
+    const period = document.createElement("span");
+    period.textContent = entry.period;
+    metadata.append(period);
+  }
+  const sourceDate = document.createElement("span");
+  setCopy(sourceDate, "today.sourceDate", { date: entry.sourceDate });
+  metadata.append(sourceDate);
+  if (entry.continuesFromPreviousDay) {
+    const continuation = document.createElement("span");
+    setCopy(continuation, "today.continuesFromPrevious");
+    metadata.append(continuation);
+  }
+  if (entry.continuesIntoNextDay) {
+    const continuation = document.createElement("span");
+    setCopy(continuation, "today.continuesIntoNext");
+    metadata.append(continuation);
+  }
+  details.append(metadata);
+  return details;
+}
+
+function renderTimeAxisLane(
+  markers: HTMLOListElement | null,
+  durations: HTMLElement | null,
+  details: HTMLElement | null,
+  unlocated: HTMLElement | null,
+  empty: HTMLElement | null,
+  entries: readonly TimeAxisEntryView[],
+  unlocatedEntries: readonly TimeAxisEntryView[],
+  lane: "arrangement" | "facts",
+): void {
+  if (!markers || !durations || !details || !unlocated || !empty) return;
+  const ordered = entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((left, right) => (left.entry.startMinute ?? 0) - (right.entry.startMinute ?? 0));
+  const detailElements = new Map<number, HTMLDetailsElement>();
+  ordered.forEach(({ entry, index }) => {
+    detailElements.set(index, axisEntryDetails(entry, lane, index));
+  });
+  details.replaceChildren(...ordered.map(({ index }) => detailElements.get(index)!));
+  const stacks = new Map<number, number>();
+  markers.replaceChildren(
+    ...ordered.flatMap(({ entry, index }) => {
+      if (entry.startMinute === null) return [];
+      const marker = document.createElement("li");
+      marker.className = "today-axis-marker";
+      marker.style.top = `${minutePosition(entry.startMinute) * 100}%`;
+      const stack = stacks.get(entry.startMinute) ?? 0;
+      stacks.set(entry.startMinute, stack + 1);
+      marker.style.setProperty("--axis-stack", String(stack));
+      const link = document.createElement("a");
+      link.href = `#today-axis-${lane}-entry-${index}`;
+      link.className = "today-axis-marker-link";
+      link.setAttribute("aria-label", t("today.openAxisItem", {
+        time: axisEntryTimeLabel(entry),
+        text: entry.text,
+      }));
+      link.textContent = formatAxisMinute(entry.startMinute);
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        const target = detailElements.get(index);
+        if (!target) return;
+        target.open = true;
+        todayAxisFollowState = onManualScroll(todayAxisFollowState);
+        target.scrollIntoView({ block: "center", behavior: "smooth" });
+      });
+      marker.append(link);
+      return [marker];
+    }),
+  );
+  durations.replaceChildren(
+    ...ordered.flatMap(({ entry }) => {
+      if (entry.startMinute === null) return [];
+      const geometry = axisGeometry({
+        startMinute: entry.startMinute,
+        endMinute: entry.endMinute,
+      });
+      const duration = document.createElement("span");
+      duration.className = entry.endMinute === null ? "today-axis-point" : "today-axis-range";
+      duration.style.top = `${geometry.top * 100}%`;
+      if (entry.endMinute !== null) duration.style.height = `${geometry.height * 100}%`;
+      return [duration];
+    }),
+  );
+  unlocated.replaceChildren();
+  if (unlocatedEntries.length > 0) {
+    const heading = document.createElement("h5");
+    setCopy(heading, "today.unlocatedTimes");
+    unlocated.append(heading);
+    unlocated.append(
+      ...unlocatedEntries.map((entry, index) => axisEntryDetails(entry, `${lane}-unlocated`, index)),
+    );
+  }
+  empty.hidden = entries.length + unlocatedEntries.length > 0;
+}
+
+function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTime): void {
+  if (!todayContinuousAxis) return;
+  const currentMinute = currentTime ? minuteOfDay(currentTime) : null;
+  const showNow = view.isToday && currentMinute !== null;
+  todayContinuousAxis.dataset.hasNow = String(showNow);
+  todayContinuousAxis.classList.toggle("is-today", showNow);
+  todayContinuousAxis.querySelectorAll<HTMLElement>(".today-axis-plot").forEach((plot) => {
+    plot.classList.toggle("is-today", showNow);
+  });
+  if (todayLocateNowButton) todayLocateNowButton.hidden = !showNow;
+  if (showNow && currentMinute !== null && todayCurrentTime) {
+    todayContinuousAxis.style.setProperty(
+      "--today-now-position",
+      `${minutePosition(currentMinute) * 100}%`,
+    );
+    todayCurrentTime.textContent = currentTime;
+    todayCurrentTime.dateTime = `${view.date}T${currentTime}`;
+    todayCurrentTime.hidden = false;
+  } else if (todayCurrentTime) {
+    todayCurrentTime.hidden = true;
+    todayCurrentTime.textContent = "";
+    todayCurrentTime.removeAttribute("datetime");
+  }
+}
+
+function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): void {
+  if (!todayContinuousAxis) return;
+  todayHourTicks?.replaceChildren(
+    ...hourTickMinutes().map((minute) => {
+      const tick = document.createElement("span");
+      tick.className = "today-hour-tick";
+      tick.style.top = `${minutePosition(minute) * 100}%`;
+      tick.textContent = formatAxisMinute(minute);
+      tick.setAttribute("aria-hidden", "true");
+      return tick;
+    }),
+  );
+  if (todayHourTicks && todayCurrentTime) todayHourTicks.append(todayCurrentTime);
+  renderTimeAxisLane(
+    todayCurrentArrangementEvents,
+    todayCurrentArrangementDurations,
+    todayCurrentArrangementDetails,
+    todayCurrentArrangementUnlocated,
+    todayCurrentArrangementEmpty,
+    view.timeAxis.currentArrangement,
+    view.timeAxis.unlocatedCurrentArrangement,
+    "arrangement",
+  );
+  renderTimeAxisLane(
+    todayConfirmedFactsEvents,
+    todayConfirmedFactsDurations,
+    todayConfirmedFactsDetails,
+    todayConfirmedFactsUnlocated,
+    todayConfirmedFactsEmpty,
+    view.timeAxis.confirmedFacts,
+    view.timeAxis.unlocatedConfirmedFacts,
+    "facts",
+  );
+  updateTodayTimeAxisClock(view, currentTime);
+}
+
 function todayEvidenceGroup(group: PlanningEvidenceView): HTMLElement {
   const section = document.createElement("section");
   section.className = "today-evidence-group";
@@ -1582,6 +1838,12 @@ function renderDatedNoteComposer(view: TodayView): void {
 }
 
 function renderToday(view: TodayView): void {
+  const previousView = currentTodayView;
+  const startsTodaySession = view.isToday && (
+    previousView === null ||
+    previousView.date !== view.date ||
+    previousView.targetBinding !== view.targetBinding
+  );
   if (currentTodayView?.date !== view.date) {
     stashDatedNoteDraft();
     historicalHabitCompletionStatus = null;
@@ -1644,15 +1906,7 @@ function renderToday(view: TodayView): void {
       view.baseline.availability === "missing" ? "today.noBaselineStart" : "today.emptyBaseline",
     );
   }
-  if (todayCurrentTimeline) {
-    todayCurrentTimeline.replaceChildren(...view.timeline.map(todayTimelineItem));
-  }
-  if (todayCurrentCount) {
-    setCopy(todayCurrentCount, "count.timeBlocks", { count: view.timeline.length });
-  }
-  if (todayCurrentEmpty) {
-    todayCurrentEmpty.hidden = view.timeline.length > 0;
-  }
+  renderTodayTimeAxis(view);
   if (todayDaytimeForm) {
     todayDaytimeForm.hidden = !view.canRecord;
   }
@@ -1676,9 +1930,12 @@ function renderToday(view: TodayView): void {
     (update) => !daytimeHasArrangementChange(update),
   );
   if (todayDaytimeCount) {
-    setCopy(todayDaytimeCount, "count.knownDirections", {
-      known: knownUpdates.length,
-      directions: directionCount,
+    setCopy(todayDaytimeCount, "count.items", {
+      count:
+        view.timeAxis.currentArrangement.length +
+        view.timeAxis.confirmedFacts.length +
+        view.timeAxis.unlocatedCurrentArrangement.length +
+        view.timeAxis.unlocatedConfirmedFacts.length,
     });
   }
   if (todayDaytimeKnown) {
@@ -1808,6 +2065,10 @@ function renderToday(view: TodayView): void {
     }
   }
   showTodayPhase(currentTodayPhase);
+  if (startsTodaySession) {
+    todayAxisFollowState = "following";
+    scheduleTodayAxisFollowScroll();
+  }
 }
 
 function renderTodayEvidence(): void {
@@ -2445,6 +2706,77 @@ async function refreshToday(
   } finally {
     updateTodayOperationState(-1);
   }
+}
+
+function scrollTodayAxisToNow(): void {
+  if (
+    currentWorkspaceDestination !== "today" ||
+    !currentTodayView?.isToday ||
+    !todayCurrentTime ||
+    todayCurrentTime.hidden ||
+    todayCurrentTime.getClientRects().length === 0
+  ) {
+    return;
+  }
+  todayAxisFollowState = locateNow(todayAxisFollowState);
+  programmaticTodayAxisScrollUntil = Date.now() + 1200;
+  todayCurrentTime.scrollIntoView({ block: "center", behavior: "smooth" });
+  window.setTimeout(() => {
+    programmaticTodayAxisScrollUntil = 0;
+  }, 1300);
+}
+
+function scheduleTodayAxisFollowScroll(): void {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      if (todayAxisFollowState === "following") scrollTodayAxisToNow();
+    });
+  });
+}
+
+async function refreshTodayClock(): Promise<void> {
+  if (currentWorkspaceDestination !== "today" || !currentTodayView) return;
+  const requestedView = currentTodayView;
+  const requestedSession: TodayAxisSession = {
+    date: requestedView.date,
+    targetBinding: requestedView.targetBinding,
+  };
+  const request = todayClockRequests.begin();
+  let clock: TodayClockView;
+  try {
+    clock = await window.__TAURI__.core.invoke<TodayClockView>("today_clock");
+  } catch {
+    return;
+  }
+  if (!todayClockRequests.isCurrent(request) || currentWorkspaceDestination !== "today") return;
+  const current = currentTodayView;
+  if (
+    !current ||
+    !clockResultMatchesSession(requestedSession, {
+      date: current.date,
+      targetBinding: current.targetBinding,
+    })
+  ) {
+    return;
+  }
+  const decision = clockTickDecision(selectedTodayDate, current.date, clock.date);
+  if (decision === "reload-today") {
+    await refreshToday(null, true);
+    return;
+  }
+  if (decision === "update-marker") {
+    const updated = { ...current, isToday: true, currentTime: clock.time };
+    currentTodayView = updated;
+    updateTodayTimeAxisClock(updated, clock.time);
+    if (todayAxisFollowState === "following") scrollTodayAxisToNow();
+    return;
+  }
+  const historical = { ...current, isToday: false, currentTime: null };
+  currentTodayView = historical;
+  if (todayDate) {
+    setCopy(todayDate, "today.selectedDate", { date: historical.date });
+  }
+  updateTodayTimeAxisClock(historical, null);
 }
 
 async function selectTodayVault(): Promise<void> {
@@ -5980,6 +6312,7 @@ function showWorkspaceDestination(
     (destinationChanged || selectedTodayDate !== dailyDate);
   if (leavingToday || changingTodaySelection) {
     todayPresentationRequests.invalidate();
+    todayClockRequests.invalidate();
     todayTaskRequests.invalidate();
     if (changingTodaySelection) {
       stashTodayTaskCreateDraft();
@@ -6134,6 +6467,13 @@ renderInterfaceLanguage({ interfaceLanguage: "zh" });
 syncWorkspaceViewportMode();
 window.addEventListener("resize", () => {
   syncWorkspaceViewportMode();
+  if (
+    currentWorkspaceDestination === "today" &&
+    currentTodayView?.isToday &&
+    todayAxisFollowState === "following"
+  ) {
+    scheduleTodayAxisFollowScroll();
+  }
 });
 showWorkspaceDestination("today");
 
@@ -6910,9 +7250,31 @@ todayPhaseButtons.forEach((button, index) => {
   });
 });
 
+todayLocateNowButton?.addEventListener("click", () => scrollTodayAxisToNow());
+
+workspaceInformation?.addEventListener("scroll", () => {
+  if (
+    currentWorkspaceDestination === "today" &&
+    currentTodayView?.isToday &&
+    Date.now() > programmaticTodayAxisScrollUntil
+  ) {
+    todayAxisFollowState = onManualScroll(todayAxisFollowState);
+  }
+}, { passive: true });
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    void refreshTodayClock();
+  }
+});
+
+window.setInterval(() => {
+  void refreshTodayClock();
+}, 60_000);
 
 window.addEventListener("focus", () => {
   if (currentWorkspaceDestination === "today") {
+    void refreshTodayClock();
     void refreshToday();
   } else if (currentWorkspaceDestination === "calendar") {
     void openCalendar();

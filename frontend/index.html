@@ -547,48 +547,77 @@
                       <p class="today-reading-introduction" data-i18n="today.timelineIntro">
                         已确认的事实、接下来计划和记录变化并排阅读；时间过去、第一次回复或没有回复都不会自动变成事实。
                       </p>
+                      <div id="today-axis-lane-legend" class="today-axis-lane-legend" role="group" aria-label="时间轴图例" data-i18n-aria-label="today.timelineLegend">
+                        <span class="today-axis-lane-legend-item">
+                          <i class="today-axis-lane-legend-symbol is-arrangement" aria-hidden="true"></i>
+                          <span data-i18n="today.currentArrangementHeading">Current arrangement</span>
+                        </span>
+                        <span class="today-axis-lane-legend-item">
+                          <i class="today-axis-lane-legend-symbol is-fact" aria-hidden="true"></i>
+                          <span data-i18n="today.confirmedFactsHeading">Confirmed facts</span>
+                        </span>
+                      </div>
                       <div class="today-daytime-layout">
-                        <section class="today-current-arrangement" aria-labelledby="today-current-arrangement-heading">
-                          <div class="today-current-heading">
-                            <div>
-                              <p class="section-label" data-i18n="today.daytimeSection">当日 · 时间轴</p>
-                              <h4 id="today-current-arrangement-heading" data-i18n="today.currentDirection">现在怎么走</h4>
+                        <div class="today-time-axis-toolbar">
+                          <p class="today-time-axis-boundary" data-i18n="today.axisNote">
+                            时间轴只整理明确事实和当前安排；没有记录的活动继续保持未知。
+                          </p>
+                          <button id="today-locate-now" type="button" class="secondary-button" data-i18n="today.locateNow">
+                            定位现在
+                          </button>
+                        </div>
+                        <div id="today-continuous-axis" class="today-continuous-axis" role="group" aria-labelledby="today-daytime-heading">
+                          <div id="today-hour-scale" class="today-hour-scale" aria-label="00:00–24:00" data-i18n-aria-label="today.fullDayScale">
+                            <span class="today-axis-heading-spacer" aria-hidden="true"></span>
+                            <div id="today-hour-ticks">
+                              <time id="today-current-time" class="today-axis-current-time" aria-label="Current local time" data-i18n-aria-label="today.currentLocalTime" hidden>--:--</time>
                             </div>
                           </div>
-                          <div class="today-axis-legend" aria-label="时间轴图例" data-i18n-aria-label="today.timelineLegend">
-                            <span data-i18n="today.known">已发生 / 已确认</span>
-                            <span data-i18n="today.notInferred">未按时间推断</span>
-                            <span data-i18n="today.revisionDirections">修订方向记录</span>
-                          </div>
+                          <section id="today-current-arrangement-lane" class="today-axis-lane" aria-labelledby="today-current-arrangement-heading">
+                            <div class="today-axis-lane-track">
+                              <h4 id="today-current-arrangement-heading" class="today-axis-lane-heading" data-i18n="today.currentArrangementHeading">
+                                Current arrangement
+                              </h4>
+                              <div class="today-axis-plot">
+                                <ol id="today-current-arrangement-events" class="today-axis-markers" aria-label="当前安排时间点" data-i18n-aria-label="today.currentTimeline"></ol>
+                                <div id="today-current-arrangement-duration" class="today-axis-durations" aria-hidden="true"></div>
+                              </div>
+                            </div>
+                            <p id="today-current-arrangement-empty" class="today-axis-empty" data-i18n="today.noCurrentArrangement" hidden>
+                              这份 Daily Record 还没有当前安排。
+                            </p>
+                            <div id="today-current-arrangement-unlocated" class="today-axis-unlocated"></div>
+                            <div id="today-current-arrangement-details" class="today-axis-details"></div>
+                          </section>
+                          <section id="today-confirmed-facts-lane" class="today-axis-lane" aria-labelledby="today-confirmed-facts-heading">
+                            <div class="today-axis-lane-track">
+                              <h4 id="today-confirmed-facts-heading" class="today-axis-lane-heading" data-i18n="today.confirmedFactsHeading">
+                                Confirmed facts
+                              </h4>
+                              <div class="today-axis-plot">
+                                <ol id="today-confirmed-facts-events" class="today-axis-markers" aria-label="已确认事实时间点" data-i18n-aria-label="today.confirmedFactsHeading"></ol>
+                                <div id="today-confirmed-facts-duration" class="today-axis-durations" aria-hidden="true"></div>
+                              </div>
+                            </div>
+                            <p id="today-confirmed-facts-empty" class="today-axis-empty" data-i18n="today.noKnownFacts" hidden>
+                              今天还没有明确记录的已发生事实。
+                            </p>
+                            <div id="today-confirmed-facts-unlocated" class="today-axis-unlocated"></div>
+                            <div id="today-confirmed-facts-details" class="today-axis-details"></div>
+                          </section>
+                        </div>
+                        <details id="today-daytime-source-details" class="today-daytime-source-details">
+                          <summary data-i18n="today.sourceRecordsAndRevisions">Daily Record details and revisions</summary>
                           <section class="today-axis-zone" aria-labelledby="today-known-heading">
-                            <p id="today-known-heading" class="today-zone-label" data-i18n="today.known">已发生 / 已确认</p>
+                            <h4 id="today-known-heading" class="today-zone-label" data-i18n="today.known">已发生 / 已确认</h4>
                             <div id="today-daytime-known" class="today-daytime-known"></div>
                             <p id="today-daytime-known-empty" class="today-phase-empty" data-i18n="today.noKnownFacts" hidden>
                               今天还没有明确记录的已发生事实。
                             </p>
                           </section>
-                          <section class="today-axis-zone today-current-zone" aria-labelledby="today-current-heading">
+                          <section class="today-axis-zone" aria-labelledby="today-future-heading">
                             <div class="today-zone-heading">
-                              <p id="today-current-heading" class="today-zone-label" data-i18n="today.currentArrangement">当前安排 · 未按时间推断</p>
-                              <span id="today-current-count" class="today-count"></span>
-                            </div>
-                            <ol
-                              id="today-current-timeline"
-                              class="today-timeline"
-                              role="list"
-                              aria-label="今天的当前安排；不按时间推断"
-                              data-i18n-aria-label="today.currentTimeline"
-                            ></ol>
-                            <p id="today-current-empty" class="today-plan-empty" data-i18n="today.noCurrentArrangement" hidden>
-                              这份 Daily Record 还没有当前安排。
-                            </p>
-                          </section>
-                          <div class="today-now-marker" role="separator">
-                            <span data-i18n="today.nowBoundary">现在 · 记录边界</span>
-                          </div>
-                          <section class="today-axis-zone today-future-zone" aria-labelledby="today-future-heading">
-                            <div class="today-zone-heading">
-                              <p id="today-future-heading" class="today-zone-label" data-i18n="today.upNext">接下来计划 · 修订记录</p>
+                              <h4 id="today-future-heading" class="today-zone-label" data-i18n="today.upNext">接下来计划 · 修订记录</h4>
                               <span id="today-future-count" class="today-count"></span>
                             </div>
                             <div id="today-future-directions" class="today-future-directions"></div>
@@ -599,11 +628,7 @@
                               修订方向按记录保留，不依据先后顺序判断哪一条仍然有效；当前安排以上方中性区域为准。
                             </p>
                           </section>
-                          <p class="today-axis-note" data-i18n="today.axisNote">
-                            时间轴只整理明确事实、当前安排线索和修订记录；没有记录的活动继续保持未知。
-                          </p>
-                        </section>
-
+                        </details>
                       </div>
                     </section>
 

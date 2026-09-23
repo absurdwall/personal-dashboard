@@ -6331,6 +6331,403 @@ body {
   }
 }
 
+/* Today ticket 02: both lanes use one fixed, full-day local-time scale. */
+.today-daytime-layout {
+  display: block;
+  min-width: 0;
+  overflow-x: auto;
+  margin-top: 18px;
+  padding-bottom: 6px;
+}
+
+.today-time-axis-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.today-time-axis-boundary {
+  margin: 0;
+  color: var(--parity-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.today-continuous-axis {
+  --today-axis-gutter: 3.7rem;
+  --today-axis-heading-height: 3rem;
+  --today-axis-hour-height: 3rem;
+  --today-axis-plot-height: calc(24 * var(--today-axis-hour-height));
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--today-axis-gutter) minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-width: 570px;
+  padding: 14px 12px 18px 8px;
+  border: 1px solid var(--parity-border);
+  border-radius: 14px;
+  background: var(--parity-surface, #fff);
+}
+
+.today-hour-scale,
+.today-axis-lane {
+  min-width: 0;
+  grid-row: 1;
+}
+
+.today-hour-scale {
+  position: relative;
+  grid-column: 1;
+  height: calc(var(--today-axis-heading-height) + var(--today-axis-plot-height));
+}
+
+.today-axis-heading-spacer,
+.today-axis-lane-heading {
+  display: flex;
+  align-items: center;
+  height: var(--today-axis-heading-height);
+  margin: 0;
+}
+
+.today-axis-lane-heading {
+  padding: 0 6px;
+  border-bottom: 1px solid var(--parity-border);
+  background: var(--parity-surface, #fff);
+  color: var(--parity-ink, #232724);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.today-axis-lane-track {
+  position: relative;
+  min-width: 0;
+}
+
+.today-axis-lane-legend {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 7px 10px;
+  border: 1px solid var(--parity-border);
+  border-radius: 8px;
+  background: var(--parity-surface, #fff);
+}
+
+.today-axis-lane-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--parity-ink, #232724);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.today-axis-lane-legend-symbol {
+  display: inline-block;
+  flex: 0 0 10px;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  background: var(--parity-surface, #fff);
+}
+
+.today-axis-lane-legend-symbol.is-arrangement {
+  border-radius: 2px;
+}
+
+.today-axis-lane-legend-symbol.is-fact {
+  border-radius: 50%;
+  background: currentColor;
+}
+
+#today-hour-ticks {
+  position: absolute;
+  inset: var(--today-axis-heading-height) 0 0;
+  height: var(--today-axis-plot-height);
+}
+
+.today-hour-tick {
+  position: absolute;
+  right: 4px;
+  z-index: 1;
+  transform: translateY(-50%);
+  color: var(--parity-muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.today-hour-tick:last-of-type {
+  transform: translateY(-100%);
+}
+
+.today-axis-current-time {
+  position: absolute;
+  top: var(--today-now-position, 50%);
+  right: 0;
+  z-index: 8;
+  padding: 3px 4px;
+  transform: translateY(-50%);
+  border-radius: 4px;
+  background: var(--parity-accent-strong, #315f4a);
+  color: #fff;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.today-axis-lane {
+  position: relative;
+}
+
+#today-current-arrangement-lane {
+  grid-column: 2;
+}
+
+#today-confirmed-facts-lane {
+  grid-column: 3;
+}
+
+.today-axis-plot {
+  position: relative;
+  height: var(--today-axis-plot-height);
+  overflow: visible;
+  border-left: 1px solid var(--parity-border);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--today-axis-hour-height) - 1px),
+    color-mix(in srgb, var(--parity-border) 72%, transparent) calc(var(--today-axis-hour-height) - 1px),
+    color-mix(in srgb, var(--parity-border) 72%, transparent) var(--today-axis-hour-height)
+  );
+}
+
+.today-axis-plot.is-today::after {
+  position: absolute;
+  top: var(--today-now-position);
+  right: 0;
+  left: 0;
+  z-index: 6;
+  border-top: 2px solid var(--parity-accent-strong, #315f4a);
+  content: "";
+  pointer-events: none;
+}
+
+.today-axis-markers,
+.today-axis-durations {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  pointer-events: none;
+}
+
+.today-axis-marker {
+  position: absolute;
+  top: var(--axis-top);
+  left: calc(5px + var(--axis-stack, 0) * 15px);
+  z-index: 3;
+  max-width: calc(100% - 10px);
+  transform: translateY(-50%);
+}
+
+.today-axis-marker-link {
+  display: block;
+  min-width: 40px;
+  min-height: 26px;
+  padding: 5px 7px;
+  overflow: hidden;
+  border: 1px solid var(--parity-border);
+  border-radius: 7px;
+  background: var(--parity-surface, #fff);
+  color: var(--parity-ink, #232724);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+#today-current-arrangement-events .today-axis-marker-link::before {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  content: "";
+}
+
+#today-confirmed-facts-events .today-axis-marker-link::before {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.today-axis-marker-link:hover,
+.today-axis-marker-link:focus-visible {
+  position: relative;
+  z-index: 7;
+  outline: 3px solid color-mix(in srgb, var(--parity-accent) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.today-axis-range {
+  position: absolute;
+  top: var(--axis-top);
+  left: 8px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--parity-accent, #55856b);
+  opacity: 0.76;
+}
+
+.today-axis-point {
+  position: absolute;
+  top: var(--axis-top);
+  left: 4px;
+  width: 10px;
+  height: 10px;
+  transform: translateY(-50%);
+  border: 2px solid var(--parity-accent-strong, #315f4a);
+  border-radius: 50%;
+  background: var(--parity-surface, #fff);
+}
+
+.today-axis-empty,
+.today-axis-unlocated {
+  margin: 12px 0 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--parity-border) 22%, transparent);
+  color: var(--parity-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.today-axis-unlocated:empty {
+  display: none;
+}
+
+.today-axis-unlocated h5 {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.today-axis-details {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.today-axis-entry-detail {
+  min-width: 0;
+  border: 1px solid var(--parity-border);
+  border-radius: 8px;
+  background: var(--parity-surface, #fff);
+  color: var(--parity-ink, #232724);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.today-axis-entry-detail > summary {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, auto) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.today-axis-entry-detail > summary time {
+  color: var(--parity-accent-strong, #315f4a);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.today-axis-entry-detail > summary span {
+  overflow-wrap: anywhere;
+}
+
+.today-axis-entry-summary-metadata {
+  grid-column: 1 / -1;
+  color: var(--parity-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.today-axis-entry-detail > p {
+  margin: 0;
+  padding: 0 8px 8px;
+  overflow-wrap: anywhere;
+}
+
+.today-axis-entry-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  padding: 0 8px 8px;
+  color: var(--parity-muted);
+  font-size: 10px;
+}
+
+.today-daytime-source-details {
+  margin-top: 14px;
+  border-top: 1px solid var(--parity-border);
+  color: var(--parity-ink, #232724);
+}
+
+.today-daytime-source-details > summary {
+  padding: 12px 0 4px;
+  color: var(--parity-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+@media (max-width: 680px) {
+  .today-time-axis-toolbar {
+    align-items: flex-start;
+  }
+
+  .today-continuous-axis {
+    --today-axis-gutter: 3.25rem;
+    --today-axis-hour-height: 2.5rem;
+    min-width: 535px;
+    gap: 8px;
+    padding: 10px 8px 14px 4px;
+  }
+
+  .today-axis-lane-heading {
+    padding-inline: 4px;
+    font-size: 11px;
+  }
+
+  .today-axis-marker-link {
+    min-width: 36px;
+    min-height: 24px;
+    padding: 4px 5px;
+  }
+}
+
 /* Daytime shares the outer two-column layout: tasks then notes in the right rail. */
 .today-daytime-layout {
   grid-template-columns: minmax(0, 1fr);
