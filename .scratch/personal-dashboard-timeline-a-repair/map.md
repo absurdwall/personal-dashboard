@@ -5,15 +5,28 @@
 | Ticket | Blocked by | Status |
 | --- | --- | --- |
 | [01 恢复 A 的直接可读双栏时间轴](issues/01-restore-readable-a-cards.md) | None | claimed |
-| [02 让 A 卡片在重叠与窄窗口下保持可读](issues/02-readable-overlap-and-narrow-layout.md) | 01 | claimed |
+| [02 单列叠放卡片在重叠与窄窗口下保持可读](issues/02-readable-overlap-and-narrow-layout.md) | 01 | claimed |
 
 当前可执行 frontier：02（用户已授权开始）。01 的卡片结构与几何候选已有实现和 packaged 证据，但仍保持 `claimed`、待用户验收；本轮不将 01 标为用户接受或 resolved。
+
+## 用户查看 packaged 候选后的最新方向
+
+用户实际打开前一版候选后指出双栏中的事实栏常被窗口截断，并要求将当前安排与已确认事实合并成单列；同刻／交叉事项应轻微叠放，以小型 `∨` 控件逐张前翻，使用不同颜色区分计划和事实。此前双栏候选的测试／截图／复核保留为历史工程证据，但已被用户的新方向覆盖，不视为当前验收通过。02 状态继续为 `claimed`，须更新原生 packaged App 并让用户直接查看后才进入验收判断。
 
 旧时间轴票曾 resolved，但用户提供的画面未达到 A 的视觉要求；旧票状态不得作为通过凭据。保留历史习惯功能和现有时间解析，不重建整套应用。
 
 每票包含 packaged 图像对照与独立视觉复核。工程完成与用户接受分开记录，候选未获用户接受前不得表述为用户验收通过。本次只发布，不改动或提交正在进行的产品代码，不替换日常安装，不推送。
 
 > 上述“不改动或提交”记录属于此前发布／复核阶段；下方 2026-09-23 记录更新为本次用户显式 `/implement` 授权后的实际修复与本地提交状态。
+
+## 最新方向：单列叠放候选待用户查看
+
+用户看过双栏 packaged 窗口后明确要求：安排和事实共用一条时间轴、以颜色区分；同刻或时间区间相交的卡片轻微叠放，并能逐张前翻。该方向覆盖旧票 02 双栏候选的预期；01 和 02 仍均为 `claimed`，不得把旧证据或本轮工程检查表述为用户验收。
+
+- 最新候选在 `/tmp/pd-timeline-a-ticket02-visual-final/release/bundle/macos/Personal Dashboard.app`，实现提交 `4c6941a`，executable SHA-256 `21f88432d4f8030b88d74c9fffb4b3b37da55d864c28f54aa377ac8045baeba5`；未替换日常安装、未发布，因缺少 Apple 凭据而未 notarize。
+- `today-time-axis-overlap` 已通过 packaged 中英宽／窄合成场景，涵盖 13:00／13:01／13:59、同刻和部分区间重叠、叠放前翻、鼠标／键盘详情及未定时入口；隔离记录前后 hash 相同。截图在 `/tmp/pd-timeline-a-evidence/single-lane-run-r6/`。实现者已读图；独立新方向视觉复核仍待完成。
+- 此确切候选已在原生 Mac 窗口打开，显示当前 Today 和用户现有 Vault 数据，没有保存或改写个人记录；这是用户可直接看到的真实 app，合成 fixture 截图只证明叠放交互。
+- 最新证据及未解决的全前端套件外部契约失败记录在 `issues/02-readable-overlap-and-narrow-layout.md`。最终观感待用户本人确认，issue 状态继续 `claimed`。
 
 ## Management 登记
 
