@@ -4355,7 +4355,7 @@ run_today_time_axis_overlap_scenario() {
   local fact_title="记录临近整点的已确认事实"
   local english_title="Review the independent evidence and prepare a readable implementation summary."
   local visible_card_specifications=""
-  local fact_card_specification=""
+  local near_now_card_specifications=""
 
   current_step="preparing dense overlap and adjacent-time records in an isolated Vault"
   mkdir -p "$vault/.obsidian" "$(dirname "$today_record")" "$acceptance_data_directory" "$capture_directory"
@@ -4385,13 +4385,17 @@ run_today_time_axis_overlap_scenario() {
   run_driver assert-text "$short_range_title"
   run_driver assert-text "$later_range_title"
   run_driver capture-window "$capture_path" 10
-  visible_card_specifications="$short_range_title|13:00–13:35;$first_same_minute_title|13:00;$second_same_minute_title|13:00;$adjacent_title|13:05;$later_range_title|13:30–14:30;$english_title|14:00–15:00"
-  fact_card_specification="$fact_title|13:59"
+  visible_card_specifications="$short_range_title|13:00–13:35;$first_same_minute_title|13:00;$second_same_minute_title|13:00;$adjacent_title|13:05;$later_range_title|13:30–14:30;$fact_title|13:59;$english_title|14:00–15:00"
+  near_now_card_specifications="$short_range_title|13:00–13:35;$first_same_minute_title|13:00;$second_same_minute_title|13:00;$adjacent_title|13:05;$later_range_title|13:30–14:30;$fact_title|13:59"
   run_driver_expect assert-axis-cards-fit "$visible_card_specifications" 10 || failures=$((failures + 1))
-  run_driver_expect assert-axis-tracks-differ "$short_range_title|$later_range_title" 10 || failures=$((failures + 1))
-  run_driver_expect assert-axis-tracks-differ "$later_range_title|$english_title" 10 || failures=$((failures + 1))
-  run_driver assert-window-visible "横向滚动以查看时间轴的两栏内容。" 10
+  run_driver_expect assert-axis-overlap-stack "$first_same_minute_title|$second_same_minute_title" 10 || failures=$((failures + 1))
+  run_driver_expect assert-axis-overlap-stack "$later_range_title|$english_title" 10 || failures=$((failures + 1))
   if (( failures == 0 )); then
+    run_driver cycle-axis-stack "" 10
+    run_driver assert-focused-text "$first_same_minute_title" 5
+    capture_path="$capture_directory/today-time-axis-overlap-zh-wide-13-00-stack-revealed.png"
+    [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+    run_driver capture-window "$capture_path" 10
     run_driver click-axis-card "$first_same_minute_title" 10
     sleep 0.6
     run_driver assert-text "DETAIL-ALPHA-UNIQUE-3147"
@@ -4411,16 +4415,11 @@ run_today_time_axis_overlap_scenario() {
     run_driver assert-window-visible "$second_same_minute_title" 10
   fi
   run_driver press "定位现在" 10
-  current_step="checking the Chinese packaged horizontal-scroll path at 13:00"
-  run_driver scroll-axis-horizontal "right|$fact_title" 10
-  capture_path="$capture_directory/today-time-axis-overlap-zh-wide-13-00-facts.png"
-  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
-  run_driver assert-axis-cards-fit "$fact_card_specification" 10
-  run_driver capture-window "$capture_path" 10
-  run_driver scroll-axis-horizontal "left|$short_range_title" 10
-  capture_path="$capture_directory/today-time-axis-overlap-zh-wide-13-00-plan.png"
-  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+  current_step="checking the single Chinese packaged timeline at 13:00"
+  run_driver assert-window-visible "$fact_title" 10
   run_driver assert-axis-cards-fit "$visible_card_specifications" 10
+  capture_path="$capture_directory/today-time-axis-overlap-zh-wide-13-00-all-items.png"
+  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
   run_driver capture-window "$capture_path" 10
   [[ "$(shasum -a 256 "$today_record" | awk '{print $1}')" == "$record_hash" ]] ||
     fail "the packaged overlap reading changed its synthetic Daily Record"
@@ -4457,23 +4456,18 @@ run_today_time_axis_overlap_scenario() {
   run_driver assert-active-text "Confirmed facts"
   run_driver assert-window-visible-link "Items without a precise time" 10
   run_driver assert-text "13:01"
-  run_driver assert-window-visible "Scroll horizontally to view both timeline lanes." 10
+  run_driver assert-window-visible "$fact_title" 10
   run_driver assert-window-visible "Locate now" 10
   run_driver press "Locate now" 10
   run_driver assert-text "13:01"
   run_driver assert-window-visible-link "Items without a precise time" 10
   run_driver capture-window "$capture_path" 10
-  run_driver_expect assert-axis-cards-fit "$visible_card_specifications" 10 || failures=$((failures + 1))
-  current_step="checking that the English packaged facts lane can be fully read at 640x520"
-  run_driver scroll-axis-horizontal "right|$fact_title" 10
-  capture_path="$capture_directory/today-time-axis-overlap-en-narrow-13-01-facts.png"
+  run_driver_expect assert-axis-cards-fit "$near_now_card_specifications" 10 || failures=$((failures + 1))
+  run_driver_expect assert-axis-overlap-stack "$first_same_minute_title|$second_same_minute_title" 10 || failures=$((failures + 1))
+  run_driver scroll-text-visible "$english_title" 10
+  run_driver assert-window-visible "$english_title" 10
+  capture_path="$capture_directory/today-time-axis-overlap-en-narrow-14-00.png"
   [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
-  run_driver assert-axis-cards-fit "$fact_card_specification" 10
-  run_driver capture-window "$capture_path" 10
-  run_driver scroll-axis-horizontal "left|$short_range_title" 10
-  capture_path="$capture_directory/today-time-axis-overlap-en-narrow-13-01-plan.png"
-  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
-  run_driver assert-axis-cards-fit "$visible_card_specifications" 10
   run_driver capture-window "$capture_path" 10
   run_driver set-size "1120x760" 10
   run_driver press "Locate now" 10
@@ -4493,7 +4487,9 @@ run_today_time_axis_overlap_scenario() {
   run_driver assert-window-visible "Current arrangement" 10
   run_driver assert-window-visible "Confirmed facts" 10
   run_driver assert-window-visible "给朋友回消息" 10
+  run_driver scroll-text-visible "完成桌面整理" 10
   run_driver assert-window-visible "完成桌面整理" 10
+  run_driver scroll-text-visible "These items do not set timeline positions. Record time is not occurrence time." 10
   run_driver assert-window-visible "These items do not set timeline positions. Record time is not occurrence time." 10
   if ! stop_app; then
     fail "the narrow packaged overlap view did not exit after capture"
@@ -4512,18 +4508,17 @@ run_today_time_axis_overlap_scenario() {
   run_driver wait-active-text "今天 · $today_date" 20
   run_driver assert-active-text "当前安排"
   run_driver assert-active-text "已确认事实"
-  run_driver assert-window-visible "横向滚动以查看时间轴的两栏内容。" 10
   run_driver press "定位现在" 10
   run_driver assert-text "13:01"
   run_driver assert-window-visible-link "时间未明确的内容" 10
-  run_driver assert-axis-cards-fit "$visible_card_specifications" 10
+  run_driver assert-window-visible "$fact_title" 10
+  run_driver assert-axis-cards-fit "$near_now_card_specifications" 10
   run_driver capture-window "$capture_path" 10
-  run_driver scroll-axis-horizontal "right|$fact_title" 10
-  capture_path="$capture_directory/today-time-axis-overlap-zh-narrow-13-01-facts.png"
+  run_driver scroll-text-visible "$english_title" 10
+  run_driver assert-window-visible "$english_title" 10
+  capture_path="$capture_directory/today-time-axis-overlap-zh-narrow-14-00.png"
   [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
-  run_driver assert-axis-cards-fit "$fact_card_specification" 10
   run_driver capture-window "$capture_path" 10
-  run_driver scroll-axis-horizontal "left|$short_range_title" 10
   run_driver click-visible-link "时间未明确的内容" 10
   sleep 0.5
   capture_path="$capture_directory/today-time-axis-overlap-zh-narrow-13-01-unlocated.png"
@@ -4534,7 +4529,9 @@ run_today_time_axis_overlap_scenario() {
   run_driver assert-window-visible "当前安排" 10
   run_driver assert-window-visible "已确认事实" 10
   run_driver assert-window-visible "给朋友回消息" 10
+  run_driver scroll-text-visible "完成桌面整理" 10
   run_driver assert-window-visible "完成桌面整理" 10
+  run_driver scroll-text-visible "这两项不参与时间位置计算。记录时间不等于事情发生时间。" 10
   run_driver assert-window-visible "这两项不参与时间位置计算。记录时间不等于事情发生时间。" 10
   if ! stop_app; then
     fail "the narrow Chinese packaged overlap view did not exit after capture"

@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-cards-fit|assert-axis-tracks-differ|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-cards-fit|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -1413,7 +1413,65 @@ func axisScrollSurface(in path: AccessibilityPath) -> AXUIElement? {
     })
 }
 
-func assertAxisCardsFit(_ application: AXUIElement, specifications: String) throws {
+func scrollAxisCardIntoWindow(
+    _ application: AXUIElement,
+    pid: pid_t,
+    title: String
+) throws {
+    guard let window = mainWindow(application),
+          let windowFrame = frame(window) else {
+        throw DriverError.timeout("main window bounds for time-axis card: \(title)")
+    }
+    let visibleWindow = windowFrame.insetBy(dx: -2, dy: -2)
+    for _ in 0..<8 {
+        guard let card = axisCardLink(application, title: title),
+              let cardFrame = frame(card.link) else {
+            throw DriverError.timeout("rendered time-axis card bounds: \(title)")
+        }
+        if visibleWindow.contains(cardFrame) {
+            return
+        }
+        guard let surface = scrollSurface(for: card.path),
+              let surfaceFrame = frame(surface) else {
+            throw DriverError.timeout("scrollable surface for time-axis card: \(title)")
+        }
+        let direction = cardFrame.maxY > windowFrame.maxY ? "down" : "up"
+        let action = direction == "down" ? "AXScrollDownByPage" : "AXScrollUpByPage"
+        let actionError = AXUIElementPerformAction(surface, action as CFString)
+        Thread.sleep(forTimeInterval: 0.15)
+        let afterPage = axisCardLink(application, title: title).flatMap { frame($0.link) }
+        if actionError != .success || afterPage.map({ abs($0.minY - cardFrame.minY) < 1 }) != false {
+            guard let source = CGEventSource(stateID: .combinedSessionState),
+                  let move = CGEvent(
+                    mouseEventSource: source,
+                    mouseType: .mouseMoved,
+                    mouseCursorPosition: CGPoint(x: surfaceFrame.midX, y: surfaceFrame.midY),
+                    mouseButton: .left
+                  ),
+                  let scroll = CGEvent(
+                    scrollWheelEvent2Source: source,
+                    units: .pixel,
+                    wheelCount: 1,
+                    wheel1: direction == "down" ? -420 : 420,
+                    wheel2: 0,
+                    wheel3: 0
+                  ) else {
+                throw DriverError.actionFailed("scroll time-axis card into view", .failure)
+            }
+            move.postToPid(pid)
+            Thread.sleep(forTimeInterval: 0.05)
+            scroll.postToPid(pid)
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+    }
+    guard let card = axisCardLink(application, title: title),
+          let cardFrame = frame(card.link),
+          visibleWindow.contains(cardFrame) else {
+        throw DriverError.timeout("fully visible time-axis card after scrolling: \(title)")
+    }
+}
+
+func assertAxisCardsFit(_ application: AXUIElement, pid: pid_t, specifications: String) throws {
     guard let window = mainWindow(application),
           let windowFrame = frame(window) else {
         throw DriverError.timeout("main window bounds for rendered time-axis cards")
@@ -1422,8 +1480,11 @@ func assertAxisCardsFit(_ application: AXUIElement, specifications: String) thro
     var cards: [(title: String, frame: CGRect)] = []
     for specification in specifications.split(separator: ";", omittingEmptySubsequences: false) {
         let fields = specification.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-        guard fields.count == 2,
-              let card = axisCardLink(application, title: fields[0]),
+        guard fields.count == 2 else {
+            throw DriverError.usage
+        }
+        try scrollAxisCardIntoWindow(application, pid: pid, title: fields[0])
+        guard let card = axisCardLink(application, title: fields[0]),
               let cardFrame = frame(card.link),
               let titleFrame = frame(card.path.element),
               let scrollSurface = axisScrollSurface(in: card.path),
@@ -1455,24 +1516,13 @@ func assertAxisCardsFit(_ application: AXUIElement, specifications: String) thro
         }
         cards.append((fields[0], cardFrame))
     }
-    for leftIndex in cards.indices {
-        for rightIndex in cards.indices where rightIndex > leftIndex {
-            let overlap = cards[leftIndex].frame.intersection(cards[rightIndex].frame)
-            if overlap.width > 1 && overlap.height > 1 {
-                throw DriverError.unexpectedText(
-                    "rendered time-axis click targets overlap: \(cards[leftIndex].title) " +
-                        "\(cards[leftIndex].frame) / \(cards[rightIndex].title) \(cards[rightIndex].frame)"
-                )
-            }
-        }
-    }
-    print("Rendered card times fit their links and hit targets do not overlap:")
+    print("Rendered card times and hit targets fit the single timeline lane when brought into view:")
     for card in cards {
         print("  \(card.title): \(card.frame)")
     }
 }
 
-func assertAxisTracksDiffer(
+func assertAxisOverlapStack(
     _ application: AXUIElement,
     firstTitle: String,
     secondTitle: String
@@ -1481,16 +1531,29 @@ func assertAxisTracksDiffer(
           let second = axisCardLink(application, title: secondTitle),
           let firstFrame = frame(first.link),
           let secondFrame = frame(second.link) else {
-        throw DriverError.timeout("rendered cards for actual-range track collision: \(firstTitle), \(secondTitle)")
+        throw DriverError.timeout("rendered cards for overlap stack: \(firstTitle), \(secondTitle)")
     }
-    let horizontalOverlap = min(firstFrame.maxX, secondFrame.maxX) - max(firstFrame.minX, secondFrame.minX)
-    guard horizontalOverlap <= 1 else {
+    let overlap = firstFrame.intersection(secondFrame)
+    let fannedApart = abs(firstFrame.minX - secondFrame.minX) > 1 ||
+        abs(firstFrame.minY - secondFrame.minY) > 1
+    let revealButton = findPressable(application, "切换重叠事项", contains: true) ??
+        findPressable(application, "Show next overlapping item", contains: true)
+    guard overlap.width > 1, overlap.height > 1, fannedApart, revealButton != nil else {
         throw DriverError.unexpectedText(
-            "rendered cards share a horizontal track although their true ranges overlap: " +
+            "rendered overlapping cards are not fanned with a reveal control: " +
                 "\(firstTitle)=\(firstFrame) / \(secondTitle)=\(secondFrame)"
         )
     }
-    print("Rendered overlapping true ranges occupy distinct click-target tracks: \(firstFrame) / \(secondFrame)")
+    print("Rendered overlapping cards share one fanned stack with a reveal control: \(firstFrame) / \(secondFrame)")
+}
+
+func cycleAxisStack(_ application: AXUIElement) throws {
+    guard let revealButton = findPressable(application, "切换重叠事项", contains: true) ??
+        findPressable(application, "Show next overlapping item", contains: true) else {
+        throw DriverError.timeout("overlapping time-axis stack reveal control")
+    }
+    try performAccessibilityAction(revealButton, "AXPress", "reveal next overlapping time-axis card")
+    print("Revealed the next card in its overlapping time-axis stack")
 }
 
 func clickAxisCard(_ application: AXUIElement, pid: pid_t, title: String) throws {
@@ -3656,13 +3719,15 @@ do {
         )
         print("Rendered card text and true time bounds are visible: \(parts[0])–\(parts[1]) \(parts[2])")
     case "assert-axis-cards-fit":
-        try assertAxisCardsFit(application, specifications: text)
-    case "assert-axis-tracks-differ":
+        try assertAxisCardsFit(application, pid: pid, specifications: text)
+    case "assert-axis-overlap-stack":
         let parts = text.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
         guard parts.count == 2 else {
             throw DriverError.usage
         }
-        try assertAxisTracksDiffer(application, firstTitle: parts[0], secondTitle: parts[1])
+        try assertAxisOverlapStack(application, firstTitle: parts[0], secondTitle: parts[1])
+    case "cycle-axis-stack":
+        try cycleAxisStack(application)
     case "click-axis-card":
         try clickAxisCard(application, pid: pid, title: text)
     case "focus-axis-card":

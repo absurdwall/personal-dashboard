@@ -5,7 +5,7 @@ import {
   axisLabelCenterMinute,
   axisMarkerLayout,
   axisGeometry,
-  axisTrackPlacements,
+  axisOverlapPlacements,
   clockResultMatchesSession,
   clockTickDecision,
   hourTickIsClearFromNow,
@@ -76,30 +76,30 @@ test('keeps the now label clear of the nearest hourly tick at exact and adjacent
   assert.equal(hourTickIsClearFromNow(840, null), true);
 });
 
-test('assigns visible time-axis cards to separate tracks when their labels overlap', () => {
+test('groups overlapping time-axis cards into one readable stack instead of horizontal tracks', () => {
   assert.equal(TODAY_AXIS_LABEL_MINIMUM_MINUTES, 48);
   assert.deepEqual(
-    axisTrackPlacements([
+    axisOverlapPlacements([
       { startMinute: 780, endMinute: 840 },
       { startMinute: 780, endMinute: null },
       { startMinute: 815, endMinute: 850 },
       { startMinute: 900, endMinute: 945 },
     ]),
     [
-      { track: 1, tracks: 3 },
-      { track: 0, tracks: 3 },
-      { track: 2, tracks: 3 },
-      { track: 0, tracks: 1 },
+      { stackId: 0, stackIndex: 1, stackSize: 3 },
+      { stackId: 0, stackIndex: 0, stackSize: 3 },
+      { stackId: 0, stackIndex: 2, stackSize: 3 },
+      { stackId: 1, stackIndex: 0, stackSize: 1 },
     ],
   );
   assert.deepEqual(
-    axisTrackPlacements([
+    axisOverlapPlacements([
       { startMinute: 360, endMinute: null },
       { startMinute: 400, endMinute: null },
     ]),
     [
-      { track: 0, tracks: 2 },
-      { track: 1, tracks: 2 },
+      { stackId: 0, stackIndex: 0, stackSize: 2 },
+      { stackId: 0, stackIndex: 1, stackSize: 2 },
     ],
   );
   assert.equal(axisLabelCenterMinute(0), TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
@@ -107,36 +107,36 @@ test('assigns visible time-axis cards to separate tracks when their labels overl
   assert.equal(axisLabelCenterMinute(1420), 1440 - TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
   assert.equal(axisLabelCenterMinute(1440), 1440 - TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
   assert.deepEqual(
-    axisTrackPlacements([
+    axisOverlapPlacements([
       { startMinute: 0, endMinute: null },
       { startMinute: 30, endMinute: 50 },
     ]),
     [
-      { track: 0, tracks: 2 },
-      { track: 1, tracks: 2 },
+      { stackId: 0, stackIndex: 0, stackSize: 2 },
+      { stackId: 0, stackIndex: 1, stackSize: 2 },
     ],
   );
   assert.deepEqual(
-    axisTrackPlacements([
+    axisOverlapPlacements([
       { startMinute: 1430, endMinute: 1431 },
       { startMinute: 1416, endMinute: 1440 },
     ]),
     [
-      { track: 0, tracks: 2 },
-      { track: 1, tracks: 2 },
+      { stackId: 0, stackIndex: 0, stackSize: 2 },
+      { stackId: 0, stackIndex: 1, stackSize: 2 },
     ],
   );
 });
 
-test('keeps a short range track occupied through its real end when the next label starts later', () => {
+test('stacks partially overlapping real time ranges without moving their source anchors', () => {
   assert.deepEqual(
-    axisTrackPlacements([
+    axisOverlapPlacements([
       { startMinute: 780, endMinute: 815 },
       { startMinute: 805, endMinute: 850 },
     ]),
     [
-      { track: 0, tracks: 2 },
-      { track: 1, tracks: 2 },
+      { stackId: 0, stackIndex: 0, stackSize: 2 },
+      { stackId: 0, stackIndex: 1, stackSize: 2 },
     ],
   );
 });
@@ -202,7 +202,7 @@ test('clock refresh preserves historical selection and manual browsing', () => {
   assert.equal(requests.isCurrent(stale), false);
 });
 
-test('time axis markup keeps both lanes named and keyboard reachable', () => {
+test('time axis markup uses one full-width lane for arrangement and fact cards', () => {
   const nodes = elements();
   const axis = nodes.find((node) => node.attrs.includes('id="today-continuous-axis"'));
   const legend = nodes.find((node) => node.attrs.includes('id="today-axis-lane-legend"'));
@@ -210,37 +210,36 @@ test('time axis markup keeps both lanes named and keyboard reachable', () => {
   const axisScroller = nodes.find((node) => node.attrs.includes('class="today-axis-scroll-surface"'));
   const unlocatedRegion = nodes.find((node) => node.attrs.includes('id="today-unlocated-time-region"'));
   const unlocatedShortcut = nodes.find((node) => node.attrs.includes('id="today-unlocated-time-shortcut"'));
-  const arrangement = nodes.find((node) => node.attrs.includes('id="today-current-arrangement-lane"'));
-  const facts = nodes.find((node) => node.attrs.includes('id="today-confirmed-facts-lane"'));
+  const lane = nodes.find((node) => node.attrs.includes('id="today-timeline-lane"'));
+  const markers = nodes.find((node) => node.attrs.includes('id="today-timed-events"'));
   const unlocatedAside = nodes.find((node) => node.attrs.includes('class="today-side-region"'));
   const arrangementUnlocated = nodes.find((node) => node.attrs.includes('id="today-current-arrangement-unlocated"'));
   const factsUnlocated = nodes.find((node) => node.attrs.includes('id="today-confirmed-facts-unlocated"'));
-  assert.ok(axis && legend && daytimeLayout && axisScroller && unlocatedRegion && unlocatedShortcut && arrangement && facts);
-  assert.notEqual(legend.parent, daytimeLayout, 'lane labels remain outside the narrow horizontal scroller');
+  assert.ok(axis && legend && daytimeLayout && axisScroller && unlocatedRegion && unlocatedShortcut && lane && markers);
+  assert.notEqual(legend.parent, daytimeLayout, 'type legend remains outside the timeline lane');
   assert.equal(axis.parent, axisScroller);
   assert.equal(unlocatedRegion.parent, unlocatedAside, 'untimed entries stay beside the Today timeline');
   assert.equal(arrangementUnlocated?.parent?.parent, unlocatedRegion);
   assert.equal(factsUnlocated?.parent?.parent, unlocatedRegion);
   assert.ok(unlocatedShortcut.attrs.includes('href="#today-unlocated-time-region"'));
-  assert.equal(arrangement.parent, axis);
-  assert.equal(facts.parent, axis);
-  assert.ok(arrangement.attrs.includes('aria-labelledby="today-current-arrangement-heading"'));
-  assert.ok(facts.attrs.includes('aria-labelledby="today-confirmed-facts-heading"'));
-  for (const id of ['today-current-arrangement-heading', 'today-confirmed-facts-heading']) {
-    const heading = nodes.find((node) => node.attrs.includes(`id="${id}"`));
-    assert.ok(heading?.parent?.attrs.includes('class="today-axis-lane-track"'), `${id} stays with its plotted lane`);
-  }
+  assert.equal(lane.parent, axis);
+  assert.equal(markers.parent?.parent?.parent, lane);
+  assert.ok(lane.attrs.includes('aria-labelledby="today-timeline-lane-heading"'));
+  assert.equal(nodes.some((node) => node.attrs.includes('id="today-current-arrangement-lane"')), false);
+  assert.equal(nodes.some((node) => node.attrs.includes('id="today-confirmed-facts-lane"')), false);
   for (const id of [
     'today-hour-scale',
     'today-hour-ticks',
-    'today-current-arrangement-empty',
-    'today-confirmed-facts-empty',
+    'today-timeline-lane-heading',
+    'today-timed-events',
+    'today-timed-duration',
+    'today-timed-empty',
+    'today-timed-details',
     'today-current-arrangement-unlocated',
     'today-confirmed-facts-unlocated',
     'today-unlocated-time-region',
     'today-unlocated-time-shortcut',
     'today-axis-scroll-surface',
-    'today-axis-scroll-hint',
     'today-current-time',
     'today-daytime-short-records',
     'today-daytime-updates',

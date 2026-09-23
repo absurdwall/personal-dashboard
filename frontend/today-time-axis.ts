@@ -2,10 +2,9 @@ export const TODAY_AXIS_MINUTES = 24 * 60;
 export const TODAY_AXIS_LABEL_MINIMUM_MINUTES = 48;
 export const TODAY_AXIS_SHORT_RANGE_MAXIMUM_MINUTES = 36;
 export const TODAY_AXIS_NOW_LABEL_CLEARANCE_MINUTES = 12;
-export const TODAY_AXIS_MINIMUM_TRACK_WIDTH = 92;
 
 export type TimeAxisEntry = Readonly<{ startMinute: number; endMinute: number | null }>;
-export type AxisTrackPlacement = Readonly<{ track: number; tracks: number }>;
+export type AxisOverlapPlacement = Readonly<{ stackId: number; stackIndex: number; stackSize: number }>;
 export type AxisMarkerLayout = Readonly<{
   isCenteredLabel: boolean;
   heightMinutes: number;
@@ -80,8 +79,8 @@ export function axisGeometry(entry: TimeAxisEntry): Readonly<{ top: number; heig
   return { top, height: (entry.endMinute - entry.startMinute) / TODAY_AXIS_MINUTES };
 }
 
-export function axisTrackPlacements(entries: readonly TimeAxisEntry[]): readonly AxisTrackPlacement[] {
-  const placements = entries.map(() => ({ track: 0, tracks: 1 }));
+export function axisOverlapPlacements(entries: readonly TimeAxisEntry[]): readonly AxisOverlapPlacement[] {
+  const placements = entries.map(() => ({ stackId: 0, stackIndex: 0, stackSize: 1 }));
   const ordered = entries
     .map((entry, index) => {
       const duration = entry.endMinute === null ? 0 : entry.endMinute - entry.startMinute;
@@ -101,6 +100,7 @@ export function axisTrackPlacements(entries: readonly TimeAxisEntry[]): readonly
     })
     .sort((left, right) => left.start - right.start || left.index - right.index);
 
+  let stackId = 0;
   for (let groupStart = 0; groupStart < ordered.length;) {
     let groupEnd = groupStart;
     let componentEnd = ordered[groupStart].end;
@@ -109,24 +109,16 @@ export function axisTrackPlacements(entries: readonly TimeAxisEntry[]): readonly
       componentEnd = Math.max(componentEnd, ordered[groupEnd].end);
     }
 
-    const trackEnds: number[] = [];
-    const groupPlacements: Array<{ index: number; track: number }> = [];
+    const groupSize = groupEnd - groupStart + 1;
     for (let index = groupStart; index <= groupEnd; index += 1) {
-      const entry = ordered[index];
-      let track = trackEnds.findIndex((end) => end <= entry.start);
-      if (track === -1) {
-        track = trackEnds.length;
-        trackEnds.push(entry.end);
-      } else {
-        trackEnds[track] = entry.end;
-      }
-      groupPlacements.push({ index: entry.index, track });
-    }
-
-    for (const placement of groupPlacements) {
-      placements[placement.index] = { track: placement.track, tracks: trackEnds.length };
+      placements[ordered[index].index] = {
+        stackId,
+        stackIndex: index - groupStart,
+        stackSize: groupSize,
+      };
     }
     groupStart = groupEnd + 1;
+    stackId += 1;
   }
 
   return placements;
