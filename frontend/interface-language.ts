@@ -499,6 +499,18 @@ const interfaceCopies = {
   "habits.expand": { zh: "展开", en: "Expand" },
   "habits.collapse": { zh: "收起", en: "Collapse" },
   "habits.history": { zh: "近 12 周记录", en: "Past 12 weeks" },
+  "habits.openHistoricalCorrection": {
+    zh: "查看并补记 {date} 的本地习惯完成",
+    en: "Review and record local habit completion for {date}",
+  },
+  "habits.expandHistoryFor": {
+    zh: "展开“{habit}”的历史",
+    en: "Expand history for “{habit}”",
+  },
+  "habits.collapseHistoryFor": {
+    zh: "收起“{habit}”的历史",
+    en: "Collapse history for “{habit}”",
+  },
   "habits.historyCaption": { zh: "点 = 有来源记录；实心完成与文字记录状态不同", en: "Dot = source record; a solid completion differs from a text-only record" },
   "habits.chooseHistory": { zh: "选择一个日期点，查看来源、coverage 与记录。", en: "Choose a date to inspect sources, coverage, and records." },
   "habits.historyContext": { zh: "历史目标 context：{context}", en: "Historical goal context: {context}" },

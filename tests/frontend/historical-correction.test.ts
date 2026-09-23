@@ -1,8 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { historicalHabitCorrectionPresentation } from "../../frontend/habit-completion.ts";
+import {
+  historicalHabitCorrectionDate,
+  historicalHabitCorrectionPresentation,
+} from "../../frontend/habit-completion.ts";
 import { reconcileHabitCompletionWrite } from "../../frontend/habit-completion-command.ts";
+
+test("historical habit correction accepts only real dates before today", () => {
+  assert.equal(historicalHabitCorrectionDate("2026-09-08", "2026-09-09"), "2026-09-08");
+  assert.equal(historicalHabitCorrectionDate("2026-09-07", "2026-09-09"), "2026-09-07");
+  assert.equal(historicalHabitCorrectionDate("2026-08-31", "2026-09-09"), "2026-08-31");
+  assert.equal(historicalHabitCorrectionDate("2026-09-09", "2026-09-09"), null);
+  assert.equal(historicalHabitCorrectionDate("2026-09-10", "2026-09-09"), null);
+  assert.equal(historicalHabitCorrectionDate("2026-02-30", "2026-09-09"), null);
+  assert.equal(historicalHabitCorrectionDate("2026/09/08", "2026-09-09"), null);
+});
 
 test("historical habit correction separates the local checkbox trace from merged completion", () => {
   const presentation = historicalHabitCorrectionPresentation({

@@ -55,6 +55,7 @@ import {
 } from "./task-presentation.js";
 import {
   habitCompletionPresentation,
+  historicalHabitCorrectionDate,
   historicalHabitCorrectionPresentation,
   type HabitCompletionExplanation,
   type HabitLocalCompletionState,
@@ -3143,6 +3144,18 @@ function habitCompletionControl(habit: HabitView): HTMLElement {
   return control;
 }
 
+function setHabitHistoryDisclosureCopy(
+  button: HTMLButtonElement,
+  habit: HabitView,
+  expanded: boolean,
+): void {
+  const labelKey = expanded ? "habits.collapseHistoryFor" : "habits.expandHistoryFor";
+  const variables = { habit: displayHabitName(habit) };
+  setCopy(button, expanded ? "habits.collapse" : "habits.expand", variables);
+  button.dataset.i18nAriaLabel = labelKey;
+  button.setAttribute("aria-label", t(labelKey, variables));
+}
+
 function habitRow(habit: HabitView): HTMLElement {
   const article = document.createElement("article");
   article.className = "habit-snapshot-row";
@@ -3187,7 +3200,7 @@ function habitRow(habit: HabitView): HTMLElement {
   expand.className = "habit-expand";
   expand.dataset.habitExpand = habit.key;
   expand.setAttribute("aria-expanded", "false");
-  setCopy(expand, "habits.expand");
+  setHabitHistoryDisclosureCopy(expand, habit, false);
 
   const history = document.createElement("section");
   history.className = "habit-history";
@@ -3427,7 +3440,7 @@ function renderSelectedHabitCell(): void {
   if (recent) recent.hidden = true;
   row.classList.add("is-expanded");
   expand?.setAttribute("aria-expanded", "true");
-  if (expand) setCopy(expand, "habits.collapse");
+  if (expand) setHabitHistoryDisclosureCopy(expand, habit, true);
 
   const heading = document.createElement("strong");
   const state = document.createElement("span");
@@ -3445,6 +3458,21 @@ function renderSelectedHabitCell(): void {
     }),
   );
   detail.replaceChildren(heading, state, details);
+  const correctionDate = historicalHabitCorrectionDate(cell.date, habit.today.date);
+  const snapshot = currentHabitSnapshot;
+  if (
+    correctionDate &&
+    habit.canRecordCompletion &&
+    snapshot?.completionTargetBinding &&
+    (snapshot.state === "ready" || snapshot.state === "stale")
+  ) {
+    const correction = document.createElement("button");
+    correction.type = "button";
+    correction.className = "secondary-button";
+    correction.dataset.habitCorrectionDate = correctionDate;
+    setCopy(correction, "habits.openHistoricalCorrection", { date: correctionDate });
+    detail.append(correction);
+  }
   if (habit.key === "exercise") {
     detail.append(habitExerciseEditor(cell.date, cell));
   }
@@ -6452,6 +6480,27 @@ habitsDestination?.addEventListener("change", (event) => {
 });
 
 habitsDestination?.addEventListener("click", (event) => {
+  const historicalCorrection = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-habit-correction-date]",
+  );
+  if (historicalCorrection) {
+    const date = historicalCorrection.dataset.habitCorrectionDate;
+    const context = selectedHabitContext();
+    const snapshot = currentHabitSnapshot;
+    if (
+      !date ||
+      context?.cell.date !== date ||
+      historicalHabitCorrectionDate(date, context.habit.today.date) !== date ||
+      !context.habit.canRecordCompletion ||
+      !snapshot?.completionTargetBinding ||
+      (snapshot.state !== "ready" && snapshot.state !== "stale")
+    ) {
+      return;
+    }
+    showWorkspaceDestination("today", true, date);
+    return;
+  }
+
   const correct = (event.target as HTMLElement).closest<HTMLButtonElement>(
     "button[data-habit-correct-record-id]",
   );
@@ -6495,7 +6544,14 @@ habitsDestination?.addEventListener("click", (event) => {
     if (recent) recent.hidden = !history.hidden;
     row?.classList.toggle("is-expanded", !history.hidden);
     expand.setAttribute("aria-expanded", String(!history.hidden));
-    setCopy(expand, history.hidden ? "habits.expand" : "habits.collapse");
+    const habit = currentHabitSnapshot?.habits.find(
+      (candidate) => candidate.key === expand.dataset.habitExpand,
+    );
+    if (habit) {
+      setHabitHistoryDisclosureCopy(expand, habit, !history.hidden);
+    } else {
+      setCopy(expand, history.hidden ? "habits.expand" : "habits.collapse");
+    }
     if (history.hidden && selectedHabitCell?.habitKey === row?.dataset.habitKey) {
       habitDateRequests.invalidate();
       selectedHabitCell = null;

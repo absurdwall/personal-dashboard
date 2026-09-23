@@ -69,6 +69,33 @@ test("fixed interface copy switches language while personal content and drafts s
   assert.equal(phase, "daytime");
 });
 
+test("historical habit correction controls have Chinese and English copy", () => {
+  assert.equal(
+    interfaceCopy("habits.openHistoricalCorrection", "zh", { date: "2026-09-07" }),
+    "查看并补记 2026-09-07 的本地习惯完成",
+  );
+  assert.equal(
+    interfaceCopy("habits.openHistoricalCorrection", "en", { date: "2026-09-07" }),
+    "Review and record local habit completion for 2026-09-07",
+  );
+  assert.equal(
+    interfaceCopy("habits.expandHistoryFor", "zh", { habit: "Reset living space" }),
+    "展开“Reset living space”的历史",
+  );
+  assert.equal(
+    interfaceCopy("habits.expandHistoryFor", "en", { habit: "Reset living space" }),
+    "Expand history for “Reset living space”",
+  );
+  assert.equal(
+    interfaceCopy("habits.collapseHistoryFor", "zh", { habit: "Reset living space" }),
+    "收起“Reset living space”的历史",
+  );
+  assert.equal(
+    interfaceCopy("habits.collapseHistoryFor", "en", { habit: "Reset living space" }),
+    "Collapse history for “Reset living space”",
+  );
+});
+
 test("Tasks scopes and reviewed backend diagnostics have real bilingual output", () => {
   assert.equal(interfaceCopy("tasks.scopeAll", "zh"), "全部任务");
   assert.equal(interfaceCopy("tasks.scopeToday", "zh"), "今日");
