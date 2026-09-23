@@ -30,9 +30,18 @@
 - 实现：移除安排／事实双列和横向事实栏入口；时间轴改为共用单列，以暖色虚线标记安排、绿色实线标记事实。叠放组初始显示最早的一项；`∨` 逐项前翻，并可通过卡片进入详情。保留真实区间锚点和时长，未新增依赖或外部服务。
 - 候选：`CARGO_TARGET_DIR=/tmp/pd-timeline-a-ticket02-visual-final npm run build:mac`，App 位于 `/tmp/pd-timeline-a-ticket02-visual-final/release/bundle/macos/Personal Dashboard.app`。可执行文件 SHA-256 `21f88432d4f8030b88d74c9fffb4b3b37da55d864c28f54aa377ac8045baeba5`；未 notarize（本机没有 Apple 签名凭据），也未替换已安装 App 或发布。
 - Packaged 回归：`today-time-axis-overlap` 在合成 Daily Record 下检查固定 13:00、13:01、13:59 的中文／英文和 1120×760／640×520。检查同刻与实际区间重叠叠放、点按 `∨` 切到下一卡片、鼠标／键盘打开不同详情、计划／事实在同一窄屏时间列中出现，以及未定时内容仍可访问。隔离记录 SHA-256 `7c77925b9c05a7905cc78babadc01972ab59f4ff47e5e06dffeb175e4149dbe4` 运行前后未变化。
-- 截图在 `/tmp/pd-timeline-a-evidence/single-lane-run-r6/`，覆盖四种语言／尺寸组合以及当前时间变化；代表图 `today-time-axis-overlap-zh-narrow-13-01.png` 展示窄窗的默认卡片和堆叠入口，`today-time-axis-overlap-zh-wide-13-01.png` 展示宽窗同一单列。当前已做实现者读图；独立新方向视觉复核和用户验收分别待完成。
+- 首轮 r6 截图保留在 `/tmp/pd-timeline-a-evidence/single-lane-run-r6/`。实现者读图后，独立复核发现现在线穿过卡片标题等问题；这些已在下方 r8 章节修订并重新复核，r6 仅作历史证据。
 - 自动检查：`node --test tests/frontend/today-time-axis.test.ts` 9/9，`npm run build`，验收 shell 语法及 Swift 驱动编译通过。完整 `npm run test:frontend` 仍有一个既有外部契约失败：`tests/frontend/daily-flow-integration.test.ts:79` 要求当前安装的 `life-daily-loop` skill 含 `## Personal Dashboard Tasks`；本票未修改该 skill 或无关测试。构建跳过 notarization。
-- 用户预览边界：这仍是待审候选，不等于用户已认可。已通过 macOS 原生窗口控制打开并查看此确切候选的 Today 页面；AX 树显示真实 Vault 有 5 项定时安排、当前卡片位于 21:30，其他精度未明内容留在单列时间轴之外。未点击保存或更改个人记录。该真实数据窗口只用于当前 app 可见性确认；叠放交互证据仍来自上述隔离合成记录截图。
+- 用户预览边界：这仍是待审候选，不等于用户已认可。已通过 macOS 原生窗口控制打开并查看此确切候选的真实 Today 页面；未点击保存或更改个人记录，也不将 Daily Record 内容复制到 issue。该真实数据窗口只用于当前 app 可见性确认；叠放交互证据仍来自上述隔离合成记录截图。
+
+### 2026-09-23 最终视觉修订与原生候选复核
+
+上面的 r6 是第一轮单列候选，后续独立读图发现现在线穿过卡片标题、计划卡焦点描边易与事实绿色混淆、叠放入口说明不足。r8 对应下方最新 r3 候选，取代 r6 的视觉证据：现在线与卡片相交时隐藏横线但保留红色时间标记；叠放前层描边改为中性灰；`∨` 入口仍显示叠放数量，并带有本地化的 `显示下一项 / Show next item` 辅助标签。
+
+- 最新代码包含后续视觉修订，代码提交 `7d9f464`；候选 executable SHA-256 `31a4b1f9c8578ff7bda0603af433b900e8414c2e58056a264638ab1b422e8781`，完整包位于 `/tmp/pd-timeline-a-ticket02-visual-final-r3/release/bundle/macos/Personal Dashboard.app`。未 notarize（缺少 Apple 签名凭据），未替换日常安装或发布。
+- packaged 回归 r8 通过 13:00、13:01、13:59 的中英文宽／窄窗口矩阵；同刻与真实区间重叠扇叠、逐项前翻、鼠标／键盘打开不同详情、未定时入口可达均通过。隔离 Daily Record SHA-256 `7c77925b9c05a7905cc78babadc01972ab59f4ff47e5e06dffeb175e4149dbe4` 未变化。截图目录 `/tmp/pd-timeline-a-evidence/single-lane-run-r8/`。
+- 独立视觉复核重新查看 r8 的中文窄屏、宽屏和未定时入口图，确认红线未穿过卡片文字、时间标记仍可见、中性色焦点描边、单列双类型及未定时内容均可辨；未发现实质视觉问题。复核者指出 `∨` 单独看仍略含糊，但计数、扇叠语境和可访问／提示文字共同说明其用途。复核不等于用户验收。
+- 用户要求看到真实 app 后，已直接打开上述确切 packaged 候选，显示当前 Today 页面和本机 Vault 内容；未保存或修改个人记录。用户本人最终观感仍待确认，issue 继续 `claimed`。
 
 Type: task
 
@@ -68,7 +77,7 @@ Type: task
 - [x] 实现者逐项自检后，由独立审查者核对实际 packaged App 与 A 的可见差异；审查应读图，记录结论及证据，不能只依据实现者的通过声明。
 - [x] 在本票和 map 记录实现提交、候选构建身份、自动化证据、packaged 对照截图与独立复核结论；只勾选有证据的项。仍有关键视觉偏差或缺少直接 packaged 证据时不得 resolved。工程验收完成仍须明确“候选待用户验收”，不能声称用户认可。
 
-### 2026-09-23 实施与 packaged 证据
+### 2026-09-23 双栏候选历史（已被最新单列方向覆盖）
 
 状态仍为 `claimed`。本轮在 `codex/historical-habit-corrections` 从基线 `79fdcd394357936f17c2a5aca489a82e65ff6050` 继续实施，复用票 01 已集成的双栏卡片和真实时间范围。用户在票 01 仍待验收时明确要求继续实现本票；本轮没有把票 01 标为验收通过。候选包通过本票 packaged 检查；实现 commit 为 `6166fcaa7d8d015e30f152ae0fbff5522d3cfdbe`。候选仍待用户验收，不是用户认可或 `resolved`。
 
