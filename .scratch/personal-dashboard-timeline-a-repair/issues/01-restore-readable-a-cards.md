@@ -39,7 +39,7 @@ Type: task
 - [x] 独立演示 packaged App 真实读取合成 Vault 到卡片的链路，记录构建 SHA 与截图证据；保留时间解析、历史日期、本地习惯更正等已有行为。
 
 - [x] 实现者逐项自检后，由独立审查者核对实际 packaged App 与 A 的可见差异；审查应读图，记录结论及证据，不能只依据实现者的通过声明。
-- [ ] 在本票和 map 记录实现提交、候选构建身份、自动化证据、packaged 对照截图与独立复核结论；只勾选有证据的项。仍有关键视觉偏差或缺少直接 packaged 证据时不得 resolved。工程验收完成仍须明确“候选待用户验收”，不能声称用户认可。
+- [x] 在本票和 map 记录实现提交、候选构建身份、自动化证据、packaged 对照截图与独立复核结论；只勾选有证据的项。仍有关键视觉偏差或缺少直接 packaged 证据时不得 resolved。工程验收完成仍须明确“候选待用户验收”，不能声称用户认可。
 
 ### 2026-09-23 实施与 packaged 证据
 
@@ -64,4 +64,4 @@ Type: task
 
 ### 2026-09-23 集成候选补充
 
-票 02 与票 01 的修复已共同打包。最终 A 卡片检查在相同 packaged 候选可执行文件 SHA-256 `ad32ff10db1901dcc872d60fc8cb29afb3a59a3e693ead53cf7b5b9f5cb48153` 上通过，截图为 `/tmp/pd-timeline-a-evidence/ticket01-candidate-final/today-time-axis-a-cards.png`。此为本轮更新后的候选身份；前文票 01 候选 hash 属于先前中间构建，保留作历史记录。前文“票 02 等待”反映当时状态；之后用户明确要求实现票 02，未将票 01 视为已验收。实现 commit 待本轮提交后补录。当前状态仍为 `claimed`、候选待用户验收。
+票 02 与票 01 的修复已共同打包。最终 A 卡片检查在相同 packaged 候选可执行文件 SHA-256 `ad32ff10db1901dcc872d60fc8cb29afb3a59a3e693ead53cf7b5b9f5cb48153` 上通过，截图为 `/tmp/pd-timeline-a-evidence/ticket01-candidate-final/today-time-axis-a-cards.png`。此为本轮更新后的候选身份；前文票 01 候选 hash 属于先前中间构建，保留作历史记录。前文“票 02 等待”反映当时状态；之后用户明确要求实现票 02，未将票 01 视为已验收。实现 commit：`6166fcaa7d8d015e30f152ae0fbff5522d3cfdbe`。当前状态仍为 `claimed`、候选待用户验收。

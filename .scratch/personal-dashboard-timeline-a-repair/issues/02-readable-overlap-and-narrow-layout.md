@@ -36,11 +36,11 @@ Type: task
 - [x] 每个代表场景都有 packaged App 截图与人工视觉检查记录；用相同数据／窗口说明结果，保留失败前截图。实现者自检后应完成独立视觉复核；对外报告候选待用户验收，不把自动化通过写成用户认可。
 
 - [x] 实现者逐项自检后，由独立审查者核对实际 packaged App 与 A 的可见差异；审查应读图，记录结论及证据，不能只依据实现者的通过声明。
-- [ ] 在本票和 map 记录实现提交、候选构建身份、自动化证据、packaged 对照截图与独立复核结论；只勾选有证据的项。仍有关键视觉偏差或缺少直接 packaged 证据时不得 resolved。工程验收完成仍须明确“候选待用户验收”，不能声称用户认可。
+- [x] 在本票和 map 记录实现提交、候选构建身份、自动化证据、packaged 对照截图与独立复核结论；只勾选有证据的项。仍有关键视觉偏差或缺少直接 packaged 证据时不得 resolved。工程验收完成仍须明确“候选待用户验收”，不能声称用户认可。
 
 ### 2026-09-23 实施与 packaged 证据
 
-状态仍为 `claimed`。本轮在 `codex/historical-habit-corrections` 从基线 `79fdcd394357936f17c2a5aca489a82e65ff6050` 继续实施，复用票 01 已集成的双栏卡片和真实时间范围。用户在票 01 仍待验收时明确要求继续实现本票；本轮没有把票 01 标为验收通过。候选包通过本票 packaged 检查；仍待记录实现 commit 并由用户验收，不是用户认可或 `resolved`。
+状态仍为 `claimed`。本轮在 `codex/historical-habit-corrections` 从基线 `79fdcd394357936f17c2a5aca489a82e65ff6050` 继续实施，复用票 01 已集成的双栏卡片和真实时间范围。用户在票 01 仍待验收时明确要求继续实现本票；本轮没有把票 01 标为验收通过。候选包通过本票 packaged 检查；实现 commit 为 `6166fcaa7d8d015e30f152ae0fbff5522d3cfdbe`。候选仍待用户验收，不是用户认可或 `resolved`。
 
 - 改动：以卡片完整可见矩形和真实区间共同安排分轨；短事项的最小可读标签与真实时长锚点分开布局。避开“现在”标签与整点刻度。按实际 lane 类型生成事实／安排标签。窄屏改为横向滚动访问完整事实栏，并将未定时事项入口放入固定图例栏；激活入口后把内容滚到固定栏下方可见。无依赖或外部服务改动。
 - 打包身份：`CARGO_TARGET_DIR=/tmp/pd-timeline-a-ticket02-final npm run build:mac`；app executable SHA-256 `ad32ff10db1901dcc872d60fc8cb29afb3a59a3e693ead53cf7b5b9f5cb48153`；`Contents` manifest SHA-256 `cf82702ddd7fb13adee336d3fcae16fc50a83436b42a596a27fce64fada33791`。候选位于 `/tmp/pd-timeline-a-ticket02-final/release/bundle/macos/Personal Dashboard.app`。构建未完成 Apple notarization（本机无签名凭据）；本记录仅证明本地 packaged 候选。

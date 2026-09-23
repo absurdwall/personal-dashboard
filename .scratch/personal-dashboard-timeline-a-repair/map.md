@@ -35,10 +35,10 @@
 
 ## 2026-09-23 票 02 重叠与窄布局实施证据
 
-当前 checkout `codex/historical-habit-corrections`，实现基于 `79fdcd394357936f17c2a5aca489a82e65ff6050`。ticket 02 与 ticket 01 合并于同一 packaged 候选；commit 将在提交后回填本节和两票。两票状态继续为 `claimed`，用户验收待办。本节是后续状态：用户随后明确要求实现票 02；前节“等待”描述的是当时状态。
+当前 checkout `codex/historical-habit-corrections`，实现基于 `79fdcd394357936f17c2a5aca489a82e65ff6050`。ticket 02 与 ticket 01 合并于同一 packaged 候选；实现 commit 为 `6166fcaa7d8d015e30f152ae0fbff5522d3cfdbe`。两票状态继续为 `claimed`，用户验收待办。本节是后续状态：用户随后明确要求实现票 02；前节“等待”描述的是当时状态。
 
 - 构建：`CARGO_TARGET_DIR=/tmp/pd-timeline-a-ticket02-final npm run build:mac`。候选 executable SHA-256 `ad32ff10db1901dcc872d60fc8cb29afb3a59a3e693ead53cf7b5b9f5cb48153`，Contents manifest SHA-256 `cf82702ddd7fb13adee336d3fcae16fc50a83436b42a596a27fce64fada33791`。未 notarize（缺少 Apple 签名凭据）；没有替换已安装 App 或发布。
 - Ticket 02 packaged 结果：合成记录 13:00／13:01／13:59 场景通过中英文宽／窄视图，检查布局／点击目标、真实时间区间、Now 与小时标签、鼠标和键盘详情、事实栏横向滚动及两种语言窄屏定位后的未定时项跳转。隔离 Daily Record SHA-256 `7c77925b9c05a7905cc78babadc01972ab59f4ff47e5e06dffeb175e4149dbe4` 未变化。截图目录 `/tmp/pd-timeline-a-evidence/ticket02-candidate-20/`。
 - 正式前后对照限定为两组同一隔离 fixture、同窗口同固定时刻的图：中文 1120×760、13:00（基线 `ticket02-baseline-final/today-time-axis-overlap-zh-wide-13-00.png`，候选 `ticket02-candidate-20/today-time-axis-overlap-zh-wide-13-00.png`）；英文 640×520、13:01（基线 `ticket02-baseline-final/today-time-axis-overlap-en-narrow-13-01.png`，候选 `ticket02-candidate-20/today-time-axis-overlap-en-narrow-13-01.png`）。英文宽屏和中文窄屏属于额外候选矩阵验证，无匹配基线图，不作为前后对照声明。A 原型参照为 `/tmp/pd-timeline-a-evidence/prototype-A-1120x760-14-10.png`，保留原型自带示例数据，供视觉层次参照。
 - 独立 Spec 复核读图确认候选与 A 的两栏语义、色彩、共同轴和侧栏处理相符，密集卡片与窄屏信息可达没有实质差异；复核者另确认两组指定前后对照满足代表场景要求，其他两图明确为候选矩阵补充。复核仅代表候选视觉意见，不代表用户验收。独立 Standards 复核未发现硬性标准问题。
-- 检查：Rust 全套 `cargo test --manifest-path src-tauri/Cargo.toml` 通过；`npm run build`、聚焦 9 项时间轴测试、Shell 语法、macOS AX driver Swift 编译和票 01／02 packaged 场景均通过。完整前端套件另有一个与本票无关的 canonical life-daily-loop skill 标题契约断言失败，详见 ticket 02。构建跳过 notarization。最终 commit 在回填前仍待创建。
+- 检查：Rust 全套 `cargo test --manifest-path src-tauri/Cargo.toml` 通过；`npm run build`、聚焦 9 项时间轴测试、Shell 语法、macOS AX driver Swift 编译和票 01／02 packaged 场景均通过。完整前端套件另有一个与本票无关的 canonical life-daily-loop skill 标题契约断言失败，详见 ticket 02。构建跳过 notarization。实现 commit `6166fcaa7d8d015e30f152ae0fbff5522d3cfdbe` 已创建，回填记录在随后的文档提交。
