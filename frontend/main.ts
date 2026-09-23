@@ -4,7 +4,9 @@ import {
 } from "./dated-note-command.js";
 import { LatestRequest } from "./latest-request.js";
 import {
+  axisLabelCenterMinute,
   axisGeometry,
+  axisTrackPlacements,
   clockResultMatchesSession,
   clockTickDecision,
   hourTickMinutes,
@@ -12,6 +14,8 @@ import {
   minuteOfDay,
   minutePosition,
   onManualScroll,
+  stripLeadingAxisTimeLabel,
+  TODAY_AXIS_LABEL_MINIMUM_MINUTES,
   type TodayAxisFollowState,
   type TodayAxisSession,
 } from "./today-time-axis.js";
@@ -1446,16 +1450,36 @@ function renderTimeAxisLane(
     detailElements.set(index, axisEntryDetails(entry, lane, index));
   });
   details.replaceChildren(...ordered.map(({ index }) => detailElements.get(index)!));
-  const stacks = new Map<number, number>();
+  const timedEntries = ordered.filter(({ entry }) => entry.startMinute !== null);
+  const trackPlacements = axisTrackPlacements(
+    timedEntries.map(({ entry }) => ({
+      startMinute: entry.startMinute!,
+      endMinute: entry.endMinute,
+    })),
+  );
+  const placementByIndex = new Map(
+    timedEntries.map(({ index }, placementIndex) => [index, trackPlacements[placementIndex]]),
+  );
   markers.replaceChildren(
     ...ordered.flatMap(({ entry, index }) => {
       if (entry.startMinute === null) return [];
+      const durationMinutes = entry.endMinute === null ? null : entry.endMinute - entry.startMinute;
+      const isShortLabel = durationMinutes === null || durationMinutes < TODAY_AXIS_LABEL_MINIMUM_MINUTES;
       const marker = document.createElement("li");
       marker.className = "today-axis-marker";
-      marker.style.top = `${minutePosition(entry.startMinute) * 100}%`;
-      const stack = stacks.get(entry.startMinute) ?? 0;
-      stacks.set(entry.startMinute, stack + 1);
-      marker.style.setProperty("--axis-stack", String(stack));
+      marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);
+      marker.style.setProperty(
+        "--axis-label-center",
+        `${minutePosition(axisLabelCenterMinute(entry.startMinute)) * 100}%`,
+      );
+      marker.style.height = `${minutePosition(Math.max(
+        durationMinutes ?? 0,
+        TODAY_AXIS_LABEL_MINIMUM_MINUTES,
+      )) * 100}%`;
+      marker.classList.toggle("is-centered-label", isShortLabel);
+      const placement = placementByIndex.get(index)!;
+      marker.style.setProperty("--axis-track-start", `${(placement.track / placement.tracks) * 100}%`);
+      marker.style.setProperty("--axis-track-width", `${100 / placement.tracks}%`);
       const link = document.createElement("a");
       link.href = `#today-axis-${lane}-entry-${index}`;
       link.className = "today-axis-marker-link";
@@ -1463,7 +1487,18 @@ function renderTimeAxisLane(
         time: axisEntryTimeLabel(entry),
         text: entry.text,
       }));
-      link.textContent = formatAxisMinute(entry.startMinute);
+      const timeLabel = document.createElement("span");
+      timeLabel.className = "today-axis-marker-time";
+      timeLabel.textContent = axisEntryTimeLabel(entry);
+      const title = document.createElement("span");
+      title.className = "today-axis-marker-title";
+      title.textContent = stripLeadingAxisTimeLabel(
+        entry.text,
+        formatAxisMinute(entry.startMinute),
+        entry.endMinute === null ? null : formatAxisMinute(entry.endMinute),
+      );
+      link.append(timeLabel, title);
+      link.classList.toggle("is-short-range", durationMinutes !== null && isShortLabel);
       link.addEventListener("click", (event) => {
         event.preventDefault();
         const target = detailElements.get(index);
@@ -1477,7 +1512,7 @@ function renderTimeAxisLane(
     }),
   );
   durations.replaceChildren(
-    ...ordered.flatMap(({ entry }) => {
+    ...ordered.flatMap(({ entry, index }) => {
       if (entry.startMinute === null) return [];
       const geometry = axisGeometry({
         startMinute: entry.startMinute,
@@ -1485,6 +1520,8 @@ function renderTimeAxisLane(
       });
       const duration = document.createElement("span");
       duration.className = entry.endMinute === null ? "today-axis-point" : "today-axis-range";
+      const placement = placementByIndex.get(index)!;
+      duration.style.setProperty("--axis-track-start", `${(placement.track / placement.tracks) * 100}%`);
       duration.style.top = `${geometry.top * 100}%`;
       if (entry.endMinute !== null) duration.style.height = `${geometry.height * 100}%`;
       return [duration];

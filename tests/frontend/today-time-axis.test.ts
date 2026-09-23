@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  axisLabelCenterMinute,
   axisGeometry,
+  axisTrackPlacements,
   clockResultMatchesSession,
   clockTickDecision,
   hourTickMinutes,
@@ -10,6 +12,8 @@ import {
   minuteOfDay,
   minutePosition,
   onManualScroll,
+  stripLeadingAxisTimeLabel,
+  TODAY_AXIS_LABEL_MINIMUM_MINUTES,
 } from '../../frontend/today-time-axis.ts';
 import { LatestRequest } from '../../frontend/latest-request.ts';
 
@@ -57,6 +61,77 @@ test('maps points, ranges, and overlaps without changing time anchors', () => {
   assert.equal(
     axisGeometry({ startMinute: 600, endMinute: 660 }).top,
     axisGeometry({ startMinute: 600, endMinute: 720 }).top,
+  );
+});
+
+test('assigns visible time-axis cards to separate tracks when their labels overlap', () => {
+  assert.equal(TODAY_AXIS_LABEL_MINIMUM_MINUTES, 48);
+  assert.deepEqual(
+    axisTrackPlacements([
+      { startMinute: 780, endMinute: 840 },
+      { startMinute: 780, endMinute: null },
+      { startMinute: 815, endMinute: 850 },
+      { startMinute: 900, endMinute: 945 },
+    ]),
+    [
+      { track: 1, tracks: 3 },
+      { track: 0, tracks: 3 },
+      { track: 2, tracks: 3 },
+      { track: 0, tracks: 1 },
+    ],
+  );
+  assert.deepEqual(
+    axisTrackPlacements([
+      { startMinute: 360, endMinute: null },
+      { startMinute: 400, endMinute: null },
+    ]),
+    [
+      { track: 0, tracks: 2 },
+      { track: 1, tracks: 2 },
+    ],
+  );
+  assert.equal(axisLabelCenterMinute(0), TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
+  assert.equal(axisLabelCenterMinute(12), TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
+  assert.equal(axisLabelCenterMinute(1420), 1440 - TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
+  assert.equal(axisLabelCenterMinute(1440), 1440 - TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
+  assert.deepEqual(
+    axisTrackPlacements([
+      { startMinute: 0, endMinute: null },
+      { startMinute: 30, endMinute: 50 },
+    ]),
+    [
+      { track: 0, tracks: 2 },
+      { track: 1, tracks: 2 },
+    ],
+  );
+  assert.deepEqual(
+    axisTrackPlacements([
+      { startMinute: 1430, endMinute: 1431 },
+      { startMinute: 1416, endMinute: 1440 },
+    ]),
+    [
+      { track: 0, tracks: 2 },
+      { track: 1, tracks: 2 },
+    ],
+  );
+});
+
+test('removes a repeated leading time from the visible card title', () => {
+  assert.equal(
+    stripLeadingAxisTimeLabel('10:55–10:56 保存一行短摘要。', '10:55', '10:56'),
+    '保存一行短摘要。',
+  );
+  assert.equal(
+    stripLeadingAxisTimeLabel('14:20 完成了明确记录的工作。', '14:20', null),
+    '完成了明确记录的工作。',
+  );
+  assert.equal(
+    stripLeadingAxisTimeLabel('14:20', '14:20', null),
+    '14:20',
+  );
+  assert.equal(
+    stripLeadingAxisTimeLabel('安排从 14:20 开始', '14:20', null),
+    '安排从 14:20 开始',
   );
 });
 
