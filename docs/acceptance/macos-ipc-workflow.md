@@ -198,6 +198,53 @@ skill, Dida365 data, MCP connection, or automation. Application workflow tests
 separately cover whole-input validation, yesterday's reader context, and an
 interleaved canonical write at the conditional replacement boundary.
 
+## Personal Dashboard 3.0 A-card layout scenario
+
+Run the fixed-time packaged visual regression after `npm run build:mac`:
+
+```sh
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=today-time-axis-a-cards \
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 \
+PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY=/tmp/pd-today-time-axis-a-cards-YYYYMMDD \
+scripts/acceptance/macos-ipc-workflow.sh
+```
+
+The packaged app reads a synthetic Daily Record in an isolated Vault with the
+clock fixed at 14:10. Accessibility-frame checks compare the visible 12:00 and
+12:05 cards with the 15:00 scale anchor, require their body text inside the
+cards, and confirm the untimed panel, source labels, and precision notes are
+inside the window. The capture is retained for direct comparison with prototype
+A; the test does not replace visual review.
+
+## Personal Dashboard 3.0 dense-overlap time-axis scenario
+
+Run the ticket-02 packaged regression after `npm run build:mac`:
+
+```sh
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=today-time-axis-overlap \
+PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO_TIMEOUT_SECONDS=420 \
+PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY=/tmp/pd-today-time-axis-overlap-YYYYMMDD \
+scripts/acceptance/macos-ipc-workflow.sh
+```
+
+The isolated synthetic Daily Record has same-minute items, a 13:05 point,
+overlapping short and long ranges, a 13:59 confirmed fact, and untimed plan and
+fact entries. The packaged check captures Chinese and English at 1120×760 and
+640×520. Accessibility frames verify card times, minimum hit-target size,
+non-overlapping links, and complete visibility inside the horizontal scroll
+viewport. The scenario exercises mouse and keyboard activation for the
+same-time cards, horizontal access to the confirmed-facts lane, and the Locate
+now action. In both narrow languages it also follows the sticky untimed-items
+link after locating now and checks that the readable plan/fact panel and its
+precision note enter view. It hashes the synthetic record before and after.
+These checks retain screenshots for visual review and do not substitute for
+comparing the packaged result with prototype A.
+
+For the 2026-09-23 repair candidate, the paired before/after views are Chinese
+1120×760 at 13:00 and English 640×520 at 13:01. The English-wide and
+Chinese-narrow images extend the final candidate matrix; they are not claimed
+as before/after pairs unless matching baseline captures are added.
+
 ## Personal Dashboard 3.0 continuous Today time-axis scenario
 
 Run the ticket-02 packaged check after `npm run build:mac`:
@@ -221,8 +268,9 @@ a Daily Record.
 The overnight subcase uses a deterministic packaged clock at 23:59 and 00:01
 to verify clipped cross-date plan segments, source-date/continuation labels,
 and that a confirmed fact from the start date is not copied. The wide Chinese
-and narrow English views use the packaged accessibility driver; Locate now is
-activated by keyboard. Synthetic Daily Records are hash-checked and remain
+and narrow English views use the packaged accessibility driver; the untimed-item
+shortcut remains visible in the narrow view, and Locate now is activated by
+keyboard. Synthetic Daily Records are hash-checked and remain
 byte-identical. This scenario does not modify the installed app or personal
 Vault. Optional screenshots go into a new capture directory supplied through
 `PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY`.

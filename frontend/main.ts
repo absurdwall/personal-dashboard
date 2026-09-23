@@ -4,18 +4,19 @@ import {
 } from "./dated-note-command.js";
 import { LatestRequest } from "./latest-request.js";
 import {
-  axisLabelCenterMinute,
   axisGeometry,
+  axisMarkerLayout,
   axisTrackPlacements,
   clockResultMatchesSession,
   clockTickDecision,
+  hourTickIsClearFromNow,
   hourTickMinutes,
   locateNow,
   minuteOfDay,
   minutePosition,
   onManualScroll,
   stripLeadingAxisTimeLabel,
-  TODAY_AXIS_LABEL_MINIMUM_MINUTES,
+  TODAY_AXIS_MINIMUM_TRACK_WIDTH,
   type TodayAxisFollowState,
   type TodayAxisSession,
 } from "./today-time-axis.js";
@@ -678,6 +679,26 @@ const todayCurrentArrangementEvents = document.querySelector<HTMLOListElement>("
 const todayCurrentArrangementDurations = document.querySelector<HTMLElement>("#today-current-arrangement-duration");
 const todayCurrentArrangementEmpty = document.querySelector<HTMLElement>("#today-current-arrangement-empty");
 const todayCurrentArrangementUnlocated = document.querySelector<HTMLElement>("#today-current-arrangement-unlocated");
+const todayUnlocatedTimeRegion = document.querySelector<HTMLElement>("#today-unlocated-time-region");
+const todayUnlocatedTimeShortcut = document.querySelector<HTMLAnchorElement>("#today-unlocated-time-shortcut");
+todayUnlocatedTimeShortcut?.addEventListener("click", (event) => {
+  if (!todayUnlocatedTimeRegion || todayUnlocatedTimeRegion.hidden) return;
+  event.preventDefault();
+  const scrollSurface = todayUnlocatedTimeRegion.closest<HTMLElement>(".workspace-information");
+  if (!scrollSurface) {
+    todayUnlocatedTimeRegion.scrollIntoView({ behavior: "auto", block: "start" });
+    return;
+  }
+  const toolbar = todayUnlocatedTimeShortcut.closest<HTMLElement>(".today-time-axis-toolbar");
+  const stickyOffset = toolbar && getComputedStyle(toolbar).position === "sticky"
+    ? toolbar.offsetHeight + 12
+    : 0;
+  const regionTop = todayUnlocatedTimeRegion.getBoundingClientRect().top -
+    scrollSurface.getBoundingClientRect().top + scrollSurface.scrollTop;
+  scrollSurface.scrollTo({ top: Math.max(0, regionTop - stickyOffset), behavior: "auto" });
+});
+const todayAxisScrollSurface = document.querySelector<HTMLElement>("#today-axis-scroll-surface");
+const todayAxisScrollHint = document.querySelector<HTMLElement>("#today-axis-scroll-hint");
 const todayCurrentArrangementDetails = document.querySelector<HTMLElement>("#today-current-arrangement-details");
 const todayConfirmedFactsEvents = document.querySelector<HTMLOListElement>("#today-confirmed-facts-events");
 const todayConfirmedFactsDurations = document.querySelector<HTMLElement>("#today-confirmed-facts-duration");
@@ -1363,25 +1384,32 @@ function formatAxisMinute(minute: number): string {
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 }
 
-function axisEntryTimeLabel(entry: TimeAxisEntryView): string {
-  if (entry.startMinute === null) return t("today.unlocatedLabel");
+type TodayAxisLaneId = "arrangement" | "facts" | "arrangement-unlocated" | "facts-unlocated";
+
+function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): string {
+  if (entry.startMinute === null) {
+    if (entry.period) return `${entry.period} · ${t("today.unlocatedPlanLabel")}`;
+    if (lane === "facts" || lane === "facts-unlocated") return t("today.unlocatedConfirmedFactLabel");
+    return t("today.unlocatedLabel");
+  }
   const start = formatAxisMinute(entry.startMinute);
   return entry.endMinute === null ? start : `${start}–${formatAxisMinute(entry.endMinute)}`;
 }
 
 function axisEntryDetails(
   entry: TimeAxisEntryView,
-  lane: string,
+  lane: TodayAxisLaneId,
   index: number,
 ): HTMLDetailsElement {
   const details = document.createElement("details");
   details.className = "today-axis-entry-detail";
   details.id = `today-axis-${lane}-entry-${index}`;
   const summary = document.createElement("summary");
-  const time = document.createElement("time");
-  time.textContent = axisEntryTimeLabel(entry);
+  const time = document.createElement(entry.startMinute === null ? "span" : "time");
+  if (entry.startMinute === null) time.className = "today-axis-entry-time-label";
+  time.textContent = axisEntryTimeLabel(entry, lane);
   if (entry.startMinute !== null) {
-    time.dateTime = `${entry.sourceDate}T${formatAxisMinute(entry.startMinute)}`;
+    time.setAttribute("datetime", `${entry.sourceDate}T${formatAxisMinute(entry.startMinute)}`);
   }
   const excerpt = document.createElement("span");
   excerpt.textContent = entry.text;
@@ -1440,8 +1468,8 @@ function renderTimeAxisLane(
   entries: readonly TimeAxisEntryView[],
   unlocatedEntries: readonly TimeAxisEntryView[],
   lane: "arrangement" | "facts",
-): void {
-  if (!markers || !durations || !details || !unlocated || !empty) return;
+): number {
+  if (!markers || !durations || !details || !unlocated || !empty) return 1;
   const ordered = entries
     .map((entry, index) => ({ entry, index }))
     .sort((left, right) => (left.entry.startMinute ?? 0) - (right.entry.startMinute ?? 0));
@@ -1457,6 +1485,7 @@ function renderTimeAxisLane(
       endMinute: entry.endMinute,
     })),
   );
+  const maximumTracks = Math.max(1, ...trackPlacements.map(({ tracks }) => tracks));
   const placementByIndex = new Map(
     timedEntries.map(({ index }, placementIndex) => [index, trackPlacements[placementIndex]]),
   );
@@ -1464,19 +1493,19 @@ function renderTimeAxisLane(
     ...ordered.flatMap(({ entry, index }) => {
       if (entry.startMinute === null) return [];
       const durationMinutes = entry.endMinute === null ? null : entry.endMinute - entry.startMinute;
-      const isShortLabel = durationMinutes === null || durationMinutes < TODAY_AXIS_LABEL_MINIMUM_MINUTES;
+      const markerLayout = axisMarkerLayout({
+        startMinute: entry.startMinute,
+        endMinute: entry.endMinute,
+      });
       const marker = document.createElement("li");
       marker.className = "today-axis-marker";
       marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);
       marker.style.setProperty(
         "--axis-label-center",
-        `${minutePosition(axisLabelCenterMinute(entry.startMinute)) * 100}%`,
+        `${minutePosition(markerLayout.centerMinute) * 100}%`,
       );
-      marker.style.height = `${minutePosition(Math.max(
-        durationMinutes ?? 0,
-        TODAY_AXIS_LABEL_MINIMUM_MINUTES,
-      )) * 100}%`;
-      marker.classList.toggle("is-centered-label", isShortLabel);
+      marker.style.height = `${minutePosition(markerLayout.heightMinutes) * 100}%`;
+      marker.classList.toggle("is-centered-label", markerLayout.isCenteredLabel);
       const placement = placementByIndex.get(index)!;
       marker.style.setProperty("--axis-track-start", `${(placement.track / placement.tracks) * 100}%`);
       marker.style.setProperty("--axis-track-width", `${100 / placement.tracks}%`);
@@ -1498,7 +1527,7 @@ function renderTimeAxisLane(
         entry.endMinute === null ? null : formatAxisMinute(entry.endMinute),
       );
       link.append(timeLabel, title);
-      link.classList.toggle("is-short-range", durationMinutes !== null && isShortLabel);
+      link.classList.toggle("is-short-range", durationMinutes !== null && markerLayout.isCenteredLabel);
       link.addEventListener("click", (event) => {
         event.preventDefault();
         const target = detailElements.get(index);
@@ -1514,6 +1543,11 @@ function renderTimeAxisLane(
   durations.replaceChildren(
     ...ordered.flatMap(({ entry, index }) => {
       if (entry.startMinute === null) return [];
+      const markerLayout = axisMarkerLayout({
+        startMinute: entry.startMinute,
+        endMinute: entry.endMinute,
+      });
+      if (entry.endMinute !== null && !markerLayout.isCenteredLabel) return [];
       const geometry = axisGeometry({
         startMinute: entry.startMinute,
         endMinute: entry.endMinute,
@@ -1528,15 +1562,15 @@ function renderTimeAxisLane(
     }),
   );
   unlocated.replaceChildren();
-  if (unlocatedEntries.length > 0) {
-    const heading = document.createElement("h5");
-    setCopy(heading, "today.unlocatedTimes");
-    unlocated.append(heading);
-    unlocated.append(
-      ...unlocatedEntries.map((entry, index) => axisEntryDetails(entry, `${lane}-unlocated`, index)),
-    );
-  }
+  unlocated.append(
+    ...unlocatedEntries.map((entry, index) => axisEntryDetails(entry, `${lane}-unlocated`, index)),
+  );
+  unlocated.closest<HTMLElement>(".today-axis-unlocated-lane")?.toggleAttribute(
+    "hidden",
+    unlocatedEntries.length === 0,
+  );
   empty.hidden = entries.length + unlocatedEntries.length > 0;
+  return maximumTracks;
 }
 
 function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTime): void {
@@ -1547,6 +1581,10 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
   todayContinuousAxis.classList.toggle("is-today", showNow);
   todayContinuousAxis.querySelectorAll<HTMLElement>(".today-axis-plot").forEach((plot) => {
     plot.classList.toggle("is-today", showNow);
+  });
+  todayHourTicks?.querySelectorAll<HTMLElement>(".today-hour-tick").forEach((tick) => {
+    const tickMinute = Number(tick.dataset.minute);
+    tick.hidden = !Number.isInteger(tickMinute) || !hourTickIsClearFromNow(tickMinute, showNow ? currentMinute : null);
   });
   if (todayLocateNowButton) todayLocateNowButton.hidden = !showNow;
   if (showNow && currentMinute !== null && todayCurrentTime) {
@@ -1564,12 +1602,20 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
   }
 }
 
+function updateTodayAxisScrollHint(): void {
+  if (!todayAxisScrollSurface || !todayAxisScrollHint) return;
+  todayAxisScrollHint.hidden = todayAxisScrollSurface.scrollWidth <= todayAxisScrollSurface.clientWidth + 1;
+}
+
+window.addEventListener("resize", updateTodayAxisScrollHint);
+
 function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): void {
   if (!todayContinuousAxis) return;
   todayHourTicks?.replaceChildren(
     ...hourTickMinutes().map((minute) => {
       const tick = document.createElement("span");
       tick.className = "today-hour-tick";
+      tick.dataset.minute = String(minute);
       tick.style.top = `${minutePosition(minute) * 100}%`;
       tick.textContent = formatAxisMinute(minute);
       tick.setAttribute("aria-hidden", "true");
@@ -1577,7 +1623,7 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
     }),
   );
   if (todayHourTicks && todayCurrentTime) todayHourTicks.append(todayCurrentTime);
-  renderTimeAxisLane(
+  const arrangementTracks = renderTimeAxisLane(
     todayCurrentArrangementEvents,
     todayCurrentArrangementDurations,
     todayCurrentArrangementDetails,
@@ -1587,7 +1633,7 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
     view.timeAxis.unlocatedCurrentArrangement,
     "arrangement",
   );
-  renderTimeAxisLane(
+  const factTracks = renderTimeAxisLane(
     todayConfirmedFactsEvents,
     todayConfirmedFactsDurations,
     todayConfirmedFactsDetails,
@@ -1597,6 +1643,15 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
     view.timeAxis.unlocatedConfirmedFacts,
     "facts",
   );
+  const arrangementMinimumWidth = Math.max(160, arrangementTracks * TODAY_AXIS_MINIMUM_TRACK_WIDTH);
+  const factsMinimumWidth = Math.max(160, factTracks * TODAY_AXIS_MINIMUM_TRACK_WIDTH);
+  todayContinuousAxis.style.setProperty("--today-axis-arrangement-minimum-width", `${arrangementMinimumWidth}px`);
+  todayContinuousAxis.style.setProperty("--today-axis-facts-minimum-width", `${factsMinimumWidth}px`);
+  requestAnimationFrame(updateTodayAxisScrollHint);
+  const hasUnlocatedEntries = view.timeAxis.unlocatedCurrentArrangement.length > 0 ||
+    view.timeAxis.unlocatedConfirmedFacts.length > 0;
+  if (todayUnlocatedTimeRegion) todayUnlocatedTimeRegion.hidden = !hasUnlocatedEntries;
+  todayUnlocatedTimeShortcut?.classList.toggle("is-available", hasUnlocatedEntries);
   updateTodayTimeAxisClock(view, currentTime);
 }
 

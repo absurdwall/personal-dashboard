@@ -206,8 +206,29 @@ const interfaceCopies = {
   "today.confirmedFactsHeading": { zh: "已确认事实", en: "Confirmed facts" },
   "today.currentLocalTime": { zh: "当前本地时间", en: "Current local time" },
   "today.fullDayScale": { zh: "全天时间刻度 00:00 至 24:00", en: "Full-day time scale from 00:00 to 24:00" },
-  "today.unlocatedTimes": { zh: "没有明确时刻的内容", en: "Items without a precise time" },
+  "today.axisHorizontalScrollHint": {
+    zh: "横向滚动以查看时间轴的两栏内容。",
+    en: "Scroll horizontally to view both timeline lanes.",
+  },
+  "today.axisScrollRegion": {
+    zh: "时间轴；横向滚动可查看两栏。",
+    en: "Time axis; scroll horizontally to view both lanes.",
+  },
+  "today.unlocatedTimes": { zh: "时间未明确的内容", en: "Items without a precise time" },
   "today.unlocatedLabel": { zh: "未按明确时刻定位", en: "No precise time" },
+  "today.unlocatedPlanLabel": { zh: "计划", en: "Plan" },
+  "today.unlocatedConfirmedFactLabel": {
+    zh: "已确认 · 发生时间未记录",
+    en: "Confirmed · time not recorded",
+  },
+  "today.unlocatedIntro": {
+    zh: "保留原有精度，不硬塞到某一分钟。",
+    en: "Keep the original precision; do not force an exact minute.",
+  },
+  "today.unlocatedFooter": {
+    zh: "这两项不参与时间位置计算。记录时间不等于事情发生时间。",
+    en: "These items do not set timeline positions. Record time is not occurrence time.",
+  },
   "today.sourceDate": { zh: "来源日期：{date}", en: "Source date: {date}" },
   "today.continuesFromPrevious": { zh: "延续自前一天", en: "Continues from the previous day" },
   "today.continuesIntoNext": { zh: "延续至下一天", en: "Continues into the next day" },

@@ -3,10 +3,12 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   axisLabelCenterMinute,
+  axisMarkerLayout,
   axisGeometry,
   axisTrackPlacements,
   clockResultMatchesSession,
   clockTickDecision,
+  hourTickIsClearFromNow,
   hourTickMinutes,
   locateNow,
   minuteOfDay,
@@ -14,6 +16,7 @@ import {
   onManualScroll,
   stripLeadingAxisTimeLabel,
   TODAY_AXIS_LABEL_MINIMUM_MINUTES,
+  TODAY_AXIS_SHORT_RANGE_MAXIMUM_MINUTES,
 } from '../../frontend/today-time-axis.ts';
 import { LatestRequest } from '../../frontend/latest-request.ts';
 
@@ -62,6 +65,15 @@ test('maps points, ranges, and overlaps without changing time anchors', () => {
     axisGeometry({ startMinute: 600, endMinute: 660 }).top,
     axisGeometry({ startMinute: 600, endMinute: 720 }).top,
   );
+});
+
+test('keeps the now label clear of the nearest hourly tick at exact and adjacent minutes', () => {
+  assert.equal(hourTickIsClearFromNow(780, 780), false);
+  assert.equal(hourTickIsClearFromNow(780, 781), false);
+  assert.equal(hourTickIsClearFromNow(840, 839), false);
+  assert.equal(hourTickIsClearFromNow(1440, 1439), false);
+  assert.equal(hourTickIsClearFromNow(720, 780), true);
+  assert.equal(hourTickIsClearFromNow(840, null), true);
 });
 
 test('assigns visible time-axis cards to separate tracks when their labels overlap', () => {
@@ -116,6 +128,34 @@ test('assigns visible time-axis cards to separate tracks when their labels overl
   );
 });
 
+test('keeps a short range track occupied through its real end when the next label starts later', () => {
+  assert.deepEqual(
+    axisTrackPlacements([
+      { startMinute: 780, endMinute: 815 },
+      { startMinute: 805, endMinute: 850 },
+    ]),
+    [
+      { track: 0, tracks: 2 },
+      { track: 1, tracks: 2 },
+    ],
+  );
+});
+
+test('keeps ordinary 45-minute cards on their real range and short labels on their anchor', () => {
+  assert.equal(TODAY_AXIS_LABEL_MINIMUM_MINUTES, 48);
+  assert.equal(TODAY_AXIS_SHORT_RANGE_MAXIMUM_MINUTES, 36);
+  assert.deepEqual(axisMarkerLayout({ startMinute: 720, endMinute: 765 }), {
+    isCenteredLabel: false,
+    heightMinutes: 45,
+    centerMinute: 720,
+  });
+  assert.deepEqual(axisMarkerLayout({ startMinute: 655, endMinute: 656 }), {
+    isCenteredLabel: true,
+    heightMinutes: 48,
+    centerMinute: 655,
+  });
+});
+
 test('removes a repeated leading time from the visible card title', () => {
   assert.equal(
     stripLeadingAxisTimeLabel('10:55–10:56 保存一行短摘要。', '10:55', '10:56'),
@@ -167,10 +207,21 @@ test('time axis markup keeps both lanes named and keyboard reachable', () => {
   const axis = nodes.find((node) => node.attrs.includes('id="today-continuous-axis"'));
   const legend = nodes.find((node) => node.attrs.includes('id="today-axis-lane-legend"'));
   const daytimeLayout = nodes.find((node) => node.attrs.includes('class="today-daytime-layout"'));
+  const axisScroller = nodes.find((node) => node.attrs.includes('class="today-axis-scroll-surface"'));
+  const unlocatedRegion = nodes.find((node) => node.attrs.includes('id="today-unlocated-time-region"'));
+  const unlocatedShortcut = nodes.find((node) => node.attrs.includes('id="today-unlocated-time-shortcut"'));
   const arrangement = nodes.find((node) => node.attrs.includes('id="today-current-arrangement-lane"'));
   const facts = nodes.find((node) => node.attrs.includes('id="today-confirmed-facts-lane"'));
-  assert.ok(axis && legend && daytimeLayout && arrangement && facts);
+  const unlocatedAside = nodes.find((node) => node.attrs.includes('class="today-side-region"'));
+  const arrangementUnlocated = nodes.find((node) => node.attrs.includes('id="today-current-arrangement-unlocated"'));
+  const factsUnlocated = nodes.find((node) => node.attrs.includes('id="today-confirmed-facts-unlocated"'));
+  assert.ok(axis && legend && daytimeLayout && axisScroller && unlocatedRegion && unlocatedShortcut && arrangement && facts);
   assert.notEqual(legend.parent, daytimeLayout, 'lane labels remain outside the narrow horizontal scroller');
+  assert.equal(axis.parent, axisScroller);
+  assert.equal(unlocatedRegion.parent, unlocatedAside, 'untimed entries stay beside the Today timeline');
+  assert.equal(arrangementUnlocated?.parent?.parent, unlocatedRegion);
+  assert.equal(factsUnlocated?.parent?.parent, unlocatedRegion);
+  assert.ok(unlocatedShortcut.attrs.includes('href="#today-unlocated-time-region"'));
   assert.equal(arrangement.parent, axis);
   assert.equal(facts.parent, axis);
   assert.ok(arrangement.attrs.includes('aria-labelledby="today-current-arrangement-heading"'));
@@ -186,6 +237,10 @@ test('time axis markup keeps both lanes named and keyboard reachable', () => {
     'today-confirmed-facts-empty',
     'today-current-arrangement-unlocated',
     'today-confirmed-facts-unlocated',
+    'today-unlocated-time-region',
+    'today-unlocated-time-shortcut',
+    'today-axis-scroll-surface',
+    'today-axis-scroll-hint',
     'today-current-time',
     'today-daytime-short-records',
     'today-daytime-updates',
@@ -195,6 +250,9 @@ test('time axis markup keeps both lanes named and keyboard reachable', () => {
     assert.ok(nodes.some((node) => node.attrs.includes(`id="${id}"`)), `${id} remains available`);
   }
   assert.ok(nodes.some((node) => node.attrs.includes('id="today-locate-now"') && node.tag === 'button'));
+  const scrollSurface = nodes.find((node) => node.attrs.includes('id="today-axis-scroll-surface"'));
+  assert.ok(scrollSurface?.attrs.includes('role="region"'));
+  assert.ok(scrollSurface?.attrs.includes('tabindex="0"'));
   assert.ok(axis.attrs.includes('aria-labelledby="today-daytime-heading"'));
 });
 

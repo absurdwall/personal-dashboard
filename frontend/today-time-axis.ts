@@ -1,8 +1,16 @@
 export const TODAY_AXIS_MINUTES = 24 * 60;
 export const TODAY_AXIS_LABEL_MINIMUM_MINUTES = 48;
+export const TODAY_AXIS_SHORT_RANGE_MAXIMUM_MINUTES = 36;
+export const TODAY_AXIS_NOW_LABEL_CLEARANCE_MINUTES = 12;
+export const TODAY_AXIS_MINIMUM_TRACK_WIDTH = 92;
 
 export type TimeAxisEntry = Readonly<{ startMinute: number; endMinute: number | null }>;
 export type AxisTrackPlacement = Readonly<{ track: number; tracks: number }>;
+export type AxisMarkerLayout = Readonly<{
+  isCenteredLabel: boolean;
+  heightMinutes: number;
+  centerMinute: number;
+}>;
 export type TodayAxisFollowState = 'following' | 'manual';
 export type TodayAxisSession = Readonly<{ date: string; targetBinding: string | null }>;
 export type ClockTickDecision = 'update-marker' | 'reload-today' | 'preserve-history';
@@ -31,6 +39,19 @@ export function axisLabelCenterMinute(anchorMinute: number): number {
   return Math.min(Math.max(anchorMinute, halfLabel), TODAY_AXIS_MINUTES - halfLabel);
 }
 
+export function axisMarkerLayout(entry: TimeAxisEntry): AxisMarkerLayout {
+  const duration = entry.endMinute === null ? null : entry.endMinute - entry.startMinute;
+  if (duration !== null && duration < 0) {
+    throw new RangeError('Today axis range ends must not precede their start.');
+  }
+  const isCenteredLabel = duration === null || duration < TODAY_AXIS_SHORT_RANGE_MAXIMUM_MINUTES;
+  return {
+    isCenteredLabel,
+    heightMinutes: isCenteredLabel ? TODAY_AXIS_LABEL_MINIMUM_MINUTES : duration!,
+    centerMinute: axisLabelCenterMinute(entry.startMinute),
+  };
+}
+
 export function minuteOfDay(label: string): number | null {
   const match = /^(\d{2}):(\d{2})$/.exec(label);
   if (!match) return null;
@@ -42,6 +63,11 @@ export function minuteOfDay(label: string): number | null {
 
 export function hourTickMinutes(): readonly number[] {
   return Array.from({ length: 25 }, (_, hour) => hour * 60);
+}
+
+export function hourTickIsClearFromNow(tickMinute: number, currentMinute: number | null): boolean {
+  return currentMinute === null ||
+    Math.abs(tickMinute - currentMinute) > TODAY_AXIS_NOW_LABEL_CLEARANCE_MINUTES;
 }
 
 export function axisGeometry(entry: TimeAxisEntry): Readonly<{ top: number; height: number }> {
@@ -59,13 +85,18 @@ export function axisTrackPlacements(entries: readonly TimeAxisEntry[]): readonly
   const ordered = entries
     .map((entry, index) => {
       const duration = entry.endMinute === null ? 0 : entry.endMinute - entry.startMinute;
-      const centered = entry.endMinute === null || duration < TODAY_AXIS_LABEL_MINIMUM_MINUTES;
-      const halfLabel = TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2;
-      const labelCenter = axisLabelCenterMinute(entry.startMinute);
+      if (duration < 0) {
+        throw new RangeError('Today axis range ends must not precede their start.');
+      }
+      const marker = axisMarkerLayout(entry);
+      const labelStart = marker.centerMinute - marker.heightMinutes / 2;
+      const labelEnd = marker.centerMinute + marker.heightMinutes / 2;
       return {
         index,
-        start: centered ? labelCenter - halfLabel : entry.startMinute,
-        end: centered ? labelCenter + halfLabel : entry.endMinute!,
+        start: marker.isCenteredLabel ? Math.min(entry.startMinute, labelStart) : entry.startMinute,
+        end: marker.isCenteredLabel
+          ? Math.max(entry.endMinute ?? entry.startMinute, labelEnd)
+          : entry.endMinute!,
       };
     })
     .sort((left, right) => left.start - right.start || left.index - right.index);

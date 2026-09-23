@@ -342,7 +342,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections dashboard-3 dashboard-4 today-time-axis; do
+  for scenario in settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections dashboard-3 dashboard-4 today-time-axis-a-cards today-time-axis; do
     run_bounded_scenario "$scenario"
   done
 
@@ -516,6 +516,16 @@ run_driver() {
     fail "$output"
   fi
   printf '%s\n' "$output" | sanitize_acceptance_output
+}
+
+run_driver_expect() {
+  local output
+  if output="$("$driver_binary" "$app_pid" "$@" 2>&1)"; then
+    printf '%s\n' "$output" | sanitize_acceptance_output
+    return 0
+  fi
+  printf 'Rendered timeline regression: %s\n' "$(printf '%s' "$output" | sanitize_acceptance_output)" >&2
+  return 1
 }
 
 open_native_picker_with_retry() {
@@ -4230,6 +4240,318 @@ wait_for_next_local_minute() {
   fail "the local clock did not advance from $previous_minute within 72 seconds"
 }
 
+run_today_time_axis_a_cards_scenario() {
+  local vault="$acceptance_directory/today-time-axis-a-cards-vault"
+  local today_date="$(/bin/date '+%Y-%m-%d')"
+  local today_record="$vault/life/Journal/Daily/${today_date:0:4}/${today_date:0:7}/$today_date.md"
+  local capture_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory/today-time-axis-a-card-captures}"
+  local capture_path="$capture_directory/today-time-axis-a-cards.png"
+  local local_offset
+  local offset_sign=1
+  local offset_hours
+  local offset_minutes
+  local visual_epoch
+  local record_hash
+  local failures=0
+  local check_output=""
+
+  current_step="preparing the fixed-14:10 A-card synthetic Vault"
+  mkdir -p "$vault/.obsidian" "$(dirname "$today_record")" "$acceptance_data_directory" "$capture_directory"
+  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+  sed "s/2026-08-10/$today_date/g" \
+    "$repository_root/src-tauri/tests/fixtures/today-time-axis-a-readable-cards.md" > "$today_record"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+  record_hash="$(shasum -a 256 "$today_record" | awk '{print $1}')"
+
+  local_offset="$(/bin/date '+%z')"
+  [[ "$local_offset" == -* ]] && offset_sign=-1
+  offset_hours=$((10#${local_offset:1:2}))
+  offset_minutes=$((10#${local_offset:3:2}))
+  fixed_utc_offset_minutes=$((offset_sign * (offset_hours * 60 + offset_minutes)))
+  visual_epoch="$(/bin/date -j -f '%Y-%m-%d %H:%M:%S' "$today_date 14:10:00" '+%s')"
+  fixed_now_epoch_millis="$((visual_epoch * 1000))"
+  today_time_axis_real_clock=0
+
+  current_step="rendering A's ordinary 45-minute cards in the packaged app"
+  launch_app_waiting_for_text "Today" 30
+  run_driver set-size "1120x760" 10
+  run_driver wait-active-text "今天 · $today_date" 20
+  run_driver assert-active-text "当前安排"
+  run_driver assert-active-text "已确认事实"
+  run_driver assert-active-text "12:00–12:45"
+  run_driver assert-active-text "12:05–12:50"
+  run_driver capture-window "$capture_path" 10
+
+  if check_output="$("$driver_binary" "$app_pid" assert-axis-entry-card "12:00|12:45|午餐与休息" 10 2>&1)"; then
+    printf '%s\n' "$check_output" | sanitize_acceptance_output
+  else
+    printf 'Rendered card regression: %s\n' "$(printf '%s' "$check_output" | sanitize_acceptance_output)" >&2
+    failures=$((failures + 1))
+  fi
+  if check_output="$("$driver_binary" "$app_pid" assert-axis-entry-card "12:05|12:50|午餐、散步" 10 2>&1)"; then
+    printf '%s\n' "$check_output" | sanitize_acceptance_output
+  else
+    printf 'Rendered card regression: %s\n' "$(printf '%s' "$check_output" | sanitize_acceptance_output)" >&2
+    failures=$((failures + 1))
+  fi
+  if check_output="$("$driver_binary" "$app_pid" assert-window-visible "完成桌面整理" 10 2>&1)"; then
+    printf '%s\n' "$check_output" | sanitize_acceptance_output
+  else
+    printf 'Untimed-region regression: %s\n' "$(printf '%s' "$check_output" | sanitize_acceptance_output)" >&2
+    failures=$((failures + 1))
+  fi
+  for untimed_label in \
+    "时间未明确的内容" \
+    "保留原有精度，不硬塞到某一分钟。" \
+    "下午 · 计划" \
+    "已确认 · 发生时间未记录" \
+    "这两项不参与时间位置计算。记录时间不等于事情发生时间。"; do
+    if check_output="$("$driver_binary" "$app_pid" assert-window-visible "$untimed_label" 10 2>&1)"; then
+      printf '%s\n' "$check_output" | sanitize_acceptance_output
+    else
+      printf 'Untimed-semantics regression: %s\n' "$(printf '%s' "$check_output" | sanitize_acceptance_output)" >&2
+      failures=$((failures + 1))
+    fi
+  done
+  [[ "$(shasum -a 256 "$today_record" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "the packaged A-card reading changed its synthetic Daily Record"
+
+  if (( failures > 0 )); then
+    if ! stop_app; then
+      fail "the failing rendered A-card checks left the isolated packaged app running"
+    fi
+    fail "$failures rendered A-card checks failed; capture: $capture_path"
+  fi
+  if ! stop_app; then
+    fail "the packaged A-card app did not exit after the rendered checks"
+  fi
+  echo "Packaged A-card regression passed at 14:10 in a 1120x760 window"
+  echo "Synthetic record SHA-256: $record_hash"
+  echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
+  echo "Capture: $capture_path"
+}
+
+run_today_time_axis_overlap_scenario() {
+  local vault="$acceptance_directory/today-time-axis-overlap-vault"
+  local today_date="$(/bin/date '+%Y-%m-%d')"
+  local today_record="$vault/life/Journal/Daily/${today_date:0:4}/${today_date:0:7}/$today_date.md"
+  local capture_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory/today-time-axis-overlap-captures}"
+  local capture_path="$capture_directory/today-time-axis-overlap-zh-wide-13-00.png"
+  local local_offset
+  local offset_sign=1
+  local offset_hours
+  local offset_minutes
+  local visual_epoch
+  local record_hash
+  local failures=0
+  local short_range_title="完成短时整理并核对记录"
+  local later_range_title="整理项目资料并写完后续说明，确保摘要与来源都能阅读"
+  local first_same_minute_title="发送第一条同刻确认"
+  local second_same_minute_title="发送第二条同刻确认"
+  local adjacent_title="完成相邻时刻检查"
+  local fact_title="记录临近整点的已确认事实"
+  local english_title="Review the independent evidence and prepare a readable implementation summary."
+  local visible_card_specifications=""
+  local fact_card_specification=""
+
+  current_step="preparing dense overlap and adjacent-time records in an isolated Vault"
+  mkdir -p "$vault/.obsidian" "$(dirname "$today_record")" "$acceptance_data_directory" "$capture_directory"
+  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+  sed "s/2026-08-10/$today_date/g" \
+    "$repository_root/src-tauri/tests/fixtures/today-time-axis-overlap.md" > "$today_record"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+  record_hash="$(shasum -a 256 "$today_record" | awk '{print $1}')"
+
+  local_offset="$(/bin/date '+%z')"
+  [[ "$local_offset" == -* ]] && offset_sign=-1
+  offset_hours=$((10#${local_offset:1:2}))
+  offset_minutes=$((10#${local_offset:3:2}))
+  fixed_utc_offset_minutes=$((offset_sign * (offset_hours * 60 + offset_minutes)))
+  visual_epoch="$(/bin/date -j -f '%Y-%m-%d %H:%M:%S' "$today_date 13:00:00" '+%s')"
+  fixed_now_epoch_millis="$((visual_epoch * 1000))"
+  today_time_axis_real_clock=0
+
+  current_step="capturing rendered overlapping cards at 13:00"
+  launch_app_waiting_for_text "Today" 30
+  run_driver set-size "1120x760" 10
+  run_driver wait-active-text "今天 · $today_date" 20
+  run_driver assert-text "13:00"
+  run_driver assert-text "$short_range_title"
+  run_driver assert-text "$later_range_title"
+  run_driver capture-window "$capture_path" 10
+  visible_card_specifications="$short_range_title|13:00–13:35;$first_same_minute_title|13:00;$second_same_minute_title|13:00;$adjacent_title|13:05;$later_range_title|13:30–14:30;$english_title|14:00–15:00"
+  fact_card_specification="$fact_title|13:59"
+  run_driver_expect assert-axis-cards-fit "$visible_card_specifications" 10 || failures=$((failures + 1))
+  run_driver_expect assert-axis-tracks-differ "$short_range_title|$later_range_title" 10 || failures=$((failures + 1))
+  run_driver_expect assert-axis-tracks-differ "$later_range_title|$english_title" 10 || failures=$((failures + 1))
+  run_driver assert-window-visible "横向滚动以查看时间轴的两栏内容。" 10
+  if (( failures == 0 )); then
+    run_driver click-axis-card "$first_same_minute_title" 10
+    sleep 0.6
+    run_driver assert-text "DETAIL-ALPHA-UNIQUE-3147"
+    capture_path="$capture_directory/today-time-axis-overlap-zh-wide-13-00-mouse-detail.png"
+    [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+    run_driver capture-window "$capture_path" 10
+    run_driver scroll-text-visible "$first_same_minute_title" 10
+    run_driver focus-axis-card "$second_same_minute_title" 10
+    run_driver press-key "return" 10
+    sleep 0.6
+    run_driver assert-text "DETAIL-BRAVO-UNIQUE-5928"
+    run_driver assert-focused-text "$second_same_minute_title" 5
+    capture_path="$capture_directory/today-time-axis-overlap-zh-wide-13-00-keyboard-detail.png"
+    [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+    run_driver capture-window "$capture_path" 10
+    run_driver scroll-text-visible "$second_same_minute_title" 10
+    run_driver assert-window-visible "$second_same_minute_title" 10
+  fi
+  run_driver press "定位现在" 10
+  current_step="checking the Chinese packaged horizontal-scroll path at 13:00"
+  run_driver scroll-axis-horizontal "right|$fact_title" 10
+  capture_path="$capture_directory/today-time-axis-overlap-zh-wide-13-00-facts.png"
+  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+  run_driver assert-axis-cards-fit "$fact_card_specification" 10
+  run_driver capture-window "$capture_path" 10
+  run_driver scroll-axis-horizontal "left|$short_range_title" 10
+  capture_path="$capture_directory/today-time-axis-overlap-zh-wide-13-00-plan.png"
+  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+  run_driver assert-axis-cards-fit "$visible_card_specifications" 10
+  run_driver capture-window "$capture_path" 10
+  [[ "$(shasum -a 256 "$today_record" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "the packaged overlap reading changed its synthetic Daily Record"
+  if ! stop_app; then
+    fail "the rendered overlap checks left the isolated packaged app running"
+  fi
+
+  for current_time in "13:01" "13:59"; do
+    visual_epoch="$(/bin/date -j -f '%Y-%m-%d %H:%M:%S' "$today_date $current_time:00" '+%s')"
+    fixed_now_epoch_millis="$((visual_epoch * 1000))"
+    capture_path="$capture_directory/today-time-axis-overlap-zh-wide-${current_time//:/-}.png"
+    [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+    launch_app_waiting_for_text "Today" 30
+    run_driver set-size "1120x760" 10
+    run_driver wait-active-text "今天 · $today_date" 20
+    run_driver assert-text "$current_time"
+    run_driver capture-window "$capture_path" 10
+    run_driver_expect assert-axis-cards-fit "$visible_card_specifications" 10 || failures=$((failures + 1))
+    if ! stop_app; then
+      fail "the packaged $current_time overlap view did not exit after capture"
+    fi
+  done
+
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "en"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+  visual_epoch="$(/bin/date -j -f '%Y-%m-%d %H:%M:%S' "$today_date 13:01:00" '+%s')"
+  fixed_now_epoch_millis="$((visual_epoch * 1000))"
+  capture_path="$capture_directory/today-time-axis-overlap-en-narrow-13-01.png"
+  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+  launch_app_waiting_for_text "Today" 30
+  run_driver set-size "640x520" 10
+  run_driver wait-active-text "Today · $today_date" 20
+  run_driver assert-active-text "Current arrangement"
+  run_driver assert-active-text "Confirmed facts"
+  run_driver assert-window-visible-link "Items without a precise time" 10
+  run_driver assert-text "13:01"
+  run_driver assert-window-visible "Scroll horizontally to view both timeline lanes." 10
+  run_driver assert-window-visible "Locate now" 10
+  run_driver press "Locate now" 10
+  run_driver assert-text "13:01"
+  run_driver assert-window-visible-link "Items without a precise time" 10
+  run_driver capture-window "$capture_path" 10
+  run_driver_expect assert-axis-cards-fit "$visible_card_specifications" 10 || failures=$((failures + 1))
+  current_step="checking that the English packaged facts lane can be fully read at 640x520"
+  run_driver scroll-axis-horizontal "right|$fact_title" 10
+  capture_path="$capture_directory/today-time-axis-overlap-en-narrow-13-01-facts.png"
+  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+  run_driver assert-axis-cards-fit "$fact_card_specification" 10
+  run_driver capture-window "$capture_path" 10
+  run_driver scroll-axis-horizontal "left|$short_range_title" 10
+  capture_path="$capture_directory/today-time-axis-overlap-en-narrow-13-01-plan.png"
+  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+  run_driver assert-axis-cards-fit "$visible_card_specifications" 10
+  run_driver capture-window "$capture_path" 10
+  run_driver set-size "1120x760" 10
+  run_driver press "Locate now" 10
+  run_driver assert-axis-cards-fit "$visible_card_specifications" 10
+  capture_path="$capture_directory/today-time-axis-overlap-en-wide-13-01.png"
+  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+  run_driver capture-window "$capture_path" 10
+  run_driver set-size "640x520" 10
+  run_driver press "Locate now" 10
+  run_driver click-visible-link "Items without a precise time" 10
+  sleep 0.5
+  capture_path="$capture_directory/today-time-axis-overlap-en-narrow-13-01-unlocated.png"
+  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+  run_driver capture-window "$capture_path" 10
+  run_driver assert-window-visible "Items without a precise time" 10
+  run_driver assert-window-visible "Keep the original precision; do not force an exact minute." 10
+  run_driver assert-window-visible "Current arrangement" 10
+  run_driver assert-window-visible "Confirmed facts" 10
+  run_driver assert-window-visible "给朋友回消息" 10
+  run_driver assert-window-visible "完成桌面整理" 10
+  run_driver assert-window-visible "These items do not set timeline positions. Record time is not occurrence time." 10
+  if ! stop_app; then
+    fail "the narrow packaged overlap view did not exit after capture"
+  fi
+  [[ "$(shasum -a 256 "$today_record" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "the packaged overlap views changed their synthetic Daily Record"
+
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+  visual_epoch="$(/bin/date -j -f '%Y-%m-%d %H:%M:%S' "$today_date 13:01:00" '+%s')"
+  fixed_now_epoch_millis="$((visual_epoch * 1000))"
+  capture_path="$capture_directory/today-time-axis-overlap-zh-narrow-13-01.png"
+  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+  launch_app_waiting_for_text "Today" 30
+  run_driver set-size "640x520" 10
+  run_driver wait-active-text "今天 · $today_date" 20
+  run_driver assert-active-text "当前安排"
+  run_driver assert-active-text "已确认事实"
+  run_driver assert-window-visible "横向滚动以查看时间轴的两栏内容。" 10
+  run_driver press "定位现在" 10
+  run_driver assert-text "13:01"
+  run_driver assert-window-visible-link "时间未明确的内容" 10
+  run_driver assert-axis-cards-fit "$visible_card_specifications" 10
+  run_driver capture-window "$capture_path" 10
+  run_driver scroll-axis-horizontal "right|$fact_title" 10
+  capture_path="$capture_directory/today-time-axis-overlap-zh-narrow-13-01-facts.png"
+  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+  run_driver assert-axis-cards-fit "$fact_card_specification" 10
+  run_driver capture-window "$capture_path" 10
+  run_driver scroll-axis-horizontal "left|$short_range_title" 10
+  run_driver click-visible-link "时间未明确的内容" 10
+  sleep 0.5
+  capture_path="$capture_directory/today-time-axis-overlap-zh-narrow-13-01-unlocated.png"
+  [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+  run_driver capture-window "$capture_path" 10
+  run_driver assert-window-visible "时间未明确的内容" 10
+  run_driver assert-window-visible "保留原有精度，不硬塞到某一分钟。" 10
+  run_driver assert-window-visible "当前安排" 10
+  run_driver assert-window-visible "已确认事实" 10
+  run_driver assert-window-visible "给朋友回消息" 10
+  run_driver assert-window-visible "完成桌面整理" 10
+  run_driver assert-window-visible "这两项不参与时间位置计算。记录时间不等于事情发生时间。" 10
+  if ! stop_app; then
+    fail "the narrow Chinese packaged overlap view did not exit after capture"
+  fi
+  [[ "$(shasum -a 256 "$today_record" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "the packaged Chinese narrow overlap view changed its synthetic Daily Record"
+
+  if (( failures > 0 )); then
+    fail "$failures rendered overlap/card checks failed; captures: $capture_directory"
+  fi
+
+  echo "Packaged overlap regression passed at 13:00, 13:01 and 13:59 with Chinese and English wide and narrow views"
+  echo "Synthetic record SHA-256: $record_hash"
+  echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
+  echo "Capture: $capture_path"
+}
+
 run_today_time_axis_scenario() {
   local vault="$acceptance_directory/today-time-axis-vault"
   local boundary_vault="$acceptance_directory/today-time-axis-boundary-vault"
@@ -4422,6 +4744,7 @@ EOF
   run_driver assert-size "640x520" 10
   run_driver assert-active-text "Confirmed facts"
   run_driver assert-text "Items without a precise time"
+  run_driver assert-window-visible-link "Items without a precise time" 10
   run_driver press "Locate now" 10
   run_driver focus "Locate now" 10
   run_driver press-key "return"
@@ -5295,6 +5618,8 @@ case "$acceptance_scenario" in
   planning-tasks) run_planning_tasks_scenario ;;
   local-habit-completion) run_local_habit_completion_scenario ;;
   historical-corrections) run_historical_corrections_scenario ;;
+  today-time-axis-a-cards) run_today_time_axis_a_cards_scenario ;;
+  today-time-axis-overlap) run_today_time_axis_overlap_scenario ;;
   today-time-axis) run_today_time_axis_scenario ;;
   dashboard-3) run_dashboard_3_scenario ;;
   dashboard-4) run_dashboard_4_scenario ;;
