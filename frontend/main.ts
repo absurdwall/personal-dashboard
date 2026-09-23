@@ -1544,7 +1544,9 @@ function renderTodayTimeAxisEntries(
         const reveal = document.createElement("button");
         reveal.type = "button";
         reveal.className = "today-axis-stack-reveal";
-        reveal.setAttribute("aria-label", t("today.overlapStackReveal", { count: placement.stackSize }));
+        const revealLabel = t("today.overlapStackReveal", { count: placement.stackSize });
+        reveal.setAttribute("aria-label", revealLabel);
+        reveal.title = revealLabel;
         reveal.textContent = `∨ ${placement.stackSize}`;
         reveal.addEventListener("click", (event) => {
           event.preventDefault();
@@ -1609,6 +1611,16 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
   todayContinuousAxis.classList.toggle("is-today", showNow);
   todayContinuousAxis.querySelectorAll<HTMLElement>(".today-axis-plot").forEach((plot) => {
     plot.classList.toggle("is-today", showNow);
+    const plotBounds = plot.getBoundingClientRect();
+    const currentY = currentMinute === null || plotBounds.height === 0
+      ? Number.NaN
+      : plotBounds.top + plotBounds.height * minutePosition(currentMinute);
+    const nowCoveredByCard = Number.isFinite(currentY) &&
+      [...plot.querySelectorAll<HTMLElement>(".today-axis-marker")].some((marker) => {
+        const cardBounds = marker.getBoundingClientRect();
+        return cardBounds.height > 0 && currentY >= cardBounds.top && currentY <= cardBounds.bottom;
+      });
+    plot.classList.toggle("is-now-covered", showNow && nowCoveredByCard);
   });
   todayHourTicks?.querySelectorAll<HTMLElement>(".today-hour-tick").forEach((tick) => {
     const tickMinute = Number(tick.dataset.minute);

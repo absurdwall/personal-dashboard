@@ -1536,8 +1536,8 @@ func assertAxisOverlapStack(
     let overlap = firstFrame.intersection(secondFrame)
     let fannedApart = abs(firstFrame.minX - secondFrame.minX) > 1 ||
         abs(firstFrame.minY - secondFrame.minY) > 1
-    let revealButton = findPressable(application, "切换重叠事项", contains: true) ??
-        findPressable(application, "Show next overlapping item", contains: true)
+    let revealButton = findPressable(application, "显示下一项", contains: true) ??
+        findPressable(application, "Show next item", contains: true)
     guard overlap.width > 1, overlap.height > 1, fannedApart, revealButton != nil else {
         throw DriverError.unexpectedText(
             "rendered overlapping cards are not fanned with a reveal control: " +
@@ -1548,8 +1548,8 @@ func assertAxisOverlapStack(
 }
 
 func cycleAxisStack(_ application: AXUIElement) throws {
-    guard let revealButton = findPressable(application, "切换重叠事项", contains: true) ??
-        findPressable(application, "Show next overlapping item", contains: true) else {
+    guard let revealButton = findPressable(application, "显示下一项", contains: true) ??
+        findPressable(application, "Show next item", contains: true) else {
         throw DriverError.timeout("overlapping time-axis stack reveal control")
     }
     try performAccessibilityAction(revealButton, "AXPress", "reveal next overlapping time-axis card")

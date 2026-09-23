@@ -206,7 +206,7 @@ const interfaceCopies = {
   "today.confirmedFactsHeading": { zh: "已确认事实", en: "Confirmed facts" },
   "today.timelineItemsHeading": { zh: "当天事项", en: "Today items" },
   "today.noTimedItems": { zh: "这份 Daily Record 尚无带明确时刻的安排或事实。", en: "This Daily Record has no arrangement or fact with a precise time yet." },
-  "today.overlapStackReveal": { zh: "切换重叠事项（{count} 项）", en: "Show next overlapping item ({count} items)" },
+  "today.overlapStackReveal": { zh: "显示下一项（共 {count} 项）", en: "Show next item ({count} total)" },
   "today.currentLocalTime": { zh: "当前本地时间", en: "Current local time" },
   "today.fullDayScale": { zh: "全天时间刻度 00:00 至 24:00", en: "Full-day time scale from 00:00 to 24:00" },
   "today.axisScrollRegion": {

@@ -6497,6 +6497,7 @@ body {
 
 .today-axis-plot {
   position: relative;
+  isolation: isolate;
   height: var(--today-axis-plot-height);
   overflow: visible;
   border-left: 1px solid var(--parity-border);
@@ -6514,10 +6515,14 @@ body {
   top: var(--today-now-position);
   right: 0;
   left: 0;
-  z-index: 2;
+  z-index: 1;
   border-top: 2px solid #bd4b3b;
   content: "";
   pointer-events: none;
+}
+
+.today-axis-plot.is-now-covered::after {
+  display: none;
 }
 
 .today-axis-markers,
@@ -6535,7 +6540,7 @@ body {
 }
 
 .today-axis-durations {
-  z-index: 4;
+  z-index: 2;
 }
 
 .today-axis-marker {
@@ -6599,7 +6604,7 @@ body {
 }
 
 .today-axis-marker.is-stack-front .today-axis-marker-link {
-  outline: 2px solid color-mix(in srgb, var(--parity-accent) 34%, transparent);
+  outline: 2px solid #7d8580;
   outline-offset: 1px;
 }
 
@@ -6669,7 +6674,7 @@ body {
 .today-axis-marker-link:focus-visible {
   position: relative;
   z-index: 7;
-  outline: 3px solid color-mix(in srgb, var(--parity-accent) 35%, transparent);
+  outline: 3px solid #69736e;
   outline-offset: 2px;
 }
 
