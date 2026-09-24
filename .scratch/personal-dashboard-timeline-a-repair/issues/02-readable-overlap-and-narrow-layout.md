@@ -4,11 +4,12 @@
 
 **Blocked by:** 01 提供可读时间轴卡片的基础结构（本票不沿用旧双栏排布）。
 
-**Status:** claimed
+**Status:** resolved
+**Closed:** 2026-09-23T20:03:59-04:00
 
 ## 最新用户方向（覆盖此前双栏候选）
 
-用户查看票 02 的真实 App 后指出事实栏在窗口中经常被截断，并明确要求改为一列；同一时刻的事项也不应横向铺成多列，应互相叠放，点击后把对应卡片显示到前面。原先 two-lane A 候选及其 packaged 证据仍是历史记录，但不再满足当前用户验收方向。票保持 `claimed`，直至用户看到新的原生 App 并决定是否接受。
+用户查看票 02 的真实 App 后指出事实栏在窗口中经常被截断，并明确要求改为一列；同一时刻的事项也不应横向铺成多列，应互相叠放，点击后把对应卡片显示到前面。原先 two-lane A 候选及其 packaged 证据仍是历史记录，但不再满足当前用户验收方向。用户于 2026-09-23 直接确认最新扇叠效果更舒服、方向正确；当前已安装包也已打开给用户查看，票据结案见文末 `Answer`。
 
 - 单条全宽时间轴混排当前安排与已确认事实，暖色虚线计划卡和绿色实线事实卡明确区分。
 - 同时刻及真实可见范围相交的卡片形成轻微扇叠；小型 `∨` 控件逐项切换到前层，选择卡片可展开原始记录详情。
@@ -21,7 +22,7 @@
 - [x] 同刻卡片有轻微叠放和 `∨` 前翻控件；前翻可显示下一项，卡片可用鼠标与键盘打开详情。
 - [x] 真实区间交叉也形成同列叠放；原始时间锚点与时长保持不变。
 - [x] 原生 packaged App 的中英文宽／窄合成场景检查通过。
-- [ ] 用户直接确认最终观感。
+- [x] 用户直接确认最终观感。
 
 ### 2026-09-23 新方向 packaged 实施证据
 
@@ -41,7 +42,13 @@
 - 最新代码包含后续视觉修订，代码提交 `7d9f464`；候选 executable SHA-256 `31a4b1f9c8578ff7bda0603af433b900e8414c2e58056a264638ab1b422e8781`，完整包位于 `/tmp/pd-timeline-a-ticket02-visual-final-r3/release/bundle/macos/Personal Dashboard.app`。未 notarize（缺少 Apple 签名凭据），未替换日常安装或发布。
 - packaged 回归 r8 通过 13:00、13:01、13:59 的中英文宽／窄窗口矩阵；同刻与真实区间重叠扇叠、逐项前翻、鼠标／键盘打开不同详情、未定时入口可达均通过。隔离 Daily Record SHA-256 `7c77925b9c05a7905cc78babadc01972ab59f4ff47e5e06dffeb175e4149dbe4` 未变化。截图目录 `/tmp/pd-timeline-a-evidence/single-lane-run-r8/`。
 - 独立视觉复核重新查看 r8 的中文窄屏、宽屏和未定时入口图，确认红线未穿过卡片文字、时间标记仍可见、中性色焦点描边、单列双类型及未定时内容均可辨；未发现实质视觉问题。复核者指出 `∨` 单独看仍略含糊，但计数、扇叠语境和可访问／提示文字共同说明其用途。复核不等于用户验收。
-- 用户要求看到真实 app 后，已直接打开上述确切 packaged 候选，显示当前 Today 页面和本机 Vault 内容；未保存或修改个人记录。用户本人最终观感仍待确认，issue 继续 `claimed`。
+- 用户要求看到真实 app 后，已直接打开确切 packaged 候选，显示当前 Today 页面和本机 Vault 内容；未保存或修改个人记录。随后用户明确确认扇叠卡片效果更舒服且方向正确。2026-09-23 已从当前提交重新打包并安装同一可执行文件哈希的 3.0.1 App；当前安装与实际窗口检查结果记录于文末 `Answer`。
+
+## Answer
+
+用户于 2026-09-23 看过最新时间轴方向后明确认可轻微扇叠卡片与逐项前翻效果，称其“看着其实挺舒服”且“相对来讲就是对的了”。按用户要求关闭了此前运行的多份 Dashboard 实例，将旧版 `/Applications/Personal Dashboard.app` 保留在 `/Applications/Personal Dashboard.app.backup-20260923-accepted-timeline`，并把当前分支提交 `e0091de` 构建的版本安装到 `/Applications/Personal Dashboard.app`。安装包版本为 3.0.1，bundle id 为 `com.tortillaflat.personal-dashboard`，可执行文件 SHA-256 为 `31a4b1f9c8578ff7bda0603af433b900e8414c2e58056a264638ab1b422e8781`；`codesign --verify --deep --strict` 通过。该本地包未 notarize。已打开正式安装路径的 App，确认 Today 页面显示单列安排／事实时间轴和未定位内容；未修改或保存个人记录。
+
+PR 已整理为本地草稿 `/tmp/personal-dashboard-timeline-pr-draft.md`，目标为 `main`，分支为 `codex/historical-habit-corrections`。按用户要求没有推送，因此尚无 GitHub PR。聚焦与 packaged 检查结果见本票以上记录；完整前端套件仍有记录过的外部 `life-daily-loop` skill 标题契约失败。票 01 继续保持 `claimed`，不把本票验收推断为对票 01 的单独确认。
 
 Type: task
 

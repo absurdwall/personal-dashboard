@@ -5,13 +5,13 @@
 | Ticket | Blocked by | Status |
 | --- | --- | --- |
 | [01 恢复 A 的直接可读双栏时间轴](issues/01-restore-readable-a-cards.md) | None | claimed |
-| [02 单列叠放卡片在重叠与窄窗口下保持可读](issues/02-readable-overlap-and-narrow-layout.md) | 01 | claimed |
+| [02 单列叠放卡片在重叠与窄窗口下保持可读](issues/02-readable-overlap-and-narrow-layout.md) | 01 | resolved |
 
-当前处理项：02 的单列 packaged 候选已打开给用户查看，仍保持 `claimed`、等待本人决定是否接受；01 也仍为 `claimed`。本轮不将任何票标为用户接受或 resolved。
+当前处理项：02 的单列扇叠方向已获用户直接认可，并已安装到 `/Applications/Personal Dashboard.app`；02 已 `resolved`。01 继续保持 `claimed`，未将本票验收推断为对 01 的单独确认。
 
 ## 用户查看 packaged 候选后的方向修订
 
-用户实际打开前一版候选后指出双栏中的事实栏常被窗口截断，并要求将当前安排与已确认事实合并成单列；同刻／交叉事项应轻微叠放，以小型 `∨` 控件逐张前翻，使用不同颜色区分计划和事实。此前双栏候选的测试／截图／复核保留为历史工程证据，但已被用户的新方向覆盖，不视为当前验收通过。单列 r8 候选与当前复核见下方，用户观感仍待本人确认；02 状态继续为 `claimed`。
+用户实际打开前一版候选后指出双栏中的事实栏常被窗口截断，并要求将当前安排与已确认事实合并成单列；同刻／交叉事项应轻微叠放，以小型 `∨` 控件逐张前翻，使用不同颜色区分计划和事实。此前双栏候选的测试／截图／复核保留为历史工程证据，但已被用户的新方向覆盖，不视为当前验收通过。单列 r8 候选和独立复核见下方；用户于 2026-09-23 明确认可扇叠观感，重新打包后已安装并打开正式 App，02 已 `resolved`。
 
 旧时间轴票曾 resolved，但用户提供的画面未达到 A 的视觉要求；旧票状态不得作为通过凭据。保留历史习惯功能和现有时间解析，不重建整套应用。
 
@@ -29,7 +29,12 @@
 
 - 修复后代码提交 `7d9f464`；候选 executable SHA-256 `31a4b1f9c8578ff7bda0603af433b900e8414c2e58056a264638ab1b422e8781`，路径 `/tmp/pd-timeline-a-ticket02-visual-final-r3/release/bundle/macos/Personal Dashboard.app`；未 notarize，未替换已安装 App 或发布。
 - packaged 场景 r8 在 13:00／13:01／13:59 中英文宽／窄视图通过，隔离 Daily Record hash 保持 `7c77925b9c05a7905cc78babadc01972ab59f4ff47e5e06dffeb175e4149dbe4`。截图位于 `/tmp/pd-timeline-a-evidence/single-lane-run-r8/`。
-- 独立视觉复核未发现实质问题；当前时间线避开卡片文字，类型样式清楚。候选已通过原生窗口展示真实 Today 页面，未编辑记录。票 02 仍 `claimed`，等待用户本人确认最终观感。
+- 独立视觉复核未发现实质问题；当前时间线避开卡片文字，类型样式清楚。候选已通过原生窗口展示真实 Today 页面，未编辑记录。用户随后确认扇叠观感舒服、方向正确。
+
+## 2026-09-23 用户验收、安装与 PR 草稿
+
+- 用户认可单列扇叠卡片及其前翻效果。关闭了此前多份 Dashboard 进程后，从 `e0091de` 独立构建并安装 Personal Dashboard 3.0.1；正式路径 `/Applications/Personal Dashboard.app` 的 executable SHA-256 为 `31a4b1f9c8578ff7bda0603af433b900e8414c2e58056a264638ab1b422e8781`，代码签名验证通过。旧 `/Applications` 包保留在 `/Applications/Personal Dashboard.app.backup-20260923-accepted-timeline`。新 App 已在原生窗口打开并显示实际 Today 页面，未编辑或保存个人数据；未 notarize。
+- PR 描述已准备在 `/tmp/personal-dashboard-timeline-pr-draft.md`，base `main`、head `codex/historical-habit-corrections`。用户要求不推送，故没有创建远端 PR。票 02 已 `resolved`；票 01 仍为 `claimed`。
 
 ## Management 登记
 
