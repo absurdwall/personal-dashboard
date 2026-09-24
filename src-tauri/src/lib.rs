@@ -50,7 +50,7 @@ use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
     DayTaskCompletionInput, DayTaskDeleteInput, DayTaskRenameInput, DaytimeUpdateInput,
     EveningUpdateInput, HabitCompletionMutationInput, HabitSnapshotView,
-    PlanningDayTaskContextView, TodayApplication, TodayView, VaultSelectionResult,
+    PlanningDayTaskContextView, TodayApplication, TodayClockView, TodayView, VaultSelectionResult,
 };
 
 type DesktopTodayApplication = TodayApplication<
@@ -136,6 +136,11 @@ fn set_interface_language(
 #[tauri::command]
 fn today_view(application: State<'_, DesktopTodayApplication>) -> Result<TodayView, String> {
     application.read()
+}
+
+#[tauri::command]
+fn today_clock(application: State<'_, DesktopTodayApplication>) -> TodayClockView {
+    application.local_clock()
 }
 
 #[tauri::command]
@@ -454,6 +459,7 @@ pub fn run() {
             interface_language_preferences,
             set_interface_language,
             today_view,
+            today_clock,
             daily_view,
             read_daily_view,
             calendar_month,
@@ -494,6 +500,7 @@ pub fn run() {
         interface_language_preferences,
         set_interface_language,
         today_view,
+        today_clock,
         daily_view,
         read_daily_view,
         calendar_month,

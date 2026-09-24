@@ -135,7 +135,7 @@ fn explicit_date_refresh_stays_bound_to_the_selected_day_across_midnight() {
 }
 
 #[test]
-fn selected_days_recommend_evening_only_when_a_review_exists() {
+fn historical_days_recommend_evening_only_when_review_exists_and_today_starts_in_daytime() {
     let vault = TempDirectory::new("calendar-selected-date-default-phase");
     write_record(
         vault.path(),
@@ -162,7 +162,7 @@ fn selected_days_recommend_evening_only_when_a_review_exists() {
     assert!(!unreviewed.is_today);
     assert_eq!(unreviewed.default_phase, DailyPhase::Daytime);
     assert!(today.is_today);
-    assert_eq!(today.default_phase, DailyPhase::Morning);
+    assert_eq!(today.default_phase, DailyPhase::Daytime);
 }
 
 #[test]

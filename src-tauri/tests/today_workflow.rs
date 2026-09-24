@@ -1,8 +1,8 @@
 use personal_dashboard_lib::today::{
     BaselineAvailability, DaytimeUpdateInput, DaytimeUpdateKind, EveningUpdateInput,
     EveningUpdateMode, FileTodayRecordStore, TodayApplication, TodayClock, TodayRecordStore,
-    TodayState, TodayWorkspaceExchange, TodayWorkspacePersistence, TodayWorkspaceSelectionState,
-    VaultAvailability,
+    TodayState, TodayView, TodayWorkspaceExchange, TodayWorkspacePersistence,
+    TodayWorkspaceSelectionState, VaultAvailability,
 };
 use std::cell::RefCell;
 use std::fs;
@@ -100,6 +100,296 @@ fn write_record(vault: &Path, document: &str) {
 
 fn application_for(vault: &Path) -> TodayApplication<SelectedVault, NoSelection, FixedClock> {
     TodayApplication::new(SelectedVault(vault.to_path_buf()), NoSelection, FixedClock)
+}
+
+fn open_synthetic_time_axis_record(record: &str) -> TodayView {
+    open_synthetic_time_axis_record_with_clock(record, FixedClock)
+}
+
+fn open_synthetic_time_axis_record_with_clock<C: TodayClock>(record: &str, clock: C) -> TodayView {
+    let vault = TempDirectory::new("today-time-axis");
+    write_record(vault.path(), record);
+    TodayApplication::new(
+        SelectedVault(vault.path().to_path_buf()),
+        NoSelection,
+        clock,
+    )
+    .open()
+    .expect("synthetic time-axis record should open")
+}
+
+struct AmbiguousTimeClock;
+
+impl TodayClock for AmbiguousTimeClock {
+    fn current_date(&self) -> String {
+        "2026-08-10".to_owned()
+    }
+
+    fn current_time_label(&self) -> String {
+        "14:10".to_owned()
+    }
+
+    fn current_timestamp_label(&self) -> String {
+        "2026-08-10T14:10-04:00".to_owned()
+    }
+
+    fn resolve_local_wall_time(
+        &self,
+        date: &str,
+        minute: u16,
+    ) -> personal_dashboard_lib::today::LocalWallTimeResolution {
+        if date == "2026-08-10" && minute == 90 {
+            personal_dashboard_lib::today::LocalWallTimeResolution::Ambiguous
+        } else {
+            personal_dashboard_lib::today::LocalWallTimeResolution::Unique {
+                utc_offset_minutes: -240,
+            }
+        }
+    }
+}
+
+struct OffsetChangingTimeClock;
+
+impl TodayClock for OffsetChangingTimeClock {
+    fn current_date(&self) -> String {
+        "2026-08-10".to_owned()
+    }
+
+    fn current_time_label(&self) -> String {
+        "14:10".to_owned()
+    }
+
+    fn current_timestamp_label(&self) -> String {
+        "2026-08-10T14:10-04:00".to_owned()
+    }
+
+    fn resolve_local_wall_time(
+        &self,
+        date: &str,
+        _minute: u16,
+    ) -> personal_dashboard_lib::today::LocalWallTimeResolution {
+        personal_dashboard_lib::today::LocalWallTimeResolution::Unique {
+            utc_offset_minutes: if date == "2026-08-09" { -240 } else { -300 },
+        }
+    }
+}
+
+#[test]
+fn time_axis_projection_separates_explicit_times_from_unlocated_content() {
+    let view = open_synthetic_time_axis_record(include_str!("fixtures/today-time-axis.md"));
+
+    assert_eq!(
+        view.time_axis.current_arrangement[0].start_minute,
+        Some(570)
+    );
+    assert_eq!(view.time_axis.current_arrangement[0].end_minute, Some(645));
+    assert_eq!(
+        view.time_axis.current_arrangement[1].start_minute,
+        Some(780)
+    );
+    assert_eq!(view.time_axis.current_arrangement[1].end_minute, None);
+    assert_eq!(
+        view.time_axis
+            .current_arrangement
+            .iter()
+            .filter(|entry| entry.start_minute == Some(780))
+            .count(),
+        2,
+        "same-time plans must keep one shared anchor",
+    );
+    assert!(view
+        .time_axis
+        .current_arrangement
+        .iter()
+        .any(|entry| entry.start_minute == Some(655) && entry.end_minute == Some(656)));
+    assert_eq!(view.time_axis.confirmed_facts.len(), 1);
+    assert_eq!(view.time_axis.confirmed_facts[0].start_minute, Some(860));
+    assert!(view.time_axis.confirmed_facts[0]
+        .text
+        .contains("完成了明确记录的工作"));
+    assert!(view
+        .time_axis
+        .unlocated_current_arrangement
+        .iter()
+        .any(|entry| entry.text.contains("17:00 前")));
+    assert!(view
+        .time_axis
+        .unlocated_current_arrangement
+        .iter()
+        .any(|entry| entry.text.contains("by 16:00")));
+    assert!(view
+        .time_axis
+        .unlocated_current_arrangement
+        .iter()
+        .any(|entry| entry.text.contains("before 18:00")));
+    assert!(view
+        .time_axis
+        .unlocated_current_arrangement
+        .iter()
+        .any(|entry| entry.period.as_deref() == Some("下午")));
+    assert!(view
+        .time_axis
+        .unlocated_current_arrangement
+        .iter()
+        .any(|entry| entry.text.contains("窄窗口中仍应保留完整内容")));
+    assert!(view
+        .time_axis
+        .unlocated_confirmed_facts
+        .iter()
+        .any(|entry| entry.text.contains("没有发生时刻")));
+    assert!(!view
+        .time_axis
+        .confirmed_facts
+        .iter()
+        .any(|entry| entry.text.contains("11:00")));
+    assert!(!view
+        .time_axis
+        .current_arrangement
+        .iter()
+        .any(|entry| entry.text.contains("08:00")));
+}
+
+#[test]
+fn time_axis_projection_refreshes_after_an_external_record_edit_without_writing() {
+    let vault = TempDirectory::new("today-time-axis-refresh");
+    let path = vault
+        .path()
+        .join("life/Journal/Daily/2026/2026-08/2026-08-10.md");
+    let original = include_str!("fixtures/today-time-axis.md");
+    write_record(vault.path(), original);
+    let app = application_for(vault.path());
+    let first = app.read().expect("initial synthetic record should read");
+    assert_eq!(
+        first.time_axis.current_arrangement[0].start_minute,
+        Some(570)
+    );
+
+    let externally_updated = original.replace("09:30–10:45", "10:30–11:45");
+    fs::write(&path, &externally_updated).expect("synthetic record should be externally updated");
+    let refreshed = app.read().expect("updated synthetic record should read");
+
+    assert_eq!(
+        refreshed.time_axis.current_arrangement[0].start_minute,
+        Some(630)
+    );
+    assert_eq!(
+        refreshed.time_axis.current_arrangement[0].end_minute,
+        Some(705)
+    );
+    assert_eq!(
+        fs::read_to_string(&path).expect("record should remain readable"),
+        externally_updated,
+        "reading the projection must not write to the Daily Record",
+    );
+}
+
+#[test]
+fn projects_only_explicit_cross_date_segments_and_keeps_ambiguous_times_unlocated() {
+    let view = open_synthetic_time_axis_record_with_clock(
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 今天的大致安排
+
+- 2026-08-09 23:30–2026-08-11 00:30 跨日连续安排。
+- 2026-08-09T23:30–2026-08-10T00:30 ISO 本地跨日安排。
+- 2026-08-10T13:15Z 带 UTC 标记的 ISO 时间不应当作本地时刻。
+- 23:30–00:30 没有明确日期，不能推断为次日。
+- 01:30 重复夏令时时刻。
+
+## 白天更新
+
+### 11:00 — 仅为更新标题
+
+- 观察事实：2026-08-10 12:00–2026-08-10 12:30 确认的事实范围。
+
+## 晚间复盘
+"#,
+        AmbiguousTimeClock,
+    );
+
+    let cross_date = &view.time_axis.current_arrangement[0];
+    assert_eq!(cross_date.source_date, "2026-08-09");
+    assert_eq!(cross_date.start_minute, Some(0));
+    assert_eq!(cross_date.end_minute, Some(1440));
+    assert!(cross_date.continues_from_previous_day);
+    assert!(cross_date.continues_into_next_day);
+    let iso_cross_date = view
+        .time_axis
+        .current_arrangement
+        .iter()
+        .find(|entry| entry.text.contains("ISO 本地跨日安排"))
+        .expect("ISO local timestamps should retain their explicit dates");
+    assert_eq!(iso_cross_date.source_date, "2026-08-09");
+    assert_eq!(iso_cross_date.start_minute, Some(0));
+    assert_eq!(iso_cross_date.end_minute, Some(30));
+    assert!(iso_cross_date.continues_from_previous_day);
+    assert!(!iso_cross_date.continues_into_next_day);
+    assert!(view
+        .time_axis
+        .unlocated_current_arrangement
+        .iter()
+        .any(|entry| entry.text.contains("没有明确日期")));
+    assert!(view
+        .time_axis
+        .unlocated_current_arrangement
+        .iter()
+        .any(|entry| entry.text.contains("重复夏令时时刻")));
+    assert!(view
+        .time_axis
+        .unlocated_current_arrangement
+        .iter()
+        .any(|entry| entry.text.contains("带 UTC 标记")));
+    assert_eq!(view.time_axis.confirmed_facts.len(), 1);
+    assert_eq!(view.time_axis.confirmed_facts[0].start_minute, Some(720));
+    assert_eq!(view.time_axis.confirmed_facts[0].end_minute, Some(750));
+}
+
+#[test]
+fn cross_date_ranges_with_different_local_utc_offsets_stay_unlocated() {
+    let view = open_synthetic_time_axis_record_with_clock(
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+
+## 今天的大致安排
+
+- 2026-08-09 23:30–2026-08-11 00:30 跨 UTC offset 变化的安排。
+"#,
+        OffsetChangingTimeClock,
+    );
+
+    assert!(view.time_axis.current_arrangement.is_empty());
+    assert!(view
+        .time_axis
+        .unlocated_current_arrangement
+        .iter()
+        .any(|entry| entry.text.contains("跨 UTC offset 变化的安排")));
+}
+
+#[test]
+fn today_view_uses_one_local_clock_snapshot_and_hides_now_for_history() {
+    let view = open_synthetic_time_axis_record(include_str!("fixtures/today-time-axis.md"));
+    assert!(view.is_today);
+    assert_eq!(view.date, "2026-08-10");
+    assert_eq!(view.current_time.as_deref(), Some("14:10"));
+    assert_eq!(
+        view.default_phase,
+        personal_dashboard_lib::today::DailyPhase::Daytime
+    );
+
+    let vault = TempDirectory::new("today-history-clock");
+    prepare_compatible_vault(vault.path());
+    let historical = application_for(vault.path())
+        .read_date("2026-08-09")
+        .expect("historical date should remain readable");
+    assert!(!historical.is_today);
+    assert_eq!(historical.current_time, None);
 }
 
 #[test]
@@ -249,6 +539,10 @@ date: 2026-08-10
     assert!(view.baseline.message.contains("未独立保存早间基准"));
     assert_eq!(view.timeline[0].title, "这是旧记录仍然可读的主计划。");
     assert_eq!(view.evidence[0].items, vec!["旧记录里的任务"]);
+    assert!(view.time_axis.current_arrangement.is_empty());
+    assert_eq!(view.time_axis.unlocated_current_arrangement.len(), 1);
+    assert!(view.time_axis.confirmed_facts.is_empty());
+    assert!(view.time_axis.unlocated_confirmed_facts.is_empty());
 }
 
 #[test]

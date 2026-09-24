@@ -6331,6 +6331,501 @@ body {
   }
 }
 
+/* Today timeline: arrangements and confirmed facts share one full-day lane. */
+.today-daytime-layout {
+  display: block;
+  min-width: 0;
+  overflow-x: auto;
+  margin-top: 18px;
+  padding-bottom: 6px;
+}
+
+.today-time-axis-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.today-time-axis-boundary {
+  margin: 0;
+  color: var(--parity-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.today-continuous-axis {
+  --today-axis-gutter: 3.7rem;
+  --today-axis-heading-height: 3rem;
+  --today-axis-hour-height: 3.75rem;
+  --today-axis-plot-height: calc(24 * var(--today-axis-hour-height));
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--today-axis-gutter) minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 14px 12px 18px 8px;
+  border: 1px solid var(--parity-border);
+  border-radius: 14px;
+  background: var(--parity-surface, #fff);
+}
+
+.today-hour-scale,
+.today-axis-lane {
+  min-width: 0;
+  grid-row: 1;
+}
+
+.today-hour-scale {
+  position: relative;
+  grid-column: 1;
+  height: calc(var(--today-axis-heading-height) + var(--today-axis-plot-height));
+}
+
+.today-axis-heading-spacer,
+.today-axis-lane-heading {
+  display: flex;
+  align-items: center;
+  height: var(--today-axis-heading-height);
+  margin: 0;
+}
+
+.today-axis-lane-heading {
+  padding: 0 6px;
+  border-bottom: 1px solid var(--parity-border);
+  background: var(--parity-surface, #fff);
+  color: var(--parity-ink, #232724);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.today-axis-lane-track {
+  position: relative;
+  min-width: 0;
+}
+
+.today-axis-lane-legend {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 7px 10px;
+  border: 1px solid var(--parity-border);
+  border-radius: 8px;
+  background: var(--parity-surface, #fff);
+}
+
+.today-axis-lane-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--parity-ink, #232724);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.today-axis-lane-legend-symbol {
+  display: inline-block;
+  flex: 0 0 10px;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  background: var(--parity-surface, #fff);
+}
+
+.today-axis-lane-legend-symbol.is-arrangement {
+  border-radius: 2px;
+  color: #9a8359;
+}
+
+.today-axis-lane-legend-symbol.is-fact {
+  border-radius: 50%;
+  background: currentColor;
+  color: #2d6c57;
+}
+
+#today-hour-ticks {
+  position: absolute;
+  inset: var(--today-axis-heading-height) 0 0;
+  height: var(--today-axis-plot-height);
+}
+
+.today-hour-tick {
+  position: absolute;
+  right: 4px;
+  z-index: 1;
+  transform: translateY(-50%);
+  color: var(--parity-muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.today-hour-tick:last-of-type {
+  transform: translateY(-100%);
+}
+
+.today-axis-current-time {
+  position: absolute;
+  top: var(--today-now-position, 50%);
+  right: 0;
+  z-index: 8;
+  padding: 3px 4px;
+  transform: translateY(-50%);
+  border-radius: 4px;
+  background: #bd4b3b;
+  color: #fff;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.today-axis-lane {
+  position: relative;
+}
+
+.today-axis-lane {
+  grid-column: 2;
+}
+
+.today-axis-plot {
+  position: relative;
+  isolation: isolate;
+  height: var(--today-axis-plot-height);
+  overflow: visible;
+  border-left: 1px solid var(--parity-border);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--today-axis-hour-height) - 1px),
+    color-mix(in srgb, var(--parity-border) 72%, transparent) calc(var(--today-axis-hour-height) - 1px),
+    color-mix(in srgb, var(--parity-border) 72%, transparent) var(--today-axis-hour-height)
+  );
+}
+
+.today-axis-plot.is-today::after {
+  position: absolute;
+  top: var(--today-now-position);
+  right: 0;
+  left: 0;
+  z-index: 1;
+  border-top: 2px solid #bd4b3b;
+  content: "";
+  pointer-events: none;
+}
+
+.today-axis-plot.is-now-covered::after {
+  display: none;
+}
+
+.today-axis-markers,
+.today-axis-durations {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  pointer-events: none;
+}
+
+.today-axis-markers {
+  z-index: 3;
+}
+
+.today-axis-durations {
+  z-index: 2;
+}
+
+.today-axis-marker {
+  position: absolute;
+  top: var(--axis-top);
+  left: calc(5px + var(--axis-stack-offset, 0px));
+  z-index: 3;
+  width: calc(100% - 10px - var(--axis-stack-offset, 0px));
+  min-width: 0;
+  transform: translateY(var(--axis-stack-offset, 0px));
+}
+
+.today-axis-marker.is-centered-label {
+  top: var(--axis-label-center);
+  transform: translateY(calc(-50% + var(--axis-stack-offset, 0px)));
+}
+
+.today-axis-marker.is-stacked .today-axis-marker-link {
+  padding-right: 42px;
+}
+
+.today-axis-marker-link {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px 7px;
+  overflow: hidden;
+  border: 1px solid #cbded2;
+  border-radius: 6px;
+  background: #e7f0eb;
+  color: #214e43;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: start;
+  text-decoration: none;
+  white-space: normal;
+  pointer-events: auto;
+}
+
+.today-axis-marker.is-arrangement .today-axis-marker-link {
+  border: 1px dashed #bcb092;
+  background: #f6f2e8;
+  color: #695b40;
+}
+
+.today-axis-marker.is-stack-front {
+  z-index: 30 !important;
+  filter: drop-shadow(0 3px 7px rgb(31 43 36 / 24%));
+}
+
+.today-axis-marker:focus-within {
+  z-index: 31 !important;
+}
+
+.today-axis-marker.is-stack-front .today-axis-marker-link {
+  outline: 2px solid #7d8580;
+  outline-offset: 1px;
+}
+
+.today-axis-stack-reveal {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  z-index: 2;
+  display: none;
+  place-items: center;
+  min-width: 28px;
+  min-height: 20px;
+  padding: 1px 4px;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 92%);
+  color: inherit;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.today-axis-marker.is-stack-front .today-axis-stack-reveal {
+  display: grid;
+}
+
+.today-axis-stack-reveal:hover,
+.today-axis-stack-reveal:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--parity-accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.today-axis-marker.is-arrangement .today-axis-stack-reveal {
+  color: #695b40;
+}
+
+.today-axis-marker.is-fact .today-axis-stack-reveal {
+  color: #214e43;
+}
+
+.today-axis-marker-time {
+  display: block;
+  min-width: 0;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.today-axis-marker-title {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 10px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: normal;
+}
+
+.today-axis-marker-link:hover,
+.today-axis-marker-link:focus-visible {
+  position: relative;
+  z-index: 7;
+  outline: 3px solid #69736e;
+  outline-offset: 2px;
+}
+
+.today-axis-range {
+  position: absolute;
+  top: var(--axis-top);
+  left: 7px;
+  z-index: 4;
+  width: 4px;
+  border-radius: 3px;
+  background: #2d6c57;
+  opacity: 0.76;
+}
+
+.today-axis-range.is-arrangement {
+  background: #bcb092;
+}
+
+.today-axis-point {
+  position: absolute;
+  top: var(--axis-top);
+  left: 4px;
+  z-index: 5;
+  width: 8px;
+  height: 8px;
+  transform: translateY(-50%);
+  border: 2px solid #2d6c57;
+  border-radius: 50%;
+  background: #e7f0eb;
+}
+
+.today-axis-point.is-arrangement {
+  border-color: #bcb092;
+  background: #f6f2e8;
+}
+
+.today-axis-empty,
+.today-axis-unlocated {
+  margin: 12px 0 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--parity-border) 22%, transparent);
+  color: var(--parity-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.today-axis-unlocated:empty {
+  display: none;
+}
+
+.today-axis-unlocated h5 {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.today-axis-details {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.today-axis-entry-detail {
+  min-width: 0;
+  border: 1px solid var(--parity-border);
+  border-radius: 8px;
+  background: var(--parity-surface, #fff);
+  color: var(--parity-ink, #232724);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.today-axis-entry-detail > summary {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, auto) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.today-axis-entry-detail > summary :is(time, .today-axis-entry-time-label) {
+  color: var(--parity-accent-strong, #315f4a);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+
+.today-axis-entry-detail > summary span {
+  overflow-wrap: anywhere;
+}
+
+.today-axis-entry-summary-metadata {
+  grid-column: 1 / -1;
+  color: var(--parity-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.today-axis-entry-detail > p {
+  margin: 0;
+  padding: 0 8px 8px;
+  overflow-wrap: anywhere;
+}
+
+.today-axis-entry-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  padding: 0 8px 8px;
+  color: var(--parity-muted);
+  font-size: 10px;
+}
+
+.today-daytime-source-details {
+  margin-top: 14px;
+  border-top: 1px solid var(--parity-border);
+  color: var(--parity-ink, #232724);
+}
+
+.today-daytime-source-details > summary {
+  padding: 12px 0 4px;
+  color: var(--parity-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+@media (max-width: 680px) {
+  .today-time-axis-toolbar {
+    align-items: flex-start;
+  }
+
+  .today-continuous-axis {
+    --today-axis-gutter: 3.25rem;
+    gap: 8px;
+    padding: 10px 8px 14px 4px;
+  }
+
+  .today-axis-lane-heading {
+    padding-inline: 4px;
+    font-size: 11px;
+  }
+
+  .today-axis-marker-link {
+    min-width: 0;
+    padding: 4px 5px;
+  }
+}
+
 /* Daytime shares the outer two-column layout: tasks then notes in the right rail. */
 .today-daytime-layout {
   grid-template-columns: minmax(0, 1fr);
@@ -7714,4 +8209,124 @@ button.habit-cell:focus-visible {
   border-color: var(--parity-accent);
   background: var(--parity-accent-soft);
   color: var(--parity-accent-strong);
+}
+
+/* Keep the full-day scale scrollable while untimed entries stay beside Today. */
+.today-daytime-layout {
+  display: block;
+  min-width: 0;
+  overflow: visible;
+  margin-top: 18px;
+  padding-bottom: 6px;
+}
+
+.today-axis-scroll-surface {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+}
+
+.today-axis-scroll-surface:focus-visible {
+  outline: 2px solid var(--parity-accent);
+  outline-offset: 2px;
+}
+
+.today-time-axis-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.today-axis-unlocated-shortcut {
+  display: none;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid var(--parity-border);
+  border-radius: 6px;
+  background: var(--parity-surface, #fff);
+  color: var(--parity-accent-strong, #315f4a);
+  font-size: 10px;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.today-axis-unlocated-region {
+  position: sticky;
+  top: 16px;
+  z-index: 2;
+  scroll-margin-top: 5.5rem;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--parity-border);
+  border-radius: 12px;
+  background: var(--parity-surface, #fff);
+  color: var(--parity-ink, #232724);
+}
+
+.today-axis-unlocated-region > h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.today-axis-unlocated-region > p {
+  margin: 0 0 12px;
+  color: var(--parity-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.today-axis-unlocated-note {
+  margin: 12px 0 0 !important;
+  padding-top: 10px;
+  border-top: 1px solid var(--parity-border);
+  font-size: 10px !important;
+}
+
+.today-axis-unlocated-lane + .today-axis-unlocated-lane {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--parity-border);
+}
+
+.today-axis-unlocated-lane > h4 {
+  margin: 0 0 7px;
+  color: var(--parity-muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.today-axis-unlocated {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+@media (max-width: 900px) {
+  .today-time-axis-actions {
+    flex-wrap: wrap;
+  }
+
+  .today-time-axis-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    padding: 8px 0;
+    background: var(--parity-surface, #fff);
+  }
+
+  .today-axis-unlocated-shortcut.is-available {
+    display: inline-flex;
+  }
+
+  .today-axis-unlocated-region {
+    position: static;
+  }
 }

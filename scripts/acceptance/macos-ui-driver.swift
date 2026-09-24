@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-cards-fit|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -1326,6 +1326,432 @@ func assertLongTextFits(_ application: AXUIElement, text: String) throws {
     }
 }
 
+func visibleAxisTitlePath(_ application: AXUIElement, title: String) -> AccessibilityPath? {
+    findTextPaths(application, title).first { path in
+        stringAttribute(path.element, "AXRole") == "AXStaticText" &&
+            path.ancestors.contains { stringAttribute($0, "AXRole") == "AXLink" } &&
+            (path.ancestors + [path.element]).allSatisfy { visibleAttribute($0, "AXHidden") }
+    }
+}
+
+func assertAxisEntryCard(
+    _ application: AXUIElement,
+    startLabel: String,
+    endLabel: String,
+    title: String
+) throws {
+    guard let titlePath = visibleAxisTitlePath(application, title: title),
+    let link = titlePath.ancestors.last(where: { stringAttribute($0, "AXRole") == "AXLink" }),
+    let cardFrame = frame(link),
+    let titleFrame = frame(titlePath.element),
+    let nowPath = findTextPaths(application, "14:10", contains: false).first(where: { path in
+        stringAttribute(path.element, "AXRole") == "AXStaticText" &&
+            path.ancestors.contains { nodeText($0).localizedCaseInsensitiveContains("当前本地时间") }
+    }),
+    let nowFrame = frame(nowPath.element),
+    let scalePath = visibleAxisTitlePath(application, title: "整理项目资料"),
+    let scaleLink = scalePath.ancestors.last(where: { stringAttribute($0, "AXRole") == "AXLink" }),
+    let scaleFrame = frame(scaleLink),
+    let window = mainWindow(application),
+    let windowFrame = frame(window) else {
+        throw DriverError.timeout("rendered time-axis card and 14:10 scale bounds: \(startLabel) \(title)")
+    }
+
+    let startPieces = startLabel.split(separator: ":").compactMap { Int($0) }
+    let endPieces = endLabel.split(separator: ":").compactMap { Int($0) }
+    guard startPieces.count == 2, endPieces.count == 2 else {
+        throw DriverError.unexpectedText("invalid time-axis card interval: \(startLabel)–\(endLabel)")
+    }
+    let startMinute = startPieces[0] * 60 + startPieces[1]
+    let endMinute = endPieces[0] * 60 + endPieces[1]
+    guard endMinute > startMinute else {
+        throw DriverError.unexpectedText("invalid time-axis card interval: \(startLabel)–\(endLabel)")
+    }
+    let nowMinute = 14 * 60 + 10
+    let scaleMinute = 15 * 60
+    let pixelsPerMinute = (scaleFrame.minY - nowFrame.midY) / CGFloat(scaleMinute - nowMinute)
+    let expectedHeight = CGFloat(endMinute - startMinute) * pixelsPerMinute
+    let expectedTop = nowFrame.midY + CGFloat(startMinute - nowMinute) * pixelsPerMinute
+    let visibleWindow = windowFrame.insetBy(dx: -2, dy: -2)
+    let tolerance: CGFloat = 2
+    guard pixelsPerMinute > 0, abs(cardFrame.minY - expectedTop) <= tolerance else {
+        throw DriverError.unexpectedText(
+            "rendered time-axis card does not begin at its \(startLabel) anchor: " +
+                "card=\(cardFrame) expectedTop=\(expectedTop) pixelsPerMinute=\(pixelsPerMinute)"
+        )
+    }
+    guard abs(cardFrame.height - expectedHeight) <= tolerance else {
+        throw DriverError.unexpectedText(
+            "rendered time-axis card height does not match \(startLabel)–\(endLabel): " +
+                "card=\(cardFrame.height) expected=\(expectedHeight)"
+        )
+    }
+    guard cardFrame.insetBy(dx: -tolerance, dy: -tolerance).contains(titleFrame),
+          visibleWindow.contains(CGPoint(x: cardFrame.minX, y: cardFrame.minY)),
+          visibleWindow.contains(CGPoint(x: cardFrame.maxX, y: cardFrame.maxY)) else {
+        throw DriverError.unexpectedText(
+            "rendered time-axis card or its title is clipped from view: \(title) " +
+                "card=\(cardFrame) title=\(titleFrame) window=\(windowFrame)"
+        )
+    }
+}
+
+func axisCardLink(_ application: AXUIElement, title: String) -> (link: AXUIElement, path: AccessibilityPath)? {
+    guard let titlePath = visibleAxisTitlePath(application, title: title),
+          let link = titlePath.ancestors.last(where: { stringAttribute($0, "AXRole") == "AXLink" }) else {
+        return nil
+    }
+    return (link, titlePath)
+}
+
+func axisScrollSurface(in path: AccessibilityPath) -> AXUIElement? {
+    path.ancestors.last(where: { element in
+        let text = nodeText(element).localizedLowercase
+        return stringAttribute(element, "AXRole") == "AXScrollArea" ||
+            text.contains("scroll horizontally to view both lanes") ||
+            text.contains("横向滚动可查看两栏")
+    })
+}
+
+func scrollAxisCardIntoWindow(
+    _ application: AXUIElement,
+    pid: pid_t,
+    title: String
+) throws {
+    guard let window = mainWindow(application),
+          let windowFrame = frame(window) else {
+        throw DriverError.timeout("main window bounds for time-axis card: \(title)")
+    }
+    let visibleWindow = windowFrame.insetBy(dx: -2, dy: -2)
+    for _ in 0..<8 {
+        guard let card = axisCardLink(application, title: title),
+              let cardFrame = frame(card.link) else {
+            throw DriverError.timeout("rendered time-axis card bounds: \(title)")
+        }
+        if visibleWindow.contains(cardFrame) {
+            return
+        }
+        guard let surface = scrollSurface(for: card.path),
+              let surfaceFrame = frame(surface) else {
+            throw DriverError.timeout("scrollable surface for time-axis card: \(title)")
+        }
+        let direction = cardFrame.maxY > windowFrame.maxY ? "down" : "up"
+        let action = direction == "down" ? "AXScrollDownByPage" : "AXScrollUpByPage"
+        let actionError = AXUIElementPerformAction(surface, action as CFString)
+        Thread.sleep(forTimeInterval: 0.15)
+        let afterPage = axisCardLink(application, title: title).flatMap { frame($0.link) }
+        if actionError != .success || afterPage.map({ abs($0.minY - cardFrame.minY) < 1 }) != false {
+            guard let source = CGEventSource(stateID: .combinedSessionState),
+                  let move = CGEvent(
+                    mouseEventSource: source,
+                    mouseType: .mouseMoved,
+                    mouseCursorPosition: CGPoint(x: surfaceFrame.midX, y: surfaceFrame.midY),
+                    mouseButton: .left
+                  ),
+                  let scroll = CGEvent(
+                    scrollWheelEvent2Source: source,
+                    units: .pixel,
+                    wheelCount: 1,
+                    wheel1: direction == "down" ? -420 : 420,
+                    wheel2: 0,
+                    wheel3: 0
+                  ) else {
+                throw DriverError.actionFailed("scroll time-axis card into view", .failure)
+            }
+            move.postToPid(pid)
+            Thread.sleep(forTimeInterval: 0.05)
+            scroll.postToPid(pid)
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+    }
+    guard let card = axisCardLink(application, title: title),
+          let cardFrame = frame(card.link),
+          visibleWindow.contains(cardFrame) else {
+        throw DriverError.timeout("fully visible time-axis card after scrolling: \(title)")
+    }
+}
+
+func assertAxisCardsFit(_ application: AXUIElement, pid: pid_t, specifications: String) throws {
+    guard let window = mainWindow(application),
+          let windowFrame = frame(window) else {
+        throw DriverError.timeout("main window bounds for rendered time-axis cards")
+    }
+    let visibleWindow = windowFrame.insetBy(dx: -2, dy: -2)
+    var cards: [(title: String, frame: CGRect)] = []
+    for specification in specifications.split(separator: ";", omittingEmptySubsequences: false) {
+        let fields = specification.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard fields.count == 2 else {
+            throw DriverError.usage
+        }
+        try scrollAxisCardIntoWindow(application, pid: pid, title: fields[0])
+        guard let card = axisCardLink(application, title: fields[0]),
+              let cardFrame = frame(card.link),
+              let titleFrame = frame(card.path.element),
+              let scrollSurface = axisScrollSurface(in: card.path),
+              let scrollFrame = frame(scrollSurface) else {
+            throw DriverError.timeout("rendered card and title bounds: \(specification)")
+        }
+        guard let timePath = findTextPaths(card.link, fields[1], contains: false).first(where: {
+            stringAttribute($0.element, "AXRole") == "AXStaticText"
+        }), let timeFrame = frame(timePath.element) else {
+            throw DriverError.timeout("rendered time label inside card: \(fields[1])")
+        }
+        let contentBounds = cardFrame.insetBy(dx: -2, dy: -2)
+        let titleStartsInsideCard = titleFrame.minY >= cardFrame.minY - 2 &&
+            titleFrame.minY < cardFrame.maxY &&
+            titleFrame.minX >= cardFrame.minX - 2 &&
+            titleFrame.minX < cardFrame.maxX
+        let visibleScrollSurface = scrollFrame.insetBy(dx: -2, dy: -2)
+        guard cardFrame.width >= 80,
+              cardFrame.height >= 38,
+              titleStartsInsideCard,
+              contentBounds.contains(timeFrame),
+              visibleWindow.contains(cardFrame),
+              visibleScrollSurface.contains(cardFrame) else {
+            throw DriverError.unexpectedText(
+                "rendered time-axis card time label or hit target is too narrow, clipped, or outside its scroll viewport: " +
+                    "title=\(fields[0]) card=\(cardFrame) time=\(timeFrame) titleBounds=\(titleFrame) " +
+                    "window=\(windowFrame) viewport=\(scrollFrame)"
+            )
+        }
+        cards.append((fields[0], cardFrame))
+    }
+    print("Rendered card times and hit targets fit the single timeline lane when brought into view:")
+    for card in cards {
+        print("  \(card.title): \(card.frame)")
+    }
+}
+
+func assertAxisOverlapStack(
+    _ application: AXUIElement,
+    firstTitle: String,
+    secondTitle: String
+) throws {
+    guard let first = axisCardLink(application, title: firstTitle),
+          let second = axisCardLink(application, title: secondTitle),
+          let firstFrame = frame(first.link),
+          let secondFrame = frame(second.link) else {
+        throw DriverError.timeout("rendered cards for overlap stack: \(firstTitle), \(secondTitle)")
+    }
+    let overlap = firstFrame.intersection(secondFrame)
+    let fannedApart = abs(firstFrame.minX - secondFrame.minX) > 1 ||
+        abs(firstFrame.minY - secondFrame.minY) > 1
+    let revealButton = findPressable(application, "显示下一项", contains: true) ??
+        findPressable(application, "Show next item", contains: true)
+    guard overlap.width > 1, overlap.height > 1, fannedApart, revealButton != nil else {
+        throw DriverError.unexpectedText(
+            "rendered overlapping cards are not fanned with a reveal control: " +
+                "\(firstTitle)=\(firstFrame) / \(secondTitle)=\(secondFrame)"
+        )
+    }
+    print("Rendered overlapping cards share one fanned stack with a reveal control: \(firstFrame) / \(secondFrame)")
+}
+
+func cycleAxisStack(_ application: AXUIElement) throws {
+    guard let revealButton = findPressable(application, "显示下一项", contains: true) ??
+        findPressable(application, "Show next item", contains: true) else {
+        throw DriverError.timeout("overlapping time-axis stack reveal control")
+    }
+    try performAccessibilityAction(revealButton, "AXPress", "reveal next overlapping time-axis card")
+    print("Revealed the next card in its overlapping time-axis stack")
+}
+
+func clickAxisCard(_ application: AXUIElement, pid: pid_t, title: String) throws {
+    guard let card = axisCardLink(application, title: title) else {
+        throw DriverError.timeout("visible rendered time-axis card link: \(title)")
+    }
+    try clickElement(card.link, pid: pid)
+    print("Clicked rendered time-axis card at its independent hit target: \(title)")
+}
+
+func focusAxisCard(_ application: AXUIElement, pid: pid_t, title: String) throws {
+    guard let card = axisCardLink(application, title: title) else {
+        throw DriverError.timeout("visible rendered time-axis card link: \(title)")
+    }
+    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    let error = AXUIElementSetAttributeValue(card.link, "AXFocused" as CFString, kCFBooleanTrue)
+    guard error == .success else {
+        throw DriverError.actionFailed("focus time-axis card \(title)", error)
+    }
+    try waitForFocusedText(application, title, timeout: 2)
+    print("Focused rendered time-axis card link: \(title)")
+}
+
+func scrollAxisHorizontally(
+    _ application: AXUIElement,
+    pid: pid_t,
+    direction: String,
+    targetTitle: String
+) throws {
+    guard direction == "left" || direction == "right",
+          let card = axisCardLink(application, title: targetTitle),
+          let initialFrame = frame(card.link),
+          let surface = axisScrollSurface(in: card.path),
+          let surfaceFrame = frame(surface),
+          let source = CGEventSource(stateID: .combinedSessionState) else {
+        throw DriverError.timeout("horizontal time-axis scroll surface for: \(targetTitle)")
+    }
+    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    var movedFrame = frame(card.link)
+    let focusError = AXUIElementSetAttributeValue(
+        surface,
+        "AXFocused" as CFString,
+        kCFBooleanTrue
+    )
+    if focusError == .success {
+        var consecutiveUnchangedFrames = 0
+        for _ in 0..<8 {
+            try pressKey(pid, direction)
+            let nextFrame = axisCardLink(application, title: targetTitle).flatMap { frame($0.link) }
+            if let previousFrame = movedFrame,
+               let nextFrame,
+               abs(nextFrame.minX - previousFrame.minX) <= 1 {
+                consecutiveUnchangedFrames += 1
+            } else {
+                consecutiveUnchangedFrames = 0
+            }
+            movedFrame = nextFrame
+            if consecutiveUnchangedFrames >= 2 {
+                break
+            }
+        }
+    }
+    if let rawScrollBar = attribute(surface, "AXHorizontalScrollBar") {
+        let scrollBar = unsafeDowncast(rawScrollBar, to: AXUIElement.self)
+        if let current = numberAttribute(scrollBar, "AXValue"),
+           let maximum = numberAttribute(scrollBar, "AXMaxValue"),
+           maximum > current {
+            let minimum = numberAttribute(scrollBar, "AXMinValue") ?? 0
+            let step = max(1, min(maximum - minimum, 0.7 * surfaceFrame.width))
+            let target = direction == "right"
+                ? min(maximum, current + step)
+                : max(minimum, current - step)
+            if target != current {
+                let scrollError = AXUIElementSetAttributeValue(
+                    scrollBar,
+                    "AXValue" as CFString,
+                    NSNumber(value: target)
+                )
+                if scrollError == .success {
+                    Thread.sleep(forTimeInterval: 0.3)
+                    movedFrame = axisCardLink(application, title: targetTitle).flatMap { frame($0.link) }
+                }
+            }
+        }
+    }
+    let movedByScrollBar = movedFrame.map { candidate in
+        direction == "right"
+            ? candidate.minX < initialFrame.minX - 1
+            : candidate.minX > initialFrame.minX + 1
+    } ?? false
+    let action = direction == "right" ? "AXScrollRightByPage" : "AXScrollLeftByPage"
+    let actionError = movedByScrollBar
+        ? .success
+        : AXUIElementPerformAction(surface, action as CFString)
+    if !movedByScrollBar {
+        Thread.sleep(forTimeInterval: 0.2)
+        movedFrame = axisCardLink(application, title: targetTitle).flatMap { frame($0.link) }
+    }
+    let movedInRequestedDirection = movedFrame.map { candidate in
+        direction == "right"
+            ? candidate.minX < initialFrame.minX - 1
+            : candidate.minX > initialFrame.minX + 1
+    } ?? false
+    if !movedInRequestedDirection {
+        guard let move = CGEvent(
+                  mouseEventSource: source,
+                  mouseType: .mouseMoved,
+                  mouseCursorPosition: CGPoint(x: surfaceFrame.midX, y: surfaceFrame.midY),
+                  mouseButton: .left
+              ),
+              let scroll = CGEvent(
+                  scrollWheelEvent2Source: source,
+                  units: .pixel,
+                  wheelCount: 2,
+                  wheel1: 0,
+                  wheel2: direction == "right" ? 520 : -520,
+                  wheel3: 0
+              ) else {
+            throw DriverError.actionFailed("scroll time axis \(direction)", .failure)
+        }
+        move.post(tap: .cghidEventTap)
+        Thread.sleep(forTimeInterval: 0.05)
+        scroll.post(tap: .cghidEventTap)
+        Thread.sleep(forTimeInterval: 0.35)
+        movedFrame = axisCardLink(application, title: targetTitle).flatMap { frame($0.link) }
+    }
+    guard let finalFrame = movedFrame,
+          direction == "right"
+            ? finalFrame.minX < initialFrame.minX - 1
+            : finalFrame.minX > initialFrame.minX + 1 else {
+        let surfaceDetails = card.path.ancestors.map { element in
+            "\(stringAttribute(element, "AXRole"))[\(nodeText(element))]@\(String(describing: frame(element)))"
+        }.joined(separator: " <- ")
+        let scrollBarDetails: String
+        if let rawScrollBar = attribute(surface, "AXHorizontalScrollBar") {
+            let scrollBar = unsafeDowncast(rawScrollBar, to: AXUIElement.self)
+            scrollBarDetails = "value=\(String(describing: numberAttribute(scrollBar, "AXValue"))) max=\(String(describing: numberAttribute(scrollBar, "AXMaxValue")))"
+        } else {
+            scrollBarDetails = "unavailable"
+        }
+        throw DriverError.unexpectedText(
+            "horizontal time-axis scroll did not move \(direction) " +
+                "(AX action: \(actionError.rawValue), focus: \(focusError.rawValue), scrollbar: \(scrollBarDetails)): " +
+                "card=\(initialFrame) surface=\(surfaceFrame) ancestors=\(surfaceDetails)"
+        )
+    }
+    print("Scrolled the time-axis region \(direction): \(initialFrame.minX) -> \(finalFrame.minX)")
+}
+
+func assertWindowVisibleText(_ application: AXUIElement, text: String) throws {
+    guard let window = mainWindow(application),
+          let windowFrame = frame(window),
+          let element = visibleRenderedElement(application, label: text),
+          let elementFrame = frame(element) else {
+        throw DriverError.timeout("visible rendered UI text with measurable bounds: \(text)")
+    }
+    let visibleWindow = windowFrame.insetBy(dx: -2, dy: -2)
+    guard visibleWindow.contains(CGPoint(x: elementFrame.minX, y: elementFrame.minY)),
+          visibleWindow.contains(CGPoint(x: elementFrame.maxX, y: elementFrame.maxY)) else {
+        throw DriverError.unexpectedText(
+            "rendered UI text is outside the visible window: \(text) " +
+                "frame=\(elementFrame) window=\(windowFrame)"
+        )
+    }
+}
+
+func assertWindowVisibleLink(_ application: AXUIElement, text: String) throws {
+    guard let link = visibleLink(application, text: text),
+          let linkFrame = frame(link),
+          let window = mainWindow(application),
+          let windowFrame = frame(window) else {
+        throw DriverError.timeout("visible rendered link with measurable bounds: \(text)")
+    }
+    let visibleWindow = windowFrame.insetBy(dx: -2, dy: -2)
+    guard visibleWindow.contains(CGPoint(x: linkFrame.minX, y: linkFrame.minY)),
+          visibleWindow.contains(CGPoint(x: linkFrame.maxX, y: linkFrame.maxY)) else {
+        throw DriverError.unexpectedText(
+            "rendered link is outside the visible window: \(text) " +
+                "frame=\(linkFrame) window=\(windowFrame)"
+        )
+    }
+}
+
+func visibleLink(_ application: AXUIElement, text: String) -> AXUIElement? {
+    findTextPaths(application, text).first(where: { path in
+        stringAttribute(path.element, "AXRole") == "AXLink" &&
+            (path.ancestors + [path.element]).allSatisfy { visibleAttribute($0, "AXHidden") }
+    })?.element
+}
+
+func clickVisibleLink(_ application: AXUIElement, pid: pid_t, text: String) throws {
+    guard let link = visibleLink(application, text: text) else {
+        throw DriverError.timeout("visible rendered link: \(text)")
+    }
+    try clickElement(link, pid: pid)
+    print("Clicked rendered link: \(text)")
+}
+
 func scrollTextIntoWindow(
     _ application: AXUIElement,
     text: String,
@@ -1730,7 +2156,12 @@ func scrollSurface(for path: AccessibilityPath) -> AXUIElement? {
     }
     return path.ancestors.reversed().first { element in
         let role = stringAttribute(element, "AXRole")
+        let accessibilityName = nodeText(element).localizedLowercase
+        let isHorizontalTimelineRegion =
+            accessibilityName.contains("scroll horizontally to view both lanes") ||
+            accessibilityName.contains("横向滚动可查看两栏")
         return visibleAttribute(element, "AXHidden") &&
+            !isHorizontalTimelineRegion &&
             (role == "AXScrollArea" ||
             (role != "AXWebArea" && role != "AXWindow" &&
                 attribute(element, "AXVerticalScrollBar") != nil))
@@ -2135,6 +2566,46 @@ func assertState(
             "\(text) did not expose state \(expected) (role=\(stringAttribute(element, "AXRole")); \(details))"
         )
     }
+}
+
+func assertCenteredElement(
+    _ application: AXUIElement,
+    label: String,
+    tolerance: CGFloat
+) throws {
+    guard let element = visibleRenderedElement(application, label: label),
+          let elementFrame = frame(element),
+          let window = mainWindow(application),
+          let windowFrame = frame(window) else {
+        throw DriverError.timeout("centered rendered element with measurable bounds: \(label)")
+    }
+    let distance = abs(elementFrame.midY - windowFrame.midY)
+    guard distance <= tolerance else {
+        throw DriverError.unexpectedText(
+            "rendered element is not near the window center: \(label) " +
+                "distance=\(distance) tolerance=\(tolerance) frame=\(elementFrame) window=\(windowFrame)"
+        )
+    }
+}
+
+func waitForCenteredElement(
+    _ application: AXUIElement,
+    label: String,
+    tolerance: CGFloat,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    var lastError: Error = DriverError.timeout("centered rendered element: \(label)")
+    repeat {
+        do {
+            try assertCenteredElement(application, label: label, tolerance: tolerance)
+            return
+        } catch {
+            lastError = error
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw lastError
 }
 
 func waitForState(
@@ -3169,13 +3640,38 @@ func requireArguments() throws -> (pid_t, String, String, TimeInterval) {
 do {
     let (pid, command, text, timeout) = try requireArguments()
     let application = AXUIElementCreateApplication(pid)
-    if command != "choose-folder" && command != "choose-file" &&
+    if command != "choose-folder" && command != "choose-file" && command != "hide" &&
         command != "make-image-fixture" && command != "assert-capture-non-overwrite" {
         try activateApplication(application, pid: pid, timeout: timeout)
     }
     Thread.sleep(forTimeInterval: 0.05)
 
     switch command {
+    case "hide":
+        let runningApplication = NSRunningApplication(processIdentifier: pid)
+        guard runningApplication != nil else {
+            throw DriverError.actionFailed("hide packaged application", .failure)
+        }
+        let hideApplication = Process()
+        hideApplication.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        hideApplication.arguments = [
+            "-e",
+            "tell application \"System Events\" to set visible of " +
+                "(first process whose unix id is \(pid)) to false",
+        ]
+        let hideOutput = Pipe()
+        hideApplication.standardOutput = hideOutput
+        hideApplication.standardError = hideOutput
+        try hideApplication.run()
+        hideApplication.waitUntilExit()
+        guard hideApplication.terminationStatus == 0 else {
+            let output = String(
+                data: hideOutput.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
+            throw DriverError.actionFailed("hide packaged application: \(output)", .failure)
+        }
+        print("Hid packaged application: \(text)")
     case "wait-text":
         try waitForText(application, text, timeout: timeout)
         print("Found rendered text: \(text)")
@@ -3198,6 +3694,58 @@ do {
         try activateApplication(application, pid: pid, timeout: min(2, timeout))
         try waitForFocusedText(application, text, timeout: timeout)
         print("Focused rendered control contains: \(text)")
+    case "assert-centered":
+        let parts = text.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let tolerance = Double(parts[1]), tolerance >= 0 else {
+            throw DriverError.usage
+        }
+        try waitForCenteredElement(
+            application,
+            label: parts[0],
+            tolerance: CGFloat(tolerance),
+            timeout: timeout
+        )
+        print("Rendered element is near the window center: \(parts[0])")
+    case "assert-axis-entry-card":
+        let parts = text.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 3 else {
+            throw DriverError.usage
+        }
+        try assertAxisEntryCard(
+            application,
+            startLabel: parts[0],
+            endLabel: parts[1],
+            title: parts[2]
+        )
+        print("Rendered card text and true time bounds are visible: \(parts[0])–\(parts[1]) \(parts[2])")
+    case "assert-axis-cards-fit":
+        try assertAxisCardsFit(application, pid: pid, specifications: text)
+    case "assert-axis-overlap-stack":
+        let parts = text.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 2 else {
+            throw DriverError.usage
+        }
+        try assertAxisOverlapStack(application, firstTitle: parts[0], secondTitle: parts[1])
+    case "cycle-axis-stack":
+        try cycleAxisStack(application)
+    case "click-axis-card":
+        try clickAxisCard(application, pid: pid, title: text)
+    case "focus-axis-card":
+        try focusAxisCard(application, pid: pid, title: text)
+    case "scroll-axis-horizontal":
+        let parts = text.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 2 else {
+            throw DriverError.usage
+        }
+        try scrollAxisHorizontally(application, pid: pid, direction: parts[0], targetTitle: parts[1])
+    case "assert-window-visible":
+        try assertWindowVisibleText(application, text: text)
+        print("Rendered text is visible in the app window: \(text)")
+    case "assert-window-visible-link":
+        try assertWindowVisibleLink(application, text: text)
+        print("Rendered link is visible in the app window: \(text)")
+    case "click-visible-link":
+        try clickVisibleLink(application, pid: pid, text: text)
     case "focus":
         try focusPressable(application, pid: pid, text: text, contains: true, timeout: timeout)
         print("Focused rendered control: \(text)")

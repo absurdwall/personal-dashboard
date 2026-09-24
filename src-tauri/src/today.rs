@@ -75,6 +75,19 @@ pub trait TodayClock {
     fn current_date(&self) -> String;
     fn current_time_label(&self) -> String;
     fn current_timestamp_label(&self) -> String;
+
+    fn current_local_time(&self) -> TodayClockView {
+        TodayClockView {
+            date: self.current_date(),
+            time: self.current_time_label(),
+        }
+    }
+
+    fn resolve_local_wall_time(&self, _date: &str, _minute: u16) -> LocalWallTimeResolution {
+        LocalWallTimeResolution::Unique {
+            utc_offset_minutes: 0,
+        }
+    }
 }
 
 impl<T: TodayClock + ?Sized> TodayClock for &T {
@@ -89,6 +102,28 @@ impl<T: TodayClock + ?Sized> TodayClock for &T {
     fn current_timestamp_label(&self) -> String {
         (**self).current_timestamp_label()
     }
+
+    fn current_local_time(&self) -> TodayClockView {
+        (**self).current_local_time()
+    }
+
+    fn resolve_local_wall_time(&self, date: &str, minute: u16) -> LocalWallTimeResolution {
+        (**self).resolve_local_wall_time(date, minute)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalWallTimeResolution {
+    Unique { utc_offset_minutes: i32 },
+    Nonexistent,
+    Ambiguous,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TodayClockView {
+    pub date: String,
+    pub time: String,
 }
 
 pub trait TodayRecordStore {
@@ -1335,6 +1370,7 @@ pub struct TodayView {
     pub state: TodayState,
     pub date: String,
     pub is_today: bool,
+    pub current_time: Option<String>,
     pub can_record: bool,
     pub default_phase: DailyPhase,
     pub daily_record_availability: DailyRecordAvailability,
@@ -1352,6 +1388,28 @@ pub struct TodayView {
     pub tasks: TasksView,
     pub day_tasks: DayTaskListView,
     pub habit_corrections: HabitCorrectionView,
+    pub time_axis: TimeAxisView,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeAxisView {
+    pub current_arrangement: Vec<TimeAxisEntryView>,
+    pub confirmed_facts: Vec<TimeAxisEntryView>,
+    pub unlocated_current_arrangement: Vec<TimeAxisEntryView>,
+    pub unlocated_confirmed_facts: Vec<TimeAxisEntryView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeAxisEntryView {
+    pub period: Option<String>,
+    pub text: String,
+    pub source_date: String,
+    pub start_minute: Option<u16>,
+    pub end_minute: Option<u16>,
+    pub continues_from_previous_day: bool,
+    pub continues_into_next_day: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -2472,7 +2530,7 @@ where
     }
 
     pub fn open(&self) -> Result<TodayView, String> {
-        let date = self.clock.current_date();
+        let date = self.clock.current_local_time().date;
         self.open_date(&date)
     }
 
@@ -2481,7 +2539,7 @@ where
     }
 
     pub fn read(&self) -> Result<TodayView, String> {
-        let date = self.clock.current_date();
+        let date = self.clock.current_local_time().date;
         self.read_date(&date)
     }
 
@@ -2489,20 +2547,22 @@ where
         self.view_date(date, false)
     }
 
+    pub fn local_clock(&self) -> TodayClockView {
+        self.clock.current_local_time()
+    }
+
     fn view_date(&self, date: &str, receive_planning_input: bool) -> Result<TodayView, String> {
         canonical_record_path(Path::new("."), date)?;
-        let is_today = date == self.clock.current_date();
+        let clock = self.clock.current_local_time();
+        let is_today = date == clock.date;
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(TodayView {
                 state: TodayState::Unconfigured,
                 date: date.to_owned(),
                 is_today,
+                current_time: is_today.then_some(clock.time),
                 can_record: false,
-                default_phase: if is_today {
-                    DailyPhase::Morning
-                } else {
-                    DailyPhase::Daytime
-                },
+                default_phase: DailyPhase::Daytime,
                 daily_record_availability: DailyRecordAvailability::Missing,
                 vault_name: None,
                 vault_path: None,
@@ -2522,6 +2582,7 @@ where
                     HabitSnapshotState::Unconfigured,
                     "请选择 Vault，以读取历史习惯。",
                 ),
+                time_axis: TimeAxisView::default(),
             });
         };
         if receive_planning_input {
@@ -2839,9 +2900,11 @@ where
         date: String,
         receive_planning_input: bool,
     ) -> Result<TodayView, String> {
-        let is_today = date == self.clock.current_date();
+        let clock = self.clock.current_local_time();
+        let is_today = date == clock.date;
+        let current_time = is_today.then_some(clock.time.clone());
         let can_record = CalendarDate::parse(&date).is_some_and(|selected| {
-            CalendarDate::parse(&self.clock.current_date())
+            CalendarDate::parse(&clock.date)
                 .is_some_and(|today| selected.unix_days() <= today.unix_days())
         });
         let vault_name = vault
@@ -2853,6 +2916,7 @@ where
             return Ok(vault_error_view(
                 date,
                 is_today,
+                current_time,
                 vault_name,
                 vault_path,
                 VaultAvailability::Unavailable,
@@ -2863,6 +2927,7 @@ where
             return Ok(vault_error_view(
                 date,
                 is_today,
+                current_time,
                 vault_name,
                 vault_path,
                 VaultAvailability::Incompatible,
@@ -2883,12 +2948,9 @@ where
                     state: TodayState::Missing,
                     date,
                     is_today,
+                    current_time: current_time.clone(),
                     can_record,
-                    default_phase: if is_today {
-                        DailyPhase::Morning
-                    } else {
-                        DailyPhase::Daytime
-                    },
+                    default_phase: DailyPhase::Daytime,
                     daily_record_availability: DailyRecordAvailability::Missing,
                     vault_name,
                     vault_path,
@@ -2904,6 +2966,7 @@ where
                     tasks,
                     day_tasks,
                     habit_corrections,
+                    time_axis: TimeAxisView::default(),
                 });
             }
         };
@@ -2932,13 +2995,15 @@ where
                         BaselineAvailability::Saved => "已读取独立早间基准和当前安排。",
                     }
                 };
+                let time_axis = project_time_axis(&timeline, &daytime, &date, &self.clock);
                 Ok(TodayView {
                     state: TodayState::Ready,
                     date,
                     is_today,
+                    current_time: current_time.clone(),
                     can_record,
                     default_phase: if is_today {
-                        DailyPhase::Morning
+                        DailyPhase::Daytime
                     } else if evening_has_content(&evening) {
                         DailyPhase::Evening
                     } else {
@@ -2962,18 +3027,16 @@ where
                     tasks,
                     day_tasks,
                     habit_corrections,
+                    time_axis,
                 })
             }
             Err(message) => Ok(TodayView {
                 state: TodayState::Error,
                 date,
                 is_today,
+                current_time,
                 can_record,
-                default_phase: if is_today {
-                    DailyPhase::Morning
-                } else {
-                    DailyPhase::Daytime
-                },
+                default_phase: DailyPhase::Daytime,
                 daily_record_availability: DailyRecordAvailability::Error,
                 vault_name,
                 vault_path,
@@ -2989,6 +3052,7 @@ where
                 tasks,
                 day_tasks,
                 habit_corrections,
+                time_axis: TimeAxisView::default(),
             }),
         }
     }
@@ -3007,6 +3071,7 @@ pub(crate) fn validate_compatible_vault(vault: &Path) -> Result<(), String> {
 fn vault_error_view(
     date: String,
     is_today: bool,
+    current_time: Option<String>,
     vault_name: Option<String>,
     vault_path: Option<String>,
     vault_availability: VaultAvailability,
@@ -3018,12 +3083,9 @@ fn vault_error_view(
         state: TodayState::Error,
         date,
         is_today,
+        current_time,
         can_record: false,
-        default_phase: if is_today {
-            DailyPhase::Morning
-        } else {
-            DailyPhase::Daytime
-        },
+        default_phase: DailyPhase::Daytime,
         daily_record_availability: DailyRecordAvailability::Error,
         vault_name,
         vault_path: vault_path.clone(),
@@ -3044,6 +3106,7 @@ fn vault_error_view(
         ),
         day_tasks: DayTaskListView::error(message.clone(), None),
         habit_corrections,
+        time_axis: TimeAxisView::default(),
     }
 }
 
@@ -4202,6 +4265,391 @@ fn parse_daily_record(
         .map(parse_evening)
         .unwrap_or_default();
     Ok((baseline, timeline, evidence, daytime, evening))
+}
+
+#[derive(Debug, Clone)]
+struct TimeOccurrence {
+    date: Option<String>,
+    minute: Option<u16>,
+    start: usize,
+    end: usize,
+}
+
+#[derive(Debug)]
+enum ExplicitTimeExpression {
+    None,
+    Point {
+        date: Option<String>,
+        minute: u16,
+    },
+    Range {
+        start_date: Option<String>,
+        start_minute: u16,
+        end_date: Option<String>,
+        end_minute: u16,
+    },
+    Invalid,
+}
+
+fn project_time_axis<C: TodayClock>(
+    timeline: &[MorningBlockView],
+    daytime: &DaytimeView,
+    expected_date: &str,
+    clock: &C,
+) -> TimeAxisView {
+    let mut axis = TimeAxisView::default();
+    for block in timeline {
+        let text = match &block.detail {
+            Some(detail) if !detail.is_empty() => format!("{} {}", block.title, detail),
+            _ => block.title.clone(),
+        };
+        project_axis_item(
+            &mut axis.current_arrangement,
+            &mut axis.unlocated_current_arrangement,
+            Some(block.period.clone()),
+            &text,
+            expected_date,
+            clock,
+        );
+    }
+    for fact in daytime
+        .updates
+        .iter()
+        .flat_map(|update| update.observed_facts.iter())
+    {
+        project_axis_item(
+            &mut axis.confirmed_facts,
+            &mut axis.unlocated_confirmed_facts,
+            None,
+            fact,
+            expected_date,
+            clock,
+        );
+    }
+    axis
+}
+
+fn project_axis_item<C: TodayClock>(
+    located: &mut Vec<TimeAxisEntryView>,
+    unlocated: &mut Vec<TimeAxisEntryView>,
+    period: Option<String>,
+    text: &str,
+    expected_date: &str,
+    clock: &C,
+) {
+    match explicit_time_expression(text) {
+        ExplicitTimeExpression::None | ExplicitTimeExpression::Invalid => {
+            unlocated.push(unlocated_axis_entry(period, text, expected_date));
+        }
+        ExplicitTimeExpression::Point { date, minute } => {
+            if minute >= 1440 {
+                unlocated.push(unlocated_axis_entry(period, text, expected_date));
+                return;
+            }
+            let source_date = date.as_deref().unwrap_or(expected_date);
+            let Some(source_day) = CalendarDate::parse(source_date) else {
+                unlocated.push(unlocated_axis_entry(period, text, expected_date));
+                return;
+            };
+            if source_day != CalendarDate::parse(expected_date).unwrap_or(source_day) {
+                return;
+            }
+            if !matches!(
+                clock.resolve_local_wall_time(source_date, minute),
+                LocalWallTimeResolution::Unique { .. }
+            ) {
+                unlocated.push(unlocated_axis_entry(period, text, source_date));
+                return;
+            }
+            located.push(TimeAxisEntryView {
+                period,
+                text: text.to_owned(),
+                source_date: source_date.to_owned(),
+                start_minute: Some(minute),
+                end_minute: None,
+                continues_from_previous_day: false,
+                continues_into_next_day: false,
+            });
+        }
+        ExplicitTimeExpression::Range {
+            start_date,
+            start_minute,
+            end_date,
+            end_minute,
+        } => {
+            let default_start = expected_date.to_owned();
+            let default_end = expected_date.to_owned();
+            let source_date = start_date.as_deref().unwrap_or(&default_start);
+            let end_date = end_date.as_deref().unwrap_or(&default_end);
+            let (Some(start_day), Some(end_day), Some(expected_day)) = (
+                CalendarDate::parse(source_date),
+                CalendarDate::parse(end_date),
+                CalendarDate::parse(expected_date),
+            ) else {
+                unlocated.push(unlocated_axis_entry(period, text, expected_date));
+                return;
+            };
+            if start_minute >= 1440 {
+                unlocated.push(unlocated_axis_entry(period, text, source_date));
+                return;
+            }
+            let start_absolute = start_day.unix_days() * 1440 + i64::from(start_minute);
+            let end_absolute = end_day.unix_days() * 1440 + i64::from(end_minute);
+            if end_absolute <= start_absolute {
+                unlocated.push(unlocated_axis_entry(period, text, source_date));
+                return;
+            }
+            if expected_day < start_day || expected_day > end_day {
+                return;
+            }
+            let start_resolution = clock.resolve_local_wall_time(source_date, start_minute);
+            let end_resolution = clock.resolve_local_wall_time(end_date, end_minute);
+            let (
+                LocalWallTimeResolution::Unique {
+                    utc_offset_minutes: start_offset,
+                },
+                LocalWallTimeResolution::Unique {
+                    utc_offset_minutes: end_offset,
+                },
+            ) = (start_resolution, end_resolution)
+            else {
+                unlocated.push(unlocated_axis_entry(period, text, source_date));
+                return;
+            };
+            if start_offset != end_offset {
+                unlocated.push(unlocated_axis_entry(period, text, source_date));
+                return;
+            }
+            let start = if start_day == expected_day {
+                start_minute
+            } else {
+                0
+            };
+            let end = if end_day == expected_day {
+                end_minute
+            } else {
+                1440
+            };
+            located.push(TimeAxisEntryView {
+                period,
+                text: text.to_owned(),
+                source_date: source_date.to_owned(),
+                start_minute: Some(start),
+                end_minute: Some(end),
+                continues_from_previous_day: expected_day > start_day,
+                continues_into_next_day: expected_day < end_day,
+            });
+        }
+    }
+}
+
+fn unlocated_axis_entry(
+    period: Option<String>,
+    text: &str,
+    source_date: &str,
+) -> TimeAxisEntryView {
+    TimeAxisEntryView {
+        period,
+        text: text.to_owned(),
+        source_date: source_date.to_owned(),
+        start_minute: None,
+        end_minute: None,
+        continues_from_previous_day: false,
+        continues_into_next_day: false,
+    }
+}
+
+fn explicit_time_expression(text: &str) -> ExplicitTimeExpression {
+    let occurrences = scan_time_occurrences(text);
+    match occurrences.as_slice() {
+        [] => ExplicitTimeExpression::None,
+        [one] => match (one.date.as_ref(), one.minute) {
+            (None, Some(minute)) => ExplicitTimeExpression::Point { date: None, minute },
+            _ => ExplicitTimeExpression::Invalid,
+        },
+        [start, end]
+            if start.minute.is_some()
+                && end.minute.is_some()
+                && start.date.is_some() == end.date.is_some()
+                && is_occurrence_range_connector(text, start, end) =>
+        {
+            match (start.minute, end.minute) {
+                (Some(start_minute), Some(end_minute)) => ExplicitTimeExpression::Range {
+                    start_date: start.date.clone(),
+                    start_minute,
+                    end_date: end.date.clone(),
+                    end_minute,
+                },
+                _ => ExplicitTimeExpression::Invalid,
+            }
+        }
+        _ => ExplicitTimeExpression::Invalid,
+    }
+}
+
+fn scan_time_occurrences(text: &str) -> Vec<TimeOccurrence> {
+    let bytes = text.as_bytes();
+    let mut occurrences = Vec::new();
+    for colon in 0..bytes.len() {
+        if bytes[colon] != b':' || colon == 0 || colon + 2 >= bytes.len() {
+            continue;
+        }
+        if !bytes[colon + 1].is_ascii_digit() || !bytes[colon + 2].is_ascii_digit() {
+            continue;
+        }
+        let mut hour_start = colon;
+        while hour_start > 0 && bytes[hour_start - 1].is_ascii_digit() {
+            hour_start -= 1;
+        }
+        let hour_length = colon - hour_start;
+        let end = colon + 3;
+        if hour_length == 0 {
+            continue;
+        }
+        let has_extra_minute_digit = end < bytes.len() && bytes[end].is_ascii_digit();
+        let occurrence_end = if has_extra_minute_digit {
+            let mut cursor = end + 1;
+            while cursor < bytes.len() && bytes[cursor].is_ascii_digit() {
+                cursor += 1;
+            }
+            cursor
+        } else {
+            end
+        };
+        let after_time = text[occurrence_end..].to_ascii_lowercase();
+        let has_ampm_suffix = occurrence_end < bytes.len()
+            && matches!(bytes[occurrence_end].to_ascii_lowercase(), b'a' | b'p')
+            && (after_time.starts_with("am") || after_time.starts_with("pm"));
+        let has_utc_suffix =
+            occurrence_end < bytes.len() && matches!(bytes[occurrence_end], b'z' | b'Z');
+        let parsed_minute = if (1..=2).contains(&hour_length)
+            && !has_extra_minute_digit
+            && !has_ampm_suffix
+            && !has_utc_suffix
+        {
+            match (
+                text[hour_start..colon].parse::<u16>().ok(),
+                text[colon + 1..end].parse::<u16>().ok(),
+            ) {
+                (Some(24), Some(0)) => Some(1440),
+                (Some(hour @ 0..=23), Some(minute @ 0..=59)) => Some(hour * 60 + minute),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        if is_threshold_occurrence(&text[..hour_start], &text[end..]) {
+            continue;
+        }
+        let date = preceding_time_date(text, hour_start);
+        occurrences.push(TimeOccurrence {
+            date,
+            minute: parsed_minute,
+            start: hour_start,
+            end: occurrence_end,
+        });
+    }
+    occurrences
+}
+
+fn preceding_time_date(text: &str, time_start: usize) -> Option<String> {
+    let bytes = text.as_bytes();
+    if time_start == 0 || !matches!(bytes[time_start - 1], b' ' | b'T' | b't') {
+        return None;
+    }
+    let date_end = time_start - 1;
+    let mut date_start = date_end;
+    while date_start > 0
+        && (bytes[date_start - 1].is_ascii_digit() || bytes[date_start - 1] == b'-')
+    {
+        date_start -= 1;
+    }
+    let candidate = &text[date_start..date_end];
+    (candidate.contains('-') && candidate.bytes().any(|byte| byte.is_ascii_digit()))
+        .then(|| candidate.to_owned())
+}
+
+fn is_threshold_occurrence(before: &str, after: &str) -> bool {
+    let before = before.trim_end().to_ascii_lowercase();
+    let after = after.trim_start().to_ascii_lowercase();
+    [
+        "不晚于",
+        "截至",
+        "截止",
+        "最迟",
+        "before",
+        "after",
+        "until",
+        "by",
+    ]
+    .iter()
+    .any(|token| before.ends_with(token))
+        || [
+            "前",
+            "以前",
+            "之前",
+            "后",
+            "以后",
+            "之后",
+            "以内",
+            "内",
+            "before",
+            "after",
+            "until",
+            "or earlier",
+            "or later",
+        ]
+        .iter()
+        .any(|token| after.starts_with(token))
+}
+
+fn is_range_connector(value: &str) -> bool {
+    let compact: String = value
+        .chars()
+        .filter(|character| !character.is_whitespace())
+        .collect();
+    matches!(compact.as_str(), "-" | "–" | "—" | "~" | "～" | "至" | "到")
+}
+
+fn is_occurrence_range_connector(text: &str, start: &TimeOccurrence, end: &TimeOccurrence) -> bool {
+    let between = &text[start.end..end.start];
+    let connector = match &end.date {
+        Some(date) => {
+            let date_and_space = format!("{date} ");
+            let date_and_iso_t = format!("{date}T");
+            let date_and_iso_t_lower = format!("{date}t");
+            between
+                .strip_suffix(&date_and_space)
+                .or_else(|| between.strip_suffix(&date_and_iso_t))
+                .or_else(|| between.strip_suffix(&date_and_iso_t_lower))
+                .unwrap_or(between)
+        }
+        None => between,
+    };
+    is_range_connector(connector)
+}
+
+pub(crate) fn wall_time_components(date: &str, minute: u16) -> Option<(i32, i32, i32, i32, i32)> {
+    if minute > 1440 {
+        return None;
+    }
+    let mut date = CalendarDate::parse(date)?;
+    let minute = if minute == 1440 {
+        date = CalendarDate::from_unix_days(date.unix_days() + 1);
+        if !(1..=9999).contains(&date.year) {
+            return None;
+        }
+        0
+    } else {
+        minute
+    };
+    Some((
+        date.year,
+        date.month as i32,
+        date.day as i32,
+        i32::from(minute / 60),
+        i32::from(minute % 60),
+    ))
 }
 
 fn parse_morning_baseline(body: &str) -> Result<MorningBaselineView, String> {
