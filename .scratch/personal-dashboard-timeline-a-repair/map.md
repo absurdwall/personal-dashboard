@@ -34,7 +34,7 @@
 ## 2026-09-23 用户验收、安装与 PR 草稿
 
 - 用户认可单列扇叠卡片及其前翻效果。关闭了此前多份 Dashboard 进程后，从 `e0091de` 独立构建并安装 Personal Dashboard 3.0.1；正式路径 `/Applications/Personal Dashboard.app` 的 executable SHA-256 为 `31a4b1f9c8578ff7bda0603af433b900e8414c2e58056a264638ab1b422e8781`，代码签名验证通过。旧 `/Applications` 包保留在 `/Applications/Personal Dashboard.app.backup-20260923-accepted-timeline`。新 App 已在原生窗口打开并显示实际 Today 页面，未编辑或保存个人数据；未 notarize。
-- PR 描述已准备在 `/tmp/personal-dashboard-timeline-pr-draft.md`，base `main`、head `codex/historical-habit-corrections`。用户要求不推送，故没有创建远端 PR。票 02 已 `resolved`；票 01 仍为 `claimed`。
+- Draft PR [#4](https://github.com/absurdwall/personal-dashboard/pull/4) 已创建，base `main`、head `codex/historical-habit-corrections`；分支已推送，PR 尚未合并。票 02 已 `resolved`；票 01 仍为 `claimed`。
 
 ## Management 登记
 

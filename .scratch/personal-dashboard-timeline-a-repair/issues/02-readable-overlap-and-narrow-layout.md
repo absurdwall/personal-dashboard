@@ -48,7 +48,7 @@
 
 用户于 2026-09-23 看过最新时间轴方向后明确认可轻微扇叠卡片与逐项前翻效果，称其“看着其实挺舒服”且“相对来讲就是对的了”。按用户要求关闭了此前运行的多份 Dashboard 实例，将旧版 `/Applications/Personal Dashboard.app` 保留在 `/Applications/Personal Dashboard.app.backup-20260923-accepted-timeline`，并把当前分支提交 `e0091de` 构建的版本安装到 `/Applications/Personal Dashboard.app`。安装包版本为 3.0.1，bundle id 为 `com.tortillaflat.personal-dashboard`，可执行文件 SHA-256 为 `31a4b1f9c8578ff7bda0603af433b900e8414c2e58056a264638ab1b422e8781`；`codesign --verify --deep --strict` 通过。该本地包未 notarize。已打开正式安装路径的 App，确认 Today 页面显示单列安排／事实时间轴和未定位内容；未修改或保存个人记录。
 
-PR 已整理为本地草稿 `/tmp/personal-dashboard-timeline-pr-draft.md`，目标为 `main`，分支为 `codex/historical-habit-corrections`。按用户要求没有推送，因此尚无 GitHub PR。聚焦与 packaged 检查结果见本票以上记录；完整前端套件仍有记录过的外部 `life-daily-loop` skill 标题契约失败。票 01 继续保持 `claimed`，不把本票验收推断为对票 01 的单独确认。
+Draft PR [#4](https://github.com/absurdwall/personal-dashboard/pull/4) 已创建，base 为 `main`、head 为 `codex/historical-habit-corrections`；分支已推送，PR 尚未合并。聚焦与 packaged 检查结果见本票以上记录；完整前端套件仍有记录过的外部 `life-daily-loop` skill 标题契约失败。票 01 继续保持 `claimed`，不把本票验收推断为对票 01 的单独确认。
 
 Type: task
 
