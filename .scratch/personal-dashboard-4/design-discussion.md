@@ -72,7 +72,7 @@
 
 用户在独立原型任务认可当前版本，返回本任务要求核对并往前推进。最终原型保留现有生产壳层，新增 Tasks；今日为自动视图，Inbox 为默认清单，普通清单新建沿用当前清单。窄月格保留文字摘要而非纯点。以上替代早期全局重设计与纯点版本。
 
-原型已捕获至本地 `codex/personal-dashboard-4-prototype` 分支的 `501e5f7`。直接浏览核对、原型省略项和固定来源见 [原型核对](prototype-review.md)。已整理 [规格草稿](spec-draft.md)，待确认应用操作／实际日常适配器／packaged Mac 的测试边界后发布；未开始生产实现。
+原型原先捕获于本地分支 `codex/personal-dashboard-4-prototype`，该分支现已退役；提交 `501e5f7a4ca9ea0e96838eb59f818fda8fadd99e` 由 tag `archive/personal-dashboard-4-prototype-2026-09-25` 和本机 `personal-dashboard-prototypes.bundle` 保留。直接浏览核对、原型省略项和固定来源见 [原型核对](prototype-review.md)。已整理 [规格草稿](spec-draft.md)，待确认应用操作／实际日常适配器／packaged Mac 的测试边界后发布；未开始生产实现。
 
 用户进一步明确：Dashboard 已有右侧栏，+N 无需模仿 TickTick 增加浮窗，直接在右侧显示即可。此决定替代早期浮层方案，当前原型的右侧承接行为符合预期。
 

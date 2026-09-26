@@ -20,7 +20,7 @@
 
 用户查看双栏 packaged 候选后明确要求将当前安排与已确认事实放进同一条时间轴，以颜色区分；同刻或实际区间重叠的卡片轻微叠放，并可逐项切换前层。该新方向覆盖本节旧“双栏”布局约定，也覆盖对照方法中依赖双栏的检查；A 仍作为任务卡片、颜色层次、时间锚点与整体视觉的参考，不再要求保留安排／事实双列。当前验收细则见 [票 02](issues/02-readable-overlap-and-narrow-layout.md)。候选仍须由用户直接查看并接受，工程或独立审查不等于用户验收。
 
-基准：[A 原型说明](../personal-dashboard-usage-feedback/prototype/README.md)。归档分支 `codex/prototype-today-time-axis`，提交 `f9551de8500ba8d32b3732626e561b29856fd258`。
+基准：[A 原型说明](../personal-dashboard-usage-feedback/prototype/README.md)。原分支 `codex/prototype-today-time-axis` 已退役；归档 tag `archive/today-time-axis-variant-a-2026-09-25` 指向提交 `f9551de8500ba8d32b3732626e561b29856fd258`，并收录于本机 `personal-dashboard-prototypes.bundle`。
 
 原实现：[旧时间轴票](../personal-dashboard-habit-history-timeline/issues/02-continuous-today-timeline.md)。保留旧票执行历史，旧票 resolved 不代表用户接受，也不代表本次修复完成。
 

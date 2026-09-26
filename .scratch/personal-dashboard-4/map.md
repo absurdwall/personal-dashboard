@@ -2,7 +2,7 @@
 
 用户已批准九票拆分与依赖；正式发布，01–08 已完成实现，09 的上一轮本地 packaged candidate 已通过，11 的 review follow-up 已在解锁的 macOS 交互会话以合成 Vault 复跑通过，Drive fixture 仍需人验收。
 
-父规格：[spec](spec.md)。设计来源：[原型认可与固定捕获](prototype-review.md)、[设计问答](design-discussion.md)。认可原型本地分支 `codex/personal-dashboard-4-prototype`，提交 `501e5f7`；不要将原型直接合入产品。
+父规格：[spec](spec.md)。设计来源：[原型认可与固定捕获](prototype-review.md)、[设计问答](design-discussion.md)。原型原先位于本地分支 `codex/personal-dashboard-4-prototype`，该分支现已退役；归档 tag `archive/personal-dashboard-4-prototype-2026-09-25` 指向提交 `501e5f7a4ca9ea0e96838eb59f818fda8fadd99e`，并收录于本机 `personal-dashboard-prototypes.bundle`；不要将原型合入产品。
 
 | Ticket | Blocked by | Status |
 | --- | --- | --- |

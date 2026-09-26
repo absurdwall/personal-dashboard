@@ -34,7 +34,7 @@
 ## 2026-09-23 用户验收、安装与 PR 草稿
 
 - 用户认可单列扇叠卡片及其前翻效果。关闭了此前多份 Dashboard 进程后，从 `e0091de` 独立构建并安装 Personal Dashboard 3.0.1；正式路径 `/Applications/Personal Dashboard.app` 的 executable SHA-256 为 `31a4b1f9c8578ff7bda0603af433b900e8414c2e58056a264638ab1b422e8781`，代码签名验证通过。旧 `/Applications` 包保留在 `/Applications/Personal Dashboard.app.backup-20260923-accepted-timeline`。新 App 已在原生窗口打开并显示实际 Today 页面，未编辑或保存个人数据；未 notarize。
-- Draft PR [#4](https://github.com/absurdwall/personal-dashboard/pull/4) 已创建，base `main`、head `codex/historical-habit-corrections`；分支已推送，PR 尚未合并。票 02 已 `resolved`；票 01 仍为 `claimed`。
+- PR [#4](https://github.com/absurdwall/personal-dashboard/pull/4) 已于 2026-09-24 合并到 `main`（merge commit `45c27800a9ab36ed711d81fb9d9936c4cf87731b`；head `95989a8fee25a6d7b8d2a8455d95ebfc090f345b`）。票 02 已 `resolved`；票 01 仍为 `claimed`，合并不改变其独立验收状态。
 
 ## Management 登记
 
@@ -56,10 +56,16 @@
 
 ## 2026-09-23 票 02 双栏候选历史（已被单列方向覆盖）
 
-当前 checkout `codex/historical-habit-corrections`，实现基于 `79fdcd394357936f17c2a5aca489a82e65ff6050`。ticket 02 与 ticket 01 合并于同一 packaged 候选；实现 commit 为 `6166fcaa7d8d015e30f152ae0fbff5522d3cfdbe`。两票状态继续为 `claimed`，用户验收待办。本节是后续状态：用户随后明确要求实现票 02；前节“等待”描述的是当时状态。
+当时 checkout 为 `codex/historical-habit-corrections`，实现基于 `79fdcd394357936f17c2a5aca489a82e65ff6050`。ticket 02 与 ticket 01 合并于同一 packaged 候选；实现 commit 为 `6166fcaa7d8d015e30f152ae0fbff5522d3cfdbe`。PR #4 已将代码合入 main；本节是历史状态记录。票 01 仍为 `claimed`，等待自己的用户验收，不由 PR 合并自动关闭。
 
 - 构建：`CARGO_TARGET_DIR=/tmp/pd-timeline-a-ticket02-final npm run build:mac`。候选 executable SHA-256 `ad32ff10db1901dcc872d60fc8cb29afb3a59a3e693ead53cf7b5b9f5cb48153`，Contents manifest SHA-256 `cf82702ddd7fb13adee336d3fcae16fc50a83436b42a596a27fce64fada33791`。未 notarize（缺少 Apple 签名凭据）；没有替换已安装 App 或发布。
 - Ticket 02 packaged 结果：合成记录 13:00／13:01／13:59 场景通过中英文宽／窄视图，检查布局／点击目标、真实时间区间、Now 与小时标签、鼠标和键盘详情、事实栏横向滚动及两种语言窄屏定位后的未定时项跳转。隔离 Daily Record SHA-256 `7c77925b9c05a7905cc78babadc01972ab59f4ff47e5e06dffeb175e4149dbe4` 未变化。截图目录 `/tmp/pd-timeline-a-evidence/ticket02-candidate-20/`。
 - 正式前后对照限定为两组同一隔离 fixture、同窗口同固定时刻的图：中文 1120×760、13:00（基线 `ticket02-baseline-final/today-time-axis-overlap-zh-wide-13-00.png`，候选 `ticket02-candidate-20/today-time-axis-overlap-zh-wide-13-00.png`）；英文 640×520、13:01（基线 `ticket02-baseline-final/today-time-axis-overlap-en-narrow-13-01.png`，候选 `ticket02-candidate-20/today-time-axis-overlap-en-narrow-13-01.png`）。英文宽屏和中文窄屏属于额外候选矩阵验证，无匹配基线图，不作为前后对照声明。A 原型参照为 `/tmp/pd-timeline-a-evidence/prototype-A-1120x760-14-10.png`，保留原型自带示例数据，供视觉层次参照。
 - 独立 Spec 复核读图确认候选与 A 的两栏语义、色彩、共同轴和侧栏处理相符，密集卡片与窄屏信息可达没有实质差异；复核者另确认两组指定前后对照满足代表场景要求，其他两图明确为候选矩阵补充。复核仅代表候选视觉意见，不代表用户验收。独立 Standards 复核未发现硬性标准问题。
 - 检查：Rust 全套 `cargo test --manifest-path src-tauri/Cargo.toml` 通过；`npm run build`、聚焦 9 项时间轴测试、Shell 语法、macOS AX driver Swift 编译和票 01／02 packaged 场景均通过。完整前端套件另有一个与本票无关的 canonical life-daily-loop skill 标题契约断言失败，详见 ticket 02。构建跳过 notarization。实现 commit `6166fcaa7d8d015e30f152ae0fbff5522d3cfdbe` 已创建，回填记录在随后的文档提交。
+
+## 2026-09-24 PR 合并复核
+
+PR #4 已于 2026-09-24T13:15:09Z 合入 main，merge commit `45c27800a9ab36ed711d81fb9d9936c4cf87731b`。Luna 独立 review 的精确 head 为 `95989a8fee25a6d7b8d2a8455d95ebfc090f345b`，Standards／Spec 均无 actionable P1/P2；独立查看 r8 宽／窄及翻叠截图，无新增视觉阻塞，未重新操作 packaged runtime。
+
+本轮 npm build、时间轴 9/9、Rust 261 项、shell syntax 与 diff whitespace 通过。全量前端 115/116；唯一失败为既有外部 daily-flow 技能标题契约，该测试与 base blob 完全一致。r8 安装包哈希已复核匹配，7d9f464 至被审 head 的产品代码无变动。合并使用精确 head 锁定，不删除分支或改动原有 scratch。票 01 的独立验收状态继续 claimed，不由本次 PR 合并推断关闭。

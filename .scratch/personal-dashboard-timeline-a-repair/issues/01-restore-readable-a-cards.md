@@ -10,7 +10,7 @@ Type: task
 
 ## 已确认基准
 
-用户已批准本修复拆分。A 原型为确定基准，不重新选择设计。原型归档分支 `codex/prototype-today-time-axis`，确认提交 `f9551de8500ba8d32b3732626e561b29856fd258`，variant A。按本 effort 父规格核对来源与已知偏差；旧实现票 resolved 不代表本轮视觉修复通过。
+用户已批准本修复拆分。A 原型为确定基准，不重新选择设计。原分支 `codex/prototype-today-time-axis` 已退役；确认提交 `f9551de8500ba8d32b3732626e561b29856fd258` 保存在 tag `archive/today-time-axis-variant-a-2026-09-25` 及本机 `personal-dashboard-prototypes.bundle`，variant A。按本 effort 父规格核对来源与已知偏差；旧实现票 resolved 不代表本轮视觉修复通过。
 
 ## 79fdcd3 后的继续执行基线
 

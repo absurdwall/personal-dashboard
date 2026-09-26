@@ -6,10 +6,10 @@
 ## 固定来源
 
 - 任务：Personal Dashboard 4.0 prototype iteration，01a0ad96-63cf-7bc3-85f7-fe1bb33cdc91。
-- 本地捕获分支：`codex/personal-dashboard-4-prototype`；提交：`501e5f7`。未推送，未合入产品分支。
-- 工作目录：`/Users/tingranwang/.codex/worktrees/05ab/personal-dashboard`。
+- 原本地捕获分支 `codex/personal-dashboard-4-prototype` 已退役；提交 `501e5f7a4ca9ea0e96838eb59f818fda8fadd99e` 保存在 tag `archive/personal-dashboard-4-prototype-2026-09-25` 和本机 `personal-dashboard-prototypes.bundle`。原型没有合入产品代码。
+- 原工作目录（本轮已回收）：`/Users/tingranwang/.codex/worktrees/05ab/personal-dashboard`；prototype commit 通过上述归档 tag 和 bundle 保留。
 - 原型相对目录：`.scratch/personal-dashboard-4/prototype/`，含 README、ITERATION、HTML/CSS/JS 和启动器；提交同时包含唯一的 prototype 启动脚本改动。
-- 当前服务：`http://127.0.0.1:62008/`；重新运行 `npm run prototype:dashboard-4` 时端口可能改变。
+- 原型服务曾使用 `http://127.0.0.1:62008/`；本轮确认该端口当前未监听。重新运行 `npm run prototype:dashboard-4` 时端口可能改变。
 
 ## 用户迭代后的决定（优先于早期原型）
 
