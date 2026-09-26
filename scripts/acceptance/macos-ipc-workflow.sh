@@ -5527,6 +5527,141 @@ EOF
   echo "Boundary: synthetic Vaults only; 08 daily-flow adapter evidence and 3.0 Drive evidence remain separate; no personal Vault, Dida365, automation, or live daily run"
 }
 
+run_today_refresh_scenario() {
+  local vault_directory="$acceptance_directory/today-refresh-vault"
+  local record_file="$vault_directory/life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local tasks_file="$vault_directory/life/.personal-dashboard/tasks/v1/tasks.json"
+  local task_candidate="$acceptance_directory/today-refresh-tasks.candidate"
+  local task_backup="$acceptance_directory/today-refresh-tasks.backup"
+  local task_before="外部刷新前 · Task"
+  local task_after="外部刷新后 · Task"
+  local task_internal="Tasks 页面编辑后 · Task"
+  local record_before="外部刷新前的当前安排"
+  local record_after="外部刷新后的当前安排"
+  local record_after_hash
+
+  current_step="preparing isolated Today refresh fixtures"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p \
+    "$vault_directory/.obsidian" \
+    "$(dirname "$record_file")" \
+    "$(dirname "$tasks_file")" \
+    "$acceptance_data_directory"
+  cat > "$record_file" <<EOF
+---
+type: daily-record
+date: 2026-09-08
+source: today-refresh-packaged-acceptance
+---
+# 2026-09-08
+
+## 早间基准
+
+### 初始安排
+
+- Today refresh synthetic baseline.
+
+## 今天的大致安排
+
+- 09:30 $record_before
+
+## 晚间复盘
+EOF
+  cat > "$tasks_file" <<EOF
+{
+  "schemaVersion": 2,
+  "lists": [
+    {"id":"inbox","name":"Inbox","system":true,"archived":false}
+  ],
+  "tasks": [
+    {
+      "id":"today-refresh-task",
+      "name":"$task_before",
+      "content":"Synthetic task used only to verify the Today refresh button.",
+      "date":"2026-09-08",
+      "time":"10:00",
+      "listId":"inbox",
+      "source":{"kind":"manual","reference":null},
+      "state":"pending",
+      "deletedAt":null,
+      "completion":null,
+      "createdAt":"2026-09-08T08:00:00-04:00",
+      "modifiedAt":"2026-09-08T08:00:00-04:00",
+      "changes":[]
+    }
+  ]
+}
+EOF
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_directory" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+
+  current_step="opening the synthetic Daily Record and shared Task in the packaged Today view"
+  launch_app_waiting_for_text "$task_before" 30
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver assert-active-text "$record_before"
+  run_driver assert-active-absent-text "$task_after"
+
+  current_step="externally changing both canonical sources while Today remains open"
+  /bin/cp "$tasks_file" "$task_candidate"
+  /usr/bin/perl -0pi -e 's/外部刷新前/外部刷新后/g' "$task_candidate"
+  /bin/mv "$task_candidate" "$tasks_file"
+  /usr/bin/perl -0pi -e 's/外部刷新前的当前安排/外部刷新后的当前安排/g' "$record_file"
+  /bin/cp "$tasks_file" "$task_backup"
+  run_driver assert-active-text "$task_before"
+  run_driver assert-active-text "$record_before"
+  run_driver assert-active-absent-text "$task_after"
+  run_driver assert-active-absent-text "$record_after"
+
+  current_step="pressing the Today refresh button and checking both reread projections"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "$task_after" 20
+  run_driver wait-active-text "$record_after" 20
+  run_driver assert-active-absent-text "$task_before"
+  run_driver assert-active-absent-text "$record_before"
+
+  current_step="surfacing a damaged external Tasks document instead of retaining a false success"
+  printf '{\n' > "$task_candidate"
+  /bin/mv "$task_candidate" "$tasks_file"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "无法读取 Tasks：" 20
+  run_driver assert-active-absent-text "$task_after"
+
+  current_step="retrying Today refresh after repairing the synthetic Tasks source"
+  /bin/cp "$task_backup" "$task_candidate"
+  /bin/mv "$task_candidate" "$tasks_file"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "$task_after" 20
+  run_driver wait-active-text "$record_after" 20
+
+  current_step="editing the shared Task in Tasks and reopening Today"
+  run_driver press "任务" 10
+  run_driver wait-active-text "$task_after" 20
+  run_driver press-contains "详情 · $task_after" 10
+  run_driver type-text "名称|$task_internal" 10
+  run_driver press "保存" 10
+  run_driver wait-active-text "任务已保存到所选 Vault" 20
+  wait_for_file_text "$tasks_file" "$task_internal" ||
+    fail "the Tasks edit did not persist to the shared task document"
+  [[ "$(task_id_for_name "$tasks_file" "$task_internal")" == "today-refresh-task" ]] ||
+    fail "the Tasks edit changed the shared task identity"
+  record_after_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
+  run_driver press "今天" 10
+  run_driver wait-active-text "$task_internal" 20
+  run_driver assert-active-absent-text "$task_after"
+  run_driver assert-active-text "$record_after"
+  [[ "$(shasum -a 256 "$record_file" | awk '{print $1}')" == "$record_after_hash" ]] ||
+    fail "the in-app Task edit changed the unrelated Daily Record"
+
+  echo "Packaged IPC Today refresh acceptance passed"
+  echo "Refresh: one manual Today button click reread external Task and Daily Record changes"
+  echo "Failure: malformed shared Tasks data produced visible failure feedback; a repaired source recovered on retry"
+  echo "Cross-entry: a Task edit in Tasks appeared in Today with the same task identity"
+  echo "Boundary: synthetic Vault and isolated app data only; the Daily Record remained unchanged by the Task edit"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -5620,6 +5755,7 @@ case "$acceptance_scenario" in
   today-time-axis) run_today_time_axis_scenario ;;
   dashboard-3) run_dashboard_3_scenario ;;
   dashboard-4) run_dashboard_4_scenario ;;
+  today-refresh) run_today_refresh_scenario ;;
   drive-compatibility) run_drive_compatibility_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;
