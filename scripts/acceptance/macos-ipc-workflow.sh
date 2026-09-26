@@ -5662,6 +5662,136 @@ EOF
   echo "Boundary: synthetic Vault and isolated app data only; the Daily Record remained unchanged by the Task edit"
 }
 
+run_readable_task_cards_scenario() {
+  local vault="$acceptance_directory/task-card-vault"
+  local record_file="$vault/life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local tasks_file="$vault/life/.personal-dashboard/tasks/v1/tasks.json"
+  local capture_directory="$acceptance_directory/task-card-captures"
+  local lease_task="签续租合同"
+  local long_chinese_task="整理续租合同变更内容并与房东确认付款和维修安排"
+  local long_mixed_task="准备 interview coding：复习动态规划并整理 follow-up notes"
+  local state_task="验证 Today 任务卡状态操作"
+  local capture_name
+  local record_hash
+
+  current_step="preparing synthetic same-day Tasks without times for Today card readability"
+  fixed_now_epoch_millis="1788891000000"
+  fixed_utc_offset_minutes="-240"
+  mkdir -p "$vault/.obsidian" "$(dirname "$record_file")" "$(dirname "$tasks_file")" \
+    "$acceptance_data_directory" "$capture_directory"
+  for capture_name in task-cards-today-960x720.png task-cards-today-800x640.png \
+    task-cards-today-640x520.png; do
+    [[ ! -e "$capture_directory/$capture_name" ]] ||
+      fail "refusing to overwrite packaged task-card capture $capture_directory/$capture_name"
+  done
+  cat > "$record_file" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+source: readable-task-cards-packaged-acceptance
+---
+# 2026-09-08
+
+## 白天更新
+
+- 只读合成背景；卡片验收不应改写 Daily Record。
+EOF
+  cat > "$tasks_file" <<'EOF'
+{
+  "schemaVersion": 2,
+  "lists": [{"id":"inbox","name":"Inbox","system":true,"archived":false}],
+  "tasks": [
+    {"id":"lease-renewal","name":"签续租合同","content":null,"date":"2026-09-08","time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:00:00-04:00","modifiedAt":"2026-09-08T08:00:00-04:00","changes":[]},
+    {"id":"long-chinese","name":"整理续租合同变更内容并与房东确认付款和维修安排","content":null,"date":"2026-09-08","time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:01:00-04:00","modifiedAt":"2026-09-08T08:01:00-04:00","changes":[]},
+    {"id":"long-mixed","name":"准备 interview coding：复习动态规划并整理 follow-up notes","content":null,"date":"2026-09-08","time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:02:00-04:00","modifiedAt":"2026-09-08T08:02:00-04:00","changes":[]},
+    {"id":"state-probe","name":"验证 Today 任务卡状态操作","content":null,"date":"2026-09-08","time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:03:00-04:00","modifiedAt":"2026-09-08T08:03:00-04:00","changes":[]}
+  ]
+}
+EOF
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+  record_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
+
+  current_step="capturing the packaged Today card baseline at the three ticket window sizes"
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "今天" 10
+  run_driver wait-active-text "$lease_task" 20
+  run_driver assert-active-text "$long_chinese_task"
+  run_driver assert-active-text "$long_mixed_task"
+  run_driver scroll-text-visible "Today · 共享任务" 10
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver scroll-text-visible "$lease_task" 10
+  run_driver capture-window "$capture_directory/task-cards-today-960x720.png" 10
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver scroll-text-visible "$lease_task" 10
+  run_driver capture-window "$capture_directory/task-cards-today-800x640.png" 10
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver scroll-text-visible "$lease_task" 10
+  run_driver capture-window "$capture_directory/task-cards-today-640x520.png" 10
+
+  current_step="checking Today task details, keyboard order, completion, reopen, abandonment, and deletion"
+  run_driver focus "$lease_task" 10
+  run_driver assert-focused-text "$lease_task" 10
+  run_driver press-key "tab" 10
+  run_driver assert-focused-text "详情 · $lease_task" 10
+  run_driver press-key "space" 10
+  run_driver wait-active-text "日期（可选）" 10
+  run_driver assert-active-text "$lease_task"
+  run_driver press "取消" 10
+  run_driver press-contains "完成 · $lease_task" 10
+  wait_for_task_property "$tasks_file" "lease-renewal" "state" "completed" ||
+    fail "Today card completion did not update the shared task"
+  run_driver wait-active-text "已完成" 20
+  run_driver press-contains "重开 · $lease_task" 10
+  wait_for_task_property "$tasks_file" "lease-renewal" "state" "pending" ||
+    fail "Today card reopen did not restore the same pending task"
+  run_driver press-contains "放弃 · $long_chinese_task" 10
+  wait_for_task_property "$tasks_file" "long-chinese" "state" "abandoned" ||
+    fail "Today card abandon action did not persist"
+  run_driver press "任务" 10
+  run_driver select-contains "已放弃" 10
+  run_driver wait-active-text "$long_chinese_task" 20
+  run_driver press-contains "恢复待办 · $long_chinese_task" 10
+  wait_for_task_property "$tasks_file" "long-chinese" "state" "pending" ||
+    fail "Tasks could not restore the task abandoned from Today"
+  run_driver select-contains "待办" 10
+  run_driver press "今天" 10
+  run_driver wait-active-text "$state_task" 20
+  run_driver press-contains "删除 · $state_task" 10
+  wait_for_task_property "$tasks_file" "state-probe" "deletedAt" "not-null" ||
+    fail "Today card delete action did not persist its recoverable tombstone"
+  run_driver press "任务" 10
+  run_driver select-contains "已删除" 10
+  run_driver wait-active-text "$state_task" 20
+  run_driver press-contains "撤销删除 · $state_task" 10
+  run_driver select-contains "待办" 10
+  wait_for_task_property "$tasks_file" "state-probe" "deletedAt" "null" ||
+    fail "Tasks could not restore the task deleted from Today"
+
+  current_step="checking the same synthetic Tasks in the shared Tasks and Calendar surfaces"
+  run_driver wait-active-text "$lease_task" 20
+  run_driver assert-active-text "$long_mixed_task"
+  run_driver press "日历" 10
+  run_driver wait-active-text "2026年9月" 20
+  run_driver assert-active-text "$lease_task"
+  run_driver assert-active-text "$long_mixed_task"
+  run_driver assert-document-fixed "document" 10
+
+  [[ "$(shasum -a 256 "$record_file" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "Today task-card actions changed the synthetic Daily Record"
+  echo "Packaged IPC readable Task cards acceptance passed"
+  echo "Today: synthetic no-time Tasks stayed in the existing shared-task area; three requested window sizes were captured in $capture_directory"
+  echo "Actions: Details, complete/reopen, abandon/restore, delete/restore, and keyboard focus order used the packaged app"
+  echo "Shared views: the same Task names remained visible in Tasks and Calendar"
+  echo "Boundary: synthetic Vault only; Daily Record SHA-256 remained $record_hash"
+  echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
+}
+
 run_today_shared_task_axis_scenario() {
   local vault="$acceptance_directory/today-shared-task-axis-vault"
   local no_record_vault="$acceptance_directory/today-shared-task-axis-no-record-vault"
@@ -6011,6 +6141,7 @@ case "$acceptance_scenario" in
   dashboard-3) run_dashboard_3_scenario ;;
   dashboard-4) run_dashboard_4_scenario ;;
   today-refresh) run_today_refresh_scenario ;;
+  readable-task-cards) run_readable_task_cards_scenario ;;
   today-shared-task-axis) run_today_shared_task_axis_scenario ;;
   drive-compatibility) run_drive_compatibility_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
