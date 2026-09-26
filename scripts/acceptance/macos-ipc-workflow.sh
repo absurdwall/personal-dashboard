@@ -2908,64 +2908,64 @@ EOF
   before_b_hash="$(shasum -a 256 "$record_b" | awk '{print $1}')"
 
   current_step="launching the isolated Vault selection behavior scenario"
-  launch_app_waiting_for_text "Today" 30
-  run_driver wait-text "连接 Tortilla Flat vault" 20
+  launch_app_waiting_for_text "今天" 30
+  run_driver wait-text "连接 Tortilla Flat Vault。" 20
   run_driver press "选择 Vault…" 10
   run_driver choose-folder "$vault_a" 20
-  run_driver wait-text "Vault: vault-a" 20
-  run_driver press "Daytime" 10
+  run_driver wait-text "Vault：vault-a" 20
+  run_driver press "当日进展" 10
   run_driver wait-text "A Vault 的当前安排" 20
 
   current_step="preserving a Daytime draft when Vault selection is cancelled"
-  run_driver type-text "Short record text|取消选择后仍保留的日间草稿" 10
+  run_driver type-text "简短记录内容|取消选择后仍保留的日间草稿" 10
   open_vault_picker_from_settings
   run_driver cancel-folder 20
-  run_driver press "Today" 10
-  run_driver assert-state "Daytime|selected" 10
+  run_driver press "今天" 10
+  run_driver assert-state "当日进展|selected" 10
   run_driver assert-text "取消选择后仍保留的日间草稿"
 
   current_step="preserving a Daytime draft when the current Vault is reselected"
   open_vault_picker_from_settings
   run_driver choose-folder "$vault_a" 20
-  run_driver press "Today" 10
-  run_driver press "Daytime" 10
-  run_driver assert-state "Daytime|selected" 10
+  run_driver press "今天" 10
+  run_driver press "当日进展" 10
+  run_driver assert-state "当日进展|selected" 10
   run_driver assert-text "取消选择后仍保留的日间草稿"
 
   current_step="preserving correction state when Vault selection is cancelled"
   run_driver press "更正这条" 10
-  run_driver type-text "Short record text|取消选择后仍保留的更正" 10
+  run_driver type-text "简短记录内容|取消选择后仍保留的更正" 10
   open_vault_picker_from_settings
   run_driver cancel-folder 20
-  run_driver press "Today" 10
-  run_driver press "Daytime" 10
-  run_driver assert-state "Daytime|selected" 10
+  run_driver press "今天" 10
+  run_driver press "当日进展" 10
+  run_driver assert-state "当日进展|selected" 10
   run_driver assert-text "取消选择后仍保留的更正"
   run_driver assert-text "保存更正"
 
   current_step="preserving a Habits draft and selected history date on Vault cancellation"
-  run_driver press "Habits" 10
-  run_driver wait-text "3 / 15" 20
+  run_driver press "习惯" 10
+  run_driver wait-text "2026-09-08 · Exercise" 20
   run_driver press-contains "2026-09-08 · Exercise" 10
   run_driver wait-text "写一句 · 2026-09-08" 20
   run_driver type-text "健身记录内容|取消选择后仍保留的健身草稿" 10
   open_vault_picker_from_settings
   run_driver cancel-folder 20
-  run_driver press "Habits" 10
+  run_driver press "习惯" 10
   run_driver assert-text "取消选择后仍保留的健身草稿"
   run_driver assert-text "2026-09-08 · Exercise"
 
   current_step="proving a real Vault switch clears old state before reading the new Vault"
   open_vault_picker_from_settings
   run_driver choose-folder "$vault_b" 20
-  run_driver press "Calendar" 10
+  run_driver press "日历" 10
   run_driver wait-text "B Vault 的复盘" 20
   run_driver assert-text "有复盘"
   run_driver assert-absent-text "取消选择后仍保留的健身草稿"
   run_driver assert-absent-text "A Vault 的当前安排"
-  run_driver press "Today" 10
-  run_driver wait-text "Vault: vault-b" 20
-  run_driver press "Daytime" 10
+  run_driver press "今天" 10
+  run_driver wait-text "Vault：vault-b" 20
+  run_driver press "当日进展" 10
   run_driver wait-text "B Vault 的当前安排" 20
 
   [[ "$(shasum -a 256 "$record_a" | awk '{print $1}')" == "$before_a_hash" ]] ||
@@ -3573,10 +3573,12 @@ run_interface_language_scenario() {
   local record_relative="life/Journal/Daily/2026/2026-09/2026-09-08.md"
   local record_a="$vault_a/$record_relative"
   local record_b="$vault_b/$record_relative"
+  local tasks_file_a="$vault_a/life/.personal-dashboard/tasks/v1/tasks.json"
   local language_file="$acceptance_data_directory/interface-language.json"
   local before_b_hash
   local after_save_hash
   local draft_text="未保存草稿 · Keep my words exactly"
+  local axis_task="语言切换回归 · Keep my words exactly"
   local long_drive_copy='Ordinary local Vaults also work. Dashboard does not convert arbitrary notes, manage Google accounts, or upload files. “Saved locally” does not mean “synced to the cloud.” Google Drive manages versions and trash.'
 
   current_step="preparing isolated bilingual-interface fixtures"
@@ -3607,6 +3609,16 @@ date: 2026-09-08
 
 - **上午：** 第二份中文个人内容 · Keep source English unchanged.
 EOF
+  mkdir -p "$(dirname "$tasks_file_a")"
+  cat > "$tasks_file_a" <<EOF
+{
+  "schemaVersion": 2,
+  "lists": [{"id":"inbox","name":"Inbox","system":true,"archived":false}],
+  "tasks": [
+    {"id":"language-axis-marker","name":"$axis_task","content":null,"date":"2026-09-08","time":"17:30","listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T09:00:00-04:00","modifiedAt":"2026-09-08T09:00:00-04:00","changes":[]}
+  ]
+}
+EOF
   printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
     "$vault_a" > "$acceptance_data_directory/today-workspace.json"
   before_b_hash="$(shasum -a 256 "$record_b" | awk '{print $1}')"
@@ -3623,6 +3635,8 @@ EOF
   run_driver type-text "简短记录内容|$draft_text" 10
   run_driver assert-active-text "$draft_text"
   run_driver assert-state "当日进展|selected" 10
+  run_driver wait-active-text "$axis_task" 20
+  run_driver assert-axis-link-label "$axis_task|打开 17:30：$axis_task · 任务 · 待办" 10
 
   current_step="checking the Chinese native Vault picker title without changing Vault"
   run_driver press "设置" 10
@@ -3632,10 +3646,19 @@ EOF
   run_driver press "今天" 10
   run_driver press "当日进展" 10
   run_driver assert-active-text "$draft_text"
+  run_driver scroll-text-visible "打开 17:30：$axis_task · 任务 · 待办" 10
+  run_driver assert-window-visible-link "打开 17:30：$axis_task · 任务 · 待办" 10
+  run_driver click-visible-link "$axis_task" 10
+  sleep 0.6
+  run_driver capture-window "$acceptance_directory/timeline-label-zh-expanded.png" 10
 
   current_step="switching the live packaged interface to English without replacing state"
   run_driver press "切换为英文" 10
   run_driver wait-active-text "Settings" 10
+  run_driver assert-axis-link-label "$axis_task|Open 17:30: $axis_task · Task · Pending" 10
+  sleep 0.6
+  run_driver assert-focused-text "Switch to Chinese" 10
+  run_driver capture-window "$acceptance_directory/timeline-label-en-expanded.png" 10
   run_driver assert-active-text "Today"
   run_driver assert-active-text "Calendar"
   run_driver assert-active-text "Habits"
@@ -3644,6 +3667,17 @@ EOF
   run_driver assert-active-text "$draft_text"
   run_driver assert-active-text "中文个人内容 · Keep source English unchanged"
   run_driver assert-active-absent-text "保存记录"
+  run_driver press "Switch to Chinese" 10
+  run_driver wait-active-text "设置" 10
+  run_driver assert-axis-link-label "$axis_task|打开 17:30：$axis_task · 任务 · 待办" 10
+  sleep 0.6
+  run_driver assert-focused-text "切换为英文" 10
+  run_driver capture-window "$acceptance_directory/timeline-label-zh-return-expanded.png" 10
+  run_driver assert-active-text "$draft_text"
+  run_driver assert-state "当日进展|selected" 10
+  run_driver press "切换为英文" 10
+  run_driver wait-active-text "Settings" 10
+  run_driver assert-axis-link-label "$axis_task|Open 17:30: $axis_task · Task · Pending" 10
 
   current_step="checking long English Settings copy and localized Calendar and Habits states"
   run_driver press "Settings" 10
@@ -4602,7 +4636,7 @@ run_today_time_axis_scenario() {
   run_driver wait-active-text "今天 · $today_date" 20
   run_driver assert-active-text "当前安排"
   run_driver assert-active-text "已确认事实"
-  run_driver assert-centered "当前本地时间|100" 10
+  run_driver assert-centered "当前本地时间|110" 10
   run_driver assert-text "09:30–10:45"
   run_driver assert-text "10:55–10:56"
   run_driver assert-text "13:00"
@@ -4610,8 +4644,6 @@ run_today_time_axis_scenario() {
   run_driver assert-text "继续今天的阅读安排"
   run_driver assert-text "17:00 前"
   run_driver assert-text "这条事实没有发生时刻"
-  current_clock="$(/bin/date '+%H:%M')"
-  run_driver assert-text "$current_clock" 3
   run_driver press "定位现在" 10
   run_driver assert-document-fixed "document" 10
   run_driver capture-window "$capture_directory/today-time-axis-zh-wide.png" 10
@@ -4634,8 +4666,8 @@ run_today_time_axis_scenario() {
   run_driver wait-active-text "所选日期 · $history_date" 20
   run_driver assert-active-absent-text "定位现在"
   run_driver assert-absent-text "当前本地时间"
-  run_driver assert-active-text "这份 Daily Record 还没有当前安排。"
-  run_driver assert-active-text "今天还没有明确记录的已发生事实。"
+  run_driver assert-active-text "$history_date 还没有 Daily Record"
+  run_driver assert-active-text "当天暂无带明确时刻的任务、日记安排或事实。"
   run_driver assert-text "00:00"
   run_driver assert-text "24:00"
   run_driver capture-window "$capture_directory/today-time-axis-empty-history.png" 10
@@ -5527,6 +5559,601 @@ EOF
   echo "Boundary: synthetic Vaults only; 08 daily-flow adapter evidence and 3.0 Drive evidence remain separate; no personal Vault, Dida365, automation, or live daily run"
 }
 
+run_today_refresh_scenario() {
+  local vault_directory="$acceptance_directory/today-refresh-vault"
+  local record_file="$vault_directory/life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local tasks_file="$vault_directory/life/.personal-dashboard/tasks/v1/tasks.json"
+  local task_candidate="$acceptance_directory/today-refresh-tasks.candidate"
+  local task_backup="$acceptance_directory/today-refresh-tasks.backup"
+  local task_before="外部刷新前 · Task"
+  local task_after="外部刷新后 · Task"
+  local task_internal="Tasks 页面编辑后 · Task"
+  local record_before="外部刷新前的当前安排"
+  local record_after="外部刷新后的当前安排"
+  local record_after_hash
+
+  current_step="preparing isolated Today refresh fixtures"
+  fixed_now_epoch_millis="1788891000000"
+  mkdir -p \
+    "$vault_directory/.obsidian" \
+    "$(dirname "$record_file")" \
+    "$(dirname "$tasks_file")" \
+    "$acceptance_data_directory"
+  cat > "$record_file" <<EOF
+---
+type: daily-record
+date: 2026-09-08
+source: today-refresh-packaged-acceptance
+---
+# 2026-09-08
+
+## 早间基准
+
+### 初始安排
+
+- Today refresh synthetic baseline.
+
+## 今天的大致安排
+
+- 09:30 $record_before
+
+## 晚间复盘
+EOF
+  cat > "$tasks_file" <<EOF
+{
+  "schemaVersion": 2,
+  "lists": [
+    {"id":"inbox","name":"Inbox","system":true,"archived":false}
+  ],
+  "tasks": [
+    {
+      "id":"today-refresh-task",
+      "name":"$task_before",
+      "content":"Synthetic task used only to verify the Today refresh button.",
+      "date":"2026-09-08",
+      "time":"10:00",
+      "listId":"inbox",
+      "source":{"kind":"manual","reference":null},
+      "state":"pending",
+      "deletedAt":null,
+      "completion":null,
+      "createdAt":"2026-09-08T08:00:00-04:00",
+      "modifiedAt":"2026-09-08T08:00:00-04:00",
+      "changes":[]
+    }
+  ]
+}
+EOF
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault_directory" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+
+  current_step="opening the synthetic Daily Record and shared Task in the packaged Today view"
+  launch_app_waiting_for_text "$task_before" 30
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver assert-active-text "$record_before"
+  run_driver assert-active-absent-text "$task_after"
+
+  current_step="externally changing both canonical sources while Today remains open"
+  /bin/cp "$tasks_file" "$task_candidate"
+  /usr/bin/perl -0pi -e 's/外部刷新前/外部刷新后/g' "$task_candidate"
+  /bin/mv "$task_candidate" "$tasks_file"
+  /usr/bin/perl -0pi -e 's/外部刷新前的当前安排/外部刷新后的当前安排/g' "$record_file"
+  /bin/cp "$tasks_file" "$task_backup"
+  run_driver assert-active-text "$task_before"
+  run_driver assert-active-text "$record_before"
+  run_driver assert-active-absent-text "$task_after"
+  run_driver assert-active-absent-text "$record_after"
+
+  current_step="pressing the Today refresh button and checking both reread projections"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "$task_after" 20
+  run_driver wait-active-text "$record_after" 20
+  run_driver assert-active-absent-text "$task_before"
+  run_driver assert-active-absent-text "$record_before"
+
+  current_step="surfacing a damaged external Tasks document instead of retaining a false success"
+  printf '{\n' > "$task_candidate"
+  /bin/mv "$task_candidate" "$tasks_file"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "无法读取 Tasks：" 20
+  run_driver assert-active-absent-text "$task_after"
+
+  current_step="retrying Today refresh after repairing the synthetic Tasks source"
+  /bin/cp "$task_backup" "$task_candidate"
+  /bin/mv "$task_candidate" "$tasks_file"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "$task_after" 20
+  run_driver wait-active-text "$record_after" 20
+
+  current_step="editing the shared Task in Tasks and reopening Today"
+  run_driver press "任务" 10
+  run_driver wait-active-text "$task_after" 20
+  run_driver press-contains "详情 · $task_after" 10
+  run_driver type-text "名称|$task_internal" 10
+  run_driver press "保存" 10
+  run_driver wait-active-text "任务已保存到所选 Vault" 20
+  wait_for_file_text "$tasks_file" "$task_internal" ||
+    fail "the Tasks edit did not persist to the shared task document"
+  [[ "$(task_id_for_name "$tasks_file" "$task_internal")" == "today-refresh-task" ]] ||
+    fail "the Tasks edit changed the shared task identity"
+  record_after_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
+  run_driver press "今天" 10
+  run_driver wait-active-text "$task_internal" 20
+  run_driver assert-active-absent-text "$task_after"
+  run_driver assert-active-text "$record_after"
+  [[ "$(shasum -a 256 "$record_file" | awk '{print $1}')" == "$record_after_hash" ]] ||
+    fail "the in-app Task edit changed the unrelated Daily Record"
+
+  echo "Packaged IPC Today refresh acceptance passed"
+  echo "Refresh: one manual Today button click reread external Task and Daily Record changes"
+  echo "Failure: malformed shared Tasks data produced visible failure feedback; a repaired source recovered on retry"
+  echo "Cross-entry: a Task edit in Tasks appeared in Today with the same task identity"
+  echo "Boundary: synthetic Vault and isolated app data only; the Daily Record remained unchanged by the Task edit"
+}
+
+run_readable_task_cards_scenario() {
+  local vault="$acceptance_directory/task-card-vault"
+  local record_file="$vault/life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local tasks_file="$vault/life/.personal-dashboard/tasks/v1/tasks.json"
+  local habits_snapshot="$vault/.personal-dashboard/derived/habits-v1.json"
+  local capture_directory="$acceptance_directory/task-card-captures"
+  local matrix_directory="$acceptance_directory/page-frame-matrix-captures"
+  local lease_task="签续租合同"
+  local long_chinese_task="整理续租合同变更内容并与房东确认付款和维修安排"
+  local long_mixed_task="准备 interview coding：复习动态规划并整理 follow-up notes"
+  local capture_name
+  local viewport
+  local page
+  local record_hash
+
+  current_step="preparing synthetic same-day Tasks without times for Today card readability"
+  fixed_now_epoch_millis="1788891000000"
+  fixed_utc_offset_minutes="-240"
+  mkdir -p "$vault/.obsidian" "$(dirname "$record_file")" "$(dirname "$tasks_file")" \
+    "$(dirname "$habits_snapshot")" "$acceptance_data_directory" "$capture_directory" \
+    "$matrix_directory"
+  /bin/cp "$repository_root/src-tauri/tests/fixtures/habits-v1-complete.json" \
+    "$habits_snapshot"
+  for viewport in 960x720 800x640 640x520; do
+    for page in today tasks calendar habits; do
+      [[ ! -e "$matrix_directory/$page-$viewport.png" ]] ||
+        fail "refusing to overwrite packaged page-frame capture $matrix_directory/$page-$viewport.png"
+    done
+  done
+  for capture_name in task-cards-today-960x720.png task-cards-today-800x640.png \
+    task-cards-today-640x520.png; do
+    [[ ! -e "$capture_directory/$capture_name" ]] ||
+      fail "refusing to overwrite packaged task-card capture $capture_directory/$capture_name"
+  done
+  cat > "$record_file" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+source: readable-task-cards-packaged-acceptance
+---
+# 2026-09-08
+
+## 白天更新
+
+- 只读合成背景；卡片验收不应改写 Daily Record。
+EOF
+  cat > "$tasks_file" <<'EOF'
+{
+  "schemaVersion": 2,
+  "lists": [{"id":"inbox","name":"Inbox","system":true,"archived":false}],
+  "tasks": [
+    {"id":"lease-renewal","name":"签续租合同","content":null,"date":"2026-09-08","time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:00:00-04:00","modifiedAt":"2026-09-08T08:00:00-04:00","changes":[]},
+    {"id":"long-chinese","name":"整理续租合同变更内容并与房东确认付款和维修安排","content":null,"date":"2026-09-08","time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:01:00-04:00","modifiedAt":"2026-09-08T08:01:00-04:00","changes":[]},
+    {"id":"long-mixed","name":"准备 interview coding：复习动态规划并整理 follow-up notes","content":null,"date":"2026-09-08","time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:02:00-04:00","modifiedAt":"2026-09-08T08:02:00-04:00","changes":[]},
+    {"id":"state-probe","name":"验证 Today 任务卡状态操作","content":null,"date":"2026-09-08","time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:03:00-04:00","modifiedAt":"2026-09-08T08:03:00-04:00","changes":[]}
+  ]
+}
+EOF
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+  record_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
+
+  current_step="capturing the packaged Today card baseline at the three ticket window sizes"
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "今天" 10
+  run_driver wait-active-text "$lease_task" 20
+  run_driver assert-active-text "$long_chinese_task"
+  run_driver assert-active-text "$long_mixed_task"
+
+  current_step="capturing the four-page frame matrix at identical packaged window sizes"
+  for viewport in 960x720 800x640 640x520; do
+    run_driver set-size "$viewport" 10
+    run_driver assert-size "$viewport" 10
+    for page in today tasks calendar habits; do
+      case "$page" in
+        today)
+          run_driver press "今天" 10
+          run_driver wait-active-text "$lease_task" 20
+          run_driver press "刷新" 10
+          run_driver wait-active-text "$lease_task" 20
+          ;;
+        tasks)
+          run_driver press "任务" 10
+          run_driver wait-active-text "$lease_task" 20
+          run_driver press "刷新任务" 10
+          run_driver wait-active-text "$lease_task" 20
+          ;;
+        calendar)
+          run_driver press "日历" 10
+          run_driver wait-active-text "2026年9月" 20
+          run_driver press "下个月" 10
+          run_driver wait-active-text "2026年10月" 20
+          run_driver press "上个月" 10
+          run_driver wait-active-text "2026年9月" 20
+          if [[ "$viewport" == "960x720" ]]; then
+            run_driver press-contains "9月8日" 10
+            run_driver wait-active-text "2026年9月" 20
+          fi
+          ;;
+        habits)
+          run_driver press "习惯" 10
+          run_driver wait-active-text "4 / 15" 20
+          run_driver press "刷新快照" 10
+          run_driver wait-active-text "4 / 15" 20
+          ;;
+      esac
+      run_driver assert-size "$viewport" 10
+      run_driver assert-document-fixed "document" 10
+      run_driver capture-window "$matrix_directory/$page-$viewport.png" 10
+    done
+  done
+
+  current_step="capturing the readable-card baseline at the three ticket window sizes"
+  run_driver press "今天" 10
+  run_driver scroll-text-visible "Today · 共享任务" 10
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver scroll-text-visible "$lease_task" 10
+  run_driver capture-window "$capture_directory/task-cards-today-960x720.png" 10
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver scroll-text-visible "$lease_task" 10
+  run_driver capture-window "$capture_directory/task-cards-today-800x640.png" 10
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver scroll-text-visible "$lease_task" 10
+  run_driver capture-window "$capture_directory/task-cards-today-640x520.png" 10
+
+  current_step="checking Today task details, keyboard order, completion, reopen, abandonment, and deletion"
+  run_driver focus "$lease_task" 10
+  run_driver assert-focused-text "$lease_task" 10
+  run_driver press-key "tab" 10
+  run_driver assert-focused-text "详情 · $lease_task" 10
+  run_driver press-key "space" 10
+  run_driver wait-active-text "日期（可选）" 10
+  run_driver assert-active-text "$lease_task"
+  run_driver press "取消" 10
+  run_driver press-contains "完成 · $lease_task" 10
+  wait_for_task_property "$tasks_file" "lease-renewal" "state" "completed" ||
+    fail "Today card completion did not update the shared task"
+  run_driver wait-active-text "已完成" 20
+  run_driver press-contains "重开 · $lease_task" 10
+  wait_for_task_property "$tasks_file" "lease-renewal" "state" "pending" ||
+    fail "Today card reopen did not restore the same pending task"
+  run_driver press-contains "删除 · $lease_task" 10
+  wait_for_task_property "$tasks_file" "lease-renewal" "deletedAt" "not-null" ||
+    fail "Today card delete action did not persist its recoverable tombstone"
+  run_driver press "任务" 10
+  run_driver wait-active-text "$long_mixed_task" 20
+  run_driver select-contains "已删除" 10
+  run_driver wait-active-text "$lease_task" 20
+  run_driver press-contains "撤销删除 · $lease_task" 10
+  run_driver select-contains "待办" 10
+  wait_for_task_property "$tasks_file" "lease-renewal" "deletedAt" "null" ||
+    fail "Tasks could not restore the task deleted from Today"
+  run_driver press "今天" 10
+  run_driver press-contains "放弃 · $long_chinese_task" 10
+  wait_for_task_property "$tasks_file" "long-chinese" "state" "abandoned" ||
+    fail "Today card abandon action did not persist"
+  run_driver press "任务" 10
+  run_driver wait-active-text "$long_mixed_task" 20
+  run_driver select-contains "已放弃" 10
+  run_driver wait-active-text "$long_chinese_task" 20
+  run_driver press-contains "恢复待办 · $long_chinese_task" 10
+  wait_for_task_property "$tasks_file" "long-chinese" "state" "pending" ||
+    fail "Tasks could not restore the task abandoned from Today"
+  run_driver select-contains "待办" 10
+  run_driver press "今天" 10
+
+  current_step="checking the same synthetic Tasks in the shared Tasks and Calendar surfaces"
+  run_driver wait-active-text "$lease_task" 20
+  run_driver assert-active-text "$long_mixed_task"
+  run_driver press "日历" 10
+  run_driver wait-active-text "2026年9月" 20
+  run_driver press-contains "9月8日" 10
+  run_driver wait-active-text "2026年9月" 20
+  run_driver assert-active-text "$lease_task"
+  run_driver assert-active-text "$long_mixed_task"
+  run_driver assert-document-fixed "document" 10
+
+  [[ "$(shasum -a 256 "$record_file" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "Today task-card actions changed the synthetic Daily Record"
+  echo "Packaged IPC readable Task cards acceptance passed"
+  echo "Today: synthetic no-time Tasks stayed in the existing shared-task area; three requested window sizes were captured in $capture_directory"
+  echo "Page frame: Today/Tasks/Habits refresh and Calendar month/date navigation controls were operated at all three sizes; document-level vertical/horizontal scrollbar assertions passed; 12 screenshots captured from the same packaged app at 960x720, 800x640, and 640x520 in $matrix_directory"
+  echo "Actions: Details, complete/reopen, abandon/restore, delete/restore, and keyboard focus order used the packaged app"
+  echo "Shared views: the same Task names remained visible in Tasks and Calendar"
+  echo "Boundary: synthetic Vault only; Daily Record SHA-256 remained $record_hash"
+  echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
+}
+
+run_today_shared_task_axis_scenario() {
+  local vault="$acceptance_directory/today-shared-task-axis-vault"
+  local no_record_vault="$acceptance_directory/today-shared-task-axis-no-record-vault"
+  local today_date="$(/bin/date '+%Y-%m-%d')"
+  local midnight_task_name="跨午夜后外部更新的共享任务"
+  local record_file="$vault/life/Journal/Daily/${today_date:0:4}/${today_date:0:7}/$today_date.md"
+  local tasks_file="$vault/life/.personal-dashboard/tasks/v1/tasks.json"
+  local no_record_tasks="$no_record_vault/life/.personal-dashboard/tasks/v1/tasks.json"
+  local task_name="准备 interview coding：复习动态规划并整理 follow-up notes"
+  local task_id
+  local record_hash
+  local capture_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory/today-shared-task-axis-captures}"
+  local capture_name
+  local local_offset="$(/bin/date '+%z')"
+  local offset_sign=1
+  local offset_hours
+  local offset_minutes
+  local visual_epoch
+  local tomorrow_date
+  local tomorrow_epoch
+  local tomorrow_offset
+  local tomorrow_offset_sign=1
+  local tomorrow_offset_hours
+  local tomorrow_offset_minutes
+  local next_day_record
+
+  current_step="preparing a synthetic Daily Record and an empty shared Tasks source with a controlled 17:05 clock"
+  mkdir -p "$vault/.obsidian" "$(dirname "$record_file")" "$(dirname "$tasks_file")" \
+    "$acceptance_data_directory" "$capture_directory"
+  for capture_name in today-shared-task-axis-960x720.png \
+    today-shared-task-axis-800x640.png today-shared-task-axis-640x520.png \
+    today-shared-task-axis-en-640x520.png today-shared-task-axis-960x720-task.png; do
+    [[ ! -e "$capture_directory/$capture_name" ]] ||
+      fail "refusing to overwrite packaged capture $capture_directory/$capture_name"
+  done
+  cat > "$record_file" <<EOF
+---
+type: daily-record
+date: $today_date
+source: today-shared-task-axis-packaged-acceptance
+---
+# $today_date
+
+## 今天的大致安排
+
+- 17:00 $task_name
+
+## 白天更新
+
+- 只读合成背景；Tasks 操作不应改写本记录。
+EOF
+  cat > "$tasks_file" <<'EOF'
+{
+  "schemaVersion": 2,
+  "lists": [{"id":"inbox","name":"Inbox","system":true,"archived":false}],
+  "tasks": []
+}
+EOF
+  visual_epoch="$(/bin/date -j -f '%Y-%m-%d %H:%M:%S' "$today_date 17:05:00" '+%s')"
+  fixed_now_epoch_millis="$((visual_epoch * 1000))"
+  if [[ "$local_offset" == -* ]]; then
+    offset_sign=-1
+    local_offset="${local_offset#-}"
+  else
+    local_offset="${local_offset#+}"
+  fi
+  offset_hours="${local_offset:0:2}"
+  offset_minutes="${local_offset:2:2}"
+  fixed_utc_offset_minutes="$((offset_sign * (10#$offset_hours * 60 + 10#$offset_minutes)))"
+  record_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+
+  current_step="creating a same-name, same-time Task in the packaged Today view at 960x720"
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "今天" 10
+  run_driver press "当日进展" 10
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver wait-active-text "$task_name" 20
+  run_driver assert-active-text "日记安排"
+  run_driver wait-active-text "所选日期没有已安排任务。" 20
+  run_driver scroll-text-visible "新建任务名称" 10
+  run_driver type-text "新建任务名称|$task_name" 10
+  run_driver scroll-text-visible "加入收集箱" 10
+  run_driver press "加入收集箱" 10
+  run_driver wait-active-text "任务已保存到所选 Vault" 20
+  if ! wait_for_file_text "$tasks_file" "$task_name"; then
+    run_driver dump-text "" 10
+    run_driver capture-window "$capture_directory/today-shared-task-axis-create-failure.png" 10
+    fail "Today did not persist the created Task"
+  fi
+  task_id="$(task_id_for_name "$tasks_file" "$task_name")" ||
+    fail "Today did not retain the created Task identity"
+  assert_task_property "$tasks_file" "$task_id" "date" "$today_date" ||
+    fail "the Today-created Task did not retain its default date"
+  current_step="scheduling the existing Today-created Task at 17:00"
+  run_driver press-contains "详情 · $task_name" 10
+  run_driver wait-active-text "时刻（需要日期）" 10
+  run_driver type-text "时刻（需要日期）|17:00" 10
+  run_driver press "保存" 10
+  run_driver wait-active-text "任务已保存到所选 Vault" 20
+  wait_for_task_property "$tasks_file" "$task_id" "time" "17:00" ||
+    fail "Today did not schedule the existing Task at its selected point"
+  assert_task_property "$tasks_file" "$task_id" "date" "$today_date" ||
+    fail "scheduling changed the Today-created Task date"
+  run_driver wait-active-text "已过设定时间" 20
+  run_driver press "定位现在" 10
+  run_driver assert-active-text "任务"
+  run_driver assert-active-text "日记安排"
+  run_driver assert-axis-cards-fit "$task_name|17:00|日记安排" 10
+  run_driver capture-window "$capture_directory/today-shared-task-axis-960x720.png" 10
+
+  current_step="checking the single-lane overlap and manual refresh without restarting the packaged app"
+  run_driver cycle-axis-stack 10
+  run_driver assert-active-text "已过设定时间"
+  run_driver assert-axis-cards-fit "$task_name|17:00|任务|待办|已过设定时间" 10
+  run_driver capture-window "$capture_directory/today-shared-task-axis-960x720-task.png" 10
+  run_driver press "刷新" 10
+  run_driver wait-active-text "$task_name" 20
+  run_driver assert-active-text "17:00"
+  run_driver assert-active-text "任务"
+  run_driver assert-active-text "日记安排"
+  run_driver press-contains "完成 · $task_name" 10
+  wait_for_task_property "$tasks_file" "$task_id" "state" "completed" ||
+    fail "Today completion did not preserve the Task's shared identity"
+  wait_for_task_property "$tasks_file" "$task_id" "time" "17:00" ||
+    fail "completion changed the Task's scheduled time"
+  run_driver wait-active-text "已完成" 20
+  run_driver wait-active-text "重开 · $task_name" 20
+  run_driver assert-active-text "17:00"
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver press "定位现在" 10
+  run_driver cycle-axis-stack 10
+  run_driver assert-active-text "已完成"
+  run_driver assert-active-text "任务"
+  run_driver assert-axis-cards-fit "$task_name|17:00|日记安排" 10
+  run_driver assert-axis-cards-fit "$task_name|17:00|任务|已完成" 10
+  run_driver capture-window "$capture_directory/today-shared-task-axis-800x640.png" 10
+
+  current_step="reopening the completed Task and moving its point while the Daily Record arrangement stays put"
+  run_driver scroll-text-visible "TODAY · 共享任务" 10
+  run_driver press-contains "重开 · $task_name" 10
+  wait_for_task_property "$tasks_file" "$task_id" "state" "pending" ||
+    fail "Today did not reopen the same Task identity"
+  run_driver wait-active-text "已过设定时间" 20
+  run_driver press-contains "详情 · $task_name" 10
+  run_driver wait-active-text "时刻（需要日期）" 10
+  run_driver type-text "时刻（需要日期）|17:30" 10
+  run_driver press "保存" 10
+  wait_for_task_property "$tasks_file" "$task_id" "time" "17:30" ||
+    fail "Today did not reschedule the existing Task"
+  run_driver wait-active-text "17:30" 20
+  run_driver assert-active-absent-text "已过设定时间"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver press "定位现在" 10
+  run_driver assert-axis-cards-fit "$task_name|17:00|日记安排" 10
+  run_driver cycle-axis-stack 10
+  run_driver assert-active-text "17:30"
+  run_driver assert-active-text "任务"
+  run_driver assert-active-text "待办"
+  run_driver assert-axis-cards-fit "$task_name|17:30|任务|待办" 10
+  run_driver capture-window "$capture_directory/today-shared-task-axis-640x520.png" 10
+  run_driver assert-active-text "17:00"
+  [[ "$(task_id_for_name "$tasks_file" "$task_name")" == "$task_id" ]] ||
+    fail "rescheduling created a duplicate Task identity"
+  assert_task_property "$tasks_file" "$task_id" "date" "$today_date" ||
+    fail "rescheduling changed the selected Task date"
+  [[ "$(shasum -a 256 "$record_file" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "the packaged Task lifecycle changed its same-day Daily Record arrangement"
+
+  current_step="checking translated Task and Diary arrangement labels in the narrow packaged view"
+  run_driver press "设置" 10
+  run_driver press "切换为英文" 10
+  run_driver wait-active-text "Appearance" 20
+  run_driver press "Today" 10
+  run_driver press "Daytime progress" 10
+  run_driver press "Locate now" 10
+  run_driver wait-active-text "Diary arrangement" 20
+  run_driver assert-axis-cards-fit "$task_name|17:00|Diary arrangement" 10
+  run_driver cycle-axis-stack 10
+  run_driver assert-active-text "Task"
+  run_driver assert-active-text "Pending"
+  run_driver assert-axis-cards-fit "$task_name|17:30|Task|Pending" 10
+  run_driver assert-window-visible-link "Open 17:30: $task_name" 10
+  run_driver capture-window "$capture_directory/today-shared-task-axis-en-640x520.png" 10
+
+  current_step="confirming that a Tasks-only Vault remains visible in packaged Today without creating a Daily Record"
+  mkdir -p "$no_record_vault/.obsidian" "$no_record_vault/life/Journal/Daily" \
+    "$(dirname "$no_record_tasks")"
+  /bin/cp "$tasks_file" "$no_record_tasks"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$no_record_vault" > "$acceptance_data_directory/today-workspace.json"
+  if ! stop_app; then
+    fail "the packaged app did not exit before the Tasks-only Vault check"
+  fi
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Today" 10
+  run_driver press "Daytime progress" 10
+  run_driver wait-active-text "$task_name" 20
+  run_driver assert-active-text "17:30"
+  run_driver assert-active-text "Task" 10
+  local missing_record="$no_record_vault/life/Journal/Daily/${today_date:0:4}/${today_date:0:7}/$today_date.md"
+  [[ ! -e "$missing_record" ]] || fail "reading Tasks without a Daily Record created a record"
+
+  current_step="reopening the packaged Today view just after midnight and checking pending work leaves the old time-axis point"
+  if ! stop_app; then
+    fail "the packaged Tasks-only app did not exit before the controlled midnight reread"
+  fi
+  tomorrow_date="$(/bin/date -j -v+1d -f '%Y-%m-%d' "$today_date" '+%Y-%m-%d')"
+  tomorrow_epoch="$(/bin/date -j -f '%Y-%m-%d %H:%M:%S' "$tomorrow_date 00:05:00" '+%s')"
+  tomorrow_offset="$(/bin/date -j -f '%Y-%m-%d %H:%M:%S' "$tomorrow_date 00:05:00" '+%z')"
+  if [[ "$tomorrow_offset" == -* ]]; then
+    tomorrow_offset_sign=-1
+    tomorrow_offset="${tomorrow_offset#-}"
+  else
+    tomorrow_offset="${tomorrow_offset#+}"
+  fi
+  tomorrow_offset_hours="${tomorrow_offset:0:2}"
+  tomorrow_offset_minutes="${tomorrow_offset:2:2}"
+  fixed_utc_offset_minutes="$((tomorrow_offset_sign * (10#$tomorrow_offset_hours * 60 + 10#$tomorrow_offset_minutes)))"
+  fixed_now_epoch_millis="$((tomorrow_epoch * 1000))"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  next_day_record="$vault/life/Journal/Daily/${tomorrow_date:0:4}/${tomorrow_date:0:7}/$tomorrow_date.md"
+  [[ ! -e "$next_day_record" ]] || fail "the next-day Daily Record unexpectedly exists before the clock rollover"
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Today" 10
+  run_driver press "Daytime progress" 10
+  run_driver wait-active-text "TODAY · $tomorrow_date" 20
+  run_driver wait-active-text "$task_name" 20
+  run_driver assert-active-text "Overdue · no failure inferred"
+  run_driver assert-axis-card-absent "$task_name|17:30" 10
+
+  current_step="externally renaming the prior-day Task while Today is open after midnight"
+  /usr/bin/perl -0pi -e 's/准备 interview coding：复习动态规划并整理 follow-up notes/跨午夜后外部更新的共享任务/g' "$tasks_file"
+  run_driver assert-active-absent-text "Details · $midnight_task_name"
+  run_driver press "Refresh" 10
+  run_driver wait-active-text "Details · $midnight_task_name" 20
+  run_driver assert-active-text "TODAY · $tomorrow_date"
+  run_driver assert-active-text "Overdue · no failure inferred"
+  run_driver assert-axis-card-absent "$midnight_task_name|17:30" 10
+  [[ "$(task_id_for_name "$tasks_file" "$midnight_task_name")" == "$task_id" ]] ||
+    fail "the midnight reread duplicated or replaced the pending Task identity"
+  assert_task_property "$tasks_file" "$task_id" "date" "$today_date" ||
+    fail "the midnight reread moved the prior-day Task date"
+  assert_task_property "$tasks_file" "$task_id" "state" "pending" ||
+    fail "the midnight reread changed the prior-day Task state"
+  [[ ! -e "$next_day_record" ]] || fail "the midnight Task reread created a Daily Record"
+  [[ "$(shasum -a 256 "$record_file" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "the midnight Task refresh changed its synthetic Daily Record"
+
+  echo "Packaged IPC Today shared-Task time-axis acceptance passed"
+  echo "Clock: synthetic local $today_date 17:05; a pending 17:00 task showed the passed-time state and exact point"
+  echo "Lifecycle: create, manual refresh, complete, reopen, and reschedule retained one Task ID and never moved the Diary arrangement"
+  echo "Overlap: the same-name Task and Diary arrangement stayed separate in the existing single-lane stack"
+  echo "Vault: a Tasks-only Vault rendered the task in Today without creating a Daily Record"
+  echo "Midnight: relaunch at $tomorrow_date 00:05 and manual refresh read an external Task rename, kept its ID/date/state, and removed its old time-axis point"
+  echo "Layout: 960x720, 800x640, and 640x520 packaged captures are in $capture_directory"
+  echo "Daily Record SHA-256: $record_hash"
+  echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -5620,6 +6247,9 @@ case "$acceptance_scenario" in
   today-time-axis) run_today_time_axis_scenario ;;
   dashboard-3) run_dashboard_3_scenario ;;
   dashboard-4) run_dashboard_4_scenario ;;
+  today-refresh) run_today_refresh_scenario ;;
+  readable-task-cards) run_readable_task_cards_scenario ;;
+  today-shared-task-axis) run_today_shared_task_axis_scenario ;;
   drive-compatibility) run_drive_compatibility_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;

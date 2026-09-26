@@ -322,6 +322,67 @@ export function todayTaskGroups<T extends TodayTaskCandidate>(
   };
 }
 
+export type TodayTaskTimeAxisCandidate = Readonly<{
+  id: string;
+  name: string;
+  listId: string;
+  date: string | null;
+  time: string | null;
+  state: "pending" | "completed" | "abandoned";
+  deletedAt: string | null;
+  timePassed: boolean;
+}>;
+
+export type TodayTaskTimeAxisEntry = Readonly<{
+  period: null;
+  id: string;
+  text: string;
+  sourceDate: string;
+  startMinute: number;
+  endMinute: null;
+  continuesFromPreviousDay: false;
+  continuesIntoNextDay: false;
+  task: Readonly<{
+    id: string;
+    state: "pending" | "completed";
+    timePassed: boolean;
+  }>;
+}>;
+
+export function todayTaskTimeAxisEntries<T extends TodayTaskTimeAxisCandidate>(
+  tasks: readonly T[],
+  selectedDate: string,
+  archivedListIds: ReadonlySet<string>,
+): readonly TodayTaskTimeAxisEntry[] {
+  return tasks.flatMap((task) => {
+    if (
+      task.date !== selectedDate ||
+      task.time === null ||
+      task.deletedAt !== null ||
+      task.state === "abandoned" ||
+      archivedListIds.has(task.listId)
+    ) return [];
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(task.time)) return [];
+    const hour = Number(task.time.slice(0, 2));
+    const minute = Number(task.time.slice(3, 5));
+    return [{
+      period: null,
+      id: task.id,
+      text: task.name,
+      sourceDate: selectedDate,
+      startMinute: hour * 60 + minute,
+      endMinute: null,
+      continuesFromPreviousDay: false,
+      continuesIntoNextDay: false,
+      task: {
+        id: task.id,
+        state: task.state,
+        timePassed: task.timePassed,
+      },
+    }];
+  });
+}
+
 export function normalizeTaskSchedule(
   date: string | null | undefined,
   time: string | null | undefined,
@@ -345,6 +406,28 @@ export function isCurrentTaskResponse(
     request.isCurrent(token) &&
     currentDestination === "tasks" &&
     (expectedTargetBinding === null || expectedTargetBinding === responseTargetBinding)
+  );
+}
+
+export function isCurrentTodayTaskResponse(
+  request: Readonly<{ isCurrent: (token: number) => boolean }>,
+  token: number,
+  currentDestination: string,
+  currentDate: string | null,
+  expectedDate: string | null,
+  currentTargetBinding: string | null,
+  expectedTargetBinding: string,
+  responseTargetBinding: string | null,
+  currentRevision: string | null,
+  expectedRevision: string | null,
+): boolean {
+  return (
+    request.isCurrent(token) &&
+    currentDestination === "today" &&
+    currentDate === expectedDate &&
+    currentTargetBinding === expectedTargetBinding &&
+    responseTargetBinding === expectedTargetBinding &&
+    (expectedRevision === null || currentRevision === expectedRevision)
   );
 }
 

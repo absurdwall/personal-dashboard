@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-cards-fit|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -1187,6 +1187,61 @@ func renderedBitmap(in sampleRect: CGRect) -> NSBitmapImageRep? {
     return bitmap
 }
 
+func renderedBitmap(windowID: CGWindowID) -> NSBitmapImageRep? {
+    let sampleFile = FileManager.default.temporaryDirectory
+        .appendingPathComponent("personal-dashboard-window-\(UUID().uuidString).png")
+    defer { try? FileManager.default.removeItem(at: sampleFile) }
+    let capture = Process()
+    capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+    capture.arguments = ["-x", "-l", String(windowID), sampleFile.path]
+    do {
+        try capture.run()
+        capture.waitUntilExit()
+    } catch {
+        return nil
+    }
+    guard capture.terminationStatus == 0,
+          let data = try? Data(contentsOf: sampleFile),
+          let bitmap = NSBitmapImageRep(data: data) else {
+        return nil
+    }
+    return bitmap
+}
+
+func windowID(pid: pid_t, matching accessibilityFrame: CGRect) -> CGWindowID? {
+    guard let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID)
+        as? [[String: Any]] else {
+        return nil
+    }
+    let expectedArea = max(1, accessibilityFrame.width * accessibilityFrame.height)
+    let candidates: [(id: CGWindowID, overlap: CGFloat, edgeDistance: CGFloat)] = windows.compactMap {
+        info in
+        guard (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
+              (info[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+              let number = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+              let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+              let candidateFrame = CGRect(dictionaryRepresentation: bounds as CFDictionary) else {
+            return nil
+        }
+        let intersection = accessibilityFrame.intersection(candidateFrame)
+        guard !intersection.isNull else { return nil }
+        let candidateArea = max(1, candidateFrame.width * candidateFrame.height)
+        let overlap = intersection.width * intersection.height / min(expectedArea, candidateArea)
+        let edgeDistance = [
+            abs(accessibilityFrame.minX - candidateFrame.minX),
+            abs(accessibilityFrame.minY - candidateFrame.minY),
+            abs(accessibilityFrame.maxX - candidateFrame.maxX),
+            abs(accessibilityFrame.maxY - candidateFrame.maxY),
+        ].max() ?? .greatestFiniteMagnitude
+        guard overlap >= 0.85, edgeDistance <= 40 else { return nil }
+        return (number, overlap, edgeDistance)
+    }
+    return candidates.sorted {
+        if $0.overlap != $1.overlap { return $0.overlap > $1.overlap }
+        return $0.edgeDistance < $1.edgeDistance
+    }.first?.id
+}
+
 func captureOutputURL(_ outputPath: String) throws -> URL {
     let outputURL = URL(fileURLWithPath: outputPath)
     guard outputURL.path == outputPath,
@@ -1230,7 +1285,8 @@ func captureWindow(_ application: AXUIElement, pid: pid_t, outputPath: String) t
     }
     _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
     Thread.sleep(forTimeInterval: 0.25)
-    guard let bitmap = renderedBitmap(in: windowFrame),
+    guard let id = windowID(pid: pid, matching: windowFrame),
+          let bitmap = renderedBitmap(windowID: id),
           let png = bitmap.representation(using: .png, properties: [:]) else {
         throw DriverError.timeout("rendered main window bitmap")
     }
@@ -1326,12 +1382,16 @@ func assertLongTextFits(_ application: AXUIElement, text: String) throws {
     }
 }
 
-func visibleAxisTitlePath(_ application: AXUIElement, title: String) -> AccessibilityPath? {
-    findTextPaths(application, title).first { path in
+func visibleAxisTitlePaths(_ application: AXUIElement, title: String) -> [AccessibilityPath] {
+    findTextPaths(application, title).filter { path in
         stringAttribute(path.element, "AXRole") == "AXStaticText" &&
             path.ancestors.contains { stringAttribute($0, "AXRole") == "AXLink" } &&
             (path.ancestors + [path.element]).allSatisfy { visibleAttribute($0, "AXHidden") }
     }
+}
+
+func visibleAxisTitlePath(_ application: AXUIElement, title: String) -> AccessibilityPath? {
+    visibleAxisTitlePaths(application, title: title).first
 }
 
 func assertAxisEntryCard(
@@ -1396,12 +1456,82 @@ func assertAxisEntryCard(
     }
 }
 
-func axisCardLink(_ application: AXUIElement, title: String) -> (link: AXUIElement, path: AccessibilityPath)? {
-    guard let titlePath = visibleAxisTitlePath(application, title: title),
-          let link = titlePath.ancestors.last(where: { stringAttribute($0, "AXRole") == "AXLink" }) else {
-        return nil
+func assertAxisLinkLabel(
+    _ application: AXUIElement,
+    markerText: String,
+    expectedLabel: String,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    var actualLabels: [String] = []
+    repeat {
+        actualLabels.removeAll(keepingCapacity: true)
+        _ = walk(application) { element in
+            guard stringAttribute(element, "AXRole") == "AXLink",
+                  nodeText(element).localizedCaseInsensitiveContains(markerText) else {
+                return false
+            }
+            let label = stringAttribute(element, "AXDescription")
+            actualLabels.append(label.isEmpty ? nodeText(element) : label)
+            return false
+        }
+        if actualLabels.contains(expectedLabel) {
+            print("Timeline marker accessible name is current: \(expectedLabel)")
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.unexpectedText(
+        "timeline marker accessible name did not match expected label " +
+            "(expected: \(expectedLabel); actual: \(actualLabels))"
+    )
+}
+
+func axisCardLink(
+    _ application: AXUIElement,
+    title: String,
+    time: String? = nil,
+    requiredLabels: [String] = []
+) -> (link: AXUIElement, path: AccessibilityPath)? {
+    for titlePath in visibleAxisTitlePaths(application, title: title) {
+        guard let link = titlePath.ancestors.last(where: {
+            stringAttribute($0, "AXRole") == "AXLink"
+        }) else {
+            continue
+        }
+        let containsTime = time.map { expectedTime in
+            findTextPaths(link, expectedTime, contains: false).contains { path in
+                stringAttribute(path.element, "AXRole") == "AXStaticText"
+            }
+        } ?? true
+        let containsRequiredLabels = requiredLabels.allSatisfy { requiredLabel in
+            findTextPaths(link, requiredLabel, contains: false).contains { path in
+                stringAttribute(path.element, "AXRole") == "AXStaticText"
+            }
+        }
+        if containsTime && containsRequiredLabels {
+            return (link, titlePath)
+        }
     }
-    return (link, titlePath)
+    return nil
+}
+
+func axisCardExists(_ application: AXUIElement, title: String, time: String) -> Bool {
+    for titlePath in findTextPaths(application, title, contains: false) where
+        stringAttribute(titlePath.element, "AXRole") == "AXStaticText"
+    {
+        guard let link = titlePath.ancestors.last(where: {
+            stringAttribute($0, "AXRole") == "AXLink"
+        }) else {
+            continue
+        }
+        if findTextPaths(link, time, contains: false).contains(where: {
+            stringAttribute($0.element, "AXRole") == "AXStaticText"
+        }) {
+            return true
+        }
+    }
+    return false
 }
 
 func axisScrollSurface(in path: AccessibilityPath) -> AXUIElement? {
@@ -1416,7 +1546,8 @@ func axisScrollSurface(in path: AccessibilityPath) -> AXUIElement? {
 func scrollAxisCardIntoWindow(
     _ application: AXUIElement,
     pid: pid_t,
-    title: String
+    title: String,
+    time: String
 ) throws {
     guard let window = mainWindow(application),
           let windowFrame = frame(window) else {
@@ -1424,7 +1555,7 @@ func scrollAxisCardIntoWindow(
     }
     let visibleWindow = windowFrame.insetBy(dx: -2, dy: -2)
     for _ in 0..<8 {
-        guard let card = axisCardLink(application, title: title),
+        guard let card = axisCardLink(application, title: title, time: time),
               let cardFrame = frame(card.link) else {
             throw DriverError.timeout("rendered time-axis card bounds: \(title)")
         }
@@ -1439,7 +1570,8 @@ func scrollAxisCardIntoWindow(
         let action = direction == "down" ? "AXScrollDownByPage" : "AXScrollUpByPage"
         let actionError = AXUIElementPerformAction(surface, action as CFString)
         Thread.sleep(forTimeInterval: 0.15)
-        let afterPage = axisCardLink(application, title: title).flatMap { frame($0.link) }
+        let afterPage = axisCardLink(application, title: title, time: time)
+            .flatMap { frame($0.link) }
         if actionError != .success || afterPage.map({ abs($0.minY - cardFrame.minY) < 1 }) != false {
             guard let source = CGEventSource(stateID: .combinedSessionState),
                   let move = CGEvent(
@@ -1464,7 +1596,7 @@ func scrollAxisCardIntoWindow(
             Thread.sleep(forTimeInterval: 0.2)
         }
     }
-    guard let card = axisCardLink(application, title: title),
+    guard let card = axisCardLink(application, title: title, time: time),
           let cardFrame = frame(card.link),
           visibleWindow.contains(cardFrame) else {
         throw DriverError.timeout("fully visible time-axis card after scrolling: \(title)")
@@ -1480,11 +1612,22 @@ func assertAxisCardsFit(_ application: AXUIElement, pid: pid_t, specifications: 
     var cards: [(title: String, frame: CGRect)] = []
     for specification in specifications.split(separator: ";", omittingEmptySubsequences: false) {
         let fields = specification.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-        guard fields.count == 2 else {
+        guard fields.count >= 2 else {
             throw DriverError.usage
         }
-        try scrollAxisCardIntoWindow(application, pid: pid, title: fields[0])
-        guard let card = axisCardLink(application, title: fields[0]),
+        try scrollAxisCardIntoWindow(
+            application,
+            pid: pid,
+            title: fields[0],
+            time: fields[1]
+        )
+        let requiredLabels = fields.dropFirst(2).map { String($0) }
+        guard let card = axisCardLink(
+            application,
+            title: fields[0],
+            time: fields[1],
+            requiredLabels: requiredLabels
+        ),
               let cardFrame = frame(card.link),
               let titleFrame = frame(card.path.element),
               let scrollSurface = axisScrollSurface(in: card.path),
@@ -1497,13 +1640,24 @@ func assertAxisCardsFit(_ application: AXUIElement, pid: pid_t, specifications: 
             throw DriverError.timeout("rendered time label inside card: \(fields[1])")
         }
         let contentBounds = cardFrame.insetBy(dx: -2, dy: -2)
+        for requiredLabel in fields.dropFirst(2) {
+            guard let label = findTextPaths(card.link, String(requiredLabel), contains: false).first(where: {
+                stringAttribute($0.element, "AXRole") == "AXStaticText" &&
+                    ($0.ancestors + [$0.element]).allSatisfy { visibleAttribute($0, "AXHidden") }
+            }), let labelFrame = frame(label.element), contentBounds.contains(labelFrame) else {
+                throw DriverError.unexpectedText(
+                    "time-axis card source/status label is missing or clipped: \(requiredLabel) in \(specification)"
+                )
+            }
+        }
         let titleStartsInsideCard = titleFrame.minY >= cardFrame.minY - 2 &&
             titleFrame.minY < cardFrame.maxY &&
             titleFrame.minX >= cardFrame.minX - 2 &&
             titleFrame.minX < cardFrame.maxX
         let visibleScrollSurface = scrollFrame.insetBy(dx: -2, dy: -2)
+        let requiredCardHeight: CGFloat = requiredLabels.isEmpty ? 38 : 44
         guard cardFrame.width >= 80,
-              cardFrame.height >= 38,
+              cardFrame.height >= requiredCardHeight,
               titleStartsInsideCard,
               contentBounds.contains(timeFrame),
               visibleWindow.contains(cardFrame),
@@ -1545,6 +1699,13 @@ func assertAxisOverlapStack(
         )
     }
     print("Rendered overlapping cards share one fanned stack with a reveal control: \(firstFrame) / \(secondFrame)")
+}
+
+func assertAxisCardAbsent(_ application: AXUIElement, title: String, time: String) throws {
+    guard !axisCardExists(application, title: title, time: time) else {
+        throw DriverError.unexpectedText("time-axis card remained after its Task left this date: \(time) \(title)")
+    }
+    print("No time-axis card remains for the Task on this date: \(time) \(title)")
 }
 
 func cycleAxisStack(_ application: AXUIElement) throws {
@@ -1705,17 +1866,33 @@ func scrollAxisHorizontally(
 
 func assertWindowVisibleText(_ application: AXUIElement, text: String) throws {
     guard let window = mainWindow(application),
-          let windowFrame = frame(window),
-          let element = visibleRenderedElement(application, label: text),
-          let elementFrame = frame(element) else {
+          let windowFrame = frame(window) else {
         throw DriverError.timeout("visible rendered UI text with measurable bounds: \(text)")
     }
     let visibleWindow = windowFrame.insetBy(dx: -2, dy: -2)
-    guard visibleWindow.contains(CGPoint(x: elementFrame.minX, y: elementFrame.minY)),
-          visibleWindow.contains(CGPoint(x: elementFrame.maxX, y: elementFrame.maxY)) else {
+    let candidates = findTextPaths(application, text).filter { path in
+        (path.ancestors + [path.element]).allSatisfy {
+            visibleAttribute($0, "AXHidden")
+        }
+    }.compactMap { path -> CGRect? in
+        guard let elementFrame = frame(path.element),
+              elementFrame.width >= 2,
+              elementFrame.height >= 2 else {
+            return nil
+        }
+        return elementFrame
+    }
+    guard !candidates.isEmpty else {
+        throw DriverError.timeout("visible rendered UI text with measurable bounds: \(text)")
+    }
+    let reachable = candidates.contains { elementFrame in
+        visibleWindow.contains(CGPoint(x: elementFrame.minX, y: elementFrame.minY)) &&
+            visibleWindow.contains(CGPoint(x: elementFrame.maxX, y: elementFrame.maxY))
+    }
+    guard reachable else {
         throw DriverError.unexpectedText(
             "rendered UI text is outside the visible window: \(text) " +
-                "frame=\(elementFrame) window=\(windowFrame)"
+                "frames=\(candidates) window=\(windowFrame)"
         )
     }
 }
@@ -2692,6 +2869,14 @@ func hasVisibleVerticalScrollBar(_ element: AXUIElement) -> Bool {
     return visibleAttribute(scrollBar, "AXHidden")
 }
 
+func hasVisibleHorizontalScrollBar(_ element: AXUIElement) -> Bool {
+    guard let rawScrollBar = attribute(element, "AXHorizontalScrollBar") else {
+        return false
+    }
+    let scrollBar = unsafeDowncast(rawScrollBar, to: AXUIElement.self)
+    return visibleAttribute(scrollBar, "AXHidden")
+}
+
 func numberAttribute(_ element: AXUIElement, _ name: String) -> Double? {
     guard let raw = attribute(element, name),
           let value = raw as? NSNumber else {
@@ -2745,22 +2930,30 @@ func pressPageDown(_ pid: pid_t) throws {
 
 func assertDocumentFixed(_ application: AXUIElement) throws {
     var webAreaFound = false
-    var documentScrolls = false
+    var documentScrollsVertically = false
+    var documentScrollsHorizontally = false
     _ = walk(application) { element in
         guard stringAttribute(element, "AXRole") == "AXWebArea" else {
             return false
         }
         webAreaFound = true
         if hasVisibleVerticalScrollBar(element) {
-            documentScrolls = true
+            documentScrollsVertically = true
+        }
+        if hasVisibleHorizontalScrollBar(element) {
+            documentScrollsHorizontally = true
         }
         return false
     }
     guard webAreaFound else {
         throw DriverError.timeout("rendered web area")
     }
-    guard !documentScrolls else {
-        throw DriverError.unexpectedText("document/body scroll")
+    guard !documentScrollsVertically, !documentScrollsHorizontally else {
+        let axes = [
+            documentScrollsHorizontally ? "horizontal" : nil,
+            documentScrollsVertically ? "vertical" : nil
+        ].compactMap { $0 }.joined(separator: " and ")
+        throw DriverError.unexpectedText("document/body scroll on " + axes)
     }
 }
 
@@ -2769,10 +2962,21 @@ func clickElement(
     pid: pid_t,
     mirroredY: Bool = false
 ) throws {
-    guard let elementFrame = frame(element),
-          elementFrame.width > 0,
-          elementFrame.height > 0,
-          let source = CGEventSource(stateID: .combinedSessionState) else {
+    var targetFrame: CGRect?
+    var eventSource: CGEventSource?
+    for _ in 0..<5 {
+        if let candidateFrame = frame(element),
+           candidateFrame.width > 0,
+           candidateFrame.height > 0,
+           let candidateSource = CGEventSource(stateID: .combinedSessionState) {
+            targetFrame = candidateFrame
+            eventSource = candidateSource
+            break
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+    guard let elementFrame = targetFrame,
+          let source = eventSource else {
         throw DriverError.actionFailed("click menu option", .failure)
     }
     let screenHeight = NSScreen.screens.first?.frame.maxY ?? 0
@@ -3718,8 +3922,26 @@ do {
             title: parts[2]
         )
         print("Rendered card text and true time bounds are visible: \(parts[0])–\(parts[1]) \(parts[2])")
+    case "assert-axis-link-label":
+        let parts = text.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
+            .map(String.init)
+        guard parts.count == 2 else {
+            throw DriverError.usage
+        }
+        try assertAxisLinkLabel(
+            application,
+            markerText: parts[0],
+            expectedLabel: parts[1],
+            timeout: timeout
+        )
     case "assert-axis-cards-fit":
         try assertAxisCardsFit(application, pid: pid, specifications: text)
+    case "assert-axis-card-absent":
+        let parts = text.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 2 else {
+            throw DriverError.usage
+        }
+        try assertAxisCardAbsent(application, title: parts[0], time: parts[1])
     case "assert-axis-overlap-stack":
         let parts = text.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
         guard parts.count == 2 else {
@@ -3858,7 +4080,7 @@ do {
         print("Long rendered text wraps within the visible window: \(text)")
     case "assert-document-fixed":
         try assertDocumentFixed(application)
-        print("Rendered document has no visible vertical scroll")
+        print("Rendered document has no visible vertical or horizontal scroll")
     case "assert-scroll-surface":
         try assertScrollableSurface(application, text, pid: pid)
         print("Rendered active surface scrolled without document scroll: \(text)")

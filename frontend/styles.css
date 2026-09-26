@@ -6450,6 +6450,12 @@ body {
   color: #2d6c57;
 }
 
+.today-axis-lane-legend-symbol.is-task {
+  border-radius: 50%;
+  background: #edf3f8;
+  color: #496a8c;
+}
+
 #today-hour-ticks {
   position: absolute;
   inset: var(--today-axis-heading-height) 0 0;
@@ -6564,15 +6570,18 @@ body {
 
 .today-axis-marker-link {
   box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-content: center;
+  align-items: start;
+  column-gap: 6px;
+  row-gap: 2px;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
-  padding: 4px 7px;
+  padding: 2px 7px;
   overflow: hidden;
   border: 1px solid #cbded2;
   border-radius: 6px;
@@ -6592,6 +6601,22 @@ body {
   border: 1px dashed #bcb092;
   background: #f6f2e8;
   color: #695b40;
+}
+
+.today-axis-marker.is-task .today-axis-marker-link {
+  border-color: #b7c8d8;
+  background: #edf3f8;
+  color: #34516f;
+}
+
+.today-axis-marker.is-task.is-time-passed .today-axis-marker-link {
+  border-color: #bc925c;
+}
+
+.today-axis-marker.is-task.is-completed .today-axis-marker-link {
+  border-color: #b8c0ba;
+  background: #eef0ed;
+  color: #5a635d;
 }
 
 .today-axis-marker.is-stack-front {
@@ -6648,7 +6673,13 @@ body {
   color: #214e43;
 }
 
+.today-axis-marker.is-task .today-axis-stack-reveal {
+  color: #34516f;
+}
+
 .today-axis-marker-time {
+  grid-column: 1;
+  grid-row: 1;
   display: block;
   min-width: 0;
   font-size: 10px;
@@ -6659,6 +6690,8 @@ body {
 }
 
 .today-axis-marker-title {
+  grid-column: 2;
+  grid-row: 1;
   display: -webkit-box;
   min-width: 0;
   overflow: hidden;
@@ -6668,6 +6701,23 @@ body {
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: normal;
+}
+
+.today-axis-marker-source-status {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 5px;
+  min-width: 0;
+  color: inherit;
+  font-size: 8px;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.today-axis-marker-source-status > span {
+  overflow-wrap: anywhere;
 }
 
 .today-axis-marker-link:hover,
@@ -6709,6 +6759,11 @@ body {
 .today-axis-point.is-arrangement {
   border-color: #bcb092;
   background: #f6f2e8;
+}
+
+.today-axis-point.is-task {
+  border-color: #496a8c;
+  background: #edf3f8;
 }
 
 .today-axis-empty,
@@ -6822,7 +6877,7 @@ body {
 
   .today-axis-marker-link {
     min-width: 0;
-    padding: 4px 5px;
+    padding: 2px 5px;
   }
 }
 
@@ -7596,6 +7651,11 @@ body {
   gap: 12px;
 }
 
+.task-row[data-task-surface="today"] .task-row-summary {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 9px;
+}
+
 .task-row-main {
   min-width: 0;
 }
@@ -7688,6 +7748,11 @@ body {
   flex-wrap: wrap;
   gap: 3px;
   max-width: 190px;
+}
+
+.task-row[data-task-surface="today"] .task-state-actions {
+  justify-content: flex-start;
+  max-width: none;
 }
 
 .task-state-actions button,
@@ -8328,5 +8393,96 @@ button.habit-cell:focus-visible {
 
   .today-axis-unlocated-region {
     position: static;
+  }
+}
+
+/* Personal Dashboard 3.0.2 ticket 04: align the four page frames and headings. */
+#workspace-destination-today.today-destination,
+#workspace-destination-tasks.tasks-destination,
+#workspace-destination-calendar.calendar-destination,
+#workspace-destination-habits.habits-destination {
+  width: min(calc(100% - 3rem), 66rem);
+  margin-inline: auto;
+  padding: 1.7rem 1.4rem 3.7rem;
+}
+
+.app-shell:is([data-workspace-destination="today"], [data-workspace-destination="tasks"], [data-workspace-destination="habits"]) .workspace-header h1,
+.calendar-header h2 {
+  color: #252a28;
+  font-family: inherit;
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  line-height: 1.2;
+}
+
+.today-toolbar h2,
+.habits-header .destination-heading {
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.today-region-heading h3,
+.tasks-toolbar h3,
+.calendar-month-heading h3,
+.calendar-selected-heading h3,
+.calendar-task-heading h3,
+.habits-group-heading h3 {
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.calendar-header {
+  padding-bottom: 1rem;
+}
+
+.habits-header {
+  padding-top: 0;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.day-task-panel > .today-task-create-form {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+@media (min-width: 901px) and (max-width: 1000px) {
+  .app-shell[data-workspace-destination="habits"] .habit-snapshot-row {
+    grid-template-columns: minmax(5rem, 1fr) 3.25rem 2.5rem minmax(0, 0.85fr) 2rem;
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 900px) {
+  #workspace-destination-today.today-destination,
+  #workspace-destination-tasks.tasks-destination,
+  #workspace-destination-calendar.calendar-destination,
+  #workspace-destination-habits.habits-destination {
+    width: min(calc(100% - 2rem), 66rem);
+    padding: 1.5rem 1.4rem 3rem;
+  }
+}
+
+@media (max-width: 680px) {
+  #workspace-destination-today.today-destination,
+  #workspace-destination-tasks.tasks-destination,
+  #workspace-destination-calendar.calendar-destination,
+  #workspace-destination-habits.habits-destination {
+    width: calc(100% - 1.5rem);
+    padding: 1.2rem 1.4rem 3rem;
+  }
+
+  .calendar-header h2,
+  .app-shell:is([data-workspace-destination="today"], [data-workspace-destination="tasks"], [data-workspace-destination="habits"]) .workspace-header h1 {
+    font-size: 1.7rem;
   }
 }
