@@ -20,14 +20,14 @@ const cargoLock = readFileSync(
   "utf8",
 );
 
-test("the 3.0.1 candidate versions every package declaration without changing identity", () => {
-  assert.equal(packageJson.version, "3.0.1");
-  assert.equal(packageLock.version, "3.0.1");
-  assert.equal(packageLock.packages[""].version, "3.0.1");
-  assert.equal(tauriConfig.version, "3.0.1");
+test("the 3.0.2 candidate versions every package declaration without changing identity", () => {
+  assert.equal(packageJson.version, "3.0.2");
+  assert.equal(packageLock.version, "3.0.2");
+  assert.equal(packageLock.packages[""].version, "3.0.2");
+  assert.equal(tauriConfig.version, "3.0.2");
   assert.equal(tauriConfig.identifier, "com.tortillaflat.personal-dashboard");
-  assert.match(cargoToml, /^version = "3\.0\.1"$/m);
+  assert.match(cargoToml, /^version = "3\.0\.2"$/m);
 
   const packageEntry = cargoLock.slice(cargoLock.indexOf('name = "personal-dashboard"'));
-  assert.match(packageEntry, /^version = "3\.0\.1"$/m);
+  assert.match(packageEntry, /^version = "3\.0\.2"$/m);
 });
