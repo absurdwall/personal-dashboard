@@ -8395,3 +8395,94 @@ button.habit-cell:focus-visible {
     position: static;
   }
 }
+
+/* Personal Dashboard 3.0.2 ticket 04: align the four page frames and headings. */
+#workspace-destination-today.today-destination,
+#workspace-destination-tasks.tasks-destination,
+#workspace-destination-calendar.calendar-destination,
+#workspace-destination-habits.habits-destination {
+  width: min(calc(100% - 3rem), 66rem);
+  margin-inline: auto;
+  padding: 1.7rem 1.4rem 3.7rem;
+}
+
+.app-shell:is([data-workspace-destination="today"], [data-workspace-destination="tasks"], [data-workspace-destination="habits"]) .workspace-header h1,
+.calendar-header h2 {
+  color: #252a28;
+  font-family: inherit;
+  font-size: 26px;
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  line-height: 1.2;
+}
+
+.today-toolbar h2,
+.habits-header .destination-heading {
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.today-region-heading h3,
+.tasks-toolbar h3,
+.calendar-month-heading h3,
+.calendar-selected-heading h3,
+.calendar-task-heading h3,
+.habits-group-heading h3 {
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.calendar-header {
+  padding-bottom: 1rem;
+}
+
+.habits-header {
+  padding-top: 0;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--parity-border);
+}
+
+.day-task-panel > .today-task-create-form {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+@media (min-width: 901px) and (max-width: 1000px) {
+  .app-shell[data-workspace-destination="habits"] .habit-snapshot-row {
+    grid-template-columns: minmax(5rem, 1fr) 3.25rem 2.5rem minmax(0, 0.85fr) 2rem;
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 900px) {
+  #workspace-destination-today.today-destination,
+  #workspace-destination-tasks.tasks-destination,
+  #workspace-destination-calendar.calendar-destination,
+  #workspace-destination-habits.habits-destination {
+    width: min(calc(100% - 2rem), 66rem);
+    padding: 1.5rem 1.4rem 3rem;
+  }
+}
+
+@media (max-width: 680px) {
+  #workspace-destination-today.today-destination,
+  #workspace-destination-tasks.tasks-destination,
+  #workspace-destination-calendar.calendar-destination,
+  #workspace-destination-habits.habits-destination {
+    width: calc(100% - 1.5rem);
+    padding: 1.2rem 1.4rem 3rem;
+  }
+
+  .calendar-header h2,
+  .app-shell:is([data-workspace-destination="today"], [data-workspace-destination="tasks"], [data-workspace-destination="habits"]) .workspace-header h1 {
+    font-size: 1.7rem;
+  }
+}

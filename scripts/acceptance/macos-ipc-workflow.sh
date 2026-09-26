@@ -5666,19 +5666,32 @@ run_readable_task_cards_scenario() {
   local vault="$acceptance_directory/task-card-vault"
   local record_file="$vault/life/Journal/Daily/2026/2026-09/2026-09-08.md"
   local tasks_file="$vault/life/.personal-dashboard/tasks/v1/tasks.json"
+  local habits_snapshot="$vault/.personal-dashboard/derived/habits-v1.json"
   local capture_directory="$acceptance_directory/task-card-captures"
+  local matrix_directory="$acceptance_directory/page-frame-matrix-captures"
   local lease_task="签续租合同"
   local long_chinese_task="整理续租合同变更内容并与房东确认付款和维修安排"
   local long_mixed_task="准备 interview coding：复习动态规划并整理 follow-up notes"
   local state_task="验证 Today 任务卡状态操作"
   local capture_name
+  local viewport
+  local page
   local record_hash
 
   current_step="preparing synthetic same-day Tasks without times for Today card readability"
   fixed_now_epoch_millis="1788891000000"
   fixed_utc_offset_minutes="-240"
   mkdir -p "$vault/.obsidian" "$(dirname "$record_file")" "$(dirname "$tasks_file")" \
-    "$acceptance_data_directory" "$capture_directory"
+    "$(dirname "$habits_snapshot")" "$acceptance_data_directory" "$capture_directory" \
+    "$matrix_directory"
+  /bin/cp "$repository_root/src-tauri/tests/fixtures/habits-v1-complete.json" \
+    "$habits_snapshot"
+  for viewport in 960x720 800x640 640x520; do
+    for page in today tasks calendar habits; do
+      [[ ! -e "$matrix_directory/$page-$viewport.png" ]] ||
+        fail "refusing to overwrite packaged page-frame capture $matrix_directory/$page-$viewport.png"
+    done
+  done
   for capture_name in task-cards-today-960x720.png task-cards-today-800x640.png \
     task-cards-today-640x520.png; do
     [[ ! -e "$capture_directory/$capture_name" ]] ||
@@ -5720,6 +5733,46 @@ EOF
   run_driver wait-active-text "$lease_task" 20
   run_driver assert-active-text "$long_chinese_task"
   run_driver assert-active-text "$long_mixed_task"
+
+  current_step="capturing the four-page frame matrix at identical packaged window sizes"
+  for viewport in 960x720 800x640 640x520; do
+    run_driver set-size "$viewport" 10
+    run_driver assert-size "$viewport" 10
+    for page in today tasks calendar habits; do
+      case "$page" in
+        today)
+          run_driver press "今天" 10
+          run_driver wait-active-text "$lease_task" 20
+          ;;
+        tasks)
+          run_driver press "任务" 10
+          run_driver wait-active-text "$lease_task" 20
+          ;;
+        calendar)
+          run_driver press "日历" 10
+          run_driver wait-active-text "2026年9月" 20
+          if [[ "$viewport" == "960x720" ]]; then
+            run_driver press "下个月" 10
+            run_driver wait-active-text "2026年10月" 20
+            run_driver press "上个月" 10
+            run_driver wait-active-text "2026年9月" 20
+            run_driver press-contains "9月8日" 10
+            run_driver wait-active-text "2026年9月" 20
+          fi
+          ;;
+        habits)
+          run_driver press "习惯" 10
+          run_driver wait-active-text "4 / 15" 20
+          ;;
+      esac
+      run_driver assert-size "$viewport" 10
+      run_driver assert-document-fixed "document" 10
+      run_driver capture-window "$matrix_directory/$page-$viewport.png" 10
+    done
+  done
+
+  current_step="capturing the readable-card baseline at the three ticket window sizes"
+  run_driver press "今天" 10
   run_driver scroll-text-visible "Today · 共享任务" 10
   run_driver set-size "960x720" 10
   run_driver assert-size "960x720" 10
@@ -5786,6 +5839,7 @@ EOF
     fail "Today task-card actions changed the synthetic Daily Record"
   echo "Packaged IPC readable Task cards acceptance passed"
   echo "Today: synthetic no-time Tasks stayed in the existing shared-task area; three requested window sizes were captured in $capture_directory"
+  echo "Page frame: Calendar month navigation passed; 12 screenshots captured from the same packaged app at 960x720, 800x640, and 640x520 in $matrix_directory"
   echo "Actions: Details, complete/reopen, abandon/restore, delete/restore, and keyboard focus order used the packaged app"
   echo "Shared views: the same Task names remained visible in Tasks and Calendar"
   echo "Boundary: synthetic Vault only; Daily Record SHA-256 remained $record_hash"
