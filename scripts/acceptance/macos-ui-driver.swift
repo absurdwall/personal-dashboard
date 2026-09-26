@@ -1187,6 +1187,61 @@ func renderedBitmap(in sampleRect: CGRect) -> NSBitmapImageRep? {
     return bitmap
 }
 
+func renderedBitmap(windowID: CGWindowID) -> NSBitmapImageRep? {
+    let sampleFile = FileManager.default.temporaryDirectory
+        .appendingPathComponent("personal-dashboard-window-\(UUID().uuidString).png")
+    defer { try? FileManager.default.removeItem(at: sampleFile) }
+    let capture = Process()
+    capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+    capture.arguments = ["-x", "-l", String(windowID), sampleFile.path]
+    do {
+        try capture.run()
+        capture.waitUntilExit()
+    } catch {
+        return nil
+    }
+    guard capture.terminationStatus == 0,
+          let data = try? Data(contentsOf: sampleFile),
+          let bitmap = NSBitmapImageRep(data: data) else {
+        return nil
+    }
+    return bitmap
+}
+
+func windowID(pid: pid_t, matching accessibilityFrame: CGRect) -> CGWindowID? {
+    guard let windows = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID)
+        as? [[String: Any]] else {
+        return nil
+    }
+    let expectedArea = max(1, accessibilityFrame.width * accessibilityFrame.height)
+    let candidates: [(id: CGWindowID, overlap: CGFloat, edgeDistance: CGFloat)] = windows.compactMap {
+        info in
+        guard (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
+              (info[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+              let number = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+              let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+              let candidateFrame = CGRect(dictionaryRepresentation: bounds as CFDictionary) else {
+            return nil
+        }
+        let intersection = accessibilityFrame.intersection(candidateFrame)
+        guard !intersection.isNull else { return nil }
+        let candidateArea = max(1, candidateFrame.width * candidateFrame.height)
+        let overlap = intersection.width * intersection.height / min(expectedArea, candidateArea)
+        let edgeDistance = [
+            abs(accessibilityFrame.minX - candidateFrame.minX),
+            abs(accessibilityFrame.minY - candidateFrame.minY),
+            abs(accessibilityFrame.maxX - candidateFrame.maxX),
+            abs(accessibilityFrame.maxY - candidateFrame.maxY),
+        ].max() ?? .greatestFiniteMagnitude
+        guard overlap >= 0.85, edgeDistance <= 40 else { return nil }
+        return (number, overlap, edgeDistance)
+    }
+    return candidates.sorted {
+        if $0.overlap != $1.overlap { return $0.overlap > $1.overlap }
+        return $0.edgeDistance < $1.edgeDistance
+    }.first?.id
+}
+
 func captureOutputURL(_ outputPath: String) throws -> URL {
     let outputURL = URL(fileURLWithPath: outputPath)
     guard outputURL.path == outputPath,
@@ -1230,7 +1285,8 @@ func captureWindow(_ application: AXUIElement, pid: pid_t, outputPath: String) t
     }
     _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
     Thread.sleep(forTimeInterval: 0.25)
-    guard let bitmap = renderedBitmap(in: windowFrame),
+    guard let id = windowID(pid: pid, matching: windowFrame),
+          let bitmap = renderedBitmap(windowID: id),
           let png = bitmap.representation(using: .png, properties: [:]) else {
         throw DriverError.timeout("rendered main window bitmap")
     }

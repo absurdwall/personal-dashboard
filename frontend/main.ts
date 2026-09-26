@@ -4,6 +4,11 @@ import {
 } from "./dated-note-command.js";
 import { LatestRequest } from "./latest-request.js";
 import {
+  canMutateTodayTasks,
+  canStartManualTodayRefresh,
+  refreshTodayPresentation,
+} from "./today-refresh.js";
+import {
   axisGeometry,
   axisMarkerLayout,
   axisOverlapPlacements,
@@ -838,6 +843,7 @@ let currentAppearance: AppearancePreferences = {
 };
 let currentInterfaceLanguage: InterfaceLanguage = "zh";
 let todayOperationCount = 0;
+let todayPresentationFresh = false;
 let vaultSelectionInProgress = false;
 const todayPresentationRequests = new LatestRequest();
 const todayClockRequests = new LatestRequest();
@@ -2026,6 +2032,7 @@ function renderDatedNoteComposer(view: TodayView): void {
 }
 
 function renderToday(view: TodayView): void {
+  todayPresentationFresh = true;
   const previousView = currentTodayView;
   const startsTodaySession = view.isToday && (
     previousView === null ||
@@ -2413,11 +2420,13 @@ function renderTodayTasks(view: TodayView): void {
     shared.lists.filter((list) => list.archived).map((list) => list.id),
   );
   const groups = todayTaskGroups(shared.tasks, view.date, view.isToday, archivedListIds);
-  const writable =
-    Boolean(shared.targetBinding) &&
-    shared.state !== "error" &&
-    shared.state !== "unconfigured" &&
-    taskOperationCount === 0;
+  const writable = canMutateTodayTasks({
+    todayOperationCount,
+    taskOperationCount,
+    hasTargetBinding: Boolean(shared.targetBinding),
+    state: shared.state,
+    isPresentationCurrent: todayPresentationFresh,
+  });
   const displayedCount = groups.scheduled.length + groups.overdue.length;
   if (todayTaskCount) setCopy(todayTaskCount, "today.tasksCount", { count: displayedCount });
   if (todayTaskStatus) {
@@ -2622,6 +2631,13 @@ function updateTodayOperationState(delta: number): void {
   todayOperationCount = Math.max(0, todayOperationCount + delta);
   const busy = todayOperationCount > 0;
   const taskBusy = taskOperationCount > 0;
+  const todayTasksWritable = canMutateTodayTasks({
+    todayOperationCount,
+    taskOperationCount,
+    hasTargetBinding: Boolean(currentTodayView?.tasks.targetBinding),
+    state: currentTodayView?.tasks.state ?? "unconfigured",
+    isPresentationCurrent: todayPresentationFresh,
+  });
   selectTodayVaultButton?.toggleAttribute(
     "disabled",
     busy || taskBusy || vaultSelectionInProgress,
@@ -2631,15 +2647,16 @@ function updateTodayOperationState(delta: number): void {
   todayEveningForm?.querySelector("button")?.toggleAttribute("disabled", busy || taskBusy);
   todayTaskCreateForm?.querySelectorAll("input, textarea, select, button").forEach((element) => {
     (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement).disabled =
-      busy || taskBusy;
+      busy || taskBusy || !todayTasksWritable;
   });
+  todayTaskCreateForm?.toggleAttribute("hidden", !todayTasksWritable);
   todayTaskScheduled?.querySelectorAll("input, textarea, select, button").forEach((element) => {
     (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement).disabled =
-      busy || taskBusy;
+      busy || taskBusy || !todayTasksWritable;
   });
   todayTaskOverdue?.querySelectorAll("input, textarea, select, button").forEach((element) => {
     (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement).disabled =
-      busy || taskBusy;
+      busy || taskBusy || !todayTasksWritable;
   });
   calendarTaskCreateForm?.querySelectorAll("input, textarea, select, button").forEach((element) => {
     (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement).disabled =
@@ -2866,34 +2883,36 @@ async function refreshToday(
   date: string | null = selectedTodayDate,
   supersede = false,
 ): Promise<void> {
-  if (todayOperationCount > 0 && !supersede) {
+  if (
+    !supersede &&
+    !canStartManualTodayRefresh(todayOperationCount, taskOperationCount)
+  ) {
     return;
   }
-  const presentationRequest = todayPresentationRequests.begin();
-  updateTodayOperationState(1);
-  try {
-    const previousDate = currentTodayView?.date ?? null;
-    const view = date
-      ? await window.__TAURI__.core.invoke<TodayView>("daily_view", { date })
-      : await window.__TAURI__.core.invoke<TodayView>("today_view");
-    if (!todayPresentationRequests.isCurrent(presentationRequest)) {
-      return;
-    }
-    if (previousDate !== view.date) {
-      currentTodayPhase = view.defaultPhase;
-    }
-    renderToday(view);
-  } catch (error) {
-    if (!todayPresentationRequests.isCurrent(presentationRequest)) {
-      return;
-    }
-    if (todayStatus) {
-      setCopyError(todayStatus, "today.loadFailed", error);
-      todayStatus.dataset.state = "error";
-    }
-  } finally {
-    updateTodayOperationState(-1);
-  }
+  await refreshTodayPresentation({
+    requests: todayPresentationRequests,
+    date,
+    invoke: (command, args) => window.__TAURI__.core.invoke<TodayView>(command, args),
+    currentDate: currentTodayView?.date ?? null,
+    viewDate: (view) => view.date,
+    defaultPhase: (view) => view.defaultPhase,
+    onPhase: (phase) => {
+      currentTodayPhase = phase;
+    },
+    onPresent: renderToday,
+    onError: (error) => {
+      todayPresentationFresh = false;
+      if (todayStatus) {
+        setCopyError(todayStatus, "today.loadFailed", error);
+        todayStatus.dataset.state = "error";
+      }
+    },
+    onOperationCountChanged: (delta) => {
+      if (delta > 0) todayPresentationFresh = false;
+      updateTodayOperationState(delta);
+    },
+    waitForPendingWrites: () => pendingWrites.wait(),
+  });
 }
 
 function scrollTodayAxisToNow(): void {
@@ -5367,14 +5386,20 @@ function updateTaskOperationState(delta: number): void {
     Boolean(currentTodayView?.tasks.targetBinding) &&
     currentTodayView?.tasks.state !== "error" &&
     currentTodayView?.tasks.state !== "unconfigured";
-  const todayWritable = todayCanOperate && taskOperationCount === 0;
+  const todayWritable = canMutateTodayTasks({
+    todayOperationCount,
+    taskOperationCount,
+    hasTargetBinding: Boolean(currentTodayView?.tasks.targetBinding),
+    state: currentTodayView?.tasks.state ?? "unconfigured",
+    isPresentationCurrent: todayPresentationFresh,
+  });
   todayTaskCreateForm?.toggleAttribute("hidden", !todayWritable);
   todayTaskCreateForm?.querySelectorAll("input, textarea, select, button").forEach((element) => {
     (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement).disabled =
-      busy || !todayCanOperate;
+      busy || !todayWritable;
   });
   updateTaskEditorOperationState("today", todayWritable, busy);
-  updateTaskMutationControls(todayTaskPanel, todayCanOperate, busy);
+  updateTaskMutationControls(todayTaskPanel, todayWritable, busy);
   todayTaskCreateSubmit?.toggleAttribute("disabled", busy || !todayWritable);
   const calendarCanOperate =
     Boolean(currentCalendarSummaryView?.tasks.targetBinding) &&
@@ -5561,9 +5586,13 @@ async function createTodayTask(): Promise<boolean> {
     !todayView ||
     !loaded ||
     !binding ||
-    loaded.state === "error" ||
-    loaded.state === "unconfigured" ||
-    taskOperationCount > 0
+    !canMutateTodayTasks({
+      todayOperationCount,
+      taskOperationCount,
+      hasTargetBinding: Boolean(binding),
+      state: loaded.state,
+      isPresentationCurrent: todayPresentationFresh,
+    })
   ) {
     setCopyError(status, "tasks.notSaved", t("tasks.refreshFirst"));
     if (status) status.dataset.state = "error";

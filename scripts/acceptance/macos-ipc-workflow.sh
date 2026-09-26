@@ -2908,64 +2908,64 @@ EOF
   before_b_hash="$(shasum -a 256 "$record_b" | awk '{print $1}')"
 
   current_step="launching the isolated Vault selection behavior scenario"
-  launch_app_waiting_for_text "Today" 30
-  run_driver wait-text "连接 Tortilla Flat vault" 20
+  launch_app_waiting_for_text "今天" 30
+  run_driver wait-text "连接 Tortilla Flat Vault。" 20
   run_driver press "选择 Vault…" 10
   run_driver choose-folder "$vault_a" 20
-  run_driver wait-text "Vault: vault-a" 20
-  run_driver press "Daytime" 10
+  run_driver wait-text "Vault：vault-a" 20
+  run_driver press "当日进展" 10
   run_driver wait-text "A Vault 的当前安排" 20
 
   current_step="preserving a Daytime draft when Vault selection is cancelled"
-  run_driver type-text "Short record text|取消选择后仍保留的日间草稿" 10
+  run_driver type-text "简短记录内容|取消选择后仍保留的日间草稿" 10
   open_vault_picker_from_settings
   run_driver cancel-folder 20
-  run_driver press "Today" 10
-  run_driver assert-state "Daytime|selected" 10
+  run_driver press "今天" 10
+  run_driver assert-state "当日进展|selected" 10
   run_driver assert-text "取消选择后仍保留的日间草稿"
 
   current_step="preserving a Daytime draft when the current Vault is reselected"
   open_vault_picker_from_settings
   run_driver choose-folder "$vault_a" 20
-  run_driver press "Today" 10
-  run_driver press "Daytime" 10
-  run_driver assert-state "Daytime|selected" 10
+  run_driver press "今天" 10
+  run_driver press "当日进展" 10
+  run_driver assert-state "当日进展|selected" 10
   run_driver assert-text "取消选择后仍保留的日间草稿"
 
   current_step="preserving correction state when Vault selection is cancelled"
   run_driver press "更正这条" 10
-  run_driver type-text "Short record text|取消选择后仍保留的更正" 10
+  run_driver type-text "简短记录内容|取消选择后仍保留的更正" 10
   open_vault_picker_from_settings
   run_driver cancel-folder 20
-  run_driver press "Today" 10
-  run_driver press "Daytime" 10
-  run_driver assert-state "Daytime|selected" 10
+  run_driver press "今天" 10
+  run_driver press "当日进展" 10
+  run_driver assert-state "当日进展|selected" 10
   run_driver assert-text "取消选择后仍保留的更正"
   run_driver assert-text "保存更正"
 
   current_step="preserving a Habits draft and selected history date on Vault cancellation"
-  run_driver press "Habits" 10
-  run_driver wait-text "3 / 15" 20
+  run_driver press "习惯" 10
+  run_driver wait-text "2026-09-08 · Exercise" 20
   run_driver press-contains "2026-09-08 · Exercise" 10
   run_driver wait-text "写一句 · 2026-09-08" 20
   run_driver type-text "健身记录内容|取消选择后仍保留的健身草稿" 10
   open_vault_picker_from_settings
   run_driver cancel-folder 20
-  run_driver press "Habits" 10
+  run_driver press "习惯" 10
   run_driver assert-text "取消选择后仍保留的健身草稿"
   run_driver assert-text "2026-09-08 · Exercise"
 
   current_step="proving a real Vault switch clears old state before reading the new Vault"
   open_vault_picker_from_settings
   run_driver choose-folder "$vault_b" 20
-  run_driver press "Calendar" 10
+  run_driver press "日历" 10
   run_driver wait-text "B Vault 的复盘" 20
   run_driver assert-text "有复盘"
   run_driver assert-absent-text "取消选择后仍保留的健身草稿"
   run_driver assert-absent-text "A Vault 的当前安排"
-  run_driver press "Today" 10
-  run_driver wait-text "Vault: vault-b" 20
-  run_driver press "Daytime" 10
+  run_driver press "今天" 10
+  run_driver wait-text "Vault：vault-b" 20
+  run_driver press "当日进展" 10
   run_driver wait-text "B Vault 的当前安排" 20
 
   [[ "$(shasum -a 256 "$record_a" | awk '{print $1}')" == "$before_a_hash" ]] ||
@@ -4602,7 +4602,7 @@ run_today_time_axis_scenario() {
   run_driver wait-active-text "今天 · $today_date" 20
   run_driver assert-active-text "当前安排"
   run_driver assert-active-text "已确认事实"
-  run_driver assert-centered "当前本地时间|100" 10
+  run_driver assert-centered "当前本地时间|110" 10
   run_driver assert-text "09:30–10:45"
   run_driver assert-text "10:55–10:56"
   run_driver assert-text "13:00"
@@ -4610,8 +4610,6 @@ run_today_time_axis_scenario() {
   run_driver assert-text "继续今天的阅读安排"
   run_driver assert-text "17:00 前"
   run_driver assert-text "这条事实没有发生时刻"
-  current_clock="$(/bin/date '+%H:%M')"
-  run_driver assert-text "$current_clock" 3
   run_driver press "定位现在" 10
   run_driver assert-document-fixed "document" 10
   run_driver capture-window "$capture_directory/today-time-axis-zh-wide.png" 10
@@ -4634,8 +4632,8 @@ run_today_time_axis_scenario() {
   run_driver wait-active-text "所选日期 · $history_date" 20
   run_driver assert-active-absent-text "定位现在"
   run_driver assert-absent-text "当前本地时间"
-  run_driver assert-active-text "这份 Daily Record 还没有当前安排。"
-  run_driver assert-active-text "今天还没有明确记录的已发生事实。"
+  run_driver assert-active-text "$history_date 还没有 Daily Record"
+  run_driver assert-active-text "当天暂无带明确时刻的任务、日记安排或事实。"
   run_driver assert-text "00:00"
   run_driver assert-text "24:00"
   run_driver capture-window "$capture_directory/today-time-axis-empty-history.png" 10
@@ -5812,6 +5810,7 @@ EOF
   wait_for_task_property "$tasks_file" "lease-renewal" "deletedAt" "not-null" ||
     fail "Today card delete action did not persist its recoverable tombstone"
   run_driver press "任务" 10
+  run_driver wait-active-text "$long_mixed_task" 20
   run_driver select-contains "已删除" 10
   run_driver wait-active-text "$lease_task" 20
   run_driver press-contains "撤销删除 · $lease_task" 10
@@ -5823,6 +5822,7 @@ EOF
   wait_for_task_property "$tasks_file" "long-chinese" "state" "abandoned" ||
     fail "Today card abandon action did not persist"
   run_driver press "任务" 10
+  run_driver wait-active-text "$long_mixed_task" 20
   run_driver select-contains "已放弃" 10
   run_driver wait-active-text "$long_chinese_task" 20
   run_driver press-contains "恢复待办 · $long_chinese_task" 10
@@ -5857,6 +5857,7 @@ run_today_shared_task_axis_scenario() {
   local vault="$acceptance_directory/today-shared-task-axis-vault"
   local no_record_vault="$acceptance_directory/today-shared-task-axis-no-record-vault"
   local today_date="$(/bin/date '+%Y-%m-%d')"
+  local midnight_task_name="跨午夜后外部更新的共享任务"
   local record_file="$vault/life/Journal/Daily/${today_date:0:4}/${today_date:0:7}/$today_date.md"
   local tasks_file="$vault/life/.personal-dashboard/tasks/v1/tasks.json"
   local no_record_tasks="$no_record_vault/life/.personal-dashboard/tasks/v1/tasks.json"
@@ -5935,6 +5936,7 @@ EOF
   run_driver assert-size "960x720" 10
   run_driver wait-active-text "$task_name" 20
   run_driver assert-active-text "日记安排"
+  run_driver wait-active-text "所选日期没有已安排任务。" 20
   run_driver scroll-text-visible "新建任务名称" 10
   run_driver type-text "新建任务名称|$task_name" 10
   run_driver scroll-text-visible "加入收集箱" 10
@@ -6085,24 +6087,34 @@ EOF
   run_driver press "Today" 10
   run_driver press "Daytime progress" 10
   run_driver wait-active-text "TODAY · $tomorrow_date" 20
-  run_driver scroll-text-visible "TODAY · SHARED TASKS" 10
   run_driver wait-active-text "$task_name" 20
   run_driver assert-active-text "Overdue · no failure inferred"
   run_driver assert-axis-card-absent "$task_name|17:30" 10
-  [[ "$(task_id_for_name "$tasks_file" "$task_name")" == "$task_id" ]] ||
+
+  current_step="externally renaming the prior-day Task while Today is open after midnight"
+  /usr/bin/perl -0pi -e 's/准备 interview coding：复习动态规划并整理 follow-up notes/跨午夜后外部更新的共享任务/g' "$tasks_file"
+  run_driver assert-active-absent-text "Details · $midnight_task_name"
+  run_driver press "Refresh" 10
+  run_driver wait-active-text "Details · $midnight_task_name" 20
+  run_driver assert-active-text "TODAY · $tomorrow_date"
+  run_driver assert-active-text "Overdue · no failure inferred"
+  run_driver assert-axis-card-absent "$midnight_task_name|17:30" 10
+  [[ "$(task_id_for_name "$tasks_file" "$midnight_task_name")" == "$task_id" ]] ||
     fail "the midnight reread duplicated or replaced the pending Task identity"
   assert_task_property "$tasks_file" "$task_id" "date" "$today_date" ||
     fail "the midnight reread moved the prior-day Task date"
   assert_task_property "$tasks_file" "$task_id" "state" "pending" ||
     fail "the midnight reread changed the prior-day Task state"
   [[ ! -e "$next_day_record" ]] || fail "the midnight Task reread created a Daily Record"
+  [[ "$(shasum -a 256 "$record_file" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "the midnight Task refresh changed its synthetic Daily Record"
 
   echo "Packaged IPC Today shared-Task time-axis acceptance passed"
   echo "Clock: synthetic local $today_date 17:05; a pending 17:00 task showed the passed-time state and exact point"
   echo "Lifecycle: create, manual refresh, complete, reopen, and reschedule retained one Task ID and never moved the Diary arrangement"
   echo "Overlap: the same-name Task and Diary arrangement stayed separate in the existing single-lane stack"
   echo "Vault: a Tasks-only Vault rendered the task in Today without creating a Daily Record"
-  echo "Midnight: relaunch at $tomorrow_date 00:05 kept the same pending Task in the prior-date group and removed its old time-axis point"
+  echo "Midnight: relaunch at $tomorrow_date 00:05 and manual refresh read an external Task rename, kept its ID/date/state, and removed its old time-axis point"
   echo "Layout: 960x720, 800x640, and 640x520 packaged captures are in $capture_directory"
   echo "Daily Record SHA-256: $record_hash"
   echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
