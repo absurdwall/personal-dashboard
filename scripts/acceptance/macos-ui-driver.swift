@@ -1779,17 +1779,33 @@ func scrollAxisHorizontally(
 
 func assertWindowVisibleText(_ application: AXUIElement, text: String) throws {
     guard let window = mainWindow(application),
-          let windowFrame = frame(window),
-          let element = visibleRenderedElement(application, label: text),
-          let elementFrame = frame(element) else {
+          let windowFrame = frame(window) else {
         throw DriverError.timeout("visible rendered UI text with measurable bounds: \(text)")
     }
     let visibleWindow = windowFrame.insetBy(dx: -2, dy: -2)
-    guard visibleWindow.contains(CGPoint(x: elementFrame.minX, y: elementFrame.minY)),
-          visibleWindow.contains(CGPoint(x: elementFrame.maxX, y: elementFrame.maxY)) else {
+    let candidates = findTextPaths(application, text).filter { path in
+        (path.ancestors + [path.element]).allSatisfy {
+            visibleAttribute($0, "AXHidden")
+        }
+    }.compactMap { path -> CGRect? in
+        guard let elementFrame = frame(path.element),
+              elementFrame.width >= 2,
+              elementFrame.height >= 2 else {
+            return nil
+        }
+        return elementFrame
+    }
+    guard !candidates.isEmpty else {
+        throw DriverError.timeout("visible rendered UI text with measurable bounds: \(text)")
+    }
+    let reachable = candidates.contains { elementFrame in
+        visibleWindow.contains(CGPoint(x: elementFrame.minX, y: elementFrame.minY)) &&
+            visibleWindow.contains(CGPoint(x: elementFrame.maxX, y: elementFrame.maxY))
+    }
+    guard reachable else {
         throw DriverError.unexpectedText(
             "rendered UI text is outside the visible window: \(text) " +
-                "frame=\(elementFrame) window=\(windowFrame)"
+                "frames=\(candidates) window=\(windowFrame)"
         )
     }
 }
@@ -2766,6 +2782,14 @@ func hasVisibleVerticalScrollBar(_ element: AXUIElement) -> Bool {
     return visibleAttribute(scrollBar, "AXHidden")
 }
 
+func hasVisibleHorizontalScrollBar(_ element: AXUIElement) -> Bool {
+    guard let rawScrollBar = attribute(element, "AXHorizontalScrollBar") else {
+        return false
+    }
+    let scrollBar = unsafeDowncast(rawScrollBar, to: AXUIElement.self)
+    return visibleAttribute(scrollBar, "AXHidden")
+}
+
 func numberAttribute(_ element: AXUIElement, _ name: String) -> Double? {
     guard let raw = attribute(element, name),
           let value = raw as? NSNumber else {
@@ -2819,22 +2843,30 @@ func pressPageDown(_ pid: pid_t) throws {
 
 func assertDocumentFixed(_ application: AXUIElement) throws {
     var webAreaFound = false
-    var documentScrolls = false
+    var documentScrollsVertically = false
+    var documentScrollsHorizontally = false
     _ = walk(application) { element in
         guard stringAttribute(element, "AXRole") == "AXWebArea" else {
             return false
         }
         webAreaFound = true
         if hasVisibleVerticalScrollBar(element) {
-            documentScrolls = true
+            documentScrollsVertically = true
+        }
+        if hasVisibleHorizontalScrollBar(element) {
+            documentScrollsHorizontally = true
         }
         return false
     }
     guard webAreaFound else {
         throw DriverError.timeout("rendered web area")
     }
-    guard !documentScrolls else {
-        throw DriverError.unexpectedText("document/body scroll")
+    guard !documentScrollsVertically, !documentScrollsHorizontally else {
+        let axes = [
+            documentScrollsHorizontally ? "horizontal" : nil,
+            documentScrollsVertically ? "vertical" : nil
+        ].compactMap { $0 }.joined(separator: " and ")
+        throw DriverError.unexpectedText("document/body scroll on " + axes)
     }
 }
 
@@ -3949,7 +3981,7 @@ do {
         print("Long rendered text wraps within the visible window: \(text)")
     case "assert-document-fixed":
         try assertDocumentFixed(application)
-        print("Rendered document has no visible vertical scroll")
+        print("Rendered document has no visible vertical or horizontal scroll")
     case "assert-scroll-surface":
         try assertScrollableSurface(application, text, pid: pid)
         print("Rendered active surface scrolled without document scroll: \(text)")

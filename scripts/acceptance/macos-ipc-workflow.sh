@@ -5672,7 +5672,6 @@ run_readable_task_cards_scenario() {
   local lease_task="签续租合同"
   local long_chinese_task="整理续租合同变更内容并与房东确认付款和维修安排"
   local long_mixed_task="准备 interview coding：复习动态规划并整理 follow-up notes"
-  local state_task="验证 Today 任务卡状态操作"
   local capture_name
   local viewport
   local page
@@ -5743,25 +5742,31 @@ EOF
         today)
           run_driver press "今天" 10
           run_driver wait-active-text "$lease_task" 20
+          run_driver press "刷新" 10
+          run_driver wait-active-text "$lease_task" 20
           ;;
         tasks)
           run_driver press "任务" 10
+          run_driver wait-active-text "$lease_task" 20
+          run_driver press "刷新任务" 10
           run_driver wait-active-text "$lease_task" 20
           ;;
         calendar)
           run_driver press "日历" 10
           run_driver wait-active-text "2026年9月" 20
+          run_driver press "下个月" 10
+          run_driver wait-active-text "2026年10月" 20
+          run_driver press "上个月" 10
+          run_driver wait-active-text "2026年9月" 20
           if [[ "$viewport" == "960x720" ]]; then
-            run_driver press "下个月" 10
-            run_driver wait-active-text "2026年10月" 20
-            run_driver press "上个月" 10
-            run_driver wait-active-text "2026年9月" 20
             run_driver press-contains "9月8日" 10
             run_driver wait-active-text "2026年9月" 20
           fi
           ;;
         habits)
           run_driver press "习惯" 10
+          run_driver wait-active-text "4 / 15" 20
+          run_driver press "刷新快照" 10
           run_driver wait-active-text "4 / 15" 20
           ;;
       esac
@@ -5803,6 +5808,17 @@ EOF
   run_driver press-contains "重开 · $lease_task" 10
   wait_for_task_property "$tasks_file" "lease-renewal" "state" "pending" ||
     fail "Today card reopen did not restore the same pending task"
+  run_driver press-contains "删除 · $lease_task" 10
+  wait_for_task_property "$tasks_file" "lease-renewal" "deletedAt" "not-null" ||
+    fail "Today card delete action did not persist its recoverable tombstone"
+  run_driver press "任务" 10
+  run_driver select-contains "已删除" 10
+  run_driver wait-active-text "$lease_task" 20
+  run_driver press-contains "撤销删除 · $lease_task" 10
+  run_driver select-contains "待办" 10
+  wait_for_task_property "$tasks_file" "lease-renewal" "deletedAt" "null" ||
+    fail "Tasks could not restore the task deleted from Today"
+  run_driver press "今天" 10
   run_driver press-contains "放弃 · $long_chinese_task" 10
   wait_for_task_property "$tasks_file" "long-chinese" "state" "abandoned" ||
     fail "Today card abandon action did not persist"
@@ -5814,22 +5830,13 @@ EOF
     fail "Tasks could not restore the task abandoned from Today"
   run_driver select-contains "待办" 10
   run_driver press "今天" 10
-  run_driver wait-active-text "$state_task" 20
-  run_driver press-contains "删除 · $state_task" 10
-  wait_for_task_property "$tasks_file" "state-probe" "deletedAt" "not-null" ||
-    fail "Today card delete action did not persist its recoverable tombstone"
-  run_driver press "任务" 10
-  run_driver select-contains "已删除" 10
-  run_driver wait-active-text "$state_task" 20
-  run_driver press-contains "撤销删除 · $state_task" 10
-  run_driver select-contains "待办" 10
-  wait_for_task_property "$tasks_file" "state-probe" "deletedAt" "null" ||
-    fail "Tasks could not restore the task deleted from Today"
 
   current_step="checking the same synthetic Tasks in the shared Tasks and Calendar surfaces"
   run_driver wait-active-text "$lease_task" 20
   run_driver assert-active-text "$long_mixed_task"
   run_driver press "日历" 10
+  run_driver wait-active-text "2026年9月" 20
+  run_driver press-contains "9月8日" 10
   run_driver wait-active-text "2026年9月" 20
   run_driver assert-active-text "$lease_task"
   run_driver assert-active-text "$long_mixed_task"
@@ -5839,7 +5846,7 @@ EOF
     fail "Today task-card actions changed the synthetic Daily Record"
   echo "Packaged IPC readable Task cards acceptance passed"
   echo "Today: synthetic no-time Tasks stayed in the existing shared-task area; three requested window sizes were captured in $capture_directory"
-  echo "Page frame: Calendar month navigation passed; 12 screenshots captured from the same packaged app at 960x720, 800x640, and 640x520 in $matrix_directory"
+  echo "Page frame: Today/Tasks/Habits refresh and Calendar month/date navigation controls were operated at all three sizes; document-level vertical/horizontal scrollbar assertions passed; 12 screenshots captured from the same packaged app at 960x720, 800x640, and 640x520 in $matrix_directory"
   echo "Actions: Details, complete/reopen, abandon/restore, delete/restore, and keyboard focus order used the packaged app"
   echo "Shared views: the same Task names remained visible in Tasks and Calendar"
   echo "Boundary: synthetic Vault only; Daily Record SHA-256 remained $record_hash"
