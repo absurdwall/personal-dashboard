@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f7f5" />
+    <title>Personal Dashboard · 协作空间原型</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-frame-root">
+      <header class="app-toolbar">
+        <div class="brand-lockup" aria-label="Personal Dashboard">
+          <span class="brand-mark">P</span>
+          <span class="brand-name">Personal Dashboard</span>
+          <span class="brand-local">LOCAL</span>
+        </div>
+        <div class="toolbar-right">
+          <span class="vault-indicator"><span class="status-dot"></span> 个人 Vault · 本机</span>
+          <span class="toolbar-divider"></span>
+          <span class="toolbar-caption">原型数据 · 不连接真实 Codex</span>
+        </div>
+      </header>
+
+      <div class="app-body">
+        <aside class="primary-nav" aria-label="Personal Dashboard 导航">
+          <p class="nav-heading">工作区</p>
+          <button class="nav-item" data-nav-preview="today" aria-label="今天" title="今天"><span class="nav-icon sun-icon">☼</span><span>今天</span></button>
+          <button class="nav-item" data-nav-preview="tasks" aria-label="任务" title="任务"><span class="nav-icon">□</span><span>任务</span></button>
+          <button class="nav-item" data-nav-preview="calendar" aria-label="日历" title="日历"><span class="nav-icon">▦</span><span>日历</span></button>
+          <button class="nav-item" data-nav-preview="habits" aria-label="习惯" title="习惯"><span class="nav-icon">◉</span><span>习惯</span></button>
+          <div class="nav-rule"></div>
+          <p class="nav-heading nav-heading-new">持续协作</p>
+          <button class="nav-item is-current" aria-current="page" aria-label="协作" title="协作"><span class="nav-icon collaboration-icon">✳</span><span>协作</span><span class="nav-new">NEW</span></button>
+          <div class="nav-bottom">
+            <button class="nav-item nav-settings" data-action="settings" aria-label="设置" title="设置"><span class="nav-icon">⚙</span><span>设置</span></button>
+            <div class="nav-local-note"><span class="lock-icon">⌑</span><span>记录保存在所选 Vault</span></div>
+          </div>
+        </aside>
+
+        <main class="workspace-shell">
+          <section class="workspace-heading" aria-labelledby="page-title">
+            <div>
+              <div class="breadcrumb"><span>Personal Dashboard</span><span class="crumb-slash">/</span><span>协作工作区</span></div>
+              <h1 id="page-title">协作</h1>
+              <p class="workspace-subtitle">把对话、进行中的工作和真实安排放在一起；Tasks 与 Daily Record 仍是唯一正本。</p>
+            </div>
+            <div class="heading-actions">
+              <span class="prototype-label"><span class="prototype-dot"></span>交互原型 · 合成数据</span>
+              <button class="quiet-button" data-action="memory"><span aria-hidden="true">⌘</span> 记忆</button>
+              <button class="quiet-button" data-action="settings"><span aria-hidden="true">⚙</span> 设置</button>
+            </div>
+          </section>
+
+          <section id="runner-strip" class="runner-strip" aria-live="polite"></section>
+          <section id="workspace" aria-live="polite"></section>
+        </main>
+      </div>
+    </div>
+
+    <div id="overlay-root"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <nav class="prototype-switcher" aria-label="原型方案切换">
+      <button class="switch-arrow" data-switch="previous" aria-label="上一个方案">←</button>
+      <div class="switcher-copy">
+        <span class="switcher-kicker">原型方案</span>
+        <strong id="variant-label">A · 会话工作台</strong>
+      </div>
+      <button class="switch-arrow" data-switch="next" aria-label="下一个方案">→</button>
+    </nav>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
