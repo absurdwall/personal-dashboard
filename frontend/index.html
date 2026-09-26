@@ -545,7 +545,7 @@
                         <span id="today-daytime-count" class="today-count"></span>
                       </div>
                       <p class="today-reading-introduction" data-i18n="today.timelineIntro">
-                        当前安排和已确认事实共用一条时间轴，用不同颜色区分；没有明确时刻的内容保留在未定位区。
+                        有时刻的任务、日记安排和已确认事实共用一条时间轴，并标明来源；没有明确时刻的日记内容保留在未定位区。
                       </p>
                       <div id="today-axis-lane-legend" class="today-axis-lane-legend" role="group" aria-label="时间轴图例" data-i18n-aria-label="today.timelineLegend">
                         <span class="today-axis-lane-legend-item">
@@ -555,6 +555,10 @@
                         <span class="today-axis-lane-legend-item">
                           <i class="today-axis-lane-legend-symbol is-fact" aria-hidden="true"></i>
                           <span data-i18n="today.confirmedFactsHeading">Confirmed facts</span>
+                        </span>
+                        <span class="today-axis-lane-legend-item">
+                          <i class="today-axis-lane-legend-symbol is-task" aria-hidden="true"></i>
+                          <span data-i18n="today.sourceTask">Task</span>
                         </span>
                         <a id="today-unlocated-time-shortcut" class="today-axis-unlocated-shortcut" href="#today-unlocated-time-region" data-i18n="today.unlocatedTimes">
                           Items without a precise time

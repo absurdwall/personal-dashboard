@@ -172,6 +172,7 @@ pub struct TaskView {
     pub deleted_at: Option<String>,
     pub completion: Option<TaskCompletionView>,
     pub overdue: bool,
+    pub time_passed: bool,
     pub created_at: String,
     pub modified_at: String,
     pub changes: Vec<TaskChangeView>,
@@ -1261,7 +1262,8 @@ fn task_view_at(task: &TaskRecord, current_date: &str, current_time: &str) -> Ta
         state: task.state,
         deleted_at: task.deleted_at.clone(),
         completion: task.completion.clone(),
-        overdue: task_is_overdue(task, current_date, current_time),
+        overdue: task_is_overdue(task, current_date),
+        time_passed: task_time_passed(task, current_date, current_time),
         created_at: task.created_at.clone(),
         modified_at: task.modified_at.clone(),
         changes: task.changes.clone(),
@@ -1297,7 +1299,7 @@ fn tasks_view(
     }
 }
 
-fn task_is_overdue(task: &TaskRecord, current_date: &str, current_time: &str) -> bool {
+fn task_is_overdue(task: &TaskRecord, current_date: &str) -> bool {
     if task.state != TaskState::Pending || task.deleted_at.is_some() {
         return false;
     }
@@ -1311,7 +1313,22 @@ fn task_is_overdue(task: &TaskRecord, current_date: &str, current_time: &str) ->
         return false;
     };
     task_date.unix_days() < today.unix_days()
-        || (task_date == today && task.time.as_deref().is_some_and(|time| time < current_time))
+}
+
+fn task_time_passed(task: &TaskRecord, current_date: &str, current_time: &str) -> bool {
+    if task.state != TaskState::Pending || task.deleted_at.is_some() {
+        return false;
+    }
+    let Some(date) = task.date.as_deref() else {
+        return false;
+    };
+    let Some(task_date) = CalendarDate::parse(date) else {
+        return false;
+    };
+    let Some(today) = CalendarDate::parse(current_date) else {
+        return false;
+    };
+    task_date == today && task.time.as_deref().is_some_and(|time| time < current_time)
 }
 
 pub(crate) fn normalize_name(value: &str) -> Result<String, String> {

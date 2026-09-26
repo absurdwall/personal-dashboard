@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-cards-fit|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -1326,12 +1326,16 @@ func assertLongTextFits(_ application: AXUIElement, text: String) throws {
     }
 }
 
-func visibleAxisTitlePath(_ application: AXUIElement, title: String) -> AccessibilityPath? {
-    findTextPaths(application, title).first { path in
+func visibleAxisTitlePaths(_ application: AXUIElement, title: String) -> [AccessibilityPath] {
+    findTextPaths(application, title).filter { path in
         stringAttribute(path.element, "AXRole") == "AXStaticText" &&
             path.ancestors.contains { stringAttribute($0, "AXRole") == "AXLink" } &&
             (path.ancestors + [path.element]).allSatisfy { visibleAttribute($0, "AXHidden") }
     }
+}
+
+func visibleAxisTitlePath(_ application: AXUIElement, title: String) -> AccessibilityPath? {
+    visibleAxisTitlePaths(application, title: title).first
 }
 
 func assertAxisEntryCard(
@@ -1396,12 +1400,51 @@ func assertAxisEntryCard(
     }
 }
 
-func axisCardLink(_ application: AXUIElement, title: String) -> (link: AXUIElement, path: AccessibilityPath)? {
-    guard let titlePath = visibleAxisTitlePath(application, title: title),
-          let link = titlePath.ancestors.last(where: { stringAttribute($0, "AXRole") == "AXLink" }) else {
-        return nil
+func axisCardLink(
+    _ application: AXUIElement,
+    title: String,
+    time: String? = nil,
+    requiredLabels: [String] = []
+) -> (link: AXUIElement, path: AccessibilityPath)? {
+    for titlePath in visibleAxisTitlePaths(application, title: title) {
+        guard let link = titlePath.ancestors.last(where: {
+            stringAttribute($0, "AXRole") == "AXLink"
+        }) else {
+            continue
+        }
+        let containsTime = time.map { expectedTime in
+            findTextPaths(link, expectedTime, contains: false).contains { path in
+                stringAttribute(path.element, "AXRole") == "AXStaticText"
+            }
+        } ?? true
+        let containsRequiredLabels = requiredLabels.allSatisfy { requiredLabel in
+            findTextPaths(link, requiredLabel, contains: false).contains { path in
+                stringAttribute(path.element, "AXRole") == "AXStaticText"
+            }
+        }
+        if containsTime && containsRequiredLabels {
+            return (link, titlePath)
+        }
     }
-    return (link, titlePath)
+    return nil
+}
+
+func axisCardExists(_ application: AXUIElement, title: String, time: String) -> Bool {
+    for titlePath in findTextPaths(application, title, contains: false) where
+        stringAttribute(titlePath.element, "AXRole") == "AXStaticText"
+    {
+        guard let link = titlePath.ancestors.last(where: {
+            stringAttribute($0, "AXRole") == "AXLink"
+        }) else {
+            continue
+        }
+        if findTextPaths(link, time, contains: false).contains(where: {
+            stringAttribute($0.element, "AXRole") == "AXStaticText"
+        }) {
+            return true
+        }
+    }
+    return false
 }
 
 func axisScrollSurface(in path: AccessibilityPath) -> AXUIElement? {
@@ -1416,7 +1459,8 @@ func axisScrollSurface(in path: AccessibilityPath) -> AXUIElement? {
 func scrollAxisCardIntoWindow(
     _ application: AXUIElement,
     pid: pid_t,
-    title: String
+    title: String,
+    time: String
 ) throws {
     guard let window = mainWindow(application),
           let windowFrame = frame(window) else {
@@ -1424,7 +1468,7 @@ func scrollAxisCardIntoWindow(
     }
     let visibleWindow = windowFrame.insetBy(dx: -2, dy: -2)
     for _ in 0..<8 {
-        guard let card = axisCardLink(application, title: title),
+        guard let card = axisCardLink(application, title: title, time: time),
               let cardFrame = frame(card.link) else {
             throw DriverError.timeout("rendered time-axis card bounds: \(title)")
         }
@@ -1439,7 +1483,8 @@ func scrollAxisCardIntoWindow(
         let action = direction == "down" ? "AXScrollDownByPage" : "AXScrollUpByPage"
         let actionError = AXUIElementPerformAction(surface, action as CFString)
         Thread.sleep(forTimeInterval: 0.15)
-        let afterPage = axisCardLink(application, title: title).flatMap { frame($0.link) }
+        let afterPage = axisCardLink(application, title: title, time: time)
+            .flatMap { frame($0.link) }
         if actionError != .success || afterPage.map({ abs($0.minY - cardFrame.minY) < 1 }) != false {
             guard let source = CGEventSource(stateID: .combinedSessionState),
                   let move = CGEvent(
@@ -1464,7 +1509,7 @@ func scrollAxisCardIntoWindow(
             Thread.sleep(forTimeInterval: 0.2)
         }
     }
-    guard let card = axisCardLink(application, title: title),
+    guard let card = axisCardLink(application, title: title, time: time),
           let cardFrame = frame(card.link),
           visibleWindow.contains(cardFrame) else {
         throw DriverError.timeout("fully visible time-axis card after scrolling: \(title)")
@@ -1480,11 +1525,22 @@ func assertAxisCardsFit(_ application: AXUIElement, pid: pid_t, specifications: 
     var cards: [(title: String, frame: CGRect)] = []
     for specification in specifications.split(separator: ";", omittingEmptySubsequences: false) {
         let fields = specification.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-        guard fields.count == 2 else {
+        guard fields.count >= 2 else {
             throw DriverError.usage
         }
-        try scrollAxisCardIntoWindow(application, pid: pid, title: fields[0])
-        guard let card = axisCardLink(application, title: fields[0]),
+        try scrollAxisCardIntoWindow(
+            application,
+            pid: pid,
+            title: fields[0],
+            time: fields[1]
+        )
+        let requiredLabels = fields.dropFirst(2).map { String($0) }
+        guard let card = axisCardLink(
+            application,
+            title: fields[0],
+            time: fields[1],
+            requiredLabels: requiredLabels
+        ),
               let cardFrame = frame(card.link),
               let titleFrame = frame(card.path.element),
               let scrollSurface = axisScrollSurface(in: card.path),
@@ -1497,13 +1553,24 @@ func assertAxisCardsFit(_ application: AXUIElement, pid: pid_t, specifications: 
             throw DriverError.timeout("rendered time label inside card: \(fields[1])")
         }
         let contentBounds = cardFrame.insetBy(dx: -2, dy: -2)
+        for requiredLabel in fields.dropFirst(2) {
+            guard let label = findTextPaths(card.link, String(requiredLabel), contains: false).first(where: {
+                stringAttribute($0.element, "AXRole") == "AXStaticText" &&
+                    ($0.ancestors + [$0.element]).allSatisfy { visibleAttribute($0, "AXHidden") }
+            }), let labelFrame = frame(label.element), contentBounds.contains(labelFrame) else {
+                throw DriverError.unexpectedText(
+                    "time-axis card source/status label is missing or clipped: \(requiredLabel) in \(specification)"
+                )
+            }
+        }
         let titleStartsInsideCard = titleFrame.minY >= cardFrame.minY - 2 &&
             titleFrame.minY < cardFrame.maxY &&
             titleFrame.minX >= cardFrame.minX - 2 &&
             titleFrame.minX < cardFrame.maxX
         let visibleScrollSurface = scrollFrame.insetBy(dx: -2, dy: -2)
+        let requiredCardHeight: CGFloat = requiredLabels.isEmpty ? 38 : 44
         guard cardFrame.width >= 80,
-              cardFrame.height >= 38,
+              cardFrame.height >= requiredCardHeight,
               titleStartsInsideCard,
               contentBounds.contains(timeFrame),
               visibleWindow.contains(cardFrame),
@@ -1545,6 +1612,13 @@ func assertAxisOverlapStack(
         )
     }
     print("Rendered overlapping cards share one fanned stack with a reveal control: \(firstFrame) / \(secondFrame)")
+}
+
+func assertAxisCardAbsent(_ application: AXUIElement, title: String, time: String) throws {
+    guard !axisCardExists(application, title: title, time: time) else {
+        throw DriverError.unexpectedText("time-axis card remained after its Task left this date: \(time) \(title)")
+    }
+    print("No time-axis card remains for the Task on this date: \(time) \(title)")
 }
 
 func cycleAxisStack(_ application: AXUIElement) throws {
@@ -2769,10 +2843,21 @@ func clickElement(
     pid: pid_t,
     mirroredY: Bool = false
 ) throws {
-    guard let elementFrame = frame(element),
-          elementFrame.width > 0,
-          elementFrame.height > 0,
-          let source = CGEventSource(stateID: .combinedSessionState) else {
+    var targetFrame: CGRect?
+    var eventSource: CGEventSource?
+    for _ in 0..<5 {
+        if let candidateFrame = frame(element),
+           candidateFrame.width > 0,
+           candidateFrame.height > 0,
+           let candidateSource = CGEventSource(stateID: .combinedSessionState) {
+            targetFrame = candidateFrame
+            eventSource = candidateSource
+            break
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+    guard let elementFrame = targetFrame,
+          let source = eventSource else {
         throw DriverError.actionFailed("click menu option", .failure)
     }
     let screenHeight = NSScreen.screens.first?.frame.maxY ?? 0
@@ -3720,6 +3805,12 @@ do {
         print("Rendered card text and true time bounds are visible: \(parts[0])–\(parts[1]) \(parts[2])")
     case "assert-axis-cards-fit":
         try assertAxisCardsFit(application, pid: pid, specifications: text)
+    case "assert-axis-card-absent":
+        let parts = text.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 2 else {
+            throw DriverError.usage
+        }
+        try assertAxisCardAbsent(application, title: parts[0], time: parts[1])
     case "assert-axis-overlap-stack":
         let parts = text.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
         guard parts.count == 2 else {

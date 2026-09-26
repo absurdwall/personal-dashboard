@@ -5662,6 +5662,261 @@ EOF
   echo "Boundary: synthetic Vault and isolated app data only; the Daily Record remained unchanged by the Task edit"
 }
 
+run_today_shared_task_axis_scenario() {
+  local vault="$acceptance_directory/today-shared-task-axis-vault"
+  local no_record_vault="$acceptance_directory/today-shared-task-axis-no-record-vault"
+  local today_date="$(/bin/date '+%Y-%m-%d')"
+  local record_file="$vault/life/Journal/Daily/${today_date:0:4}/${today_date:0:7}/$today_date.md"
+  local tasks_file="$vault/life/.personal-dashboard/tasks/v1/tasks.json"
+  local no_record_tasks="$no_record_vault/life/.personal-dashboard/tasks/v1/tasks.json"
+  local task_name="准备 interview coding：复习动态规划并整理 follow-up notes"
+  local task_id
+  local record_hash
+  local capture_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory/today-shared-task-axis-captures}"
+  local capture_name
+  local local_offset="$(/bin/date '+%z')"
+  local offset_sign=1
+  local offset_hours
+  local offset_minutes
+  local visual_epoch
+  local tomorrow_date
+  local tomorrow_epoch
+  local tomorrow_offset
+  local tomorrow_offset_sign=1
+  local tomorrow_offset_hours
+  local tomorrow_offset_minutes
+  local next_day_record
+
+  current_step="preparing a synthetic Daily Record and an empty shared Tasks source with a controlled 17:05 clock"
+  mkdir -p "$vault/.obsidian" "$(dirname "$record_file")" "$(dirname "$tasks_file")" \
+    "$acceptance_data_directory" "$capture_directory"
+  for capture_name in today-shared-task-axis-960x720.png \
+    today-shared-task-axis-800x640.png today-shared-task-axis-640x520.png \
+    today-shared-task-axis-en-640x520.png today-shared-task-axis-960x720-task.png; do
+    [[ ! -e "$capture_directory/$capture_name" ]] ||
+      fail "refusing to overwrite packaged capture $capture_directory/$capture_name"
+  done
+  cat > "$record_file" <<EOF
+---
+type: daily-record
+date: $today_date
+source: today-shared-task-axis-packaged-acceptance
+---
+# $today_date
+
+## 今天的大致安排
+
+- 17:00 $task_name
+
+## 白天更新
+
+- 只读合成背景；Tasks 操作不应改写本记录。
+EOF
+  cat > "$tasks_file" <<'EOF'
+{
+  "schemaVersion": 2,
+  "lists": [{"id":"inbox","name":"Inbox","system":true,"archived":false}],
+  "tasks": []
+}
+EOF
+  visual_epoch="$(/bin/date -j -f '%Y-%m-%d %H:%M:%S' "$today_date 17:05:00" '+%s')"
+  fixed_now_epoch_millis="$((visual_epoch * 1000))"
+  if [[ "$local_offset" == -* ]]; then
+    offset_sign=-1
+    local_offset="${local_offset#-}"
+  else
+    local_offset="${local_offset#+}"
+  fi
+  offset_hours="${local_offset:0:2}"
+  offset_minutes="${local_offset:2:2}"
+  fixed_utc_offset_minutes="$((offset_sign * (10#$offset_hours * 60 + 10#$offset_minutes)))"
+  record_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+
+  current_step="creating a same-name, same-time Task in the packaged Today view at 960x720"
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "今天" 10
+  run_driver press "当日进展" 10
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver wait-active-text "$task_name" 20
+  run_driver assert-active-text "日记安排"
+  run_driver scroll-text-visible "新建任务名称" 10
+  run_driver type-text "新建任务名称|$task_name" 10
+  run_driver scroll-text-visible "加入收集箱" 10
+  run_driver press "加入收集箱" 10
+  run_driver wait-active-text "任务已保存到所选 Vault" 20
+  if ! wait_for_file_text "$tasks_file" "$task_name"; then
+    run_driver dump-text "" 10
+    run_driver capture-window "$capture_directory/today-shared-task-axis-create-failure.png" 10
+    fail "Today did not persist the created Task"
+  fi
+  task_id="$(task_id_for_name "$tasks_file" "$task_name")" ||
+    fail "Today did not retain the created Task identity"
+  assert_task_property "$tasks_file" "$task_id" "date" "$today_date" ||
+    fail "the Today-created Task did not retain its default date"
+  current_step="scheduling the existing Today-created Task at 17:00"
+  run_driver press-contains "详情 · $task_name" 10
+  run_driver wait-active-text "时刻（需要日期）" 10
+  run_driver type-text "时刻（需要日期）|17:00" 10
+  run_driver press "保存" 10
+  run_driver wait-active-text "任务已保存到所选 Vault" 20
+  wait_for_task_property "$tasks_file" "$task_id" "time" "17:00" ||
+    fail "Today did not schedule the existing Task at its selected point"
+  assert_task_property "$tasks_file" "$task_id" "date" "$today_date" ||
+    fail "scheduling changed the Today-created Task date"
+  run_driver wait-active-text "已过设定时间" 20
+  run_driver press "定位现在" 10
+  run_driver assert-active-text "任务"
+  run_driver assert-active-text "日记安排"
+  run_driver assert-axis-cards-fit "$task_name|17:00|日记安排" 10
+  run_driver capture-window "$capture_directory/today-shared-task-axis-960x720.png" 10
+
+  current_step="checking the single-lane overlap and manual refresh without restarting the packaged app"
+  run_driver cycle-axis-stack 10
+  run_driver assert-active-text "已过设定时间"
+  run_driver assert-axis-cards-fit "$task_name|17:00|任务|待办|已过设定时间" 10
+  run_driver capture-window "$capture_directory/today-shared-task-axis-960x720-task.png" 10
+  run_driver press "刷新" 10
+  run_driver wait-active-text "$task_name" 20
+  run_driver assert-active-text "17:00"
+  run_driver assert-active-text "任务"
+  run_driver assert-active-text "日记安排"
+  run_driver press-contains "完成 · $task_name" 10
+  wait_for_task_property "$tasks_file" "$task_id" "state" "completed" ||
+    fail "Today completion did not preserve the Task's shared identity"
+  wait_for_task_property "$tasks_file" "$task_id" "time" "17:00" ||
+    fail "completion changed the Task's scheduled time"
+  run_driver wait-active-text "已完成" 20
+  run_driver wait-active-text "重开 · $task_name" 20
+  run_driver assert-active-text "17:00"
+  run_driver set-size "800x640" 10
+  run_driver assert-size "800x640" 10
+  run_driver press "定位现在" 10
+  run_driver cycle-axis-stack 10
+  run_driver assert-active-text "已完成"
+  run_driver assert-active-text "任务"
+  run_driver assert-axis-cards-fit "$task_name|17:00|日记安排" 10
+  run_driver assert-axis-cards-fit "$task_name|17:00|任务|已完成" 10
+  run_driver capture-window "$capture_directory/today-shared-task-axis-800x640.png" 10
+
+  current_step="reopening the completed Task and moving its point while the Daily Record arrangement stays put"
+  run_driver scroll-text-visible "TODAY · 共享任务" 10
+  run_driver press-contains "重开 · $task_name" 10
+  wait_for_task_property "$tasks_file" "$task_id" "state" "pending" ||
+    fail "Today did not reopen the same Task identity"
+  run_driver wait-active-text "已过设定时间" 20
+  run_driver press-contains "详情 · $task_name" 10
+  run_driver wait-active-text "时刻（需要日期）" 10
+  run_driver type-text "时刻（需要日期）|17:30" 10
+  run_driver press "保存" 10
+  wait_for_task_property "$tasks_file" "$task_id" "time" "17:30" ||
+    fail "Today did not reschedule the existing Task"
+  run_driver wait-active-text "17:30" 20
+  run_driver assert-active-absent-text "已过设定时间"
+  run_driver set-size "640x520" 10
+  run_driver assert-size "640x520" 10
+  run_driver press "定位现在" 10
+  run_driver assert-axis-cards-fit "$task_name|17:00|日记安排" 10
+  run_driver cycle-axis-stack 10
+  run_driver assert-active-text "17:30"
+  run_driver assert-active-text "任务"
+  run_driver assert-active-text "待办"
+  run_driver assert-axis-cards-fit "$task_name|17:30|任务|待办" 10
+  run_driver capture-window "$capture_directory/today-shared-task-axis-640x520.png" 10
+  run_driver assert-active-text "17:00"
+  [[ "$(task_id_for_name "$tasks_file" "$task_name")" == "$task_id" ]] ||
+    fail "rescheduling created a duplicate Task identity"
+  assert_task_property "$tasks_file" "$task_id" "date" "$today_date" ||
+    fail "rescheduling changed the selected Task date"
+  [[ "$(shasum -a 256 "$record_file" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "the packaged Task lifecycle changed its same-day Daily Record arrangement"
+
+  current_step="checking translated Task and Diary arrangement labels in the narrow packaged view"
+  run_driver press "设置" 10
+  run_driver press "切换为英文" 10
+  run_driver wait-active-text "Appearance" 20
+  run_driver press "Today" 10
+  run_driver press "Daytime progress" 10
+  run_driver press "Locate now" 10
+  run_driver wait-active-text "Diary arrangement" 20
+  run_driver assert-axis-cards-fit "$task_name|17:00|Diary arrangement" 10
+  run_driver cycle-axis-stack 10
+  run_driver assert-active-text "Task"
+  run_driver assert-active-text "Pending"
+  run_driver assert-axis-cards-fit "$task_name|17:30|Task|Pending" 10
+  run_driver assert-window-visible-link "Open 17:30: $task_name" 10
+  run_driver capture-window "$capture_directory/today-shared-task-axis-en-640x520.png" 10
+
+  current_step="confirming that a Tasks-only Vault remains visible in packaged Today without creating a Daily Record"
+  mkdir -p "$no_record_vault/.obsidian" "$no_record_vault/life/Journal/Daily" \
+    "$(dirname "$no_record_tasks")"
+  /bin/cp "$tasks_file" "$no_record_tasks"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$no_record_vault" > "$acceptance_data_directory/today-workspace.json"
+  if ! stop_app; then
+    fail "the packaged app did not exit before the Tasks-only Vault check"
+  fi
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Today" 10
+  run_driver press "Daytime progress" 10
+  run_driver wait-active-text "$task_name" 20
+  run_driver assert-active-text "17:30"
+  run_driver assert-active-text "Task" 10
+  local missing_record="$no_record_vault/life/Journal/Daily/${today_date:0:4}/${today_date:0:7}/$today_date.md"
+  [[ ! -e "$missing_record" ]] || fail "reading Tasks without a Daily Record created a record"
+
+  current_step="reopening the packaged Today view just after midnight and checking pending work leaves the old time-axis point"
+  if ! stop_app; then
+    fail "the packaged Tasks-only app did not exit before the controlled midnight reread"
+  fi
+  tomorrow_date="$(/bin/date -j -v+1d -f '%Y-%m-%d' "$today_date" '+%Y-%m-%d')"
+  tomorrow_epoch="$(/bin/date -j -f '%Y-%m-%d %H:%M:%S' "$tomorrow_date 00:05:00" '+%s')"
+  tomorrow_offset="$(/bin/date -j -f '%Y-%m-%d %H:%M:%S' "$tomorrow_date 00:05:00" '+%z')"
+  if [[ "$tomorrow_offset" == -* ]]; then
+    tomorrow_offset_sign=-1
+    tomorrow_offset="${tomorrow_offset#-}"
+  else
+    tomorrow_offset="${tomorrow_offset#+}"
+  fi
+  tomorrow_offset_hours="${tomorrow_offset:0:2}"
+  tomorrow_offset_minutes="${tomorrow_offset:2:2}"
+  fixed_utc_offset_minutes="$((tomorrow_offset_sign * (10#$tomorrow_offset_hours * 60 + 10#$tomorrow_offset_minutes)))"
+  fixed_now_epoch_millis="$((tomorrow_epoch * 1000))"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  next_day_record="$vault/life/Journal/Daily/${tomorrow_date:0:4}/${tomorrow_date:0:7}/$tomorrow_date.md"
+  [[ ! -e "$next_day_record" ]] || fail "the next-day Daily Record unexpectedly exists before the clock rollover"
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Today" 10
+  run_driver press "Daytime progress" 10
+  run_driver wait-active-text "TODAY · $tomorrow_date" 20
+  run_driver scroll-text-visible "TODAY · SHARED TASKS" 10
+  run_driver wait-active-text "$task_name" 20
+  run_driver assert-active-text "Overdue · no failure inferred"
+  run_driver assert-axis-card-absent "$task_name|17:30" 10
+  [[ "$(task_id_for_name "$tasks_file" "$task_name")" == "$task_id" ]] ||
+    fail "the midnight reread duplicated or replaced the pending Task identity"
+  assert_task_property "$tasks_file" "$task_id" "date" "$today_date" ||
+    fail "the midnight reread moved the prior-day Task date"
+  assert_task_property "$tasks_file" "$task_id" "state" "pending" ||
+    fail "the midnight reread changed the prior-day Task state"
+  [[ ! -e "$next_day_record" ]] || fail "the midnight Task reread created a Daily Record"
+
+  echo "Packaged IPC Today shared-Task time-axis acceptance passed"
+  echo "Clock: synthetic local $today_date 17:05; a pending 17:00 task showed the passed-time state and exact point"
+  echo "Lifecycle: create, manual refresh, complete, reopen, and reschedule retained one Task ID and never moved the Diary arrangement"
+  echo "Overlap: the same-name Task and Diary arrangement stayed separate in the existing single-lane stack"
+  echo "Vault: a Tasks-only Vault rendered the task in Today without creating a Daily Record"
+  echo "Midnight: relaunch at $tomorrow_date 00:05 kept the same pending Task in the prior-date group and removed its old time-axis point"
+  echo "Layout: 960x720, 800x640, and 640x520 packaged captures are in $capture_directory"
+  echo "Daily Record SHA-256: $record_hash"
+  echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -5756,6 +6011,7 @@ case "$acceptance_scenario" in
   dashboard-3) run_dashboard_3_scenario ;;
   dashboard-4) run_dashboard_4_scenario ;;
   today-refresh) run_today_refresh_scenario ;;
+  today-shared-task-axis) run_today_shared_task_axis_scenario ;;
   drive-compatibility) run_drive_compatibility_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;

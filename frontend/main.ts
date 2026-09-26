@@ -54,6 +54,7 @@ import { preserveTodayDayTaskPlanError } from "./day-task-presentation.js";
 import {
   calendarTasksForDate,
   isCurrentTaskResponse,
+  isCurrentTodayTaskResponse,
   normalizeTaskSchedule,
   taskOperationScope,
   TaskOperationIdentityStore,
@@ -67,6 +68,7 @@ import {
   taskMutationConfirmed,
   taskVisibleInScope,
   todayTaskGroups,
+  todayTaskTimeAxisEntries,
   type TaskListScope,
 } from "./task-presentation.js";
 import {
@@ -166,9 +168,16 @@ type TimeAxisEntryView = Readonly<{
   endMinute: number | null;
   continuesFromPreviousDay: boolean;
   continuesIntoNextDay: boolean;
+  task?: Readonly<{
+    id: string;
+    state: "pending" | "completed";
+    timePassed: boolean;
+  }>;
 }>;
 
-type TimedTodayAxisEntry = TimeAxisEntryView & Readonly<{ lane: "arrangement" | "facts" }>;
+type TimedTodayAxisEntry = TimeAxisEntryView & Readonly<{
+  lane: "arrangement" | "facts" | "tasks";
+}>;
 
 type TimeAxisView = Readonly<{
   currentArrangement: readonly TimeAxisEntryView[];
@@ -287,6 +296,7 @@ type TaskView = Readonly<{
   deletedAt: string | null;
   completion: TaskCompletionView | null;
   overdue: boolean;
+  timePassed: boolean;
   createdAt: string;
   modifiedAt: string;
   changes: readonly TaskChangeView[];
@@ -1379,7 +1389,7 @@ function formatAxisMinute(minute: number): string {
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 }
 
-type TodayAxisLaneId = "arrangement" | "facts" | "arrangement-unlocated" | "facts-unlocated";
+type TodayAxisLaneId = "arrangement" | "facts" | "tasks" | "arrangement-unlocated" | "facts-unlocated";
 
 function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): string {
   if (entry.startMinute === null) {
@@ -1389,6 +1399,42 @@ function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): s
   }
   const start = formatAxisMinute(entry.startMinute);
   return entry.endMinute === null ? start : `${start}–${formatAxisMinute(entry.endMinute)}`;
+}
+
+function axisEntryMetadataCopyKeys(
+  entry: TimeAxisEntryView,
+  lane: TodayAxisLaneId,
+): readonly InterfaceCopyKey[] {
+  if (entry.task) {
+    return [
+      "today.sourceTask",
+      taskStateCopyKey(entry.task.state),
+      ...(entry.task.timePassed ? ["tasks.timePassed" as const] : []),
+    ];
+  }
+  if (lane === "arrangement" || lane === "arrangement-unlocated") {
+    return ["today.sourceArrangement"];
+  }
+  return ["today.sourceConfirmedFact"];
+}
+
+function axisEntryMetadataLabels(
+  entry: TimeAxisEntryView,
+  lane: TodayAxisLaneId,
+): readonly string[] {
+  return axisEntryMetadataCopyKeys(entry, lane).map((key) => t(key));
+}
+
+function appendAxisEntryMetadata(
+  target: HTMLElement,
+  entry: TimeAxisEntryView,
+  lane: TodayAxisLaneId,
+): void {
+  for (const key of axisEntryMetadataCopyKeys(entry, lane)) {
+    const label = document.createElement("span");
+    setCopy(label, key);
+    target.append(label);
+  }
 }
 
 function axisEntryDetails(
@@ -1427,6 +1473,10 @@ function axisEntryDetails(
     }
     summary.append(continuation);
   }
+  const sourceStatus = document.createElement("span");
+  sourceStatus.className = "today-axis-entry-summary-metadata";
+  appendAxisEntryMetadata(sourceStatus, entry, lane);
+  summary.append(sourceStatus);
   const copy = document.createElement("p");
   copy.textContent = entry.text;
   details.append(summary, copy);
@@ -1437,6 +1487,7 @@ function axisEntryDetails(
     period.textContent = entry.period;
     metadata.append(period);
   }
+  appendAxisEntryMetadata(metadata, entry, lane);
   const sourceDate = document.createElement("span");
   setCopy(sourceDate, "today.sourceDate", { date: entry.sourceDate });
   metadata.append(sourceDate);
@@ -1461,10 +1512,15 @@ function renderTodayTimeAxisEntries(
 ): void {
   if (!todayTimedEvents || !todayTimedDurations || !todayTimedDetails || !todayTimedEmpty ||
       !todayCurrentArrangementUnlocated || !todayConfirmedFactsUnlocated) return;
+  const laneOrder: Readonly<Record<TimedTodayAxisEntry["lane"], number>> = {
+    arrangement: 0,
+    facts: 1,
+    tasks: 2,
+  };
   const ordered = entries
     .map((entry, index) => ({ entry, index }))
     .sort((left, right) => (left.entry.startMinute ?? 0) - (right.entry.startMinute ?? 0) ||
-      (left.entry.lane === right.entry.lane ? left.index - right.index : left.entry.lane === "arrangement" ? -1 : 1));
+      laneOrder[left.entry.lane] - laneOrder[right.entry.lane] || left.index - right.index);
   const detailElements = new Map<number, HTMLDetailsElement>();
   ordered.forEach(({ entry, index }) => {
     detailElements.set(index, axisEntryDetails(entry, entry.lane, index));
@@ -1492,7 +1548,13 @@ function renderTodayTimeAxisEntries(
       const placement = placementByIndex.get(index)!;
       const marker = document.createElement("li");
       marker.className = "today-axis-marker";
-      marker.classList.add(entry.lane === "arrangement" ? "is-arrangement" : "is-fact");
+      marker.classList.add(
+        entry.lane === "arrangement" ? "is-arrangement" :
+          entry.lane === "facts" ? "is-fact" : "is-task",
+      );
+      marker.classList.toggle("is-completed", entry.task?.state === "completed");
+      marker.classList.toggle("is-time-passed", entry.task?.timePassed === true);
+      if (entry.task) marker.dataset.taskId = entry.task.id;
       marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);
       marker.style.setProperty(
         "--axis-label-center",
@@ -1512,21 +1574,31 @@ function renderTodayTimeAxisEntries(
       const link = document.createElement("a");
       link.href = `#today-axis-${entry.lane}-entry-${index}`;
       link.className = "today-axis-marker-link";
-      link.setAttribute("aria-label", t("today.openAxisItem", {
+      const itemDescription = t("today.openAxisItem", {
         time: axisEntryTimeLabel(entry, entry.lane),
         text: entry.text,
-      }));
+      });
+      const metadataLabels = axisEntryMetadataLabels(entry, entry.lane);
+      link.setAttribute(
+        "aria-label",
+        metadataLabels.length > 0 ? `${itemDescription} · ${metadataLabels.join(" · ")}` : itemDescription,
+      );
       const timeLabel = document.createElement("span");
       timeLabel.className = "today-axis-marker-time";
       timeLabel.textContent = axisEntryTimeLabel(entry, entry.lane);
       const title = document.createElement("span");
       title.className = "today-axis-marker-title";
-      title.textContent = stripLeadingAxisTimeLabel(
-        entry.text,
-        formatAxisMinute(entry.startMinute),
-        entry.endMinute === null ? null : formatAxisMinute(entry.endMinute),
-      );
-      link.append(timeLabel, title);
+      title.textContent = entry.task
+        ? entry.text
+        : stripLeadingAxisTimeLabel(
+          entry.text,
+          formatAxisMinute(entry.startMinute),
+          entry.endMinute === null ? null : formatAxisMinute(entry.endMinute),
+        );
+      const metadata = document.createElement("span");
+      metadata.className = "today-axis-marker-source-status";
+      appendAxisEntryMetadata(metadata, entry, entry.lane);
+      link.append(timeLabel, title, metadata);
       link.classList.toggle("is-short-range", durationMinutes !== null && markerLayout.isCenteredLabel);
       link.addEventListener("click", (event) => {
         event.preventDefault();
@@ -1580,7 +1652,10 @@ function renderTodayTimeAxisEntries(
       });
       const duration = document.createElement("span");
       duration.className = entry.endMinute === null ? "today-axis-point" : "today-axis-range";
-      duration.classList.add(entry.lane === "arrangement" ? "is-arrangement" : "is-fact");
+      duration.classList.add(
+        entry.lane === "arrangement" ? "is-arrangement" :
+          entry.lane === "facts" ? "is-fact" : "is-task",
+      );
       duration.style.top = `${geometry.top * 100}%`;
       if (entry.endMinute !== null) duration.style.height = `${geometry.height * 100}%`;
       return [duration];
@@ -1660,6 +1735,11 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
     [
       ...view.timeAxis.currentArrangement.map((entry) => ({ ...entry, lane: "arrangement" as const })),
       ...view.timeAxis.confirmedFacts.map((entry) => ({ ...entry, lane: "facts" as const })),
+      ...todayTaskTimeAxisEntries(
+        view.tasks.tasks,
+        view.date,
+        new Set(view.tasks.lists.filter((list) => list.archived).map((list) => list.id)),
+      ).map((entry) => ({ ...entry, lane: "tasks" as const })),
     ],
     view.timeAxis.unlocatedCurrentArrangement,
     view.timeAxis.unlocatedConfirmedFacts,
@@ -4840,7 +4920,9 @@ function taskEditor(
   meta.className = "task-row-meta";
   meta.append(source, document.createTextNode(" · "), document.createTextNode(listName));
   meta.append(document.createTextNode(" · "), document.createTextNode(taskScheduleText(task.date, task.time)));
-  if (task.overdue) {
+  if (task.timePassed) {
+    meta.append(document.createTextNode(" · "), document.createTextNode(t("tasks.timePassed")));
+  } else if (task.overdue) {
     meta.append(document.createTextNode(" · "), document.createTextNode(t("tasks.overdue")));
   }
   titleLine.append(title, state);
@@ -5242,6 +5324,18 @@ function updateTaskEditorOperationState(
   });
 }
 
+function updateTaskMutationControls(
+  container: HTMLElement | null,
+  writable: boolean,
+  busy: boolean,
+): void {
+  container?.querySelectorAll(
+    "input[data-task-state-action], button[data-task-state-action], button[data-task-delete], button[data-task-restore]",
+  ).forEach((element) => {
+    (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !writable;
+  });
+}
+
 function updateTaskOperationState(delta: number): void {
   taskOperationCount = Math.max(0, taskOperationCount + delta);
   const busy = taskOperationCount > 0;
@@ -5280,6 +5374,7 @@ function updateTaskOperationState(delta: number): void {
       busy || !todayCanOperate;
   });
   updateTaskEditorOperationState("today", todayWritable, busy);
+  updateTaskMutationControls(todayTaskPanel, todayCanOperate, busy);
   todayTaskCreateSubmit?.toggleAttribute("disabled", busy || !todayWritable);
   const calendarCanOperate =
     Boolean(currentCalendarSummaryView?.tasks.targetBinding) &&
@@ -5292,6 +5387,7 @@ function updateTaskOperationState(delta: number): void {
       busy || !calendarCanOperate;
   });
   updateTaskEditorOperationState("calendar", calendarWritable, busy);
+  updateTaskMutationControls(calendarTaskPanel, calendarCanOperate, busy);
   taskListCreateForm?.querySelectorAll("input, button").forEach((element) => {
     (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !canOperate;
   });
@@ -5301,12 +5397,7 @@ function updateTaskOperationState(delta: number): void {
   taskListsManagement?.querySelectorAll("input, button").forEach((element) => {
     (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !canOperate;
   });
-  tasksList?.querySelectorAll(
-    "input[data-task-state-action], button[data-task-state-action], button[data-task-delete], button[data-task-restore]",
-  ).forEach((element) => {
-    (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
-      busy || !canOperate;
-  });
+  updateTaskMutationControls(tasksList, canOperate, busy);
   updateTaskEditorOperationState("tasks", writable, busy);
   if (!busy && taskRefreshQueued) {
     taskRefreshQueued = false;
@@ -5811,13 +5902,17 @@ function taskSurfaceIsCurrent(
       (expectedRevision === null || currentTasksView?.revision === expectedRevision);
   }
   if (surface === "today") {
-    return (
-      todayTaskRequests.isCurrent(token) &&
-      currentWorkspaceDestination === "today" &&
-      currentTodayView?.date === expectedDate &&
-      currentTodayView.tasks.targetBinding === expectedTargetBinding &&
-      responseTargetBinding === expectedTargetBinding &&
-      (expectedRevision === null || currentTodayView.tasks.revision === expectedRevision)
+    return isCurrentTodayTaskResponse(
+      todayTaskRequests,
+      token,
+      currentWorkspaceDestination,
+      currentTodayView?.date ?? null,
+      expectedDate,
+      currentTodayView?.tasks.targetBinding ?? null,
+      expectedTargetBinding,
+      responseTargetBinding,
+      currentTodayView?.tasks.revision ?? null,
+      expectedRevision,
     );
   }
   return (
@@ -5849,6 +5944,7 @@ function renderTaskSurface(surface: TaskSurface, view: TasksView): void {
     renderTasks(view);
   } else if (surface === "today" && currentTodayView) {
     renderTodayTasks(currentTodayView);
+    renderTodayTimeAxis(currentTodayView);
   } else if (surface === "calendar" && currentCalendarSummaryView) {
     renderCalendarTasks(currentCalendarSummaryView);
   }
