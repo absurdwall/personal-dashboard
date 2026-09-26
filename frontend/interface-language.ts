@@ -1656,6 +1656,62 @@ export function interfaceCopy(
   );
 }
 
+const todayAxisMarkerMetadataCopyKeys = [
+  "today.sourceTask",
+  "today.sourceArrangement",
+  "today.sourceConfirmedFact",
+  "tasks.statePending",
+  "tasks.stateCompleted",
+  "tasks.stateAbandoned",
+  "tasks.timePassed",
+] as const satisfies readonly InterfaceCopyKey[];
+
+type TodayAxisMarkerMetadataCopyKey = typeof todayAxisMarkerMetadataCopyKeys[number];
+
+type TodayAxisMarkerLabelTarget = {
+  dataset: {
+    axisItemTime?: string;
+    axisItemText?: string;
+    axisMetadataCopyKeys?: string;
+  };
+  setAttribute(name: string, value: string): void;
+};
+
+const todayAxisMarkerMetadataCopyKeySet = new Set<string>(todayAxisMarkerMetadataCopyKeys);
+
+function parseTodayAxisMarkerMetadataCopyKeys(
+  value: string | undefined,
+): TodayAxisMarkerMetadataCopyKey[] {
+  if (!value) return [];
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((key): key is TodayAxisMarkerMetadataCopyKey =>
+        typeof key === "string" && todayAxisMarkerMetadataCopyKeySet.has(key))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function updateTodayAxisMarkerAccessibleName(
+  marker: TodayAxisMarkerLabelTarget,
+  language: InterfaceLanguage,
+): void {
+  const { axisItemTime: time, axisItemText: text } = marker.dataset;
+  if (time === undefined || text === undefined) return;
+
+  const itemDescription = interfaceCopy("today.openAxisItem", language, { time, text });
+  const metadataLabels = parseTodayAxisMarkerMetadataCopyKeys(marker.dataset.axisMetadataCopyKeys)
+    .map((key) => interfaceCopy(key, language));
+  marker.setAttribute(
+    "aria-label",
+    metadataLabels.length > 0
+      ? `${itemDescription} · ${metadataLabels.join(" · ")}`
+      : itemDescription,
+  );
+}
+
 type LocalizableElement = {
   dataset: {
     i18n?: string;

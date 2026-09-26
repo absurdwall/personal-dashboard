@@ -3573,10 +3573,12 @@ run_interface_language_scenario() {
   local record_relative="life/Journal/Daily/2026/2026-09/2026-09-08.md"
   local record_a="$vault_a/$record_relative"
   local record_b="$vault_b/$record_relative"
+  local tasks_file_a="$vault_a/life/.personal-dashboard/tasks/v1/tasks.json"
   local language_file="$acceptance_data_directory/interface-language.json"
   local before_b_hash
   local after_save_hash
   local draft_text="未保存草稿 · Keep my words exactly"
+  local axis_task="语言切换回归 · Keep my words exactly"
   local long_drive_copy='Ordinary local Vaults also work. Dashboard does not convert arbitrary notes, manage Google accounts, or upload files. “Saved locally” does not mean “synced to the cloud.” Google Drive manages versions and trash.'
 
   current_step="preparing isolated bilingual-interface fixtures"
@@ -3607,6 +3609,16 @@ date: 2026-09-08
 
 - **上午：** 第二份中文个人内容 · Keep source English unchanged.
 EOF
+  mkdir -p "$(dirname "$tasks_file_a")"
+  cat > "$tasks_file_a" <<EOF
+{
+  "schemaVersion": 2,
+  "lists": [{"id":"inbox","name":"Inbox","system":true,"archived":false}],
+  "tasks": [
+    {"id":"language-axis-marker","name":"$axis_task","content":null,"date":"2026-09-08","time":"17:30","listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T09:00:00-04:00","modifiedAt":"2026-09-08T09:00:00-04:00","changes":[]}
+  ]
+}
+EOF
   printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
     "$vault_a" > "$acceptance_data_directory/today-workspace.json"
   before_b_hash="$(shasum -a 256 "$record_b" | awk '{print $1}')"
@@ -3623,6 +3635,8 @@ EOF
   run_driver type-text "简短记录内容|$draft_text" 10
   run_driver assert-active-text "$draft_text"
   run_driver assert-state "当日进展|selected" 10
+  run_driver wait-active-text "$axis_task" 20
+  run_driver assert-axis-link-label "$axis_task|打开 17:30：$axis_task · 任务 · 待办" 10
 
   current_step="checking the Chinese native Vault picker title without changing Vault"
   run_driver press "设置" 10
@@ -3632,10 +3646,19 @@ EOF
   run_driver press "今天" 10
   run_driver press "当日进展" 10
   run_driver assert-active-text "$draft_text"
+  run_driver scroll-text-visible "打开 17:30：$axis_task · 任务 · 待办" 10
+  run_driver assert-window-visible-link "打开 17:30：$axis_task · 任务 · 待办" 10
+  run_driver click-visible-link "$axis_task" 10
+  sleep 0.6
+  run_driver capture-window "$acceptance_directory/timeline-label-zh-expanded.png" 10
 
   current_step="switching the live packaged interface to English without replacing state"
   run_driver press "切换为英文" 10
   run_driver wait-active-text "Settings" 10
+  run_driver assert-axis-link-label "$axis_task|Open 17:30: $axis_task · Task · Pending" 10
+  sleep 0.6
+  run_driver assert-focused-text "Switch to Chinese" 10
+  run_driver capture-window "$acceptance_directory/timeline-label-en-expanded.png" 10
   run_driver assert-active-text "Today"
   run_driver assert-active-text "Calendar"
   run_driver assert-active-text "Habits"
@@ -3644,6 +3667,17 @@ EOF
   run_driver assert-active-text "$draft_text"
   run_driver assert-active-text "中文个人内容 · Keep source English unchanged"
   run_driver assert-active-absent-text "保存记录"
+  run_driver press "Switch to Chinese" 10
+  run_driver wait-active-text "设置" 10
+  run_driver assert-axis-link-label "$axis_task|打开 17:30：$axis_task · 任务 · 待办" 10
+  sleep 0.6
+  run_driver assert-focused-text "切换为英文" 10
+  run_driver capture-window "$acceptance_directory/timeline-label-zh-return-expanded.png" 10
+  run_driver assert-active-text "$draft_text"
+  run_driver assert-state "当日进展|selected" 10
+  run_driver press "切换为英文" 10
+  run_driver wait-active-text "Settings" 10
+  run_driver assert-axis-link-label "$axis_task|Open 17:30: $axis_task · Task · Pending" 10
 
   current_step="checking long English Settings copy and localized Calendar and Habits states"
   run_driver press "Settings" 10

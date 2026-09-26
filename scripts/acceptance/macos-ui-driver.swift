@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -1454,6 +1454,37 @@ func assertAxisEntryCard(
                 "card=\(cardFrame) title=\(titleFrame) window=\(windowFrame)"
         )
     }
+}
+
+func assertAxisLinkLabel(
+    _ application: AXUIElement,
+    markerText: String,
+    expectedLabel: String,
+    timeout: TimeInterval
+) throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    var actualLabels: [String] = []
+    repeat {
+        actualLabels.removeAll(keepingCapacity: true)
+        _ = walk(application) { element in
+            guard stringAttribute(element, "AXRole") == "AXLink",
+                  nodeText(element).localizedCaseInsensitiveContains(markerText) else {
+                return false
+            }
+            let label = stringAttribute(element, "AXDescription")
+            actualLabels.append(label.isEmpty ? nodeText(element) : label)
+            return false
+        }
+        if actualLabels.contains(expectedLabel) {
+            print("Timeline marker accessible name is current: \(expectedLabel)")
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    throw DriverError.unexpectedText(
+        "timeline marker accessible name did not match expected label " +
+            "(expected: \(expectedLabel); actual: \(actualLabels))"
+    )
 }
 
 func axisCardLink(
@@ -3891,6 +3922,18 @@ do {
             title: parts[2]
         )
         print("Rendered card text and true time bounds are visible: \(parts[0])–\(parts[1]) \(parts[2])")
+    case "assert-axis-link-label":
+        let parts = text.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
+            .map(String.init)
+        guard parts.count == 2 else {
+            throw DriverError.usage
+        }
+        try assertAxisLinkLabel(
+            application,
+            markerText: parts[0],
+            expectedLabel: parts[1],
+            timeout: timeout
+        )
     case "assert-axis-cards-fit":
         try assertAxisCardsFit(application, pid: pid, specifications: text)
     case "assert-axis-card-absent":

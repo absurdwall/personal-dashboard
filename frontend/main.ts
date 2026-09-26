@@ -47,6 +47,7 @@ import {
   localizeHabitCoverageLabel,
   localizeHabitDetail,
   localizeHabitGoalLabel,
+  updateTodayAxisMarkerAccessibleName,
   setApplicationMessage,
   setInterfaceCopy,
   setInterfaceError,
@@ -971,6 +972,9 @@ function setRawText(element: HTMLElement | null, value: string): void {
 function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): void {
   currentInterfaceLanguage = preferences.interfaceLanguage;
   applyInterfaceLanguage(currentInterfaceLanguage);
+  document.querySelectorAll<HTMLAnchorElement>(".today-axis-marker-link").forEach((link) => {
+    updateTodayAxisMarkerAccessibleName(link, currentInterfaceLanguage);
+  });
   if (workspaceLanguageButton) {
     const chinese = currentInterfaceLanguage === "zh";
     setCopy(
@@ -1424,13 +1428,6 @@ function axisEntryMetadataCopyKeys(
   return ["today.sourceConfirmedFact"];
 }
 
-function axisEntryMetadataLabels(
-  entry: TimeAxisEntryView,
-  lane: TodayAxisLaneId,
-): readonly string[] {
-  return axisEntryMetadataCopyKeys(entry, lane).map((key) => t(key));
-}
-
 function appendAxisEntryMetadata(
   target: HTMLElement,
   entry: TimeAxisEntryView,
@@ -1580,15 +1577,12 @@ function renderTodayTimeAxisEntries(
       const link = document.createElement("a");
       link.href = `#today-axis-${entry.lane}-entry-${index}`;
       link.className = "today-axis-marker-link";
-      const itemDescription = t("today.openAxisItem", {
-        time: axisEntryTimeLabel(entry, entry.lane),
-        text: entry.text,
-      });
-      const metadataLabels = axisEntryMetadataLabels(entry, entry.lane);
-      link.setAttribute(
-        "aria-label",
-        metadataLabels.length > 0 ? `${itemDescription} · ${metadataLabels.join(" · ")}` : itemDescription,
+      link.dataset.axisItemTime = axisEntryTimeLabel(entry, entry.lane);
+      link.dataset.axisItemText = entry.text;
+      link.dataset.axisMetadataCopyKeys = JSON.stringify(
+        axisEntryMetadataCopyKeys(entry, entry.lane),
       );
+      updateTodayAxisMarkerAccessibleName(link, currentInterfaceLanguage);
       const timeLabel = document.createElement("span");
       timeLabel.className = "today-axis-marker-time";
       timeLabel.textContent = axisEntryTimeLabel(entry, entry.lane);
