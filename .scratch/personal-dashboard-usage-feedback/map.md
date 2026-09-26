@@ -1,13 +1,17 @@
 # Personal Dashboard — 使用反馈收集
 
+## 2026-09-26 当前收尾状态
+
+01、02 均已由后续实现与修复票交付，补记 resolved。3.0.2／未来 AI 记录仍是新阶段草案，不是未完成的旧 ticket。下方原型阶段说明仅为历史。
+
 收集日期：2026-09-22。来源：用户实际使用反馈。
 
-这是一份供下一轮 iteration 分诊的需求池；尚未指定版本或排期；02 已确认 A 原型，待细化实现票，不改变已批准的 3.0.1 范围。已记录问题并完成 02 的视觉原型确认，未修改正式应用。
+这是一份历史需求来源。01、02 已经完成分诊、实现与后续修复，当前均已关闭；下面保留当时的原型和设计确认过程。
 
 | Ticket | Blocked by | Status |
 | --- | --- | --- |
-| [01 历史习惯记录与跨午夜补记](issues/01-historical-habit-records.md) | None（待分诊） | needs-triage |
-| [02 当日时间刻度与现在记录边界](issues/02-today-time-axis.md) | None（待分诊） | needs-triage |
+| [01 历史习惯记录与跨午夜补记](issues/01-historical-habit-records.md) | None（已交付） | resolved |
+| [02 当日时间刻度与现在记录边界](issues/02-today-time-axis.md) | None（已交付） | resolved |
 
 后续反馈可继续追加；下轮再核查当前安装版本的真实行为、确定方案与验收细节。
 

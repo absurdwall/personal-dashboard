@@ -1,6 +1,10 @@
 # Personal Dashboard 4.0 — ticket map
 
-用户已批准九票拆分与依赖；正式发布，01–08 已完成实现，09 的上一轮本地 packaged candidate 已通过，11 的 review follow-up 已在解锁的 macOS 交互会话以合成 Vault 复跑通过，Drive fixture 仍需人验收。
+## 2026-09-26 当前收尾状态
+
+01–08、10、11 为 resolved；09 的本地交付已有证据，剩余专用 Drive 验收按用户本次收尾指示关闭为 wontfix（未验收，不宣称通过）。本 effort 没有活动待办。下方原执行顺序及旧验收限制作为历史保留。
+
+用户已批准九票拆分与依赖；正式发布，01–08 已完成实现，09 的上一轮本地 packaged candidate 已通过，11 的 review follow-up 已在解锁的 macOS 交互会话以合成 Vault 复跑通过，剩余 Drive fixture 验收已在 2026-09-26 关闭为 wontfix，未宣称通过。
 
 父规格：[spec](spec.md)。设计来源：[原型认可与固定捕获](prototype-review.md)、[设计问答](design-discussion.md)。原型原先位于本地分支 `codex/personal-dashboard-4-prototype`，该分支现已退役；归档 tag `archive/personal-dashboard-4-prototype-2026-09-25` 指向提交 `501e5f7a4ca9ea0e96838eb59f818fda8fadd99e`，并收录于本机 `personal-dashboard-prototypes.bundle`；不要将原型合入产品。
 
@@ -14,7 +18,7 @@
 | [06 Habit 名称中英切换](issues/06-habit-localized-names.md) | None | resolved |
 | [07 外部任务读写与幂等规划接收](issues/07-external-task-adapter.md) | 02, 03 | resolved |
 | [08 真实早晚流程接线与权限边界](issues/08-daily-flow-integration.md) | 07 | resolved |
-| [09 Packaged Mac 整体验收与交付核对](issues/09-packaged-acceptance.md) | 04, 05, 06, 08 | ready-for-human |
+| [09 Packaged Mac 整体验收与交付核对](issues/09-packaged-acceptance.md) | 04, 05, 06, 08 | wontfix |
 | [10 Prototype 视觉对齐返工](issues/10-prototype-visual-parity.md) | 01–09 | resolved |
 | [11 Review 功能与双语修复](issues/11-review-follow-up.md) | 01–08, 10 | resolved |
 

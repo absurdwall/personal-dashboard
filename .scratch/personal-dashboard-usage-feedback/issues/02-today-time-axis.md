@@ -1,7 +1,9 @@
 # 02: 当日时间刻度与现在记录边界
 
 Type: task
-Status: needs-triage
+Status: resolved
+
+> 2026-09-26 状态核对：原始反馈已完成分诊并由 ../../personal-dashboard-habit-history-timeline/map.md 的两张实现票交付，PR #4 已合入 main；时间轴的后续可读性修复与认可方案见 ../../personal-dashboard-timeline-a-repair/map.md。源反馈不再重复保留 needs-triage；当时原型确认、实现前描述作为历史保留。 下方旧状态和未勾选项保留为历史，不代表当前待执行队列。
 Blocked by: None（待分诊）
 
 ## 用户反馈
@@ -52,3 +54,9 @@ Blocked by: None（待分诊）
 用户原话：“A非常好，我们就以A为prototype原型就OK了……不用再迭代prototype了”。
 
 确认结论由 tag `archive/today-time-axis-variant-a-2026-09-25`（提交 `f9551de8500ba8d32b3732626e561b29856fd258`）和本机 `personal-dashboard-prototypes.bundle` 保留；原始分支 `codex/prototype-today-time-axis` 已退役，原型 HTML／交互保持不变。此票仍为 `needs-triage`，表示实现细节待补齐，不表示原型待审批。
+
+## Answer
+
+原始反馈已完成分诊并由 ../../personal-dashboard-habit-history-timeline/map.md 的两张实现票交付，PR #4 已合入 main；时间轴的后续可读性修复与认可方案见 ../../personal-dashboard-timeline-a-repair/map.md。源反馈不再重复保留 needs-triage；当时原型确认、实现前描述作为历史保留。
+
+本次仅核对并收尾记录，没有重新运行产品测试或修改 App。

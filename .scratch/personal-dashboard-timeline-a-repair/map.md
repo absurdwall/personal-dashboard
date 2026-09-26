@@ -1,13 +1,17 @@
 # A 时间轴视觉还原修复 — 实现票
 
+## 2026-09-26 当前收尾状态
+
+01、02 均为 resolved。用户后续认可的单列叠放方案替代最初双栏，PR #4 已合入 main；不再等待旧双栏的独立验收。下方带日期的 claimed 描述仅为历史。
+
 用户已批准两票拆分与 01 → 02 依赖。范围与来源：[spec](spec.md)。原型 A 已定，不再迭代。
 
 | Ticket | Blocked by | Status |
 | --- | --- | --- |
-| [01 恢复 A 的直接可读双栏时间轴](issues/01-restore-readable-a-cards.md) | None | claimed |
+| [01 恢复 A 的直接可读双栏时间轴](issues/01-restore-readable-a-cards.md) | None | resolved |
 | [02 单列叠放卡片在重叠与窄窗口下保持可读](issues/02-readable-overlap-and-narrow-layout.md) | 01 | resolved |
 
-当前处理项：02 的单列扇叠方向已获用户直接认可，并已安装到 `/Applications/Personal Dashboard.app`；02 已 `resolved`。01 继续保持 `claimed`，未将本票验收推断为对 01 的单独确认。
+当前处理项：02 的单列扇叠方向已获用户直接认可，并已安装到 `/Applications/Personal Dashboard.app`；02 已 `resolved`。01 现已结合后续认可方案与本次收尾指示补记 `resolved`。
 
 ## 用户查看 packaged 候选后的方向修订
 

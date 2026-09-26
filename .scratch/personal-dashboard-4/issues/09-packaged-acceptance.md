@@ -4,7 +4,9 @@
 
 **Blocked by:** 04 今日自动视图与 Today 任务栏, 05 Calendar 任务摘要与右侧操作, 06 Habit 名称中英切换, 08 真实早晚流程接线与权限边界
 
-**Status:** ready-for-human
+**Status:** wontfix
+
+> 2026-09-26 状态核对：本地 packaged 交付已完成，相关实现已随 PR #1 合并并安装。唯一未满足项是 Tasks／Habit 配置变化后的专用真实 Google Drive 客户端 fixture 验收，现无新增证据。本次按用户“未解决且不再打算执行的旧票也应收尾”的指示，将这张整体票剩余验收范围关闭为 wontfix；保留未勾选 Drive 项，不声称云端同步已通过，也不把它转成新待办。今后若要承诺该兼容性，应重新明确范围并取证。 下方旧状态和未勾选项保留为历史，不代表当前待执行队列。
 
 Type: task
 
@@ -56,3 +58,9 @@ Type: task
 - 08 的 adapter／daily-flow 合成边界沿用已解决票证证据：`src-tauri/tests/daily_flow_integration_workflow.rs` 及 `tests/frontend/daily-flow-integration.test.ts` 使用 synthetic Vault／模拟 Dida365，未运行 personal daily flow、未写滴答或自动化。
 - 回归通过：`node --test tests/frontend/packaged-acceptance.test.ts` 7 项，`npm run test:frontend` 94 项，`npm run check`，以及 `cargo test --manifest-path src-tauri/Cargo.toml` 全量 Rust tests。
 - 已只读检查 `~/Library/CloudStorage`，发现两个既有 `PD-Acceptance-08-*` marker-owned child；它们属于 3.0 historical fixture，未被本票选择、创建或改写。没有本票专用的新 fixture。已有 `docs/acceptance/personal-dashboard-3-drive-compatibility.md` 只作为 bounded historical evidence，不把 local save 推断为 upload。需要人准备新的专用 fixture、通过 `drive-vault-policy.mjs` 与 File Provider/cloud checks 后，才能把本票改为 `resolved`。
+
+## 2026-09-26 closeout
+
+本地 packaged 交付已完成，相关实现已随 PR #1 合并并安装。唯一未满足项是 Tasks／Habit 配置变化后的专用真实 Google Drive 客户端 fixture 验收，现无新增证据。本次按用户“未解决且不再打算执行的旧票也应收尾”的指示，将这张整体票剩余验收范围关闭为 wontfix；保留未勾选 Drive 项，不声称云端同步已通过，也不把它转成新待办。今后若要承诺该兼容性，应重新明确范围并取证。
+
+本次仅核对并收尾记录，没有重新运行产品测试或修改 App。

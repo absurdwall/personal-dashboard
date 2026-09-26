@@ -1,5 +1,9 @@
 # Personal Dashboard This Week 工作区 v2 — fixture/design history map
 
+## 2026-09-26 当前收尾状态
+
+本设计 effort 和后续 production／parity-closure／review-fixes 都已收尾。以下指向 production 的“remaining work”是历史交接说明，不是当前队列。
+
 Spec: [spec.md](spec.md)
 
 ## Scope boundary

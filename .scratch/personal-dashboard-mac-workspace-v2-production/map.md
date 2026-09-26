@@ -1,5 +1,9 @@
 # Personal Dashboard Mac workspace v2 — production map
 
+## 2026-09-26 当前收尾状态
+
+全部票已关闭。06–08 的早期 claimed 已按后续 parity-closure／review-fixes 的完成证据补记 resolved；下面旧执行说明和阻塞记录仅为历史。
+
 This is the fresh production effort for the approved v2 design. The sole design reference is [the approved v2 spec](../personal-dashboard-mac-workspace-v2/spec.md), with [A — List + temporary sheet](../personal-dashboard-mac-workspace/prototype/ticket-08-week-flow/) as the visual/interaction reference.
 
 The previous v2 effort remains useful historical evidence, but its tickets 08–13 were fixture/prototype work. They do not represent production delivery and should not be reopened or renumbered. This effort intentionally starts at ticket 01 so that implementation sessions have one clear namespace.
@@ -27,9 +31,9 @@ The previous v2 effort remains useful historical evidence, but its tickets 08–
 | [03 — Direct recording and state semantics](issues/03-direct-recording-and-state-semantics.md) | Close and prove the click-only direct-record path and occurrence state model | resolved | 01, 02 |
 | [04 — Unscheduled workout and progress](issues/04-unscheduled-workout-and-progress.md) | Close and prove independent workout logging, draft behavior, progress, and history evidence | resolved | 01, 02, 03 |
 | [05 — Change-time, skip/undo, and moved occurrence](issues/05-change-time-skip-and-moved-occurrence.md) | Close and prove exception semantics without corrupting the source occurrence | resolved | 01, 02, 03 |
-| [06 — Responsive sheet and accessibility](issues/06-responsive-sheet-and-accessibility.md) | Match the temporary-sheet behavior across viewports and restore keyboard usability | claimed | 02, 03, 04, 05 |
-| [07 — Persistence, history, settings, and boundaries](issues/07-persistence-history-settings-and-boundaries.md) | Prove relaunch persistence and that existing secondary surfaces remain reachable and coherent | claimed | 03, 04, 05, 06 |
-| [08 — Packaged v2 parity gate](issues/08-packaged-v2-parity-gate.md) | Launch the packaged app and close the effort only after end-to-end parity evidence | claimed | 01–07 |
+| [06 — Responsive sheet and accessibility](issues/06-responsive-sheet-and-accessibility.md) | Match the temporary-sheet behavior across viewports and restore keyboard usability | resolved | 02, 03, 04, 05 |
+| [07 — Persistence, history, settings, and boundaries](issues/07-persistence-history-settings-and-boundaries.md) | Prove relaunch persistence and that existing secondary surfaces remain reachable and coherent | resolved | 03, 04, 05, 06 |
+| [08 — Packaged v2 parity gate](issues/08-packaged-v2-parity-gate.md) | Launch the packaged app and close the effort only after end-to-end parity evidence | resolved | 01–07 |
 
 ## Review-comment coverage
 

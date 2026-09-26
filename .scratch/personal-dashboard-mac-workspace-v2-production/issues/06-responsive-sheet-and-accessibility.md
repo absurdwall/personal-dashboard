@@ -1,7 +1,9 @@
 # 06 — Match the responsive temporary sheet and keyboard behavior
 
 Type: task
-Status: claimed
+Status: resolved
+
+> 2026-09-26 状态核对：后续命名空间已完成本票交付范围：见 ../../personal-dashboard-mac-workspace-v2-parity-closure/issues/03-integrated-responsive-and-accessibility-parity.md、04-final-packaged-v2-parity-gate.md，以及 ../../personal-dashboard-mac-workspace-v2-review-fixes/map.md。后续 gate 已记录真实 packaged 响应式、键盘、History／Settings、周结束与重启证据；本票早期锁屏阻塞不再是当前阻塞。以被后续交付承接的历史票收尾，不声称旧候选的失败运行变成通过。 下方旧状态和未勾选项保留为历史，不代表当前待执行队列。
 Blocked by: 02, 03, 04, 05
 
 ## Goal
@@ -60,3 +62,9 @@ Blocked evidence:
 
 - `PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=responsive scripts/acceptance/macos-ipc-workflow.sh` could not reach the rendered UI because macOS reported that the screen was locked and automatic unlock was unavailable. The source-level acceptance assertions are present, but the final Accessibility run is not claimed as passed.
 - Ticket remains `claimed` until the user unlocks the Mac and the packaged responsive/keyboard scenarios complete.
+
+## Answer
+
+后续命名空间已完成本票交付范围：见 ../../personal-dashboard-mac-workspace-v2-parity-closure/issues/03-integrated-responsive-and-accessibility-parity.md、04-final-packaged-v2-parity-gate.md，以及 ../../personal-dashboard-mac-workspace-v2-review-fixes/map.md。后续 gate 已记录真实 packaged 响应式、键盘、History／Settings、周结束与重启证据；本票早期锁屏阻塞不再是当前阻塞。以被后续交付承接的历史票收尾，不声称旧候选的失败运行变成通过。
+
+本次仅核对并收尾记录，没有重新运行产品测试或修改 App。
