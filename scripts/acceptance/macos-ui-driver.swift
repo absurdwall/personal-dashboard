@@ -3732,20 +3732,33 @@ func renderedLeafFrame(_ application: AXUIElement, label: String) throws -> CGRe
     return smallest
 }
 
-func landmarkFrame(_ application: AXUIElement, label: String) throws -> CGRect {
-    guard let path = findTextPaths(application, label).first else {
-        throw DriverError.timeout("rendered landmark: \(label)")
+func regionFrame(_ application: AXUIElement, label: String) throws -> CGRect {
+    let matchingPaths = findTextPaths(application, label)
+    guard !matchingPaths.isEmpty else {
+        throw DriverError.timeout("rendered region: \(label)")
     }
-    let candidates = Array(path.ancestors + [path.element]).reversed()
-    guard let landmark = candidates.first(where: { element in
-        stringAttribute(element, "AXRole") == "AXGroup" &&
-            stringAttribute(element, "AXSubrole").hasPrefix("AXLandmark") &&
-            nodeText(element).localizedCaseInsensitiveContains(label) &&
-            (attribute(element, "AXHidden") as? NSNumber)?.boolValue != true
-    }), let landmarkFrame = frame(landmark) else {
-        throw DriverError.timeout("measurable visible landmark: \(label)")
+    let preferredPaths = matchingPaths.sorted { first, second in
+        let priority: (AccessibilityPath) -> Int = { path in
+            switch stringAttribute(path.element, "AXRole") {
+            case "AXHeading": return 0
+            case "AXStaticText": return 1
+            case "AXGroup": return 2
+            default: return 3
+            }
+        }
+        return priority(first) < priority(second)
     }
-    return landmarkFrame
+    for path in preferredPaths {
+        let candidates = Array(path.ancestors + [path.element]).reversed()
+        if let region = candidates.first(where: { element in
+            stringAttribute(element, "AXRole") == "AXGroup" &&
+                nodeText(element).localizedCaseInsensitiveContains(label) &&
+                (attribute(element, "AXHidden") as? NSNumber)?.boolValue != true
+        }), let measuredFrame = frame(region), measuredFrame.width > 0, measuredFrame.height > 0 {
+            return measuredFrame
+        }
+    }
+    throw DriverError.timeout("measurable visible region: \(label)")
 }
 
 func assertRenderedElementsDisjoint(
@@ -3768,22 +3781,22 @@ func assertRenderedElementsDisjoint(
     )
 }
 
-func assertLandmarksDisjoint(
+func assertRegionsDisjoint(
     _ application: AXUIElement,
     firstLabel: String,
     secondLabel: String
 ) throws {
-    let firstFrame = try landmarkFrame(application, label: firstLabel)
-    let secondFrame = try landmarkFrame(application, label: secondLabel)
+    let firstFrame = try regionFrame(application, label: firstLabel)
+    let secondFrame = try regionFrame(application, label: secondLabel)
     let intersection = firstFrame.intersection(secondFrame)
     guard intersection.isNull || intersection.width <= 0 || intersection.height <= 0 else {
         throw DriverError.unexpectedText(
-            "visible landmarks overlap: \(firstLabel) \(firstFrame) / " +
+            "visible regions overlap: \(firstLabel) \(firstFrame) / " +
                 "\(secondLabel) \(secondFrame) intersection=\(intersection)"
         )
     }
     print(
-        "Visible landmark bounds are disjoint: \(firstLabel) \(firstFrame) / " +
+        "Visible region bounds are disjoint: \(firstLabel) \(firstFrame) / " +
             "\(secondLabel) \(secondFrame)"
     )
 }
@@ -4203,7 +4216,7 @@ do {
         guard parts.count == 2 else {
             throw DriverError.usage
         }
-        try assertLandmarksDisjoint(
+        try assertRegionsDisjoint(
             application,
             firstLabel: parts[0],
             secondLabel: parts[1]

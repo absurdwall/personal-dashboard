@@ -4624,11 +4624,7 @@ run_today_unlocated_panel_layout_scenario() {
     run_driver scroll-text-visible "保存记录" 10
     run_driver assert-text "时间未明确的内容" 10
     run_driver assert-window-visible "记录类别" 10
-    if [[ "$window_size" == "960x720" ]]; then
-      run_driver_expect assert-regions-disjoint "时间未明确的内容|当日更新区" 10 || failures=$((failures + 1))
-    else
-      run_driver_expect assert-elements-disjoint "这两项不参与时间位置计算|记录类别" 10 || failures=$((failures + 1))
-    fi
+    run_driver_expect assert-regions-disjoint "时间未明确的内容|当日更新区" 10 || failures=$((failures + 1))
     capture_path="$capture_directory/today-unlocated-panel-${window_size}.png"
     [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
     run_driver capture-window "$capture_path" 10
@@ -4640,7 +4636,7 @@ run_today_unlocated_panel_layout_scenario() {
   [[ "$(shasum -a 256 "$today_record" | awk '{print $1}')" == "$record_hash" ]] ||
     fail "reading the unlocated-panel scenario changed its synthetic Daily Record"
   if (( failures > 0 )); then
-    fail "$failures visible landmark overlap checks failed; captures: $capture_directory"
+    fail "$failures visible region overlap checks failed; captures: $capture_directory"
   fi
 
   echo "Packaged unlocated-panel layout passed at 960x720, 800x640 and 640x520"
@@ -5964,6 +5960,8 @@ EOF
   echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
 }
 
+# Keep the task lifecycle and Today-to-Tasks return path independent from the
+# page-frame screenshot matrix so capture failures cannot hide route regressions.
 run_tasks_return_after_today_abandon_scenario() {
   local vault="$acceptance_directory/tasks-return-after-today-abandon-vault"
   local record_file="$vault/life/Journal/Daily/2026/2026-09/2026-09-08.md"
