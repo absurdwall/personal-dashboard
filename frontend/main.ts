@@ -614,11 +614,37 @@ type CollaborationTaskOperation =
   | Readonly<{ operation: "correctCompletion"; taskId: string; completedOn: string; completedTime: string | null }>
   | Readonly<{ operation: "createList"; name: string }>
   | Readonly<{ operation: "renameList"; listId: string; name: string }>
-  | Readonly<{ operation: "archiveList" | "restoreList"; listId: string }>;
+  | Readonly<{ operation: "archiveList" | "restoreList"; listId: string }>
+  | Readonly<{
+      operation: "saveDailyPlan";
+      transition: DailyPlanTransition;
+      arrangement: readonly DailyPlanBlockInput[];
+      evidence: readonly DailyPlanEvidenceInput[];
+      calibrationNote: string | null;
+      event: string | null;
+      originalIntent: string | null;
+      changeReason: string | null;
+      revisedDirection: string | null;
+    }>;
+
+type DailyPlanTransition = "initialPlan" | "morningCalibration" | "daytimeEvent" | "daytimeReplan";
+type DailyPlanBlockInput = Readonly<{ period: string; title: string; detail: string | null }>;
+type DailyPlanEvidenceInput = Readonly<{ label: string; items: readonly string[] }>;
 
 type CollaborationTaskOperationBaseline =
   | Readonly<{ kind: "task"; id: string; name: string; content: string | null; date: string | null; time: string | null; listId: string; listName: string; state: "pending" | "completed" | "abandoned"; deletedAt: string | null; completion: TaskCompletionView | null }>
   | Readonly<{ kind: "list"; id: string; name: string; archived: boolean }>
+  | Readonly<{
+      kind: "dailyRecord";
+      date: string;
+      recordState: string;
+      baselineAvailability: "missing" | "empty" | "saved" | string;
+      morningBaseline: readonly DailyPlanBlockInput[];
+      baselineEvidence: readonly DailyPlanEvidenceInput[];
+      currentArrangement: readonly DailyPlanBlockInput[];
+      currentBasis: readonly DailyPlanEvidenceInput[];
+      revision: string | null;
+    }>
   | Readonly<{ kind: "none" }>;
 
 type CollaborationTaskOperationView = Readonly<{
@@ -648,6 +674,7 @@ type CollaborationSessionView = Readonly<{
   progress: string;
   runtimeThreadId: string | null;
   taskToolAvailable: boolean;
+  dailyPlanToolAvailable: boolean;
   messages: readonly CollaborationMessageView[];
   taskOperations: readonly CollaborationTaskOperationView[];
   draft: string;
@@ -736,6 +763,8 @@ const pendingCollaborationTaskOperationIds = new Set<string>();
 const collaborationTaskActionErrors = new Map<string, string>();
 let taskFocusRequestId: string | null = null;
 let taskReturnToCollaborationSessionId: string | null = null;
+let dailyPlanReturnToCollaborationSessionId: string | null = null;
+let dailyPlanReturnToCollaborationDate: string | null = null;
 let currentCollaborationConnection: CollaborationConnectionView | null = null;
 let collaborationWorkspaceRequest = 0;
 let collaborationConnectionRequest = 0;
@@ -902,6 +931,7 @@ const calendarSummaryHeading = document.querySelector<HTMLElement>("#calendar-su
 const calendarSummaryStatus = document.querySelector<HTMLElement>("#calendar-summary-status");
 const calendarSummaryCopy = document.querySelector<HTMLElement>("#calendar-summary-copy");
 const calendarOpenDay = document.querySelector<HTMLButtonElement>("#calendar-open-day");
+const calendarReturnToCollaborationButton = document.querySelector<HTMLButtonElement>("#calendar-return-to-collaboration");
 const calendarTaskPanel = document.querySelector<HTMLElement>("#calendar-task-panel");
 const calendarTaskStatus = document.querySelector<HTMLElement>("#calendar-task-status");
 const calendarTaskCount = document.querySelector<HTMLElement>("#calendar-task-count");
@@ -1128,6 +1158,7 @@ const todayHandoffHeading = document.querySelector<HTMLElement>("#today-handoff-
 const todayHandoffCopy = document.querySelector<HTMLElement>("#today-handoff-copy");
 const selectTodayVaultButton = document.querySelector<HTMLButtonElement>("#select-today-vault");
 const refreshTodayButton = document.querySelector<HTMLButtonElement>("#refresh-today");
+const todayReturnToCollaborationButton = document.querySelector<HTMLButtonElement>("#today-return-to-collaboration");
 const appShell = document.querySelector<HTMLElement>(".app-shell");
 let currentWorkspaceDestination: WorkspaceDestination = "today";
 let currentAppearance: AppearancePreferences = {
@@ -2208,7 +2239,175 @@ function collaborationTaskBaselineText(
         : t("collaboration.taskListActive"),
     });
   }
+  if (baseline.kind === "dailyRecord") {
+    return collaborationDailyRecordStatusText(baseline);
+  }
   return t("collaboration.taskBaselineNone");
+}
+
+function collaborationDailyRecordStatusText(
+  record: Extract<CollaborationTaskOperationBaseline, { kind: "dailyRecord" }>,
+): string {
+  const state = t(`collaboration.dailyPlanState.${record.recordState}` as InterfaceCopyKey);
+  const availability = t(
+    `collaboration.dailyPlanAvailability.${record.baselineAvailability}` as InterfaceCopyKey,
+  );
+  return t("collaboration.dailyPlanRecordState", {
+    state,
+    availability,
+    revision: record.revision ?? "—",
+  });
+}
+
+function appendDailyPlanBlockList(
+  parent: HTMLElement,
+  headingKey: InterfaceCopyKey,
+  blocks: readonly DailyPlanBlockInput[],
+): void {
+  const section = document.createElement("section");
+  section.className = "collaboration-daily-plan-section";
+  const heading = document.createElement("h5");
+  setCopy(heading, headingKey);
+  section.append(heading);
+  if (blocks.length === 0) {
+    const empty = document.createElement("p");
+    setCopy(empty, "collaboration.dailyPlanNoArrangement");
+    section.append(empty);
+  } else {
+    const list = document.createElement("ul");
+    for (const block of blocks) {
+      const item = document.createElement("li");
+      const title = document.createElement("strong");
+      title.textContent = t("collaboration.dailyPlanPeriodTitle", {
+        period: block.period,
+        title: block.title,
+      });
+      item.append(title);
+      if (block.detail) {
+        const detail = document.createElement("p");
+        detail.textContent = block.detail;
+        item.append(detail);
+      }
+      list.append(item);
+    }
+    section.append(list);
+  }
+  parent.append(section);
+}
+
+function appendDailyPlanEvidence(
+  parent: HTMLElement,
+  headingKey: InterfaceCopyKey,
+  groups: readonly DailyPlanEvidenceInput[],
+): void {
+  const section = document.createElement("section");
+  section.className = "collaboration-daily-plan-section";
+  const heading = document.createElement("h5");
+  setCopy(heading, headingKey);
+  section.append(heading);
+  if (groups.length === 0) {
+    const empty = document.createElement("p");
+    setCopy(empty, "collaboration.dailyPlanNoEvidence");
+    section.append(empty);
+  } else {
+    const list = document.createElement("ul");
+    for (const group of groups) {
+      const item = document.createElement("li");
+      const label = document.createElement("strong");
+      label.textContent = group.label;
+      item.append(label);
+      if (group.items.length > 0) {
+        const items = document.createElement("ul");
+        for (const value of group.items) {
+          const evidence = document.createElement("li");
+          evidence.textContent = value;
+          items.append(evidence);
+        }
+        item.append(items);
+      }
+      list.append(item);
+    }
+    section.append(list);
+  }
+  parent.append(section);
+}
+
+function appendDailyRecordSnapshot(
+  parent: HTMLElement,
+  record: Extract<CollaborationTaskOperationBaseline, { kind: "dailyRecord" }>,
+  headingKey: InterfaceCopyKey,
+): void {
+  const snapshot = document.createElement("section");
+  snapshot.className = "collaboration-daily-plan-snapshot";
+  const heading = document.createElement("h5");
+  setCopy(heading, headingKey);
+  const date = document.createElement("small");
+  date.textContent = `${collaborationDateLabel(record.date)} · ${collaborationDailyRecordStatusText(record)}`;
+  snapshot.append(heading, date);
+  appendDailyPlanBlockList(snapshot, "collaboration.dailyPlanCurrentArrangement", record.currentArrangement);
+  appendDailyPlanEvidence(snapshot, "collaboration.dailyPlanCurrentBasis", record.currentBasis);
+  const preserved = document.createElement("details");
+  preserved.className = "collaboration-daily-plan-preserved";
+  const summary = document.createElement("summary");
+  setCopy(summary, "collaboration.dailyPlanMorningBaseline");
+  preserved.append(summary);
+  appendDailyPlanBlockList(preserved, "collaboration.dailyPlanMorningBaseline", record.morningBaseline);
+  appendDailyPlanEvidence(preserved, "collaboration.dailyPlanBaselineEvidence", record.baselineEvidence);
+  snapshot.append(preserved);
+  parent.append(snapshot);
+}
+
+function appendDailyPlanMetadata(
+  parent: HTMLElement,
+  operation: Extract<CollaborationTaskOperation, { operation: "saveDailyPlan" }>,
+): void {
+  const rows: readonly [InterfaceCopyKey, string | null][] = [
+    ["collaboration.dailyPlanCalibrationNote", operation.calibrationNote],
+    ["collaboration.dailyPlanEvent", operation.event],
+    ["collaboration.dailyPlanOriginalIntent", operation.originalIntent],
+    ["collaboration.dailyPlanChangeReason", operation.changeReason],
+    ["collaboration.dailyPlanRevisedDirection", operation.revisedDirection],
+  ];
+  for (const [labelKey, value] of rows) {
+    if (!value?.trim()) continue;
+    const field = document.createElement("p");
+    field.className = "collaboration-daily-plan-note";
+    const label = document.createElement("strong");
+    setCopy(label, labelKey);
+    const content = document.createElement("span");
+    content.textContent = value;
+    field.append(label, content);
+    parent.append(field);
+  }
+}
+
+function collaborationDailyPlanTransitionText(transition: DailyPlanTransition): string {
+  return t(`collaboration.dailyPlanTransition.${transition}` as InterfaceCopyKey);
+}
+
+function collaborationDailyPlanActionText(
+  operation: Extract<CollaborationTaskOperation, { operation: "saveDailyPlan" }>,
+): string {
+  const transition = collaborationDailyPlanTransitionText(operation.transition);
+  const subject = operation.event ?? operation.revisedDirection ?? operation.originalIntent;
+  return subject ? `${transition} · ${subject}` : transition;
+}
+
+function rememberDailyPlanReturnTarget(session: CollaborationSessionView | null): void {
+  if (!session) return;
+  dailyPlanReturnToCollaborationSessionId = session.id;
+  dailyPlanReturnToCollaborationDate = collaborationTargetDate;
+  collaborationTargetDates.set(session.id, collaborationTargetDate);
+}
+
+function renderDailyPlanReturnNavigation(): void {
+  const visible = Boolean(dailyPlanReturnToCollaborationSessionId);
+  if (todayReturnToCollaborationButton) {
+    todayReturnToCollaborationButton.hidden = !visible || currentWorkspaceDestination !== "today";
+  }
+  if (calendarReturnToCollaborationButton) {
+    calendarReturnToCollaborationButton.hidden = !visible || currentWorkspaceDestination !== "calendar";
+  }
 }
 
 function collaborationTaskOperationText(
@@ -2264,6 +2463,8 @@ function collaborationTaskOperationText(
       return t("collaboration.taskOpArchiveList", { name: currentList?.name ?? operation.listId });
     case "restoreList":
       return t("collaboration.taskOpRestoreList", { name: currentList?.name ?? operation.listId });
+    case "saveDailyPlan":
+      return collaborationDailyPlanActionText(operation);
   }
 }
 
@@ -2273,6 +2474,9 @@ async function runCollaborationTaskOperationAction(
   action: "approve" | "reject" | "refresh" | "reconcile",
 ): Promise<void> {
   if (pendingCollaborationTaskOperationIds.has(operationId)) return;
+  const operationTargetDate = currentCollaborationSession?.taskOperations.find(
+    (operation) => operation.id === operationId,
+  )?.targetDate ?? currentCollaborationSession?.targetDate;
   pendingCollaborationTaskOperationIds.add(operationId);
   renderCollaborationWorkspace();
   const command = {
@@ -2291,7 +2495,7 @@ async function runCollaborationTaskOperationAction(
       cacheCollaborationDrafts(updated);
     }
     collaborationTaskActionErrors.delete(operationId);
-    await refreshTaskContextAfterTaskOperation(sessionId);
+    await refreshCollaborationContextAfterOperation(sessionId, operationTargetDate);
     renderCollaborationWorkspace();
   } catch (error) {
     collaborationTaskActionErrors.set(operationId, String(error));
@@ -2305,34 +2509,40 @@ async function runCollaborationTaskOperationAction(
         // Keep the last saved proposal visible; its exact result can be checked after recovery.
       }
     }
-    await refreshTaskContextAfterTaskOperation(sessionId);
+    await refreshCollaborationContextAfterOperation(sessionId, operationTargetDate);
   } finally {
     pendingCollaborationTaskOperationIds.delete(operationId);
     renderCollaborationWorkspace();
   }
 }
 
-async function refreshTaskContextAfterTaskOperation(sessionId: string): Promise<void> {
+async function refreshCollaborationContextAfterOperation(
+  sessionId: string,
+  targetDate: string | undefined,
+): Promise<void> {
   if (currentCollaborationSession?.id !== sessionId || !currentCollaborationWorkspace) return;
-  const targetDate = currentCollaborationSession.targetDate;
+  const date = targetDate ?? currentCollaborationSession.targetDate;
   try {
     const context = await window.__TAURI__.core.invoke<CollaborationContextView>(
       "collaboration_context",
-      { date: targetDate },
+      { date },
     );
     if (currentCollaborationSession?.id !== sessionId) return;
     currentCollaborationWorkspace = { ...currentCollaborationWorkspace, context };
   } catch (error) {
     const context = currentCollaborationWorkspace.context;
+    const message = `Could not refresh current collaboration context: ${String(error)}`;
     currentCollaborationWorkspace = {
       ...currentCollaborationWorkspace,
       context: {
         ...context,
-        tasks: { state: "error", message: `Could not refresh current Tasks: ${String(error)}`, items: [] },
+        dailyRecord: { state: "error", message, items: [] },
+        tasks: { state: "error", message, items: [] },
         taskRevision: null,
         taskTargetBinding: null,
         taskRecords: [],
         taskLists: [],
+        habits: { state: "error", message, items: [] },
       },
     };
   }
@@ -2341,17 +2551,26 @@ async function refreshTaskContextAfterTaskOperation(sessionId: string): Promise<
 function renderCollaborationTaskOperations(session: CollaborationSessionView | null): void {
   if (collaborationTaskToolNotice) {
     collaborationTaskToolNotice.replaceChildren();
-    const legacyThread = Boolean(session?.runtimeThreadId && !session.taskToolAvailable);
-    collaborationTaskToolNotice.hidden = !legacyThread;
-    if (legacyThread) {
-      const message = document.createElement("span");
-      message.textContent = t("collaboration.legacyTaskToolNotice");
+    const legacyTasks = Boolean(session?.runtimeThreadId && !session.taskToolAvailable);
+    const legacyDailyPlan = Boolean(session?.runtimeThreadId && session.dailyPlanToolAvailable !== true);
+    collaborationTaskToolNotice.hidden = !(legacyTasks || legacyDailyPlan);
+    if (legacyTasks || legacyDailyPlan) {
+      if (legacyTasks) {
+        const message = document.createElement("span");
+        message.textContent = t("collaboration.legacyTaskToolNotice");
+        collaborationTaskToolNotice.append(message);
+      }
+      if (legacyDailyPlan) {
+        const message = document.createElement("span");
+        message.textContent = t("collaboration.legacyDailyPlanNotice");
+        collaborationTaskToolNotice.append(message);
+      }
       const newChat = document.createElement("button");
       newChat.type = "button";
       newChat.className = "text-button";
       setCopy(newChat, "collaboration.newSession");
       newChat.addEventListener("click", () => void createCollaborationSession());
-      collaborationTaskToolNotice.append(message, newChat);
+      collaborationTaskToolNotice.append(newChat);
     }
   }
   if (!collaborationTaskOperations) return;
@@ -2366,27 +2585,42 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
   }
   for (const operation of operations) {
     const card = document.createElement("article");
-    card.className = "collaboration-task-operation";
+    const plan = operation.operation.operation === "saveDailyPlan"
+      ? operation.operation
+      : null;
+    card.className = plan
+      ? "collaboration-task-operation collaboration-daily-plan-operation"
+      : "collaboration-task-operation";
     card.dataset.state = operation.status;
     const heading = document.createElement("header");
     const title = document.createElement("strong");
-    title.textContent = t("collaboration.taskProposal");
+    title.textContent = t(plan ? "collaboration.dailyPlanProposal" : "collaboration.taskProposal");
     const status = document.createElement("span");
     status.className = "collaboration-task-operation-status";
     setCopy(status, `collaboration.taskOperationStatus.${operation.status}` as InterfaceCopyKey);
     heading.append(title, status);
     const target = document.createElement("small");
-    target.textContent = t("collaboration.taskOperationTargetDate", {
+    target.textContent = t(plan ? "collaboration.dailyPlanTargetDate" : "collaboration.taskOperationTargetDate", {
       date: collaborationDateLabel(operation.targetDate),
     });
-    const baseline = document.createElement("p");
-    baseline.textContent = collaborationTaskBaselineText(operation.baseline);
     const proposed = document.createElement("p");
     proposed.className = "collaboration-task-operation-proposal";
     proposed.textContent = t("collaboration.taskOperationProposed", {
       action: collaborationTaskOperationText(operation.operation, operation.baseline),
     });
-    card.append(heading, target, baseline, proposed);
+    card.append(heading, target, proposed);
+    if (plan) {
+      if (operation.baseline.kind === "dailyRecord") {
+        appendDailyRecordSnapshot(card, operation.baseline, "collaboration.dailyPlanBaselineSnapshot");
+      }
+      appendDailyPlanBlockList(card, "collaboration.dailyPlanArrangement", plan.arrangement);
+      appendDailyPlanEvidence(card, "collaboration.dailyPlanEvidence", plan.evidence);
+      appendDailyPlanMetadata(card, plan);
+    } else {
+      const baseline = document.createElement("p");
+      baseline.textContent = collaborationTaskBaselineText(operation.baseline);
+      card.append(baseline);
+    }
     if (operation.operation.operation === "archiveList") {
       const note = document.createElement("small");
       note.textContent = t("collaboration.taskArchiveSemantics");
@@ -2396,7 +2630,7 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       const result = document.createElement("p");
       result.className = "collaboration-task-operation-result";
       result.textContent = operation.status === "applied"
-        ? t("collaboration.taskResultSaved")
+        ? t(plan ? "collaboration.dailyPlanResultSaved" : "collaboration.taskResultSaved")
         : operation.resultMessage;
       card.append(result);
     }
@@ -2406,17 +2640,21 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       error.className = "collaboration-task-operation-error";
       error.setAttribute("role", "alert");
       error.textContent = actionError.includes("was saved")
-        ? t("collaboration.taskWriteNeedsCheck")
+        ? t(plan ? "collaboration.dailyPlanWriteNeedsCheck" : "collaboration.taskWriteNeedsCheck")
         : actionError;
       card.append(error);
     }
     if (operation.resultSnapshot) {
-      const saved = document.createElement("p");
-      saved.className = "collaboration-task-operation-snapshot";
-      saved.textContent = t("collaboration.taskSavedValue", {
-        value: collaborationTaskBaselineText(operation.resultSnapshot),
-      });
-      card.append(saved);
+      if (plan && operation.resultSnapshot.kind === "dailyRecord") {
+        appendDailyRecordSnapshot(card, operation.resultSnapshot, "collaboration.dailyPlanSavedSnapshot");
+      } else {
+        const saved = document.createElement("p");
+        saved.className = "collaboration-task-operation-snapshot";
+        saved.textContent = t("collaboration.taskSavedValue", {
+          value: collaborationTaskBaselineText(operation.resultSnapshot),
+        });
+        card.append(saved);
+      }
     }
     const actions = document.createElement("div");
     actions.className = "collaboration-task-operation-actions";
@@ -2449,6 +2687,25 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       addAction("reconcile", "collaboration.taskCheckResult");
       addAction("refresh", "collaboration.taskRefreshReview");
       addAction("reject", "collaboration.taskDismiss");
+    } else if (operation.status === "applied" && plan) {
+      const openToday = document.createElement("button");
+      openToday.type = "button";
+      openToday.className = "secondary-button";
+      setCopy(openToday, "collaboration.openDailyPlanToday");
+      openToday.addEventListener("click", () => {
+        rememberDailyPlanReturnTarget(session);
+        showWorkspaceDestination("today", true, operation.targetDate);
+      });
+      const openCalendar = document.createElement("button");
+      openCalendar.type = "button";
+      openCalendar.className = "secondary-button";
+      setCopy(openCalendar, "collaboration.openDailyPlanCalendar");
+      openCalendar.addEventListener("click", () => {
+        rememberDailyPlanReturnTarget(session);
+        selectedCalendarDate = operation.targetDate;
+        showWorkspaceDestination("calendar", true);
+      });
+      actions.append(openToday, openCalendar);
     } else if (operation.status === "applied" && operation.taskId) {
       const open = document.createElement("button");
       open.type = "button";
@@ -2998,6 +3255,43 @@ async function returnToCollaborationFromTask(): Promise<void> {
     }
   } finally {
     if (taskReturnToCollaborationButton) taskReturnToCollaborationButton.disabled = false;
+  }
+}
+
+async function returnToCollaborationFromDailyRecord(): Promise<void> {
+  const sessionId = dailyPlanReturnToCollaborationSessionId;
+  if (!sessionId) return;
+  if (todayReturnToCollaborationButton) todayReturnToCollaborationButton.disabled = true;
+  if (calendarReturnToCollaborationButton) calendarReturnToCollaborationButton.disabled = true;
+  try {
+    const session = currentCollaborationSession?.id === sessionId
+      ? currentCollaborationSession
+      : await window.__TAURI__.core.invoke<CollaborationSessionView>(
+        "collaboration_session",
+        { sessionId },
+      );
+    const targetDate = dailyPlanReturnToCollaborationDate ?? session.targetDate;
+    currentCollaborationSession = session;
+    cacheCollaborationDrafts(session);
+    collaborationTargetDates.set(session.id, targetDate);
+    collaborationActivityDate = targetDate;
+    collaborationTargetDate = targetDate;
+    if (collaborationDateInput) collaborationDateInput.value = targetDate;
+    if (collaborationTargetDateInput) collaborationTargetDateInput.value = targetDate;
+    dailyPlanReturnToCollaborationSessionId = null;
+    dailyPlanReturnToCollaborationDate = null;
+    showWorkspaceDestination("collaboration");
+    renderCollaborationWorkspace();
+    window.requestAnimationFrame(() => collaborationMessageDraft?.focus());
+  } catch (error) {
+    const status = currentWorkspaceDestination === "calendar" ? calendarStatus : todayStatus;
+    if (status) {
+      setRawText(status, String(error));
+      status.dataset.state = "error";
+    }
+  } finally {
+    if (todayReturnToCollaborationButton) todayReturnToCollaborationButton.disabled = false;
+    if (calendarReturnToCollaborationButton) calendarReturnToCollaborationButton.disabled = false;
   }
 }
 
@@ -5065,6 +5359,50 @@ function renderCalendarSummary(view: TodayView): void {
     setCopy(detail, "calendar.unknownBoundary");
   }
   calendarSummaryCopy.replaceChildren(heading, copy, detail);
+  if (view.state === "ready" || view.state === "missing") {
+    const plan = document.createElement("section");
+    plan.className = "calendar-daily-plan-preview";
+    const planHeading = document.createElement("h4");
+    setCopy(planHeading, "calendar.dailyPlanPreview");
+    plan.append(planHeading);
+    if (view.timeline.length === 0) {
+      const empty = document.createElement("p");
+      setCopy(empty, "calendar.dailyPlanPreviewEmpty");
+      plan.append(empty);
+    } else {
+      const blocks = document.createElement("ol");
+      for (const block of view.timeline) {
+        const item = document.createElement("li");
+        const title = document.createElement("strong");
+        title.textContent = t("collaboration.dailyPlanPeriodTitle", {
+          period: block.period,
+          title: block.title,
+        });
+        item.append(title);
+        if (block.detail) {
+          const detail = document.createElement("p");
+          detail.textContent = block.detail;
+          item.append(detail);
+        }
+        blocks.append(item);
+      }
+      plan.append(blocks);
+    }
+    if (view.evidence.length > 0) {
+      const evidenceHeading = document.createElement("h5");
+      setCopy(evidenceHeading, "collaboration.dailyPlanCurrentBasis");
+      const evidence = document.createElement("ul");
+      for (const group of view.evidence) {
+        const item = document.createElement("li");
+        item.textContent = group.items.length > 0
+          ? `${group.label}: ${group.items.join(" · ")}`
+          : group.label;
+        evidence.append(item);
+      }
+      plan.append(evidenceHeading, evidence);
+    }
+    calendarSummaryCopy.append(plan);
+  }
 }
 
 function renderCalendarTasks(view: TodayView): void {
@@ -8445,6 +8783,7 @@ function showWorkspaceDestination(
     }
   }
   currentWorkspaceDestination = destination;
+  renderDailyPlanReturnNavigation();
   appShell?.setAttribute("data-workspace-destination", destination);
   const details = workspaceDestinationDetails[destination];
   renderWorkspaceNavigationLanguage(focus);
@@ -9025,6 +9364,14 @@ document.addEventListener("click", (event) => {
 
 taskReturnToCollaborationButton?.addEventListener("click", () => {
   void returnToCollaborationFromTask();
+});
+
+todayReturnToCollaborationButton?.addEventListener("click", () => {
+  void returnToCollaborationFromDailyRecord();
+});
+
+calendarReturnToCollaborationButton?.addEventListener("click", () => {
+  void returnToCollaborationFromDailyRecord();
 });
 
 tasksDestination?.addEventListener("submit", (event) => {

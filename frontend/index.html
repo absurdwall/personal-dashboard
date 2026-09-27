@@ -321,7 +321,7 @@
                     </div>
                     <p id="collaboration-voice-status" class="collaboration-voice-status" role="status" aria-live="polite"></p>
                     <div class="collaboration-composer-footer">
-                      <p data-i18n="collaboration.readOnlyBoundary">Codex may propose exact Task changes. They are not saved until you approve them below. Daily Records, habits, Vaults, and settings remain unchanged.</p>
+                      <p data-i18n="collaboration.readOnlyBoundary">Codex may propose Task changes or structured Daily Record plan changes. Nothing is saved until you approve the exact proposal below. Habits, Vaults, and settings remain unchanged.</p>
                       <button id="collaboration-send-message" type="submit" data-i18n="collaboration.send" disabled>Send</button>
                     </div>
                   </form>
@@ -337,7 +337,7 @@
                   <input id="collaboration-target-date" type="date" aria-label="Target record date" data-i18n-aria-label="collaboration.targetDate" />
                   <p id="collaboration-context-vault" class="collaboration-vault-label" data-i18n="settings.noVault">No Vault selected.</p>
                   <section class="collaboration-context-card collaboration-task-operations-card" aria-labelledby="collaboration-task-operations-heading">
-                    <h4 id="collaboration-task-operations-heading" data-i18n="collaboration.taskOperationsHeading">Task changes</h4>
+                    <h4 id="collaboration-task-operations-heading" data-i18n="collaboration.taskOperationsHeading">Work proposals</h4>
                     <div id="collaboration-task-operations" aria-live="polite"></div>
                   </section>
                   <div id="collaboration-context-panes" class="collaboration-context-panes">
@@ -541,6 +541,7 @@
                     <strong data-i18n="calendar.chooseDay">选择月历中的一天</strong>
                     <p data-i18n="calendar.previewThenOpen">先预览是否有记录与复盘，再打开完整 Today。</p>
                   </div>
+                  <button id="calendar-return-to-collaboration" type="button" class="secondary-button" data-i18n="collaboration.returnToConversation" hidden>返回协作会话</button>
                   <button id="calendar-open-day" type="button" class="calendar-open-day" disabled>
                     <span data-i18n="calendar.openFullToday">打开完整 Today</span> <span aria-hidden="true">↗</span>
                   </button>
@@ -608,6 +609,7 @@
                 <div class="today-page-header-meta">
                   <p id="today-date" class="today-page-date">Today</p>
                   <div class="today-actions" aria-label="Today 操作" data-i18n-aria-label="today.actions">
+                    <button id="today-return-to-collaboration" type="button" class="secondary-button" data-i18n="collaboration.returnToConversation" hidden>返回协作会话</button>
                     <button id="select-today-vault" type="button" class="secondary-button" data-i18n="today.selectVault">
                       选择 Vault…
                     </button>

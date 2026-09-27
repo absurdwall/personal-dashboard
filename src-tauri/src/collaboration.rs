@@ -7,8 +7,9 @@ use crate::tasks::{
     TaskListRestoreInput, TaskRestoreInput, TaskState, TaskStateInput, TaskUpdateInput, TasksView,
 };
 use crate::today::{
-    TodayApplication, TodayClock, TodayState, TodayView, TodayWorkspaceExchange,
-    TodayWorkspacePersistence,
+    daily_plan_effect_fingerprint, BaselineAvailability, DailyPlanBlockInput,
+    DailyPlanEvidenceInput, DailyPlanTransition, DailyPlanWriteInput, TodayApplication, TodayClock,
+    TodayState, TodayView, TodayWorkspaceExchange, TodayWorkspacePersistence,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -109,6 +110,7 @@ pub struct CollaborationSessionView {
     pub progress: String,
     pub runtime_thread_id: Option<String>,
     pub task_tool_available: bool,
+    pub daily_plan_tool_available: bool,
     pub messages: Vec<CollaborationMessageView>,
     pub task_operations: Vec<CollaborationTaskOperationView>,
     pub draft: String,
@@ -171,6 +173,16 @@ pub enum CollaborationTaskOperation {
     RestoreList {
         list_id: String,
     },
+    SaveDailyPlan {
+        transition: DailyPlanTransition,
+        arrangement: Vec<DailyPlanBlockInput>,
+        evidence: Vec<DailyPlanEvidenceInput>,
+        calibration_note: Option<String>,
+        event: Option<String>,
+        original_intent: Option<String>,
+        change_reason: Option<String>,
+        revised_direction: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -197,6 +209,16 @@ pub enum CollaborationTaskOperationBaseline {
         id: String,
         name: String,
         archived: bool,
+    },
+    DailyRecord {
+        date: String,
+        record_state: String,
+        baseline_availability: String,
+        morning_baseline: Vec<DailyPlanBlockInput>,
+        baseline_evidence: Vec<DailyPlanEvidenceInput>,
+        current_arrangement: Vec<DailyPlanBlockInput>,
+        current_basis: Vec<DailyPlanEvidenceInput>,
+        revision: Option<String>,
     },
     None,
 }
@@ -237,6 +259,8 @@ pub struct StoredCollaborationTaskOperation {
     result_message: Option<String>,
     result_snapshot: Option<CollaborationTaskOperationBaseline>,
     result_revision: Option<String>,
+    #[serde(default)]
+    effect_fingerprint: Option<String>,
     task_id: Option<String>,
     list_id: Option<String>,
     created_at: String,
@@ -434,7 +458,91 @@ where
                     list_id: list_id.clone(),
                 })
             }
+            CollaborationTaskOperation::SaveDailyPlan { .. } => {
+                Err("A Daily Record plan must be applied through its dedicated service.".into())
+            }
         }
+    }
+}
+
+pub trait CollaborationDailyPlanService: Send + Sync {
+    fn is_available(&self) -> bool {
+        true
+    }
+    fn read_date(&self, date: &str) -> Result<TodayView, String>;
+    fn save(&self, input: DailyPlanWriteInput) -> Result<TodayView, String>;
+    fn operation_applied(
+        &self,
+        date: &str,
+        target_binding: &str,
+        operation_id: &str,
+        effect_fingerprint: &str,
+    ) -> Result<bool, String>;
+}
+
+struct UnavailableCollaborationDailyPlanService;
+
+impl CollaborationDailyPlanService for UnavailableCollaborationDailyPlanService {
+    fn is_available(&self) -> bool {
+        false
+    }
+
+    fn read_date(&self, _date: &str) -> Result<TodayView, String> {
+        Err("Daily Record plan operations are unavailable in this collaboration adapter.".into())
+    }
+
+    fn save(&self, _input: DailyPlanWriteInput) -> Result<TodayView, String> {
+        Err("Daily Record plan operations are unavailable in this collaboration adapter.".into())
+    }
+
+    fn operation_applied(
+        &self,
+        _date: &str,
+        _target_binding: &str,
+        _operation_id: &str,
+        _effect_fingerprint: &str,
+    ) -> Result<bool, String> {
+        Err("Daily Record plan operations are unavailable in this collaboration adapter.".into())
+    }
+}
+
+pub struct TodayApplicationCollaborationPlanAdapter<P, E, C> {
+    application: TodayApplication<P, E, C>,
+}
+
+impl<P, E, C> TodayApplicationCollaborationPlanAdapter<P, E, C> {
+    pub fn new(application: TodayApplication<P, E, C>) -> Self {
+        Self { application }
+    }
+}
+
+impl<P, E, C> CollaborationDailyPlanService for TodayApplicationCollaborationPlanAdapter<P, E, C>
+where
+    P: TodayWorkspacePersistence + Send + Sync,
+    E: TodayWorkspaceExchange + Send + Sync,
+    C: TodayClock + Send + Sync,
+{
+    fn read_date(&self, date: &str) -> Result<TodayView, String> {
+        self.application.read_date(date)
+    }
+
+    fn save(&self, input: DailyPlanWriteInput) -> Result<TodayView, String> {
+        self.application.save_daily_plan(input)
+    }
+
+    fn operation_applied(
+        &self,
+        date: &str,
+        target_binding: &str,
+        operation_id: &str,
+        effect_fingerprint: &str,
+    ) -> Result<bool, String> {
+        self.application.daily_plan_operation_applied(
+            date,
+            target_binding,
+            operation_id,
+            effect_fingerprint,
+        )
     }
 }
 
@@ -716,6 +824,8 @@ pub struct StoredCollaborationSession {
     pub runtime_thread_id: Option<String>,
     #[serde(default)]
     pub task_tool_registered: bool,
+    #[serde(default)]
+    pub daily_plan_tool_registered: bool,
     pub messages: Vec<StoredCollaborationMessage>,
     #[serde(default)]
     pub task_operations: Vec<StoredCollaborationTaskOperation>,
@@ -854,6 +964,7 @@ pub struct CollaborationApplication {
     runtime: Arc<Mutex<Box<dyn AppServerTransport>>>,
     context_source: Arc<dyn CollaborationContextSource>,
     task_service: Arc<dyn CollaborationTaskService>,
+    daily_plan_service: Arc<dyn CollaborationDailyPlanService>,
     clock: Arc<dyn CollaborationClock>,
     working_directory: PathBuf,
     skill_instructions: Arc<str>,
@@ -889,6 +1000,7 @@ impl CollaborationApplication {
             runtime: Arc::new(Mutex::new(runtime)),
             context_source,
             task_service: Arc::new(UnavailableCollaborationTaskService),
+            daily_plan_service: Arc::new(UnavailableCollaborationDailyPlanService),
             clock,
             working_directory,
             skill_instructions: Arc::from(skill_instructions),
@@ -907,12 +1019,27 @@ impl CollaborationApplication {
         self
     }
 
+    pub fn with_daily_plan_service(
+        mut self,
+        daily_plan_service: Arc<dyn CollaborationDailyPlanService>,
+    ) -> Self {
+        self.daily_plan_service = daily_plan_service;
+        self
+    }
+
     pub fn new_local(app_data_dir: PathBuf, workspace_file: PathBuf) -> Self {
         let task_service = Arc::new(TaskApplicationCollaborationAdapter::new(
             TaskApplication::new(
                 FileTodayWorkspacePersistence::new(workspace_file.clone()),
                 SystemClock,
                 FileTaskStore,
+            ),
+        ));
+        let daily_plan_service = Arc::new(TodayApplicationCollaborationPlanAdapter::new(
+            TodayApplication::new(
+                FileTodayWorkspacePersistence::new(workspace_file.clone()),
+                NoVaultPicker,
+                SystemClock,
             ),
         ));
         Self::with_adapters(
@@ -928,6 +1055,7 @@ impl CollaborationApplication {
             COLLABORATION_SKILL.to_owned(),
         )
         .with_task_service(task_service)
+        .with_daily_plan_service(daily_plan_service)
     }
 
     pub fn connection(&self) -> RuntimeConnectionView {
@@ -1092,6 +1220,7 @@ impl CollaborationApplication {
             progress: "Waiting for a message.".into(),
             runtime_thread_id: None,
             task_tool_registered: false,
+            daily_plan_tool_registered: false,
             messages: Vec::new(),
             task_operations: Vec::new(),
             draft: String::new(),
@@ -1194,6 +1323,17 @@ impl CollaborationApplication {
                 "The selected Vault changed. Return to the original session before approving this task change.".into(),
             );
         }
+        if matches!(
+            &proposal.operation,
+            CollaborationTaskOperation::SaveDailyPlan { .. }
+        ) {
+            return self.approve_daily_plan_operation(
+                &vault_key,
+                session_id,
+                operation_id,
+                &proposal,
+            );
+        }
         let current = self.task_service.read()?;
         require_task_view_writable(&current)?;
         if current.target_binding.as_deref() != Some(&proposal.target_binding)
@@ -1281,6 +1421,140 @@ impl CollaborationApplication {
         }
     }
 
+    fn approve_daily_plan_operation(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        operation_id: &str,
+        proposal: &StoredCollaborationTaskOperation,
+    ) -> Result<CollaborationSessionView, String> {
+        if !self.daily_plan_service.is_available() {
+            return Err("Daily Record plan operations are unavailable in this session.".into());
+        }
+        let current = self.daily_plan_service.read_date(&proposal.target_date)?;
+        require_daily_record_view_writable(&current, &proposal.target_date)?;
+        if current.target_binding.as_deref() != Some(&proposal.target_binding)
+            || current.revision != proposal.expected_revision
+        {
+            return self.record_task_operation_conflict(
+                vault_key,
+                session_id,
+                operation_id,
+                "Daily Record changed after this plan was prepared. Refresh and review the current arrangement before approving again.".into(),
+            );
+        }
+        if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+            return Err(
+                "The selected Vault changed before this plan could be saved. No change was made."
+                    .into(),
+            );
+        }
+        let input = daily_plan_write_input(proposal)?;
+        match self.daily_plan_service.save(input) {
+            Ok(saved_view) => {
+                let still_selected =
+                    self.context_source.current_vault_key()?.as_deref() == Some(vault_key);
+                let result_message = if still_selected {
+                    Some(daily_plan_operation_saved_message(proposal, &saved_view))
+                } else {
+                    Some("Saved in the original Vault. The selected Vault has changed; reopen the original session to review it.".into())
+                };
+                let now = self.clock.current_timestamp();
+                self.update_state(|state| {
+                    let session = matching_session_mut(state, vault_key, session_id)?;
+                    let stored = session
+                        .task_operations
+                        .iter_mut()
+                        .find(|stored| stored.id == operation_id)
+                        .ok_or_else(|| "This plan proposal is no longer available.".to_string())?;
+                    if stored.status != "applied" {
+                        stored.status = "applied".into();
+                        stored.result_message = result_message.clone();
+                        stored.result_snapshot = still_selected
+                            .then(|| daily_plan_operation_result_snapshot(proposal, &saved_view));
+                        stored.result_revision = still_selected.then(|| saved_view.revision.clone()).flatten();
+                        stored.updated_at = now.clone();
+                    }
+                    Ok(session_view(session))
+                })
+                .map_err(|error| format!(
+                    "The plan was saved, but its result could not be saved to collaboration history: {error}. Use Check saved result to reconcile before retrying."
+                ))
+            }
+            Err(error) => {
+                let fingerprint = proposal.effect_fingerprint.as_deref().unwrap_or_default();
+                let applied = self
+                    .daily_plan_service
+                    .operation_applied(
+                        &proposal.target_date,
+                        &proposal.target_binding,
+                        &proposal.operation_id,
+                        fingerprint,
+                    )
+                    .unwrap_or(false);
+                if applied {
+                    let saved_view = self.daily_plan_service.read_date(&proposal.target_date)?;
+                    return self.mark_daily_plan_operation_applied(
+                        vault_key,
+                        session_id,
+                        operation_id,
+                        proposal,
+                        &saved_view,
+                        "The Daily Record receipt confirms this plan was saved despite an interrupted response.",
+                    );
+                }
+                let latest = self
+                    .daily_plan_service
+                    .read_date(&proposal.target_date)
+                    .ok();
+                let is_conflict = latest.as_ref().is_some_and(|view| {
+                    view.target_binding.as_deref() != Some(&proposal.target_binding)
+                        || view.revision != proposal.expected_revision
+                });
+                if is_conflict {
+                    self.record_task_operation_conflict(
+                        vault_key,
+                        session_id,
+                        operation_id,
+                        "Daily Record changed while this plan was being saved. Refresh and review the current arrangement before approving again.".into(),
+                    )
+                } else {
+                    self.record_task_operation_failure(vault_key, session_id, operation_id, error)
+                }
+            }
+        }
+    }
+
+    fn mark_daily_plan_operation_applied(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        operation_id: &str,
+        proposal: &StoredCollaborationTaskOperation,
+        saved_view: &TodayView,
+        prefix: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        let now = self.clock.current_timestamp();
+        self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            let stored = session
+                .task_operations
+                .iter_mut()
+                .find(|stored| stored.id == operation_id)
+                .ok_or_else(|| "This plan proposal is no longer available.".to_string())?;
+            stored.status = "applied".into();
+            stored.result_message = Some(format!(
+                "{prefix} {}",
+                daily_plan_operation_saved_message(proposal, saved_view)
+            ));
+            stored.result_snapshot =
+                Some(daily_plan_operation_result_snapshot(proposal, saved_view));
+            stored.result_revision = saved_view.revision.clone();
+            stored.updated_at = now.clone();
+            Ok(session_view(session))
+        })
+    }
+
     pub fn reject_task_operation_for_selected_vault(
         &self,
         session_id: &str,
@@ -1320,6 +1594,17 @@ impl CollaborationApplication {
             || self.context_source.current_vault_key()?.as_deref() != Some(&vault_key)
         {
             return Err("The selected Vault changed. No task data was read or changed.".into());
+        }
+        if matches!(
+            &proposal.operation,
+            CollaborationTaskOperation::SaveDailyPlan { .. }
+        ) {
+            return self.reject_daily_plan_operation(
+                &vault_key,
+                session_id,
+                operation_id,
+                &proposal,
+            );
         }
         let latest = self.task_service.read()?;
         require_task_view_writable(&latest)?;
@@ -1362,6 +1647,45 @@ impl CollaborationApplication {
         })
     }
 
+    fn reject_daily_plan_operation(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        operation_id: &str,
+        proposal: &StoredCollaborationTaskOperation,
+    ) -> Result<CollaborationSessionView, String> {
+        let latest = self.daily_plan_service.read_date(&proposal.target_date)?;
+        require_daily_record_view_writable(&latest, &proposal.target_date)?;
+        if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+            return Err(
+                "The selected Vault changed while the plan decision was being checked.".into(),
+            );
+        }
+        if latest.target_binding.as_deref() != Some(&proposal.target_binding)
+            || latest.revision != proposal.expected_revision
+        {
+            return self.reconcile_task_operation_for_selected_vault(session_id, operation_id);
+        }
+        let now = self.clock.current_timestamp();
+        self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            let stored = session
+                .task_operations
+                .iter_mut()
+                .find(|stored| stored.id == operation_id)
+                .ok_or_else(|| "This plan proposal is no longer available.".to_string())?;
+            if stored.status == "applied" {
+                return Err("This plan was already saved and cannot be dismissed.".into());
+            }
+            stored.status = "rejected".into();
+            stored.result_message =
+                Some("Dismissed. No Daily Record or Tasks data was changed.".into());
+            stored.result_snapshot = None;
+            stored.updated_at = now.clone();
+            Ok(session_view(session))
+        })
+    }
+
     pub fn refresh_task_operation_for_selected_vault(
         &self,
         session_id: &str,
@@ -1394,6 +1718,17 @@ impl CollaborationApplication {
         if proposal.vault_key != vault_key {
             return Err("The selected Vault changed. No task data was read or changed.".into());
         }
+        if matches!(
+            &proposal.operation,
+            CollaborationTaskOperation::SaveDailyPlan { .. }
+        ) {
+            return self.refresh_daily_plan_operation(
+                &vault_key,
+                session_id,
+                operation_id,
+                &proposal,
+            );
+        }
         let latest = self.task_service.read()?;
         require_task_view_writable(&latest)?;
         if self.context_source.current_vault_key()?.as_deref() != Some(&vault_key) {
@@ -1418,6 +1753,45 @@ impl CollaborationApplication {
             stored.result_message = Some(
                 "Latest Tasks data loaded. Review this proposal and approve again to save it."
                     .into(),
+            );
+            stored.result_snapshot = None;
+            stored.result_revision = None;
+            stored.updated_at = now.clone();
+            Ok(session_view(session))
+        })
+    }
+
+    fn refresh_daily_plan_operation(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        operation_id: &str,
+        proposal: &StoredCollaborationTaskOperation,
+    ) -> Result<CollaborationSessionView, String> {
+        let latest = self.daily_plan_service.read_date(&proposal.target_date)?;
+        require_daily_record_view_writable(&latest, &proposal.target_date)?;
+        if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+            return Err(
+                "The selected Vault changed while the Daily Record was being refreshed.".into(),
+            );
+        }
+        if latest.target_binding.as_deref() != Some(&proposal.target_binding) {
+            return Err("The Daily Record is now bound to a different Vault target. This proposal cannot be refreshed across Vaults.".into());
+        }
+        let baseline = daily_record_operation_baseline(&proposal.target_date, &latest);
+        let now = self.clock.current_timestamp();
+        self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            let stored = session
+                .task_operations
+                .iter_mut()
+                .find(|stored| stored.id == operation_id)
+                .ok_or_else(|| "This plan proposal is no longer available.".to_string())?;
+            stored.expected_revision = latest.revision.clone();
+            stored.baseline = baseline.clone();
+            stored.status = "awaitingApproval".into();
+            stored.result_message = Some(
+                "Latest Daily Record loaded. Review the current plan proposal and approve again to save it.".into(),
             );
             stored.result_snapshot = None;
             stored.result_revision = None;
@@ -1460,6 +1834,17 @@ impl CollaborationApplication {
             )
         {
             return Err("This task change cannot be reconciled in the selected Vault.".into());
+        }
+        if matches!(
+            &proposal.operation,
+            CollaborationTaskOperation::SaveDailyPlan { .. }
+        ) {
+            return self.reconcile_daily_plan_operation(
+                &vault_key,
+                session_id,
+                operation_id,
+                &proposal,
+            );
         }
         let latest = self.task_service.read()?;
         require_task_view_writable(&latest)?;
@@ -1507,6 +1892,53 @@ impl CollaborationApplication {
         })
     }
 
+    fn reconcile_daily_plan_operation(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        operation_id: &str,
+        proposal: &StoredCollaborationTaskOperation,
+    ) -> Result<CollaborationSessionView, String> {
+        let latest = self.daily_plan_service.read_date(&proposal.target_date)?;
+        require_daily_record_view_writable(&latest, &proposal.target_date)?;
+        if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+            return Err(
+                "The selected Vault changed while the saved plan result was being checked.".into(),
+            );
+        }
+        if latest.target_binding.as_deref() != Some(&proposal.target_binding) {
+            return Err("Daily Record is now bound to a different date or Vault target. The saved plan was not reconciled.".into());
+        }
+        let fingerprint = proposal
+            .effect_fingerprint
+            .as_deref()
+            .ok_or_else(|| "This plan proposal has no saved result fingerprint.".to_string())?;
+        if self.daily_plan_service.operation_applied(
+            &proposal.target_date,
+            &proposal.target_binding,
+            &proposal.operation_id,
+            fingerprint,
+        )? {
+            return self.mark_daily_plan_operation_applied(
+                vault_key,
+                session_id,
+                operation_id,
+                proposal,
+                &latest,
+                "The Daily Record receipt confirms that this exact plan was already saved.",
+            );
+        }
+        if latest.revision == proposal.expected_revision {
+            return self.session(vault_key, session_id);
+        }
+        self.record_task_operation_conflict(
+            vault_key,
+            session_id,
+            operation_id,
+            "Daily Record has a newer version, but it does not confirm this exact plan was saved. Refresh and review the current arrangement before approving again.".into(),
+        )
+    }
+
     fn handle_runtime_task_tool_call(
         &self,
         vault_key: &str,
@@ -1514,6 +1946,7 @@ impl CollaborationApplication {
         execution_id: &str,
         expected_thread_id: &str,
         target_date: &str,
+        daily_plan_tool_registered: bool,
         call: RuntimeDynamicToolCall,
     ) -> RuntimeDynamicToolResult {
         if call.tool != COLLABORATION_TASK_TOOL {
@@ -1533,7 +1966,7 @@ impl CollaborationApplication {
         }
         if let Err(error) = validate_task_operation_required_fields(&call.arguments) {
             return RuntimeDynamicToolResult {
-                text: format!("The proposed task action was incomplete or invalid: {error}. No task was changed."),
+                text: format!("The proposed Dashboard action was incomplete or invalid: {error}. No data was changed."),
                 success: false,
             };
         }
@@ -1541,11 +1974,19 @@ impl CollaborationApplication {
             Ok(operation) => operation,
             Err(error) => {
                 return RuntimeDynamicToolResult {
-                    text: format!("The proposed task action was incomplete or invalid: {error}. No task was changed."),
+                    text: format!("The proposed Dashboard action was incomplete or invalid: {error}. No data was changed."),
                     success: false,
                 }
             }
         };
+        if matches!(&operation, CollaborationTaskOperation::SaveDailyPlan { .. })
+            && !daily_plan_tool_registered
+        {
+            return RuntimeDynamicToolResult {
+                text: "This saved conversation has an older proposal-tool schema. Start a new Dashboard chat to prepare Daily Record plans; existing Task proposals remain available here.".into(),
+                success: false,
+            };
+        }
         match self.propose_task_operation(
             vault_key,
             session_id,
@@ -1557,10 +1998,14 @@ impl CollaborationApplication {
             operation,
         ) {
             Ok(proposal) => RuntimeDynamicToolResult {
-                text: format!(
-                    "Task operation {} is saved for user review. It has not changed Tasks. The user must explicitly approve this exact action in Personal Dashboard.",
-                    proposal.id
-                ),
+                text: if matches!(
+                    &proposal.operation,
+                    CollaborationTaskOperation::SaveDailyPlan { .. }
+                ) {
+                    format!("Daily Record plan proposal {} is saved for user review. It has not changed the Daily Record or Tasks. The user must explicitly approve this exact plan in Personal Dashboard.", proposal.id)
+                } else {
+                    format!("Task operation {} is saved for user review. It has not changed Tasks. The user must explicitly approve this exact action in Personal Dashboard.", proposal.id)
+                },
                 success: true,
             },
             Err(error) => RuntimeDynamicToolResult {
@@ -1581,6 +2026,18 @@ impl CollaborationApplication {
         target_date: &str,
         operation: CollaborationTaskOperation,
     ) -> Result<CollaborationTaskOperationView, String> {
+        if matches!(operation, CollaborationTaskOperation::SaveDailyPlan { .. }) {
+            return self.propose_daily_plan_operation(
+                vault_key,
+                session_id,
+                execution_id,
+                runtime_thread_id,
+                runtime_turn_id,
+                call_id,
+                target_date,
+                operation,
+            );
+        }
         if !self.task_service.is_available() {
             return Err("Dashboard task operations are unavailable in this session.".into());
         }
@@ -1677,8 +2134,145 @@ impl CollaborationApplication {
                 result_message: None,
                 result_snapshot: None,
                 result_revision: None,
+                effect_fingerprint: None,
                 task_id: task_id.clone(),
                 list_id: list_id.clone(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            };
+            session.task_operations.push(proposal.clone());
+            session.last_activity_at = now.clone();
+            Ok(task_operation_view(&proposal))
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn propose_daily_plan_operation(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        execution_id: &str,
+        runtime_thread_id: &str,
+        runtime_turn_id: &str,
+        call_id: &str,
+        target_date: &str,
+        operation: CollaborationTaskOperation,
+    ) -> Result<CollaborationTaskOperationView, String> {
+        if !self.daily_plan_service.is_available() {
+            return Err("Daily Record plan operations are unavailable in this session.".into());
+        }
+        if call_id.is_empty() || runtime_turn_id.is_empty() {
+            return Err("The App Server did not provide a stable plan-operation identity.".into());
+        }
+        validate_date(target_date)?;
+        if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+            return Err(
+                "The selected Vault changed. Refresh the workspace before preparing a plan.".into(),
+            );
+        }
+        let today = self.daily_plan_service.read_date(target_date)?;
+        require_daily_record_view_writable(&today, target_date)?;
+        let target_binding = today.target_binding.clone().ok_or_else(|| {
+            "Daily Record has no stable Vault binding. Refresh Today before preparing a plan."
+                .to_string()
+        })?;
+        let expected_revision = today.revision.clone();
+        let baseline = daily_record_operation_baseline(target_date, &today);
+        let operation_id = stable_tool_operation_id(runtime_thread_id, runtime_turn_id, call_id);
+        let tool_call_key = format!("{runtime_thread_id}:{runtime_turn_id}:{call_id}");
+        let CollaborationTaskOperation::SaveDailyPlan {
+            transition,
+            arrangement,
+            evidence,
+            calibration_note,
+            event,
+            original_intent,
+            change_reason,
+            revised_direction,
+        } = &operation
+        else {
+            return Err("The requested plan operation is invalid.".into());
+        };
+        let fingerprint = daily_plan_effect_fingerprint(
+            target_date,
+            *transition,
+            arrangement,
+            evidence,
+            calibration_note.as_deref(),
+            event.as_deref(),
+            original_intent.as_deref(),
+            change_reason.as_deref(),
+            revised_direction.as_deref(),
+        );
+        let plan_input = DailyPlanWriteInput {
+            date: target_date.to_owned(),
+            target_binding: target_binding.clone(),
+            expected_revision: expected_revision.clone(),
+            operation_id: operation_id.clone(),
+            effect_fingerprint: fingerprint.clone(),
+            transition: *transition,
+            arrangement: arrangement.clone(),
+            evidence: evidence.clone(),
+            calibration_note: calibration_note.clone(),
+            event: event.clone(),
+            original_intent: original_intent.clone(),
+            change_reason: change_reason.clone(),
+            revised_direction: revised_direction.clone(),
+        };
+        plan_input.validate()?;
+        let now = self.clock.current_timestamp();
+        self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            if session.runtime_thread_id.as_deref() != Some(runtime_thread_id)
+                || session.run_id.as_deref() != Some(execution_id)
+                || !matches!(session.run_state.as_str(), "thinking" | "reading")
+            {
+                return Err("This plan proposal is no longer attached to the active Dashboard request.".into());
+            }
+            let message = session
+                .messages
+                .iter()
+                .find(|message| message.execution_id.as_deref() == Some(execution_id))
+                .ok_or_else(|| "This plan proposal has no saved user request.".to_string())?;
+            if message.target_date != target_date || message.delivery_state != "in-progress" {
+                return Err("The target date or request state changed. Refresh the conversation before proposing a plan.".into());
+            }
+            if let Some(existing) = session
+                .task_operations
+                .iter()
+                .find(|proposal| proposal.tool_call_key == tool_call_key)
+            {
+                if existing.operation != operation
+                    || existing.vault_key != vault_key
+                    || existing.runtime_turn_id != runtime_turn_id
+                {
+                    return Err("This App Server call identity already belongs to a different plan operation.".into());
+                }
+                return Ok(task_operation_view(existing));
+            }
+            if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+                return Err("The selected Vault changed before the plan proposal could be saved.".into());
+            }
+            let proposal = StoredCollaborationTaskOperation {
+                id: operation_id.clone(),
+                tool_call_key: tool_call_key.clone(),
+                operation_id: operation_id.clone(),
+                runtime_thread_id: runtime_thread_id.to_owned(),
+                runtime_turn_id: runtime_turn_id.to_owned(),
+                execution_id: execution_id.to_owned(),
+                vault_key: vault_key.to_owned(),
+                target_binding,
+                expected_revision,
+                operation: operation.clone(),
+                status: "awaitingApproval".into(),
+                target_date: target_date.to_owned(),
+                baseline,
+                result_message: None,
+                result_snapshot: None,
+                result_revision: None,
+                effect_fingerprint: Some(fingerprint),
+                task_id: None,
+                list_id: None,
                 created_at: now.clone(),
                 updated_at: now.clone(),
             };
@@ -2471,8 +3065,13 @@ impl CollaborationApplication {
             }
         }
 
-        let dynamic_tools = if self.task_service.is_available() {
-            vec![collaboration_task_tool_spec()]
+        let task_operations_available = self.task_service.is_available();
+        let daily_plan_operations_available = self.daily_plan_service.is_available();
+        let dynamic_tools = if task_operations_available || daily_plan_operations_available {
+            vec![collaboration_task_tool_spec(
+                task_operations_available,
+                daily_plan_operations_available,
+            )]
         } else {
             Vec::new()
         };
@@ -2480,6 +3079,11 @@ impl CollaborationApplication {
             session.task_tool_registered
         } else {
             !dynamic_tools.is_empty()
+        };
+        let daily_plan_tool_registered = if session.runtime_thread_id.is_some() {
+            session.daily_plan_tool_registered
+        } else {
+            daily_plan_operations_available
         };
         let thread_id = match session.runtime_thread_id.as_deref() {
             Some(thread_id) => runtime
@@ -2505,6 +3109,7 @@ impl CollaborationApplication {
             run_id,
             &thread_id,
             task_tool_registered,
+            daily_plan_tool_registered,
         ) {
             drop(runtime);
             self.finish_error(vault_key, session_id, run_id, error);
@@ -2549,24 +3154,28 @@ impl CollaborationApplication {
             context,
             working_directory: self.working_directory.clone(),
         };
-        let tool_handler = (self.task_service.is_available() && task_tool_registered).then(|| {
-            let application = self.clone();
-            let expected_thread_id = thread_id.clone();
-            let expected_session_id = session_id.to_owned();
-            let expected_execution_id = run_id.to_owned();
-            let expected_vault_key = vault_key.to_owned();
-            let expected_target_date = target_date.to_owned();
-            Arc::new(move |call| {
-                application.handle_runtime_task_tool_call(
-                    &expected_vault_key,
-                    &expected_session_id,
-                    &expected_execution_id,
-                    &expected_thread_id,
-                    &expected_target_date,
-                    call,
-                )
-            }) as RuntimeDynamicToolHandler
-        });
+        let tool_handler = ((self.task_service.is_available()
+            || self.daily_plan_service.is_available())
+            && task_tool_registered)
+            .then(|| {
+                let application = self.clone();
+                let expected_thread_id = thread_id.clone();
+                let expected_session_id = session_id.to_owned();
+                let expected_execution_id = run_id.to_owned();
+                let expected_vault_key = vault_key.to_owned();
+                let expected_target_date = target_date.to_owned();
+                Arc::new(move |call| {
+                    application.handle_runtime_task_tool_call(
+                        &expected_vault_key,
+                        &expected_session_id,
+                        &expected_execution_id,
+                        &expected_thread_id,
+                        &expected_target_date,
+                        daily_plan_tool_registered,
+                        call,
+                    )
+                }) as RuntimeDynamicToolHandler
+            });
         let result =
             runtime.send_turn_with_dynamic_tools(request, Arc::clone(&cancellation), tool_handler);
         drop(runtime);
@@ -2647,6 +3256,7 @@ impl CollaborationApplication {
         run_id: &str,
         thread_id: &str,
         task_tool_registered: bool,
+        daily_plan_tool_registered: bool,
     ) -> Result<(), String> {
         self.update_state(|state| {
             let session = matching_session_mut(state, vault_key, session_id)?;
@@ -2655,6 +3265,7 @@ impl CollaborationApplication {
             }
             session.runtime_thread_id = Some(thread_id.to_owned());
             session.task_tool_registered = task_tool_registered;
+            session.daily_plan_tool_registered = daily_plan_tool_registered;
             if let Some(message) = session
                 .messages
                 .iter_mut()
@@ -3008,6 +3619,7 @@ fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionVie
         progress: session.progress.clone(),
         runtime_thread_id: session.runtime_thread_id.clone(),
         task_tool_available: session.task_tool_registered,
+        daily_plan_tool_available: session.daily_plan_tool_registered,
         messages: session
             .messages
             .iter()
@@ -3055,6 +3667,139 @@ fn task_operation_view(
         created_at: operation.created_at.clone(),
         updated_at: operation.updated_at.clone(),
     }
+}
+
+fn require_daily_record_view_writable(view: &TodayView, date: &str) -> Result<(), String> {
+    if view.date != date {
+        return Err(
+            "Today returned a different date than the selected plan target. Refresh and retry."
+                .into(),
+        );
+    }
+    if !matches!(view.state, TodayState::Missing | TodayState::Ready) {
+        return Err(format!(
+            "Current Daily Record data is unavailable for a safe plan change: {}",
+            view.message
+        ));
+    }
+    if view.target_binding.is_none() {
+        return Err(
+            "Daily Record has no stable Vault binding. Refresh Today before preparing a plan."
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+fn daily_record_operation_baseline(
+    date: &str,
+    view: &TodayView,
+) -> CollaborationTaskOperationBaseline {
+    let blocks = |values: &[crate::today::MorningBlockView]| {
+        values
+            .iter()
+            .map(|block| DailyPlanBlockInput {
+                period: block.period.clone(),
+                title: block.title.clone(),
+                detail: block.detail.clone(),
+            })
+            .collect()
+    };
+    let evidence = |values: &[crate::today::PlanningEvidenceView]| {
+        values
+            .iter()
+            .map(|group| DailyPlanEvidenceInput {
+                label: group.label.clone(),
+                items: group.items.clone(),
+            })
+            .collect()
+    };
+    let baseline_availability = match view.baseline.availability {
+        BaselineAvailability::Missing => "missing",
+        BaselineAvailability::Empty => "empty",
+        BaselineAvailability::Saved => "saved",
+    };
+    CollaborationTaskOperationBaseline::DailyRecord {
+        date: date.to_owned(),
+        record_state: match view.state {
+            TodayState::Missing => "missing",
+            TodayState::Ready => "ready",
+            TodayState::Unconfigured => "unconfigured",
+            TodayState::Error => "error",
+        }
+        .into(),
+        baseline_availability: baseline_availability.into(),
+        morning_baseline: blocks(&view.baseline.timeline),
+        baseline_evidence: evidence(&view.baseline.evidence),
+        current_arrangement: blocks(&view.timeline),
+        current_basis: evidence(&view.evidence),
+        revision: view.revision.clone(),
+    }
+}
+
+fn daily_plan_write_input(
+    proposal: &StoredCollaborationTaskOperation,
+) -> Result<DailyPlanWriteInput, String> {
+    let CollaborationTaskOperation::SaveDailyPlan {
+        transition,
+        arrangement,
+        evidence,
+        calibration_note,
+        event,
+        original_intent,
+        change_reason,
+        revised_direction,
+    } = &proposal.operation
+    else {
+        return Err("This proposal is not a Daily Record plan change.".into());
+    };
+    let effect_fingerprint = proposal.effect_fingerprint.clone().ok_or_else(|| {
+        "This saved plan is missing its result fingerprint. Refresh it before applying.".to_string()
+    })?;
+    let input = DailyPlanWriteInput {
+        date: proposal.target_date.clone(),
+        target_binding: proposal.target_binding.clone(),
+        expected_revision: proposal.expected_revision.clone(),
+        operation_id: proposal.operation_id.clone(),
+        effect_fingerprint,
+        transition: *transition,
+        arrangement: arrangement.clone(),
+        evidence: evidence.clone(),
+        calibration_note: calibration_note.clone(),
+        event: event.clone(),
+        original_intent: original_intent.clone(),
+        change_reason: change_reason.clone(),
+        revised_direction: revised_direction.clone(),
+    };
+    input.validate()?;
+    Ok(input)
+}
+
+fn daily_plan_operation_result_snapshot(
+    proposal: &StoredCollaborationTaskOperation,
+    view: &TodayView,
+) -> CollaborationTaskOperationBaseline {
+    daily_record_operation_baseline(&proposal.target_date, view)
+}
+
+fn daily_plan_operation_saved_message(
+    proposal: &StoredCollaborationTaskOperation,
+    view: &TodayView,
+) -> String {
+    let transition = match &proposal.operation {
+        CollaborationTaskOperation::SaveDailyPlan { transition, .. } => match transition {
+            DailyPlanTransition::InitialPlan => "initial plan",
+            DailyPlanTransition::MorningCalibration => "morning calibration",
+            DailyPlanTransition::DaytimeEvent => "daytime event",
+            DailyPlanTransition::DaytimeReplan => "daytime replan",
+        },
+        _ => "Daily Record plan change",
+    };
+    format!(
+        "Saved the {transition} for {}. Today and Calendar read this same canonical Daily Record (revision {}).",
+        proposal.target_date,
+        view.revision.as_deref().unwrap_or("unavailable")
+    )
 }
 
 fn task_operation_baseline(
@@ -3243,6 +3988,9 @@ fn task_operation_baseline(
         CollaborationTaskOperation::CreateList { .. } => {
             Ok(CollaborationTaskOperationBaseline::None)
         }
+        CollaborationTaskOperation::SaveDailyPlan { .. } => {
+            Err("A Daily Record proposal requires its date-bound Daily Record baseline.".into())
+        }
     }
 }
 
@@ -3367,6 +4115,7 @@ fn task_operation_effect_matches(
         }
         CollaborationTaskOperation::ArchiveList { .. } => list.is_some_and(|list| list.archived),
         CollaborationTaskOperation::RestoreList { .. } => list.is_some_and(|list| !list.archived),
+        CollaborationTaskOperation::SaveDailyPlan { .. } => false,
     }
 }
 
@@ -3428,6 +4177,16 @@ fn validate_task_operation_required_fields(arguments: &Value) -> Result<(), Stri
         "createList" => &["name"],
         "renameList" => &["listId", "name"],
         "archiveList" | "restoreList" => &["listId"],
+        "saveDailyPlan" => &[
+            "transition",
+            "arrangement",
+            "evidence",
+            "calibrationNote",
+            "event",
+            "originalIntent",
+            "changeReason",
+            "revisedDirection",
+        ],
         _ => return Err(format!("Unknown Dashboard task operation `{operation}`.")),
     };
     let Some(object) = arguments.as_object() else {
@@ -3441,7 +4200,10 @@ fn validate_task_operation_required_fields(arguments: &Value) -> Result<(), Stri
     Ok(())
 }
 
-fn collaboration_task_tool_spec() -> Value {
+fn collaboration_task_tool_spec(
+    task_operations_available: bool,
+    daily_plan_operations_available: bool,
+) -> Value {
     let operation = |name: &str, properties: Value, required: &[&str]| {
         let mut properties = properties
             .as_object()
@@ -3462,7 +4224,9 @@ fn collaboration_task_tool_spec() -> Value {
     };
     let string = json!({ "type": "string" });
     let nullable_string = json!({ "type": ["string", "null"] });
-    let defs = vec![
+    let mut defs = Vec::new();
+    if task_operations_available {
+        defs.extend([
         operation(
             "createTask",
             json!({"name": string, "content": nullable_string, "date": nullable_string, "time": nullable_string, "listId": nullable_string}),
@@ -3491,11 +4255,40 @@ fn collaboration_task_tool_spec() -> Value {
         ),
         operation("archiveList", json!({"listId": string}), &["listId"]),
         operation("restoreList", json!({"listId": string}), &["listId"]),
-    ];
+        ]);
+    }
+    if daily_plan_operations_available {
+        let block = json!({
+            "type": "object",
+            "properties": {"period": string, "title": string, "detail": nullable_string},
+            "required": ["period", "title", "detail"],
+            "additionalProperties": false
+        });
+        let evidence = json!({
+            "type": "object",
+            "properties": {"label": string, "items": {"type": "array", "items": string}},
+            "required": ["label", "items"],
+            "additionalProperties": false
+        });
+        defs.push(operation(
+            "saveDailyPlan",
+            json!({
+                "transition": {"type": "string", "enum": ["initialPlan", "morningCalibration", "daytimeEvent", "daytimeReplan"]},
+                "arrangement": {"type": "array", "items": block},
+                "evidence": {"type": "array", "items": evidence},
+                "calibrationNote": nullable_string,
+                "event": nullable_string,
+                "originalIntent": nullable_string,
+                "changeReason": nullable_string,
+                "revisedDirection": nullable_string
+            }),
+            &["transition", "arrangement", "evidence", "calibrationNote", "event", "originalIntent", "changeReason", "revisedDirection"],
+        ));
+    }
     let alternatives = defs;
     json!({
         "name": COLLABORATION_TASK_TOOL,
-        "description": "Propose one exact local Task or task-list create, edit, reschedule, move, complete, abandon, reopen, delete, restore, completion-date correction, rename, archive, or restore operation. Match stable IDs in current taskRecords/taskLists and resolve relative schedule dates from the request target date. Use only for a clear, unique user instruction; discuss ambiguous requests, plans, and suggestions instead. This tool only saves a proposal: it never writes Tasks. The user must approve the exact displayed action in Personal Dashboard. List archiving does not change task states.",
+        "description": "Propose one exact local Task operation or one structured Daily Record plan, morning calibration, explicitly reported event, or daytime replan. Task operations must match stable IDs in current taskRecords/taskLists. Use only for a clear, unique user instruction; discuss ambiguous requests, plans, and suggestions instead. This tool only saves a proposal: it never writes Tasks or Daily Records. The user must approve the exact displayed action in Personal Dashboard.",
         "inputSchema": {
             "oneOf": alternatives
         }

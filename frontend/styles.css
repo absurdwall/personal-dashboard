@@ -9058,6 +9058,84 @@ button.habit-cell:focus-visible {
   background: #fbf4f1;
 }
 
+.collaboration-daily-plan-operation {
+  border-left: 3px solid color-mix(in srgb, var(--parity-accent) 62%, #bc9258);
+  background: color-mix(in srgb, var(--parity-accent) 5%, var(--parity-surface-soft));
+}
+
+.collaboration-daily-plan-snapshot,
+.collaboration-daily-plan-section {
+  display: grid;
+  gap: 0.28rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid var(--parity-border);
+}
+
+.collaboration-daily-plan-snapshot > h5,
+.collaboration-daily-plan-section > h5 {
+  margin: 0;
+  color: #303633;
+  font-size: 0.58rem;
+}
+
+.collaboration-daily-plan-snapshot > small,
+.collaboration-daily-plan-section > p,
+.collaboration-daily-plan-section li,
+.collaboration-daily-plan-note {
+  margin: 0;
+  color: #4e5752;
+  font-size: 0.55rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.collaboration-daily-plan-section > ul,
+.collaboration-daily-plan-preserved .collaboration-daily-plan-section > ul {
+  display: grid;
+  gap: 0.24rem;
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.collaboration-daily-plan-section li > strong {
+  color: #303633;
+}
+
+.collaboration-daily-plan-section li > p {
+  margin: 0.1rem 0 0;
+  color: #4e5752;
+}
+
+.collaboration-daily-plan-section li > ul {
+  display: grid;
+  gap: 0.16rem;
+  margin-top: 0.18rem;
+  padding-left: 0.9rem;
+}
+
+.collaboration-daily-plan-preserved {
+  padding-top: 0.2rem;
+  border-top: 1px dotted var(--parity-border);
+}
+
+.collaboration-daily-plan-preserved > summary {
+  color: var(--parity-muted);
+  cursor: pointer;
+  font-size: 0.55rem;
+  font-weight: 650;
+}
+
+.collaboration-daily-plan-note {
+  display: grid;
+  gap: 0.08rem;
+  padding-top: 0.22rem;
+  border-top: 1px dotted var(--parity-border);
+}
+
+.collaboration-daily-plan-note strong {
+  color: #303633;
+}
+
 .collaboration-task-operation > header {
   display: flex;
   align-items: center;
@@ -9108,6 +9186,51 @@ button.habit-cell:focus-visible {
   min-height: 1.75rem;
   padding: 0.28rem 0.48rem;
   font-size: 0.56rem;
+}
+
+.calendar-daily-plan-preview {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--parity-border);
+}
+
+.calendar-daily-plan-preview h4,
+.calendar-daily-plan-preview h5 {
+  margin: 0;
+  color: #303633;
+  font-size: 0.66rem;
+}
+
+.calendar-daily-plan-preview h5 {
+  color: var(--parity-muted);
+  font-size: 0.57rem;
+}
+
+.calendar-daily-plan-preview > p,
+.calendar-daily-plan-preview li {
+  margin: 0;
+  color: #4e5752;
+  font-size: 0.58rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.calendar-daily-plan-preview > ol,
+.calendar-daily-plan-preview > ul {
+  display: grid;
+  gap: 0.28rem;
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.calendar-daily-plan-preview li > strong {
+  color: #303633;
+}
+
+.calendar-daily-plan-preview li > p {
+  margin: 0.08rem 0 0;
 }
 
 .collaboration-task-operation-approve {

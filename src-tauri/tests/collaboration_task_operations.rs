@@ -5,10 +5,13 @@ use personal_dashboard_lib::collaboration::{
     ContextPaneView, FileCollaborationStore, ModelOptionView, RuntimeConnectionView,
     RuntimeDynamicToolCall, RuntimeDynamicToolHandler, RuntimeDynamicToolResult,
     RuntimeRunReconciliation, RuntimeTurnRequest, RuntimeTurnResult,
-    TaskApplicationCollaborationAdapter,
+    TaskApplicationCollaborationAdapter, TodayApplicationCollaborationPlanAdapter,
 };
 use personal_dashboard_lib::tasks::{FileTaskStore, TaskApplication, TaskDataState, TaskState};
-use personal_dashboard_lib::today::{TodayClock, TodayWorkspacePersistence};
+use personal_dashboard_lib::today::{
+    DatedNoteInput, ShortRecordCategory, TodayApplication, TodayClock, TodayWorkspaceExchange,
+    TodayWorkspacePersistence,
+};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -107,6 +110,14 @@ impl TodayClock for FixedClock {
 
     fn current_timestamp_label(&self) -> String {
         "2026-09-27T09:15-04:00".into()
+    }
+}
+
+struct NoVaultPicker;
+
+impl TodayWorkspaceExchange for NoVaultPicker {
+    fn select_vault(&self) -> Result<Option<PathBuf>, String> {
+        Ok(None)
     }
 }
 
@@ -275,6 +286,86 @@ impl AppServerTransport for DynamicRuntime {
                 "dashboard_task_operation",
                 json!({ "operation": "createList", "name": "Synthetic list" }),
             )
+        } else if request.user_text == "save daily plan" {
+            (
+                "reused-turn-scoped-call-id",
+                "dashboard_task_operation",
+                json!({
+                    "operation": "saveDailyPlan",
+                    "transition": "initialPlan",
+                    "arrangement": [
+                        {"period": "morning", "title": "Prepare the report", "detail": "Outline only"},
+                        {"period": "afternoon", "title": "Review the draft", "detail": null}
+                    ],
+                    "evidence": [
+                        {"label": "Tasks", "items": ["Synthetic report task"]},
+                        {"label": "Habits", "items": ["One confirmed exercise habit"]}
+                    ],
+                    "calibrationNote": null,
+                    "event": null,
+                    "originalIntent": null,
+                    "changeReason": null,
+                    "revisedDirection": null
+                }),
+            )
+        } else if request.user_text == "morning calibration" {
+            (
+                "reused-turn-scoped-call-id",
+                "dashboard_task_operation",
+                json!({
+                    "operation": "saveDailyPlan",
+                    "transition": "morningCalibration",
+                    "arrangement": [
+                        {"period": "morning", "title": "Handle the urgent review", "detail": "The appointment moved"},
+                        {"period": "afternoon", "title": "Review the report", "detail": null}
+                    ],
+                    "evidence": [
+                        {"label": "Tasks", "items": ["Synthetic report task"]},
+                        {"label": "User update", "items": ["Appointment starts later"]}
+                    ],
+                    "calibrationNote": "The appointment moved to the afternoon",
+                    "event": null,
+                    "originalIntent": null,
+                    "changeReason": null,
+                    "revisedDirection": null
+                }),
+            )
+        } else if request.user_text == "daytime replan" {
+            (
+                "reused-turn-scoped-call-id",
+                "dashboard_task_operation",
+                json!({
+                    "operation": "saveDailyPlan",
+                    "transition": "daytimeReplan",
+                    "arrangement": [
+                        {"period": "later", "title": "Move the review to tomorrow", "detail": "Protect rest time"}
+                    ],
+                    "evidence": [
+                        {"label": "User report", "items": ["Energy is lower than expected"]}
+                    ],
+                    "calibrationNote": null,
+                    "event": null,
+                    "originalIntent": "Review the report today",
+                    "changeReason": "Energy is lower than expected",
+                    "revisedDirection": "Move the review to tomorrow"
+                }),
+            )
+        } else if request.user_text == "daytime event" {
+            (
+                "reused-turn-scoped-call-id",
+                "dashboard_task_operation",
+                json!({
+                    "operation": "saveDailyPlan",
+                    "transition": "daytimeEvent",
+                    "arrangement": [],
+                    "evidence": [],
+                    "calibrationNote": null,
+                    "event": "I completed a short walk",
+                    "originalIntent": null,
+                    "changeReason": null,
+                    "revisedDirection": null
+                }),
+            )
         } else if request.user_text == "unknown tool" {
             (
                 "unknown-tool-call",
@@ -352,6 +443,9 @@ fn new_application(
     let task_service = Arc::new(TaskApplicationCollaborationAdapter::new(
         TaskApplication::new(vault.clone(), FixedClock, FileTaskStore),
     ));
+    let daily_plan_service = Arc::new(TodayApplicationCollaborationPlanAdapter::new(
+        TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock),
+    ));
     let application = CollaborationApplication::with_adapters(
         Arc::new(FailNextSaveStore {
             inner: FileCollaborationStore::new(
@@ -368,7 +462,8 @@ fn new_application(
         directory.path().join("runtime"),
         "Only use supplied synthetic Dashboard context.".into(),
     )
-    .with_task_service(task_service);
+    .with_task_service(task_service)
+    .with_daily_plan_service(daily_plan_service);
     (application, registered_tools, results)
 }
 
@@ -384,6 +479,47 @@ fn wait_for_finish(application: &CollaborationApplication, session_id: &str, vau
         thread::sleep(Duration::from_millis(10));
     }
     panic!("synthetic dynamic-tool run did not finish");
+}
+
+fn submit_and_approve_plan_step(
+    application: &CollaborationApplication,
+    session_id: &str,
+    prompt: &str,
+) -> personal_dashboard_lib::collaboration::CollaborationTaskOperationView {
+    application
+        .submit_message("vault-a", session_id, "2026-09-27", prompt)
+        .unwrap();
+    wait_for_finish(application, session_id, "vault-a");
+    let view = application.session("vault-a", session_id).unwrap();
+    let proposal = view
+        .task_operations
+        .iter()
+        .rev()
+        .find(|operation| operation.status == "awaitingApproval")
+        .expect("runtime produced a Daily Record proposal")
+        .clone();
+    assert!(matches!(
+        &proposal.operation,
+        CollaborationTaskOperation::SaveDailyPlan { .. }
+    ));
+    application
+        .approve_task_operation_for_selected_vault(session_id, &proposal.id)
+        .unwrap()
+        .task_operations
+        .into_iter()
+        .find(|operation| operation.id == proposal.id)
+        .expect("approved Daily Record proposal remains visible")
+}
+
+fn canonical_section<'a>(document: &'a str, heading: &str, next_heading: &str) -> &'a str {
+    let start = document
+        .find(&format!("## {heading}"))
+        .expect("Daily Record section exists");
+    let end = document[start..]
+        .find(&format!("## {next_heading}"))
+        .map(|offset| start + offset)
+        .expect("next Daily Record section exists");
+    &document[start..end]
 }
 
 #[test]
@@ -467,6 +603,234 @@ fn dynamic_tool_registration_duplicate_delivery_and_approval_share_canonical_tas
 }
 
 #[test]
+fn daily_plan_uses_the_shared_review_tool_and_persists_only_after_approval() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let context = MutableContext::new("vault-a");
+    let task_path = vault_path.join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH);
+    let (application, registered_tools, results) = new_application(
+        &directory,
+        &vault,
+        context,
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message("vault-a", &session.id, "2026-09-27", "save daily plan")
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+
+    let registered = registered_tools.lock().unwrap();
+    assert_eq!(registered.len(), 1, "the existing single tool is reused");
+    assert_eq!(registered[0]["name"], "dashboard_task_operation");
+    assert!(registered[0]["inputSchema"]["oneOf"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|variant| variant["properties"]["operation"]["const"] == "saveDailyPlan"));
+    drop(registered);
+    let delivery_results = results.lock().unwrap();
+    assert_eq!(
+        delivery_results.len(),
+        1,
+        "duplicate delivery is deduplicated"
+    );
+    assert!(delivery_results[0].success, "{:?}", delivery_results[0]);
+    drop(delivery_results);
+
+    let proposed = application.session("vault-a", &session.id).unwrap();
+    assert_eq!(proposed.task_operations.len(), 1);
+    let proposal = proposed.task_operations[0].clone();
+    assert_eq!(proposal.status, "awaitingApproval");
+    assert_eq!(proposal.target_date, "2026-09-27");
+    assert!(matches!(
+        &proposal.baseline,
+        personal_dashboard_lib::collaboration::CollaborationTaskOperationBaseline::DailyRecord { .. }
+    ));
+    assert!(matches!(
+        &proposal.operation,
+        CollaborationTaskOperation::SaveDailyPlan { .. }
+    ));
+    assert!(
+        !task_path.exists(),
+        "proposal must not create or mutate Tasks"
+    );
+
+    let approved = application
+        .approve_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap();
+    assert_eq!(approved.task_operations[0].status, "applied");
+    let daily_path = vault_path.join("life/Journal/Daily/2026/2026-09/2026-09-27.md");
+    let saved_bytes =
+        fs::read(&daily_path).expect("approved plan exists in canonical Daily Record");
+    let saved_text = String::from_utf8(saved_bytes.clone()).unwrap();
+    assert!(saved_text.contains("Prepare the report"));
+    assert!(saved_text.contains("Synthetic report task"));
+    assert!(saved_text.contains("One confirmed exercise habit"));
+    assert!(
+        !task_path.exists(),
+        "plan approval still leaves Tasks untouched"
+    );
+    let saved_today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock)
+        .read_date("2026-09-27")
+        .unwrap();
+    assert_eq!(saved_today.timeline.len(), 2);
+    assert_eq!(saved_today.baseline.timeline, saved_today.timeline);
+    assert_eq!(saved_today.baseline.evidence, saved_today.evidence);
+    let morning_baseline = canonical_section(&saved_text, "早间基准", "今天的大致安排").to_owned();
+
+    let calibration =
+        submit_and_approve_plan_step(&application, &session.id, "morning calibration");
+    assert_eq!(calibration.status, "applied");
+    let calibrated_text = fs::read_to_string(&daily_path).unwrap();
+    assert_eq!(
+        canonical_section(&calibrated_text, "早间基准", "今天的大致安排"),
+        morning_baseline,
+        "morning calibration preserves the point-in-time baseline bytes"
+    );
+    let calibrated_today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock)
+        .read_date("2026-09-27")
+        .unwrap();
+    assert_ne!(calibrated_today.timeline, saved_today.timeline);
+    assert_eq!(
+        calibrated_today.baseline.timeline,
+        saved_today.baseline.timeline
+    );
+    assert!(calibrated_today
+        .daytime
+        .updates
+        .iter()
+        .any(|update| update.title == "早间校准"));
+
+    let current_arrangement =
+        canonical_section(&calibrated_text, "今天的大致安排", "计划依据").to_owned();
+    let current_basis = canonical_section(&calibrated_text, "计划依据", "白天更新").to_owned();
+    let event = submit_and_approve_plan_step(&application, &session.id, "daytime event");
+    assert_eq!(event.status, "applied");
+    let event_text = fs::read_to_string(&daily_path).unwrap();
+    assert_eq!(
+        canonical_section(&event_text, "早间基准", "今天的大致安排"),
+        morning_baseline
+    );
+    assert_eq!(
+        canonical_section(&event_text, "今天的大致安排", "计划依据"),
+        current_arrangement
+    );
+    assert_eq!(
+        canonical_section(&event_text, "计划依据", "白天更新"),
+        current_basis
+    );
+    let event_today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock)
+        .read_date("2026-09-27")
+        .unwrap();
+    assert!(event_today
+        .time_axis
+        .unlocated_confirmed_facts
+        .iter()
+        .any(|fact| {
+            fact.text.contains("I completed a short walk") && fact.start_minute.is_none()
+        }));
+
+    let replan = submit_and_approve_plan_step(&application, &session.id, "daytime replan");
+    assert_eq!(replan.status, "applied");
+    let replanned_text = fs::read_to_string(&daily_path).unwrap();
+    assert_eq!(
+        canonical_section(&replanned_text, "早间基准", "今天的大致安排"),
+        morning_baseline,
+        "daytime replan preserves the point-in-time baseline bytes"
+    );
+    let replanned_today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock)
+        .read_date("2026-09-27")
+        .unwrap();
+    assert!(replanned_today
+        .timeline
+        .iter()
+        .any(|block| block.title.contains("tomorrow")));
+    assert!(replanned_today
+        .daytime
+        .updates
+        .iter()
+        .any(|update| update.title == "计划调整"));
+    assert!(!task_path.exists());
+    let final_daily_bytes = fs::read(&daily_path).unwrap();
+
+    let reloaded = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    )
+    .0
+    .session("vault-a", &session.id)
+    .unwrap();
+    assert_eq!(reloaded.task_operations[0].status, "applied");
+    assert_eq!(fs::read(&daily_path).unwrap(), final_daily_bytes);
+    assert!(!task_path.exists());
+}
+
+#[test]
+fn daily_plan_receipt_reconciles_after_restart_when_collaboration_history_save_fails() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let fail_next_save = Arc::new(AtomicBool::new(false));
+    let (application, _, _) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::clone(&fail_next_save),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message("vault-a", &session.id, "2026-09-27", "save daily plan")
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+    let proposal = application
+        .session("vault-a", &session.id)
+        .unwrap()
+        .task_operations[0]
+        .clone();
+    let daily_path = vault_path.join("life/Journal/Daily/2026/2026-09/2026-09-27.md");
+
+    fail_next_save.store(true, Ordering::SeqCst);
+    let failure = application
+        .approve_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap_err();
+    assert!(failure.contains("was saved"), "{failure}");
+    let saved_bytes =
+        fs::read(&daily_path).expect("Daily Record write completed before history fault");
+    assert!(saved_bytes.iter().any(|byte| *byte == b'\n'));
+
+    drop(application);
+    let (restarted, _, _) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let reconciled = restarted
+        .reconcile_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap();
+    assert_eq!(reconciled.task_operations[0].status, "applied");
+    let after_reconcile = fs::read(&daily_path).unwrap();
+    assert_eq!(
+        after_reconcile, saved_bytes,
+        "reconciliation must not duplicate the write"
+    );
+    assert_eq!(
+        after_reconcile
+            .windows(b"plan-operation id=".len())
+            .filter(|window| *window == b"plan-operation id=")
+            .count(),
+        1
+    );
+    assert!(!vault_path
+        .join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH)
+        .exists());
+}
+
+#[test]
 fn revision_conflict_requires_refresh_and_a_second_explicit_approval() {
     let directory = IsolatedDirectory::new();
     let vault_path = directory.vault("vault");
@@ -531,6 +895,169 @@ fn revision_conflict_requires_refresh_and_a_second_explicit_approval() {
     let saved = tasks.read().unwrap();
     assert_eq!(saved.tasks.len(), 2);
     assert!(saved.tasks.iter().any(|task| task.id == proposal_task_id));
+}
+
+#[test]
+fn daily_plan_vault_switch_and_stale_revision_require_conflict_refresh_and_new_approval() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault-a");
+    let second_vault = directory.vault("vault-b");
+    let vault = MutableVault::new(&vault_path);
+    let context = MutableContext::new("vault-a");
+    let (application, _, _) = new_application(
+        &directory,
+        &vault,
+        context.clone(),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message("vault-a", &session.id, "2026-09-27", "save daily plan")
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+    let proposal = application
+        .session("vault-a", &session.id)
+        .unwrap()
+        .task_operations[0]
+        .clone();
+
+    vault.select(&second_vault);
+    context.select("vault-b");
+    assert!(application
+        .approve_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap_err()
+        .contains("not available in the selected Vault"));
+    assert!(!vault_path
+        .join("life/Journal/Daily/2026/2026-09/2026-09-27.md")
+        .exists());
+    assert!(!second_vault
+        .join("life/Journal/Daily/2026/2026-09/2026-09-27.md")
+        .exists());
+
+    vault.select(&vault_path);
+    context.select("vault-a");
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock);
+    let before_external = today.read_date("2026-09-27").unwrap();
+    today
+        .add_dated_note(DatedNoteInput {
+            date: "2026-09-27".into(),
+            target_binding: before_external.target_binding.unwrap(),
+            expected_revision: before_external.revision,
+            entry_id: "external-note-1".into(),
+            category: ShortRecordCategory::Ordinary,
+            content: "Human entered a note while reviewing the plan".into(),
+        })
+        .unwrap();
+
+    let conflicted = application
+        .approve_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap();
+    assert_eq!(conflicted.task_operations[0].status, "conflict");
+    let after_conflict =
+        fs::read_to_string(vault_path.join("life/Journal/Daily/2026/2026-09/2026-09-27.md"))
+            .unwrap();
+    assert!(after_conflict.contains("Human entered a note"));
+    assert!(!after_conflict.contains("Prepare the report"));
+    let unreconciled = application
+        .reconcile_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap();
+    assert_eq!(unreconciled.task_operations[0].status, "conflict");
+    assert!(unreconciled.task_operations[0]
+        .result_message
+        .as_deref()
+        .unwrap()
+        .contains("does not confirm this exact plan"));
+
+    let refreshed = application
+        .refresh_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap();
+    assert_eq!(refreshed.task_operations[0].status, "awaitingApproval");
+    assert!(refreshed.task_operations[0]
+        .result_message
+        .as_deref()
+        .unwrap()
+        .contains("approve again"));
+    let applied = application
+        .approve_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap();
+    assert_eq!(applied.task_operations[0].status, "applied");
+    let final_text =
+        fs::read_to_string(vault_path.join("life/Journal/Daily/2026/2026-09/2026-09-27.md"))
+            .unwrap();
+    assert!(final_text.contains("Human entered a note"));
+    assert!(final_text.contains("Prepare the report"));
+}
+
+#[test]
+fn legacy_thread_keeps_task_proposals_but_requires_a_new_chat_for_daily_plans() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let (application, _, _) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message("vault-a", &session.id, "2026-09-27", "create task")
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+    let current = application.session("vault-a", &session.id).unwrap();
+    assert!(current.task_tool_available);
+    assert!(current.daily_plan_tool_available);
+    drop(application);
+
+    let history_path = directory.path().join("collaboration/collaboration.json");
+    let mut history: Value = serde_json::from_slice(&fs::read(&history_path).unwrap()).unwrap();
+    history["sessions"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("dailyPlanToolRegistered");
+    fs::write(&history_path, serde_json::to_vec_pretty(&history).unwrap()).unwrap();
+
+    let (restarted, _, plan_results) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let legacy = restarted.session("vault-a", &session.id).unwrap();
+    assert!(legacy.task_tool_available);
+    assert!(!legacy.daily_plan_tool_available);
+
+    restarted
+        .submit_message("vault-a", &session.id, "2026-09-27", "save daily plan")
+        .unwrap();
+    wait_for_finish(&restarted, &session.id, "vault-a");
+    let result = plan_results.lock().unwrap()[0].clone();
+    assert!(!result.success);
+    assert!(result.text.contains("older proposal-tool schema"));
+    assert_eq!(
+        restarted
+            .session("vault-a", &session.id)
+            .unwrap()
+            .task_operations
+            .len(),
+        1
+    );
+    assert!(!vault_path
+        .join("life/Journal/Daily/2026/2026-09/2026-09-27.md")
+        .exists());
+
+    restarted
+        .submit_message("vault-a", &session.id, "2026-09-27", "create task")
+        .unwrap();
+    wait_for_finish(&restarted, &session.id, "vault-a");
+    let after_task_proposal = restarted.session("vault-a", &session.id).unwrap();
+    assert_eq!(after_task_proposal.task_operations.len(), 2);
+    assert!(after_task_proposal.task_operations.iter().all(|operation| {
+        !matches!(
+            &operation.operation,
+            CollaborationTaskOperation::SaveDailyPlan { .. }
+        )
+    }));
 }
 
 #[test]
