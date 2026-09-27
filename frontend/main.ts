@@ -569,6 +569,10 @@ type CollaborationMessageView = Readonly<{
   messageDate: string;
   targetDate: string;
   createdAt: string;
+  executionId: string | null;
+  runtimeTurnId: string | null;
+  deliveryState: string;
+  resultChecked: boolean;
 }>;
 
 type CollaborationSessionView = Readonly<{
@@ -583,6 +587,16 @@ type CollaborationSessionView = Readonly<{
   progress: string;
   runtimeThreadId: string | null;
   messages: readonly CollaborationMessageView[];
+  draft: string;
+  draftsByDate: Readonly<Record<string, string>>;
+}>;
+
+type CollaborationRunOwnerView = Readonly<{
+  sessionId: string;
+  sessionTitle: string;
+  runId: string;
+  runState: string;
+  progress: string;
 }>;
 
 type CollaborationWorkspaceView = Readonly<{
@@ -591,6 +605,8 @@ type CollaborationWorkspaceView = Readonly<{
   selectedModel: string | null;
   context: CollaborationContextView;
   sessions: readonly CollaborationSessionView[];
+  activeRun: CollaborationRunOwnerView | null;
+  recoveryRequired: boolean;
 }>;
 
 type CollaborationModelOption = Readonly<{
@@ -632,8 +648,30 @@ let currentCollaborationConnection: CollaborationConnectionView | null = null;
 let collaborationWorkspaceRequest = 0;
 let collaborationConnectionRequest = 0;
 let collaborationStatusTimer: number | null = null;
+let collaborationTargetDatePendingSession: string | null = null;
 const collaborationDrafts = new Map<string, string>();
-const collaborationTargetDates = new Map<string, string>();
+const collaborationDraftWrites = new Map<string, Promise<CollaborationSessionView>>();
+let collaborationDraftSaveTimer: number | null = null;
+
+function collaborationDraftKey(sessionId: string, targetDate: string): string {
+  return `${sessionId}\u0000${targetDate}`;
+}
+
+function cacheCollaborationDrafts(session: CollaborationSessionView): void {
+  for (const [date, draft] of Object.entries(session.draftsByDate)) {
+    collaborationDrafts.set(collaborationDraftKey(session.id, date), draft);
+  }
+  collaborationDrafts.set(
+    collaborationDraftKey(session.id, session.targetDate),
+    session.draft,
+  );
+}
+
+function collaborationDraftForDate(session: CollaborationSessionView, date: string): string {
+  return collaborationDrafts.get(collaborationDraftKey(session.id, date)) ??
+    session.draftsByDate[date] ??
+    (session.targetDate === date ? session.draft : "");
+}
 
 type AppearanceSelectionResult = Readonly<{
   preferences: AppearancePreferences;
@@ -667,6 +705,7 @@ const collaborationDateInput = document.querySelector<HTMLInputElement>("#collab
 const collaborationTargetDateInput = document.querySelector<HTMLInputElement>("#collaboration-target-date");
 const collaborationSessionList = document.querySelector<HTMLUListElement>("#collaboration-session-list");
 const collaborationSessionsStatus = document.querySelector<HTMLElement>("#collaboration-sessions-status");
+const collaborationWorkOwner = document.querySelector<HTMLElement>("#collaboration-work-owner");
 const collaborationMessageList = document.querySelector<HTMLElement>("#collaboration-message-list");
 const collaborationComposer = document.querySelector<HTMLFormElement>("#collaboration-composer");
 const collaborationMessageDraft = document.querySelector<HTMLTextAreaElement>("#collaboration-message-draft");
@@ -674,6 +713,7 @@ const collaborationSendButton = document.querySelector<HTMLButtonElement>("#coll
 const collaborationChatHeading = document.querySelector<HTMLElement>("#collaboration-chat-heading");
 const collaborationChatDate = document.querySelector<HTMLElement>("#collaboration-chat-date");
 const collaborationRunStatus = document.querySelector<HTMLElement>("#collaboration-run-status");
+const collaborationStopButton = document.querySelector<HTMLButtonElement>("#collaboration-stop-run");
 const collaborationVaultLabel = document.querySelector<HTMLElement>("#collaboration-context-vault");
 const collaborationRuntimeStatus = document.querySelector<HTMLElement>("#collaboration-runtime-status");
 const collaborationConnectionStatus = document.querySelector<HTMLElement>("#collaboration-connection-status");
@@ -1152,6 +1192,20 @@ function resetVaultScopedWorkspaceState(): void {
   habitSnapshotRequests.invalidate();
   habitDateRequests.invalidate();
   habitCompletionRequests.invalidate();
+  collaborationWorkspaceRequest += 1;
+  if (collaborationDraftSaveTimer !== null) {
+    window.clearTimeout(collaborationDraftSaveTimer);
+    collaborationDraftSaveTimer = null;
+  }
+  if (collaborationStatusTimer !== null) {
+    window.clearInterval(collaborationStatusTimer);
+    collaborationStatusTimer = null;
+  }
+  currentCollaborationWorkspace = null;
+  currentCollaborationSession = null;
+  collaborationDrafts.clear();
+  collaborationActivityDate = localCalendarDate();
+  collaborationTargetDate = collaborationActivityDate;
   currentCalendarMonth = null;
   currentCalendarSummaryView = null;
   selectedCalendarDate = null;
@@ -1443,10 +1497,28 @@ function collaborationRunStateLabel(state: string): string {
     case "queued": return t("collaboration.statusQueued");
     case "reading": return t("collaboration.statusReading");
     case "thinking": return t("collaboration.statusThinking");
+    case "stopping": return t("collaboration.statusStopping");
+    case "stopped": return t("collaboration.statusStopped");
+    case "stop-unconfirmed": return t("collaboration.statusStopUnconfirmed");
     case "completed": return t("collaboration.statusCompleted");
     case "error": return t("collaboration.statusError");
     case "interrupted": return t("collaboration.statusInterrupted");
     case "partial": return t("collaboration.statusPartial");
+    default: return state;
+  }
+}
+
+function collaborationDeliveryStateLabel(state: string): string {
+  switch (state) {
+    case "queued": return t("collaboration.deliveryQueued");
+    case "in-progress": return t("collaboration.deliveryInProgress");
+    case "stopping": return t("collaboration.deliveryStopping");
+    case "stopped": return t("collaboration.deliveryStopped");
+    case "interrupted": return t("collaboration.deliveryInterrupted");
+    case "not-started": return t("collaboration.deliveryNotStarted");
+    case "stop-unconfirmed": return t("collaboration.deliveryStopUnconfirmed");
+    case "error": return t("collaboration.deliveryError");
+    case "completed": return t("collaboration.deliveryCompleted");
     default: return state;
   }
 }
@@ -1652,11 +1724,14 @@ function renderCollaborationSessionList(sessions: readonly CollaborationSessionV
     const title = document.createElement("strong");
     title.textContent = session.title || t("collaboration.untitledSession");
     const dates = document.createElement("small");
+    const activityDates = session.activityDates
+      .map(collaborationDateLabel)
+      .join(", ");
     dates.textContent = `${t("collaboration.createdDate", {
       date: collaborationDateLabel(session.createdDate),
     })} · ${t("collaboration.targetDateShort", {
       date: collaborationDateLabel(session.targetDate),
-    })}`;
+    })} · ${t("collaboration.activityDatesShort", { dates: activityDates })}`;
     const status = document.createElement("span");
     status.className = "collaboration-session-state";
     status.textContent = collaborationRunStateLabel(session.runState);
@@ -1699,9 +1774,40 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
       });
       heading.append(target);
     }
+    if (message.role === "user" && message.deliveryState) {
+      const delivery = document.createElement("span");
+      delivery.className = "collaboration-delivery-state";
+      delivery.dataset.state = message.deliveryState;
+      delivery.textContent = collaborationDeliveryStateLabel(message.deliveryState);
+      heading.append(delivery);
+    }
     const body = document.createElement("p");
     body.textContent = message.text;
     article.append(heading, body);
+    if (message.role === "user" && message.executionId) {
+      if (
+        ["interrupted", "stop-unconfirmed"].includes(message.deliveryState) &&
+        !message.resultChecked
+      ) {
+        const check = document.createElement("button");
+        check.type = "button";
+        check.className = "collaboration-message-action";
+        check.textContent = t("collaboration.checkSavedResult");
+        check.addEventListener("click", () => {
+          void reconcileCollaborationRun(session.id, message.executionId!);
+        });
+        article.append(check);
+      } else if (message.deliveryState === "not-started") {
+        const resume = document.createElement("button");
+        resume.type = "button";
+        resume.className = "collaboration-message-action";
+        resume.textContent = t("collaboration.resumeNotStarted");
+        resume.addEventListener("click", () => {
+          void resumeCollaborationRequest(session.id, message.executionId!);
+        });
+        article.append(resume);
+      }
+    }
     if (message.role !== "user") {
       const boundary = document.createElement("small");
       boundary.className = "collaboration-message-boundary";
@@ -1733,6 +1839,26 @@ function renderCollaborationWorkspace(): void {
       if (existing >= 0) sessions[existing] = currentCollaborationSession;
     }
     renderCollaborationSessionList(sessions);
+    if (workspace.recoveryRequired) {
+      setCopy(collaborationWorkOwner, "collaboration.recoveryRequired");
+      if (collaborationWorkOwner) collaborationWorkOwner.dataset.state = "recovery";
+    } else if (workspace.activeRun) {
+      setRawText(
+        collaborationWorkOwner,
+        t("collaboration.workOwner", {
+          session: workspace.activeRun.sessionTitle || t("collaboration.untitledSession"),
+          vault: workspace.vaultName ?? t("collaboration.chooseVault"),
+          state: collaborationRunStateLabel(workspace.activeRun.runState),
+        }),
+      );
+      if (collaborationWorkOwner) collaborationWorkOwner.dataset.state = "active";
+    } else {
+      setRawText(collaborationWorkOwner, "");
+      collaborationWorkOwner?.removeAttribute("data-state");
+    }
+  } else {
+    setRawText(collaborationWorkOwner, "");
+    collaborationWorkOwner?.removeAttribute("data-state");
   }
 
   const session = currentCollaborationSession;
@@ -1755,7 +1881,7 @@ function renderCollaborationWorkspace(): void {
       setRawText(collaborationRunStatus, "");
       collaborationRunStatus.dataset.state = "waiting";
     } else {
-      const progress = ["error", "reading", "thinking", "queued"].includes(session.runState)
+      const progress = ["error", "reading", "thinking", "queued", "stopping", "stop-unconfirmed", "interrupted"].includes(session.runState)
         ? session.progress
         : collaborationRunStateLabel(session.runState);
       setRawText(collaborationRunStatus, `${collaborationRunStateLabel(session.runState)} · ${progress}`);
@@ -1768,16 +1894,25 @@ function renderCollaborationWorkspace(): void {
     currentCollaborationConnection.authMode === "chatgpt" &&
     currentCollaborationConnection.readOnlyTextTurnsAvailable;
   const vaultAvailable = Boolean(workspace?.context.vaultName);
-  const running = Boolean(session && ["queued", "reading", "thinking"].includes(session.runState));
+  const recoveryBlocked = Boolean(workspace?.recoveryRequired);
   if (collaborationMessageDraft) {
-    collaborationMessageDraft.disabled = !session || !connected || running;
+    collaborationMessageDraft.disabled = !session || !connected || !vaultAvailable || recoveryBlocked ||
+      collaborationTargetDatePendingSession === session?.id;
     if (session && document.activeElement !== collaborationMessageDraft) {
-      collaborationMessageDraft.value = collaborationDrafts.get(session.id) ?? "";
+      const targetDate = collaborationTargetDateInput?.value || collaborationTargetDate;
+      collaborationMessageDraft.value = collaborationDraftForDate(session, targetDate);
     }
   }
   if (collaborationSendButton) {
-    collaborationSendButton.disabled = !session || !connected || running || !vaultAvailable ||
+    collaborationSendButton.disabled = !session || !connected || !vaultAvailable || recoveryBlocked ||
       !(collaborationMessageDraft?.value.trim());
+  }
+  if (collaborationStopButton) {
+    const stoppable = Boolean(
+      session?.runId && ["queued", "reading", "thinking"].includes(session.runState),
+    );
+    collaborationStopButton.hidden = !stoppable;
+    collaborationStopButton.disabled = session?.runState === "stopping";
   }
   const createButton = document.querySelector<HTMLButtonElement>("#collaboration-new-session");
   if (createButton) createButton.disabled = !vaultAvailable;
@@ -1785,19 +1920,94 @@ function renderCollaborationWorkspace(): void {
 
 function stashCollaborationDraft(): void {
   if (currentCollaborationSession && collaborationMessageDraft) {
-    collaborationDrafts.set(currentCollaborationSession.id, collaborationMessageDraft.value);
+    const sessionId = currentCollaborationSession.id;
+    const targetDate = currentCollaborationSession.targetDate;
+    const key = collaborationDraftKey(sessionId, targetDate);
+    collaborationDrafts.set(key, collaborationMessageDraft.value);
+    if (collaborationDraftSaveTimer !== null) window.clearTimeout(collaborationDraftSaveTimer);
+    const draft = collaborationMessageDraft.value;
+    collaborationDraftSaveTimer = window.setTimeout(() => {
+      collaborationDraftSaveTimer = null;
+      void saveCollaborationDraft({ sessionId, targetDate }, draft).catch((error: unknown) => {
+        if (currentCollaborationSession?.id === sessionId && collaborationRunStatus) {
+          setCopyError(collaborationRunStatus, "collaboration.draftSaveFailed", error);
+          collaborationRunStatus.dataset.state = "error";
+        }
+      });
+    }, 300);
   }
+}
+
+function flushCollaborationDraft(): Promise<CollaborationSessionView | void> {
+  if (collaborationDraftSaveTimer !== null) {
+    window.clearTimeout(collaborationDraftSaveTimer);
+    collaborationDraftSaveTimer = null;
+  }
+  if (!currentCollaborationSession || !collaborationMessageDraft) return Promise.resolve();
+  const sessionId = currentCollaborationSession.id;
+  const targetDate = currentCollaborationSession.targetDate;
+  const draft = collaborationMessageDraft.value;
+  collaborationDrafts.set(collaborationDraftKey(sessionId, targetDate), draft);
+  return saveCollaborationDraft({ sessionId, targetDate }, draft);
+}
+
+function saveCollaborationDraft(
+  target: { sessionId: string; targetDate: string },
+  draft: string,
+): Promise<CollaborationSessionView> {
+  const { sessionId, targetDate } = target;
+  const key = collaborationDraftKey(sessionId, targetDate);
+  const previous = collaborationDraftWrites.get(key) ?? Promise.resolve();
+  const write = previous.catch(() => undefined).then(async () => {
+    const saved = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+      "collaboration_save_draft",
+      { sessionId, targetDate, draft },
+    );
+    cacheCollaborationDrafts(saved);
+    collaborationDrafts.set(key, draft);
+    if (currentCollaborationSession?.id === sessionId) {
+      currentCollaborationSession = saved;
+      renderCollaborationWorkspace();
+    }
+    return saved;
+  });
+  collaborationDraftWrites.set(key, write);
+  return write.finally(() => {
+    if (collaborationDraftWrites.get(key) === write) {
+      collaborationDraftWrites.delete(key);
+    }
+  });
 }
 
 function selectCollaborationSession(session: CollaborationSessionView): void {
   stashCollaborationDraft();
   currentCollaborationSession = session;
-  collaborationTargetDate = collaborationTargetDates.get(session.id) ?? session.targetDate;
-  collaborationTargetDates.set(session.id, collaborationTargetDate);
+  cacheCollaborationDrafts(session);
+  collaborationTargetDate = session.targetDate;
   if (collaborationTargetDateInput) collaborationTargetDateInput.value = collaborationTargetDate;
   renderCollaborationWorkspace();
-  void refreshCollaborationContext();
-  watchCollaborationSession(session);
+  void refreshCollaborationWorkspace();
+}
+
+function refreshCollaborationRunOwner(session: CollaborationSessionView): void {
+  if (!currentCollaborationWorkspace) return;
+  const owner = currentCollaborationWorkspace.activeRun;
+  const isRunning = ["reading", "thinking", "stopping"].includes(session.runState);
+  const isQueuedOwner = session.runState === "queued" && (!owner || owner.sessionId === session.id);
+  if (isRunning || isQueuedOwner) {
+    currentCollaborationWorkspace = {
+      ...currentCollaborationWorkspace,
+      activeRun: {
+        sessionId: session.id,
+        sessionTitle: session.title,
+        runId: session.runId ?? "",
+        runState: session.runState,
+        progress: session.progress,
+      },
+    };
+  } else if (owner?.sessionId === session.id) {
+    currentCollaborationWorkspace = { ...currentCollaborationWorkspace, activeRun: null };
+  }
 }
 
 async function refreshCollaborationWorkspace(): Promise<void> {
@@ -1817,10 +2027,10 @@ async function refreshCollaborationWorkspace(): Promise<void> {
       workspace.sessions[0] ?? null;
     if (session?.id !== previousId) stashCollaborationDraft();
     currentCollaborationSession = session;
-    collaborationTargetDate = session
-      ? collaborationTargetDates.get(session.id) ?? session.targetDate
-      : date;
-    if (session) collaborationTargetDates.set(session.id, collaborationTargetDate);
+    if (session) {
+      cacheCollaborationDrafts(session);
+    }
+    collaborationTargetDate = session ? session.targetDate : date;
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = collaborationTargetDate;
     let context = workspace.context;
     if (collaborationTargetDate !== date) {
@@ -1852,9 +2062,6 @@ async function refreshCollaborationContext(): Promise<void> {
   const request = ++collaborationWorkspaceRequest;
   const date = collaborationTargetDateInput?.value || collaborationTargetDate;
   collaborationTargetDate = date;
-  if (currentCollaborationSession) {
-    collaborationTargetDates.set(currentCollaborationSession.id, date);
-  }
   if (collaborationTargetDateInput) collaborationTargetDateInput.value = date;
   try {
     const context = await window.__TAURI__.core.invoke<CollaborationContextView>(
@@ -1889,6 +2096,103 @@ async function refreshCollaborationContext(): Promise<void> {
   }
 }
 
+async function saveCollaborationTargetDate(): Promise<void> {
+  const session = currentCollaborationSession;
+  const date = collaborationTargetDateInput?.value || collaborationTargetDate;
+  collaborationTargetDate = date;
+  if (!session) {
+    void refreshCollaborationContext();
+    return;
+  }
+  collaborationTargetDatePendingSession = session.id;
+  renderCollaborationWorkspace();
+  try {
+    await flushCollaborationDraft();
+    const saved = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+      "collaboration_set_target_date",
+      { sessionId: session.id, targetDate: date },
+    );
+    if (currentCollaborationSession?.id !== session.id) return;
+    currentCollaborationSession = saved;
+    cacheCollaborationDrafts(saved);
+    void refreshCollaborationContext();
+  } catch (error) {
+    if (currentCollaborationSession?.id === session.id) {
+      collaborationTargetDate = session.targetDate;
+      if (collaborationTargetDateInput) collaborationTargetDateInput.value = session.targetDate;
+      if (collaborationRunStatus) {
+        setCopyError(collaborationRunStatus, "collaboration.sessionLoadFailed", error);
+        collaborationRunStatus.dataset.state = "error";
+      }
+    }
+  } finally {
+    if (collaborationTargetDatePendingSession === session.id) {
+      collaborationTargetDatePendingSession = null;
+      renderCollaborationWorkspace();
+    }
+  }
+}
+
+async function stopCollaborationRun(): Promise<void> {
+  const session = currentCollaborationSession;
+  if (!session?.runId) return;
+  if (collaborationStopButton) collaborationStopButton.disabled = true;
+  try {
+    const updated = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+      "collaboration_stop_run",
+      { sessionId: session.id, executionId: session.runId },
+    );
+    if (currentCollaborationSession?.id !== session.id) return;
+    currentCollaborationSession = updated;
+    renderCollaborationWorkspace();
+    watchCollaborationSession(updated);
+  } catch (error) {
+    if (currentCollaborationSession?.id === session.id && collaborationRunStatus) {
+      setCopyError(collaborationRunStatus, "collaboration.sendFailed", error);
+      collaborationRunStatus.dataset.state = "error";
+    }
+  }
+}
+
+async function reconcileCollaborationRun(sessionId: string, executionId: string): Promise<void> {
+  try {
+    const updated = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+      "collaboration_reconcile_run",
+      { sessionId, executionId },
+    );
+    if (currentCollaborationSession?.id === sessionId) {
+      currentCollaborationSession = updated;
+      renderCollaborationWorkspace();
+    }
+    await refreshCollaborationWorkspace();
+    if (currentCollaborationSession?.id === sessionId) watchCollaborationSession(updated);
+  } catch (error) {
+    if (currentCollaborationSession?.id === sessionId && collaborationRunStatus) {
+      setCopyError(collaborationRunStatus, "collaboration.sessionLoadFailed", error);
+      collaborationRunStatus.dataset.state = "error";
+    }
+  }
+}
+
+async function resumeCollaborationRequest(sessionId: string, executionId: string): Promise<void> {
+  try {
+    const updated = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+      "collaboration_resume_not_started",
+      { sessionId, executionId },
+    );
+    if (currentCollaborationSession?.id === sessionId) {
+      currentCollaborationSession = updated;
+      renderCollaborationWorkspace();
+      watchCollaborationSession(updated);
+    }
+  } catch (error) {
+    if (currentCollaborationSession?.id === sessionId && collaborationRunStatus) {
+      setCopyError(collaborationRunStatus, "collaboration.sessionLoadFailed", error);
+      collaborationRunStatus.dataset.state = "error";
+    }
+  }
+}
+
 async function createCollaborationSession(): Promise<void> {
   const date = collaborationDateInput?.value || collaborationActivityDate;
   try {
@@ -1897,8 +2201,7 @@ async function createCollaborationSession(): Promise<void> {
       { date },
     );
     stashCollaborationDraft();
-    collaborationDrafts.set(session.id, "");
-    collaborationTargetDates.set(session.id, date);
+    cacheCollaborationDrafts(session);
     currentCollaborationSession = session;
     collaborationActivityDate = date;
     collaborationTargetDate = date;
@@ -1918,7 +2221,7 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
     window.clearInterval(collaborationStatusTimer);
     collaborationStatusTimer = null;
   }
-  if (!["queued", "reading", "thinking"].includes(session.runState)) return;
+  if (!["queued", "reading", "thinking", "stopping"].includes(session.runState)) return;
   const sessionId = session.id;
   collaborationStatusTimer = window.setInterval(() => {
     if (currentWorkspaceDestination !== "collaboration" || currentCollaborationSession?.id !== sessionId) {
@@ -1930,10 +2233,12 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
     ).then((updated) => {
       if (currentCollaborationSession?.id !== sessionId) return;
       currentCollaborationSession = updated;
+      refreshCollaborationRunOwner(updated);
       renderCollaborationWorkspace();
-      if (!["queued", "reading", "thinking"].includes(updated.runState)) {
+      if (!["queued", "reading", "thinking", "stopping"].includes(updated.runState)) {
         if (collaborationStatusTimer !== null) window.clearInterval(collaborationStatusTimer);
         collaborationStatusTimer = null;
+        void refreshCollaborationWorkspace();
       }
     }).catch((error: unknown) => {
       if (currentCollaborationSession?.id !== sessionId) return;
@@ -1951,24 +2256,33 @@ async function sendCollaborationMessage(): Promise<void> {
   if (!session || !message.trim()) return;
   const targetDate = collaborationTargetDateInput?.value || collaborationTargetDate;
   collaborationTargetDate = targetDate;
-  collaborationTargetDates.set(session.id, targetDate);
-  stashCollaborationDraft();
-  renderCollaborationWorkspace();
+  if (collaborationSendButton) collaborationSendButton.disabled = true;
   try {
+    await saveCollaborationDraft({ sessionId: session.id, targetDate }, message);
     const queued = await window.__TAURI__.core.invoke<CollaborationSessionView>(
       "collaboration_submit_message",
       { sessionId: session.id, targetDate, text: message },
     );
-    collaborationDrafts.set(session.id, "");
-    if (collaborationMessageDraft) collaborationMessageDraft.value = "";
-    currentCollaborationSession = queued;
+    cacheCollaborationDrafts(queued);
+    collaborationDrafts.set(collaborationDraftKey(session.id, targetDate), "");
+    if (currentCollaborationSession?.id === session.id) {
+      if (collaborationMessageDraft) collaborationMessageDraft.value = "";
+      currentCollaborationSession = queued;
+    }
     renderCollaborationWorkspace();
-    watchCollaborationSession(queued);
+    if (currentCollaborationSession?.id === session.id) {
+      refreshCollaborationRunOwner(queued);
+      renderCollaborationWorkspace();
+      watchCollaborationSession(queued);
+      void refreshCollaborationWorkspace();
+    }
   } catch (error) {
-    collaborationDrafts.set(session.id, message);
-    if (collaborationMessageDraft) collaborationMessageDraft.value = message;
+    collaborationDrafts.set(collaborationDraftKey(session.id, targetDate), message);
+    if (currentCollaborationSession?.id === session.id && collaborationMessageDraft) {
+      collaborationMessageDraft.value = message;
+    }
     renderCollaborationWorkspace();
-    if (collaborationRunStatus) {
+    if (currentCollaborationSession?.id === session.id && collaborationRunStatus) {
       setCopyError(collaborationRunStatus, "collaboration.sendFailed", error);
       collaborationRunStatus.dataset.state = "error";
     }
@@ -3688,6 +4002,16 @@ async function selectTodayVault(): Promise<void> {
     return;
   }
   vaultSelectionInProgress = true;
+  try {
+    await flushCollaborationDraft();
+  } catch (error) {
+    vaultSelectionInProgress = false;
+    if (collaborationRunStatus) {
+      setCopyError(collaborationRunStatus, "collaboration.draftSaveFailed", error);
+      collaborationRunStatus.dataset.state = "error";
+    }
+    return;
+  }
   const selectionRequest = vaultSelectionRequests.begin();
   const presentationRequest = todayPresentationRequests.begin();
   updateTodayOperationState(1);
@@ -7482,7 +7806,16 @@ collaborationDateInput?.addEventListener("change", () => {
 
 collaborationTargetDateInput?.addEventListener("change", () => {
   collaborationTargetDate = collaborationTargetDateInput.value || collaborationActivityDate;
-  void refreshCollaborationContext();
+  void saveCollaborationTargetDate();
+});
+
+collaborationMessageDraft?.addEventListener("blur", () => {
+  void flushCollaborationDraft().catch((error: unknown) => {
+    if (collaborationRunStatus) {
+      setCopyError(collaborationRunStatus, "collaboration.draftSaveFailed", error);
+      collaborationRunStatus.dataset.state = "error";
+    }
+  });
 });
 
 document.querySelector<HTMLButtonElement>("#collaboration-new-session")?.addEventListener("click", () => {
@@ -7525,6 +7858,10 @@ collaborationMessageDraft?.addEventListener("keydown", (event) => {
 collaborationComposer?.addEventListener("submit", (event) => {
   event.preventDefault();
   void sendCollaborationMessage();
+});
+
+collaborationStopButton?.addEventListener("click", () => {
+  void stopCollaborationRun();
 });
 
 accentColorButtons.forEach((button) => {

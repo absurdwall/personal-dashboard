@@ -9,7 +9,7 @@ use crate::today::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Write};
@@ -17,7 +17,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -57,6 +57,10 @@ pub struct CollaborationMessageView {
     pub message_date: String,
     pub target_date: String,
     pub created_at: String,
+    pub execution_id: Option<String>,
+    pub runtime_turn_id: Option<String>,
+    pub delivery_state: String,
+    pub result_checked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,6 +77,8 @@ pub struct CollaborationSessionView {
     pub progress: String,
     pub runtime_thread_id: Option<String>,
     pub messages: Vec<CollaborationMessageView>,
+    pub draft: String,
+    pub drafts_by_date: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +134,7 @@ impl RuntimeConnectionView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeTurnRequest {
     pub thread_id: String,
+    pub execution_id: String,
     pub model: Option<String>,
     pub reasoning_effort: Option<String>,
     pub user_text: String,
@@ -138,6 +145,21 @@ pub struct RuntimeTurnRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeTurnResult {
     pub text: String,
+    pub runtime_turn_id: Option<String>,
+    pub stopped: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RuntimeRunReconciliation {
+    Completed {
+        text: String,
+        runtime_turn_id: String,
+    },
+    InProgress,
+    Interrupted {
+        runtime_turn_id: String,
+    },
+    NotFound,
 }
 
 pub trait CollaborationClock: Send + Sync {
@@ -171,6 +193,60 @@ pub trait AppServerTransport: Send {
     fn start_thread(&mut self, model: Option<&str>, instructions: &str) -> Result<String, String>;
     fn resume_thread(&mut self, thread_id: &str) -> Result<(), String>;
     fn send_turn(&mut self, request: RuntimeTurnRequest) -> Result<RuntimeTurnResult, String>;
+    fn send_turn_cancellable(
+        &mut self,
+        request: RuntimeTurnRequest,
+        _cancel_requested: Arc<AtomicBool>,
+    ) -> Result<RuntimeTurnResult, String> {
+        self.send_turn(request)
+    }
+    fn reconcile_turn(
+        &mut self,
+        _thread_id: &str,
+        _execution_id: &str,
+    ) -> Result<RuntimeRunReconciliation, String> {
+        Err("This Codex runtime cannot check saved turn results.".into())
+    }
+    fn shutdown_handle(&self) -> RuntimeShutdownHandle {
+        RuntimeShutdownHandle::default()
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct RuntimeShutdownHandle {
+    requested: Arc<AtomicBool>,
+    child: Arc<Mutex<Option<Arc<Mutex<Child>>>>>,
+}
+
+impl RuntimeShutdownHandle {
+    pub fn request_shutdown(&self) {
+        self.requested.store(true, Ordering::SeqCst);
+        let child = self
+            .child
+            .try_lock()
+            .ok()
+            .and_then(|child| child.as_ref().cloned());
+        if let Some(child) = child {
+            if let Ok(mut child) = child.try_lock() {
+                let _ = child.kill();
+            }
+        }
+    }
+
+    fn is_requested(&self) -> bool {
+        self.requested.load(Ordering::SeqCst)
+    }
+
+    fn register_child(&self, child: Arc<Mutex<Child>>) {
+        if let Ok(mut current) = self.child.lock() {
+            *current = Some(Arc::clone(&child));
+        }
+        if self.is_requested() {
+            if let Ok(mut child) = child.lock() {
+                let _ = child.kill();
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -181,6 +257,18 @@ pub struct CollaborationWorkspaceView {
     pub selected_model: Option<String>,
     pub context: CollaborationContextView,
     pub sessions: Vec<CollaborationSessionView>,
+    pub active_run: Option<CollaborationRunOwnerView>,
+    pub recovery_required: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationRunOwnerView {
+    pub session_id: String,
+    pub session_title: String,
+    pub run_id: String,
+    pub run_state: String,
+    pub progress: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -209,6 +297,16 @@ pub struct StoredCollaborationMessage {
     pub message_date: String,
     pub target_date: String,
     pub created_at: String,
+    #[serde(default)]
+    pub execution_id: Option<String>,
+    #[serde(default)]
+    pub runtime_turn_id: Option<String>,
+    #[serde(default = "default_message_delivery_state")]
+    pub delivery_state: String,
+    #[serde(default)]
+    pub queue_order: Option<u64>,
+    #[serde(default)]
+    pub result_checked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -226,6 +324,10 @@ pub struct StoredCollaborationSession {
     pub progress: String,
     pub runtime_thread_id: Option<String>,
     pub messages: Vec<StoredCollaborationMessage>,
+    #[serde(default)]
+    pub draft: String,
+    #[serde(default)]
+    pub drafts_by_date: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -234,6 +336,8 @@ pub struct CollaborationState {
     pub schema_version: u32,
     pub settings: CollaborationSettings,
     pub sessions: Vec<StoredCollaborationSession>,
+    #[serde(default = "default_next_queue_order")]
+    pub next_queue_order: u64,
 }
 
 impl Default for CollaborationState {
@@ -242,8 +346,17 @@ impl Default for CollaborationState {
             schema_version: COLLABORATION_SCHEMA_VERSION,
             settings: CollaborationSettings::default(),
             sessions: Vec::new(),
+            next_queue_order: 1,
         }
     }
+}
+
+fn default_next_queue_order() -> u64 {
+    1
+}
+
+fn default_message_delivery_state() -> String {
+    "completed".into()
 }
 
 pub trait CollaborationStore: Send + Sync {
@@ -276,10 +389,23 @@ impl CollaborationStore for FileCollaborationStore {
             }
             Err(error) => return Err(format!("Could not read collaboration history: {error}")),
         };
-        let state: CollaborationState = serde_json::from_slice(&bytes)
+        let mut state: CollaborationState = serde_json::from_slice(&bytes)
             .map_err(|error| format!("Collaboration history is invalid: {error}"))?;
         if state.schema_version != COLLABORATION_SCHEMA_VERSION {
             return Err("Collaboration history uses an unsupported schema version.".into());
+        }
+        for session in &mut state.sessions {
+            if !session.draft.is_empty() {
+                session
+                    .drafts_by_date
+                    .entry(session.target_date.clone())
+                    .or_insert_with(|| session.draft.clone());
+            }
+            session.draft = session
+                .drafts_by_date
+                .get(&session.target_date)
+                .cloned()
+                .unwrap_or_default();
         }
         Ok(state)
     }
@@ -336,6 +462,20 @@ pub struct CollaborationApplication {
     working_directory: PathBuf,
     skill_instructions: Arc<str>,
     state_lock: Arc<Mutex<()>>,
+    active_vault_workers: Arc<Mutex<HashSet<String>>>,
+    run_cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+    shutting_down: Arc<AtomicBool>,
+    runtime_shutdown: RuntimeShutdownHandle,
+}
+
+#[derive(Clone)]
+struct QueuedCollaborationTurn {
+    vault_key: String,
+    session_id: String,
+    execution_id: String,
+    target_date: String,
+    user_text: String,
+    queue_order: u64,
 }
 
 impl CollaborationApplication {
@@ -347,6 +487,7 @@ impl CollaborationApplication {
         working_directory: PathBuf,
         skill_instructions: String,
     ) -> Self {
+        let runtime_shutdown = runtime.shutdown_handle();
         let application = Self {
             store,
             runtime: Arc::new(Mutex::new(runtime)),
@@ -355,6 +496,10 @@ impl CollaborationApplication {
             working_directory,
             skill_instructions: Arc::from(skill_instructions),
             state_lock: Arc::new(Mutex::new(())),
+            active_vault_workers: Arc::new(Mutex::new(HashSet::new())),
+            run_cancellations: Arc::new(Mutex::new(HashMap::new())),
+            shutting_down: Arc::new(AtomicBool::new(false)),
+            runtime_shutdown,
         };
         let _ = application.mark_incomplete_runs_interrupted();
         application
@@ -403,6 +548,17 @@ impl CollaborationApplication {
             .lock()
             .map_err(|_| "Codex runtime state is unavailable.".to_string())?
             .start_chatgpt_login()
+    }
+
+    pub fn shutdown(&self) -> Result<(), String> {
+        self.shutting_down.store(true, Ordering::SeqCst);
+        if let Ok(cancellations) = self.run_cancellations.try_lock() {
+            for cancellation in cancellations.values() {
+                cancellation.store(true, Ordering::SeqCst);
+            }
+        }
+        self.runtime_shutdown.request_shutdown();
+        Ok(())
     }
 
     pub fn select_model(&self, model_id: Option<&str>) -> Result<RuntimeConnectionView, String> {
@@ -475,10 +631,9 @@ impl CollaborationApplication {
         let context = self
             .context_source
             .read_context(vault_key.as_deref(), date)?;
-        let (selected_model, sessions) = self.read_state(|state| {
-            (
-                state.settings.selected_model.clone(),
-                state
+        let (selected_model, sessions, active_run, recovery_required) =
+            self.read_state(|state| {
+                let visible_sessions = state
                     .sessions
                     .iter()
                     .filter(|session| {
@@ -489,15 +644,22 @@ impl CollaborationApplication {
                                 .any(|activity| activity == date)
                     })
                     .map(session_view)
-                    .collect::<Vec<_>>(),
-            )
-        })?;
+                    .collect::<Vec<_>>();
+                (
+                    state.settings.selected_model.clone(),
+                    visible_sessions,
+                    active_run_for_vault(state, vault_key.as_deref()),
+                    recovery_required_for_vault(state, vault_key.as_deref()),
+                )
+            })?;
         Ok(CollaborationWorkspaceView {
             date: date.to_owned(),
             vault_name: context.vault_name.clone(),
             selected_model,
             context,
             sessions,
+            active_run,
+            recovery_required,
         })
     }
 
@@ -520,6 +682,8 @@ impl CollaborationApplication {
             progress: "Waiting for a message.".into(),
             runtime_thread_id: None,
             messages: Vec::new(),
+            draft: String::new(),
+            drafts_by_date: HashMap::new(),
         };
         let saved = session.clone();
         self.update_state(|state| {
@@ -577,6 +741,64 @@ impl CollaborationApplication {
         self.session(&vault_key, session_id)
     }
 
+    pub fn save_draft_for_selected_vault(
+        &self,
+        session_id: &str,
+        target_date: &str,
+        draft: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        validate_date(target_date)?;
+        if draft.chars().count() > MAX_MESSAGE_CHARACTERS {
+            return Err(format!(
+                "Drafts are limited to {MAX_MESSAGE_CHARACTERS} characters."
+            ));
+        }
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before saving a collaboration draft.".to_string()
+        })?;
+        self.update_state(|state| {
+            let session = matching_session_mut(state, &vault_key, session_id)?;
+            session
+                .drafts_by_date
+                .insert(target_date.to_owned(), draft.to_owned());
+            if session.target_date == target_date {
+                session.draft = draft.to_owned();
+            }
+            Ok(session_view(session))
+        })
+    }
+
+    pub fn set_target_date_for_selected_vault(
+        &self,
+        session_id: &str,
+        target_date: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        validate_date(target_date)?;
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before selecting a collaboration target date.".to_string()
+        })?;
+        let now = self.clock.current_timestamp();
+        self.update_state(|state| {
+            let session = matching_session_mut(state, &vault_key, session_id)?;
+            session.target_date = target_date.to_owned();
+            session.draft = session
+                .drafts_by_date
+                .get(target_date)
+                .cloned()
+                .unwrap_or_default();
+            session.last_activity_at = now;
+            if !session
+                .activity_dates
+                .iter()
+                .any(|date| date == target_date)
+            {
+                session.activity_dates.push(target_date.to_owned());
+                session.activity_dates.sort();
+            }
+            Ok(session_view(session))
+        })
+    }
+
     pub fn submit_message_for_selected_vault(
         &self,
         session_id: &str,
@@ -615,17 +837,21 @@ impl CollaborationApplication {
 
         let now = self.clock.current_timestamp();
         let message_date = self.clock.current_date();
-        let run_id = next_identifier("run");
+        let execution_id = next_identifier("run");
         let target_date_owned = target_date.to_owned();
         let text_owned = trimmed.to_owned();
         let session = self.update_state(|state| {
-            if state.sessions.iter().any(|other| {
-                other.vault_key.as_deref() == Some(vault_key)
-                    && other.id != session_id
-                    && matches!(other.run_state.as_str(), "queued" | "reading" | "thinking")
+            if state.sessions.iter().any(|candidate| {
+                candidate.vault_key.as_deref() == Some(vault_key)
+                    && candidate.messages.iter().any(|message| {
+                        matches!(message.delivery_state.as_str(), "interrupted" | "stop-unconfirmed")
+                            && !message.result_checked
+                    })
             }) {
-                return Err("Another collaboration session is already working in this Vault. Wait for it to finish before starting another message.".into());
+                return Err("A previous Codex request needs a saved-result check before more work can start in this Vault.".into());
             }
+            let queue_order = state.next_queue_order.max(1);
+            state.next_queue_order = queue_order.saturating_add(1);
             let session = state
                 .sessions
                 .iter_mut()
@@ -634,14 +860,23 @@ impl CollaborationApplication {
                         && session.vault_key.as_deref() == Some(vault_key)
                 })
                 .ok_or_else(|| "This collaboration session is not available in the selected Vault.".to_string())?;
-            if matches!(session.run_state.as_str(), "queued" | "reading" | "thinking") {
-                return Err("This session is already working. Wait for the current reply.".into());
-            }
+            let already_working = matches!(
+                session.run_state.as_str(),
+                "queued" | "reading" | "thinking" | "stopping" | "stop-unconfirmed"
+            );
             session.target_date = target_date_owned.clone();
+            session.drafts_by_date.remove(&target_date_owned);
+            session.draft = session
+                .drafts_by_date
+                .get(&target_date_owned)
+                .cloned()
+                .unwrap_or_default();
             session.last_activity_at = now.clone();
-            session.run_id = Some(run_id.clone());
-            session.run_state = "queued".into();
-            session.progress = "Message saved; waiting to read the latest context.".into();
+            if !already_working {
+                session.run_id = Some(execution_id.clone());
+                session.run_state = "queued".into();
+                session.progress = "Saved in this Vault's queue; current context will be read when this request starts.".into();
+            }
             if session.title.is_empty() {
                 session.title = summarize_title(&text_owned);
             }
@@ -651,6 +886,7 @@ impl CollaborationApplication {
                     session.activity_dates.sort();
                 }
             }
+            session.draft.clear();
             session.messages.push(StoredCollaborationMessage {
                 id: next_identifier("message"),
                 role: "user".into(),
@@ -658,33 +894,425 @@ impl CollaborationApplication {
                 message_date: message_date.clone(),
                 target_date: target_date_owned.clone(),
                 created_at: now.clone(),
+                execution_id: Some(execution_id.clone()),
+                runtime_turn_id: None,
+                delivery_state: "queued".into(),
+                queue_order: Some(queue_order),
+                result_checked: false,
             });
             Ok(session_view(session))
         })?;
 
-        let application = self.clone();
-        let worker_session_id = session_id.to_owned();
-        let worker_vault_key = vault_key.to_owned();
-        let worker_run_id = run_id.clone();
-        let worker_text = text_owned.clone();
-        let worker_target_date = target_date_owned.clone();
-        let worker = thread::Builder::new()
-            .name("dashboard-collaboration-turn".into())
-            .spawn(move || {
-                application.execute_turn(
-                    &worker_vault_key,
-                    &worker_session_id,
-                    &worker_run_id,
-                    &worker_target_date,
-                    &worker_text,
-                )
-            });
-        if let Err(error) = worker {
-            let error = format!("Could not start the collaboration worker: {error}");
-            self.finish_error(&vault_key, &session_id, &run_id, error.clone());
+        if let Err(error) = self.schedule_vault_worker(vault_key.to_owned()) {
+            self.finish_error(vault_key, session_id, &execution_id, error.clone());
             return Err(error);
         }
         Ok(session)
+    }
+
+    pub fn stop_run_for_selected_vault(
+        &self,
+        session_id: &str,
+        execution_id: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before stopping collaboration work.".to_string()
+        })?;
+        let (session, cancellation) = self.update_state(|state| {
+            let delivery_state = state
+                .sessions
+                .iter()
+                .find(|session| {
+                    session.id == session_id && session.vault_key.as_deref() == Some(&vault_key)
+                })
+                .and_then(|session| {
+                    session.messages.iter().find(|message| {
+                        message.execution_id.as_deref() == Some(execution_id)
+                    })
+                })
+                .map(|message| message.delivery_state.clone())
+                .ok_or_else(|| {
+                    "This collaboration request is not available in the selected Vault."
+                        .to_string()
+                })?;
+            let cancellation = if matches!(delivery_state.as_str(), "in-progress" | "stopping") {
+                Some(
+                    self.run_cancellations
+                        .lock()
+                        .map_err(|_| "Codex runtime state is unavailable.".to_string())?
+                        .get(execution_id)
+                        .cloned()
+                        .ok_or_else(|| {
+                            "The active Codex request could not be reached to confirm a stop."
+                                .to_string()
+                        })?,
+                )
+            } else {
+                None
+            };
+            let session = matching_session_mut(state, &vault_key, session_id)?;
+            let message = session
+                .messages
+                .iter_mut()
+                .find(|message| message.execution_id.as_deref() == Some(execution_id))
+                .ok_or_else(|| "This collaboration request is not available in the selected Vault.".to_string())?;
+            match message.delivery_state.as_str() {
+                "queued" => {
+                    message.delivery_state = "stopped".into();
+                    message.result_checked = true;
+                    if session.run_id.as_deref() == Some(execution_id) {
+                        session.run_state = "stopped".into();
+                        session.progress = "The queued request was stopped before it started.".into();
+                    }
+                }
+                "in-progress" | "stopping" => {
+                    message.delivery_state = "stopping".into();
+                    session.run_id = Some(execution_id.to_owned());
+                    session.run_state = "stopping".into();
+                    session.progress = "Waiting for Codex to confirm that this turn has stopped. Queued requests will wait.".into();
+                }
+                "stop-unconfirmed" | "interrupted" => {
+                    return Err("Check the saved Codex result before continuing this request.".into());
+                }
+                _ => return Err("This collaboration request is no longer running.".into()),
+            }
+            Ok((session_view(session), cancellation))
+        })?;
+        if let Some(cancellation) = cancellation {
+            cancellation.store(true, Ordering::SeqCst);
+        }
+        Ok(session)
+    }
+
+    pub fn requeue_not_started_for_selected_vault(
+        &self,
+        session_id: &str,
+        execution_id: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before continuing collaboration work.".to_string()
+        })?;
+        let (session, queue_order) = self.update_state(|state| {
+            let queue_order = state.next_queue_order.max(1);
+            state.next_queue_order = queue_order.saturating_add(1);
+            let session = matching_session_mut(state, &vault_key, session_id)?;
+            let message = session
+                .messages
+                .iter_mut()
+                .find(|message| message.execution_id.as_deref() == Some(execution_id))
+                .ok_or_else(|| {
+                    "This collaboration request is not available in the selected Vault.".to_string()
+                })?;
+            if message.delivery_state != "not-started" {
+                return Err(
+                    "Only a request confirmed as not started can be resumed directly.".into(),
+                );
+            }
+            message.delivery_state = "queued".into();
+            message.queue_order = Some(queue_order);
+            message.result_checked = false;
+            session.run_id = Some(execution_id.to_owned());
+            session.run_state = "queued".into();
+            session.progress =
+                "Continued by the user; waiting for its place in the Vault queue.".into();
+            Ok((session_view(session), queue_order))
+        })?;
+        let _ = queue_order;
+        self.schedule_vault_worker(vault_key)?;
+        Ok(session)
+    }
+
+    pub fn reconcile_run_for_selected_vault(
+        &self,
+        session_id: &str,
+        execution_id: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before checking a saved Codex result.".to_string()
+        })?;
+        let (thread_id, target_date) = self.read_state(|state| {
+            let session = state
+                .sessions
+                .iter()
+                .find(|session| {
+                    session.id == session_id && session.vault_key.as_deref() == Some(&vault_key)
+                })
+                .ok_or_else(|| "This collaboration session is not available in the selected Vault.".to_string())?;
+            let message = session
+                .messages
+                .iter()
+                .find(|message| message.execution_id.as_deref() == Some(execution_id))
+                .ok_or_else(|| "This collaboration request is not available in the selected Vault.".to_string())?;
+            if !matches!(message.delivery_state.as_str(), "interrupted" | "stop-unconfirmed")
+                || message.result_checked
+            {
+                return Err(String::from("This request does not need a saved-result check."));
+            }
+            let thread_id = session.runtime_thread_id.clone().ok_or_else(|| {
+                "No Codex thread was recorded for this request. Nothing was replayed; review it before continuing.".to_string()
+            })?;
+            Ok((thread_id, message.target_date.clone()))
+        })??;
+
+        let reconciliation = self
+            .runtime
+            .lock()
+            .map_err(|_| "Codex runtime state is unavailable.".to_string())?
+            .reconcile_turn(&thread_id, execution_id)?;
+        if self.context_source.current_vault_key()?.as_deref() != Some(&vault_key) {
+            return Err("The selected Vault changed while the saved Codex result was being checked. Refresh the workspace before continuing.".into());
+        }
+        let now = self.clock.current_timestamp();
+        let message_date = self.clock.current_date();
+        let session = self.update_state(|state| {
+            let session = matching_session_mut(state, &vault_key, session_id)?;
+            let message = session
+                .messages
+                .iter_mut()
+                .find(|message| message.execution_id.as_deref() == Some(execution_id))
+                .ok_or_else(|| "This collaboration request is no longer available.".to_string())?;
+            match reconciliation {
+                RuntimeRunReconciliation::Completed { ref text, ref runtime_turn_id }
+                    if !text.trim().is_empty() => {
+                        message.delivery_state = "completed".into();
+                        message.runtime_turn_id = Some(runtime_turn_id.clone());
+                        message.result_checked = true;
+                        session.messages.push(StoredCollaborationMessage {
+                            id: next_identifier("message"),
+                            role: "assistant".into(),
+                            text: text.clone(),
+                            message_date: message_date.clone(),
+                            target_date: target_date.clone(),
+                            created_at: now.clone(),
+                            execution_id: Some(execution_id.to_owned()),
+                            runtime_turn_id: Some(runtime_turn_id.clone()),
+                            delivery_state: "completed".into(),
+                            queue_order: None,
+                            result_checked: true,
+                        });
+                        if session.run_id.as_deref() == Some(execution_id) {
+                            session.run_state = "completed".into();
+                            session.progress = "The saved App Server result was recovered and attached to this request. No turn was resent.".into();
+                        }
+                    }
+                RuntimeRunReconciliation::Completed { .. } => {
+                    message.delivery_state = "interrupted".into();
+                    message.result_checked = false;
+                    if session.run_id.as_deref() == Some(execution_id) {
+                        session.run_state = "interrupted".into();
+                        session.progress = "The saved turn completed without a text reply that can be restored. Review the App Server conversation before continuing.".into();
+                    }
+                }
+                RuntimeRunReconciliation::Interrupted { ref runtime_turn_id } => {
+                    message.delivery_state = "interrupted".into();
+                    message.runtime_turn_id = Some(runtime_turn_id.clone());
+                    message.result_checked = true;
+                    if session.run_id.as_deref() == Some(execution_id) {
+                        session.run_state = "interrupted".into();
+                        session.progress = "The saved App Server turn is confirmed interrupted. Nothing was replayed; review the conversation before sending another request.".into();
+                    }
+                }
+                RuntimeRunReconciliation::InProgress => {
+                    message.delivery_state = "stop-unconfirmed".into();
+                    message.result_checked = false;
+                    if session.run_id.as_deref() == Some(execution_id) {
+                        session.run_state = "stop-unconfirmed".into();
+                        session.progress = "Codex still reports this request in progress. No queued request was started; check again after it stops.".into();
+                    }
+                }
+                RuntimeRunReconciliation::NotFound => {
+                    message.delivery_state = "interrupted".into();
+                    message.result_checked = true;
+                    if session.run_id.as_deref() == Some(execution_id) {
+                        session.run_state = "interrupted".into();
+                        session.progress = "No matching saved App Server turn was found. Nothing was resent; review this request before continuing.".into();
+                    }
+                }
+            }
+            session.last_activity_at = now.clone();
+            Ok(session_view(session))
+        })?;
+        if !recovery_required_for_vault_state(
+            &self.read_state(|state| state.clone())?,
+            Some(&vault_key),
+        ) {
+            self.schedule_vault_worker(vault_key)?;
+        }
+        Ok(session)
+    }
+
+    fn schedule_vault_worker(&self, vault_key: String) -> Result<(), String> {
+        if self.shutting_down.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        let mut active = self
+            .active_vault_workers
+            .lock()
+            .map_err(|_| "Collaboration queue state is unavailable.".to_string())?;
+        if !active.insert(vault_key.clone()) {
+            return Ok(());
+        }
+        drop(active);
+
+        let application = self.clone();
+        let worker_vault_key = vault_key.clone();
+        if let Err(error) = thread::Builder::new()
+            .name("dashboard-collaboration-queue".into())
+            .spawn(move || application.drain_vault_queue(&worker_vault_key))
+        {
+            if let Ok(mut active) = self.active_vault_workers.lock() {
+                active.remove(&vault_key);
+            }
+            return Err(format!("Could not start the collaboration queue: {error}"));
+        }
+        Ok(())
+    }
+
+    fn drain_vault_queue(&self, vault_key: &str) {
+        loop {
+            if self.shutting_down.load(Ordering::SeqCst) {
+                if let Ok(mut active) = self.active_vault_workers.lock() {
+                    active.remove(vault_key);
+                }
+                return;
+            }
+            match self.next_queued_turn(vault_key) {
+                Ok(Some(turn)) => self.run_queued_turn(turn),
+                Ok(None) => {
+                    let Ok(mut active) = self.active_vault_workers.lock() else {
+                        return;
+                    };
+                    match self.next_queued_turn(vault_key) {
+                        Ok(Some(_)) => {
+                            drop(active);
+                            continue;
+                        }
+                        _ => {
+                            active.remove(vault_key);
+                            return;
+                        }
+                    }
+                }
+                Err(_) => {
+                    if let Ok(mut active) = self.active_vault_workers.lock() {
+                        active.remove(vault_key);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    fn next_queued_turn(&self, vault_key: &str) -> Result<Option<QueuedCollaborationTurn>, String> {
+        self.read_state(|state| {
+            if self.shutting_down.load(Ordering::SeqCst)
+                || recovery_required_for_vault_state(state, Some(vault_key))
+            {
+                return None;
+            }
+            state
+                .sessions
+                .iter()
+                .filter(|session| session.vault_key.as_deref() == Some(vault_key))
+                .flat_map(|session| {
+                    session.messages.iter().filter_map(move |message| {
+                        if message.role != "user" || message.delivery_state != "queued" {
+                            return None;
+                        }
+                        Some((session, message))
+                    })
+                })
+                .filter_map(|(session, message)| {
+                    Some((
+                        message.queue_order?,
+                        QueuedCollaborationTurn {
+                            vault_key: vault_key.to_owned(),
+                            session_id: session.id.clone(),
+                            execution_id: message.execution_id.clone()?,
+                            target_date: message.target_date.clone(),
+                            user_text: message.text.clone(),
+                            queue_order: message.queue_order?,
+                        },
+                    ))
+                })
+                .min_by_key(|(order, _)| *order)
+                .map(|(_, turn)| turn)
+        })
+    }
+
+    fn run_queued_turn(&self, turn: QueuedCollaborationTurn) {
+        if self.shutting_down.load(Ordering::SeqCst) {
+            return;
+        }
+        let cancellation = Arc::new(AtomicBool::new(false));
+        if let Ok(mut controls) = self.run_cancellations.lock() {
+            controls.insert(turn.execution_id.clone(), Arc::clone(&cancellation));
+        } else {
+            self.finish_error(
+                &turn.vault_key,
+                &turn.session_id,
+                &turn.execution_id,
+                "Collaboration stop controls are unavailable.".into(),
+            );
+            return;
+        }
+        if self.shutting_down.load(Ordering::SeqCst) {
+            cancellation.store(true, Ordering::SeqCst);
+            if let Ok(mut controls) = self.run_cancellations.lock() {
+                controls.remove(&turn.execution_id);
+            }
+            return;
+        }
+        let started = self.mark_queued_turn_started(&turn);
+        match started {
+            Ok(true) => self.execute_turn(
+                &turn.vault_key,
+                &turn.session_id,
+                &turn.execution_id,
+                &turn.target_date,
+                &turn.user_text,
+                cancellation,
+            ),
+            Ok(false) => {}
+            Err(error) => {
+                self.finish_error(&turn.vault_key, &turn.session_id, &turn.execution_id, error)
+            }
+        }
+        if let Ok(mut controls) = self.run_cancellations.lock() {
+            controls.remove(&turn.execution_id);
+        }
+    }
+
+    fn mark_queued_turn_started(&self, turn: &QueuedCollaborationTurn) -> Result<bool, String> {
+        if self.shutting_down.load(Ordering::SeqCst) {
+            return Ok(false);
+        }
+        self.update_state(|state| {
+            if self.shutting_down.load(Ordering::SeqCst) {
+                return Ok(false);
+            }
+            let session = matching_session_mut(state, &turn.vault_key, &turn.session_id)?;
+            let Some(message) = session
+                .messages
+                .iter_mut()
+                .find(|message| message.execution_id.as_deref() == Some(&turn.execution_id))
+            else {
+                return Ok(false);
+            };
+            if message.delivery_state != "queued" {
+                return Ok(false);
+            }
+            message.delivery_state = "in-progress".into();
+            session.target_date = turn.target_date.clone();
+            session.run_id = Some(turn.execution_id.clone());
+            session.run_state = "queued".into();
+            session.progress = format!(
+                "Request {} is starting from the latest available context.",
+                turn.queue_order
+            );
+            session.last_activity_at = self.clock.current_timestamp();
+            Ok(true)
+        })
     }
 
     fn execute_turn(
@@ -694,7 +1322,14 @@ impl CollaborationApplication {
         run_id: &str,
         target_date: &str,
         user_text: &str,
+        cancellation: Arc<AtomicBool>,
     ) {
+        if cancellation.load(Ordering::SeqCst) {
+            if !self.shutting_down.load(Ordering::SeqCst) {
+                self.finish_stopped(vault_key, session_id, run_id, None);
+            }
+            return;
+        }
         if let Err(error) = self.set_progress(
             vault_key,
             session_id,
@@ -716,6 +1351,12 @@ impl CollaborationApplication {
                 return;
             }
         };
+        if cancellation.load(Ordering::SeqCst) {
+            if !self.shutting_down.load(Ordering::SeqCst) {
+                self.finish_stopped(vault_key, session_id, run_id, None);
+            }
+            return;
+        }
         if self
             .context_source
             .current_vault_key()
@@ -879,31 +1520,60 @@ impl CollaborationApplication {
             );
             return;
         }
+        if cancellation.load(Ordering::SeqCst) {
+            drop(runtime);
+            if !self.shutting_down.load(Ordering::SeqCst) {
+                self.finish_stopped(vault_key, session_id, run_id, None);
+            }
+            return;
+        }
         let request = RuntimeTurnRequest {
             thread_id,
+            execution_id: run_id.to_owned(),
             model: selected_model,
             reasoning_effort: selected_reasoning_effort,
             user_text: user_text.to_owned(),
             context,
             working_directory: self.working_directory.clone(),
         };
-        let result = runtime.send_turn(request);
+        let result = runtime.send_turn_cancellable(request, Arc::clone(&cancellation));
         drop(runtime);
 
         match result {
             Ok(result) if !result.text.trim().is_empty() => {
-                if let Err(error) = self.finish_success(vault_key, session_id, run_id, &result.text)
-                {
+                if result.stopped {
+                    self.finish_stopped(
+                        vault_key,
+                        session_id,
+                        run_id,
+                        result.runtime_turn_id.as_deref(),
+                    );
+                } else if let Err(error) = self.finish_success(
+                    vault_key,
+                    session_id,
+                    run_id,
+                    &result.text,
+                    result.runtime_turn_id.as_deref(),
+                ) {
                     self.finish_error(vault_key, session_id, run_id, error);
                 }
             }
+            Ok(result) if result.stopped => self.finish_stopped(
+                vault_key,
+                session_id,
+                run_id,
+                result.runtime_turn_id.as_deref(),
+            ),
             Ok(_) => self.finish_error(
                 vault_key,
                 session_id,
                 run_id,
                 "Codex completed the turn without a text reply.".into(),
             ),
-            Err(error) => self.finish_error(vault_key, session_id, run_id, error),
+            Err(error) if cancellation.load(Ordering::SeqCst) => {
+                self.finish_stop_unconfirmed(vault_key, session_id, run_id, error)
+            }
+            Err(error) => self.finish_unconfirmed(vault_key, session_id, run_id, error),
         }
     }
 
@@ -920,8 +1590,19 @@ impl CollaborationApplication {
             if session.run_id.as_deref() != Some(run_id) {
                 return Err("This collaboration run is no longer current.".into());
             }
-            session.run_state = run_state.to_owned();
-            session.progress = progress.to_owned();
+            if session.run_state != "stopping" {
+                session.run_state = run_state.to_owned();
+                session.progress = progress.to_owned();
+            }
+            if let Some(message) = session
+                .messages
+                .iter_mut()
+                .find(|message| message.execution_id.as_deref() == Some(run_id))
+            {
+                if message.delivery_state != "stopping" {
+                    message.delivery_state = "in-progress".into();
+                }
+            }
             session.last_activity_at = self.clock.current_timestamp();
             Ok(())
         })
@@ -940,6 +1621,13 @@ impl CollaborationApplication {
                 return Err("This collaboration run is no longer current.".into());
             }
             session.runtime_thread_id = Some(thread_id.to_owned());
+            if let Some(message) = session
+                .messages
+                .iter_mut()
+                .find(|message| message.execution_id.as_deref() == Some(run_id))
+            {
+                message.delivery_state = "in-progress".into();
+            }
             Ok(())
         })
     }
@@ -950,6 +1638,7 @@ impl CollaborationApplication {
         session_id: &str,
         run_id: &str,
         text: &str,
+        runtime_turn_id: Option<&str>,
     ) -> Result<(), String> {
         let now = self.clock.current_timestamp();
         let today = self.clock.current_date();
@@ -958,7 +1647,14 @@ impl CollaborationApplication {
             if session.run_id.as_deref() != Some(run_id) {
                 return Err("This collaboration run is no longer current.".into());
             }
-            let target_date = session.target_date.clone();
+            let target_date = session
+                .messages
+                .iter()
+                .find(|message| {
+                    message.role == "user" && message.execution_id.as_deref() == Some(run_id)
+                })
+                .map(|message| message.target_date.clone())
+                .unwrap_or_else(|| session.target_date.clone());
             if !session.activity_dates.iter().any(|date| date == &today) {
                 session.activity_dates.push(today.clone());
                 session.activity_dates.sort();
@@ -970,11 +1666,38 @@ impl CollaborationApplication {
                 message_date: today,
                 target_date,
                 created_at: now.clone(),
+                execution_id: Some(run_id.to_owned()),
+                runtime_turn_id: runtime_turn_id.map(str::to_owned),
+                delivery_state: "completed".into(),
+                queue_order: None,
+                result_checked: true,
             });
+            if let Some(message) = session.messages.iter_mut().find(|message| {
+                message.execution_id.as_deref() == Some(run_id) && message.role == "user"
+            }) {
+                message.delivery_state = "completed".into();
+                message.runtime_turn_id = runtime_turn_id.map(str::to_owned);
+                message.result_checked = true;
+            }
             session.last_activity_at = now;
-            session.run_state = "completed".into();
-            session.progress = "Codex returned a text reply. No Dashboard data was changed.".into();
-            session.run_id = None;
+            let next_queued = session
+                .messages
+                .iter()
+                .filter(|message| message.role == "user" && message.delivery_state == "queued")
+                .filter_map(|message| Some((message.queue_order?, message.execution_id.as_ref()?)))
+                .min_by_key(|(order, _)| *order)
+                .map(|(_, execution_id)| execution_id.clone());
+            if let Some(next_execution_id) = next_queued {
+                session.run_id = Some(next_execution_id);
+                session.run_state = "queued".into();
+                session.progress =
+                    "The previous reply is saved; the next message is waiting in the Vault queue."
+                        .into();
+            } else {
+                session.run_state = "completed".into();
+                session.progress =
+                    "Codex returned a text reply. No Dashboard data was changed.".into();
+            }
             Ok(())
         })
     }
@@ -988,8 +1711,100 @@ impl CollaborationApplication {
             }
             session.run_state = "error".into();
             session.progress = error;
+            if let Some(message) = session
+                .messages
+                .iter_mut()
+                .find(|message| message.execution_id.as_deref() == Some(run_id))
+            {
+                message.delivery_state = "error".into();
+                message.result_checked = true;
+            }
             session.last_activity_at = now.clone();
-            session.run_id = None;
+            Ok(())
+        });
+    }
+
+    fn finish_stopped(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        run_id: &str,
+        runtime_turn_id: Option<&str>,
+    ) {
+        let now = self.clock.current_timestamp();
+        let _ = self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            let message = session
+                .messages
+                .iter_mut()
+                .find(|message| message.execution_id.as_deref() == Some(run_id))
+                .ok_or_else(|| "This collaboration request is no longer available.".to_string())?;
+            if !matches!(message.delivery_state.as_str(), "stopping" | "in-progress" | "queued") {
+                return Ok(());
+            }
+            message.delivery_state = "stopped".into();
+            message.runtime_turn_id = runtime_turn_id.map(str::to_owned);
+            message.result_checked = true;
+            if session.run_id.as_deref() == Some(run_id) {
+                session.run_state = "stopped".into();
+                session.progress = "Codex confirmed this request stopped. No replacement request was sent before confirmation.".into();
+                session.last_activity_at = now.clone();
+            }
+            Ok(())
+        });
+    }
+
+    fn finish_unconfirmed(&self, vault_key: &str, session_id: &str, run_id: &str, error: String) {
+        self.finish_unconfirmed_state(
+            vault_key,
+            session_id,
+            run_id,
+            "interrupted",
+            format!("The request outcome could not be confirmed: {error}. Check the saved Codex result before continuing; the request will not be replayed."),
+        );
+    }
+
+    fn finish_stop_unconfirmed(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        run_id: &str,
+        error: String,
+    ) {
+        self.finish_unconfirmed_state(
+            vault_key,
+            session_id,
+            run_id,
+            "stop-unconfirmed",
+            format!("Codex has not confirmed that this request stopped: {error}. Queued requests remain paused until the saved result is checked."),
+        );
+    }
+
+    fn finish_unconfirmed_state(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        run_id: &str,
+        state_name: &str,
+        progress: String,
+    ) {
+        let now = self.clock.current_timestamp();
+        let _ = self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            if session.run_id.as_deref() != Some(run_id) {
+                return Ok(());
+            }
+            session.run_state = state_name.to_owned();
+            session.progress = progress.clone();
+            if let Some(message) = session
+                .messages
+                .iter_mut()
+                .find(|message| message.execution_id.as_deref() == Some(run_id))
+            {
+                message.delivery_state = state_name.to_owned();
+                message.result_checked = false;
+            }
+            session.last_activity_at = now.clone();
             Ok(())
         });
     }
@@ -997,10 +1812,51 @@ impl CollaborationApplication {
     fn mark_incomplete_runs_interrupted(&self) -> Result<(), String> {
         self.update_state(|state| {
             for session in &mut state.sessions {
-                if matches!(session.run_state.as_str(), "queued" | "reading" | "thinking") {
-                    session.run_state = "interrupted".into();
-                    session.progress = "The app closed before this reply finished. Review the conversation, then send another message to continue.".into();
-                    session.run_id = None;
+                let was_running = matches!(
+                    session.run_state.as_str(),
+                    "queued" | "reading" | "thinking" | "stopping" | "stop-unconfirmed"
+                );
+                if was_running {
+                    if let Some(run_id) = session.run_id.clone() {
+                        if !session.messages.iter().any(|message| {
+                            message.execution_id.as_deref() == Some(&run_id)
+                        }) {
+                            if let Some(message) = session
+                                .messages
+                                .iter_mut()
+                                .rev()
+                                .find(|message| message.role == "user")
+                            {
+                                message.execution_id = Some(run_id);
+                                message.delivery_state = "interrupted".into();
+                                message.result_checked = false;
+                            }
+                        }
+                    }
+                }
+                for message in &mut session.messages {
+                    if message.role != "user" {
+                        continue;
+                    }
+                    match message.delivery_state.as_str() {
+                        "queued" => {
+                            message.delivery_state = "not-started".into();
+                            message.result_checked = true;
+                        }
+                        "in-progress" | "stopping" | "stop-unconfirmed" => {
+                            message.delivery_state = "interrupted".into();
+                            message.result_checked = false;
+                        }
+                        _ => {}
+                    }
+                }
+                if was_running {
+                    session.run_state = if session.run_state == "stopping" {
+                        "stop-unconfirmed".into()
+                    } else {
+                        "interrupted".into()
+                    };
+                    session.progress = "The app closed before this request was confirmed. Check the saved App Server result before continuing; no request is replayed automatically.".into();
                 }
             }
             Ok(())
@@ -1042,6 +1898,69 @@ fn matching_session_mut<'a>(
         .ok_or_else(|| "This collaboration session is not available in the selected Vault.".into())
 }
 
+fn recovery_required_for_vault_state(state: &CollaborationState, vault_key: Option<&str>) -> bool {
+    state.sessions.iter().any(|session| {
+        session.vault_key.as_deref() == vault_key
+            && ((session.run_state == "interrupted"
+                && session.run_id.as_ref().is_some_and(|run_id| {
+                    session
+                        .messages
+                        .iter()
+                        .find(|message| message.execution_id.as_ref() == Some(run_id))
+                        .is_none_or(|message| {
+                            message.delivery_state == "interrupted" && !message.result_checked
+                        })
+                }))
+                || session.messages.iter().any(|message| {
+                    matches!(
+                        message.delivery_state.as_str(),
+                        "interrupted" | "stop-unconfirmed"
+                    ) && !message.result_checked
+                }))
+    })
+}
+
+fn recovery_required_for_vault(state: &CollaborationState, vault_key: Option<&str>) -> bool {
+    recovery_required_for_vault_state(state, vault_key)
+}
+
+fn active_run_for_vault(
+    state: &CollaborationState,
+    vault_key: Option<&str>,
+) -> Option<CollaborationRunOwnerView> {
+    state
+        .sessions
+        .iter()
+        .filter(|session| {
+            session.vault_key.as_deref() == vault_key
+                && matches!(
+                    session.run_state.as_str(),
+                    "queued" | "reading" | "thinking" | "stopping" | "stop-unconfirmed"
+                )
+        })
+        .filter_map(|session| {
+            let run_id = session.run_id.as_ref()?;
+            let queue_order = session
+                .messages
+                .iter()
+                .find(|message| message.execution_id.as_ref() == Some(run_id))
+                .and_then(|message| message.queue_order)
+                .unwrap_or(u64::MAX);
+            Some((
+                queue_order,
+                CollaborationRunOwnerView {
+                    session_id: session.id.clone(),
+                    session_title: session.title.clone(),
+                    run_id: run_id.clone(),
+                    run_state: session.run_state.clone(),
+                    progress: session.progress.clone(),
+                },
+            ))
+        })
+        .min_by_key(|(order, _)| *order)
+        .map(|(_, run)| run)
+}
+
 fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionView {
     CollaborationSessionView {
         id: session.id.clone(),
@@ -1064,8 +1983,18 @@ fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionVie
                 message_date: message.message_date.clone(),
                 target_date: message.target_date.clone(),
                 created_at: message.created_at.clone(),
+                execution_id: message.execution_id.clone(),
+                runtime_turn_id: message.runtime_turn_id.clone(),
+                delivery_state: message.delivery_state.clone(),
+                result_checked: message.result_checked,
             })
             .collect(),
+        draft: session
+            .drafts_by_date
+            .get(&session.target_date)
+            .cloned()
+            .unwrap_or_else(|| session.draft.clone()),
+        drafts_by_date: session.drafts_by_date.clone(),
     }
 }
 
@@ -1436,6 +2365,7 @@ pub struct CodexAppServerRuntime {
     restricted_read_sandbox_policy: Option<Value>,
     text_turn_unavailable_reason: Option<String>,
     client: Option<StdioJsonlClient>,
+    shutdown_handle: RuntimeShutdownHandle,
 }
 
 fn generate_restricted_read_policy(
@@ -1744,6 +2674,7 @@ impl CodexAppServerRuntime {
             restricted_read_sandbox_policy: None,
             text_turn_unavailable_reason: None,
             client: None,
+            shutdown_handle: RuntimeShutdownHandle::default(),
         }
     }
 
@@ -1780,6 +2711,9 @@ impl CodexAppServerRuntime {
     }
 
     fn ensure_client(&mut self) -> Result<&mut StdioJsonlClient, String> {
+        if self.shutdown_handle.is_requested() {
+            return Err("The Codex App Server is shutting down.".into());
+        }
         ensure_empty_working_directory(&self.working_directory)?;
         ensure_private_codex_home(&self.codex_home_dir)?;
         let executable = discover_codex_cli()?;
@@ -1800,7 +2734,11 @@ impl CodexAppServerRuntime {
                 );
             }
             self.version = Some(version);
-            self.client = Some(StdioJsonlClient::spawn(&executable, &self.codex_home_dir)?);
+            self.client = Some(StdioJsonlClient::spawn(
+                &executable,
+                &self.codex_home_dir,
+                self.shutdown_handle.clone(),
+            )?);
             self.executable = Some(executable);
         }
         let client = self.client.as_mut().expect("client was started above");
@@ -1837,6 +2775,10 @@ impl CodexAppServerRuntime {
 }
 
 impl AppServerTransport for CodexAppServerRuntime {
+    fn shutdown_handle(&self) -> RuntimeShutdownHandle {
+        self.shutdown_handle.clone()
+    }
+
     fn inspect(&mut self) -> Result<RuntimeConnectionView, String> {
         let (executable, version) = self.identity()?;
         self.inspect_read_only_capability(&executable, &version);
@@ -1986,20 +2928,36 @@ impl AppServerTransport for CodexAppServerRuntime {
     }
 
     fn send_turn(&mut self, request: RuntimeTurnRequest) -> Result<RuntimeTurnResult, String> {
-        let sandbox_policy = self.restricted_read_sandbox_policy.clone().ok_or_else(|| {
-            self.text_turn_unavailable_reason
+        self.send_turn_cancellable(request, Arc::new(AtomicBool::new(false)))
+    }
+
+    fn send_turn_cancellable(
+        &mut self,
+        request: RuntimeTurnRequest,
+        cancel_requested: Arc<AtomicBool>,
+    ) -> Result<RuntimeTurnResult, String> {
+        if self.restricted_read_sandbox_policy.is_none() {
+            return Err(self
+                .text_turn_unavailable_reason
                 .clone()
                 .unwrap_or_else(|| {
                     "Restricted read-only access has not been verified. No model turn was sent."
                         .into()
-                })
-        })?;
+                }));
+        }
+        let sandbox_policy = self
+            .restricted_read_sandbox_policy
+            .clone()
+            .expect("checked above");
         if request.working_directory != self.working_directory {
             return Err("The Codex working directory did not match the isolated collaboration directory. No model turn was sent.".into());
         }
         ensure_empty_working_directory(&self.working_directory)?;
-        let context = serde_json::to_string_pretty(&request.context)
-            .map_err(|error| format!("Could not prepare current Dashboard context: {error}"))?;
+        let context = serde_json::to_string_pretty(&json!({
+            "dashboardExecutionId": request.execution_id,
+            "context": request.context,
+        }))
+        .map_err(|error| format!("Could not prepare current Dashboard context: {error}"))?;
         let input_text = format!(
             "{}\n\n--- Current read-only Personal Dashboard context for {} ---\n{}\n--- End current Dashboard context ---\nUse only supplied current context. Use Dashboard facts only when that section is ready; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages.",
             request.user_text, request.context.date, context
@@ -2023,8 +2981,94 @@ impl AppServerTransport for CodexAppServerRuntime {
             .and_then(|turn| turn.get("id"))
             .and_then(Value::as_str)
             .ok_or_else(|| "Codex App Server did not start the requested turn.".to_string())?;
-        let text = client.wait_for_turn(&request.thread_id, turn_id)?;
-        Ok(RuntimeTurnResult { text })
+        let (text, stopped) =
+            client.wait_for_turn(&request.thread_id, turn_id, &cancel_requested)?;
+        Ok(RuntimeTurnResult {
+            text,
+            runtime_turn_id: Some(turn_id.to_owned()),
+            stopped,
+        })
+    }
+
+    fn reconcile_turn(
+        &mut self,
+        thread_id: &str,
+        execution_id: &str,
+    ) -> Result<RuntimeRunReconciliation, String> {
+        ensure_empty_working_directory(&self.working_directory)?;
+        let result = self.ensure_client()?.request(
+            "thread/read",
+            json!({ "threadId": thread_id, "includeTurns": true }),
+        )?;
+        let thread = result
+            .get("thread")
+            .filter(|thread| thread.get("id").and_then(Value::as_str) == Some(thread_id))
+            .ok_or_else(|| {
+                "Codex App Server returned a different thread while checking the saved result."
+                    .to_string()
+            })?;
+        let execution_marker = format!("\"dashboardExecutionId\": \"{execution_id}\"");
+        for turn in thread
+            .get("turns")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let items = turn.get("items").and_then(Value::as_array);
+            let matches_execution = items.into_iter().flatten().any(|item| {
+                item.get("type").and_then(Value::as_str) == Some("userMessage")
+                    && item
+                        .get("content")
+                        .and_then(Value::as_array)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|part| part.get("text").and_then(Value::as_str))
+                        .any(|text| text.contains(&execution_marker))
+            });
+            if !matches_execution {
+                continue;
+            }
+            let runtime_turn_id = turn
+                .get("id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "Codex App Server returned a turn without an id.".to_string())?
+                .to_owned();
+            let status = turn
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
+            return match status {
+                "completed" => {
+                    let text = items
+                        .into_iter()
+                        .flatten()
+                        .filter(|item| {
+                            item.get("type").and_then(Value::as_str) == Some("agentMessage")
+                        })
+                        .filter_map(|item| item.get("text").and_then(Value::as_str))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if text.trim().is_empty() {
+                        Ok(RuntimeRunReconciliation::Completed {
+                            text: String::new(),
+                            runtime_turn_id,
+                        })
+                    } else {
+                        Ok(RuntimeRunReconciliation::Completed {
+                            text,
+                            runtime_turn_id,
+                        })
+                    }
+                }
+                "inProgress" => Ok(RuntimeRunReconciliation::InProgress),
+                "interrupted" => Ok(RuntimeRunReconciliation::Interrupted { runtime_turn_id }),
+                "failed" => Ok(RuntimeRunReconciliation::Interrupted { runtime_turn_id }),
+                _ => Err(format!(
+                    "Codex App Server returned an unknown saved turn status `{status}`."
+                )),
+            };
+        }
+        Ok(RuntimeRunReconciliation::NotFound)
     }
 }
 
@@ -2075,15 +3119,20 @@ fn open_chatgpt_login(_url: &str) -> Result<(), String> {
 }
 
 struct StdioJsonlClient {
-    child: Child,
+    child: Arc<Mutex<Child>>,
     stdin: ChildStdin,
     output: mpsc::Receiver<Result<String, String>>,
     next_id: u64,
     initialized: bool,
+    pending_messages: VecDeque<Value>,
 }
 
 impl StdioJsonlClient {
-    fn spawn(executable: &Path, codex_home_dir: &Path) -> Result<Self, String> {
+    fn spawn(
+        executable: &Path,
+        codex_home_dir: &Path,
+        shutdown_handle: RuntimeShutdownHandle,
+    ) -> Result<Self, String> {
         ensure_private_codex_home(codex_home_dir)?;
         let mut child = isolated_codex_command(executable, codex_home_dir)
             .arg("app-server")
@@ -2102,8 +3151,10 @@ impl StdioJsonlClient {
             .stdout
             .take()
             .ok_or_else(|| "Codex App Server stdout was unavailable.".to_string())?;
+        let child = Arc::new(Mutex::new(child));
+        shutdown_handle.register_child(Arc::clone(&child));
         let (sender, output) = mpsc::channel();
-        thread::Builder::new()
+        if let Err(error) = thread::Builder::new()
             .name("codex-app-server-stdout".into())
             .spawn(move || {
                 for line in BufReader::new(stdout).lines() {
@@ -2122,13 +3173,22 @@ impl StdioJsonlClient {
                     }
                 }
             })
-            .map_err(|error| format!("Could not monitor Codex App Server output: {error}"))?;
+        {
+            if let Ok(mut child) = child.lock() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            return Err(format!(
+                "Could not monitor Codex App Server output: {error}"
+            ));
+        }
         Ok(Self {
             child,
             stdin,
             output,
             next_id: 1,
             initialized: false,
+            pending_messages: VecDeque::new(),
         })
     }
 
@@ -2172,7 +3232,12 @@ impl StdioJsonlClient {
                     .cloned()
                     .ok_or_else(|| format!("Codex App Server returned no result for {method}."));
             }
+            let server_request =
+                value.get("id").is_some() && value.get("method").and_then(Value::as_str).is_some();
             self.reject_server_request(&value)?;
+            if !server_request {
+                self.pending_messages.push_back(value);
+            }
         }
     }
 
@@ -2189,7 +3254,10 @@ impl StdioJsonlClient {
             .map_err(|error| format!("Could not send a request to Codex App Server: {error}"))
     }
 
-    fn receive_value(&self, timeout: Duration) -> Result<Value, String> {
+    fn receive_value(&mut self, timeout: Duration) -> Result<Value, String> {
+        if let Some(message) = self.pending_messages.pop_front() {
+            return Ok(message);
+        }
         let line = self
             .output
             .recv_timeout(timeout)
@@ -2218,10 +3286,32 @@ impl StdioJsonlClient {
         Ok(())
     }
 
-    fn wait_for_turn(&mut self, thread_id: &str, turn_id: &str) -> Result<String, String> {
+    fn wait_for_turn(
+        &mut self,
+        thread_id: &str,
+        turn_id: &str,
+        cancel_requested: &AtomicBool,
+    ) -> Result<(String, bool), String> {
         let mut text = String::new();
+        let mut interrupt_requested = false;
+        let deadline = std::time::Instant::now() + APP_SERVER_REQUEST_TIMEOUT;
         loop {
-            let message = self.receive_value(APP_SERVER_REQUEST_TIMEOUT)?;
+            if cancel_requested.load(Ordering::SeqCst) && !interrupt_requested {
+                interrupt_requested = true;
+                let _ = self.request(
+                    "turn/interrupt",
+                    json!({ "threadId": thread_id, "turnId": turn_id }),
+                );
+            }
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                return Err("Codex App Server did not confirm the turn before its timeout.".into());
+            }
+            let message = match self.receive_value(Duration::from_millis(200).min(remaining)) {
+                Ok(message) => message,
+                Err(error) if error.contains("did not respond in time") => continue,
+                Err(error) => return Err(error),
+            };
             if message.get("method").and_then(Value::as_str) == Some("item/agentMessage/delta") {
                 let params = message.get("params").unwrap_or(&Value::Null);
                 if params.get("threadId").and_then(Value::as_str) == Some(thread_id) {
@@ -2247,12 +3337,15 @@ impl StdioJsonlClient {
                     .and_then(Value::as_str)
                     .unwrap_or("unknown");
                 if status != "completed" {
+                    if status == "interrupted" && interrupt_requested {
+                        return Ok((text, true));
+                    }
                     return Err(format!("Codex turn ended with status `{status}`."));
                 }
                 if text.trim().is_empty() {
                     return Err("Codex completed the turn without a text reply.".into());
                 }
-                return Ok(text);
+                return Ok((text, false));
             }
             self.reject_server_request(&message)?;
         }
@@ -2261,8 +3354,10 @@ impl StdioJsonlClient {
 
 impl Drop for StdioJsonlClient {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if let Ok(mut child) = self.child.lock() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
 }
 
@@ -2279,7 +3374,9 @@ fn ensure_private_codex_home(codex_home_dir: &Path) -> Result<(), String> {
         Ok(_) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => {
-            return Err(format!("Could not inspect Dashboard Codex profile config: {error}"));
+            return Err(format!(
+                "Could not inspect Dashboard Codex profile config: {error}"
+            ));
         }
     }
     let mut options = OpenOptions::new();

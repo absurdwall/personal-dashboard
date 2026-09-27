@@ -278,6 +278,7 @@
               </header>
               <div class="collaboration-status-bar">
                 <p id="collaboration-runtime-status" role="status" aria-live="polite" data-i18n="collaboration.connectionNotChecked">Connection status has not been checked.</p>
+                <p id="collaboration-work-owner" role="status" aria-live="polite"></p>
                 <button id="collaboration-open-settings" type="button" class="text-button" data-i18n="collaboration.openSettings">Codex connection settings</button>
               </div>
               <div class="collaboration-layout">
@@ -298,7 +299,10 @@
                       <p class="section-label" data-i18n="collaboration.conversationLabel">CONVERSATION</p>
                       <h3 id="collaboration-chat-heading" data-i18n="collaboration.noSession">Start or select a session</h3>
                     </div>
-                    <span id="collaboration-chat-date" class="collaboration-target-date"></span>
+                    <div class="collaboration-chat-header-actions">
+                      <span id="collaboration-chat-date" class="collaboration-target-date"></span>
+                      <button id="collaboration-stop-run" type="button" class="secondary-button" data-i18n="collaboration.stop" hidden>Stop</button>
+                    </div>
                   </header>
                   <p id="collaboration-run-status" class="collaboration-run-status" role="status" aria-live="polite"></p>
                   <div id="collaboration-message-list" class="collaboration-message-list" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation messages" data-i18n-aria-label="collaboration.conversationLabel"></div>
