@@ -6,9 +6,11 @@ use personal_dashboard_lib::today::{
 };
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const DATE: &str = "2026-08-10";
+static DIRECTORY_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 struct TempDirectory(PathBuf);
 
@@ -18,9 +20,10 @@ impl TempDirectory {
             .duration_since(UNIX_EPOCH)
             .expect("clock is after epoch")
             .as_nanos();
+        let sequence = DIRECTORY_SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
-            "personal-dashboard-daily-plan-{}-{nonce}",
-            std::process::id()
+            "personal-dashboard-daily-plan-{}-{nonce}-{sequence}",
+            std::process::id(),
         ));
         fs::create_dir_all(&path).expect("synthetic workspace is created");
         Self(path)
@@ -121,6 +124,7 @@ fn initial_plan_input(
             items: vec!["Synthetic report task".into()],
         }],
         calibration_note: None,
+        baseline_correction_reason: None,
         event: None,
         original_intent: None,
         change_reason: None,
@@ -137,6 +141,7 @@ fn refresh_fingerprint(input: &mut DailyPlanWriteInput) {
         &input.arrangement,
         &input.evidence,
         input.calibration_note.as_deref(),
+        input.baseline_correction_reason.as_deref(),
         input.event.as_deref(),
         input.original_intent.as_deref(),
         input.change_reason.as_deref(),
@@ -292,6 +297,93 @@ fn daytime_replan_preserves_the_baseline_and_logs_only_known_change_fields() {
 }
 
 #[test]
+fn explicit_morning_baseline_correction_changes_only_the_baseline_and_keeps_a_trace() {
+    let directory = TempDirectory::new();
+    let vault = directory.vault("vault");
+    let application = app(&vault);
+    let empty = application.read_date(DATE).unwrap();
+    let initial = application
+        .save_daily_plan(initial_plan_input(
+            empty.target_binding.unwrap(),
+            empty.revision,
+        ))
+        .unwrap();
+    let mut replan = initial_plan_input(
+        initial.target_binding.clone().unwrap(),
+        initial.revision.clone(),
+    );
+    replan.operation_id = "plan-before-baseline-correction".into();
+    replan.transition = DailyPlanTransition::DaytimeReplan;
+    replan.arrangement[0].title = "Current arrangement remains independent".into();
+    replan.original_intent = Some("Review the draft".into());
+    replan.revised_direction = Some("Keep the later review".into());
+    refresh_fingerprint(&mut replan);
+    let current = application.save_daily_plan(replan).unwrap();
+
+    let before = fs::read_to_string(record_path(&vault)).unwrap();
+    let prior_baseline = section_bytes(&before, "早间基准", "今天的大致安排").to_owned();
+    let prior_current = section_bytes(&before, "今天的大致安排", "计划依据").to_owned();
+    let prior_current_basis = section_bytes(&before, "计划依据", "白天更新").to_owned();
+
+    let mut missing_reason = initial_plan_input(
+        current.target_binding.clone().unwrap(),
+        current.revision.clone(),
+    );
+    missing_reason.operation_id = "baseline-correction-without-reason".into();
+    missing_reason.transition = DailyPlanTransition::MorningBaselineCorrection;
+    refresh_fingerprint(&mut missing_reason);
+    let before_rejection = fs::read(record_path(&vault)).unwrap();
+    assert!(application.save_daily_plan(missing_reason).is_err());
+    assert_eq!(fs::read(record_path(&vault)).unwrap(), before_rejection);
+
+    let mut correction = initial_plan_input(
+        current.target_binding.clone().unwrap(),
+        current.revision.clone(),
+    );
+    correction.operation_id = "baseline-correction-explicit".into();
+    correction.transition = DailyPlanTransition::MorningBaselineCorrection;
+    correction.arrangement[0].title = "Corrected earlier plan".into();
+    correction.evidence[0].items = vec!["Original record had the wrong date".into()];
+    correction.baseline_correction_reason =
+        Some("The saved baseline was copied from the wrong day".into());
+    refresh_fingerprint(&mut correction);
+
+    let saved = application.save_daily_plan(correction).unwrap();
+    let after = fs::read_to_string(record_path(&vault)).unwrap();
+    assert_ne!(
+        section_bytes(&after, "早间基准", "今天的大致安排"),
+        prior_baseline,
+        "explicit correction replaces the identified wrong baseline"
+    );
+    assert_eq!(
+        section_bytes(&after, "今天的大致安排", "计划依据"),
+        prior_current,
+        "baseline correction leaves the current arrangement byte-for-byte intact"
+    );
+    assert_eq!(
+        section_bytes(&after, "计划依据", "白天更新"),
+        prior_current_basis,
+        "baseline correction leaves the current basis byte-for-byte intact"
+    );
+    assert_eq!(saved.timeline, current.timeline);
+    assert_eq!(saved.evidence, current.evidence);
+    assert_eq!(saved.baseline.timeline[0].title, "Corrected earlier plan");
+    assert_eq!(
+        saved.baseline.evidence[0].items,
+        vec!["Original record had the wrong date"]
+    );
+    let trace = saved
+        .daytime
+        .updates
+        .iter()
+        .find(|update| update.title == "早间基准纠正")
+        .expect("baseline correction leaves a visible trace");
+    assert!(trace.neutral.iter().any(|line| line.contains("wrong day")));
+    assert!(trace.neutral.iter().any(|line| line.contains("Existing baseline") || line.contains("Prepare")));
+    assert!(receipt(&vault, "baseline-correction-explicit"));
+}
+
+#[test]
 fn event_only_update_preserves_both_plan_sections_and_keeps_unknown_actual_time_unknown() {
     let directory = TempDirectory::new();
     let vault = directory.vault("vault");
@@ -317,6 +409,7 @@ fn event_only_update_preserves_both_plan_sections_and_keeps_unknown_actual_time_
         arrangement: Vec::new(),
         evidence: Vec::new(),
         calibration_note: None,
+        baseline_correction_reason: None,
         event: Some("I completed the first review".into()),
         original_intent: None,
         change_reason: None,

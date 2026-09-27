@@ -621,13 +621,17 @@ type CollaborationTaskOperation =
       arrangement: readonly DailyPlanBlockInput[];
       evidence: readonly DailyPlanEvidenceInput[];
       calibrationNote: string | null;
+      baselineCorrectionReason: string | null;
       event: string | null;
       originalIntent: string | null;
       changeReason: string | null;
       revisedDirection: string | null;
-    }>;
+    }>
+  | Readonly<{ operation: "saveEveningReview"; mode: "addition" | "correction"; content: string }>
+  | Readonly<{ operation: "correctShortRecord"; recordId: string; content: string }>
+  | Readonly<{ operation: "setLocalHabitCompletion"; habitKey: string; completed: boolean }>;
 
-type DailyPlanTransition = "initialPlan" | "morningCalibration" | "daytimeEvent" | "daytimeReplan";
+type DailyPlanTransition = "initialPlan" | "morningCalibration" | "morningBaselineCorrection" | "daytimeEvent" | "daytimeReplan";
 type DailyPlanBlockInput = Readonly<{ period: string; title: string; detail: string | null }>;
 type DailyPlanEvidenceInput = Readonly<{ label: string; items: readonly string[] }>;
 
@@ -644,6 +648,38 @@ type CollaborationTaskOperationBaseline =
       currentArrangement: readonly DailyPlanBlockInput[];
       currentBasis: readonly DailyPlanEvidenceInput[];
       revision: string | null;
+    }>
+  | Readonly<{
+      kind: "dailyReview";
+      date: string;
+      account: readonly string[];
+      additions: readonly string[];
+      corrections: readonly string[];
+      shortRecords: readonly string[];
+      revision: string | null;
+    }>
+  | Readonly<{
+      kind: "shortRecord";
+      date: string;
+      id: string;
+      category: "ordinary" | "exercise";
+      text: string;
+      changeCount: number;
+      revision: string | null;
+    }>
+  | Readonly<{
+      kind: "habitCompletion";
+      date: string;
+      key: string;
+      name: string;
+      canRecordCompletion: boolean;
+      localState: string;
+      externalCompletion: boolean;
+      sourceEvidence: readonly string[];
+      sourceSnapshotAt: string | null;
+      sourceSnapshotState: "unconfigured" | "missing" | "ready" | "stale" | "retained" | "error" | null;
+      sourceSnapshotMessage: string | null;
+      completionRevision: string | null;
     }>
   | Readonly<{ kind: "none" }>;
 
@@ -675,6 +711,7 @@ type CollaborationSessionView = Readonly<{
   runtimeThreadId: string | null;
   taskToolAvailable: boolean;
   dailyPlanToolAvailable: boolean;
+  dailyRecordToolAvailable: boolean;
   messages: readonly CollaborationMessageView[];
   taskOperations: readonly CollaborationTaskOperationView[];
   draft: string;
@@ -761,6 +798,7 @@ let currentCollaborationWorkspace: CollaborationWorkspaceView | null = null;
 let currentCollaborationSession: CollaborationSessionView | null = null;
 const pendingCollaborationTaskOperationIds = new Set<string>();
 const collaborationTaskActionErrors = new Map<string, string>();
+const collaborationTaskProjectionWarnings = new Map<string, string>();
 let taskFocusRequestId: string | null = null;
 let taskReturnToCollaborationSessionId: string | null = null;
 let dailyPlanReturnToCollaborationSessionId: string | null = null;
@@ -2242,6 +2280,22 @@ function collaborationTaskBaselineText(
   if (baseline.kind === "dailyRecord") {
     return collaborationDailyRecordStatusText(baseline);
   }
+  if (baseline.kind === "dailyReview") {
+    return t("collaboration.dailyReviewBaselineSummary", {
+      date: collaborationDateLabel(baseline.date),
+      revision: baseline.revision ?? "—",
+    });
+  }
+  if (baseline.kind === "shortRecord") {
+    return t("collaboration.shortRecordBaselineSummary", {
+      id: baseline.id,
+      text: baseline.text,
+      revision: baseline.revision ?? "—",
+    });
+  }
+  if (baseline.kind === "habitCompletion") {
+    return collaborationHabitSnapshotStatusText(baseline);
+  }
   return t("collaboration.taskBaselineNone");
 }
 
@@ -2357,12 +2411,143 @@ function appendDailyRecordSnapshot(
   parent.append(snapshot);
 }
 
+function appendTextSnapshotSection(
+  parent: HTMLElement,
+  headingKey: InterfaceCopyKey,
+  values: readonly string[],
+): void {
+  const section = document.createElement("section");
+  section.className = "collaboration-daily-record-section";
+  const heading = document.createElement("h5");
+  setCopy(heading, headingKey);
+  section.append(heading);
+  if (values.length === 0) {
+    const empty = document.createElement("p");
+    setCopy(empty, "collaboration.operationNoEvidence");
+    section.append(empty);
+  } else {
+    const list = document.createElement("ul");
+    for (const value of values) {
+      const item = document.createElement("li");
+      item.textContent = value;
+      list.append(item);
+    }
+    section.append(list);
+  }
+  parent.append(section);
+}
+
+function appendDailyReviewSnapshot(
+  parent: HTMLElement,
+  record: Extract<CollaborationTaskOperationBaseline, { kind: "dailyReview" }>,
+  headingKey: InterfaceCopyKey,
+): void {
+  const snapshot = document.createElement("section");
+  snapshot.className = "collaboration-daily-record-snapshot";
+  const heading = document.createElement("h5");
+  setCopy(heading, headingKey);
+  const date = document.createElement("small");
+  date.textContent = t("collaboration.dailyRecordSnapshotRevision", {
+    date: collaborationDateLabel(record.date),
+    revision: record.revision ?? "—",
+  });
+  snapshot.append(heading, date);
+  appendTextSnapshotSection(snapshot, "collaboration.dailyReviewAccount", record.account);
+  appendTextSnapshotSection(snapshot, "collaboration.dailyReviewAdditions", record.additions);
+  appendTextSnapshotSection(snapshot, "collaboration.dailyReviewCorrections", record.corrections);
+  appendTextSnapshotSection(snapshot, "collaboration.dailyReviewShortRecords", record.shortRecords);
+  parent.append(snapshot);
+}
+
+function appendShortRecordSnapshot(
+  parent: HTMLElement,
+  record: Extract<CollaborationTaskOperationBaseline, { kind: "shortRecord" }>,
+  headingKey: InterfaceCopyKey,
+): void {
+  const snapshot = document.createElement("section");
+  snapshot.className = "collaboration-daily-record-snapshot";
+  const heading = document.createElement("h5");
+  setCopy(heading, headingKey);
+  const identity = document.createElement("small");
+  identity.textContent = t("collaboration.shortRecordIdentity", {
+    id: record.id,
+    category: t(`collaboration.shortRecordCategory.${record.category}` as InterfaceCopyKey),
+  });
+  const text = document.createElement("p");
+  text.className = "collaboration-operation-source-text";
+  text.textContent = record.text;
+  const revision = document.createElement("small");
+  revision.textContent = t("collaboration.shortRecordRevision", {
+    revision: record.revision ?? "—",
+    count: String(record.changeCount),
+  });
+  snapshot.append(heading, identity, text, revision);
+  parent.append(snapshot);
+}
+
+function collaborationHabitSnapshotStatusText(
+  baseline: Extract<CollaborationTaskOperationBaseline, { kind: "habitCompletion" }>,
+): string {
+  const state = baseline.sourceSnapshotState
+    ? t(`collaboration.habitSnapshotState.${baseline.sourceSnapshotState}` as InterfaceCopyKey)
+    : t("common.unknown");
+  return t("collaboration.habitSnapshotBaselineSummary", {
+    name: baseline.name,
+    state,
+    revision: baseline.completionRevision ?? "—",
+  });
+}
+
+function appendHabitCompletionSnapshot(
+  parent: HTMLElement,
+  baseline: Extract<CollaborationTaskOperationBaseline, { kind: "habitCompletion" }>,
+  headingKey: InterfaceCopyKey,
+): void {
+  const snapshot = document.createElement("section");
+  snapshot.className = "collaboration-habit-snapshot";
+  const heading = document.createElement("h5");
+  setCopy(heading, headingKey);
+  const state = baseline.sourceSnapshotState
+    ? t(`collaboration.habitSnapshotState.${baseline.sourceSnapshotState}` as InterfaceCopyKey)
+    : t("common.unknown");
+  const meta = document.createElement("p");
+  meta.textContent = t("collaboration.habitSnapshotMeta", {
+    date: collaborationDateLabel(baseline.date),
+    name: baseline.name,
+    state,
+    localState: t(`collaboration.habitLocalState.${baseline.localState.toLowerCase()}` as InterfaceCopyKey),
+    external: t(`collaboration.habitExternalCompletion.${String(baseline.externalCompletion)}` as InterfaceCopyKey),
+  });
+  const revision = document.createElement("small");
+  revision.textContent = t("collaboration.habitSnapshotRevision", {
+    generatedAt: baseline.sourceSnapshotAt ?? t("common.unknown"),
+    revision: baseline.completionRevision ?? "—",
+  });
+  snapshot.append(heading, meta, revision);
+  if (baseline.sourceSnapshotMessage) {
+    const warning = document.createElement("p");
+    const staleSnapshot = baseline.sourceSnapshotState === "stale";
+    warning.className = staleSnapshot
+      ? "collaboration-habit-snapshot-warning"
+      : "collaboration-habit-snapshot-message";
+    warning.textContent = t(staleSnapshot
+      ? "collaboration.habitSnapshotWarning"
+      : "collaboration.habitSnapshotMessage", {
+      message: baseline.sourceSnapshotMessage,
+    });
+    snapshot.append(warning);
+  }
+  appendTextSnapshotSection(snapshot, "collaboration.habitSourceEvidence", baseline.sourceEvidence);
+  parent.append(snapshot);
+}
+
 function appendDailyPlanMetadata(
   parent: HTMLElement,
   operation: Extract<CollaborationTaskOperation, { operation: "saveDailyPlan" }>,
 ): void {
   const rows: readonly [InterfaceCopyKey, string | null][] = [
     ["collaboration.dailyPlanCalibrationNote", operation.calibrationNote],
+    ["collaboration.dailyPlanBaselineCorrectionReason", operation.baselineCorrectionReason],
     ["collaboration.dailyPlanEvent", operation.event],
     ["collaboration.dailyPlanOriginalIntent", operation.originalIntent],
     ["collaboration.dailyPlanChangeReason", operation.changeReason],
@@ -2465,6 +2650,32 @@ function collaborationTaskOperationText(
       return t("collaboration.taskOpRestoreList", { name: currentList?.name ?? operation.listId });
     case "saveDailyPlan":
       return collaborationDailyPlanActionText(operation);
+    case "saveEveningReview":
+      return t(
+        operation.mode === "addition"
+          ? "collaboration.dailyRecordAction.reviewAddition"
+          : "collaboration.dailyRecordAction.reviewCorrection",
+        { content: operation.content },
+      );
+    case "correctShortRecord": {
+      const category = baseline.kind === "shortRecord" ? baseline.category : "ordinary";
+      return t("collaboration.dailyRecordAction.shortRecordCorrection", {
+        category: t(`collaboration.shortRecordCategory.${category}` as InterfaceCopyKey),
+        id: operation.recordId,
+        content: operation.content,
+      });
+    }
+    case "setLocalHabitCompletion": {
+      const name = baseline.kind === "habitCompletion" ? baseline.name : operation.habitKey;
+      return t(
+        operation.completed
+          ? "collaboration.habitCompletionAction.add"
+          : "collaboration.habitCompletionAction.withdraw",
+        { name, date: collaborationDateLabel(
+          baseline.kind === "habitCompletion" ? baseline.date : currentCollaborationSession?.targetDate ?? "",
+        ) },
+      );
+    }
   }
 }
 
@@ -2495,6 +2706,16 @@ async function runCollaborationTaskOperationAction(
       cacheCollaborationDrafts(updated);
     }
     collaborationTaskActionErrors.delete(operationId);
+    const savedOperation = updated.taskOperations.find((operation) => operation.id === operationId);
+    if (
+      (action === "approve" || action === "reconcile") &&
+      savedOperation?.status === "applied" &&
+      isCanonicalDateProjectionOperation(savedOperation.operation)
+    ) {
+      const warning = await refreshCanonicalDateProjections(savedOperation.targetDate);
+      if (warning) collaborationTaskProjectionWarnings.set(operationId, warning);
+      else collaborationTaskProjectionWarnings.delete(operationId);
+    }
     await refreshCollaborationContextAfterOperation(sessionId, operationTargetDate);
     renderCollaborationWorkspace();
   } catch (error) {
@@ -2514,6 +2735,128 @@ async function runCollaborationTaskOperationAction(
     pendingCollaborationTaskOperationIds.delete(operationId);
     renderCollaborationWorkspace();
   }
+}
+
+function isCanonicalDateProjectionOperation(operation: CollaborationTaskOperation): boolean {
+  return operation.operation === "saveDailyPlan" ||
+    operation.operation === "saveEveningReview" ||
+    operation.operation === "correctShortRecord" ||
+    operation.operation === "setLocalHabitCompletion";
+}
+
+async function refreshCanonicalDateProjections(targetDate: string): Promise<string | null> {
+  const [year, month] = targetDate.split("-").map(Number);
+  const todayRequest = window.__TAURI__.core.invoke<TodayView>("read_daily_view", { date: targetDate })
+    .then((value) => ({ ok: true as const, value }))
+    .catch((error: unknown) => ({ ok: false as const, error }));
+  const calendarRequest = window.__TAURI__.core.invoke<CalendarMonthView>("calendar_month", { year, month })
+    .then((value) => ({ ok: true as const, value }))
+    .catch((error: unknown) => ({ ok: false as const, error }));
+  const habitRequest = window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot")
+    .then((value) => ({ ok: true as const, value }))
+    .catch((error: unknown) => ({ ok: false as const, error }));
+  const [today, calendar, habits] = await Promise.all([todayRequest, calendarRequest, habitRequest]);
+  const unavailable: string[] = [];
+  const todayTargetVisible = currentWorkspaceDestination === "today" && (
+    selectedTodayDate === targetDate ||
+    (selectedTodayDate === null && currentTodayView?.date === targetDate)
+  );
+  const calendarTargetVisible = currentWorkspaceDestination === "calendar" && (
+    selectedCalendarDate === targetDate || currentCalendarSummaryView?.date === targetDate
+  );
+  const habitTargetVisible = selectedHabitCell?.date === targetDate;
+
+  if (today.ok) {
+    if (todayTargetVisible) {
+      todayPresentationRequests.invalidate();
+      todayClockRequests.invalidate();
+      renderToday(today.value);
+    }
+    if (calendarTargetVisible) {
+      calendarSelectionRequests.invalidate();
+      calendarMonthRequests.invalidate();
+      renderCalendarSummary(today.value);
+    }
+    if (habitTargetVisible) {
+      habitDateRequests.invalidate();
+      currentHabitDateView = today.value;
+      renderSelectedHabitCell();
+    }
+  } else {
+    unavailable.push(t("destination.today"));
+    if (calendarTargetVisible) unavailable.push(t("destination.calendar"));
+    if (habitTargetVisible) unavailable.push(t("destination.habits"));
+    if (todayTargetVisible && todayStatus) {
+      todayPresentationRequests.invalidate();
+      todayClockRequests.invalidate();
+      todayPresentationFresh = false;
+      setCopyError(todayStatus, "today.loadFailed", today.error);
+      todayStatus.dataset.state = "error";
+    }
+    if (calendarTargetVisible) {
+      calendarSelectionRequests.invalidate();
+      calendarMonthRequests.invalidate();
+      renderCalendarReadError(today.error, false, false);
+    }
+    if (habitTargetVisible) {
+      habitDateRequests.invalidate();
+      currentHabitDateView = null;
+      habitNoteStatus = {
+        copyKey: "habits.loadDateFailed",
+        error: String(today.error),
+        state: "error",
+      };
+      renderSelectedHabitCell();
+    }
+  }
+
+  if (calendar.ok) {
+    const targetMonthIsVisible = currentWorkspaceDestination === "calendar" && (
+      selectedCalendarDate === targetDate ||
+      (currentCalendarMonth?.year === year && currentCalendarMonth.month === month)
+    );
+    if (targetMonthIsVisible) {
+      calendarSelectionRequests.invalidate();
+      calendarMonthRequests.invalidate();
+      currentCalendarMonth = calendar.value;
+      renderCalendarGrid(calendar.value);
+    }
+  } else {
+    unavailable.push(t("destination.calendar"));
+    const targetMonthIsVisible = currentWorkspaceDestination === "calendar" && (
+      selectedCalendarDate === targetDate ||
+      (currentCalendarMonth?.year === year && currentCalendarMonth.month === month)
+    );
+    if (targetMonthIsVisible) {
+      calendarSelectionRequests.invalidate();
+      calendarMonthRequests.invalidate();
+      renderCalendarReadError(calendar.error, false, false);
+    }
+  }
+
+  if (habits.ok) {
+    habitSnapshotRequests.invalidate();
+    renderHabitSnapshot(habits.value);
+  } else {
+    unavailable.push(t("destination.habits"));
+    habitSnapshotRequests.invalidate();
+    renderHabitSnapshot({
+      state: "error",
+      message: String(habits.error),
+      readError: String(habits.error),
+      generatedAt: null,
+      displayRangeLabel: null,
+      rangeLabel: null,
+      producerLabel: null,
+      completionRevision: null,
+      completionTargetBinding: null,
+      namesConfigurationState: "missing",
+      summary: { knownCompletions: 0, targetCompletions: 0, coverageNote: "", excludedNoGoal: 0 },
+      habits: [],
+    });
+  }
+
+  return unavailable.length > 0 ? [...new Set(unavailable)].join(" · ") : null;
 }
 
 async function refreshCollaborationContextAfterOperation(
@@ -2553,8 +2896,9 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
     collaborationTaskToolNotice.replaceChildren();
     const legacyTasks = Boolean(session?.runtimeThreadId && !session.taskToolAvailable);
     const legacyDailyPlan = Boolean(session?.runtimeThreadId && session.dailyPlanToolAvailable !== true);
-    collaborationTaskToolNotice.hidden = !(legacyTasks || legacyDailyPlan);
-    if (legacyTasks || legacyDailyPlan) {
+    const legacyDailyRecord = Boolean(session?.runtimeThreadId && session.dailyRecordToolAvailable !== true);
+    collaborationTaskToolNotice.hidden = !(legacyTasks || legacyDailyPlan || legacyDailyRecord);
+    if (legacyTasks || legacyDailyPlan || legacyDailyRecord) {
       if (legacyTasks) {
         const message = document.createElement("span");
         message.textContent = t("collaboration.legacyTaskToolNotice");
@@ -2563,6 +2907,11 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       if (legacyDailyPlan) {
         const message = document.createElement("span");
         message.textContent = t("collaboration.legacyDailyPlanNotice");
+        collaborationTaskToolNotice.append(message);
+      }
+      if (legacyDailyRecord) {
+        const message = document.createElement("span");
+        message.textContent = t("collaboration.legacyDailyRecordNotice");
         collaborationTaskToolNotice.append(message);
       }
       const newChat = document.createElement("button");
@@ -2588,19 +2937,38 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
     const plan = operation.operation.operation === "saveDailyPlan"
       ? operation.operation
       : null;
-    card.className = plan
-      ? "collaboration-task-operation collaboration-daily-plan-operation"
-      : "collaboration-task-operation";
+    const dailyReview = operation.operation.operation === "saveEveningReview" ||
+      operation.operation.operation === "correctShortRecord";
+    const habitCompletion = operation.operation.operation === "setLocalHabitCompletion";
+    const canonicalRecordOperation = dailyReview || habitCompletion;
+    card.className = [
+      "collaboration-task-operation",
+      plan ? "collaboration-daily-plan-operation" : "",
+      dailyReview ? "collaboration-daily-record-operation" : "",
+      habitCompletion ? "collaboration-habit-operation" : "",
+    ].filter(Boolean).join(" ");
     card.dataset.state = operation.status;
     const heading = document.createElement("header");
     const title = document.createElement("strong");
-    title.textContent = t(plan ? "collaboration.dailyPlanProposal" : "collaboration.taskProposal");
+    title.textContent = t(
+      plan
+        ? "collaboration.dailyPlanProposal"
+        : dailyReview
+          ? "collaboration.dailyRecordProposal"
+          : habitCompletion
+            ? "collaboration.habitCompletionProposal"
+            : "collaboration.taskProposal",
+    );
     const status = document.createElement("span");
     status.className = "collaboration-task-operation-status";
     setCopy(status, `collaboration.taskOperationStatus.${operation.status}` as InterfaceCopyKey);
     heading.append(title, status);
     const target = document.createElement("small");
-    target.textContent = t(plan ? "collaboration.dailyPlanTargetDate" : "collaboration.taskOperationTargetDate", {
+    target.textContent = t(plan
+      ? "collaboration.dailyPlanTargetDate"
+      : canonicalRecordOperation
+        ? "collaboration.dailyRecordTargetDate"
+        : "collaboration.taskOperationTargetDate", {
       date: collaborationDateLabel(operation.targetDate),
     });
     const proposed = document.createElement("p");
@@ -2616,6 +2984,12 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       appendDailyPlanBlockList(card, "collaboration.dailyPlanArrangement", plan.arrangement);
       appendDailyPlanEvidence(card, "collaboration.dailyPlanEvidence", plan.evidence);
       appendDailyPlanMetadata(card, plan);
+    } else if (operation.baseline.kind === "dailyReview") {
+      appendDailyReviewSnapshot(card, operation.baseline, "collaboration.dailyReviewBaselineSnapshot");
+    } else if (operation.baseline.kind === "shortRecord") {
+      appendShortRecordSnapshot(card, operation.baseline, "collaboration.shortRecordBaselineSnapshot");
+    } else if (operation.baseline.kind === "habitCompletion") {
+      appendHabitCompletionSnapshot(card, operation.baseline, "collaboration.habitCompletionBaselineSnapshot");
     } else {
       const baseline = document.createElement("p");
       baseline.textContent = collaborationTaskBaselineText(operation.baseline);
@@ -2630,7 +3004,11 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       const result = document.createElement("p");
       result.className = "collaboration-task-operation-result";
       result.textContent = operation.status === "applied"
-        ? t(plan ? "collaboration.dailyPlanResultSaved" : "collaboration.taskResultSaved")
+        ? plan
+          ? t("collaboration.dailyPlanResultSaved")
+          : dailyReview || habitCompletion
+            ? operation.resultMessage ?? ""
+            : t("collaboration.taskResultSaved")
         : operation.resultMessage;
       card.append(result);
     }
@@ -2640,13 +3018,33 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       error.className = "collaboration-task-operation-error";
       error.setAttribute("role", "alert");
       error.textContent = actionError.includes("was saved")
-        ? t(plan ? "collaboration.dailyPlanWriteNeedsCheck" : "collaboration.taskWriteNeedsCheck")
+        ? t(plan
+          ? "collaboration.dailyPlanWriteNeedsCheck"
+          : canonicalRecordOperation
+            ? "collaboration.dailyRecordWriteNeedsCheck"
+            : "collaboration.taskWriteNeedsCheck")
         : actionError;
       card.append(error);
+    }
+    const projectionWarning = collaborationTaskProjectionWarnings.get(operation.id);
+    if (projectionWarning) {
+      const warning = document.createElement("p");
+      warning.className = "collaboration-task-operation-error";
+      warning.setAttribute("role", "status");
+      warning.textContent = t("collaboration.operationProjectionRefreshWarning", {
+        projections: projectionWarning,
+      });
+      card.append(warning);
     }
     if (operation.resultSnapshot) {
       if (plan && operation.resultSnapshot.kind === "dailyRecord") {
         appendDailyRecordSnapshot(card, operation.resultSnapshot, "collaboration.dailyPlanSavedSnapshot");
+      } else if (operation.resultSnapshot.kind === "dailyReview") {
+        appendDailyReviewSnapshot(card, operation.resultSnapshot, "collaboration.dailyReviewSavedSnapshot");
+      } else if (operation.resultSnapshot.kind === "shortRecord") {
+        appendShortRecordSnapshot(card, operation.resultSnapshot, "collaboration.shortRecordSavedSnapshot");
+      } else if (operation.resultSnapshot.kind === "habitCompletion") {
+        appendHabitCompletionSnapshot(card, operation.resultSnapshot, "collaboration.habitCompletionSavedSnapshot");
       } else {
         const saved = document.createElement("p");
         saved.className = "collaboration-task-operation-snapshot";
@@ -2687,11 +3085,11 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       addAction("reconcile", "collaboration.taskCheckResult");
       addAction("refresh", "collaboration.taskRefreshReview");
       addAction("reject", "collaboration.taskDismiss");
-    } else if (operation.status === "applied" && plan) {
+    } else if (operation.status === "applied" && (plan || dailyReview)) {
       const openToday = document.createElement("button");
       openToday.type = "button";
       openToday.className = "secondary-button";
-      setCopy(openToday, "collaboration.openDailyPlanToday");
+      setCopy(openToday, plan ? "collaboration.openDailyPlanToday" : "collaboration.openDailyRecordToday");
       openToday.addEventListener("click", () => {
         rememberDailyPlanReturnTarget(session);
         showWorkspaceDestination("today", true, operation.targetDate);
@@ -2699,13 +3097,36 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       const openCalendar = document.createElement("button");
       openCalendar.type = "button";
       openCalendar.className = "secondary-button";
-      setCopy(openCalendar, "collaboration.openDailyPlanCalendar");
+      setCopy(openCalendar, plan ? "collaboration.openDailyPlanCalendar" : "collaboration.openDailyRecordCalendar");
       openCalendar.addEventListener("click", () => {
         rememberDailyPlanReturnTarget(session);
         selectedCalendarDate = operation.targetDate;
         showWorkspaceDestination("calendar", true);
       });
       actions.append(openToday, openCalendar);
+    } else if (operation.status === "applied" && habitCompletion) {
+      const openHabits = document.createElement("button");
+      openHabits.type = "button";
+      openHabits.className = "secondary-button";
+      setCopy(openHabits, "collaboration.openHabitDate");
+      openHabits.addEventListener("click", () => {
+        if (operation.operation.operation !== "setLocalHabitCompletion") return;
+        rememberDailyPlanReturnTarget(session);
+        selectedHabitCell = { habitKey: operation.operation.habitKey, date: operation.targetDate };
+        showWorkspaceDestination("habits", true);
+      });
+      actions.append(openHabits);
+    } else if (operation.status === "applied" && operation.operation.operation === "correctShortRecord" && operation.baseline.kind === "shortRecord" && operation.baseline.category === "exercise") {
+      const openHabits = document.createElement("button");
+      openHabits.type = "button";
+      openHabits.className = "secondary-button";
+      setCopy(openHabits, "collaboration.openHabitDate");
+      openHabits.addEventListener("click", () => {
+        rememberDailyPlanReturnTarget(session);
+        selectedHabitCell = { habitKey: "exercise", date: operation.targetDate };
+        showWorkspaceDestination("habits", true);
+      });
+      actions.append(openHabits);
     } else if (operation.status === "applied" && operation.taskId) {
       const open = document.createElement("button");
       open.type = "button";

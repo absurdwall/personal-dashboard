@@ -835,6 +835,7 @@ pub enum DailyPlanTransition {
     MorningCalibration,
     DaytimeEvent,
     DaytimeReplan,
+    MorningBaselineCorrection,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -864,6 +865,7 @@ pub struct DailyPlanWriteInput {
     pub arrangement: Vec<DailyPlanBlockInput>,
     pub evidence: Vec<DailyPlanEvidenceInput>,
     pub calibration_note: Option<String>,
+    pub baseline_correction_reason: Option<String>,
     pub event: Option<String>,
     pub original_intent: Option<String>,
     pub change_reason: Option<String>,
@@ -885,6 +887,7 @@ impl DailyPlanWriteInput {
                     &self.arrangement,
                     &self.evidence,
                     self.calibration_note.as_deref(),
+                    self.baseline_correction_reason.as_deref(),
                     self.event.as_deref(),
                     self.original_intent.as_deref(),
                     self.change_reason.as_deref(),
@@ -898,6 +901,7 @@ impl DailyPlanWriteInput {
             DailyPlanTransition::InitialPlan
                 | DailyPlanTransition::MorningCalibration
                 | DailyPlanTransition::DaytimeReplan
+                | DailyPlanTransition::MorningBaselineCorrection
         );
         if arrangement_required {
             if self.arrangement.is_empty() || self.arrangement.len() > 24 {
@@ -919,6 +923,7 @@ impl DailyPlanWriteInput {
             DailyPlanTransition::InitialPlan
                 | DailyPlanTransition::MorningCalibration
                 | DailyPlanTransition::DaytimeReplan
+                | DailyPlanTransition::MorningBaselineCorrection
         );
         if evidence_required {
             if self.evidence.is_empty() || self.evidence.len() > 16 {
@@ -940,6 +945,7 @@ impl DailyPlanWriteInput {
         match self.transition {
             DailyPlanTransition::InitialPlan | DailyPlanTransition::MorningCalibration => {
                 if self.event.is_some()
+                    || self.baseline_correction_reason.is_some()
                     || self.original_intent.is_some()
                     || self.change_reason.is_some()
                     || self.revised_direction.is_some()
@@ -966,6 +972,7 @@ impl DailyPlanWriteInput {
                     .ok_or_else(|| "白天事件需要包含一条明确报告的事实。".to_string())?;
                 validate_plan_text(event, "白天事件", 1200)?;
                 if self.calibration_note.is_some()
+                    || self.baseline_correction_reason.is_some()
                     || self.original_intent.is_some()
                     || self.change_reason.is_some()
                     || self.revised_direction.is_some()
@@ -974,7 +981,10 @@ impl DailyPlanWriteInput {
                 }
             }
             DailyPlanTransition::DaytimeReplan => {
-                if self.event.is_some() || self.calibration_note.is_some() {
+                if self.event.is_some()
+                    || self.calibration_note.is_some()
+                    || self.baseline_correction_reason.is_some()
+                {
                     return Err("白天重排不能把计划内容记成已发生事件。".into());
                 }
                 if let Some(value) = self.original_intent.as_deref() {
@@ -989,6 +999,21 @@ impl DailyPlanWriteInput {
                     .ok_or_else(|| "白天重排需要说明调整后的方向。".to_string())?;
                 validate_plan_text(revised, "调整后方向", 600)?;
             }
+            DailyPlanTransition::MorningBaselineCorrection => {
+                if self.event.is_some()
+                    || self.calibration_note.is_some()
+                    || self.original_intent.is_some()
+                    || self.change_reason.is_some()
+                    || self.revised_direction.is_some()
+                {
+                    return Err("早间基准纠正不能包含事件、校准或白天重排字段。".into());
+                }
+                let reason = self
+                    .baseline_correction_reason
+                    .as_deref()
+                    .ok_or_else(|| "早间基准纠正需要明确说明此前记录哪里错误。".to_string())?;
+                validate_plan_text(reason, "早间基准纠正原因", 600)?;
+            }
         }
         Ok(())
     }
@@ -1000,6 +1025,7 @@ pub fn daily_plan_effect_fingerprint(
     arrangement: &[DailyPlanBlockInput],
     evidence: &[DailyPlanEvidenceInput],
     calibration_note: Option<&str>,
+    baseline_correction_reason: Option<&str>,
     event: Option<&str>,
     original_intent: Option<&str>,
     change_reason: Option<&str>,
@@ -1007,7 +1033,7 @@ pub fn daily_plan_effect_fingerprint(
 ) -> String {
     #[derive(Serialize)]
     #[serde(rename_all = "camelCase")]
-    struct Effect<'a> {
+    struct ExistingEffect<'a> {
         date: &'a str,
         transition: DailyPlanTransition,
         arrangement: &'a [DailyPlanBlockInput],
@@ -1018,18 +1044,47 @@ pub fn daily_plan_effect_fingerprint(
         change_reason: Option<&'a str>,
         revised_direction: Option<&'a str>,
     }
-    let effect = Effect {
-        date,
-        transition,
-        arrangement,
-        evidence,
-        calibration_note,
-        event,
-        original_intent,
-        change_reason,
-        revised_direction,
-    };
-    let bytes = serde_json::to_vec(&effect).expect("daily plan effect has a serializable shape");
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct BaselineCorrectionEffect<'a> {
+        date: &'a str,
+        transition: DailyPlanTransition,
+        arrangement: &'a [DailyPlanBlockInput],
+        evidence: &'a [DailyPlanEvidenceInput],
+        calibration_note: Option<&'a str>,
+        baseline_correction_reason: &'a str,
+        event: Option<&'a str>,
+        original_intent: Option<&'a str>,
+        change_reason: Option<&'a str>,
+        revised_direction: Option<&'a str>,
+    }
+    let bytes = if let Some(reason) = baseline_correction_reason {
+        serde_json::to_vec(&BaselineCorrectionEffect {
+            date,
+            transition,
+            arrangement,
+            evidence,
+            calibration_note,
+            baseline_correction_reason: reason,
+            event,
+            original_intent,
+            change_reason,
+            revised_direction,
+        })
+    } else {
+        serde_json::to_vec(&ExistingEffect {
+            date,
+            transition,
+            arrangement,
+            evidence,
+            calibration_note,
+            event,
+            original_intent,
+            change_reason,
+            revised_direction,
+        })
+    }
+    .expect("daily plan effect has a serializable shape");
     document_revision(&bytes)
 }
 
@@ -1057,6 +1112,47 @@ pub struct EveningUpdateInput {
     pub expected_revision: String,
     pub mode: EveningUpdateMode,
     pub content: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CollaborationEveningReviewMode {
+    Addition,
+    Correction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CollaborationEveningReviewInput {
+    pub date: String,
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub operation_id: String,
+    pub effect_fingerprint: String,
+    pub mode: CollaborationEveningReviewMode,
+    pub content: String,
+}
+
+pub fn collaboration_evening_review_fingerprint(
+    date: &str,
+    mode: CollaborationEveningReviewMode,
+    content: &str,
+) -> String {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Effect<'a> {
+        date: &'a str,
+        mode: CollaborationEveningReviewMode,
+        content: &'a str,
+    }
+    document_revision(
+        &serde_json::to_vec(&Effect {
+            date,
+            mode,
+            content: content.trim(),
+        })
+        .expect("collaboration evening review has a serializable shape"),
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -2625,6 +2721,67 @@ where
         self.read_date(&date)
     }
 
+    pub fn habit_completion_operation_applied(
+        &self,
+        lived_date: &str,
+        target_binding: &str,
+        change_id: &str,
+        habit_key: &str,
+        completed: bool,
+    ) -> Result<bool, String> {
+        self.validate_event_date(lived_date)?;
+        validate_local_identifier(change_id, "习惯完成修改标识")?;
+        validate_habit_key(habit_key)?;
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or_else(|| "请先选择 Vault，再核对本地习惯完成结果。".to_string())?;
+        validate_compatible_vault(&vault)?;
+        let path = canonical_habit_completion_path(&vault);
+        if habit_completion_target_binding(&path) != target_binding {
+            return Err("Vault 或本地习惯完成目标已经变化；无法核对该修改结果。".into());
+        }
+        let Some(bytes) = self.habit_completion_store.load(&path)? else {
+            return Ok(false);
+        };
+        let document =
+            parse_habit_completion_document(&bytes, &self.clock.current_timestamp_label())?;
+        let expected_kind = if completed {
+            HabitCompletionChangeKind::Completed
+        } else {
+            HabitCompletionChangeKind::Withdrawn
+        };
+        if let Some((record, change)) = document.completions.iter().find_map(|record| {
+            record
+                .changes
+                .iter()
+                .find(|change| change.id == change_id)
+                .map(|change| (record, change))
+        }) {
+            if record.habit_key == habit_key
+                && record.lived_date == lived_date
+                && change.kind == expected_kind
+            {
+                return Ok(true);
+            }
+            return Err("该习惯完成修改标识已经用于其他操作；结果未被确认。".into());
+        }
+        if let Some(receipt) = document
+            .no_op_receipts
+            .iter()
+            .find(|receipt| receipt.id == change_id)
+        {
+            if receipt.habit_key == habit_key
+                && receipt.lived_date == lived_date
+                && receipt.completed == completed
+            {
+                return Ok(true);
+            }
+            return Err("该习惯完成修改标识已经用于其他操作；结果未被确认。".into());
+        }
+        Ok(false)
+    }
+
     pub fn habits(&self) -> Result<HabitSnapshotView, String> {
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(HabitSnapshotView::unconfigured());
@@ -3016,6 +3173,28 @@ where
         self.reload_vault(&vault, input.date)
     }
 
+    pub fn correct_exercise_short_record(
+        &self,
+        input: DatedNoteCorrectionInput,
+    ) -> Result<TodayView, String> {
+        let (_, path) = self.bound_record_target(&input.date, &input.target_binding)?;
+        let bytes = self.record_store.load(&path)?.ok_or_else(|| {
+            "该日期的 Daily Record 已不存在。请刷新后重试；未创建替代记录。".to_string()
+        })?;
+        let document = String::from_utf8(bytes).map_err(|_| {
+            "该日期的 Daily Record 不是有效的 UTF-8 文本；未写入任何内容。".to_string()
+        })?;
+        let records = parse_short_records(&document, &input.date)?;
+        let record = records
+            .iter()
+            .find(|record| record.id == input.entry_id)
+            .ok_or_else(|| "找不到要更正的简短记录。请刷新后确认该条目仍然存在。".to_string())?;
+        if record.category != ShortRecordCategory::Exercise {
+            return Err("只有稳定 ID 指向的 exercise 简短记录可以通过习惯流程更正。".into());
+        }
+        self.correct_dated_note(input)
+    }
+
     fn validate_event_date(&self, date: &str) -> Result<(), String> {
         let selected = CalendarDate::parse(date).ok_or_else(|| {
             "The selected date is not a valid YYYY-MM-DD calendar date.".to_string()
@@ -3228,6 +3407,58 @@ where
                     Some("晚间复盘"),
                 )?;
             }
+            DailyPlanTransition::MorningBaselineCorrection => {
+                if baseline.availability != BaselineAvailability::Saved
+                    || baseline.timeline.is_empty()
+                    || baseline.evidence.is_empty()
+                {
+                    return Err("早间基准纠正需要一份现有且完整的早间基准；缺少内容时请先检查 Daily Record。".into());
+                }
+                let prior_arrangement = encode_daily_plan_arrangement_from_view(&baseline.timeline);
+                let prior_evidence = encode_daily_plan_evidence_from_view(&baseline.evidence);
+                let arrangement = encode_daily_plan_arrangement(&input.arrangement);
+                let evidence = encode_daily_plan_evidence(&input.evidence);
+                document = replace_named_subsection(
+                    &document,
+                    "早间基准",
+                    "初始安排",
+                    &arrangement,
+                    Some("今天的大致安排"),
+                    &prior_arrangement,
+                )?;
+                document = replace_named_subsection(
+                    &document,
+                    "早间基准",
+                    "初始计划依据",
+                    &evidence,
+                    Some("今天的大致安排"),
+                    &prior_evidence,
+                )?;
+                let prior_arrangement = prior_arrangement.replace('\n', " · ");
+                let prior_evidence = prior_evidence.replace('\n', " · ");
+                let corrected_arrangement = arrangement.replace('\n', " · ");
+                let corrected_evidence = evidence.replace('\n', " · ");
+                document = append_to_named_subsection(
+                    &document,
+                    "白天更新",
+                    "早间基准纠正",
+                    &format!(
+                        "- 明确原因：{}\n- 原记录安排：{}\n- 原记录依据：{}\n- 更正后安排：{}\n- 更正后依据：{}",
+                        literal_line(
+                            input
+                                .baseline_correction_reason
+                                .as_deref()
+                                .expect("validated baseline correction reason")
+                                .trim()
+                        ),
+                        literal_line(&prior_arrangement),
+                        literal_line(&prior_evidence),
+                        literal_line(&corrected_arrangement),
+                        literal_line(&corrected_evidence),
+                    ),
+                    Some("晚间复盘"),
+                )?;
+            }
             DailyPlanTransition::DaytimeEvent => {
                 let event = input.event.as_deref().expect("validated daily event");
                 document = append_to_named_subsection(
@@ -3269,6 +3500,13 @@ where
                     && saved_baseline.availability == baseline.availability
                     && saved_baseline.timeline == baseline.timeline
                     && saved_baseline.evidence == baseline.evidence
+            }
+            DailyPlanTransition::MorningBaselineCorrection => {
+                saved_timeline == timeline
+                    && saved_evidence == evidence
+                    && saved_baseline.availability == BaselineAvailability::Saved
+                    && saved_baseline.timeline == expected_arrangement
+                    && saved_baseline.evidence == expected_evidence
             }
             DailyPlanTransition::DaytimeEvent => {
                 saved_timeline == timeline
@@ -3317,6 +3555,103 @@ where
         validate_writable_daily_record(&document, date)?;
         Ok(daily_plan_receipt_fingerprint(&document, operation_id)?
             .is_some_and(|fingerprint| fingerprint == effect_fingerprint))
+    }
+
+    pub fn update_collaboration_evening_review(
+        &self,
+        input: CollaborationEveningReviewInput,
+    ) -> Result<TodayView, String> {
+        validate_short_text(&input.content, "晚间复盘更新")?;
+        validate_local_identifier(&input.operation_id, "晚间复盘操作标识")?;
+        if input.effect_fingerprint.len() != 16
+            || !input
+                .effect_fingerprint
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+            || input.effect_fingerprint.to_ascii_lowercase()
+                != collaboration_evening_review_fingerprint(&input.date, input.mode, &input.content)
+        {
+            return Err("晚间复盘操作缺少有效的稳定内容指纹。".into());
+        }
+        self.validate_event_date(&input.date)?;
+        let (vault, path) = self.bound_record_target(&input.date, &input.target_binding)?;
+        let bytes = self.record_store.load(&path)?.ok_or_else(|| {
+            "该日期没有可供复盘的 Daily Record。请刷新目标日期后再讨论或保存。".to_string()
+        })?;
+        let document = String::from_utf8(bytes).map_err(|_| {
+            "该日期的 Daily Record 不是有效的 UTF-8 文本；未写入任何内容。".to_string()
+        })?;
+        validate_writable_daily_record(&document, &input.date)?;
+        if let Some((fingerprint, receipt_date)) =
+            collaboration_evening_receipt(&document, &input.operation_id)?
+        {
+            if receipt_date == input.date && fingerprint == input.effect_fingerprint {
+                return self.reload_vault(&vault, input.date);
+            }
+            return Err("该晚间复盘操作标识已用于不同日期或内容；未写入任何内容。".into());
+        }
+        require_revision_for_date(&document, &input.expected_revision, &input.date)?;
+        let (subsection, text) = match input.mode {
+            CollaborationEveningReviewMode::Addition => (
+                "用户补充",
+                format!("- 晚间复盘补充：{}", literal_line(input.content.trim())),
+            ),
+            CollaborationEveningReviewMode::Correction => (
+                "用户修正",
+                format!(
+                    "- 针对 review-{} 的晚间复盘更正：{}",
+                    input.date,
+                    literal_line(input.content.trim())
+                ),
+            ),
+        };
+        let mut updated =
+            append_to_named_subsection(&document, "晚间复盘", subsection, &text, None)?;
+        let marker = format!(
+            "<!-- personal-dashboard:evening-review-operation id={} fingerprint={} mode={} date={} target=review-{} -->",
+            input.operation_id,
+            input.effect_fingerprint.to_ascii_lowercase(),
+            collaboration_evening_review_mode_label(input.mode),
+            input.date,
+            input.date,
+        );
+        updated = append_to_named_subsection(&updated, "晚间复盘", "协作写入收据", &marker, None)?;
+        validate_writable_daily_record(&updated, &input.date)?;
+        self.record_store
+            .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
+        self.reload_vault(&vault, input.date)
+    }
+
+    pub fn collaboration_evening_review_operation_applied(
+        &self,
+        date: &str,
+        target_binding: &str,
+        operation_id: &str,
+        effect_fingerprint: &str,
+    ) -> Result<bool, String> {
+        validate_local_identifier(operation_id, "晚间复盘操作标识")?;
+        if effect_fingerprint.len() != 16
+            || !effect_fingerprint
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err("晚间复盘操作缺少有效的稳定内容指纹。".into());
+        }
+        let (_, path) = self.bound_record_target(date, target_binding)?;
+        let Some(bytes) = self.record_store.load(&path)? else {
+            return Ok(false);
+        };
+        let document = String::from_utf8(bytes).map_err(|_| {
+            "该日期的 Daily Record 不是有效的 UTF-8 文本；无法核对晚间复盘结果。".to_string()
+        })?;
+        validate_writable_daily_record(&document, date)?;
+        Ok(
+            collaboration_evening_receipt(&document, operation_id)?.is_some_and(
+                |(fingerprint, receipt_date)| {
+                    fingerprint == effect_fingerprint.to_ascii_lowercase() && receipt_date == date
+                },
+            ),
+        )
     }
 
     pub fn update_evening_review(&self, input: EveningUpdateInput) -> Result<TodayView, String> {
@@ -4496,7 +4831,72 @@ fn daily_plan_transition_label(transition: DailyPlanTransition) -> &'static str 
         DailyPlanTransition::MorningCalibration => "morningCalibration",
         DailyPlanTransition::DaytimeEvent => "daytimeEvent",
         DailyPlanTransition::DaytimeReplan => "daytimeReplan",
+        DailyPlanTransition::MorningBaselineCorrection => "morningBaselineCorrection",
     }
+}
+
+fn collaboration_evening_review_mode_label(mode: CollaborationEveningReviewMode) -> &'static str {
+    match mode {
+        CollaborationEveningReviewMode::Addition => "addition",
+        CollaborationEveningReviewMode::Correction => "correction",
+    }
+}
+
+fn collaboration_evening_receipt(
+    document: &str,
+    operation_id: &str,
+) -> Result<Option<(String, String)>, String> {
+    let matches = subsection_offsets(document, "晚间复盘", "协作写入收据");
+    if matches.len() > 1 {
+        return Err("Daily Record 包含多个晚间复盘协作收据段落；请先检查文件。".into());
+    }
+    let Some((start, end)) = matches.first().copied() else {
+        return Ok(None);
+    };
+    let mut ids = Vec::<String>::new();
+    let mut result = None;
+    for line in scan_markdown_lines(&document[start..end]) {
+        let trimmed = line.text.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !trimmed.starts_with("<!-- personal-dashboard:evening-review-operation") {
+            return Err(
+                "晚间复盘协作收据段落包含无法识别的内容。请检查或修复后刷新；未写入任何内容。"
+                    .into(),
+            );
+        }
+        let attributes =
+            marker_attributes(line.text, "evening-review-operation").ok_or_else(|| {
+                "Daily Record 包含损坏的晚间复盘协作收据；请先检查文件，未写入任何内容。"
+                    .to_string()
+            })?;
+        let id = required_marker_attribute(&attributes, "id")?.to_owned();
+        validate_local_identifier(&id, "晚间复盘操作标识")?;
+        let fingerprint = required_marker_attribute(&attributes, "fingerprint")?;
+        if fingerprint.len() != 16 || !fingerprint.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err("Daily Record 包含无效的晚间复盘操作指纹；请先检查文件。".into());
+        }
+        let mode = required_marker_attribute(&attributes, "mode")?;
+        if !matches!(mode, "addition" | "correction") {
+            return Err("Daily Record 包含无效的晚间复盘操作类型；请先检查文件。".into());
+        }
+        let date = required_marker_attribute(&attributes, "date")?.to_owned();
+        if CalendarDate::parse(&date).is_none()
+            || required_marker_attribute(&attributes, "target")? != format!("review-{date}")
+            || ids.iter().any(|existing| existing == &id)
+        {
+            return Err("Daily Record 包含重复或无效的晚间复盘目标收据；请先检查文件。".into());
+        }
+        ids.push(id.clone());
+        if id == operation_id {
+            if result.is_some() {
+                return Err("Daily Record 中的晚间复盘操作收据重复；未写入任何内容。".into());
+            }
+            result = Some((fingerprint.to_ascii_lowercase(), date));
+        }
+    }
+    Ok(result)
 }
 
 fn daily_plan_receipt_fingerprint(
@@ -5922,7 +6322,9 @@ fn parse_evening(section: &str) -> EveningView {
             continue;
         }
         let normalized = heading.as_deref().unwrap_or("今天发生了什么");
-        if normalized.contains("用户补充") {
+        if normalized.contains("协作写入收据") {
+            continue;
+        } else if normalized.contains("用户补充") {
             view.additions.extend(lines);
         } else if normalized.contains("用户修正") {
             view.corrections.extend(lines);

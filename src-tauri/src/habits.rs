@@ -125,7 +125,7 @@ fn parse_habit_names_document(
     Ok(document.habits)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum HabitSnapshotState {
     Unconfigured,

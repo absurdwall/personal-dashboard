@@ -798,6 +798,7 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
         runtime_thread_id: Some("runtime-thread-1".into()),
         task_tool_registered: false,
         daily_plan_tool_registered: false,
+        daily_record_tool_registered: false,
         messages: vec![
             StoredCollaborationMessage {
                 id: "message-active-1".into(),
