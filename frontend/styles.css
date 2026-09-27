@@ -8890,6 +8890,46 @@ button.habit-cell:focus-visible {
   line-height: 1.55;
 }
 
+.collaboration-voice-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  color: var(--parity-muted);
+  font-size: 0.6rem;
+}
+
+.collaboration-voice-controls select {
+  max-width: min(12rem, 100%);
+}
+
+.collaboration-voice-controls button {
+  min-height: 2rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.collaboration-voice-controls p {
+  flex: 1 1 100%;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.collaboration-voice-status {
+  min-height: 0;
+  margin: 0;
+  color: var(--parity-muted);
+  font-size: 0.62rem;
+  line-height: 1.4;
+}
+
+.collaboration-voice-status:empty {
+  display: none;
+}
+
+.collaboration-voice-status[data-state="recording"] {
+  color: var(--parity-accent-strong);
+}
+
 .collaboration-composer-footer {
   display: flex;
   align-items: flex-end;

@@ -309,6 +309,16 @@
                   <form id="collaboration-composer" class="collaboration-composer">
                     <label for="collaboration-message-draft" data-i18n="collaboration.messageLabel">Message</label>
                     <textarea id="collaboration-message-draft" rows="3" maxlength="12000" data-i18n-placeholder="collaboration.messagePlaceholder" placeholder="Describe what you want to discuss…" disabled></textarea>
+                    <div class="collaboration-voice-controls">
+                      <label for="collaboration-voice-language" data-i18n="collaboration.voiceLanguage">Voice language</label>
+                      <select id="collaboration-voice-language" disabled aria-describedby="collaboration-voice-privacy">
+                        <option value="" data-i18n="collaboration.voiceLanguageLoading">Checking local speech models…</option>
+                      </select>
+                      <button id="collaboration-voice-start" type="button" data-i18n="collaboration.voiceStart" disabled>Start recording</button>
+                      <button id="collaboration-voice-cancel" type="button" data-i18n="collaboration.voiceCancel" hidden>Cancel</button>
+                      <p id="collaboration-voice-privacy" data-i18n="collaboration.voicePrivacy">Audio is transcribed on this Mac only after you start recording; it is discarded after transcription.</p>
+                    </div>
+                    <p id="collaboration-voice-status" class="collaboration-voice-status" role="status" aria-live="polite"></p>
                     <div class="collaboration-composer-footer">
                       <p data-i18n="collaboration.readOnlyBoundary">Codex receives current read-only context. It cannot change Tasks, Daily Records, habits, Vaults, or settings in this release.</p>
                       <button id="collaboration-send-message" type="submit" data-i18n="collaboration.send" disabled>Send</button>

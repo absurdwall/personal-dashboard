@@ -69,3 +69,27 @@ test("queue ownership, cancellation, and restart recovery are visible and action
   assert.match(copies, /"collaboration\.checkSavedResult":\s*\{[\s\S]*?zh:[^\n]*en:/);
   assert.match(copies, /"collaboration\.resumeNotStarted":\s*\{[\s\S]*?zh:[^\n]*en:/);
 });
+
+test("local voice transcripts enter the existing editable composer and shared saved-draft queue", () => {
+  assert.match(html, /id="collaboration-voice-language"[^>]*disabled/);
+  assert.match(html, /id="collaboration-voice-start"[^>]*disabled/);
+  assert.match(html, /id="collaboration-voice-cancel"[^>]*hidden/);
+  assert.match(html, /id="collaboration-voice-privacy"[^>]*data-i18n="collaboration\.voicePrivacy"/);
+  assert.match(main, /"collaboration_voice_capabilities"/);
+  assert.match(main, /"collaboration_transcribe_voice"/);
+  assert.match(main, /onTranscript: handleCollaborationVoiceTranscript/);
+  const transcriptHandler = main.match(/function handleCollaborationVoiceTranscript\([\s\S]*?\n}\n/);
+  assert.ok(transcriptHandler, "voice results have one draft routing handler");
+  assert.match(transcriptHandler[0], /beginVoiceTranscriptSave\([\s\S]*?saveCollaborationDraft/);
+  assert.match(transcriptHandler[0], /if \(isCurrentTarget && collaborationMessageDraft\)/);
+  assert.doesNotMatch(transcriptHandler[0], /requestSubmit|sendCollaborationMessage|collaboration_submit_message/);
+  assert.match(main, /session\.draftsByDate\[target\.targetDate\]/);
+  assert.match(main, /await flushCollaborationDraft\(target, message\);[\s\S]*?"collaboration_submit_message"/);
+});
+
+test("voice completion keeps the recording-time session/date when navigation changes", () => {
+  assert.match(main, /targetDate: collaborationTargetDates\.get\(session\.id\)[\s\S]*?collaborationTargetDate/);
+  assert.match(main, /void collaborationVoiceController\.start\(target, locale\)/);
+  assert.match(main, /saveCollaborationDraft\(\{ sessionId, targetDate \}, draft\)/);
+  assert.match(main, /collaborationDrafts\.set\(key, draft\)/);
+});

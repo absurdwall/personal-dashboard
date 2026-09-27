@@ -1,10 +1,9 @@
 use serde::Serialize;
 #[cfg(target_os = "macos")]
 use std::path::PathBuf;
-use tauri::RunEvent;
 #[cfg(target_os = "macos")]
 use tauri::WindowEvent;
-use tauri::{Manager, State};
+use tauri::{AppHandle, Manager, RunEvent, State};
 
 pub mod appearance;
 pub mod backup;
@@ -25,6 +24,26 @@ pub mod profile;
 pub mod task_adapter;
 pub mod tasks;
 pub mod today;
+pub mod voice_input;
+
+fn voice_helper_path(app_handle: &AppHandle) -> Option<std::path::PathBuf> {
+    if let Ok(resource_directory) = app_handle.path().resource_dir() {
+        let packaged_helper = resource_directory.join("personal-dashboard-voice-helper");
+        if packaged_helper.is_file() {
+            return Some(packaged_helper);
+        }
+    }
+
+    #[cfg(all(target_os = "macos", debug_assertions))]
+    if let Some(development_helper) = option_env!("PERSONAL_DASHBOARD_VOICE_HELPER_PATH") {
+        let development_helper = std::path::PathBuf::from(development_helper);
+        if development_helper.is_file() {
+            return Some(development_helper);
+        }
+    }
+
+    None
+}
 
 use appearance::{
     AccentColor, AppearanceApplication, AppearancePreferences, AppearanceSelectionResult,
@@ -161,6 +180,28 @@ fn collaboration_submit_message(
     text: String,
 ) -> Result<collaboration::CollaborationSessionView, String> {
     application.submit_message_for_selected_vault(&session_id, &target_date, &text)
+}
+
+#[tauri::command]
+fn collaboration_voice_capabilities(
+    application: State<'_, voice_input::VoiceInputApplication>,
+) -> voice_input::VoiceInputCapabilitiesView {
+    application.capabilities()
+}
+
+#[tauri::command]
+async fn collaboration_transcribe_voice(
+    application: State<'_, voice_input::VoiceInputApplication>,
+    audio: Vec<u8>,
+    mime_type: String,
+    locale: String,
+) -> Result<String, String> {
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        application.transcribe(&audio, &mime_type, &locale)
+    })
+    .await
+    .map_err(|error| format!("voice_task_failed: {error}"))?
 }
 
 #[tauri::command]
@@ -557,6 +598,9 @@ pub fn run() {
                 collaboration_app_data_dir,
                 today_workspace_file.clone(),
             ));
+            app.manage(voice_input::VoiceInputApplication::new_local(
+                voice_helper_path(&app_handle),
+            ));
             app.manage(TaskApplication::new(
                 FileTodayWorkspacePersistence::new(today_workspace_file),
                 SystemClock,
@@ -595,6 +639,8 @@ pub fn run() {
             collaboration_list_sessions,
             collaboration_session,
             collaboration_submit_message,
+            collaboration_voice_capabilities,
+            collaboration_transcribe_voice,
             collaboration_save_draft,
             collaboration_set_target_date,
             collaboration_stop_run,
@@ -651,6 +697,8 @@ pub fn run() {
         collaboration_list_sessions,
         collaboration_session,
         collaboration_submit_message,
+        collaboration_voice_capabilities,
+        collaboration_transcribe_voice,
         collaboration_save_draft,
         collaboration_set_target_date,
         collaboration_stop_run,
