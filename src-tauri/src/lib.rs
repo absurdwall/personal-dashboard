@@ -178,8 +178,30 @@ fn collaboration_submit_message(
     session_id: String,
     target_date: String,
     text: String,
+    external_app_ids: Option<Vec<String>>,
 ) -> Result<collaboration::CollaborationSessionView, String> {
-    application.submit_message_for_selected_vault(&session_id, &target_date, &text)
+    application.submit_message_for_selected_vault_with_external_apps(
+        &session_id,
+        &target_date,
+        &text,
+        external_app_ids.as_deref().unwrap_or_default(),
+    )
+}
+
+#[tauri::command]
+fn collaboration_resolve_external_approval(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    execution_id: String,
+    approval_id: String,
+    answers: std::collections::HashMap<String, String>,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.resolve_external_approval_for_selected_vault(
+        &session_id,
+        &execution_id,
+        &approval_id,
+        answers,
+    )
 }
 
 #[tauri::command]
@@ -675,6 +697,7 @@ pub fn run() {
             collaboration_list_sessions,
             collaboration_session,
             collaboration_submit_message,
+            collaboration_resolve_external_approval,
             collaboration_voice_capabilities,
             collaboration_transcribe_voice,
             collaboration_save_draft,
@@ -737,6 +760,7 @@ pub fn run() {
         collaboration_list_sessions,
         collaboration_session,
         collaboration_submit_message,
+        collaboration_resolve_external_approval,
         collaboration_voice_capabilities,
         collaboration_transcribe_voice,
         collaboration_save_draft,

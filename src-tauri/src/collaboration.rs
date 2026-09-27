@@ -96,6 +96,56 @@ pub struct CollaborationMessageView {
     pub runtime_turn_id: Option<String>,
     pub delivery_state: String,
     pub result_checked: bool,
+    pub external_app_ids: Vec<String>,
+    pub external_actions: Vec<ExternalToolActionView>,
+    pub pending_external_approval: Option<ExternalAppApprovalRequest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalToolActionView {
+    pub action_id: String,
+    pub source_id: String,
+    pub source_name: String,
+    pub tool_id: String,
+    pub status: String,
+    pub target_scope: String,
+    pub input_summary: String,
+    pub result_summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalAppApprovalChoice {
+    pub label: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalAppApprovalQuestion {
+    pub id: String,
+    pub header: String,
+    pub question: String,
+    pub options: Vec<ExternalAppApprovalChoice>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalAppApprovalRequest {
+    pub id: String,
+    pub item_id: String,
+    #[serde(default)]
+    pub source_id: String,
+    #[serde(default)]
+    pub source_name: String,
+    #[serde(default)]
+    pub tool_id: String,
+    #[serde(default)]
+    pub target_scope: String,
+    #[serde(default)]
+    pub input_summary: String,
+    pub questions: Vec<ExternalAppApprovalQuestion>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -720,6 +770,34 @@ pub struct ModelOptionView {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ExternalAppToolView {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub enabled: bool,
+    pub read_only: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalAppOptionView {
+    pub id: String,
+    pub display_name: String,
+    pub description: String,
+    pub accessible: bool,
+    pub enabled: bool,
+    pub callable: bool,
+    pub tools: Vec<ExternalAppToolView>,
+}
+
+impl ExternalAppOptionView {
+    pub fn available_for_explicit_use(&self) -> bool {
+        self.accessible && self.enabled && self.callable
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuntimeConnectionView {
     pub executable_path: Option<String>,
     pub version: Option<String>,
@@ -731,6 +809,8 @@ pub struct RuntimeConnectionView {
     pub account_email: Option<String>,
     pub plan_type: Option<String>,
     pub models: Vec<ModelOptionView>,
+    pub external_apps: Vec<ExternalAppOptionView>,
+    pub external_discovery_error: Option<String>,
     pub selected_model: Option<String>,
     pub selected_reasoning_effort: Option<String>,
     pub error: Option<String>,
@@ -751,6 +831,8 @@ impl RuntimeConnectionView {
             account_email: None,
             plan_type: None,
             models: Vec::new(),
+            external_apps: Vec::new(),
+            external_discovery_error: None,
             selected_model: None,
             selected_reasoning_effort: None,
             error: Some(error.into()),
@@ -767,7 +849,13 @@ pub struct RuntimeTurnRequest {
     pub user_text: String,
     pub context: CollaborationContextView,
     pub working_directory: PathBuf,
+    pub external_apps: Vec<ExternalAppOptionView>,
 }
+
+pub type RuntimeExternalActionHandler = Arc<dyn Fn(ExternalToolActionView) + Send + Sync>;
+pub type RuntimeExternalApprovalHandler = Arc<
+    dyn Fn(ExternalAppApprovalRequest) -> Result<HashMap<String, String>, String> + Send + Sync,
+>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeDynamicToolCall {
@@ -792,6 +880,7 @@ pub struct RuntimeTurnResult {
     pub text: String,
     pub runtime_turn_id: Option<String>,
     pub stopped: bool,
+    pub external_actions: Vec<ExternalToolActionView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -799,10 +888,12 @@ pub enum RuntimeRunReconciliation {
     Completed {
         text: String,
         runtime_turn_id: String,
+        external_actions: Vec<ExternalToolActionView>,
     },
     InProgress,
     Interrupted {
         runtime_turn_id: String,
+        external_actions: Vec<ExternalToolActionView>,
     },
     NotFound,
 }
@@ -834,6 +925,17 @@ pub trait CollaborationContextSource: Send + Sync {
 
 pub trait AppServerTransport: Send {
     fn inspect(&mut self) -> Result<RuntimeConnectionView, String>;
+    fn inspect_external_apps_for_thread(
+        &mut self,
+        _thread_id: &str,
+    ) -> Result<(Vec<ExternalAppOptionView>, Option<String>), String> {
+        self.inspect().map(|connection| {
+            (
+                connection.external_apps,
+                connection.external_discovery_error,
+            )
+        })
+    }
     fn start_chatgpt_login(&mut self) -> Result<(), String>;
     fn start_thread(&mut self, model: Option<&str>, instructions: &str) -> Result<String, String>;
     fn start_thread_with_dynamic_tools(
@@ -860,6 +962,16 @@ pub trait AppServerTransport: Send {
         _tool_handler: Option<RuntimeDynamicToolHandler>,
     ) -> Result<RuntimeTurnResult, String> {
         self.send_turn_cancellable(request, cancel_requested)
+    }
+    fn send_turn_with_external_actions(
+        &mut self,
+        request: RuntimeTurnRequest,
+        cancel_requested: Arc<AtomicBool>,
+        tool_handler: Option<RuntimeDynamicToolHandler>,
+        _external_action_handler: Option<RuntimeExternalActionHandler>,
+        _external_approval_handler: Option<RuntimeExternalApprovalHandler>,
+    ) -> Result<RuntimeTurnResult, String> {
+        self.send_turn_with_dynamic_tools(request, cancel_requested, tool_handler)
     }
     fn reconcile_turn(
         &mut self,
@@ -968,6 +1080,12 @@ pub struct StoredCollaborationMessage {
     pub queue_order: Option<u64>,
     #[serde(default)]
     pub result_checked: bool,
+    #[serde(default)]
+    pub external_app_ids: Vec<String>,
+    #[serde(default)]
+    pub external_actions: Vec<ExternalToolActionView>,
+    #[serde(default)]
+    pub pending_external_approval: Option<ExternalAppApprovalRequest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1137,6 +1255,8 @@ pub struct CollaborationApplication {
     run_cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     shutting_down: Arc<AtomicBool>,
     runtime_shutdown: RuntimeShutdownHandle,
+    pending_external_approvals:
+        Arc<Mutex<HashMap<String, mpsc::SyncSender<HashMap<String, String>>>>>,
 }
 
 #[derive(Clone)]
@@ -1146,6 +1266,7 @@ struct QueuedCollaborationTurn {
     execution_id: String,
     target_date: String,
     user_text: String,
+    external_app_ids: Vec<String>,
     queue_order: u64,
 }
 
@@ -1173,6 +1294,7 @@ impl CollaborationApplication {
             run_cancellations: Arc::new(Mutex::new(HashMap::new())),
             shutting_down: Arc::new(AtomicBool::new(false)),
             runtime_shutdown,
+            pending_external_approvals: Arc::new(Mutex::new(HashMap::new())),
         };
         let _ = application.mark_incomplete_runs_interrupted();
         application
@@ -3593,10 +3715,31 @@ impl CollaborationApplication {
         target_date: &str,
         text: &str,
     ) -> Result<CollaborationSessionView, String> {
+        self.submit_message_for_selected_vault_with_external_apps(
+            session_id,
+            target_date,
+            text,
+            &[],
+        )
+    }
+
+    pub fn submit_message_for_selected_vault_with_external_apps(
+        &self,
+        session_id: &str,
+        target_date: &str,
+        text: &str,
+        external_app_ids: &[String],
+    ) -> Result<CollaborationSessionView, String> {
         let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
             "Choose a Vault in Settings before starting a collaboration session.".to_string()
         })?;
-        self.submit_message(&vault_key, session_id, target_date, text)
+        self.submit_message_with_external_apps(
+            &vault_key,
+            session_id,
+            target_date,
+            text,
+            external_app_ids,
+        )
     }
 
     pub fn submit_message(
@@ -3605,6 +3748,17 @@ impl CollaborationApplication {
         session_id: &str,
         target_date: &str,
         text: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        self.submit_message_with_external_apps(vault_key, session_id, target_date, text, &[])
+    }
+
+    pub fn submit_message_with_external_apps(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        target_date: &str,
+        text: &str,
+        external_app_ids: &[String],
     ) -> Result<CollaborationSessionView, String> {
         validate_date(target_date)?;
         let trimmed = text.trim();
@@ -3623,11 +3777,22 @@ impl CollaborationApplication {
             );
         }
 
+        let external_app_ids = normalize_external_app_ids(external_app_ids)?;
+        if !external_app_ids.is_empty() {
+            let connection = self
+                .runtime
+                .lock()
+                .map_err(|_| "Codex runtime state is unavailable.".to_string())?
+                .inspect()?;
+            select_available_external_apps(&connection, &external_app_ids)?;
+        }
+
         let now = self.clock.current_timestamp();
         let message_date = self.clock.current_date();
         let execution_id = next_identifier("run");
         let target_date_owned = target_date.to_owned();
         let text_owned = trimmed.to_owned();
+        let external_app_ids_owned = external_app_ids.clone();
         let session = self.update_state(|state| {
             if state.sessions.iter().any(|candidate| {
                 candidate.vault_key.as_deref() == Some(vault_key)
@@ -3687,6 +3852,9 @@ impl CollaborationApplication {
                 delivery_state: "queued".into(),
                 queue_order: Some(queue_order),
                 result_checked: false,
+                external_app_ids: external_app_ids_owned.clone(),
+                external_actions: Vec::new(),
+                pending_external_approval: None,
             });
             Ok(session_view(session))
         })?;
@@ -3842,11 +4010,23 @@ impl CollaborationApplication {
             Ok((thread_id, message.target_date.clone()))
         })??;
 
-        let reconciliation = self
+        let mut reconciliation = self
             .runtime
             .lock()
             .map_err(|_| "Codex runtime state is unavailable.".to_string())?
             .reconcile_turn(&thread_id, execution_id)?;
+        let mut recovered_actions = match &mut reconciliation {
+            RuntimeRunReconciliation::Completed {
+                external_actions, ..
+            }
+            | RuntimeRunReconciliation::Interrupted {
+                external_actions, ..
+            } => external_actions.clone(),
+            _ => Vec::new(),
+        };
+        for action in &mut recovered_actions {
+            action.target_scope = target_date.clone();
+        }
         if self.context_source.current_vault_key()?.as_deref() != Some(&vault_key) {
             return Err("The selected Vault changed while the saved Codex result was being checked. Refresh the workspace before continuing.".into());
         }
@@ -3859,8 +4039,11 @@ impl CollaborationApplication {
                 .iter_mut()
                 .find(|message| message.execution_id.as_deref() == Some(execution_id))
                 .ok_or_else(|| "This collaboration request is no longer available.".to_string())?;
+            for action in recovered_actions.clone() {
+                upsert_external_action(message, action);
+            }
             match reconciliation {
-                RuntimeRunReconciliation::Completed { ref text, ref runtime_turn_id }
+                RuntimeRunReconciliation::Completed { ref text, ref runtime_turn_id, .. }
                     if !text.trim().is_empty() => {
                         message.delivery_state = "completed".into();
                         message.runtime_turn_id = Some(runtime_turn_id.clone());
@@ -3877,6 +4060,9 @@ impl CollaborationApplication {
                             delivery_state: "completed".into(),
                             queue_order: None,
                             result_checked: true,
+                            external_app_ids: Vec::new(),
+                            external_actions: Vec::new(),
+                            pending_external_approval: None,
                         });
                         if session.run_id.as_deref() == Some(execution_id) {
                             session.run_state = "completed".into();
@@ -3891,7 +4077,7 @@ impl CollaborationApplication {
                         session.progress = "The saved turn completed without a text reply that can be restored. Review the App Server conversation before continuing.".into();
                     }
                 }
-                RuntimeRunReconciliation::Interrupted { ref runtime_turn_id } => {
+                RuntimeRunReconciliation::Interrupted { ref runtime_turn_id, .. } => {
                     message.delivery_state = "interrupted".into();
                     message.runtime_turn_id = Some(runtime_turn_id.clone());
                     message.result_checked = true;
@@ -4019,6 +4205,7 @@ impl CollaborationApplication {
                             execution_id: message.execution_id.clone()?,
                             target_date: message.target_date.clone(),
                             user_text: message.text.clone(),
+                            external_app_ids: message.external_app_ids.clone(),
                             queue_order: message.queue_order?,
                         },
                     ))
@@ -4059,6 +4246,7 @@ impl CollaborationApplication {
                 &turn.execution_id,
                 &turn.target_date,
                 &turn.user_text,
+                &turn.external_app_ids,
                 cancellation,
             ),
             Ok(false) => {}
@@ -4110,6 +4298,7 @@ impl CollaborationApplication {
         run_id: &str,
         target_date: &str,
         user_text: &str,
+        external_app_ids: &[String],
         cancellation: Arc<AtomicBool>,
     ) {
         if cancellation.load(Ordering::SeqCst) {
@@ -4322,6 +4511,38 @@ impl CollaborationApplication {
             self.finish_error(vault_key, session_id, run_id, error);
             return;
         }
+        let external_apps = if external_app_ids.is_empty() {
+            Vec::new()
+        } else {
+            let (available_external_apps, external_discovery_error) =
+                match runtime.inspect_external_apps_for_thread(&thread_id) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        drop(runtime);
+                        self.finish_error(
+                            vault_key,
+                            session_id,
+                            run_id,
+                            format!(
+                            "Connected apps could not be verified for this conversation: {error}"
+                        ),
+                        );
+                        return;
+                    }
+                };
+            match select_available_external_apps_from(
+                &available_external_apps,
+                external_discovery_error.as_deref(),
+                external_app_ids,
+            ) {
+                Ok(apps) => apps,
+                Err(error) => {
+                    drop(runtime);
+                    self.finish_error(vault_key, session_id, run_id, error);
+                    return;
+                }
+            }
+        };
         let selected_vault = match self.context_source.current_vault_key() {
             Ok(selected_vault) => selected_vault,
             Err(error) => {
@@ -4360,6 +4581,7 @@ impl CollaborationApplication {
             user_text: user_text.to_owned(),
             context,
             working_directory: self.working_directory.clone(),
+            external_apps,
         };
         let tool_handler = ((self.task_service.is_available()
             || self.daily_data_service.is_available())
@@ -4384,9 +4606,46 @@ impl CollaborationApplication {
                     )
                 }) as RuntimeDynamicToolHandler
             });
-        let result =
-            runtime.send_turn_with_dynamic_tools(request, Arc::clone(&cancellation), tool_handler);
+        let application = self.clone();
+        let expected_vault_key = vault_key.to_owned();
+        let expected_session_id = session_id.to_owned();
+        let expected_execution_id = run_id.to_owned();
+        let external_action_handler: RuntimeExternalActionHandler = Arc::new(move |action| {
+            let _ = application.record_external_action(
+                &expected_vault_key,
+                &expected_session_id,
+                &expected_execution_id,
+                action,
+            );
+        });
+        let application = self.clone();
+        let expected_vault_key = vault_key.to_owned();
+        let expected_session_id = session_id.to_owned();
+        let expected_execution_id = run_id.to_owned();
+        let expected_cancellation = Arc::clone(&cancellation);
+        let external_approval_handler: RuntimeExternalApprovalHandler = Arc::new(move |request| {
+            application.request_external_approval(
+                &expected_vault_key,
+                &expected_session_id,
+                &expected_execution_id,
+                request,
+                &expected_cancellation,
+            )
+        });
+        let result = runtime.send_turn_with_external_actions(
+            request,
+            Arc::clone(&cancellation),
+            tool_handler,
+            Some(external_action_handler),
+            Some(external_approval_handler),
+        );
         drop(runtime);
+
+        if let Ok(result) = &result {
+            for action in result.external_actions.iter().cloned() {
+                let _ = self.record_external_action(vault_key, session_id, run_id, action);
+            }
+        }
 
         match result {
             Ok(result) if !result.text.trim().is_empty() => {
@@ -4424,6 +4683,167 @@ impl CollaborationApplication {
             }
             Err(error) => self.finish_unconfirmed(vault_key, session_id, run_id, error),
         }
+    }
+
+    fn record_external_action(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        run_id: &str,
+        action: ExternalToolActionView,
+    ) -> Result<(), String> {
+        self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            let message = session
+                .messages
+                .iter_mut()
+                .find(|message| message.execution_id.as_deref() == Some(run_id))
+                .ok_or_else(|| {
+                    "This external app activity is no longer attached to a request.".to_string()
+                })?;
+            upsert_external_action(message, action);
+            session.last_activity_at = self.clock.current_timestamp();
+            Ok(())
+        })
+    }
+
+    fn request_external_approval(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        run_id: &str,
+        mut request: ExternalAppApprovalRequest,
+        cancellation: &AtomicBool,
+    ) -> Result<HashMap<String, String>, String> {
+        let default_answers = default_external_approval_answers(&request)?;
+        let (sender, receiver) = mpsc::sync_channel(1);
+        self.pending_external_approvals
+            .lock()
+            .map_err(|_| "External app approval state is unavailable.".to_string())?
+            .insert(request.id.clone(), sender);
+        let request_id = request.id.clone();
+        let update_result = self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            let message = session
+                .messages
+                .iter_mut()
+                .find(|message| message.execution_id.as_deref() == Some(run_id))
+                .ok_or_else(|| {
+                    "This external app approval is no longer attached to a request.".to_string()
+                })?;
+            attach_external_approval_action(message, &mut request)?;
+            message.pending_external_approval = Some(request);
+            session.progress =
+                "A connected app is waiting for your approval in this conversation.".into();
+            session.last_activity_at = self.clock.current_timestamp();
+            Ok(())
+        });
+        if let Err(error) = update_result {
+            if let Ok(mut pending) = self.pending_external_approvals.lock() {
+                pending.remove(&request_id);
+            }
+            return Err(error);
+        }
+
+        let deadline = std::time::Instant::now() + APP_SERVER_REQUEST_TIMEOUT;
+        let answer = loop {
+            if cancellation.load(Ordering::SeqCst) || self.shutting_down.load(Ordering::SeqCst) {
+                break (default_answers.clone(), false);
+            }
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                break (default_answers.clone(), false);
+            }
+            match receiver.recv_timeout(Duration::from_millis(200).min(remaining)) {
+                Ok(answers) => break (answers, true),
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    break (default_answers.clone(), false)
+                }
+            }
+        };
+        if let Ok(mut pending) = self.pending_external_approvals.lock() {
+            pending.remove(&request_id);
+        }
+        let (answer, user_responded) = answer;
+        let _ = self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            let mut cleared = false;
+            if let Some(message) = session
+                .messages
+                .iter_mut()
+                .find(|message| message.execution_id.as_deref() == Some(run_id))
+            {
+                if message
+                    .pending_external_approval
+                    .as_ref()
+                    .is_some_and(|pending| pending.id == request_id)
+                {
+                    message.pending_external_approval = None;
+                    cleared = true;
+                }
+            }
+            if cleared && session.run_id.as_deref() == Some(run_id) {
+                session.progress = if user_responded {
+                    "Your response was sent to the connected app. Waiting for its action result.".into()
+                } else {
+                    "The connected app approval expired or the request stopped; the action was declined.".into()
+                };
+                session.last_activity_at = self.clock.current_timestamp();
+            }
+            Ok(())
+        });
+        Ok(answer)
+    }
+
+    pub fn resolve_external_approval_for_selected_vault(
+        &self,
+        session_id: &str,
+        execution_id: &str,
+        approval_id: &str,
+        answers: HashMap<String, String>,
+    ) -> Result<CollaborationSessionView, String> {
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault before responding to an external app approval.".to_string()
+        })?;
+        let approval = self.read_state(|state| {
+            let session = state
+                .sessions
+                .iter()
+                .find(|session| {
+                    session.id == session_id && session.vault_key.as_deref() == Some(&vault_key)
+                })
+                .ok_or_else(|| {
+                    "This collaboration session is not available in the selected Vault.".to_string()
+                })?;
+            let message = session
+                .messages
+                .iter()
+                .find(|message| message.execution_id.as_deref() == Some(execution_id))
+                .ok_or_else(|| {
+                    "This collaboration request is not available in the selected Vault.".to_string()
+                })?;
+            message
+                .pending_external_approval
+                .as_ref()
+                .filter(|request| request.id == approval_id)
+                .cloned()
+                .ok_or_else(|| "This external app approval is no longer pending.".to_string())
+        })??;
+        validate_external_approval_answers(&approval, &answers)?;
+        let sender = self
+            .pending_external_approvals
+            .lock()
+            .map_err(|_| "External app approval state is unavailable.".to_string())?
+            .remove(approval_id)
+            .ok_or_else(|| {
+                "This external app approval expired. Refresh the conversation before retrying."
+                    .to_string()
+            })?;
+        sender
+            .send(answers)
+            .map_err(|_| "This external app approval has already ended. Refresh the conversation before retrying.".to_string())?;
+        self.session_for_selected_vault(session_id)
     }
 
     fn set_progress(
@@ -4526,6 +4946,9 @@ impl CollaborationApplication {
                 delivery_state: "completed".into(),
                 queue_order: None,
                 result_checked: true,
+                external_app_ids: Vec::new(),
+                external_actions: Vec::new(),
+                pending_external_approval: None,
             });
             if let Some(message) = session.messages.iter_mut().find(|message| {
                 message.execution_id.as_deref() == Some(run_id) && message.role == "user"
@@ -4845,6 +5268,9 @@ fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionVie
                 runtime_turn_id: message.runtime_turn_id.clone(),
                 delivery_state: message.delivery_state.clone(),
                 result_checked: message.result_checked,
+                external_app_ids: message.external_app_ids.clone(),
+                external_actions: message.external_actions.clone(),
+                pending_external_approval: message.pending_external_approval.clone(),
             })
             .collect(),
         task_operations: session
@@ -6677,6 +7103,10 @@ impl AppServerTransport for CodexAppServerRuntime {
             "model/list",
             json!({ "limit": 100, "includeHidden": false }),
         )?;
+        let (external_apps, external_discovery_error) = match discover_external_apps(client, None) {
+            Ok(apps) => (apps, None),
+            Err(error) => (Vec::new(), Some(error)),
+        };
         let account = account.get("account").filter(|account| !account.is_null());
         let auth_mode = account
             .and_then(|account| account.get("type"))
@@ -6744,9 +7174,22 @@ impl AppServerTransport for CodexAppServerRuntime {
             account_email,
             plan_type,
             models,
+            external_apps,
+            external_discovery_error,
             selected_model: None,
             selected_reasoning_effort: None,
             error: None,
+        })
+    }
+
+    fn inspect_external_apps_for_thread(
+        &mut self,
+        thread_id: &str,
+    ) -> Result<(Vec<ExternalAppOptionView>, Option<String>), String> {
+        let client = self.ensure_client()?;
+        Ok(match discover_external_apps(client, Some(thread_id)) {
+            Ok(apps) => (apps, None),
+            Err(error) => (Vec::new(), Some(error)),
         })
     }
 
@@ -6844,6 +7287,17 @@ impl AppServerTransport for CodexAppServerRuntime {
         cancel_requested: Arc<AtomicBool>,
         tool_handler: Option<RuntimeDynamicToolHandler>,
     ) -> Result<RuntimeTurnResult, String> {
+        self.send_turn_with_external_actions(request, cancel_requested, tool_handler, None, None)
+    }
+
+    fn send_turn_with_external_actions(
+        &mut self,
+        request: RuntimeTurnRequest,
+        cancel_requested: Arc<AtomicBool>,
+        tool_handler: Option<RuntimeDynamicToolHandler>,
+        external_action_handler: Option<RuntimeExternalActionHandler>,
+        external_approval_handler: Option<RuntimeExternalApprovalHandler>,
+    ) -> Result<RuntimeTurnResult, String> {
         if self.restricted_read_sandbox_policy.is_none() {
             return Err(self
                 .text_turn_unavailable_reason
@@ -6866,15 +7320,23 @@ impl AppServerTransport for CodexAppServerRuntime {
             "context": request.context,
         }))
         .map_err(|error| format!("Could not prepare current Dashboard context: {error}"))?;
+        let app_markers = external_app_markers(&request.external_apps);
+        let user_text = if app_markers.is_empty() {
+            request.user_text.clone()
+        } else {
+            format!("{app_markers} {}", request.user_text)
+        };
         let input_text = format!(
-            "{}\n\n--- Current Personal Dashboard context for {} ---\n{}\n--- End current Dashboard context ---\nUse only supplied current context. Use Dashboard facts only when that section is ready; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain the stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. `dashboard_task_operation` only creates a proposal; no Task write occurs until the user approves the exact card in Personal Dashboard.",
-            request.user_text, request.context.date, context
+            "{}\n\n--- Current Personal Dashboard context for {} ---\n{}\n--- End current Dashboard context ---\nUse only supplied current context. Use Dashboard facts only when that section is ready; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain the stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. `dashboard_task_operation` only creates a proposal; no Task write occurs until the user approves the exact card in Personal Dashboard. Use a connected external app only when the user explicitly selected it on this message. Keep external actions within the user’s requested source, object, and target date scope. Do not treat an app’s descriptive tool list as permission, do not merge records by name, and do not imply a write succeeded unless the app reports a confirmed result. Do not imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
+            user_text, request.context.date, context
         );
         let working_directory = self.working_directory.to_string_lossy().into_owned();
         let client = self.ensure_client()?;
+        let mut input = vec![json!({ "type": "text", "text": input_text })];
+        input.extend(external_app_mention_items(&request.external_apps));
         let mut params = json!({
             "threadId": request.thread_id,
-            "input": [{ "type": "text", "text": input_text }],
+            "input": input,
             "model": request.model,
             "cwd": working_directory,
             "approvalPolicy": "never",
@@ -6889,16 +7351,20 @@ impl AppServerTransport for CodexAppServerRuntime {
             .and_then(|turn| turn.get("id"))
             .and_then(Value::as_str)
             .ok_or_else(|| "Codex App Server did not start the requested turn.".to_string())?;
-        let (text, stopped) = client.wait_for_turn(
+        let (text, stopped, external_actions) = client.wait_for_turn(
             &request.thread_id,
             turn_id,
             &cancel_requested,
             tool_handler.as_ref(),
+            &request.context.date,
+            external_action_handler.as_ref(),
+            external_approval_handler.as_ref(),
         )?;
         Ok(RuntimeTurnResult {
             text,
             runtime_turn_id: Some(turn_id.to_owned()),
             stopped,
+            external_actions,
         })
     }
 
@@ -6949,6 +7415,11 @@ impl AppServerTransport for CodexAppServerRuntime {
                 .get("status")
                 .and_then(Value::as_str)
                 .unwrap_or("unknown");
+            let external_actions = items
+                .into_iter()
+                .flatten()
+                .filter_map(|item| external_tool_action(thread_id, item, "unknown"))
+                .collect::<Vec<_>>();
             return match status {
                 "completed" => {
                     let text = items
@@ -6964,17 +7435,25 @@ impl AppServerTransport for CodexAppServerRuntime {
                         Ok(RuntimeRunReconciliation::Completed {
                             text: String::new(),
                             runtime_turn_id,
+                            external_actions,
                         })
                     } else {
                         Ok(RuntimeRunReconciliation::Completed {
                             text,
                             runtime_turn_id,
+                            external_actions,
                         })
                     }
                 }
                 "inProgress" => Ok(RuntimeRunReconciliation::InProgress),
-                "interrupted" => Ok(RuntimeRunReconciliation::Interrupted { runtime_turn_id }),
-                "failed" => Ok(RuntimeRunReconciliation::Interrupted { runtime_turn_id }),
+                "interrupted" => Ok(RuntimeRunReconciliation::Interrupted {
+                    runtime_turn_id,
+                    external_actions,
+                }),
+                "failed" => Ok(RuntimeRunReconciliation::Interrupted {
+                    runtime_turn_id,
+                    external_actions,
+                }),
                 _ => Err(format!(
                     "Codex App Server returned an unknown saved turn status `{status}`."
                 )),
@@ -6982,6 +7461,507 @@ impl AppServerTransport for CodexAppServerRuntime {
         }
         Ok(RuntimeRunReconciliation::NotFound)
     }
+}
+
+fn discover_external_apps(
+    client: &mut StdioJsonlClient,
+    thread_id: Option<&str>,
+) -> Result<Vec<ExternalAppOptionView>, String> {
+    let mut listed_apps = Vec::<Value>::new();
+    let mut cursor = Value::Null;
+    for _ in 0..8 {
+        let force_refetch = cursor.is_null();
+        let mut params = json!({
+            "cursor": cursor,
+            "limit": 100,
+            "forceRefetch": force_refetch
+        });
+        if let Some(thread_id) = thread_id {
+            params["threadId"] = json!(thread_id);
+        }
+        let page = client
+            .request("app/list", params)
+            .map_err(|error| format!("Could not discover connected Codex apps: {error}"))?;
+        listed_apps.extend(
+            page.get("data")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .cloned(),
+        );
+        let next_cursor = page.get("nextCursor").cloned().unwrap_or(Value::Null);
+        if next_cursor.is_null() || next_cursor == cursor {
+            break;
+        }
+        cursor = next_cursor;
+    }
+    let ids = listed_apps
+        .iter()
+        .filter(|app| app.get("isAccessible").and_then(Value::as_bool) == Some(true))
+        .filter_map(|app| app.get("id").and_then(Value::as_str))
+        .take(100)
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let mut installed_params = json!({ "forceRefresh": true });
+    if let Some(thread_id) = thread_id {
+        installed_params["threadId"] = json!(thread_id);
+    }
+    let installed = client
+        .request("app/installed", installed_params)
+        .map_err(|error| format!("Could not verify connected Codex app availability: {error}"))?;
+    let installed_apps = installed
+        .get("apps")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Codex App Server returned an invalid installed-app status.".to_string())?;
+    let details = if ids.is_empty() {
+        Vec::new()
+    } else {
+        client
+            .request("app/read", json!({ "appIds": ids, "includeTools": true }))
+            .map_err(|error| format!("Could not read connected Codex app capabilities: {error}"))?
+            .get("apps")
+            .and_then(Value::as_array)
+            .cloned()
+            .ok_or_else(|| {
+                "Codex App Server returned invalid connected-app capabilities.".to_string()
+            })?
+    };
+
+    let mut apps = Vec::new();
+    for app in listed_apps {
+        let Some(id) = app.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let runtime = installed_apps
+            .iter()
+            .find(|runtime| runtime.get("id").and_then(Value::as_str) == Some(id));
+        let detail = details
+            .iter()
+            .find(|detail| detail.get("id").and_then(Value::as_str) == Some(id));
+        let tools = detail
+            .and_then(|detail| detail.get("toolSummaries"))
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|tool| {
+                let id = tool.get("name").and_then(Value::as_str)?;
+                Some(ExternalAppToolView {
+                    id: id.to_owned(),
+                    title: tool
+                        .get("title")
+                        .and_then(Value::as_str)
+                        .unwrap_or(id)
+                        .to_owned(),
+                    description: tool
+                        .get("description")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned(),
+                    enabled: tool.get("isEnabled").and_then(Value::as_bool) == Some(true),
+                    read_only: tool.get("isReadOnly").and_then(Value::as_bool) == Some(true),
+                })
+            })
+            .collect();
+        apps.push(ExternalAppOptionView {
+            id: id.to_owned(),
+            display_name: app
+                .get("name")
+                .or_else(|| runtime.and_then(|runtime| runtime.get("runtimeName")))
+                .and_then(Value::as_str)
+                .unwrap_or(id)
+                .to_owned(),
+            description: app
+                .get("description")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned(),
+            accessible: app.get("isAccessible").and_then(Value::as_bool) == Some(true),
+            enabled: app.get("isEnabled").and_then(Value::as_bool) == Some(true)
+                && runtime
+                    .and_then(|runtime| runtime.get("enabled"))
+                    .and_then(Value::as_bool)
+                    == Some(true),
+            callable: runtime
+                .and_then(|runtime| runtime.get("callable"))
+                .and_then(Value::as_bool)
+                == Some(true),
+            tools,
+        });
+    }
+    Ok(apps)
+}
+
+fn normalize_external_app_ids(ids: &[String]) -> Result<Vec<String>, String> {
+    let mut normalized = Vec::new();
+    for id in ids {
+        let id = id.trim();
+        if id.is_empty()
+            || id.len() > 100
+            || !id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            return Err("The selected external app identifier is invalid. Refresh the connector list and try again.".into());
+        }
+        if !normalized.iter().any(|existing| existing == id) {
+            normalized.push(id.to_owned());
+        }
+    }
+    if normalized.len() > 8 {
+        return Err("Choose at most eight connected apps for one message.".into());
+    }
+    Ok(normalized)
+}
+
+fn select_available_external_apps(
+    connection: &RuntimeConnectionView,
+    ids: &[String],
+) -> Result<Vec<ExternalAppOptionView>, String> {
+    select_available_external_apps_from(
+        &connection.external_apps,
+        connection.external_discovery_error.as_deref(),
+        ids,
+    )
+}
+
+fn select_available_external_apps_from(
+    available_apps: &[ExternalAppOptionView],
+    discovery_error: Option<&str>,
+    ids: &[String],
+) -> Result<Vec<ExternalAppOptionView>, String> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    if let Some(error) = discovery_error {
+        return Err(format!("Connected apps could not be verified: {error}"));
+    }
+    ids.iter()
+        .map(|id| {
+            available_apps
+                .iter()
+                .find(|app| &app.id == id && app.available_for_explicit_use())
+                .cloned()
+                .ok_or_else(|| format!("Connected app `{id}` is no longer available for this request. Refresh the connector list and choose an available app."))
+        })
+        .collect()
+}
+
+fn external_app_markers(apps: &[ExternalAppOptionView]) -> String {
+    apps.iter()
+        .map(|app| format!("${}", app.id))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn external_app_mention_items(apps: &[ExternalAppOptionView]) -> Vec<Value> {
+    apps.iter()
+        .map(|app| {
+            json!({
+                "type": "mention",
+                "name": app.display_name,
+                "path": format!("app://{}", app.id)
+            })
+        })
+        .collect()
+}
+
+fn upsert_external_action(
+    message: &mut StoredCollaborationMessage,
+    action: ExternalToolActionView,
+) {
+    if let Some(existing) = message
+        .external_actions
+        .iter_mut()
+        .find(|existing| existing.action_id == action.action_id)
+    {
+        *existing = action;
+    } else if message.external_actions.len() < 64 {
+        message.external_actions.push(action);
+    }
+}
+
+fn default_external_approval_answers(
+    request: &ExternalAppApprovalRequest,
+) -> Result<HashMap<String, String>, String> {
+    request
+        .questions
+        .iter()
+        .map(|question| {
+            let answer = question
+                .options
+                .iter()
+                .find(|option| {
+                    let label = option.label.to_ascii_lowercase();
+                    label.contains("decline") || label == "no" || label.contains("cancel")
+                })
+                .map(|option| option.label.clone())
+                .ok_or_else(|| {
+                    "This app approval does not offer a safe decline option. The request was refused.".to_string()
+                })?;
+            Ok((question.id.clone(), answer))
+        })
+        .collect()
+}
+
+fn validate_external_approval_answers(
+    request: &ExternalAppApprovalRequest,
+    answers: &HashMap<String, String>,
+) -> Result<(), String> {
+    if answers.len() != request.questions.len() {
+        return Err("Choose one listed response for each external app approval question.".into());
+    }
+    for question in &request.questions {
+        let answer = answers.get(&question.id).ok_or_else(|| {
+            "Choose one listed response for each external app approval question.".to_string()
+        })?;
+        if !question
+            .options
+            .iter()
+            .any(|option| &option.label == answer)
+        {
+            return Err("External app approval answers must match a listed response.".into());
+        }
+    }
+    if answers
+        .keys()
+        .any(|id| !request.questions.iter().any(|question| &question.id == id))
+    {
+        return Err("An external app approval answer did not match this request.".into());
+    }
+    Ok(())
+}
+
+fn external_approval_request(
+    execution_id: &str,
+    params: &Value,
+) -> Result<ExternalAppApprovalRequest, String> {
+    let questions = params
+        .get("questions")
+        .and_then(Value::as_array)
+        .filter(|questions| !questions.is_empty() && questions.len() <= 3)
+        .ok_or_else(|| {
+            "The connected app requested an unsupported approval prompt. The request was refused."
+                .to_string()
+        })?;
+    let mut parsed = Vec::with_capacity(questions.len());
+    for question in questions {
+        let id = question
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty() && id.len() <= 100)
+            .ok_or_else(|| {
+                "The connected app approval prompt was invalid. The request was refused."
+                    .to_string()
+            })?;
+        let options = question
+            .get("options")
+            .and_then(Value::as_array)
+            .filter(|options| !options.is_empty() && options.len() <= 12)
+            .ok_or_else(|| "The connected app approval prompt has no selectable responses. The request was refused.".to_string())?
+            .iter()
+            .filter_map(|option| {
+                if option.get("isOther").and_then(Value::as_bool) == Some(true) {
+                    return None;
+                }
+                let label = option.get("label").and_then(Value::as_str)?;
+                if label.is_empty() || label.len() > 200 {
+                    return None;
+                }
+                Some(ExternalAppApprovalChoice {
+                    label: label.to_owned(),
+                    description: bounded_string(
+                        option.get("description").and_then(Value::as_str).unwrap_or_default(),
+                        600,
+                    ),
+                })
+            })
+            .collect::<Vec<_>>();
+        if options.is_empty() {
+            return Err(
+                "The connected app approval prompt has invalid choices. The request was refused."
+                    .into(),
+            );
+        }
+        parsed.push(ExternalAppApprovalQuestion {
+            id: id.to_owned(),
+            header: bounded_string(
+                question
+                    .get("header")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Approval"),
+                120,
+            ),
+            question: bounded_string(
+                question
+                    .get("question")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Allow this connected app action?"),
+                800,
+            ),
+            options,
+        });
+    }
+    Ok(ExternalAppApprovalRequest {
+        id: next_identifier(&format!("external-approval-{execution_id}")),
+        item_id: bounded_string(
+            params
+                .get("itemId")
+                .and_then(Value::as_str)
+                .filter(|item_id| !item_id.is_empty())
+                .ok_or_else(|| {
+                    "The connected app approval prompt did not identify its action. The request was refused.".to_string()
+                })?,
+            160,
+        ),
+        source_id: String::new(),
+        source_name: String::new(),
+        tool_id: String::new(),
+        target_scope: String::new(),
+        input_summary: String::new(),
+        questions: parsed,
+    })
+}
+
+fn attach_external_approval_action(
+    message: &StoredCollaborationMessage,
+    request: &mut ExternalAppApprovalRequest,
+) -> Result<(), String> {
+    let action = message
+        .external_actions
+        .iter()
+        .find(|action| {
+            action
+                .action_id
+                .rsplit_once(':')
+                .is_some_and(|(_, item_id)| item_id == request.item_id)
+        })
+        .ok_or_else(|| {
+            "The connected app approval did not match a recorded action. The request was refused."
+                .to_string()
+        })?;
+    if !message
+        .external_app_ids
+        .iter()
+        .any(|selected| selected == &action.source_id)
+    {
+        return Err(
+            "The connected app approval did not match an app selected for this request. The request was refused."
+                .into(),
+        );
+    }
+    request.source_id = action.source_id.clone();
+    request.source_name = action.source_name.clone();
+    request.tool_id = action.tool_id.clone();
+    request.target_scope = action.target_scope.clone();
+    request.input_summary = action.input_summary.clone();
+    Ok(())
+}
+
+fn external_tool_action(
+    thread_id: &str,
+    item: &Value,
+    target_scope: &str,
+) -> Option<ExternalToolActionView> {
+    if item.get("type").and_then(Value::as_str) != Some("mcpToolCall") {
+        return None;
+    }
+    let app_context = item.get("appContext").unwrap_or(&Value::Null);
+    let source_id = app_context
+        .get("connectorId")
+        .and_then(Value::as_str)
+        .or_else(|| item.get("server").and_then(Value::as_str))?;
+    let source_name = app_context
+        .get("appName")
+        .and_then(Value::as_str)
+        .or_else(|| item.get("server").and_then(Value::as_str))
+        .unwrap_or(source_id);
+    let tool_id = app_context
+        .get("actionName")
+        .and_then(Value::as_str)
+        .or_else(|| item.get("tool").and_then(Value::as_str))?;
+    let item_id = item.get("id").and_then(Value::as_str)?;
+    Some(ExternalToolActionView {
+        action_id: format!("{thread_id}:{item_id}"),
+        source_id: bounded_string(source_id, 160),
+        source_name: bounded_string(source_name, 200),
+        tool_id: bounded_string(tool_id, 200),
+        status: bounded_string(
+            item.get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown"),
+            40,
+        ),
+        target_scope: bounded_string(target_scope, 120),
+        input_summary: safe_external_summary(item.get("arguments").unwrap_or(&Value::Null)),
+        result_summary: safe_external_summary(
+            item.get("result")
+                .or_else(|| item.get("error"))
+                .unwrap_or(&Value::Null),
+        ),
+    })
+}
+
+fn safe_external_summary(value: &Value) -> String {
+    fn redact(value: &Value, depth: usize) -> Value {
+        if depth >= 12 {
+            return Value::String("[nested value omitted]".into());
+        }
+        match value {
+            Value::Object(fields) => Value::Object(
+                fields
+                    .iter()
+                    .take(40)
+                    .map(|(key, value)| {
+                        let key_lc = key.to_ascii_lowercase();
+                        let compact_key = key_lc
+                            .chars()
+                            .filter(|character| character.is_ascii_alphanumeric())
+                            .collect::<String>();
+                        let sensitive = [
+                            "password",
+                            "token",
+                            "secret",
+                            "credential",
+                            "authorization",
+                            "apikey",
+                            "privatekey",
+                            "cookie",
+                        ]
+                        .iter()
+                        .any(|marker| compact_key.contains(marker));
+                        (
+                            key.clone(),
+                            if sensitive {
+                                Value::String("[redacted]".into())
+                            } else {
+                                redact(value, depth + 1)
+                            },
+                        )
+                    })
+                    .collect(),
+            ),
+            Value::Array(items) => Value::Array(
+                items
+                    .iter()
+                    .take(40)
+                    .map(|item| redact(item, depth + 1))
+                    .collect(),
+            ),
+            _ => value.clone(),
+        }
+    }
+
+    let summary =
+        serde_json::to_string(&redact(value, 0)).unwrap_or_else(|_| "[unavailable]".into());
+    bounded_string(&summary, 1_000)
+}
+
+fn bounded_string(value: &str, max_chars: usize) -> String {
+    let mut bounded = value.chars().take(max_chars).collect::<String>();
+    if value.chars().count() > max_chars {
+        bounded.push('…');
+    }
+    bounded
 }
 
 fn discover_codex_cli() -> Result<PathBuf, String> {
@@ -7205,8 +8185,12 @@ impl StdioJsonlClient {
         turn_id: &str,
         cancel_requested: &AtomicBool,
         tool_handler: Option<&RuntimeDynamicToolHandler>,
-    ) -> Result<(String, bool), String> {
+        target_scope: &str,
+        external_action_handler: Option<&RuntimeExternalActionHandler>,
+        external_approval_handler: Option<&RuntimeExternalApprovalHandler>,
+    ) -> Result<(String, bool, Vec<ExternalToolActionView>), String> {
         let mut text = String::new();
+        let mut external_actions: Vec<ExternalToolActionView> = Vec::new();
         let mut interrupt_requested = false;
         let deadline = std::time::Instant::now() + APP_SERVER_REQUEST_TIMEOUT;
         loop {
@@ -7234,6 +8218,32 @@ impl StdioJsonlClient {
                     }
                 }
             }
+            if matches!(
+                message.get("method").and_then(Value::as_str),
+                Some("item/started") | Some("item/completed")
+            ) {
+                let params = message.get("params").unwrap_or(&Value::Null);
+                if params.get("threadId").and_then(Value::as_str) == Some(thread_id)
+                    && params.get("turnId").and_then(Value::as_str) == Some(turn_id)
+                {
+                    if let Some(action) = params
+                        .get("item")
+                        .and_then(|item| external_tool_action(thread_id, item, target_scope))
+                    {
+                        if let Some(existing) = external_actions
+                            .iter_mut()
+                            .find(|existing| existing.action_id == action.action_id)
+                        {
+                            *existing = action.clone();
+                        } else if external_actions.len() < 64 {
+                            external_actions.push(action.clone());
+                        }
+                        if let Some(handler) = external_action_handler {
+                            handler(action);
+                        }
+                    }
+                }
+            }
             if message.get("method").and_then(Value::as_str) == Some("turn/completed") {
                 let params = message.get("params").unwrap_or(&Value::Null);
                 if params.get("threadId").and_then(Value::as_str) != Some(thread_id)
@@ -7252,14 +8262,14 @@ impl StdioJsonlClient {
                     .unwrap_or("unknown");
                 if status != "completed" {
                     if status == "interrupted" && interrupt_requested {
-                        return Ok((text, true));
+                        return Ok((text, true, external_actions));
                     }
                     return Err(format!("Codex turn ended with status `{status}`."));
                 }
                 if text.trim().is_empty() {
                     return Err("Codex completed the turn without a text reply.".into());
                 }
-                return Ok((text, false));
+                return Ok((text, false, external_actions));
             }
             if message.get("method").and_then(Value::as_str) == Some("item/tool/call") {
                 let response_id = message.get("id").cloned().ok_or_else(|| {
@@ -7315,6 +8325,48 @@ impl StdioJsonlClient {
                         "success": result.success
                     }
                 }))?;
+                continue;
+            }
+            if message.get("method").and_then(Value::as_str) == Some("item/tool/requestUserInput") {
+                let response_id = message.get("id").cloned().ok_or_else(|| {
+                    "Codex App Server sent an external approval prompt without a request id."
+                        .to_string()
+                })?;
+                let params = message.get("params").cloned().unwrap_or(Value::Null);
+                let request_matches = params.get("threadId").and_then(Value::as_str)
+                    == Some(thread_id)
+                    && params.get("turnId").and_then(Value::as_str) == Some(turn_id);
+                let answer = if request_matches {
+                    external_approval_request(turn_id, &params).and_then(|request| {
+                        if let Some(handler) = external_approval_handler {
+                            handler(request)
+                        } else {
+                            default_external_approval_answers(&request)
+                        }
+                    })
+                } else {
+                    Err("This connected app approval belongs to a different active turn.".into())
+                };
+                match answer {
+                    Ok(answers) => {
+                        let answers = answers
+                            .into_iter()
+                            .map(|(question_id, answer)| {
+                                (question_id, json!({ "answers": [answer] }))
+                            })
+                            .collect::<serde_json::Map<_, _>>();
+                        self.write_json(&json!({
+                            "id": response_id,
+                            "result": { "answers": answers }
+                        }))?;
+                    }
+                    Err(error) => {
+                        self.write_json(&json!({
+                            "id": response_id,
+                            "error": { "code": -32602, "message": error }
+                        }))?;
+                    }
+                }
                 continue;
             }
             self.reject_server_request(&message)?;
@@ -7439,4 +8491,215 @@ fn isolated_codex_command(executable: &Path, codex_home_dir: &Path) -> Command {
         .env("XDG_DATA_HOME", codex_home_dir.join("xdg-data"))
         .env("XDG_CACHE_HOME", codex_home_dir.join("xdg-cache"));
     command
+}
+
+#[cfg(test)]
+mod external_app_tests {
+    use super::*;
+
+    fn app(id: &str, accessible: bool, enabled: bool, callable: bool) -> ExternalAppOptionView {
+        ExternalAppOptionView {
+            id: id.into(),
+            display_name: format!("{id} display"),
+            description: "synthetic capability".into(),
+            accessible,
+            enabled,
+            callable,
+            tools: vec![ExternalAppToolView {
+                id: "search".into(),
+                title: "Search".into(),
+                description: "Synthetic search".into(),
+                enabled: true,
+                read_only: true,
+            }],
+        }
+    }
+
+    fn connection(apps: Vec<ExternalAppOptionView>) -> RuntimeConnectionView {
+        RuntimeConnectionView {
+            executable_path: Some("/synthetic/codex".into()),
+            version: Some("synthetic".into()),
+            experimental: true,
+            read_only_text_turns_available: true,
+            text_turn_unavailable_reason: None,
+            authenticated: true,
+            auth_mode: Some("chatgpt".into()),
+            account_email: None,
+            plan_type: None,
+            models: Vec::new(),
+            external_apps: apps,
+            external_discovery_error: None,
+            selected_model: None,
+            selected_reasoning_effort: None,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn explicit_app_selection_requires_a_fresh_callable_runtime_entry() {
+        let runtime = connection(vec![app("calendar", true, true, true)]);
+        assert_eq!(
+            select_available_external_apps(&runtime, &["calendar".into()]).unwrap(),
+            vec![app("calendar", true, true, true)]
+        );
+        assert!(select_available_external_apps(&runtime, &["drive".into()])
+            .unwrap_err()
+            .contains("no longer available"));
+        let unavailable = connection(vec![app("calendar", true, false, false)]);
+        assert!(select_available_external_apps(&unavailable, &["calendar".into()]).is_err());
+        let mut discovery_failed = connection(Vec::new());
+        discovery_failed.external_discovery_error = Some("synthetic offline".into());
+        assert!(
+            select_available_external_apps(&discovery_failed, &["calendar".into()])
+                .unwrap_err()
+                .contains("synthetic offline")
+        );
+    }
+
+    #[test]
+    fn selection_is_deduplicated_and_only_selected_apps_become_mentions() {
+        let selected = normalize_external_app_ids(&["calendar".into(), "calendar".into()]).unwrap();
+        assert_eq!(selected, vec!["calendar"]);
+        assert!(normalize_external_app_ids(&["calendar $drive".into()]).is_err());
+        let available = vec![
+            app("calendar", true, true, true),
+            app("drive", true, true, true),
+        ];
+        let selected_apps =
+            select_available_external_apps(&connection(available), &selected).unwrap();
+        assert_eq!(external_app_markers(&selected_apps), "$calendar");
+        assert_eq!(
+            external_app_mention_items(&selected_apps),
+            vec![json!({
+                "type": "mention",
+                "name": "calendar display",
+                "path": "app://calendar"
+            })]
+        );
+        assert!(external_app_markers(&[]).is_empty());
+        assert!(external_app_mention_items(&[]).is_empty());
+    }
+
+    #[test]
+    fn external_action_audit_keeps_object_identity_and_redacts_credentials() {
+        let item = json!({
+            "type": "mcpToolCall",
+            "id": "call-1",
+            "server": "calendar",
+            "tool": "create_event",
+            "status": "completed",
+            "appContext": { "connectorId": "calendar", "appName": "Calendar", "actionName": "create_event" },
+            "arguments": { "eventId": "evt-42", "title": "Review", "access_token": "private", "x-api-key": "api-private" },
+            "result": { "eventId": "evt-42", "status": "created" }
+        });
+        let action = external_tool_action("thread-9", &item, "2026-09-27").unwrap();
+        assert_eq!(action.source_id, "calendar");
+        assert_eq!(action.tool_id, "create_event");
+        assert_eq!(action.target_scope, "2026-09-27");
+        assert!(action.input_summary.contains("evt-42"));
+        assert!(action.input_summary.contains("[redacted]"));
+        assert!(!action.input_summary.contains("private"));
+        assert!(!action.input_summary.contains("api-private"));
+        assert!(action.result_summary.contains("created"));
+
+        let failed_item = json!({
+            "type": "mcpToolCall",
+            "id": "call-2",
+            "server": "calendar",
+            "tool": "create_event",
+            "status": "failed",
+            "error": { "message": "Synthetic partial failure" }
+        });
+        let failed = external_tool_action("thread-9", &failed_item, "2026-09-27").unwrap();
+        assert_eq!(failed.status, "failed");
+        assert!(failed.result_summary.contains("Synthetic partial failure"));
+    }
+
+    #[test]
+    fn external_approval_accepts_only_listed_choices_and_declines_by_default() {
+        let params = json!({
+            "itemId": "call-1",
+            "questions": [{
+                "id": "confirm",
+                "header": "Send",
+                "question": "Send this message to the selected contact?",
+                "options": [
+                    { "label": "Accept", "description": "Send once" },
+                    { "label": "Decline", "description": "Do not send" },
+                    { "label": "Other", "description": "Free text", "isOther": true }
+                ]
+            }]
+        });
+        let approval = external_approval_request("run-1", &params).unwrap();
+        assert_eq!(approval.questions[0].options.len(), 2);
+        assert_eq!(
+            default_external_approval_answers(&approval).unwrap()["confirm"],
+            "Decline"
+        );
+        validate_external_approval_answers(
+            &approval,
+            &HashMap::from([("confirm".into(), "Accept".into())]),
+        )
+        .unwrap();
+        assert!(validate_external_approval_answers(
+            &approval,
+            &HashMap::from([("confirm".into(), "Send".into())]),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn external_approval_is_bound_to_a_selected_recorded_action() {
+        let params = json!({
+            "itemId": "call-1",
+            "questions": [{
+                "id": "confirm",
+                "header": "Send",
+                "question": "Send once?",
+                "options": [{ "label": "Accept" }, { "label": "Decline" }]
+            }]
+        });
+        let mut approval = external_approval_request("run-1", &params).unwrap();
+        let action = ExternalToolActionView {
+            action_id: "thread-9:call-1".into(),
+            source_id: "calendar".into(),
+            source_name: "Synthetic Calendar".into(),
+            tool_id: "create_event".into(),
+            status: "inProgress".into(),
+            target_scope: "2026-09-27".into(),
+            input_summary: "{\"eventId\":\"evt-42\"}".into(),
+            result_summary: "null".into(),
+        };
+        let message = StoredCollaborationMessage {
+            id: "message-1".into(),
+            role: "user".into(),
+            text: "Create an event".into(),
+            message_date: "2026-09-27".into(),
+            target_date: "2026-09-27".into(),
+            created_at: "2026-09-27T09:10:00-04:00".into(),
+            execution_id: Some("execution-1".into()),
+            runtime_turn_id: None,
+            delivery_state: "in-progress".into(),
+            queue_order: Some(1),
+            result_checked: false,
+            external_app_ids: vec!["calendar".into()],
+            external_actions: vec![action],
+            pending_external_approval: None,
+        };
+
+        attach_external_approval_action(&message, &mut approval).unwrap();
+        assert_eq!(approval.source_id, "calendar");
+        assert_eq!(approval.source_name, "Synthetic Calendar");
+        assert_eq!(approval.tool_id, "create_event");
+        assert_eq!(approval.target_scope, "2026-09-27");
+        assert!(approval.input_summary.contains("evt-42"));
+
+        let mut wrong_item = approval.clone();
+        wrong_item.item_id = "other-call".into();
+        assert!(attach_external_approval_action(&message, &mut wrong_item).is_err());
+
+        let mut unselected_message = message.clone();
+        unselected_message.external_app_ids.clear();
+        assert!(attach_external_approval_action(&unselected_message, &mut approval).is_err());
+    }
 }

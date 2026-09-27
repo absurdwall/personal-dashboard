@@ -213,6 +213,8 @@ impl AppServerTransport for DynamicRuntime {
                 reasoning_efforts: Vec::new(),
                 is_default: true,
             }],
+            external_apps: Vec::new(),
+            external_discovery_error: None,
             selected_model: Some("synthetic-model".into()),
             selected_reasoning_effort: None,
             error: None,
@@ -257,6 +259,7 @@ impl AppServerTransport for DynamicRuntime {
             text: format!("Synthetic response to {}", request.user_text),
             runtime_turn_id: Some(format!("turn-{}", request.execution_id)),
             stopped: false,
+            external_actions: Vec::new(),
         })
     }
 
@@ -462,6 +465,7 @@ impl AppServerTransport for DynamicRuntime {
             text: format!("Synthetic response to {}", request.user_text),
             runtime_turn_id: Some(format!("turn-{}", request.execution_id)),
             stopped: false,
+            external_actions: Vec::new(),
         })
     }
 

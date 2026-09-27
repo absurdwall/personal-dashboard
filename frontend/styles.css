@@ -8868,6 +8868,69 @@ button.habit-cell:focus-visible {
   margin-top: 0.55rem;
 }
 
+.collaboration-external-activity,
+.collaboration-external-approval {
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.42rem;
+  background: var(--parity-surface);
+  color: #303633;
+  font-size: 0.62rem;
+}
+
+.collaboration-external-activity summary {
+  cursor: pointer;
+  color: var(--parity-accent-strong);
+  font-weight: 650;
+}
+
+.collaboration-external-action {
+  display: grid;
+  gap: 0.28rem;
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--parity-border);
+}
+
+.collaboration-external-action small {
+  color: var(--parity-muted);
+  overflow-wrap: anywhere;
+}
+
+.collaboration-external-action p,
+.collaboration-external-approval p {
+  margin: 0;
+  font-size: 0.62rem;
+  overflow-wrap: anywhere;
+}
+
+.collaboration-external-approval {
+  display: grid;
+  gap: 0.5rem;
+  border-color: color-mix(in srgb, var(--parity-accent) 45%, white);
+}
+
+.collaboration-external-approval form,
+.collaboration-external-approval-question {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.collaboration-external-approval-question span {
+  font-weight: 600;
+}
+
+.collaboration-external-approval select {
+  min-height: 2rem;
+  width: 100%;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.35rem;
+  background: var(--parity-surface);
+  color: inherit;
+}
+
 .collaboration-composer {
   display: grid;
   gap: 0.4rem;
@@ -8888,6 +8951,93 @@ button.habit-cell:focus-visible {
   font: inherit;
   font-size: 0.7rem;
   line-height: 1.55;
+}
+
+.collaboration-external-apps {
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.42rem;
+  background: color-mix(in srgb, var(--parity-accent-soft) 42%, white);
+}
+
+.collaboration-external-apps legend {
+  padding: 0 0.25rem;
+  color: var(--parity-accent-strong);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.collaboration-external-apps > p,
+.collaboration-external-capability-list p {
+  margin: 0 0 0.4rem;
+  color: var(--parity-muted);
+  font-size: 0.57rem;
+  line-height: 1.45;
+}
+
+#collaboration-external-app-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.collaboration-external-app-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0 0.35rem;
+  align-items: start;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.36rem;
+  background: white;
+  cursor: pointer;
+}
+
+.collaboration-external-app-option input {
+  grid-row: span 2;
+  margin-top: 0.12rem;
+}
+
+.collaboration-external-app-option strong,
+.collaboration-external-app-option small {
+  overflow-wrap: anywhere;
+}
+
+.collaboration-external-app-option strong {
+  color: #303633;
+  font-size: 0.59rem;
+}
+
+.collaboration-external-app-option small {
+  color: var(--parity-muted);
+  font-size: 0.51rem;
+}
+
+.collaboration-external-capability-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-inline-start: 1rem;
+}
+
+.collaboration-external-capability-list > li > strong {
+  margin-inline-end: 0.4rem;
+}
+
+.collaboration-external-capability-list > li > small {
+  color: var(--parity-muted);
+  font-size: 0.57rem;
+}
+
+.collaboration-external-capability-list ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.7rem;
+  margin: 0.2rem 0 0;
+  padding-inline-start: 1rem;
+  color: var(--parity-muted);
+  font-size: 0.54rem;
 }
 
 .collaboration-voice-controls {
