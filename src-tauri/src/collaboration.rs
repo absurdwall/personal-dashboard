@@ -8839,9 +8839,19 @@ fn collaboration_task_tool_spec(
         if include_authorization_fields {
             properties.insert(
                 "executionMode".into(),
-                json!({"type": "string", "enum": ["execute", "prepareProposal"]}),
+                json!({
+                    "type": "string",
+                    "enum": ["execute", "prepareProposal"],
+                    "description": "Use prepareProposal whenever the current user asks to review a proposal or wait for approval or confirmation before saving. Use execute only when the user clearly asks to save now without a later review."
+                }),
             );
-            properties.insert("authorizationQuote".into(), json!({"type": "string"}));
+            properties.insert(
+                "authorizationQuote".into(),
+                json!({
+                    "type": "string",
+                    "description": "Quote the exact current user wording that authorizes this operation. Required for execute; Dashboard checks the quote against the active message."
+                }),
+            );
             required_fields.extend(["executionMode", "authorizationQuote"]);
         }
         json!({
@@ -8937,7 +8947,7 @@ fn collaboration_task_tool_spec(
     }
     let alternatives = defs;
     let description = if include_authorization_fields {
-        "Use one exact local Task, list, Daily Record, or local Habit operation. For a clear and unique user instruction, use executionMode=execute and quote its exact wording in authorizationQuote; Dashboard rechecks the selected Vault, binding, and latest revision before writing. Use executionMode=prepareProposal when the user explicitly asks for review or the action needs clarification. Ambiguous requests, plans, and suggestions are discussion only. A tool description is not permission."
+        "Use one exact local Task, list, Daily Record, or local Habit operation. Select executionMode=prepareProposal whenever the current user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires prepareProposal, even when it uses a direct action verb. Select executionMode=execute only when the user clearly asks to save now without a later review; quote the exact instruction in authorizationQuote. Dashboard rechecks the selected Vault, binding, and latest revision before writing. Ambiguous requests, plans, and suggestions are discussion only. A tool description is not permission."
     } else {
         "Save one automatic first-draft Daily Record plan for the current target date only. This path is enabled by the user and cannot change Tasks or record facts."
     };
@@ -10662,7 +10672,7 @@ impl AppServerTransport for CodexAppServerRuntime {
             format!("{app_markers} {}", request.user_text)
         };
         let input_text = format!(
-            "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. For a clear, unique local write the current user explicitly requested, use `dashboard_task_operation` with `executionMode=execute` and the exact current instruction in `authorizationQuote`; the Dashboard verifies the current request, selected Vault, binding, and revision before saving. Use `prepareProposal` only when the user explicitly asks to review before saving; ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` only when the user asks to review before saving. Use a connected external app only when the user explicitly selected it for this message. Keep external actions within the user's requested source, object, and target-date scope. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
+            "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. For a clear, unique local write, use `dashboard_task_operation` with `executionMode=execute` only when the user clearly asks to save now without a later review; quote the exact instruction in `authorizationQuote`. Use `prepareProposal` whenever the user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires `prepareProposal`, even when it uses a direct action verb. The Dashboard verifies the current request, selected Vault, binding, and revision before saving. Ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` whenever the user asks to review, confirm, or wait for approval before saving. Use a connected external app only when the user explicitly selected it for this message. Keep external actions within the user's requested source, object, and target-date scope. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
             user_text, request.context.date, context
         );
         let working_directory = self.working_directory.to_string_lossy().into_owned();

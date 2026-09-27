@@ -540,6 +540,18 @@ impl AppServerTransport for DynamicRuntime {
                     "content": "I finished the synthetic evening review."
                 }),
             )
+        } else if request.user_text == "Please add a note to today's Daily Record: 'Completed the synthetic collaboration acceptance task.' Show the exact note proposal and wait for my approval before saving." {
+            (
+                "reused-turn-scoped-call-id",
+                "dashboard_task_operation",
+                json!({
+                    "operation": "saveEveningReview",
+                    "executionMode": "prepareProposal",
+                    "authorizationQuote": request.user_text.clone(),
+                    "mode": "addition",
+                    "content": "Completed the synthetic collaboration acceptance task."
+                }),
+            )
         } else if request.user_text == "evening correction" {
             (
                 "reused-turn-scoped-call-id",
@@ -996,6 +1008,18 @@ fn dynamic_tool_registration_duplicate_delivery_and_approval_share_canonical_tas
         .unwrap()
         .iter()
         .any(|field| field == "authorizationQuote"));
+    let evening_review = task_variants
+        .iter()
+        .find(|variant| variant["properties"]["operation"]["const"] == "saveEveningReview")
+        .unwrap();
+    let execution_mode_guidance = evening_review["properties"]["executionMode"]["description"]
+        .as_str()
+        .expect("the model receives explicit proposal-versus-execute guidance");
+    assert!(
+        execution_mode_guidance.contains("wait for approval")
+            && execution_mode_guidance.contains("proposal"),
+        "{execution_mode_guidance}"
+    );
     drop(registered);
     assert_eq!(results.lock().unwrap().len(), 1);
     assert!(
@@ -2354,6 +2378,46 @@ fn evening_receipt_reconciles_after_restart_when_history_result_save_fails() {
     assert!(!vault_path
         .join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH)
         .exists());
+}
+
+#[test]
+fn daily_record_note_request_creates_review_proposal_without_mutation() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let daily_path = vault_path.join("life/Journal/Daily/2026/2026-09/2026-09-27.md");
+    let vault = MutableVault::new(&vault_path);
+    let context = MutableContext::new("vault-a");
+    let (application, _, results) = new_application(
+        &directory,
+        &vault,
+        context,
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    let prompt = "Please add a note to today's Daily Record: 'Completed the synthetic collaboration acceptance task.' Show the exact note proposal and wait for my approval before saving.";
+
+    application
+        .submit_message("vault-a", &session.id, "2026-09-27", prompt)
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+
+    let result = results.lock().unwrap()[0].clone();
+    assert!(result.success, "{}", result.text);
+    let proposal = application
+        .session("vault-a", &session.id)
+        .unwrap()
+        .task_operations
+        .into_iter()
+        .find(|operation| operation.status == "awaitingApproval")
+        .expect("the exact Daily Record note should be available for approval");
+    assert!(matches!(
+        proposal.operation,
+        CollaborationTaskOperation::SaveEveningReview {
+            mode: personal_dashboard_lib::today::CollaborationEveningReviewMode::Addition,
+            ref content,
+        } if content == "Completed the synthetic collaboration acceptance task."
+    ));
+    assert!(!daily_path.exists(), "preparing a note must not write it");
 }
 
 #[test]
