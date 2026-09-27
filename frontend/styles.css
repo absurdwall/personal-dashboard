@@ -9010,6 +9010,139 @@ button.habit-cell:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.collaboration-memory-panel {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.65rem;
+}
+
+.collaboration-memory-panel > summary,
+.collaboration-routine-reference > summary {
+  color: #303633;
+  cursor: pointer;
+  font-size: 0.66rem;
+  font-weight: 680;
+}
+
+.collaboration-memory-section {
+  display: grid;
+  gap: 0.4rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--parity-border);
+}
+
+.collaboration-memory-source,
+.collaboration-memory-message {
+  margin: 0;
+  color: var(--parity-muted);
+  font-size: 0.56rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.collaboration-memory-section label {
+  color: #4b514e;
+  font-size: 0.57rem;
+  font-weight: 620;
+}
+
+.collaboration-memory-section textarea {
+  width: 100%;
+  min-height: 4.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.35rem;
+  background: #fffefa;
+  color: #303633;
+  font: inherit;
+  font-size: 0.58rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.collaboration-memory-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.collaboration-memory-section pre {
+  max-height: 16rem;
+  margin: 0;
+  padding: 0.5rem;
+  overflow: auto;
+  border-radius: 0.35rem;
+  background: var(--parity-surface-soft);
+  color: #454b47;
+  font: inherit;
+  font-size: 0.56rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.collaboration-memory-list {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.collaboration-memory-list > li {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.45rem;
+  border-radius: 0.35rem;
+  background: var(--parity-surface-soft);
+  color: #3f4642;
+  font-size: 0.58rem;
+  line-height: 1.45;
+}
+
+.collaboration-memory-list small {
+  color: var(--parity-muted);
+  font-size: 0.54rem;
+}
+
+.collaboration-memory-proposal {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.38rem;
+  background: #fffefa;
+  color: #3f4642;
+  font-size: 0.58rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.collaboration-memory-proposal + .collaboration-memory-proposal {
+  margin-top: 0.45rem;
+}
+
+.collaboration-memory-proposal[data-state="awaitingApproval"] {
+  border-color: #d4b37c;
+  background: #fffaf0;
+}
+
+.collaboration-memory-proposal pre {
+  max-height: 12rem;
+  margin: 0;
+  padding: 0.45rem;
+  overflow: auto;
+  border-radius: 0.3rem;
+  background: var(--parity-surface-soft);
+  white-space: pre-wrap;
+}
+
+.collaboration-memory-proposal blockquote {
+  margin: 0;
+  padding-left: 0.5rem;
+  border-left: 2px solid #d4b37c;
+}
+
 #collaboration-task-tool-notice {
   display: flex;
   flex-wrap: wrap;

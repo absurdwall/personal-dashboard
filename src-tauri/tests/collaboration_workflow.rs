@@ -2,8 +2,13 @@ use personal_dashboard_lib::collaboration::{
     AppServerTransport, CollaborationApplication, CollaborationClock, CollaborationContextSource,
     CollaborationContextView, CollaborationState, CollaborationStore, ContextPaneView,
     DashboardContextReader, FileCollaborationStore, ModelOptionView, RuntimeConnectionView,
+    RuntimeDynamicToolCall, RuntimeDynamicToolHandler, RuntimeDynamicToolResult,
     RuntimeRunReconciliation, RuntimeTurnRequest, RuntimeTurnResult, StoredCollaborationMessage,
     StoredCollaborationSession,
+};
+use personal_dashboard_lib::collaboration_memory::{
+    CollaborationMemoryService, CollaborationMemorySources, LongTermMemoryDocumentView,
+    RoutineMemoryReferenceView,
 };
 use personal_dashboard_lib::tasks::{FileTaskStore, TaskApplication, TaskCreateInput};
 use personal_dashboard_lib::today::{TodayClock, TodayWorkspacePersistence};
@@ -57,6 +62,75 @@ impl CollaborationClock for FixedClock {
     }
 }
 
+#[derive(Clone)]
+struct SyntheticMemoryService {
+    document: Arc<Mutex<(u64, String)>>,
+}
+
+impl SyntheticMemoryService {
+    fn new() -> Self {
+        Self {
+            document: Arc::new(Mutex::new((1, "# Synthetic profile\n".into()))),
+        }
+    }
+
+    fn content(&self) -> String {
+        self.document.lock().unwrap().1.clone()
+    }
+
+    fn set_external_content(&self, content: &str) {
+        let mut document = self.document.lock().unwrap();
+        document.0 += 1;
+        document.1 = content.to_owned();
+    }
+
+    fn long_term_view(version: u64, content: &str) -> LongTermMemoryDocumentView {
+        LongTermMemoryDocumentView {
+            state: "ready".into(),
+            source_path: "everyday/wiki/Life Operating Principles.md".into(),
+            content: content.to_owned(),
+            revision: Some(format!("synthetic-memory-v{version}")),
+            message: "Synthetic long-term background loaded.".into(),
+        }
+    }
+}
+
+impl CollaborationMemoryService for SyntheticMemoryService {
+    fn read(&self, expected_vault_key: Option<&str>) -> Result<CollaborationMemorySources, String> {
+        if expected_vault_key != Some("synthetic-vault") {
+            return Err("Synthetic memory is isolated to synthetic-vault.".into());
+        }
+        let document = self.document.lock().unwrap();
+        Ok(CollaborationMemorySources {
+            long_term: Self::long_term_view(document.0, &document.1),
+            routine_reference: RoutineMemoryReferenceView {
+                state: "ready".into(),
+                source_path: "everyday/.agents/skills/life-companion/SKILL.md".into(),
+                content: "Synthetic daily routine reference.".into(),
+                message: "Synthetic routine reference loaded.".into(),
+            },
+        })
+    }
+
+    fn save_long_term(
+        &self,
+        expected_vault_key: &str,
+        expected_revision: &str,
+        content: &str,
+    ) -> Result<LongTermMemoryDocumentView, String> {
+        if expected_vault_key != "synthetic-vault" {
+            return Err("Synthetic memory is isolated to synthetic-vault.".into());
+        }
+        let mut document = self.document.lock().unwrap();
+        if expected_revision != format!("synthetic-memory-v{}", document.0) {
+            return Err("Synthetic background changed outside Personal Dashboard.".into());
+        }
+        document.0 += 1;
+        document.1 = content.to_owned();
+        Ok(Self::long_term_view(document.0, &document.1))
+    }
+}
+
 struct FixtureContext;
 
 impl CollaborationContextSource for FixtureContext {
@@ -104,6 +178,8 @@ struct FakeAppServer {
     switch_vault_on_inspect: Option<Arc<AtomicBool>>,
     turn_gate: Option<Arc<FakeTurnGate>>,
     reconciliations: Arc<Mutex<HashMap<String, RuntimeRunReconciliation>>>,
+    memory_call: Option<RuntimeDynamicToolCall>,
+    memory_tool_results: Arc<Mutex<Vec<RuntimeDynamicToolResult>>>,
 }
 
 #[derive(Default)]
@@ -290,6 +366,21 @@ impl AppServerTransport for FakeAppServer {
         })
     }
 
+    fn send_turn_with_dynamic_tools(
+        &mut self,
+        request: RuntimeTurnRequest,
+        cancellation: Arc<AtomicBool>,
+        tool_handler: Option<RuntimeDynamicToolHandler>,
+    ) -> Result<RuntimeTurnResult, String> {
+        if let Some(call) = self.memory_call.take() {
+            if let Some(handler) = tool_handler {
+                self.memory_tool_results.lock().unwrap().push(handler(call));
+                return self.send_turn(request);
+            }
+        }
+        self.send_turn_cancellable(request, cancellation)
+    }
+
     fn reconcile_turn(
         &mut self,
         thread_id: &str,
@@ -346,12 +437,46 @@ fn new_application_with_call_log(
             switch_vault_on_inspect: None,
             turn_gate: None,
             reconciliations: Arc::new(Mutex::new(HashMap::new())),
+            memory_call: None,
+            memory_tool_results: Arc::new(Mutex::new(Vec::new())),
         }),
         Arc::new(FixtureContext),
         Arc::new(FixedClock),
         directory.path().to_path_buf(),
         "Only use supplied read-only Dashboard context.".into(),
     )
+}
+
+fn new_application_with_synthetic_memory(
+    directory: &IsolatedDirectory,
+    prompts: Arc<Mutex<Vec<RuntimeTurnRequest>>>,
+    memory: SyntheticMemoryService,
+    memory_call: Option<RuntimeDynamicToolCall>,
+    memory_tool_results: Arc<Mutex<Vec<RuntimeDynamicToolResult>>>,
+) -> CollaborationApplication {
+    CollaborationApplication::with_adapters(
+        Arc::new(FileCollaborationStore::new(
+            directory
+                .path()
+                .join("collaboration")
+                .join("collaboration.json"),
+        )),
+        Box::new(FakeAppServer {
+            prompts,
+            calls: Arc::new(Mutex::new(Vec::new())),
+            read_only_text_turns_available: true,
+            switch_vault_on_inspect: None,
+            turn_gate: None,
+            reconciliations: Arc::new(Mutex::new(HashMap::new())),
+            memory_call,
+            memory_tool_results,
+        }),
+        Arc::new(FixtureContext),
+        Arc::new(FixedClock),
+        directory.path().to_path_buf(),
+        "Only use supplied read-only Dashboard context.".into(),
+    )
+    .with_memory_service(Arc::new(memory))
 }
 
 fn new_application_with_controls(
@@ -375,6 +500,8 @@ fn new_application_with_controls(
             switch_vault_on_inspect: None,
             turn_gate,
             reconciliations,
+            memory_call: None,
+            memory_tool_results: Arc::new(Mutex::new(Vec::new())),
         }),
         Arc::new(FixtureContext),
         Arc::new(FixedClock),
@@ -798,6 +925,7 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
         runtime_thread_id: Some("runtime-thread-1".into()),
         task_tool_registered: false,
         daily_plan_tool_registered: false,
+        memory_tool_registered: false,
         messages: vec![
             StoredCollaborationMessage {
                 id: "message-active-1".into(),
@@ -827,6 +955,7 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
             },
         ],
         task_operations: Vec::new(),
+        memory_proposals: Vec::new(),
         draft: "Recovered draft".into(),
         drafts_by_date: HashMap::new(),
     });
@@ -981,6 +1110,8 @@ fn selected_vault_is_rechecked_immediately_before_sending_context() {
             switch_vault_on_inspect: Some(Arc::clone(&switched)),
             turn_gate: None,
             reconciliations: Arc::new(Mutex::new(HashMap::new())),
+            memory_call: None,
+            memory_tool_results: Arc::new(Mutex::new(Vec::new())),
         }),
         Arc::new(SwitchAfterRuntimeInspection(Arc::clone(&switched))),
         Arc::new(FixedClock),
@@ -1003,6 +1134,240 @@ fn selected_vault_is_rechecked_immediately_before_sending_context() {
     assert!(finished.progress.contains("before the model turn was sent"));
     assert_eq!(*calls.lock().unwrap(), ["start-thread"]);
     assert!(prompts.lock().unwrap().is_empty());
+}
+
+#[test]
+fn explicit_memory_updates_wait_for_approval_and_reappear_as_cross_session_context() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let memory_results = Arc::new(Mutex::new(Vec::new()));
+    let memory = SyntheticMemoryService::new();
+    let memory_call = RuntimeDynamicToolCall {
+        thread_id: "runtime-thread-1".into(),
+        turn_id: "runtime-turn-1".into(),
+        call_id: "memory-call-1".into(),
+        tool: "dashboard_memory_update".into(),
+        arguments: serde_json::json!({
+            "operation": "proposeLongTermUpdate",
+            "basis": "explicitUserInstruction",
+            "authorizationQuote": "Please remember that I prefer early planning.",
+            "change": "Prefers early planning.",
+            "replaces": null
+        }),
+    };
+    let application = new_application_with_synthetic_memory(
+        &directory,
+        Arc::clone(&prompts),
+        memory.clone(),
+        Some(memory_call),
+        Arc::clone(&memory_results),
+    );
+    let first_session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "synthetic-vault",
+            &first_session.id,
+            "2026-09-27",
+            "Please remember that I prefer early planning.",
+        )
+        .unwrap();
+    wait_until_finished(&application, &first_session.id);
+
+    let proposed = application
+        .session("synthetic-vault", &first_session.id)
+        .unwrap();
+    assert_eq!(
+        memory_results.lock().unwrap().len(),
+        1,
+        "the synthetic App Server should dispatch its memory tool callback"
+    );
+    assert!(
+        memory_results.lock().unwrap()[0].success,
+        "memory tool failed: {:?}",
+        memory_results.lock().unwrap()[0].text
+    );
+    let proposal = proposed
+        .memory_proposals
+        .first()
+        .expect("tool call should create a proposal");
+    assert_eq!(proposal.status, "awaitingApproval");
+    assert_eq!(
+        memory.content(),
+        "# Synthetic profile\n",
+        "a tool call alone must not write long-term background"
+    );
+    let first_request = prompts.lock().unwrap()[0].clone();
+    assert!(first_request
+        .memory
+        .long_term
+        .content
+        .contains("Synthetic profile"));
+    assert!(first_request
+        .memory
+        .routine_reference
+        .content
+        .contains("Synthetic daily routine"));
+    assert!(first_request.context.daily_record.items[0].contains("synthetic walk"));
+    assert!(first_request.context.tasks.items[0].contains("synthetic appointment"));
+    assert!(first_request.context.habits.items[0].contains("synthetic stretch"));
+
+    let applied = application
+        .approve_memory_proposal_for_selected_vault(&first_session.id, &proposal.id)
+        .unwrap();
+    assert_eq!(applied.memory_proposals[0].status, "applied");
+    assert!(memory.content().contains("Prefers early planning."));
+
+    let second_session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "synthetic-vault",
+            &second_session.id,
+            "2026-09-27",
+            "Continue with current planning context.",
+        )
+        .unwrap();
+    wait_until_finished(&application, &second_session.id);
+
+    let requests = prompts.lock().unwrap();
+    assert_eq!(requests.len(), 2);
+    assert!(requests[1]
+        .memory
+        .long_term
+        .content
+        .contains("Prefers early planning."));
+    assert!(requests[1]
+        .memory
+        .recent
+        .iter()
+        .any(|entry| entry.session_id == first_session.id));
+    assert!(requests[1].context.daily_record.items[0].contains("synthetic walk"));
+    drop(requests);
+    let original = application
+        .session("synthetic-vault", &first_session.id)
+        .unwrap();
+    assert_eq!(
+        original.messages.len(),
+        2,
+        "source conversation messages remain available after memory updates"
+    );
+    assert_eq!(
+        original.messages[0].text,
+        "Please remember that I prefer early planning."
+    );
+}
+
+#[test]
+fn memory_approval_conflict_preserves_an_external_source_edit() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let memory_results = Arc::new(Mutex::new(Vec::new()));
+    let memory = SyntheticMemoryService::new();
+    let memory_call = RuntimeDynamicToolCall {
+        thread_id: "runtime-thread-1".into(),
+        turn_id: "runtime-turn-1".into(),
+        call_id: "memory-conflict-call-1".into(),
+        tool: "dashboard_memory_update".into(),
+        arguments: serde_json::json!({
+            "operation": "proposeLongTermUpdate",
+            "basis": "explicitUserInstruction",
+            "authorizationQuote": "Please remember that I prefer early planning.",
+            "change": "Prefers early planning.",
+            "replaces": null
+        }),
+    };
+    let application = new_application_with_synthetic_memory(
+        &directory,
+        prompts,
+        memory.clone(),
+        Some(memory_call),
+        Arc::clone(&memory_results),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "synthetic-vault",
+            &session.id,
+            "2026-09-27",
+            "Please remember that I prefer early planning.",
+        )
+        .unwrap();
+    wait_until_finished(&application, &session.id);
+    let proposal_id = application
+        .session("synthetic-vault", &session.id)
+        .unwrap()
+        .memory_proposals[0]
+        .id
+        .clone();
+    assert!(memory_results.lock().unwrap()[0].success);
+
+    memory.set_external_content("# External synthetic correction\n");
+    let reviewed = application
+        .approve_memory_proposal_for_selected_vault(&session.id, &proposal_id)
+        .unwrap();
+
+    assert_eq!(reviewed.memory_proposals[0].status, "conflict");
+    assert!(reviewed.memory_proposals[0]
+        .result_message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("No content was overwritten"));
+    assert_eq!(memory.content(), "# External synthetic correction\n");
+}
+
+#[test]
+fn memory_editors_reject_stale_vault_bindings_and_revisions() {
+    let directory = IsolatedDirectory::new();
+    let memory = SyntheticMemoryService::new();
+    let application = new_application_with_synthetic_memory(
+        &directory,
+        Arc::new(Mutex::new(Vec::new())),
+        memory.clone(),
+        None,
+        Arc::new(Mutex::new(Vec::new())),
+    );
+
+    let stale_vault = application
+        .save_long_term_memory_for_selected_vault(
+            "previous-vault",
+            "synthetic-memory-v1",
+            "# Must not reach another Vault\n",
+        )
+        .unwrap_err();
+    assert!(stale_vault.contains("selected Vault changed"));
+    assert_eq!(memory.content(), "# Synthetic profile\n");
+
+    application
+        .save_long_term_memory_for_selected_vault(
+            "synthetic-vault",
+            "synthetic-memory-v1",
+            "# Approved synthetic background\n",
+        )
+        .unwrap();
+    let stale_revision = application
+        .save_long_term_memory_for_selected_vault(
+            "synthetic-vault",
+            "synthetic-memory-v1",
+            "# Must not overwrite the newer revision\n",
+        )
+        .unwrap_err();
+    assert!(stale_revision.contains("changed outside"));
+    assert_eq!(memory.content(), "# Approved synthetic background\n");
+
+    let stale_note_vault = application
+        .save_continuity_note_for_selected_vault("previous-vault", 0, "Wrong Vault note")
+        .unwrap_err();
+    assert!(stale_note_vault.contains("selected Vault changed"));
+
+    let saved_note = application
+        .save_continuity_note_for_selected_vault("synthetic-vault", 0, "Synthetic correction")
+        .unwrap();
+    assert_eq!(saved_note.correction_note, "Synthetic correction");
+    assert_eq!(saved_note.correction_revision, 1);
+
+    let stale_note_revision = application
+        .save_continuity_note_for_selected_vault("synthetic-vault", 0, "Stale correction")
+        .unwrap_err();
+    assert!(stale_note_revision.contains("changed in another Dashboard view"));
 }
 
 struct SelectedVault(PathBuf);

@@ -575,6 +575,67 @@ type CollaborationContextView = Readonly<{
   habits: CollaborationContextPane;
 }>;
 
+type CollaborationMemorySource = Readonly<{
+  state: string;
+  sourcePath: string;
+  content: string;
+  revision: string | null;
+  message: string;
+}>;
+
+type CollaborationRoutineReference = Readonly<{
+  state: string;
+  sourcePath: string;
+  content: string;
+  message: string;
+}>;
+
+type CollaborationRecentMemoryView = Readonly<{
+  id: string;
+  sessionId: string;
+  sessionTitle: string;
+  activityDate: string;
+  summary: string;
+  sourceMessageId: string;
+  expiresOn: string;
+  updatedAt: string;
+}>;
+
+type CollaborationOpenMatterView = Readonly<{
+  id: string;
+  sessionId: string;
+  sessionTitle: string;
+  activityDate: string;
+  state: string;
+  summary: string;
+  updatedAt: string;
+}>;
+
+type CollaborationMemoryView = Readonly<{
+  vaultBinding: string | null;
+  longTerm: CollaborationMemorySource;
+  routineReference: CollaborationRoutineReference;
+  recent: readonly CollaborationRecentMemoryView[];
+  openMatters: readonly CollaborationOpenMatterView[];
+  correctionNote: string;
+  correctionNoteExpiresOn: string | null;
+  correctionRevision: number;
+  generatedAt: string;
+}>;
+
+type CollaborationMemoryProposalView = Readonly<{
+  id: string;
+  status: string;
+  basis: string;
+  authorizationQuote: string;
+  change: string;
+  replaces: string | null;
+  sourceRevision: string;
+  resultMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
 type CollaborationTaskReferenceView = Readonly<{
   id: string;
   name: string;
@@ -675,8 +736,10 @@ type CollaborationSessionView = Readonly<{
   runtimeThreadId: string | null;
   taskToolAvailable: boolean;
   dailyPlanToolAvailable: boolean;
+  memoryToolAvailable: boolean;
   messages: readonly CollaborationMessageView[];
   taskOperations: readonly CollaborationTaskOperationView[];
+  memoryProposals: readonly CollaborationMemoryProposalView[];
   draft: string;
   draftsByDate: Readonly<Record<string, string>>;
 }>;
@@ -694,6 +757,7 @@ type CollaborationWorkspaceView = Readonly<{
   vaultName: string | null;
   selectedModel: string | null;
   context: CollaborationContextView;
+  memory: CollaborationMemoryView;
   sessions: readonly CollaborationSessionView[];
   activeRun: CollaborationRunOwnerView | null;
   recoveryRequired: boolean;
@@ -761,6 +825,10 @@ let currentCollaborationWorkspace: CollaborationWorkspaceView | null = null;
 let currentCollaborationSession: CollaborationSessionView | null = null;
 const pendingCollaborationTaskOperationIds = new Set<string>();
 const collaborationTaskActionErrors = new Map<string, string>();
+const pendingCollaborationMemoryProposalIds = new Set<string>();
+const collaborationMemoryProposalErrors = new Map<string, string>();
+const collaborationLongTermDrafts = new Map<string, Readonly<{ text: string; revision: string }>>();
+const collaborationContinuityDrafts = new Map<string, Readonly<{ text: string; revision: number }>>();
 let taskFocusRequestId: string | null = null;
 let taskReturnToCollaborationSessionId: string | null = null;
 let dailyPlanReturnToCollaborationSessionId: string | null = null;
@@ -878,6 +946,21 @@ const collaborationChatDate = document.querySelector<HTMLElement>("#collaboratio
 const collaborationRunStatus = document.querySelector<HTMLElement>("#collaboration-run-status");
 const collaborationStopButton = document.querySelector<HTMLButtonElement>("#collaboration-stop-run");
 const collaborationVaultLabel = document.querySelector<HTMLElement>("#collaboration-context-vault");
+const collaborationMemoryStatus = document.querySelector<HTMLElement>("#collaboration-memory-status");
+const collaborationMemoryPanel = document.querySelector<HTMLDetailsElement>("#collaboration-memory-panel");
+const collaborationLongTermSource = document.querySelector<HTMLElement>("#collaboration-long-term-source");
+const collaborationLongTermMessage = document.querySelector<HTMLElement>("#collaboration-long-term-message");
+const collaborationLongTermContent = document.querySelector<HTMLTextAreaElement>("#collaboration-long-term-content");
+const collaborationLongTermSaveButton = document.querySelector<HTMLButtonElement>("#collaboration-long-term-save");
+const collaborationLongTermReloadButton = document.querySelector<HTMLButtonElement>("#collaboration-long-term-reload");
+const collaborationRoutineReferenceMessage = document.querySelector<HTMLElement>("#collaboration-routine-reference-message");
+const collaborationRoutineReferenceContent = document.querySelector<HTMLElement>("#collaboration-routine-reference-content");
+const collaborationRecentMemoryList = document.querySelector<HTMLUListElement>("#collaboration-recent-memory-list");
+const collaborationOpenMattersList = document.querySelector<HTMLUListElement>("#collaboration-open-matters-list");
+const collaborationContinuityNote = document.querySelector<HTMLTextAreaElement>("#collaboration-continuity-note");
+const collaborationContinuitySaveButton = document.querySelector<HTMLButtonElement>("#collaboration-continuity-save");
+const collaborationContinuityExpiry = document.querySelector<HTMLElement>("#collaboration-continuity-expiry");
+const collaborationMemoryProposals = document.querySelector<HTMLElement>("#collaboration-memory-proposals");
 const collaborationRuntimeStatus = document.querySelector<HTMLElement>("#collaboration-runtime-status");
 const collaborationConnectionStatus = document.querySelector<HTMLElement>("#collaboration-connection-status");
 const collaborationTurnCapability = document.querySelector<HTMLElement>("#collaboration-turn-capability");
@@ -2553,8 +2636,9 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
     collaborationTaskToolNotice.replaceChildren();
     const legacyTasks = Boolean(session?.runtimeThreadId && !session.taskToolAvailable);
     const legacyDailyPlan = Boolean(session?.runtimeThreadId && session.dailyPlanToolAvailable !== true);
-    collaborationTaskToolNotice.hidden = !(legacyTasks || legacyDailyPlan);
-    if (legacyTasks || legacyDailyPlan) {
+    const legacyMemory = Boolean(session?.runtimeThreadId && session.memoryToolAvailable !== true);
+    collaborationTaskToolNotice.hidden = !(legacyTasks || legacyDailyPlan || legacyMemory);
+    if (legacyTasks || legacyDailyPlan || legacyMemory) {
       if (legacyTasks) {
         const message = document.createElement("span");
         message.textContent = t("collaboration.legacyTaskToolNotice");
@@ -2563,6 +2647,11 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       if (legacyDailyPlan) {
         const message = document.createElement("span");
         message.textContent = t("collaboration.legacyDailyPlanNotice");
+        collaborationTaskToolNotice.append(message);
+      }
+      if (legacyMemory) {
+        const message = document.createElement("span");
+        message.textContent = t("collaboration.memoryToolUnavailable");
         collaborationTaskToolNotice.append(message);
       }
       const newChat = document.createElement("button");
@@ -2727,6 +2816,392 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
   }
 }
 
+function collaborationMemorySourceStateLabel(state: string): string {
+  switch (state) {
+    case "ready": return t("collaboration.memorySourceReady");
+    case "missing": return t("collaboration.memorySourceMissing");
+    case "unconfigured": return t("collaboration.memorySourceUnconfigured");
+    default: return t("collaboration.memorySourceError");
+  }
+}
+
+function collaborationMemoryStateLabel(state: string): string {
+  const key = `collaboration.memoryState.${state}` as InterfaceCopyKey;
+  return t(key);
+}
+
+function renderMemorySessionLink(
+  parent: HTMLElement,
+  sessionId: string,
+  activityDate: string,
+): void {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "text-button";
+  setCopy(button, "collaboration.memoryOpenSession");
+  button.addEventListener("click", () => {
+    void openCollaborationSessionFromMemory(sessionId, activityDate);
+  });
+  parent.append(button);
+}
+
+function renderCollaborationMemory(
+  memory: CollaborationMemoryView | null,
+  session: CollaborationSessionView | null,
+): void {
+  if (!memory) {
+    setRawText(collaborationMemoryStatus, "");
+    setRawText(collaborationLongTermSource, "");
+    setRawText(collaborationLongTermMessage, "");
+    setRawText(collaborationRoutineReferenceMessage, "");
+    setRawText(collaborationContinuityExpiry, "");
+    if (collaborationRoutineReferenceContent) collaborationRoutineReferenceContent.textContent = "";
+    collaborationRecentMemoryList?.replaceChildren();
+    collaborationOpenMattersList?.replaceChildren();
+    collaborationMemoryProposals?.replaceChildren();
+    if (collaborationLongTermSaveButton) collaborationLongTermSaveButton.disabled = true;
+    if (collaborationContinuitySaveButton) collaborationContinuitySaveButton.disabled = true;
+    return;
+  }
+  if (session?.memoryProposals.some((proposal) =>
+    ["awaitingApproval", "failed", "conflict"].includes(proposal.status)
+  )) {
+    if (collaborationMemoryPanel) collaborationMemoryPanel.open = true;
+  }
+  const binding = memory.vaultBinding;
+  if (binding) {
+    const longTermDraft = collaborationLongTermDrafts.get(binding);
+    if (collaborationLongTermContent) {
+      const currentBinding = collaborationLongTermContent.dataset.vaultBinding;
+      if (currentBinding !== binding || document.activeElement !== collaborationLongTermContent) {
+        collaborationLongTermContent.value = longTermDraft?.text ?? memory.longTerm.content;
+        collaborationLongTermContent.dataset.vaultBinding = binding;
+        collaborationLongTermContent.dataset.sourceRevision =
+          longTermDraft?.revision ?? memory.longTerm.revision ?? "";
+      }
+      collaborationLongTermContent.disabled = memory.longTerm.state !== "ready" || !memory.longTerm.revision;
+    }
+    const continuityDraft = collaborationContinuityDrafts.get(binding);
+    if (collaborationContinuityNote) {
+      const currentBinding = collaborationContinuityNote.dataset.vaultBinding;
+      if (currentBinding !== binding || document.activeElement !== collaborationContinuityNote) {
+        collaborationContinuityNote.value = continuityDraft?.text ?? memory.correctionNote;
+        collaborationContinuityNote.dataset.vaultBinding = binding;
+        collaborationContinuityNote.dataset.sourceRevision = String(
+          continuityDraft?.revision ?? memory.correctionRevision,
+        );
+      }
+      collaborationContinuityNote.disabled = false;
+    }
+  } else {
+    if (collaborationLongTermContent) {
+      collaborationLongTermContent.value = "";
+      collaborationLongTermContent.disabled = true;
+      delete collaborationLongTermContent.dataset.vaultBinding;
+      delete collaborationLongTermContent.dataset.sourceRevision;
+    }
+    if (collaborationContinuityNote) {
+      collaborationContinuityNote.value = "";
+      collaborationContinuityNote.disabled = true;
+      delete collaborationContinuityNote.dataset.vaultBinding;
+      delete collaborationContinuityNote.dataset.sourceRevision;
+    }
+  }
+  const longTermDraft = binding ? collaborationLongTermDrafts.get(binding) : undefined;
+  if (collaborationLongTermSaveButton) {
+    collaborationLongTermSaveButton.disabled = !binding ||
+      memory.longTerm.state !== "ready" || !longTermDraft ||
+      pendingCollaborationMemoryProposalIds.has("long-term-editor");
+  }
+  const continuityDraft = binding ? collaborationContinuityDrafts.get(binding) : undefined;
+  if (collaborationContinuitySaveButton) {
+    collaborationContinuitySaveButton.disabled = !binding || !continuityDraft ||
+      pendingCollaborationMemoryProposalIds.has("continuity-editor");
+  }
+  if (collaborationLongTermSource) {
+    setRawText(
+      collaborationLongTermSource,
+      t("collaboration.longTermSource", { path: memory.longTerm.sourcePath }),
+    );
+  }
+  if (collaborationLongTermMessage) {
+    const state = collaborationMemorySourceStateLabel(memory.longTerm.state);
+    const message = memory.longTerm.state === "missing"
+      ? t("collaboration.longTermMissing")
+      : memory.longTerm.message;
+    setRawText(collaborationLongTermMessage, `${state} · ${message}`);
+  }
+  setRawText(
+    collaborationMemoryStatus,
+    memory.vaultBinding
+      ? `${collaborationMemorySourceStateLabel(memory.longTerm.state)} · ${memory.generatedAt}`
+      : t("collaboration.chooseVault"),
+  );
+  if (collaborationRoutineReferenceMessage) {
+    setRawText(
+      collaborationRoutineReferenceMessage,
+      `${collaborationMemorySourceStateLabel(memory.routineReference.state)} · ${memory.routineReference.message}`,
+    );
+  }
+  if (collaborationRoutineReferenceContent) {
+    collaborationRoutineReferenceContent.textContent = memory.routineReference.content;
+  }
+  setRawText(
+    collaborationContinuityExpiry,
+    memory.correctionNoteExpiresOn
+      ? t("collaboration.continuityNoteExpiry", {
+        date: collaborationDateLabel(memory.correctionNoteExpiresOn),
+      })
+      : "",
+  );
+
+  if (collaborationRecentMemoryList) {
+    collaborationRecentMemoryList.replaceChildren();
+    if (memory.recent.length === 0) {
+      const empty = document.createElement("li");
+      empty.textContent = t("collaboration.recentMemoryEmpty");
+      collaborationRecentMemoryList.append(empty);
+    }
+    for (const entry of memory.recent) {
+      const item = document.createElement("li");
+      const title = document.createElement("strong");
+      title.textContent = `${collaborationDateLabel(entry.activityDate)} · ${entry.sessionTitle || t("collaboration.untitledSession")}`;
+      const summary = document.createElement("span");
+      summary.textContent = entry.summary;
+      const expiry = document.createElement("small");
+      setRawText(expiry, t("collaboration.memoryExpires", { date: collaborationDateLabel(entry.expiresOn) }));
+      item.append(title, summary, expiry);
+      renderMemorySessionLink(item, entry.sessionId, entry.activityDate);
+      collaborationRecentMemoryList.append(item);
+    }
+  }
+  if (collaborationOpenMattersList) {
+    collaborationOpenMattersList.replaceChildren();
+    if (memory.openMatters.length === 0) {
+      const empty = document.createElement("li");
+      empty.textContent = t("collaboration.openMattersEmpty");
+      collaborationOpenMattersList.append(empty);
+    }
+    for (const matter of memory.openMatters) {
+      const item = document.createElement("li");
+      const title = document.createElement("strong");
+      title.textContent = `${collaborationDateLabel(matter.activityDate)} · ${collaborationMemoryStateLabel(matter.state)}`;
+      const summary = document.createElement("span");
+      summary.textContent = matter.summary;
+      item.append(title, summary);
+      renderMemorySessionLink(item, matter.sessionId, matter.activityDate);
+      collaborationOpenMattersList.append(item);
+    }
+  }
+  renderCollaborationMemoryProposals(session);
+}
+
+function renderCollaborationMemoryProposals(session: CollaborationSessionView | null): void {
+  if (!collaborationMemoryProposals) return;
+  collaborationMemoryProposals.replaceChildren();
+  const proposals = session?.memoryProposals ?? [];
+  if (proposals.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "collaboration-empty-conversation";
+    empty.textContent = t("collaboration.memoryProposalEmpty");
+    collaborationMemoryProposals.append(empty);
+    return;
+  }
+  for (const proposal of proposals) {
+    const card = document.createElement("article");
+    card.className = "collaboration-memory-proposal";
+    card.dataset.state = proposal.status;
+    const heading = document.createElement("strong");
+    heading.textContent = t("collaboration.memoryProposalTitle");
+    const status = document.createElement("small");
+    status.textContent = t(`collaboration.memoryProposalStatus.${proposal.status}` as InterfaceCopyKey);
+    const date = document.createElement("small");
+    date.textContent = t("collaboration.memoryProposalDate", {
+      date: collaborationDateLabel(proposal.createdAt.slice(0, 10)),
+    });
+    const basis = document.createElement("small");
+    basis.textContent = t(proposal.basis === "confirmedInference"
+      ? "collaboration.memoryProposalConfirmed"
+      : "collaboration.memoryProposalExplicit");
+    const quoteLabel = document.createElement("small");
+    quoteLabel.textContent = t("collaboration.memoryProposalQuote");
+    const quote = document.createElement("blockquote");
+    quote.textContent = proposal.authorizationQuote;
+    const changeLabel = document.createElement("small");
+    changeLabel.textContent = t("collaboration.memoryProposalChange");
+    const change = document.createElement("p");
+    change.textContent = proposal.change;
+    card.append(heading, status, date, basis, quoteLabel, quote, changeLabel, change);
+    if (proposal.replaces) {
+      const replacesLabel = document.createElement("small");
+      replacesLabel.textContent = t("collaboration.memoryProposalReplaces");
+      const replaces = document.createElement("blockquote");
+      replaces.textContent = proposal.replaces;
+      card.append(replacesLabel, replaces);
+    }
+    if (proposal.resultMessage) {
+      const result = document.createElement("p");
+      result.textContent = proposal.status === "applied"
+        ? t("collaboration.memoryProposalApplied")
+        : proposal.resultMessage;
+      card.append(result);
+    }
+    const errorMessage = collaborationMemoryProposalErrors.get(proposal.id);
+    if (errorMessage) {
+      const error = document.createElement("p");
+      error.setAttribute("role", "alert");
+      error.textContent = errorMessage;
+      card.append(error);
+    }
+    if (session && proposal.status === "awaitingApproval") {
+      const actions = document.createElement("div");
+      actions.className = "collaboration-memory-actions";
+      for (const [action, label] of [
+        ["approve", "collaboration.memoryProposalApprove"],
+        ["reject", "collaboration.memoryProposalDismiss"],
+      ] as const) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = action === "approve" ? "collaboration-task-operation-approve" : "secondary-button";
+        setCopy(button, label);
+        button.disabled = pendingCollaborationMemoryProposalIds.has(proposal.id);
+        button.addEventListener("click", () => {
+          void runCollaborationMemoryProposalAction(session.id, proposal.id, action);
+        });
+        actions.append(button);
+      }
+      card.append(actions);
+    }
+    collaborationMemoryProposals.append(card);
+  }
+}
+
+async function openCollaborationSessionFromMemory(
+  sessionId: string,
+  activityDate: string,
+): Promise<void> {
+  collaborationActivityDate = activityDate;
+  if (collaborationDateInput) collaborationDateInput.value = activityDate;
+  await refreshCollaborationWorkspace();
+  if (currentCollaborationSession?.id === sessionId) return;
+  try {
+    const session = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+      "collaboration_session",
+      { sessionId },
+    );
+    currentCollaborationSession = session;
+    cacheCollaborationDrafts(session);
+    collaborationTargetDate = collaborationTargetDates.get(session.id) ?? session.targetDate;
+    collaborationTargetDates.set(session.id, collaborationTargetDate);
+    if (collaborationTargetDateInput) collaborationTargetDateInput.value = collaborationTargetDate;
+    renderCollaborationWorkspace();
+    void refreshCollaborationContext();
+    watchCollaborationSession(session);
+  } catch (error) {
+    setRawText(collaborationMemoryStatus, String(error));
+  }
+}
+
+async function runCollaborationMemoryProposalAction(
+  sessionId: string,
+  proposalId: string,
+  action: "approve" | "reject",
+): Promise<void> {
+  if (pendingCollaborationMemoryProposalIds.has(proposalId)) return;
+  pendingCollaborationMemoryProposalIds.add(proposalId);
+  renderCollaborationWorkspace();
+  const command = action === "approve"
+    ? "collaboration_approve_memory_proposal"
+    : "collaboration_reject_memory_proposal";
+  try {
+    const updated = await window.__TAURI__.core.invoke<CollaborationSessionView>(command, {
+      sessionId,
+      proposalId,
+    });
+    collaborationMemoryProposalErrors.delete(proposalId);
+    if (currentCollaborationSession?.id === sessionId) currentCollaborationSession = updated;
+    await refreshCollaborationWorkspace();
+  } catch (error) {
+    collaborationMemoryProposalErrors.set(proposalId, String(error));
+    if (currentCollaborationSession?.id === sessionId) {
+      try {
+        currentCollaborationSession = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+          "collaboration_session",
+          { sessionId },
+        );
+      } catch {
+        // Keep the last saved proposal visible if history cannot be refreshed.
+      }
+    }
+  } finally {
+    pendingCollaborationMemoryProposalIds.delete(proposalId);
+    renderCollaborationWorkspace();
+  }
+}
+
+async function saveCollaborationLongTermMemory(): Promise<void> {
+  const memory = currentCollaborationWorkspace?.memory;
+  const binding = memory?.vaultBinding;
+  const draft = binding ? collaborationLongTermDrafts.get(binding) : undefined;
+  if (!memory || !binding || !draft) return;
+  pendingCollaborationMemoryProposalIds.add("long-term-editor");
+  if (collaborationLongTermContent) collaborationLongTermContent.disabled = true;
+  renderCollaborationWorkspace();
+  try {
+    const updated = await window.__TAURI__.core.invoke<CollaborationMemoryView>(
+      "collaboration_save_long_term_memory",
+      { expectedVaultBinding: binding, expectedRevision: draft.revision, content: draft.text },
+    );
+    if (currentCollaborationWorkspace?.memory.vaultBinding === binding) {
+      collaborationLongTermDrafts.delete(binding);
+      currentCollaborationWorkspace = { ...currentCollaborationWorkspace, memory: updated };
+      if (collaborationLongTermMessage) setCopy(collaborationLongTermMessage, "collaboration.longTermSaved");
+    }
+  } catch (error) {
+    if (collaborationLongTermMessage) {
+      setCopyError(collaborationLongTermMessage, "collaboration.longTermSaveFailed", error);
+    }
+  } finally {
+    pendingCollaborationMemoryProposalIds.delete("long-term-editor");
+    renderCollaborationWorkspace();
+  }
+}
+
+async function reloadCollaborationLongTermMemory(): Promise<void> {
+  const binding = currentCollaborationWorkspace?.memory.vaultBinding;
+  if (!binding) return;
+  collaborationLongTermDrafts.delete(binding);
+  await refreshCollaborationWorkspace();
+}
+
+async function saveCollaborationContinuityNote(): Promise<void> {
+  const memory = currentCollaborationWorkspace?.memory;
+  const binding = memory?.vaultBinding;
+  const draft = binding ? collaborationContinuityDrafts.get(binding) : undefined;
+  if (!memory || !binding || !draft) return;
+  pendingCollaborationMemoryProposalIds.add("continuity-editor");
+  if (collaborationContinuityNote) collaborationContinuityNote.disabled = true;
+  renderCollaborationWorkspace();
+  try {
+    const updated = await window.__TAURI__.core.invoke<CollaborationMemoryView>(
+      "collaboration_save_continuity_note",
+      { expectedVaultBinding: binding, expectedRevision: draft.revision, note: draft.text },
+    );
+    if (currentCollaborationWorkspace?.memory.vaultBinding === binding) {
+      collaborationContinuityDrafts.delete(binding);
+      currentCollaborationWorkspace = { ...currentCollaborationWorkspace, memory: updated };
+      if (collaborationMemoryStatus) setCopy(collaborationMemoryStatus, "collaboration.continuityNoteSaved");
+    }
+  } catch (error) {
+    if (collaborationMemoryStatus) {
+      setCopyError(collaborationMemoryStatus, "collaboration.continuityNoteSaveFailed", error);
+    }
+  } finally {
+    pendingCollaborationMemoryProposalIds.delete("continuity-editor");
+    renderCollaborationWorkspace();
+  }
+}
+
 function renderCollaborationWorkspace(): void {
   const workspace = currentCollaborationWorkspace;
   if (workspace) {
@@ -2798,6 +3273,7 @@ function renderCollaborationWorkspace(): void {
   }
   renderCollaborationMessages(session);
   renderCollaborationTaskOperations(session);
+  renderCollaborationMemory(workspace?.memory ?? null, session);
 
   const connected = currentCollaborationConnection?.authenticated === true &&
     currentCollaborationConnection.authMode === "chatgpt" &&
@@ -2939,11 +3415,13 @@ function refreshCollaborationRunOwner(session: CollaborationSessionView): void {
   }
 }
 
-async function refreshCollaborationWorkspace(): Promise<void> {
+async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
   const request = ++collaborationWorkspaceRequest;
   const date = collaborationDateInput?.value || collaborationActivityDate;
   collaborationActivityDate = date;
-  if (collaborationSessionsStatus) setCopy(collaborationSessionsStatus, "collaboration.loading");
+  if (!quiet && collaborationSessionsStatus) {
+    setCopy(collaborationSessionsStatus, "collaboration.loading");
+  }
   try {
     const workspace = await window.__TAURI__.core.invoke<CollaborationWorkspaceView>(
       "collaboration_workspace",
@@ -2982,6 +3460,7 @@ async function refreshCollaborationWorkspace(): Promise<void> {
     if (session) watchCollaborationSession(session);
   } catch (error) {
     if (request !== collaborationWorkspaceRequest) return;
+    if (quiet) return;
     currentCollaborationWorkspace = null;
     currentCollaborationSession = null;
     if (collaborationSessionsStatus) {
@@ -9024,6 +9503,40 @@ collaborationMessageDraft?.addEventListener("input", () => {
   renderCollaborationWorkspace();
 });
 
+collaborationLongTermContent?.addEventListener("input", () => {
+  const binding = collaborationLongTermContent.dataset.vaultBinding;
+  const revision = collaborationLongTermContent.dataset.sourceRevision;
+  if (!binding || !revision) return;
+  collaborationLongTermDrafts.set(binding, {
+    text: collaborationLongTermContent.value,
+    revision,
+  });
+  renderCollaborationWorkspace();
+});
+
+collaborationLongTermSaveButton?.addEventListener("click", () => {
+  void saveCollaborationLongTermMemory();
+});
+
+collaborationLongTermReloadButton?.addEventListener("click", () => {
+  void reloadCollaborationLongTermMemory();
+});
+
+collaborationContinuityNote?.addEventListener("input", () => {
+  const binding = collaborationContinuityNote.dataset.vaultBinding;
+  const revision = Number(collaborationContinuityNote.dataset.sourceRevision);
+  if (!binding || !Number.isInteger(revision) || revision < 0) return;
+  collaborationContinuityDrafts.set(binding, {
+    text: collaborationContinuityNote.value,
+    revision,
+  });
+  renderCollaborationWorkspace();
+});
+
+collaborationContinuitySaveButton?.addEventListener("click", () => {
+  void saveCollaborationContinuityNote();
+});
+
 collaborationVoiceLanguageSelect?.addEventListener("change", () => {
   const target = currentCollaborationVoiceTarget();
   if (target && collaborationVoiceLanguageSelect.value) {
@@ -9854,6 +10367,17 @@ document.addEventListener("visibilitychange", () => {
 
 window.setInterval(() => {
   void refreshTodayClock();
+}, 60_000);
+
+window.setInterval(() => {
+  if (
+    document.visibilityState !== "visible" ||
+    currentWorkspaceDestination !== "collaboration" ||
+    ["queued", "reading", "thinking", "stopping"].includes(currentCollaborationSession?.runState ?? "")
+  ) {
+    return;
+  }
+  void refreshCollaborationWorkspace(true);
 }, 60_000);
 
 window.addEventListener("focus", () => {
