@@ -43,3 +43,29 @@ test("the composer remains gated on authenticated runtime plus verified read-onl
   assert.match(html, /id="collaboration-send-message"[^>]*disabled/);
   assert.match(main, /"collaboration_submit_message"/);
 });
+
+test("multi-session history keeps target dates and drafts with each session", () => {
+  assert.match(html, /id="collaboration-activity-date" type="date"/);
+  assert.match(html, /id="collaboration-target-date" type="date"/);
+  assert.match(main, /session\.activityDates[\s\S]*session\.createdDate[\s\S]*session\.targetDate/);
+  assert.match(main, /collaboration_save_draft/);
+  assert.match(main, /draftsByDate: Readonly<Record<string, string>>/);
+  assert.match(main, /\{ sessionId, targetDate, draft \}/);
+  assert.match(main, /collaboration_set_target_date/);
+  assert.match(main, /session\.draft/);
+  assert.match(main, /function selectCollaborationSession[\s\S]*?refreshCollaborationWorkspace\(\)/);
+});
+
+test("queue ownership, cancellation, and restart recovery are visible and actionable", () => {
+  assert.match(html, /id="collaboration-work-owner"/);
+  assert.match(html, /id="collaboration-stop-run"/);
+  assert.match(main, /workspace\.activeRun/);
+  assert.match(main, /workspace\.recoveryRequired/);
+  assert.match(main, /refreshCollaborationRunOwner\(updated\)/);
+  assert.match(main, /collaboration_stop_run/);
+  assert.match(main, /collaboration_reconcile_run/);
+  assert.match(main, /collaboration_resume_not_started/);
+  assert.match(main, /message\.deliveryState/);
+  assert.match(copies, /"collaboration\.checkSavedResult":\s*\{[\s\S]*?zh:[^\n]*en:/);
+  assert.match(copies, /"collaboration\.resumeNotStarted":\s*\{[\s\S]*?zh:[^\n]*en:/);
+});

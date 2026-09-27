@@ -1,9 +1,10 @@
 use serde::Serialize;
 #[cfg(target_os = "macos")]
 use std::path::PathBuf;
-use tauri::{Manager, State};
+use tauri::RunEvent;
 #[cfg(target_os = "macos")]
-use tauri::{RunEvent, WindowEvent};
+use tauri::WindowEvent;
+use tauri::{Manager, State};
 
 pub mod appearance;
 pub mod backup;
@@ -160,6 +161,52 @@ fn collaboration_submit_message(
     text: String,
 ) -> Result<collaboration::CollaborationSessionView, String> {
     application.submit_message_for_selected_vault(&session_id, &target_date, &text)
+}
+
+#[tauri::command]
+fn collaboration_save_draft(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    target_date: String,
+    draft: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.save_draft_for_selected_vault(&session_id, &target_date, &draft)
+}
+
+#[tauri::command]
+fn collaboration_set_target_date(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    target_date: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.set_target_date_for_selected_vault(&session_id, &target_date)
+}
+
+#[tauri::command]
+fn collaboration_stop_run(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    execution_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.stop_run_for_selected_vault(&session_id, &execution_id)
+}
+
+#[tauri::command]
+fn collaboration_resume_not_started(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    execution_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.requeue_not_started_for_selected_vault(&session_id, &execution_id)
+}
+
+#[tauri::command]
+fn collaboration_reconcile_run(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    execution_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.reconcile_run_for_selected_vault(&session_id, &execution_id)
 }
 
 #[tauri::command]
@@ -548,6 +595,11 @@ pub fn run() {
             collaboration_list_sessions,
             collaboration_session,
             collaboration_submit_message,
+            collaboration_save_draft,
+            collaboration_set_target_date,
+            collaboration_stop_run,
+            collaboration_resume_not_started,
+            collaboration_reconcile_run,
             appearance_preferences,
             set_accent_color,
             restore_appearance_defaults,
@@ -599,6 +651,11 @@ pub fn run() {
         collaboration_list_sessions,
         collaboration_session,
         collaboration_submit_message,
+        collaboration_save_draft,
+        collaboration_set_target_date,
+        collaboration_stop_run,
+        collaboration_resume_not_started,
+        collaboration_reconcile_run,
         appearance_preferences,
         set_accent_color,
         restore_appearance_defaults,
@@ -643,6 +700,11 @@ pub fn run() {
 
     #[cfg(target_os = "macos")]
     application.run(|app_handle, event| {
+        if matches!(&event, RunEvent::ExitRequested { .. }) {
+            let _ = app_handle
+                .state::<collaboration::CollaborationApplication>()
+                .shutdown();
+        }
         if let RunEvent::Reopen {
             has_visible_windows: false,
             ..
@@ -656,5 +718,11 @@ pub fn run() {
     });
 
     #[cfg(not(target_os = "macos"))]
-    application.run(|_, _| {});
+    application.run(|app_handle, event| {
+        if matches!(&event, RunEvent::ExitRequested { .. }) {
+            let _ = app_handle
+                .state::<collaboration::CollaborationApplication>()
+                .shutdown();
+        }
+    });
 }

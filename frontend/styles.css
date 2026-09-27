@@ -8624,6 +8624,16 @@ button.habit-cell:focus-visible {
   line-height: 1.45;
 }
 
+#collaboration-work-owner {
+  color: var(--parity-accent-strong);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+#collaboration-work-owner[data-state="recovery"] {
+  color: #8a3d31;
+}
+
 .collaboration-status-bar [data-state="error"],
 #collaboration-connection-status[data-state="error"],
 .collaboration-context-card[data-state="error"] > p {
@@ -8689,6 +8699,14 @@ button.habit-cell:focus-visible {
   gap: 0.55rem;
   padding-bottom: 0.7rem;
   border-bottom: 1px solid var(--parity-border);
+}
+
+.collaboration-chat-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .collaboration-pane-heading h3 {
@@ -8809,6 +8827,24 @@ button.habit-cell:focus-visible {
 
 .collaboration-message header strong {
   color: #303633;
+}
+
+.collaboration-delivery-state {
+  color: var(--parity-accent-strong);
+  font-weight: 650;
+}
+
+.collaboration-message-action {
+  display: inline-block;
+  min-height: 1.7rem;
+  margin-top: 0.45rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.36rem;
+  background: var(--parity-surface);
+  color: var(--parity-accent-strong);
+  font-size: 0.58rem;
+  font-weight: 650;
 }
 
 .collaboration-message p {

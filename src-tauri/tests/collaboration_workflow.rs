@@ -1,14 +1,17 @@
 use personal_dashboard_lib::collaboration::{
     AppServerTransport, CollaborationApplication, CollaborationClock, CollaborationContextSource,
-    CollaborationContextView, ContextPaneView, DashboardContextReader, FileCollaborationStore,
-    ModelOptionView, RuntimeConnectionView, RuntimeTurnRequest, RuntimeTurnResult,
+    CollaborationContextView, CollaborationState, CollaborationStore, ContextPaneView,
+    DashboardContextReader, FileCollaborationStore, ModelOptionView, RuntimeConnectionView,
+    RuntimeRunReconciliation, RuntimeTurnRequest, RuntimeTurnResult, StoredCollaborationMessage,
+    StoredCollaborationSession,
 };
 use personal_dashboard_lib::tasks::{FileTaskStore, TaskApplication, TaskCreateInput};
 use personal_dashboard_lib::today::{TodayClock, TodayWorkspacePersistence};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -95,6 +98,81 @@ struct FakeAppServer {
     calls: Arc<Mutex<Vec<&'static str>>>,
     read_only_text_turns_available: bool,
     switch_vault_on_inspect: Option<Arc<AtomicBool>>,
+    turn_gate: Option<Arc<FakeTurnGate>>,
+    reconciliations: Arc<Mutex<HashMap<String, RuntimeRunReconciliation>>>,
+}
+
+#[derive(Default)]
+struct FakeTurnGate {
+    state: Mutex<FakeTurnGateState>,
+    changed: Condvar,
+}
+
+#[derive(Default)]
+struct FakeTurnGateState {
+    started: Vec<String>,
+    confirmed_stops: Vec<String>,
+    events: Vec<String>,
+    release_all: bool,
+    ignore_cancellation: bool,
+    confirm_cancellation: bool,
+}
+
+impl FakeTurnGate {
+    fn configure_cancellation(&self, ignore: bool, confirm: bool) {
+        let mut state = self.state.lock().unwrap();
+        state.ignore_cancellation = ignore;
+        state.confirm_cancellation = confirm;
+    }
+
+    fn wait_for_started(&self, count: usize) -> Vec<String> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        let mut state = self.state.lock().unwrap();
+        while state.started.len() < count {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            assert!(
+                !remaining.is_zero(),
+                "controlled turn did not start in time"
+            );
+            let (next, timeout) = self.changed.wait_timeout(state, remaining).unwrap();
+            state = next;
+            assert!(!timeout.timed_out() || state.started.len() >= count);
+        }
+        state.started.clone()
+    }
+
+    fn release_all(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.release_all = true;
+        self.changed.notify_all();
+    }
+
+    fn confirmed_stops(&self) -> Vec<String> {
+        self.state.lock().unwrap().confirmed_stops.clone()
+    }
+
+    fn started_len(&self) -> usize {
+        self.state.lock().unwrap().started.len()
+    }
+
+    fn events(&self) -> Vec<String> {
+        self.state.lock().unwrap().events.clone()
+    }
+
+    fn wait_for_confirmed_stop(&self) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        let mut state = self.state.lock().unwrap();
+        while state.confirmed_stops.is_empty() {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            assert!(
+                !remaining.is_zero(),
+                "controlled stop was not confirmed in time"
+            );
+            let (next, timeout) = self.changed.wait_timeout(state, remaining).unwrap();
+            state = next;
+            assert!(!timeout.timed_out() || !state.confirmed_stops.is_empty());
+        }
+    }
 }
 
 impl AppServerTransport for FakeAppServer {
@@ -152,7 +230,75 @@ impl AppServerTransport for FakeAppServer {
         self.prompts.lock().unwrap().push(request);
         Ok(RuntimeTurnResult {
             text: "Synthetic reply based on current context.".into(),
+            runtime_turn_id: Some("runtime-turn-1".into()),
+            stopped: false,
         })
+    }
+
+    fn send_turn_cancellable(
+        &mut self,
+        request: RuntimeTurnRequest,
+        cancellation: Arc<AtomicBool>,
+    ) -> Result<RuntimeTurnResult, String> {
+        let Some(gate) = &self.turn_gate else {
+            return self.send_turn(request);
+        };
+        self.calls.lock().unwrap().push("send-turn");
+        self.prompts.lock().unwrap().push(request.clone());
+        let mut state = gate.state.lock().unwrap();
+        state.started.push(request.execution_id.clone());
+        state
+            .events
+            .push(format!("started:{}", request.execution_id));
+        gate.changed.notify_all();
+        while !state.release_all
+            && (state.ignore_cancellation || !cancellation.load(Ordering::SeqCst))
+        {
+            let (next, _) = gate
+                .changed
+                .wait_timeout(state, Duration::from_millis(10))
+                .unwrap();
+            state = next;
+        }
+        if cancellation.load(Ordering::SeqCst) && state.confirm_cancellation {
+            state.confirmed_stops.push(request.execution_id.clone());
+            state
+                .events
+                .push(format!("stopped:{}", request.execution_id));
+            gate.changed.notify_all();
+            return Ok(RuntimeTurnResult {
+                text: String::new(),
+                runtime_turn_id: Some(format!("turn-{}", request.execution_id)),
+                stopped: true,
+            });
+        }
+        if cancellation.load(Ordering::SeqCst) {
+            state
+                .events
+                .push(format!("unconfirmed-stop:{}", request.execution_id));
+            gate.changed.notify_all();
+            return Err("synthetic runtime did not confirm its shutdown outcome".into());
+        }
+        Ok(RuntimeTurnResult {
+            text: format!("Synthetic reply for {}.", request.user_text),
+            runtime_turn_id: Some(format!("turn-{}", request.execution_id)),
+            stopped: false,
+        })
+    }
+
+    fn reconcile_turn(
+        &mut self,
+        thread_id: &str,
+        execution_id: &str,
+    ) -> Result<RuntimeRunReconciliation, String> {
+        assert_eq!(thread_id, "runtime-thread-1");
+        Ok(self
+            .reconciliations
+            .lock()
+            .unwrap()
+            .get(execution_id)
+            .cloned()
+            .unwrap_or(RuntimeRunReconciliation::NotFound))
     }
 }
 
@@ -194,6 +340,37 @@ fn new_application_with_call_log(
             calls,
             read_only_text_turns_available,
             switch_vault_on_inspect: None,
+            turn_gate: None,
+            reconciliations: Arc::new(Mutex::new(HashMap::new())),
+        }),
+        Arc::new(FixtureContext),
+        Arc::new(FixedClock),
+        directory.path().to_path_buf(),
+        "Only use supplied read-only Dashboard context.".into(),
+    )
+}
+
+fn new_application_with_controls(
+    directory: &IsolatedDirectory,
+    prompts: Arc<Mutex<Vec<RuntimeTurnRequest>>>,
+    calls: Arc<Mutex<Vec<&'static str>>>,
+    turn_gate: Option<Arc<FakeTurnGate>>,
+    reconciliations: Arc<Mutex<HashMap<String, RuntimeRunReconciliation>>>,
+) -> CollaborationApplication {
+    CollaborationApplication::with_adapters(
+        Arc::new(FileCollaborationStore::new(
+            directory
+                .path()
+                .join("collaboration")
+                .join("collaboration.json"),
+        )),
+        Box::new(FakeAppServer {
+            prompts,
+            calls,
+            read_only_text_turns_available: true,
+            switch_vault_on_inspect: None,
+            turn_gate,
+            reconciliations,
         }),
         Arc::new(FixtureContext),
         Arc::new(FixedClock),
@@ -232,6 +409,21 @@ fn wait_until_finished(application: &CollaborationApplication, session_id: &str)
         thread::sleep(Duration::from_millis(10));
     }
     panic!("the controlled collaboration turn did not finish");
+}
+
+fn wait_for_run_state(
+    application: &CollaborationApplication,
+    session_id: &str,
+    expected: &str,
+) -> personal_dashboard_lib::collaboration::CollaborationSessionView {
+    for _ in 0..300 {
+        let session = application.session("synthetic-vault", session_id).unwrap();
+        if session.run_state == expected {
+            return session;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    panic!("collaboration session did not reach run state `{expected}`");
 }
 
 #[test]
@@ -312,6 +504,417 @@ fn user_and_assistant_messages_survive_reopening_the_application_service() {
 }
 
 #[test]
+fn session_drafts_target_dates_and_activity_history_survive_reopening() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let application = new_application(&directory, Arc::clone(&prompts));
+    let first = application.create_session("2026-09-27").unwrap();
+    let second = application.create_session("2026-09-27").unwrap();
+
+    application
+        .save_draft_for_selected_vault(&first.id, "2026-09-27", "First date draft")
+        .unwrap();
+    application
+        .set_target_date_for_selected_vault(&first.id, "2026-09-20")
+        .unwrap();
+    application
+        .save_draft_for_selected_vault(&first.id, "2026-09-20", "Historical date draft")
+        .unwrap();
+    let late_transcript = application
+        .save_draft_for_selected_vault(
+            &first.id,
+            "2026-09-27",
+            "First date draft with a late voice transcript",
+        )
+        .unwrap();
+    assert_eq!(late_transcript.target_date, "2026-09-20");
+    assert_eq!(late_transcript.draft, "Historical date draft");
+    application
+        .save_draft_for_selected_vault(&second.id, "2026-09-27", "Independent second draft")
+        .unwrap();
+
+    let reopened = new_application(&directory, prompts);
+    let restored_first = reopened.session("synthetic-vault", &first.id).unwrap();
+    let restored_second = reopened.session("synthetic-vault", &second.id).unwrap();
+    assert_eq!(restored_first.draft, "Historical date draft");
+    assert_eq!(
+        restored_first
+            .drafts_by_date
+            .get("2026-09-27")
+            .map(String::as_str),
+        Some("First date draft with a late voice transcript")
+    );
+    assert_eq!(
+        restored_first
+            .drafts_by_date
+            .get("2026-09-20")
+            .map(String::as_str),
+        Some("Historical date draft")
+    );
+    assert_eq!(restored_second.draft, "Independent second draft");
+    assert_eq!(restored_first.target_date, "2026-09-20");
+    assert_eq!(restored_first.created_date, "2026-09-27");
+    assert_eq!(restored_first.activity_dates, ["2026-09-20", "2026-09-27"]);
+    let historical_sessions = reopened.list_sessions("2026-09-20").unwrap();
+    assert_eq!(historical_sessions.len(), 1);
+    assert_eq!(historical_sessions[0].id, first.id);
+    let switched_back = reopened
+        .set_target_date_for_selected_vault(&first.id, "2026-09-27")
+        .unwrap();
+    assert_eq!(
+        switched_back.draft,
+        "First date draft with a late voice transcript"
+    );
+}
+
+#[test]
+fn same_vault_requests_from_different_sessions_run_in_fifo_order() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let gate = Arc::new(FakeTurnGate::default());
+    let application = new_application_with_controls(
+        &directory,
+        Arc::clone(&prompts),
+        calls,
+        Some(Arc::clone(&gate)),
+        Arc::new(Mutex::new(HashMap::new())),
+    );
+    let first_session = application.create_session("2026-09-27").unwrap();
+    let second_session = application.create_session("2026-09-27").unwrap();
+
+    let _first = application
+        .submit_message(
+            "synthetic-vault",
+            &first_session.id,
+            "2026-09-27",
+            "First queued request",
+        )
+        .unwrap();
+    gate.wait_for_started(1);
+    let second = application
+        .submit_message(
+            "synthetic-vault",
+            &second_session.id,
+            "2026-09-20",
+            "Second queued request",
+        )
+        .unwrap();
+    assert_eq!(second.run_state, "queued");
+    assert_eq!(
+        application
+            .workspace("2026-09-27")
+            .unwrap()
+            .active_run
+            .unwrap()
+            .session_id,
+        first_session.id
+    );
+    assert_eq!(
+        gate.wait_for_started(1).len(),
+        1,
+        "the second request must wait"
+    );
+
+    gate.release_all();
+    wait_for_run_state(&application, &first_session.id, "completed");
+    wait_for_run_state(&application, &second_session.id, "completed");
+    let prompts = prompts.lock().unwrap();
+    assert_eq!(prompts.len(), 2);
+    assert_eq!(prompts[0].user_text, "First queued request");
+    assert_eq!(prompts[0].context.date, "2026-09-27");
+    assert_eq!(prompts[1].user_text, "Second queued request");
+    assert_eq!(prompts[1].context.date, "2026-09-20");
+}
+
+#[test]
+fn next_vault_request_waits_until_the_active_stop_is_confirmed() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let gate = Arc::new(FakeTurnGate::default());
+    gate.configure_cancellation(false, true);
+    let application = new_application_with_controls(
+        &directory,
+        Arc::clone(&prompts),
+        calls,
+        Some(Arc::clone(&gate)),
+        Arc::new(Mutex::new(HashMap::new())),
+    );
+    let active_session = application.create_session("2026-09-27").unwrap();
+    let queued_session = application.create_session("2026-09-27").unwrap();
+    let active = application
+        .submit_message(
+            "synthetic-vault",
+            &active_session.id,
+            "2026-09-27",
+            "Request to stop",
+        )
+        .unwrap();
+    gate.wait_for_started(1);
+    application
+        .submit_message(
+            "synthetic-vault",
+            &queued_session.id,
+            "2026-09-27",
+            "Replacement request",
+        )
+        .unwrap();
+
+    let stopping = application
+        .stop_run_for_selected_vault(&active_session.id, active.run_id.as_deref().unwrap())
+        .unwrap();
+    assert_eq!(stopping.run_state, "stopping");
+    gate.wait_for_confirmed_stop();
+    assert_eq!(gate.started_len(), 1);
+    gate.release_all();
+
+    let stopped = wait_for_run_state(&application, &active_session.id, "stopped");
+    wait_for_run_state(&application, &queued_session.id, "completed");
+    assert_eq!(stopped.messages[0].delivery_state, "stopped");
+    assert_eq!(gate.confirmed_stops(), [active.run_id.unwrap()]);
+    let events = gate.events();
+    assert_eq!(events.len(), 3);
+    assert!(events[0].starts_with("started:"));
+    assert!(events[1].starts_with("stopped:"));
+    assert!(events[2].starts_with("started:"));
+}
+
+#[test]
+fn exit_shutdown_returns_promptly_and_restart_reconciles_without_replaying_queue() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let gate = Arc::new(FakeTurnGate::default());
+    gate.configure_cancellation(true, false);
+    let application = new_application_with_controls(
+        &directory,
+        Arc::clone(&prompts),
+        calls,
+        Some(Arc::clone(&gate)),
+        Arc::new(Mutex::new(HashMap::new())),
+    );
+    let active_session = application.create_session("2026-09-27").unwrap();
+    let queued_session = application.create_session("2026-09-27").unwrap();
+    let active = application
+        .submit_message(
+            "synthetic-vault",
+            &active_session.id,
+            "2026-09-27",
+            "Active request during exit",
+        )
+        .unwrap();
+    gate.wait_for_started(1);
+    application
+        .submit_message(
+            "synthetic-vault",
+            &queued_session.id,
+            "2026-09-27",
+            "Queued request during exit",
+        )
+        .unwrap();
+
+    let started = std::time::Instant::now();
+    application.shutdown().unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "the exit callback must not wait for the runtime turn mutex"
+    );
+    let during_shutdown = application
+        .session("synthetic-vault", &active_session.id)
+        .unwrap();
+    assert_eq!(during_shutdown.run_id.as_deref(), active.run_id.as_deref());
+    assert_eq!(during_shutdown.run_state, "thinking");
+
+    gate.release_all();
+    let unconfirmed = wait_for_run_state(&application, &active_session.id, "stop-unconfirmed");
+    assert_eq!(unconfirmed.messages[0].delivery_state, "stop-unconfirmed");
+    assert_eq!(gate.started_len(), 1);
+    assert_eq!(
+        gate.events()
+            .iter()
+            .filter(|event| event.starts_with("started:"))
+            .count(),
+        1,
+        "shutdown must not start the queued request"
+    );
+
+    let restarted = new_application_with_controls(
+        &directory,
+        Arc::clone(&prompts),
+        Arc::new(Mutex::new(Vec::new())),
+        None,
+        Arc::new(Mutex::new(HashMap::new())),
+    );
+    let interrupted = restarted
+        .session("synthetic-vault", &active_session.id)
+        .unwrap();
+    assert_eq!(interrupted.run_state, "interrupted");
+    assert_eq!(interrupted.messages[0].delivery_state, "interrupted");
+    assert!(!interrupted.messages[0].result_checked);
+    let queued = restarted
+        .session("synthetic-vault", &queued_session.id)
+        .unwrap();
+    assert_eq!(queued.messages[0].delivery_state, "not-started");
+    assert!(restarted.workspace("2026-09-27").unwrap().recovery_required);
+    assert_eq!(prompts.lock().unwrap().len(), 1);
+
+    let reconciled = restarted
+        .reconcile_run_for_selected_vault(&active_session.id, active.run_id.as_deref().unwrap())
+        .unwrap();
+    assert_eq!(reconciled.run_state, "interrupted");
+    assert_eq!(reconciled.messages[0].delivery_state, "interrupted");
+    assert!(reconciled.messages[0].result_checked);
+    assert_eq!(prompts.lock().unwrap().len(), 1);
+    assert_eq!(gate.started_len(), 1);
+}
+
+#[test]
+fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically() {
+    let directory = IsolatedDirectory::new();
+    let store = FileCollaborationStore::new(
+        directory
+            .path()
+            .join("collaboration")
+            .join("collaboration.json"),
+    );
+    let mut state = CollaborationState::default();
+    state.next_queue_order = 3;
+    state.sessions.push(StoredCollaborationSession {
+        id: "session-recovery".into(),
+        vault_key: Some("synthetic-vault".into()),
+        title: "Recovery fixture".into(),
+        created_date: "2026-09-27".into(),
+        activity_dates: vec!["2026-09-27".into()],
+        last_activity_at: "2026-09-27T09:10:00-04:00".into(),
+        target_date: "2026-09-27".into(),
+        run_id: Some("execution-active-1".into()),
+        run_state: "thinking".into(),
+        progress: "Controlled running state".into(),
+        runtime_thread_id: Some("runtime-thread-1".into()),
+        messages: vec![
+            StoredCollaborationMessage {
+                id: "message-active-1".into(),
+                role: "user".into(),
+                text: "Request whose result must be checked".into(),
+                message_date: "2026-09-27".into(),
+                target_date: "2026-09-27".into(),
+                created_at: "2026-09-27T09:10:00-04:00".into(),
+                execution_id: Some("execution-active-1".into()),
+                runtime_turn_id: None,
+                delivery_state: "in-progress".into(),
+                queue_order: Some(1),
+                result_checked: false,
+            },
+            StoredCollaborationMessage {
+                id: "message-pending-2".into(),
+                role: "user".into(),
+                text: "Request that was still queued".into(),
+                message_date: "2026-09-27".into(),
+                target_date: "2026-09-20".into(),
+                created_at: "2026-09-27T09:11:00-04:00".into(),
+                execution_id: Some("execution-pending-2".into()),
+                runtime_turn_id: None,
+                delivery_state: "queued".into(),
+                queue_order: Some(2),
+                result_checked: false,
+            },
+        ],
+        draft: "Recovered draft".into(),
+        drafts_by_date: HashMap::new(),
+    });
+    store.save(&state).unwrap();
+    let history_path = directory
+        .path()
+        .join("collaboration")
+        .join("collaboration.json");
+    let mut legacy_history: serde_json::Value =
+        serde_json::from_slice(&fs::read(&history_path).unwrap()).unwrap();
+    legacy_history["sessions"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("draftsByDate");
+    fs::write(&history_path, serde_json::to_vec(&legacy_history).unwrap()).unwrap();
+
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let reconciliations = Arc::new(Mutex::new(HashMap::from([(
+        "execution-active-1".into(),
+        RuntimeRunReconciliation::Completed {
+            text: "Recovered synthetic result".into(),
+            runtime_turn_id: "runtime-turn-recovered".into(),
+        },
+    )])));
+    let application = new_application_with_controls(
+        &directory,
+        Arc::clone(&prompts),
+        Arc::new(Mutex::new(Vec::new())),
+        None,
+        Arc::clone(&reconciliations),
+    );
+    let interrupted = application
+        .session("synthetic-vault", "session-recovery")
+        .unwrap();
+    assert_eq!(interrupted.run_state, "interrupted");
+    assert_eq!(interrupted.draft, "Recovered draft");
+    assert_eq!(
+        interrupted
+            .drafts_by_date
+            .get("2026-09-27")
+            .map(String::as_str),
+        Some("Recovered draft")
+    );
+    assert!(
+        application
+            .workspace("2026-09-27")
+            .unwrap()
+            .recovery_required
+    );
+    assert_eq!(interrupted.messages[0].delivery_state, "interrupted");
+    assert_eq!(interrupted.messages[1].delivery_state, "not-started");
+    assert!(
+        prompts.lock().unwrap().is_empty(),
+        "startup must not replay work"
+    );
+
+    let recovered = application
+        .reconcile_run_for_selected_vault("session-recovery", "execution-active-1")
+        .unwrap();
+    assert_eq!(recovered.messages[0].delivery_state, "completed");
+    assert_eq!(
+        recovered.messages[0].runtime_turn_id.as_deref(),
+        Some("runtime-turn-recovered")
+    );
+    assert_eq!(recovered.messages[2].text, "Recovered synthetic result");
+    assert_eq!(
+        recovered.messages[2].execution_id.as_deref(),
+        Some("execution-active-1")
+    );
+    assert!(
+        !application
+            .workspace("2026-09-27")
+            .unwrap()
+            .recovery_required
+    );
+    assert!(
+        prompts.lock().unwrap().is_empty(),
+        "reconciliation must not resend the recovered turn"
+    );
+
+    application
+        .requeue_not_started_for_selected_vault("session-recovery", "execution-pending-2")
+        .unwrap();
+    let completed = wait_for_run_state(&application, "session-recovery", "completed");
+    assert!(completed.messages.iter().any(|message| {
+        message.execution_id.as_deref() == Some("execution-pending-2")
+            && message.delivery_state == "completed"
+    }));
+    let sent = prompts.lock().unwrap();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].execution_id, "execution-pending-2");
+    assert_eq!(sent[0].user_text, "Request that was still queued");
+}
+
+#[test]
 fn unavailable_reasoning_efforts_are_rejected_before_persistence() {
     let directory = IsolatedDirectory::new();
     let application = new_application(&directory, Arc::new(Mutex::new(Vec::new())));
@@ -369,6 +972,8 @@ fn selected_vault_is_rechecked_immediately_before_sending_context() {
             calls: Arc::clone(&calls),
             read_only_text_turns_available: true,
             switch_vault_on_inspect: Some(Arc::clone(&switched)),
+            turn_gate: None,
+            reconciliations: Arc::new(Mutex::new(HashMap::new())),
         }),
         Arc::new(SwitchAfterRuntimeInspection(Arc::clone(&switched))),
         Arc::new(FixedClock),
