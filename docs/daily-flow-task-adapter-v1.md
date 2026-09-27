@@ -134,12 +134,15 @@ Apply 将“可考虑的建议”和“明确授权的写入”分开：
 
 ## Scope for ticket 08
 
-Ticket 08 now wires the canonical `life-daily-loop` and `everyday` Life
-Companion entries to `read` and `apply`: morning reads lived-date, overdue,
-and undated candidates and sends actions after user confirmation; evening reads
-completion context and may send explicit completion, abandonment, or correction
-commands. The phase sequence, authority table, and synthetic rehearsal are
-documented in [`daily-flow-integration-v1.md`](daily-flow-integration-v1.md).
+The project-owned `personal-dashboard-daily-tasks` skill wires daily-flow work
+to `read` and `apply`: morning reads lived-date, overdue, and undated candidates
+and sends actions only after explicit user intent; evening reads completion
+context and may send explicit completion, abandonment, or correction commands.
+The canonical `life-daily-loop` remains unchanged and retains responsibility
+for the canonical `life/` Daily Record. The separate `everyday` Life Companion
+workflow keeps its own `Diary/` path and is outside this adapter integration.
+The phase sequence, authority table, and synthetic rehearsal are documented in
+[`daily-flow-integration-v1.md`](daily-flow-integration-v1.md).
 
 Dida365 remains the external source of truth for its own records and is read-only
 in this bridge; no Dida read or write was performed during implementation.

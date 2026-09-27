@@ -3,6 +3,7 @@ export type VaultSelectionDestination =
   | "tasks"
   | "calendar"
   | "habits"
+  | "collaboration"
   | "settings";
 
 export class PendingWriteBarrier {

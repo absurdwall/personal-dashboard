@@ -110,3 +110,21 @@ _Avoid_: Separate start and deadline fields, completion time
 **Habit display name**:
 A language-specific name for the same Habit identity. Switching its displayed language does not duplicate the Habit or its completion history.
 _Avoid_: Translated diary, separate language-specific habit
+
+## 5.0 collaboration vocabulary
+
+**Collaboration workspace**:
+An independent Personal Dashboard destination for ongoing work with Codex. It presents saved sessions, conversation, and the current work area while reading and updating the same selected-Vault and Task sources used by the rest of the app.
+_Avoid_: Chat-only page, parallel Task or Daily Record store
+
+**Collaboration session**:
+A persisted user-Codex work thread with its own messages, activity dates, target dates, drafts, and operation history. It may continue across lived dates; its history is not current business state.
+_Avoid_: Single-day conversation, Task list
+
+**Collaboration memory**:
+Selected-Vault long-term background and read-only workflow reference, supplemented by expiring continuity notes derived from saved sessions. It provides background and pointers; each turn reads current Tasks, Daily Records, and habit facts separately.
+_Avoid_: Current business state, replacement for saved sessions
+
+**Connected external app**:
+An external source discovered through Codex App Server and explicitly selected for a message. Its actions retain their source identity and status; they are not Dashboard or Vault writes and are not automatically synchronized.
+_Avoid_: Dashboard data source, automatic two-way sync

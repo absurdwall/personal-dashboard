@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Personal Dashboard records audio only when you start voice input. Transcription runs on this Mac, and the recording is discarded after processing.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Personal Dashboard transcribes voice input on this Mac after you choose to start recording. Audio is discarded after transcription.</string>
+</dict>
+</plist>
