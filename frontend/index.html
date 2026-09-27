@@ -104,6 +104,15 @@
             <span class="destination-icon" aria-hidden="true">◉</span>
             <span data-i18n="destination.habits">习惯</span>
           </button>
+          <button
+            type="button"
+            class="destination-button"
+            data-workspace-destination="collaboration"
+            aria-controls="workspace-destination-collaboration"
+          >
+            <span class="destination-icon" aria-hidden="true">↗</span>
+            <span data-i18n="destination.collaboration">协作</span>
+          </button>
         </nav>
         <div class="workspace-compact-navigation">
           <label for="workspace-destination-select" data-i18n="navigation.destination">页面</label>
@@ -112,6 +121,7 @@
             <option value="tasks" data-i18n="destination.tasks">任务</option>
             <option value="calendar" data-i18n="destination.calendar">日历</option>
             <option value="habits" data-i18n="destination.habits">习惯</option>
+            <option value="collaboration" data-i18n="destination.collaboration">协作</option>
           </select>
         </div>
         <div class="sidebar-status">
@@ -152,6 +162,9 @@
                   </button>
                   <button type="button" data-settings-section="data" data-i18n="settings.dataVault">
                     数据与 Vault
+                  </button>
+                  <button type="button" data-settings-section="codex" data-i18n="settings.codex">
+                    Codex
                   </button>
                 </nav>
                 <div class="settings-content">
@@ -205,7 +218,127 @@
                       <p class="settings-boundary" data-i18n="settings.driveBoundary">普通本地 Vault 也可使用。Dashboard 不会自动转换任意笔记，不管理 Google 账号或上传；“本地已保存”不代表“云端已同步”。版本与回收站由 Google Drive 管理。</p>
                     </div>
                   </section>
+                  <section data-settings-panel="codex" aria-labelledby="codex-settings-heading" hidden>
+                    <h2 id="codex-settings-heading" class="destination-heading" data-i18n="settings.codex">Codex</h2>
+                    <p class="settings-introduction" data-i18n="collaboration.experimental">
+                      Codex App Server is experimental. Availability and protocol compatibility can vary by installed Codex CLI version.
+                    </p>
+                    <div class="setting-row">
+                      <h3 data-i18n="collaboration.connectionHeading">Local Codex connection</h3>
+                      <p id="collaboration-connection-status" class="settings-status" role="status" aria-live="polite" data-i18n="collaboration.connectionNotChecked">
+                        Connection status has not been checked.
+                      </p>
+                      <p id="collaboration-turn-capability" class="settings-boundary" role="status" aria-live="polite" data-i18n="collaboration.turnBlocked">
+                        Text turns are blocked until the local runtime can guarantee filesystem and shell tools are disabled.
+                      </p>
+                      <p id="collaboration-runtime-details" class="settings-vault-path" hidden></p>
+                      <div class="background-image-actions">
+                        <button id="collaboration-refresh-connection" type="button" class="secondary-button" data-i18n="collaboration.refreshConnection">Check connection</button>
+                        <button id="collaboration-connect-chatgpt" type="button" data-i18n="collaboration.connectChatGPT">Connect ChatGPT</button>
+                      </div>
+                      <p id="collaboration-login-status" class="settings-status" role="status" aria-live="polite"></p>
+                    </div>
+                    <div class="setting-row">
+                      <label for="collaboration-model" data-i18n="collaboration.modelLabel">Available Codex model</label>
+                      <select id="collaboration-model" aria-label="Available Codex model" data-i18n-aria-label="collaboration.modelLabel" disabled>
+                        <option value="" data-i18n="collaboration.modelDefault">Runtime default</option>
+                      </select>
+                      <label for="collaboration-reasoning-effort" data-i18n="collaboration.reasoningEffortLabel">Reasoning effort</label>
+                      <select id="collaboration-reasoning-effort" aria-label="Reasoning effort" data-i18n-aria-label="collaboration.reasoningEffortLabel" disabled>
+                        <option value="" data-i18n="collaboration.reasoningEffortDefault">Runtime default</option>
+                      </select>
+                      <p data-i18n="collaboration.connectionBoundary">Connection uses a Dashboard-owned local Codex profile. It does not read or copy other Codex settings, credentials, or MCP servers.</p>
+                    </div>
+                  </section>
                 </div>
+              </div>
+            </section>
+            <section
+              id="workspace-destination-collaboration"
+              class="workspace-destination collaboration-destination"
+              data-workspace-panel="collaboration"
+              aria-labelledby="collaboration-heading"
+              hidden
+            >
+              <header class="collaboration-header destination-page-header">
+                <div>
+                  <p class="section-label" data-i18n="collaboration.sectionLabel">LOCAL CODEX · TEXT ONLY</p>
+                  <h2 id="collaboration-heading" class="destination-heading" data-i18n="destination.collaboration">协作</h2>
+                  <p data-i18n="collaboration.introduction">Discuss the latest selected-Vault records with Codex. Replies are not saved as Dashboard changes.</p>
+                </div>
+                <div class="collaboration-date-toolbar">
+                  <label for="collaboration-activity-date" data-i18n="collaboration.activityDate">Session activity date</label>
+                  <div class="collaboration-date-controls">
+                    <button id="collaboration-date-previous" type="button" class="secondary-button" aria-label="Previous day" data-i18n-aria-label="collaboration.previousDate">‹</button>
+                    <input id="collaboration-activity-date" type="date" aria-label="Session activity date" data-i18n-aria-label="collaboration.activityDate" />
+                    <button id="collaboration-date-next" type="button" class="secondary-button" aria-label="Next day" data-i18n-aria-label="collaboration.nextDate">›</button>
+                    <button id="collaboration-date-today" type="button" class="secondary-button" data-i18n="collaboration.today">Today</button>
+                  </div>
+                </div>
+              </header>
+              <div class="collaboration-status-bar">
+                <p id="collaboration-runtime-status" role="status" aria-live="polite" data-i18n="collaboration.connectionNotChecked">Connection status has not been checked.</p>
+                <button id="collaboration-open-settings" type="button" class="text-button" data-i18n="collaboration.openSettings">Codex connection settings</button>
+              </div>
+              <div class="collaboration-layout">
+                <section class="collaboration-session-pane" aria-labelledby="collaboration-sessions-heading">
+                  <header class="collaboration-pane-heading">
+                    <div>
+                      <p class="section-label" data-i18n="collaboration.sessionsLabel">SESSIONS</p>
+                      <h3 id="collaboration-sessions-heading" data-i18n="collaboration.sessionsHeading">Sessions</h3>
+                    </div>
+                    <button id="collaboration-new-session" type="button" data-i18n="collaboration.newSession">New chat</button>
+                  </header>
+                  <p id="collaboration-sessions-status" class="collaboration-pane-status" role="status" aria-live="polite"></p>
+                  <ul id="collaboration-session-list" class="collaboration-session-list" aria-label="Collaboration sessions" data-i18n-aria-label="collaboration.sessionsHeading"></ul>
+                </section>
+                <section class="collaboration-chat-pane" aria-labelledby="collaboration-chat-heading">
+                  <header class="collaboration-pane-heading collaboration-chat-heading">
+                    <div>
+                      <p class="section-label" data-i18n="collaboration.conversationLabel">CONVERSATION</p>
+                      <h3 id="collaboration-chat-heading" data-i18n="collaboration.noSession">Start or select a session</h3>
+                    </div>
+                    <span id="collaboration-chat-date" class="collaboration-target-date"></span>
+                  </header>
+                  <p id="collaboration-run-status" class="collaboration-run-status" role="status" aria-live="polite"></p>
+                  <div id="collaboration-message-list" class="collaboration-message-list" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation messages" data-i18n-aria-label="collaboration.conversationLabel"></div>
+                  <form id="collaboration-composer" class="collaboration-composer">
+                    <label for="collaboration-message-draft" data-i18n="collaboration.messageLabel">Message</label>
+                    <textarea id="collaboration-message-draft" rows="3" maxlength="12000" data-i18n-placeholder="collaboration.messagePlaceholder" placeholder="Describe what you want to discuss…" disabled></textarea>
+                    <div class="collaboration-composer-footer">
+                      <p data-i18n="collaboration.readOnlyBoundary">Codex receives current read-only context. It cannot change Tasks, Daily Records, habits, Vaults, or settings in this release.</p>
+                      <button id="collaboration-send-message" type="submit" data-i18n="collaboration.send" disabled>Send</button>
+                    </div>
+                  </form>
+                </section>
+                <aside class="collaboration-context-pane" aria-labelledby="collaboration-context-heading">
+                  <header class="collaboration-pane-heading">
+                    <div>
+                      <p class="section-label" data-i18n="collaboration.currentWorkLabel">CURRENT WORK</p>
+                      <h3 id="collaboration-context-heading" data-i18n="collaboration.contextHeading">Current context</h3>
+                    </div>
+                  </header>
+                  <label for="collaboration-target-date" data-i18n="collaboration.targetDate">Target record date</label>
+                  <input id="collaboration-target-date" type="date" aria-label="Target record date" data-i18n-aria-label="collaboration.targetDate" />
+                  <p id="collaboration-context-vault" class="collaboration-vault-label" data-i18n="settings.noVault">No Vault selected.</p>
+                  <div id="collaboration-context-panes" class="collaboration-context-panes">
+                    <section class="collaboration-context-card" data-context-pane="dailyRecord" aria-labelledby="collaboration-daily-heading">
+                      <h4 id="collaboration-daily-heading" data-i18n="collaboration.dailyRecord">Daily Record</h4>
+                      <p data-context-message></p>
+                      <ul data-context-items></ul>
+                    </section>
+                    <section class="collaboration-context-card" data-context-pane="tasks" aria-labelledby="collaboration-tasks-heading">
+                      <h4 id="collaboration-tasks-heading" data-i18n="collaboration.tasks">Tasks</h4>
+                      <p data-context-message></p>
+                      <ul data-context-items></ul>
+                    </section>
+                    <section class="collaboration-context-card" data-context-pane="habits" aria-labelledby="collaboration-habits-heading">
+                      <h4 id="collaboration-habits-heading" data-i18n="collaboration.habits">Habits</h4>
+                      <p data-context-message></p>
+                      <ul data-context-items></ul>
+                    </section>
+                  </div>
+                </aside>
               </div>
             </section>
             <section

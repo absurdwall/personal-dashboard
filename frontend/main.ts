@@ -489,7 +489,13 @@ function isTodayPhase(value: string | undefined): value is TodayPhase {
   return value === "morning" || value === "daytime" || value === "evening";
 }
 
-type WorkspaceDestination = "today" | "tasks" | "calendar" | "habits" | "settings";
+type WorkspaceDestination =
+  | "today"
+  | "tasks"
+  | "calendar"
+  | "habits"
+  | "collaboration"
+  | "settings";
 
 function isWorkspaceDestination(value: string | undefined): value is WorkspaceDestination {
   return (
@@ -497,6 +503,7 @@ function isWorkspaceDestination(value: string | undefined): value is WorkspaceDe
     value === "tasks" ||
     value === "calendar" ||
     value === "habits" ||
+    value === "collaboration" ||
     value === "settings"
   );
 }
@@ -529,12 +536,104 @@ const workspaceDestinationDetails: Record<
     description: "workspace.habitsDescription",
     featureArea: "workspace.habitsFeature",
   },
+  collaboration: {
+    title: "destination.collaboration",
+    description: "workspace.collaborationDescription",
+    featureArea: "workspace.collaborationFeature",
+  },
   settings: {
     title: "destination.settings",
     description: "workspace.settingsDescription",
     featureArea: "workspace.settingsFeature",
   },
 };
+
+type CollaborationContextPane = Readonly<{
+  state: string;
+  message: string;
+  items: readonly string[];
+}>;
+
+type CollaborationContextView = Readonly<{
+  date: string;
+  vaultName: string | null;
+  dailyRecord: CollaborationContextPane;
+  tasks: CollaborationContextPane;
+  habits: CollaborationContextPane;
+}>;
+
+type CollaborationMessageView = Readonly<{
+  id: string;
+  role: string;
+  text: string;
+  messageDate: string;
+  targetDate: string;
+  createdAt: string;
+}>;
+
+type CollaborationSessionView = Readonly<{
+  id: string;
+  title: string;
+  createdDate: string;
+  activityDates: readonly string[];
+  lastActivityAt: string;
+  targetDate: string;
+  runId: string | null;
+  runState: string;
+  progress: string;
+  runtimeThreadId: string | null;
+  messages: readonly CollaborationMessageView[];
+}>;
+
+type CollaborationWorkspaceView = Readonly<{
+  date: string;
+  vaultName: string | null;
+  selectedModel: string | null;
+  context: CollaborationContextView;
+  sessions: readonly CollaborationSessionView[];
+}>;
+
+type CollaborationModelOption = Readonly<{
+  id: string;
+  displayName: string;
+  defaultReasoningEffort: string | null;
+  reasoningEfforts: readonly string[];
+  isDefault: boolean;
+}>;
+
+type CollaborationConnectionView = Readonly<{
+  executablePath: string | null;
+  version: string | null;
+  experimental: boolean;
+  readOnlyTextTurnsAvailable: boolean;
+  textTurnUnavailableReason: string | null;
+  authenticated: boolean;
+  authMode: string | null;
+  accountEmail: string | null;
+  planType: string | null;
+  models: readonly CollaborationModelOption[];
+  selectedModel: string | null;
+  selectedReasoningEffort: string | null;
+  error: string | null;
+}>;
+
+function localCalendarDate(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+let collaborationActivityDate = localCalendarDate();
+let collaborationTargetDate = collaborationActivityDate;
+let currentCollaborationWorkspace: CollaborationWorkspaceView | null = null;
+let currentCollaborationSession: CollaborationSessionView | null = null;
+let currentCollaborationConnection: CollaborationConnectionView | null = null;
+let collaborationWorkspaceRequest = 0;
+let collaborationConnectionRequest = 0;
+let collaborationStatusTimer: number | null = null;
+const collaborationDrafts = new Map<string, string>();
+const collaborationTargetDates = new Map<string, string>();
 
 type AppearanceSelectionResult = Readonly<{
   preferences: AppearancePreferences;
@@ -564,6 +663,27 @@ const settingsCategoryButtons = document.querySelectorAll<HTMLButtonElement>(
   "[data-settings-section]",
 );
 const settingsPanels = document.querySelectorAll<HTMLElement>("[data-settings-panel]");
+const collaborationDateInput = document.querySelector<HTMLInputElement>("#collaboration-activity-date");
+const collaborationTargetDateInput = document.querySelector<HTMLInputElement>("#collaboration-target-date");
+const collaborationSessionList = document.querySelector<HTMLUListElement>("#collaboration-session-list");
+const collaborationSessionsStatus = document.querySelector<HTMLElement>("#collaboration-sessions-status");
+const collaborationMessageList = document.querySelector<HTMLElement>("#collaboration-message-list");
+const collaborationComposer = document.querySelector<HTMLFormElement>("#collaboration-composer");
+const collaborationMessageDraft = document.querySelector<HTMLTextAreaElement>("#collaboration-message-draft");
+const collaborationSendButton = document.querySelector<HTMLButtonElement>("#collaboration-send-message");
+const collaborationChatHeading = document.querySelector<HTMLElement>("#collaboration-chat-heading");
+const collaborationChatDate = document.querySelector<HTMLElement>("#collaboration-chat-date");
+const collaborationRunStatus = document.querySelector<HTMLElement>("#collaboration-run-status");
+const collaborationVaultLabel = document.querySelector<HTMLElement>("#collaboration-context-vault");
+const collaborationRuntimeStatus = document.querySelector<HTMLElement>("#collaboration-runtime-status");
+const collaborationConnectionStatus = document.querySelector<HTMLElement>("#collaboration-connection-status");
+const collaborationTurnCapability = document.querySelector<HTMLElement>("#collaboration-turn-capability");
+const collaborationRuntimeDetails = document.querySelector<HTMLElement>("#collaboration-runtime-details");
+const collaborationLoginStatus = document.querySelector<HTMLElement>("#collaboration-login-status");
+const collaborationModelSelect = document.querySelector<HTMLSelectElement>("#collaboration-model");
+const collaborationReasoningEffortSelect = document.querySelector<HTMLSelectElement>("#collaboration-reasoning-effort");
+const collaborationRefreshConnectionButton = document.querySelector<HTMLButtonElement>("#collaboration-refresh-connection");
+const collaborationConnectButton = document.querySelector<HTMLButtonElement>("#collaboration-connect-chatgpt");
 const accentColorButtons = document.querySelectorAll<HTMLButtonElement>("[data-accent-color]");
 const restoreAppearanceButton = document.querySelector<HTMLButtonElement>("#restore-appearance");
 const appearanceStatus = document.querySelector<HTMLElement>("#appearance-status");
@@ -999,6 +1119,8 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
   renderWorkspaceFeatureArea(currentWorkspaceDestination);
   renderWorkspaceRailContext(currentWorkspaceDestination);
   renderWorkspaceContextStatus(currentWorkspaceDestination);
+  renderCollaborationWorkspace();
+  renderCollaborationConnection();
 }
 
 async function chooseInterfaceLanguage(interfaceLanguage: InterfaceLanguage): Promise<void> {
@@ -1267,7 +1389,7 @@ async function removeBackgroundImage(): Promise<void> {
   );
 }
 
-function showSettingsSection(section: "appearance" | "data"): void {
+function showSettingsSection(section: "appearance" | "data" | "codex"): void {
   settingsCategoryButtons.forEach((button) => {
     const current = button.dataset.settingsSection === section;
     button.toggleAttribute("aria-current", current);
@@ -1276,6 +1398,7 @@ function showSettingsSection(section: "appearance" | "data"): void {
   settingsPanels.forEach((panel) => {
     panel.hidden = panel.dataset.settingsPanel !== section;
   });
+  if (section === "codex") void refreshCollaborationConnection();
 }
 
 type VaultSettingsView = Pick<TodayView, "vaultPath" | "vaultAvailability" | "message">;
@@ -1311,6 +1434,593 @@ function renderVaultSettings(view: VaultSettingsView): void {
       setCopy(settingsVaultStatus, "settings.vaultAvailable");
     }
     settingsVaultStatus.dataset.state = view.vaultAvailability;
+  }
+}
+
+function collaborationRunStateLabel(state: string): string {
+  switch (state) {
+    case "waiting": return t("collaboration.statusWaiting");
+    case "queued": return t("collaboration.statusQueued");
+    case "reading": return t("collaboration.statusReading");
+    case "thinking": return t("collaboration.statusThinking");
+    case "completed": return t("collaboration.statusCompleted");
+    case "error": return t("collaboration.statusError");
+    case "interrupted": return t("collaboration.statusInterrupted");
+    case "partial": return t("collaboration.statusPartial");
+    default: return state;
+  }
+}
+
+function collaborationContextStateLabel(state: string): string {
+  switch (state) {
+    case "ready": return t("collaboration.contextReady");
+    case "empty": return t("collaboration.contextEmpty");
+    case "missing": return t("collaboration.contextMissing");
+    case "stale": return t("collaboration.contextStale");
+    case "retained": return t("collaboration.contextRetained");
+    case "unconfigured": return t("collaboration.contextUnconfigured");
+    case "error": return t("collaboration.contextError");
+    default: return state;
+  }
+}
+
+function collaborationDateLabel(date: string): string {
+  return formatInterfaceDate(date, currentInterfaceLanguage);
+}
+
+function renderCollaborationConnection(): void {
+  const connection = currentCollaborationConnection;
+  if (!connection) {
+    setCopy(collaborationConnectionStatus, "collaboration.connectionNotChecked");
+    setCopy(collaborationRuntimeStatus, "collaboration.connectionNotChecked");
+    if (collaborationRuntimeDetails) collaborationRuntimeDetails.hidden = true;
+    if (collaborationModelSelect) collaborationModelSelect.disabled = true;
+    if (collaborationReasoningEffortSelect) collaborationReasoningEffortSelect.disabled = true;
+    if (collaborationConnectButton) collaborationConnectButton.disabled = true;
+    return;
+  }
+
+  let summary: string;
+  let state: string;
+  if (connection.error) {
+    summary = connection.error;
+    state = "error";
+  } else if (connection.authMode && connection.authMode !== "chatgpt") {
+    summary = t("collaboration.connectionWrongAuth");
+    state = "unavailable";
+  } else if (!connection.authenticated) {
+    summary = t("collaboration.connectionSignedOut");
+    state = "signed-out";
+  } else {
+    summary = t("collaboration.connectionReady");
+    if (connection.accountEmail || connection.planType) {
+      summary += ` · ${t("collaboration.accountDetails", {
+        email: connection.accountEmail ?? "ChatGPT",
+        plan: connection.planType ?? "",
+      })}`;
+    }
+    state = "ready";
+  }
+  if (!connection.error && !connection.readOnlyTextTurnsAvailable) {
+    summary += ` · ${connection.textTurnUnavailableReason ?? t("collaboration.turnBlocked")}`;
+  }
+  setRawText(collaborationConnectionStatus, summary);
+  if (collaborationConnectionStatus) collaborationConnectionStatus.dataset.state = state;
+  setRawText(collaborationRuntimeStatus, summary);
+  if (collaborationRuntimeStatus) collaborationRuntimeStatus.dataset.state = state;
+
+  if (collaborationRuntimeDetails) {
+    const details = [connection.version, connection.executablePath].filter(Boolean).join(" · ");
+    if (details) {
+      setRawText(collaborationRuntimeDetails, details);
+      collaborationRuntimeDetails.hidden = false;
+    } else {
+      collaborationRuntimeDetails.hidden = true;
+    }
+  }
+  if (collaborationTurnCapability) {
+    if (connection.readOnlyTextTurnsAvailable) {
+      setCopy(collaborationTurnCapability, "collaboration.turnAvailable");
+      collaborationTurnCapability.dataset.state = "ready";
+    } else {
+      setRawText(
+        collaborationTurnCapability,
+        connection.textTurnUnavailableReason ?? t("collaboration.turnBlocked"),
+      );
+      collaborationTurnCapability.dataset.state = "unavailable";
+    }
+  }
+
+  if (collaborationModelSelect) {
+    const selected = connection.selectedModel ?? "";
+    const options = [new Option(t("collaboration.modelDefault"), "")];
+    for (const model of connection.models) {
+      const defaultSuffix = model.isDefault ? ` · ${t("collaboration.modelRuntimeDefault")}` : "";
+      options.push(new Option(`${model.displayName} · ${model.id}${defaultSuffix}`, model.id));
+    }
+    collaborationModelSelect.replaceChildren(...options);
+    collaborationModelSelect.value = selected;
+    collaborationModelSelect.disabled = Boolean(connection.error) || connection.models.length === 0;
+  }
+  if (collaborationReasoningEffortSelect) {
+    const selectedModel = connection.models.find((model) => model.id === connection.selectedModel) ??
+      (connection.selectedModel ? undefined : connection.models.find((model) => model.isDefault));
+    const options = [new Option(
+      selectedModel?.defaultReasoningEffort
+        ? t("collaboration.modelReasoningDefault", { effort: selectedModel.defaultReasoningEffort })
+        : t("collaboration.reasoningEffortDefault"),
+      "",
+    )];
+    for (const effort of selectedModel?.reasoningEfforts ?? []) {
+      options.push(new Option(effort, effort));
+    }
+    const selectedEffort = connection.selectedReasoningEffort;
+    if (selectedEffort && !selectedModel?.reasoningEfforts.includes(selectedEffort)) {
+      options.push(new Option(
+        t("collaboration.reasoningEffortUnavailable", { effort: selectedEffort }),
+        selectedEffort,
+      ));
+    }
+    collaborationReasoningEffortSelect.replaceChildren(...options);
+    collaborationReasoningEffortSelect.value = selectedEffort ?? "";
+    collaborationReasoningEffortSelect.disabled = Boolean(connection.error) ||
+      !selectedModel || (selectedModel.reasoningEfforts.length === 0 && !selectedEffort);
+  }
+  if (collaborationConnectButton) {
+    collaborationConnectButton.disabled = !connection.executablePath;
+  }
+  renderCollaborationWorkspace();
+}
+
+async function refreshCollaborationConnection(): Promise<void> {
+  const request = ++collaborationConnectionRequest;
+  if (collaborationRefreshConnectionButton) collaborationRefreshConnectionButton.disabled = true;
+  setCopy(collaborationConnectionStatus, "collaboration.connectionChecking");
+  setCopy(collaborationRuntimeStatus, "collaboration.connectionChecking");
+  try {
+    const connection = await window.__TAURI__.core.invoke<CollaborationConnectionView>(
+      "collaboration_connection",
+    );
+    if (request !== collaborationConnectionRequest) return;
+    currentCollaborationConnection = connection;
+    renderCollaborationConnection();
+  } catch (error) {
+    if (request !== collaborationConnectionRequest) return;
+    currentCollaborationConnection = {
+      executablePath: null,
+      version: null,
+      experimental: true,
+      readOnlyTextTurnsAvailable: false,
+      textTurnUnavailableReason: t("collaboration.turnBlocked"),
+      authenticated: false,
+      authMode: null,
+      accountEmail: null,
+      planType: null,
+      models: [],
+      selectedModel: null,
+      selectedReasoningEffort: null,
+      error: String(error),
+    };
+    renderCollaborationConnection();
+  } finally {
+    if (request === collaborationConnectionRequest && collaborationRefreshConnectionButton) {
+      collaborationRefreshConnectionButton.disabled = false;
+    }
+  }
+}
+
+function renderCollaborationContextPane(
+  name: "dailyRecord" | "tasks" | "habits",
+  pane: CollaborationContextPane,
+): void {
+  const container = document.querySelector<HTMLElement>(`[data-context-pane="${name}"]`);
+  const status = container?.querySelector<HTMLElement>("[data-context-message]");
+  const items = container?.querySelector<HTMLUListElement>("[data-context-items]");
+  if (!container || !status || !items) return;
+  container.dataset.state = pane.state;
+  setRawText(status, `${collaborationContextStateLabel(pane.state)} · ${pane.message}`);
+  items.replaceChildren();
+  if (pane.items.length === 0) {
+    const item = document.createElement("li");
+    item.textContent = t("collaboration.noCurrentEntries");
+    items.append(item);
+    return;
+  }
+  for (const text of pane.items) {
+    const item = document.createElement("li");
+    item.textContent = text;
+    items.append(item);
+  }
+}
+
+function renderCollaborationSessionList(sessions: readonly CollaborationSessionView[]): void {
+  if (!collaborationSessionList) return;
+  collaborationSessionList.replaceChildren();
+  if (collaborationSessionsStatus) {
+    setRawText(
+      collaborationSessionsStatus,
+      sessions.length === 0 ? t("collaboration.noSessions") : "",
+    );
+  }
+  for (const session of sessions) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "collaboration-session-button";
+    button.dataset.sessionId = session.id;
+    button.setAttribute("aria-pressed", String(session.id === currentCollaborationSession?.id));
+    const title = document.createElement("strong");
+    title.textContent = session.title || t("collaboration.untitledSession");
+    const dates = document.createElement("small");
+    dates.textContent = `${t("collaboration.createdDate", {
+      date: collaborationDateLabel(session.createdDate),
+    })} · ${t("collaboration.targetDateShort", {
+      date: collaborationDateLabel(session.targetDate),
+    })}`;
+    const status = document.createElement("span");
+    status.className = "collaboration-session-state";
+    status.textContent = collaborationRunStateLabel(session.runState);
+    button.append(title, dates, status);
+    button.addEventListener("click", () => selectCollaborationSession(session));
+    item.append(button);
+    collaborationSessionList.append(item);
+  }
+}
+
+function renderCollaborationMessages(session: CollaborationSessionView | null): void {
+  if (!collaborationMessageList) return;
+  collaborationMessageList.replaceChildren();
+  if (!session || session.messages.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "collaboration-empty-conversation";
+    empty.textContent = session
+      ? t("collaboration.emptyConversation")
+      : t("collaboration.selectSession");
+    collaborationMessageList.append(empty);
+    return;
+  }
+  for (const message of session.messages) {
+    const article = document.createElement("article");
+    article.className = `collaboration-message collaboration-message-${message.role}`;
+    const heading = document.createElement("header");
+    const role = document.createElement("strong");
+    role.textContent = message.role === "user"
+      ? t("collaboration.userRole")
+      : t("collaboration.assistantRole");
+    const date = document.createElement("span");
+    date.textContent = t("collaboration.messageDate", {
+      date: collaborationDateLabel(message.messageDate),
+    });
+    heading.append(role, date);
+    if (message.targetDate !== message.messageDate) {
+      const target = document.createElement("small");
+      target.textContent = t("collaboration.messageTargetDate", {
+        date: collaborationDateLabel(message.targetDate),
+      });
+      heading.append(target);
+    }
+    const body = document.createElement("p");
+    body.textContent = message.text;
+    article.append(heading, body);
+    if (message.role !== "user") {
+      const boundary = document.createElement("small");
+      boundary.className = "collaboration-message-boundary";
+      boundary.textContent = t("collaboration.messageSavedBoundary");
+      article.append(boundary);
+    }
+    collaborationMessageList.append(article);
+  }
+  collaborationMessageList.scrollTop = collaborationMessageList.scrollHeight;
+}
+
+function renderCollaborationWorkspace(): void {
+  const workspace = currentCollaborationWorkspace;
+  if (workspace) {
+    if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
+    if (collaborationTargetDateInput) collaborationTargetDateInput.value = collaborationTargetDate;
+    setRawText(
+      collaborationVaultLabel,
+      workspace.context.vaultName
+        ? t("collaboration.currentVault", { name: workspace.context.vaultName })
+        : t("collaboration.chooseVault"),
+    );
+    renderCollaborationContextPane("dailyRecord", workspace.context.dailyRecord);
+    renderCollaborationContextPane("tasks", workspace.context.tasks);
+    renderCollaborationContextPane("habits", workspace.context.habits);
+    const sessions = [...workspace.sessions];
+    if (currentCollaborationSession) {
+      const existing = sessions.findIndex((session) => session.id === currentCollaborationSession?.id);
+      if (existing >= 0) sessions[existing] = currentCollaborationSession;
+    }
+    renderCollaborationSessionList(sessions);
+  }
+
+  const session = currentCollaborationSession;
+  if (collaborationChatHeading) {
+    setRawText(
+      collaborationChatHeading,
+      session?.title || (session ? t("collaboration.untitledSession") : t("collaboration.noSession")),
+    );
+  }
+  if (collaborationChatDate) {
+    setRawText(
+      collaborationChatDate,
+      session
+        ? `${t("collaboration.targetDateLabel")}: ${collaborationDateLabel(collaborationTargetDate)}`
+        : "",
+    );
+  }
+  if (collaborationRunStatus) {
+    if (!session) {
+      setRawText(collaborationRunStatus, "");
+      collaborationRunStatus.dataset.state = "waiting";
+    } else {
+      const progress = ["error", "reading", "thinking", "queued"].includes(session.runState)
+        ? session.progress
+        : collaborationRunStateLabel(session.runState);
+      setRawText(collaborationRunStatus, `${collaborationRunStateLabel(session.runState)} · ${progress}`);
+      collaborationRunStatus.dataset.state = session.runState;
+    }
+  }
+  renderCollaborationMessages(session);
+
+  const connected = currentCollaborationConnection?.authenticated === true &&
+    currentCollaborationConnection.authMode === "chatgpt" &&
+    currentCollaborationConnection.readOnlyTextTurnsAvailable;
+  const vaultAvailable = Boolean(workspace?.context.vaultName);
+  const running = Boolean(session && ["queued", "reading", "thinking"].includes(session.runState));
+  if (collaborationMessageDraft) {
+    collaborationMessageDraft.disabled = !session || !connected || running;
+    if (session && document.activeElement !== collaborationMessageDraft) {
+      collaborationMessageDraft.value = collaborationDrafts.get(session.id) ?? "";
+    }
+  }
+  if (collaborationSendButton) {
+    collaborationSendButton.disabled = !session || !connected || running || !vaultAvailable ||
+      !(collaborationMessageDraft?.value.trim());
+  }
+  const createButton = document.querySelector<HTMLButtonElement>("#collaboration-new-session");
+  if (createButton) createButton.disabled = !vaultAvailable;
+}
+
+function stashCollaborationDraft(): void {
+  if (currentCollaborationSession && collaborationMessageDraft) {
+    collaborationDrafts.set(currentCollaborationSession.id, collaborationMessageDraft.value);
+  }
+}
+
+function selectCollaborationSession(session: CollaborationSessionView): void {
+  stashCollaborationDraft();
+  currentCollaborationSession = session;
+  collaborationTargetDate = collaborationTargetDates.get(session.id) ?? session.targetDate;
+  collaborationTargetDates.set(session.id, collaborationTargetDate);
+  if (collaborationTargetDateInput) collaborationTargetDateInput.value = collaborationTargetDate;
+  renderCollaborationWorkspace();
+  void refreshCollaborationContext();
+  watchCollaborationSession(session);
+}
+
+async function refreshCollaborationWorkspace(): Promise<void> {
+  const request = ++collaborationWorkspaceRequest;
+  const date = collaborationDateInput?.value || collaborationActivityDate;
+  collaborationActivityDate = date;
+  if (collaborationSessionsStatus) setCopy(collaborationSessionsStatus, "collaboration.loading");
+  try {
+    const workspace = await window.__TAURI__.core.invoke<CollaborationWorkspaceView>(
+      "collaboration_workspace",
+      { date },
+    );
+    if (request !== collaborationWorkspaceRequest) return;
+    collaborationActivityDate = date;
+    const previousId = currentCollaborationSession?.id;
+    let session = workspace.sessions.find((candidate) => candidate.id === previousId) ??
+      workspace.sessions[0] ?? null;
+    if (session?.id !== previousId) stashCollaborationDraft();
+    currentCollaborationSession = session;
+    collaborationTargetDate = session
+      ? collaborationTargetDates.get(session.id) ?? session.targetDate
+      : date;
+    if (session) collaborationTargetDates.set(session.id, collaborationTargetDate);
+    if (collaborationTargetDateInput) collaborationTargetDateInput.value = collaborationTargetDate;
+    let context = workspace.context;
+    if (collaborationTargetDate !== date) {
+      context = await window.__TAURI__.core.invoke<CollaborationContextView>(
+        "collaboration_context",
+        { date: collaborationTargetDate },
+      );
+      if (request !== collaborationWorkspaceRequest) return;
+    }
+    currentCollaborationWorkspace = { ...workspace, context };
+    renderCollaborationWorkspace();
+    if (session) watchCollaborationSession(session);
+  } catch (error) {
+    if (request !== collaborationWorkspaceRequest) return;
+    currentCollaborationWorkspace = null;
+    currentCollaborationSession = null;
+    if (collaborationSessionsStatus) {
+      setCopyError(collaborationSessionsStatus, "collaboration.sessionLoadFailed", error);
+    }
+    if (collaborationRunStatus) {
+      setCopyError(collaborationRunStatus, "collaboration.contextReadFailed", error);
+      collaborationRunStatus.dataset.state = "error";
+    }
+    renderCollaborationWorkspace();
+  }
+}
+
+async function refreshCollaborationContext(): Promise<void> {
+  const request = ++collaborationWorkspaceRequest;
+  const date = collaborationTargetDateInput?.value || collaborationTargetDate;
+  collaborationTargetDate = date;
+  if (currentCollaborationSession) {
+    collaborationTargetDates.set(currentCollaborationSession.id, date);
+  }
+  if (collaborationTargetDateInput) collaborationTargetDateInput.value = date;
+  try {
+    const context = await window.__TAURI__.core.invoke<CollaborationContextView>(
+      "collaboration_context",
+      { date },
+    );
+    if (request !== collaborationWorkspaceRequest) return;
+    if (currentCollaborationWorkspace) {
+      currentCollaborationWorkspace = { ...currentCollaborationWorkspace, context };
+    }
+    renderCollaborationWorkspace();
+  } catch (error) {
+    if (request !== collaborationWorkspaceRequest) return;
+    const failedPane: CollaborationContextPane = {
+      state: "error",
+      message: t("collaboration.contextReadFailed", { error: String(error) }),
+      items: [],
+    };
+    if (currentCollaborationWorkspace) {
+      currentCollaborationWorkspace = {
+        ...currentCollaborationWorkspace,
+        context: {
+          ...currentCollaborationWorkspace.context,
+          date,
+          dailyRecord: failedPane,
+          tasks: failedPane,
+          habits: failedPane,
+        },
+      };
+    }
+    renderCollaborationWorkspace();
+  }
+}
+
+async function createCollaborationSession(): Promise<void> {
+  const date = collaborationDateInput?.value || collaborationActivityDate;
+  try {
+    const session = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+      "collaboration_create_session",
+      { date },
+    );
+    stashCollaborationDraft();
+    collaborationDrafts.set(session.id, "");
+    collaborationTargetDates.set(session.id, date);
+    currentCollaborationSession = session;
+    collaborationActivityDate = date;
+    collaborationTargetDate = date;
+    if (collaborationTargetDateInput) collaborationTargetDateInput.value = date;
+    renderCollaborationWorkspace();
+    await refreshCollaborationWorkspace();
+    if (collaborationSessionsStatus) setCopy(collaborationSessionsStatus, "collaboration.sessionCreated");
+  } catch (error) {
+    if (collaborationSessionsStatus) {
+      setCopyError(collaborationSessionsStatus, "collaboration.sessionLoadFailed", error);
+    }
+  }
+}
+
+function watchCollaborationSession(session: CollaborationSessionView): void {
+  if (collaborationStatusTimer !== null) {
+    window.clearInterval(collaborationStatusTimer);
+    collaborationStatusTimer = null;
+  }
+  if (!["queued", "reading", "thinking"].includes(session.runState)) return;
+  const sessionId = session.id;
+  collaborationStatusTimer = window.setInterval(() => {
+    if (currentWorkspaceDestination !== "collaboration" || currentCollaborationSession?.id !== sessionId) {
+      return;
+    }
+    void window.__TAURI__.core.invoke<CollaborationSessionView>(
+      "collaboration_session",
+      { sessionId },
+    ).then((updated) => {
+      if (currentCollaborationSession?.id !== sessionId) return;
+      currentCollaborationSession = updated;
+      renderCollaborationWorkspace();
+      if (!["queued", "reading", "thinking"].includes(updated.runState)) {
+        if (collaborationStatusTimer !== null) window.clearInterval(collaborationStatusTimer);
+        collaborationStatusTimer = null;
+      }
+    }).catch((error: unknown) => {
+      if (currentCollaborationSession?.id !== sessionId) return;
+      if (collaborationRunStatus) {
+        setCopyError(collaborationRunStatus, "collaboration.sessionLoadFailed", error);
+        collaborationRunStatus.dataset.state = "error";
+      }
+    });
+  }, 750);
+}
+
+async function sendCollaborationMessage(): Promise<void> {
+  const session = currentCollaborationSession;
+  const message = collaborationMessageDraft?.value ?? "";
+  if (!session || !message.trim()) return;
+  const targetDate = collaborationTargetDateInput?.value || collaborationTargetDate;
+  collaborationTargetDate = targetDate;
+  collaborationTargetDates.set(session.id, targetDate);
+  stashCollaborationDraft();
+  renderCollaborationWorkspace();
+  try {
+    const queued = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+      "collaboration_submit_message",
+      { sessionId: session.id, targetDate, text: message },
+    );
+    collaborationDrafts.set(session.id, "");
+    if (collaborationMessageDraft) collaborationMessageDraft.value = "";
+    currentCollaborationSession = queued;
+    renderCollaborationWorkspace();
+    watchCollaborationSession(queued);
+  } catch (error) {
+    collaborationDrafts.set(session.id, message);
+    if (collaborationMessageDraft) collaborationMessageDraft.value = message;
+    renderCollaborationWorkspace();
+    if (collaborationRunStatus) {
+      setCopyError(collaborationRunStatus, "collaboration.sendFailed", error);
+      collaborationRunStatus.dataset.state = "error";
+    }
+  }
+}
+
+async function startChatGPTLogin(): Promise<void> {
+  if (collaborationLoginStatus) setCopy(collaborationLoginStatus, "collaboration.connectStarting");
+  try {
+    await window.__TAURI__.core.invoke<void>("collaboration_start_chatgpt_login");
+    if (collaborationLoginStatus) setCopy(collaborationLoginStatus, "collaboration.connectStarted");
+    await refreshCollaborationConnection();
+  } catch (error) {
+    if (collaborationLoginStatus) {
+      setCopyError(collaborationLoginStatus, "collaboration.loginFailed", error);
+    }
+  }
+}
+
+async function saveCollaborationModel(): Promise<void> {
+  if (!collaborationModelSelect) return;
+  const modelId = collaborationModelSelect.value || null;
+  collaborationModelSelect.disabled = true;
+  try {
+    currentCollaborationConnection = await window.__TAURI__.core.invoke<CollaborationConnectionView>(
+      "collaboration_select_model",
+      { modelId },
+    );
+    renderCollaborationConnection();
+  } catch (error) {
+    if (collaborationLoginStatus) {
+      setCopyError(collaborationLoginStatus, "collaboration.modelSaveFailed", error);
+    }
+    if (currentCollaborationConnection) renderCollaborationConnection();
+  }
+}
+
+async function saveCollaborationReasoningEffort(): Promise<void> {
+  if (!collaborationReasoningEffortSelect) return;
+  const reasoningEffort = collaborationReasoningEffortSelect.value || null;
+  collaborationReasoningEffortSelect.disabled = true;
+  try {
+    currentCollaborationConnection = await window.__TAURI__.core.invoke<CollaborationConnectionView>(
+      "collaboration_select_reasoning_effort",
+      { reasoningEffort },
+    );
+    renderCollaborationConnection();
+  } catch (error) {
+    if (collaborationLoginStatus) {
+      setCopyError(collaborationLoginStatus, "collaboration.reasoningEffortSaveFailed", error);
+    }
+    if (currentCollaborationConnection) renderCollaborationConnection();
   }
 }
 
@@ -6477,6 +7187,13 @@ function renderWorkspaceRailContext(destination: WorkspaceDestination): void {
     return;
   }
 
+  if (destination === "collaboration") {
+    setCopy(workspaceRailContextKicker, "collaboration.sectionLabel");
+    setCopy(workspaceRailContextTitle, "destination.collaboration");
+    setCopy(workspaceRailContextDetail, "collaboration.sessionsLabel");
+    return;
+  }
+
   if (destination === "settings") {
     setCopy(workspaceRailContextKicker, "workspace.settingsMac");
     setCopy(workspaceRailContextTitle, "destination.settings");
@@ -6527,6 +7244,8 @@ function showWorkspaceDestination(
   const leavingTasks = currentWorkspaceDestination === "tasks" && destination !== "tasks";
   const leavingCalendar = currentWorkspaceDestination === "calendar" && destination !== "calendar";
   const leavingHabits = currentWorkspaceDestination === "habits" && destination !== "habits";
+  const leavingCollaboration =
+    currentWorkspaceDestination === "collaboration" && destination !== "collaboration";
   const changingTodaySelection =
     destination === "today" &&
     (destinationChanged || selectedTodayDate !== dailyDate);
@@ -6558,6 +7277,13 @@ function showWorkspaceDestination(
     habitCompletionRequests.invalidate();
     stashHabitNoteDraft();
     currentHabitDateView = null;
+  }
+  if (leavingCollaboration) {
+    stashCollaborationDraft();
+    if (collaborationStatusTimer !== null) {
+      window.clearInterval(collaborationStatusTimer);
+      collaborationStatusTimer = null;
+    }
   }
   currentWorkspaceDestination = destination;
   appShell?.setAttribute("data-workspace-destination", destination);
@@ -6617,6 +7343,12 @@ function showWorkspaceDestination(
     void refreshHabits().then(() => {
       if (selection) void loadSelectedHabitDate(selection.habitKey, selection.date);
     });
+  }
+  if (destination === "collaboration") {
+    if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
+    if (collaborationTargetDateInput) collaborationTargetDateInput.value = collaborationTargetDate;
+    void refreshCollaborationWorkspace();
+    void refreshCollaborationConnection();
   }
 }
 
@@ -6712,8 +7444,87 @@ workspaceLanguageButton?.addEventListener("click", () => {
 settingsCategoryButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const section = button.dataset.settingsSection;
-    if (section === "appearance" || section === "data") showSettingsSection(section);
+    if (section === "appearance" || section === "data" || section === "codex") {
+      showSettingsSection(section);
+    }
   });
+});
+
+function shiftDate(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(value.getTime())) return date;
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+document.querySelector<HTMLButtonElement>("#collaboration-date-previous")?.addEventListener("click", () => {
+  collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, -1);
+  if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
+  void refreshCollaborationWorkspace();
+});
+
+document.querySelector<HTMLButtonElement>("#collaboration-date-next")?.addEventListener("click", () => {
+  collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, 1);
+  if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
+  void refreshCollaborationWorkspace();
+});
+
+document.querySelector<HTMLButtonElement>("#collaboration-date-today")?.addEventListener("click", () => {
+  collaborationActivityDate = localCalendarDate();
+  if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
+  void refreshCollaborationWorkspace();
+});
+
+collaborationDateInput?.addEventListener("change", () => {
+  collaborationActivityDate = collaborationDateInput.value || localCalendarDate();
+  void refreshCollaborationWorkspace();
+});
+
+collaborationTargetDateInput?.addEventListener("change", () => {
+  collaborationTargetDate = collaborationTargetDateInput.value || collaborationActivityDate;
+  void refreshCollaborationContext();
+});
+
+document.querySelector<HTMLButtonElement>("#collaboration-new-session")?.addEventListener("click", () => {
+  void createCollaborationSession();
+});
+
+document.querySelector<HTMLButtonElement>("#collaboration-open-settings")?.addEventListener("click", () => {
+  showWorkspaceDestination("settings");
+  showSettingsSection("codex");
+});
+
+collaborationRefreshConnectionButton?.addEventListener("click", () => {
+  void refreshCollaborationConnection();
+});
+
+collaborationConnectButton?.addEventListener("click", () => {
+  void startChatGPTLogin();
+});
+
+collaborationModelSelect?.addEventListener("change", () => {
+  void saveCollaborationModel();
+});
+
+collaborationReasoningEffortSelect?.addEventListener("change", () => {
+  void saveCollaborationReasoningEffort();
+});
+
+collaborationMessageDraft?.addEventListener("input", () => {
+  stashCollaborationDraft();
+  renderCollaborationWorkspace();
+});
+
+collaborationMessageDraft?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    event.preventDefault();
+    collaborationComposer?.requestSubmit();
+  }
+});
+
+collaborationComposer?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  void sendCollaborationMessage();
 });
 
 accentColorButtons.forEach((button) => {
