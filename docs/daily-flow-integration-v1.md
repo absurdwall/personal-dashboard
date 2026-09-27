@@ -1,13 +1,13 @@
 # Daily-flow integration v1
 
-Ticket 08 connects the existing daily loop to the Ticket 07 task adapter. The
-connection is a workflow boundary, not a second task backend and not an Agent
-embedded in the Dashboard UI.
+Ticket 08 connects the Personal Dashboard daily-task workflow to the Ticket 07
+task adapter. The connection is a workflow boundary, not a second task backend
+and not an Agent embedded in the Dashboard UI.
 
 ## Real entry
 
-The canonical `life-daily-loop` skill and the `everyday` Life Companion entry
-both use the compiled executable while the app may be closed:
+The project-owned `personal-dashboard-daily-tasks` skill provides the
+Personal Dashboard entry for local Tasks while the app may be closed:
 
 ```sh
 personal-dashboard --daily-flow-tasks
@@ -22,12 +22,17 @@ planning and after every write. A write reuses the read response's
 task list. The complete request and response contract is in
 [`daily-flow-task-adapter-v1.md`](daily-flow-task-adapter-v1.md).
 
-The frontend contract test reads the canonical `life-daily-loop` skill and the
-`everyday` Life Companion boundary files as external integration inputs. It
+The canonical `life-daily-loop` skill remains responsible for lived-date and
+`life/` Daily Record workflow. This Dashboard skill does not change that skill
+or create another Daily Record. The separate `everyday` Life Companion workflow
+uses its own `Diary/` path and is outside this adapter integration.
+
+The frontend contract test reads the project-owned Dashboard skill and checks
+the canonical `life-daily-loop` file for its `life/` Daily Record path. It
 discovers the Tortilla Flat root from Git's common directory when running in a
 managed worktree; other checkout layouts may set
-`PERSONAL_DASHBOARD_WORKSPACE_ROOT`. Missing inputs fail the test loudly rather
-than being treated as an empty contract.
+`PERSONAL_DASHBOARD_WORKSPACE_ROOT`. A missing input fails the test loudly
+rather than being treated as an empty contract.
 
 ## Authority and phase boundaries
 

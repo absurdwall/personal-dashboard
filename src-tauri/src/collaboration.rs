@@ -5597,22 +5597,77 @@ impl CollaborationApplication {
                 .find(|session| {
                     session.id == session_id && session.vault_key.as_deref() == Some(&vault_key)
                 })
-                .ok_or_else(|| "This collaboration session is not available in the selected Vault.".to_string())?;
+                .ok_or_else(|| {
+                    "This collaboration session is not available in the selected Vault.".to_string()
+                })?;
             let message = session
                 .messages
                 .iter()
                 .find(|message| message.execution_id.as_deref() == Some(execution_id))
-                .ok_or_else(|| "This collaboration request is not available in the selected Vault.".to_string())?;
-            if !matches!(message.delivery_state.as_str(), "interrupted" | "stop-unconfirmed")
-                || message.result_checked
+                .ok_or_else(|| {
+                    "This collaboration request is not available in the selected Vault.".to_string()
+                })?;
+            if !matches!(
+                message.delivery_state.as_str(),
+                "interrupted" | "stop-unconfirmed"
+            ) || message.result_checked
             {
-                return Err(String::from("This request does not need a saved-result check."));
+                return Err(String::from(
+                    "This request does not need a saved-result check.",
+                ));
             }
-            let thread_id = session.runtime_thread_id.clone().ok_or_else(|| {
-                "No Codex thread was recorded for this request. Nothing was replayed; review it before continuing.".to_string()
-            })?;
+            let thread_id = session.runtime_thread_id.clone();
+            if thread_id.is_none()
+                && (session.run_state != "interrupted"
+                    || session.run_id.as_deref() != Some(execution_id))
+            {
+                return Err("No runtime thread ID is saved while this request may still be active. Wait until the run has stopped, then reopen the Dashboard before reviewing it again.".into());
+            }
             Ok((thread_id, message.target_date.clone()))
         })??;
+
+        let Some(thread_id) = thread_id else {
+            // The queue worker persists a new runtime thread ID before calling
+            // turn/start. With no ID in this never-resumed session, an abrupt
+            // exit happened before a model turn could be sent. Resolve the
+            // recovery gate locally without replaying the request.
+            let now = self.clock.current_timestamp();
+            let session = self.update_state(|state| {
+                let session = matching_session_mut(state, &vault_key, session_id)?;
+                if session.runtime_thread_id.is_some() {
+                    return Err("A Codex thread was recorded while this request was being checked. Refresh and check the saved result again.".into());
+                }
+                if session.run_state != "interrupted"
+                    || session.run_id.as_deref() != Some(execution_id)
+                {
+                    return Err("No runtime thread ID is saved while this request may still be active. Wait until the run has stopped, then reopen the Dashboard before reviewing it again.".into());
+                }
+                let message = session
+                    .messages
+                    .iter_mut()
+                    .find(|message| message.execution_id.as_deref() == Some(execution_id))
+                    .ok_or_else(|| "This collaboration request is no longer available.".to_string())?;
+                if !matches!(message.delivery_state.as_str(), "interrupted" | "stop-unconfirmed")
+                    || message.result_checked
+                {
+                    return Err(String::from("This request does not need a saved-result check."));
+                }
+                message.result_checked = true;
+                if session.run_id.as_deref() == Some(execution_id) {
+                    session.run_state = "interrupted".into();
+                    session.progress = "No model turn was sent because the Dashboard had not saved a runtime thread ID. Nothing was replayed; this session can continue after review.".into();
+                }
+                session.last_activity_at = now.clone();
+                Ok(session_view(session))
+            })?;
+            if !recovery_required_for_vault_state(
+                &self.read_state(|state| state.clone())?,
+                Some(&vault_key),
+            ) {
+                self.schedule_vault_worker(vault_key)?;
+            }
+            return Ok(session);
+        };
 
         let mut reconciliation = self
             .runtime

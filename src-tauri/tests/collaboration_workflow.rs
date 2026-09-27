@@ -1274,6 +1274,126 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
 }
 
 #[test]
+fn interruption_before_thread_id_is_saved_can_be_reviewed_without_replay() {
+    let directory = IsolatedDirectory::new();
+    let store = FileCollaborationStore::new(
+        directory
+            .path()
+            .join("collaboration")
+            .join("collaboration.json"),
+    );
+    let mut state = CollaborationState::default();
+    state.sessions.push(StoredCollaborationSession {
+        id: "session-no-thread".into(),
+        vault_key: Some("synthetic-vault".into()),
+        title: "Interrupted before thread start completed".into(),
+        created_date: "2026-09-27".into(),
+        activity_dates: vec!["2026-09-27".into()],
+        last_activity_at: "2026-09-27T09:10:00-04:00".into(),
+        target_date: "2026-09-27".into(),
+        run_id: Some("execution-no-thread".into()),
+        run_state: "interrupted".into(),
+        progress: "The app closed before this request was confirmed.".into(),
+        runtime_thread_id: None,
+        task_tool_registered: false,
+        daily_plan_tool_registered: false,
+        daily_record_tool_registered: false,
+        memory_tool_registered: false,
+        messages: vec![StoredCollaborationMessage {
+            id: "message-no-thread".into(),
+            role: "user".into(),
+            text: "Do not replay this interrupted synthetic request".into(),
+            message_date: "2026-09-27".into(),
+            target_date: "2026-09-27".into(),
+            created_at: "2026-09-27T09:10:00-04:00".into(),
+            execution_id: Some("execution-no-thread".into()),
+            runtime_turn_id: None,
+            delivery_state: "interrupted".into(),
+            queue_order: Some(1),
+            result_checked: false,
+            automatic_plan: false,
+            external_app_ids: Vec::new(),
+            external_actions: Vec::new(),
+            pending_external_approval: None,
+        }],
+        task_operations: Vec::new(),
+        memory_proposals: Vec::new(),
+        draft: String::new(),
+        drafts_by_date: HashMap::new(),
+    });
+    store.save(&state).unwrap();
+
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let application = new_application_with_controls(
+        &directory,
+        Arc::clone(&prompts),
+        Arc::new(Mutex::new(Vec::new())),
+        None,
+        Arc::new(Mutex::new(HashMap::new())),
+    );
+
+    state.sessions[0].run_state = "stop-unconfirmed".into();
+    state.sessions[0].messages[0].delivery_state = "stop-unconfirmed".into();
+    store.save(&state).unwrap();
+    let still_running = application
+        .reconcile_run_for_selected_vault("session-no-thread", "execution-no-thread")
+        .unwrap_err();
+    assert!(still_running.contains("may still be active"));
+    assert!(
+        application
+            .workspace("2026-09-27")
+            .unwrap()
+            .recovery_required
+    );
+
+    state.sessions[0].run_state = "interrupted".into();
+    state.sessions[0].messages[0].delivery_state = "interrupted".into();
+    store.save(&state).unwrap();
+    assert!(
+        application
+            .workspace("2026-09-27")
+            .unwrap()
+            .recovery_required
+    );
+
+    let reviewed = application
+        .reconcile_run_for_selected_vault("session-no-thread", "execution-no-thread")
+        .unwrap();
+    assert_eq!(reviewed.run_state, "interrupted");
+    assert_eq!(reviewed.messages[0].delivery_state, "interrupted");
+    assert!(reviewed.messages[0].result_checked);
+    assert!(reviewed.progress.contains("No model turn was sent"));
+    assert!(
+        !application
+            .workspace("2026-09-27")
+            .unwrap()
+            .recovery_required
+    );
+    assert!(
+        prompts.lock().unwrap().is_empty(),
+        "review must not replay the request"
+    );
+
+    application
+        .submit_message(
+            "synthetic-vault",
+            "session-no-thread",
+            "2026-09-27",
+            "A new explicit request after recovery",
+        )
+        .unwrap();
+    let completed = wait_for_run_state(&application, "session-no-thread", "completed");
+    assert!(completed.messages.iter().any(|message| {
+        message.text == "Do not replay this interrupted synthetic request"
+            && message.delivery_state == "interrupted"
+            && message.result_checked
+    }));
+    let sent = prompts.lock().unwrap();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].user_text, "A new explicit request after recovery");
+}
+
+#[test]
 fn unavailable_reasoning_efforts_are_rejected_before_persistence() {
     let directory = IsolatedDirectory::new();
     let application = new_application(&directory, Arc::new(Mutex::new(Vec::new())));
