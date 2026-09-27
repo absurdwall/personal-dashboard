@@ -24,6 +24,19 @@ test("Collaboration is a latest-shell destination with the adjacent approved A w
   assert.match(css, /grid-template-columns:\s*13\.5rem minmax\(25rem, 1\.45fr\) minmax\(19rem, 1fr\)/);
 });
 
+test("external apps are discoverable but only callable apps can be explicitly selected per message", () => {
+  const main = readFileSync("frontend/main.ts", "utf8");
+  assert.match(main, /let selectedCollaborationExternalAppIds = new Set<string>\(\)/);
+  assert.match(main, /const selectable = apps\.filter\(\(app\) => app\.accessible && app\.enabled && app\.callable\)/);
+  assert.match(main, /if \(!selectableIds\.has\(selectedId\)\) selectedCollaborationExternalAppIds\.delete\(selectedId\)/);
+  assert.match(main, /input\.checked = selectedCollaborationExternalAppIds\.has\(app\.id\)/);
+  assert.match(main, /const externalAppIds = \[\.\.\.selectedCollaborationExternalAppIds\]/);
+  assert.match(main, /"collaboration_submit_message"[\s\S]*?externalAppIds/);
+  assert.match(main, /function renderCollaborationMessages[\s\S]*?message\.externalActions/);
+  assert.match(main, /approval\.sourceName[\s\S]*approval\.toolId[\s\S]*approval\.inputSummary/);
+  assert.match(main, /collaboration_resolve_external_approval/);
+});
+
 test("Codex settings report experimental status and runtime capability instead of promising every install", () => {
   assert.match(html, /data-settings-panel="codex"/);
   assert.match(html, /id="collaboration-connection-status"/);

@@ -269,6 +269,12 @@
                       </div>
                       <p id="collaboration-automatic-plan-status" class="settings-status" role="status" aria-live="polite" data-i18n="collaboration.automaticPlanNotLoaded">Automatic schedule status has not been loaded.</p>
                     </div>
+                    <div class="setting-row">
+                      <h3 data-i18n="collaboration.externalCapabilitiesHeading">Connected external apps</h3>
+                      <p id="collaboration-external-capability-status" class="settings-status" role="status" aria-live="polite" data-i18n="collaboration.externalCapabilitiesNotChecked">External app capabilities have not been checked.</p>
+                      <ul id="collaboration-external-capabilities" class="collaboration-external-capability-list"></ul>
+                      <p data-i18n="collaboration.externalCapabilitiesBoundary">The list comes from this Dashboard-owned Codex runtime. Other Codex client configuration is not imported.</p>
+                    </div>
                   </section>
                 </div>
               </div>
@@ -330,6 +336,11 @@
                   <form id="collaboration-composer" class="collaboration-composer">
                     <label for="collaboration-message-draft" data-i18n="collaboration.messageLabel">Message</label>
                     <textarea id="collaboration-message-draft" rows="3" maxlength="12000" data-i18n-placeholder="collaboration.messagePlaceholder" placeholder="Describe what you want to discuss…" disabled></textarea>
+                    <fieldset id="collaboration-external-apps" class="collaboration-external-apps" hidden>
+                      <legend data-i18n="collaboration.externalUseHeading">External apps for this message</legend>
+                      <p data-i18n="collaboration.externalUseBoundary">External use is off by default. Select an available app only when this request asks to use it. External changes may not be reversible.</p>
+                      <div id="collaboration-external-app-options"></div>
+                    </fieldset>
                     <div class="collaboration-voice-controls">
                       <label for="collaboration-voice-language" data-i18n="collaboration.voiceLanguage">Voice language</label>
                       <select id="collaboration-voice-language" disabled aria-describedby="collaboration-voice-privacy">

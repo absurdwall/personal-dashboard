@@ -1,10 +1,10 @@
 use personal_dashboard_lib::collaboration::{
     AppServerTransport, CollaborationApplication, CollaborationClock, CollaborationContextSource,
     CollaborationContextView, CollaborationState, CollaborationStore, ContextPaneView,
-    DashboardContextReader, FileCollaborationStore, ModelOptionView, RuntimeConnectionView,
-    RuntimeDynamicToolCall, RuntimeDynamicToolHandler, RuntimeDynamicToolResult,
-    RuntimeRunReconciliation, RuntimeTurnRequest, RuntimeTurnResult, StoredCollaborationMessage,
-    StoredCollaborationSession,
+    DashboardContextReader, ExternalAppOptionView, ExternalAppToolView, ExternalToolActionView,
+    FileCollaborationStore, ModelOptionView, RuntimeConnectionView, RuntimeDynamicToolCall,
+    RuntimeDynamicToolHandler, RuntimeDynamicToolResult, RuntimeRunReconciliation,
+    RuntimeTurnRequest, RuntimeTurnResult, StoredCollaborationMessage, StoredCollaborationSession,
 };
 use personal_dashboard_lib::collaboration_memory::{
     CollaborationMemoryService, CollaborationMemorySources, LongTermMemoryDocumentView,
@@ -175,6 +175,8 @@ struct FakeAppServer {
     prompts: Arc<Mutex<Vec<RuntimeTurnRequest>>>,
     calls: Arc<Mutex<Vec<&'static str>>>,
     read_only_text_turns_available: bool,
+    external_apps: Vec<ExternalAppOptionView>,
+    external_apps_for_thread: Option<Vec<ExternalAppOptionView>>,
     switch_vault_on_inspect: Option<Arc<AtomicBool>>,
     turn_gate: Option<Arc<FakeTurnGate>>,
     reconciliations: Arc<Mutex<HashMap<String, RuntimeRunReconciliation>>>,
@@ -280,10 +282,24 @@ impl AppServerTransport for FakeAppServer {
                 reasoning_efforts: vec!["synthetic-light".into(), "synthetic-deep".into()],
                 is_default: true,
             }],
+            external_apps: self.external_apps.clone(),
+            external_discovery_error: None,
             selected_model: Some("synthetic-model".into()),
             selected_reasoning_effort: None,
             error: None,
         })
+    }
+
+    fn inspect_external_apps_for_thread(
+        &mut self,
+        _thread_id: &str,
+    ) -> Result<(Vec<ExternalAppOptionView>, Option<String>), String> {
+        Ok((
+            self.external_apps_for_thread
+                .clone()
+                .unwrap_or_else(|| self.external_apps.clone()),
+            None,
+        ))
     }
 
     fn start_chatgpt_login(&mut self) -> Result<(), String> {
@@ -312,6 +328,7 @@ impl AppServerTransport for FakeAppServer {
             text: "Synthetic reply based on current context.".into(),
             runtime_turn_id: Some("runtime-turn-1".into()),
             stopped: false,
+            external_actions: Vec::new(),
         })
     }
 
@@ -350,6 +367,7 @@ impl AppServerTransport for FakeAppServer {
                 text: String::new(),
                 runtime_turn_id: Some(format!("turn-{}", request.execution_id)),
                 stopped: true,
+                external_actions: Vec::new(),
             });
         }
         if cancellation.load(Ordering::SeqCst) {
@@ -363,6 +381,7 @@ impl AppServerTransport for FakeAppServer {
             text: format!("Synthetic reply for {}.", request.user_text),
             runtime_turn_id: Some(format!("turn-{}", request.execution_id)),
             stopped: false,
+            external_actions: Vec::new(),
         })
     }
 
@@ -423,6 +442,40 @@ fn new_application_with_call_log(
     read_only_text_turns_available: bool,
     calls: Arc<Mutex<Vec<&'static str>>>,
 ) -> CollaborationApplication {
+    new_application_with_call_log_and_apps(
+        directory,
+        prompts,
+        read_only_text_turns_available,
+        calls,
+        Vec::new(),
+    )
+}
+
+fn new_application_with_call_log_and_apps(
+    directory: &IsolatedDirectory,
+    prompts: Arc<Mutex<Vec<RuntimeTurnRequest>>>,
+    read_only_text_turns_available: bool,
+    calls: Arc<Mutex<Vec<&'static str>>>,
+    external_apps: Vec<ExternalAppOptionView>,
+) -> CollaborationApplication {
+    new_application_with_call_log_and_thread_apps(
+        directory,
+        prompts,
+        read_only_text_turns_available,
+        calls,
+        external_apps,
+        None,
+    )
+}
+
+fn new_application_with_call_log_and_thread_apps(
+    directory: &IsolatedDirectory,
+    prompts: Arc<Mutex<Vec<RuntimeTurnRequest>>>,
+    read_only_text_turns_available: bool,
+    calls: Arc<Mutex<Vec<&'static str>>>,
+    external_apps: Vec<ExternalAppOptionView>,
+    external_apps_for_thread: Option<Vec<ExternalAppOptionView>>,
+) -> CollaborationApplication {
     CollaborationApplication::with_adapters(
         Arc::new(FileCollaborationStore::new(
             directory
@@ -434,6 +487,8 @@ fn new_application_with_call_log(
             prompts,
             calls,
             read_only_text_turns_available,
+            external_apps,
+            external_apps_for_thread,
             switch_vault_on_inspect: None,
             turn_gate: None,
             reconciliations: Arc::new(Mutex::new(HashMap::new())),
@@ -465,6 +520,8 @@ fn new_application_with_synthetic_memory(
             prompts,
             calls: Arc::new(Mutex::new(Vec::new())),
             read_only_text_turns_available: true,
+            external_apps: Vec::new(),
+            external_apps_for_thread: None,
             switch_vault_on_inspect: None,
             turn_gate: None,
             reconciliations: Arc::new(Mutex::new(HashMap::new())),
@@ -497,6 +554,8 @@ fn new_application_with_controls(
             prompts,
             calls,
             read_only_text_turns_available: true,
+            external_apps: Vec::new(),
+            external_apps_for_thread: None,
             switch_vault_on_inspect: None,
             turn_gate,
             reconciliations,
@@ -555,6 +614,146 @@ fn wait_for_run_state(
         thread::sleep(Duration::from_millis(10));
     }
     panic!("collaboration session did not reach run state `{expected}`");
+}
+
+fn synthetic_external_app(id: &str) -> ExternalAppOptionView {
+    ExternalAppOptionView {
+        id: id.into(),
+        display_name: format!("Synthetic {id}"),
+        description: "Synthetic connector".into(),
+        accessible: true,
+        enabled: true,
+        callable: true,
+        tools: vec![ExternalAppToolView {
+            id: "search".into(),
+            title: "Search".into(),
+            description: "Synthetic read".into(),
+            enabled: true,
+            read_only: true,
+        }],
+    }
+}
+
+#[test]
+fn selected_external_app_is_saved_with_the_message_and_only_selected_apps_enter_the_turn() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let application = new_application_with_call_log_and_apps(
+        &directory,
+        Arc::clone(&prompts),
+        true,
+        Arc::new(Mutex::new(Vec::new())),
+        vec![
+            synthetic_external_app("calendar"),
+            synthetic_external_app("drive"),
+        ],
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    let queued = application
+        .submit_message_with_external_apps(
+            "synthetic-vault",
+            &session.id,
+            "2026-09-27",
+            "Check the selected calendar for my appointment",
+            &["calendar".into()],
+        )
+        .unwrap();
+    wait_until_finished(&application, &queued.id);
+
+    let saved = application.session("synthetic-vault", &session.id).unwrap();
+    let user_message = saved
+        .messages
+        .iter()
+        .find(|message| message.role == "user")
+        .unwrap();
+    assert_eq!(user_message.external_app_ids, vec!["calendar"]);
+    assert_eq!(user_message.delivery_state, "completed");
+    let turn_requests = prompts.lock().unwrap();
+    assert_eq!(turn_requests.len(), 1);
+    assert_eq!(
+        turn_requests[0]
+            .external_apps
+            .iter()
+            .map(|app| app.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["calendar"]
+    );
+}
+
+#[test]
+fn resumed_thread_rechecks_effective_app_availability_before_sending() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let application = new_application_with_call_log_and_thread_apps(
+        &directory,
+        Arc::clone(&prompts),
+        true,
+        Arc::clone(&calls),
+        vec![synthetic_external_app("calendar")],
+        Some(Vec::new()),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    let first = application
+        .submit_message(
+            "synthetic-vault",
+            &session.id,
+            "2026-09-27",
+            "Start a conversation",
+        )
+        .unwrap();
+    wait_until_finished(&application, &first.id);
+
+    let queued = application
+        .submit_message_with_external_apps(
+            "synthetic-vault",
+            &session.id,
+            "2026-09-27",
+            "Use the selected calendar",
+            &["calendar".into()],
+        )
+        .unwrap();
+    wait_until_finished(&application, &queued.id);
+
+    let saved = application.session("synthetic-vault", &session.id).unwrap();
+    let failed_request = saved
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == "user")
+        .unwrap();
+    assert_eq!(failed_request.external_app_ids, vec!["calendar"]);
+    assert_eq!(failed_request.delivery_state, "error");
+    assert!(saved.progress.contains("no longer available"));
+    assert_eq!(prompts.lock().unwrap().len(), 1);
+    assert_eq!(
+        *calls.lock().unwrap(),
+        ["start-thread", "send-turn", "resume-thread"]
+    );
+}
+
+#[test]
+fn unavailable_external_app_is_refused_before_the_message_is_queued() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let application =
+        new_application_with_call_log(&directory, Arc::clone(&prompts), true, Arc::clone(&calls));
+    let session = application.create_session("2026-09-27").unwrap();
+    let error = application
+        .submit_message_with_external_apps(
+            "synthetic-vault",
+            &session.id,
+            "2026-09-27",
+            "Use calendar",
+            &["calendar".into()],
+        )
+        .unwrap_err();
+    assert!(error.contains("no longer available"));
+    let unchanged = application.session("synthetic-vault", &session.id).unwrap();
+    assert!(unchanged.messages.is_empty());
+    assert!(prompts.lock().unwrap().is_empty());
+    assert!(calls.lock().unwrap().is_empty());
 }
 
 #[test]
@@ -941,6 +1140,9 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
                 queue_order: Some(1),
                 result_checked: false,
                 automatic_plan: false,
+                external_app_ids: vec!["calendar".into()],
+                external_actions: Vec::new(),
+                pending_external_approval: None,
             },
             StoredCollaborationMessage {
                 id: "message-pending-2".into(),
@@ -955,6 +1157,9 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
                 queue_order: Some(2),
                 result_checked: false,
                 automatic_plan: false,
+                external_app_ids: Vec::new(),
+                external_actions: Vec::new(),
+                pending_external_approval: None,
             },
         ],
         task_operations: Vec::new(),
@@ -981,6 +1186,16 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
         RuntimeRunReconciliation::Completed {
             text: "Recovered synthetic result".into(),
             runtime_turn_id: "runtime-turn-recovered".into(),
+            external_actions: vec![ExternalToolActionView {
+                action_id: "thread-1:call-1".into(),
+                source_id: "calendar".into(),
+                source_name: "Synthetic Calendar".into(),
+                tool_id: "create_event".into(),
+                status: "completed".into(),
+                target_scope: "unknown".into(),
+                input_summary: "{\"eventId\":\"evt-7\"}".into(),
+                result_summary: "{\"status\":\"created\"}".into(),
+            }],
         },
     )])));
     let application = new_application_with_controls(
@@ -1027,6 +1242,11 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
     assert_eq!(
         recovered.messages[2].execution_id.as_deref(),
         Some("execution-active-1")
+    );
+    assert_eq!(recovered.messages[0].external_actions.len(), 1);
+    assert_eq!(
+        recovered.messages[0].external_actions[0].target_scope,
+        "2026-09-27"
     );
     assert!(
         !application
@@ -1110,6 +1330,8 @@ fn selected_vault_is_rechecked_immediately_before_sending_context() {
             prompts: Arc::clone(&prompts),
             calls: Arc::clone(&calls),
             read_only_text_turns_available: true,
+            external_apps: Vec::new(),
+            external_apps_for_thread: None,
             switch_vault_on_inspect: Some(Arc::clone(&switched)),
             turn_gate: None,
             reconciliations: Arc::new(Mutex::new(HashMap::new())),
