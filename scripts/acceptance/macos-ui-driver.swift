@@ -13,7 +13,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|assert-elements-disjoint|assert-regions-disjoint|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -47,12 +47,27 @@ func children(of element: AXUIElement) -> [AXUIElement] {
     (attribute(element, "AXChildren") as? [AXUIElement]) ?? []
 }
 
+struct AXElementIdentitySet {
+    private var buckets: [CFHashCode: [AXUIElement]] = [:]
+
+    mutating func insert(_ element: AXUIElement) -> Bool {
+        let hash = CFHash(element)
+        var bucket = buckets[hash, default: []]
+        guard !bucket.contains(where: { CFEqual($0, element) }) else {
+            return false
+        }
+        bucket.append(element)
+        buckets[hash] = bucket
+        return true
+    }
+}
+
 func walk(_ root: AXUIElement, visit: (AXUIElement) -> Bool) -> Bool {
     var pending = [root]
-    var visited = Set<CFHashCode>()
+    var visited = AXElementIdentitySet()
 
     while let element = pending.popLast() {
-        guard visited.insert(CFHash(element)).inserted else {
+        guard visited.insert(element) else {
             continue
         }
         if visit(element) {
@@ -95,13 +110,13 @@ func findTextPath(
     _ text: String,
     contains: Bool = true
 ) -> AccessibilityPath? {
-    var visited = Set<CFHashCode>()
+    var visited = AXElementIdentitySet()
 
     func visit(
         _ element: AXUIElement,
         ancestors: [AXUIElement]
     ) -> AccessibilityPath? {
-        guard visited.insert(CFHash(element)).inserted else {
+        guard visited.insert(element) else {
             return nil
         }
         let renderedText = nodeText(element)
@@ -128,14 +143,14 @@ func findTextPaths(
     _ text: String,
     contains: Bool = true
 ) -> [AccessibilityPath] {
-    var visited = Set<CFHashCode>()
+    var visited = AXElementIdentitySet()
     var matches: [AccessibilityPath] = []
 
     func visit(
         _ element: AXUIElement,
         ancestors: [AXUIElement]
     ) {
-        guard visited.insert(CFHash(element)).inserted else {
+        guard visited.insert(element) else {
             return
         }
         let renderedText = nodeText(element)
@@ -3699,6 +3714,80 @@ func dumpText(_ application: AXUIElement) {
     }
 }
 
+func renderedLeafFrame(_ application: AXUIElement, label: String) throws -> CGRect {
+    let leafRoles = Set(["AXStaticText", "AXHeading", "AXButton", "AXTextField", "AXTextArea", "AXLink"])
+    let candidates = findTextPaths(application, label).compactMap { path -> CGRect? in
+        guard leafRoles.contains(stringAttribute(path.element, "AXRole")),
+              nodeText(path.element).localizedCaseInsensitiveContains(label),
+              let elementFrame = frame(path.element),
+              elementFrame.width > 0,
+              elementFrame.height > 0 else {
+            return nil
+        }
+        return elementFrame
+    }
+    guard let smallest = candidates.min(by: { $0.width * $0.height < $1.width * $1.height }) else {
+        throw DriverError.timeout("measurable rendered text bounds: \(label)")
+    }
+    return smallest
+}
+
+func landmarkFrame(_ application: AXUIElement, label: String) throws -> CGRect {
+    guard let path = findTextPaths(application, label).first else {
+        throw DriverError.timeout("rendered landmark: \(label)")
+    }
+    let candidates = Array(path.ancestors + [path.element]).reversed()
+    guard let landmark = candidates.first(where: { element in
+        stringAttribute(element, "AXRole") == "AXGroup" &&
+            stringAttribute(element, "AXSubrole").hasPrefix("AXLandmark") &&
+            nodeText(element).localizedCaseInsensitiveContains(label) &&
+            (attribute(element, "AXHidden") as? NSNumber)?.boolValue != true
+    }), let landmarkFrame = frame(landmark) else {
+        throw DriverError.timeout("measurable visible landmark: \(label)")
+    }
+    return landmarkFrame
+}
+
+func assertRenderedElementsDisjoint(
+    _ application: AXUIElement,
+    firstLabel: String,
+    secondLabel: String
+) throws {
+    let firstFrame = try renderedLeafFrame(application, label: firstLabel)
+    let secondFrame = try renderedLeafFrame(application, label: secondLabel)
+    let intersection = firstFrame.intersection(secondFrame)
+    guard intersection.isNull || intersection.width <= 0 || intersection.height <= 0 else {
+        throw DriverError.unexpectedText(
+            "visible rendered elements overlap: \(firstLabel) \(firstFrame) / " +
+                "\(secondLabel) \(secondFrame) intersection=\(intersection)"
+        )
+    }
+    print(
+        "Visible rendered element bounds are disjoint: \(firstLabel) \(firstFrame) / " +
+            "\(secondLabel) \(secondFrame)"
+    )
+}
+
+func assertLandmarksDisjoint(
+    _ application: AXUIElement,
+    firstLabel: String,
+    secondLabel: String
+) throws {
+    let firstFrame = try landmarkFrame(application, label: firstLabel)
+    let secondFrame = try landmarkFrame(application, label: secondLabel)
+    let intersection = firstFrame.intersection(secondFrame)
+    guard intersection.isNull || intersection.width <= 0 || intersection.height <= 0 else {
+        throw DriverError.unexpectedText(
+            "visible landmarks overlap: \(firstLabel) \(firstFrame) / " +
+                "\(secondLabel) \(secondFrame) intersection=\(intersection)"
+        )
+    }
+    print(
+        "Visible landmark bounds are disjoint: \(firstLabel) \(firstFrame) / " +
+            "\(secondLabel) \(secondFrame)"
+    )
+}
+
 func dumpPicker(_ application: AXUIElement, pid: pid_t) throws {
     guard let picker = findExceptionSchedulePicker(application) else {
         throw DriverError.timeout("exception schedule picker")
@@ -4097,6 +4186,28 @@ do {
         print("Rendered select excludes option: \(text)")
     case "dump-text":
         dumpText(application)
+    case "assert-elements-disjoint":
+        let parts = text.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
+            .map(String.init)
+        guard parts.count == 2 else {
+            throw DriverError.usage
+        }
+        try assertRenderedElementsDisjoint(
+            application,
+            firstLabel: parts[0],
+            secondLabel: parts[1]
+        )
+    case "assert-regions-disjoint":
+        let parts = text.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
+            .map(String.init)
+        guard parts.count == 2 else {
+            throw DriverError.usage
+        }
+        try assertLandmarksDisjoint(
+            application,
+            firstLabel: parts[0],
+            secondLabel: parts[1]
+        )
     case "dump-picker":
         try dumpPicker(application, pid: pid)
     case "press":

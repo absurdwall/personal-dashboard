@@ -682,7 +682,6 @@ const habitsDailyList = document.querySelector<HTMLElement>("#habits-daily-list"
 const habitsWeeklyList = document.querySelector<HTMLElement>("#habits-weekly-list");
 const refreshHabitsButton = document.querySelector<HTMLButtonElement>("#refresh-habits");
 const todayDate = document.querySelector<HTMLElement>("#today-date");
-const todayHeading = document.querySelector<HTMLElement>("#today-heading");
 const todayVault = document.querySelector<HTMLElement>("#today-vault");
 const todayStatus = document.querySelector<HTMLElement>("#today-status");
 const todayReady = document.querySelector<HTMLElement>("#today-ready");
@@ -1929,12 +1928,6 @@ function showTodayPhase(phase: TodayPhase, focus = false): void {
   if (todayReady) {
     todayReady.dataset.phase = phase;
   }
-  const labels: Record<TodayPhase, InterfaceCopyKey> = {
-    morning: "today.morning",
-    daytime: "today.daytime",
-    evening: "today.evening",
-  };
-  setCopy(todayHeading, labels[phase]);
   todayPhaseButtons.forEach((button) => {
     const selected = button.dataset.todayPhase === phase;
     button.setAttribute("aria-selected", String(selected));

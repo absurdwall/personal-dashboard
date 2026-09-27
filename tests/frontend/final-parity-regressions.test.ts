@@ -89,12 +89,14 @@ test("Vault reselection invalidates and refreshes the active Calendar or Habits 
   assert.match(resetBody, /renderWorkspaceRailContext\(currentWorkspaceDestination\)/);
 });
 
-test("Habits exposes the FINAL header metric while keeping the week label secondary", () => {
+test("Habits uses the shared page header without a duplicate snapshot eyebrow", () => {
   assert.match(html, /id="workspace-context-status"/);
   assert.match(main, /setCopy\(label, "workspace\.weekKnown"\)/);
   assert.match(main, /featureArea: "workspace\.habitsFeature"/);
   assert.match(main, /description: "workspace\.habitsDescription"/);
-  assert.match(html, /data-i18n="habits\.weekSnapshot"/);
+  assert.match(html, /class="habits-header destination-page-header"/);
+  assert.match(html, /id="habits-heading" class="destination-heading"/);
+  assert.doesNotMatch(html, /data-i18n="habits\.weekSnapshot"/);
   for (const copy of [
     "本周已知",
     "Known this week",
@@ -102,15 +104,39 @@ test("Habits exposes the FINAL header metric while keeping the week label second
     "HABITS · PRIMARY DESTINATION",
     "周次数与每日目标时刻放在同一份轻量列表里。",
     "Weekly counts and daily target times share one compact list.",
-    "本周 · 来源快照",
-    "WEEK OF · SOURCED SNAPSHOT",
   ]) {
     assert.match(interfaceLanguage, new RegExp(copy.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   assert.match(css, /workspace-context-status\[data-state="habits-summary"\]/);
-  assert.match(css, /\.habits-header \.destination-heading[\s\S]*font-size: 0\.76rem/);
+  assert.match(css, /\.destination-page-header \.destination-heading[\s\S]*font-size: clamp\(2rem, 4vw, 3rem\)/);
+  assert.match(css, /data-workspace-destination="habits"\] \.habits-layout\s*\{\s*grid-template-columns: minmax\(0, 1fr\)/);
   assert.match(css, /data-workspace-destination="habits"\] \.workspace-header h1[\s\S]*font-family: Georgia/);
   assert.match(css, /data-workspace-destination="habits"\] \.habit-snapshot-row[\s\S]*minmax\(0, 0\.85fr\)/);
+});
+
+test("Today keeps its date and actions in one header and removes duplicate section eyebrows", () => {
+  const todayStart = html.indexOf('id="workspace-destination-today"');
+  const habitsStart = html.indexOf('id="workspace-destination-habits"', todayStart);
+  assert.notEqual(todayStart, -1);
+  assert.notEqual(habitsStart, -1);
+  const today = html.slice(todayStart, habitsStart);
+  const headerStart = today.indexOf('<header class="today-page-header destination-page-header">');
+  const headerEnd = today.indexOf("</header>", headerStart);
+  assert.notEqual(headerStart, -1);
+  assert.notEqual(headerEnd, -1);
+  const header = today.slice(headerStart, headerEnd);
+
+  assert.match(header, /id="today-page-heading"/);
+  assert.match(header, /id="today-date"/);
+  assert.match(header, /id="refresh-today"/);
+  assert.match(header, /id="select-today-vault"/);
+  assert.doesNotMatch(header, /data-feature-area|class="section-label"/);
+  assert.doesNotMatch(today, /id="today-heading"|class="today-toolbar"/);
+  assert.match(today, /class="today-phase-navigation" role="tablist"/);
+  assert.match(today, /id="today-daytime-heading" data-i18n="today\.timelineAndRecords"/);
+  assert.match(today, /aria-labelledby="today-daytime-heading"/);
+  assert.match(today, /aria-labelledby="today-task-heading"/);
+  assert.doesNotMatch(today, /data-i18n="today\.daytimeSection"|data-i18n="today\.tasksSection"/);
 });
 
 test("Calendar and Habits packaged scenarios start from the 2.0 Today surface", () => {
