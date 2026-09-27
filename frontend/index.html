@@ -357,6 +357,43 @@
                       <ul data-context-items></ul>
                     </section>
                   </div>
+                  <details id="collaboration-memory-panel" class="collaboration-context-card collaboration-memory-panel">
+                    <summary data-i18n="collaboration.memoryHeading">Memory and continuity</summary>
+                    <p id="collaboration-memory-status" class="settings-status" role="status" aria-live="polite"></p>
+                    <section class="collaboration-memory-section" aria-labelledby="collaboration-long-term-heading">
+                      <h4 id="collaboration-long-term-heading" data-i18n="collaboration.longTermHeading">Long-term background</h4>
+                      <p id="collaboration-long-term-source" class="collaboration-memory-source"></p>
+                      <p id="collaboration-long-term-message" class="collaboration-memory-message" role="status" aria-live="polite"></p>
+                      <label for="collaboration-long-term-content" data-i18n="collaboration.longTermEditLabel">Existing Life Operating Principles document</label>
+                      <textarea id="collaboration-long-term-content" rows="8" maxlength="65536" data-i18n-placeholder="collaboration.longTermUnavailable" placeholder="Existing background is unavailable."></textarea>
+                      <div class="collaboration-memory-actions">
+                        <button id="collaboration-long-term-save" type="button" data-i18n="collaboration.longTermSave" disabled>Save correction</button>
+                        <button id="collaboration-long-term-reload" type="button" class="secondary-button" data-i18n="collaboration.longTermReload">Reload source</button>
+                      </div>
+                    </section>
+                    <details class="collaboration-memory-section collaboration-routine-reference">
+                      <summary data-i18n="collaboration.routineReferenceHeading">Existing daily workflow reference</summary>
+                      <p id="collaboration-routine-reference-message" class="collaboration-memory-message"></p>
+                      <pre id="collaboration-routine-reference-content"></pre>
+                    </details>
+                    <section class="collaboration-memory-section" aria-labelledby="collaboration-recent-memory-heading">
+                      <h4 id="collaboration-recent-memory-heading" data-i18n="collaboration.recentMemoryHeading">Recent continuity</h4>
+                      <p data-i18n="collaboration.recentMemoryBoundary">Recent summaries, unfinished matters, and continuity corrections expire after 14 days; original sessions and Daily Records remain available.</p>
+                      <ul id="collaboration-recent-memory-list" class="collaboration-memory-list"></ul>
+                      <h4 id="collaboration-open-matters-heading" data-i18n="collaboration.openMattersHeading">Unfinished matters</h4>
+                      <ul id="collaboration-open-matters-list" class="collaboration-memory-list"></ul>
+                      <label for="collaboration-continuity-note" data-i18n="collaboration.continuityNoteLabel">Correction or context for future sessions</label>
+                      <textarea id="collaboration-continuity-note" rows="3" maxlength="4000"></textarea>
+                      <small id="collaboration-continuity-expiry" class="collaboration-memory-message"></small>
+                      <div class="collaboration-memory-actions">
+                        <button id="collaboration-continuity-save" type="button" class="secondary-button" data-i18n="collaboration.continuityNoteSave">Save continuity correction</button>
+                      </div>
+                    </section>
+                    <section class="collaboration-memory-section" aria-labelledby="collaboration-memory-proposals-heading">
+                      <h4 id="collaboration-memory-proposals-heading" data-i18n="collaboration.memoryProposalsHeading">Durable update proposals</h4>
+                      <div id="collaboration-memory-proposals" aria-live="polite"></div>
+                    </section>
+                  </details>
                 </aside>
               </div>
             </section>

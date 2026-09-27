@@ -9,6 +9,7 @@ pub mod appearance;
 pub mod backup;
 mod clock;
 pub mod collaboration;
+pub mod collaboration_memory;
 pub mod cutover;
 pub mod exercise;
 pub mod habits;
@@ -284,6 +285,52 @@ fn collaboration_reconcile_task_operation(
     operation_id: String,
 ) -> Result<collaboration::CollaborationSessionView, String> {
     application.reconcile_task_operation_for_selected_vault(&session_id, &operation_id)
+}
+
+#[tauri::command]
+fn collaboration_save_long_term_memory(
+    application: State<'_, collaboration::CollaborationApplication>,
+    expected_vault_binding: String,
+    expected_revision: String,
+    content: String,
+) -> Result<collaboration::CollaborationMemoryView, String> {
+    application.save_long_term_memory_for_selected_vault(
+        &expected_vault_binding,
+        &expected_revision,
+        &content,
+    )
+}
+
+#[tauri::command]
+fn collaboration_save_continuity_note(
+    application: State<'_, collaboration::CollaborationApplication>,
+    expected_vault_binding: String,
+    expected_revision: u64,
+    note: String,
+) -> Result<collaboration::CollaborationMemoryView, String> {
+    application.save_continuity_note_for_selected_vault(
+        &expected_vault_binding,
+        expected_revision,
+        &note,
+    )
+}
+
+#[tauri::command]
+fn collaboration_approve_memory_proposal(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    proposal_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.approve_memory_proposal_for_selected_vault(&session_id, &proposal_id)
+}
+
+#[tauri::command]
+fn collaboration_reject_memory_proposal(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    proposal_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.reject_memory_proposal_for_selected_vault(&session_id, &proposal_id)
 }
 
 #[tauri::command]
@@ -686,6 +733,10 @@ pub fn run() {
             collaboration_reject_task_operation,
             collaboration_refresh_task_operation,
             collaboration_reconcile_task_operation,
+            collaboration_save_long_term_memory,
+            collaboration_save_continuity_note,
+            collaboration_approve_memory_proposal,
+            collaboration_reject_memory_proposal,
             appearance_preferences,
             set_accent_color,
             restore_appearance_defaults,
@@ -748,6 +799,10 @@ pub fn run() {
         collaboration_reject_task_operation,
         collaboration_refresh_task_operation,
         collaboration_reconcile_task_operation,
+        collaboration_save_long_term_memory,
+        collaboration_save_continuity_note,
+        collaboration_approve_memory_proposal,
+        collaboration_reject_memory_proposal,
         appearance_preferences,
         set_accent_color,
         restore_appearance_defaults,

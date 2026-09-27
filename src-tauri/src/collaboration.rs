@@ -1,4 +1,8 @@
 use crate::clock::SystemClock;
+use crate::collaboration_memory::{
+    CollaborationMemoryService, CollaborationMemorySources, LongTermMemoryDocumentView,
+    RoutineMemoryReferenceView, SelectedVaultCollaborationMemoryService,
+};
 use crate::habits::{HabitSnapshotState, HabitSnapshotView};
 use crate::platform::FileTodayWorkspacePersistence;
 use crate::tasks::{
@@ -35,6 +39,9 @@ const APP_SERVER_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 const COLLABORATION_SKILL: &str =
     include_str!("../../.agents/skills/personal-dashboard-collaboration/SKILL.md");
 const COLLABORATION_TASK_TOOL: &str = "dashboard_task_operation";
+const COLLABORATION_MEMORY_TOOL: &str = "dashboard_memory_update";
+const CONTINUITY_MEMORY_MAX_AGE_DAYS: i64 = 14;
+const MAX_CONTINUITY_NOTE_CHARACTERS: usize = 4_000;
 
 static IDENTIFIER_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
@@ -114,10 +121,127 @@ pub struct CollaborationSessionView {
     pub task_tool_available: bool,
     pub daily_plan_tool_available: bool,
     pub daily_record_tool_available: bool,
+    pub memory_tool_available: bool,
     pub messages: Vec<CollaborationMessageView>,
     pub task_operations: Vec<CollaborationTaskOperationView>,
+    pub memory_proposals: Vec<CollaborationMemoryProposalView>,
     pub draft: String,
     pub drafts_by_date: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationMemoryProposalView {
+    pub id: String,
+    pub status: String,
+    pub basis: String,
+    pub authorization_quote: String,
+    pub change: String,
+    pub replaces: Option<String>,
+    pub source_revision: String,
+    pub result_message: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationRecentMemoryView {
+    pub id: String,
+    pub session_id: String,
+    pub session_title: String,
+    pub activity_date: String,
+    pub summary: String,
+    pub source_message_id: String,
+    pub expires_on: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationOpenMatterView {
+    pub id: String,
+    pub session_id: String,
+    pub session_title: String,
+    pub activity_date: String,
+    pub state: String,
+    pub summary: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationMemoryView {
+    pub vault_binding: Option<String>,
+    pub long_term: LongTermMemoryDocumentView,
+    pub routine_reference: RoutineMemoryReferenceView,
+    pub recent: Vec<CollaborationRecentMemoryView>,
+    pub open_matters: Vec<CollaborationOpenMatterView>,
+    pub correction_note: String,
+    pub correction_note_expires_on: Option<String>,
+    pub correction_revision: u64,
+    pub generated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredCollaborationMemoryProposal {
+    pub id: String,
+    pub tool_call_key: String,
+    pub operation_id: String,
+    pub runtime_thread_id: String,
+    pub runtime_turn_id: String,
+    pub execution_id: String,
+    pub vault_key: String,
+    pub basis: String,
+    pub authorization_quote: String,
+    pub change: String,
+    pub replaces: Option<String>,
+    pub source_revision: String,
+    pub status: String,
+    pub result_message: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredCollaborationContinuityNote {
+    pub revision: u64,
+    pub text: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum MemoryUpdateBasis {
+    ExplicitUserInstruction,
+    ConfirmedInference,
+}
+
+impl MemoryUpdateBasis {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::ExplicitUserInstruction => "explicitUserInstruction",
+            Self::ConfirmedInference => "confirmedInference",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "operation",
+    deny_unknown_fields
+)]
+enum CollaborationMemoryUpdateCall {
+    ProposeLongTermUpdate {
+        basis: MemoryUpdateBasis,
+        authorization_quote: String,
+        change: String,
+        replaces: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -612,6 +736,44 @@ impl CollaborationDailyDataService for UnavailableCollaborationDailyDataService 
     }
 }
 
+struct UnavailableCollaborationMemoryService;
+
+impl CollaborationMemoryService for UnavailableCollaborationMemoryService {
+    fn is_available(&self) -> bool {
+        false
+    }
+
+    fn read(
+        &self,
+        _expected_vault_key: Option<&str>,
+    ) -> Result<CollaborationMemorySources, String> {
+        Ok(CollaborationMemorySources {
+            long_term: LongTermMemoryDocumentView {
+                state: "unconfigured".into(),
+                source_path: "everyday/wiki/Life Operating Principles.md".into(),
+                content: String::new(),
+                revision: None,
+                message: "Long-term background is unavailable in this collaboration runtime.".into(),
+            },
+            routine_reference: RoutineMemoryReferenceView {
+                state: "unconfigured".into(),
+                source_path: "everyday/.agents/skills/life-companion/SKILL.md".into(),
+                content: String::new(),
+                message: "The existing daily workflow reference is unavailable in this collaboration runtime.".into(),
+            },
+        })
+    }
+
+    fn save_long_term(
+        &self,
+        _expected_vault_key: &str,
+        _expected_revision: &str,
+        _content: &str,
+    ) -> Result<LongTermMemoryDocumentView, String> {
+        Err("Long-term background updates are unavailable in this collaboration runtime.".into())
+    }
+}
+
 pub struct TodayApplicationCollaborationDailyDataAdapter<P, E, C> {
     application: TodayApplication<P, E, C>,
 }
@@ -766,6 +928,7 @@ pub struct RuntimeTurnRequest {
     pub reasoning_effort: Option<String>,
     pub user_text: String,
     pub context: CollaborationContextView,
+    pub memory: CollaborationMemoryView,
     pub working_directory: PathBuf,
 }
 
@@ -917,6 +1080,7 @@ pub struct CollaborationWorkspaceView {
     pub vault_name: Option<String>,
     pub selected_model: Option<String>,
     pub context: CollaborationContextView,
+    pub memory: CollaborationMemoryView,
     pub sessions: Vec<CollaborationSessionView>,
     pub active_run: Option<CollaborationRunOwnerView>,
     pub recovery_required: bool,
@@ -990,9 +1154,12 @@ pub struct StoredCollaborationSession {
     pub daily_plan_tool_registered: bool,
     #[serde(default)]
     pub daily_record_tool_registered: bool,
+    pub memory_tool_registered: bool,
     pub messages: Vec<StoredCollaborationMessage>,
     #[serde(default)]
     pub task_operations: Vec<StoredCollaborationTaskOperation>,
+    #[serde(default)]
+    pub memory_proposals: Vec<StoredCollaborationMemoryProposal>,
     #[serde(default)]
     pub draft: String,
     #[serde(default)]
@@ -1007,6 +1174,8 @@ pub struct CollaborationState {
     pub sessions: Vec<StoredCollaborationSession>,
     #[serde(default = "default_next_queue_order")]
     pub next_queue_order: u64,
+    #[serde(default)]
+    pub continuity_notes: HashMap<String, StoredCollaborationContinuityNote>,
 }
 
 impl Default for CollaborationState {
@@ -1016,6 +1185,7 @@ impl Default for CollaborationState {
             settings: CollaborationSettings::default(),
             sessions: Vec::new(),
             next_queue_order: 1,
+            continuity_notes: HashMap::new(),
         }
     }
 }
@@ -1127,6 +1297,7 @@ pub struct CollaborationApplication {
     store: Arc<dyn CollaborationStore>,
     runtime: Arc<Mutex<Box<dyn AppServerTransport>>>,
     context_source: Arc<dyn CollaborationContextSource>,
+    memory_service: Arc<dyn CollaborationMemoryService>,
     task_service: Arc<dyn CollaborationTaskService>,
     daily_data_service: Arc<dyn CollaborationDailyDataService>,
     clock: Arc<dyn CollaborationClock>,
@@ -1163,6 +1334,7 @@ impl CollaborationApplication {
             store,
             runtime: Arc::new(Mutex::new(runtime)),
             context_source,
+            memory_service: Arc::new(UnavailableCollaborationMemoryService),
             task_service: Arc::new(UnavailableCollaborationTaskService),
             daily_data_service: Arc::new(UnavailableCollaborationDailyDataService),
             clock,
@@ -1180,6 +1352,14 @@ impl CollaborationApplication {
 
     pub fn with_task_service(mut self, task_service: Arc<dyn CollaborationTaskService>) -> Self {
         self.task_service = task_service;
+        self
+    }
+
+    pub fn with_memory_service(
+        mut self,
+        memory_service: Arc<dyn CollaborationMemoryService>,
+    ) -> Self {
+        self.memory_service = memory_service;
         self
     }
 
@@ -1213,12 +1393,15 @@ impl CollaborationApplication {
                     .join("collaboration-v1.json"),
             )),
             Box::new(CodexAppServerRuntime::new(app_data_dir.clone())),
-            Arc::new(DashboardContextReader::new(workspace_file)),
+            Arc::new(DashboardContextReader::new(workspace_file.clone())),
             Arc::new(SystemClock),
             app_data_dir.join("collaboration-runtime"),
             COLLABORATION_SKILL.to_owned(),
         )
         .with_task_service(task_service)
+        .with_memory_service(Arc::new(SelectedVaultCollaborationMemoryService::new(
+            workspace_file.clone(),
+        )))
         .with_daily_data_service(daily_data_service)
     }
 
@@ -1333,36 +1516,118 @@ impl CollaborationApplication {
         let context = self
             .context_source
             .read_context(vault_key.as_deref(), date)?;
-        let (selected_model, sessions, active_run, recovery_required) =
-            self.read_state(|state| {
-                let visible_sessions = state
-                    .sessions
-                    .iter()
-                    .filter(|session| {
-                        session.vault_key == vault_key
-                            && session
-                                .activity_dates
-                                .iter()
-                                .any(|activity| activity == date)
-                    })
-                    .map(session_view)
-                    .collect::<Vec<_>>();
-                (
-                    state.settings.selected_model.clone(),
-                    visible_sessions,
-                    active_run_for_vault(state, vault_key.as_deref()),
-                    recovery_required_for_vault(state, vault_key.as_deref()),
-                )
-            })?;
+        let state = self.read_state(Clone::clone)?;
+        let sessions = state
+            .sessions
+            .iter()
+            .filter(|session| {
+                session.vault_key == vault_key
+                    && session
+                        .activity_dates
+                        .iter()
+                        .any(|activity| activity == date)
+            })
+            .map(session_view)
+            .collect::<Vec<_>>();
+        let memory = collaboration_memory_view(
+            &state,
+            vault_key.as_deref(),
+            self.memory_service.read(vault_key.as_deref()),
+            self.clock.as_ref(),
+        );
         Ok(CollaborationWorkspaceView {
             date: date.to_owned(),
             vault_name: context.vault_name.clone(),
-            selected_model,
+            selected_model: state.settings.selected_model.clone(),
             context,
+            memory,
             sessions,
-            active_run,
-            recovery_required,
+            active_run: active_run_for_vault(&state, vault_key.as_deref()),
+            recovery_required: recovery_required_for_vault(&state, vault_key.as_deref()),
         })
+    }
+
+    pub fn save_long_term_memory_for_selected_vault(
+        &self,
+        expected_vault_binding: &str,
+        expected_revision: &str,
+        content: &str,
+    ) -> Result<CollaborationMemoryView, String> {
+        if content.trim().is_empty() {
+            return Err("Long-term background cannot be empty. Keep the existing source text or cancel the edit.".into());
+        }
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before updating long-term background.".to_string()
+        })?;
+        if vault_key != expected_vault_binding {
+            return Err("The selected Vault changed while long-term background was being edited. Reload the memory source for the current Vault before saving.".into());
+        }
+        self.memory_service
+            .save_long_term(&vault_key, expected_revision, content)?;
+        let current_key = self.context_source.current_vault_key()?;
+        let mut memory = self.memory_view_for_vault(Some(&vault_key))?;
+        if current_key.as_deref() != Some(&vault_key) {
+            memory.long_term.message = "Saved in the original Vault. The selected Vault changed; reopen the original session to review the update.".into();
+        } else {
+            memory.long_term.message =
+                "Long-term background updated in the existing Life Operating Principles document."
+                    .into();
+        }
+        Ok(memory)
+    }
+
+    pub fn save_continuity_note_for_selected_vault(
+        &self,
+        expected_vault_binding: &str,
+        expected_revision: u64,
+        note: &str,
+    ) -> Result<CollaborationMemoryView, String> {
+        if note.chars().count() > MAX_CONTINUITY_NOTE_CHARACTERS {
+            return Err(format!(
+                "Continuity corrections are limited to {MAX_CONTINUITY_NOTE_CHARACTERS} characters."
+            ));
+        }
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before correcting recent continuity.".to_string()
+        })?;
+        if vault_key != expected_vault_binding {
+            return Err("The selected Vault changed while recent continuity was being edited. Reload memory for the current Vault before saving.".into());
+        }
+        let now = self.clock.current_timestamp();
+        self.update_state(|state| {
+            if self.context_source.current_vault_key()?.as_deref() != Some(&vault_key) {
+                return Err("The selected Vault changed before the continuity correction was saved.".into());
+            }
+            let current = state.continuity_notes.get(&vault_key);
+            let current_revision = current.map_or(0, |entry| entry.revision);
+            if current_revision != expected_revision {
+                return Err("Recent continuity changed in another Dashboard view. Refresh memory and review the latest note before saving.".into());
+            }
+            state.continuity_notes.insert(
+                vault_key.clone(),
+                StoredCollaborationContinuityNote {
+                    revision: current_revision.saturating_add(1),
+                    text: note.trim().to_owned(),
+                    updated_at: now.clone(),
+                },
+            );
+            Ok(())
+        })?;
+        self.memory_view_for_vault(Some(&vault_key))
+    }
+
+    fn memory_view_for_vault(
+        &self,
+        vault_key: Option<&str>,
+    ) -> Result<CollaborationMemoryView, String> {
+        let state = self.read_state(Clone::clone)?;
+        let sources = self.memory_service.read(vault_key);
+        Ok(collaboration_memory_view(
+            &state,
+            vault_key,
+            sources,
+            self.clock.as_ref(),
+        ))
     }
 
     pub fn create_session(&self, date: &str) -> Result<CollaborationSessionView, String> {
@@ -1386,8 +1651,10 @@ impl CollaborationApplication {
             task_tool_registered: false,
             daily_plan_tool_registered: false,
             daily_record_tool_registered: false,
+            memory_tool_registered: false,
             messages: Vec::new(),
             task_operations: Vec::new(),
+            memory_proposals: Vec::new(),
             draft: String::new(),
             drafts_by_date: HashMap::new(),
         };
@@ -1445,6 +1712,157 @@ impl CollaborationApplication {
             "Choose a Vault in Settings before opening collaboration history.".to_string()
         })?;
         self.session(&vault_key, session_id)
+    }
+
+    pub fn approve_memory_proposal_for_selected_vault(
+        &self,
+        session_id: &str,
+        proposal_id: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before approving a long-term memory update.".to_string()
+        })?;
+        let proposal = self.read_state(|state| {
+            state
+                .sessions
+                .iter()
+                .find(|session| {
+                    session.id == session_id && session.vault_key.as_deref() == Some(&vault_key)
+                })
+                .and_then(|session| {
+                    session
+                        .memory_proposals
+                        .iter()
+                        .find(|proposal| proposal.id == proposal_id)
+                        .cloned()
+                })
+                .ok_or_else(|| {
+                    "This long-term memory update is not available in the selected Vault."
+                        .to_string()
+                })
+        })??;
+        if proposal.status == "applied" {
+            return self.session(&vault_key, session_id);
+        }
+        if !matches!(proposal.status.as_str(), "awaitingApproval" | "failed") {
+            return Err(
+                "This memory update is no longer awaiting approval. Refresh the conversation."
+                    .into(),
+            );
+        }
+        if proposal.vault_key != vault_key
+            || self.context_source.current_vault_key()?.as_deref() != Some(&proposal.vault_key)
+        {
+            return Err("The selected Vault changed. Return to the original session before approving this memory update.".into());
+        }
+        let current_date = self.clock.current_date();
+        let update_result = (|| {
+            let sources = self.memory_service.read(Some(&vault_key))?;
+            if sources.long_term.revision.as_deref() != Some(&proposal.source_revision) {
+                return Err("Long-term background changed after this proposal was prepared. No content was overwritten; refresh memory and ask Codex to prepare a new proposal.".to_owned());
+            }
+            let proposal_date = proposal
+                .created_at
+                .get(..10)
+                .unwrap_or(current_date.as_str());
+            let approved_content = build_long_term_memory_update(
+                &sources.long_term.content,
+                &proposal.change,
+                proposal.replaces.as_deref(),
+                proposal_date,
+            )?;
+            self.memory_service.save_long_term(
+                &vault_key,
+                &proposal.source_revision,
+                &approved_content,
+            )
+        })();
+        match update_result {
+            Ok(_) => {
+                let still_selected =
+                    self.context_source.current_vault_key()?.as_deref() == Some(&vault_key);
+                let result_message = if still_selected {
+                    "Saved the approved durable update in the existing Life Operating Principles document.".to_owned()
+                } else {
+                    "Saved in the original Vault. The selected Vault has changed; reopen the original session to review it.".to_owned()
+                };
+                let now = self.clock.current_timestamp();
+                self.update_state(|state| {
+                    let session = matching_session_mut(state, &vault_key, session_id)?;
+                    let stored = session
+                        .memory_proposals
+                        .iter_mut()
+                        .find(|stored| stored.id == proposal_id)
+                        .ok_or_else(|| "This memory update is no longer available.".to_string())?;
+                    if stored.status != "applied" {
+                        stored.status = "applied".into();
+                        stored.result_message = Some(result_message.clone());
+                        stored.updated_at = now.clone();
+                    }
+                    session.last_activity_at = now.clone();
+                    Ok(session_view(session))
+                })
+                .map_err(|error| {
+                    format!("The long-term update was saved, but its result could not be saved to collaboration history: {error}. Refresh the existing source before retrying.")
+                })
+            }
+            Err(error) => {
+                let latest = self.memory_service.read(Some(&vault_key)).ok();
+                let is_conflict = latest.as_ref().is_some_and(|sources| {
+                    sources.long_term.revision.as_deref() != Some(&proposal.source_revision)
+                });
+                let status = if is_conflict { "conflict" } else { "failed" };
+                let message = if is_conflict {
+                    "Long-term background changed after this proposal was prepared. No content was overwritten; refresh memory and ask Codex to prepare a new proposal.".to_owned()
+                } else {
+                    format!("Long-term background was not saved: {error}")
+                };
+                let now = self.clock.current_timestamp();
+                self.update_state(|state| {
+                    let session = matching_session_mut(state, &vault_key, session_id)?;
+                    let stored = session
+                        .memory_proposals
+                        .iter_mut()
+                        .find(|stored| stored.id == proposal_id)
+                        .ok_or_else(|| "This memory update is no longer available.".to_string())?;
+                    stored.status = status.into();
+                    stored.result_message = Some(message.clone());
+                    stored.updated_at = now.clone();
+                    Ok(session_view(session))
+                })
+            }
+        }
+    }
+
+    pub fn reject_memory_proposal_for_selected_vault(
+        &self,
+        session_id: &str,
+        proposal_id: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before dismissing a long-term memory update.".to_string()
+        })?;
+        let now = self.clock.current_timestamp();
+        self.update_state(|state| {
+            let session = matching_session_mut(state, &vault_key, session_id)?;
+            let proposal = session
+                .memory_proposals
+                .iter_mut()
+                .find(|proposal| proposal.id == proposal_id)
+                .ok_or_else(|| {
+                    "This long-term memory update is not available in the selected Vault."
+                        .to_string()
+                })?;
+            if proposal.status != "awaitingApproval" {
+                return Err("This memory update is no longer awaiting approval.".into());
+            }
+            proposal.status = "rejected".into();
+            proposal.result_message =
+                Some("Dismissed. The existing long-term background was not changed.".into());
+            proposal.updated_at = now.clone();
+            session.last_activity_at = now.clone();
+            Ok(session_view(session))
+        })
     }
 
     pub fn approve_task_operation_for_selected_vault(
@@ -2871,8 +3289,41 @@ impl CollaborationApplication {
         target_date: &str,
         daily_plan_tool_registered: bool,
         daily_record_tool_registered: bool,
+        memory_tool_registered: bool,
         call: RuntimeDynamicToolCall,
     ) -> RuntimeDynamicToolResult {
+        if call.thread_id != expected_thread_id {
+            return RuntimeDynamicToolResult {
+                text: "This tool call does not belong to the active Dashboard conversation. No data was changed.".into(),
+                success: false,
+            };
+        }
+        if call.tool == COLLABORATION_MEMORY_TOOL {
+            if !memory_tool_registered {
+                return RuntimeDynamicToolResult {
+                    text: "This saved conversation does not have the long-term memory update tool. Start a new Dashboard chat after refreshing the selected Vault's memory sources.".into(),
+                    success: false,
+                };
+            }
+            return match self.propose_memory_update(
+                vault_key,
+                session_id,
+                execution_id,
+                expected_thread_id,
+                &call.turn_id,
+                &call.call_id,
+                &call.arguments,
+            ) {
+                Ok(proposal) => RuntimeDynamicToolResult {
+                    text: format!("Long-term memory update proposal {} is saved for user review. The existing operating-principles document has not changed. The user must approve the exact update in Personal Dashboard.", proposal.id),
+                    success: true,
+                },
+                Err(error) => RuntimeDynamicToolResult {
+                    text: format!("{error} No long-term memory was changed."),
+                    success: false,
+                },
+            };
+        }
         if call.tool != COLLABORATION_TASK_TOOL {
             return RuntimeDynamicToolResult {
                 text: format!(
@@ -2948,6 +3399,141 @@ impl CollaborationApplication {
                 success: false,
             },
         }
+    }
+
+    fn propose_memory_update(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        execution_id: &str,
+        runtime_thread_id: &str,
+        runtime_turn_id: &str,
+        call_id: &str,
+        arguments: &Value,
+    ) -> Result<CollaborationMemoryProposalView, String> {
+        if call_id.is_empty() || runtime_turn_id.is_empty() {
+            return Err("The App Server did not provide a stable memory-update identity.".into());
+        }
+        let CollaborationMemoryUpdateCall::ProposeLongTermUpdate {
+            basis,
+            authorization_quote,
+            change,
+            replaces,
+        } = serde_json::from_value(arguments.clone()).map_err(|error| {
+            format!("The proposed memory update was incomplete or invalid: {error}")
+        })?;
+        let change = change.trim().to_owned();
+        let authorization_quote = authorization_quote.trim().to_owned();
+        if change.is_empty()
+            || change.chars().count() > 2_000
+            || change.contains('\n')
+            || change.contains('\r')
+        {
+            return Err(
+                "A long-term update must be one clear line of no more than 2,000 characters."
+                    .into(),
+            );
+        }
+        if authorization_quote.is_empty() || authorization_quote.chars().count() > 2_000 {
+            return Err(
+                "A long-term update must quote the user's direct instruction or confirmation."
+                    .into(),
+            );
+        }
+        if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+            return Err("The selected Vault changed. Refresh the workspace before preparing a memory update.".into());
+        }
+        let sources = self.memory_service.read(Some(vault_key))?;
+        if sources.long_term.state != "ready" {
+            return Err(format!(
+                "The existing Life Operating Principles document is unavailable: {}",
+                sources.long_term.message
+            ));
+        }
+        let source_revision = sources.long_term.revision.clone().ok_or_else(|| {
+            "The existing long-term background has no revision; no update was proposed.".to_string()
+        })?;
+        let _ = build_long_term_memory_update(
+            &sources.long_term.content,
+            &change,
+            replaces.as_deref(),
+            &self.clock.current_date(),
+        )?;
+        let operation_id = stable_memory_operation_id(runtime_thread_id, runtime_turn_id, call_id);
+        let tool_call_key = format!("{runtime_thread_id}:{runtime_turn_id}:{call_id}");
+        let now = self.clock.current_timestamp();
+        self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            if session.runtime_thread_id.as_deref() != Some(runtime_thread_id)
+                || session.run_id.as_deref() != Some(execution_id)
+                || !matches!(session.run_state.as_str(), "thinking" | "reading")
+            {
+                return Err("This memory update is no longer attached to the active Dashboard request.".into());
+            }
+            if let Some(existing) = session
+                .memory_proposals
+                .iter()
+                .find(|proposal| proposal.tool_call_key == tool_call_key)
+            {
+                if existing.basis != basis.label()
+                    || existing.authorization_quote != authorization_quote
+                    || existing.change != change
+                    || existing.replaces != replaces
+                    || existing.source_revision != source_revision
+                {
+                    return Err("This App Server call identity already belongs to a different memory update.".into());
+                }
+                return Ok(memory_proposal_view(existing));
+            }
+            let user_message_index = session
+                .messages
+                .iter()
+                .position(|message| {
+                    message.role == "user"
+                        && message.execution_id.as_deref() == Some(execution_id)
+                        && message.delivery_state == "in-progress"
+                })
+                .ok_or_else(|| "This memory update has no current saved user request.".to_string())?;
+            let user_message = &session.messages[user_message_index];
+            let prior_assistant_message = session.messages[..user_message_index]
+                .iter()
+                .rev()
+                .find(|message| message.role == "assistant")
+                .map(|message| message.text.as_str());
+            validate_memory_update_authority(
+                &basis,
+                &authorization_quote,
+                &change,
+                &user_message.text,
+                prior_assistant_message,
+            )?;
+            if self.context_source.current_vault_key().ok().flatten().as_deref()
+                != Some(vault_key)
+            {
+                return Err("The selected Vault changed before the memory proposal could be saved.".into());
+            }
+            let proposal = StoredCollaborationMemoryProposal {
+                id: operation_id.clone(),
+                tool_call_key: tool_call_key.clone(),
+                operation_id: operation_id.clone(),
+                runtime_thread_id: runtime_thread_id.to_owned(),
+                runtime_turn_id: runtime_turn_id.to_owned(),
+                execution_id: execution_id.to_owned(),
+                vault_key: vault_key.to_owned(),
+                basis: basis.label().to_owned(),
+                authorization_quote: authorization_quote.clone(),
+                change: change.clone(),
+                replaces: replaces.clone(),
+                source_revision: source_revision.clone(),
+                status: "awaitingApproval".into(),
+                result_message: None,
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            };
+            session.memory_proposals.push(proposal.clone());
+            session.last_activity_at = now.clone();
+            Ok(memory_proposal_view(&proposal))
+        })
     }
 
     fn propose_task_operation(
@@ -4218,6 +4804,12 @@ impl CollaborationApplication {
                 return;
             }
         };
+        let memory = collaboration_memory_view(
+            &state,
+            Some(vault_key),
+            self.memory_service.read(Some(vault_key)),
+            self.clock.as_ref(),
+        );
         let Some(session) = state
             .sessions
             .iter()
@@ -4268,18 +4860,23 @@ impl CollaborationApplication {
 
         let task_operations_available = self.task_service.is_available();
         let daily_plan_operations_available = self.daily_data_service.is_available();
-        let dynamic_tools = if task_operations_available || daily_plan_operations_available {
-            vec![collaboration_task_tool_spec(
+        let memory_operations_available = self.memory_service.is_available()
+            && memory.long_term.state == "ready"
+            && memory.long_term.revision.is_some();
+        let mut dynamic_tools = Vec::new();
+        if task_operations_available || daily_plan_operations_available {
+            dynamic_tools.push(collaboration_task_tool_spec(
                 task_operations_available,
                 daily_plan_operations_available,
-            )]
-        } else {
-            Vec::new()
-        };
+            ));
+        }
+        if memory_operations_available {
+            dynamic_tools.push(collaboration_memory_tool_spec());
+        }
         let task_tool_registered = if session.runtime_thread_id.is_some() {
             session.task_tool_registered
         } else {
-            !dynamic_tools.is_empty()
+            task_operations_available || daily_plan_operations_available
         };
         let daily_plan_tool_registered = if session.runtime_thread_id.is_some() {
             session.daily_plan_tool_registered
@@ -4290,6 +4887,11 @@ impl CollaborationApplication {
             session.daily_record_tool_registered
         } else {
             daily_plan_operations_available
+        };
+        let memory_tool_registered = if session.runtime_thread_id.is_some() {
+            session.memory_tool_registered
+        } else {
+            memory_operations_available
         };
         let thread_id = match session.runtime_thread_id.as_deref() {
             Some(thread_id) => runtime
@@ -4317,6 +4919,7 @@ impl CollaborationApplication {
             task_tool_registered,
             daily_plan_tool_registered,
             daily_record_tool_registered,
+            memory_tool_registered,
         ) {
             drop(runtime);
             self.finish_error(vault_key, session_id, run_id, error);
@@ -4359,11 +4962,13 @@ impl CollaborationApplication {
             reasoning_effort: selected_reasoning_effort,
             user_text: user_text.to_owned(),
             context,
+            memory,
             working_directory: self.working_directory.clone(),
         };
-        let tool_handler = ((self.task_service.is_available()
+        let tool_handler = (((self.task_service.is_available()
             || self.daily_data_service.is_available())
             && task_tool_registered)
+            || memory_tool_registered)
             .then(|| {
                 let application = self.clone();
                 let expected_thread_id = thread_id.clone();
@@ -4380,6 +4985,7 @@ impl CollaborationApplication {
                         &expected_target_date,
                         daily_plan_tool_registered,
                         daily_record_tool_registered,
+                        memory_tool_registered,
                         call,
                     )
                 }) as RuntimeDynamicToolHandler
@@ -4466,6 +5072,7 @@ impl CollaborationApplication {
         task_tool_registered: bool,
         daily_plan_tool_registered: bool,
         daily_record_tool_registered: bool,
+        memory_tool_registered: bool,
     ) -> Result<(), String> {
         self.update_state(|state| {
             let session = matching_session_mut(state, vault_key, session_id)?;
@@ -4476,6 +5083,7 @@ impl CollaborationApplication {
             session.task_tool_registered = task_tool_registered;
             session.daily_plan_tool_registered = daily_plan_tool_registered;
             session.daily_record_tool_registered = daily_record_tool_registered;
+            session.memory_tool_registered = memory_tool_registered;
             if let Some(message) = session
                 .messages
                 .iter_mut()
@@ -4831,6 +5439,7 @@ fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionVie
         task_tool_available: session.task_tool_registered,
         daily_plan_tool_available: session.daily_plan_tool_registered,
         daily_record_tool_available: session.daily_record_tool_registered,
+        memory_tool_available: session.memory_tool_registered,
         messages: session
             .messages
             .iter()
@@ -4852,12 +5461,355 @@ fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionVie
             .iter()
             .map(task_operation_view)
             .collect(),
+        memory_proposals: session
+            .memory_proposals
+            .iter()
+            .map(memory_proposal_view)
+            .collect(),
         draft: session
             .drafts_by_date
             .get(&session.target_date)
             .cloned()
             .unwrap_or_else(|| session.draft.clone()),
         drafts_by_date: session.drafts_by_date.clone(),
+    }
+}
+
+fn collaboration_memory_view(
+    state: &CollaborationState,
+    vault_key: Option<&str>,
+    sources: Result<CollaborationMemorySources, String>,
+    clock: &dyn CollaborationClock,
+) -> CollaborationMemoryView {
+    let sources = sources.unwrap_or_else(|error| CollaborationMemorySources {
+        long_term: LongTermMemoryDocumentView {
+            state: "error".into(),
+            source_path: "everyday/wiki/Life Operating Principles.md".into(),
+            content: String::new(),
+            revision: None,
+            message: format!("Could not read the existing long-term background: {error}"),
+        },
+        routine_reference: RoutineMemoryReferenceView {
+            state: "error".into(),
+            source_path: "everyday/.agents/skills/life-companion/SKILL.md".into(),
+            content: String::new(),
+            message: format!("Could not read the existing daily workflow reference: {error}"),
+        },
+    });
+    let today = clock.current_date();
+    let sessions = state
+        .sessions
+        .iter()
+        .filter(|session| session.vault_key.as_deref() == vault_key)
+        .collect::<Vec<_>>();
+    let mut recent = sessions
+        .iter()
+        .filter_map(|session| {
+            let activity_date = session.last_activity_at.get(..10)?;
+            if !is_current_continuity_date(activity_date, &today) {
+                return None;
+            }
+            let message = session
+                .messages
+                .iter()
+                .rev()
+                .find(|message| message.role == "user")?;
+            Some(CollaborationRecentMemoryView {
+                id: format!("recent-{}-{}", session.id, message.id),
+                session_id: session.id.clone(),
+                session_title: session.title.clone(),
+                activity_date: activity_date.to_owned(),
+                summary: continuity_excerpt(&message.text, 240),
+                source_message_id: message.id.clone(),
+                expires_on: shift_calendar_date(activity_date, CONTINUITY_MEMORY_MAX_AGE_DAYS)
+                    .unwrap_or_else(|| activity_date.to_owned()),
+                updated_at: session.last_activity_at.clone(),
+            })
+        })
+        .collect::<Vec<_>>();
+    recent.sort_by(|left, right| {
+        right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then_with(|| right.activity_date.cmp(&left.activity_date))
+            .then_with(|| right.session_id.cmp(&left.session_id))
+    });
+    recent.truncate(8);
+
+    let mut open_matters = Vec::new();
+    for session in sessions {
+        let activity_date = session
+            .last_activity_at
+            .get(..10)
+            .unwrap_or(&session.created_date)
+            .to_owned();
+        if matches!(
+            session.run_state.as_str(),
+            "queued"
+                | "reading"
+                | "thinking"
+                | "stopping"
+                | "stop-unconfirmed"
+                | "interrupted"
+                | "error"
+        ) {
+            if is_current_continuity_date(&activity_date, &today) {
+                open_matters.push(CollaborationOpenMatterView {
+                    id: format!("run-{}", session.id),
+                    session_id: session.id.clone(),
+                    session_title: session.title.clone(),
+                    activity_date: activity_date.clone(),
+                    state: session.run_state.clone(),
+                    summary: continuity_excerpt(&session.progress, 240),
+                    updated_at: session.last_activity_at.clone(),
+                });
+            }
+        }
+        for proposal in &session.task_operations {
+            if matches!(
+                proposal.status.as_str(),
+                "awaitingApproval" | "failed" | "conflict"
+            ) {
+                let proposal_date = proposal
+                    .updated_at
+                    .get(..10)
+                    .unwrap_or(&activity_date)
+                    .to_owned();
+                if !is_current_continuity_date(&proposal_date, &today) {
+                    continue;
+                }
+                open_matters.push(CollaborationOpenMatterView {
+                    id: format!("task-{}", proposal.id),
+                    session_id: session.id.clone(),
+                    session_title: session.title.clone(),
+                    activity_date: proposal_date,
+                    state: proposal.status.clone(),
+                    summary: continuity_excerpt(
+                        &proposal.result_message.clone().unwrap_or_else(|| {
+                            "A Task or Daily Record proposal is awaiting review.".into()
+                        }),
+                        240,
+                    ),
+                    updated_at: proposal.updated_at.clone(),
+                });
+            }
+        }
+        for proposal in &session.memory_proposals {
+            if matches!(
+                proposal.status.as_str(),
+                "awaitingApproval" | "failed" | "conflict"
+            ) {
+                let proposal_date = proposal
+                    .updated_at
+                    .get(..10)
+                    .unwrap_or(&activity_date)
+                    .to_owned();
+                if !is_current_continuity_date(&proposal_date, &today) {
+                    continue;
+                }
+                open_matters.push(CollaborationOpenMatterView {
+                    id: format!("memory-{}", proposal.id),
+                    session_id: session.id.clone(),
+                    session_title: session.title.clone(),
+                    activity_date: proposal_date,
+                    state: proposal.status.clone(),
+                    summary: format!(
+                        "Long-term memory update: {}",
+                        continuity_excerpt(&proposal.change, 180)
+                    ),
+                    updated_at: proposal.updated_at.clone(),
+                });
+            }
+        }
+        if let Some(last) = session
+            .messages
+            .iter()
+            .rev()
+            .find(|message| message.role == "assistant")
+        {
+            let trimmed = last.text.trim_end();
+            if trimmed.ends_with('?') || trimmed.ends_with('？') {
+                let follow_up_date = last
+                    .created_at
+                    .get(..10)
+                    .unwrap_or(&activity_date)
+                    .to_owned();
+                if is_current_continuity_date(&follow_up_date, &today) {
+                    open_matters.push(CollaborationOpenMatterView {
+                        id: format!("follow-up-{}-{}", session.id, last.id),
+                        session_id: session.id.clone(),
+                        session_title: session.title.clone(),
+                        activity_date: follow_up_date,
+                        state: "possibleFollowUp".into(),
+                        summary: continuity_excerpt(trimmed, 240),
+                        updated_at: last.created_at.clone(),
+                    });
+                }
+            }
+        }
+    }
+    open_matters.sort_by(|left, right| {
+        right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then_with(|| right.activity_date.cmp(&left.activity_date))
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    open_matters.truncate(20);
+    let correction = vault_key
+        .and_then(|key| state.continuity_notes.get(key))
+        .cloned()
+        .unwrap_or(StoredCollaborationContinuityNote {
+            revision: 0,
+            text: String::new(),
+            updated_at: String::new(),
+        });
+    let correction_date = correction.updated_at.get(..10);
+    let correction_is_current =
+        correction_date.is_some_and(|date| is_current_continuity_date(date, &today));
+    let correction_note_expires_on = correction_date
+        .filter(|_| correction_is_current)
+        .and_then(|date| shift_calendar_date(date, CONTINUITY_MEMORY_MAX_AGE_DAYS));
+    CollaborationMemoryView {
+        vault_binding: vault_key.map(str::to_owned),
+        long_term: sources.long_term,
+        routine_reference: sources.routine_reference,
+        recent,
+        open_matters,
+        correction_note: if correction_is_current {
+            correction.text
+        } else {
+            String::new()
+        },
+        correction_note_expires_on,
+        correction_revision: correction.revision,
+        generated_at: clock.current_timestamp(),
+    }
+}
+
+fn is_current_continuity_date(date: &str, today: &str) -> bool {
+    calendar_day_difference(date, today)
+        .is_some_and(|age| (0..CONTINUITY_MEMORY_MAX_AGE_DAYS).contains(&age))
+}
+
+fn continuity_excerpt(text: &str, max_characters: usize) -> String {
+    let normalized = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= max_characters {
+        return normalized;
+    }
+    let mut excerpt = normalized
+        .chars()
+        .take(max_characters.saturating_sub(1))
+        .collect::<String>();
+    excerpt.push('…');
+    excerpt
+}
+
+fn calendar_day_difference(older: &str, newer: &str) -> Option<i64> {
+    let older = calendar_day_ordinal(older)?;
+    let newer = calendar_day_ordinal(newer)?;
+    Some(newer - older)
+}
+
+fn shift_calendar_date(date: &str, days: i64) -> Option<String> {
+    let mut ordinal = calendar_day_ordinal(date)? + days;
+    if ordinal < 0 {
+        return None;
+    }
+    let mut year = (ordinal / 365).max(1);
+    while calendar_year_start(year)? > ordinal {
+        year -= 1;
+    }
+    while calendar_year_start(year + 1)? <= ordinal {
+        year += 1;
+    }
+    ordinal -= calendar_year_start(year)?;
+    let leap = is_leap_year(year);
+    let month_lengths = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    let mut month = 1;
+    for length in month_lengths {
+        if ordinal < length {
+            return Some(format!("{year:04}-{month:02}-{:02}", ordinal + 1));
+        }
+        ordinal -= length;
+        month += 1;
+    }
+    None
+}
+
+fn calendar_day_ordinal(date: &str) -> Option<i64> {
+    let mut parts = date.split('-');
+    let year = parts.next()?.parse::<i64>().ok()?;
+    let month = parts.next()?.parse::<usize>().ok()?;
+    let day = parts.next()?.parse::<i64>().ok()?;
+    if parts.next().is_some() || !(1..=12).contains(&month) || year < 1 {
+        return None;
+    }
+    let leap = is_leap_year(year);
+    let month_lengths = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    if day < 1 || day > month_lengths[month - 1] {
+        return None;
+    }
+    let days_before_year = (year - 1) * 365 + (year - 1) / 4 - (year - 1) / 100 + (year - 1) / 400;
+    let days_before_month = month_lengths[..month - 1]
+        .iter()
+        .map(|length| *length as i64)
+        .sum::<i64>();
+    Some(days_before_year + days_before_month + day - 1)
+}
+
+fn calendar_year_start(year: i64) -> Option<i64> {
+    if year < 1 {
+        return None;
+    }
+    let previous = year - 1;
+    Some(previous * 365 + previous / 4 - previous / 100 + previous / 400)
+}
+
+fn is_leap_year(year: i64) -> bool {
+    year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+}
+
+fn memory_proposal_view(
+    proposal: &StoredCollaborationMemoryProposal,
+) -> CollaborationMemoryProposalView {
+    CollaborationMemoryProposalView {
+        id: proposal.id.clone(),
+        status: proposal.status.clone(),
+        basis: proposal.basis.clone(),
+        authorization_quote: proposal.authorization_quote.clone(),
+        change: proposal.change.clone(),
+        replaces: proposal.replaces.clone(),
+        source_revision: proposal.source_revision.clone(),
+        result_message: proposal.result_message.clone(),
+        created_at: proposal.created_at.clone(),
+        updated_at: proposal.updated_at.clone(),
     }
 }
 
@@ -5784,12 +6736,264 @@ fn collaboration_task_tool_spec(
     })
 }
 
+fn collaboration_memory_tool_spec() -> Value {
+    json!({
+        "name": COLLABORATION_MEMORY_TOOL,
+        "description": "Propose one exact update to the existing Life Operating Principles document. Use only when the user directly asked for a durable change or explicitly confirmed an inference after you asked. Quote the exact current user instruction or confirmation in authorizationQuote. The tool only creates a review card; the user must approve before the existing document is written. Never store one-day states as durable background.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "operation": {"type": "string", "const": "proposeLongTermUpdate"},
+                "basis": {"type": "string", "enum": ["explicitUserInstruction", "confirmedInference"]},
+                "authorizationQuote": {"type": "string"},
+                "change": {"type": "string"},
+                "replaces": {"type": ["string", "null"]}
+            },
+            "required": ["operation", "basis", "authorizationQuote", "change", "replaces"],
+            "additionalProperties": false
+        }
+    })
+}
+
 fn stable_tool_operation_id(thread_id: &str, turn_id: &str, call_id: &str) -> String {
     let mut hasher = DefaultHasher::new();
     thread_id.hash(&mut hasher);
     turn_id.hash(&mut hasher);
     call_id.hash(&mut hasher);
     format!("taskop-{:016x}", hasher.finish())
+}
+
+fn stable_memory_operation_id(thread_id: &str, turn_id: &str, call_id: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    thread_id.hash(&mut hasher);
+    turn_id.hash(&mut hasher);
+    call_id.hash(&mut hasher);
+    format!("memoryop-{:016x}", hasher.finish())
+}
+
+fn build_long_term_memory_update(
+    baseline: &str,
+    change: &str,
+    replaces: Option<&str>,
+    date: &str,
+) -> Result<String, String> {
+    if let Some(replaces) = replaces {
+        if replaces.is_empty() {
+            return Err(
+                "A memory correction must identify the exact existing wording to replace.".into(),
+            );
+        }
+        let matches = baseline.match_indices(replaces).count();
+        if matches != 1 {
+            return Err("The exact memory wording to correct is missing or ambiguous. Refresh the memory source and ask the user to identify it again.".into());
+        }
+        return Ok(baseline.replacen(replaces, change, 1));
+    }
+
+    const START: &str = "<!-- PERSONAL DASHBOARD CONFIRMED CONTEXT START -->";
+    const END: &str = "<!-- PERSONAL DASHBOARD CONFIRMED CONTEXT END -->";
+    let entry = format!("- [{date}] {change}");
+    let start_count = baseline.matches(START).count();
+    let end_count = baseline.matches(END).count();
+    if start_count == 0 && end_count == 0 {
+        let prefix = if baseline.ends_with('\n') || baseline.is_empty() {
+            baseline.to_owned()
+        } else {
+            format!("{baseline}\n")
+        };
+        return Ok(format!("{prefix}\n{START}\n{entry}\n{END}\n"));
+    }
+    if start_count != 1 || end_count != 1 {
+        return Err("The existing confirmed-context section is malformed. Correct the source document manually before adding memory.".into());
+    }
+    let start = baseline
+        .find(START)
+        .ok_or_else(|| "The existing confirmed-context section is malformed.".to_string())?;
+    let end = baseline
+        .find(END)
+        .ok_or_else(|| "The existing confirmed-context section is malformed.".to_string())?;
+    if end <= start || baseline[start + START.len()..end].contains(END) {
+        return Err(
+            "The existing confirmed-context section is malformed. No memory was changed.".into(),
+        );
+    }
+    let section = &baseline[start + START.len()..end];
+    if section.lines().any(|line| line.trim() == entry) {
+        return Err(
+            "That confirmed long-term detail is already present in the existing background.".into(),
+        );
+    }
+    let insertion = if section.ends_with('\n') || section.is_empty() {
+        format!("{section}{entry}\n")
+    } else {
+        format!("{section}\n{entry}\n")
+    };
+    let mut updated = String::with_capacity(baseline.len() + entry.len() + 2);
+    updated.push_str(&baseline[..start + START.len()]);
+    updated.push_str(&insertion);
+    updated.push_str(&baseline[end..]);
+    Ok(updated)
+}
+
+fn is_memory_confirmation_question(text: &str) -> bool {
+    let normalized = text.to_lowercase();
+    let asks_about_memory = normalized.contains("remember")
+        || normalized.contains("long-term")
+        || normalized.contains("long term")
+        || normalized.contains("长期")
+        || normalized.contains("记住")
+        || normalized.contains("背景");
+    asks_about_memory && (normalized.contains('?') || normalized.contains('？'))
+}
+
+fn validate_memory_update_authority(
+    basis: &MemoryUpdateBasis,
+    authorization_quote: &str,
+    change: &str,
+    current_user_message: &str,
+    prior_assistant_message: Option<&str>,
+) -> Result<(), String> {
+    if !current_user_message.contains(authorization_quote) {
+        return Err("The authorization quote must appear exactly in the current user message. Ask the user to confirm the durable update before proposing it.".into());
+    }
+    if describes_single_day_state(change) || describes_single_day_state(authorization_quote) {
+        return Err("A one-day or temporary state cannot be proposed for long-term background. Keep it in the dated conversation or Daily Record.".into());
+    }
+    match basis {
+        MemoryUpdateBasis::ExplicitUserInstruction => {
+            if !is_explicit_memory_instruction(authorization_quote) {
+                return Err("The current user message must directly ask to remember or update durable background before preparing a long-term proposal.".into());
+            }
+        }
+        MemoryUpdateBasis::ConfirmedInference => {
+            if !prior_assistant_message.is_some_and(is_memory_confirmation_question) {
+                return Err("An inferred long-term change needs a prior assistant confirmation question and the user's direct reply.".into());
+            }
+            if !is_affirmative_memory_confirmation(current_user_message) {
+                return Err("The current user message does not clearly confirm the proposed durable change.".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn is_explicit_memory_instruction(text: &str) -> bool {
+    let normalized = text.to_lowercase();
+    if [
+        "don't remember",
+        "do not remember",
+        "don't want you to remember",
+        "do not want you to remember",
+        "don't save",
+        "do not save",
+        "don't add",
+        "do not add",
+        "don't update",
+        "do not update",
+        "don't keep",
+        "do not keep",
+        "不要记住",
+        "不想让你记住",
+        "别记住",
+        "不用记住",
+        "不要保存",
+        "不要更新",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+    {
+        return false;
+    }
+    [
+        "please remember",
+        "remember that",
+        "remember this",
+        "keep in mind",
+        "save this as",
+        "store this as",
+        "record this as",
+        "add this to my background",
+        "add to my background",
+        "update my background",
+        "update the background",
+        "请记住",
+        "记住我",
+        "加入长期背景",
+        "更新长期背景",
+        "添加到长期背景",
+        "加入长期记忆",
+        "更新长期记忆",
+        "记录到长期背景",
+        "记到长期背景",
+        "写入长期记忆",
+        "更新我的原则",
+        "写入我的原则",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+}
+
+fn is_affirmative_memory_confirmation(text: &str) -> bool {
+    let normalized = text.trim().to_lowercase();
+    let negative = [
+        "no", "nope", "don't", "do not", "not that", "不", "不是", "不要", "暂时",
+    ];
+    if negative.iter().any(|marker| normalized.contains(marker)) {
+        return false;
+    }
+    [
+        "yes",
+        "yep",
+        "yeah",
+        "sure",
+        "okay",
+        "ok",
+        "correct",
+        "that's right",
+        "go ahead",
+        "please do",
+        "可以",
+        "好的",
+        "是的",
+        "没错",
+        "对",
+        "请记录",
+        "请记住",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+}
+
+fn describes_single_day_state(text: &str) -> bool {
+    let normalized = text.to_lowercase();
+    [
+        "today",
+        "tonight",
+        "this morning",
+        "this afternoon",
+        "this evening",
+        "right now",
+        "at the moment",
+        "currently",
+        "just for today",
+        "today only",
+        "tomorrow",
+        "yesterday",
+        "今天",
+        "今晚",
+        "今早",
+        "今天下午",
+        "今天晚上",
+        "现在",
+        "此刻",
+        "目前",
+        "暂时",
+        "明天",
+        "昨天",
+        "今日",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
 }
 
 fn stable_child_identifier(prefix: &str, operation_id: &str) -> String {
@@ -5977,7 +7181,7 @@ impl CollaborationContextSource for DashboardContextReader {
     }
 }
 
-fn vault_key(path: &Path) -> String {
+pub(crate) fn vault_key(path: &Path) -> String {
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let mut hasher = DefaultHasher::new();
     canonical.hash(&mut hasher);
@@ -6325,6 +7529,322 @@ fn resolve_schema_reference<'a>(root: &'a Value, schema: &'a Value) -> Option<&'
     match schema.get("$ref").and_then(Value::as_str) {
         Some(reference) => root.pointer(reference.strip_prefix('#')?),
         None => Some(schema),
+    }
+}
+
+#[cfg(test)]
+mod collaboration_memory_tests {
+    use super::{
+        build_long_term_memory_update, calendar_day_difference, collaboration_memory_view,
+        shift_calendar_date, validate_memory_update_authority, CollaborationClock,
+        CollaborationMemorySources, CollaborationState, LongTermMemoryDocumentView,
+        MemoryUpdateBasis, RoutineMemoryReferenceView, StoredCollaborationContinuityNote,
+        StoredCollaborationMessage, StoredCollaborationSession,
+    };
+    use std::collections::HashMap;
+
+    struct FixedMemoryClock;
+
+    impl CollaborationClock for FixedMemoryClock {
+        fn current_timestamp(&self) -> String {
+            "2026-09-27T09:15:00-04:00".into()
+        }
+
+        fn current_date(&self) -> String {
+            "2026-09-27".into()
+        }
+    }
+
+    fn message(id: &str, role: &str, text: &str, date: &str) -> StoredCollaborationMessage {
+        StoredCollaborationMessage {
+            id: id.into(),
+            role: role.into(),
+            text: text.into(),
+            message_date: date.into(),
+            target_date: date.into(),
+            created_at: format!("{date}T09:00:00-04:00"),
+            execution_id: None,
+            runtime_turn_id: None,
+            delivery_state: "completed".into(),
+            queue_order: None,
+            result_checked: false,
+        }
+    }
+
+    fn session(
+        id: &str,
+        vault_key: &str,
+        date: &str,
+        run_state: &str,
+        messages: Vec<StoredCollaborationMessage>,
+    ) -> StoredCollaborationSession {
+        StoredCollaborationSession {
+            id: id.into(),
+            vault_key: Some(vault_key.into()),
+            title: format!("Synthetic {id}"),
+            created_date: date.into(),
+            activity_dates: vec![date.into()],
+            last_activity_at: format!("{date}T09:00:00-04:00"),
+            target_date: date.into(),
+            run_id: None,
+            run_state: run_state.into(),
+            progress: "Synthetic progress".into(),
+            runtime_thread_id: None,
+            task_tool_registered: false,
+            daily_plan_tool_registered: false,
+            daily_record_tool_registered: false,
+            memory_tool_registered: false,
+            messages,
+            task_operations: Vec::new(),
+            memory_proposals: Vec::new(),
+            draft: String::new(),
+            drafts_by_date: HashMap::new(),
+        }
+    }
+
+    fn sources() -> CollaborationMemorySources {
+        CollaborationMemorySources {
+            long_term: LongTermMemoryDocumentView {
+                state: "ready".into(),
+                source_path: "everyday/wiki/Life Operating Principles.md".into(),
+                content: "Synthetic background only.".into(),
+                revision: Some("synthetic-revision".into()),
+                message: "Synthetic source loaded.".into(),
+            },
+            routine_reference: RoutineMemoryReferenceView {
+                state: "ready".into(),
+                source_path: "everyday/.agents/skills/life-companion/SKILL.md".into(),
+                content: "Synthetic workflow only.".into(),
+                message: "Synthetic reference loaded.".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn recent_continuity_updates_from_saved_sessions_and_expires_without_removing_sources() {
+        let recent_date = "2026-09-26";
+        let mut state = CollaborationState::default();
+        state.sessions = vec![
+            session(
+                "recent",
+                "vault-a",
+                recent_date,
+                "waiting",
+                vec![
+                    message(
+                        "u1",
+                        "user",
+                        "Synthetic context from the first session.",
+                        recent_date,
+                    ),
+                    message(
+                        "a1",
+                        "assistant",
+                        "Should I remember this durable preference?",
+                        recent_date,
+                    ),
+                ],
+            ),
+            session(
+                "expired",
+                "vault-a",
+                "2026-09-13",
+                "interrupted",
+                vec![message(
+                    "u2",
+                    "user",
+                    "Expired synthetic discussion.",
+                    "2026-09-13",
+                )],
+            ),
+            session(
+                "other-vault",
+                "vault-b",
+                recent_date,
+                "waiting",
+                vec![message(
+                    "u3",
+                    "user",
+                    "Other Vault synthetic discussion.",
+                    recent_date,
+                )],
+            ),
+        ];
+
+        let first =
+            collaboration_memory_view(&state, Some("vault-a"), Ok(sources()), &FixedMemoryClock);
+        assert_eq!(first.recent.len(), 1);
+        assert!(first.recent[0].summary.contains("first session"));
+        assert_eq!(first.recent[0].expires_on, "2026-10-10");
+        assert_eq!(first.open_matters.len(), 1);
+        assert_eq!(first.open_matters[0].state, "possibleFollowUp");
+        assert_eq!(first.long_term.content, "Synthetic background only.");
+
+        state.sessions[0].messages[0].text =
+            "Updated synthetic context from the same saved session.".into();
+        let refreshed =
+            collaboration_memory_view(&state, Some("vault-a"), Ok(sources()), &FixedMemoryClock);
+        assert!(refreshed.recent[0]
+            .summary
+            .contains("Updated synthetic context"));
+        assert_eq!(
+            state.sessions.len(),
+            3,
+            "expiry only hides derived continuity; source sessions remain saved"
+        );
+        assert_eq!(
+            state.sessions[1].messages[0].text,
+            "Expired synthetic discussion."
+        );
+    }
+
+    #[test]
+    fn continuity_corrections_are_vault_bound_and_expire_after_fourteen_days() {
+        let mut state = CollaborationState::default();
+        state.continuity_notes.insert(
+            "vault-a".into(),
+            StoredCollaborationContinuityNote {
+                revision: 4,
+                text: "Synthetic correction for Vault A".into(),
+                updated_at: "2026-09-26T09:00:00-04:00".into(),
+            },
+        );
+        let view_a =
+            collaboration_memory_view(&state, Some("vault-a"), Ok(sources()), &FixedMemoryClock);
+        assert_eq!(view_a.correction_note, "Synthetic correction for Vault A");
+        assert_eq!(view_a.correction_revision, 4);
+        assert_eq!(
+            view_a.correction_note_expires_on.as_deref(),
+            Some("2026-10-10")
+        );
+
+        let view_b =
+            collaboration_memory_view(&state, Some("vault-b"), Ok(sources()), &FixedMemoryClock);
+        assert!(view_b.correction_note.is_empty());
+        assert_eq!(view_b.correction_revision, 0);
+
+        state.continuity_notes.insert(
+            "vault-a".into(),
+            StoredCollaborationContinuityNote {
+                revision: 5,
+                text: "Expired synthetic correction".into(),
+                updated_at: "2026-09-13T09:00:00-04:00".into(),
+            },
+        );
+        let expired =
+            collaboration_memory_view(&state, Some("vault-a"), Ok(sources()), &FixedMemoryClock);
+        assert!(expired.correction_note.is_empty());
+        assert_eq!(
+            expired.correction_revision, 5,
+            "expired text stays revisioned for safe replacement"
+        );
+        assert_eq!(expired.correction_note_expires_on, None);
+    }
+
+    #[test]
+    fn continuity_date_math_expires_at_fourteen_days_and_handles_calendar_boundaries() {
+        assert_eq!(
+            calendar_day_difference("2026-09-13", "2026-09-27"),
+            Some(14)
+        );
+        assert_eq!(
+            shift_calendar_date("2024-02-29", 14).as_deref(),
+            Some("2024-03-14")
+        );
+        assert_eq!(
+            shift_calendar_date("2025-12-25", 14).as_deref(),
+            Some("2026-01-08")
+        );
+        assert_eq!(calendar_day_difference("2025-02-29", "2025-03-01"), None);
+    }
+
+    #[test]
+    fn durable_update_needs_explicit_or_confirmed_authority_and_rejects_one_day_states() {
+        let explicit = MemoryUpdateBasis::ExplicitUserInstruction;
+        let inferred = MemoryUpdateBasis::ConfirmedInference;
+        assert!(validate_memory_update_authority(
+            &explicit,
+            "Please remember that I prefer early starts.",
+            "I prefer early starts.",
+            "Please remember that I prefer early starts.",
+            None,
+        )
+        .is_ok());
+        assert!(validate_memory_update_authority(
+            &explicit,
+            "I walked this morning.",
+            "I walked this morning.",
+            "I walked this morning.",
+            None,
+        )
+        .is_err());
+        assert!(validate_memory_update_authority(
+            &explicit,
+            "Please remember that I have a migraine today.",
+            "I have a migraine today.",
+            "Please remember that I have a migraine today.",
+            None,
+        )
+        .is_err());
+        assert!(validate_memory_update_authority(
+            &inferred,
+            "Yes, please.",
+            "I prefer early starts.",
+            "Yes, please.",
+            Some("Would you like me to remember this as a long-term preference?"),
+        )
+        .is_ok());
+        assert!(validate_memory_update_authority(
+            &inferred,
+            "No, not for memory.",
+            "I prefer early starts.",
+            "No, not for memory.",
+            Some("Would you like me to remember this as a long-term preference?"),
+        )
+        .is_err());
+        assert!(validate_memory_update_authority(
+            &inferred,
+            "Yes.",
+            "I prefer early starts.",
+            "Yes.",
+            None,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn proposals_append_to_the_existing_document_and_never_change_the_baseline() {
+        let baseline = "# Synthetic profile\n\nExisting user-authored text.\n";
+        let proposal = build_long_term_memory_update(
+            baseline,
+            "Prefers morning planning.",
+            None,
+            "2026-09-27",
+        )
+        .unwrap();
+
+        assert!(proposal.contains("Existing user-authored text."));
+        assert!(proposal.contains("- [2026-09-27] Prefers morning planning."));
+        assert_eq!(
+            baseline,
+            "# Synthetic profile\n\nExisting user-authored text.\n"
+        );
+        assert!(build_long_term_memory_update(
+            &proposal,
+            "Prefers morning planning.",
+            None,
+            "2026-09-27",
+        )
+        .unwrap_err()
+        .contains("already present"));
+        assert!(build_long_term_memory_update(
+            "Synthetic repeated phrase: quiet; quiet.",
+            "Prefers quiet.",
+            Some("quiet"),
+            "2026-09-27",
+        )
+        .unwrap_err()
+        .contains("ambiguous"));
     }
 }
 
@@ -6864,10 +8384,13 @@ impl AppServerTransport for CodexAppServerRuntime {
         let context = serde_json::to_string_pretty(&json!({
             "dashboardExecutionId": request.execution_id,
             "context": request.context,
+            "memory": request.memory,
         }))
-        .map_err(|error| format!("Could not prepare current Dashboard context: {error}"))?;
+        .map_err(|error| {
+            format!("Could not prepare current Dashboard context and continuity: {error}")
+        })?;
         let input_text = format!(
-            "{}\n\n--- Current Personal Dashboard context for {} ---\n{}\n--- End current Dashboard context ---\nUse only supplied current context. Use Dashboard facts only when that section is ready; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain the stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. `dashboard_task_operation` only creates a proposal; no Task write occurs until the user approves the exact card in Personal Dashboard.",
+            "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain the stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. `dashboard_task_operation` only creates a proposal; no Task write occurs until the user approves the exact card in Personal Dashboard. Never turn a one-day status into long-term background. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record, or confirms after you asked about an inferred change. Quote the exact authorization from that current message. The tool only creates a review proposal; do not claim long-term background changed until the user approves the exact card.",
             request.user_text, request.context.date, context
         );
         let working_directory = self.working_directory.to_string_lossy().into_owned();
