@@ -5988,7 +5988,7 @@ body {
 
 .app-shell[data-workspace-destination="calendar"] .calendar-header h2 {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(2rem, 3vw, 2.35rem);
+  font-size: clamp(2rem, 4vw, 3rem);
   font-weight: 500;
   letter-spacing: -0.055em;
   line-height: 0.98;
