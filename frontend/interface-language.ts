@@ -110,7 +110,6 @@ const interfaceCopies = {
   "appearance.updateFailed": { zh: "无法更新外观偏好：{error}", en: "Could not update the appearance preference: {error}" },
   "appearance.loadFailed": { zh: "无法读取外观偏好：{error}", en: "Could not load the appearance preference: {error}" },
   "language.saveFailed": { zh: "无法保存界面语言：{error}", en: "Could not save the interface language: {error}" },
-  "calendar.historyRecall": { zh: "日历 · 历史回看", en: "CALENDAR · HISTORY RECALL" },
   "calendar.introduction": { zh: "先看整个月，再进入某一天；选中的日期复用 Today 的三个阶段。", en: "Review the month, then open a day using the same three Today phases." },
   "calendar.navigation": { zh: "日历月份导航", en: "Calendar period navigation" },
   "calendar.previousMonth": { zh: "上个月", en: "Previous month" },

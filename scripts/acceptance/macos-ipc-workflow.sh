@@ -3691,6 +3691,7 @@ EOF
   run_driver assert-document-fixed "document" 10
   run_driver press "Calendar" 10
   run_driver wait-active-text "September 2026" 20
+  run_driver assert-active-absent-text "CALENDAR · HISTORY RECALL"
   run_driver assert-active-text "Tue, Sep 8"
   run_driver assert-active-text "Choose a date to preview its summary"
   run_driver press "Habits" 10
@@ -5849,6 +5850,7 @@ EOF
         calendar)
           run_driver press "日历" 10
           run_driver wait-active-text "2026年9月" 20
+          run_driver assert-active-absent-text "日历 · 历史回看"
           run_driver press "下个月" 10
           run_driver wait-active-text "2026年10月" 20
           run_driver press "上个月" 10
