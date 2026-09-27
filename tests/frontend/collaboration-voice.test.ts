@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   appendVoiceTranscript,
   beginVoiceTranscriptSave,
+  BrowserCollaborationVoiceRuntime,
   collaborationVoiceControls,
   CollaborationVoiceInputController,
   enqueueCollaborationDraftWrite,
@@ -293,4 +294,59 @@ test("voice controls require an installed selected locale and freeze locale whil
     hasInstalledLocale: false,
     hasInstalledLocales: false,
   }).startDisabled, true);
+});
+
+test("browser recording keeps its input track alive until the final encoded chunk is delivered", async () => {
+  let trackStopped = false;
+  const stream = {
+    getTracks: () => [{ stop: () => { trackStopped = true; } }],
+  } as unknown as MediaStream;
+  let recorder: DeferredMediaRecorder | null = null;
+
+  class DeferredMediaRecorder {
+    static isTypeSupported(mimeType: string): boolean {
+      return mimeType === "audio/mp4";
+    }
+
+    state: RecordingState = "inactive";
+    mimeType = "audio/mp4; codecs=mp4a.40.2";
+    ondataavailable: ((event: BlobEvent) => void) | null = null;
+    onerror: ((event: Event) => void) | null = null;
+    onstop: ((event: Event) => void) | null = null;
+
+    constructor(_stream: MediaStream, _options?: MediaRecorderOptions) {
+      recorder = this;
+    }
+
+    start(): void {
+      this.state = "recording";
+    }
+
+    stop(): void {
+      this.state = "inactive";
+      queueMicrotask(() => {
+        this.ondataavailable?.({ data: new Blob(["final encoded audio"], { type: this.mimeType }) } as BlobEvent);
+        this.onstop?.(new Event("stop"));
+      });
+    }
+  }
+
+  const runtime = new BrowserCollaborationVoiceRuntime(
+    async () => "synthetic transcript",
+    { getUserMedia: async () => stream },
+    DeferredMediaRecorder as unknown as typeof MediaRecorder,
+  );
+  const recording = await runtime.requestRecording();
+  let audio: Blob | null = null;
+  recording.start((completedAudio) => { audio = completedAudio; }, () => assert.fail("recording should complete"));
+
+  recording.stop();
+  assert.equal(trackStopped, false, "stop() must leave the stream available while MediaRecorder flushes");
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.ok(recorder);
+  assert.ok(audio);
+  assert.ok(audio.size > 0, "the final dataavailable chunk must be included");
+  assert.equal(audio.type, "audio/mp4; codecs=mp4a.40.2");
+  assert.equal(trackStopped, true, "onstop releases the microphone tracks after flush");
 });

@@ -3209,6 +3209,52 @@ fn automatic_plan_triggers_at_configured_local_time_and_restart_does_not_duplica
 }
 
 #[test]
+fn in_process_scheduler_triggers_an_automatic_plan_in_an_isolated_vault() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let context = MutableContext::new("vault-a");
+    let clock = ManualClock::new("2026-09-27", "06:59");
+    let (application, _, _, _) =
+        new_automatic_application(&directory, &vault, context, clock.clone(), None);
+
+    let before_due = application
+        .update_daily_plan_automation(enabled_automation("07:00"))
+        .unwrap();
+    assert!(before_due.current_run.is_none());
+    assert!(application.list_sessions("2026-09-27").unwrap().is_empty());
+
+    clock.set_time("07:00");
+    application.start_daily_plan_automation_scheduler().unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    let session_id = loop {
+        if let Some(session_id) = application
+            .daily_plan_automation()
+            .unwrap()
+            .current_run
+            .and_then(|run| run.session_id)
+        {
+            break session_id;
+        }
+        if std::time::Instant::now() >= deadline {
+            application.shutdown().unwrap();
+            panic!(
+                "the in-process scheduler should queue work when the configured local time is due"
+            );
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+
+    wait_for_finish(&application, &session_id, "vault-a");
+    let completed = application.daily_plan_automation().unwrap();
+    assert_eq!(completed.current_run.unwrap().state, "completed");
+    let session = application.session("vault-a", &session_id).unwrap();
+    assert!(session.messages[0].automatic_plan);
+    assert_eq!(application.list_sessions("2026-09-27").unwrap().len(), 1);
+    application.shutdown().unwrap();
+}
+
+#[test]
 fn late_open_generates_only_a_remaining_day_plan_from_current_synthetic_context() {
     let directory = IsolatedDirectory::new();
     let vault_path = directory.vault("vault");

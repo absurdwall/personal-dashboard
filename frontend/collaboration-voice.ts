@@ -247,7 +247,6 @@ class BrowserVoiceRecording implements CollaborationVoiceRecording {
   stop(): void {
     if (this.recorder.state === "inactive") return;
     this.recorder.stop();
-    this.#stopTracks();
   }
 
   cancel(): void {

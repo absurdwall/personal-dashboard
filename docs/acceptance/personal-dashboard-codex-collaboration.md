@@ -2,22 +2,22 @@
 
 Date: 2026-09-27
 
-Status: **partial.** The review P1s and real-model routing defects found during acceptance have regression coverage and fixes. The current arm64 package connects to the real Codex runtime and has passed real Task, plan, daytime-event, evening-note, and read-only context turns using an isolated synthetic Vault. One synthetic voice recording completed local transcription, but the recognizer returned the wrong words; after transcript correction, the read-only turn passed. Voice-recognition accuracy, queue-interruption recovery, and a scheduled automatic trigger remain unverified. One frontend contract test depends on an external user-local skill that is missing the expected contract. PR #22 remains open and in draft; do not merge or mark Issue #11 accepted yet.
+Status: **partial.** The review P1s and real-model routing defects found during acceptance have regression coverage and fixes. The current arm64 package connects to the real Codex runtime and has passed real Task, plan, daytime-event, evening-note, and read-only context turns using an isolated synthetic Vault. A recorder stop/flush race was fixed and has a regression test, but three live UI capture attempts returned a generic on-device recognition failure; whether those recordings contained the prompted speech is still being confirmed. A synthetic TTS file was transcribed exactly by the same installed local recognizer. A real runtime stop was confirmed; abruptly quitting during `thread/start` left the session interrupted without a persisted runtime thread ID, and saved-result reconciliation remains unverified. An isolated in-process automatic-plan scheduler test now passes without touching the existing external schedule. One frontend contract test still identifies a missing contract in the external canonical daily-loop skill. PR #22 remains open and in draft; do not merge or mark Issue #11 accepted yet.
 
 ## Candidate and safety scope
 
 - PR: [#22](https://github.com/absurdwall/personal-dashboard/pull/22).
 - Branch: `codex/personal-dashboard-codex-collaboration`.
-- Source changes are based on `632e63b` and include the acceptance-driven fixes described below.
+- Source changes are based on PR head `7c3c6c3` and include the acceptance-driven fixes described below.
 - Bundle: `src-tauri/target/release/bundle/macos/Personal Dashboard.app`, version `3.0.4`, arm64.
-- Packaged executable SHA-256: `fa1e7c8e047b2c3823e274cb5da798eae01bc0885beb1d677c146640f66fc9b7`.
+- Rebuilt packaged executable SHA-256: `b57946ea6aac174fd0b2aa0eca764d3940b971369ff1e8b7ddcda3efb3f7c905`.
 - The running candidate was launched with `PERSONAL_DASHBOARD_DATA_DIR`, `PERSONAL_DASHBOARD_BASELINE_FILE`, and `PERSONAL_DASHBOARD_LEGACY_EXERCISE_DIR` pointed at `/tmp/personal-dashboard-issue11-real.k5bQev`. The UI confirmed `Vault: synthetic-vault` throughout the manual business-data probes.
-- The installed `/Applications/Personal Dashboard.app` and personal Vaults were not used or changed. The Dashboard-owned Codex app-support profile is shared by builds with the same bundle identifier; it is separate from the user's general Codex config and MCP servers, but is not isolated per candidate process.
+- All business-data probes used the isolated synthetic Vault. During an abrupt-restart UI probe, desktop automation rebound to another same-bundle-ID Dashboard window and captured one read-only accessibility snapshot of a non-synthetic workspace. No input or action was sent there and no data was changed; the UI recovery probe stopped when the candidate window could not be targeted reliably. The Dashboard-owned Codex app-support profile is shared by builds with the same bundle identifier; it is separate from the user's general Codex config and MCP servers, but is not isolated per candidate process.
 
 ## Packaged Mac checks
 
-- `npm run build:mac`: passed for v3.0.4. The bundle is ad-hoc signed; notarization was skipped because Apple notarization credentials are not configured.
-- `npm run accept:mac`: passed. The relocated bundle opened through Launch Services with isolated app data and no baseline source. The native process was arm64, with no Python runtime or listening TCP socket.
+- `npm run build:mac`: passed for the rebuilt v3.0.4 arm64 candidate. The bundle is ad-hoc signed; notarization was skipped because Apple notarization credentials are not configured.
+- `npm run accept:mac`: passed for the earlier packaged candidate. The rebuilt candidate was launched against the isolated synthetic Vault for the follow-up runtime probes; a fresh relocated-bundle acceptance run was not performed after the recorder fix.
 - `codesign --verify --deep --strict --verbose=2`: passed.
 - The approval-first prototype A layout was preserved; these follow-up changes affect runtime instructions, authorization checks, context data, and tests rather than the accepted layout.
 
@@ -39,25 +39,27 @@ Status: **partial.** The review P1s and real-model routing defects found during 
 - A future-dated request claiming that a daytime event had already occurred produced a proposal but was rejected at approval with `不能在未来日期记录已经发生的事实。请选择今天或过去日期。`; no write occurred.
 - On the rebuilt package, a real 2026-09-27 daytime-event request produced an exact `白天更新` approval card. Approval saved it to the synthetic Daily Record (revision `561e96376c4c9815`), and the current context displayed the exact fact under the daytime event route.
 - A follow-up read-only real model turn returned the exact daytime event plus these two already-saved evening additions, with no change: `Completed the synthetic collaboration acceptance task.` and `Synthetic acceptance checkpoint: the daytime update flow is verified.`
-- The first misrouted daytime test artifact remains in the disposable synthetic 2026-09-27 evening review and is explicitly treated as a failed first attempt, not as successful daytime evidence. It did not touch personal data.
+- The first misrouted daytime test artifact remains in the disposable synthetic 2026-09-27 evening review and is explicitly treated as a failed first attempt, not as successful daytime evidence.
 - On the rebuilt package, a real evening-addition request using the corrected mapping produced the exact `saveEveningReview` approval card. After approval, the canonical Daily Record service confirmed `Synthetic acceptance checkpoint: evening addition routing passed in the rebuilt package.` was saved for 2026-09-27 as revision `2f2d2434db03565e`, and the selected-vault context showed it under evening additions.
-- After explicit user approval, one synthetic phrase (`Synthetic acceptance voice flow passed.`) was played while the isolated package recorded. The app completed local transcription and discarded the recording, but English (Australia) recognition returned `Today you`, not the spoken phrase. The editable transcript was changed to `Using only the selected synthetic-vault, state the exact 2026-09-27 daytime event and latest evening addition. Do not make changes.` The connected runtime returned the exact event and latest evening addition, with no changes. No second recording was made. This validates capture, transcript editing, and handoff, but not transcript accuracy.
+- The earlier authorized voice probe played `Synthetic acceptance voice flow passed.` while the isolated package recorded; English (Australia) recognition returned `Today you`. In three later live UI attempts the package instead returned a generic local recognition failure. The user has been asked whether they read the prompts during those captures; that answer is pending. Separately, a generated synthetic TTS file was transcribed exactly by the installed local recognizer/helper, showing the locale and model are available. The editable-transcript handoff was verified in the earlier probe, but live speech recognition is not accepted.
+- A real active Codex turn was stopped from the packaged UI. The UI waited about 15 seconds, then confirmed Codex stopped; persisted state was `runState=stopped`, `deliveryState=stopped`, `resultChecked=true`. No write or model replay occurred.
+- A separate real turn was interrupted by abruptly quitting the candidate while App Server `thread/start` was still preparing. On restart, its synthetic session persisted as `runState=interrupted`, `deliveryState=interrupted`, `resultChecked=false`, with no `runtimeThreadId`; no replay occurred. This confirms fail-closed persistence for that interruption point, not recovery/reconciliation of a saved runtime result. The UI could not be safely targeted for a further relaunch/recovery probe because automation rebound to the installed same-bundle-ID app.
+- An isolated integration regression starts the actual in-process scheduler with a manual clock at 06:59, advances it to 07:00, and verifies one automatic-plan session completes in a temporary Vault. It does not inspect, transfer, trigger, or modify any existing external schedule.
 
 ## Automated verification
 
-- `cargo test --manifest-path src-tauri/Cargo.toml`: passed across all targets after the latest Rust changes.
-- `cargo test --manifest-path src-tauri/Cargo.toml --test collaboration_task_operations`: 36 passed.
+- `cargo test --manifest-path src-tauri/Cargo.toml`: passed across all targets after the new scheduler regression was added.
+- `cargo test --manifest-path src-tauri/Cargo.toml --test collaboration_task_operations`: passed, including the new in-process scheduler trigger regression.
 - `cargo test --manifest-path src-tauri/Cargo.toml --test collaboration_workflow`: 17 passed.
-- `npm run check`: passed (frontend build and `cargo check`).
-- `rustfmt --edition 2021 --check src-tauri/src/collaboration.rs src-tauri/tests/collaboration_task_operations.rs src-tauri/tests/collaboration_workflow.rs`: passed.
-- `git diff --check`: passed before this document refresh; it will be rerun before commit.
-- `npm run test:frontend`: all but one test passed. `tests/frontend/daily-flow-integration.test.ts` expects `## Personal Dashboard Tasks` and `personal-dashboard --daily-flow-tasks` in the canonical user-local skill at `/Users/tingranwang/Documents/Codex/projects/tortilla-flat/.agents/skills/life-daily-loop/SKILL.md`; that external file contains neither. The skill and contract test are outside this PR and were not changed. Treat this as an unresolved cross-repository contract gap, not as a pass.
+- `npm run build`: passed; `tests/frontend/collaboration-voice.test.ts`: 10 passed, including the asynchronous final-chunk/track-lifetime regression.
+- `rustfmt --edition 2021 --check src-tauri/tests/collaboration_task_operations.rs` and `git diff --check`: passed after the follow-up changes and document refresh.
+- `npm run test:frontend`: 155 passed, 1 failed. `tests/frontend/daily-flow-integration.test.ts` reads the canonical `Tortilla Flat/.agents/skills/life-daily-loop/SKILL.md` and requires a `## Personal Dashboard Tasks` section plus `personal-dashboard --daily-flow-tasks`. The canonical skill currently has a `## Dashboard Habits snapshot` section and neither Tasks marker. This is a real cross-repository integration-contract gap, not a frontend runtime failure. The test intentionally checks the canonical skill; changing the test to hide the missing contract would mask it. The skill is outside this PR and has unrelated user changes, so it was not edited as part of this acceptance.
 
 ## Remaining acceptance
 
-- Voice capture and transcript editing were exercised after explicit user approval; the local recognizer returned inaccurate text (`Today you`) from the single synthetic phrase. The transcript was manually corrected and the read-only model turn passed, but recognition accuracy remains incomplete. The app discarded the audio after local transcription; no second recording was made.
-- Queue interruption and recovery after cancelling/interruption remain unverified. Automated queue/cancel/restart coverage passes, and normal session/Task restore after relaunch passed; these do not prove real interruption recovery.
-- A real scheduled automatic trigger remains unverified because the existing external schedule handoff has not been reviewed or authorized. It was not modified or triggered.
+- Voice capture/recognition remains unaccepted: the first authorized phrase was mistranscribed, and three later live captures returned generic recognition failure. Exact recognition of generated synthetic audio confirms the local recognizer can work, but does not replace a successful live microphone run. Await the user's answer about whether speech was present in the three captures before diagnosing the remaining failure.
+- Real runtime stop is confirmed. Persisted interrupted state is confirmed for an abrupt quit during `thread/start`; no thread ID or saved result existed to reconcile at that point, and no replay occurred. Recovery of an interrupted turn after a runtime thread ID has been saved remains unverified.
+- The isolated in-process automatic trigger passes. The existing external schedule was not inspected, handed off, changed, or triggered; no schedule decision is needed for this isolated test.
 - Apple notarization is unavailable without configured Apple credentials.
 - The single external-skill frontend contract failure described above remains open.
 
