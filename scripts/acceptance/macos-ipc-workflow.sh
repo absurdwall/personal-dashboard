@@ -342,7 +342,7 @@ run_final_gate() {
     suite_started_monotonic_millis + suite_budget_seconds * 1000
   ))
 
-  for scenario in settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections dashboard-3 dashboard-4 today-time-axis-a-cards today-time-axis; do
+  for scenario in settings-vault-colors interface-language background-image day-tasks planning-tasks local-habit-completion historical-corrections dashboard-3 dashboard-4 today-time-axis-a-cards today-time-axis today-unlocated-panel-layout; do
     run_bounded_scenario "$scenario"
   done
 
@@ -4583,6 +4583,68 @@ run_today_time_axis_overlap_scenario() {
   echo "Capture: $capture_path"
 }
 
+run_today_unlocated_panel_layout_scenario() {
+  local vault="$acceptance_directory/today-unlocated-panel-layout-vault"
+  local today_date="$(/bin/date '+%Y-%m-%d')"
+  local today_record="$vault/life/Journal/Daily/${today_date:0:4}/${today_date:0:7}/$today_date.md"
+  local capture_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory/today-unlocated-panel-layout-captures}"
+  local local_offset
+  local offset_sign=1
+  local offset_hours
+  local offset_minutes
+  local visual_epoch
+  local record_hash
+  local failures=0
+
+  current_step="preparing long unlocated records in an isolated Vault"
+  mkdir -p "$vault/.obsidian" "$(dirname "$today_record")" "$acceptance_data_directory" "$capture_directory"
+  sed "s/2026-08-10/$today_date/g" \
+    "$repository_root/src-tauri/tests/fixtures/today-unlocated-panel-layout.md" > "$today_record"
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+  record_hash="$(shasum -a 256 "$today_record" | awk '{print $1}')"
+
+  local_offset="$(/bin/date '+%z')"
+  [[ "$local_offset" == -* ]] && offset_sign=-1
+  offset_hours=$((10#${local_offset:1:2}))
+  offset_minutes=$((10#${local_offset:3:2}))
+  fixed_utc_offset_minutes=$((offset_sign * (offset_hours * 60 + offset_minutes)))
+  visual_epoch="$(/bin/date -j -f '%Y-%m-%d %H:%M:%S' "$today_date 13:00:00" '+%s')"
+  fixed_now_epoch_millis="$((visual_epoch * 1000))"
+  today_time_axis_real_clock=0
+
+  current_step="checking visible unlocated-panel geometry at the three ticketed sizes"
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "定位现在" 10
+  for window_size in "960x720" "800x640" "640x520"; do
+    run_driver set-size "$window_size" 10
+    run_driver assert-size "$window_size" 10
+    run_driver scroll-text-visible "保存记录" 10
+    run_driver assert-text "时间未明确的内容" 10
+    run_driver assert-window-visible "记录类别" 10
+    run_driver_expect assert-regions-disjoint "时间未明确的内容|当日更新区" 10 || failures=$((failures + 1))
+    capture_path="$capture_directory/today-unlocated-panel-${window_size}.png"
+    [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+    run_driver capture-window "$capture_path" 10
+  done
+
+  if ! stop_app; then
+    fail "the unlocated-panel layout checks left the isolated packaged app running"
+  fi
+  [[ "$(shasum -a 256 "$today_record" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "reading the unlocated-panel scenario changed its synthetic Daily Record"
+  if (( failures > 0 )); then
+    fail "$failures visible region overlap checks failed; captures: $capture_directory"
+  fi
+
+  echo "Packaged unlocated-panel layout passed at 960x720, 800x640 and 640x520"
+  echo "Synthetic record SHA-256: $record_hash"
+  echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
+  echo "Capture directory: $capture_directory"
+}
+
 run_today_time_axis_scenario() {
   local vault="$acceptance_directory/today-time-axis-vault"
   local boundary_vault="$acceptance_directory/today-time-axis-boundary-vault"
@@ -5699,8 +5761,9 @@ run_readable_task_cards_scenario() {
   local record_file="$vault/life/Journal/Daily/2026/2026-09/2026-09-08.md"
   local tasks_file="$vault/life/.personal-dashboard/tasks/v1/tasks.json"
   local habits_snapshot="$vault/.personal-dashboard/derived/habits-v1.json"
-  local capture_directory="$acceptance_directory/task-card-captures"
-  local matrix_directory="$acceptance_directory/page-frame-matrix-captures"
+  local capture_root="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory}"
+  local capture_directory="$capture_root/task-card-captures"
+  local matrix_directory="$capture_root/page-frame-matrix-captures"
   local lease_task="签续租合同"
   local long_chinese_task="整理续租合同变更内容并与房东确认付款和维修安排"
   local long_mixed_task="准备 interview coding：复习动态规划并整理 follow-up notes"
@@ -5810,7 +5873,7 @@ EOF
 
   current_step="capturing the readable-card baseline at the three ticket window sizes"
   run_driver press "今天" 10
-  run_driver scroll-text-visible "Today · 共享任务" 10
+  run_driver scroll-text-visible "Today 任务" 10
   run_driver set-size "960x720" 10
   run_driver assert-size "960x720" 10
   run_driver scroll-text-visible "$lease_task" 10
@@ -5844,6 +5907,8 @@ EOF
   wait_for_task_property "$tasks_file" "lease-renewal" "deletedAt" "not-null" ||
     fail "Today card delete action did not persist its recoverable tombstone"
   run_driver press "任务" 10
+  run_driver wait-active-text "全部任务" 20
+  run_driver scroll-text-visible "$long_mixed_task" 20
   run_driver wait-active-text "$long_mixed_task" 20
   run_driver select-contains "已删除" 10
   run_driver wait-active-text "$lease_task" 20
@@ -5856,6 +5921,14 @@ EOF
   wait_for_task_property "$tasks_file" "long-chinese" "state" "abandoned" ||
     fail "Today card abandon action did not persist"
   run_driver press "任务" 10
+  local tasks_after_abandon_tree="$capture_directory/tasks-after-today-abandon-accessibility.txt"
+  local tasks_after_abandon_capture="$capture_directory/tasks-after-today-abandon-640x520.png"
+  [[ ! -e "$tasks_after_abandon_tree" && ! -e "$tasks_after_abandon_capture" ]] ||
+    fail "refusing to overwrite the post-abandon Tasks capture"
+  run_driver dump-text "" 10 > "$tasks_after_abandon_tree"
+  run_driver capture-window "$tasks_after_abandon_capture" 10
+  run_driver wait-active-text "全部任务" 20
+  run_driver scroll-text-visible "$long_mixed_task" 20
   run_driver wait-active-text "$long_mixed_task" 20
   run_driver select-contains "已放弃" 10
   run_driver wait-active-text "$long_chinese_task" 20
@@ -5884,6 +5957,115 @@ EOF
   echo "Actions: Details, complete/reopen, abandon/restore, delete/restore, and keyboard focus order used the packaged app"
   echo "Shared views: the same Task names remained visible in Tasks and Calendar"
   echo "Boundary: synthetic Vault only; Daily Record SHA-256 remained $record_hash"
+  echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
+}
+
+# Keep the task lifecycle and Today-to-Tasks return path independent from the
+# page-frame screenshot matrix so capture failures cannot hide route regressions.
+run_tasks_return_after_today_abandon_scenario() {
+  local vault="$acceptance_directory/tasks-return-after-today-abandon-vault"
+  local record_file="$vault/life/Journal/Daily/2026/2026-09/2026-09-08.md"
+  local tasks_file="$vault/life/.personal-dashboard/tasks/v1/tasks.json"
+  local capture_root="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory}"
+  local lease_task="签续租合同"
+  local target_task="整理续租合同变更内容并与房东确认付款和维修安排"
+  local visible_task="准备 interview coding：复习动态规划并整理 follow-up notes"
+  local record_hash
+
+  current_step="preparing the minimum shared Tasks fixture for Today abandonment navigation"
+  fixed_now_epoch_millis="1788891000000"
+  fixed_utc_offset_minutes="-240"
+  mkdir -p "$vault/.obsidian" "$(dirname "$record_file")" "$(dirname "$tasks_file")" \
+    "$acceptance_data_directory" "$capture_root"
+  cat > "$record_file" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+source: tasks-return-after-today-abandon-packaged-acceptance
+---
+# 2026-09-08
+
+## 白天更新
+
+- 只读合成背景；Tasks 路由验收不应改写 Daily Record。
+EOF
+  cat > "$tasks_file" <<'EOF'
+{
+  "schemaVersion": 2,
+  "lists": [{"id":"inbox","name":"Inbox","system":true,"archived":false}],
+  "tasks": [
+    {"id":"lease-renewal","name":"签续租合同","content":null,"date":"2026-09-08","time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:00:00-04:00","modifiedAt":"2026-09-08T08:00:00-04:00","changes":[]},
+    {"id":"abandon-target","name":"整理续租合同变更内容并与房东确认付款和维修安排","content":null,"date":"2026-09-08","time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:00:00-04:00","modifiedAt":"2026-09-08T08:00:00-04:00","changes":[]},
+    {"id":"visible-task","name":"准备 interview coding：复习动态规划并整理 follow-up notes","content":null,"date":"2026-09-08","time":null,"listId":"inbox","source":{"kind":"manual","reference":null},"state":"pending","deletedAt":null,"completion":null,"createdAt":"2026-09-08T08:01:00-04:00","modifiedAt":"2026-09-08T08:01:00-04:00","changes":[]}
+  ]
+}
+EOF
+  printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
+    "$vault" > "$acceptance_data_directory/today-workspace.json"
+  printf '{\n  "schemaVersion": 1,\n  "interfaceLanguage": "zh"\n}\n' \
+    > "$acceptance_data_directory/interface-language.json"
+  record_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
+
+  current_step="reproducing the pending-filter return from Today after abandonment"
+  launch_app_waiting_for_text "Today" 30
+  run_driver set-size "640x520" 10
+  run_driver scroll-text-visible "Today 任务" 10
+  run_driver scroll-text-visible "$lease_task" 10
+  run_driver focus "$lease_task" 10
+  run_driver assert-focused-text "$lease_task" 10
+  run_driver press-key "tab" 10
+  run_driver assert-focused-text "详情 · $lease_task" 10
+  run_driver press-key "space" 10
+  run_driver wait-active-text "日期（可选）" 10
+  run_driver assert-active-text "$lease_task"
+  run_driver press "取消" 10
+  run_driver press-contains "完成 · $lease_task" 10
+  wait_for_task_property "$tasks_file" "lease-renewal" "state" "completed" ||
+    fail "Today did not persist the synthetic Task completion before the return-path reproduction"
+  run_driver wait-active-text "已完成" 20
+  run_driver press-contains "重开 · $lease_task" 10
+  wait_for_task_property "$tasks_file" "lease-renewal" "state" "pending" ||
+    fail "Today did not reopen the synthetic Task before the return-path reproduction"
+  run_driver press-contains "删除 · $lease_task" 10
+  wait_for_task_property "$tasks_file" "lease-renewal" "deletedAt" "not-null" ||
+    fail "Today did not persist the synthetic Task deletion before the return-path reproduction"
+  run_driver press "任务" 10
+  run_driver wait-active-text "全部任务" 20
+  run_driver scroll-text-visible "$visible_task" 10
+  run_driver wait-active-text "$visible_task" 20
+  run_driver select-contains "已删除" 10
+  run_driver wait-active-text "$lease_task" 20
+  run_driver press-contains "撤销删除 · $lease_task" 10
+  wait_for_task_property "$tasks_file" "lease-renewal" "deletedAt" "null" ||
+    fail "Tasks did not restore the synthetic Task before the return-path reproduction"
+  run_driver select-contains "待办" 10
+  run_driver wait-active-text "$visible_task" 20
+  run_driver scroll-text-visible "$visible_task" 10
+  run_driver press "今天" 10
+  run_driver wait-active-text "$target_task" 20
+  run_driver scroll-text-visible "Today 任务" 10
+  run_driver scroll-text-visible "$target_task" 10
+  run_driver press-contains "放弃 · $target_task" 10
+  wait_for_task_property "$tasks_file" "abandon-target" "state" "abandoned" ||
+    fail "Today did not persist the synthetic task abandonment before returning to Tasks"
+  run_driver press "任务" 10
+  run_driver capture-window "$capture_root/tasks-after-today-abandon-640x520.png" 10
+  run_driver dump-text "" 10 > "$capture_root/tasks-after-today-abandon-accessibility.txt"
+  run_driver wait-active-text "全部任务" 20
+  run_driver scroll-text-visible "$visible_task" 10
+  run_driver wait-active-text "$visible_task" 20
+  run_driver select-contains "已放弃" 10
+  run_driver wait-active-text "$target_task" 10
+  run_driver press-contains "恢复待办 · $target_task" 10
+  wait_for_task_property "$tasks_file" "abandon-target" "state" "pending" ||
+    fail "Tasks could not restore the task abandoned from Today"
+  [[ "$(shasum -a 256 "$record_file" | awk '{print $1}')" == "$record_hash" ]] ||
+    fail "the Today-to-Tasks navigation changed the synthetic Daily Record"
+
+  echo "Packaged Today-to-Tasks abandonment return passed with the pending filter selected"
+  echo "Synthetic Daily Record SHA-256: $record_hash"
+  echo "Accessibility tree: $capture_root/tasks-after-today-abandon-accessibility.txt"
+  echo "Window capture: $capture_root/tasks-after-today-abandon-640x520.png"
   echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
 }
 
@@ -6031,7 +6213,8 @@ EOF
   run_driver capture-window "$capture_directory/today-shared-task-axis-800x640.png" 10
 
   current_step="reopening the completed Task and moving its point while the Daily Record arrangement stays put"
-  run_driver scroll-text-visible "TODAY · 共享任务" 10
+  run_driver wait-active-text "重开 · $task_name" 10
+  run_driver scroll-text-visible "重开 · $task_name" 10
   run_driver press-contains "重开 · $task_name" 10
   wait_for_task_property "$tasks_file" "$task_id" "state" "pending" ||
     fail "Today did not reopen the same Task identity"
@@ -6244,11 +6427,13 @@ case "$acceptance_scenario" in
   historical-corrections) run_historical_corrections_scenario ;;
   today-time-axis-a-cards) run_today_time_axis_a_cards_scenario ;;
   today-time-axis-overlap) run_today_time_axis_overlap_scenario ;;
+  today-unlocated-panel-layout) run_today_unlocated_panel_layout_scenario ;;
   today-time-axis) run_today_time_axis_scenario ;;
   dashboard-3) run_dashboard_3_scenario ;;
   dashboard-4) run_dashboard_4_scenario ;;
   today-refresh) run_today_refresh_scenario ;;
   readable-task-cards) run_readable_task_cards_scenario ;;
+  tasks-return-after-today-abandon) run_tasks_return_after_today_abandon_scenario ;;
   today-shared-task-axis) run_today_shared_task_axis_scenario ;;
   drive-compatibility) run_drive_compatibility_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;

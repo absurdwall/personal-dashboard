@@ -215,10 +215,9 @@
               aria-labelledby="tasks-heading"
               hidden
             >
-              <header class="tasks-header">
+              <header class="tasks-header destination-page-header">
                 <div>
-                  <p class="section-label" data-i18n="tasks.section">任务 · 收集箱</p>
-                  <h2 id="tasks-heading" class="destination-heading visually-hidden" data-i18n="tasks.heading">任务</h2>
+                  <h2 id="tasks-heading" class="destination-heading" data-i18n="tasks.heading">任务</h2>
                   <p data-i18n="tasks.introduction">任务有自己的清单，但和 Today、日历共享同一条任务记录。</p>
                 </div>
                 <div class="tasks-header-actions">
@@ -324,7 +323,7 @@
               aria-labelledby="calendar-heading"
               hidden
             >
-              <header class="calendar-header">
+              <header class="calendar-header destination-page-header">
                 <div>
                   <p class="section-label" data-i18n="calendar.historyRecall">日历 · 历史回看</p>
                   <h2 id="calendar-heading" class="destination-heading" data-i18n="destination.calendar">日历</h2>
@@ -446,21 +445,24 @@
               id="workspace-destination-today"
               class="workspace-destination today-destination"
               data-workspace-panel="today"
-              aria-labelledby="today-heading"
+              aria-labelledby="today-page-heading"
               hidden
             >
-              <div class="today-toolbar">
+              <header class="today-page-header destination-page-header">
                 <div>
-                  <p id="today-date" class="section-label">Today</p>
-                  <h2 id="today-heading" class="destination-heading" data-i18n="today.morning">早间基准</h2>
+                  <h2 id="today-page-heading" class="destination-heading" data-i18n="destination.today">今天</h2>
+                  <p data-i18n="workspace.todayDescription">查看今天 Daily Record 里的大致安排。</p>
                 </div>
-                <div class="today-actions" aria-label="Today 操作" data-i18n-aria-label="today.actions">
-                  <button id="select-today-vault" type="button" class="secondary-button" data-i18n="today.selectVault">
-                    选择 Vault…
-                  </button>
-                  <button id="refresh-today" type="button" data-i18n="today.refresh">刷新</button>
+                <div class="today-page-header-meta">
+                  <p id="today-date" class="today-page-date">Today</p>
+                  <div class="today-actions" aria-label="Today 操作" data-i18n-aria-label="today.actions">
+                    <button id="select-today-vault" type="button" class="secondary-button" data-i18n="today.selectVault">
+                      选择 Vault…
+                    </button>
+                    <button id="refresh-today" type="button" data-i18n="today.refresh">刷新</button>
+                  </div>
                 </div>
-              </div>
+              </header>
               <p id="today-vault" class="today-vault" data-i18n="settings.noVault">尚未选择 Vault。</p>
               <p id="today-status" class="today-status" role="status" aria-live="polite">
                 <span data-i18n="today.loading">正在读取今天的早间计划…</span>
@@ -539,7 +541,6 @@
                     >
                       <div class="today-region-heading">
                         <div>
-                          <p class="section-label" data-i18n="today.daytimeSection">当日 · 时间轴</p>
                           <h3 id="today-daytime-heading" data-i18n="today.timelineAndRecords">时间轴 + 记录</h3>
                         </div>
                         <span id="today-daytime-count" class="today-count"></span>
@@ -719,7 +720,6 @@
                     <section class="day-task-panel" aria-labelledby="today-task-heading">
                       <div class="day-task-heading">
                         <div>
-                          <p class="section-label" data-i18n="today.tasksSection">Today · 共享任务</p>
                           <h3 id="today-task-heading" data-i18n="today.tasksHeading">Today 任务</h3>
                         </div>
                         <span id="today-task-count" class="today-count"></span>
@@ -891,9 +891,8 @@
               aria-labelledby="habits-heading"
               hidden
             >
-              <header class="habits-header">
+              <header class="habits-header destination-page-header">
                 <div>
-                  <p class="section-label" data-i18n="habits.weekSnapshot">本周 · 来源快照</p>
                   <h2 id="habits-heading" class="destination-heading" data-i18n="habits.weekly">本周习惯</h2>
                   <p id="habits-range" data-i18n="habits.loadingOnDemand">正在读取按需快照…</p>
                 </div>
