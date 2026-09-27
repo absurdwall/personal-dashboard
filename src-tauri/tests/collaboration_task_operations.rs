@@ -391,6 +391,7 @@ impl AppServerTransport for DynamicRuntime {
         let (call_id, tool, arguments) = if request.user_text
             == "Please create a task named Synthetic report."
             || request.user_text == "Don't ask me again; create a task named Synthetic report."
+            || request.user_text == "I plan to create a task named Synthetic report next week."
         {
             (
                 "direct-task-call-id",
@@ -1086,6 +1087,42 @@ fn exact_current_user_instruction_executes_task_without_a_second_approval() {
     .unwrap();
     assert_eq!(saved.tasks.len(), 1);
     assert_eq!(saved.tasks[0].name, "Synthetic report");
+}
+
+#[test]
+fn future_task_intent_does_not_execute_a_task_immediately() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault-a");
+    let vault = MutableVault::new(&vault_path);
+    let (application, _, results) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "vault-a",
+            &session.id,
+            "2026-09-27",
+            "I plan to create a task named Synthetic report next week.",
+        )
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+
+    let completed = application.session("vault-a", &session.id).unwrap();
+    assert!(completed.task_operations.is_empty());
+    assert!(!results.lock().unwrap()[0].success);
+
+    let saved = TaskApplicationCollaborationAdapter::new(TaskApplication::new(
+        vault,
+        FixedClock,
+        FileTaskStore,
+    ))
+    .read()
+    .unwrap();
+    assert!(saved.tasks.is_empty(), "future intent must not write now");
 }
 
 #[test]

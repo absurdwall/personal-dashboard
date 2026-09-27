@@ -8334,9 +8334,13 @@ fn validate_task_operation_authority(
         );
     }
     let normalized_quote = authorization_quote.to_lowercase();
-    if is_deferred_completion_intent(operation, &normalized_quote) {
+    let (direct_intent_markers, declined_intent_markers) =
+        task_operation_authority_markers(operation);
+    if is_deferred_completion_intent(operation, &normalized_quote)
+        || has_deferred_operation_intent(&normalized_quote, direct_intent_markers)
+    {
         return Err(
-            "the quoted wording describes a future completion rather than a completed task".into(),
+            "the quoted wording describes a future operation rather than authorizing it now".into(),
         );
     }
     let uncertain_intent_markers = [
@@ -8391,8 +8395,6 @@ fn validate_task_operation_authority(
         return Err("the current request cancels or defers the quoted change".into());
     }
 
-    let (direct_intent_markers, declined_intent_markers) =
-        task_operation_authority_markers(operation);
     if matches!(operation, CollaborationTaskOperation::DeleteTask { .. })
         && [
             "from the list",
@@ -8415,6 +8417,55 @@ fn validate_task_operation_authority(
         return Err("the quoted wording does not directly authorize this operation".into());
     }
     Ok(())
+}
+
+fn has_deferred_operation_intent(normalized_quote: &str, direct_intent_markers: &str) -> bool {
+    let operation_position = direct_intent_markers
+        .split('|')
+        .filter_map(|marker| normalized_quote.find(marker))
+        .min();
+    let Some(operation_position) = operation_position else {
+        return false;
+    };
+
+    [
+        "i plan to",
+        "i plan on",
+        "we plan to",
+        "i intend to",
+        "we intend to",
+        "i am planning to",
+        "i'm planning to",
+        "we are planning to",
+        "we're planning to",
+        "i'm going to",
+        "i am going to",
+        "we're going to",
+        "we are going to",
+        "i will ",
+        "we will ",
+        "i want to",
+        "we want to",
+        "next week",
+        "tomorrow",
+        "later",
+        "in the future",
+        "我计划",
+        "我打算",
+        "我准备",
+        "计划",
+        "打算",
+        "准备",
+        "将会",
+        "下周",
+        "明天",
+        "以后",
+        "之后",
+        "稍后",
+    ]
+    .iter()
+    .filter_map(|marker| normalized_quote.find(marker))
+    .any(|intent_position| intent_position < operation_position)
 }
 
 fn is_deferred_completion_intent(
@@ -9596,18 +9647,20 @@ pub struct CodexAppServerRuntime {
     executable: Option<PathBuf>,
     version: Option<String>,
     capability_probe_version: Option<(PathBuf, String)>,
-    restricted_read_sandbox_policy: Option<Value>,
+    restricted_read_permission_profile: Option<String>,
     text_turn_unavailable_reason: Option<String>,
     client: Option<StdioJsonlClient>,
     shutdown_handle: RuntimeShutdownHandle,
 }
 
-fn generate_restricted_read_policy(
+const COLLABORATION_READ_PERMISSION_PROFILE: &str = "personal-dashboard-collaboration-read";
+
+fn generate_restricted_read_permission_profile(
     executable: &Path,
     codex_home_dir: &Path,
     app_data_dir: &Path,
     working_directory: &Path,
-) -> Result<Option<Value>, String> {
+) -> Result<Option<String>, String> {
     ensure_private_codex_home(codex_home_dir)?;
     ensure_empty_working_directory(working_directory)?;
     fs::create_dir_all(app_data_dir)
@@ -9620,23 +9673,32 @@ fn generate_restricted_read_policy(
     fs::create_dir(&schema_directory)
         .map_err(|error| format!("Could not create the local protocol check directory: {error}"))?;
     let generated = isolated_codex_command(executable, codex_home_dir)
-        .args(["app-server", "generate-json-schema", "--out"])
+        .args([
+            "app-server",
+            "generate-json-schema",
+            "--experimental",
+            "--out",
+        ])
         .arg(&schema_directory)
         .output()
         .map_err(|error| format!("Could not inspect the local App Server protocol: {error}"));
     let result = match generated {
         Ok(output) if output.status.success() => (|| {
-            let schema_path = schema_directory.join("v2/TurnStartParams.json");
-            let bytes = fs::read(&schema_path).map_err(|error| {
-                format!("The CLI did not generate v2/TurnStartParams.json: {error}")
-            })?;
-            let schema: Value = serde_json::from_slice(&bytes).map_err(|error| {
-                format!("The generated App Server turn schema is invalid: {error}")
-            })?;
-            Ok(restricted_read_policy_from_schema(
-                &schema,
-                working_directory,
-            ))
+            let read_schema = |name: &str| -> Result<Value, String> {
+                let schema_path = schema_directory.join(format!("v2/{name}.json"));
+                let bytes = fs::read(&schema_path)
+                    .map_err(|error| format!("The CLI did not generate v2/{name}.json: {error}"))?;
+                serde_json::from_slice(&bytes).map_err(|error| {
+                    format!("The generated App Server {name} schema is invalid: {error}")
+                })
+            };
+            let thread_start = read_schema("ThreadStartParams")?;
+            let thread_resume = read_schema("ThreadResumeParams")?;
+            let turn_start = read_schema("TurnStartParams")?;
+            Ok(
+                read_only_permission_profile_supported(&thread_start, &thread_resume, &turn_start)
+                    .then(|| COLLABORATION_READ_PERMISSION_PROFILE.to_owned()),
+            )
         })(),
         Ok(output) => Err(format!(
             "The CLI could not generate its App Server schema ({}): {}",
@@ -9649,60 +9711,37 @@ fn generate_restricted_read_policy(
     result
 }
 
-fn restricted_read_policy_from_schema(schema: &Value, working_directory: &Path) -> Option<Value> {
-    let sandbox = schema
-        .pointer("/definitions/SandboxPolicy/oneOf")?
-        .as_array()?
+fn read_only_permission_profile_supported(
+    thread_start: &Value,
+    thread_resume: &Value,
+    turn_start: &Value,
+) -> bool {
+    [thread_start, thread_resume, turn_start]
         .iter()
-        .find(|variant| {
-            variant
-                .pointer("/properties/type/enum")
-                .and_then(Value::as_array)
-                .is_some_and(|values| values.iter().any(|value| value == "readOnly"))
-        })?;
-    if sandbox
-        .pointer("/properties/networkAccess/type")
-        .and_then(Value::as_str)
-        != Some("boolean")
-    {
-        return None;
-    }
-    let access_schema = sandbox.pointer("/properties/access")?;
-    let access_schema = resolve_schema_reference(schema, access_schema)?;
-    let access_type = access_schema
-        .pointer("/properties/type/enum")
-        .and_then(Value::as_array)?;
-    if !access_type.iter().any(|value| value == "restricted") {
-        return None;
-    }
-    if access_schema
-        .pointer("/properties/readableRoots/items/type")
-        .and_then(Value::as_str)
-        != Some("string")
-        || access_schema
-            .pointer("/properties/includePlatformDefaults/type")
-            .and_then(Value::as_str)
-            != Some("boolean")
-    {
-        return None;
-    }
-
-    Some(json!({
-        "type": "readOnly",
-        "networkAccess": false,
-        "access": {
-            "type": "restricted",
-            "includePlatformDefaults": false,
-            "readableRoots": [working_directory.to_string_lossy()]
-        }
-    }))
+        .all(|schema| {
+            string_or_null_parameter(schema, "permissions")
+                && absolute_path_list_parameter(schema, "runtimeWorkspaceRoots")
+        })
 }
 
-fn resolve_schema_reference<'a>(root: &'a Value, schema: &'a Value) -> Option<&'a Value> {
-    match schema.get("$ref").and_then(Value::as_str) {
-        Some(reference) => root.pointer(reference.strip_prefix('#')?),
-        None => Some(schema),
-    }
+fn string_or_null_parameter(schema: &Value, parameter: &str) -> bool {
+    schema
+        .pointer(&format!("/properties/{parameter}/type"))
+        .and_then(Value::as_array)
+        .is_some_and(|types| {
+            types.iter().any(|kind| kind == "string") && types.iter().any(|kind| kind == "null")
+        })
+}
+
+fn absolute_path_list_parameter(schema: &Value, parameter: &str) -> bool {
+    schema
+        .pointer(&format!("/properties/{parameter}/items"))
+        .and_then(|items| items.get("$ref"))
+        .and_then(Value::as_str)
+        .and_then(|reference| schema.pointer(reference.strip_prefix('#')?))
+        .and_then(|definition| definition.get("type"))
+        .and_then(Value::as_str)
+        == Some("string")
 }
 
 #[cfg(test)]
@@ -10062,7 +10101,7 @@ mod capability_tests {
     use super::{
         ensure_empty_working_directory, ensure_private_codex_home, ensure_private_directory,
         habit_completion_operation_baseline, isolated_codex_command,
-        require_habit_snapshot_writable, restricted_read_policy_from_schema,
+        read_only_permission_profile_supported, require_habit_snapshot_writable,
         CollaborationTaskOperationBaseline, ISOLATED_CODEX_CONFIG,
     };
     use crate::habits::{
@@ -10070,23 +10109,56 @@ mod capability_tests {
     };
     use serde_json::{json, Value};
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
-    fn restricted_read_policy_requires_the_verified_access_fields() {
-        let unsupported = json!({
-            "definitions": {
-                "SandboxPolicy": {
-                    "oneOf": [{ "properties": { "type": { "enum": ["readOnly"] } } }]
+    fn read_only_profile_schema_requires_every_thread_and_turn_entry_point() {
+        fn params() -> Value {
+            json!({
+                "definitions": { "AbsolutePathBuf": { "type": "string" } },
+                "properties": {
+                    "permissions": { "type": ["string", "null"] },
+                    "runtimeWorkspaceRoots": {
+                        "type": ["array", "null"],
+                        "items": { "$ref": "#/definitions/AbsolutePathBuf" }
+                    }
+                }
+            })
+        }
+
+        let thread_start = params();
+        let thread_resume = params();
+        let turn_start = params();
+        assert!(read_only_permission_profile_supported(
+            &thread_start,
+            &thread_resume,
+            &turn_start
+        ));
+
+        let thread_resume_without_profile = json!({
+            "definitions": { "AbsolutePathBuf": { "type": "string" } },
+            "properties": {
+                "runtimeWorkspaceRoots": {
+                    "type": ["array", "null"],
+                    "items": { "$ref": "#/definitions/AbsolutePathBuf" }
                 }
             }
         });
-        assert_eq!(
-            restricted_read_policy_from_schema(&unsupported, Path::new("/isolated")),
-            None,
-            "legacy read-only sandbox without restricted roots must fail closed"
-        );
+        assert!(!read_only_permission_profile_supported(
+            &thread_start,
+            &thread_resume_without_profile,
+            &turn_start
+        ));
+
+        let turn_start_without_scoped_roots = json!({
+            "properties": { "permissions": { "type": ["string", "null"] } }
+        });
+        assert!(!read_only_permission_profile_supported(
+            &thread_start,
+            &thread_resume,
+            &turn_start_without_scoped_roots
+        ));
     }
 
     #[test]
@@ -10117,65 +10189,12 @@ mod capability_tests {
     }
 
     #[test]
-    fn restricted_read_policy_limits_roots_and_disables_network_when_supported() {
-        let supported = json!({
-            "definitions": {
-                "SandboxPolicy": {
-                    "oneOf": [{
-                        "properties": {
-                            "type": { "enum": ["readOnly"] },
-                            "networkAccess": { "type": "boolean" },
-                            "access": { "$ref": "#/definitions/ReadOnlyAccess" }
-                        }
-                    }]
-                },
-                "ReadOnlyAccess": {
-                    "properties": {
-                        "type": { "enum": ["restricted", "full"] },
-                        "includePlatformDefaults": { "type": "boolean" },
-                        "readableRoots": { "type": "array", "items": { "type": "string" } },
-                    }
-                }
-            }
-        });
-        let expected = json!({
-            "type": "readOnly",
-            "networkAccess": false,
-            "access": {
-                "type": "restricted",
-                "includePlatformDefaults": false,
-                "readableRoots": ["/isolated"]
-            }
-        });
-        assert_eq!(
-            restricted_read_policy_from_schema(&supported, Path::new("/isolated")),
-            Some(expected)
-        );
-
-        let without_network_toggle: Value = json!({
-            "definitions": {
-                "SandboxPolicy": {
-                    "oneOf": [{
-                        "properties": {
-                            "type": { "enum": ["readOnly"] },
-                            "access": { "$ref": "#/definitions/ReadOnlyAccess" }
-                        }
-                    }]
-                },
-                "ReadOnlyAccess": {
-                    "properties": {
-                        "type": { "enum": ["restricted"] },
-                        "includePlatformDefaults": { "type": "boolean" },
-                        "readableRoots": { "type": "array", "items": { "type": "string" } }
-                    }
-                }
-            }
-        });
-        assert_eq!(
-            restricted_read_policy_from_schema(&without_network_toggle, Path::new("/isolated")),
-            None,
-            "network isolation must also be explicitly controllable"
-        );
+    fn app_owned_config_defines_only_the_scoped_read_only_runtime_profile() {
+        assert!(ISOLATED_CODEX_CONFIG.contains("\":root\" = \"deny\""));
+        assert!(ISOLATED_CODEX_CONFIG.contains("\":minimal\" = \"read\""));
+        assert!(ISOLATED_CODEX_CONFIG.contains("\".\" = \"read\""));
+        assert!(ISOLATED_CODEX_CONFIG.contains("enabled = false"));
+        assert!(!ISOLATED_CODEX_CONFIG.contains("danger-full-access"));
     }
 
     #[test]
@@ -10289,7 +10308,7 @@ impl CodexAppServerRuntime {
             executable: None,
             version: None,
             capability_probe_version: None,
-            restricted_read_sandbox_policy: None,
+            restricted_read_permission_profile: None,
             text_turn_unavailable_reason: None,
             client: None,
             shutdown_handle: RuntimeShutdownHandle::default(),
@@ -10303,21 +10322,21 @@ impl CodexAppServerRuntime {
             return;
         }
         self.capability_probe_version = Some((executable.to_path_buf(), version.to_owned()));
-        self.restricted_read_sandbox_policy = None;
-        let capability = generate_restricted_read_policy(
+        self.restricted_read_permission_profile = None;
+        let capability = generate_restricted_read_permission_profile(
             executable,
             &self.codex_home_dir,
             &self.app_data_dir,
             &self.working_directory,
         );
         match capability {
-            Ok(Some(policy)) => {
-                self.restricted_read_sandbox_policy = Some(policy);
+            Ok(Some(profile)) => {
+                self.restricted_read_permission_profile = Some(profile);
                 self.text_turn_unavailable_reason = None;
             }
             Ok(None) => {
                 self.text_turn_unavailable_reason = Some(format!(
-                    "Installed {version} does not advertise the restricted read-only access fields this app requires. Text turns are blocked; no user message is sent to the model."
+                    "Installed {version} does not advertise the experimental named permission-profile and runtime-root fields this app requires. Text turns are blocked; no user message is sent to the model."
                 ));
             }
             Err(error) => {
@@ -10470,7 +10489,7 @@ impl AppServerTransport for CodexAppServerRuntime {
             executable_path: Some(executable.to_string_lossy().into_owned()),
             version: Some(version),
             experimental: true,
-            read_only_text_turns_available: self.restricted_read_sandbox_policy.is_some(),
+            read_only_text_turns_available: self.restricted_read_permission_profile.is_some(),
             text_turn_unavailable_reason: self.text_turn_unavailable_reason.clone(),
             authenticated: auth_mode.is_some(),
             auth_mode,
@@ -10524,11 +10543,14 @@ impl AppServerTransport for CodexAppServerRuntime {
         instructions: &str,
         dynamic_tools: Vec<Value>,
     ) -> Result<String, String> {
-        if self.restricted_read_sandbox_policy.is_none() {
-            return Err(self.text_turn_unavailable_reason.clone().unwrap_or_else(|| {
-                "Restricted read-only access has not been verified. No Codex thread was started.".into()
-            }));
-        }
+        let permission_profile = self
+            .restricted_read_permission_profile
+            .clone()
+            .ok_or_else(|| {
+                self.text_turn_unavailable_reason.clone().unwrap_or_else(|| {
+                    "The scoped read-only permission profile has not been verified. No Codex thread was started.".into()
+                })
+            })?;
         ensure_empty_working_directory(&self.working_directory)?;
         let working_directory = self.working_directory.to_string_lossy().into_owned();
         let client = self.ensure_client()?;
@@ -10536,7 +10558,8 @@ impl AppServerTransport for CodexAppServerRuntime {
             "model": model,
             "cwd": working_directory,
             "approvalPolicy": "never",
-            "sandbox": "readOnly",
+            "permissions": permission_profile,
+            "runtimeWorkspaceRoots": [working_directory],
             "developerInstructions": instructions,
             "serviceName": "personal-dashboard"
         });
@@ -10553,11 +10576,14 @@ impl AppServerTransport for CodexAppServerRuntime {
     }
 
     fn resume_thread(&mut self, thread_id: &str) -> Result<(), String> {
-        if self.restricted_read_sandbox_policy.is_none() {
-            return Err(self.text_turn_unavailable_reason.clone().unwrap_or_else(|| {
-                "Restricted read-only access has not been verified. No Codex thread was resumed.".into()
-            }));
-        }
+        let permission_profile = self
+            .restricted_read_permission_profile
+            .clone()
+            .ok_or_else(|| {
+                self.text_turn_unavailable_reason.clone().unwrap_or_else(|| {
+                    "The scoped read-only permission profile has not been verified. No Codex thread was resumed.".into()
+                })
+            })?;
         ensure_empty_working_directory(&self.working_directory)?;
         let working_directory = self.working_directory.to_string_lossy().into_owned();
         self.ensure_client()?.request(
@@ -10565,7 +10591,8 @@ impl AppServerTransport for CodexAppServerRuntime {
             json!({
                 "threadId": thread_id,
                 "cwd": working_directory,
-                "sandbox": "readOnly",
+                "permissions": permission_profile,
+                "runtimeWorkspaceRoots": [working_directory],
                 "approvalPolicy": "never"
             }),
         )?;
@@ -10601,17 +10628,17 @@ impl AppServerTransport for CodexAppServerRuntime {
         external_action_handler: Option<RuntimeExternalActionHandler>,
         external_approval_handler: Option<RuntimeExternalApprovalHandler>,
     ) -> Result<RuntimeTurnResult, String> {
-        if self.restricted_read_sandbox_policy.is_none() {
+        if self.restricted_read_permission_profile.is_none() {
             return Err(self
                 .text_turn_unavailable_reason
                 .clone()
                 .unwrap_or_else(|| {
-                    "Restricted read-only access has not been verified. No model turn was sent."
+                    "The scoped read-only permission profile has not been verified. No model turn was sent."
                         .into()
                 }));
         }
-        let sandbox_policy = self
-            .restricted_read_sandbox_policy
+        let read_only_permission_profile = self
+            .restricted_read_permission_profile
             .clone()
             .expect("checked above");
         if request.working_directory != self.working_directory {
@@ -10648,7 +10675,8 @@ impl AppServerTransport for CodexAppServerRuntime {
             "model": request.model,
             "cwd": working_directory,
             "approvalPolicy": "never",
-            "sandboxPolicy": sandbox_policy
+            "permissions": read_only_permission_profile,
+            "runtimeWorkspaceRoots": [working_directory]
         });
         if let Some(effort) = request.reasoning_effort {
             params["effort"] = json!(effort);
@@ -11695,7 +11723,19 @@ impl Drop for StdioJsonlClient {
     }
 }
 
-const ISOLATED_CODEX_CONFIG: &str = "mcp_servers = {}\n";
+const ISOLATED_CODEX_CONFIG: &str = r#"mcp_servers = {}
+default_permissions = "personal-dashboard-collaboration-read"
+
+[permissions.personal-dashboard-collaboration-read.filesystem]
+":root" = "deny"
+":minimal" = "read"
+
+[permissions.personal-dashboard-collaboration-read.filesystem.":workspace_roots"]
+"." = "read"
+
+[permissions.personal-dashboard-collaboration-read.network]
+enabled = false
+"#;
 
 fn ensure_private_codex_home(codex_home_dir: &Path) -> Result<(), String> {
     ensure_private_directory(codex_home_dir, "Dashboard Codex profile")?;
