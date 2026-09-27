@@ -6213,7 +6213,8 @@ EOF
   run_driver capture-window "$capture_directory/today-shared-task-axis-800x640.png" 10
 
   current_step="reopening the completed Task and moving its point while the Daily Record arrangement stays put"
-  run_driver scroll-text-visible "TODAY · 共享任务" 10
+  run_driver wait-active-text "重开 · $task_name" 10
+  run_driver scroll-text-visible "重开 · $task_name" 10
   run_driver press-contains "重开 · $task_name" 10
   wait_for_task_property "$tasks_file" "$task_id" "state" "pending" ||
     fail "Today did not reopen the same Task identity"
