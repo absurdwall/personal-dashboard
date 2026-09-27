@@ -9063,8 +9063,21 @@ button.habit-cell:focus-visible {
   background: color-mix(in srgb, var(--parity-accent) 5%, var(--parity-surface-soft));
 }
 
+.collaboration-daily-record-operation {
+  border-left: 3px solid color-mix(in srgb, var(--parity-accent) 58%, #5d7f6a);
+  background: color-mix(in srgb, var(--parity-accent) 3%, var(--parity-surface-soft));
+}
+
+.collaboration-habit-operation {
+  border-left: 3px solid color-mix(in srgb, var(--parity-accent) 58%, #668293);
+  background: color-mix(in srgb, var(--parity-accent) 2.5%, var(--parity-surface-soft));
+}
+
 .collaboration-daily-plan-snapshot,
-.collaboration-daily-plan-section {
+.collaboration-daily-plan-section,
+.collaboration-daily-record-snapshot,
+.collaboration-daily-record-section,
+.collaboration-habit-snapshot {
   display: grid;
   gap: 0.28rem;
   padding-top: 0.3rem;
@@ -9072,7 +9085,10 @@ button.habit-cell:focus-visible {
 }
 
 .collaboration-daily-plan-snapshot > h5,
-.collaboration-daily-plan-section > h5 {
+.collaboration-daily-plan-section > h5,
+.collaboration-daily-record-snapshot > h5,
+.collaboration-daily-record-section > h5,
+.collaboration-habit-snapshot > h5 {
   margin: 0;
   color: #303633;
   font-size: 0.58rem;
@@ -9081,12 +9097,29 @@ button.habit-cell:focus-visible {
 .collaboration-daily-plan-snapshot > small,
 .collaboration-daily-plan-section > p,
 .collaboration-daily-plan-section li,
+.collaboration-daily-record-snapshot > small,
+.collaboration-daily-record-section > p,
+.collaboration-daily-record-section li,
+.collaboration-habit-snapshot > p,
+.collaboration-habit-snapshot > small,
 .collaboration-daily-plan-note {
   margin: 0;
   color: #4e5752;
   font-size: 0.55rem;
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+.collaboration-operation-source-text,
+.collaboration-habit-snapshot-warning,
+.collaboration-habit-snapshot-message {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.collaboration-habit-snapshot-warning {
+  color: #78372d !important;
+  font-weight: 650;
 }
 
 .collaboration-daily-plan-section > ul,

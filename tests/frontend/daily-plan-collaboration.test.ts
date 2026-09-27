@@ -52,3 +52,65 @@ test("a failed shared context refresh marks every pane unavailable instead of le
   assert.match(refresh[0], /habits: \{ state: "error"/);
   assert.match(refresh[0], /taskRevision: null[\s\S]*?taskRecords: \[\][\s\S]*?taskLists: \[\]/);
 });
+
+test("Daily Record and Habit proposals have typed, distinct review cards with exact evidence", () => {
+  assert.match(main, /operation: "saveEveningReview"; mode: "addition" \| "correction"; content: string/);
+  assert.match(main, /operation: "correctShortRecord"; recordId: string; content: string/);
+  assert.match(main, /operation: "setLocalHabitCompletion"; habitKey: string; completed: boolean/);
+  assert.match(main, /kind: "dailyReview"[\s\S]*?account: readonly string\[\][\s\S]*?corrections: readonly string\[\]/);
+  assert.match(main, /kind: "shortRecord"[\s\S]*?id: string[\s\S]*?category: "ordinary" \| "exercise"[\s\S]*?changeCount: number/);
+  assert.match(main, /kind: "habitCompletion"[\s\S]*?sourceEvidence: readonly string\[\][\s\S]*?sourceSnapshotState:[\s\S]*?sourceSnapshotMessage: string \| null/);
+  assert.match(main, /collaboration-daily-record-operation/);
+  assert.match(main, /collaboration-habit-operation/);
+  assert.match(main, /appendDailyReviewSnapshot\(card, operation\.baseline, "collaboration\.dailyReviewBaselineSnapshot"\)/);
+  assert.match(main, /appendShortRecordSnapshot\(card, operation\.baseline, "collaboration\.shortRecordBaselineSnapshot"\)/);
+  assert.match(main, /appendHabitCompletionSnapshot\(card, operation\.baseline, "collaboration\.habitCompletionBaselineSnapshot"\)/);
+  assert.match(main, /sourceSnapshotMessage\)[\s\S]*?collaboration\.habitSnapshotWarning/);
+  assert.match(main, /collaboration\.legacyDailyRecordNotice/);
+  assert.match(main, /session\.dailyRecordToolAvailable !== true/);
+  assert.match(css, /\.collaboration-daily-record-operation\s*\{/);
+  assert.match(css, /\.collaboration-habit-operation\s*\{/);
+  assert.match(copies, /"collaboration\.habitSnapshotWarning":\s*\{[^\n]*zh:[^\n]*en:/);
+  assert.match(copies, /"collaboration\.habitLocalState\.unknown":\s*\{[^\n]*zh: "状态未知"[^\n]*en: "unknown"/);
+  assert.match(main, /collaboration\.habitLocalState\.\$\{baseline\.localState\.toLowerCase\(\)\}/);
+  assert.match(copies, /"collaboration\.readOnlyBoundary":\s*\{[^\n]*selected Vault[^\n]*External Habit sources[^\n]*settings/);
+  assert.match(html, /data-i18n="collaboration\.readOnlyBoundary">[^<]*Only the exact approved content is written to the selected Vault/);
+  assert.match(main, /case "saveEveningReview":[\s\S]*?collaboration\.dailyRecordAction\.reviewAddition/);
+  assert.match(main, /case "correctShortRecord"[\s\S]*?collaboration\.dailyRecordAction\.shortRecordCorrection/);
+  assert.match(main, /case "setLocalHabitCompletion"[\s\S]*?collaboration\.habitCompletionAction\.add/);
+  assert.match(main, /appendDailyReviewSnapshot[\s\S]*?record\.account[\s\S]*?record\.additions[\s\S]*?record\.corrections[\s\S]*?record\.shortRecords/);
+  assert.match(main, /appendShortRecordSnapshot[\s\S]*?record\.id[\s\S]*?record\.category[\s\S]*?record\.text/);
+  assert.match(main, /appendHabitCompletionSnapshot[\s\S]*?sourceSnapshotState[\s\S]*?sourceSnapshotMessage[\s\S]*?sourceEvidence/);
+  assert.match(main, /operation\.status === "applied"[\s\S]*?dailyReview \|\| habitCompletion[\s\S]*?operation\.resultMessage/);
+});
+
+test("saved date operations refresh Today, Calendar, and Habits before the proposal card reports success", () => {
+  const action = main.match(/async function runCollaborationTaskOperationAction\([\s\S]*?\n\}/);
+  assert.ok(action, "shared operation action handler exists");
+  assert.match(action[0], /savedOperation\?\.status === "applied"[\s\S]*?await refreshCanonicalDateProjections\(savedOperation\.targetDate\)/);
+  assert.match(action[0], /await refreshCollaborationContextAfterOperation[\s\S]*?renderCollaborationWorkspace\(\)/);
+
+  const refresh = main.match(/async function refreshCanonicalDateProjections\([\s\S]*?\n\}/);
+  assert.ok(refresh, "date projection refresh helper exists");
+  assert.match(refresh[0], /invoke<TodayView>\("read_daily_view", \{ date: targetDate \}\)/);
+  assert.match(refresh[0], /invoke<CalendarMonthView>\("calendar_month", \{ year, month \}\)/);
+  assert.match(refresh[0], /invoke<HabitSnapshotView>\("habit_snapshot"\)/);
+  assert.match(refresh[0], /currentCalendarSummaryView\?\.date === targetDate/);
+  assert.match(refresh[0], /selectedHabitCell\?\.date === targetDate/);
+  assert.match(refresh[0], /currentHabitDateView = today\.value/);
+  assert.match(refresh[0], /todayPresentationRequests\.invalidate\(\)[\s\S]*?renderToday\(today\.value\)/);
+  assert.match(refresh[0], /calendarSelectionRequests\.invalidate\(\)[\s\S]*?renderCalendarSummary\(today\.value\)/);
+  assert.match(refresh[0], /habitDateRequests\.invalidate\(\)[\s\S]*?currentHabitDateView = today\.value/);
+  assert.match(refresh[0], /habitSnapshotRequests\.invalidate\(\)[\s\S]*?renderHabitSnapshot\(habits\.value\)/);
+  assert.match(refresh[0], /unavailable\.push\(t\("destination\.habits"\)\);\s*habitSnapshotRequests\.invalidate\(\);\s*renderHabitSnapshot\(\{/);
+  assert.match(refresh[0], /unavailable\.push\(t\("destination\.today"\)\)/);
+  assert.match(refresh[0], /if \(calendarTargetVisible\) unavailable\.push\(t\("destination\.calendar"\)\)/);
+  assert.match(refresh[0], /if \(habitTargetVisible\) unavailable\.push\(t\("destination\.habits"\)\)/);
+  assert.match(main, /collaborationTaskProjectionWarnings\.set\(operationId, warning\)/);
+  assert.match(main, /collaborationTaskProjectionWarnings\.get\(operation\.id\)[\s\S]*?collaboration\.operationProjectionRefreshWarning/);
+  assert.match(main, /showWorkspaceDestination\("today", true, operation\.targetDate\)/);
+  assert.match(main, /selectedCalendarDate = operation\.targetDate;[\s\S]*?showWorkspaceDestination\("calendar", true\)/);
+  assert.match(main, /selectedHabitCell = \{ habitKey: operation\.operation\.habitKey, date: operation\.targetDate \}/);
+  assert.match(main, /selectedHabitCell = \{ habitKey: "exercise", date: operation\.targetDate \}/);
+  assert.match(refresh[0], /const targetMonthIsVisible = currentWorkspaceDestination === "calendar"[\s\S]*?if \(targetMonthIsVisible\) \{[\s\S]*?renderCalendarReadError\(calendar\.error, false, false\)/);
+});
