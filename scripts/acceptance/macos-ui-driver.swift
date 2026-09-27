@@ -3761,23 +3761,33 @@ func regionFrame(_ application: AXUIElement, label: String) throws -> CGRect {
     throw DriverError.timeout("measurable visible region: \(label)")
 }
 
+func assertDisjointFrames(
+    _ first: (label: String, frame: CGRect),
+    _ second: (label: String, frame: CGRect),
+    unit: String
+) throws {
+    let intersection = first.frame.intersection(second.frame)
+    guard intersection.isNull || intersection.width <= 0 || intersection.height <= 0 else {
+        throw DriverError.unexpectedText(
+            "visible \(unit) overlap: \(first.label) \(first.frame) / " +
+                "\(second.label) \(second.frame) intersection=\(intersection)"
+        )
+    }
+    print(
+        "Visible \(unit) bounds are disjoint: \(first.label) \(first.frame) / " +
+            "\(second.label) \(second.frame)"
+    )
+}
+
 func assertRenderedElementsDisjoint(
     _ application: AXUIElement,
     firstLabel: String,
     secondLabel: String
 ) throws {
-    let firstFrame = try renderedLeafFrame(application, label: firstLabel)
-    let secondFrame = try renderedLeafFrame(application, label: secondLabel)
-    let intersection = firstFrame.intersection(secondFrame)
-    guard intersection.isNull || intersection.width <= 0 || intersection.height <= 0 else {
-        throw DriverError.unexpectedText(
-            "visible rendered elements overlap: \(firstLabel) \(firstFrame) / " +
-                "\(secondLabel) \(secondFrame) intersection=\(intersection)"
-        )
-    }
-    print(
-        "Visible rendered element bounds are disjoint: \(firstLabel) \(firstFrame) / " +
-            "\(secondLabel) \(secondFrame)"
+    try assertDisjointFrames(
+        (label: firstLabel, frame: try renderedLeafFrame(application, label: firstLabel)),
+        (label: secondLabel, frame: try renderedLeafFrame(application, label: secondLabel)),
+        unit: "rendered element"
     )
 }
 
@@ -3786,18 +3796,10 @@ func assertRegionsDisjoint(
     firstLabel: String,
     secondLabel: String
 ) throws {
-    let firstFrame = try regionFrame(application, label: firstLabel)
-    let secondFrame = try regionFrame(application, label: secondLabel)
-    let intersection = firstFrame.intersection(secondFrame)
-    guard intersection.isNull || intersection.width <= 0 || intersection.height <= 0 else {
-        throw DriverError.unexpectedText(
-            "visible regions overlap: \(firstLabel) \(firstFrame) / " +
-                "\(secondLabel) \(secondFrame) intersection=\(intersection)"
-        )
-    }
-    print(
-        "Visible region bounds are disjoint: \(firstLabel) \(firstFrame) / " +
-            "\(secondLabel) \(secondFrame)"
+    try assertDisjointFrames(
+        (label: firstLabel, frame: try regionFrame(application, label: firstLabel)),
+        (label: secondLabel, frame: try regionFrame(application, label: secondLabel)),
+        unit: "region"
     )
 }
 
