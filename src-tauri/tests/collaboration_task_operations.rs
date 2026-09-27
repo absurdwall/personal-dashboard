@@ -513,6 +513,27 @@ impl AppServerTransport for DynamicRuntime {
                     "revisedDirection": "Move the review to tomorrow"
                 }),
             )
+        } else if request.user_text
+            == "Record a daytime event in today's Daily Record: 'Synthetic daytime event for acceptance.' Show the exact proposal and wait for approval before saving."
+        {
+            (
+                "daytime-event-proposal-call-id",
+                "dashboard_task_operation",
+                json!({
+                    "operation": "saveDailyPlan",
+                    "transition": "daytimeEvent",
+                    "arrangement": [],
+                    "evidence": [],
+                    "calibrationNote": null,
+                    "baselineCorrectionReason": null,
+                    "event": "Synthetic daytime event for acceptance.",
+                    "originalIntent": null,
+                    "changeReason": null,
+                    "revisedDirection": null,
+                    "executionMode": "prepareProposal",
+                    "authorizationQuote": request.user_text.clone()
+                }),
+            )
         } else if request.user_text == "daytime event" {
             (
                 "reused-turn-scoped-call-id",
@@ -550,6 +571,18 @@ impl AppServerTransport for DynamicRuntime {
                     "authorizationQuote": request.user_text.clone(),
                     "mode": "addition",
                     "content": "Completed the synthetic collaboration acceptance task."
+                }),
+            )
+        } else if request.user_text == "unsupported note operation" {
+            (
+                "unsupported-note-operation-call-id",
+                "dashboard_task_operation",
+                json!({
+                    "operation": "appendDailyRecord",
+                    "executionMode": "prepareProposal",
+                    "authorizationQuote": request.user_text,
+                    "targetDate": "2026-09-27",
+                    "text": "Synthetic note"
                 }),
             )
         } else if request.user_text == "evening correction" {
@@ -995,6 +1028,26 @@ fn dynamic_tool_registration_duplicate_delivery_and_approval_share_canonical_tas
             >= 12
     );
     let task_variants = registered[0]["inputSchema"]["oneOf"].as_array().unwrap();
+    let daily_plan = task_variants
+        .iter()
+        .find(|variant| variant["properties"]["operation"]["const"] == "saveDailyPlan")
+        .unwrap();
+    let transition_guidance = daily_plan["properties"]["transition"]["description"]
+        .as_str()
+        .expect("the runtime schema distinguishes event-only daytime updates");
+    assert!(
+        transition_guidance.contains("daytimeEvent")
+            && transition_guidance.contains("event")
+            && transition_guidance.contains("arrangement"),
+        "{transition_guidance}"
+    );
+    let daytime_event_guidance = daily_plan["properties"]["event"]["description"]
+        .as_str()
+        .expect("the runtime schema routes daytime facts to the daytime event field");
+    assert!(
+        daytime_event_guidance.contains("daytime") && daytime_event_guidance.contains("白天更新"),
+        "{daytime_event_guidance}"
+    );
     let create_task = task_variants
         .iter()
         .find(|variant| variant["properties"]["operation"]["const"] == "createTask")
@@ -1012,6 +1065,16 @@ fn dynamic_tool_registration_duplicate_delivery_and_approval_share_canonical_tas
         .iter()
         .find(|variant| variant["properties"]["operation"]["const"] == "saveEveningReview")
         .unwrap();
+    let operation_guidance = evening_review["properties"]["operation"]["description"]
+        .as_str()
+        .expect("the runtime schema explains how a Daily Record note maps to an operation");
+    assert!(
+        operation_guidance.contains("Daily Record")
+            && operation_guidance.contains("note")
+            && operation_guidance.contains("mode=addition")
+            && operation_guidance.contains("content"),
+        "{operation_guidance}"
+    );
     let execution_mode_guidance = evening_review["properties"]["executionMode"]["description"]
         .as_str()
         .expect("the model receives explicit proposal-versus-execute guidance");
@@ -1020,6 +1083,21 @@ fn dynamic_tool_registration_duplicate_delivery_and_approval_share_canonical_tas
             && execution_mode_guidance.contains("proposal"),
         "{execution_mode_guidance}"
     );
+    let addition_mode_guidance = evening_review["properties"]["mode"]["description"]
+        .as_str()
+        .expect("the runtime schema explains addition mode");
+    assert!(
+        addition_mode_guidance.contains("evening review"),
+        "{addition_mode_guidance}"
+    );
+    assert!(
+        addition_mode_guidance.contains("daytime event"),
+        "{addition_mode_guidance}"
+    );
+    assert!(registered[0]["description"]
+        .as_str()
+        .unwrap()
+        .contains("daytimeEvent"));
     drop(registered);
     assert_eq!(results.lock().unwrap().len(), 1);
     assert!(
@@ -1637,6 +1715,115 @@ fn unknown_runtime_dynamic_tool_request_is_rejected_without_a_proposal_or_write(
         .unwrap()
         .tasks
         .is_empty());
+}
+
+#[test]
+fn unsupported_daily_record_note_name_explains_the_canonical_operation_without_writing() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let daily_path = vault_path.join("life/Journal/Daily/2026/2026-09/2026-09-27.md");
+    let vault = MutableVault::new(&vault_path);
+    let (application, _, results) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "vault-a",
+            &session.id,
+            "2026-09-27",
+            "unsupported note operation",
+        )
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+
+    let result = results.lock().unwrap()[0].clone();
+    assert!(!result.success);
+    assert!(result.text.contains("saveEveningReview"), "{}", result.text);
+    assert!(result.text.contains("mode=addition"), "{}", result.text);
+    assert!(result.text.contains("content"), "{}", result.text);
+    assert!(application
+        .session("vault-a", &session.id)
+        .unwrap()
+        .task_operations
+        .is_empty());
+    assert!(
+        !daily_path.exists(),
+        "an unsupported operation must not write"
+    );
+}
+
+#[test]
+fn approved_daytime_event_is_recorded_under_daytime_without_changing_the_plan() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let daily_path = prepare_daily_review_vault(&vault_path, false);
+    let original = fs::read_to_string(&daily_path).unwrap();
+    let vault = MutableVault::new(&vault_path);
+    let (application, _, results) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    let prompt = "Record a daytime event in today's Daily Record: 'Synthetic daytime event for acceptance.' Show the exact proposal and wait for approval before saving.";
+    application
+        .submit_message("vault-a", &session.id, "2026-09-27", prompt)
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+
+    let result = results.lock().unwrap()[0].clone();
+    assert!(result.success, "{}", result.text);
+    let proposal = application
+        .session("vault-a", &session.id)
+        .unwrap()
+        .task_operations
+        .into_iter()
+        .find(|operation| operation.status == "awaitingApproval")
+        .expect("the exact daytime update remains pending for review");
+    assert!(matches!(
+        &proposal.operation,
+        CollaborationTaskOperation::SaveDailyPlan {
+            transition: DailyPlanTransition::DaytimeEvent,
+            event: Some(event),
+            ..
+        } if event == "Synthetic daytime event for acceptance."
+    ));
+    assert_eq!(fs::read_to_string(&daily_path).unwrap(), original);
+
+    let saved = application
+        .approve_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap();
+    assert_eq!(
+        saved
+            .task_operations
+            .iter()
+            .find(|operation| operation.id == proposal.id)
+            .unwrap()
+            .status,
+        "applied"
+    );
+    let updated = fs::read_to_string(&daily_path).unwrap();
+    let daytime = canonical_section(&updated, "白天更新", "晚间复盘");
+    assert!(daytime.contains("Synthetic daytime event for acceptance."));
+    assert_eq!(
+        updated
+            .matches("Synthetic daytime event for acceptance.")
+            .count(),
+        1
+    );
+    assert_eq!(
+        canonical_section(&updated, "早间基准", "今天的大致安排"),
+        canonical_section(&original, "早间基准", "今天的大致安排")
+    );
+    assert_eq!(
+        canonical_section(&updated, "今天的大致安排", "计划依据"),
+        canonical_section(&original, "今天的大致安排", "计划依据")
+    );
 }
 
 #[test]

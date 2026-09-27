@@ -1674,7 +1674,7 @@ fn dashboard_context_reader_uses_canonical_read_services_without_mutating_source
     fs::create_dir_all(daily_record.parent().unwrap()).unwrap();
     fs::write(
         &daily_record,
-        "---\ntype: daily-record\ndate: 2026-09-08\n---\n# 2026-09-08\n\n## 早间基准\n\n### 初始安排\n\nCanonical synthetic baseline.\n\n## 今天的大致安排\n\n- **上午：** Canonical synthetic plan.\n\n## 白天更新\n\n## 晚间复盘\n",
+        "---\ntype: daily-record\ndate: 2026-09-08\n---\n# 2026-09-08\n\n## 早间基准\n\n### 初始安排\n\nCanonical synthetic baseline.\n\n## 今天的大致安排\n\n- **上午：** Canonical synthetic plan.\n\n## 白天更新\n\n## 晚间复盘\n\n### 用户补充\n\n- Synthetic current evening addition.\n",
     )
     .unwrap();
     let habit_snapshot = vault.join(".personal-dashboard/derived/habits-v1.json");
@@ -1724,6 +1724,11 @@ fn dashboard_context_reader_uses_canonical_read_services_without_mutating_source
         .items
         .iter()
         .any(|item| item.contains("Canonical synthetic plan")));
+    assert!(context
+        .daily_record
+        .items
+        .iter()
+        .any(|item| item.contains("Synthetic current evening addition")));
     assert_eq!(context.tasks.state, "ready");
     assert!(context
         .tasks

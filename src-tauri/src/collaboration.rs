@@ -8275,6 +8275,11 @@ fn validate_task_operation_required_fields(arguments: &Value) -> Result<(), Stri
         .get("operation")
         .and_then(Value::as_str)
         .ok_or_else(|| "Task operation must include its operation name.".to_string())?;
+    if matches!(operation, "appendDailyRecord" | "addShortRecord") {
+        return Err(
+            "This operation name is not available. To add a new note to a Daily Record, use `saveEveningReview` with `mode=addition` and put the exact note in `content`. Use `correctShortRecord` only to edit an existing Short Record by `recordId`.".into(),
+        );
+    }
     let required: &[&str] = match operation {
         "createTask" => &["name", "content", "date", "time", "listId"],
         "updateTask" => &["taskId", "name", "content", "date", "time", "listId"],
@@ -8636,10 +8641,16 @@ fn task_operation_authority_markers(
             ),
             DailyPlanTransition::DaytimeEvent => (
                 concat!(
-                    "record this event|log this event|record this in my daily record|",
-                    "记录事件|记录到日记录|补记事件"
+                    "record this event|log this event|record a daytime event|log a daytime event|",
+                    "record this daytime update|record this daytime checkpoint|",
+                    "record this in my daily record|record this in the daytime update|",
+                    "记录事件|记录白天事件|记录白天更新|记下白天变化|记录到日记录|补记事件"
                 ),
-                "don't record this event|do not record this event|不要记录事件|先别记录事件",
+                concat!(
+                    "don't record this event|do not record this event|",
+                    "don't record a daytime event|do not record a daytime event|",
+                    "不要记录事件|不要记录白天事件|先别记录事件"
+                ),
             ),
             DailyPlanTransition::DaytimeReplan => (
                 concat!(
@@ -8830,10 +8841,13 @@ fn collaboration_task_tool_spec(
             .as_object()
             .cloned()
             .expect("task tool properties are defined as an object");
-        properties.insert(
-            "operation".into(),
-            json!({ "type": "string", "const": name }),
-        );
+        let mut operation_property = json!({ "type": "string", "const": name });
+        if name == "saveDailyPlan" {
+            operation_property["description"] = json!("For an explicitly reported daytime event or update, use transition=daytimeEvent and put the exact factual text in event. Leave arrangement and evidence empty unless the current plan itself must change. This writes under `## 白天更新` and preserves the plan and morning baseline.");
+        } else if name == "saveEveningReview" {
+            operation_property["description"] = json!("For a new note or supplement to the selected Daily Record's `## 晚间复盘`, use this operation with mode=addition and put the exact note in content. For an explicitly daytime event or update, use saveDailyPlan with transition=daytimeEvent instead. Do not invent appendDailyRecord or addShortRecord operations.");
+        }
+        properties.insert("operation".into(), operation_property);
         let mut required_fields = vec!["operation"];
         required_fields.extend_from_slice(required);
         if include_authorization_fields {
@@ -8912,12 +8926,19 @@ fn collaboration_task_tool_spec(
         defs.push(operation(
             "saveDailyPlan",
             json!({
-                "transition": {"type": "string", "enum": ["initialPlan", "morningCalibration", "daytimeEvent", "daytimeReplan", "morningBaselineCorrection"]},
+                "transition": {
+                    "type": "string",
+                    "enum": ["initialPlan", "morningCalibration", "daytimeEvent", "daytimeReplan", "morningBaselineCorrection"],
+                    "description": "Use daytimeEvent for a factual daytime update that does not change the current arrangement; pair it with event and leave arrangement/evidence empty. Use daytimeReplan only when the current plan itself materially changes."
+                },
                 "arrangement": {"type": "array", "items": block},
                 "evidence": {"type": "array", "items": evidence},
                 "calibrationNote": nullable_string,
                 "baselineCorrectionReason": nullable_string,
-                "event": nullable_string,
+                "event": {
+                    "type": ["string", "null"],
+                    "description": "The exact factual daytime event or update written under `## 白天更新`; use with transition=daytimeEvent. Do not put explicit daytime updates in the evening review."
+                },
                 "originalIntent": nullable_string,
                 "changeReason": nullable_string,
                 "revisedDirection": nullable_string
@@ -8925,12 +8946,16 @@ fn collaboration_task_tool_spec(
             &["transition", "arrangement", "evidence", "calibrationNote", "baselineCorrectionReason", "event", "originalIntent", "changeReason", "revisedDirection"],
         ));
         defs.extend([
-            operation(
-                "saveEveningReview",
-                json!({
-                    "mode": {"type": "string", "enum": ["addition", "correction"]},
-                    "content": string
-                }),
+        operation(
+            "saveEveningReview",
+            json!({
+                "mode": {
+                    "type": "string",
+                    "enum": ["addition", "correction"],
+                    "description": "Use addition for a new evening review note or supplement. Use correction to revise an existing evening review entry. Explicit daytime events or updates belong to saveDailyPlan with transition=daytimeEvent."
+                },
+                "content": string
+            }),
                 &["mode", "content"],
             ),
             operation(
@@ -8947,7 +8972,7 @@ fn collaboration_task_tool_spec(
     }
     let alternatives = defs;
     let description = if include_authorization_fields {
-        "Use one exact local Task, list, Daily Record, or local Habit operation. Select executionMode=prepareProposal whenever the current user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires prepareProposal, even when it uses a direct action verb. Select executionMode=execute only when the user clearly asks to save now without a later review; quote the exact instruction in authorizationQuote. Dashboard rechecks the selected Vault, binding, and latest revision before writing. Ambiguous requests, plans, and suggestions are discussion only. A tool description is not permission."
+        "Use one exact local Task, list, Daily Record, or local Habit operation. For an explicitly reported daytime event or update, use saveDailyPlan with transition=daytimeEvent, place the exact factual text in event, and leave arrangement/evidence empty unless the current arrangement must also change; this appends under `## 白天更新` and preserves the morning baseline and current arrangement. Use transition=daytimeReplan only for a material arrangement change. For a new evening-review note or supplement, use saveEveningReview with mode=addition and exact text in content; use correction only to revise an existing review entry. Do not route an explicit daytime update to the evening review, and do not invent appendDailyRecord or addShortRecord operations. Select executionMode=prepareProposal whenever the current user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires prepareProposal, even when it uses a direct action verb. Select executionMode=execute only when the user clearly asks to save now without a later review; quote the exact instruction in authorizationQuote. Dashboard rechecks the selected Vault, binding, and latest revision before writing. Ambiguous requests, plans, and suggestions are discussion only. A tool description is not permission."
     } else {
         "Save one automatic first-draft Daily Record plan for the current target date only. This path is enabled by the user and cannot change Tasks or record facts."
     };
@@ -9527,6 +9552,12 @@ fn daily_record_pane(view: &TodayView) -> ContextPaneView {
             .summary
             .iter()
             .map(|line| format!("Evening review · {line}")),
+    );
+    items.extend(
+        view.evening
+            .additions
+            .iter()
+            .map(|line| format!("Evening addition · {line}")),
     );
     items.extend(
         view.evening
@@ -10672,7 +10703,7 @@ impl AppServerTransport for CodexAppServerRuntime {
             format!("{app_markers} {}", request.user_text)
         };
         let input_text = format!(
-            "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. For a clear, unique local write, use `dashboard_task_operation` with `executionMode=execute` only when the user clearly asks to save now without a later review; quote the exact instruction in `authorizationQuote`. Use `prepareProposal` whenever the user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires `prepareProposal`, even when it uses a direct action verb. The Dashboard verifies the current request, selected Vault, binding, and revision before saving. Ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` whenever the user asks to review, confirm, or wait for approval before saving. Use a connected external app only when the user explicitly selected it for this message. Keep external actions within the user's requested source, object, and target-date scope. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
+        "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. For an explicitly reported daytime event or update, use `dashboard_task_operation` with operation `saveDailyPlan`, transition `daytimeEvent`, the exact factual text in `event`, and empty `arrangement`/`evidence` unless the current arrangement also changes; this appends under `## 白天更新` and preserves the plan and morning baseline. Use `daytimeReplan` only for a material plan change. Use `saveEveningReview` with mode `addition` only for a new evening-review note or supplement; never route an explicit daytime event to the evening review. Do not invent `appendDailyRecord` or `addShortRecord`. For a clear, unique local write, use `dashboard_task_operation` with `executionMode=execute` only when the user clearly asks to save now without a later review; quote the exact instruction in `authorizationQuote`. Use `prepareProposal` whenever the user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires `prepareProposal`, even when it uses a direct action verb. The Dashboard verifies the current request, selected Vault, binding, and revision before saving. Ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` whenever the user asks to review, confirm, or wait for approval before saving. Use a connected external app only when the user explicitly selected it for this message. Keep external actions within the user's requested source, object, and target-date scope. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
             user_text, request.context.date, context
         );
         let working_directory = self.working_directory.to_string_lossy().into_owned();
