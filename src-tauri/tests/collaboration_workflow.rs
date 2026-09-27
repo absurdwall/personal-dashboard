@@ -1362,7 +1362,7 @@ fn selected_vault_is_rechecked_immediately_before_sending_context() {
 }
 
 #[test]
-fn explicit_memory_updates_wait_for_approval_and_reappear_as_cross_session_context() {
+fn explicit_memory_updates_apply_without_a_second_approval_and_reappear_as_cross_session_context() {
     let directory = IsolatedDirectory::new();
     let prompts = Arc::new(Mutex::new(Vec::new()));
     let memory_results = Arc::new(Mutex::new(Vec::new()));
@@ -1375,6 +1375,7 @@ fn explicit_memory_updates_wait_for_approval_and_reappear_as_cross_session_conte
         arguments: serde_json::json!({
             "operation": "proposeLongTermUpdate",
             "basis": "explicitUserInstruction",
+            "executionMode": "execute",
             "authorizationQuote": "Please remember that I prefer early planning.",
             "change": "Prefers early planning.",
             "replaces": null
@@ -1415,11 +1416,10 @@ fn explicit_memory_updates_wait_for_approval_and_reappear_as_cross_session_conte
         .memory_proposals
         .first()
         .expect("tool call should create a proposal");
-    assert_eq!(proposal.status, "awaitingApproval");
-    assert_eq!(
-        memory.content(),
-        "# Synthetic profile\n",
-        "a tool call alone must not write long-term background"
+    assert_eq!(proposal.status, "applied");
+    assert!(
+        memory.content().contains("Prefers early planning."),
+        "the explicit durable instruction is saved during the current turn"
     );
     let first_request = prompts.lock().unwrap()[0].clone();
     assert!(first_request
@@ -1436,10 +1436,6 @@ fn explicit_memory_updates_wait_for_approval_and_reappear_as_cross_session_conte
     assert!(first_request.context.tasks.items[0].contains("synthetic appointment"));
     assert!(first_request.context.habits.items[0].contains("synthetic stretch"));
 
-    let applied = application
-        .approve_memory_proposal_for_selected_vault(&first_session.id, &proposal.id)
-        .unwrap();
-    assert_eq!(applied.memory_proposals[0].status, "applied");
     assert!(memory.content().contains("Prefers early planning."));
 
     let second_session = application.create_session("2026-09-27").unwrap();
@@ -1482,6 +1478,51 @@ fn explicit_memory_updates_wait_for_approval_and_reappear_as_cross_session_conte
 }
 
 #[test]
+fn direct_memory_update_waits_when_the_user_asks_to_review_before_saving() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let memory_results = Arc::new(Mutex::new(Vec::new()));
+    let memory = SyntheticMemoryService::new();
+    let memory_call = RuntimeDynamicToolCall {
+        thread_id: "runtime-thread-1".into(),
+        turn_id: "runtime-turn-1".into(),
+        call_id: "memory-call-review-first".into(),
+        tool: "dashboard_memory_update".into(),
+        arguments: serde_json::json!({
+            "operation": "proposeLongTermUpdate",
+            "basis": "explicitUserInstruction",
+            "executionMode": "execute",
+            "authorizationQuote": "Please remember that I prefer early planning.",
+            "change": "Prefers early planning.",
+            "replaces": null
+        }),
+    };
+    let application = new_application_with_synthetic_memory(
+        &directory,
+        Arc::clone(&prompts),
+        memory.clone(),
+        Some(memory_call),
+        Arc::clone(&memory_results),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "synthetic-vault",
+            &session.id,
+            "2026-09-27",
+            "Please remember that I prefer early planning, but show me the exact proposed change for review before saving.",
+        )
+        .unwrap();
+    wait_until_finished(&application, &session.id);
+
+    let finished = application.session("synthetic-vault", &session.id).unwrap();
+    assert!(finished.memory_proposals.is_empty());
+    assert_eq!(memory.content(), "# Synthetic profile\n");
+    assert_eq!(memory_results.lock().unwrap().len(), 1);
+    assert!(!memory_results.lock().unwrap()[0].success);
+}
+
+#[test]
 fn memory_approval_conflict_preserves_an_external_source_edit() {
     let directory = IsolatedDirectory::new();
     let prompts = Arc::new(Mutex::new(Vec::new()));
@@ -1495,6 +1536,7 @@ fn memory_approval_conflict_preserves_an_external_source_edit() {
         arguments: serde_json::json!({
             "operation": "proposeLongTermUpdate",
             "basis": "explicitUserInstruction",
+            "executionMode": "prepareProposal",
             "authorizationQuote": "Please remember that I prefer early planning.",
             "change": "Prefers early planning.",
             "replaces": null

@@ -388,7 +388,25 @@ impl AppServerTransport for DynamicRuntime {
                 gate.block_automatic_turn();
             }
         }
-        let (call_id, tool, arguments) = if request.user_text == "create task" {
+        let (call_id, tool, arguments) = if request.user_text
+            == "Please create a task named Synthetic report."
+            || request.user_text == "Don't ask me again; create a task named Synthetic report."
+        {
+            (
+                "direct-task-call-id",
+                "dashboard_task_operation",
+                json!({
+                    "operation": "createTask",
+                    "executionMode": "execute",
+                    "authorizationQuote": request.user_text,
+                    "name": "Synthetic report",
+                    "content": null,
+                    "date": null,
+                    "time": null,
+                    "listId": null
+                }),
+            )
+        } else if request.user_text == "create task" {
             (
                 "reused-turn-scoped-call-id",
                 "dashboard_task_operation",
@@ -821,8 +839,58 @@ fn enabled_automation(time: &str) -> DailyPlanAutomationSettings {
     DailyPlanAutomationSettings {
         enabled: true,
         time: time.into(),
-        external_schedule_handoff_confirmed: false,
+        external_schedule_handoff_confirmed: true,
     }
+}
+
+#[test]
+fn automation_requires_confirmation_that_the_previous_schedule_was_handed_off() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "06:00");
+    let (application, _, _, _) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock,
+        None,
+    );
+
+    let error = application
+        .update_daily_plan_automation(DailyPlanAutomationSettings {
+            enabled: true,
+            time: "07:00".into(),
+            external_schedule_handoff_confirmed: false,
+        })
+        .unwrap_err();
+    assert!(error.contains("previous morning-plan schedule is disabled"));
+
+    let saved = application.daily_plan_automation().unwrap();
+    assert!(
+        !saved.settings.enabled,
+        "failed handoff confirmation must not persist enabled state"
+    );
+    assert!(
+        saved.current_run.is_none(),
+        "failed handoff confirmation must not queue a run"
+    );
+
+    let store =
+        FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"));
+    let mut legacy_settings = store.load().unwrap();
+    legacy_settings.settings.daily_plan_automation = DailyPlanAutomationSettings {
+        enabled: true,
+        time: "06:00".into(),
+        external_schedule_handoff_confirmed: false,
+    };
+    store.save(&legacy_settings).unwrap();
+    let legacy_run = application.check_daily_plan_automation().unwrap();
+    assert!(
+        legacy_run.current_run.is_none(),
+        "restored or migrated settings cannot run before the handoff is confirmed"
+    );
+    assert!(application.list_sessions("2026-09-27").unwrap().is_empty());
 }
 
 fn wait_for_finish(application: &CollaborationApplication, session_id: &str, vault: &str) {
@@ -913,6 +981,20 @@ fn dynamic_tool_registration_duplicate_delivery_and_approval_share_canonical_tas
             .len()
             >= 12
     );
+    let task_variants = registered[0]["inputSchema"]["oneOf"].as_array().unwrap();
+    let create_task = task_variants
+        .iter()
+        .find(|variant| variant["properties"]["operation"]["const"] == "createTask")
+        .unwrap();
+    assert_eq!(
+        create_task["properties"]["executionMode"]["enum"][0],
+        "execute"
+    );
+    assert!(create_task["required"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|field| field == "authorizationQuote"));
     drop(registered);
     assert_eq!(results.lock().unwrap().len(), 1);
     assert!(
@@ -962,6 +1044,48 @@ fn dynamic_tool_registration_duplicate_delivery_and_approval_share_canonical_tas
     assert_eq!(saved.tasks[0].date.as_deref(), Some("2026-09-20"));
     assert_eq!(saved.tasks[0].time.as_deref(), Some("09:30"));
     assert_eq!(saved.tasks[0].state, TaskState::Pending);
+}
+
+#[test]
+fn exact_current_user_instruction_executes_task_without_a_second_approval() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault-a");
+    let vault = MutableVault::new(&vault_path);
+    let (application, _, results) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "vault-a",
+            &session.id,
+            "2026-09-27",
+            "Don't ask me again; create a task named Synthetic report.",
+        )
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+
+    let completed = application.session("vault-a", &session.id).unwrap();
+    assert_eq!(completed.task_operations.len(), 1);
+    assert_eq!(completed.task_operations[0].status, "applied");
+    assert!(completed.task_operations[0]
+        .result_message
+        .as_deref()
+        .unwrap_or_default()
+        .contains("Synthetic report"));
+    assert!(results.lock().unwrap()[0].success);
+    let saved = TaskApplicationCollaborationAdapter::new(TaskApplication::new(
+        vault,
+        FixedClock,
+        FileTaskStore,
+    ))
+    .read()
+    .unwrap();
+    assert_eq!(saved.tasks.len(), 1);
+    assert_eq!(saved.tasks[0].name, "Synthetic report");
 }
 
 #[test]

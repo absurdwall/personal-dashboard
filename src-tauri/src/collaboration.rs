@@ -270,6 +270,14 @@ enum MemoryUpdateBasis {
     ConfirmedInference,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum CollaborationToolExecutionMode {
+    Execute,
+    #[default]
+    PrepareProposal,
+}
+
 impl MemoryUpdateBasis {
     fn label(&self) -> &'static str {
         match self {
@@ -289,6 +297,8 @@ impl MemoryUpdateBasis {
 enum CollaborationMemoryUpdateCall {
     ProposeLongTermUpdate {
         basis: MemoryUpdateBasis,
+        #[serde(default)]
+        execution_mode: CollaborationToolExecutionMode,
         authorization_quote: String,
         change: String,
         replaces: Option<String>,
@@ -1714,6 +1724,9 @@ impl CollaborationApplication {
         settings: DailyPlanAutomationSettings,
     ) -> Result<DailyPlanAutomationView, String> {
         validate_daily_plan_time(&settings.time)?;
+        if settings.enabled && !settings.external_schedule_handoff_confirmed {
+            return Err("Confirm that the previous morning-plan schedule is disabled before enabling Dashboard automation. This prevents two schedulers from writing the same Daily Record.".into());
+        }
         self.update_state(|state| {
             state.settings.daily_plan_automation = settings.clone();
             Ok(())
@@ -1743,7 +1756,10 @@ impl CollaborationApplication {
     /// Evaluate one time-triggered or late-open event. Calls are idempotent per Vault and date.
     pub fn check_daily_plan_automation(&self) -> Result<DailyPlanAutomationView, String> {
         let view = self.automation_view()?;
-        if !view.settings.enabled || !daily_plan_schedule_is_due(&view.time, &view.settings.time)? {
+        if !view.settings.enabled
+            || !view.settings.external_schedule_handoff_confirmed
+            || !daily_plan_schedule_is_due(&view.time, &view.settings.time)?
+        {
             return Ok(view);
         }
         let Some(vault_key) = self.context_source.current_vault_key()? else {
@@ -3905,6 +3921,15 @@ impl CollaborationApplication {
                     success: false,
                 };
             }
+            let execution_mode = match collaboration_tool_execution_mode(&call.arguments) {
+                Ok(mode) => mode,
+                Err(error) => {
+                    return RuntimeDynamicToolResult {
+                        text: format!("The memory action was incomplete or invalid: {error}. No long-term memory was changed."),
+                        success: false,
+                    }
+                }
+            };
             return match self.propose_memory_update(
                 vault_key,
                 session_id,
@@ -3913,7 +3938,33 @@ impl CollaborationApplication {
                 &call.turn_id,
                 &call.call_id,
                 &call.arguments,
+                execution_mode,
             ) {
+                Ok(proposal) if execution_mode == CollaborationToolExecutionMode::Execute => {
+                    match self.approve_memory_proposal_for_selected_vault(session_id, &proposal.id) {
+                        Ok(session) => {
+                            let stored = session.memory_proposals.iter().find(|item| item.id == proposal.id);
+                            match stored {
+                                Some(item) if item.status == "applied" => RuntimeDynamicToolResult {
+                                    text: item.result_message.clone().unwrap_or_else(|| "The explicitly authorized long-term memory update was saved.".into()),
+                                    success: true,
+                                },
+                                Some(item) => RuntimeDynamicToolResult {
+                                    text: item.result_message.clone().unwrap_or_else(|| format!("The long-term memory update was not saved (status: {}).", item.status)),
+                                    success: true,
+                                },
+                                None => RuntimeDynamicToolResult {
+                                    text: "The long-term update result is missing from collaboration history. Check the existing source before retrying.".into(),
+                                    success: false,
+                                },
+                            }
+                        }
+                        Err(error) => RuntimeDynamicToolResult {
+                            text: format!("The explicitly authorized long-term memory update was not confirmed as saved: {error}"),
+                            success: false,
+                        },
+                    }
+                }
                 Ok(proposal) => RuntimeDynamicToolResult {
                     text: format!("Long-term memory update proposal {} is saved for user review. The existing operating-principles document has not changed. The user must approve the exact update in Personal Dashboard.", proposal.id),
                     success: true,
@@ -3956,13 +4007,35 @@ impl CollaborationApplication {
                 success: false,
             };
         }
-        if let Err(error) = validate_task_operation_required_fields(&call.arguments) {
+        let execution_mode = match collaboration_tool_execution_mode(&call.arguments) {
+            Ok(mode) => mode,
+            Err(error) => {
+                return RuntimeDynamicToolResult {
+                    text: format!(
+                    "The Dashboard action was incomplete or invalid: {error}. No data was changed."
+                ),
+                    success: false,
+                }
+            }
+        };
+        let authorization_quote = call
+            .arguments
+            .get("authorizationQuote")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let mut operation_arguments = call.arguments.clone();
+        if let Some(arguments) = operation_arguments.as_object_mut() {
+            arguments.remove("executionMode");
+            arguments.remove("authorizationQuote");
+        }
+        if let Err(error) = validate_task_operation_required_fields(&operation_arguments) {
             return RuntimeDynamicToolResult {
                 text: format!("The proposed Dashboard action was incomplete or invalid: {error}. No data was changed."),
                 success: false,
             };
         }
-        let operation = match serde_json::from_value::<CollaborationTaskOperation>(call.arguments) {
+        let operation = match serde_json::from_value::<CollaborationTaskOperation>(operation_arguments) {
             Ok(operation) => operation,
             Err(error) => {
                 return RuntimeDynamicToolResult {
@@ -3980,6 +4053,12 @@ impl CollaborationApplication {
             };
         }
         if automatic_plan {
+            if execution_mode == CollaborationToolExecutionMode::Execute {
+                return RuntimeDynamicToolResult {
+                    text: "Automatic morning planning cannot use a conversational authorization quote. No data was changed.".into(),
+                    success: false,
+                };
+            }
             if !matches!(
                 &operation,
                 CollaborationTaskOperation::SaveDailyPlan {
@@ -4003,6 +4082,20 @@ impl CollaborationApplication {
                 operation,
             );
         }
+        if execution_mode == CollaborationToolExecutionMode::Execute {
+            if let Err(error) = self.validate_current_task_operation_authority(
+                vault_key,
+                session_id,
+                execution_id,
+                &operation,
+                authorization_quote,
+            ) {
+                return RuntimeDynamicToolResult {
+                    text: format!("A direct Dashboard write requires a clear, exact instruction in the current user message: {error}. No data was changed."),
+                    success: false,
+                };
+            }
+        }
         match self.propose_task_operation(
             vault_key,
             session_id,
@@ -4013,6 +4106,43 @@ impl CollaborationApplication {
             target_date,
             operation,
         ) {
+            Ok(proposal)
+                if execution_mode == CollaborationToolExecutionMode::Execute
+                    && matches!(
+                        &proposal.baseline,
+                        CollaborationTaskOperationBaseline::HabitCompletion {
+                            source_snapshot_state,
+                            ..
+                        } if source_snapshot_state.as_ref() == Some(&HabitSnapshotState::Stale)
+                    ) =>
+            {
+                RuntimeDynamicToolResult {
+                    text: format!("The Habit source snapshot is stale, so the explicit completion request was saved as review card {}. No completion was written. Review its displayed state, warning, and evidence before approving; the app will recheck the selected Vault and local completion revision.", proposal.id),
+                    success: true,
+                }
+            }
+            Ok(proposal) if execution_mode == CollaborationToolExecutionMode::Execute => {
+                match self.approve_task_operation_for_selected_vault(session_id, &proposal.id) {
+                    Ok(session) => match session.task_operations.iter().find(|item| item.id == proposal.id) {
+                        Some(item) if item.status == "applied" => RuntimeDynamicToolResult {
+                            text: item.result_message.clone().unwrap_or_else(|| "The explicitly authorized Dashboard change was saved.".into()),
+                            success: true,
+                        },
+                        Some(item) => RuntimeDynamicToolResult {
+                            text: item.result_message.clone().unwrap_or_else(|| format!("The Dashboard change was not saved (status: {}).", item.status)),
+                            success: true,
+                        },
+                        None => RuntimeDynamicToolResult {
+                            text: "The Dashboard change result is missing from collaboration history. Check the saved result before retrying.".into(),
+                            success: false,
+                        },
+                    },
+                    Err(error) => RuntimeDynamicToolResult {
+                        text: format!("The explicitly authorized Dashboard change was not confirmed as saved: {error}"),
+                        success: false,
+                    },
+                }
+            }
             Ok(proposal) => RuntimeDynamicToolResult {
                 text: if matches!(
                     &proposal.operation,
@@ -4033,6 +4163,43 @@ impl CollaborationApplication {
         }
     }
 
+    fn validate_current_task_operation_authority(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        execution_id: &str,
+        operation: &CollaborationTaskOperation,
+        authorization_quote: &str,
+    ) -> Result<(), String> {
+        self.read_state(|state| {
+            let session = state
+                .sessions
+                .iter()
+                .find(|session| {
+                    session.id == session_id && session.vault_key.as_deref() == Some(vault_key)
+                })
+                .ok_or_else(|| {
+                    "The current request is no longer available in the selected Vault.".to_string()
+                })?;
+            if !matches!(session.run_state.as_str(), "thinking" | "reading") {
+                return Err("The current request is no longer active.".into());
+            }
+            let message = session
+                .messages
+                .iter()
+                .find(|message| {
+                    message.role == "user"
+                        && message.execution_id.as_deref() == Some(execution_id)
+                        && message.delivery_state == "in-progress"
+                })
+                .ok_or_else(|| {
+                    "There is no active user instruction for this action.".to_string()
+                })?;
+            validate_task_operation_authority(operation, authorization_quote, &message.text)
+        })??;
+        Ok(())
+    }
+
     fn propose_memory_update(
         &self,
         vault_key: &str,
@@ -4042,12 +4209,14 @@ impl CollaborationApplication {
         runtime_turn_id: &str,
         call_id: &str,
         arguments: &Value,
+        execution_mode: CollaborationToolExecutionMode,
     ) -> Result<CollaborationMemoryProposalView, String> {
         if call_id.is_empty() || runtime_turn_id.is_empty() {
             return Err("The App Server did not provide a stable memory-update identity.".into());
         }
         let CollaborationMemoryUpdateCall::ProposeLongTermUpdate {
             basis,
+            execution_mode: _tool_execution_mode,
             authorization_quote,
             change,
             replaces,
@@ -4134,6 +4303,7 @@ impl CollaborationApplication {
                 .map(|message| message.text.as_str());
             validate_memory_update_authority(
                 &basis,
+                execution_mode,
                 &authorization_quote,
                 &change,
                 &user_message.text,
@@ -6034,12 +6204,13 @@ impl CollaborationApplication {
         let mut dynamic_tools = Vec::new();
         if automatic_plan {
             if daily_plan_operations_available {
-                dynamic_tools.push(collaboration_task_tool_spec(false, true));
+                dynamic_tools.push(collaboration_task_tool_spec(false, true, false));
             }
         } else if task_operations_available || daily_plan_operations_available {
             dynamic_tools.push(collaboration_task_tool_spec(
                 task_operations_available,
                 daily_plan_operations_available,
+                true,
             ));
         }
         if !automatic_plan && memory_operations_available {
@@ -8139,9 +8310,469 @@ fn validate_task_operation_required_fields(arguments: &Value) -> Result<(), Stri
     Ok(())
 }
 
+fn collaboration_tool_execution_mode(
+    arguments: &Value,
+) -> Result<CollaborationToolExecutionMode, String> {
+    match arguments.get("executionMode").and_then(Value::as_str) {
+        Some("execute") => Ok(CollaborationToolExecutionMode::Execute),
+        Some("prepareProposal") | None => Ok(CollaborationToolExecutionMode::PrepareProposal),
+        Some(value) => Err(format!("Unknown execution mode `{value}`.")),
+    }
+}
+
+fn validate_task_operation_authority(
+    operation: &CollaborationTaskOperation,
+    authorization_quote: &str,
+    current_user_message: &str,
+) -> Result<(), String> {
+    if authorization_quote.is_empty() || authorization_quote.chars().count() > 2_000 {
+        return Err("quote the exact current instruction that authorizes this local change".into());
+    }
+    if !current_user_message.contains(authorization_quote) {
+        return Err(
+            "the authorization quote must appear exactly in the current user message".into(),
+        );
+    }
+    let normalized_quote = authorization_quote.to_lowercase();
+    if is_deferred_completion_intent(operation, &normalized_quote) {
+        return Err(
+            "the quoted wording describes a future completion rather than a completed task".into(),
+        );
+    }
+    let uncertain_intent_markers = [
+        "maybe",
+        "perhaps",
+        "consider whether",
+        "thinking about",
+        "what if",
+        "should i",
+        "should we",
+        "how do i",
+        "how can i",
+        "how to ",
+        "can i ",
+        "could i ",
+        "can we ",
+        "could we ",
+        "i wonder if",
+        "would it help to",
+        "does it make sense to",
+        "is it worth",
+        "is it okay if",
+        "might want",
+        "could consider",
+        "suggest",
+        "也许",
+        "可能",
+        "我在想",
+        "要不要",
+        "考虑一下",
+        "是否应该",
+        "如何",
+        "怎么",
+        "我能不能",
+        "可以吗",
+        "建议",
+    ];
+    if uncertain_intent_markers
+        .iter()
+        .any(|marker| normalized_quote.contains(marker))
+    {
+        return Err("the quoted wording leaves the requested change uncertain".into());
+    }
+
+    let normalized_message = current_user_message.to_lowercase();
+    if is_review_before_write_request(&normalized_message) {
+        return Err(
+            "the current request asks to review or confirm the change before saving".into(),
+        );
+    }
+    if has_cancellation_after_authorization_quote(current_user_message, authorization_quote) {
+        return Err("the current request cancels or defers the quoted change".into());
+    }
+
+    let (direct_intent_markers, declined_intent_markers) =
+        task_operation_authority_markers(operation);
+    if matches!(operation, CollaborationTaskOperation::DeleteTask { .. })
+        && [
+            "from the list",
+            "from this list",
+            "from my list",
+            "从清单移除",
+            "从列表移除",
+        ]
+        .iter()
+        .any(|marker| normalized_quote.contains(marker))
+    {
+        return Err("removing a task from a list does not authorize deleting the task".into());
+    }
+    if has_authority_marker(&normalized_quote, declined_intent_markers)
+        || has_authority_marker(&normalized_message, declined_intent_markers)
+    {
+        return Err("the quoted wording declines the operation being attempted".into());
+    }
+    if !has_authority_marker(&normalized_quote, direct_intent_markers) {
+        return Err("the quoted wording does not directly authorize this operation".into());
+    }
+    Ok(())
+}
+
+fn is_deferred_completion_intent(
+    operation: &CollaborationTaskOperation,
+    normalized_quote: &str,
+) -> bool {
+    let completion_write = matches!(
+        operation,
+        CollaborationTaskOperation::CompleteTask { .. }
+            | CollaborationTaskOperation::SetLocalHabitCompletion {
+                completed: true,
+                ..
+            }
+    );
+    completion_write
+        && [
+            "need to complete",
+            "need to finish",
+            "plan to complete",
+            "plan to finish",
+            "will complete",
+            "will finish",
+            "going to complete",
+            "going to finish",
+            "after i complete",
+            "after i finish",
+            "when i complete",
+            "when i finish",
+            "需要完成",
+            "打算完成",
+            "准备完成",
+            "等我完成",
+            "完成后",
+        ]
+        .iter()
+        .any(|marker| normalized_quote.contains(marker))
+}
+
+fn task_operation_authority_markers(
+    operation: &CollaborationTaskOperation,
+) -> (&'static str, &'static str) {
+    match operation {
+        CollaborationTaskOperation::CreateTask { .. } => (
+            concat!(
+                "create task|create a task|add task|add a task|",
+                "创建任务|新增任务|添加任务|新建任务|加一个任务"
+            ),
+            concat!(
+                "don't create task|do not create task|don't add a task|do not add a task|",
+                "不要创建任务|不要新增任务|不要添加任务|先别创建任务|先不要创建任务"
+            ),
+        ),
+        CollaborationTaskOperation::UpdateTask { .. } => (
+            concat!(
+                "update task|update the task|update my task|edit task|edit the task|",
+                "edit my task|change the task|move the task|reschedule the task|modify the task|",
+                "修改任务|更新任务|更改任务|调整任务|移动任务|改期任务|重命名任务"
+            ),
+            concat!(
+                "don't update the task|do not update the task|don't edit the task|",
+                "do not edit the task|don't change the task|do not change the task|",
+                "don't move the task|do not move the task|不要修改任务|不要更新任务|先别改任务"
+            ),
+        ),
+        CollaborationTaskOperation::CompleteTask { .. } => (
+            concat!(
+                "complete task|complete the task|complete my task|finish the task|",
+                "completed the task|mark the task done|mark this task complete|check off the task|",
+                "完成任务|做完任务|勾选任务|标记任务完成"
+            ),
+            concat!(
+                "don't complete the task|do not complete the task|don't finish the task|",
+                "do not finish the task|don't mark the task done|do not mark the task done|",
+                "不要完成任务|先别完成任务|别标记任务完成|不要勾选任务"
+            ),
+        ),
+        CollaborationTaskOperation::AbandonTask { .. } => (
+            concat!(
+                "abandon task|abandon the task|give up on this task|drop this task|",
+                "cancel this task|cancel the task|mark this task abandoned|",
+                "放弃任务|放弃这个任务|作废任务"
+            ),
+            concat!(
+                "don't abandon the task|do not abandon the task|",
+                "don't give up on this task|do not give up on this task|",
+                "不要放弃任务|先别放弃任务|不要作废任务"
+            ),
+        ),
+        CollaborationTaskOperation::ReopenTask { .. } => (
+            concat!(
+                "reopen task|reopen the task|mark the task incomplete|undo completion of the task|",
+                "重新打开任务|重开任务|撤销任务完成"
+            ),
+            concat!("don't reopen the task|do not reopen the task|不要重开任务|不要重新打开任务|先别重开任务"),
+        ),
+        CollaborationTaskOperation::DeleteTask { .. } => (
+            concat!(
+                "delete task|delete the task|delete this task|delete my task|remove task|",
+                "remove the task|remove this task|remove my task|trash task|",
+                "删除任务|删除这个任务|移除任务|删掉任务"
+            ),
+            concat!(
+                "don't delete the task|do not delete the task|don't remove the task|",
+                "do not remove the task|不要删除任务|不要移除任务|先别删除任务|先不要删除任务"
+            ),
+        ),
+        CollaborationTaskOperation::RestoreTask { .. } => (
+            concat!(
+                "restore task|restore the task|restore my task|recover task|undelete task|",
+                "恢复任务|恢复这个任务|还原任务"
+            ),
+            concat!("don't restore the task|do not restore the task|不要恢复任务|先别恢复任务|不要还原任务"),
+        ),
+        CollaborationTaskOperation::CorrectCompletion { .. } => (
+            concat!(
+                "correct completion date|fix completion date|change completion date|",
+                "correct the completion date|set completion date|change when it was completed|",
+                "更正完成日期|修正完成日期|修改完成日期|完成日期改为|把完成日期改为|将完成日期改为"
+            ),
+            concat!(
+                "don't correct the completion date|do not correct the completion date|",
+                "don't change the completion date|do not change the completion date|",
+                "不要更正完成日期|不要修正完成日期|先别改完成日期"
+            ),
+        ),
+        CollaborationTaskOperation::CreateList { .. } => (
+            concat!(
+                "create list|create a list|add list|add a list|new list|",
+                "创建清单|新增清单|添加清单|新建清单|创建列表"
+            ),
+            concat!(
+                "don't create a list|do not create a list|don't add a list|do not add a list|",
+                "不要创建清单|不要新增清单|先别建清单"
+            ),
+        ),
+        CollaborationTaskOperation::RenameList { .. } => (
+            concat!(
+                "rename list|rename the list|rename this list|change list name|",
+                "重命名清单|清单改名|修改清单名称|更改清单名称"
+            ),
+            concat!("don't rename the list|do not rename the list|不要重命名清单|先别改清单名"),
+        ),
+        CollaborationTaskOperation::ArchiveList { .. } => (
+            "archive list|archive the list|归档清单|归档列表",
+            "don't archive the list|do not archive the list|不要归档清单|先别归档清单",
+        ),
+        CollaborationTaskOperation::RestoreList { .. } => (
+            "restore list|restore the list|恢复清单|恢复列表|还原清单|取消归档清单",
+            "don't restore the list|do not restore the list|不要恢复清单|先别恢复清单",
+        ),
+        CollaborationTaskOperation::SaveDailyPlan { transition, .. } => match transition {
+            DailyPlanTransition::InitialPlan => (
+                concat!(
+                    "plan my day|make a plan|create a plan|prepare daily plan|create daily plan|",
+                    "make today's plan|plan today|制定计划|生成日计划|安排今天|计划今天|规划今天"
+                ),
+                concat!(
+                    "don't create a plan|do not create a plan|don't plan my day|do not plan my day|",
+                    "不要制定计划|先别安排今天|暂时不安排今天"
+                ),
+            ),
+            DailyPlanTransition::MorningCalibration => (
+                concat!(
+                    "calibrate my plan|adjust my plan|update my plan|morning calibration|",
+                    "校准计划|调整计划|修改今天安排|调整今天安排"
+                ),
+                "don't adjust my plan|do not adjust my plan|不要调整计划|先别调整计划",
+            ),
+            DailyPlanTransition::DaytimeEvent => (
+                concat!(
+                    "record this event|log this event|record this in my daily record|",
+                    "记录事件|记录到日记录|补记事件"
+                ),
+                "don't record this event|do not record this event|不要记录事件|先别记录事件",
+            ),
+            DailyPlanTransition::DaytimeReplan => (
+                concat!(
+                    "replan|rearrange my day|reschedule my day|adjust my schedule|",
+                    "update my daily plan|重新安排|重排|调整安排|调整今天计划"
+                ),
+                concat!(
+                    "don't replan my day|do not replan my day|don't adjust my schedule|",
+                    "do not adjust my schedule|不要重排今天|先别调整安排"
+                ),
+            ),
+            DailyPlanTransition::MorningBaselineCorrection => (
+                concat!(
+                    "correct my original plan|correct the morning baseline|",
+                    "fix the morning baseline|修正早间计划|更正初始计划|修正原计划"
+                ),
+                "don't correct the plan|do not correct the plan|不要修正早间计划|先别更正初始计划",
+            ),
+        },
+        CollaborationTaskOperation::SaveEveningReview { mode, .. } => match mode {
+            CollaborationEveningReviewMode::Addition => (
+                concat!(
+                    "save evening review|add to evening review|write an evening review|",
+                    "record this in my daily record|add to my daily record|record this|write down|",
+                    "补充复盘|补记|记录到日记录|记到日记录|记下"
+                ),
+                concat!(
+                    "don't record this in my daily record|do not record this in my daily record|",
+                    "don't add to evening review|do not add to evening review|",
+                    "不要记录到日记录|先别补记"
+                ),
+            ),
+            CollaborationEveningReviewMode::Correction => (
+                concat!(
+                    "correct evening review|edit evening review|update evening review|",
+                    "fix evening review|correct daily record|更正复盘|修正复盘|修改复盘|",
+                    "更正日记录|修正日记录|修改日记录"
+                ),
+                concat!(
+                    "don't correct evening review|do not correct evening review|",
+                    "don't edit evening review|do not edit evening review|",
+                    "不要更正复盘|不要修改复盘|先别修正日记录"
+                ),
+            ),
+        },
+        CollaborationTaskOperation::CorrectShortRecord { .. } => (
+            concat!(
+                "correct the note|correct this note|fix the note|edit the note|",
+                "change the note|update the note|correct this record|fix this record|",
+                "更正笔记|修正笔记|修改笔记|更正记录|修正记录|修改记录"
+            ),
+            concat!(
+                "don't correct this note|do not correct this note|don't edit the note|",
+                "do not edit the note|不要更正笔记|不要修改记录|先别修正记录"
+            ),
+        ),
+        CollaborationTaskOperation::SetLocalHabitCompletion { completed, .. } => {
+            if *completed {
+                (
+                    concat!(
+                        "complete my habit|mark the habit done|mark the habit complete|",
+                        "check off the habit|record my habit|log my habit|mark exercise done|",
+                        "打卡|完成习惯|补记习惯|记录习惯完成|习惯完成"
+                    ),
+                    concat!(
+                        "don't complete my habit|do not complete my habit|",
+                        "不要完成习惯|不要打卡|先别打卡|先不要记录习惯完成"
+                    ),
+                )
+            } else {
+                (
+                    concat!(
+                        "uncheck the habit|undo habit completion|mark the habit incomplete|",
+                        "mark the habit not done|撤销打卡|取消打卡|撤回习惯完成|",
+                        "设为未完成|标记为未完成"
+                    ),
+                    concat!(
+                        "don't uncheck the habit|do not uncheck the habit|",
+                        "don't undo habit completion|do not undo habit completion|",
+                        "不要撤销打卡|先别撤销打卡"
+                    ),
+                )
+            }
+        }
+    }
+}
+
+fn has_authority_marker(text: &str, marker_list: &str) -> bool {
+    marker_list.split('|').any(|marker| text.contains(marker))
+}
+
+fn has_cancellation_after_authorization_quote(message: &str, authorization_quote: &str) -> bool {
+    let Some((_, suffix)) = message.split_once(authorization_quote) else {
+        return false;
+    };
+    let suffix = suffix.to_lowercase();
+    [
+        "never mind",
+        "scratch that",
+        "forget that",
+        "don't do that",
+        "do not do that",
+        "don't do it",
+        "do not do it",
+        "hold off",
+        "wait until",
+        "let's not",
+        "let us not",
+        "maybe not",
+        "算了",
+        "不要了",
+        "先不要",
+        "等一下",
+        "先等等",
+        "取消刚才",
+        "刚才那句作废",
+    ]
+    .iter()
+    .any(|marker| suffix.contains(marker))
+}
+
+fn is_review_before_write_request(text: &str) -> bool {
+    let markers = [
+        "before saving",
+        "before you save",
+        "before it is saved",
+        "before applying",
+        "before you apply",
+        "let me review first",
+        "review first",
+        "show me first",
+        "show me before saving",
+        "show me before you save",
+        "ask me before saving",
+        "ask me before you save",
+        "get my approval before",
+        "wait for my approval",
+        "approval before saving",
+        "先让我确认再保存",
+        "先给我看再保存",
+        "先审阅再保存",
+        "先审核再保存",
+        "确认后再保存",
+        "看过再保存",
+        "保存前先给我看",
+        "保存前先让我确认",
+        "先给我看一下再保存",
+    ];
+    markers.iter().any(|marker| {
+        let Some(start) = text.find(marker) else {
+            return false;
+        };
+        let clause_start = text[..start]
+            .rfind(|character: char| {
+                matches!(
+                    character,
+                    '.' | ',' | ';' | '!' | '?' | '\n' | '。' | '，' | '；' | '！' | '？'
+                )
+            })
+            .map_or(0, |index| index + 1);
+        let clause_prefix = text[clause_start..start].trim();
+        let declined_markers = [
+            "don't",
+            "do not",
+            "no need to",
+            "never",
+            "not",
+            "不用",
+            "无需",
+            "不必",
+            "不要",
+            "不需要",
+            "先别",
+        ];
+        !declined_markers
+            .iter()
+            .any(|declined| clause_prefix.contains(declined))
+    })
+}
+
 fn collaboration_task_tool_spec(
     task_operations_available: bool,
     daily_plan_operations_available: bool,
+    include_authorization_fields: bool,
 ) -> Value {
     let operation = |name: &str, properties: Value, required: &[&str]| {
         let mut properties = properties
@@ -8154,6 +8785,14 @@ fn collaboration_task_tool_spec(
         );
         let mut required_fields = vec!["operation"];
         required_fields.extend_from_slice(required);
+        if include_authorization_fields {
+            properties.insert(
+                "executionMode".into(),
+                json!({"type": "string", "enum": ["execute", "prepareProposal"]}),
+            );
+            properties.insert("authorizationQuote".into(), json!({"type": "string"}));
+            required_fields.extend(["executionMode", "authorizationQuote"]);
+        }
         json!({
             "type": "object",
             "properties": properties,
@@ -8246,9 +8885,14 @@ fn collaboration_task_tool_spec(
         ]);
     }
     let alternatives = defs;
+    let description = if include_authorization_fields {
+        "Use one exact local Task, list, Daily Record, or local Habit operation. For a clear and unique user instruction, use executionMode=execute and quote its exact wording in authorizationQuote; Dashboard rechecks the selected Vault, binding, and latest revision before writing. Use executionMode=prepareProposal when the user explicitly asks for review or the action needs clarification. Ambiguous requests, plans, and suggestions are discussion only. A tool description is not permission."
+    } else {
+        "Save one automatic first-draft Daily Record plan for the current target date only. This path is enabled by the user and cannot change Tasks or record facts."
+    };
     json!({
         "name": COLLABORATION_TASK_TOOL,
-        "description": "Propose one exact local Task operation, structured Daily Record plan, evening review addition or correction, Short Record correction by stable record ID, or local Habit completion add or withdrawal. Task IDs and Habit keys must match the current context. Use only for a clear, unique user instruction; discuss ambiguous requests, plans, and suggestions instead. This tool only saves a proposal: it never writes Tasks, Daily Records, external Habit sources, or local Habit completions. The user must approve the exact displayed action in Personal Dashboard.",
+        "description": description,
         "inputSchema": {
             "oneOf": alternatives
         }
@@ -8258,17 +8902,18 @@ fn collaboration_task_tool_spec(
 fn collaboration_memory_tool_spec() -> Value {
     json!({
         "name": COLLABORATION_MEMORY_TOOL,
-        "description": "Propose one exact update to the existing Life Operating Principles document. Use only when the user directly asked for a durable change or explicitly confirmed an inference after you asked. Quote the exact current user instruction or confirmation in authorizationQuote. The tool only creates a review card; the user must approve before the existing document is written. Never store one-day states as durable background.",
+        "description": "Update the existing Life Operating Principles document only for an explicitly authorized durable change or a durable inference the user directly confirmed after you asked. Quote the exact current user instruction or confirmation in authorizationQuote. Use executionMode=execute for an explicit direct change; use prepareProposal only when the user explicitly asks to review before saving. One-day or temporary states must stay out of durable memory.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "operation": {"type": "string", "const": "proposeLongTermUpdate"},
                 "basis": {"type": "string", "enum": ["explicitUserInstruction", "confirmedInference"]},
+                "executionMode": {"type": "string", "enum": ["execute", "prepareProposal"]},
                 "authorizationQuote": {"type": "string"},
                 "change": {"type": "string"},
                 "replaces": {"type": ["string", "null"]}
             },
-            "required": ["operation", "basis", "authorizationQuote", "change", "replaces"],
+            "required": ["operation", "basis", "executionMode", "authorizationQuote", "change", "replaces"],
             "additionalProperties": false
         }
     })
@@ -8367,6 +9012,7 @@ fn is_memory_confirmation_question(text: &str) -> bool {
 
 fn validate_memory_update_authority(
     basis: &MemoryUpdateBasis,
+    execution_mode: CollaborationToolExecutionMode,
     authorization_quote: &str,
     change: &str,
     current_user_message: &str,
@@ -8374,6 +9020,14 @@ fn validate_memory_update_authority(
 ) -> Result<(), String> {
     if !current_user_message.contains(authorization_quote) {
         return Err("The authorization quote must appear exactly in the current user message. Ask the user to confirm the durable update before proposing it.".into());
+    }
+    if execution_mode == CollaborationToolExecutionMode::Execute
+        && is_review_before_write_request(&current_user_message.to_lowercase())
+    {
+        return Err(
+            "The current request asks to review or confirm the durable change before saving."
+                .into(),
+        );
     }
     if describes_single_day_state(change) || describes_single_day_state(authorization_quote) {
         return Err("A one-day or temporary state cannot be proposed for long-term background. Keep it in the dated conversation or Daily Record.".into());
@@ -9056,9 +9710,9 @@ mod collaboration_memory_tests {
     use super::{
         build_long_term_memory_update, calendar_day_difference, collaboration_memory_view,
         shift_calendar_date, validate_memory_update_authority, CollaborationClock,
-        CollaborationMemorySources, CollaborationState, LongTermMemoryDocumentView,
-        MemoryUpdateBasis, RoutineMemoryReferenceView, StoredCollaborationContinuityNote,
-        StoredCollaborationMessage, StoredCollaborationSession,
+        CollaborationMemorySources, CollaborationState, CollaborationToolExecutionMode,
+        LongTermMemoryDocumentView, MemoryUpdateBasis, RoutineMemoryReferenceView,
+        StoredCollaborationContinuityNote, StoredCollaborationMessage, StoredCollaborationSession,
     };
     use std::collections::HashMap;
 
@@ -9287,6 +9941,7 @@ mod collaboration_memory_tests {
         let inferred = MemoryUpdateBasis::ConfirmedInference;
         assert!(validate_memory_update_authority(
             &explicit,
+            CollaborationToolExecutionMode::Execute,
             "Please remember that I prefer early starts.",
             "I prefer early starts.",
             "Please remember that I prefer early starts.",
@@ -9295,6 +9950,7 @@ mod collaboration_memory_tests {
         .is_ok());
         assert!(validate_memory_update_authority(
             &explicit,
+            CollaborationToolExecutionMode::Execute,
             "I walked this morning.",
             "I walked this morning.",
             "I walked this morning.",
@@ -9303,6 +9959,7 @@ mod collaboration_memory_tests {
         .is_err());
         assert!(validate_memory_update_authority(
             &explicit,
+            CollaborationToolExecutionMode::Execute,
             "Please remember that I have a migraine today.",
             "I have a migraine today.",
             "Please remember that I have a migraine today.",
@@ -9311,6 +9968,7 @@ mod collaboration_memory_tests {
         .is_err());
         assert!(validate_memory_update_authority(
             &inferred,
+            CollaborationToolExecutionMode::Execute,
             "Yes, please.",
             "I prefer early starts.",
             "Yes, please.",
@@ -9319,6 +9977,7 @@ mod collaboration_memory_tests {
         .is_ok());
         assert!(validate_memory_update_authority(
             &inferred,
+            CollaborationToolExecutionMode::Execute,
             "No, not for memory.",
             "I prefer early starts.",
             "No, not for memory.",
@@ -9327,12 +9986,39 @@ mod collaboration_memory_tests {
         .is_err());
         assert!(validate_memory_update_authority(
             &inferred,
+            CollaborationToolExecutionMode::Execute,
             "Yes.",
             "I prefer early starts.",
             "Yes.",
             None,
         )
         .is_err());
+    }
+
+    #[test]
+    fn direct_memory_write_respects_review_before_save_request() {
+        let explicit = MemoryUpdateBasis::ExplicitUserInstruction;
+        let quote = "Please remember that I prefer early starts";
+        let message =
+            "Please remember that I prefer early starts, but show me the change before saving.";
+        assert!(validate_memory_update_authority(
+            &explicit,
+            CollaborationToolExecutionMode::Execute,
+            quote,
+            "I prefer early starts.",
+            message,
+            None,
+        )
+        .is_err());
+        assert!(validate_memory_update_authority(
+            &explicit,
+            CollaborationToolExecutionMode::PrepareProposal,
+            quote,
+            "I prefer early starts.",
+            message,
+            None,
+        )
+        .is_ok());
     }
 
     #[test]
@@ -9949,7 +10635,7 @@ impl AppServerTransport for CodexAppServerRuntime {
             format!("{app_markers} {}", request.user_text)
         };
         let input_text = format!(
-            "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. `dashboard_task_operation` only creates a proposal; no Task write occurs until the user approves the exact card. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message; the tool only creates a review proposal. Use a connected external app only when the user explicitly selected it for this message. Keep external actions within the user's requested source, object, and target-date scope. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
+            "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. For a clear, unique local write the current user explicitly requested, use `dashboard_task_operation` with `executionMode=execute` and the exact current instruction in `authorizationQuote`; the Dashboard verifies the current request, selected Vault, binding, and revision before saving. Use `prepareProposal` only when the user explicitly asks to review before saving; ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` only when the user asks to review before saving. Use a connected external app only when the user explicitly selected it for this message. Keep external actions within the user's requested source, object, and target-date scope. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
             user_text, request.context.date, context
         );
         let working_directory = self.working_directory.to_string_lossy().into_owned();
@@ -10731,7 +11417,7 @@ impl StdioJsonlClient {
         self.next_id += 1;
         self.write_json(&json!({ "id": request_id, "method": method, "params": params }))?;
         loop {
-            let value = self.receive_value(APP_SERVER_REQUEST_TIMEOUT)?;
+            let value = self.receive_value_from_output(APP_SERVER_REQUEST_TIMEOUT)?;
             if value.get("id").and_then(Value::as_u64) == Some(request_id) {
                 if let Some(error) = value.get("error") {
                     return Err(format!(
@@ -10773,6 +11459,10 @@ impl StdioJsonlClient {
         if let Some(message) = self.pending_messages.pop_front() {
             return Ok(message);
         }
+        self.receive_value_from_output(timeout)
+    }
+
+    fn receive_value_from_output(&mut self, timeout: Duration) -> Result<Value, String> {
         let line = self
             .output
             .recv_timeout(timeout)
@@ -11324,5 +12014,210 @@ mod external_app_tests {
         let mut unselected_message = message.clone();
         unselected_message.external_app_ids.clear();
         assert!(attach_external_approval_action(&unselected_message, &mut approval).is_err());
+    }
+}
+
+#[cfg(test)]
+mod collaboration_task_authority_tests {
+    use super::{
+        collaboration_tool_execution_mode, validate_task_operation_authority,
+        CollaborationTaskOperation, CollaborationToolExecutionMode,
+    };
+
+    fn create_task_operation() -> CollaborationTaskOperation {
+        CollaborationTaskOperation::CreateTask {
+            name: "Submit the report".into(),
+            content: None,
+            date: None,
+            time: None,
+            list_id: None,
+        }
+    }
+
+    #[test]
+    fn direct_write_authority_requires_an_exact_current_instruction() {
+        let request = "Please create a task named Submit the report.";
+        assert!(
+            validate_task_operation_authority(&create_task_operation(), request, request).is_ok()
+        );
+        assert!(validate_task_operation_authority(
+            &create_task_operation(),
+            "Please create a task named Submit the report.",
+            "Maybe create a task named Submit the report."
+        )
+        .is_err());
+        assert!(validate_task_operation_authority(
+            &create_task_operation(),
+            "Maybe create a task named Submit the report.",
+            "Maybe create a task named Submit the report."
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn direct_write_quote_must_authorize_the_same_operation() {
+        let request = "Please create a task named Submit the report.";
+        let delete = CollaborationTaskOperation::DeleteTask {
+            task_id: "task-1".into(),
+        };
+        assert!(validate_task_operation_authority(&delete, request, request).is_err());
+
+        let update_task = CollaborationTaskOperation::UpdateTask {
+            task_id: "task-1".into(),
+            name: "Submit the report".into(),
+            content: None,
+            date: None,
+            time: None,
+            list_id: None,
+        };
+        let other_domain = "Please update the evening review.";
+        assert!(
+            validate_task_operation_authority(&update_task, other_domain, other_domain,).is_err()
+        );
+    }
+
+    #[test]
+    fn unrelated_negation_does_not_cancel_a_direct_write() {
+        let request = "Don't ask me before saving; create a task named Submit the report.";
+        let quote = "create a task named Submit the report.";
+        assert!(
+            validate_task_operation_authority(&create_task_operation(), quote, request,).is_ok()
+        );
+    }
+
+    #[test]
+    fn declined_or_review_first_writes_are_not_executed_directly() {
+        let declined = "Please don't delete the task named Submit the report.";
+        let delete = CollaborationTaskOperation::DeleteTask {
+            task_id: "task-1".into(),
+        };
+        assert!(validate_task_operation_authority(&delete, declined, declined).is_err());
+
+        let review_first =
+            "Please create a task named Submit the report, but show me the draft before saving.";
+        assert!(validate_task_operation_authority(
+            &create_task_operation(),
+            review_first,
+            review_first,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn explanatory_and_deferred_completion_language_cannot_mark_work_complete() {
+        let operation = CollaborationTaskOperation::CompleteTask {
+            task_id: "task-1".into(),
+        };
+        let question = "How do I complete a task named Submit the report?";
+        assert!(validate_task_operation_authority(&operation, question, question).is_err());
+
+        let future_intent = "I need to complete the task named Submit the report.";
+        assert!(
+            validate_task_operation_authority(&operation, future_intent, future_intent,).is_err()
+        );
+    }
+
+    #[test]
+    fn removing_a_task_from_its_list_does_not_authorize_deletion() {
+        let request = "Please remove this task from my list.";
+        let delete = CollaborationTaskOperation::DeleteTask {
+            task_id: "task-1".into(),
+        };
+        assert!(validate_task_operation_authority(&delete, request, request).is_err());
+    }
+
+    #[test]
+    fn a_later_cancellation_overrides_an_earlier_authorized_quote() {
+        let message = "Please create a task named Submit the report; actually, never mind.";
+        let quote = "Please create a task named Submit the report";
+        assert!(
+            validate_task_operation_authority(&create_task_operation(), quote, message,).is_err()
+        );
+    }
+
+    #[test]
+    fn missing_execution_mode_remains_proposal_only_for_legacy_calls() {
+        assert_eq!(
+            collaboration_tool_execution_mode(&serde_json::json!({})).unwrap(),
+            CollaborationToolExecutionMode::PrepareProposal,
+        );
+    }
+}
+
+#[cfg(all(test, unix))]
+mod app_server_request_tests {
+    use super::*;
+    use std::time::Instant;
+
+    const CHILD_MODE: &str = "PERSONAL_DASHBOARD_APP_SERVER_REQUEST_TEST_CHILD";
+    const TEST_ROOT: &str = "PERSONAL_DASHBOARD_APP_SERVER_REQUEST_TEST_ROOT";
+
+    #[test]
+    fn request_skips_async_notifications_and_returns_its_response() {
+        if std::env::var_os(CHILD_MODE).is_some() {
+            let root = PathBuf::from(std::env::var_os(TEST_ROOT).expect("test root is supplied"));
+            let mut client = StdioJsonlClient::spawn(
+                &root.join("fake-codex"),
+                &root.join("codex-home"),
+                RuntimeShutdownHandle::default(),
+            )
+            .expect("fake App Server starts");
+            client
+                .initialize()
+                .expect("initialize response is received");
+            let account = client
+                .request("account/read", json!({ "refreshToken": false }))
+                .expect("account response is received after an async notification");
+            assert_eq!(account["account"]["type"], "chatgpt");
+            return;
+        }
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "personal-dashboard-app-server-notification-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).expect("isolated server directory is created");
+        let executable = root.join("fake-codex");
+        fs::write(
+            &executable,
+            "#!/bin/sh\nif [ \"$1\" != \"app-server\" ]; then exit 64; fi\nIFS= read -r initialize_request\nprintf '%s\\n' '{\"method\":\"account/updated\",\"params\":{}}' '{\"id\":1,\"result\":{}}'\nIFS= read -r initialized_notification\nIFS= read -r account_request\nprintf '%s\\n' '{\"method\":\"account/updated\",\"params\":{}}' '{\"id\":2,\"result\":{\"account\":{\"type\":\"chatgpt\"}}}'\n",
+        )
+        .expect("fake App Server is written");
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700))
+            .expect("fake App Server is executable");
+
+        let current_executable = std::env::current_exe().expect("test executable is available");
+        let mut child = Command::new(current_executable)
+            .arg("request_skips_async_notifications_and_returns_its_response")
+            .arg("--nocapture")
+            .env(CHILD_MODE, "1")
+            .env(TEST_ROOT, &root)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("isolated regression-test process starts");
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("child status is readable") {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = fs::remove_dir_all(&root);
+                panic!("App Server request did not finish after an async notification");
+            }
+            thread::sleep(Duration::from_millis(10));
+        };
+        let _ = fs::remove_dir_all(&root);
+        assert!(
+            status.success(),
+            "App Server request child failed: {status}"
+        );
     }
 }

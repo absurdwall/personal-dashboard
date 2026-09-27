@@ -38,6 +38,9 @@ impl VoiceInputCapabilitiesView {
 
 pub trait VoiceRecognitionRuntime: Send + Sync {
     fn capabilities(&self) -> Result<VoiceInputCapabilitiesView, String>;
+    fn authorize(&self) -> Result<bool, String> {
+        Ok(true)
+    }
     fn transcribe(&self, audio_file: &Path, locale: &str) -> Result<String, String>;
 }
 
@@ -62,6 +65,10 @@ impl VoiceInputApplication {
             Ok(capabilities) => capabilities,
             Err(_) => VoiceInputCapabilitiesView::unavailable("runtime_unavailable"),
         }
+    }
+
+    pub fn authorize(&self) -> Result<bool, String> {
+        self.runtime.authorize()
     }
 
     pub fn transcribe(
@@ -193,6 +200,14 @@ impl VoiceRecognitionRuntime for LocalSpeechRuntime {
     fn capabilities(&self) -> Result<VoiceInputCapabilitiesView, String> {
         let response = self.invoke(&["capabilities"])?;
         serde_json::from_value(response).map_err(|_| "voice_helper_invalid_response".into())
+    }
+
+    fn authorize(&self) -> Result<bool, String> {
+        let response = self.invoke(&["authorize"])?;
+        response
+            .get("authorized")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| "voice_helper_invalid_response".into())
     }
 
     fn transcribe(&self, audio_file: &Path, locale: &str) -> Result<String, String> {

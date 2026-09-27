@@ -969,6 +969,7 @@ const collaborationTargetDates = new Map<string, string>();
 let collaborationVoiceCapabilities: CollaborationVoiceCapabilities | null = null;
 let collaborationVoiceCapabilityLoading = false;
 let collaborationVoiceCapabilityRequest = 0;
+let collaborationVoiceAuthorizationPending = false;
 let activeCollaborationVoiceTarget: CollaborationVoiceTarget | null = null;
 const collaborationVoiceStatuses = new Map<string, CollaborationVoiceStatusKey>();
 const collaborationSendingDrafts = new Set<string>();
@@ -2590,7 +2591,7 @@ function renderCollaborationVoiceControls(): void {
     hasTarget: Boolean(currentTarget),
     composerDisabled: collaborationMessageDraft?.disabled === true ||
       (currentDraftKey !== "" && collaborationSendingDrafts.has(currentDraftKey)),
-    capabilityLoading: collaborationVoiceCapabilityLoading,
+    capabilityLoading: collaborationVoiceCapabilityLoading || collaborationVoiceAuthorizationPending,
     hasInstalledLocale: Boolean(capabilities?.available && selectedLocaleIsInstalled),
     hasInstalledLocales: Boolean(capabilities?.available && locales.length > 0),
   });
@@ -2600,6 +2601,8 @@ function renderCollaborationVoiceControls(): void {
 
   if (collaborationVoiceCapabilityLoading) {
     setCopy(collaborationVoiceStatus, "collaboration.voiceLanguageLoading");
+  } else if (collaborationVoiceAuthorizationPending) {
+    setCopy(collaborationVoiceStatus, "collaboration.voiceRequesting");
   } else if (!capabilities?.available || locales.length === 0) {
     setCopy(collaborationVoiceStatus, collaborationVoiceCapabilityStatus(capabilities));
   } else if (active !== "idle" && activeCollaborationVoiceTarget && currentTarget &&
@@ -2732,7 +2735,7 @@ function cancelCollaborationVoiceCaptureForSelectionChange(): void {
   if (state === "requesting" || state === "recording") collaborationVoiceController.cancel();
 }
 
-function startOrStopCollaborationVoice(): void {
+async function startOrStopCollaborationVoice(): Promise<void> {
   if (collaborationVoiceController.state === "recording") {
     collaborationVoiceController.stop();
     return;
@@ -2745,6 +2748,29 @@ function startOrStopCollaborationVoice(): void {
       collaborationDraftKey(target.sessionId, target.targetDate),
       collaborationMessageDraft.value,
     );
+  }
+  if (collaborationVoiceAuthorizationPending) return;
+  collaborationVoiceAuthorizationPending = true;
+  renderCollaborationVoiceControls();
+  let authorized = false;
+  try {
+    authorized = await window.__TAURI__.core.invoke<boolean>(
+      "collaboration_voice_authorize",
+    );
+  } catch {
+    setCollaborationVoiceStatus(target, "collaboration.voiceRecognitionFailed");
+    return;
+  } finally {
+    collaborationVoiceAuthorizationPending = false;
+    renderCollaborationVoiceControls();
+  }
+  if (!authorized) {
+    setCollaborationVoiceStatus(target, "collaboration.voicePermissionDenied");
+    renderCollaborationVoiceControls();
+    return;
+  }
+  if (!isCurrentCollaborationVoiceTarget(target) || collaborationVoiceLanguageSelect?.value !== locale) {
+    return;
   }
   void collaborationVoiceController.start(target, locale);
 }

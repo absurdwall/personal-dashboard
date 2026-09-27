@@ -104,10 +104,13 @@ fn application_identity() -> ApplicationIdentity {
 }
 
 #[tauri::command]
-fn collaboration_connection(
+async fn collaboration_connection(
     application: State<'_, collaboration::CollaborationApplication>,
-) -> collaboration::RuntimeConnectionView {
-    application.connection()
+) -> Result<collaboration::RuntimeConnectionView, String> {
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || application.connection())
+        .await
+        .map_err(|error| format!("codex_connection_task_failed: {error}"))
 }
 
 #[tauri::command]
@@ -126,26 +129,37 @@ fn collaboration_update_daily_plan_automation(
 }
 
 #[tauri::command]
-fn collaboration_start_chatgpt_login(
+async fn collaboration_start_chatgpt_login(
     application: State<'_, collaboration::CollaborationApplication>,
 ) -> Result<(), String> {
-    application.start_chatgpt_login()
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || application.start_chatgpt_login())
+        .await
+        .map_err(|error| format!("codex_login_task_failed: {error}"))?
 }
 
 #[tauri::command]
-fn collaboration_select_model(
+async fn collaboration_select_model(
     application: State<'_, collaboration::CollaborationApplication>,
     model_id: Option<String>,
 ) -> Result<collaboration::RuntimeConnectionView, String> {
-    application.select_model(model_id.as_deref())
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || application.select_model(model_id.as_deref()))
+        .await
+        .map_err(|error| format!("codex_model_selection_task_failed: {error}"))?
 }
 
 #[tauri::command]
-fn collaboration_select_reasoning_effort(
+async fn collaboration_select_reasoning_effort(
     application: State<'_, collaboration::CollaborationApplication>,
     reasoning_effort: Option<String>,
 ) -> Result<collaboration::RuntimeConnectionView, String> {
-    application.select_reasoning_effort(reasoning_effort.as_deref())
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        application.select_reasoning_effort(reasoning_effort.as_deref())
+    })
+    .await
+    .map_err(|error| format!("codex_reasoning_effort_task_failed: {error}"))?
 }
 
 #[tauri::command]
@@ -225,6 +239,16 @@ fn collaboration_voice_capabilities(
     application: State<'_, voice_input::VoiceInputApplication>,
 ) -> voice_input::VoiceInputCapabilitiesView {
     application.capabilities()
+}
+
+#[tauri::command]
+async fn collaboration_voice_authorize(
+    application: State<'_, voice_input::VoiceInputApplication>,
+) -> Result<bool, String> {
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || application.authorize())
+        .await
+        .map_err(|error| format!("voice_permission_task_failed: {error}"))?
 }
 
 #[tauri::command]
@@ -767,6 +791,7 @@ pub fn run() {
             collaboration_submit_message,
             collaboration_resolve_external_approval,
             collaboration_voice_capabilities,
+            collaboration_voice_authorize,
             collaboration_transcribe_voice,
             collaboration_save_draft,
             collaboration_set_target_date,
@@ -836,6 +861,7 @@ pub fn run() {
         collaboration_submit_message,
         collaboration_resolve_external_approval,
         collaboration_voice_capabilities,
+        collaboration_voice_authorize,
         collaboration_transcribe_voice,
         collaboration_save_draft,
         collaboration_set_target_date,
