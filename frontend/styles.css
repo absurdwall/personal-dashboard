@@ -8533,3 +8533,42 @@ button.habit-cell:focus-visible {
     padding: 0.25rem 0.35rem 0;
   }
 }
+
+/* Personal Dashboard 3.0.2 ticket 06: frame only the Habits header over a saved background. */
+.app-shell[data-background-image-state="ready"] #workspace-destination-habits > .habits-header {
+  margin: -2.1rem -1.65rem 1.25rem;
+  padding: calc(2.1rem - 1px) calc(1.65rem - 1px) calc(1.25rem - 1px);
+  border: 1px solid rgb(255 255 255 / 54%);
+  position: relative;
+  border-radius: 0.75rem;
+  background: rgb(255 255 255 / 32%);
+}
+
+.app-shell[data-background-image-state="ready"] #workspace-destination-habits > .habits-header::after {
+  position: absolute;
+  right: 1px;
+  bottom: 2px;
+  left: 1px;
+  height: 1px;
+  background: var(--parity-border);
+  content: "";
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .app-shell[data-background-image-state="ready"] #workspace-destination-habits > .habits-header {
+    margin-top: -1.8rem;
+    margin-right: -1.6rem;
+    margin-left: -1.6rem;
+    padding-top: calc(1.8rem - 1px);
+    padding-right: calc(1.6rem - 1px);
+    padding-left: calc(1.6rem - 1px);
+  }
+}
+
+@media (max-width: 680px) {
+  .app-shell[data-background-image-state="ready"] #workspace-destination-habits > .habits-header {
+    margin: -1.55rem -1.5rem 1rem;
+    padding: calc(1.55rem - 1px) calc(1.5rem - 1px) calc(1rem - 1px);
+  }
+}
