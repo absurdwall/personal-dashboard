@@ -605,6 +605,7 @@ type CollaborationMessageView = Readonly<{
   runtimeTurnId: string | null;
   deliveryState: string;
   resultChecked: boolean;
+  automaticPlan: boolean;
 }>;
 
 type CollaborationTaskOperation =
@@ -656,6 +657,7 @@ type CollaborationTaskOperationView = Readonly<{
   resultMessage: string | null;
   resultSnapshot: CollaborationTaskOperationBaseline | null;
   resultRevision: string | null;
+  automaticPlan: boolean;
   taskId: string | null;
   listId: string | null;
   createdAt: string;
@@ -723,6 +725,29 @@ type CollaborationConnectionView = Readonly<{
   error: string | null;
 }>;
 
+type DailyPlanAutomationSettings = Readonly<{
+  enabled: boolean;
+  time: string;
+  externalScheduleHandoffConfirmed: boolean;
+}>;
+
+type DailyPlanAutomationRunView = Readonly<{
+  date: string;
+  state: string;
+  message: string;
+  sessionId: string | null;
+  executionId: string | null;
+  updatedAt: string;
+}>;
+
+type DailyPlanAutomationView = Readonly<{
+  settings: DailyPlanAutomationSettings;
+  date: string;
+  time: string;
+  vaultConfigured: boolean;
+  currentRun: DailyPlanAutomationRunView | null;
+}>;
+
 type CollaborationVoiceLocale = Readonly<{
   id: string;
   displayName: string;
@@ -759,6 +784,9 @@ let collaborationActivityDate = localCalendarDate();
 let collaborationTargetDate = collaborationActivityDate;
 let currentCollaborationWorkspace: CollaborationWorkspaceView | null = null;
 let currentCollaborationSession: CollaborationSessionView | null = null;
+let currentDailyPlanAutomation: DailyPlanAutomationView | null = null;
+let dailyPlanAutomationRequest = 0;
+let dailyPlanAutomationStatusTimer: number | null = null;
 const pendingCollaborationTaskOperationIds = new Set<string>();
 const collaborationTaskActionErrors = new Map<string, string>();
 let taskFocusRequestId: string | null = null;
@@ -887,6 +915,13 @@ const collaborationModelSelect = document.querySelector<HTMLSelectElement>("#col
 const collaborationReasoningEffortSelect = document.querySelector<HTMLSelectElement>("#collaboration-reasoning-effort");
 const collaborationRefreshConnectionButton = document.querySelector<HTMLButtonElement>("#collaboration-refresh-connection");
 const collaborationConnectButton = document.querySelector<HTMLButtonElement>("#collaboration-connect-chatgpt");
+const collaborationAutomaticPlanEnabled = document.querySelector<HTMLInputElement>("#collaboration-automatic-plan-enabled");
+const collaborationAutomaticPlanTime = document.querySelector<HTMLInputElement>("#collaboration-automatic-plan-time");
+const collaborationExternalScheduleHandoffConfirmed = document.querySelector<HTMLInputElement>("#collaboration-external-handoff-confirmed");
+const collaborationExternalScheduleBoundary = document.querySelector<HTMLElement>("#collaboration-external-schedule-boundary");
+const collaborationSaveAutomaticPlanSettingsButton = document.querySelector<HTMLButtonElement>("#collaboration-save-automatic-plan-settings");
+const collaborationOpenAutomaticPlanRunButton = document.querySelector<HTMLButtonElement>("#collaboration-open-automatic-plan-run");
+const collaborationAutomaticPlanStatus = document.querySelector<HTMLElement>("#collaboration-automatic-plan-status");
 const accentColorButtons = document.querySelectorAll<HTMLButtonElement>("[data-accent-color]");
 const restoreAppearanceButton = document.querySelector<HTMLButtonElement>("#restore-appearance");
 const appearanceStatus = document.querySelector<HTMLElement>("#appearance-status");
@@ -1620,7 +1655,18 @@ function showSettingsSection(section: "appearance" | "data" | "codex"): void {
   settingsPanels.forEach((panel) => {
     panel.hidden = panel.dataset.settingsPanel !== section;
   });
-  if (section === "codex") void refreshCollaborationConnection();
+  if (section === "codex") {
+    void refreshCollaborationConnection();
+    void refreshDailyPlanAutomation();
+    if (dailyPlanAutomationStatusTimer === null) {
+      dailyPlanAutomationStatusTimer = window.setInterval(() => {
+        void refreshDailyPlanAutomation();
+      }, 10_000);
+    }
+  } else if (dailyPlanAutomationStatusTimer !== null) {
+    window.clearInterval(dailyPlanAutomationStatusTimer);
+    dailyPlanAutomationStatusTimer = null;
+  }
 }
 
 type VaultSettingsView = Pick<TodayView, "vaultPath" | "vaultAvailability" | "message">;
@@ -1812,6 +1858,134 @@ function renderCollaborationConnection(): void {
   renderCollaborationWorkspace();
 }
 
+function renderDailyPlanAutomation(view: DailyPlanAutomationView | null): void {
+  currentDailyPlanAutomation = view;
+  if (!view) {
+    setCopy(collaborationAutomaticPlanStatus, "collaboration.automaticPlanNotLoaded");
+    if (collaborationOpenAutomaticPlanRunButton) {
+      collaborationOpenAutomaticPlanRunButton.hidden = true;
+    }
+    return;
+  }
+  if (collaborationAutomaticPlanEnabled) {
+    collaborationAutomaticPlanEnabled.checked = view.settings.enabled;
+  }
+  if (collaborationAutomaticPlanTime) {
+    collaborationAutomaticPlanTime.value = view.settings.time;
+  }
+  if (collaborationExternalScheduleHandoffConfirmed) {
+    collaborationExternalScheduleHandoffConfirmed.checked =
+      view.settings.externalScheduleHandoffConfirmed;
+  }
+  setCopy(
+    collaborationExternalScheduleBoundary,
+    view.settings.externalScheduleHandoffConfirmed
+      ? "collaboration.externalScheduleHandoffComplete"
+      : "collaboration.externalScheduleHandoffPending",
+  );
+
+  const run = view.currentRun;
+  const stateCopy: Record<string, InterfaceCopyKey> = {
+    queued: "collaboration.automaticPlanQueued",
+    running: "collaboration.automaticPlanRunning",
+    completed: "collaboration.automaticPlanCompleted",
+    existingPlan: "collaboration.automaticPlanExisting",
+    readError: "collaboration.automaticPlanReadError",
+    damagedRecord: "collaboration.automaticPlanDamaged",
+    needsReview: "collaboration.automaticPlanNeedsReview",
+    stopped: "collaboration.automaticPlanStopped",
+    unavailable: "collaboration.automaticPlanUnavailable",
+  };
+  if (collaborationAutomaticPlanStatus) {
+    if (!view.settings.enabled) {
+      setCopy(collaborationAutomaticPlanStatus, "collaboration.automaticPlanDisabled");
+    } else if (!view.vaultConfigured) {
+      setCopy(collaborationAutomaticPlanStatus, "collaboration.automaticPlanVaultMissing");
+    } else if (run) {
+      const copy = stateCopy[run.state] ?? "collaboration.automaticPlanNeedsReview";
+      setCopy(collaborationAutomaticPlanStatus, copy);
+      collaborationAutomaticPlanStatus.dataset.state = run.state;
+      if (run.message && run.state !== "completed") {
+        collaborationAutomaticPlanStatus.title = run.message;
+      } else {
+        collaborationAutomaticPlanStatus.removeAttribute("title");
+      }
+    } else {
+      setCopy(collaborationAutomaticPlanStatus, "collaboration.automaticPlanNotDue");
+      collaborationAutomaticPlanStatus.removeAttribute("data-state");
+    }
+  }
+  if (collaborationOpenAutomaticPlanRunButton) {
+    collaborationOpenAutomaticPlanRunButton.hidden = !run?.sessionId;
+    collaborationOpenAutomaticPlanRunButton.disabled = !run?.sessionId;
+  }
+}
+
+async function refreshDailyPlanAutomation(): Promise<void> {
+  const request = ++dailyPlanAutomationRequest;
+  try {
+    const view = await window.__TAURI__.core.invoke<DailyPlanAutomationView>(
+      "collaboration_daily_plan_automation",
+    );
+    if (request === dailyPlanAutomationRequest) renderDailyPlanAutomation(view);
+  } catch (error) {
+    if (request !== dailyPlanAutomationRequest) return;
+    renderDailyPlanAutomation(null);
+    setCopyError(collaborationAutomaticPlanStatus, "collaboration.automaticPlanLoadFailed", error);
+    if (collaborationAutomaticPlanStatus) collaborationAutomaticPlanStatus.dataset.state = "error";
+  }
+}
+
+async function saveDailyPlanAutomationSettings(): Promise<void> {
+  const time = collaborationAutomaticPlanTime?.value ?? "";
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    setCopy(collaborationAutomaticPlanStatus, "collaboration.automaticPlanInvalidTime");
+    if (collaborationAutomaticPlanStatus) collaborationAutomaticPlanStatus.dataset.state = "error";
+    return;
+  }
+  const settings: DailyPlanAutomationSettings = {
+    enabled: collaborationAutomaticPlanEnabled?.checked ?? false,
+    time,
+    externalScheduleHandoffConfirmed:
+      collaborationExternalScheduleHandoffConfirmed?.checked ?? false,
+  };
+  if (collaborationSaveAutomaticPlanSettingsButton) {
+    collaborationSaveAutomaticPlanSettingsButton.disabled = true;
+  }
+  try {
+    const view = await window.__TAURI__.core.invoke<DailyPlanAutomationView>(
+      "collaboration_update_daily_plan_automation",
+      { settings },
+    );
+    renderDailyPlanAutomation(view);
+  } catch (error) {
+    setCopyError(collaborationAutomaticPlanStatus, "collaboration.automaticPlanSaveFailed", error);
+    if (collaborationAutomaticPlanStatus) collaborationAutomaticPlanStatus.dataset.state = "error";
+  } finally {
+    if (collaborationSaveAutomaticPlanSettingsButton) {
+      collaborationSaveAutomaticPlanSettingsButton.disabled = false;
+    }
+  }
+}
+
+async function openDailyPlanAutomationRun(): Promise<void> {
+  const run = currentDailyPlanAutomation?.currentRun;
+  if (!run?.sessionId) return;
+  try {
+    const session = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+      "collaboration_session",
+      { sessionId: run.sessionId },
+    );
+    if (collaborationDateInput) collaborationDateInput.value = run.date;
+    collaborationActivityDate = run.date;
+    showWorkspaceDestination("collaboration");
+    selectCollaborationSession(session);
+  } catch (error) {
+    setCopyError(collaborationAutomaticPlanStatus, "collaboration.automaticPlanOpenFailed", error);
+    if (collaborationAutomaticPlanStatus) collaborationAutomaticPlanStatus.dataset.state = "error";
+  }
+}
+
 async function refreshCollaborationConnection(): Promise<void> {
   const request = ++collaborationConnectionRequest;
   if (collaborationRefreshConnectionButton) collaborationRefreshConnectionButton.disabled = true;
@@ -1928,7 +2102,9 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
     const heading = document.createElement("header");
     const role = document.createElement("strong");
     role.textContent = message.role === "user"
-      ? t("collaboration.userRole")
+      ? (message.automaticPlan
+        ? t("collaboration.automaticPlanMessageRole")
+        : t("collaboration.userRole"))
       : t("collaboration.assistantRole");
     const date = document.createElement("span");
     date.textContent = t("collaboration.messageDate", {
@@ -2588,13 +2764,19 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
     const plan = operation.operation.operation === "saveDailyPlan"
       ? operation.operation
       : null;
-    card.className = plan
+    const automaticPlan = operation.automaticPlan && plan !== null;
+    card.className = automaticPlan
+      ? "collaboration-task-operation collaboration-daily-plan-operation collaboration-automatic-plan-operation"
+      : plan
       ? "collaboration-task-operation collaboration-daily-plan-operation"
       : "collaboration-task-operation";
     card.dataset.state = operation.status;
+    if (automaticPlan) card.dataset.automaticPlan = "true";
     const heading = document.createElement("header");
     const title = document.createElement("strong");
-    title.textContent = t(plan ? "collaboration.dailyPlanProposal" : "collaboration.taskProposal");
+    title.textContent = automaticPlan
+      ? t("collaboration.automaticPlanCardTitle")
+      : t(plan ? "collaboration.dailyPlanProposal" : "collaboration.taskProposal");
     const status = document.createElement("span");
     status.className = "collaboration-task-operation-status";
     setCopy(status, `collaboration.taskOperationStatus.${operation.status}` as InterfaceCopyKey);
@@ -2630,7 +2812,9 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       const result = document.createElement("p");
       result.className = "collaboration-task-operation-result";
       result.textContent = operation.status === "applied"
-        ? t(plan ? "collaboration.dailyPlanResultSaved" : "collaboration.taskResultSaved")
+        ? (automaticPlan
+          ? operation.resultMessage ?? t("collaboration.automaticPlanResultLabel")
+          : t(plan ? "collaboration.dailyPlanResultSaved" : "collaboration.taskResultSaved"))
         : operation.resultMessage;
       card.append(result);
     }
@@ -8736,6 +8920,7 @@ function showWorkspaceDestination(
   dailyDate: string | null = null,
 ): void {
   const destinationChanged = currentWorkspaceDestination !== destination;
+  const leavingSettings = currentWorkspaceDestination === "settings" && destination !== "settings";
   const leavingToday = currentWorkspaceDestination === "today" && destination !== "today";
   const leavingTasks = currentWorkspaceDestination === "tasks" && destination !== "tasks";
   const leavingCalendar = currentWorkspaceDestination === "calendar" && destination !== "calendar";
@@ -8781,6 +8966,10 @@ function showWorkspaceDestination(
       window.clearInterval(collaborationStatusTimer);
       collaborationStatusTimer = null;
     }
+  }
+  if (leavingSettings && dailyPlanAutomationStatusTimer !== null) {
+    window.clearInterval(dailyPlanAutomationStatusTimer);
+    dailyPlanAutomationStatusTimer = null;
   }
   currentWorkspaceDestination = destination;
   renderDailyPlanReturnNavigation();
@@ -9009,6 +9198,14 @@ collaborationRefreshConnectionButton?.addEventListener("click", () => {
 
 collaborationConnectButton?.addEventListener("click", () => {
   void startChatGPTLogin();
+});
+
+collaborationSaveAutomaticPlanSettingsButton?.addEventListener("click", () => {
+  void saveDailyPlanAutomationSettings();
+});
+
+collaborationOpenAutomaticPlanRunButton?.addEventListener("click", () => {
+  void openDailyPlanAutomationRun();
 });
 
 collaborationModelSelect?.addEventListener("change", () => {

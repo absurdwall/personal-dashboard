@@ -811,6 +811,7 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
                 delivery_state: "in-progress".into(),
                 queue_order: Some(1),
                 result_checked: false,
+                automatic_plan: false,
             },
             StoredCollaborationMessage {
                 id: "message-pending-2".into(),
@@ -824,6 +825,7 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
                 delivery_state: "queued".into(),
                 queue_order: Some(2),
                 result_checked: false,
+                automatic_plan: false,
             },
         ],
         task_operations: Vec::new(),

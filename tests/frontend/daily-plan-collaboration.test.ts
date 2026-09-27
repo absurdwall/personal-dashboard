@@ -6,6 +6,7 @@ const html = readFileSync(new URL("../../frontend/index.html", import.meta.url),
 const main = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
 const css = readFileSync(new URL("../../frontend/styles.css", import.meta.url), "utf8");
 const copies = readFileSync(new URL("../../frontend/interface-language.ts", import.meta.url), "utf8");
+const skill = readFileSync(new URL("../../.agents/skills/personal-dashboard-collaboration/SKILL.md", import.meta.url), "utf8");
 
 test("Daily Record plan proposals use the existing approval card and show reviewed and saved snapshots", () => {
   assert.match(main, /operation: "saveDailyPlan"[\s\S]*?transition: DailyPlanTransition[\s\S]*?arrangement: readonly DailyPlanBlockInput\[\][\s\S]*?evidence: readonly DailyPlanEvidenceInput\[\]/);
@@ -51,4 +52,25 @@ test("a failed shared context refresh marks every pane unavailable instead of le
   assert.match(refresh[0], /tasks: \{ state: "error"/);
   assert.match(refresh[0], /habits: \{ state: "error"/);
   assert.match(refresh[0], /taskRevision: null[\s\S]*?taskRecords: \[\][\s\S]*?taskLists: \[\]/);
+});
+
+test("automatic morning planning has an explicit local schedule and external-task handoff boundary", () => {
+  assert.match(html, /id="collaboration-automatic-plan-enabled"/);
+  assert.match(html, /id="collaboration-automatic-plan-time"/);
+  assert.match(html, /id="collaboration-external-handoff-confirmed"/);
+  assert.match(html, /id="collaboration-external-schedule-boundary"/);
+  assert.match(html, /id="collaboration-automatic-plan-status"/);
+  assert.match(main, /"collaboration_daily_plan_automation"/);
+  assert.match(main, /"collaboration_update_daily_plan_automation"[\s\S]*?\{ settings \}/);
+  assert.match(main, /function openDailyPlanAutomationRun\([\s\S]*?selectCollaborationSession\(session\)/);
+  assert.match(main, /collaboration-automatic-plan-operation/);
+  assert.match(main, /message\.automaticPlan[\s\S]*?automaticPlanMessageRole/);
+  assert.match(main, /operation\.automaticPlan[\s\S]*?automaticPlanCardTitle/);
+  assert.match(main, /operation\.resultMessage \?\? t\("collaboration\.automaticPlanResultLabel"\)/);
+  assert.match(css, /\.collaboration-automatic-plan-operation\s*\{/);
+  assert.match(copies, /"collaboration\.externalScheduleHandoffPending":\s*\{[^\n]*zh:[^\n]*Dashboard[^\n]*scheduled task[^\n]*en:[^\n]*does not inspect or change external scheduled tasks/);
+  assert.match(copies, /"collaboration\.externalScheduleHandoffComplete":\s*\{[^\n]*zh:[^\n]*仍未修改外部 scheduled task[^\n]*en:[^\n]*has not changed the external scheduled task/);
+  assert.match(skill, /explicitly marked as an \*\*automatic morning plan\*\*/);
+  assert.match(skill, /only one `initialPlan`/);
+  assert.match(skill, /never inspect or modify an external scheduled task/);
 });
