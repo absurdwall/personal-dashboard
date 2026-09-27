@@ -5,7 +5,7 @@ use personal_dashboard_lib::collaboration::{
     ContextPaneView, FileCollaborationStore, ModelOptionView, RuntimeConnectionView,
     RuntimeDynamicToolCall, RuntimeDynamicToolHandler, RuntimeDynamicToolResult,
     RuntimeRunReconciliation, RuntimeTurnRequest, RuntimeTurnResult,
-    TaskApplicationCollaborationAdapter, TodayApplicationCollaborationPlanAdapter,
+    TaskApplicationCollaborationAdapter, TodayApplicationCollaborationDailyDataAdapter,
 };
 use personal_dashboard_lib::tasks::{FileTaskStore, TaskApplication, TaskDataState, TaskState};
 use personal_dashboard_lib::today::{
@@ -507,7 +507,7 @@ fn new_application(
     let task_service = Arc::new(TaskApplicationCollaborationAdapter::new(
         TaskApplication::new(vault.clone(), FixedClock, FileTaskStore),
     ));
-    let daily_plan_service = Arc::new(TodayApplicationCollaborationPlanAdapter::new(
+    let daily_data_service = Arc::new(TodayApplicationCollaborationDailyDataAdapter::new(
         TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock),
     ));
     let application = CollaborationApplication::with_adapters(
@@ -527,7 +527,7 @@ fn new_application(
         "Only use supplied synthetic Dashboard context.".into(),
     )
     .with_task_service(task_service)
-    .with_daily_plan_service(daily_plan_service);
+    .with_daily_data_service(daily_data_service);
     (application, registered_tools, results)
 }
 
@@ -1946,6 +1946,168 @@ fn evening_receipt_reconciles_after_restart_when_history_result_save_fails() {
     assert!(!vault_path
         .join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH)
         .exists());
+}
+
+#[test]
+fn evening_addition_creates_missing_daily_record_and_recovers_receipt_after_restart() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let daily_path = prepare_daily_review_vault(&vault_path, false);
+    fs::remove_file(&daily_path).unwrap();
+    let vault = MutableVault::new(&vault_path);
+    let context = MutableContext::new("vault-a");
+    let fail_next_save = Arc::new(AtomicBool::new(false));
+    let (application, _, _) = new_application(
+        &directory,
+        &vault,
+        context.clone(),
+        Arc::clone(&fail_next_save),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    let proposal = submit_for_proposal(&application, &session.id, "evening addition");
+    assert!(matches!(
+        &proposal.baseline,
+        personal_dashboard_lib::collaboration::CollaborationTaskOperationBaseline::DailyReview {
+            revision: None,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &proposal.operation,
+        CollaborationTaskOperation::SaveEveningReview {
+            mode: personal_dashboard_lib::today::CollaborationEveningReviewMode::Addition,
+            ..
+        }
+    ));
+    assert!(!daily_path.exists());
+
+    fail_next_save.store(true, Ordering::SeqCst);
+    assert!(application
+        .approve_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap_err()
+        .contains("saved"));
+    let created = fs::read_to_string(&daily_path).unwrap();
+    assert!(created.starts_with("---\ntype: daily-record\ndate: 2026-09-27\n---\n# 2026-09-27\n"));
+    assert!(created.contains("## 白天更新"));
+    assert!(created.contains("## 晚间复盘"));
+    assert!(created.contains("I finished the synthetic evening review."));
+    assert!(!created.contains("## 早间基准"));
+    assert_eq!(created.matches(&format!("id={} ", proposal.id)).count(), 1);
+    assert!(!vault_path
+        .join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH)
+        .exists());
+    drop(application);
+
+    let (restarted, _, _) = new_application(
+        &directory,
+        &vault,
+        context,
+        Arc::new(AtomicBool::new(false)),
+    );
+    let reconciled = restarted
+        .reconcile_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap();
+    assert_eq!(reconciled.task_operations[0].status, "applied");
+    assert!(reconciled.task_operations[0]
+        .result_snapshot
+        .as_ref()
+        .is_some_and(|snapshot| matches!(
+            snapshot,
+            personal_dashboard_lib::collaboration::CollaborationTaskOperationBaseline::DailyReview {
+                revision: Some(_),
+                ..
+            }
+        )));
+    assert_eq!(
+        fs::read_to_string(&daily_path)
+            .unwrap()
+            .matches(&format!("id={} ", proposal.id))
+            .count(),
+        1
+    );
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock)
+        .read_date("2026-09-27")
+        .unwrap();
+    assert_eq!(
+        today.state,
+        personal_dashboard_lib::today::TodayState::Ready
+    );
+    assert!(today
+        .evening
+        .additions
+        .iter()
+        .any(|line| line.contains("synthetic evening review")));
+}
+
+#[test]
+fn missing_daily_record_rejects_evening_review_correction_before_proposal() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let daily_path = prepare_daily_review_vault(&vault_path, false);
+    fs::remove_file(&daily_path).unwrap();
+    let vault = MutableVault::new(&vault_path);
+    let (application, _, results) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message("vault-a", &session.id, "2026-09-27", "evening correction")
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+    let view = application.session("vault-a", &session.id).unwrap();
+    assert!(view.task_operations.is_empty());
+    assert!(results.lock().unwrap().last().is_some_and(
+        |result| !result.success && result.text.contains("no existing evening review")
+    ));
+    assert!(!daily_path.exists());
+}
+
+#[test]
+fn missing_record_proposal_conflicts_if_the_target_appears_before_approval() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let daily_path = prepare_daily_review_vault(&vault_path, false);
+    fs::remove_file(&daily_path).unwrap();
+    let vault = MutableVault::new(&vault_path);
+    let (application, _, _) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    let proposal = submit_for_proposal(&application, &session.id, "evening addition");
+    let external = "---\ntype: daily-record\ndate: 2026-09-27\n---\n# 2026-09-27\n\n## 晚间复盘\n\n### 今天发生了什么\n\n- Concurrent user-authored review.\n";
+    fs::write(&daily_path, external).unwrap();
+
+    let conflict = application
+        .approve_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap();
+    assert_eq!(conflict.task_operations[0].status, "conflict");
+    assert_eq!(fs::read_to_string(&daily_path).unwrap(), external);
+
+    let refreshed = application
+        .refresh_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap();
+    assert!(matches!(
+        &refreshed.task_operations[0].baseline,
+        personal_dashboard_lib::collaboration::CollaborationTaskOperationBaseline::DailyReview {
+            account,
+            revision: Some(_),
+            ..
+        } if account.iter().any(|line| line.contains("Concurrent user-authored review"))
+    ));
+    assert_eq!(refreshed.task_operations[0].status, "awaitingApproval");
+    let saved = application
+        .approve_task_operation_for_selected_vault(&session.id, &proposal.id)
+        .unwrap();
+    assert_eq!(saved.task_operations[0].status, "applied");
+    let document = fs::read_to_string(&daily_path).unwrap();
+    assert!(document.contains("Concurrent user-authored review."));
+    assert!(document.contains("I finished the synthetic evening review."));
 }
 
 #[test]

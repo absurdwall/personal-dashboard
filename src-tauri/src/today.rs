@@ -1126,7 +1126,7 @@ pub enum CollaborationEveningReviewMode {
 pub struct CollaborationEveningReviewInput {
     pub date: String,
     pub target_binding: String,
-    pub expected_revision: String,
+    pub expected_revision: Option<String>,
     pub operation_id: String,
     pub effect_fingerprint: String,
     pub mode: CollaborationEveningReviewMode,
@@ -3575,13 +3575,27 @@ where
         }
         self.validate_event_date(&input.date)?;
         let (vault, path) = self.bound_record_target(&input.date, &input.target_binding)?;
-        let bytes = self.record_store.load(&path)?.ok_or_else(|| {
-            "该日期没有可供复盘的 Daily Record。请刷新目标日期后再讨论或保存。".to_string()
-        })?;
-        let document = String::from_utf8(bytes).map_err(|_| {
-            "该日期的 Daily Record 不是有效的 UTF-8 文本；未写入任何内容。".to_string()
-        })?;
+        let existing = self.record_store.load(&path)?;
+        if input.mode == CollaborationEveningReviewMode::Correction && existing.is_none() {
+            return Err(
+                "该日期没有可更正的晚间复盘。请先查看目标日期；未创建 Daily Record。".into(),
+            );
+        }
+        let document = match existing.as_deref() {
+            Some(bytes) => String::from_utf8(bytes.to_vec()).map_err(|_| {
+                "该日期的 Daily Record 不是有效的 UTF-8 文本；未写入任何内容。".to_string()
+            })?,
+            None => minimal_daily_record(&input.date, ""),
+        };
         validate_writable_daily_record(&document, &input.date)?;
+        if input.mode == CollaborationEveningReviewMode::Correction {
+            let (_, _, _, _, evening) = parse_daily_record(&document, &input.date)?;
+            if !evening_has_content(&evening) {
+                return Err(
+                    "该日期没有可更正的晚间复盘。请先查看目标日期；未写入任何内容。".into(),
+                );
+            }
+        }
         if let Some((fingerprint, receipt_date)) =
             collaboration_evening_receipt(&document, &input.operation_id)?
         {
@@ -3590,7 +3604,22 @@ where
             }
             return Err("该晚间复盘操作标识已用于不同日期或内容；未写入任何内容。".into());
         }
-        require_revision_for_date(&document, &input.expected_revision, &input.date)?;
+        match (existing.as_deref(), input.expected_revision.as_deref()) {
+            (Some(_), Some(expected)) => {
+                require_revision_for_date(&document, expected, &input.date)?
+            }
+            (Some(_), None) => {
+                return Err(
+                    "Daily Record 已存在但提案没有修订号。请刷新后重试；未写入任何内容。".into(),
+                )
+            }
+            (None, Some(_)) => {
+                return Err(
+                    "Daily Record 已被创建。请刷新目标日期后重新审批；未覆盖现有内容。".into(),
+                )
+            }
+            (None, None) => {}
+        }
         let (subsection, text) = match input.mode {
             CollaborationEveningReviewMode::Addition => (
                 "用户补充",
@@ -3617,8 +3646,12 @@ where
         );
         updated = append_to_named_subsection(&updated, "晚间复盘", "协作写入收据", &marker, None)?;
         validate_writable_daily_record(&updated, &input.date)?;
-        self.record_store
-            .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
+        match existing.as_deref() {
+            Some(bytes) => self
+                .record_store
+                .save_if_unchanged(&path, bytes, updated.as_bytes())?,
+            None => self.record_store.create_new(&path, updated.as_bytes())?,
+        }
         self.reload_vault(&vault, input.date)
     }
 

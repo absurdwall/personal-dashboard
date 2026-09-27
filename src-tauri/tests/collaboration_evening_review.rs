@@ -115,6 +115,22 @@ fn review_input(
     mode: CollaborationEveningReviewMode,
     content: &str,
 ) -> CollaborationEveningReviewInput {
+    review_input_with_revision(
+        target_binding,
+        Some(expected_revision),
+        operation_id,
+        mode,
+        content,
+    )
+}
+
+fn review_input_with_revision(
+    target_binding: String,
+    expected_revision: Option<String>,
+    operation_id: &str,
+    mode: CollaborationEveningReviewMode,
+    content: &str,
+) -> CollaborationEveningReviewInput {
     CollaborationEveningReviewInput {
         date: DATE.into(),
         target_binding,
@@ -311,5 +327,103 @@ fn review_refuses_stale_revision_switched_vault_and_unknown_receipt_content() {
     assert_eq!(
         fs::read_to_string(record_path(&vault_a)).unwrap(),
         malformed_before
+    );
+}
+
+#[test]
+fn missing_record_evening_addition_creates_minimal_record_and_replays_receipt() {
+    let directory = TempDirectory::new();
+    let vault = directory.vault("vault");
+    let application = app(&vault);
+    let opened = application.read_date(DATE).unwrap();
+    assert_eq!(
+        opened.state,
+        personal_dashboard_lib::today::TodayState::Missing
+    );
+    assert_eq!(opened.revision, None);
+    let input = review_input_with_revision(
+        opened.target_binding.unwrap(),
+        None,
+        "review-create-1",
+        CollaborationEveningReviewMode::Addition,
+        "明确补记：完成晚间整理。",
+    );
+
+    let saved = application
+        .update_collaboration_evening_review(input.clone())
+        .unwrap();
+    assert_eq!(
+        saved.state,
+        personal_dashboard_lib::today::TodayState::Ready
+    );
+    assert!(saved
+        .evening
+        .additions
+        .iter()
+        .any(|line| line.contains("完成晚间整理")));
+    let path = record_path(&vault);
+    let first_bytes = fs::read(&path).unwrap();
+    let document = String::from_utf8(first_bytes.clone()).unwrap();
+    assert!(document.starts_with(&format!(
+        "---\ntype: daily-record\ndate: {DATE}\n---\n# {DATE}\n"
+    )));
+    assert!(document.contains("## 白天更新"));
+    assert!(document.contains("## 晚间复盘"));
+    assert!(document.contains("晚间复盘补充：明确补记：完成晚间整理。"));
+    assert_eq!(document.matches("id=review-create-1 ").count(), 1);
+    assert!(application
+        .collaboration_evening_review_operation_applied(
+            DATE,
+            &input.target_binding,
+            "review-create-1",
+            &input.effect_fingerprint,
+        )
+        .unwrap());
+
+    let restarted = app(&vault)
+        .update_collaboration_evening_review(input)
+        .unwrap();
+    assert_eq!(restarted.evening, saved.evening);
+    assert_eq!(fs::read(&path).unwrap(), first_bytes);
+}
+
+#[test]
+fn absent_review_targets_reject_corrections_without_mutating_the_record() {
+    let directory = TempDirectory::new();
+    let vault = directory.vault("vault");
+    let application = app(&vault);
+    let opened = application.read_date(DATE).unwrap();
+    let input = review_input_with_revision(
+        opened.target_binding.unwrap(),
+        None,
+        "review-correct-missing-1",
+        CollaborationEveningReviewMode::Correction,
+        "不能凭空更正复盘。",
+    );
+
+    let error = application
+        .update_collaboration_evening_review(input)
+        .unwrap_err();
+    assert!(error.contains("没有可更正的晚间复盘"), "{error}");
+    assert!(!record_path(&vault).exists());
+
+    let blank_review_vault = directory.vault("blank-review");
+    let original = complete_record("");
+    write_record(&blank_review_vault, &original);
+    let blank_application = app(&blank_review_vault);
+    let existing = blank_application.read_date(DATE).unwrap();
+    let error = blank_application
+        .update_collaboration_evening_review(review_input(
+            existing.target_binding.unwrap(),
+            existing.revision.unwrap(),
+            "review-correct-empty-1",
+            CollaborationEveningReviewMode::Correction,
+            "不能更正空的复盘。",
+        ))
+        .unwrap_err();
+    assert!(error.contains("没有可更正的晚间复盘"), "{error}");
+    assert_eq!(
+        fs::read_to_string(record_path(&blank_review_vault)).unwrap(),
+        original
     );
 }
