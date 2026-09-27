@@ -262,9 +262,9 @@
             >
               <header class="collaboration-header destination-page-header">
                 <div>
-                  <p class="section-label" data-i18n="collaboration.sectionLabel">LOCAL CODEX · TEXT ONLY</p>
+                  <p class="section-label" data-i18n="collaboration.sectionLabel">LOCAL CODEX · TASK PROPOSALS</p>
                   <h2 id="collaboration-heading" class="destination-heading" data-i18n="destination.collaboration">协作</h2>
-                  <p data-i18n="collaboration.introduction">Discuss the latest selected-Vault records with Codex. Replies are not saved as Dashboard changes.</p>
+                  <p data-i18n="collaboration.introduction">Discuss current selected-Vault data with Codex. Proposed task changes are reviewed and saved through the existing Tasks service.</p>
                 </div>
                 <div class="collaboration-date-toolbar">
                   <label for="collaboration-activity-date" data-i18n="collaboration.activityDate">Session activity date</label>
@@ -305,12 +305,13 @@
                     </div>
                   </header>
                   <p id="collaboration-run-status" class="collaboration-run-status" role="status" aria-live="polite"></p>
+                  <p id="collaboration-task-tool-notice" class="collaboration-task-tool-notice" role="status" aria-live="polite" hidden></p>
                   <div id="collaboration-message-list" class="collaboration-message-list" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation messages" data-i18n-aria-label="collaboration.conversationLabel"></div>
                   <form id="collaboration-composer" class="collaboration-composer">
                     <label for="collaboration-message-draft" data-i18n="collaboration.messageLabel">Message</label>
                     <textarea id="collaboration-message-draft" rows="3" maxlength="12000" data-i18n-placeholder="collaboration.messagePlaceholder" placeholder="Describe what you want to discuss…" disabled></textarea>
                     <div class="collaboration-composer-footer">
-                      <p data-i18n="collaboration.readOnlyBoundary">Codex receives current read-only context. It cannot change Tasks, Daily Records, habits, Vaults, or settings in this release.</p>
+                      <p data-i18n="collaboration.readOnlyBoundary">Codex may propose exact Task changes. They are not saved until you approve them below. Daily Records, habits, Vaults, and settings remain unchanged.</p>
                       <button id="collaboration-send-message" type="submit" data-i18n="collaboration.send" disabled>Send</button>
                     </div>
                   </form>
@@ -325,6 +326,10 @@
                   <label for="collaboration-target-date" data-i18n="collaboration.targetDate">Target record date</label>
                   <input id="collaboration-target-date" type="date" aria-label="Target record date" data-i18n-aria-label="collaboration.targetDate" />
                   <p id="collaboration-context-vault" class="collaboration-vault-label" data-i18n="settings.noVault">No Vault selected.</p>
+                  <section class="collaboration-context-card collaboration-task-operations-card" aria-labelledby="collaboration-task-operations-heading">
+                    <h4 id="collaboration-task-operations-heading" data-i18n="collaboration.taskOperationsHeading">Task changes</h4>
+                    <div id="collaboration-task-operations" aria-live="polite"></div>
+                  </section>
                   <div id="collaboration-context-panes" class="collaboration-context-panes">
                     <section class="collaboration-context-card" data-context-pane="dailyRecord" aria-labelledby="collaboration-daily-heading">
                       <h4 id="collaboration-daily-heading" data-i18n="collaboration.dailyRecord">Daily Record</h4>
@@ -358,6 +363,7 @@
                   <p data-i18n="tasks.introduction">任务有自己的清单，但和 Today、日历共享同一条任务记录。</p>
                 </div>
                 <div class="tasks-header-actions">
+                  <button id="task-return-to-collaboration" type="button" class="secondary-button" data-i18n="collaboration.returnToConversation" hidden>返回协作会话</button>
                   <button id="task-new" type="button" data-i18n="tasks.newTask">新建任务</button>
                   <button id="refresh-tasks" type="button" class="secondary-button tasks-refresh-button" data-i18n="tasks.refresh">刷新任务</button>
                 </div>

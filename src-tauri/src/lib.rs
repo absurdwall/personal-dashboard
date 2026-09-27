@@ -210,6 +210,42 @@ fn collaboration_reconcile_run(
 }
 
 #[tauri::command]
+fn collaboration_approve_task_operation(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    operation_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.approve_task_operation_for_selected_vault(&session_id, &operation_id)
+}
+
+#[tauri::command]
+fn collaboration_reject_task_operation(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    operation_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.reject_task_operation_for_selected_vault(&session_id, &operation_id)
+}
+
+#[tauri::command]
+fn collaboration_refresh_task_operation(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    operation_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.refresh_task_operation_for_selected_vault(&session_id, &operation_id)
+}
+
+#[tauri::command]
+fn collaboration_reconcile_task_operation(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    operation_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.reconcile_task_operation_for_selected_vault(&session_id, &operation_id)
+}
+
+#[tauri::command]
 fn appearance_preferences(
     application: State<'_, DesktopAppearanceApplication>,
 ) -> Result<AppearancePreferences, String> {
@@ -600,6 +636,10 @@ pub fn run() {
             collaboration_stop_run,
             collaboration_resume_not_started,
             collaboration_reconcile_run,
+            collaboration_approve_task_operation,
+            collaboration_reject_task_operation,
+            collaboration_refresh_task_operation,
+            collaboration_reconcile_task_operation,
             appearance_preferences,
             set_accent_color,
             restore_appearance_defaults,
@@ -656,6 +696,10 @@ pub fn run() {
         collaboration_stop_run,
         collaboration_resume_not_started,
         collaboration_reconcile_run,
+        collaboration_approve_task_operation,
+        collaboration_reject_task_operation,
+        collaboration_refresh_task_operation,
+        collaboration_reconcile_task_operation,
         appearance_preferences,
         set_accent_color,
         restore_appearance_defaults,

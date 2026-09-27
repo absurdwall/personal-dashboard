@@ -559,7 +559,30 @@ type CollaborationContextView = Readonly<{
   vaultName: string | null;
   dailyRecord: CollaborationContextPane;
   tasks: CollaborationContextPane;
+  taskRevision: string | null;
+  taskTargetBinding: string | null;
+  taskRecords: readonly CollaborationTaskReferenceView[];
+  taskLists: readonly CollaborationTaskListReferenceView[];
   habits: CollaborationContextPane;
+}>;
+
+type CollaborationTaskReferenceView = Readonly<{
+  id: string;
+  name: string;
+  content: string | null;
+  date: string | null;
+  time: string | null;
+  listId: string;
+  state: "pending" | "completed" | "abandoned";
+  deletedAt: string | null;
+  completion: TaskCompletionView | null;
+}>;
+
+type CollaborationTaskListReferenceView = Readonly<{
+  id: string;
+  name: string;
+  isSystem: boolean;
+  archived: boolean;
 }>;
 
 type CollaborationMessageView = Readonly<{
@@ -575,6 +598,35 @@ type CollaborationMessageView = Readonly<{
   resultChecked: boolean;
 }>;
 
+type CollaborationTaskOperation =
+  | Readonly<{ operation: "createTask"; name: string; content: string | null; date: string | null; time: string | null; listId: string | null }>
+  | Readonly<{ operation: "updateTask"; taskId: string; name: string; content: string | null; date: string | null; time: string | null; listId: string | null }>
+  | Readonly<{ operation: "completeTask" | "abandonTask" | "reopenTask" | "deleteTask" | "restoreTask"; taskId: string }>
+  | Readonly<{ operation: "correctCompletion"; taskId: string; completedOn: string; completedTime: string | null }>
+  | Readonly<{ operation: "createList"; name: string }>
+  | Readonly<{ operation: "renameList"; listId: string; name: string }>
+  | Readonly<{ operation: "archiveList" | "restoreList"; listId: string }>;
+
+type CollaborationTaskOperationBaseline =
+  | Readonly<{ kind: "task"; id: string; name: string; content: string | null; date: string | null; time: string | null; listId: string; listName: string; state: "pending" | "completed" | "abandoned"; deletedAt: string | null; completion: TaskCompletionView | null }>
+  | Readonly<{ kind: "list"; id: string; name: string; archived: boolean }>
+  | Readonly<{ kind: "none" }>;
+
+type CollaborationTaskOperationView = Readonly<{
+  id: string;
+  operation: CollaborationTaskOperation;
+  status: "awaitingApproval" | "applied" | "rejected" | "conflict" | "failed" | string;
+  targetDate: string;
+  baseline: CollaborationTaskOperationBaseline;
+  resultMessage: string | null;
+  resultSnapshot: CollaborationTaskOperationBaseline | null;
+  resultRevision: string | null;
+  taskId: string | null;
+  listId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}>;
+
 type CollaborationSessionView = Readonly<{
   id: string;
   title: string;
@@ -586,7 +638,9 @@ type CollaborationSessionView = Readonly<{
   runState: string;
   progress: string;
   runtimeThreadId: string | null;
+  taskToolAvailable: boolean;
   messages: readonly CollaborationMessageView[];
+  taskOperations: readonly CollaborationTaskOperationView[];
   draft: string;
   draftsByDate: Readonly<Record<string, string>>;
 }>;
@@ -644,6 +698,10 @@ let collaborationActivityDate = localCalendarDate();
 let collaborationTargetDate = collaborationActivityDate;
 let currentCollaborationWorkspace: CollaborationWorkspaceView | null = null;
 let currentCollaborationSession: CollaborationSessionView | null = null;
+const pendingCollaborationTaskOperationIds = new Set<string>();
+const collaborationTaskActionErrors = new Map<string, string>();
+let taskFocusRequestId: string | null = null;
+let taskReturnToCollaborationSessionId: string | null = null;
 let currentCollaborationConnection: CollaborationConnectionView | null = null;
 let collaborationWorkspaceRequest = 0;
 let collaborationConnectionRequest = 0;
@@ -707,6 +765,8 @@ const collaborationSessionList = document.querySelector<HTMLUListElement>("#coll
 const collaborationSessionsStatus = document.querySelector<HTMLElement>("#collaboration-sessions-status");
 const collaborationWorkOwner = document.querySelector<HTMLElement>("#collaboration-work-owner");
 const collaborationMessageList = document.querySelector<HTMLElement>("#collaboration-message-list");
+const collaborationTaskOperations = document.querySelector<HTMLElement>("#collaboration-task-operations");
+const collaborationTaskToolNotice = document.querySelector<HTMLElement>("#collaboration-task-tool-notice");
 const collaborationComposer = document.querySelector<HTMLFormElement>("#collaboration-composer");
 const collaborationMessageDraft = document.querySelector<HTMLTextAreaElement>("#collaboration-message-draft");
 const collaborationSendButton = document.querySelector<HTMLButtonElement>("#collaboration-send-message");
@@ -810,6 +870,7 @@ const taskCreateTime = document.querySelector<HTMLInputElement>("#task-create-ti
 const taskCreateSubmit = document.querySelector<HTMLButtonElement>("#task-create-submit");
 const taskCreateCancel = document.querySelector<HTMLButtonElement>("#task-create-cancel");
 const taskNewButton = document.querySelector<HTMLButtonElement>("#task-new");
+const taskReturnToCollaborationButton = document.querySelector<HTMLButtonElement>("#task-return-to-collaboration");
 const taskNewListButton = document.querySelector<HTMLButtonElement>("#task-new-list");
 const taskListScopes = document.querySelector<HTMLElement>("#tasks-list-scopes");
 const taskListCreateForm = document.querySelector<HTMLFormElement>("#task-list-create-form");
@@ -1819,6 +1880,296 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
   collaborationMessageList.scrollTop = collaborationMessageList.scrollHeight;
 }
 
+function collaborationTaskSchedule(date: string | null, time: string | null): string {
+  const day = date ? collaborationDateLabel(date) : t("collaboration.taskUndated");
+  return time ? `${day} · ${time}` : day;
+}
+
+function collaborationTaskBaselineText(
+  baseline: CollaborationTaskOperationBaseline,
+): string {
+  if (baseline.kind === "task") {
+    return t("collaboration.taskBaselineTask", {
+      name: baseline.name,
+      id: baseline.id,
+      schedule: collaborationTaskSchedule(baseline.date, baseline.time),
+      list: baseline.listName,
+      state: t(taskStateCopyKey(baseline.state)),
+      content: baseline.content ?? t("collaboration.taskNoNote"),
+      deleted: baseline.deletedAt ? t("collaboration.taskDeleted") : t("collaboration.taskActive"),
+    });
+  }
+  if (baseline.kind === "list") {
+    return t("collaboration.taskBaselineList", {
+      name: baseline.name,
+      id: baseline.id,
+      state: baseline.archived
+        ? t("collaboration.taskListArchived")
+        : t("collaboration.taskListActive"),
+    });
+  }
+  return t("collaboration.taskBaselineNone");
+}
+
+function collaborationTaskOperationText(
+  operation: CollaborationTaskOperation,
+  baseline: CollaborationTaskOperationBaseline,
+): string {
+  const currentTask = baseline.kind === "task" ? baseline : null;
+  const currentList = baseline.kind === "list" ? baseline : null;
+  const listLabel = (listId: string | null): string => {
+    if (!listId) return currentTask?.listName ?? t("tasks.inbox");
+    return currentCollaborationWorkspace?.context.taskLists.find((list) => list.id === listId)?.name ?? listId;
+  };
+  switch (operation.operation) {
+    case "createTask":
+      return t("collaboration.taskOpCreate", {
+        name: operation.name,
+        schedule: collaborationTaskSchedule(operation.date, operation.time),
+        list: listLabel(operation.listId),
+        content: operation.content ?? t("collaboration.taskNoNote"),
+      });
+    case "updateTask":
+      return t("collaboration.taskOpUpdate", {
+        name: operation.name,
+        id: operation.taskId,
+        schedule: collaborationTaskSchedule(operation.date, operation.time),
+        list: listLabel(operation.listId),
+        content: operation.content ?? t("collaboration.taskNoNote"),
+      });
+    case "completeTask":
+      return t("collaboration.taskOpComplete", { name: currentTask?.name ?? operation.taskId });
+    case "abandonTask":
+      return t("collaboration.taskOpAbandon", { name: currentTask?.name ?? operation.taskId });
+    case "reopenTask":
+      return t("collaboration.taskOpReopen", { name: currentTask?.name ?? operation.taskId });
+    case "deleteTask":
+      return t("collaboration.taskOpDelete", { name: currentTask?.name ?? operation.taskId });
+    case "restoreTask":
+      return t("collaboration.taskOpRestore", { name: currentTask?.name ?? operation.taskId });
+    case "correctCompletion":
+      return t("collaboration.taskOpCorrectCompletion", {
+        name: currentTask?.name ?? operation.taskId,
+        date: collaborationDateLabel(operation.completedOn),
+        time: operation.completedTime ?? t("collaboration.taskNoTime"),
+      });
+    case "createList":
+      return t("collaboration.taskOpCreateList", { name: operation.name });
+    case "renameList":
+      return t("collaboration.taskOpRenameList", {
+        previous: currentList?.name ?? operation.listId,
+        name: operation.name,
+      });
+    case "archiveList":
+      return t("collaboration.taskOpArchiveList", { name: currentList?.name ?? operation.listId });
+    case "restoreList":
+      return t("collaboration.taskOpRestoreList", { name: currentList?.name ?? operation.listId });
+  }
+}
+
+async function runCollaborationTaskOperationAction(
+  sessionId: string,
+  operationId: string,
+  action: "approve" | "reject" | "refresh" | "reconcile",
+): Promise<void> {
+  if (pendingCollaborationTaskOperationIds.has(operationId)) return;
+  pendingCollaborationTaskOperationIds.add(operationId);
+  renderCollaborationWorkspace();
+  const command = {
+    approve: "collaboration_approve_task_operation",
+    reject: "collaboration_reject_task_operation",
+    refresh: "collaboration_refresh_task_operation",
+    reconcile: "collaboration_reconcile_task_operation",
+  }[action];
+  try {
+    const updated = await window.__TAURI__.core.invoke<CollaborationSessionView>(command, {
+      sessionId,
+      operationId,
+    });
+    if (currentCollaborationSession?.id === sessionId) {
+      currentCollaborationSession = updated;
+      cacheCollaborationDrafts(updated);
+    }
+    collaborationTaskActionErrors.delete(operationId);
+    await refreshTaskContextAfterTaskOperation(sessionId);
+    renderCollaborationWorkspace();
+  } catch (error) {
+    collaborationTaskActionErrors.set(operationId, String(error));
+    if (currentCollaborationSession?.id === sessionId && collaborationRunStatus) {
+      try {
+        currentCollaborationSession = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+          "collaboration_session",
+          { sessionId },
+        );
+      } catch {
+        // Keep the last saved proposal visible; its exact result can be checked after recovery.
+      }
+    }
+    await refreshTaskContextAfterTaskOperation(sessionId);
+  } finally {
+    pendingCollaborationTaskOperationIds.delete(operationId);
+    renderCollaborationWorkspace();
+  }
+}
+
+async function refreshTaskContextAfterTaskOperation(sessionId: string): Promise<void> {
+  if (currentCollaborationSession?.id !== sessionId || !currentCollaborationWorkspace) return;
+  const targetDate = currentCollaborationSession.targetDate;
+  try {
+    const context = await window.__TAURI__.core.invoke<CollaborationContextView>(
+      "collaboration_context",
+      { date: targetDate },
+    );
+    if (currentCollaborationSession?.id !== sessionId) return;
+    currentCollaborationWorkspace = { ...currentCollaborationWorkspace, context };
+  } catch (error) {
+    const context = currentCollaborationWorkspace.context;
+    currentCollaborationWorkspace = {
+      ...currentCollaborationWorkspace,
+      context: {
+        ...context,
+        tasks: { state: "error", message: `Could not refresh current Tasks: ${String(error)}`, items: [] },
+        taskRevision: null,
+        taskTargetBinding: null,
+        taskRecords: [],
+        taskLists: [],
+      },
+    };
+  }
+}
+
+function renderCollaborationTaskOperations(session: CollaborationSessionView | null): void {
+  if (collaborationTaskToolNotice) {
+    collaborationTaskToolNotice.replaceChildren();
+    const legacyThread = Boolean(session?.runtimeThreadId && !session.taskToolAvailable);
+    collaborationTaskToolNotice.hidden = !legacyThread;
+    if (legacyThread) {
+      const message = document.createElement("span");
+      message.textContent = t("collaboration.legacyTaskToolNotice");
+      const newChat = document.createElement("button");
+      newChat.type = "button";
+      newChat.className = "text-button";
+      setCopy(newChat, "collaboration.newSession");
+      newChat.addEventListener("click", () => void createCollaborationSession());
+      collaborationTaskToolNotice.append(message, newChat);
+    }
+  }
+  if (!collaborationTaskOperations) return;
+  collaborationTaskOperations.replaceChildren();
+  const operations = session?.taskOperations ?? [];
+  if (operations.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "collaboration-empty-conversation";
+    empty.textContent = t("collaboration.noTaskOperations");
+    collaborationTaskOperations.append(empty);
+    return;
+  }
+  for (const operation of operations) {
+    const card = document.createElement("article");
+    card.className = "collaboration-task-operation";
+    card.dataset.state = operation.status;
+    const heading = document.createElement("header");
+    const title = document.createElement("strong");
+    title.textContent = t("collaboration.taskProposal");
+    const status = document.createElement("span");
+    status.className = "collaboration-task-operation-status";
+    setCopy(status, `collaboration.taskOperationStatus.${operation.status}` as InterfaceCopyKey);
+    heading.append(title, status);
+    const target = document.createElement("small");
+    target.textContent = t("collaboration.taskOperationTargetDate", {
+      date: collaborationDateLabel(operation.targetDate),
+    });
+    const baseline = document.createElement("p");
+    baseline.textContent = collaborationTaskBaselineText(operation.baseline);
+    const proposed = document.createElement("p");
+    proposed.className = "collaboration-task-operation-proposal";
+    proposed.textContent = t("collaboration.taskOperationProposed", {
+      action: collaborationTaskOperationText(operation.operation, operation.baseline),
+    });
+    card.append(heading, target, baseline, proposed);
+    if (operation.operation.operation === "archiveList") {
+      const note = document.createElement("small");
+      note.textContent = t("collaboration.taskArchiveSemantics");
+      card.append(note);
+    }
+    if (operation.resultMessage) {
+      const result = document.createElement("p");
+      result.className = "collaboration-task-operation-result";
+      result.textContent = operation.status === "applied"
+        ? t("collaboration.taskResultSaved")
+        : operation.resultMessage;
+      card.append(result);
+    }
+    const actionError = collaborationTaskActionErrors.get(operation.id);
+    if (actionError) {
+      const error = document.createElement("p");
+      error.className = "collaboration-task-operation-error";
+      error.setAttribute("role", "alert");
+      error.textContent = actionError.includes("was saved")
+        ? t("collaboration.taskWriteNeedsCheck")
+        : actionError;
+      card.append(error);
+    }
+    if (operation.resultSnapshot) {
+      const saved = document.createElement("p");
+      saved.className = "collaboration-task-operation-snapshot";
+      saved.textContent = t("collaboration.taskSavedValue", {
+        value: collaborationTaskBaselineText(operation.resultSnapshot),
+      });
+      card.append(saved);
+    }
+    const actions = document.createElement("div");
+    actions.className = "collaboration-task-operation-actions";
+    const pending = pendingCollaborationTaskOperationIds.has(operation.id);
+    const addAction = (
+      action: "approve" | "reject" | "refresh" | "reconcile",
+      copy: InterfaceCopyKey,
+    ): void => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = action === "approve"
+        ? "collaboration-task-operation-approve"
+        : "secondary-button";
+      setCopy(button, copy);
+      button.disabled = pending;
+      button.addEventListener("click", () => {
+        void runCollaborationTaskOperationAction(session!.id, operation.id, action);
+      });
+      actions.append(button);
+    };
+    if (operation.status === "awaitingApproval") {
+      if (actionError?.includes("was saved")) {
+        addAction("reconcile", "collaboration.taskCheckResult");
+      } else {
+        addAction("approve", "collaboration.taskApprove");
+        addAction("reject", "collaboration.taskDismiss");
+        addAction("reconcile", "collaboration.taskCheckResult");
+      }
+    } else if (operation.status === "conflict" || operation.status === "failed") {
+      addAction("reconcile", "collaboration.taskCheckResult");
+      addAction("refresh", "collaboration.taskRefreshReview");
+      addAction("reject", "collaboration.taskDismiss");
+    } else if (operation.status === "applied" && operation.taskId) {
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "secondary-button";
+      setCopy(open, "collaboration.openSavedTask");
+      open.addEventListener("click", () => {
+        taskReturnToCollaborationSessionId = session?.id ?? null;
+        taskFocusRequestId = operation.taskId;
+        taskScope = "all";
+        taskStateScope = operation.resultSnapshot?.kind === "task" && operation.resultSnapshot.deletedAt
+          ? "deleted"
+          : "all";
+        showWorkspaceDestination("tasks", true);
+      });
+      actions.append(open);
+    }
+    card.append(actions);
+    collaborationTaskOperations.append(card);
+  }
+}
+
 function renderCollaborationWorkspace(): void {
   const workspace = currentCollaborationWorkspace;
   if (workspace) {
@@ -1889,6 +2240,7 @@ function renderCollaborationWorkspace(): void {
     }
   }
   renderCollaborationMessages(session);
+  renderCollaborationTaskOperations(session);
 
   const connected = currentCollaborationConnection?.authenticated === true &&
     currentCollaborationConnection.authMode === "chatgpt" &&
@@ -2213,6 +2565,91 @@ async function createCollaborationSession(): Promise<void> {
     if (collaborationSessionsStatus) {
       setCopyError(collaborationSessionsStatus, "collaboration.sessionLoadFailed", error);
     }
+  }
+}
+
+async function openCollaborationForTask(
+  taskId: string,
+  taskName: string,
+  targetDate: string,
+): Promise<void> {
+  try {
+    await flushCollaborationDraft();
+    let session = currentCollaborationSession;
+    if (session?.runtimeThreadId && !session.taskToolAvailable) {
+      session = null;
+    }
+    if (!session) {
+      session = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+        "collaboration_create_session",
+        { date: targetDate },
+      );
+    } else if (session.targetDate !== targetDate) {
+      session = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+        "collaboration_set_target_date",
+        { sessionId: session.id, targetDate },
+      );
+    }
+    currentCollaborationSession = session;
+    cacheCollaborationDrafts(session);
+    collaborationActivityDate = targetDate;
+    collaborationTargetDate = targetDate;
+    const key = collaborationDraftKey(session.id, targetDate);
+    const existingDraft = collaborationDrafts.get(key) ?? session.draftsByDate[targetDate] ?? "";
+    const taskReference = t("collaboration.taskFocusDraft", {
+      date: collaborationDateLabel(targetDate),
+      id: taskId,
+      name: taskName,
+    });
+    const draft = existingDraft.includes(taskId)
+      ? existingDraft
+      : [existingDraft.trim(), taskReference].filter(Boolean).join("\n\n");
+    const saved = await saveCollaborationDraft(
+      { sessionId: session.id, targetDate },
+      draft,
+    );
+    currentCollaborationSession = saved;
+    if (collaborationDateInput) collaborationDateInput.value = targetDate;
+    if (collaborationTargetDateInput) collaborationTargetDateInput.value = targetDate;
+    showWorkspaceDestination("collaboration");
+    renderCollaborationWorkspace();
+    window.requestAnimationFrame(() => collaborationMessageDraft?.focus());
+  } catch (error) {
+    if (collaborationRunStatus) {
+      setRawText(collaborationRunStatus, String(error));
+      collaborationRunStatus.dataset.state = "error";
+    }
+    showWorkspaceDestination("collaboration");
+  }
+}
+
+async function returnToCollaborationFromTask(): Promise<void> {
+  const sessionId = taskReturnToCollaborationSessionId;
+  if (!sessionId) return;
+  if (taskReturnToCollaborationButton) taskReturnToCollaborationButton.disabled = true;
+  try {
+    const session = currentCollaborationSession?.id === sessionId
+      ? currentCollaborationSession
+      : await window.__TAURI__.core.invoke<CollaborationSessionView>(
+        "collaboration_session",
+        { sessionId },
+      );
+    currentCollaborationSession = session;
+    collaborationActivityDate = session.targetDate;
+    collaborationTargetDate = session.targetDate;
+    if (collaborationDateInput) collaborationDateInput.value = session.targetDate;
+    if (collaborationTargetDateInput) collaborationTargetDateInput.value = session.targetDate;
+    taskReturnToCollaborationSessionId = null;
+    showWorkspaceDestination("collaboration");
+    renderCollaborationWorkspace();
+    window.requestAnimationFrame(() => collaborationMessageDraft?.focus());
+  } catch (error) {
+    if (tasksStatus) {
+      setRawText(tasksStatus, String(error));
+      tasksStatus.dataset.state = "error";
+    }
+  } finally {
+    if (taskReturnToCollaborationButton) taskReturnToCollaborationButton.disabled = false;
   }
 }
 
@@ -5881,6 +6318,21 @@ function taskEditor(
   detailsButton.setAttribute("aria-label", `${t("tasks.details")} · ${task.name}`);
   setCopy(detailsButton, "tasks.details");
   stateActions.append(detailsButton);
+  const discuss = document.createElement("button");
+  discuss.type = "button";
+  discuss.className = "task-row-action secondary-button";
+  discuss.dataset.collaborationTaskId = task.id;
+  discuss.dataset.collaborationTaskName = task.name;
+  discuss.dataset.collaborationTaskDate = task.date ?? (
+    surface === "today"
+      ? currentTodayView?.date ?? localCalendarDate()
+      : surface === "calendar"
+        ? selectedCalendarDate ?? localCalendarDate()
+        : localCalendarDate()
+  );
+  discuss.textContent = t("collaboration.taskEntry");
+  discuss.setAttribute("aria-label", `${t("collaboration.taskEntry")} · ${task.name}`);
+  stateActions.append(discuss);
   if (deleted) {
     const restore = document.createElement("button");
     restore.type = "button";
@@ -6332,6 +6784,26 @@ function renderTasks(view: TasksView): void {
   tasksList?.replaceChildren(
     ...visibleTasks.map((task) => taskEditor(task, canOperate, view, "tasks")),
   );
+  if (taskReturnToCollaborationButton) {
+    taskReturnToCollaborationButton.hidden = !taskReturnToCollaborationSessionId;
+  }
+  if (taskFocusRequestId) {
+    const focusedTask = tasksList?.querySelector<HTMLElement>(
+      `[data-task-editor-row="${CSS.escape(taskFocusRequestId)}"]`,
+    );
+    if (focusedTask) {
+      const taskId = taskFocusRequestId;
+      taskFocusRequestId = null;
+      const details = focusedTask.querySelector<HTMLButtonElement>(
+        `button[data-task-editor-open="${CSS.escape(taskId)}"]`,
+      );
+      if (details?.getAttribute("aria-expanded") !== "true") details?.click();
+      window.requestAnimationFrame(() => {
+        focusedTask.scrollIntoView({ block: "center", behavior: "smooth" });
+        details?.focus();
+      });
+    }
+  }
 }
 
 function stableTaskOperationId(
@@ -8156,6 +8628,22 @@ tasksDestination?.addEventListener("click", (event) => {
       correctTaskCompletion(correct.dataset.taskCorrectCompletion, form),
     );
   }
+});
+
+document.addEventListener("click", (event) => {
+  const discuss = (event.target as HTMLElement).closest<HTMLButtonElement>(
+    "button[data-collaboration-task-id]",
+  );
+  const taskId = discuss?.dataset.collaborationTaskId;
+  const taskName = discuss?.dataset.collaborationTaskName;
+  const targetDate = discuss?.dataset.collaborationTaskDate;
+  if (taskId && taskName && targetDate) {
+    void openCollaborationForTask(taskId, taskName, targetDate);
+  }
+});
+
+taskReturnToCollaborationButton?.addEventListener("click", () => {
+  void returnToCollaborationFromTask();
 });
 
 tasksDestination?.addEventListener("submit", (event) => {
