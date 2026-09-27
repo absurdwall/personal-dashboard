@@ -9206,6 +9206,10 @@ button.habit-cell:focus-visible {
   background: color-mix(in srgb, var(--parity-accent) 2.5%, var(--parity-surface-soft));
 }
 
+.collaboration-automatic-plan-operation {
+  border-top: 2px solid var(--parity-accent);
+}
+
 .collaboration-daily-plan-snapshot,
 .collaboration-daily-plan-section,
 .collaboration-daily-record-snapshot,

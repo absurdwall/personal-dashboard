@@ -111,6 +111,21 @@ fn collaboration_connection(
 }
 
 #[tauri::command]
+fn collaboration_daily_plan_automation(
+    application: State<'_, collaboration::CollaborationApplication>,
+) -> Result<collaboration::DailyPlanAutomationView, String> {
+    application.daily_plan_automation()
+}
+
+#[tauri::command]
+fn collaboration_update_daily_plan_automation(
+    application: State<'_, collaboration::CollaborationApplication>,
+    settings: collaboration::DailyPlanAutomationSettings,
+) -> Result<collaboration::DailyPlanAutomationView, String> {
+    application.update_daily_plan_automation(settings)
+}
+
+#[tauri::command]
 fn collaboration_start_chatgpt_login(
     application: State<'_, collaboration::CollaborationApplication>,
 ) -> Result<(), String> {
@@ -677,10 +692,14 @@ pub fn run() {
                 NativeTodayWorkspaceExchange::new(app_handle.clone()),
                 SystemClock,
             ));
-            app.manage(collaboration::CollaborationApplication::new_local(
+            let collaboration_application = collaboration::CollaborationApplication::new_local(
                 collaboration_app_data_dir,
                 today_workspace_file.clone(),
-            ));
+            );
+            app.manage(collaboration_application.clone());
+            collaboration_application
+                .start_daily_plan_automation_scheduler()
+                .map_err(std::io::Error::other)?;
             app.manage(voice_input::VoiceInputApplication::new_local(
                 voice_helper_path(&app_handle),
             ));
@@ -713,6 +732,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             application_identity,
             collaboration_connection,
+            collaboration_daily_plan_automation,
+            collaboration_update_daily_plan_automation,
             collaboration_start_chatgpt_login,
             collaboration_select_model,
             collaboration_select_reasoning_effort,
@@ -779,6 +800,8 @@ pub fn run() {
     let application = application.invoke_handler(tauri::generate_handler![
         application_identity,
         collaboration_connection,
+        collaboration_daily_plan_automation,
+        collaboration_update_daily_plan_automation,
         collaboration_start_chatgpt_login,
         collaboration_select_model,
         collaboration_select_reasoning_effort,

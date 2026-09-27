@@ -249,6 +249,26 @@
                       </select>
                       <p data-i18n="collaboration.connectionBoundary">Connection uses a Dashboard-owned local Codex profile. It does not read or copy other Codex settings, credentials, or MCP servers.</p>
                     </div>
+                    <div class="setting-row automatic-plan-settings">
+                      <h3 data-i18n="collaboration.automaticPlanHeading">Automatic morning plan</h3>
+                      <p data-i18n="collaboration.automaticPlanDescription">When enabled, Personal Dashboard can prepare and save one first-draft Daily Record plan at this local time while the App is running. Opening the App later that day checks for a missing plan.</p>
+                      <label class="automatic-plan-toggle">
+                        <input id="collaboration-automatic-plan-enabled" type="checkbox">
+                        <span data-i18n="collaboration.automaticPlanEnabled">Enable automatic morning plan</span>
+                      </label>
+                      <label for="collaboration-automatic-plan-time" data-i18n="collaboration.automaticPlanTime">Local trigger time</label>
+                      <input id="collaboration-automatic-plan-time" type="time" value="06:00">
+                      <label class="automatic-plan-toggle">
+                        <input id="collaboration-external-handoff-confirmed" type="checkbox">
+                        <span data-i18n="collaboration.externalScheduleHandoffConfirmed">I have separately reviewed or paused the existing external scheduled task.</span>
+                      </label>
+                      <p id="collaboration-external-schedule-boundary" class="settings-boundary" role="status" aria-live="polite" data-i18n="collaboration.externalScheduleHandoffPending">The App never changes an external scheduled task. Until you confirm the handoff above, the existing schedule may also run.</p>
+                      <div class="background-image-actions">
+                        <button id="collaboration-save-automatic-plan-settings" type="button" data-i18n="collaboration.automaticPlanSave">Save schedule</button>
+                        <button id="collaboration-open-automatic-plan-run" type="button" class="secondary-button" data-i18n="collaboration.automaticPlanOpenRun" hidden>View automatic run</button>
+                      </div>
+                      <p id="collaboration-automatic-plan-status" class="settings-status" role="status" aria-live="polite" data-i18n="collaboration.automaticPlanNotLoaded">Automatic schedule status has not been loaded.</p>
+                    </div>
                   </section>
                 </div>
               </div>

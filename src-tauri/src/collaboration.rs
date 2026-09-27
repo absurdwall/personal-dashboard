@@ -103,6 +103,7 @@ pub struct CollaborationMessageView {
     pub runtime_turn_id: Option<String>,
     pub delivery_state: String,
     pub result_checked: bool,
+    pub automatic_plan: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -405,6 +406,7 @@ pub struct CollaborationTaskOperationView {
     pub result_message: Option<String>,
     pub result_snapshot: Option<CollaborationTaskOperationBaseline>,
     pub result_revision: Option<String>,
+    pub automatic_plan: bool,
     pub task_id: Option<String>,
     pub list_id: Option<String>,
     pub created_at: String,
@@ -432,6 +434,8 @@ pub struct StoredCollaborationTaskOperation {
     result_revision: Option<String>,
     #[serde(default)]
     effect_fingerprint: Option<String>,
+    #[serde(default)]
+    automatic_plan: bool,
     task_id: Option<String>,
     list_id: Option<String>,
     created_at: String,
@@ -973,6 +977,13 @@ pub enum RuntimeRunReconciliation {
 pub trait CollaborationClock: Send + Sync {
     fn current_timestamp(&self) -> String;
     fn current_date(&self) -> String;
+
+    fn current_time(&self) -> String {
+        self.current_timestamp()
+            .split_once('T')
+            .map(|(_, time)| time.chars().take(5).collect())
+            .unwrap_or_default()
+    }
 }
 
 impl CollaborationClock for SystemClock {
@@ -1102,6 +1113,66 @@ pub struct CollaborationSettings {
     pub selected_model: Option<String>,
     #[serde(default)]
     pub selected_reasoning_effort: Option<String>,
+    #[serde(default)]
+    pub daily_plan_automation: DailyPlanAutomationSettings,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyPlanAutomationSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_daily_plan_time")]
+    pub time: String,
+    #[serde(default)]
+    pub external_schedule_handoff_confirmed: bool,
+}
+
+impl Default for DailyPlanAutomationSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            time: default_daily_plan_time(),
+            external_schedule_handoff_confirmed: false,
+        }
+    }
+}
+
+fn default_daily_plan_time() -> String {
+    "06:00".into()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyPlanAutomationRunView {
+    pub date: String,
+    pub state: String,
+    pub message: String,
+    pub session_id: Option<String>,
+    pub execution_id: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DailyPlanAutomationView {
+    pub settings: DailyPlanAutomationSettings,
+    pub date: String,
+    pub time: String,
+    pub vault_configured: bool,
+    pub current_run: Option<DailyPlanAutomationRunView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredDailyPlanAutomationRun {
+    vault_key: String,
+    date: String,
+    state: String,
+    message: String,
+    session_id: Option<String>,
+    execution_id: Option<String>,
+    updated_at: String,
 }
 
 impl Default for CollaborationSettings {
@@ -1109,6 +1180,7 @@ impl Default for CollaborationSettings {
         Self {
             selected_model: None,
             selected_reasoning_effort: None,
+            daily_plan_automation: DailyPlanAutomationSettings::default(),
         }
     }
 }
@@ -1132,6 +1204,8 @@ pub struct StoredCollaborationMessage {
     pub queue_order: Option<u64>,
     #[serde(default)]
     pub result_checked: bool,
+    #[serde(default)]
+    pub automatic_plan: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1154,6 +1228,7 @@ pub struct StoredCollaborationSession {
     pub daily_plan_tool_registered: bool,
     #[serde(default)]
     pub daily_record_tool_registered: bool,
+    #[serde(default)]
     pub memory_tool_registered: bool,
     pub messages: Vec<StoredCollaborationMessage>,
     #[serde(default)]
@@ -1176,6 +1251,8 @@ pub struct CollaborationState {
     pub next_queue_order: u64,
     #[serde(default)]
     pub continuity_notes: HashMap<String, StoredCollaborationContinuityNote>,
+    #[serde(default)]
+    daily_plan_automation_runs: Vec<StoredDailyPlanAutomationRun>,
 }
 
 impl Default for CollaborationState {
@@ -1186,6 +1263,7 @@ impl Default for CollaborationState {
             sessions: Vec::new(),
             next_queue_order: 1,
             continuity_notes: HashMap::new(),
+            daily_plan_automation_runs: Vec::new(),
         }
     }
 }
@@ -1318,6 +1396,7 @@ struct QueuedCollaborationTurn {
     target_date: String,
     user_text: String,
     queue_order: u64,
+    automatic_plan: bool,
 }
 
 impl CollaborationApplication {
@@ -1502,6 +1581,401 @@ impl CollaborationApplication {
         let mut connection = self.connection();
         connection.selected_reasoning_effort = reasoning_effort.map(str::to_owned);
         Ok(connection)
+    }
+
+    pub fn daily_plan_automation(&self) -> Result<DailyPlanAutomationView, String> {
+        self.automation_view()
+    }
+
+    pub fn update_daily_plan_automation(
+        &self,
+        settings: DailyPlanAutomationSettings,
+    ) -> Result<DailyPlanAutomationView, String> {
+        validate_daily_plan_time(&settings.time)?;
+        self.update_state(|state| {
+            state.settings.daily_plan_automation = settings.clone();
+            Ok(())
+        })?;
+        if settings.enabled {
+            let _ = self.check_daily_plan_automation()?;
+        }
+        self.automation_view()
+    }
+
+    /// Start the in-process scheduler. It has no external scheduled-task integration and exits
+    /// when the CollaborationApplication receives its normal shutdown request.
+    pub fn start_daily_plan_automation_scheduler(&self) -> Result<(), String> {
+        let application = self.clone();
+        thread::Builder::new()
+            .name("dashboard-daily-plan-scheduler".into())
+            .spawn(move || {
+                while !application.shutting_down.load(Ordering::SeqCst) {
+                    let _ = application.check_daily_plan_automation();
+                    thread::sleep(Duration::from_secs(10));
+                }
+            })
+            .map(|_| ())
+            .map_err(|error| format!("Could not start the morning-plan scheduler: {error}"))
+    }
+
+    /// Evaluate one time-triggered or late-open event. Calls are idempotent per Vault and date.
+    pub fn check_daily_plan_automation(&self) -> Result<DailyPlanAutomationView, String> {
+        let view = self.automation_view()?;
+        if !view.settings.enabled || !daily_plan_schedule_is_due(&view.time, &view.settings.time)? {
+            return Ok(view);
+        }
+        let Some(vault_key) = self.context_source.current_vault_key()? else {
+            return Ok(view);
+        };
+        if !self.daily_data_service.is_available() {
+            self.record_daily_plan_automation_state(
+                &vault_key,
+                &view.date,
+                "unavailable",
+                "Daily Record planning is unavailable; no automatic work was started.",
+                None,
+                None,
+            )?;
+            return self.automation_view();
+        }
+
+        if self.resume_or_reconcile_daily_plan_automation(&vault_key, &view.date)? {
+            return self.automation_view();
+        }
+
+        let today = match self.daily_data_service.read_date(&view.date) {
+            Ok(today) => today,
+            Err(error) => {
+                let damaged = error.to_ascii_lowercase().contains("utf-8");
+                self.record_daily_plan_automation_state(
+                    &vault_key,
+                    &view.date,
+                    if damaged { "damagedRecord" } else { "readError" },
+                    if damaged {
+                        format!("Daily Record is damaged and cannot be decoded; no automatic plan was generated: {error}")
+                    } else {
+                        format!("Daily Record could not be read; automation is waiting to retry: {error}")
+                    },
+                    None,
+                    None,
+                )?;
+                return self.automation_view();
+            }
+        };
+        if today.state == TodayState::Error {
+            self.record_daily_plan_automation_state(
+                &vault_key,
+                &view.date,
+                "damagedRecord",
+                format!(
+                    "Daily Record is damaged or unavailable; no plan was generated: {}",
+                    today.message
+                ),
+                None,
+                None,
+            )?;
+            return self.automation_view();
+        }
+        if today.state == TodayState::Unconfigured {
+            return Ok(view);
+        }
+        require_daily_record_view_writable(&today, &view.date)?;
+        if daily_record_has_plan(&today) {
+            self.record_daily_plan_automation_state(
+                &vault_key,
+                &view.date,
+                "existingPlan",
+                "An existing Daily Record plan was preserved; no automatic plan was generated.",
+                None,
+                None,
+            )?;
+            return self.automation_view();
+        }
+        self.enqueue_automatic_morning_plan(&vault_key, &view.date, &view.settings.time)?;
+        self.automation_view()
+    }
+
+    fn automation_view(&self) -> Result<DailyPlanAutomationView, String> {
+        let date = self.clock.current_date();
+        let time = self.clock.current_time();
+        validate_date(&date)?;
+        validate_daily_plan_time(&time)?;
+        let vault_key = self.context_source.current_vault_key()?;
+        self.read_state(|state| DailyPlanAutomationView {
+            settings: state.settings.daily_plan_automation.clone(),
+            date: date.clone(),
+            time: time.clone(),
+            vault_configured: vault_key.is_some(),
+            current_run: vault_key.as_deref().and_then(|key| {
+                state
+                    .daily_plan_automation_runs
+                    .iter()
+                    .find(|run| run.vault_key == key && run.date == date)
+                    .map(|run| DailyPlanAutomationRunView {
+                        date: run.date.clone(),
+                        state: run.state.clone(),
+                        message: run.message.clone(),
+                        session_id: run.session_id.clone(),
+                        execution_id: run.execution_id.clone(),
+                        updated_at: run.updated_at.clone(),
+                    })
+            }),
+        })
+    }
+
+    fn record_daily_plan_automation_state(
+        &self,
+        vault_key: &str,
+        date: &str,
+        state_name: &str,
+        message: impl Into<String>,
+        session_id: Option<String>,
+        execution_id: Option<String>,
+    ) -> Result<(), String> {
+        let message = message.into();
+        let updated_at = self.clock.current_timestamp();
+        self.update_state(|state| {
+            let run = state
+                .daily_plan_automation_runs
+                .iter_mut()
+                .find(|run| run.vault_key == vault_key && run.date == date);
+            if let Some(run) = run {
+                if run.state == state_name
+                    && run.message == message
+                    && run.session_id == session_id
+                    && run.execution_id == execution_id
+                {
+                    return Ok(());
+                }
+                run.state = state_name.to_owned();
+                run.message = message.clone();
+                run.session_id = session_id.clone();
+                run.execution_id = execution_id.clone();
+                run.updated_at = updated_at.clone();
+            } else {
+                state
+                    .daily_plan_automation_runs
+                    .push(StoredDailyPlanAutomationRun {
+                        vault_key: vault_key.to_owned(),
+                        date: date.to_owned(),
+                        state: state_name.to_owned(),
+                        message: message.clone(),
+                        session_id: session_id.clone(),
+                        execution_id: execution_id.clone(),
+                        updated_at: updated_at.clone(),
+                    });
+            }
+            Ok(())
+        })
+    }
+
+    fn resume_or_reconcile_daily_plan_automation(
+        &self,
+        vault_key: &str,
+        date: &str,
+    ) -> Result<bool, String> {
+        let run = self.read_state(|state| {
+            state
+                .daily_plan_automation_runs
+                .iter()
+                .find(|run| run.vault_key == vault_key && run.date == date)
+                .cloned()
+        })?;
+        let Some(run) = run else {
+            return Ok(false);
+        };
+        match run.state.as_str() {
+            "readError" | "damagedRecord" | "unavailable" => Ok(false),
+            "queued" => {
+                if let (Some(session_id), Some(execution_id)) =
+                    (run.session_id.as_deref(), run.execution_id.as_deref())
+                {
+                    let delivery = self.read_state(|state| {
+                        state
+                            .sessions
+                            .iter()
+                            .find(|session| {
+                                session.id == session_id
+                                    && session.vault_key.as_deref() == Some(vault_key)
+                            })
+                            .and_then(|session| {
+                                session.messages.iter().find(|message| {
+                                    message.execution_id.as_deref() == Some(execution_id)
+                                })
+                            })
+                            .map(|message| message.delivery_state.clone())
+                    })?;
+                    match delivery.as_deref() {
+                        Some("not-started") => {
+                            if let Err(error) = self
+                                .requeue_not_started_for_selected_vault(session_id, execution_id)
+                            {
+                                self.record_daily_plan_automation_state(
+                                    vault_key,
+                                    date,
+                                    "needsReview",
+                                    format!(
+                                        "The automatic request was not replayed because it could not be safely requeued: {error}"
+                                    ),
+                                    run.session_id,
+                                    run.execution_id,
+                                )?;
+                            }
+                            return Ok(true);
+                        }
+                        Some("queued") => {
+                            self.schedule_vault_worker(vault_key.to_owned())?;
+                            return Ok(true);
+                        }
+                        Some("interrupted" | "stop-unconfirmed") => {
+                            self.record_daily_plan_automation_state(
+                                vault_key,
+                                date,
+                                "needsReview",
+                                "The prior automatic request was interrupted. Check its saved result before retrying; it was not replayed.",
+                                run.session_id,
+                                run.execution_id,
+                            )?;
+                            return Ok(true);
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(false)
+            }
+            "running" => {
+                let delivery = run
+                    .session_id
+                    .as_deref()
+                    .zip(run.execution_id.as_deref())
+                    .map(|(session_id, execution_id)| {
+                        self.read_state(|state| {
+                            state
+                                .sessions
+                                .iter()
+                                .find(|session| {
+                                    session.id == session_id
+                                        && session.vault_key.as_deref() == Some(vault_key)
+                                })
+                                .and_then(|session| {
+                                    session.messages.iter().find(|message| {
+                                        message.execution_id.as_deref() == Some(execution_id)
+                                    })
+                                })
+                                .map(|message| message.delivery_state.clone())
+                        })
+                    })
+                    .transpose()?
+                    .flatten();
+                if matches!(
+                    delivery.as_deref(),
+                    Some("interrupted" | "stop-unconfirmed")
+                ) {
+                    self.record_daily_plan_automation_state(
+                        vault_key,
+                        date,
+                        "needsReview",
+                        "The prior automatic request was interrupted. Check its saved result before retrying; it was not replayed.",
+                        run.session_id,
+                        run.execution_id,
+                    )?;
+                }
+                Ok(true)
+            }
+            "completed" | "existingPlan" | "stopped" | "needsReview" => Ok(true),
+            _ => Ok(false),
+        }
+    }
+
+    fn enqueue_automatic_morning_plan(
+        &self,
+        vault_key: &str,
+        date: &str,
+        scheduled_time: &str,
+    ) -> Result<(), String> {
+        if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+            return Err("The selected Vault changed before the automatic plan was queued.".into());
+        }
+        let now = self.clock.current_timestamp();
+        let execution_id = next_identifier("automatic-plan-run");
+        let session_id = next_identifier("automatic-plan-session");
+        let message_id = next_identifier("automatic-plan-message");
+        let user_text = format!(
+            "Generate and save the automatic first-draft plan for {date}. Scheduled time: {scheduled_time}. Current local time: {}. Use only the supplied current Daily Record, Tasks, habit context, and available background. Do not create or change Tasks. Save only an InitialPlan. Do not claim past planned time happened; plan only the remaining day and preserve unknowns as unknown.",
+            self.clock.current_time()
+        );
+        let view = self.automation_view()?;
+        let queue_order = self.update_state(|state| {
+            let existing_index = state
+                .daily_plan_automation_runs
+                .iter()
+                .position(|run| run.vault_key == vault_key && run.date == date);
+            if let Some(index) = existing_index {
+                if !matches!(
+                    state.daily_plan_automation_runs[index].state.as_str(),
+                    "readError" | "damagedRecord" | "unavailable"
+                ) {
+                    return Ok(None);
+                }
+            }
+            let queue_order = state.next_queue_order.max(1);
+            state.next_queue_order = queue_order.saturating_add(1);
+            let session = StoredCollaborationSession {
+                id: session_id.clone(),
+                vault_key: Some(vault_key.to_owned()),
+                title: format!("Automatic morning plan · {date}"),
+                created_date: view.date.clone(),
+                activity_dates: vec![date.to_owned()],
+                last_activity_at: now.clone(),
+                target_date: date.to_owned(),
+                run_id: Some(execution_id.clone()),
+                run_state: "queued".into(),
+                progress: "Automatic morning plan saved in the Vault queue.".into(),
+                runtime_thread_id: None,
+                task_tool_registered: false,
+                daily_plan_tool_registered: true,
+                daily_record_tool_registered: false,
+                memory_tool_registered: false,
+                messages: vec![StoredCollaborationMessage {
+                    id: message_id.clone(),
+                    role: "user".into(),
+                    text: user_text.clone(),
+                    message_date: view.date.clone(),
+                    target_date: date.to_owned(),
+                    created_at: now.clone(),
+                    execution_id: Some(execution_id.clone()),
+                    runtime_turn_id: None,
+                    delivery_state: "queued".into(),
+                    queue_order: Some(queue_order),
+                    result_checked: false,
+                    automatic_plan: true,
+                }],
+                task_operations: Vec::new(),
+                memory_proposals: Vec::new(),
+                draft: String::new(),
+                drafts_by_date: HashMap::new(),
+            };
+            state.sessions.insert(0, session);
+            let run = StoredDailyPlanAutomationRun {
+                vault_key: vault_key.to_owned(),
+                date: date.to_owned(),
+                state: "queued".into(),
+                message: "Automatic first draft is queued in the selected Vault.".into(),
+                session_id: Some(session_id.clone()),
+                execution_id: Some(execution_id.clone()),
+                updated_at: now.clone(),
+            };
+            if let Some(index) = existing_index {
+                state.daily_plan_automation_runs[index] = run;
+            } else {
+                state.daily_plan_automation_runs.push(run);
+            }
+            Ok(Some(queue_order))
+        })?;
+        if queue_order.is_some() {
+            self.schedule_vault_worker(vault_key.to_owned())?;
+        }
+        Ok(())
     }
 
     pub fn context(&self, date: &str) -> Result<CollaborationContextView, String> {
@@ -3290,6 +3764,7 @@ impl CollaborationApplication {
         daily_plan_tool_registered: bool,
         daily_record_tool_registered: bool,
         memory_tool_registered: bool,
+        automatic_plan: bool,
         call: RuntimeDynamicToolCall,
     ) -> RuntimeDynamicToolResult {
         if call.thread_id != expected_thread_id {
@@ -3371,6 +3846,38 @@ impl CollaborationApplication {
                 }
             }
         };
+        if matches!(&operation, CollaborationTaskOperation::SaveDailyPlan { .. })
+            && !daily_plan_tool_registered
+        {
+            return RuntimeDynamicToolResult {
+                text: "This saved conversation has an older proposal-tool schema. Start a new Dashboard chat to prepare Daily Record plans; existing Task proposals remain available here.".into(),
+                success: false,
+            };
+        }
+        if automatic_plan {
+            if !matches!(
+                &operation,
+                CollaborationTaskOperation::SaveDailyPlan {
+                    transition: DailyPlanTransition::InitialPlan,
+                    ..
+                }
+            ) {
+                return RuntimeDynamicToolResult {
+                    text: "Automatic morning planning can only save a first-draft Daily Record plan. It cannot change Tasks or record facts.".into(),
+                    success: false,
+                };
+            }
+            return self.apply_automatic_morning_plan(
+                vault_key,
+                session_id,
+                execution_id,
+                expected_thread_id,
+                target_date,
+                &call.turn_id,
+                &call.call_id,
+                operation,
+            );
+        }
         match self.propose_task_operation(
             vault_key,
             session_id,
@@ -3536,6 +4043,314 @@ impl CollaborationApplication {
         })
     }
 
+    fn apply_automatic_morning_plan(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        execution_id: &str,
+        runtime_thread_id: &str,
+        target_date: &str,
+        runtime_turn_id: &str,
+        call_id: &str,
+        operation: CollaborationTaskOperation,
+    ) -> RuntimeDynamicToolResult {
+        let result = (|| {
+            if call_id.is_empty() || runtime_turn_id.is_empty() {
+                return Err(
+                    "The App Server did not provide a stable automatic-plan identity.".to_string(),
+                );
+            }
+            validate_date(target_date)?;
+            if self.clock.current_date() != target_date {
+                return Err(
+                    "The automatic morning plan is no longer targeting today. Nothing was saved."
+                        .into(),
+                );
+            }
+            if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+                return Err("The selected Vault changed before the automatic plan was saved. Nothing was written.".into());
+            }
+            let CollaborationTaskOperation::SaveDailyPlan {
+                transition: DailyPlanTransition::InitialPlan,
+                arrangement,
+                evidence,
+                calibration_note,
+                baseline_correction_reason,
+                event,
+                original_intent,
+                change_reason,
+                revised_direction,
+            } = operation.clone()
+            else {
+                return Err(
+                    "Automatic morning planning can only save a first-draft Daily Record plan."
+                        .into(),
+                );
+            };
+            let current = self.daily_data_service.read_date(target_date)?;
+            if current.state == TodayState::Error {
+                return Err(format!(
+                    "Daily Record is damaged or unavailable: {}",
+                    current.message
+                ));
+            }
+            require_daily_record_view_writable(&current, target_date)?;
+            let target_binding = current
+                .target_binding
+                .clone()
+                .ok_or_else(|| "Daily Record has no stable Vault binding.".to_string())?;
+            let operation_id =
+                stable_tool_operation_id(runtime_thread_id, runtime_turn_id, call_id);
+            let tool_call_key = format!("{runtime_thread_id}:{runtime_turn_id}:{call_id}");
+            let fingerprint = daily_plan_effect_fingerprint(
+                target_date,
+                DailyPlanTransition::InitialPlan,
+                &arrangement,
+                &evidence,
+                calibration_note.as_deref(),
+                baseline_correction_reason.as_deref(),
+                event.as_deref(),
+                original_intent.as_deref(),
+                change_reason.as_deref(),
+                revised_direction.as_deref(),
+            );
+            let input = DailyPlanWriteInput {
+                date: target_date.to_owned(),
+                target_binding: target_binding.clone(),
+                expected_revision: current.revision.clone(),
+                operation_id: operation_id.clone(),
+                effect_fingerprint: fingerprint.clone(),
+                transition: DailyPlanTransition::InitialPlan,
+                arrangement: arrangement.clone(),
+                evidence: evidence.clone(),
+                calibration_note,
+                baseline_correction_reason,
+                event,
+                original_intent,
+                change_reason,
+                revised_direction,
+            };
+            input.validate()?;
+
+            let already_applied = self.daily_data_service.operation_applied(
+                target_date,
+                &target_binding,
+                &operation_id,
+                &fingerprint,
+            )?;
+            if already_applied {
+                self.persist_automatic_plan_result(
+                    vault_key,
+                    session_id,
+                    execution_id,
+                    runtime_thread_id,
+                    runtime_turn_id,
+                    &tool_call_key,
+                    target_date,
+                    current.revision.clone(),
+                    target_binding,
+                    operation_id,
+                    fingerprint,
+                    operation,
+                    None,
+                    current.clone(),
+                    "Automatic first-draft plan confirmed in the selected Vault. Tasks were not changed.",
+                )?;
+                return Ok("The automatic first-draft plan is confirmed in the selected Vault. No Task was created, changed, or deleted.".to_string());
+            }
+            if daily_record_has_plan(&current) {
+                self.record_daily_plan_automation_state(
+                    vault_key,
+                    target_date,
+                    "existingPlan",
+                    "A Daily Record plan appeared before the automatic write. It was preserved.",
+                    Some(session_id.to_owned()),
+                    Some(execution_id.to_owned()),
+                )?;
+                return Ok("A Daily Record plan already exists. It was preserved; no plan or Task was changed.".to_string());
+            }
+            if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+                return Err("The selected Vault changed while the automatic plan was being checked. Nothing was written.".into());
+            }
+            let saved = self.daily_data_service.save(input)?;
+            require_daily_record_view_writable(&saved, target_date)?;
+            let saved_arrangement = saved
+                .timeline
+                .iter()
+                .map(|block| DailyPlanBlockInput {
+                    period: block.period.clone(),
+                    title: block.title.clone(),
+                    detail: block.detail.clone(),
+                })
+                .collect::<Vec<_>>();
+            let saved_evidence = saved
+                .evidence
+                .iter()
+                .map(|group| DailyPlanEvidenceInput {
+                    label: group.label.clone(),
+                    items: group.items.clone(),
+                })
+                .collect::<Vec<_>>();
+            if saved_arrangement != arrangement || saved_evidence != evidence {
+                return Err("The saved automatic plan did not match the exact structured proposal. Refresh Today before retrying.".into());
+            }
+            self.persist_automatic_plan_result(
+                vault_key,
+                session_id,
+                execution_id,
+                runtime_thread_id,
+                runtime_turn_id,
+                &tool_call_key,
+                target_date,
+                current.revision.clone(),
+                target_binding,
+                operation_id,
+                fingerprint,
+                operation,
+                Some(current),
+                saved,
+                "Automatic first-draft plan confirmed in the selected Vault. Tasks were not changed.",
+            )?;
+            Ok("The automatic first-draft plan is confirmed in the selected Vault. No Task was created, changed, or deleted.".to_string())
+        })();
+        match result {
+            Ok(text) => RuntimeDynamicToolResult {
+                text,
+                success: true,
+            },
+            Err(error) => {
+                let _ = self.record_daily_plan_automation_state(
+                    vault_key,
+                    target_date,
+                    "needsReview",
+                    format!("Automatic plan was not confirmed as saved: {error}"),
+                    Some(session_id.to_owned()),
+                    Some(execution_id.to_owned()),
+                );
+                RuntimeDynamicToolResult {
+                    text: format!("{error} No Task data was changed."),
+                    success: false,
+                }
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn persist_automatic_plan_result(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        execution_id: &str,
+        runtime_thread_id: &str,
+        runtime_turn_id: &str,
+        tool_call_key: &str,
+        target_date: &str,
+        expected_revision: Option<String>,
+        target_binding: String,
+        operation_id: String,
+        fingerprint: String,
+        operation: CollaborationTaskOperation,
+        source_baseline: Option<TodayView>,
+        saved: TodayView,
+        result_message: &str,
+    ) -> Result<(), String> {
+        let now = self.clock.current_timestamp();
+        let result_snapshot = daily_record_operation_baseline(target_date, &saved);
+        let baseline = match (&operation, source_baseline.as_ref()) {
+            (CollaborationTaskOperation::SaveDailyPlan { .. }, Some(before)) => {
+                daily_record_operation_baseline(target_date, before)
+            }
+            (CollaborationTaskOperation::SaveDailyPlan { .. }, None) => {
+                CollaborationTaskOperationBaseline::None
+            }
+            _ => return Err("Only an automatic Daily Record plan can be saved here.".into()),
+        };
+        self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            if session.runtime_thread_id.as_deref() != Some(runtime_thread_id)
+                || session.run_id.as_deref() != Some(execution_id)
+            {
+                return Err(
+                    "The automatic plan is no longer attached to its collaboration run.".into(),
+                );
+            }
+            let message = session
+                .messages
+                .iter()
+                .find(|message| message.execution_id.as_deref() == Some(execution_id))
+                .ok_or_else(|| {
+                    "The automatic plan has no saved collaboration request.".to_string()
+                })?;
+            if message.target_date != target_date || !message.automatic_plan {
+                return Err(
+                    "The automatic plan target changed; refresh the collaboration session.".into(),
+                );
+            }
+            if let Some(existing) = session
+                .task_operations
+                .iter_mut()
+                .find(|item| item.tool_call_key == tool_call_key)
+            {
+                if existing.operation != operation
+                    || existing.effect_fingerprint.as_deref() != Some(fingerprint.as_str())
+                {
+                    return Err(
+                        "This automatic tool-call identity already contains a different plan."
+                            .into(),
+                    );
+                }
+                if existing.status == "applied" {
+                    return Ok(());
+                }
+                existing.status = "applied".into();
+                existing.result_message = Some(result_message.to_owned());
+                existing.result_snapshot = Some(result_snapshot.clone());
+                existing.result_revision = saved.revision.clone();
+                existing.updated_at = now.clone();
+            } else {
+                session
+                    .task_operations
+                    .push(StoredCollaborationTaskOperation {
+                        id: operation_id.clone(),
+                        tool_call_key: tool_call_key.to_owned(),
+                        operation_id: operation_id.clone(),
+                        runtime_thread_id: runtime_thread_id.to_owned(),
+                        runtime_turn_id: runtime_turn_id.to_owned(),
+                        execution_id: execution_id.to_owned(),
+                        vault_key: vault_key.to_owned(),
+                        target_binding,
+                        expected_revision,
+                        operation,
+                        status: "applied".into(),
+                        target_date: target_date.to_owned(),
+                        baseline,
+                        result_message: Some(result_message.to_owned()),
+                        result_snapshot: Some(result_snapshot),
+                        result_revision: saved.revision.clone(),
+                        effect_fingerprint: Some(fingerprint),
+                        automatic_plan: true,
+                        task_id: None,
+                        list_id: None,
+                        created_at: now.clone(),
+                        updated_at: now.clone(),
+                    });
+            }
+            session.last_activity_at = now.clone();
+            if let Some(run) = state
+                .daily_plan_automation_runs
+                .iter_mut()
+                .find(|run| run.vault_key == vault_key && run.date == target_date)
+            {
+                run.state = "completed".into();
+                run.message = result_message.to_owned();
+                run.session_id = Some(session_id.to_owned());
+                run.execution_id = Some(execution_id.to_owned());
+                run.updated_at = now.clone();
+            }
+            Ok(())
+        })
+    }
+
     fn propose_task_operation(
         &self,
         vault_key: &str,
@@ -3687,6 +4502,7 @@ impl CollaborationApplication {
                 result_snapshot: None,
                 result_revision: None,
                 effect_fingerprint: None,
+                automatic_plan: false,
                 task_id: task_id.clone(),
                 list_id: list_id.clone(),
                 created_at: now.clone(),
@@ -3826,6 +4642,7 @@ impl CollaborationApplication {
                 result_snapshot: None,
                 result_revision: None,
                 effect_fingerprint: Some(fingerprint),
+                automatic_plan: false,
                 task_id: None,
                 list_id: None,
                 created_at: now.clone(),
@@ -4058,6 +4875,7 @@ impl CollaborationApplication {
                 result_snapshot: None,
                 result_revision: None,
                 effect_fingerprint: Some(effect_fingerprint),
+                automatic_plan: false,
                 task_id: None,
                 list_id: None,
                 created_at: now.clone(),
@@ -4273,6 +5091,7 @@ impl CollaborationApplication {
                 delivery_state: "queued".into(),
                 queue_order: Some(queue_order),
                 result_checked: false,
+                automatic_plan: false,
             });
             Ok(session_view(session))
         })?;
@@ -4292,8 +5111,9 @@ impl CollaborationApplication {
         let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
             "Choose a Vault in Settings before stopping collaboration work.".to_string()
         })?;
+        let now = self.clock.current_timestamp();
         let (session, cancellation) = self.update_state(|state| {
-            let delivery_state = state
+            let (delivery_state, automatic_plan, target_date) = state
                 .sessions
                 .iter()
                 .find(|session| {
@@ -4304,7 +5124,13 @@ impl CollaborationApplication {
                         message.execution_id.as_deref() == Some(execution_id)
                     })
                 })
-                .map(|message| message.delivery_state.clone())
+                .map(|message| {
+                    (
+                        message.delivery_state.clone(),
+                        message.automatic_plan,
+                        message.target_date.clone(),
+                    )
+                })
                 .ok_or_else(|| {
                     "This collaboration request is not available in the selected Vault."
                         .to_string()
@@ -4324,33 +5150,53 @@ impl CollaborationApplication {
             } else {
                 None
             };
-            let session = matching_session_mut(state, &vault_key, session_id)?;
-            let message = session
-                .messages
-                .iter_mut()
-                .find(|message| message.execution_id.as_deref() == Some(execution_id))
-                .ok_or_else(|| "This collaboration request is not available in the selected Vault.".to_string())?;
-            match message.delivery_state.as_str() {
-                "queued" => {
-                    message.delivery_state = "stopped".into();
-                    message.result_checked = true;
-                    if session.run_id.as_deref() == Some(execution_id) {
-                        session.run_state = "stopped".into();
-                        session.progress = "The queued request was stopped before it started.".into();
+            let saved_session = {
+                let session = matching_session_mut(state, &vault_key, session_id)?;
+                let message = session
+                    .messages
+                    .iter_mut()
+                    .find(|message| message.execution_id.as_deref() == Some(execution_id))
+                    .ok_or_else(|| {
+                        "This collaboration request is not available in the selected Vault."
+                            .to_string()
+                    })?;
+                match message.delivery_state.as_str() {
+                    "queued" => {
+                        message.delivery_state = "stopped".into();
+                        message.result_checked = true;
+                        if session.run_id.as_deref() == Some(execution_id) {
+                            session.run_state = "stopped".into();
+                            session.progress =
+                                "The queued request was stopped before it started.".into();
+                        }
                     }
+                    "in-progress" | "stopping" => {
+                        message.delivery_state = "stopping".into();
+                        session.run_id = Some(execution_id.to_owned());
+                        session.run_state = "stopping".into();
+                        session.progress = "Waiting for Codex to confirm that this turn has stopped. Queued requests will wait.".into();
+                    }
+                    "stop-unconfirmed" | "interrupted" => {
+                        return Err("Check the saved Codex result before continuing this request.".into());
+                    }
+                    _ => return Err("This collaboration request is no longer running.".into()),
                 }
-                "in-progress" | "stopping" => {
-                    message.delivery_state = "stopping".into();
-                    session.run_id = Some(execution_id.to_owned());
-                    session.run_state = "stopping".into();
-                    session.progress = "Waiting for Codex to confirm that this turn has stopped. Queued requests will wait.".into();
+                session_view(session)
+            };
+            if automatic_plan && delivery_state == "queued" {
+                if let Some(run) = state
+                    .daily_plan_automation_runs
+                    .iter_mut()
+                    .find(|run| run.vault_key == vault_key && run.date == target_date)
+                {
+                    run.state = "stopped".into();
+                    run.message =
+                        "Automatic plan stopped before execution. No Daily Record was changed."
+                            .into();
+                    run.updated_at = now.clone();
                 }
-                "stop-unconfirmed" | "interrupted" => {
-                    return Err("Check the saved Codex result before continuing this request.".into());
-                }
-                _ => return Err("This collaboration request is no longer running.".into()),
             }
-            Ok((session_view(session), cancellation))
+            Ok((saved_session, cancellation))
         })?;
         if let Some(cancellation) = cancellation {
             cancellation.store(true, Ordering::SeqCst);
@@ -4463,6 +5309,7 @@ impl CollaborationApplication {
                             delivery_state: "completed".into(),
                             queue_order: None,
                             result_checked: true,
+                            automatic_plan: false,
                         });
                         if session.run_id.as_deref() == Some(execution_id) {
                             session.run_state = "completed".into();
@@ -4606,6 +5453,7 @@ impl CollaborationApplication {
                             target_date: message.target_date.clone(),
                             user_text: message.text.clone(),
                             queue_order: message.queue_order?,
+                            automatic_plan: message.automatic_plan,
                         },
                     ))
                 })
@@ -4645,6 +5493,7 @@ impl CollaborationApplication {
                 &turn.execution_id,
                 &turn.target_date,
                 &turn.user_text,
+                turn.automatic_plan,
                 cancellation,
             ),
             Ok(false) => {}
@@ -4685,8 +5534,110 @@ impl CollaborationApplication {
                 turn.queue_order
             );
             session.last_activity_at = self.clock.current_timestamp();
+            if turn.automatic_plan {
+                if let Some(run) = state
+                    .daily_plan_automation_runs
+                    .iter_mut()
+                    .find(|run| run.vault_key == turn.vault_key && run.date == turn.target_date)
+                {
+                    run.state = "running".into();
+                    run.message =
+                        "Codex is preparing the first draft from the latest Vault context.".into();
+                    run.updated_at = self.clock.current_timestamp();
+                }
+            }
             Ok(true)
         })
+    }
+
+    fn automatic_plan_target_exists(&self, vault_key: &str, date: &str) -> Result<bool, String> {
+        if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+            return Err(
+                "The selected Vault changed before the automatic plan could be checked.".into(),
+            );
+        }
+        let view = self.daily_data_service.read_date(date)?;
+        if view.state == TodayState::Error {
+            return Err(format!(
+                "Daily Record is damaged or unavailable; no automatic plan was generated: {}",
+                view.message
+            ));
+        }
+        if view.state == TodayState::Unconfigured {
+            return Err("Choose a Vault before the automatic morning plan can run.".into());
+        }
+        require_daily_record_view_writable(&view, date)?;
+        Ok(daily_record_has_plan(&view))
+    }
+
+    fn finish_automatic_plan_existing(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        run_id: &str,
+        message: &str,
+    ) {
+        let date = self
+            .read_state(|state| {
+                state
+                    .sessions
+                    .iter()
+                    .find(|session| {
+                        session.id == session_id && session.vault_key.as_deref() == Some(vault_key)
+                    })
+                    .and_then(|session| {
+                        session
+                            .messages
+                            .iter()
+                            .find(|message| message.execution_id.as_deref() == Some(run_id))
+                    })
+                    .map(|message| message.target_date.clone())
+            })
+            .ok()
+            .flatten();
+        self.finish_success(vault_key, session_id, run_id, message, None)
+            .ok();
+        if let Some(date) = date {
+            let _ = self.record_daily_plan_automation_state(
+                vault_key,
+                &date,
+                "existingPlan",
+                message,
+                Some(session_id.to_owned()),
+                Some(run_id.to_owned()),
+            );
+        }
+    }
+
+    fn finish_automatic_plan_without_saved_receipt(
+        &self,
+        vault_key: &str,
+        date: &str,
+        session_id: &str,
+        run_id: &str,
+    ) {
+        let saved = self.read_state(|state| {
+            state
+                .daily_plan_automation_runs
+                .iter()
+                .find(|run| run.vault_key == vault_key && run.date == date)
+                .is_some_and(|run| {
+                    matches!(
+                        run.state.as_str(),
+                        "completed" | "existingPlan" | "needsReview"
+                    )
+                })
+        });
+        if !matches!(saved, Ok(true)) {
+            let _ = self.record_daily_plan_automation_state(
+                vault_key,
+                date,
+                "needsReview",
+                "Codex finished without a confirmed automatic-plan receipt. Review the Daily Record before retrying.",
+                Some(session_id.to_owned()),
+                Some(run_id.to_owned()),
+            );
+        }
     }
 
     fn execute_turn(
@@ -4696,6 +5647,7 @@ impl CollaborationApplication {
         run_id: &str,
         target_date: &str,
         user_text: &str,
+        automatic_plan: bool,
         cancellation: Arc<AtomicBool>,
     ) {
         if cancellation.load(Ordering::SeqCst) {
@@ -4746,6 +5698,32 @@ impl CollaborationApplication {
                 "The selected Vault changed while current context was being read. Refresh the workspace and retry.".into(),
             );
             return;
+        }
+        if automatic_plan {
+            match self.automatic_plan_target_exists(vault_key, target_date) {
+                Ok(true) => {
+                    self.finish_automatic_plan_existing(
+                        vault_key,
+                        session_id,
+                        run_id,
+                        "A plan appeared while this request was queued. It was preserved, and the automatic draft was skipped.",
+                    );
+                    return;
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    self.finish_error(vault_key, session_id, run_id, error);
+                    let _ = self.record_daily_plan_automation_state(
+                        vault_key,
+                        target_date,
+                        "needsReview",
+                        "The latest Daily Record could not be verified before execution. No model turn was sent; check the record before retrying.",
+                        Some(session_id.to_owned()),
+                        Some(run_id.to_owned()),
+                    );
+                    return;
+                }
+            }
         }
         if let Err(error) = self.set_progress(
             vault_key,
@@ -4864,19 +5842,23 @@ impl CollaborationApplication {
             && memory.long_term.state == "ready"
             && memory.long_term.revision.is_some();
         let mut dynamic_tools = Vec::new();
-        if task_operations_available || daily_plan_operations_available {
+        if automatic_plan {
+            if daily_plan_operations_available {
+                dynamic_tools.push(collaboration_task_tool_spec(false, true));
+            }
+        } else if task_operations_available || daily_plan_operations_available {
             dynamic_tools.push(collaboration_task_tool_spec(
                 task_operations_available,
                 daily_plan_operations_available,
             ));
         }
-        if memory_operations_available {
+        if !automatic_plan && memory_operations_available {
             dynamic_tools.push(collaboration_memory_tool_spec());
         }
         let task_tool_registered = if session.runtime_thread_id.is_some() {
             session.task_tool_registered
         } else {
-            task_operations_available || daily_plan_operations_available
+            !automatic_plan && (task_operations_available || daily_plan_operations_available)
         };
         let daily_plan_tool_registered = if session.runtime_thread_id.is_some() {
             session.daily_plan_tool_registered
@@ -4886,12 +5868,12 @@ impl CollaborationApplication {
         let daily_record_tool_registered = if session.runtime_thread_id.is_some() {
             session.daily_record_tool_registered
         } else {
-            daily_plan_operations_available
+            !automatic_plan && daily_plan_operations_available
         };
         let memory_tool_registered = if session.runtime_thread_id.is_some() {
             session.memory_tool_registered
         } else {
-            memory_operations_available
+            !automatic_plan && memory_operations_available
         };
         let thread_id = match session.runtime_thread_id.as_deref() {
             Some(thread_id) => runtime
@@ -4967,7 +5949,9 @@ impl CollaborationApplication {
         };
         let tool_handler = (((self.task_service.is_available()
             || self.daily_data_service.is_available())
-            && task_tool_registered)
+            && (task_tool_registered
+                || daily_plan_tool_registered
+                || daily_record_tool_registered))
             || memory_tool_registered)
             .then(|| {
                 let application = self.clone();
@@ -4976,6 +5960,7 @@ impl CollaborationApplication {
                 let expected_execution_id = run_id.to_owned();
                 let expected_vault_key = vault_key.to_owned();
                 let expected_target_date = target_date.to_owned();
+                let automatic_plan = automatic_plan;
                 Arc::new(move |call| {
                     application.handle_runtime_task_tool_call(
                         &expected_vault_key,
@@ -4986,6 +5971,7 @@ impl CollaborationApplication {
                         daily_plan_tool_registered,
                         daily_record_tool_registered,
                         memory_tool_registered,
+                        automatic_plan,
                         call,
                     )
                 }) as RuntimeDynamicToolHandler
@@ -5011,6 +5997,13 @@ impl CollaborationApplication {
                     result.runtime_turn_id.as_deref(),
                 ) {
                     self.finish_error(vault_key, session_id, run_id, error);
+                } else if automatic_plan {
+                    self.finish_automatic_plan_without_saved_receipt(
+                        vault_key,
+                        target_date,
+                        session_id,
+                        run_id,
+                    );
                 }
             }
             Ok(result) if result.stopped => self.finish_stopped(
@@ -5134,6 +6127,7 @@ impl CollaborationApplication {
                 delivery_state: "completed".into(),
                 queue_order: None,
                 result_checked: true,
+                automatic_plan: false,
             });
             if let Some(message) = session.messages.iter_mut().find(|message| {
                 message.execution_id.as_deref() == Some(run_id) && message.role == "user"
@@ -5167,6 +6161,7 @@ impl CollaborationApplication {
 
     fn finish_error(&self, vault_key: &str, session_id: &str, run_id: &str, error: String) {
         let now = self.clock.current_timestamp();
+        let status_message = error.clone();
         let _ = self.update_state(|state| {
             let session = matching_session_mut(state, vault_key, session_id)?;
             if session.run_id.as_deref() != Some(run_id) {
@@ -5185,6 +6180,13 @@ impl CollaborationApplication {
             session.last_activity_at = now.clone();
             Ok(())
         });
+        self.mirror_automatic_run_status(
+            vault_key,
+            session_id,
+            run_id,
+            "needsReview",
+            &format!("Automatic work stopped before its result was confirmed: {status_message}"),
+        );
     }
 
     fn finish_stopped(
@@ -5215,6 +6217,13 @@ impl CollaborationApplication {
             }
             Ok(())
         });
+        self.mirror_automatic_run_status(
+            vault_key,
+            session_id,
+            run_id,
+            "stopped",
+            "The automatic plan was stopped. Its Daily Record result can be checked before retrying.",
+        );
     }
 
     fn finish_unconfirmed(&self, vault_key: &str, session_id: &str, run_id: &str, error: String) {
@@ -5252,6 +6261,7 @@ impl CollaborationApplication {
         progress: String,
     ) {
         let now = self.clock.current_timestamp();
+        let status_message = progress.clone();
         let _ = self.update_state(|state| {
             let session = matching_session_mut(state, vault_key, session_id)?;
             if session.run_id.as_deref() != Some(run_id) {
@@ -5270,6 +6280,51 @@ impl CollaborationApplication {
             session.last_activity_at = now.clone();
             Ok(())
         });
+        self.mirror_automatic_run_status(
+            vault_key,
+            session_id,
+            run_id,
+            "needsReview",
+            &status_message,
+        );
+    }
+
+    fn mirror_automatic_run_status(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        execution_id: &str,
+        state_name: &str,
+        message: &str,
+    ) {
+        let date = self
+            .read_state(|state| {
+                state
+                    .sessions
+                    .iter()
+                    .find(|session| {
+                        session.id == session_id && session.vault_key.as_deref() == Some(vault_key)
+                    })
+                    .and_then(|session| {
+                        session.messages.iter().find(|message| {
+                            message.automatic_plan
+                                && message.execution_id.as_deref() == Some(execution_id)
+                        })
+                    })
+                    .map(|message| message.target_date.clone())
+            })
+            .ok()
+            .flatten();
+        if let Some(date) = date {
+            let _ = self.record_daily_plan_automation_state(
+                vault_key,
+                &date,
+                state_name,
+                message,
+                Some(session_id.to_owned()),
+                Some(execution_id.to_owned()),
+            );
+        }
     }
 
     fn mark_incomplete_runs_interrupted(&self) -> Result<(), String> {
@@ -5454,6 +6509,7 @@ fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionVie
                 runtime_turn_id: message.runtime_turn_id.clone(),
                 delivery_state: message.delivery_state.clone(),
                 result_checked: message.result_checked,
+                automatic_plan: message.automatic_plan,
             })
             .collect(),
         task_operations: session
@@ -5825,6 +6881,7 @@ fn task_operation_view(
         result_message: operation.result_message.clone(),
         result_snapshot: operation.result_snapshot.clone(),
         result_revision: operation.result_revision.clone(),
+        automatic_plan: operation.automatic_plan,
         task_id: operation.task_id.clone(),
         list_id: operation.list_id.clone(),
         created_at: operation.created_at.clone(),
@@ -5852,6 +6909,41 @@ fn require_daily_record_view_writable(view: &TodayView, date: &str) -> Result<()
         );
     }
     Ok(())
+}
+
+fn validate_daily_plan_time(value: &str) -> Result<(), String> {
+    let bytes = value.as_bytes();
+    if bytes.len() != 5
+        || bytes[2] != b':'
+        || !bytes[..2].iter().all(u8::is_ascii_digit)
+        || !bytes[3..].iter().all(u8::is_ascii_digit)
+    {
+        return Err("Choose a morning-plan time in 24-hour HH:MM format.".into());
+    }
+    let hour = value[..2]
+        .parse::<u8>()
+        .map_err(|_| "Choose a valid morning-plan time.".to_string())?;
+    let minute = value[3..]
+        .parse::<u8>()
+        .map_err(|_| "Choose a valid morning-plan time.".to_string())?;
+    if hour > 23 || minute > 59 {
+        return Err("Choose a valid morning-plan time between 00:00 and 23:59.".into());
+    }
+    Ok(())
+}
+
+fn daily_plan_schedule_is_due(current_time: &str, scheduled_time: &str) -> Result<bool, String> {
+    validate_daily_plan_time(current_time)?;
+    validate_daily_plan_time(scheduled_time)?;
+    Ok(current_time >= scheduled_time)
+}
+
+fn daily_record_has_plan(view: &TodayView) -> bool {
+    view.baseline.availability == BaselineAvailability::Saved
+        || !view.baseline.timeline.is_empty()
+        || !view.baseline.evidence.is_empty()
+        || !view.timeline.is_empty()
+        || !view.evidence.is_empty()
 }
 
 fn daily_record_operation_baseline(
@@ -7568,6 +8660,7 @@ mod collaboration_memory_tests {
             delivery_state: "completed".into(),
             queue_order: None,
             result_checked: false,
+            automatic_plan: false,
         }
     }
 

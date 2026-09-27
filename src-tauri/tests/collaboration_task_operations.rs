@@ -2,21 +2,25 @@ use personal_dashboard_lib::collaboration::{
     AppServerTransport, CollaborationApplication, CollaborationClock, CollaborationContextSource,
     CollaborationContextView, CollaborationState, CollaborationStore,
     CollaborationTaskListReferenceView, CollaborationTaskOperation, CollaborationTaskService,
-    ContextPaneView, FileCollaborationStore, ModelOptionView, RuntimeConnectionView,
-    RuntimeDynamicToolCall, RuntimeDynamicToolHandler, RuntimeDynamicToolResult,
-    RuntimeRunReconciliation, RuntimeTurnRequest, RuntimeTurnResult,
+    ContextPaneView, DailyPlanAutomationSettings, FileCollaborationStore, ModelOptionView,
+    RuntimeConnectionView, RuntimeDynamicToolCall, RuntimeDynamicToolHandler,
+    RuntimeDynamicToolResult, RuntimeRunReconciliation, RuntimeTurnRequest, RuntimeTurnResult,
     TaskApplicationCollaborationAdapter, TodayApplicationCollaborationDailyDataAdapter,
 };
-use personal_dashboard_lib::tasks::{FileTaskStore, TaskApplication, TaskDataState, TaskState};
+use personal_dashboard_lib::tasks::{
+    FileTaskStore, TaskApplication, TaskCreateInput, TaskDataState, TaskState,
+};
 use personal_dashboard_lib::today::{
-    DatedNoteCorrectionInput, DatedNoteInput, HabitLocalCompletionState, ShortRecordCategory,
-    TodayApplication, TodayClock, TodayWorkspaceExchange, TodayWorkspacePersistence,
+    daily_plan_effect_fingerprint, DailyPlanBlockInput, DailyPlanEvidenceInput,
+    DailyPlanTransition, DailyPlanWriteInput, DatedNoteCorrectionInput, DatedNoteInput,
+    HabitLocalCompletionState, ShortRecordCategory, TodayApplication, TodayClock, TodayState,
+    TodayWorkspaceExchange, TodayWorkspacePersistence,
 };
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -88,6 +92,95 @@ impl TodayWorkspacePersistence for MutableVault {
 }
 
 struct FixedClock;
+
+#[derive(Clone)]
+struct ManualClock(Arc<Mutex<(String, String)>>);
+
+impl ManualClock {
+    fn new(date: &str, time: &str) -> Self {
+        Self(Arc::new(Mutex::new((date.into(), time.into()))))
+    }
+
+    fn set_time(&self, time: &str) {
+        self.0.lock().expect("manual clock lock").1 = time.into();
+    }
+
+    fn date_time(&self) -> (String, String) {
+        self.0.lock().expect("manual clock lock").clone()
+    }
+}
+
+impl CollaborationClock for ManualClock {
+    fn current_timestamp(&self) -> String {
+        let (date, time) = self.date_time();
+        format!("{date}T{time}:00-04:00")
+    }
+
+    fn current_date(&self) -> String {
+        self.date_time().0
+    }
+
+    fn current_time(&self) -> String {
+        self.date_time().1
+    }
+}
+
+impl TodayClock for ManualClock {
+    fn current_date(&self) -> String {
+        self.date_time().0
+    }
+
+    fn current_time_label(&self) -> String {
+        self.date_time().1
+    }
+
+    fn current_timestamp_label(&self) -> String {
+        let (date, time) = self.date_time();
+        format!("{date}T{time}-04:00")
+    }
+}
+
+#[derive(Default)]
+struct AutomaticTurnGate {
+    released: Mutex<bool>,
+    changed: Condvar,
+    entered: Mutex<bool>,
+    entered_changed: Condvar,
+}
+
+impl AutomaticTurnGate {
+    fn wait_until_entered(&self) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        let mut entered = self.entered.lock().expect("automatic gate lock");
+        while !*entered {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            assert!(
+                !remaining.is_zero(),
+                "automatic runtime did not reach its gate"
+            );
+            let (next, timeout) = self
+                .entered_changed
+                .wait_timeout(entered, remaining)
+                .unwrap();
+            entered = next;
+            assert!(!timeout.timed_out() || *entered);
+        }
+    }
+
+    fn release(&self) {
+        *self.released.lock().expect("automatic gate lock") = true;
+        self.changed.notify_all();
+    }
+
+    fn block_automatic_turn(&self) {
+        *self.entered.lock().expect("automatic gate lock") = true;
+        self.entered_changed.notify_all();
+        let mut released = self.released.lock().expect("automatic gate lock");
+        while !*released {
+            released = self.changed.wait(released).expect("automatic gate wait");
+        }
+    }
+}
 
 impl CollaborationClock for FixedClock {
     fn current_timestamp(&self) -> String {
@@ -192,6 +285,8 @@ impl CollaborationContextSource for MutableContext {
 struct DynamicRuntime {
     registered_tools: Arc<Mutex<Vec<Value>>>,
     results: Arc<Mutex<Vec<RuntimeDynamicToolResult>>>,
+    requests: Arc<Mutex<Vec<RuntimeTurnRequest>>>,
+    automatic_gate: Option<Arc<AutomaticTurnGate>>,
 }
 
 impl AppServerTransport for DynamicRuntime {
@@ -267,6 +362,28 @@ impl AppServerTransport for DynamicRuntime {
         tool_handler: Option<RuntimeDynamicToolHandler>,
     ) -> Result<RuntimeTurnResult, String> {
         let handler = tool_handler.ok_or_else(|| "expected a registered task tool".to_string())?;
+        self.requests
+            .lock()
+            .map_err(|_| "request lock poisoned".to_string())?
+            .push(request.clone());
+        if request.user_text == "hold-worker" {
+            if let Some(gate) = &self.automatic_gate {
+                gate.block_automatic_turn();
+            }
+            return Ok(RuntimeTurnResult {
+                text: "Synthetic queue holder completed.".into(),
+                runtime_turn_id: Some(format!("turn-{}", request.execution_id)),
+                stopped: false,
+            });
+        }
+        let automatic_plan = request
+            .user_text
+            .starts_with("Generate and save the automatic first-draft plan");
+        if automatic_plan {
+            if let Some(gate) = &self.automatic_gate {
+                gate.block_automatic_turn();
+            }
+        }
         let (call_id, tool, arguments) = if request.user_text == "create task" {
             (
                 "reused-turn-scoped-call-id",
@@ -286,7 +403,27 @@ impl AppServerTransport for DynamicRuntime {
                 "dashboard_task_operation",
                 json!({ "operation": "createList", "name": "Synthetic list" }),
             )
-        } else if request.user_text == "save daily plan" {
+        } else if automatic_plan && request.user_text.contains("Current local time: 15:00") {
+            (
+                "reused-turn-scoped-call-id",
+                "dashboard_task_operation",
+                json!({
+                    "operation": "saveDailyPlan",
+                    "transition": "initialPlan",
+                    "arrangement": [
+                        {"period": "later today", "title": "Take a short walk", "detail": null},
+                        {"period": "evening", "title": "Prepare tomorrow's brief", "detail": null}
+                    ],
+                    "evidence": [{"label": "Tasks", "items": ["Synthetic task remains upcoming"]}],
+                    "calibrationNote": null,
+                    "baselineCorrectionReason": null,
+                    "event": null,
+                    "originalIntent": null,
+                    "changeReason": null,
+                    "revisedDirection": null
+                }),
+            )
+        } else if request.user_text == "save daily plan" || automatic_plan {
             (
                 "reused-turn-scoped-call-id",
                 "dashboard_task_operation",
@@ -520,6 +657,8 @@ fn new_application(
         Box::new(DynamicRuntime {
             registered_tools: Arc::clone(&registered_tools),
             results: Arc::clone(&results),
+            requests: Arc::new(Mutex::new(Vec::new())),
+            automatic_gate: None,
         }),
         Arc::new(context),
         Arc::new(FixedClock),
@@ -582,6 +721,105 @@ fn submit_for_proposal(
         .expect("synthetic runtime proposes the requested action")
 }
 
+fn new_automatic_application(
+    directory: &IsolatedDirectory,
+    vault: &MutableVault,
+    context: MutableContext,
+    clock: ManualClock,
+    automatic_gate: Option<Arc<AutomaticTurnGate>>,
+) -> (
+    CollaborationApplication,
+    Arc<Mutex<Vec<Value>>>,
+    Arc<Mutex<Vec<RuntimeDynamicToolResult>>>,
+    Arc<Mutex<Vec<RuntimeTurnRequest>>>,
+) {
+    let registered_tools = Arc::new(Mutex::new(Vec::new()));
+    let results = Arc::new(Mutex::new(Vec::new()));
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let task_service = Arc::new(TaskApplicationCollaborationAdapter::new(
+        TaskApplication::new(vault.clone(), clock.clone(), FileTaskStore),
+    ));
+    let daily_plan_service = Arc::new(TodayApplicationCollaborationDailyDataAdapter::new(
+        TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone()),
+    ));
+    let application = CollaborationApplication::with_adapters(
+        Arc::new(FileCollaborationStore::new(
+            directory.path().join("collaboration/collaboration.json"),
+        )),
+        Box::new(DynamicRuntime {
+            registered_tools: Arc::clone(&registered_tools),
+            results: Arc::clone(&results),
+            requests: Arc::clone(&requests),
+            automatic_gate,
+        }),
+        Arc::new(context),
+        Arc::new(clock),
+        directory.path().join("runtime"),
+        "Use only supplied synthetic Dashboard context. Do not change Tasks.".into(),
+    )
+    .with_task_service(task_service)
+    .with_daily_data_service(daily_plan_service);
+    (application, registered_tools, results, requests)
+}
+
+fn record_path(vault: &Path) -> PathBuf {
+    vault.join("life/Journal/Daily/2026/2026-09/2026-09-27.md")
+}
+
+fn initial_fixture_plan(
+    today: &TodayApplication<MutableVault, NoVaultPicker, ManualClock>,
+    operation_id: &str,
+    title: &str,
+) -> personal_dashboard_lib::today::TodayView {
+    let current = today.read_date("2026-09-27").unwrap();
+    let arrangement = vec![DailyPlanBlockInput {
+        period: "上午".into(),
+        title: title.into(),
+        detail: Some("Synthetic fixture plan".into()),
+    }];
+    let evidence = vec![DailyPlanEvidenceInput {
+        label: "Synthetic fixture evidence".into(),
+        items: vec!["Test-only background".into()],
+    }];
+    let mut input = DailyPlanWriteInput {
+        date: "2026-09-27".into(),
+        target_binding: current.target_binding.unwrap(),
+        expected_revision: current.revision,
+        operation_id: operation_id.into(),
+        effect_fingerprint: String::new(),
+        transition: DailyPlanTransition::InitialPlan,
+        arrangement,
+        evidence,
+        calibration_note: None,
+        baseline_correction_reason: None,
+        event: None,
+        original_intent: None,
+        change_reason: None,
+        revised_direction: None,
+    };
+    input.effect_fingerprint = daily_plan_effect_fingerprint(
+        &input.date,
+        input.transition,
+        &input.arrangement,
+        &input.evidence,
+        input.calibration_note.as_deref(),
+        input.baseline_correction_reason.as_deref(),
+        input.event.as_deref(),
+        input.original_intent.as_deref(),
+        input.change_reason.as_deref(),
+        input.revised_direction.as_deref(),
+    );
+    today.save_daily_plan(input).unwrap()
+}
+
+fn enabled_automation(time: &str) -> DailyPlanAutomationSettings {
+    DailyPlanAutomationSettings {
+        enabled: true,
+        time: time.into(),
+        external_schedule_handoff_confirmed: false,
+    }
+}
+
 fn wait_for_finish(application: &CollaborationApplication, session_id: &str, vault: &str) {
     for _ in 0..300 {
         let session = application
@@ -593,7 +831,11 @@ fn wait_for_finish(application: &CollaborationApplication, session_id: &str, vau
         }
         thread::sleep(Duration::from_millis(10));
     }
-    panic!("synthetic dynamic-tool run did not finish");
+    let session = application.session(vault, session_id).unwrap();
+    panic!(
+        "synthetic dynamic-tool run did not finish: {} ({})",
+        session.run_state, session.progress
+    );
 }
 
 fn submit_and_approve_plan_step(
@@ -2435,4 +2677,396 @@ fn task_application_adapter_preserves_date_completion_and_list_lifecycle_semanti
             .unwrap()
             .archived
     );
+}
+
+#[test]
+fn automatic_plan_triggers_at_configured_local_time_and_restart_does_not_duplicate_it() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let context = MutableContext::new("vault-a");
+    let clock = ManualClock::new("2026-09-27", "06:59");
+    let task_path = vault_path.join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH);
+    let tasks = TaskApplication::new(vault.clone(), clock.clone(), FileTaskStore);
+    let empty_tasks = tasks.read().unwrap();
+    tasks
+        .create(TaskCreateInput {
+            target_binding: empty_tasks.target_binding.unwrap(),
+            expected_revision: empty_tasks.revision,
+            task_id: "existing-synthetic-task".into(),
+            name: "Synthetic task to preserve".into(),
+            content: Some("Keep this exact Task document unchanged.".into()),
+            date: Some("2026-09-27".into()),
+            time: None,
+            list_id: None,
+        })
+        .unwrap();
+    let task_bytes_before = fs::read(&task_path).unwrap();
+    let (application, registered_tools, results, requests) =
+        new_automatic_application(&directory, &vault, context.clone(), clock.clone(), None);
+
+    let before_time = application
+        .update_daily_plan_automation(enabled_automation("07:00"))
+        .unwrap();
+    assert!(
+        before_time.current_run.is_none(),
+        "the trigger must not run early"
+    );
+    assert!(application.list_sessions("2026-09-27").unwrap().is_empty());
+
+    clock.set_time("07:00");
+    let queued = application.check_daily_plan_automation().unwrap();
+    let run_session_id = queued
+        .current_run
+        .as_ref()
+        .and_then(|run| run.session_id.clone())
+        .expect("the exact local trigger time queues a collaboration session");
+    wait_for_finish(&application, &run_session_id, "vault-a");
+    let completed = application.check_daily_plan_automation().unwrap();
+    assert_eq!(completed.current_run.unwrap().state, "completed");
+
+    let sessions = application.list_sessions("2026-09-27").unwrap();
+    assert_eq!(sessions.len(), 1, "repeated checks must be idempotent");
+    let session = application.session("vault-a", &run_session_id).unwrap();
+    assert!(session.messages[0].automatic_plan);
+    assert!(session.daily_plan_tool_available);
+    assert!(
+        !session.task_tool_available,
+        "automatic runs register only the plan operation"
+    );
+    assert_eq!(session.task_operations.len(), 1);
+    assert_eq!(session.task_operations[0].status, "applied");
+    assert!(session.task_operations[0].automatic_plan);
+    assert!(matches!(
+        session.task_operations[0].operation,
+        CollaborationTaskOperation::SaveDailyPlan {
+            transition: DailyPlanTransition::InitialPlan,
+            ..
+        }
+    ));
+    assert_eq!(fs::read(&task_path).unwrap(), task_bytes_before);
+
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
+    let saved = today.read_date("2026-09-27").unwrap();
+    assert_eq!(saved.state, TodayState::Ready);
+    assert_eq!(saved.timeline.len(), 2);
+    assert_eq!(saved.baseline.timeline, saved.timeline);
+    assert!(saved.time_axis.confirmed_facts.is_empty());
+
+    let registered = registered_tools.lock().unwrap();
+    assert_eq!(registered.len(), 1);
+    assert_eq!(registered[0]["name"], "dashboard_task_operation");
+    let variants = registered[0]["inputSchema"]["oneOf"].as_array().unwrap();
+    assert!(variants
+        .iter()
+        .any(|variant| { variant["properties"]["operation"]["const"] == "saveDailyPlan" }));
+    assert!(!variants
+        .iter()
+        .any(|variant| { variant["properties"]["operation"]["const"] == "createTask" }));
+    drop(registered);
+    let delivery_results = results.lock().unwrap();
+    assert_eq!(
+        delivery_results.len(),
+        1,
+        "duplicate tool delivery is deduplicated"
+    );
+    assert!(delivery_results[0].success);
+    drop(delivery_results);
+    let sent = requests.lock().unwrap();
+    assert_eq!(sent.len(), 1);
+    assert!(sent[0].user_text.contains("plan only the remaining day"));
+    assert!(sent[0]
+        .context
+        .daily_record
+        .items
+        .contains(&"Synthetic baseline".into()));
+    assert_eq!(sent[0].context.tasks.state, "ready");
+    assert_eq!(sent[0].context.habits.state, "ready");
+    drop(sent);
+
+    let reopened = new_automatic_application(&directory, &vault, context, clock, None).0;
+    let recovered = reopened.check_daily_plan_automation().unwrap();
+    assert_eq!(recovered.settings.time, "07:00");
+    assert_eq!(recovered.current_run.unwrap().state, "completed");
+    assert_eq!(reopened.list_sessions("2026-09-27").unwrap().len(), 1);
+}
+
+#[test]
+fn late_open_generates_only_a_remaining_day_plan_from_current_synthetic_context() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "15:00");
+    let (application, _, results, requests) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock,
+        None,
+    );
+
+    let queued = application
+        .update_daily_plan_automation(enabled_automation("06:00"))
+        .unwrap();
+    let session_id = queued
+        .current_run
+        .as_ref()
+        .and_then(|run| run.session_id.clone())
+        .expect("opening after the schedule queues a late plan");
+    wait_for_finish(&application, &session_id, "vault-a");
+    let request = requests.lock().unwrap().first().cloned().unwrap();
+    assert!(request.user_text.contains("Current local time: 15:00"));
+    assert!(request
+        .user_text
+        .contains("Do not claim past planned time happened"));
+    let session = application.session("vault-a", &session_id).unwrap();
+    let tool_results = results.lock().unwrap().clone();
+    assert!(
+        tool_results[0].success,
+        "automatic tool result: {tool_results:?}"
+    );
+    let CollaborationTaskOperation::SaveDailyPlan { arrangement, .. } =
+        &session.task_operations[0].operation
+    else {
+        panic!("automatic run saved a structured Daily Record plan")
+    };
+    assert_eq!(arrangement[0].period, "later today");
+    assert_ne!(arrangement[0].period, "morning");
+}
+
+#[test]
+fn a_plan_created_after_queueing_is_rechecked_and_preserved_before_automatic_write() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "08:00");
+    let gate = Arc::new(AutomaticTurnGate::default());
+    let (application, _, results, _) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock.clone(),
+        Some(Arc::clone(&gate)),
+    );
+    let queued = application
+        .update_daily_plan_automation(enabled_automation("06:00"))
+        .unwrap();
+    let session_id = queued
+        .current_run
+        .as_ref()
+        .and_then(|run| run.session_id.clone())
+        .expect("due schedule queues an automatic run");
+    gate.wait_until_entered();
+
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock);
+    initial_fixture_plan(&today, "user-plan-before-auto", "User's current plan");
+    let before = fs::read(record_path(&vault_path)).unwrap();
+    gate.release();
+    wait_for_finish(&application, &session_id, "vault-a");
+
+    let run = application
+        .daily_plan_automation()
+        .unwrap()
+        .current_run
+        .unwrap();
+    assert_eq!(run.state, "existingPlan");
+    assert_eq!(fs::read(record_path(&vault_path)).unwrap(), before);
+    assert!(application
+        .session("vault-a", &session_id)
+        .unwrap()
+        .task_operations
+        .is_empty());
+    assert!(results.lock().unwrap()[0].success);
+}
+
+#[test]
+fn damaged_record_and_record_read_failure_are_distinguished_without_overwrite() {
+    for (name, kind, expected_state) in [
+        ("damaged", "invalid-utf8", "damagedRecord"),
+        ("unreadable", "directory", "readError"),
+    ] {
+        let directory = IsolatedDirectory::new();
+        let vault_path = directory.vault(name);
+        let target = record_path(&vault_path);
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        if kind == "invalid-utf8" {
+            fs::write(&target, [0xff, 0xfe]).unwrap();
+        } else {
+            fs::create_dir(&target).unwrap();
+        }
+        let before = if target.is_file() {
+            Some(fs::read(&target).unwrap())
+        } else {
+            None
+        };
+        let vault = MutableVault::new(&vault_path);
+        let clock = ManualClock::new("2026-09-27", "09:00");
+        let (application, _, _, _) = new_automatic_application(
+            &directory,
+            &vault,
+            MutableContext::new("vault-a"),
+            clock,
+            None,
+        );
+
+        let view = application
+            .update_daily_plan_automation(enabled_automation("06:00"))
+            .unwrap();
+        assert_eq!(view.current_run.unwrap().state, expected_state);
+        assert!(application.list_sessions("2026-09-27").unwrap().is_empty());
+        if let Some(before) = before {
+            assert_eq!(fs::read(&target).unwrap(), before);
+        } else {
+            assert!(target.is_dir(), "unreadable target is preserved");
+        }
+    }
+}
+
+#[test]
+fn existing_valid_plan_is_preserved_without_starting_an_automatic_session() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "09:15");
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
+    initial_fixture_plan(&today, "preexisting-plan", "Already saved by the user");
+    let record_before = fs::read(record_path(&vault_path)).unwrap();
+    let application = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock,
+        None,
+    )
+    .0;
+
+    let view = application
+        .update_daily_plan_automation(enabled_automation("06:00"))
+        .unwrap();
+    assert_eq!(view.current_run.unwrap().state, "existingPlan");
+    assert!(application.list_sessions("2026-09-27").unwrap().is_empty());
+    assert_eq!(fs::read(record_path(&vault_path)).unwrap(), record_before);
+}
+
+#[test]
+fn selected_vault_change_between_queue_and_tool_write_fails_closed() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let context = MutableContext::new("vault-a");
+    let clock = ManualClock::new("2026-09-27", "08:00");
+    let gate = Arc::new(AutomaticTurnGate::default());
+    let (application, _, results, _) = new_automatic_application(
+        &directory,
+        &vault,
+        context.clone(),
+        clock,
+        Some(Arc::clone(&gate)),
+    );
+    let queued = application
+        .update_daily_plan_automation(enabled_automation("06:00"))
+        .unwrap();
+    let session_id = queued
+        .current_run
+        .as_ref()
+        .and_then(|run| run.session_id.clone())
+        .expect("due schedule queues an automatic run");
+    gate.wait_until_entered();
+
+    context.select("vault-b");
+    gate.release();
+    wait_for_finish(&application, &session_id, "vault-a");
+    context.select("vault-a");
+
+    let run = application
+        .daily_plan_automation()
+        .unwrap()
+        .current_run
+        .unwrap();
+    assert_eq!(run.state, "needsReview");
+    assert!(run.message.contains("Vault changed"));
+    assert!(!record_path(&vault_path).exists());
+    assert!(!vault_path
+        .join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH)
+        .exists());
+    assert!(!results.lock().unwrap()[0].success);
+}
+
+#[test]
+fn stopping_a_queued_automatic_run_is_persisted_and_does_not_requeue() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "08:00");
+    let gate = Arc::new(AutomaticTurnGate::default());
+    let application = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock,
+        Some(Arc::clone(&gate)),
+    )
+    .0;
+
+    let holder = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message("vault-a", &holder.id, "2026-09-27", "hold-worker")
+        .unwrap();
+    gate.wait_until_entered();
+    let queued = application
+        .update_daily_plan_automation(enabled_automation("06:00"))
+        .unwrap();
+    let run = queued.current_run.unwrap();
+    let auto_session = application
+        .session("vault-a", run.session_id.as_deref().unwrap())
+        .unwrap();
+    let stopped = application
+        .stop_run_for_selected_vault(&auto_session.id, auto_session.run_id.as_deref().unwrap())
+        .unwrap();
+    assert_eq!(stopped.run_state, "stopped");
+    gate.release();
+    wait_for_finish(&application, &holder.id, "vault-a");
+
+    let checked = application.check_daily_plan_automation().unwrap();
+    assert_eq!(checked.current_run.unwrap().state, "stopped");
+    assert_eq!(application.list_sessions("2026-09-27").unwrap().len(), 2);
+    assert!(!record_path(&vault_path).exists());
+}
+
+#[test]
+fn valid_empty_daily_record_can_receive_the_single_automatic_initial_plan() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let target = record_path(&vault_path);
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    fs::write(
+        &target,
+        "---\ntype: daily-record\ndate: 2026-09-27\n---\n# 2026-09-27\n\n## 今天的大致安排\n\n## 计划依据\n\n## 白天更新\n\n## 晚间复盘\n",
+    )
+    .unwrap();
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "09:15");
+    let (application, _, _, _) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock.clone(),
+        None,
+    );
+
+    let queued = application
+        .update_daily_plan_automation(enabled_automation("06:00"))
+        .unwrap();
+    let session_id = queued
+        .current_run
+        .as_ref()
+        .and_then(|run| run.session_id.clone())
+        .expect("valid empty record is eligible for an initial plan");
+    wait_for_finish(&application, &session_id, "vault-a");
+    let saved = TodayApplication::new(vault, NoVaultPicker, clock)
+        .read_date("2026-09-27")
+        .unwrap();
+    assert_eq!(saved.state, TodayState::Ready);
+    assert_eq!(saved.timeline.len(), 2);
+    assert!(saved.evidence.iter().any(|group| group.label == "Tasks"));
 }

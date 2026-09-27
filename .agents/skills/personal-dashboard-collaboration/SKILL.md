@@ -1,6 +1,6 @@
 ---
 name: personal-dashboard-collaboration
-description: Use during Personal Dashboard collaboration turns to reread current selected-Vault facts, carry confirmed durable context between sessions, and propose exact Task/list, Daily Record plan/review/correction, local Habit completion, or memory changes through Dashboard review cards.
+description: Use during Personal Dashboard collaboration turns to reread current selected-Vault facts, carry confirmed durable context between sessions, and propose exact Task/list, Daily Record plan/review/correction, local Habit completion, or memory changes through Dashboard review cards, including the explicitly marked automatic morning-plan path.
 ---
 
 # Personal Dashboard collaboration
@@ -47,6 +47,8 @@ Read the latest `dailyRecord`, `tasks`, and `habits` sections for the request ta
 - For an explicit correction that says the saved Morning baseline itself was wrong, use `transition: morningBaselineCorrection` with the user's reason. This is a separate correction with a trace; calibration and daytime replanning continue to preserve the point-in-time baseline and its evidence.
 
 Each plan action is a structured proposal. Review the target date, current Daily Record baseline, arrangement, evidence, and proposal status on the right pane. Saving requires explicit user approval. Today and Calendar read the same canonical Daily Record; use their navigation actions to inspect the saved result. If the Daily Record revision changed, refresh and ask for approval again. If a write response was interrupted, reconcile its exact receipt before retrying. If a current plan section contains unrecognized user-authored content or is malformed, stop and ask the user to review or repair it instead of replacing it.
+
+An App message explicitly marked as an **automatic morning plan** is a separate, user-enabled path. It authorizes only one `initialPlan` for the current target date, using the latest supplied Daily Record, Tasks, Habits, and available background. Use the same exact structured plan tool and Daily Record receipt path, but do not create a Task proposal or use calibration, event, replan, review, or completion operations. Recheck the current Daily Record before saving; if a valid plan appeared, preserve it. When the run starts late, plan only the remaining day and keep past planned time and lived facts unknown unless the latest sources explicitly confirm them. If a source is missing, stale, retained, or unreadable, preserve that uncertainty rather than filling it from an earlier chat. The App's external-schedule acknowledgement is only an in-App record: never inspect or modify an external scheduled task, and never claim the acknowledgement changed or disabled it.
 
 Use the returned saved snapshot and revision as the result. If the app cannot confirm persistence, say the outcome is unconfirmed and direct the user to check the saved result before retrying. Never imply that an assistant reply alone changed Tasks. Tasks, Today, and Calendar share the same Task identity; after saving, the user can open it in Tasks and return to the preserved conversation and draft.
 
