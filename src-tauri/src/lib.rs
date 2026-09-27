@@ -8,6 +8,7 @@ use tauri::{RunEvent, WindowEvent};
 pub mod appearance;
 pub mod backup;
 mod clock;
+pub mod collaboration;
 pub mod cutover;
 pub mod exercise;
 pub mod habits;
@@ -79,6 +80,86 @@ fn application_identity() -> ApplicationIdentity {
         feature_area: "Daily records and habits",
         boundary_message: "Local Rust application ready · Offline",
     }
+}
+
+#[tauri::command]
+fn collaboration_connection(
+    application: State<'_, collaboration::CollaborationApplication>,
+) -> collaboration::RuntimeConnectionView {
+    application.connection()
+}
+
+#[tauri::command]
+fn collaboration_start_chatgpt_login(
+    application: State<'_, collaboration::CollaborationApplication>,
+) -> Result<(), String> {
+    application.start_chatgpt_login()
+}
+
+#[tauri::command]
+fn collaboration_select_model(
+    application: State<'_, collaboration::CollaborationApplication>,
+    model_id: Option<String>,
+) -> Result<collaboration::RuntimeConnectionView, String> {
+    application.select_model(model_id.as_deref())
+}
+
+#[tauri::command]
+fn collaboration_select_reasoning_effort(
+    application: State<'_, collaboration::CollaborationApplication>,
+    reasoning_effort: Option<String>,
+) -> Result<collaboration::RuntimeConnectionView, String> {
+    application.select_reasoning_effort(reasoning_effort.as_deref())
+}
+
+#[tauri::command]
+fn collaboration_workspace(
+    application: State<'_, collaboration::CollaborationApplication>,
+    date: String,
+) -> Result<collaboration::CollaborationWorkspaceView, String> {
+    application.workspace(&date)
+}
+
+#[tauri::command]
+fn collaboration_context(
+    application: State<'_, collaboration::CollaborationApplication>,
+    date: String,
+) -> Result<collaboration::CollaborationContextView, String> {
+    application.context(&date)
+}
+
+#[tauri::command]
+fn collaboration_create_session(
+    application: State<'_, collaboration::CollaborationApplication>,
+    date: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.create_session(&date)
+}
+
+#[tauri::command]
+fn collaboration_list_sessions(
+    application: State<'_, collaboration::CollaborationApplication>,
+    date: String,
+) -> Result<Vec<collaboration::CollaborationSessionView>, String> {
+    application.list_sessions(&date)
+}
+
+#[tauri::command]
+fn collaboration_session(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.session_for_selected_vault(&session_id)
+}
+
+#[tauri::command]
+fn collaboration_submit_message(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    target_date: String,
+    text: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.submit_message_for_selected_vault(&session_id, &target_date, &text)
 }
 
 #[tauri::command]
@@ -366,6 +447,8 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
             let today_workspace_file = today_workspace_file_for(&app_handle)?;
+            let collaboration_app_data_dir = app_handle.path().app_data_dir()?;
+            std::fs::create_dir_all(&collaboration_app_data_dir)?;
             let appearance_file = appearance_file_for(&app_handle)?;
             let appearance_background_directory = appearance_background_directory_for(&app_handle)?;
             let interface_language_file = interface_language_file_for(&app_handle)?;
@@ -423,6 +506,10 @@ pub fn run() {
                 NativeTodayWorkspaceExchange::new(app_handle.clone()),
                 SystemClock,
             ));
+            app.manage(collaboration::CollaborationApplication::new_local(
+                collaboration_app_data_dir,
+                today_workspace_file.clone(),
+            ));
             app.manage(TaskApplication::new(
                 FileTodayWorkspacePersistence::new(today_workspace_file),
                 SystemClock,
@@ -451,6 +538,16 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             application_identity,
+            collaboration_connection,
+            collaboration_start_chatgpt_login,
+            collaboration_select_model,
+            collaboration_select_reasoning_effort,
+            collaboration_workspace,
+            collaboration_context,
+            collaboration_create_session,
+            collaboration_list_sessions,
+            collaboration_session,
+            collaboration_submit_message,
             appearance_preferences,
             set_accent_color,
             restore_appearance_defaults,
@@ -492,6 +589,16 @@ pub fn run() {
     #[cfg(not(target_os = "macos"))]
     let application = application.invoke_handler(tauri::generate_handler![
         application_identity,
+        collaboration_connection,
+        collaboration_start_chatgpt_login,
+        collaboration_select_model,
+        collaboration_select_reasoning_effort,
+        collaboration_workspace,
+        collaboration_context,
+        collaboration_create_session,
+        collaboration_list_sessions,
+        collaboration_session,
+        collaboration_submit_message,
         appearance_preferences,
         set_accent_color,
         restore_appearance_defaults,
