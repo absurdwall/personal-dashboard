@@ -83,6 +83,10 @@ impl CollaborationContextSource for FixtureContext {
                 message: "Current Tasks loaded".into(),
                 items: vec!["Task: synthetic appointment".into()],
             },
+            task_revision: Some("synthetic-task-revision".into()),
+            task_target_binding: Some("synthetic-task-binding".into()),
+            task_records: Vec::new(),
+            task_lists: Vec::new(),
             habits: ContextPaneView {
                 state: "ready".into(),
                 message: "Current habits loaded".into(),
@@ -792,6 +796,7 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
         run_state: "thinking".into(),
         progress: "Controlled running state".into(),
         runtime_thread_id: Some("runtime-thread-1".into()),
+        task_tool_registered: false,
         messages: vec![
             StoredCollaborationMessage {
                 id: "message-active-1".into(),
@@ -820,6 +825,7 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
                 result_checked: false,
             },
         ],
+        task_operations: Vec::new(),
         draft: "Recovered draft".into(),
         drafts_by_date: HashMap::new(),
     });

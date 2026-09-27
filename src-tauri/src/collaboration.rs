@@ -1,7 +1,11 @@
 use crate::clock::SystemClock;
 use crate::habits::{HabitSnapshotState, HabitSnapshotView};
 use crate::platform::FileTodayWorkspacePersistence;
-use crate::tasks::{FileTaskStore, TaskApplication, TaskDataState, TasksView};
+use crate::tasks::{
+    FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput, TaskDataState,
+    TaskDeleteInput, TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput,
+    TaskListRestoreInput, TaskRestoreInput, TaskState, TaskStateInput, TaskUpdateInput, TasksView,
+};
 use crate::today::{
     TodayApplication, TodayClock, TodayState, TodayView, TodayWorkspaceExchange,
     TodayWorkspacePersistence,
@@ -27,6 +31,7 @@ const MAX_MESSAGE_CHARACTERS: usize = 12_000;
 const APP_SERVER_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 const COLLABORATION_SKILL: &str =
     include_str!("../../.agents/skills/personal-dashboard-collaboration/SKILL.md");
+const COLLABORATION_TASK_TOOL: &str = "dashboard_task_operation";
 
 static IDENTIFIER_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
@@ -45,7 +50,34 @@ pub struct CollaborationContextView {
     pub vault_name: Option<String>,
     pub daily_record: ContextPaneView,
     pub tasks: ContextPaneView,
+    pub task_revision: Option<String>,
+    pub task_target_binding: Option<String>,
+    pub task_records: Vec<CollaborationTaskReferenceView>,
+    pub task_lists: Vec<CollaborationTaskListReferenceView>,
     pub habits: ContextPaneView,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationTaskReferenceView {
+    pub id: String,
+    pub name: String,
+    pub content: Option<String>,
+    pub date: Option<String>,
+    pub time: Option<String>,
+    pub list_id: String,
+    pub state: TaskState,
+    pub deleted_at: Option<String>,
+    pub completion: Option<crate::tasks::TaskCompletionView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationTaskListReferenceView {
+    pub id: String,
+    pub name: String,
+    pub is_system: bool,
+    pub archived: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -76,9 +108,334 @@ pub struct CollaborationSessionView {
     pub run_state: String,
     pub progress: String,
     pub runtime_thread_id: Option<String>,
+    pub task_tool_available: bool,
     pub messages: Vec<CollaborationMessageView>,
+    pub task_operations: Vec<CollaborationTaskOperationView>,
     pub draft: String,
     pub drafts_by_date: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "operation",
+    deny_unknown_fields
+)]
+pub enum CollaborationTaskOperation {
+    CreateTask {
+        name: String,
+        content: Option<String>,
+        date: Option<String>,
+        time: Option<String>,
+        list_id: Option<String>,
+    },
+    UpdateTask {
+        task_id: String,
+        name: String,
+        content: Option<String>,
+        date: Option<String>,
+        time: Option<String>,
+        list_id: Option<String>,
+    },
+    CompleteTask {
+        task_id: String,
+    },
+    AbandonTask {
+        task_id: String,
+    },
+    ReopenTask {
+        task_id: String,
+    },
+    DeleteTask {
+        task_id: String,
+    },
+    RestoreTask {
+        task_id: String,
+    },
+    CorrectCompletion {
+        task_id: String,
+        completed_on: String,
+        completed_time: Option<String>,
+    },
+    CreateList {
+        name: String,
+    },
+    RenameList {
+        list_id: String,
+        name: String,
+    },
+    ArchiveList {
+        list_id: String,
+    },
+    RestoreList {
+        list_id: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "kind",
+    deny_unknown_fields
+)]
+pub enum CollaborationTaskOperationBaseline {
+    Task {
+        id: String,
+        name: String,
+        content: Option<String>,
+        date: Option<String>,
+        time: Option<String>,
+        list_id: String,
+        list_name: String,
+        state: TaskState,
+        deleted_at: Option<String>,
+        completion: Option<crate::tasks::TaskCompletionView>,
+    },
+    List {
+        id: String,
+        name: String,
+        archived: bool,
+    },
+    None,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationTaskOperationView {
+    pub id: String,
+    pub operation: CollaborationTaskOperation,
+    pub status: String,
+    pub target_date: String,
+    pub baseline: CollaborationTaskOperationBaseline,
+    pub result_message: Option<String>,
+    pub result_snapshot: Option<CollaborationTaskOperationBaseline>,
+    pub result_revision: Option<String>,
+    pub task_id: Option<String>,
+    pub list_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredCollaborationTaskOperation {
+    id: String,
+    tool_call_key: String,
+    operation_id: String,
+    runtime_thread_id: String,
+    runtime_turn_id: String,
+    execution_id: String,
+    vault_key: String,
+    target_binding: String,
+    expected_revision: Option<String>,
+    operation: CollaborationTaskOperation,
+    status: String,
+    target_date: String,
+    baseline: CollaborationTaskOperationBaseline,
+    result_message: Option<String>,
+    result_snapshot: Option<CollaborationTaskOperationBaseline>,
+    result_revision: Option<String>,
+    task_id: Option<String>,
+    list_id: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
+
+pub trait CollaborationTaskService: Send + Sync {
+    fn is_available(&self) -> bool {
+        true
+    }
+    fn read(&self) -> Result<TasksView, String>;
+    fn apply(
+        &self,
+        operation: &CollaborationTaskOperation,
+        target_binding: &str,
+        expected_revision: Option<&str>,
+        operation_id: &str,
+    ) -> Result<TasksView, String>;
+}
+
+struct UnavailableCollaborationTaskService;
+
+impl CollaborationTaskService for UnavailableCollaborationTaskService {
+    fn is_available(&self) -> bool {
+        false
+    }
+
+    fn read(&self) -> Result<TasksView, String> {
+        Err("Task operations are unavailable in this collaboration adapter.".into())
+    }
+
+    fn apply(
+        &self,
+        _operation: &CollaborationTaskOperation,
+        _target_binding: &str,
+        _expected_revision: Option<&str>,
+        _operation_id: &str,
+    ) -> Result<TasksView, String> {
+        Err("Task operations are unavailable in this collaboration adapter.".into())
+    }
+}
+
+pub struct TaskApplicationCollaborationAdapter<P, C, S = FileTaskStore> {
+    application: TaskApplication<P, C, S>,
+}
+
+impl<P, C, S> TaskApplicationCollaborationAdapter<P, C, S> {
+    pub fn new(application: TaskApplication<P, C, S>) -> Self {
+        Self { application }
+    }
+}
+
+impl<P, C, S> CollaborationTaskService for TaskApplicationCollaborationAdapter<P, C, S>
+where
+    P: TodayWorkspacePersistence + Send + Sync,
+    C: TodayClock + Send + Sync,
+    S: crate::tasks::TaskStore + Send + Sync,
+{
+    fn read(&self) -> Result<TasksView, String> {
+        self.application.read()
+    }
+
+    fn apply(
+        &self,
+        operation: &CollaborationTaskOperation,
+        target_binding: &str,
+        expected_revision: Option<&str>,
+        operation_id: &str,
+    ) -> Result<TasksView, String> {
+        let expected_revision = expected_revision.map(str::to_owned);
+        let required_revision = || {
+            expected_revision.clone().ok_or_else(|| {
+                "Tasks changed before this operation could be saved. Refresh Tasks and review the action again.".to_string()
+            })
+        };
+        match operation {
+            CollaborationTaskOperation::CreateTask {
+                name,
+                content,
+                date,
+                time,
+                list_id,
+            } => self.application.create(TaskCreateInput {
+                target_binding: target_binding.to_owned(),
+                expected_revision,
+                task_id: stable_child_identifier("task", operation_id),
+                name: name.clone(),
+                content: content.clone(),
+                date: date.clone(),
+                time: time.clone(),
+                list_id: list_id.clone(),
+            }),
+            CollaborationTaskOperation::UpdateTask {
+                task_id,
+                name,
+                content,
+                date,
+                time,
+                list_id,
+            } => self.application.update(TaskUpdateInput {
+                target_binding: target_binding.to_owned(),
+                expected_revision: required_revision()?,
+                task_id: task_id.clone(),
+                change_id: operation_id.to_owned(),
+                name: name.clone(),
+                content: content.clone(),
+                date: date.clone(),
+                time: time.clone(),
+                list_id: list_id.clone(),
+            }),
+            CollaborationTaskOperation::CompleteTask { task_id } => {
+                self.application.set_state(TaskStateInput {
+                    target_binding: target_binding.to_owned(),
+                    expected_revision: required_revision()?,
+                    task_id: task_id.clone(),
+                    change_id: operation_id.to_owned(),
+                    state: TaskState::Completed,
+                })
+            }
+            CollaborationTaskOperation::AbandonTask { task_id } => {
+                self.application.set_state(TaskStateInput {
+                    target_binding: target_binding.to_owned(),
+                    expected_revision: required_revision()?,
+                    task_id: task_id.clone(),
+                    change_id: operation_id.to_owned(),
+                    state: TaskState::Abandoned,
+                })
+            }
+            CollaborationTaskOperation::ReopenTask { task_id } => {
+                self.application.set_state(TaskStateInput {
+                    target_binding: target_binding.to_owned(),
+                    expected_revision: required_revision()?,
+                    task_id: task_id.clone(),
+                    change_id: operation_id.to_owned(),
+                    state: TaskState::Pending,
+                })
+            }
+            CollaborationTaskOperation::DeleteTask { task_id } => {
+                self.application.delete(TaskDeleteInput {
+                    target_binding: target_binding.to_owned(),
+                    expected_revision: required_revision()?,
+                    task_id: task_id.clone(),
+                    change_id: operation_id.to_owned(),
+                })
+            }
+            CollaborationTaskOperation::RestoreTask { task_id } => {
+                self.application.restore(TaskRestoreInput {
+                    target_binding: target_binding.to_owned(),
+                    expected_revision: required_revision()?,
+                    task_id: task_id.clone(),
+                    change_id: operation_id.to_owned(),
+                })
+            }
+            CollaborationTaskOperation::CorrectCompletion {
+                task_id,
+                completed_on,
+                completed_time,
+            } => self
+                .application
+                .correct_completion(TaskCompletionCorrectionInput {
+                    target_binding: target_binding.to_owned(),
+                    expected_revision: required_revision()?,
+                    task_id: task_id.clone(),
+                    change_id: operation_id.to_owned(),
+                    completed_on: completed_on.clone(),
+                    completed_time: completed_time.clone(),
+                }),
+            CollaborationTaskOperation::CreateList { name } => {
+                self.application.create_list(TaskListCreateInput {
+                    target_binding: target_binding.to_owned(),
+                    expected_revision,
+                    list_id: stable_child_identifier("list", operation_id),
+                    name: name.clone(),
+                })
+            }
+            CollaborationTaskOperation::RenameList { list_id, name } => {
+                self.application.rename_list(TaskListRenameInput {
+                    target_binding: target_binding.to_owned(),
+                    expected_revision: required_revision()?,
+                    list_id: list_id.clone(),
+                    name: name.clone(),
+                })
+            }
+            CollaborationTaskOperation::ArchiveList { list_id } => {
+                self.application.archive_list(TaskListArchiveInput {
+                    target_binding: target_binding.to_owned(),
+                    expected_revision: required_revision()?,
+                    list_id: list_id.clone(),
+                })
+            }
+            CollaborationTaskOperation::RestoreList { list_id } => {
+                self.application.restore_list(TaskListRestoreInput {
+                    target_binding: target_binding.to_owned(),
+                    expected_revision: required_revision()?,
+                    list_id: list_id.clone(),
+                })
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -143,6 +500,24 @@ pub struct RuntimeTurnRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeDynamicToolCall {
+    pub thread_id: String,
+    pub turn_id: String,
+    pub call_id: String,
+    pub tool: String,
+    pub arguments: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeDynamicToolResult {
+    pub text: String,
+    pub success: bool,
+}
+
+pub type RuntimeDynamicToolHandler =
+    Arc<dyn Fn(RuntimeDynamicToolCall) -> RuntimeDynamicToolResult + Send + Sync>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeTurnResult {
     pub text: String,
     pub runtime_turn_id: Option<String>,
@@ -191,6 +566,14 @@ pub trait AppServerTransport: Send {
     fn inspect(&mut self) -> Result<RuntimeConnectionView, String>;
     fn start_chatgpt_login(&mut self) -> Result<(), String>;
     fn start_thread(&mut self, model: Option<&str>, instructions: &str) -> Result<String, String>;
+    fn start_thread_with_dynamic_tools(
+        &mut self,
+        model: Option<&str>,
+        instructions: &str,
+        _dynamic_tools: Vec<Value>,
+    ) -> Result<String, String> {
+        self.start_thread(model, instructions)
+    }
     fn resume_thread(&mut self, thread_id: &str) -> Result<(), String>;
     fn send_turn(&mut self, request: RuntimeTurnRequest) -> Result<RuntimeTurnResult, String>;
     fn send_turn_cancellable(
@@ -199,6 +582,14 @@ pub trait AppServerTransport: Send {
         _cancel_requested: Arc<AtomicBool>,
     ) -> Result<RuntimeTurnResult, String> {
         self.send_turn(request)
+    }
+    fn send_turn_with_dynamic_tools(
+        &mut self,
+        request: RuntimeTurnRequest,
+        cancel_requested: Arc<AtomicBool>,
+        _tool_handler: Option<RuntimeDynamicToolHandler>,
+    ) -> Result<RuntimeTurnResult, String> {
+        self.send_turn_cancellable(request, cancel_requested)
     }
     fn reconcile_turn(
         &mut self,
@@ -323,7 +714,11 @@ pub struct StoredCollaborationSession {
     pub run_state: String,
     pub progress: String,
     pub runtime_thread_id: Option<String>,
+    #[serde(default)]
+    pub task_tool_registered: bool,
     pub messages: Vec<StoredCollaborationMessage>,
+    #[serde(default)]
+    pub task_operations: Vec<StoredCollaborationTaskOperation>,
     #[serde(default)]
     pub draft: String,
     #[serde(default)]
@@ -458,6 +853,7 @@ pub struct CollaborationApplication {
     store: Arc<dyn CollaborationStore>,
     runtime: Arc<Mutex<Box<dyn AppServerTransport>>>,
     context_source: Arc<dyn CollaborationContextSource>,
+    task_service: Arc<dyn CollaborationTaskService>,
     clock: Arc<dyn CollaborationClock>,
     working_directory: PathBuf,
     skill_instructions: Arc<str>,
@@ -492,6 +888,7 @@ impl CollaborationApplication {
             store,
             runtime: Arc::new(Mutex::new(runtime)),
             context_source,
+            task_service: Arc::new(UnavailableCollaborationTaskService),
             clock,
             working_directory,
             skill_instructions: Arc::from(skill_instructions),
@@ -505,7 +902,19 @@ impl CollaborationApplication {
         application
     }
 
+    pub fn with_task_service(mut self, task_service: Arc<dyn CollaborationTaskService>) -> Self {
+        self.task_service = task_service;
+        self
+    }
+
     pub fn new_local(app_data_dir: PathBuf, workspace_file: PathBuf) -> Self {
+        let task_service = Arc::new(TaskApplicationCollaborationAdapter::new(
+            TaskApplication::new(
+                FileTodayWorkspacePersistence::new(workspace_file.clone()),
+                SystemClock,
+                FileTaskStore,
+            ),
+        ));
         Self::with_adapters(
             Arc::new(FileCollaborationStore::new(
                 app_data_dir
@@ -518,6 +927,7 @@ impl CollaborationApplication {
             app_data_dir.join("collaboration-runtime"),
             COLLABORATION_SKILL.to_owned(),
         )
+        .with_task_service(task_service)
     }
 
     pub fn connection(&self) -> RuntimeConnectionView {
@@ -681,7 +1091,9 @@ impl CollaborationApplication {
             run_state: "waiting".into(),
             progress: "Waiting for a message.".into(),
             runtime_thread_id: None,
+            task_tool_registered: false,
             messages: Vec::new(),
+            task_operations: Vec::new(),
             draft: String::new(),
             drafts_by_date: HashMap::new(),
         };
@@ -739,6 +1151,587 @@ impl CollaborationApplication {
             "Choose a Vault in Settings before opening collaboration history.".to_string()
         })?;
         self.session(&vault_key, session_id)
+    }
+
+    pub fn approve_task_operation_for_selected_vault(
+        &self,
+        session_id: &str,
+        operation_id: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before approving a task change.".to_string()
+        })?;
+        let proposal = self.read_state(|state| {
+            state
+                .sessions
+                .iter()
+                .find(|session| {
+                    session.id == session_id && session.vault_key.as_deref() == Some(&vault_key)
+                })
+                .and_then(|session| {
+                    session
+                        .task_operations
+                        .iter()
+                        .find(|operation| operation.id == operation_id)
+                        .cloned()
+                })
+                .ok_or_else(|| {
+                    "This task change is not available in the selected Vault.".to_string()
+                })
+        })??;
+        if proposal.status == "applied" {
+            return self.session(&vault_key, session_id);
+        }
+        if !matches!(proposal.status.as_str(), "awaitingApproval" | "failed") {
+            return Err(
+                "This task change is no longer awaiting approval. Refresh the conversation.".into(),
+            );
+        }
+        if proposal.vault_key != vault_key
+            || self.context_source.current_vault_key()?.as_deref() != Some(&proposal.vault_key)
+        {
+            return Err(
+                "The selected Vault changed. Return to the original session before approving this task change.".into(),
+            );
+        }
+        let current = self.task_service.read()?;
+        require_task_view_writable(&current)?;
+        if current.target_binding.as_deref() != Some(&proposal.target_binding)
+            || current.revision != proposal.expected_revision
+        {
+            return self.record_task_operation_conflict(
+                &vault_key,
+                session_id,
+                operation_id,
+                "Tasks changed after this proposal was prepared. Refresh and review the latest task details before approving again.".into(),
+            );
+        }
+        if self.context_source.current_vault_key()?.as_deref() != Some(&vault_key) {
+            return Err(
+                "The selected Vault changed before this task change could be saved. No change was made.".into(),
+            );
+        }
+
+        match self.task_service.apply(
+            &proposal.operation,
+            &proposal.target_binding,
+            proposal.expected_revision.as_deref(),
+            &proposal.operation_id,
+        ) {
+            Ok(saved_view) => {
+                let still_selected =
+                    self.context_source.current_vault_key()?.as_deref() == Some(&vault_key);
+                let result_message = if still_selected {
+                    Some(task_operation_saved_message(&proposal, &saved_view))
+                } else {
+                    Some("Saved in the original Vault. The selected Vault has changed; reopen the original session to review it.".into())
+                };
+                let now = self.clock.current_timestamp();
+                self.update_state(|state| {
+                    let session = matching_session_mut(state, &vault_key, session_id)?;
+                    let stored = session
+                        .task_operations
+                        .iter_mut()
+                        .find(|stored| stored.id == operation_id)
+                        .ok_or_else(|| "This task change is no longer available.".to_string())?;
+                    if stored.status != "applied" {
+                        stored.status = "applied".into();
+                        stored.result_message = result_message.clone();
+                        stored.result_snapshot = still_selected
+                            .then(|| task_operation_result_snapshot(&proposal, &saved_view))
+                            .flatten();
+                        stored.result_revision = still_selected
+                            .then(|| saved_view.revision.clone())
+                            .flatten();
+                        stored.updated_at = now.clone();
+                    }
+                    Ok(session_view(session))
+                })
+                .map_err(|error| {
+                    format!("The task change was saved, but its result could not be saved to collaboration history: {error}. Use Check saved result to reconcile before retrying.")
+                })
+            }
+            Err(error) => {
+                let latest = self.task_service.read().ok();
+                let is_conflict = latest.as_ref().is_some_and(|view| {
+                    view.target_binding.as_deref() != Some(&proposal.target_binding)
+                        || view.revision != proposal.expected_revision
+                });
+                let message = if is_conflict {
+                    "Tasks changed while this action was being saved. Refresh and review the latest task details before approving again.".to_string()
+                } else {
+                    error
+                };
+                if is_conflict {
+                    self.record_task_operation_conflict(
+                        &vault_key,
+                        session_id,
+                        operation_id,
+                        message,
+                    )
+                } else {
+                    self.record_task_operation_failure(
+                        &vault_key,
+                        session_id,
+                        operation_id,
+                        message,
+                    )
+                }
+            }
+        }
+    }
+
+    pub fn reject_task_operation_for_selected_vault(
+        &self,
+        session_id: &str,
+        operation_id: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before dismissing a task change.".to_string()
+        })?;
+        let proposal = self.read_state(|state| {
+            state
+                .sessions
+                .iter()
+                .find(|session| {
+                    session.id == session_id && session.vault_key.as_deref() == Some(&vault_key)
+                })
+                .and_then(|session| {
+                    session
+                        .task_operations
+                        .iter()
+                        .find(|proposal| proposal.id == operation_id)
+                        .cloned()
+                })
+                .ok_or_else(|| {
+                    "This task change is not available in the selected Vault.".to_string()
+                })
+        })??;
+        if proposal.status == "applied" {
+            return Err("This task change was already saved and cannot be dismissed.".into());
+        }
+        if !matches!(
+            proposal.status.as_str(),
+            "awaitingApproval" | "conflict" | "failed"
+        ) {
+            return Err("This task change is no longer awaiting a decision.".into());
+        }
+        if proposal.vault_key != vault_key
+            || self.context_source.current_vault_key()?.as_deref() != Some(&vault_key)
+        {
+            return Err("The selected Vault changed. No task data was read or changed.".into());
+        }
+        let latest = self.task_service.read()?;
+        require_task_view_writable(&latest)?;
+        if self.context_source.current_vault_key()?.as_deref() != Some(&vault_key) {
+            return Err(
+                "The selected Vault changed while the task decision was being checked.".into(),
+            );
+        }
+        if latest.target_binding.as_deref() != Some(&proposal.target_binding)
+            || latest.revision != proposal.expected_revision
+        {
+            // The write may have reached Tasks even when the history update did not.
+            // Reconcile before allowing a dismissal so the UI cannot report a saved
+            // operation as not saved.
+            return self.reconcile_task_operation_for_selected_vault(session_id, operation_id);
+        }
+
+        let now = self.clock.current_timestamp();
+        self.update_state(|state| {
+            let session = matching_session_mut(state, &vault_key, session_id)?;
+            let proposal = session
+                .task_operations
+                .iter_mut()
+                .find(|proposal| proposal.id == operation_id)
+                .ok_or_else(|| "This task change is no longer available.".to_string())?;
+            if proposal.status == "applied" {
+                return Err("This task change was already saved and cannot be dismissed.".into());
+            }
+            if !matches!(
+                proposal.status.as_str(),
+                "awaitingApproval" | "conflict" | "failed"
+            ) {
+                return Err("This task change is no longer awaiting a decision.".into());
+            }
+            proposal.status = "rejected".into();
+            proposal.result_message = Some("Dismissed. No task data was changed.".into());
+            proposal.result_snapshot = None;
+            proposal.updated_at = now.clone();
+            Ok(session_view(session))
+        })
+    }
+
+    pub fn refresh_task_operation_for_selected_vault(
+        &self,
+        session_id: &str,
+        operation_id: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before refreshing a task change.".to_string()
+        })?;
+        let proposal = self.read_state(|state| {
+            state
+                .sessions
+                .iter()
+                .find(|session| {
+                    session.id == session_id && session.vault_key.as_deref() == Some(&vault_key)
+                })
+                .and_then(|session| {
+                    session
+                        .task_operations
+                        .iter()
+                        .find(|operation| operation.id == operation_id)
+                        .cloned()
+                })
+                .ok_or_else(|| {
+                    "This task change is not available in the selected Vault.".to_string()
+                })
+        })??;
+        if !matches!(proposal.status.as_str(), "conflict" | "failed") {
+            return Err("Only a failed or outdated task change can be refreshed.".into());
+        }
+        if proposal.vault_key != vault_key {
+            return Err("The selected Vault changed. No task data was read or changed.".into());
+        }
+        let latest = self.task_service.read()?;
+        require_task_view_writable(&latest)?;
+        if self.context_source.current_vault_key()?.as_deref() != Some(&vault_key) {
+            return Err("The selected Vault changed while Tasks was being refreshed.".into());
+        }
+        let baseline = task_operation_baseline(&proposal.operation, &latest)?;
+        let now = self.clock.current_timestamp();
+        self.update_state(|state| {
+            let session = matching_session_mut(state, &vault_key, session_id)?;
+            let stored = session
+                .task_operations
+                .iter_mut()
+                .find(|stored| stored.id == operation_id)
+                .ok_or_else(|| "This task change is no longer available.".to_string())?;
+            stored.target_binding = latest
+                .target_binding
+                .clone()
+                .ok_or_else(|| "Tasks no longer has a writable target.".to_string())?;
+            stored.expected_revision = latest.revision.clone();
+            stored.baseline = baseline.clone();
+            stored.status = "awaitingApproval".into();
+            stored.result_message = Some(
+                "Latest Tasks data loaded. Review this proposal and approve again to save it."
+                    .into(),
+            );
+            stored.result_snapshot = None;
+            stored.result_revision = None;
+            stored.updated_at = now.clone();
+            Ok(session_view(session))
+        })
+    }
+
+    pub fn reconcile_task_operation_for_selected_vault(
+        &self,
+        session_id: &str,
+        operation_id: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        let vault_key = self
+            .context_source
+            .current_vault_key()?
+            .ok_or_else(|| "Choose a Vault before checking a task change result.".to_string())?;
+        let proposal = self.read_state(|state| {
+            state
+                .sessions
+                .iter()
+                .find(|session| {
+                    session.id == session_id && session.vault_key.as_deref() == Some(&vault_key)
+                })
+                .and_then(|session| {
+                    session
+                        .task_operations
+                        .iter()
+                        .find(|operation| operation.id == operation_id)
+                        .cloned()
+                })
+                .ok_or_else(|| {
+                    "This task change is not available in the selected Vault.".to_string()
+                })
+        })??;
+        if proposal.vault_key != vault_key
+            || !matches!(
+                proposal.status.as_str(),
+                "awaitingApproval" | "conflict" | "failed"
+            )
+        {
+            return Err("This task change cannot be reconciled in the selected Vault.".into());
+        }
+        let latest = self.task_service.read()?;
+        require_task_view_writable(&latest)?;
+        if self.context_source.current_vault_key()?.as_deref() != Some(&vault_key) {
+            return Err(
+                "The selected Vault changed while the saved result was being checked.".into(),
+            );
+        }
+        if latest.target_binding.as_deref() != Some(&proposal.target_binding) {
+            return Err(
+                "Tasks is now bound to a different data file. The saved result was not reconciled."
+                    .into(),
+            );
+        }
+        if latest.revision == proposal.expected_revision {
+            return self.session(&vault_key, session_id);
+        }
+        if !task_operation_effect_matches(&proposal, &latest) {
+            let message = "Tasks has a newer version, but it does not confirm this exact saved action. Refresh and review the latest task details before approving again.".to_string();
+            return self.record_task_operation_conflict(
+                &vault_key,
+                session_id,
+                operation_id,
+                message,
+            );
+        }
+        let result_snapshot = task_operation_result_snapshot(&proposal, &latest);
+        let now = self.clock.current_timestamp();
+        self.update_state(|state| {
+            let session = matching_session_mut(state, &vault_key, session_id)?;
+            let stored = session
+                .task_operations
+                .iter_mut()
+                .find(|stored| stored.id == operation_id)
+                .ok_or_else(|| "This task change is no longer available.".to_string())?;
+            stored.status = "applied".into();
+            stored.result_message = Some(format!(
+                "The latest Tasks version confirms that this action was already saved. {}",
+                task_operation_saved_message(&proposal, &latest)
+            ));
+            stored.result_snapshot = result_snapshot.clone();
+            stored.result_revision = latest.revision.clone();
+            stored.updated_at = now.clone();
+            Ok(session_view(session))
+        })
+    }
+
+    fn handle_runtime_task_tool_call(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        execution_id: &str,
+        expected_thread_id: &str,
+        target_date: &str,
+        call: RuntimeDynamicToolCall,
+    ) -> RuntimeDynamicToolResult {
+        if call.tool != COLLABORATION_TASK_TOOL {
+            return RuntimeDynamicToolResult {
+                text: format!(
+                    "Unsupported Dashboard dynamic tool `{}`. No task was changed.",
+                    call.tool
+                ),
+                success: false,
+            };
+        }
+        if call.thread_id != expected_thread_id {
+            return RuntimeDynamicToolResult {
+                text: "This tool call does not belong to the active Dashboard conversation. No task was changed.".into(),
+                success: false,
+            };
+        }
+        if let Err(error) = validate_task_operation_required_fields(&call.arguments) {
+            return RuntimeDynamicToolResult {
+                text: format!("The proposed task action was incomplete or invalid: {error}. No task was changed."),
+                success: false,
+            };
+        }
+        let operation = match serde_json::from_value::<CollaborationTaskOperation>(call.arguments) {
+            Ok(operation) => operation,
+            Err(error) => {
+                return RuntimeDynamicToolResult {
+                    text: format!("The proposed task action was incomplete or invalid: {error}. No task was changed."),
+                    success: false,
+                }
+            }
+        };
+        match self.propose_task_operation(
+            vault_key,
+            session_id,
+            execution_id,
+            expected_thread_id,
+            &call.turn_id,
+            &call.call_id,
+            target_date,
+            operation,
+        ) {
+            Ok(proposal) => RuntimeDynamicToolResult {
+                text: format!(
+                    "Task operation {} is saved for user review. It has not changed Tasks. The user must explicitly approve this exact action in Personal Dashboard.",
+                    proposal.id
+                ),
+                success: true,
+            },
+            Err(error) => RuntimeDynamicToolResult {
+                text: format!("{error} No task data was changed."),
+                success: false,
+            },
+        }
+    }
+
+    fn propose_task_operation(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        execution_id: &str,
+        runtime_thread_id: &str,
+        runtime_turn_id: &str,
+        call_id: &str,
+        target_date: &str,
+        operation: CollaborationTaskOperation,
+    ) -> Result<CollaborationTaskOperationView, String> {
+        if !self.task_service.is_available() {
+            return Err("Dashboard task operations are unavailable in this session.".into());
+        }
+        if call_id.is_empty() || runtime_turn_id.is_empty() {
+            return Err("The App Server did not provide a stable task-operation identity.".into());
+        }
+        validate_date(target_date)?;
+        if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+            return Err(
+                "The selected Vault changed. Refresh the workspace before preparing a task action."
+                    .into(),
+            );
+        }
+        let task_view = self.task_service.read()?;
+        require_task_view_writable(&task_view)?;
+        let target_binding = task_view
+            .target_binding
+            .clone()
+            .ok_or_else(|| "Tasks does not have a current writable target.".to_string())?;
+        let baseline = task_operation_baseline(&operation, &task_view)?;
+        let operation_id = stable_tool_operation_id(runtime_thread_id, runtime_turn_id, call_id);
+        let task_id = match &operation {
+            CollaborationTaskOperation::CreateTask { .. } => {
+                Some(stable_child_identifier("task", &operation_id))
+            }
+            CollaborationTaskOperation::UpdateTask { task_id, .. }
+            | CollaborationTaskOperation::CompleteTask { task_id }
+            | CollaborationTaskOperation::AbandonTask { task_id }
+            | CollaborationTaskOperation::ReopenTask { task_id }
+            | CollaborationTaskOperation::DeleteTask { task_id }
+            | CollaborationTaskOperation::RestoreTask { task_id }
+            | CollaborationTaskOperation::CorrectCompletion { task_id, .. } => {
+                Some(task_id.clone())
+            }
+            _ => None,
+        };
+        let list_id = match &operation {
+            CollaborationTaskOperation::CreateList { .. } => {
+                Some(stable_child_identifier("list", &operation_id))
+            }
+            CollaborationTaskOperation::RenameList { list_id, .. }
+            | CollaborationTaskOperation::ArchiveList { list_id }
+            | CollaborationTaskOperation::RestoreList { list_id } => Some(list_id.clone()),
+            _ => None,
+        };
+        let tool_call_key = format!("{runtime_thread_id}:{runtime_turn_id}:{call_id}");
+        let now = self.clock.current_timestamp();
+        self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            if session.runtime_thread_id.as_deref() != Some(runtime_thread_id)
+                || session.run_id.as_deref() != Some(execution_id)
+                || !matches!(session.run_state.as_str(), "thinking" | "reading")
+            {
+                return Err("This task action is no longer attached to the active Dashboard request.".into());
+            }
+            let message = session
+                .messages
+                .iter()
+                .find(|message| message.execution_id.as_deref() == Some(execution_id))
+                .ok_or_else(|| "This task action has no saved user request.".to_string())?;
+            if message.target_date != target_date || message.delivery_state != "in-progress" {
+                return Err("The target date or request state changed. Refresh the conversation before proposing a task action.".into());
+            }
+            if let Some(existing) = session
+                .task_operations
+                .iter()
+                .find(|operation| operation.tool_call_key == tool_call_key)
+            {
+                if existing.operation != operation
+                    || existing.vault_key != vault_key
+                    || existing.runtime_turn_id != runtime_turn_id
+                {
+                    return Err("This App Server call identity already belongs to a different task action.".into());
+                }
+                return Ok(task_operation_view(existing));
+            }
+            if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+                return Err("The selected Vault changed before the task proposal could be saved.".into());
+            }
+            let proposal = StoredCollaborationTaskOperation {
+                id: operation_id.clone(),
+                tool_call_key: tool_call_key.clone(),
+                operation_id: operation_id.clone(),
+                runtime_thread_id: runtime_thread_id.to_owned(),
+                runtime_turn_id: runtime_turn_id.to_owned(),
+                execution_id: execution_id.to_owned(),
+                vault_key: vault_key.to_owned(),
+                target_binding,
+                expected_revision: task_view.revision.clone(),
+                operation: operation.clone(),
+                status: "awaitingApproval".into(),
+                target_date: target_date.to_owned(),
+                baseline: baseline.clone(),
+                result_message: None,
+                result_snapshot: None,
+                result_revision: None,
+                task_id: task_id.clone(),
+                list_id: list_id.clone(),
+                created_at: now.clone(),
+                updated_at: now.clone(),
+            };
+            session.task_operations.push(proposal.clone());
+            session.last_activity_at = now.clone();
+            Ok(task_operation_view(&proposal))
+        })
+    }
+
+    fn record_task_operation_conflict(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        operation_id: &str,
+        message: String,
+    ) -> Result<CollaborationSessionView, String> {
+        self.record_task_operation_status(vault_key, session_id, operation_id, "conflict", message)
+    }
+
+    fn record_task_operation_failure(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        operation_id: &str,
+        message: String,
+    ) -> Result<CollaborationSessionView, String> {
+        self.record_task_operation_status(vault_key, session_id, operation_id, "failed", message)
+    }
+
+    fn record_task_operation_status(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        operation_id: &str,
+        status: &str,
+        message: String,
+    ) -> Result<CollaborationSessionView, String> {
+        let now = self.clock.current_timestamp();
+        self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            let stored = session
+                .task_operations
+                .iter_mut()
+                .find(|stored| stored.id == operation_id)
+                .ok_or_else(|| "This task change is no longer available.".to_string())?;
+            if stored.status != "applied" {
+                stored.status = status.to_owned();
+                stored.result_message = Some(message.clone());
+                stored.result_snapshot = None;
+                stored.updated_at = now.clone();
+            }
+            Ok(session_view(session))
+        })
     }
 
     pub fn save_draft_for_selected_vault(
@@ -1478,11 +2471,25 @@ impl CollaborationApplication {
             }
         }
 
+        let dynamic_tools = if self.task_service.is_available() {
+            vec![collaboration_task_tool_spec()]
+        } else {
+            Vec::new()
+        };
+        let task_tool_registered = if session.runtime_thread_id.is_some() {
+            session.task_tool_registered
+        } else {
+            !dynamic_tools.is_empty()
+        };
         let thread_id = match session.runtime_thread_id.as_deref() {
             Some(thread_id) => runtime
                 .resume_thread(thread_id)
                 .map(|_| thread_id.to_owned()),
-            None => runtime.start_thread(selected_model.as_deref(), &self.skill_instructions),
+            None => runtime.start_thread_with_dynamic_tools(
+                selected_model.as_deref(),
+                &self.skill_instructions,
+                dynamic_tools,
+            ),
         };
         let thread_id = match thread_id {
             Ok(thread_id) => thread_id,
@@ -1492,7 +2499,13 @@ impl CollaborationApplication {
                 return;
             }
         };
-        if let Err(error) = self.save_runtime_thread(vault_key, session_id, run_id, &thread_id) {
+        if let Err(error) = self.save_runtime_thread(
+            vault_key,
+            session_id,
+            run_id,
+            &thread_id,
+            task_tool_registered,
+        ) {
             drop(runtime);
             self.finish_error(vault_key, session_id, run_id, error);
             return;
@@ -1528,7 +2541,7 @@ impl CollaborationApplication {
             return;
         }
         let request = RuntimeTurnRequest {
-            thread_id,
+            thread_id: thread_id.clone(),
             execution_id: run_id.to_owned(),
             model: selected_model,
             reasoning_effort: selected_reasoning_effort,
@@ -1536,7 +2549,26 @@ impl CollaborationApplication {
             context,
             working_directory: self.working_directory.clone(),
         };
-        let result = runtime.send_turn_cancellable(request, Arc::clone(&cancellation));
+        let tool_handler = (self.task_service.is_available() && task_tool_registered).then(|| {
+            let application = self.clone();
+            let expected_thread_id = thread_id.clone();
+            let expected_session_id = session_id.to_owned();
+            let expected_execution_id = run_id.to_owned();
+            let expected_vault_key = vault_key.to_owned();
+            let expected_target_date = target_date.to_owned();
+            Arc::new(move |call| {
+                application.handle_runtime_task_tool_call(
+                    &expected_vault_key,
+                    &expected_session_id,
+                    &expected_execution_id,
+                    &expected_thread_id,
+                    &expected_target_date,
+                    call,
+                )
+            }) as RuntimeDynamicToolHandler
+        });
+        let result =
+            runtime.send_turn_with_dynamic_tools(request, Arc::clone(&cancellation), tool_handler);
         drop(runtime);
 
         match result {
@@ -1614,6 +2646,7 @@ impl CollaborationApplication {
         session_id: &str,
         run_id: &str,
         thread_id: &str,
+        task_tool_registered: bool,
     ) -> Result<(), String> {
         self.update_state(|state| {
             let session = matching_session_mut(state, vault_key, session_id)?;
@@ -1621,6 +2654,7 @@ impl CollaborationApplication {
                 return Err("This collaboration run is no longer current.".into());
             }
             session.runtime_thread_id = Some(thread_id.to_owned());
+            session.task_tool_registered = task_tool_registered;
             if let Some(message) = session
                 .messages
                 .iter_mut()
@@ -1973,6 +3007,7 @@ fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionVie
         run_state: session.run_state.clone(),
         progress: session.progress.clone(),
         runtime_thread_id: session.runtime_thread_id.clone(),
+        task_tool_available: session.task_tool_registered,
         messages: session
             .messages
             .iter()
@@ -1989,6 +3024,11 @@ fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionVie
                 result_checked: message.result_checked,
             })
             .collect(),
+        task_operations: session
+            .task_operations
+            .iter()
+            .map(task_operation_view)
+            .collect(),
         draft: session
             .drafts_by_date
             .get(&session.target_date)
@@ -1996,6 +3036,484 @@ fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionVie
             .unwrap_or_else(|| session.draft.clone()),
         drafts_by_date: session.drafts_by_date.clone(),
     }
+}
+
+fn task_operation_view(
+    operation: &StoredCollaborationTaskOperation,
+) -> CollaborationTaskOperationView {
+    CollaborationTaskOperationView {
+        id: operation.id.clone(),
+        operation: operation.operation.clone(),
+        status: operation.status.clone(),
+        target_date: operation.target_date.clone(),
+        baseline: operation.baseline.clone(),
+        result_message: operation.result_message.clone(),
+        result_snapshot: operation.result_snapshot.clone(),
+        result_revision: operation.result_revision.clone(),
+        task_id: operation.task_id.clone(),
+        list_id: operation.list_id.clone(),
+        created_at: operation.created_at.clone(),
+        updated_at: operation.updated_at.clone(),
+    }
+}
+
+fn task_operation_baseline(
+    operation: &CollaborationTaskOperation,
+    tasks: &TasksView,
+) -> Result<CollaborationTaskOperationBaseline, String> {
+    let task_baseline = |task_id: &str| -> Result<CollaborationTaskOperationBaseline, String> {
+        let task = tasks
+            .tasks
+            .iter()
+            .find(|task| task.id == task_id)
+            .ok_or_else(|| "The requested task is not in the latest Tasks view. Refresh Tasks and identify it before preparing a change.".to_string())?;
+        let list = tasks
+            .lists
+            .iter()
+            .find(|list| list.id == task.list_id)
+            .ok_or_else(|| {
+                "The task refers to a list that is missing from the current Tasks view.".to_string()
+            })?;
+        Ok(CollaborationTaskOperationBaseline::Task {
+            id: task.id.clone(),
+            name: task.name.clone(),
+            content: task.content.clone(),
+            date: task.date.clone(),
+            time: task.time.clone(),
+            list_id: task.list_id.clone(),
+            list_name: list.name.clone(),
+            state: task.state,
+            deleted_at: task.deleted_at.clone(),
+            completion: task.completion.clone(),
+        })
+    };
+    let list_baseline = |list_id: &str| -> Result<CollaborationTaskOperationBaseline, String> {
+        let list = tasks
+            .lists
+            .iter()
+            .find(|list| list.id == list_id)
+            .ok_or_else(|| "The requested task list is not in the latest Tasks view. Refresh Tasks and identify it before preparing a change.".to_string())?;
+        Ok(CollaborationTaskOperationBaseline::List {
+            id: list.id.clone(),
+            name: list.name.clone(),
+            archived: list.archived,
+        })
+    };
+    match operation {
+        CollaborationTaskOperation::CreateTask { list_id, .. } => {
+            if let Some(list_id) = list_id.as_deref() {
+                let list = tasks
+                    .lists
+                    .iter()
+                    .find(|list| list.id == list_id)
+                    .ok_or_else(|| {
+                        "The requested task list is not in the latest Tasks view.".to_string()
+                    })?;
+                if list.archived {
+                    return Err("A new task cannot be assigned to an archived list. Choose an active list first.".into());
+                }
+                list_baseline(list_id)
+            } else {
+                Ok(CollaborationTaskOperationBaseline::None)
+            }
+        }
+        CollaborationTaskOperation::UpdateTask {
+            task_id, list_id, ..
+        } => {
+            if let Some(list_id) = list_id.as_deref() {
+                let list = tasks
+                    .lists
+                    .iter()
+                    .find(|list| list.id == list_id)
+                    .ok_or_else(|| {
+                        "The requested task list is not in the latest Tasks view.".to_string()
+                    })?;
+                if list.archived {
+                    return Err("A task cannot be moved into an archived list. Choose an active list first.".into());
+                }
+            }
+            let baseline = task_baseline(task_id)?;
+            if matches!(
+                &baseline,
+                CollaborationTaskOperationBaseline::Task {
+                    deleted_at: Some(_),
+                    ..
+                }
+            ) {
+                return Err("Deleted tasks must be restored before they can be edited.".into());
+            }
+            Ok(baseline)
+        }
+        CollaborationTaskOperation::CompleteTask { task_id }
+        | CollaborationTaskOperation::AbandonTask { task_id }
+        | CollaborationTaskOperation::ReopenTask { task_id }
+        | CollaborationTaskOperation::DeleteTask { task_id }
+        | CollaborationTaskOperation::RestoreTask { task_id }
+        | CollaborationTaskOperation::CorrectCompletion { task_id, .. } => {
+            let baseline = task_baseline(task_id)?;
+            if matches!(
+                (&baseline, operation),
+                (
+                    CollaborationTaskOperationBaseline::Task {
+                        deleted_at: Some(_),
+                        ..
+                    },
+                    CollaborationTaskOperation::CompleteTask { .. }
+                        | CollaborationTaskOperation::AbandonTask { .. }
+                        | CollaborationTaskOperation::ReopenTask { .. }
+                        | CollaborationTaskOperation::CorrectCompletion { .. }
+                )
+            ) {
+                return Err("Deleted tasks must be restored before their state or completion record can be changed.".into());
+            }
+            if matches!(operation, CollaborationTaskOperation::RestoreTask { .. })
+                && matches!(
+                    &baseline,
+                    CollaborationTaskOperationBaseline::Task {
+                        deleted_at: None,
+                        ..
+                    }
+                )
+            {
+                return Err("This task is not deleted, so there is nothing to restore.".into());
+            }
+            if matches!(operation, CollaborationTaskOperation::DeleteTask { .. })
+                && matches!(
+                    &baseline,
+                    CollaborationTaskOperationBaseline::Task {
+                        deleted_at: Some(_),
+                        ..
+                    }
+                )
+            {
+                return Err(
+                    "This task is already deleted. Choose Restore task if it should return.".into(),
+                );
+            }
+            if matches!(
+                operation,
+                CollaborationTaskOperation::CorrectCompletion { .. }
+            ) && !matches!(
+                &baseline,
+                CollaborationTaskOperationBaseline::Task {
+                    state: TaskState::Completed,
+                    completion: Some(_),
+                    ..
+                }
+            ) {
+                return Err(
+                    "Only a completed task with a saved completion record can be corrected.".into(),
+                );
+            }
+            Ok(baseline)
+        }
+        CollaborationTaskOperation::RenameList { list_id, .. }
+        | CollaborationTaskOperation::ArchiveList { list_id }
+        | CollaborationTaskOperation::RestoreList { list_id } => {
+            let baseline = list_baseline(list_id)?;
+            if matches!(
+                &baseline,
+                CollaborationTaskOperationBaseline::List { id, .. } if id == "inbox"
+            ) {
+                return Err(
+                    "Inbox is permanent and cannot be renamed, archived, or restored.".into(),
+                );
+            }
+            if matches!(operation, CollaborationTaskOperation::ArchiveList { .. })
+                && matches!(
+                    &baseline,
+                    CollaborationTaskOperationBaseline::List { archived: true, .. }
+                )
+            {
+                return Err("This task list is already archived.".into());
+            }
+            if matches!(operation, CollaborationTaskOperation::RestoreList { .. })
+                && matches!(
+                    &baseline,
+                    CollaborationTaskOperationBaseline::List {
+                        archived: false,
+                        ..
+                    }
+                )
+            {
+                return Err("This task list is already active.".into());
+            }
+            Ok(baseline)
+        }
+        CollaborationTaskOperation::CreateList { .. } => {
+            Ok(CollaborationTaskOperationBaseline::None)
+        }
+    }
+}
+
+fn task_operation_result_snapshot(
+    operation: &StoredCollaborationTaskOperation,
+    tasks: &TasksView,
+) -> Option<CollaborationTaskOperationBaseline> {
+    if let Some(task_id) = operation.task_id.as_deref() {
+        let task = tasks.tasks.iter().find(|task| task.id == task_id)?;
+        let list = tasks.lists.iter().find(|list| list.id == task.list_id)?;
+        return Some(CollaborationTaskOperationBaseline::Task {
+            id: task.id.clone(),
+            name: task.name.clone(),
+            content: task.content.clone(),
+            date: task.date.clone(),
+            time: task.time.clone(),
+            list_id: task.list_id.clone(),
+            list_name: list.name.clone(),
+            state: task.state,
+            deleted_at: task.deleted_at.clone(),
+            completion: task.completion.clone(),
+        });
+    }
+    if let Some(list_id) = operation.list_id.as_deref() {
+        let list = tasks.lists.iter().find(|list| list.id == list_id)?;
+        return Some(CollaborationTaskOperationBaseline::List {
+            id: list.id.clone(),
+            name: list.name.clone(),
+            archived: list.archived,
+        });
+    }
+    None
+}
+
+fn normalized_optional_text(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
+fn task_operation_effect_matches(
+    operation: &StoredCollaborationTaskOperation,
+    tasks: &TasksView,
+) -> bool {
+    let task = operation
+        .task_id
+        .as_deref()
+        .and_then(|id| tasks.tasks.iter().find(|task| task.id == id));
+    let list = operation
+        .list_id
+        .as_deref()
+        .and_then(|id| tasks.lists.iter().find(|list| list.id == id));
+    match &operation.operation {
+        CollaborationTaskOperation::CreateTask {
+            name,
+            content,
+            date,
+            time,
+            list_id,
+        } => task.is_some_and(|task| {
+            task.deleted_at.is_none()
+                && task.state == TaskState::Pending
+                && task.name == name.trim()
+                && task.content == normalized_optional_text(content.as_deref())
+                && task.date == normalized_optional_text(date.as_deref())
+                && task.time == normalized_optional_text(time.as_deref())
+                && task.list_id == list_id.as_deref().unwrap_or("inbox")
+        }),
+        CollaborationTaskOperation::UpdateTask {
+            name,
+            content,
+            date,
+            time,
+            list_id,
+            ..
+        } => {
+            let previous_list_id = match &operation.baseline {
+                CollaborationTaskOperationBaseline::Task { list_id, .. } => list_id.as_str(),
+                _ => return false,
+            };
+            task.is_some_and(|task| {
+                task.deleted_at.is_none()
+                    && task.name == name.trim()
+                    && task.content == normalized_optional_text(content.as_deref())
+                    && task.date == normalized_optional_text(date.as_deref())
+                    && task.time == normalized_optional_text(time.as_deref())
+                    && task.list_id == list_id.as_deref().unwrap_or(previous_list_id)
+            })
+        }
+        CollaborationTaskOperation::CompleteTask { .. } => {
+            task.is_some_and(|task| task.deleted_at.is_none() && task.state == TaskState::Completed)
+        }
+        CollaborationTaskOperation::AbandonTask { .. } => {
+            task.is_some_and(|task| task.deleted_at.is_none() && task.state == TaskState::Abandoned)
+        }
+        CollaborationTaskOperation::ReopenTask { .. } => {
+            task.is_some_and(|task| task.deleted_at.is_none() && task.state == TaskState::Pending)
+        }
+        CollaborationTaskOperation::DeleteTask { .. } => {
+            task.is_some_and(|task| task.deleted_at.is_some())
+        }
+        CollaborationTaskOperation::RestoreTask { .. } => {
+            task.is_some_and(|task| task.deleted_at.is_none())
+        }
+        CollaborationTaskOperation::CorrectCompletion {
+            completed_on,
+            completed_time,
+            ..
+        } => task.is_some_and(|task| {
+            task.deleted_at.is_none()
+                && task.completion.as_ref().is_some_and(|completion| {
+                    completion.completed_on == completed_on.trim()
+                        && completion.completed_time
+                            == normalized_optional_text(completed_time.as_deref())
+                })
+        }),
+        CollaborationTaskOperation::CreateList { name } => list
+            .is_some_and(|list| list.name == name.trim() && !list.archived && list.id != "inbox"),
+        CollaborationTaskOperation::RenameList { name, .. } => {
+            list.is_some_and(|list| list.name == name.trim())
+        }
+        CollaborationTaskOperation::ArchiveList { .. } => list.is_some_and(|list| list.archived),
+        CollaborationTaskOperation::RestoreList { .. } => list.is_some_and(|list| !list.archived),
+    }
+}
+
+fn task_operation_saved_message(
+    operation: &StoredCollaborationTaskOperation,
+    tasks: &TasksView,
+) -> String {
+    let object = task_operation_result_snapshot(operation, tasks);
+    let label = match (&operation.operation, object) {
+        (
+            CollaborationTaskOperation::CreateTask { .. }
+            | CollaborationTaskOperation::UpdateTask { .. }
+            | CollaborationTaskOperation::CompleteTask { .. }
+            | CollaborationTaskOperation::AbandonTask { .. }
+            | CollaborationTaskOperation::ReopenTask { .. }
+            | CollaborationTaskOperation::DeleteTask { .. }
+            | CollaborationTaskOperation::RestoreTask { .. }
+            | CollaborationTaskOperation::CorrectCompletion { .. },
+            Some(CollaborationTaskOperationBaseline::Task { id, name, .. }),
+        ) => format!("task “{name}” ({id})"),
+        (
+            CollaborationTaskOperation::CreateList { .. }
+            | CollaborationTaskOperation::RenameList { .. }
+            | CollaborationTaskOperation::ArchiveList { .. }
+            | CollaborationTaskOperation::RestoreList { .. },
+            Some(CollaborationTaskOperationBaseline::List { id, name, .. }),
+        ) => format!("task list “{name}” ({id})"),
+        _ => "task change".into(),
+    };
+    format!(
+        "Saved {label} in the shared Tasks data for target date {}. Tasks, Today, and Calendar use this same object.",
+        operation.target_date
+    )
+}
+
+fn require_task_view_writable(tasks: &TasksView) -> Result<(), String> {
+    if !matches!(tasks.state, TaskDataState::Ready | TaskDataState::Empty) {
+        return Err(format!(
+            "Current Tasks data is unavailable for a safe change: {}",
+            tasks.message
+        ));
+    }
+    if tasks.target_binding.is_none() {
+        return Err("Current Tasks data has no stable Vault binding. Refresh Tasks before preparing a change.".into());
+    }
+    Ok(())
+}
+
+fn validate_task_operation_required_fields(arguments: &Value) -> Result<(), String> {
+    let operation = arguments
+        .get("operation")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Task operation must include its operation name.".to_string())?;
+    let required: &[&str] = match operation {
+        "createTask" => &["name", "content", "date", "time", "listId"],
+        "updateTask" => &["taskId", "name", "content", "date", "time", "listId"],
+        "completeTask" | "abandonTask" | "reopenTask" | "deleteTask" | "restoreTask" => &["taskId"],
+        "correctCompletion" => &["taskId", "completedOn", "completedTime"],
+        "createList" => &["name"],
+        "renameList" => &["listId", "name"],
+        "archiveList" | "restoreList" => &["listId"],
+        _ => return Err(format!("Unknown Dashboard task operation `{operation}`.")),
+    };
+    let Some(object) = arguments.as_object() else {
+        return Err("Task operation arguments must be an object.".into());
+    };
+    if let Some(missing) = required.iter().find(|field| !object.contains_key(**field)) {
+        return Err(format!(
+            "Task operation `{operation}` is missing required field `{missing}`."
+        ));
+    }
+    Ok(())
+}
+
+fn collaboration_task_tool_spec() -> Value {
+    let operation = |name: &str, properties: Value, required: &[&str]| {
+        let mut properties = properties
+            .as_object()
+            .cloned()
+            .expect("task tool properties are defined as an object");
+        properties.insert(
+            "operation".into(),
+            json!({ "type": "string", "const": name }),
+        );
+        let mut required_fields = vec!["operation"];
+        required_fields.extend_from_slice(required);
+        json!({
+            "type": "object",
+            "properties": properties,
+            "required": required_fields,
+            "additionalProperties": false
+        })
+    };
+    let string = json!({ "type": "string" });
+    let nullable_string = json!({ "type": ["string", "null"] });
+    let defs = vec![
+        operation(
+            "createTask",
+            json!({"name": string, "content": nullable_string, "date": nullable_string, "time": nullable_string, "listId": nullable_string}),
+            &["name", "content", "date", "time", "listId"],
+        ),
+        operation(
+            "updateTask",
+            json!({"taskId": string, "name": string, "content": nullable_string, "date": nullable_string, "time": nullable_string, "listId": nullable_string}),
+            &["taskId", "name", "content", "date", "time", "listId"],
+        ),
+        operation("completeTask", json!({"taskId": string}), &["taskId"]),
+        operation("abandonTask", json!({"taskId": string}), &["taskId"]),
+        operation("reopenTask", json!({"taskId": string}), &["taskId"]),
+        operation("deleteTask", json!({"taskId": string}), &["taskId"]),
+        operation("restoreTask", json!({"taskId": string}), &["taskId"]),
+        operation(
+            "correctCompletion",
+            json!({"taskId": string, "completedOn": string, "completedTime": nullable_string}),
+            &["taskId", "completedOn", "completedTime"],
+        ),
+        operation("createList", json!({"name": string}), &["name"]),
+        operation(
+            "renameList",
+            json!({"listId": string, "name": string}),
+            &["listId", "name"],
+        ),
+        operation("archiveList", json!({"listId": string}), &["listId"]),
+        operation("restoreList", json!({"listId": string}), &["listId"]),
+    ];
+    let alternatives = defs;
+    json!({
+        "name": COLLABORATION_TASK_TOOL,
+        "description": "Propose one exact local Task or task-list create, edit, reschedule, move, complete, abandon, reopen, delete, restore, completion-date correction, rename, archive, or restore operation. Match stable IDs in current taskRecords/taskLists and resolve relative schedule dates from the request target date. Use only for a clear, unique user instruction; discuss ambiguous requests, plans, and suggestions instead. This tool only saves a proposal: it never writes Tasks. The user must approve the exact displayed action in Personal Dashboard. List archiving does not change task states.",
+        "inputSchema": {
+            "oneOf": alternatives
+        }
+    })
+}
+
+fn stable_tool_operation_id(thread_id: &str, turn_id: &str, call_id: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    thread_id.hash(&mut hasher);
+    turn_id.hash(&mut hasher);
+    call_id.hash(&mut hasher);
+    format!("taskop-{:016x}", hasher.finish())
+}
+
+fn stable_child_identifier(prefix: &str, operation_id: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    operation_id.hash(&mut hasher);
+    format!("{prefix}-{:016x}", hasher.finish())
 }
 
 fn summarize_title(text: &str) -> String {
@@ -2091,6 +3609,10 @@ impl CollaborationContextSource for DashboardContextReader {
                     "Choose a Vault in Settings to read the Daily Record.",
                 ),
                 tasks: unconfigured_pane("Choose a Vault in Settings to read current Tasks."),
+                task_revision: None,
+                task_target_binding: None,
+                task_records: Vec::new(),
+                task_lists: Vec::new(),
                 habits: unconfigured_pane("Choose a Vault in Settings to read current habits."),
             });
         };
@@ -2100,10 +3622,59 @@ impl CollaborationContextSource for DashboardContextReader {
             Ok(view) => daily_record_pane(&view),
             Err(error) => error_pane("Daily Record", error),
         };
-        let task_context = match tasks.read() {
-            Ok(view) => tasks_pane(&view),
-            Err(error) => error_pane("Tasks", error),
-        };
+        let (task_context, task_revision, task_target_binding, task_records, task_lists) =
+            match tasks.read() {
+                Ok(view) => {
+                    let writable =
+                        matches!(view.state, TaskDataState::Ready | TaskDataState::Empty)
+                            && view.target_binding.is_some();
+                    let records = writable
+                        .then(|| {
+                            view.tasks
+                                .iter()
+                                .map(|task| CollaborationTaskReferenceView {
+                                    id: task.id.clone(),
+                                    name: task.name.clone(),
+                                    content: task.content.clone(),
+                                    date: task.date.clone(),
+                                    time: task.time.clone(),
+                                    list_id: task.list_id.clone(),
+                                    state: task.state,
+                                    deleted_at: task.deleted_at.clone(),
+                                    completion: task.completion.clone(),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let lists = writable
+                        .then(|| {
+                            view.lists
+                                .iter()
+                                .map(|list| CollaborationTaskListReferenceView {
+                                    id: list.id.clone(),
+                                    name: list.name.clone(),
+                                    is_system: list.is_system,
+                                    archived: list.archived,
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    (
+                        tasks_pane(&view),
+                        writable.then(|| view.revision.clone()).flatten(),
+                        writable.then(|| view.target_binding.clone()).flatten(),
+                        records,
+                        lists,
+                    )
+                }
+                Err(error) => (
+                    error_pane("Tasks", error),
+                    None,
+                    None,
+                    Vec::new(),
+                    Vec::new(),
+                ),
+            };
         let habit_context = match today.habits() {
             Ok(view) => habits_pane(&view, date),
             Err(error) => error_pane("Habits", error),
@@ -2115,6 +3686,10 @@ impl CollaborationContextSource for DashboardContextReader {
                 .map(|name| name.to_string_lossy().into_owned()),
             daily_record,
             tasks: task_context,
+            task_revision,
+            task_target_binding,
+            task_records,
+            task_lists,
             habits: habit_context,
         })
     }
@@ -2880,6 +4455,15 @@ impl AppServerTransport for CodexAppServerRuntime {
     }
 
     fn start_thread(&mut self, model: Option<&str>, instructions: &str) -> Result<String, String> {
+        self.start_thread_with_dynamic_tools(model, instructions, Vec::new())
+    }
+
+    fn start_thread_with_dynamic_tools(
+        &mut self,
+        model: Option<&str>,
+        instructions: &str,
+        dynamic_tools: Vec<Value>,
+    ) -> Result<String, String> {
         if self.restricted_read_sandbox_policy.is_none() {
             return Err(self.text_turn_unavailable_reason.clone().unwrap_or_else(|| {
                 "Restricted read-only access has not been verified. No Codex thread was started.".into()
@@ -2888,17 +4472,18 @@ impl AppServerTransport for CodexAppServerRuntime {
         ensure_empty_working_directory(&self.working_directory)?;
         let working_directory = self.working_directory.to_string_lossy().into_owned();
         let client = self.ensure_client()?;
-        let result = client.request(
-            "thread/start",
-            json!({
-                "model": model,
-                "cwd": working_directory,
-                "approvalPolicy": "never",
-                "sandbox": "readOnly",
-                "developerInstructions": instructions,
-                "serviceName": "personal-dashboard"
-            }),
-        )?;
+        let mut params = json!({
+            "model": model,
+            "cwd": working_directory,
+            "approvalPolicy": "never",
+            "sandbox": "readOnly",
+            "developerInstructions": instructions,
+            "serviceName": "personal-dashboard"
+        });
+        if !dynamic_tools.is_empty() {
+            params["dynamicTools"] = json!(dynamic_tools);
+        }
+        let result = client.request("thread/start", params)?;
         result
             .get("thread")
             .and_then(|thread| thread.get("id"))
@@ -2936,6 +4521,15 @@ impl AppServerTransport for CodexAppServerRuntime {
         request: RuntimeTurnRequest,
         cancel_requested: Arc<AtomicBool>,
     ) -> Result<RuntimeTurnResult, String> {
+        self.send_turn_with_dynamic_tools(request, cancel_requested, None)
+    }
+
+    fn send_turn_with_dynamic_tools(
+        &mut self,
+        request: RuntimeTurnRequest,
+        cancel_requested: Arc<AtomicBool>,
+        tool_handler: Option<RuntimeDynamicToolHandler>,
+    ) -> Result<RuntimeTurnResult, String> {
         if self.restricted_read_sandbox_policy.is_none() {
             return Err(self
                 .text_turn_unavailable_reason
@@ -2959,7 +4553,7 @@ impl AppServerTransport for CodexAppServerRuntime {
         }))
         .map_err(|error| format!("Could not prepare current Dashboard context: {error}"))?;
         let input_text = format!(
-            "{}\n\n--- Current read-only Personal Dashboard context for {} ---\n{}\n--- End current Dashboard context ---\nUse only supplied current context. Use Dashboard facts only when that section is ready; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages.",
+            "{}\n\n--- Current Personal Dashboard context for {} ---\n{}\n--- End current Dashboard context ---\nUse only supplied current context. Use Dashboard facts only when that section is ready; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain the stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. `dashboard_task_operation` only creates a proposal; no Task write occurs until the user approves the exact card in Personal Dashboard.",
             request.user_text, request.context.date, context
         );
         let working_directory = self.working_directory.to_string_lossy().into_owned();
@@ -2981,8 +4575,12 @@ impl AppServerTransport for CodexAppServerRuntime {
             .and_then(|turn| turn.get("id"))
             .and_then(Value::as_str)
             .ok_or_else(|| "Codex App Server did not start the requested turn.".to_string())?;
-        let (text, stopped) =
-            client.wait_for_turn(&request.thread_id, turn_id, &cancel_requested)?;
+        let (text, stopped) = client.wait_for_turn(
+            &request.thread_id,
+            turn_id,
+            &cancel_requested,
+            tool_handler.as_ref(),
+        )?;
         Ok(RuntimeTurnResult {
             text,
             runtime_turn_id: Some(turn_id.to_owned()),
@@ -3200,7 +4798,8 @@ impl StdioJsonlClient {
                     "name": "personal_dashboard",
                     "title": "Personal Dashboard",
                     "version": env!("CARGO_PKG_VERSION")
-                }
+                },
+                "capabilities": { "experimentalApi": true }
             }),
         )?;
         self.notify("initialized", json!({}))?;
@@ -3291,6 +4890,7 @@ impl StdioJsonlClient {
         thread_id: &str,
         turn_id: &str,
         cancel_requested: &AtomicBool,
+        tool_handler: Option<&RuntimeDynamicToolHandler>,
     ) -> Result<(String, bool), String> {
         let mut text = String::new();
         let mut interrupt_requested = false;
@@ -3346,6 +4946,62 @@ impl StdioJsonlClient {
                     return Err("Codex completed the turn without a text reply.".into());
                 }
                 return Ok((text, false));
+            }
+            if message.get("method").and_then(Value::as_str) == Some("item/tool/call") {
+                let response_id = message.get("id").cloned().ok_or_else(|| {
+                    "Codex App Server sent a dynamic tool call without a request id.".to_string()
+                })?;
+                let params = message.get("params").cloned().unwrap_or(Value::Null);
+                let call = RuntimeDynamicToolCall {
+                    thread_id: params
+                        .get("threadId")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned(),
+                    turn_id: params
+                        .get("turnId")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned(),
+                    call_id: params
+                        .get("callId")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned(),
+                    tool: params
+                        .get("tool")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned(),
+                    arguments: params.get("arguments").cloned().unwrap_or(Value::Null),
+                };
+                let result = if call.thread_id != thread_id || call.turn_id != turn_id {
+                    RuntimeDynamicToolResult {
+                        text: "This Dashboard task tool call belongs to a different active turn. No task was changed.".into(),
+                        success: false,
+                    }
+                } else if call.call_id.is_empty() || call.tool.is_empty() {
+                    RuntimeDynamicToolResult {
+                        text: "This Dashboard task tool call was incomplete. No task was changed."
+                            .into(),
+                        success: false,
+                    }
+                } else if let Some(handler) = tool_handler {
+                    handler(call)
+                } else {
+                    RuntimeDynamicToolResult {
+                        text: "Dashboard task operations are unavailable in this session. No task was changed.".into(),
+                        success: false,
+                    }
+                };
+                self.write_json(&json!({
+                    "id": response_id,
+                    "result": {
+                        "contentItems": [{ "type": "inputText", "text": result.text }],
+                        "success": result.success
+                    }
+                }))?;
+                continue;
             }
             self.reject_server_request(&message)?;
         }

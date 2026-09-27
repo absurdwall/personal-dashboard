@@ -9010,6 +9010,112 @@ button.habit-cell:focus-visible {
   overflow-wrap: anywhere;
 }
 
+#collaboration-task-tool-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.55rem;
+  margin: 0.55rem 0;
+  padding: 0.55rem 0.65rem;
+  border-left: 2px solid #b27b36;
+  background: #fbf5e9;
+  color: #674d27;
+  font-size: 0.59rem;
+  line-height: 1.5;
+}
+
+#collaboration-task-tool-notice[hidden] {
+  display: none;
+}
+
+.collaboration-task-operations-card {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.6rem;
+}
+
+#collaboration-task-operations {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.collaboration-task-operation {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.58rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.38rem;
+  background: var(--parity-surface-soft);
+}
+
+.collaboration-task-operation[data-state="applied"] {
+  border-color: color-mix(in srgb, var(--parity-accent) 35%, white);
+}
+
+.collaboration-task-operation[data-state="conflict"],
+.collaboration-task-operation[data-state="failed"] {
+  border-color: #d6a29a;
+  background: #fbf4f1;
+}
+
+.collaboration-task-operation > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  color: #303633;
+  font-size: 0.6rem;
+}
+
+.collaboration-task-operation-status {
+  color: var(--parity-muted);
+  font-size: 0.54rem;
+  text-align: right;
+}
+
+.collaboration-task-operation > p,
+.collaboration-task-operation > small {
+  margin: 0;
+  color: #4e5752;
+  font-size: 0.56rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.collaboration-task-operation .collaboration-task-operation-proposal {
+  color: #29322e;
+  font-weight: 650;
+}
+
+.collaboration-task-operation .collaboration-task-operation-result,
+.collaboration-task-operation .collaboration-task-operation-snapshot {
+  padding-top: 0.32rem;
+  border-top: 1px solid var(--parity-border);
+}
+
+.collaboration-task-operation .collaboration-task-operation-error {
+  color: #78372d;
+}
+
+.collaboration-task-operation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding-top: 0.2rem;
+}
+
+.collaboration-task-operation-actions button {
+  min-height: 1.75rem;
+  padding: 0.28rem 0.48rem;
+  font-size: 0.56rem;
+}
+
+.collaboration-task-operation-approve {
+  border-color: var(--parity-accent);
+  background: var(--parity-accent);
+  color: white;
+}
+
 .settings-content #collaboration-model {
   display: block;
   min-width: min(100%, 22rem);
