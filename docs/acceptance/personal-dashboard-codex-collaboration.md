@@ -65,3 +65,9 @@ Status: **partial.** The review P1s and real-model routing defects found during 
 - Voice capture/recognition is the remaining user-deferred acceptance item. The user will check it personally after release; record no pass until then.
 
 PR #22 remains open as a draft for independent review. Do not merge it or mark Issue #11 accepted until the remaining packaged acceptance items are resolved or explicitly waived.
+
+## 4.0.0 local release decision — 2026-09-27
+
+The user approved merging and installing 4.0 for personal use, with voice recognition acceptance explicitly deferred to subsequent use. This overrides the earlier draft-only release hold; it does not convert voice acceptance into a pass. Issue #19 remains open for that follow-up. Existing external schedules were not changed.
+
+Version metadata is now 4.0.0. The release was rebuilt with `npm run build:mac`; `npm run accept:mac` passed on the rebuilt arm64 bundle, and strict deep signature verification passed. Executable SHA-256: `267c68e1a1d98cb3d8ea9ddc234d2a072cd287da657e272da928f7d02ea0f87e`. This is an ad-hoc signed local release, not a notarized public distribution. Prior real-model evidence above applies to the unchanged implementation; this release commit changes version metadata and this record only.
