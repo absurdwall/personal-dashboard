@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "resources": {
+      "target/voice-input-resources/personal-dashboard-voice-helper": "personal-dashboard-voice-helper"
+    },
+    "macOS": {
+      "infoPlist": "Info.plist"
+    }
+  }
+}

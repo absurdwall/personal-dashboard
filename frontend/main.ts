@@ -58,6 +58,17 @@ import {
 } from "./interface-language.js";
 import { preserveTodayDayTaskPlanError } from "./day-task-presentation.js";
 import {
+  appendVoiceTranscript,
+  BrowserCollaborationVoiceRuntime,
+  collaborationVoiceControls,
+  CollaborationVoiceDraftStore,
+  CollaborationVoiceInputController,
+  voiceDraftKey,
+  type CollaborationDraftSnapshot,
+  type CollaborationVoiceFailure,
+  type CollaborationVoiceTarget,
+} from "./collaboration-voice.js";
+import {
   calendarTasksForDate,
   isCurrentTaskResponse,
   isCurrentTodayTaskResponse,
@@ -582,6 +593,8 @@ type CollaborationSessionView = Readonly<{
   runState: string;
   progress: string;
   runtimeThreadId: string | null;
+  draft?: string;
+  draftsByDate?: Readonly<Record<string, string>>;
   messages: readonly CollaborationMessageView[];
 }>;
 
@@ -617,6 +630,31 @@ type CollaborationConnectionView = Readonly<{
   error: string | null;
 }>;
 
+type CollaborationVoiceLocale = Readonly<{
+  id: string;
+  displayName: string;
+}>;
+
+type CollaborationVoiceCapabilities = Readonly<{
+  available: boolean;
+  reasonCode: string | null;
+  locales: readonly CollaborationVoiceLocale[];
+}>;
+
+type CollaborationVoiceStatusKey =
+  | "collaboration.voiceRequesting"
+  | "collaboration.voiceRecording"
+  | "collaboration.voiceTranscribing"
+  | "collaboration.voiceReview"
+  | "collaboration.voiceSavedForDate"
+  | "collaboration.voiceCancelled"
+  | "collaboration.voicePermissionDenied"
+  | "collaboration.voiceCaptureUnavailable"
+  | "collaboration.voiceRecordingFailed"
+  | "collaboration.voiceEmptyRecording"
+  | "collaboration.voiceRecognitionFailed"
+  | "collaboration.voiceDraftSaveFailed";
+
 function localCalendarDate(): string {
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -634,6 +672,49 @@ let collaborationConnectionRequest = 0;
 let collaborationStatusTimer: number | null = null;
 const collaborationDrafts = new Map<string, string>();
 const collaborationTargetDates = new Map<string, string>();
+let collaborationVoiceCapabilities: CollaborationVoiceCapabilities | null = null;
+let collaborationVoiceCapabilityLoading = false;
+let collaborationVoiceCapabilityRequest = 0;
+let activeCollaborationVoiceTarget: CollaborationVoiceTarget | null = null;
+const collaborationVoiceStatuses = new Map<string, CollaborationVoiceStatusKey>();
+const collaborationVoiceDraftStore = new CollaborationVoiceDraftStore((target, draft) =>
+  window.__TAURI__.core.invoke<CollaborationDraftSnapshot>("collaboration_save_draft", {
+    sessionId: target.sessionId,
+    targetDate: target.targetDate,
+    draft,
+  }),
+);
+function collaborationDraftKey(sessionId: string, targetDate: string): string {
+  return voiceDraftKey({ sessionId, targetDate });
+}
+const collaborationVoiceController = new CollaborationVoiceInputController(
+  new BrowserCollaborationVoiceRuntime(async (audio, locale) => {
+    const bytes = new Uint8Array(await audio.arrayBuffer());
+    return window.__TAURI__.core.invoke<string>("collaboration_transcribe_voice", {
+      audio: Array.from(bytes),
+      mimeType: audio.type || "audio/mp4",
+      locale,
+    });
+  }),
+  {
+    onState: (state, target) => {
+      activeCollaborationVoiceTarget = state === "idle" ? null : target;
+      if (state === "requesting") setCollaborationVoiceStatus(target, "collaboration.voiceRequesting");
+      if (state === "recording") setCollaborationVoiceStatus(target, "collaboration.voiceRecording");
+      if (state === "transcribing") setCollaborationVoiceStatus(target, "collaboration.voiceTranscribing");
+      renderCollaborationVoiceControls();
+    },
+    onTranscript: handleCollaborationVoiceTranscript,
+    onFailure: (target, failure) => {
+      setCollaborationVoiceStatus(target, collaborationVoiceFailureStatus(failure));
+      renderCollaborationVoiceControls();
+    },
+    onCancel: (target) => {
+      setCollaborationVoiceStatus(target, "collaboration.voiceCancelled");
+      renderCollaborationVoiceControls();
+    },
+  },
+);
 
 type AppearanceSelectionResult = Readonly<{
   preferences: AppearancePreferences;
@@ -670,6 +751,10 @@ const collaborationSessionsStatus = document.querySelector<HTMLElement>("#collab
 const collaborationMessageList = document.querySelector<HTMLElement>("#collaboration-message-list");
 const collaborationComposer = document.querySelector<HTMLFormElement>("#collaboration-composer");
 const collaborationMessageDraft = document.querySelector<HTMLTextAreaElement>("#collaboration-message-draft");
+const collaborationVoiceLanguageSelect = document.querySelector<HTMLSelectElement>("#collaboration-voice-language");
+const collaborationVoiceStartButton = document.querySelector<HTMLButtonElement>("#collaboration-voice-start");
+const collaborationVoiceCancelButton = document.querySelector<HTMLButtonElement>("#collaboration-voice-cancel");
+const collaborationVoiceStatus = document.querySelector<HTMLElement>("#collaboration-voice-status");
 const collaborationSendButton = document.querySelector<HTMLButtonElement>("#collaboration-send-message");
 const collaborationChatHeading = document.querySelector<HTMLElement>("#collaboration-chat-heading");
 const collaborationChatDate = document.querySelector<HTMLElement>("#collaboration-chat-date");
@@ -1120,6 +1205,7 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
   renderWorkspaceRailContext(currentWorkspaceDestination);
   renderWorkspaceContextStatus(currentWorkspaceDestination);
   renderCollaborationWorkspace();
+  renderCollaborationVoiceLocales();
   renderCollaborationConnection();
 }
 
@@ -1713,6 +1799,235 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
   collaborationMessageList.scrollTop = collaborationMessageList.scrollHeight;
 }
 
+function currentCollaborationVoiceTarget(): CollaborationVoiceTarget | null {
+  const session = currentCollaborationSession;
+  if (!session) return null;
+  return {
+    sessionId: session.id,
+    targetDate: collaborationTargetDateInput?.value || collaborationTargetDate,
+  };
+}
+
+function isCurrentCollaborationVoiceTarget(target: CollaborationVoiceTarget): boolean {
+  const current = currentCollaborationVoiceTarget();
+  return Boolean(current && voiceDraftKey(current) === voiceDraftKey(target));
+}
+
+function setCollaborationVoiceStatus(
+  target: CollaborationVoiceTarget,
+  status: CollaborationVoiceStatusKey,
+): void {
+  collaborationVoiceStatuses.set(voiceDraftKey(target), status);
+  if (isCurrentCollaborationVoiceTarget(target)) setCopy(collaborationVoiceStatus, status);
+}
+
+function collaborationVoiceFailureStatus(failure: CollaborationVoiceFailure): CollaborationVoiceStatusKey {
+  switch (failure) {
+    case "permission-denied": return "collaboration.voicePermissionDenied";
+    case "capture-unavailable": return "collaboration.voiceCaptureUnavailable";
+    case "recording-failed": return "collaboration.voiceRecordingFailed";
+    case "empty-recording": return "collaboration.voiceEmptyRecording";
+    case "recognition-failed": return "collaboration.voiceRecognitionFailed";
+  }
+}
+
+function collaborationVoiceCapabilityStatus(
+  capabilities: CollaborationVoiceCapabilities | null,
+): InterfaceCopyKey {
+  if (!capabilities) return "collaboration.voiceUnavailable";
+  switch (capabilities.reasonCode) {
+    case "requires_macos_26": return "collaboration.voiceUnsupported";
+    case "no_installed_model":
+    case "locale_not_installed":
+      return "collaboration.voiceModelMissing";
+    default:
+      return "collaboration.voiceUnavailable";
+  }
+}
+
+function renderCollaborationVoiceControls(): void {
+  if (!collaborationVoiceLanguageSelect || !collaborationVoiceStartButton) return;
+
+  const active = collaborationVoiceController.state;
+  const capabilities = collaborationVoiceCapabilities;
+  const selectedLocale = collaborationVoiceLanguageSelect.value;
+  const locales = capabilities?.available ? capabilities.locales : [];
+  const selectedLocaleIsInstalled = locales.some((locale) => locale.id === selectedLocale);
+  const currentTarget = currentCollaborationVoiceTarget();
+  const controlState = collaborationVoiceControls({
+    state: active,
+    hasTarget: Boolean(currentTarget),
+    composerDisabled: collaborationMessageDraft?.disabled === true,
+    capabilityLoading: collaborationVoiceCapabilityLoading,
+    hasInstalledLocale: Boolean(capabilities?.available && selectedLocaleIsInstalled),
+    hasInstalledLocales: Boolean(capabilities?.available && locales.length > 0),
+  });
+  const status = currentTarget
+    ? collaborationVoiceStatuses.get(voiceDraftKey(currentTarget))
+    : undefined;
+
+  if (collaborationVoiceCapabilityLoading) {
+    setCopy(collaborationVoiceStatus, "collaboration.voiceLanguageLoading");
+  } else if (!capabilities?.available || locales.length === 0) {
+    setCopy(collaborationVoiceStatus, collaborationVoiceCapabilityStatus(capabilities));
+  } else if (active !== "idle" && activeCollaborationVoiceTarget && currentTarget &&
+    voiceDraftKey(activeCollaborationVoiceTarget) === voiceDraftKey(currentTarget)) {
+    const activeStatus: CollaborationVoiceStatusKey = active === "requesting"
+      ? "collaboration.voiceRequesting"
+      : active === "recording"
+        ? "collaboration.voiceRecording"
+        : "collaboration.voiceTranscribing";
+    setCopy(collaborationVoiceStatus, activeStatus);
+  } else if (status) {
+    setCopy(collaborationVoiceStatus, status);
+  } else if (!selectedLocaleIsInstalled) {
+    setCopy(collaborationVoiceStatus, "collaboration.voiceLanguageRequired");
+  } else {
+    setRawText(collaborationVoiceStatus, "");
+  }
+
+  const buttonKey = controlState.startAction === "stop"
+    ? "collaboration.voiceStop"
+    : "collaboration.voiceStart";
+  setCopy(collaborationVoiceStartButton, buttonKey);
+  collaborationVoiceStartButton.disabled = controlState.startDisabled;
+  collaborationVoiceCancelButton?.toggleAttribute("hidden", !controlState.cancelVisible);
+  if (collaborationVoiceCancelButton) {
+    collaborationVoiceCancelButton.disabled = !controlState.cancelVisible;
+  }
+  collaborationVoiceLanguageSelect.disabled = controlState.localeDisabled;
+}
+
+function renderCollaborationVoiceLocales(): void {
+  if (!collaborationVoiceLanguageSelect) return;
+  const selected = collaborationVoiceLanguageSelect.value;
+  const capabilities = collaborationVoiceCapabilities;
+  const locales = capabilities?.available ? capabilities.locales : [];
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  if (collaborationVoiceCapabilityLoading) {
+    setCopy(placeholder, "collaboration.voiceLanguageLoading");
+  } else if (locales.length > 0) {
+    setCopy(placeholder, "collaboration.voiceChooseLanguage");
+  } else {
+    setCopy(placeholder, "collaboration.voiceLanguageUnavailable");
+  }
+  const options = locales.map((locale) => {
+    const option = document.createElement("option");
+    option.value = locale.id;
+    option.textContent = locale.displayName;
+    return option;
+  });
+  collaborationVoiceLanguageSelect.replaceChildren(placeholder, ...options);
+
+  if (locales.some((locale) => locale.id === selected)) {
+    collaborationVoiceLanguageSelect.value = selected;
+  } else if (!selected && locales.length > 0) {
+    const languagePrefix = currentInterfaceLanguage === "zh" ? "zh" : "en";
+    const preferred = locales.find((locale) => locale.id.toLowerCase().startsWith(`${languagePrefix}-`));
+    collaborationVoiceLanguageSelect.value = preferred?.id ?? "";
+  } else {
+    collaborationVoiceLanguageSelect.value = "";
+  }
+  renderCollaborationVoiceControls();
+}
+
+async function refreshCollaborationVoiceCapabilities(): Promise<void> {
+  const request = ++collaborationVoiceCapabilityRequest;
+  collaborationVoiceCapabilityLoading = true;
+  renderCollaborationVoiceLocales();
+  try {
+    const capabilities = await window.__TAURI__.core.invoke<CollaborationVoiceCapabilities>(
+      "collaboration_voice_capabilities",
+    );
+    if (request !== collaborationVoiceCapabilityRequest) return;
+    collaborationVoiceCapabilities = capabilities;
+  } catch {
+    if (request !== collaborationVoiceCapabilityRequest) return;
+    collaborationVoiceCapabilities = {
+      available: false,
+      reasonCode: "runtime_unavailable",
+      locales: [],
+    };
+  } finally {
+    if (request === collaborationVoiceCapabilityRequest) {
+      collaborationVoiceCapabilityLoading = false;
+      renderCollaborationVoiceLocales();
+    }
+  }
+}
+
+function collaborationDraftForTarget(target: CollaborationVoiceTarget): string | undefined {
+  const key = collaborationDraftKey(target.sessionId, target.targetDate);
+  if (collaborationDrafts.has(key)) return collaborationDrafts.get(key);
+  if (currentCollaborationSession?.id !== target.sessionId) return undefined;
+  const session = currentCollaborationSession;
+  const savedDraft = collaborationVoiceDraftStore.read(target, session);
+  if (savedDraft !== undefined) collaborationDrafts.set(key, savedDraft);
+  return savedDraft;
+}
+
+async function persistCollaborationVoiceDraft(
+  target: CollaborationVoiceTarget,
+  draft: string,
+): Promise<void> {
+  try {
+    const saved = await collaborationVoiceDraftStore.save(target, draft);
+    if (currentCollaborationSession?.id === target.sessionId && saved.draftsByDate) {
+      currentCollaborationSession = {
+        ...currentCollaborationSession,
+        draftsByDate: saved.draftsByDate,
+      };
+    }
+  } catch {
+    setCollaborationVoiceStatus(target, "collaboration.voiceDraftSaveFailed");
+    renderCollaborationVoiceControls();
+  }
+}
+
+function handleCollaborationVoiceTranscript(target: CollaborationVoiceTarget, text: string): void {
+  const key = collaborationDraftKey(target.sessionId, target.targetDate);
+  const isCurrentTarget = isCurrentCollaborationVoiceTarget(target);
+  const currentDraft = collaborationDraftForTarget(target) ??
+    (isCurrentTarget ? collaborationMessageDraft?.value ?? "" : "");
+  const draft = appendVoiceTranscript(currentDraft, text);
+  collaborationDrafts.set(key, draft);
+  void persistCollaborationVoiceDraft(target, draft);
+
+  if (isCurrentTarget && collaborationMessageDraft) {
+    collaborationMessageDraft.value = draft;
+    collaborationMessageDraft.focus();
+    collaborationMessageDraft.setSelectionRange(draft.length, draft.length);
+    setCollaborationVoiceStatus(target, "collaboration.voiceReview");
+    renderCollaborationWorkspace();
+  } else {
+    setCollaborationVoiceStatus(target, "collaboration.voiceSavedForDate");
+    renderCollaborationVoiceControls();
+  }
+}
+
+function cancelCollaborationVoiceCaptureForSelectionChange(): void {
+  const state = collaborationVoiceController.state;
+  if (state === "requesting" || state === "recording") collaborationVoiceController.cancel();
+}
+
+function startOrStopCollaborationVoice(): void {
+  if (collaborationVoiceController.state === "recording") {
+    collaborationVoiceController.stop();
+    return;
+  }
+  const target = currentCollaborationVoiceTarget();
+  const locale = collaborationVoiceLanguageSelect?.value ?? "";
+  if (!target || !locale) return;
+  if (collaborationMessageDraft) {
+    collaborationDrafts.set(
+      collaborationDraftKey(target.sessionId, target.targetDate),
+      collaborationMessageDraft.value,
+    );
+  }
+  void collaborationVoiceController.start(target, locale);
+}
+
 function renderCollaborationWorkspace(): void {
   const workspace = currentCollaborationWorkspace;
   if (workspace) {
@@ -1772,24 +2087,36 @@ function renderCollaborationWorkspace(): void {
   if (collaborationMessageDraft) {
     collaborationMessageDraft.disabled = !session || !connected || running;
     if (session && document.activeElement !== collaborationMessageDraft) {
-      collaborationMessageDraft.value = collaborationDrafts.get(session.id) ?? "";
+      const targetDate = collaborationTargetDateInput?.value || collaborationTargetDate;
+      collaborationMessageDraft.value = collaborationDraftForTarget({
+        sessionId: session.id,
+        targetDate,
+      }) ?? "";
     }
   }
   if (collaborationSendButton) {
     collaborationSendButton.disabled = !session || !connected || running || !vaultAvailable ||
       !(collaborationMessageDraft?.value.trim());
   }
+  renderCollaborationVoiceControls();
   const createButton = document.querySelector<HTMLButtonElement>("#collaboration-new-session");
   if (createButton) createButton.disabled = !vaultAvailable;
 }
 
 function stashCollaborationDraft(): void {
   if (currentCollaborationSession && collaborationMessageDraft) {
-    collaborationDrafts.set(currentCollaborationSession.id, collaborationMessageDraft.value);
+    collaborationDrafts.set(
+      collaborationDraftKey(
+        currentCollaborationSession.id,
+        collaborationTargetDateInput?.value || collaborationTargetDate,
+      ),
+      collaborationMessageDraft.value,
+    );
   }
 }
 
 function selectCollaborationSession(session: CollaborationSessionView): void {
+  cancelCollaborationVoiceCaptureForSelectionChange();
   stashCollaborationDraft();
   currentCollaborationSession = session;
   collaborationTargetDate = collaborationTargetDates.get(session.id) ?? session.targetDate;
@@ -1813,13 +2140,18 @@ async function refreshCollaborationWorkspace(): Promise<void> {
     if (request !== collaborationWorkspaceRequest) return;
     collaborationActivityDate = date;
     const previousId = currentCollaborationSession?.id;
+    const previousTargetDate = collaborationTargetDate;
     let session = workspace.sessions.find((candidate) => candidate.id === previousId) ??
       workspace.sessions[0] ?? null;
-    if (session?.id !== previousId) stashCollaborationDraft();
-    currentCollaborationSession = session;
-    collaborationTargetDate = session
+    const nextTargetDate = session
       ? collaborationTargetDates.get(session.id) ?? session.targetDate
       : date;
+    if (session?.id !== previousId || nextTargetDate !== previousTargetDate) {
+      cancelCollaborationVoiceCaptureForSelectionChange();
+    }
+    if (session?.id !== previousId) stashCollaborationDraft();
+    currentCollaborationSession = session;
+    collaborationTargetDate = nextTargetDate;
     if (session) collaborationTargetDates.set(session.id, collaborationTargetDate);
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = collaborationTargetDate;
     let context = workspace.context;
@@ -1896,8 +2228,9 @@ async function createCollaborationSession(): Promise<void> {
       "collaboration_create_session",
       { date },
     );
+    cancelCollaborationVoiceCaptureForSelectionChange();
     stashCollaborationDraft();
-    collaborationDrafts.set(session.id, "");
+    collaborationDrafts.set(collaborationDraftKey(session.id, date), "");
     collaborationTargetDates.set(session.id, date);
     currentCollaborationSession = session;
     collaborationActivityDate = date;
@@ -1950,25 +2283,32 @@ async function sendCollaborationMessage(): Promise<void> {
   const message = collaborationMessageDraft?.value ?? "";
   if (!session || !message.trim()) return;
   const targetDate = collaborationTargetDateInput?.value || collaborationTargetDate;
+  const draftTarget = { sessionId: session.id, targetDate };
+  const draftKey = collaborationDraftKey(session.id, targetDate);
   collaborationTargetDate = targetDate;
   collaborationTargetDates.set(session.id, targetDate);
   stashCollaborationDraft();
   renderCollaborationWorkspace();
   try {
+    await collaborationVoiceDraftStore.waitForPending(draftTarget);
     const queued = await window.__TAURI__.core.invoke<CollaborationSessionView>(
       "collaboration_submit_message",
       { sessionId: session.id, targetDate, text: message },
     );
-    collaborationDrafts.set(session.id, "");
-    if (collaborationMessageDraft) collaborationMessageDraft.value = "";
-    currentCollaborationSession = queued;
+    collaborationDrafts.set(draftKey, "");
+    if (collaborationMessageDraft && isCurrentCollaborationVoiceTarget(draftTarget)) {
+      collaborationMessageDraft.value = "";
+    }
+    if (currentCollaborationSession?.id === session.id) currentCollaborationSession = queued;
     renderCollaborationWorkspace();
-    watchCollaborationSession(queued);
+    if (currentCollaborationSession?.id === queued.id) watchCollaborationSession(queued);
   } catch (error) {
-    collaborationDrafts.set(session.id, message);
-    if (collaborationMessageDraft) collaborationMessageDraft.value = message;
+    collaborationDrafts.set(draftKey, message);
+    if (collaborationMessageDraft && isCurrentCollaborationVoiceTarget(draftTarget)) {
+      collaborationMessageDraft.value = message;
+    }
     renderCollaborationWorkspace();
-    if (collaborationRunStatus) {
+    if (currentCollaborationSession?.id === session.id && collaborationRunStatus) {
       setCopyError(collaborationRunStatus, "collaboration.sendFailed", error);
       collaborationRunStatus.dataset.state = "error";
     }
@@ -7279,6 +7619,7 @@ function showWorkspaceDestination(
     currentHabitDateView = null;
   }
   if (leavingCollaboration) {
+    cancelCollaborationVoiceCaptureForSelectionChange();
     stashCollaborationDraft();
     if (collaborationStatusTimer !== null) {
       window.clearInterval(collaborationStatusTimer);
@@ -7349,6 +7690,7 @@ function showWorkspaceDestination(
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = collaborationTargetDate;
     void refreshCollaborationWorkspace();
     void refreshCollaborationConnection();
+    void refreshCollaborationVoiceCapabilities();
   }
 }
 
@@ -7481,7 +7823,17 @@ collaborationDateInput?.addEventListener("change", () => {
 });
 
 collaborationTargetDateInput?.addEventListener("change", () => {
+  cancelCollaborationVoiceCaptureForSelectionChange();
+  stashCollaborationDraft();
   collaborationTargetDate = collaborationTargetDateInput.value || collaborationActivityDate;
+  if (currentCollaborationSession) {
+    collaborationTargetDates.set(currentCollaborationSession.id, collaborationTargetDate);
+    collaborationDraftForTarget({
+      sessionId: currentCollaborationSession.id,
+      targetDate: collaborationTargetDate,
+    });
+  }
+  renderCollaborationWorkspace();
   void refreshCollaborationContext();
 });
 
@@ -7513,6 +7865,22 @@ collaborationReasoningEffortSelect?.addEventListener("change", () => {
 collaborationMessageDraft?.addEventListener("input", () => {
   stashCollaborationDraft();
   renderCollaborationWorkspace();
+});
+
+collaborationVoiceLanguageSelect?.addEventListener("change", () => {
+  const target = currentCollaborationVoiceTarget();
+  if (target && collaborationVoiceLanguageSelect.value) {
+    collaborationVoiceStatuses.delete(voiceDraftKey(target));
+  }
+  renderCollaborationVoiceControls();
+});
+
+collaborationVoiceStartButton?.addEventListener("click", () => {
+  startOrStopCollaborationVoice();
+});
+
+collaborationVoiceCancelButton?.addEventListener("click", () => {
+  collaborationVoiceController.cancel();
 });
 
 collaborationMessageDraft?.addEventListener("keydown", (event) => {
