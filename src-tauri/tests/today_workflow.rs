@@ -1356,7 +1356,7 @@ fn retained_external_descriptor_never_loses_its_late_write() {
     allow_external_write.store(true, Ordering::SeqCst);
     writer.join().expect("external writer should finish");
 
-    let recovery_directory = vault.path().join(".personal-dashboard-recovery/today");
+    let recovery_directory = vault.path().join("life/.personal-dashboard/recovery/today");
     let external_edit_is_recoverable = fs::read_dir(recovery_directory)
         .expect("temporary workspace should remain readable")
         .filter_map(Result::ok)
@@ -1369,6 +1369,10 @@ fn retained_external_descriptor_never_loses_its_late_write() {
     assert!(
         external_edit_is_recoverable,
         "{result:?} must not unlink the inode edited through the retained descriptor"
+    );
+    assert!(
+        !vault.path().join(".personal-dashboard-recovery").exists(),
+        "record recovery must stay under life/"
     );
 }
 
@@ -1427,8 +1431,10 @@ fn unavailable_recovery_storage_fails_closed_before_a_daily_record_write() {
     let vault = TempDirectory::new("today-recovery-failure");
     let original = "---\ntype: daily-record\ndate: 2026-08-10\n---\n# 2026-08-10\n\n## 白天更新\n";
     write_record(vault.path(), original);
+    fs::create_dir_all(vault.path().join("life/.personal-dashboard"))
+        .expect("the app data parent should exist");
     fs::write(
-        vault.path().join(".personal-dashboard-recovery"),
+        vault.path().join("life/.personal-dashboard/recovery"),
         b"blocked",
     )
     .expect("a conflicting recovery path should be created");
@@ -1906,6 +1912,12 @@ date: 2026-08-10
 fn missing_record_returns_an_honest_empty_state() {
     let vault = TempDirectory::new("today-missing");
     prepare_compatible_vault(vault.path());
+    let legacy_recovery = vault
+        .path()
+        .join(".personal-dashboard-recovery/today/daily-record-legacy.snapshot");
+    fs::create_dir_all(legacy_recovery.parent().unwrap()).unwrap();
+    let recovery_bytes = b"---\ntype: daily-record\ndate: 2026-08-10\n---\n# Recovery copy\n";
+    fs::write(&legacy_recovery, recovery_bytes).unwrap();
 
     let view = application_for(vault.path())
         .open()
@@ -1920,6 +1932,11 @@ fn missing_record_returns_an_honest_empty_state() {
     assert!(!vault
         .path()
         .join("life/Journal/Daily/2026/2026-08/2026-08-10.md")
+        .exists());
+    assert_eq!(fs::read(&legacy_recovery).unwrap(), recovery_bytes);
+    assert!(!vault
+        .path()
+        .join("life/.personal-dashboard/recovery/today")
         .exists());
 }
 

@@ -234,7 +234,7 @@ fn app(vault: &Path) -> TodayApplication<SelectedVault, NoSelection, FixedClock>
 }
 
 fn snapshot_path(vault: &Path) -> PathBuf {
-    vault.join(".personal-dashboard/derived/habits-v1.json")
+    vault.join("life/.personal-dashboard/derived/habits-v1.json")
 }
 
 fn completion_path(vault: &Path) -> PathBuf {
@@ -317,6 +317,14 @@ fn a_local_completion_uses_the_catalog_key_counts_once_and_survives_relaunch() {
         HabitLocalCompletionState::Completed
     );
     assert!(completion_path(vault.path()).is_file());
+    let recovery_entries =
+        fs::read_dir(vault.path().join("life/.personal-dashboard/recovery/today"))
+            .expect("local completion writes should keep a recovery snapshot")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.path().is_file())
+            .count();
+    assert!(recovery_entries > 0);
+    assert!(!vault.path().join(".personal-dashboard-recovery").exists());
     assert_eq!(
         fs::read(snapshot_path(vault.path())).unwrap(),
         snapshot_before
