@@ -29,7 +29,7 @@ Then open `http://127.0.0.1:4176/?variant=A`. The local server serves `frontend/
 
 ## Source and boundary
 
-Primary source: `/Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/.scratch/personal-dashboard-codex-collaboration/spec.md` and `map.md`.
+Primary source: `../spec.md` and `../map.md` (relative to this prototype directory).
 
 Visual shell and Task semantics were read from the formal Personal Dashboard checkout's `frontend/index.html`, `styles.css`, `main.ts`, and `task-presentation.ts` (read-only). Domain vocabulary comes from `CONTEXT.md`; morning/daytime/evening distinctions follow `life-daily-loop` and the Daily-flow integration references. No formal-checkout files were changed.
 
