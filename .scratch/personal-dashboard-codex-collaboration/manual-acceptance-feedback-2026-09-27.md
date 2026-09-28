@@ -10,12 +10,12 @@ Captured from the user's first hands-on run of the installed Personal Dashboard 
 
 ## Observed in the follow-up check
 
-- The app displayed `Microphone permission was denied; the existing draft was kept.` Clicking **Start recording** again did not open a macOS permission prompt or change the visible state. No audio was recorded during this follow-up check.
+- The app displayed a microphone-access error and kept the existing draft. Clicking **Start recording** again did not open a macOS permission prompt or change the visible state. No audio was recorded during this follow-up check.
 - Accessibility state showed ChatGPT connected and the prior text exchange in the selected session.
 - The selected session's message field accepted an accessibility click and received focus, so the pointer-hit difficulty was not reproduced here. Source state disables the composer when there is no selected session (and while connection/Vault prerequisites are unmet); when starting without a session, use **New chat** first. The user-facing distinction should be clearer than a wait cursor.
-- macOS 26.5.1 System Settings lists no Personal Dashboard entry under **Privacy & Security → Microphone** after that attempt. The installed app bundle does contain `NSMicrophoneUsageDescription`. No privacy setting was changed.
-- **Speech Recognition** lists no app. On this macOS 26.5.1 build, the app's helper uses the on-device `SpeechTranscriber` path and bypasses the older Speech Recognition authorization prompt; do not enable the separate Speech Recognition permission for this test.
-- The permission failure's root cause is still unconfirmed; the current evidence points to the microphone request not reaching a normal macOS permission prompt, despite the usage description being present.
+- The installed app bundle contains `NSMicrophoneUsageDescription`; this alone does not establish why the microphone request failed. No privacy setting was changed.
+- The helper uses the on-device `SpeechTranscriber` path; this test does not require a separate Speech Recognition permission.
+- The audio-start failure's root cause is still unconfirmed; the current evidence points to the microphone request not reaching a normal macOS permission prompt, despite the usage description being present.
 
 ## Cursor feedback
 
@@ -25,5 +25,5 @@ Captured from the user's first hands-on run of the installed Personal Dashboard 
 
 ## Follow-up
 
-- To test actual voice capture and transcription, the app needs macOS microphone access. Current status is denied, and the app did not reopen a permission prompt; leave the OS privacy setting unchanged until the user enables it.
+- Actual voice capture and transcription remain unverified because the attempted request did not reopen a permission prompt. No OS privacy setting was changed.
 - Triage the composer hit target, permission-recovery guidance, and disabled-control cursor/state distinction after the user finishes this acceptance pass.

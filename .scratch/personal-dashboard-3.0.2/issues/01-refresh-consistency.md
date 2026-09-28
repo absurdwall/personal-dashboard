@@ -30,17 +30,17 @@ Type: task
 
 - 2026-09-26 收尾：新增协调器回归并先验证失败，再接入 `PendingWriteBarrier`，覆盖在 Tasks 写入尚未落盘时返回 Today 的可达竞态；Today 读取失败后任务操作仍保持禁用，成功重读后才恢复。原报告中的刷新不同步仍未复现；这些回归证明的是已演示的竞态与错误状态保护，不证明它就是用户原始故障。
 - 最新正式打包候选为 `com.tortillaflat.personal-dashboard` 3.0.1，主程序 SHA-256 `b2f5f31cbfb563ba62c455a04a7d927244dddce11b6ce15f8716b2eb67218486`。在隔离合成 Vault / 应用资料中，Mac UI 驱动的 `today-refresh` 通过：外部 Task 与 Daily Record 修改后点一次 Refresh，两处均显示新值；损坏 Tasks 显示读取错误且不冒充成功，修复源文件后可重试恢复；从 Tasks 改名后进入 Today 保留 Task ID 并显示新标题。
-- 其余最新打包路径也通过：`vault-selection` 验证取消/重选保留草稿、切换 Vault 清除旧页面状态，Daily Record 哈希不变；`today-time-axis` 验证当前与历史日期行为和跨午夜重启；`today-shared-task-axis` 在午夜重启后外部改名并手动 Refresh，保持 Task ID、原日期和状态，移除旧时间轴点且不改写 Daily Record。证据目录分别为 `/private/tmp/personal-dashboard-ipc.ticket01refreshfinal20260926/`、`/private/tmp/personal-dashboard-ipc.ticket01vaultfinal20260926/`、`/private/tmp/personal-dashboard-ipc.ticket01timeaxisfinal2-20260926/` 和 `/private/tmp/personal-dashboard-ipc.ticket01axisfinal3-20260926/`。
+- 其余最新打包路径也通过：`vault-selection` 验证取消/重选保留草稿、切换 Vault 清除旧页面状态，Daily Record 哈希不变；`today-time-axis` 验证当前与历史日期行为和跨午夜重启；`today-shared-task-axis` 在午夜重启后外部改名并手动 Refresh，保持 Task ID、原日期和状态，移除旧时间轴点且不改写 Daily Record。相关验收证据保留在本机，未加入 PR。
 - 异步协调器用例延迟旧读取，再触发日期切换或 Vault 选择，断言过期视图不会覆盖新结果；PendingWriteBarrier 用例验证返回 Today 等待写入完成。聚焦前端测试 38/38 通过；`npm run build`、`npm run build:mac`、验收 shell 语法、Swift UI driver 类型检查和 `git diff --check` 通过。完整 `npm run test:frontend` 为 124/125，唯一失败仍是仓库外 `life-daily-loop` skill 缺少 `## Personal Dashboard Tasks` 契约；没有修改该外部文件。无 Rust 代码改动，未运行 Cargo 套件。
 - Spec / Standards 代码审查：Spec 确认没有已证实的错误实现，但原始报告必须保持未证实，并指出日期/旧响应测试在异步协调器边界而非完整 UI 级延迟注入；日期、Vault 和午夜 UI 路径另由最新打包场景覆盖。Standards 未发现硬性规范违规；仅记录 `refreshTodayPresentation` 泛型回调略显通用的维护性判断，未发现其他 Fowler 异味。本票 acceptance harness 的中英标签和历史空状态更新用于让既有隔离验收路径匹配当前界面；不改变产品行为。
-- 最终组合复核：在 Ticket 01 当前候选包上重跑 `readable-task-cards`，窗口尺寸 960×720、800×640、640×520 下分别操作 Today、Tasks、Calendar、Habits，并断言页面无文档级横/纵滚动；任务详情、键盘焦点顺序、完成/重开、删除/恢复、放弃/恢复及 Tasks/Calendar 共视均通过。隔离 Daily Record SHA-256 保持 `d37fbaf33f1d1669655bc64e2fdf00df57b69547c3017858973ebe3a3033de27`。12 张窗口级截图逐张目视检查，目录为 `/private/tmp/personal-dashboard-ipc.ticket01finalmatrix5-20260926/page-frame-matrix-captures/`，卡片截图在相邻的 `task-card-captures/`。截图驱动现按目标 PID、Accessibility 窗口边界匹配 CGWindow 并用窗口 ID 捕获，未再录入覆盖窗口的其他应用弹窗。当前候选包主程序 SHA-256 仍为 `b2f5f31cbfb563ba62c455a04a7d927244dddce11b6ce15f8716b2eb67218486`。对窗口级截图改动的 Spec 与 Standards 增量审查均无阻断发现。
+- 最终组合复核：在 Ticket 01 当前候选包上重跑 `readable-task-cards`，窗口尺寸 960×720、800×640、640×520 下分别操作 Today、Tasks、Calendar、Habits，并断言页面无文档级横/纵滚动；任务详情、键盘焦点顺序、完成/重开、删除/恢复、放弃/恢复及 Tasks/Calendar 共视均通过。隔离 Daily Record SHA-256 保持 `d37fbaf33f1d1669655bc64e2fdf00df57b69547c3017858973ebe3a3033de27`。12 张窗口级截图逐张目视检查；截图与卡片图保留在本机，未加入 PR。截图驱动现按目标 PID、Accessibility 窗口边界匹配 CGWindow 并用窗口 ID 捕获，未再录入覆盖窗口的其他应用弹窗。当前候选包主程序 SHA-256 仍为 `b2f5f31cbfb563ba62c455a04a7d927244dddce11b6ce15f8716b2eb67218486`。对窗口级截图改动的 Spec 与 Standards 增量审查均无阻断发现。
 - 结论：按用户认可的范围以“原报告未复现；约定验证通过”关闭，不声称修复了原始报告。若之后提供确切 Vault、Task 身份/日期、外部写入步骤及刷新前后差异，可据此重新打开调查。仅运行隔离合成资料，未安装或发布 App。
 
 ## Answer
 
 Today 刷新现在等待未完成的共享 Task 写入后再读取，并丢弃已过期的日期/Vault 页面响应；错误读取会明确显示，且不会让陈旧任务可写。应用工作流与最新打包 UI 路径验证了外部 Task/Daily Record 修改、损坏数据重试、Tasks 到 Today、Vault 切换、慢旧响应、写入后返回及跨午夜重启。原报告中的“刷新后仍不同步”未复现，因此本票结论为“原报告未复现；约定验证通过”，不是已证明修复了原始故障。
 
-当前候选包还通过四页组合路径和 960×720、800×640、640×520 的 12 张窗口截图矩阵；截图逐张检查时未见外部窗口遮挡，合成 Daily Record 未变化。矩阵及三张 Today 任务卡截图保存在 `/private/tmp/personal-dashboard-ipc.ticket01finalmatrix5-20260926/`。
+当前候选包还通过四页组合路径和 960×720、800×640、640×520 的 12 张窗口截图矩阵；截图逐张检查时未见外部窗口遮挡，合成 Daily Record 未变化。矩阵及三张 Today 任务卡截图保留在本机，未加入 PR。
 
 聚焦测试 38/38、构建与最新四条打包场景通过；完整前端套件仍有一项仓库外 `life-daily-loop` skill 契约失败。Spec 与 Standards 复核没有阻断项。父 spec 未改；未安装或发布 App。
 

@@ -43,11 +43,11 @@ Type: task
 
 已完成票 04。统一 Today、Tasks、Calendar、Habits 的内容区宽度/左右边距与页面标题层级；Calendar 与 Habits 的局部标题留白已对齐。Tasks 保留可访问的页面名称但隐藏重复的大标题。Today 创建区域保留功能面板，只去掉重复嵌套的装饰框。Habits 在 901–1000px 的摘要布局收紧，修复 960px 横向溢出；未更改习惯行为、共享任务时间轴或卡片内容/操作。
 
-正式 Mac App 改前基线：com.tortillaflat.personal-dashboard，版本 3.0.1，SHA-256 dd5a1803cd317eb4f442cbe731f5609bdc58ad8813fcc28696670ad64f237614；同一隔离合成 Vault 的 12 张四页基线截图在 /private/tmp/personal-dashboard-ipc.ticket04baseline20260926/page-frame-matrix-captures/。基线记录了 Tasks 重复标题、各页左右缩进/标题尺度不一、Today 创建表单的嵌套圆角框，以及 Habits 960px 横向溢出。
+正式 Mac App 改前基线：com.tortillaflat.personal-dashboard，版本 3.0.1，SHA-256 dd5a1803cd317eb4f442cbe731f5609bdc58ad8813fcc28696670ad64f237614；同一隔离合成 Vault 的 12 张四页基线截图保留在本机，未加入 PR。基线记录了 Tasks 重复标题、各页左右缩进/标题尺度不一、Today 创建表单的嵌套圆角框，以及 Habits 960px 横向溢出。
 
-最终候选包仍为 com.tortillaflat.personal-dashboard 3.0.1，可执行文件 SHA-256 5e3555ffb48f802f0e6b172eb9f38221ffbcc96e6613d72b0946ee4dcbf88c98。最终 packaged readable-task-cards 组合验收退出码为 0，使用同一隔离合成资料完成任务详情、焦点顺序、完成/重开、删除/恢复、放弃/恢复以及 Tasks/Calendar 可见性，并验证 Daily Record SHA-256 未变化。最终四页矩阵目录为 /private/tmp/personal-dashboard-ipc.ticket04matrixfinal-20260926/page-frame-matrix-captures/：960×720、800×640、640×520 每个尺寸均包含 Today、Tasks、Calendar、Habits 四页，共 12 张。每个尺寸都操作 Today/Tasks 刷新、Calendar 上/下月与日期选择、Habits 刷新；正式窗口检查通过，页面文档级横/纵向滚动条断言通过。640×520 的 Tasks 截图曾因前台窗口竞态捕获错误应用，已移入 rejected-captures 并从同一打包应用重新生成正确截图；替换后的完整 12 张矩阵均已逐张目视检查。卡片动作图在 /private/tmp/personal-dashboard-ipc.ticket04matrixfinal-20260926/task-card-captures/。
+最终候选包仍为 com.tortillaflat.personal-dashboard 3.0.1，可执行文件 SHA-256 5e3555ffb48f802f0e6b172eb9f38221ffbcc96e6613d72b0946ee4dcbf88c98。最终 packaged readable-task-cards 组合验收退出码为 0，使用同一隔离合成资料完成任务详情、焦点顺序、完成/重开、删除/恢复、放弃/恢复以及 Tasks/Calendar 可见性，并验证 Daily Record SHA-256 未变化。最终四页矩阵覆盖 960×720、800×640、640×520，每个尺寸均包含 Today、Tasks、Calendar、Habits 四页，共 12 张。每个尺寸都操作 Today/Tasks 刷新、Calendar 上/下月与日期选择、Habits 刷新；正式窗口检查通过，页面文档级横/纵向滚动条断言通过。640×520 的 Tasks 截图曾因前台窗口竞态捕获错误应用，已移入 rejected-captures 并从同一打包应用重新生成正确截图；替换后的完整 12 张矩阵均已逐张目视检查。卡片动作图保留在本机，未加入 PR。
 
-最终集成路径也复核了前三票行为：today-refresh 场景在 /private/tmp/personal-dashboard-ipc.ticket04refreshfinal20260926/ 通过；today-shared-task-axis 场景在 /private/tmp/personal-dashboard-ipc.ticket04axisfinal20260926/ 通过；readable-task-cards 组合场景在最终候选包上通过。合成任务在刷新与生命周期操作后保留身份，未写入 Daily Record。仅用隔离合成 Vault 与复制出的正式打包应用；未操作真实个人数据、未安装或发布应用。
+最终集成路径也复核了前三票行为：today-refresh 与 today-shared-task-axis 场景均通过；readable-task-cards 组合场景在最终候选包上通过。合成任务在刷新与生命周期操作后保留身份，未写入 Daily Record。仅用隔离合成 Vault 与复制出的正式打包应用；未操作真实个人数据、未安装或发布应用。
 
 验证：npm run build、npm run build:mac 通过；tests/frontend/task-presentation.test.ts 19/19 通过；acceptance shell 语法检查、Swift UI driver 编译与 git diff --check 通过。完整 npm run test:frontend 与 cargo test 各有一项已知外部失败：前者要求外部 life-daily-loop skill 含有 ## Personal Dashboard Tasks，后者的 daily-flow fixture 因 morning-laundry 历史顺序倒置而失败；未改动外部 skill 或 fixture。
 
@@ -59,13 +59,13 @@ Type: task
 
 已完成本票并发布 3.0.3。Today、Tasks、Calendar、Habits 的页头尺度、内容边距与标题层级已统一；Calendar 使用与其他页面相同的 `clamp(2rem, 4vw, 3rem)` 标题尺度。视觉隐藏的 Tasks 重复主标题仍保留其可访问页面名称。Today 未定位内容区与邻近更新区的遮挡断言使用可观察界面几何，并在三种窗口尺寸逐一通过。父规格状态未更改；票 01–03 未重开，也未开始下一票。
 
-**实际安装的 3.0.2 基线：** `/Applications/Personal Dashboard.app` 的版本为 3.0.2，Bundle ID `com.tortillaflat.personal-dashboard`，主程序 SHA-256 `d55bdadc2778566e019282295a61c85fe64a1cbb4cb97973d55b025102a8aa99`，签名有效。以该已安装 bundle 为隔离验收来源，在合成 Vault/隔离 App 数据下完成四页入口、刷新/日历导航/习惯快照和任务操作，并生成 960×720、800×640、640×520 各含 Today/Tasks/Calendar/Habits 的 12 张改前基线图：`/private/tmp/pd-ticket04-installed-302-baseline-20260926/page-frame-matrix-captures/`；任务卡片图在相邻 `task-card-captures/`。该 3.0.2 证据纠正并补充前面注明的 3.0.1 历史候选矩阵。
+**实际安装的 3.0.2 基线：** `/Applications/Personal Dashboard.app` 的版本为 3.0.2，Bundle ID `com.tortillaflat.personal-dashboard`，主程序 SHA-256 `d55bdadc2778566e019282295a61c85fe64a1cbb4cb97973d55b025102a8aa99`，签名有效。以该已安装 bundle 为隔离验收来源，在合成 Vault/隔离 App 数据下完成四页入口、刷新/日历导航/习惯快照和任务操作，并生成 960×720、800×640、640×520 各含 Today/Tasks/Calendar/Habits 的 12 张改前基线图均已检查；任务卡片截图保留在本机，未加入 PR。该 3.0.2 证据纠正并补充前面注明的 3.0.1 历史候选矩阵。
 
 **最终 3.0.3 打包验收：** Bundle ID `com.tortillaflat.personal-dashboard`，版本 3.0.3，主程序 SHA-256 `91f53ba8e7a2e918622f5c9e00c981abdf51f5d854a2275be8f73e27d3b81471`，签名验证通过。`today-refresh`、`today-shared-task-axis`、`readable-task-cards` 和 `today-unlocated-panel-layout` 均在该同一包上通过。共享时间轴覆盖创建、手动刷新、完成/重开、改期、同名时间点重叠、Tasks-only Vault 和跨午夜重启；Task 身份保持不变，Daily Record 未被任务操作改写。任务卡片路径覆盖详情、键盘焦点顺序、完成/恢复、放弃/恢复、删除/恢复及 Tasks/Calendar 可见性。
 
-最终四页截图矩阵目录：`/private/tmp/pd-ticket04-303-final-candidate-20260926/page-frame-matrix-captures/`；三尺寸各四页共 12 张。相同窗口矩阵操作了 Today/Tasks 刷新、Calendar 上下月与日期选择、Habits 快照刷新；窗口尺寸断言和文档级横/纵向滚动断言通过。12 张候选图已逐张视觉检查。长内容遮挡截图在该目录的 `unlocated-panel/`，对应区域 bounds 在 960×720、800×640、640×520 均不相交。正式安装后的启动进程来自 `/Applications/Personal Dashboard.app`。
+最终四页截图矩阵已逐张视觉检查；三尺寸各四页共 12 张。相同窗口矩阵操作了 Today/Tasks 刷新、Calendar 上下月与日期选择、Habits 快照刷新；窗口尺寸断言和文档级横/纵向滚动断言通过。12 张候选图已逐张视觉检查。长内容遮挡截图在该目录的 `unlocated-panel/`，对应区域 bounds 在 960×720、800×640、640×520 均不相交。正式安装后的启动进程来自 `/Applications/Personal Dashboard.app`。
 
-安装前保留了有效签名、哈希为 `d55bdadc2778566e019282295a61c85fe64a1cbb4cb97973d55b025102a8aa99` 的 3.0.2 recovery 副本：`.scratch/personal-dashboard-3.0.2/recovery/Personal Dashboard 3.0.2.app`。安装启动前后 Application Support 目录的 5 个文件哈希一致；清单为 `/private/tmp/pd-ticket04-303-config-pre-install.json` 和 `/private/tmp/pd-ticket04-303-config-post-startup.json`。只使用合成 Vault 验收，没有编辑真实 Vault 或 Daily Record。Tauri bundle 签名有效；由于本机没有 Apple notarization credentials，构建未公证。Finder/全局 Spotlight overlay 的独立手动验收仍按既有 Management 记录待用户确认，本票不把它外推为通过。
+安装前保留了有效签名、哈希为 `d55bdadc2778566e019282295a61c85fe64a1cbb4cb97973d55b025102a8aa99` 的 3.0.2 recovery 副本：`.scratch/personal-dashboard-3.0.2/recovery/Personal Dashboard 3.0.2.app`。安装启动前后 Application Support 目录的 5 个文件哈希一致；清单保留在本机，未加入 PR。只使用合成 Vault 验收，没有编辑真实 Vault 或 Daily Record。Tauri bundle 签名有效；由于本机没有 Apple notarization credentials，构建未公证。Finder/全局 Spotlight overlay 的独立手动验收仍按既有 Management 记录待用户确认，本票不把它外推为通过。
 
 **代码审查：** Spec 轴无剩余产品或验收发现。Standards 轴无文档硬性违规；Task 路径单独运行造成的少量流程重复有截图失败隔离的明确用途，没有可操作的维护问题。
 

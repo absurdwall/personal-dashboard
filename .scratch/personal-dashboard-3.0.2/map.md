@@ -29,9 +29,9 @@
 
 历史记录：下一段描述的是早期 3.0.1 最终集成候选。其截图仅作为历史证据；本次 installed 3.0.2 改前基线与 3.0.3 最终候选矩阵见本文末尾，不能由早期截图替代。
 
-04 最终候选打包应用在最终集成代码上通过组合路径：Today refresh、共享 Task 时间轴、可读卡片与其完成/恢复/删除操作、Tasks/Calendar 可见性，以及 Calendar 月份/日期与 Habits 刷新入口。四页矩阵在同一合成 Vault 和同一包上覆盖 960×720、800×640、640×520，每个尺寸各截 Today、Tasks、Calendar、Habits；正式窗口与可访问滚动断言通过，12 张截图逐张目视检查。候选包身份为 `com.tortillaflat.personal-dashboard` 3.0.1，二进制 SHA-256 `5e3555ffb48f802f0e6b172eb9f38221ffbcc96e6613d72b0946ee4dcbf88c98`；矩阵在 `/private/tmp/personal-dashboard-ipc.ticket04matrixfinal-20260926/page-frame-matrix-captures/`，卡片动作截图在同目录的 `task-card-captures/`。一张前台窗口误捕获已隔离并重拍，未纳入通过证据。800×640 Habits 摘要中的 Exercise/2/3 仍显拥挤，与基线相同且非本票引入。完整前端与 Cargo 套件各有一项已知外部契约/fixture 失败，见票 04 Answer。（04 票关闭时尚未安装或发布 App，父规格当时保持 ready-for-agent；后续明确授权的 3.0.2 发布与安装见下节。）
+04 最终候选打包应用在最终集成代码上通过组合路径：Today refresh、共享 Task 时间轴、可读卡片与其完成/恢复/删除操作、Tasks/Calendar 可见性，以及 Calendar 月份/日期与 Habits 刷新入口。四页矩阵在同一合成 Vault 和同一包上覆盖 960×720、800×640、640×520，每个尺寸各截 Today、Tasks、Calendar、Habits；正式窗口与可访问滚动断言通过，12 张截图逐张目视检查。候选包身份为 `com.tortillaflat.personal-dashboard` 3.0.1，二进制 SHA-256 `5e3555ffb48f802f0e6b172eb9f38221ffbcc96e6613d72b0946ee4dcbf88c98`；矩阵与卡片动作截图均保留在本机，未加入 PR。一张前台窗口误捕获已隔离并重拍，未纳入通过证据。800×640 Habits 摘要中的 Exercise/2/3 仍显拥挤，与基线相同且非本票引入。完整前端与 Cargo 套件各有一项已知外部契约/fixture 失败，见票 04 Answer。（04 票关闭时尚未安装或发布 App，父规格当时保持 ready-for-agent；后续明确授权的 3.0.2 发布与安装见下节。）
 
-票 01 完成后的最新组合复核使用候选包 `com.tortillaflat.personal-dashboard` 3.0.1，主程序 SHA-256 `b2f5f31cbfb563ba62c455a04a7d927244dddce11b6ce15f8716b2eb67218486`。`readable-task-cards` 的四页操作、滚动断言、Task 详情与生命周期路径通过；当前包的 12 张矩阵截图在 `/private/tmp/personal-dashboard-ipc.ticket01finalmatrix5-20260926/page-frame-matrix-captures/`，三张 Today 卡片图在相邻 `task-card-captures/`，均已逐张目视检查。窗口截图驱动按 Personal Dashboard 窗口 ID 捕获，排除了先前覆盖截图的其他应用窗口；隔离 Daily Record SHA-256 `d37fbaf33f1d1669655bc64e2fdf00df57b69547c3017858973ebe3a3033de27` 未变。刷新原始报告仍未复现，不作为已证明修复记录。聚焦前端用例 38/38；完整前端套件 124/125，唯一失败仍为仓库外 `life-daily-loop` skill 契约缺失。Ticket 01 与本轮组合证据见其 Answer / Comments。
+票 01 完成后的最新组合复核使用候选包 `com.tortillaflat.personal-dashboard` 3.0.1，主程序 SHA-256 `b2f5f31cbfb563ba62c455a04a7d927244dddce11b6ce15f8716b2eb67218486`。`readable-task-cards` 的四页操作、滚动断言、Task 详情与生命周期路径通过；当前包的 12 张矩阵截图和三张 Today 卡片图均已逐张目视检查，保留在本机且未加入 PR。窗口截图驱动按 Personal Dashboard 窗口 ID 捕获，排除了先前覆盖截图的其他应用窗口；隔离 Daily Record SHA-256 `d37fbaf33f1d1669655bc64e2fdf00df57b69547c3017858973ebe3a3033de27` 未变。刷新原始报告仍未复现，不作为已证明修复记录。聚焦前端用例 38/38；完整前端套件 124/125，唯一失败仍为仓库外 `life-daily-loop` skill 契约缺失。Ticket 01 与本轮组合证据见其 Answer / Comments。
 
 ## 3.0.2 发布与安装交付
 
@@ -40,13 +40,13 @@
 - 四票最终组合路径与四页 12 图矩阵已按上节在最终集成 3.0.1 包上完成。本次 3.0.2 代码差异仅为版本元数据，因此不把 3.0.1 矩阵改称 3.0.2 矩阵。
 - `/Applications/Personal Dashboard.app` 当前为 3.0.2，bundle id `com.tortillaflat.personal-dashboard`，主程序 SHA-256 与候选一致：`d55bdadc2778566e019282295a61c85fe64a1cbb4cb97973d55b025102a8aa99`；签名验证通过，按正式路径启动成功。旧 3.0.1 包保存在 `.scratch/personal-dashboard-3.0.2/recovery/`，两个副本主程序哈希均为 `31a4b1f9c8578ff7bda0603af433b900e8414c2e58056a264638ab1b422e8781` 且签名有效。
 - 应用支持目录安装前后均为 5 个配置文件、0 个哈希变化。只做正常启动读取，未编辑真实 Vault 内容。启动后 Dashboard 进程来自 `/Applications/Personal Dashboard.app`。
-- 重复入口收尾：原先 64 个仍存在的 `/private/tmp/personal-dashboard-ipc.*` 测试包与构建副本均保留文件/截图，测试包注册被定点注销；原先不存在的 16 条旧注册记录未尝试清除。最终现存 LaunchServices 路径仅 `/Applications/Personal Dashboard.app`；索引切换稳定后，Spotlight 的 bundle id 与 `Personal Dashboard.app` 名称查询各只返回该路径。只排除了生成 build 输出目录，不全局重置索引，也没有把 `/Applications` 加入排除。
+- 重复入口收尾：原先 64 个仍存在的本机测试包与构建副本均保留文件/截图，测试包注册被定点注销；原先不存在的 16 条旧注册记录未尝试清除。最终现存 LaunchServices 路径仅 `/Applications/Personal Dashboard.app`；索引切换稳定后，Spotlight 的 bundle id 与 `Personal Dashboard.app` 名称查询各只返回该路径。只排除了生成 build 输出目录，不全局重置索引，也没有把 `/Applications` 加入排除。
 - Spotlight 会自动把重复候选重新发现，因此签名有效的可再生成候选包保存在 `src-tauri/target/release/bundle/macos.noindex/Personal Dashboard 3.0.2 build candidate.stashed`（目录名不再以 `.app` 结尾）；包内容未改，签名仍有效，二进制哈希仍为 `d55bdadc2778566e019282295a61c85fe64a1cbb4cb97973d55b025102a8aa99`。原始 `macos` 输出目录及 `macos.noindex` 均有可逆 Spotlight 排除/标记，Tauri 将来重建到原输出目录时也继续受排除规则保护。
 - 本地详细记录与 Management 回执见 [`delivery-recovery.md`](delivery-recovery.md)。本地工作结束后未自动启动下一票。
 
 ## 2026-09-26 搜索入口复验
 
-用户报告 Spotlight 搜索找不到已安装应用后，使用 Finder 原生搜索界面在 `/Applications` 范围复现：`Personal Dashboard` 返回 0，完整文件名 `Personal Dashboard.app` 返回 1。只读核对发现 Spotlight 已启用、结果类别 Apps 已启用、`/Applications` 不在隐私排除中、正式 bundle 的显示名与 Bundle ID 正确；但 LaunchServices 仍保存 16 条 3.0.1 的同 Bundle ID 记录，全部指向已不存在的 `/private/tmp/personal-dashboard-ipc.*` 路径。
+用户报告 Spotlight 搜索找不到已安装应用后，使用 Finder 原生搜索界面在 `/Applications` 范围复现：`Personal Dashboard` 返回 0，完整文件名 `Personal Dashboard.app` 返回 1。只读核对发现 Spotlight 已启用、结果类别 Apps 已启用、`/Applications` 不在隐私排除中、正式 bundle 的显示名与 Bundle ID 正确；但 LaunchServices 仍保存 16 条 3.0.1 的同 Bundle ID 记录，全部指向已不存在的临时测试包路径。
 
 按精确旧路径定点注销这 16 条失效登记，未删除文件或改动正式安装。清理后 LaunchServices 对 `com.tortillaflat.personal-dashboard` 仅剩 `/Applications/Personal Dashboard.app`；Finder 原生搜索 `Personal Dashboard` 现在返回这一个应用条目，并从该结果成功打开。进程路径为 `/Applications/Personal Dashboard.app/Contents/MacOS/personal-dashboard`；安装版本 3.0.2、可执行文件 SHA-256 `d55bdadc2778566e019282295a61c85fe64a1cbb4cb97973d55b025102a8aa99`，签名有效。Spotlight 隐私设置与全盘索引未改动；五个 Application Support 文件相对既有 post-startup 快照的 SHA-256 均未变化。Finder 搜索入口验收完成；全局 Spotlight 弹窗尚未验证，详见下方补充。
 
@@ -69,12 +69,12 @@ Pending recovery 中保留两条历史/失败操作：既有 summary conflict `m
 
 ## 3.0.3 Ticket 04 最终复验与安装
 
-- 改前基线使用正式安装的 `/Applications/Personal Dashboard.app`，版本 3.0.2、Bundle ID `com.tortillaflat.personal-dashboard`、主程序 SHA-256 `d55bdadc2778566e019282295a61c85fe64a1cbb4cb97973d55b025102a8aa99`；`codesign --verify --deep --strict` 通过。用该安装 bundle 的隔离副本和合成 Vault 运行入口、页面刷新/导航、卡片操作并生成 960×720、800×640、640×520 各四页的 12 张基线截图：`/private/tmp/pd-ticket04-installed-302-baseline-20260926/page-frame-matrix-captures/`。同目录保存三尺寸任务卡片截图。
+- 改前基线使用正式安装的 `/Applications/Personal Dashboard.app`，版本 3.0.2、Bundle ID `com.tortillaflat.personal-dashboard`、主程序 SHA-256 `d55bdadc2778566e019282295a61c85fe64a1cbb4cb97973d55b025102a8aa99`；`codesign --verify --deep --strict` 通过。用该安装 bundle 的隔离副本和合成 Vault 运行入口、页面刷新/导航、卡片操作并生成 960×720、800×640、640×520 各四页的 12 张基线截图；三尺寸任务卡片截图也保留在本机，均未加入 PR。
 - 最终打包候选身份为 `com.tortillaflat.personal-dashboard` 3.0.3，主程序 SHA-256 `91f53ba8e7a2e918622f5c9e00c981abdf51f5d854a2275be8f73e27d3b81471`；签名验证通过。`today-refresh`、`today-shared-task-axis`、`readable-task-cards`、`today-unlocated-panel-layout` 在同一候选包上通过；合成记录与任务操作边界见票 04 Final Answer。共享时间轴回归在窄窗口以实际“重开”操作作为滚动锚点，完整复验通过。
-- 最终四页矩阵：`/private/tmp/pd-ticket04-303-final-candidate-20260926/page-frame-matrix-captures/`，同一 3.0.3 包、同一合成 Vault，三个窗口尺寸均含 Today/Tasks/Calendar/Habits，共 12 张。每个尺寸的页面入口与刷新/导航动作和文档横纵滚动断言均通过，12 张截图逐张由 Agent 目视检查。未定位内容几何与更新区在 960×720、800×640、640×520 均断言不相交，截图位于相邻 `unlocated-panel/`。这不是用户逐张视觉批准。
+- 最终四页矩阵为本机保留的 12 张截图；使用同一 3.0.3 包、同一合成 Vault，三个窗口尺寸均含 Today/Tasks/Calendar/Habits，共 12 张。每个尺寸的页面入口与刷新/导航动作和文档横纵滚动断言均通过，12 张截图逐张由 Agent 目视检查。未定位内容几何与更新区在 960×720、800×640、640×520 均断言不相交，截图位于相邻 `unlocated-panel/`。这不是用户逐张视觉批准。
 - Spec 轴无剩余产品或验收发现。Standards 轴无文档硬性违规；保留独立 Today→Tasks 路径场景的少量重复是为了将路由验收与截图矩阵故障隔离。
 - `npm run build:mac`、acceptance shell `bash -n`、Swift UI driver `swiftc -typecheck`、`git diff --check` 通过。此前完整前端套件 126/127；唯一失败是仓库外 `life-daily-loop` skill 缺少 `## Personal Dashboard Tasks` 契约，未改外部文件。签名有效，但构建因本机无 Apple notarization credentials 而未公证。
-- PR [#7](https://github.com/absurdwall/personal-dashboard/pull/7) 已合并，merge commit `95f4cfa6653c0def5c14cb42b36bde389bb21675`。`/Applications/Personal Dashboard.app` 已替换并正常启动为 3.0.3；安装后主程序 SHA-256 与验收候选相同。替换前保存了有效签名的 3.0.2 recovery 副本 `.scratch/personal-dashboard-3.0.2/recovery/Personal Dashboard 3.0.2.app`。Application Support 五个文件在安装前与启动后哈希全同；清单见 `/private/tmp/pd-ticket04-303-config-pre-install.json` 和 `/private/tmp/pd-ticket04-303-config-post-startup.json`。只用合成 Vault，未写入真实 Vault 或 Daily Record。全局 Spotlight overlay 仍是既有待用户手动确认项。
+- PR [#7](https://github.com/absurdwall/personal-dashboard/pull/7) 已合并，merge commit `95f4cfa6653c0def5c14cb42b36bde389bb21675`。`/Applications/Personal Dashboard.app` 已替换并正常启动为 3.0.3；安装后主程序 SHA-256 与验收候选相同。替换前保存了有效签名的 3.0.2 recovery 副本 `.scratch/personal-dashboard-3.0.2/recovery/Personal Dashboard 3.0.2.app`。Application Support 五个文件在安装前与启动后哈希全同；清单保留在本机，未加入 PR。只用合成 Vault，未写入真实 Vault 或 Daily Record。全局 Spotlight overlay 仍是既有待用户手动确认项。
 - 本票已结束；不启动下一票。父 spec 状态保持不变。
 
 ### Ticket 04 Management 同步 — 2026-09-27
@@ -83,7 +83,7 @@ Pending recovery 中保留两条历史/失败操作：既有 summary conflict `m
 
 ## 2026-09-27 Calendar/Habits 页头 follow-up
 
-用户明确授权 Ticket 05 两处细节并已完成。最终 3.0.4 打包矩阵在 `/private/tmp/pd-visual-followup-304-final-assertions-20260927/page-frame-matrix-captures/`，四页分别覆盖 960×720、800×640、640×520，共 12 张；目标页与 Today/Tasks 无回归，逐张目视检查。包 SHA-256 `87a820473acf61e12d6b86544c343c156645ae2438f42f0b7c328385da4e2476`，签名有效；已安装并启动，Application Support 五文件更新前后哈希一致。PR #8 merge commit `8246fa9eb186e8f2dfdd8e4f46109b5e262e0a5f`。详细验收、审查及完整前端套件外部契约失败见 Ticket 05 Answer；全局 Spotlight overlay 仍待用户手动确认。
+用户明确授权 Ticket 05 两处细节并已完成。最终 3.0.4 打包矩阵截图保留在本机，未加入 PR；四页分别覆盖 960×720、800×640、640×520，共 12 张；目标页与 Today/Tasks 无回归，逐张目视检查。包 SHA-256 `87a820473acf61e12d6b86544c343c156645ae2438f42f0b7c328385da4e2476`，签名有效；已安装并启动，Application Support 五文件更新前后哈希一致。PR #8 merge commit `8246fa9eb186e8f2dfdd8e4f46109b5e262e0a5f`。详细验收、审查及完整前端套件外部契约失败见 Ticket 05 Answer；全局 Spotlight overlay 仍待用户手动确认。
 
 ### Ticket 05 Management 同步 — 2026-09-27
 
@@ -101,7 +101,7 @@ canonical close 请求 `dashboard-302-ticket06-close-20260927T034744Z` confirmed
 
 PR [#10](https://github.com/absurdwall/personal-dashboard/pull/10) 已按 merge commit `c793e9f8f20e0b9015cea8a8d1818e80f4cd5184` 合并。修正只将 Habits 目的页容器加入现有 ready-background 共享面板规则；标题分隔线保留，面板跨越周摘要、每日锚点、习惯列表和展开历史，无图状态没有面板，未改业务逻辑。
 
-最终候选为 3.0.4，App 可执行文件 SHA-256 `4b90971849b84f9fea436d5dbcf48c4424415959a405b96a9aa54d6cc6d40110`，签名验证通过。`npm run check`、`npm run build:mac`、`git diff --check`、验收 shell 语法检查及 Swift driver 类型检查通过。Habits 带图/无图的三尺寸顶部、中段和展开历史截图，以及 Today/Tasks/Calendar/Habits 四页 12 张矩阵均保留在 `/private/tmp/pd-ticket06-corrected-final-habits-panel/` 与 `/private/tmp/personal-dashboard-ipc.ticket06-corrected-final-standard-20260927/`，未进入 PR。收尾核对发现 `ready-captures3` 中三张命名为 `bottom` 的截图没有证明滚动到页面末尾：960×720、800×640 与中段图相同，640×520 仍在页面中段；已撤回底部已验的说法。按用户要求不继续扩张截图检查，也不重跑此前通过的组合路径和四页矩阵。旧 Calendar 800×640 控件超时和 Today-card 640×520 标签缺失在基线及最终交互验收中均未复现，不把捕图成功当成交互通过。
+最终候选为 3.0.4，App 可执行文件 SHA-256 `4b90971849b84f9fea436d5dbcf48c4424415959a405b96a9aa54d6cc6d40110`，签名验证通过。`npm run check`、`npm run build:mac`、`git diff --check`、验收 shell 语法检查及 Swift driver 类型检查通过。Habits 带图/无图的三尺寸顶部、中段和展开历史截图，以及 Today/Tasks/Calendar/Habits 四页 12 张矩阵均保留在本机，未加入 PR。收尾核对发现 `ready-captures3` 中三张命名为 `bottom` 的截图没有证明滚动到页面末尾：960×720、800×640 与中段图相同，640×520 仍在页面中段；已撤回底部已验的说法。按用户要求不继续扩张截图检查，也不重跑此前通过的组合路径和四页矩阵。旧 Calendar 800×640 控件超时和 Today-card 640×520 标签缺失在基线及最终交互验收中均未复现，不把捕图成功当成交互通过。
 
 Standards 与 Spec 双轴代码审查均为零项发现。最终 App 已安装并启动，候选与安装二进制哈希相同，Application Support 五项配置哈希不变；旧 3.0.4 App 已备份。只使用隔离合成 Vault，未写入真实 Vault 或 Daily Record。全局 Spotlight overlay 仍待用户手动确认，不由本票代验。本票结束，不启动下一票。
 

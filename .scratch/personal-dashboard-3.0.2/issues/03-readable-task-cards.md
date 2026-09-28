@@ -12,7 +12,7 @@ Type: task
 ## Acceptance criteria
 
 - [x] 标题占卡片正文可用宽度，元信息位于其下，详情/完成/放弃/删除等操作位于正文下方；按钮可换行但不能反向挤压正文。
-- [x] “签续租合同”、长中文及“准备 interview coding：复习动态规划并整理 follow-up notes”正常阅读；日期和来源不被挤成竖列，不隐藏名称、不依赖悬停、不缩小现有正文字号补救。
+- [x] 短中文、长中文及长英文合成任务标题正常阅读；日期和来源不被挤成竖列，不隐藏名称、不依赖悬停、不缩小现有正文字号补救。
 - [x] 960×720、800×640、640×520 下无卡片内容遮挡或横向溢出；最窄尺寸沿用现有响应式布局，动作可滚动到达。无时刻任务仍属于右侧 Today 任务区域，不新增时间轴区域。
 - [x] 使用真实动作验证展开详情、完成/撤回及现有状态操作仍可用，键盘顺序与可访问名称保留；共享卡片在 Tasks 和 Calendar 的呈现不退化。
 - [x] 正式 Mac App 留下三种尺寸的卡片对照证据；已有相关行为测试通过，CSS 静态断言不代替视觉结果。
@@ -32,7 +32,7 @@ Type: task
 
 已完成票 03。Today 共享任务卡正文（标题与元信息）现占用完整可用宽度，操作组放在正文下方并可换行；仅改变 Today 卡片，Tasks 与 Calendar 样式保持原样。无时刻任务仍在原 Today 共享任务区。
 
-正式 Mac App 对照包身份：`Personal Dashboard.app`（`com.tortillaflat.personal-dashboard`，版本 `3.0.1`），候选包位于 `src-tauri/target/release/bundle/macos/Personal Dashboard.app`；验收使用其隔离副本运行实际 Tauri 窗口。改前包 SHA-256 `6f064a8e70a6141dd3f03841dc3be6c51964b2e4a6c1218e651ebfac64c6298d`，截图目录 `/private/tmp/personal-dashboard-ipc.ticket03baseline2-20260926/task-card-captures/`；960×720 与 800×640 中“签续租合同”曾被压成逐字竖排，来源和日期也被挤成窄列。改后包 SHA-256 `dd5a1803cd317eb4f442cbe731f5609bdc58ad8813fcc28696670ad64f237614`，截图目录 `/private/tmp/personal-dashboard-ipc.ticket03final20260926/task-card-captures/`，包含 960×720、800×640、640×520 三图；均已逐张核对。改后标题自然换行、元信息横排、操作位于正文下方，640×520 沿用堆叠与滚动，无横向溢出或卡片遮挡。输入包含“签续租合同”、长中文及“准备 interview coding：复习动态规划并整理 follow-up notes”。
+正式 Mac App 对照包身份：`Personal Dashboard.app`（`com.tortillaflat.personal-dashboard`，版本 `3.0.1`），候选包位于 `src-tauri/target/release/bundle/macos/Personal Dashboard.app`；验收使用其隔离副本运行实际 Tauri 窗口。改前包 SHA-256 `6f064a8e70a6141dd3f03841dc3be6c51964b2e4a6c1218e651ebfac64c6298d`，截图保留在本机，未加入 PR；960×720 与 800×640 中长中文标题曾被压成逐字竖排，来源和日期也被挤成窄列。改后包 SHA-256 `dd5a1803cd317eb4f442cbe731f5609bdc58ad8813fcc28696670ad64f237614`，截图保留在本机，未加入 PR，包含 960×720、800×640、640×520 三图；均已逐张核对。改后标题自然换行、元信息横排、操作位于正文下方，640×520 沿用堆叠与滚动，无横向溢出或卡片遮挡。输入包含短中文、长中文及长英文合成任务标题。
 
 隔离合成 Vault 的打包应用操作通过：打开详情、Tab 从标题移至详情操作、完成/重开、放弃后在 Tasks 恢复、删除后在 Tasks 撤销删除；同一任务仍在 Tasks 与 Calendar 可见，Daily Record 哈希未变。
 
