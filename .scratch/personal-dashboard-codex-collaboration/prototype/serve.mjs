@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 // PROTOTYPE — local static server for the Codex Collaboration UI exploration.
 const root = fileURLToPath(new URL("./", import.meta.url));
+const appStylesheet = join(root, "../../../frontend/styles.css");
 const port = Number(process.env.PROTOTYPE_PORT ?? 4176);
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -22,7 +23,7 @@ function resolveFile(requestPath) {
 
 createServer((request, response) => {
   const requestPath = new URL(request.url, `http://127.0.0.1:${port}`).pathname;
-  const filePath = resolveFile(requestPath);
+  const filePath = requestPath === "/__app/styles.css" ? appStylesheet : resolveFile(requestPath);
   if (!filePath) { response.writeHead(404).end("Not found"); return; }
   const stream = createReadStream(filePath);
   stream.on("open", () => {
