@@ -6080,7 +6080,9 @@ run_today_shared_task_axis_scenario() {
   local vault="$acceptance_directory/today-shared-task-axis-vault"
   local no_record_vault="$acceptance_directory/today-shared-task-axis-no-record-vault"
   local today_date="$(/bin/date '+%Y-%m-%d')"
+  local recovery_directory="$vault/life/.personal-dashboard/recovery/today"
   local midnight_task_name="跨午夜后外部更新的共享任务"
+  local diary_note="Synthetic Vault migration acceptance note"
   local record_file="$vault/life/Journal/Daily/${today_date:0:4}/${today_date:0:7}/$today_date.md"
   local tasks_file="$vault/life/.personal-dashboard/tasks/v1/tasks.json"
   local no_record_tasks="$no_record_vault/life/.personal-dashboard/tasks/v1/tasks.json"
@@ -6268,6 +6270,24 @@ EOF
   run_driver assert-window-visible-link "Open 17:30: $task_name" 10
   run_driver capture-window "$capture_directory/today-shared-task-axis-en-640x520.png" 10
 
+  current_step="writing a synthetic Daily Record note and checking the new recovery path"
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver press "Today" 10
+  run_driver press "Daytime progress" 10
+  run_driver scroll-text-visible "Short record text" 10
+  run_driver type-text "Short record text|$diary_note" 10
+  run_driver press "Save note" 10
+  wait_for_file_text "$record_file" "$diary_note" ||
+    fail "the packaged note did not reach the canonical Daily Record"
+  [[ -n "$(find "$recovery_directory" -type f -name '*.snapshot' -print -quit 2>/dev/null)" ]] ||
+    fail "the packaged Daily Record write did not retain its recovery snapshot under life/"
+  [[ ! -e "$vault/.personal-dashboard-recovery" ]] ||
+    fail "the packaged Daily Record write recreated the legacy root recovery directory"
+  [[ ! -e "$vault/.personal-dashboard" ]] ||
+    fail "the packaged Daily Record write recreated the legacy root Dashboard directory"
+  record_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
+
   current_step="confirming that a Tasks-only Vault remains visible in packaged Today without creating a Daily Record"
   mkdir -p "$no_record_vault/.obsidian" "$no_record_vault/life/Journal/Daily" \
     "$(dirname "$no_record_tasks")"
@@ -6337,6 +6357,7 @@ EOF
   echo "Clock: synthetic local $today_date 17:05; a pending 17:00 task showed the passed-time state and exact point"
   echo "Lifecycle: create, manual refresh, complete, reopen, and reschedule retained one Task ID and never moved the Diary arrangement"
   echo "Overlap: the same-name Task and Diary arrangement stayed separate in the existing single-lane stack"
+  echo "Recovery: a synthetic Daily Record note was saved through the packaged UI and linked under life/.personal-dashboard/recovery/today; both legacy root paths stayed absent"
   echo "Vault: a Tasks-only Vault rendered the task in Today without creating a Daily Record"
   echo "Midnight: relaunch at $tomorrow_date 00:05 and manual refresh read an external Task rename, kept its ID/date/state, and removed its old time-axis point"
   echo "Layout: 960x720, 800x640, and 640x520 packaged captures are in $capture_directory"
