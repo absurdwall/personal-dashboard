@@ -116,4 +116,13 @@ Every read returns a byte-derived revision and a target binding derived from the
 
 The target binding prevents an async result or queued operation from crossing into a newly selected Vault or a different date. The UI also suppresses stale responses, but that presentation guard is not the data-integrity boundary.
 
-If activation cannot complete safely, recovery snapshots may remain under the Vault's `.personal-dashboard-recovery/today` area and the error identifies the remaining recovery state. This mechanism narrows the replacement race and preserves recoverable bytes; it does not claim that unrelated writers cooperating with no locking protocol can never race the final filesystem operation.
+If activation cannot complete safely, recovery snapshots may remain under
+`<vault>/life/.personal-dashboard/recovery/today`, and the error identifies the
+remaining recovery state. The app creates this directory only when it must
+preserve a displaced file during a write. Snapshots are hard links to displaced
+inodes, so the recovery directory stays under `life/` on the same volume as
+canonical records. The app does not scan or replay snapshots automatically;
+inspect and restore one manually when needed. This mechanism narrows the
+replacement race and preserves recoverable bytes; it does not claim that
+unrelated writers cooperating with no locking protocol can never race the final
+filesystem operation.

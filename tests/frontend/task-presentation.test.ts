@@ -4,6 +4,7 @@ import { LatestRequest } from "../../frontend/latest-request.ts";
 import {
   calendarTasksForDate,
   isCurrentTaskResponse,
+  isCurrentTodayTaskResponse,
   normalizeTaskSchedule,
   taskListMutationConfirmed,
   taskListScopeForId,
@@ -17,6 +18,7 @@ import {
   type TaskUpdateView,
   type TaskUpdateInput,
   todayTaskGroups,
+  todayTaskTimeAxisEntries,
   taskVisibleInScope,
 } from "../../frontend/task-presentation.ts";
 
@@ -64,6 +66,129 @@ test("clearing a task date also clears its time and disables the time control", 
   });
 });
 
+test("Today projects dated timed shared tasks as identity-preserving points on its existing axis", () => {
+  const tasks = [
+    {
+      id: "pending-timed",
+      name: "同名事项",
+      listId: "inbox",
+      date: "2026-09-17",
+      time: "17:00",
+      state: "pending" as const,
+      deletedAt: null,
+      timePassed: true,
+    },
+    {
+      id: "completed-timed",
+      name: "同名事项",
+      listId: "inbox",
+      date: "2026-09-17",
+      time: "17:00",
+      state: "completed" as const,
+      deletedAt: null,
+      timePassed: false,
+    },
+    {
+      id: "untimed",
+      name: "只在右侧",
+      listId: "inbox",
+      date: "2026-09-17",
+      time: null,
+      state: "pending" as const,
+      deletedAt: null,
+      timePassed: false,
+    },
+    {
+      id: "undated",
+      name: "未安排",
+      listId: "inbox",
+      date: null,
+      time: null,
+      state: "pending" as const,
+      deletedAt: null,
+      timePassed: false,
+    },
+    {
+      id: "future",
+      name: "明天",
+      listId: "inbox",
+      date: "2026-09-18",
+      time: "09:00",
+      state: "pending" as const,
+      deletedAt: null,
+      timePassed: false,
+    },
+    {
+      id: "past-date",
+      name: "昨天",
+      listId: "inbox",
+      date: "2026-09-16",
+      time: "09:00",
+      state: "pending" as const,
+      deletedAt: null,
+      timePassed: false,
+    },
+    {
+      id: "abandoned",
+      name: "已放弃",
+      listId: "inbox",
+      date: "2026-09-17",
+      time: "10:00",
+      state: "abandoned" as const,
+      deletedAt: null,
+      timePassed: false,
+    },
+    {
+      id: "deleted",
+      name: "已删除",
+      listId: "inbox",
+      date: "2026-09-17",
+      time: "11:00",
+      state: "pending" as const,
+      deletedAt: "2026-09-17T12:00:00-04:00",
+      timePassed: false,
+    },
+    {
+      id: "archived",
+      name: "已归档",
+      listId: "archived-list",
+      date: "2026-09-17",
+      time: "12:00",
+      state: "pending" as const,
+      deletedAt: null,
+      timePassed: false,
+    },
+  ];
+
+  assert.deepEqual(
+    todayTaskTimeAxisEntries(tasks, "2026-09-17", new Set(["archived-list"])),
+    [
+      {
+        period: null,
+        id: "pending-timed",
+        text: "同名事项",
+        sourceDate: "2026-09-17",
+        startMinute: 17 * 60,
+        endMinute: null,
+        continuesFromPreviousDay: false,
+        continuesIntoNextDay: false,
+        task: { id: "pending-timed", state: "pending", timePassed: true },
+      },
+      {
+        period: null,
+        id: "completed-timed",
+        text: "同名事项",
+        sourceDate: "2026-09-17",
+        startMinute: 17 * 60,
+        endMinute: null,
+        continuesFromPreviousDay: false,
+        continuesIntoNextDay: false,
+        task: { id: "completed-timed", state: "completed", timePassed: false },
+      },
+    ],
+  );
+});
+
 test("a late task response cannot cross a destination or target binding boundary", () => {
   let currentToken = 2;
   const request = { isCurrent: (token: number) => token === currentToken };
@@ -75,6 +200,107 @@ test("a late task response cannot cross a destination or target binding boundary
   currentToken = 3;
   assert.equal(isCurrentTaskResponse(request, 2, "tasks", "vault-a", "vault-a"), false);
   assert.equal(isCurrentTaskResponse(request, 3, "tasks", null, "vault-b"), true);
+});
+
+test("a delayed Today task response cannot cross a date, vault, revision, or request boundary", () => {
+  const requests = new LatestRequest();
+  const oldDateRequest = requests.begin();
+  const currentDateRequest = requests.begin();
+  const current = (
+    token: number,
+    destination = "today",
+    currentDate: string | null = "2026-09-18",
+    responseBinding: string | null = "vault-a",
+    currentRevision: string | null = "r2",
+  ) => isCurrentTodayTaskResponse(
+    requests,
+    token,
+    destination,
+    currentDate,
+    "2026-09-18",
+    "vault-a",
+    "vault-a",
+    responseBinding,
+    currentRevision,
+    "r2",
+  );
+
+  assert.equal(current(oldDateRequest), false, "a slower prior-date response is stale");
+  assert.equal(current(currentDateRequest), true);
+  assert.equal(current(currentDateRequest, "calendar"), false, "leaving Today rejects the response");
+  assert.equal(current(currentDateRequest, "today", "2026-09-17"), false, "changing the Today date rejects it");
+  assert.equal(current(currentDateRequest, "today", "2026-09-18", "vault-b"), false, "changing Vault rejects it");
+  assert.equal(current(currentDateRequest, "today", "2026-09-18", "vault-a", "r1"), false, "a newer revision rejects it");
+  requests.invalidate();
+  assert.equal(current(currentDateRequest), false, "invalidating Today reads rejects late work");
+});
+
+test("Today time-axis projection follows one Task across rescheduling and midnight", () => {
+  const original = {
+    id: "moving-task",
+    name: "续约确认",
+    listId: "work",
+    date: "2026-09-17",
+    time: "17:30",
+    state: "pending" as const,
+    deletedAt: null,
+    overdue: false,
+    timePassed: false,
+  };
+  const tomorrow = { ...original, name: "改期后的续约确认", date: "2026-09-18", time: "09:00" };
+
+  assert.deepEqual(
+    todayTaskTimeAxisEntries([original], "2026-09-17", new Set()).map((entry) => entry.id),
+    ["moving-task"],
+  );
+  assert.deepEqual(todayTaskTimeAxisEntries([tomorrow], "2026-09-17", new Set()), []);
+  assert.deepEqual(
+    todayTaskTimeAxisEntries([tomorrow], "2026-09-18", new Set()).map((entry) => [entry.id, entry.text, entry.startMinute]),
+    [["moving-task", "改期后的续约确认", 9 * 60]],
+    "a moved Task leaves the old point and returns on its new date without a new identity",
+  );
+
+  const yesterday = { ...original, overdue: true };
+  assert.deepEqual(todayTaskTimeAxisEntries([yesterday], "2026-09-18", new Set()), []);
+  const nextDayGroups = todayTaskGroups([yesterday], "2026-09-18", true, new Set());
+  assert.deepEqual(nextDayGroups.scheduled, []);
+  assert.deepEqual(nextDayGroups.overdue.map((task) => task.id), ["moving-task"]);
+});
+
+test("Today projection hides and restores one Task identity through shared lifecycle states", () => {
+  const scheduled: {
+    id: string;
+    name: string;
+    listId: string;
+    date: string;
+    time: string;
+    state: "pending" | "completed" | "abandoned";
+    deletedAt: string | null;
+    overdue: boolean;
+    timePassed: boolean;
+  } = {
+    id: "lifecycle-task",
+    name: "共享任务",
+    listId: "work",
+    date: "2026-09-17",
+    time: "17:30",
+    state: "pending",
+    deletedAt: null,
+    overdue: false,
+    timePassed: false,
+  };
+  const project = (
+    task: typeof scheduled,
+    archivedLists: ReadonlySet<string> = new Set(),
+  ) => todayTaskTimeAxisEntries([task], "2026-09-17", archivedLists).map((entry) => entry.id);
+
+  assert.deepEqual(project(scheduled), ["lifecycle-task"]);
+  assert.deepEqual(project({ ...scheduled, state: "abandoned" }), []);
+  assert.deepEqual(project(scheduled), ["lifecycle-task"], "reopening the same Task restores its point");
+  assert.deepEqual(project({ ...scheduled, deletedAt: "2026-09-17T17:10-04:00" }), []);
+  assert.deepEqual(project(scheduled), ["lifecycle-task"], "restoring the same Task restores its point");
+  assert.deepEqual(project(scheduled, new Set(["work"])), []);
+  assert.deepEqual(project(scheduled), ["lifecycle-task"], "restoring the list restores the same Task point");
 });
 
 test("task state filters keep deleted records out of active scopes", () => {
@@ -307,6 +533,7 @@ test("list mutation confirmation accepts an empty source when the list is presen
 test("Today groups dated active tasks and overdue pending work without pulling in undated or archived tasks", () => {
   const tasks = [
     { id: "today", listId: "inbox", date: "2026-09-17", state: "pending" as const, deletedAt: null, overdue: false },
+    { id: "today-time-passed", listId: "inbox", date: "2026-09-17", state: "pending" as const, deletedAt: null, overdue: false, timePassed: true },
     { id: "overdue", listId: "work", date: "2026-09-16", state: "pending" as const, deletedAt: null, overdue: true },
     { id: "completed", listId: "inbox", date: "2026-09-17", state: "completed" as const, deletedAt: null, overdue: false },
     { id: "undated", listId: "inbox", date: null, state: "pending" as const, deletedAt: null, overdue: false },
@@ -317,11 +544,15 @@ test("Today groups dated active tasks and overdue pending work without pulling i
 
   const groups = todayTaskGroups(tasks, "2026-09-17", true, new Set(["archived", "work"]));
 
-  assert.deepEqual(groups.scheduled.map((task) => task.id), ["today", "completed"]);
+  assert.deepEqual(groups.scheduled.map((task) => task.id), ["today", "today-time-passed", "completed"]);
   assert.deepEqual(groups.overdue.map((task) => task.id), []);
+  assert.equal(
+    taskScopeCount(tasks, "today", "pending", "2026-09-17", new Set(["archived", "work"])),
+    2,
+  );
 
   const currentWork = todayTaskGroups(tasks, "2026-09-17", true, new Set(["archived"]));
-  assert.deepEqual(currentWork.scheduled.map((task) => task.id), ["today", "completed", "archived"]);
+  assert.deepEqual(currentWork.scheduled.map((task) => task.id), ["today", "today-time-passed", "completed", "archived"]);
   assert.deepEqual(currentWork.overdue.map((task) => task.id), ["overdue"]);
 });
 

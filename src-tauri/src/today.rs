@@ -2,7 +2,7 @@ use crate::habits::{
     load_habit_names, project_habit_corrections_with_names, project_snapshot_with_names,
     project_uncatalogued_habit_corrections, snapshot_dates, FileHabitSnapshotStore,
     HabitCorrectionView, HabitLocalCompletionChangeView, HabitSnapshotStore, LocalHabitCompletion,
-    LocalHabitRecord, SNAPSHOT_RELATIVE_PATH,
+    LocalHabitRecord, LEGACY_SNAPSHOT_RELATIVE_PATH, SNAPSHOT_RELATIVE_PATH,
 };
 pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
@@ -592,18 +592,17 @@ fn preserve_displaced_inode(
 }
 
 fn recovery_directory_for(path: &Path, kind: StorageDocumentKind) -> Result<PathBuf, String> {
-    let vault = path
+    let life = path
         .ancestors()
         .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "life"))
-        .and_then(Path::parent);
-    let root = vault.or_else(|| path.parent()).ok_or_else(|| {
+        .ok_or_else(|| {
         kind.text(
             "Today's Daily Record has no location for a same-volume recovery snapshot.",
             "The day-task document has no location for a same-volume recovery snapshot.",
             "The local habit-completion document has no location for a same-volume recovery snapshot.",
         )
     })?;
-    Ok(root.join(".personal-dashboard-recovery").join("today"))
+    Ok(life.join(".personal-dashboard/recovery/today"))
 }
 
 fn create_temporary_file(
@@ -828,6 +827,277 @@ pub struct DaytimeUpdateInput {
     pub habit_outcome: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DailyPlanTransition {
+    InitialPlan,
+    MorningCalibration,
+    DaytimeEvent,
+    DaytimeReplan,
+    MorningBaselineCorrection,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DailyPlanBlockInput {
+    pub period: String,
+    pub title: String,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DailyPlanEvidenceInput {
+    pub label: String,
+    pub items: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DailyPlanWriteInput {
+    pub date: String,
+    pub target_binding: String,
+    pub expected_revision: Option<String>,
+    pub operation_id: String,
+    pub effect_fingerprint: String,
+    pub transition: DailyPlanTransition,
+    pub arrangement: Vec<DailyPlanBlockInput>,
+    pub evidence: Vec<DailyPlanEvidenceInput>,
+    pub calibration_note: Option<String>,
+    pub baseline_correction_reason: Option<String>,
+    pub event: Option<String>,
+    pub original_intent: Option<String>,
+    pub change_reason: Option<String>,
+    pub revised_direction: Option<String>,
+}
+
+impl DailyPlanWriteInput {
+    pub fn validate(&self) -> Result<(), String> {
+        validate_local_identifier(&self.operation_id, "计划操作标识")?;
+        if self.effect_fingerprint.len() != 16
+            || !self
+                .effect_fingerprint
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+            || self.effect_fingerprint.to_ascii_lowercase()
+                != daily_plan_effect_fingerprint(
+                    &self.date,
+                    self.transition,
+                    &self.arrangement,
+                    &self.evidence,
+                    self.calibration_note.as_deref(),
+                    self.baseline_correction_reason.as_deref(),
+                    self.event.as_deref(),
+                    self.original_intent.as_deref(),
+                    self.change_reason.as_deref(),
+                    self.revised_direction.as_deref(),
+                )
+        {
+            return Err("计划操作缺少有效的稳定内容指纹。".into());
+        }
+        let arrangement_required = matches!(
+            self.transition,
+            DailyPlanTransition::InitialPlan
+                | DailyPlanTransition::MorningCalibration
+                | DailyPlanTransition::DaytimeReplan
+                | DailyPlanTransition::MorningBaselineCorrection
+        );
+        if arrangement_required {
+            if self.arrangement.is_empty() || self.arrangement.len() > 24 {
+                return Err("安排需要包含 1 到 24 个明确时间块。".into());
+            }
+            for block in &self.arrangement {
+                validate_plan_text(&block.period, "安排时段", 60)?;
+                validate_plan_text(&block.title, "安排内容", 160)?;
+                if let Some(detail) = block.detail.as_deref() {
+                    validate_plan_text(detail, "安排说明", 600)?;
+                }
+            }
+        } else if !self.arrangement.is_empty() {
+            return Err("白天事件不能修改计划安排。".into());
+        }
+
+        let evidence_required = matches!(
+            self.transition,
+            DailyPlanTransition::InitialPlan
+                | DailyPlanTransition::MorningCalibration
+                | DailyPlanTransition::DaytimeReplan
+                | DailyPlanTransition::MorningBaselineCorrection
+        );
+        if evidence_required {
+            if self.evidence.is_empty() || self.evidence.len() > 16 {
+                return Err("计划需要包含明确依据，或先讨论缺失的依据。".into());
+            }
+            for group in &self.evidence {
+                validate_plan_text(&group.label, "计划依据类别", 80)?;
+                if group.items.is_empty() || group.items.len() > 20 {
+                    return Err("每类计划依据需要包含 1 到 20 条明确内容。".into());
+                }
+                for item in &group.items {
+                    validate_plan_text(item, "计划依据", 600)?;
+                }
+            }
+        } else if !self.evidence.is_empty() {
+            return Err("白天事件不能修改计划依据。".into());
+        }
+
+        match self.transition {
+            DailyPlanTransition::InitialPlan | DailyPlanTransition::MorningCalibration => {
+                if self.event.is_some()
+                    || self.baseline_correction_reason.is_some()
+                    || self.original_intent.is_some()
+                    || self.change_reason.is_some()
+                    || self.revised_direction.is_some()
+                {
+                    return Err("所选计划操作包含不适用的事实或重排字段。".into());
+                }
+                if self.transition == DailyPlanTransition::InitialPlan
+                    && self.calibration_note.is_some()
+                {
+                    return Err("初始计划不能包含早间校准说明。".into());
+                }
+                if self.transition == DailyPlanTransition::MorningCalibration {
+                    let note = self
+                        .calibration_note
+                        .as_deref()
+                        .ok_or_else(|| "早间校准需要包含用户明确给出的校准依据。".to_string())?;
+                    validate_plan_text(note, "早间校准依据", 600)?;
+                }
+            }
+            DailyPlanTransition::DaytimeEvent => {
+                let event = self
+                    .event
+                    .as_deref()
+                    .ok_or_else(|| "白天事件需要包含一条明确报告的事实。".to_string())?;
+                validate_plan_text(event, "白天事件", 1200)?;
+                if self.calibration_note.is_some()
+                    || self.baseline_correction_reason.is_some()
+                    || self.original_intent.is_some()
+                    || self.change_reason.is_some()
+                    || self.revised_direction.is_some()
+                {
+                    return Err("白天事件不能包含计划校准或重排字段。".into());
+                }
+            }
+            DailyPlanTransition::DaytimeReplan => {
+                if self.event.is_some()
+                    || self.calibration_note.is_some()
+                    || self.baseline_correction_reason.is_some()
+                {
+                    return Err("白天重排不能把计划内容记成已发生事件。".into());
+                }
+                if let Some(value) = self.original_intent.as_deref() {
+                    validate_plan_text(value, "原计划意图", 600)?;
+                }
+                if let Some(value) = self.change_reason.as_deref() {
+                    validate_plan_text(value, "变化原因", 600)?;
+                }
+                let revised = self
+                    .revised_direction
+                    .as_deref()
+                    .ok_or_else(|| "白天重排需要说明调整后的方向。".to_string())?;
+                validate_plan_text(revised, "调整后方向", 600)?;
+            }
+            DailyPlanTransition::MorningBaselineCorrection => {
+                if self.event.is_some()
+                    || self.calibration_note.is_some()
+                    || self.original_intent.is_some()
+                    || self.change_reason.is_some()
+                    || self.revised_direction.is_some()
+                {
+                    return Err("早间基准纠正不能包含事件、校准或白天重排字段。".into());
+                }
+                let reason = self
+                    .baseline_correction_reason
+                    .as_deref()
+                    .ok_or_else(|| "早间基准纠正需要明确说明此前记录哪里错误。".to_string())?;
+                validate_plan_text(reason, "早间基准纠正原因", 600)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+pub fn daily_plan_effect_fingerprint(
+    date: &str,
+    transition: DailyPlanTransition,
+    arrangement: &[DailyPlanBlockInput],
+    evidence: &[DailyPlanEvidenceInput],
+    calibration_note: Option<&str>,
+    baseline_correction_reason: Option<&str>,
+    event: Option<&str>,
+    original_intent: Option<&str>,
+    change_reason: Option<&str>,
+    revised_direction: Option<&str>,
+) -> String {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ExistingEffect<'a> {
+        date: &'a str,
+        transition: DailyPlanTransition,
+        arrangement: &'a [DailyPlanBlockInput],
+        evidence: &'a [DailyPlanEvidenceInput],
+        calibration_note: Option<&'a str>,
+        event: Option<&'a str>,
+        original_intent: Option<&'a str>,
+        change_reason: Option<&'a str>,
+        revised_direction: Option<&'a str>,
+    }
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct BaselineCorrectionEffect<'a> {
+        date: &'a str,
+        transition: DailyPlanTransition,
+        arrangement: &'a [DailyPlanBlockInput],
+        evidence: &'a [DailyPlanEvidenceInput],
+        calibration_note: Option<&'a str>,
+        baseline_correction_reason: &'a str,
+        event: Option<&'a str>,
+        original_intent: Option<&'a str>,
+        change_reason: Option<&'a str>,
+        revised_direction: Option<&'a str>,
+    }
+    let bytes = if let Some(reason) = baseline_correction_reason {
+        serde_json::to_vec(&BaselineCorrectionEffect {
+            date,
+            transition,
+            arrangement,
+            evidence,
+            calibration_note,
+            baseline_correction_reason: reason,
+            event,
+            original_intent,
+            change_reason,
+            revised_direction,
+        })
+    } else {
+        serde_json::to_vec(&ExistingEffect {
+            date,
+            transition,
+            arrangement,
+            evidence,
+            calibration_note,
+            event,
+            original_intent,
+            change_reason,
+            revised_direction,
+        })
+    }
+    .expect("daily plan effect has a serializable shape");
+    document_revision(&bytes)
+}
+
+fn validate_plan_text(value: &str, label: &str, max_characters: usize) -> Result<(), String> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.chars().count() > max_characters
+        || value.contains(['\0', '\r', '\n'])
+    {
+        return Err(format!("{label}必须是 1 到 {max_characters} 个字符。"));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum EveningUpdateMode {
@@ -841,6 +1111,47 @@ pub struct EveningUpdateInput {
     pub expected_revision: String,
     pub mode: EveningUpdateMode,
     pub content: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CollaborationEveningReviewMode {
+    Addition,
+    Correction,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CollaborationEveningReviewInput {
+    pub date: String,
+    pub target_binding: String,
+    pub expected_revision: Option<String>,
+    pub operation_id: String,
+    pub effect_fingerprint: String,
+    pub mode: CollaborationEveningReviewMode,
+    pub content: String,
+}
+
+pub fn collaboration_evening_review_fingerprint(
+    date: &str,
+    mode: CollaborationEveningReviewMode,
+    content: &str,
+) -> String {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Effect<'a> {
+        date: &'a str,
+        mode: CollaborationEveningReviewMode,
+        content: &'a str,
+    }
+    document_revision(
+        &serde_json::to_vec(&Effect {
+            date,
+            mode,
+            content: content.trim(),
+        })
+        .expect("collaboration evening review has a serializable shape"),
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -2064,7 +2375,7 @@ where
                     )
                 }
             };
-        let document = match self.habit_snapshot_store.load(&snapshot_path) {
+        let document = match load_habit_snapshot_from_vault(&self.habit_snapshot_store, vault) {
             Ok(Some(document)) => document,
             Ok(None) => {
                 if self.has_cached_habit_correction(&snapshot_path, date) {
@@ -2409,12 +2720,73 @@ where
         self.read_date(&date)
     }
 
+    pub fn habit_completion_operation_applied(
+        &self,
+        lived_date: &str,
+        target_binding: &str,
+        change_id: &str,
+        habit_key: &str,
+        completed: bool,
+    ) -> Result<bool, String> {
+        self.validate_event_date(lived_date)?;
+        validate_local_identifier(change_id, "习惯完成修改标识")?;
+        validate_habit_key(habit_key)?;
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or_else(|| "请先选择 Vault，再核对本地习惯完成结果。".to_string())?;
+        validate_compatible_vault(&vault)?;
+        let path = canonical_habit_completion_path(&vault);
+        if habit_completion_target_binding(&path) != target_binding {
+            return Err("Vault 或本地习惯完成目标已经变化；无法核对该修改结果。".into());
+        }
+        let Some(bytes) = self.habit_completion_store.load(&path)? else {
+            return Ok(false);
+        };
+        let document =
+            parse_habit_completion_document(&bytes, &self.clock.current_timestamp_label())?;
+        let expected_kind = if completed {
+            HabitCompletionChangeKind::Completed
+        } else {
+            HabitCompletionChangeKind::Withdrawn
+        };
+        if let Some((record, change)) = document.completions.iter().find_map(|record| {
+            record
+                .changes
+                .iter()
+                .find(|change| change.id == change_id)
+                .map(|change| (record, change))
+        }) {
+            if record.habit_key == habit_key
+                && record.lived_date == lived_date
+                && change.kind == expected_kind
+            {
+                return Ok(true);
+            }
+            return Err("该习惯完成修改标识已经用于其他操作；结果未被确认。".into());
+        }
+        if let Some(receipt) = document
+            .no_op_receipts
+            .iter()
+            .find(|receipt| receipt.id == change_id)
+        {
+            if receipt.habit_key == habit_key
+                && receipt.lived_date == lived_date
+                && receipt.completed == completed
+            {
+                return Ok(true);
+            }
+            return Err("该习惯完成修改标识已经用于其他操作；结果未被确认。".into());
+        }
+        Ok(false)
+    }
+
     pub fn habits(&self) -> Result<HabitSnapshotView, String> {
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(HabitSnapshotView::unconfigured());
         };
         let path = vault.join(SNAPSHOT_RELATIVE_PATH);
-        let document = match self.habit_snapshot_store.load(&path) {
+        let document = match load_habit_snapshot_from_vault(&self.habit_snapshot_store, &vault) {
             Ok(Some(document)) => document,
             Ok(None) => {
                 if self.has_cached_habit_snapshot(&path)? {
@@ -2800,6 +3172,28 @@ where
         self.reload_vault(&vault, input.date)
     }
 
+    pub fn correct_exercise_short_record(
+        &self,
+        input: DatedNoteCorrectionInput,
+    ) -> Result<TodayView, String> {
+        let (_, path) = self.bound_record_target(&input.date, &input.target_binding)?;
+        let bytes = self.record_store.load(&path)?.ok_or_else(|| {
+            "该日期的 Daily Record 已不存在。请刷新后重试；未创建替代记录。".to_string()
+        })?;
+        let document = String::from_utf8(bytes).map_err(|_| {
+            "该日期的 Daily Record 不是有效的 UTF-8 文本；未写入任何内容。".to_string()
+        })?;
+        let records = parse_short_records(&document, &input.date)?;
+        let record = records
+            .iter()
+            .find(|record| record.id == input.entry_id)
+            .ok_or_else(|| "找不到要更正的简短记录。请刷新后确认该条目仍然存在。".to_string())?;
+        if record.category != ShortRecordCategory::Exercise {
+            return Err("只有稳定 ID 指向的 exercise 简短记录可以通过习惯流程更正。".into());
+        }
+        self.correct_dated_note(input)
+    }
+
     fn validate_event_date(&self, date: &str) -> Result<(), String> {
         let selected = CalendarDate::parse(date).ok_or_else(|| {
             "The selected date is not a valid YYYY-MM-DD calendar date.".to_string()
@@ -2844,6 +3238,452 @@ where
         self.record_store
             .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
         self.reload_vault(&vault, self.clock.current_date())
+    }
+
+    pub fn save_daily_plan(&self, input: DailyPlanWriteInput) -> Result<TodayView, String> {
+        input.validate()?;
+        canonical_record_path(Path::new("."), &input.date)?;
+        if matches!(input.transition, DailyPlanTransition::DaytimeEvent) {
+            let date = CalendarDate::parse(&input.date).expect("validated daily plan date");
+            let today = CalendarDate::parse(&self.clock.current_date())
+                .ok_or_else(|| "系统时钟没有提供有效日期；未写入任何内容。".to_string())?;
+            if date.unix_days() > today.unix_days() {
+                return Err("不能把未来日期的内容记录为已发生事件；未写入任何内容。".into());
+            }
+        }
+        let (vault, path) = self.bound_record_target(&input.date, &input.target_binding)?;
+        let existing = self.record_store.load(&path)?;
+        let mut document = match existing.as_deref() {
+            Some(bytes) => String::from_utf8(bytes.to_vec()).map_err(|_| {
+                "该日期的 Daily Record 不是有效的 UTF-8 文本；未写入任何内容。".to_string()
+            })?,
+            None => minimal_daily_record(&input.date, ""),
+        };
+        if existing.is_some() {
+            validate_writable_daily_record(&document, &input.date)?;
+        }
+
+        if let Some(fingerprint) = daily_plan_receipt_fingerprint(&document, &input.operation_id)? {
+            if fingerprint == input.effect_fingerprint {
+                return self.reload_vault(&vault, input.date);
+            }
+            return Err("该计划操作标识已用于不同内容；未写入任何内容。".into());
+        }
+        match existing.as_deref() {
+            Some(_) => {
+                let expected = input.expected_revision.as_deref().ok_or_else(|| {
+                    "Daily Record 已存在。请刷新后重试；现有内容未被覆盖。".to_string()
+                })?;
+                require_revision_for_date(&document, expected, &input.date)?;
+            }
+            None if input.expected_revision.is_some() => {
+                return Err("Daily Record 已不存在。请刷新后重试；未创建替代记录。".into())
+            }
+            None => {}
+        }
+        let (baseline, timeline, evidence, _, _) = parse_daily_record(&document, &input.date)?;
+        let current_arrangement = encode_daily_plan_arrangement_from_view(&timeline);
+        let current_basis = encode_daily_plan_evidence_from_view(&evidence);
+        match input.transition {
+            DailyPlanTransition::InitialPlan => {
+                if baseline.availability == BaselineAvailability::Saved
+                    || !timeline.is_empty()
+                    || !evidence.is_empty()
+                {
+                    return Err("已有计划内容；请改用早间校准或白天重排，并刷新后重新审批。".into());
+                }
+                let arrangement = encode_daily_plan_arrangement(&input.arrangement);
+                let evidence = encode_daily_plan_evidence(&input.evidence);
+                document = replace_named_subsection(
+                    &document,
+                    "早间基准",
+                    "初始安排",
+                    &arrangement,
+                    Some("今天的大致安排"),
+                    &encode_daily_plan_arrangement_from_view(&baseline.timeline),
+                )?;
+                document = replace_named_subsection(
+                    &document,
+                    "早间基准",
+                    "初始计划依据",
+                    &evidence,
+                    Some("今天的大致安排"),
+                    &encode_daily_plan_evidence_from_view(&baseline.evidence),
+                )?;
+                document = replace_canonical_section_body(
+                    &document,
+                    "今天的大致安排",
+                    &arrangement,
+                    Some("计划依据"),
+                    &current_arrangement,
+                )?;
+                document = replace_canonical_section_body(
+                    &document,
+                    "计划依据",
+                    &evidence,
+                    Some("白天更新"),
+                    &current_basis,
+                )?;
+            }
+            DailyPlanTransition::MorningCalibration => {
+                if baseline.availability != BaselineAvailability::Saved
+                    || timeline.is_empty()
+                    || evidence.is_empty()
+                {
+                    return Err("早间校准需要一份已保存的早间基准、当前安排和计划依据；缺少内容时请先检查并补齐计划。".into());
+                }
+                let arrangement = encode_daily_plan_arrangement(&input.arrangement);
+                let evidence = encode_daily_plan_evidence(&input.evidence);
+                document = replace_canonical_section_body(
+                    &document,
+                    "今天的大致安排",
+                    &arrangement,
+                    Some("计划依据"),
+                    &current_arrangement,
+                )?;
+                document = replace_canonical_section_body(
+                    &document,
+                    "计划依据",
+                    &evidence,
+                    Some("白天更新"),
+                    &current_basis,
+                )?;
+                document = append_to_named_subsection(
+                    &document,
+                    "白天更新",
+                    "早间校准",
+                    &format!(
+                        "- 校准依据：{}",
+                        literal_line(input.calibration_note.as_deref().unwrap_or_default().trim())
+                    ),
+                    Some("晚间复盘"),
+                )?;
+            }
+            DailyPlanTransition::DaytimeReplan => {
+                if timeline.is_empty() || evidence.is_empty() {
+                    return Err(
+                        "白天重排需要已有当前安排和计划依据；缺少内容时请先检查并补齐计划。".into(),
+                    );
+                }
+                let arrangement = encode_daily_plan_arrangement(&input.arrangement);
+                let evidence = encode_daily_plan_evidence(&input.evidence);
+                document = replace_canonical_section_body(
+                    &document,
+                    "今天的大致安排",
+                    &arrangement,
+                    Some("计划依据"),
+                    &current_arrangement,
+                )?;
+                document = replace_canonical_section_body(
+                    &document,
+                    "计划依据",
+                    &evidence,
+                    Some("白天更新"),
+                    &current_basis,
+                )?;
+                let mut change = Vec::new();
+                if let Some(value) = input.original_intent.as_deref() {
+                    change.push(format!("- 原计划意图：{}", literal_line(value.trim())));
+                }
+                if let Some(value) = input.change_reason.as_deref() {
+                    change.push(format!("- 变化原因：{}", literal_line(value.trim())));
+                }
+                change.push(format!(
+                    "- 调整后方向：{}",
+                    literal_line(
+                        input
+                            .revised_direction
+                            .as_deref()
+                            .unwrap_or_default()
+                            .trim()
+                    )
+                ));
+                document = append_to_named_subsection(
+                    &document,
+                    "白天更新",
+                    "计划调整",
+                    &change.join("\n"),
+                    Some("晚间复盘"),
+                )?;
+            }
+            DailyPlanTransition::MorningBaselineCorrection => {
+                if baseline.availability != BaselineAvailability::Saved
+                    || baseline.timeline.is_empty()
+                    || baseline.evidence.is_empty()
+                {
+                    return Err("早间基准纠正需要一份现有且完整的早间基准；缺少内容时请先检查 Daily Record。".into());
+                }
+                let prior_arrangement = encode_daily_plan_arrangement_from_view(&baseline.timeline);
+                let prior_evidence = encode_daily_plan_evidence_from_view(&baseline.evidence);
+                let arrangement = encode_daily_plan_arrangement(&input.arrangement);
+                let evidence = encode_daily_plan_evidence(&input.evidence);
+                document = replace_named_subsection(
+                    &document,
+                    "早间基准",
+                    "初始安排",
+                    &arrangement,
+                    Some("今天的大致安排"),
+                    &prior_arrangement,
+                )?;
+                document = replace_named_subsection(
+                    &document,
+                    "早间基准",
+                    "初始计划依据",
+                    &evidence,
+                    Some("今天的大致安排"),
+                    &prior_evidence,
+                )?;
+                let prior_arrangement = prior_arrangement.replace('\n', " · ");
+                let prior_evidence = prior_evidence.replace('\n', " · ");
+                let corrected_arrangement = arrangement.replace('\n', " · ");
+                let corrected_evidence = evidence.replace('\n', " · ");
+                document = append_to_named_subsection(
+                    &document,
+                    "白天更新",
+                    "早间基准纠正",
+                    &format!(
+                        "- 明确原因：{}\n- 原记录安排：{}\n- 原记录依据：{}\n- 更正后安排：{}\n- 更正后依据：{}",
+                        literal_line(
+                            input
+                                .baseline_correction_reason
+                                .as_deref()
+                                .expect("validated baseline correction reason")
+                                .trim()
+                        ),
+                        literal_line(&prior_arrangement),
+                        literal_line(&prior_evidence),
+                        literal_line(&corrected_arrangement),
+                        literal_line(&corrected_evidence),
+                    ),
+                    Some("晚间复盘"),
+                )?;
+            }
+            DailyPlanTransition::DaytimeEvent => {
+                let event = input.event.as_deref().expect("validated daily event");
+                document = append_to_named_subsection(
+                    &document,
+                    "白天更新",
+                    "明确事件",
+                    &format!("- 事实：{}", literal_line(event.trim())),
+                    Some("晚间复盘"),
+                )?;
+            }
+        }
+        let marker = format!(
+            "<!-- personal-dashboard:plan-operation id={} fingerprint={} transition={} -->",
+            input.operation_id,
+            input.effect_fingerprint.to_ascii_lowercase(),
+            daily_plan_transition_label(input.transition),
+        );
+        document = append_to_named_subsection(
+            &document,
+            "白天更新",
+            "协作写入收据",
+            &marker,
+            Some("晚间复盘"),
+        )?;
+        let (saved_baseline, saved_timeline, saved_evidence, _, _) =
+            parse_daily_record(&document, &input.date)?;
+        let expected_arrangement = daily_plan_arrangement_view(&input.arrangement);
+        let expected_evidence = daily_plan_evidence_view(&input.evidence);
+        let projection_matches = match input.transition {
+            DailyPlanTransition::InitialPlan => {
+                saved_timeline == expected_arrangement
+                    && saved_evidence == expected_evidence
+                    && saved_baseline.timeline == expected_arrangement
+                    && saved_baseline.evidence == expected_evidence
+            }
+            DailyPlanTransition::MorningCalibration | DailyPlanTransition::DaytimeReplan => {
+                saved_timeline == expected_arrangement
+                    && saved_evidence == expected_evidence
+                    && saved_baseline.availability == baseline.availability
+                    && saved_baseline.timeline == baseline.timeline
+                    && saved_baseline.evidence == baseline.evidence
+            }
+            DailyPlanTransition::MorningBaselineCorrection => {
+                saved_timeline == timeline
+                    && saved_evidence == evidence
+                    && saved_baseline.availability == BaselineAvailability::Saved
+                    && saved_baseline.timeline == expected_arrangement
+                    && saved_baseline.evidence == expected_evidence
+            }
+            DailyPlanTransition::DaytimeEvent => {
+                saved_timeline == timeline
+                    && saved_evidence == evidence
+                    && saved_baseline.availability == baseline.availability
+                    && saved_baseline.timeline == baseline.timeline
+                    && saved_baseline.evidence == baseline.evidence
+            }
+        };
+        if !projection_matches {
+            return Err("Daily Record 无法按原样呈现这项计划或依据。请先移除 Markdown 标记歧义后刷新；未写入任何内容。".into());
+        }
+        validate_writable_daily_record(&document, &input.date)?;
+        match existing {
+            Some(bytes) => {
+                self.record_store
+                    .save_if_unchanged(&path, &bytes, document.as_bytes())?
+            }
+            None => self.record_store.create_new(&path, document.as_bytes())?,
+        }
+        self.reload_vault(&vault, input.date)
+    }
+
+    pub fn daily_plan_operation_applied(
+        &self,
+        date: &str,
+        target_binding: &str,
+        operation_id: &str,
+        effect_fingerprint: &str,
+    ) -> Result<bool, String> {
+        validate_local_identifier(operation_id, "计划操作标识")?;
+        if effect_fingerprint.len() != 16
+            || !effect_fingerprint
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err("计划操作缺少有效的稳定内容指纹。".into());
+        }
+        let (_, path) = self.bound_record_target(date, target_binding)?;
+        let Some(bytes) = self.record_store.load(&path)? else {
+            return Ok(false);
+        };
+        let document = String::from_utf8(bytes).map_err(|_| {
+            "该日期的 Daily Record 不是有效的 UTF-8 文本；无法核对保存结果。".to_string()
+        })?;
+        validate_writable_daily_record(&document, date)?;
+        Ok(daily_plan_receipt_fingerprint(&document, operation_id)?
+            .is_some_and(|fingerprint| fingerprint == effect_fingerprint))
+    }
+
+    pub fn update_collaboration_evening_review(
+        &self,
+        input: CollaborationEveningReviewInput,
+    ) -> Result<TodayView, String> {
+        validate_short_text(&input.content, "晚间复盘更新")?;
+        validate_local_identifier(&input.operation_id, "晚间复盘操作标识")?;
+        if input.effect_fingerprint.len() != 16
+            || !input
+                .effect_fingerprint
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+            || input.effect_fingerprint.to_ascii_lowercase()
+                != collaboration_evening_review_fingerprint(&input.date, input.mode, &input.content)
+        {
+            return Err("晚间复盘操作缺少有效的稳定内容指纹。".into());
+        }
+        self.validate_event_date(&input.date)?;
+        let (vault, path) = self.bound_record_target(&input.date, &input.target_binding)?;
+        let existing = self.record_store.load(&path)?;
+        if input.mode == CollaborationEveningReviewMode::Correction && existing.is_none() {
+            return Err(
+                "该日期没有可更正的晚间复盘。请先查看目标日期；未创建 Daily Record。".into(),
+            );
+        }
+        let document = match existing.as_deref() {
+            Some(bytes) => String::from_utf8(bytes.to_vec()).map_err(|_| {
+                "该日期的 Daily Record 不是有效的 UTF-8 文本；未写入任何内容。".to_string()
+            })?,
+            None => minimal_daily_record(&input.date, ""),
+        };
+        validate_writable_daily_record(&document, &input.date)?;
+        if input.mode == CollaborationEveningReviewMode::Correction {
+            let (_, _, _, _, evening) = parse_daily_record(&document, &input.date)?;
+            if !evening_has_content(&evening) {
+                return Err(
+                    "该日期没有可更正的晚间复盘。请先查看目标日期；未写入任何内容。".into(),
+                );
+            }
+        }
+        if let Some((fingerprint, receipt_date)) =
+            collaboration_evening_receipt(&document, &input.operation_id)?
+        {
+            if receipt_date == input.date && fingerprint == input.effect_fingerprint {
+                return self.reload_vault(&vault, input.date);
+            }
+            return Err("该晚间复盘操作标识已用于不同日期或内容；未写入任何内容。".into());
+        }
+        match (existing.as_deref(), input.expected_revision.as_deref()) {
+            (Some(_), Some(expected)) => {
+                require_revision_for_date(&document, expected, &input.date)?
+            }
+            (Some(_), None) => {
+                return Err(
+                    "Daily Record 已存在但提案没有修订号。请刷新后重试；未写入任何内容。".into(),
+                )
+            }
+            (None, Some(_)) => {
+                return Err(
+                    "Daily Record 已被创建。请刷新目标日期后重新审批；未覆盖现有内容。".into(),
+                )
+            }
+            (None, None) => {}
+        }
+        let (subsection, text) = match input.mode {
+            CollaborationEveningReviewMode::Addition => (
+                "用户补充",
+                format!("- 晚间复盘补充：{}", literal_line(input.content.trim())),
+            ),
+            CollaborationEveningReviewMode::Correction => (
+                "用户修正",
+                format!(
+                    "- 针对 review-{} 的晚间复盘更正：{}",
+                    input.date,
+                    literal_line(input.content.trim())
+                ),
+            ),
+        };
+        let mut updated =
+            append_to_named_subsection(&document, "晚间复盘", subsection, &text, None)?;
+        let marker = format!(
+            "<!-- personal-dashboard:evening-review-operation id={} fingerprint={} mode={} date={} target=review-{} -->",
+            input.operation_id,
+            input.effect_fingerprint.to_ascii_lowercase(),
+            collaboration_evening_review_mode_label(input.mode),
+            input.date,
+            input.date,
+        );
+        updated = append_to_named_subsection(&updated, "晚间复盘", "协作写入收据", &marker, None)?;
+        validate_writable_daily_record(&updated, &input.date)?;
+        match existing.as_deref() {
+            Some(bytes) => self
+                .record_store
+                .save_if_unchanged(&path, bytes, updated.as_bytes())?,
+            None => self.record_store.create_new(&path, updated.as_bytes())?,
+        }
+        self.reload_vault(&vault, input.date)
+    }
+
+    pub fn collaboration_evening_review_operation_applied(
+        &self,
+        date: &str,
+        target_binding: &str,
+        operation_id: &str,
+        effect_fingerprint: &str,
+    ) -> Result<bool, String> {
+        validate_local_identifier(operation_id, "晚间复盘操作标识")?;
+        if effect_fingerprint.len() != 16
+            || !effect_fingerprint
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err("晚间复盘操作缺少有效的稳定内容指纹。".into());
+        }
+        let (_, path) = self.bound_record_target(date, target_binding)?;
+        let Some(bytes) = self.record_store.load(&path)? else {
+            return Ok(false);
+        };
+        let document = String::from_utf8(bytes).map_err(|_| {
+            "该日期的 Daily Record 不是有效的 UTF-8 文本；无法核对晚间复盘结果。".to_string()
+        })?;
+        validate_writable_daily_record(&document, date)?;
+        Ok(
+            collaboration_evening_receipt(&document, operation_id)?.is_some_and(
+                |(fingerprint, receipt_date)| {
+                    fingerprint == effect_fingerprint.to_ascii_lowercase() && receipt_date == date
+                },
+            ),
+        )
     }
 
     pub fn update_evening_review(&self, input: EveningUpdateInput) -> Result<TodayView, String> {
@@ -3194,6 +4034,17 @@ fn day_task_target_binding(path: &Path) -> String {
 
 fn canonical_habit_completion_path(vault: &Path) -> PathBuf {
     vault.join("life/.personal-dashboard/habit-completions/v1/completions.json")
+}
+
+fn load_habit_snapshot_from_vault(
+    store: &impl HabitSnapshotStore,
+    vault: &Path,
+) -> Result<Option<Vec<u8>>, String> {
+    let current_path = vault.join(SNAPSHOT_RELATIVE_PATH);
+    match store.load(&current_path)? {
+        Some(document) => Ok(Some(document)),
+        None => store.load(&vault.join(LEGACY_SNAPSHOT_RELATIVE_PATH)),
+    }
 }
 
 fn habit_completion_target_binding(path: &Path) -> String {
@@ -3814,6 +4665,313 @@ fn append_to_named_subsection(
     Ok(insert_separated_block(document, end, content))
 }
 
+fn replace_named_subsection(
+    document: &str,
+    parent: &str,
+    subsection: &str,
+    content: &str,
+    insert_parent_before: Option<&str>,
+    expected_existing_body: &str,
+) -> Result<String, String> {
+    if section_offsets(document, parent).is_none() {
+        if !expected_existing_body.trim().is_empty() {
+            return Err(format!(
+                "Daily Record 的“{parent} / {subsection}”章节与当前读取到的内容不一致。请刷新并检查；未写入任何内容。"
+            ));
+        }
+        let block = format!("### {subsection}\n\n{content}");
+        return Ok(append_to_ordered_canonical_section(
+            document,
+            parent,
+            &block,
+            insert_parent_before,
+        ));
+    }
+    let matches = subsection_offsets(document, parent, subsection);
+    if matches.len() > 1 {
+        return Err(format!(
+            "该日期的 Daily Record 包含多个“{subsection}”段落。请先合并重复段落；未写入任何内容。"
+        ));
+    }
+    let Some((body_start, end)) = matches.first().copied() else {
+        if !expected_existing_body.trim().is_empty() {
+            return Err(format!(
+                "Daily Record 的“{parent} / {subsection}”章节与当前读取到的内容不一致。请刷新并检查；未写入任何内容。"
+            ));
+        }
+        return Ok(append_to_canonical_section(
+            document,
+            parent,
+            &format!("### {subsection}\n\n{content}"),
+            insert_parent_before,
+        ));
+    };
+    let existing = document[body_start..end].replace("\r\n", "\n");
+    if existing.trim() != expected_existing_body.trim() {
+        return Err(format!(
+            "Daily Record 的“{parent} / {subsection}”章节包含无法确认的用户内容。请先检查该章节；未写入任何内容。"
+        ));
+    }
+    let mut output = String::with_capacity(document.len() + content.len() + 8);
+    output.push_str(&document[..body_start]);
+    output.push_str(content);
+    output.push_str("\n\n");
+    output.push_str(&document[end..]);
+    Ok(output)
+}
+
+fn ensure_replaceable_plan_section(
+    document: &str,
+    heading: &str,
+    expected_canonical_body: &str,
+) -> Result<(), String> {
+    let Some((section_start, section_end)) = section_offsets(document, heading) else {
+        return if expected_canonical_body.trim().is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "Daily Record 的“{heading}”章节与当前读取到的内容不一致。请刷新并检查该计划章节；未写入任何内容。"
+            ))
+        };
+    };
+    let (_, body_start) = markdown_line(document, section_start)
+        .ok_or_else(|| "Daily Record 的计划章节无法安全解析；未写入任何内容。".to_string())?;
+    let existing = document[body_start..section_end].replace("\r\n", "\n");
+    if existing.trim() != expected_canonical_body.trim() {
+        return Err(format!(
+            "Daily Record 的“{heading}”章节包含无法确认由当前计划结构管理的内容。请先检查或修复该章节；未写入任何内容。"
+        ));
+    }
+    Ok(())
+}
+
+fn replace_canonical_section_body(
+    document: &str,
+    heading: &str,
+    content: &str,
+    insert_before: Option<&str>,
+    expected_existing_body: &str,
+) -> Result<String, String> {
+    ensure_replaceable_plan_section(document, heading, expected_existing_body)?;
+    let Some((section_start, section_end)) = section_offsets(document, heading) else {
+        return Ok(append_to_ordered_canonical_section(
+            document,
+            heading,
+            content,
+            insert_before,
+        ));
+    };
+    let (_, body_start) = markdown_line(document, section_start)
+        .ok_or_else(|| "Daily Record 的计划章节无法安全解析；未写入任何内容。".to_string())?;
+    let mut output = String::with_capacity(document.len() + content.len() + 8);
+    output.push_str(&document[..body_start]);
+    if !content.is_empty() {
+        output.push('\n');
+        output.push_str(content);
+        output.push_str("\n\n");
+    } else if body_start < section_end {
+        output.push('\n');
+    }
+    output.push_str(&document[section_end..]);
+    Ok(output)
+}
+
+fn encode_daily_plan_arrangement(arrangement: &[DailyPlanBlockInput]) -> String {
+    arrangement
+        .iter()
+        .map(|block| {
+            let mut item = format!("- **{}：** {}", block.period.trim(), block.title.trim());
+            if let Some(detail) = block
+                .detail
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                item.push_str("；");
+                item.push_str(detail);
+            }
+            item
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn encode_daily_plan_arrangement_from_view(arrangement: &[MorningBlockView]) -> String {
+    let inputs = arrangement
+        .iter()
+        .map(|block| DailyPlanBlockInput {
+            period: block.period.clone(),
+            title: block.title.clone(),
+            detail: block.detail.clone(),
+        })
+        .collect::<Vec<_>>();
+    encode_daily_plan_arrangement(&inputs)
+}
+
+fn daily_plan_arrangement_view(arrangement: &[DailyPlanBlockInput]) -> Vec<MorningBlockView> {
+    arrangement
+        .iter()
+        .map(|block| MorningBlockView {
+            period: block.period.trim().to_owned(),
+            title: block.title.trim().to_owned(),
+            detail: block
+                .detail
+                .as_deref()
+                .map(str::trim)
+                .filter(|detail| !detail.is_empty())
+                .map(str::to_owned),
+        })
+        .collect()
+}
+
+fn encode_daily_plan_evidence(evidence: &[DailyPlanEvidenceInput]) -> String {
+    evidence
+        .iter()
+        .map(|group| {
+            format!(
+                "#### {}\n\n{}",
+                group.label.trim(),
+                group
+                    .items
+                    .iter()
+                    .map(|item| format!("- {}", item.trim()))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+fn encode_daily_plan_evidence_from_view(evidence: &[PlanningEvidenceView]) -> String {
+    let inputs = evidence
+        .iter()
+        .map(|group| DailyPlanEvidenceInput {
+            label: group.label.clone(),
+            items: group.items.clone(),
+        })
+        .collect::<Vec<_>>();
+    encode_daily_plan_evidence(&inputs)
+}
+
+fn daily_plan_evidence_view(evidence: &[DailyPlanEvidenceInput]) -> Vec<PlanningEvidenceView> {
+    evidence
+        .iter()
+        .map(|group| PlanningEvidenceView {
+            label: group.label.trim().to_owned(),
+            items: group
+                .items
+                .iter()
+                .map(|item| item.trim().to_owned())
+                .collect(),
+        })
+        .collect()
+}
+
+fn daily_plan_transition_label(transition: DailyPlanTransition) -> &'static str {
+    match transition {
+        DailyPlanTransition::InitialPlan => "initialPlan",
+        DailyPlanTransition::MorningCalibration => "morningCalibration",
+        DailyPlanTransition::DaytimeEvent => "daytimeEvent",
+        DailyPlanTransition::DaytimeReplan => "daytimeReplan",
+        DailyPlanTransition::MorningBaselineCorrection => "morningBaselineCorrection",
+    }
+}
+
+fn collaboration_evening_review_mode_label(mode: CollaborationEveningReviewMode) -> &'static str {
+    match mode {
+        CollaborationEveningReviewMode::Addition => "addition",
+        CollaborationEveningReviewMode::Correction => "correction",
+    }
+}
+
+fn collaboration_evening_receipt(
+    document: &str,
+    operation_id: &str,
+) -> Result<Option<(String, String)>, String> {
+    let matches = subsection_offsets(document, "晚间复盘", "协作写入收据");
+    if matches.len() > 1 {
+        return Err("Daily Record 包含多个晚间复盘协作收据段落；请先检查文件。".into());
+    }
+    let Some((start, end)) = matches.first().copied() else {
+        return Ok(None);
+    };
+    let mut ids = Vec::<String>::new();
+    let mut result = None;
+    for line in scan_markdown_lines(&document[start..end]) {
+        let trimmed = line.text.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !trimmed.starts_with("<!-- personal-dashboard:evening-review-operation") {
+            return Err(
+                "晚间复盘协作收据段落包含无法识别的内容。请检查或修复后刷新；未写入任何内容。"
+                    .into(),
+            );
+        }
+        let attributes =
+            marker_attributes(line.text, "evening-review-operation").ok_or_else(|| {
+                "Daily Record 包含损坏的晚间复盘协作收据；请先检查文件，未写入任何内容。"
+                    .to_string()
+            })?;
+        let id = required_marker_attribute(&attributes, "id")?.to_owned();
+        validate_local_identifier(&id, "晚间复盘操作标识")?;
+        let fingerprint = required_marker_attribute(&attributes, "fingerprint")?;
+        if fingerprint.len() != 16 || !fingerprint.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return Err("Daily Record 包含无效的晚间复盘操作指纹；请先检查文件。".into());
+        }
+        let mode = required_marker_attribute(&attributes, "mode")?;
+        if !matches!(mode, "addition" | "correction") {
+            return Err("Daily Record 包含无效的晚间复盘操作类型；请先检查文件。".into());
+        }
+        let date = required_marker_attribute(&attributes, "date")?.to_owned();
+        if CalendarDate::parse(&date).is_none()
+            || required_marker_attribute(&attributes, "target")? != format!("review-{date}")
+            || ids.iter().any(|existing| existing == &id)
+        {
+            return Err("Daily Record 包含重复或无效的晚间复盘目标收据；请先检查文件。".into());
+        }
+        ids.push(id.clone());
+        if id == operation_id {
+            if result.is_some() {
+                return Err("Daily Record 中的晚间复盘操作收据重复；未写入任何内容。".into());
+            }
+            result = Some((fingerprint.to_ascii_lowercase(), date));
+        }
+    }
+    Ok(result)
+}
+
+fn daily_plan_receipt_fingerprint(
+    document: &str,
+    operation_id: &str,
+) -> Result<Option<String>, String> {
+    let mut result = None;
+    for line in scan_markdown_lines(document) {
+        let trimmed = line.text.trim();
+        if !trimmed.starts_with("<!-- personal-dashboard:plan-operation") {
+            continue;
+        }
+        let attributes = marker_attributes(line.text, "plan-operation").ok_or_else(|| {
+            "Daily Record 包含损坏的 Dashboard 计划操作收据；请先检查文件，未写入任何内容。"
+                .to_string()
+        })?;
+        let id = required_marker_attribute(&attributes, "id")?;
+        let fingerprint = required_marker_attribute(&attributes, "fingerprint")?;
+        if id != operation_id {
+            continue;
+        }
+        if fingerprint.len() != 16
+            || !fingerprint.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || result.is_some()
+        {
+            return Err("Daily Record 中的计划操作收据重复或无效；未写入任何内容。".into());
+        }
+        result = Some(fingerprint.to_ascii_lowercase());
+    }
+    Ok(result)
+}
+
 fn append_to_canonical_section(
     document: &str,
     heading: &str,
@@ -3838,6 +4996,28 @@ fn append_to_canonical_section(
     output.push_str(&format!("## {heading}\n\n{block}\n\n"));
     output.push_str(&document[insertion..]);
     output
+}
+
+fn append_to_ordered_canonical_section(
+    document: &str,
+    heading: &str,
+    block: &str,
+    fallback_before: Option<&str>,
+) -> String {
+    if section_offsets(document, heading).is_some() {
+        return append_to_canonical_section(document, heading, block, fallback_before);
+    }
+    let next_section = CANONICAL_SECTIONS
+        .iter()
+        .position(|section| *section == heading)
+        .and_then(|index| {
+            CANONICAL_SECTIONS[index + 1..]
+                .iter()
+                .find(|candidate| section_offsets(document, candidate).is_some())
+        })
+        .copied()
+        .or(fallback_before);
+    append_to_canonical_section(document, heading, block, next_section)
 }
 
 fn insert_separated_block(document: &str, insertion: usize, block: &str) -> String {
@@ -5080,6 +6260,7 @@ struct ReadingContent {
 fn parse_daytime(section: &str) -> DaytimeView {
     let updates = split_subsections(section)
         .into_iter()
+        .filter(|(title, _)| title.as_deref() != Some("协作写入收据"))
         .filter_map(|(title, body)| {
             let body = strip_app_owned_record_blocks(title.as_deref(), &body);
             let content = parse_reading_content(&body);
@@ -5184,7 +6365,9 @@ fn parse_evening(section: &str) -> EveningView {
             continue;
         }
         let normalized = heading.as_deref().unwrap_or("今天发生了什么");
-        if normalized.contains("用户补充") {
+        if normalized.contains("协作写入收据") {
+            continue;
+        } else if normalized.contains("用户补充") {
             view.additions.extend(lines);
         } else if normalized.contains("用户修正") {
             view.corrections.extend(lines);
@@ -5356,10 +6539,17 @@ mod tests {
         }
     }
 
+    fn record_path(directory: &TempDirectory) -> PathBuf {
+        let path = directory.0.join("life/Journal/Daily/2026-08-10.md");
+        fs::create_dir_all(path.parent().expect("record should have a parent"))
+            .expect("record directory should be created");
+        path
+    }
+
     #[test]
     fn atomic_exchange_detects_an_external_save_after_candidate_sync() {
         let directory = TempDirectory::new();
-        let path = directory.0.join("2026-08-10.md");
+        let path = record_path(&directory);
         let original = b"original daily record\n";
         let external = b"external editor save\n";
         let updated = b"dashboard candidate\n";
@@ -5379,7 +6569,7 @@ mod tests {
             fs::read(&path).expect("canonical record should remain readable"),
             external
         );
-        let recoveries = fs::read_dir(directory.0.join(".personal-dashboard-recovery/today"))
+        let recoveries = fs::read_dir(directory.0.join("life/.personal-dashboard/recovery/today"))
             .expect("recovery directory should remain readable")
             .collect::<Result<Vec<_>, _>>()
             .expect("recovery entries should be readable");
@@ -5394,8 +6584,8 @@ mod tests {
     #[test]
     fn recovery_tracks_the_same_byte_inode_actually_displaced_by_activation() {
         let directory = TempDirectory::new();
-        let path = directory.0.join("2026-08-10.md");
-        let replacement = directory.0.join("external-replacement.md");
+        let path = record_path(&directory);
+        let replacement = path.with_file_name("external-replacement.md");
         let original = b"original daily record\n";
         let updated = b"dashboard candidate\n";
         fs::write(&path, original).expect("original should be written");
@@ -5440,7 +6630,7 @@ mod tests {
             fs::read(&path).expect("canonical record should remain readable"),
             updated
         );
-        let recovery_directory = directory.0.join(".personal-dashboard-recovery/today");
+        let recovery_directory = directory.0.join("life/.personal-dashboard/recovery/today");
         let late_edit_is_recoverable = fs::read_dir(recovery_directory)
             .expect("recovery directory should remain readable")
             .filter_map(Result::ok)

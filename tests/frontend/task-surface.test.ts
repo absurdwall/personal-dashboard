@@ -12,7 +12,7 @@ test("Tasks is a real destination between Today and Calendar with Inbox and All 
     html.matchAll(/class="destination-button"[\s\S]*?data-workspace-destination="([^"]+)"/g),
     (match) => match[1],
   );
-  assert.deepEqual(destinations, ["today", "tasks", "calendar", "habits"]);
+  assert.deepEqual(destinations, ["today", "tasks", "calendar", "habits", "collaboration"]);
   assert.match(html, /id="workspace-destination-tasks"/);
   assert.match(html, /data-task-scope="all"/);
   assert.match(html, /data-task-scope="today"/);

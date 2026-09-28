@@ -12,7 +12,7 @@ test("4.0 preserves the existing destinations and adds Tasks without retired run
     (match) => match[1],
   );
 
-  assert.deepEqual(destinations, ["today", "tasks", "calendar", "habits"]);
+  assert.deepEqual(destinations, ["today", "tasks", "calendar", "habits", "collaboration"]);
   assert.match(html, /id="workspace-destination-settings"/);
   for (const retiredId of [
     "workspace-destination-this-week",

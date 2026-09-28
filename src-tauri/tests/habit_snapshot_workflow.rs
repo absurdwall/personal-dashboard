@@ -108,6 +108,10 @@ impl TodayClock for FollowingMondayClock {
 }
 
 fn snapshot_path(vault: &Path) -> PathBuf {
+    vault.join("life/.personal-dashboard/derived/habits-v1.json")
+}
+
+fn legacy_snapshot_path(vault: &Path) -> PathBuf {
     vault.join(".personal-dashboard/derived/habits-v1.json")
 }
 
@@ -119,6 +123,12 @@ fn write_snapshot(vault: &Path, document: &str) {
     fs::create_dir_all(vault.join(".obsidian")).unwrap();
     fs::create_dir_all(vault.join("life/Journal/Daily")).unwrap();
     let path = snapshot_path(vault);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, document).unwrap();
+}
+
+fn write_legacy_snapshot(vault: &Path, document: &str) {
+    let path = legacy_snapshot_path(vault);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, document).unwrap();
 }
@@ -151,6 +161,61 @@ fn application(vault: Option<&Path>) -> TodayApplication<SelectedVault, NoSelect
         NoSelection,
         FixedClock,
     )
+}
+
+#[test]
+fn canonical_habit_snapshot_wins_and_legacy_root_snapshot_is_read_only_fallback() {
+    let vault = TempDirectory::new("habit-snapshot-relocated");
+    let canonical = include_str!("fixtures/habits-v1-complete.json")
+        .replace("Daily flow synthetic snapshot", "life path snapshot");
+    let legacy = include_str!("fixtures/habits-v1-complete.json")
+        .replace("Daily flow synthetic snapshot", "legacy root snapshot");
+    write_snapshot(vault.path(), &canonical);
+    write_legacy_snapshot(vault.path(), &legacy);
+
+    let view = application(Some(vault.path())).habits().unwrap();
+
+    assert_eq!(view.state, HabitSnapshotState::Ready);
+    assert_eq!(
+        view.producer_label.as_deref(),
+        Some("life path snapshot · agent-derived")
+    );
+    assert!(snapshot_path(vault.path()).is_file());
+    assert_eq!(
+        fs::read(legacy_snapshot_path(vault.path())).unwrap(),
+        legacy.as_bytes()
+    );
+
+    let legacy_only = TempDirectory::new("habit-snapshot-legacy-fallback");
+    write_legacy_snapshot(legacy_only.path(), &legacy);
+    let fallback = application(Some(legacy_only.path())).habits().unwrap();
+
+    assert_eq!(fallback.state, HabitSnapshotState::Ready);
+    assert_eq!(
+        fallback.producer_label.as_deref(),
+        Some("legacy root snapshot · agent-derived")
+    );
+    assert!(!snapshot_path(legacy_only.path()).exists());
+    assert_eq!(
+        fs::read(legacy_snapshot_path(legacy_only.path())).unwrap(),
+        legacy.as_bytes()
+    );
+
+    let malformed_current = TempDirectory::new("habit-snapshot-malformed-current");
+    let current_path = snapshot_path(malformed_current.path());
+    fs::create_dir_all(current_path.parent().unwrap()).unwrap();
+    fs::write(&current_path, br#"{"schemaVersion":2}"#).unwrap();
+    write_legacy_snapshot(malformed_current.path(), &legacy);
+    let invalid = application(Some(malformed_current.path()))
+        .habits()
+        .unwrap();
+
+    assert_eq!(invalid.state, HabitSnapshotState::Error);
+    assert!(invalid.message.contains("schema"));
+    assert_eq!(
+        fs::read(legacy_snapshot_path(malformed_current.path())).unwrap(),
+        legacy.as_bytes()
+    );
 }
 
 #[test]
@@ -514,6 +579,9 @@ fn absent_unconfigured_stale_and_malformed_snapshots_are_explicit_empty_states()
     let missing = application(Some(missing_vault.path())).habits().unwrap();
     assert_eq!(missing.state, HabitSnapshotState::Missing);
     assert!(missing.message.contains("不会自动生成"));
+    assert!(!snapshot_path(missing_vault.path()).exists());
+    assert!(!legacy_snapshot_path(missing_vault.path()).exists());
+    assert!(!missing_vault.path().join(".personal-dashboard").exists());
 
     let malformed_vault = TempDirectory::new("habit-snapshot-malformed");
     write_snapshot(malformed_vault.path(), "not json");

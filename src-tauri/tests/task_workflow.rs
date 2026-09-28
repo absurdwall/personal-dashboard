@@ -161,6 +161,10 @@ fn task_path(vault: &Path) -> PathBuf {
     vault.join("life/.personal-dashboard/tasks/v1/tasks.json")
 }
 
+fn recovery_directory(vault: &Path) -> PathBuf {
+    vault.join("life/.personal-dashboard/recovery/today")
+}
+
 fn empty_task_document() -> Vec<u8> {
     br#"{"schemaVersion":2,"lists":[{"id":"inbox","name":"Inbox","system":true,"archived":false}],"tasks":[]}
 "#
@@ -308,6 +312,14 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
             list_id: None,
         })
         .unwrap();
+
+    let recoveries = fs::read_dir(recovery_directory(vault.path()))
+        .expect("task edits should create recovery snapshots under life/")
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_file())
+        .count();
+    assert!(recoveries > 0);
+    assert!(!vault.path().join(".personal-dashboard-recovery").exists());
 
     assert_eq!(edited.tasks.len(), 1);
     assert_eq!(edited.tasks[0].id, "stable-study-1");

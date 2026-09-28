@@ -1,13 +1,15 @@
 use serde::Serialize;
 #[cfg(target_os = "macos")]
 use std::path::PathBuf;
-use tauri::{Manager, State};
 #[cfg(target_os = "macos")]
-use tauri::{RunEvent, WindowEvent};
+use tauri::WindowEvent;
+use tauri::{AppHandle, Manager, RunEvent, State};
 
 pub mod appearance;
 pub mod backup;
 mod clock;
+pub mod collaboration;
+pub mod collaboration_memory;
 pub mod cutover;
 pub mod exercise;
 pub mod habits;
@@ -23,6 +25,26 @@ pub mod profile;
 pub mod task_adapter;
 pub mod tasks;
 pub mod today;
+pub mod voice_input;
+
+fn voice_helper_path(app_handle: &AppHandle) -> Option<std::path::PathBuf> {
+    if let Ok(resource_directory) = app_handle.path().resource_dir() {
+        let packaged_helper = resource_directory.join("personal-dashboard-voice-helper");
+        if packaged_helper.is_file() {
+            return Some(packaged_helper);
+        }
+    }
+
+    #[cfg(all(target_os = "macos", debug_assertions))]
+    if let Some(development_helper) = option_env!("PERSONAL_DASHBOARD_VOICE_HELPER_PATH") {
+        let development_helper = std::path::PathBuf::from(development_helper);
+        if development_helper.is_file() {
+            return Some(development_helper);
+        }
+    }
+
+    None
+}
 
 use appearance::{
     AccentColor, AppearanceApplication, AppearancePreferences, AppearanceSelectionResult,
@@ -79,6 +101,297 @@ fn application_identity() -> ApplicationIdentity {
         feature_area: "Daily records and habits",
         boundary_message: "Local Rust application ready · Offline",
     }
+}
+
+#[tauri::command]
+async fn collaboration_connection(
+    application: State<'_, collaboration::CollaborationApplication>,
+) -> Result<collaboration::RuntimeConnectionView, String> {
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || application.connection())
+        .await
+        .map_err(|error| format!("codex_connection_task_failed: {error}"))
+}
+
+#[tauri::command]
+fn collaboration_daily_plan_automation(
+    application: State<'_, collaboration::CollaborationApplication>,
+) -> Result<collaboration::DailyPlanAutomationView, String> {
+    application.daily_plan_automation()
+}
+
+#[tauri::command]
+fn collaboration_update_daily_plan_automation(
+    application: State<'_, collaboration::CollaborationApplication>,
+    settings: collaboration::DailyPlanAutomationSettings,
+) -> Result<collaboration::DailyPlanAutomationView, String> {
+    application.update_daily_plan_automation(settings)
+}
+
+#[tauri::command]
+async fn collaboration_start_chatgpt_login(
+    application: State<'_, collaboration::CollaborationApplication>,
+) -> Result<(), String> {
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || application.start_chatgpt_login())
+        .await
+        .map_err(|error| format!("codex_login_task_failed: {error}"))?
+}
+
+#[tauri::command]
+async fn collaboration_select_model(
+    application: State<'_, collaboration::CollaborationApplication>,
+    model_id: Option<String>,
+) -> Result<collaboration::RuntimeConnectionView, String> {
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || application.select_model(model_id.as_deref()))
+        .await
+        .map_err(|error| format!("codex_model_selection_task_failed: {error}"))?
+}
+
+#[tauri::command]
+async fn collaboration_select_reasoning_effort(
+    application: State<'_, collaboration::CollaborationApplication>,
+    reasoning_effort: Option<String>,
+) -> Result<collaboration::RuntimeConnectionView, String> {
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        application.select_reasoning_effort(reasoning_effort.as_deref())
+    })
+    .await
+    .map_err(|error| format!("codex_reasoning_effort_task_failed: {error}"))?
+}
+
+#[tauri::command]
+fn collaboration_workspace(
+    application: State<'_, collaboration::CollaborationApplication>,
+    date: String,
+) -> Result<collaboration::CollaborationWorkspaceView, String> {
+    application.workspace(&date)
+}
+
+#[tauri::command]
+fn collaboration_context(
+    application: State<'_, collaboration::CollaborationApplication>,
+    date: String,
+) -> Result<collaboration::CollaborationContextView, String> {
+    application.context(&date)
+}
+
+#[tauri::command]
+fn collaboration_create_session(
+    application: State<'_, collaboration::CollaborationApplication>,
+    date: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.create_session(&date)
+}
+
+#[tauri::command]
+fn collaboration_list_sessions(
+    application: State<'_, collaboration::CollaborationApplication>,
+    date: String,
+) -> Result<Vec<collaboration::CollaborationSessionView>, String> {
+    application.list_sessions(&date)
+}
+
+#[tauri::command]
+fn collaboration_session(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.session_for_selected_vault(&session_id)
+}
+
+#[tauri::command]
+fn collaboration_submit_message(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    target_date: String,
+    text: String,
+    external_app_ids: Option<Vec<String>>,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.submit_message_for_selected_vault_with_external_apps(
+        &session_id,
+        &target_date,
+        &text,
+        external_app_ids.as_deref().unwrap_or_default(),
+    )
+}
+
+#[tauri::command]
+fn collaboration_resolve_external_approval(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    execution_id: String,
+    approval_id: String,
+    answers: std::collections::HashMap<String, String>,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.resolve_external_approval_for_selected_vault(
+        &session_id,
+        &execution_id,
+        &approval_id,
+        answers,
+    )
+}
+
+#[tauri::command]
+fn collaboration_voice_capabilities(
+    application: State<'_, voice_input::VoiceInputApplication>,
+) -> voice_input::VoiceInputCapabilitiesView {
+    application.capabilities()
+}
+
+#[tauri::command]
+async fn collaboration_voice_authorize(
+    application: State<'_, voice_input::VoiceInputApplication>,
+) -> Result<bool, String> {
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || application.authorize())
+        .await
+        .map_err(|error| format!("voice_permission_task_failed: {error}"))?
+}
+
+#[tauri::command]
+async fn collaboration_transcribe_voice(
+    application: State<'_, voice_input::VoiceInputApplication>,
+    audio: Vec<u8>,
+    mime_type: String,
+    locale: String,
+) -> Result<String, String> {
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        application.transcribe(&audio, &mime_type, &locale)
+    })
+    .await
+    .map_err(|error| format!("voice_task_failed: {error}"))?
+}
+
+#[tauri::command]
+fn collaboration_save_draft(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    target_date: String,
+    draft: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.save_draft_for_selected_vault(&session_id, &target_date, &draft)
+}
+
+#[tauri::command]
+fn collaboration_set_target_date(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    target_date: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.set_target_date_for_selected_vault(&session_id, &target_date)
+}
+
+#[tauri::command]
+fn collaboration_stop_run(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    execution_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.stop_run_for_selected_vault(&session_id, &execution_id)
+}
+
+#[tauri::command]
+fn collaboration_resume_not_started(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    execution_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.requeue_not_started_for_selected_vault(&session_id, &execution_id)
+}
+
+#[tauri::command]
+fn collaboration_reconcile_run(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    execution_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.reconcile_run_for_selected_vault(&session_id, &execution_id)
+}
+
+#[tauri::command]
+fn collaboration_approve_task_operation(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    operation_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.approve_task_operation_for_selected_vault(&session_id, &operation_id)
+}
+
+#[tauri::command]
+fn collaboration_reject_task_operation(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    operation_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.reject_task_operation_for_selected_vault(&session_id, &operation_id)
+}
+
+#[tauri::command]
+fn collaboration_refresh_task_operation(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    operation_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.refresh_task_operation_for_selected_vault(&session_id, &operation_id)
+}
+
+#[tauri::command]
+fn collaboration_reconcile_task_operation(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    operation_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.reconcile_task_operation_for_selected_vault(&session_id, &operation_id)
+}
+
+#[tauri::command]
+fn collaboration_save_long_term_memory(
+    application: State<'_, collaboration::CollaborationApplication>,
+    expected_vault_binding: String,
+    expected_revision: String,
+    content: String,
+) -> Result<collaboration::CollaborationMemoryView, String> {
+    application.save_long_term_memory_for_selected_vault(
+        &expected_vault_binding,
+        &expected_revision,
+        &content,
+    )
+}
+
+#[tauri::command]
+fn collaboration_save_continuity_note(
+    application: State<'_, collaboration::CollaborationApplication>,
+    expected_vault_binding: String,
+    expected_revision: u64,
+    note: String,
+) -> Result<collaboration::CollaborationMemoryView, String> {
+    application.save_continuity_note_for_selected_vault(
+        &expected_vault_binding,
+        expected_revision,
+        &note,
+    )
+}
+
+#[tauri::command]
+fn collaboration_approve_memory_proposal(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    proposal_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.approve_memory_proposal_for_selected_vault(&session_id, &proposal_id)
+}
+
+#[tauri::command]
+fn collaboration_reject_memory_proposal(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String,
+    proposal_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.reject_memory_proposal_for_selected_vault(&session_id, &proposal_id)
 }
 
 #[tauri::command]
@@ -366,6 +679,8 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
             let today_workspace_file = today_workspace_file_for(&app_handle)?;
+            let collaboration_app_data_dir = app_handle.path().app_data_dir()?;
+            std::fs::create_dir_all(&collaboration_app_data_dir)?;
             let appearance_file = appearance_file_for(&app_handle)?;
             let appearance_background_directory = appearance_background_directory_for(&app_handle)?;
             let interface_language_file = interface_language_file_for(&app_handle)?;
@@ -423,6 +738,17 @@ pub fn run() {
                 NativeTodayWorkspaceExchange::new(app_handle.clone()),
                 SystemClock,
             ));
+            let collaboration_application = collaboration::CollaborationApplication::new_local(
+                collaboration_app_data_dir,
+                today_workspace_file.clone(),
+            );
+            app.manage(collaboration_application.clone());
+            collaboration_application
+                .start_daily_plan_automation_scheduler()
+                .map_err(std::io::Error::other)?;
+            app.manage(voice_input::VoiceInputApplication::new_local(
+                voice_helper_path(&app_handle),
+            ));
             app.manage(TaskApplication::new(
                 FileTodayWorkspacePersistence::new(today_workspace_file),
                 SystemClock,
@@ -451,6 +777,35 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             application_identity,
+            collaboration_connection,
+            collaboration_daily_plan_automation,
+            collaboration_update_daily_plan_automation,
+            collaboration_start_chatgpt_login,
+            collaboration_select_model,
+            collaboration_select_reasoning_effort,
+            collaboration_workspace,
+            collaboration_context,
+            collaboration_create_session,
+            collaboration_list_sessions,
+            collaboration_session,
+            collaboration_submit_message,
+            collaboration_resolve_external_approval,
+            collaboration_voice_capabilities,
+            collaboration_voice_authorize,
+            collaboration_transcribe_voice,
+            collaboration_save_draft,
+            collaboration_set_target_date,
+            collaboration_stop_run,
+            collaboration_resume_not_started,
+            collaboration_reconcile_run,
+            collaboration_approve_task_operation,
+            collaboration_reject_task_operation,
+            collaboration_refresh_task_operation,
+            collaboration_reconcile_task_operation,
+            collaboration_save_long_term_memory,
+            collaboration_save_continuity_note,
+            collaboration_approve_memory_proposal,
+            collaboration_reject_memory_proposal,
             appearance_preferences,
             set_accent_color,
             restore_appearance_defaults,
@@ -492,6 +847,35 @@ pub fn run() {
     #[cfg(not(target_os = "macos"))]
     let application = application.invoke_handler(tauri::generate_handler![
         application_identity,
+        collaboration_connection,
+        collaboration_daily_plan_automation,
+        collaboration_update_daily_plan_automation,
+        collaboration_start_chatgpt_login,
+        collaboration_select_model,
+        collaboration_select_reasoning_effort,
+        collaboration_workspace,
+        collaboration_context,
+        collaboration_create_session,
+        collaboration_list_sessions,
+        collaboration_session,
+        collaboration_submit_message,
+        collaboration_resolve_external_approval,
+        collaboration_voice_capabilities,
+        collaboration_voice_authorize,
+        collaboration_transcribe_voice,
+        collaboration_save_draft,
+        collaboration_set_target_date,
+        collaboration_stop_run,
+        collaboration_resume_not_started,
+        collaboration_reconcile_run,
+        collaboration_approve_task_operation,
+        collaboration_reject_task_operation,
+        collaboration_refresh_task_operation,
+        collaboration_reconcile_task_operation,
+        collaboration_save_long_term_memory,
+        collaboration_save_continuity_note,
+        collaboration_approve_memory_proposal,
+        collaboration_reject_memory_proposal,
         appearance_preferences,
         set_accent_color,
         restore_appearance_defaults,
@@ -536,6 +920,11 @@ pub fn run() {
 
     #[cfg(target_os = "macos")]
     application.run(|app_handle, event| {
+        if matches!(&event, RunEvent::ExitRequested { .. }) {
+            let _ = app_handle
+                .state::<collaboration::CollaborationApplication>()
+                .shutdown();
+        }
         if let RunEvent::Reopen {
             has_visible_windows: false,
             ..
@@ -549,5 +938,11 @@ pub fn run() {
     });
 
     #[cfg(not(target_os = "macos"))]
-    application.run(|_, _| {});
+    application.run(|app_handle, event| {
+        if matches!(&event, RunEvent::ExitRequested { .. }) {
+            let _ = app_handle
+                .state::<collaboration::CollaborationApplication>()
+                .shutdown();
+        }
+    });
 }

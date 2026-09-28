@@ -104,6 +104,15 @@
             <span class="destination-icon" aria-hidden="true">◉</span>
             <span data-i18n="destination.habits">习惯</span>
           </button>
+          <button
+            type="button"
+            class="destination-button"
+            data-workspace-destination="collaboration"
+            aria-controls="workspace-destination-collaboration"
+          >
+            <span class="destination-icon" aria-hidden="true">↗</span>
+            <span data-i18n="destination.collaboration">协作</span>
+          </button>
         </nav>
         <div class="workspace-compact-navigation">
           <label for="workspace-destination-select" data-i18n="navigation.destination">页面</label>
@@ -112,6 +121,7 @@
             <option value="tasks" data-i18n="destination.tasks">任务</option>
             <option value="calendar" data-i18n="destination.calendar">日历</option>
             <option value="habits" data-i18n="destination.habits">习惯</option>
+            <option value="collaboration" data-i18n="destination.collaboration">协作</option>
           </select>
         </div>
         <div class="sidebar-status">
@@ -152,6 +162,9 @@
                   </button>
                   <button type="button" data-settings-section="data" data-i18n="settings.dataVault">
                     数据与 Vault
+                  </button>
+                  <button type="button" data-settings-section="codex" data-i18n="settings.codex">
+                    Codex
                   </button>
                 </nav>
                 <div class="settings-content">
@@ -205,7 +218,214 @@
                       <p class="settings-boundary" data-i18n="settings.driveBoundary">普通本地 Vault 也可使用。Dashboard 不会自动转换任意笔记，不管理 Google 账号或上传；“本地已保存”不代表“云端已同步”。版本与回收站由 Google Drive 管理。</p>
                     </div>
                   </section>
+                  <section data-settings-panel="codex" aria-labelledby="codex-settings-heading" hidden>
+                    <h2 id="codex-settings-heading" class="destination-heading" data-i18n="settings.codex">Codex</h2>
+                    <p class="settings-introduction" data-i18n="collaboration.experimental">
+                      Codex App Server is experimental. Availability and protocol compatibility can vary by installed Codex CLI version.
+                    </p>
+                    <div class="setting-row">
+                      <h3 data-i18n="collaboration.connectionHeading">Local Codex connection</h3>
+                      <p id="collaboration-connection-status" class="settings-status" role="status" aria-live="polite" data-i18n="collaboration.connectionNotChecked">
+                        Connection status has not been checked.
+                      </p>
+                      <p id="collaboration-turn-capability" class="settings-boundary" role="status" aria-live="polite" data-i18n="collaboration.turnBlocked">
+                        Text turns are blocked until the local runtime can guarantee filesystem and shell tools are disabled.
+                      </p>
+                      <p id="collaboration-runtime-details" class="settings-vault-path" hidden></p>
+                      <div class="background-image-actions">
+                        <button id="collaboration-refresh-connection" type="button" class="secondary-button" data-i18n="collaboration.refreshConnection">Check connection</button>
+                        <button id="collaboration-connect-chatgpt" type="button" data-i18n="collaboration.connectChatGPT">Connect ChatGPT</button>
+                      </div>
+                      <p id="collaboration-login-status" class="settings-status" role="status" aria-live="polite"></p>
+                    </div>
+                    <div class="setting-row">
+                      <label for="collaboration-model" data-i18n="collaboration.modelLabel">Available Codex model</label>
+                      <select id="collaboration-model" aria-label="Available Codex model" data-i18n-aria-label="collaboration.modelLabel" disabled>
+                        <option value="" data-i18n="collaboration.modelDefault">Runtime default</option>
+                      </select>
+                      <label for="collaboration-reasoning-effort" data-i18n="collaboration.reasoningEffortLabel">Reasoning effort</label>
+                      <select id="collaboration-reasoning-effort" aria-label="Reasoning effort" data-i18n-aria-label="collaboration.reasoningEffortLabel" disabled>
+                        <option value="" data-i18n="collaboration.reasoningEffortDefault">Runtime default</option>
+                      </select>
+                      <p data-i18n="collaboration.connectionBoundary">Connection uses a Dashboard-owned local Codex profile. It does not read or copy other Codex settings, credentials, or MCP servers.</p>
+                    </div>
+                    <div class="setting-row automatic-plan-settings">
+                      <h3 data-i18n="collaboration.automaticPlanHeading">Automatic morning plan</h3>
+                      <p data-i18n="collaboration.automaticPlanDescription">When enabled, Personal Dashboard can prepare and save one first-draft Daily Record plan at this local time while the App is running. Opening the App later that day checks for a missing plan.</p>
+                      <label class="automatic-plan-toggle">
+                        <input id="collaboration-automatic-plan-enabled" type="checkbox">
+                        <span data-i18n="collaboration.automaticPlanEnabled">Enable automatic morning plan</span>
+                      </label>
+                      <label for="collaboration-automatic-plan-time" data-i18n="collaboration.automaticPlanTime">Local trigger time</label>
+                      <input id="collaboration-automatic-plan-time" type="time" value="06:00">
+                      <label class="automatic-plan-toggle">
+                        <input id="collaboration-external-handoff-confirmed" type="checkbox">
+                        <span data-i18n="collaboration.externalScheduleHandoffConfirmed">I have separately reviewed or paused the existing external scheduled task.</span>
+                      </label>
+                      <p id="collaboration-external-schedule-boundary" class="settings-boundary" role="status" aria-live="polite" data-i18n="collaboration.externalScheduleHandoffPending">The App never changes an external scheduled task. Until you confirm the handoff above, the existing schedule may also run.</p>
+                      <div class="background-image-actions">
+                        <button id="collaboration-save-automatic-plan-settings" type="button" data-i18n="collaboration.automaticPlanSave">Save schedule</button>
+                        <button id="collaboration-open-automatic-plan-run" type="button" class="secondary-button" data-i18n="collaboration.automaticPlanOpenRun" hidden>View automatic run</button>
+                      </div>
+                      <p id="collaboration-automatic-plan-status" class="settings-status" role="status" aria-live="polite" data-i18n="collaboration.automaticPlanNotLoaded">Automatic schedule status has not been loaded.</p>
+                    </div>
+                    <div class="setting-row">
+                      <h3 data-i18n="collaboration.externalCapabilitiesHeading">Connected external apps</h3>
+                      <p id="collaboration-external-capability-status" class="settings-status" role="status" aria-live="polite" data-i18n="collaboration.externalCapabilitiesNotChecked">External app capabilities have not been checked.</p>
+                      <ul id="collaboration-external-capabilities" class="collaboration-external-capability-list"></ul>
+                      <p data-i18n="collaboration.externalCapabilitiesBoundary">The list comes from this Dashboard-owned Codex runtime. Other Codex client configuration is not imported.</p>
+                    </div>
+                  </section>
                 </div>
+              </div>
+            </section>
+            <section
+              id="workspace-destination-collaboration"
+              class="workspace-destination collaboration-destination"
+              data-workspace-panel="collaboration"
+              aria-labelledby="collaboration-heading"
+              hidden
+            >
+              <header class="collaboration-header destination-page-header">
+                <div>
+                  <p class="section-label" data-i18n="collaboration.sectionLabel">LOCAL CODEX · TASK PROPOSALS</p>
+                  <h2 id="collaboration-heading" class="destination-heading" data-i18n="destination.collaboration">协作</h2>
+                  <p data-i18n="collaboration.introduction">Discuss current selected-Vault data with Codex. Proposed task changes are reviewed and saved through the existing Tasks service.</p>
+                </div>
+                <div class="collaboration-date-toolbar">
+                  <label for="collaboration-activity-date" data-i18n="collaboration.activityDate">Session activity date</label>
+                  <div class="collaboration-date-controls">
+                    <button id="collaboration-date-previous" type="button" class="secondary-button" aria-label="Previous day" data-i18n-aria-label="collaboration.previousDate">‹</button>
+                    <input id="collaboration-activity-date" type="date" aria-label="Session activity date" data-i18n-aria-label="collaboration.activityDate" />
+                    <button id="collaboration-date-next" type="button" class="secondary-button" aria-label="Next day" data-i18n-aria-label="collaboration.nextDate">›</button>
+                    <button id="collaboration-date-today" type="button" class="secondary-button" data-i18n="collaboration.today">Today</button>
+                  </div>
+                </div>
+              </header>
+              <div class="collaboration-status-bar">
+                <p id="collaboration-runtime-status" role="status" aria-live="polite" data-i18n="collaboration.connectionNotChecked">Connection status has not been checked.</p>
+                <p id="collaboration-work-owner" role="status" aria-live="polite"></p>
+                <button id="collaboration-open-settings" type="button" class="text-button" data-i18n="collaboration.openSettings">Codex connection settings</button>
+              </div>
+              <div class="collaboration-layout">
+                <section class="collaboration-session-pane" aria-labelledby="collaboration-sessions-heading">
+                  <header class="collaboration-pane-heading">
+                    <div>
+                      <p class="section-label" data-i18n="collaboration.sessionsLabel">SESSIONS</p>
+                      <h3 id="collaboration-sessions-heading" data-i18n="collaboration.sessionsHeading">Sessions</h3>
+                    </div>
+                    <button id="collaboration-new-session" type="button" data-i18n="collaboration.newSession">New chat</button>
+                  </header>
+                  <p id="collaboration-sessions-status" class="collaboration-pane-status" role="status" aria-live="polite"></p>
+                  <ul id="collaboration-session-list" class="collaboration-session-list" aria-label="Collaboration sessions" data-i18n-aria-label="collaboration.sessionsHeading"></ul>
+                </section>
+                <section class="collaboration-chat-pane" aria-labelledby="collaboration-chat-heading">
+                  <header class="collaboration-pane-heading collaboration-chat-heading">
+                    <div>
+                      <p class="section-label" data-i18n="collaboration.conversationLabel">CONVERSATION</p>
+                      <h3 id="collaboration-chat-heading" data-i18n="collaboration.noSession">Start or select a session</h3>
+                    </div>
+                    <div class="collaboration-chat-header-actions">
+                      <span id="collaboration-chat-date" class="collaboration-target-date"></span>
+                      <button id="collaboration-stop-run" type="button" class="secondary-button" data-i18n="collaboration.stop" hidden>Stop</button>
+                    </div>
+                  </header>
+                  <p id="collaboration-run-status" class="collaboration-run-status" role="status" aria-live="polite"></p>
+                  <p id="collaboration-task-tool-notice" class="collaboration-task-tool-notice" role="status" aria-live="polite" hidden></p>
+                  <div id="collaboration-message-list" class="collaboration-message-list" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation messages" data-i18n-aria-label="collaboration.conversationLabel"></div>
+                  <form id="collaboration-composer" class="collaboration-composer">
+                    <label for="collaboration-message-draft" data-i18n="collaboration.messageLabel">Message</label>
+                    <textarea id="collaboration-message-draft" rows="3" maxlength="12000" data-i18n-placeholder="collaboration.messagePlaceholder" placeholder="Describe what you want to discuss…" disabled></textarea>
+                    <fieldset id="collaboration-external-apps" class="collaboration-external-apps" hidden>
+                      <legend data-i18n="collaboration.externalUseHeading">External apps for this message</legend>
+                      <p data-i18n="collaboration.externalUseBoundary">External use is off by default. Select an available app only when this request asks to use it. External changes may not be reversible.</p>
+                      <div id="collaboration-external-app-options"></div>
+                    </fieldset>
+                    <div class="collaboration-voice-controls">
+                      <label for="collaboration-voice-language" data-i18n="collaboration.voiceLanguage">Voice language</label>
+                      <select id="collaboration-voice-language" disabled aria-describedby="collaboration-voice-privacy">
+                        <option value="" data-i18n="collaboration.voiceLanguageLoading">Checking local speech models…</option>
+                      </select>
+                      <button id="collaboration-voice-start" type="button" data-i18n="collaboration.voiceStart" disabled>Start recording</button>
+                      <button id="collaboration-voice-cancel" type="button" data-i18n="collaboration.voiceCancel" hidden>Cancel</button>
+                      <p id="collaboration-voice-privacy" data-i18n="collaboration.voicePrivacy">Audio is transcribed on this Mac only after you start recording; it is discarded after transcription.</p>
+                    </div>
+                    <p id="collaboration-voice-status" class="collaboration-voice-status" role="status" aria-live="polite"></p>
+                    <div class="collaboration-composer-footer">
+                      <p data-i18n="collaboration.readOnlyBoundary">Codex may propose Task, Daily Record review/note/plan, or local Habit completion changes. Only the exact approved content is written to the selected Vault. External Habit sources and settings are not changed.</p>
+                      <button id="collaboration-send-message" type="submit" data-i18n="collaboration.send" disabled>Send</button>
+                    </div>
+                  </form>
+                </section>
+                <aside class="collaboration-context-pane" aria-labelledby="collaboration-context-heading">
+                  <header class="collaboration-pane-heading">
+                    <div>
+                      <p class="section-label" data-i18n="collaboration.currentWorkLabel">CURRENT WORK</p>
+                      <h3 id="collaboration-context-heading" data-i18n="collaboration.contextHeading">Current context</h3>
+                    </div>
+                  </header>
+                  <label for="collaboration-target-date" data-i18n="collaboration.targetDate">Target record date</label>
+                  <input id="collaboration-target-date" type="date" aria-label="Target record date" data-i18n-aria-label="collaboration.targetDate" />
+                  <p id="collaboration-context-vault" class="collaboration-vault-label" data-i18n="settings.noVault">No Vault selected.</p>
+                  <section class="collaboration-context-card collaboration-task-operations-card" aria-labelledby="collaboration-task-operations-heading">
+                    <h4 id="collaboration-task-operations-heading" data-i18n="collaboration.taskOperationsHeading">Work proposals</h4>
+                    <div id="collaboration-task-operations" aria-live="polite"></div>
+                  </section>
+                  <div id="collaboration-context-panes" class="collaboration-context-panes">
+                    <section class="collaboration-context-card" data-context-pane="dailyRecord" aria-labelledby="collaboration-daily-heading">
+                      <h4 id="collaboration-daily-heading" data-i18n="collaboration.dailyRecord">Daily Record</h4>
+                      <p data-context-message></p>
+                      <ul data-context-items></ul>
+                    </section>
+                    <section class="collaboration-context-card" data-context-pane="tasks" aria-labelledby="collaboration-tasks-heading">
+                      <h4 id="collaboration-tasks-heading" data-i18n="collaboration.tasks">Tasks</h4>
+                      <p data-context-message></p>
+                      <ul data-context-items></ul>
+                    </section>
+                    <section class="collaboration-context-card" data-context-pane="habits" aria-labelledby="collaboration-habits-heading">
+                      <h4 id="collaboration-habits-heading" data-i18n="collaboration.habits">Habits</h4>
+                      <p data-context-message></p>
+                      <ul data-context-items></ul>
+                    </section>
+                  </div>
+                  <details id="collaboration-memory-panel" class="collaboration-context-card collaboration-memory-panel">
+                    <summary data-i18n="collaboration.memoryHeading">Memory and continuity</summary>
+                    <p id="collaboration-memory-status" class="settings-status" role="status" aria-live="polite"></p>
+                    <section class="collaboration-memory-section" aria-labelledby="collaboration-long-term-heading">
+                      <h4 id="collaboration-long-term-heading" data-i18n="collaboration.longTermHeading">Long-term background</h4>
+                      <p id="collaboration-long-term-source" class="collaboration-memory-source"></p>
+                      <p id="collaboration-long-term-message" class="collaboration-memory-message" role="status" aria-live="polite"></p>
+                      <label for="collaboration-long-term-content" data-i18n="collaboration.longTermEditLabel">Existing Life Operating Principles document</label>
+                      <textarea id="collaboration-long-term-content" rows="8" maxlength="65536" data-i18n-placeholder="collaboration.longTermUnavailable" placeholder="Existing background is unavailable."></textarea>
+                      <div class="collaboration-memory-actions">
+                        <button id="collaboration-long-term-save" type="button" data-i18n="collaboration.longTermSave" disabled>Save correction</button>
+                        <button id="collaboration-long-term-reload" type="button" class="secondary-button" data-i18n="collaboration.longTermReload">Reload source</button>
+                      </div>
+                    </section>
+                    <details class="collaboration-memory-section collaboration-routine-reference">
+                      <summary data-i18n="collaboration.routineReferenceHeading">Existing daily workflow reference</summary>
+                      <p id="collaboration-routine-reference-message" class="collaboration-memory-message"></p>
+                      <pre id="collaboration-routine-reference-content"></pre>
+                    </details>
+                    <section class="collaboration-memory-section" aria-labelledby="collaboration-recent-memory-heading">
+                      <h4 id="collaboration-recent-memory-heading" data-i18n="collaboration.recentMemoryHeading">Recent continuity</h4>
+                      <p data-i18n="collaboration.recentMemoryBoundary">Recent summaries, unfinished matters, and continuity corrections expire after 14 days; original sessions and Daily Records remain available.</p>
+                      <ul id="collaboration-recent-memory-list" class="collaboration-memory-list"></ul>
+                      <h4 id="collaboration-open-matters-heading" data-i18n="collaboration.openMattersHeading">Unfinished matters</h4>
+                      <ul id="collaboration-open-matters-list" class="collaboration-memory-list"></ul>
+                      <label for="collaboration-continuity-note" data-i18n="collaboration.continuityNoteLabel">Correction or context for future sessions</label>
+                      <textarea id="collaboration-continuity-note" rows="3" maxlength="4000"></textarea>
+                      <small id="collaboration-continuity-expiry" class="collaboration-memory-message"></small>
+                      <div class="collaboration-memory-actions">
+                        <button id="collaboration-continuity-save" type="button" class="secondary-button" data-i18n="collaboration.continuityNoteSave">Save continuity correction</button>
+                      </div>
+                    </section>
+                    <section class="collaboration-memory-section" aria-labelledby="collaboration-memory-proposals-heading">
+                      <h4 id="collaboration-memory-proposals-heading" data-i18n="collaboration.memoryProposalsHeading">Durable update proposals</h4>
+                      <div id="collaboration-memory-proposals" aria-live="polite"></div>
+                    </section>
+                  </details>
+                </aside>
               </div>
             </section>
             <section
@@ -215,13 +435,13 @@
               aria-labelledby="tasks-heading"
               hidden
             >
-              <header class="tasks-header">
+              <header class="tasks-header destination-page-header">
                 <div>
-                  <p class="section-label" data-i18n="tasks.section">任务 · 收集箱</p>
                   <h2 id="tasks-heading" class="destination-heading" data-i18n="tasks.heading">任务</h2>
                   <p data-i18n="tasks.introduction">任务有自己的清单，但和 Today、日历共享同一条任务记录。</p>
                 </div>
                 <div class="tasks-header-actions">
+                  <button id="task-return-to-collaboration" type="button" class="secondary-button" data-i18n="collaboration.returnToConversation" hidden>返回协作会话</button>
                   <button id="task-new" type="button" data-i18n="tasks.newTask">新建任务</button>
                   <button id="refresh-tasks" type="button" class="secondary-button tasks-refresh-button" data-i18n="tasks.refresh">刷新任务</button>
                 </div>
@@ -324,9 +544,8 @@
               aria-labelledby="calendar-heading"
               hidden
             >
-              <header class="calendar-header">
+              <header class="calendar-header destination-page-header">
                 <div>
-                  <p class="section-label" data-i18n="calendar.historyRecall">日历 · 历史回看</p>
                   <h2 id="calendar-heading" class="destination-heading" data-i18n="destination.calendar">日历</h2>
                   <p data-i18n="calendar.introduction">先看整个月，再进入某一天；选中的日期复用 Today 的三个阶段。</p>
                 </div>
@@ -390,6 +609,7 @@
                     <strong data-i18n="calendar.chooseDay">选择月历中的一天</strong>
                     <p data-i18n="calendar.previewThenOpen">先预览是否有记录与复盘，再打开完整 Today。</p>
                   </div>
+                  <button id="calendar-return-to-collaboration" type="button" class="secondary-button" data-i18n="collaboration.returnToConversation" hidden>返回协作会话</button>
                   <button id="calendar-open-day" type="button" class="calendar-open-day" disabled>
                     <span data-i18n="calendar.openFullToday">打开完整 Today</span> <span aria-hidden="true">↗</span>
                   </button>
@@ -446,21 +666,25 @@
               id="workspace-destination-today"
               class="workspace-destination today-destination"
               data-workspace-panel="today"
-              aria-labelledby="today-heading"
+              aria-labelledby="today-page-heading"
               hidden
             >
-              <div class="today-toolbar">
+              <header class="today-page-header destination-page-header">
                 <div>
-                  <p id="today-date" class="section-label">Today</p>
-                  <h2 id="today-heading" class="destination-heading" data-i18n="today.morning">早间基准</h2>
+                  <h2 id="today-page-heading" class="destination-heading" data-i18n="destination.today">今天</h2>
+                  <p data-i18n="workspace.todayDescription">查看今天 Daily Record 里的大致安排。</p>
                 </div>
-                <div class="today-actions" aria-label="Today 操作" data-i18n-aria-label="today.actions">
-                  <button id="select-today-vault" type="button" class="secondary-button" data-i18n="today.selectVault">
-                    选择 Vault…
-                  </button>
-                  <button id="refresh-today" type="button" data-i18n="today.refresh">刷新</button>
+                <div class="today-page-header-meta">
+                  <p id="today-date" class="today-page-date">Today</p>
+                  <div class="today-actions" aria-label="Today 操作" data-i18n-aria-label="today.actions">
+                    <button id="today-return-to-collaboration" type="button" class="secondary-button" data-i18n="collaboration.returnToConversation" hidden>返回协作会话</button>
+                    <button id="select-today-vault" type="button" class="secondary-button" data-i18n="today.selectVault">
+                      选择 Vault…
+                    </button>
+                    <button id="refresh-today" type="button" data-i18n="today.refresh">刷新</button>
+                  </div>
                 </div>
-              </div>
+              </header>
               <p id="today-vault" class="today-vault" data-i18n="settings.noVault">尚未选择 Vault。</p>
               <p id="today-status" class="today-status" role="status" aria-live="polite">
                 <span data-i18n="today.loading">正在读取今天的早间计划…</span>
@@ -539,13 +763,12 @@
                     >
                       <div class="today-region-heading">
                         <div>
-                          <p class="section-label" data-i18n="today.daytimeSection">当日 · 时间轴</p>
                           <h3 id="today-daytime-heading" data-i18n="today.timelineAndRecords">时间轴 + 记录</h3>
                         </div>
                         <span id="today-daytime-count" class="today-count"></span>
                       </div>
                       <p class="today-reading-introduction" data-i18n="today.timelineIntro">
-                        当前安排和已确认事实共用一条时间轴，用不同颜色区分；没有明确时刻的内容保留在未定位区。
+                        有时刻的任务、日记安排和已确认事实共用一条时间轴，并标明来源；没有明确时刻的日记内容保留在未定位区。
                       </p>
                       <div id="today-axis-lane-legend" class="today-axis-lane-legend" role="group" aria-label="时间轴图例" data-i18n-aria-label="today.timelineLegend">
                         <span class="today-axis-lane-legend-item">
@@ -555,6 +778,10 @@
                         <span class="today-axis-lane-legend-item">
                           <i class="today-axis-lane-legend-symbol is-fact" aria-hidden="true"></i>
                           <span data-i18n="today.confirmedFactsHeading">Confirmed facts</span>
+                        </span>
+                        <span class="today-axis-lane-legend-item">
+                          <i class="today-axis-lane-legend-symbol is-task" aria-hidden="true"></i>
+                          <span data-i18n="today.sourceTask">Task</span>
                         </span>
                         <a id="today-unlocated-time-shortcut" class="today-axis-unlocated-shortcut" href="#today-unlocated-time-region" data-i18n="today.unlocatedTimes">
                           Items without a precise time
@@ -715,7 +942,6 @@
                     <section class="day-task-panel" aria-labelledby="today-task-heading">
                       <div class="day-task-heading">
                         <div>
-                          <p class="section-label" data-i18n="today.tasksSection">Today · 共享任务</p>
                           <h3 id="today-task-heading" data-i18n="today.tasksHeading">Today 任务</h3>
                         </div>
                         <span id="today-task-count" class="today-count"></span>
@@ -887,9 +1113,8 @@
               aria-labelledby="habits-heading"
               hidden
             >
-              <header class="habits-header">
+              <header class="habits-header destination-page-header">
                 <div>
-                  <p class="section-label" data-i18n="habits.weekSnapshot">本周 · 来源快照</p>
                   <h2 id="habits-heading" class="destination-heading" data-i18n="habits.weekly">本周习惯</h2>
                   <p id="habits-range" data-i18n="habits.loadingOnDemand">正在读取按需快照…</p>
                 </div>

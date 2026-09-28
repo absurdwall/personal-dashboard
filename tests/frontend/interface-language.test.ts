@@ -13,6 +13,7 @@ import {
   localizeHabitDetail,
   localizeHabitGoalLabel,
   setInterfaceError,
+  updateTodayAxisMarkerAccessibleName,
   type InterfaceLanguage,
 } from "../../frontend/interface-language.ts";
 
@@ -37,6 +38,49 @@ function languageRoot(elements: FakeElement[]) {
     },
   };
 }
+
+test("already-rendered timeline marker names follow zh-en-zh without replacing marker state", () => {
+  const marker = {
+    dataset: {
+      axisItemTime: "17:30",
+      axisItemText: "语言切换回归 · Keep my words exactly",
+      axisMetadataCopyKeys: JSON.stringify(["today.sourceTask", "tasks.statePending"]),
+    },
+    accessibleName: "",
+    setAttribute(name: string, value: string) {
+      if (name === "aria-label") this.accessibleName = value;
+    },
+  };
+  const timeline = {
+    markers: [marker],
+    focusedElement: marker,
+    expandedEntry: "today-axis-tasks-entry-0",
+    frontStackMarker: marker,
+  };
+
+  updateTodayAxisMarkerAccessibleName(marker, "zh");
+  assert.equal(
+    marker.accessibleName,
+    "打开 17:30：语言切换回归 · Keep my words exactly · 任务 · 待办",
+  );
+
+  updateTodayAxisMarkerAccessibleName(marker, "en");
+  assert.equal(
+    marker.accessibleName,
+    "Open 17:30: 语言切换回归 · Keep my words exactly · Task · Pending",
+  );
+  assert.equal(marker.dataset.axisItemText, "语言切换回归 · Keep my words exactly");
+
+  updateTodayAxisMarkerAccessibleName(marker, "zh");
+  assert.equal(
+    marker.accessibleName,
+    "打开 17:30：语言切换回归 · Keep my words exactly · 任务 · 待办",
+  );
+  assert.equal(timeline.markers[0], marker);
+  assert.equal(timeline.focusedElement, marker);
+  assert.equal(timeline.expandedEntry, "today-axis-tasks-entry-0");
+  assert.equal(timeline.frontStackMarker, marker);
+});
 
 test("fixed interface copy switches language while personal content and drafts stay unchanged", () => {
   const navigation: FakeElement = {
