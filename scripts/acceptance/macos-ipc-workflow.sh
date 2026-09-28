@@ -1878,8 +1878,10 @@ EOF
     fail "Today writes changed subsection-like YAML multiline content"
   grep -Fq "[[Private Context]] remains ordinary Obsidian Markdown." "$record_file" ||
     fail "Today writes changed an unfamiliar Markdown section"
-  [[ -n "$(find "$vault_directory/.personal-dashboard-recovery/today" -type f -name '*.snapshot' -print -quit 2>/dev/null)" ]] ||
+  [[ -n "$(find "$vault_directory/life/.personal-dashboard/recovery/today" -type f -name '*.snapshot' -print -quit 2>/dev/null)" ]] ||
     fail "Today writes did not retain a non-canonical recovery snapshot"
+  [[ ! -e "$vault_directory/.personal-dashboard-recovery" ]] ||
+    fail "Today writes recreated the legacy root recovery directory"
   after_phase_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
   [[ "$before_phase_hash" != "$after_phase_hash" ]] ||
     fail "packaged write flows did not change the canonical Daily Record"
@@ -2236,7 +2238,7 @@ EOF
 
 run_habits_scenario() {
   local vault_directory="$acceptance_directory/tortilla-flat-vault"
-  local snapshot_directory="$vault_directory/.personal-dashboard/derived"
+  local snapshot_directory="$vault_directory/life/.personal-dashboard/derived"
   local snapshot_file="$snapshot_directory/habits-v1.json"
   local record_directory="$vault_directory/life/Journal/Daily/2026/2026-09"
   local record_file="$record_directory/2026-09-07.md"
@@ -2416,7 +2418,7 @@ EOF
 
 run_local_habit_completion_scenario() {
   local vault_directory="$acceptance_directory/local-habit-vault"
-  local snapshot_directory="$vault_directory/.personal-dashboard/derived"
+  local snapshot_directory="$vault_directory/life/.personal-dashboard/derived"
   local snapshot_file="$snapshot_directory/habits-v1.json"
   local snapshot_candidate="$snapshot_directory/habits-v1.candidate.json"
   local completion_file="$vault_directory/life/.personal-dashboard/habit-completions/v1/completions.json"
@@ -2503,6 +2505,9 @@ run_local_habit_completion_scenario() {
   run_driver wait-text "Local withdrawn; external remains: Dida365 打卡" 20
   run_driver assert-state 'Record “Reset living space” complete today|selected' 10
 
+  [[ ! -e "$vault_directory/.personal-dashboard" ]] ||
+    fail "local habit writes recreated the legacy root snapshot directory"
+
   echo "Packaged IPC local habit-completion acceptance passed"
   echo "Persistence: local completion and withdrawal survived relaunch in the selected synthetic Vault"
   echo "Merge: external replacement was OR-merged; local withdrawal remained distinct while the merged checkbox stayed selected"
@@ -2512,7 +2517,7 @@ run_local_habit_completion_scenario() {
 
 run_historical_corrections_scenario() {
   local vault="$acceptance_directory/historical-corrections-vault"
-  local snapshot="$vault/.personal-dashboard/derived/habits-v1.json"
+  local snapshot="$vault/life/.personal-dashboard/derived/habits-v1.json"
   local past_record="$vault/life/Journal/Daily/2026/2026-09/2026-09-07.md"
   local prior_week_record="$vault/life/Journal/Daily/2026/2026-08/2026-08-31.md"
   local today_record="$vault/life/Journal/Daily/2026/2026-09/2026-09-08.md"
@@ -2831,7 +2836,7 @@ run_drive_compatibility_scenario() {
 run_vault_selection_scenario() {
   local vault_a="$acceptance_directory/vault-a"
   local vault_b="$acceptance_directory/vault-b"
-  local snapshot_relative=".personal-dashboard/derived/habits-v1.json"
+  local snapshot_relative="life/.personal-dashboard/derived/habits-v1.json"
   local record_relative="life/Journal/Daily/2026/2026-09/2026-09-08.md"
   local record_a="$vault_a/$record_relative"
   local record_b="$vault_b/$record_relative"
@@ -3099,7 +3104,7 @@ EOF
 
 run_final_state_matrix_scenario() {
   local vault_directory="$acceptance_directory/vault-final-state-matrix"
-  local snapshot_directory="$vault_directory/.personal-dashboard/derived"
+  local snapshot_directory="$vault_directory/life/.personal-dashboard/derived"
   local record_directory="$vault_directory/life/Journal/Daily/2026/2026-09"
   local reviewed_file="$record_directory/2026-09-08.md"
   local unreviewed_file="$record_directory/2026-09-07.md"
@@ -3213,7 +3218,7 @@ EOF
 
 run_dashboard_2_scenario() {
   local vault_directory="$acceptance_directory/tortilla-flat-vault"
-  local snapshot_directory="$vault_directory/.personal-dashboard/derived"
+  local snapshot_directory="$vault_directory/life/.personal-dashboard/derived"
   local record_directory="$vault_directory/life/Journal/Daily/2026/2026-09"
   local record_file="$record_directory/2026-09-08.md"
   local before_record_hash
@@ -4860,7 +4865,7 @@ run_dashboard_3_scenario() {
   local record_directory="$vault_directory/life/Journal/Daily/2026/2026-09"
   local record_file="$record_directory/2026-09-08.md"
   local reviewed_file="$record_directory/2026-09-07.md"
-  local snapshot_directory="$vault_directory/.personal-dashboard/derived"
+  local snapshot_directory="$vault_directory/life/.personal-dashboard/derived"
   local snapshot_file="$snapshot_directory/habits-v1.json"
   local plan_file="$vault_directory/life/.personal-dashboard/day-task-plans/v1/2026/2026-09-08.json"
   local background_source="$acceptance_directory/dashboard-3-background.png"
@@ -5172,7 +5177,7 @@ run_dashboard_4_scenario() {
   local tasks_b="$vault_b/$task_relative"
   local names_a="$vault_a/life/.personal-dashboard/habit-names/v1/names.json"
   local names_b="$vault_b/life/.personal-dashboard/habit-names/v1/names.json"
-  local snapshot_relative=".personal-dashboard/derived/habits-v1.json"
+  local snapshot_relative="life/.personal-dashboard/derived/habits-v1.json"
   local snapshot_a="$vault_a/$snapshot_relative"
   local snapshot_b="$vault_b/$snapshot_relative"
   local capture_root="$repository_root/output/playwright"
@@ -5761,7 +5766,7 @@ run_readable_task_cards_scenario() {
   local vault="$acceptance_directory/task-card-vault"
   local record_file="$vault/life/Journal/Daily/2026/2026-09/2026-09-08.md"
   local tasks_file="$vault/life/.personal-dashboard/tasks/v1/tasks.json"
-  local habits_snapshot="$vault/.personal-dashboard/derived/habits-v1.json"
+  local habits_snapshot="$vault/life/.personal-dashboard/derived/habits-v1.json"
   local capture_root="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory}"
   local capture_directory="$capture_root/task-card-captures"
   local matrix_directory="$capture_root/page-frame-matrix-captures"
@@ -6075,7 +6080,9 @@ run_today_shared_task_axis_scenario() {
   local vault="$acceptance_directory/today-shared-task-axis-vault"
   local no_record_vault="$acceptance_directory/today-shared-task-axis-no-record-vault"
   local today_date="$(/bin/date '+%Y-%m-%d')"
+  local recovery_directory="$vault/life/.personal-dashboard/recovery/today"
   local midnight_task_name="跨午夜后外部更新的共享任务"
+  local diary_note="Synthetic Vault migration acceptance note"
   local record_file="$vault/life/Journal/Daily/${today_date:0:4}/${today_date:0:7}/$today_date.md"
   local tasks_file="$vault/life/.personal-dashboard/tasks/v1/tasks.json"
   local no_record_tasks="$no_record_vault/life/.personal-dashboard/tasks/v1/tasks.json"
@@ -6263,6 +6270,24 @@ EOF
   run_driver assert-window-visible-link "Open 17:30: $task_name" 10
   run_driver capture-window "$capture_directory/today-shared-task-axis-en-640x520.png" 10
 
+  current_step="writing a synthetic Daily Record note and checking the new recovery path"
+  run_driver set-size "960x720" 10
+  run_driver assert-size "960x720" 10
+  run_driver press "Today" 10
+  run_driver press "Daytime progress" 10
+  run_driver scroll-text-visible "Short record text" 10
+  run_driver type-text "Short record text|$diary_note" 10
+  run_driver press "Save note" 10
+  wait_for_file_text "$record_file" "$diary_note" ||
+    fail "the packaged note did not reach the canonical Daily Record"
+  [[ -n "$(find "$recovery_directory" -type f -name '*.snapshot' -print -quit 2>/dev/null)" ]] ||
+    fail "the packaged Daily Record write did not retain its recovery snapshot under life/"
+  [[ ! -e "$vault/.personal-dashboard-recovery" ]] ||
+    fail "the packaged Daily Record write recreated the legacy root recovery directory"
+  [[ ! -e "$vault/.personal-dashboard" ]] ||
+    fail "the packaged Daily Record write recreated the legacy root Dashboard directory"
+  record_hash="$(shasum -a 256 "$record_file" | awk '{print $1}')"
+
   current_step="confirming that a Tasks-only Vault remains visible in packaged Today without creating a Daily Record"
   mkdir -p "$no_record_vault/.obsidian" "$no_record_vault/life/Journal/Daily" \
     "$(dirname "$no_record_tasks")"
@@ -6332,6 +6357,7 @@ EOF
   echo "Clock: synthetic local $today_date 17:05; a pending 17:00 task showed the passed-time state and exact point"
   echo "Lifecycle: create, manual refresh, complete, reopen, and reschedule retained one Task ID and never moved the Diary arrangement"
   echo "Overlap: the same-name Task and Diary arrangement stayed separate in the existing single-lane stack"
+  echo "Recovery: a synthetic Daily Record note was saved through the packaged UI and linked under life/.personal-dashboard/recovery/today; both legacy root paths stayed absent"
   echo "Vault: a Tasks-only Vault rendered the task in Today without creating a Daily Record"
   echo "Midnight: relaunch at $tomorrow_date 00:05 and manual refresh read an external Task rename, kept its ID/date/state, and removed its old time-axis point"
   echo "Layout: 960x720, 800x640, and 640x520 packaged captures are in $capture_directory"

@@ -4,7 +4,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
-pub const SNAPSHOT_RELATIVE_PATH: &str = ".personal-dashboard/derived/habits-v1.json";
+pub const SNAPSHOT_RELATIVE_PATH: &str = "life/.personal-dashboard/derived/habits-v1.json";
+pub const LEGACY_SNAPSHOT_RELATIVE_PATH: &str = ".personal-dashboard/derived/habits-v1.json";
 pub const HABIT_NAMES_RELATIVE_PATH: &str = "life/.personal-dashboard/habit-names/v1/names.json";
 const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 const HABIT_NAMES_SCHEMA_VERSION: u32 = 1;

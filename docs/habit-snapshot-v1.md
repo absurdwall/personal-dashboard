@@ -3,10 +3,27 @@
 Personal Dashboard reads one rebuildable, on-demand JSON projection at:
 
 ```text
-<selected Tortilla Flat vault>/.personal-dashboard/derived/habits-v1.json
+<selected Tortilla Flat vault>/life/.personal-dashboard/derived/habits-v1.json
 ```
 
-The Dashboard is a reader of this rebuildable external projection. It does not call Dida365, poll any source, start an Agent, or create this file. The external daily-flow Agent is the producer, but activating that producer belongs to the 2.0 cutover task. The Dashboard separately owns explicit [local habit completions](habit-completions-v1.md) and optional bilingual [Habit display names](habit-names-v1.md) in the selected Vault; both are merged only while projecting the UI. The checked-in [synthetic fixture](../src-tauri/tests/fixtures/habits-v1-complete.json) is the complete production shape and contains semantic keys only—never private external IDs.
+The Dashboard reads this rebuildable external projection. It does not call Dida365,
+poll a source, start an Agent, create the snapshot, or write it. Life Daily Loop
+is the producer and writes only the canonical
+`life/.personal-dashboard/derived/habits-v1.json` target after an explicit Habits
+refresh request.
+
+For compatibility, the reader checks the former root
+`.personal-dashboard/derived/habits-v1.json` only when the canonical file is
+missing. A present canonical file always wins; malformed canonical data is
+reported rather than masked by legacy data. The Dashboard never copies or
+recreates the old path.
+
+The Dashboard separately owns explicit [local habit completions](habit-completions-v1.md)
+and optional bilingual [Habit display names](habit-names-v1.md) in the selected
+Vault; both are merged only while projecting the UI. The checked-in
+[synthetic fixture](../src-tauri/tests/fixtures/habits-v1-complete.json) is the
+complete production shape and contains semantic keys only—never private
+external IDs.
 
 ## Producer handoff
 
@@ -16,7 +33,9 @@ The Dashboard is a reader of this rebuildable external projection. It does not c
 4. Write the candidate to a new temporary file in the same directory, flush the file, atomically rename it over `habits-v1.json`, then flush the parent directory. Do not truncate or update the canonical file in place.
 5. Report producer failure in the Agent flow; do not replace prior history with an empty snapshot. Dashboard refresh also keeps the last valid in-process reading if a later canonical read is malformed. After an app restart, durable recovery depends on the producer having honored the atomic replacement rule.
 
-This ticket does not activate or modify the live daily-loop skill. The cutover task must explicitly wire the producer and verify its atomic candidate validation before claiming the live loop.
+Life Daily Loop supplies this path after an explicit Habits refresh request. Its
+writer creates the `life/.personal-dashboard/derived/` parent as needed and
+atomically replaces only the canonical target.
 
 ## Top-level document
 

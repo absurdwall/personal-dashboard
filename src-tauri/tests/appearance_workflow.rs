@@ -385,12 +385,25 @@ fn jpeg_with_trailing_bytes_imports_and_survives_relaunch() {
     let images = MemoryImageLibrary::default();
     let mut bytes = include_bytes!("fixtures/background-sample.jpg").to_vec();
     bytes.extend_from_slice(b"\r\n");
-    images.selections.lock().unwrap().push_back(Ok(Some(SelectedBackgroundImage { bytes })));
+    images
+        .selections
+        .lock()
+        .unwrap()
+        .push_back(Ok(Some(SelectedBackgroundImage { bytes })));
     let app = AppearanceApplication::with_image_library(preferences.clone(), images.clone());
-    let selected = app.select_background_image(InterfaceLanguage::En)
+    let selected = app
+        .select_background_image(InterfaceLanguage::En)
         .expect("decodable JPEG with trailing bytes should import");
-    assert_eq!(selected.preferences.background_image_state, BackgroundImageState::Ready);
-    let loaded = AppearanceApplication::with_image_library(preferences, images).load().unwrap();
+    assert_eq!(
+        selected.preferences.background_image_state,
+        BackgroundImageState::Ready
+    );
+    let loaded = AppearanceApplication::with_image_library(preferences, images)
+        .load()
+        .unwrap();
     assert_eq!(loaded.background_image_state, BackgroundImageState::Ready);
-    assert!(loaded.background_image_url.unwrap().starts_with("data:image/jpeg;base64,"));
+    assert!(loaded
+        .background_image_url
+        .unwrap()
+        .starts_with("data:image/jpeg;base64,"));
 }

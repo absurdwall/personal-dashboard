@@ -2,7 +2,7 @@ use crate::habits::{
     load_habit_names, project_habit_corrections_with_names, project_snapshot_with_names,
     project_uncatalogued_habit_corrections, snapshot_dates, FileHabitSnapshotStore,
     HabitCorrectionView, HabitLocalCompletionChangeView, HabitSnapshotStore, LocalHabitCompletion,
-    LocalHabitRecord, SNAPSHOT_RELATIVE_PATH,
+    LocalHabitRecord, LEGACY_SNAPSHOT_RELATIVE_PATH, SNAPSHOT_RELATIVE_PATH,
 };
 pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
@@ -592,18 +592,17 @@ fn preserve_displaced_inode(
 }
 
 fn recovery_directory_for(path: &Path, kind: StorageDocumentKind) -> Result<PathBuf, String> {
-    let vault = path
+    let life = path
         .ancestors()
         .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "life"))
-        .and_then(Path::parent);
-    let root = vault.or_else(|| path.parent()).ok_or_else(|| {
+        .ok_or_else(|| {
         kind.text(
             "Today's Daily Record has no location for a same-volume recovery snapshot.",
             "The day-task document has no location for a same-volume recovery snapshot.",
             "The local habit-completion document has no location for a same-volume recovery snapshot.",
         )
     })?;
-    Ok(root.join(".personal-dashboard-recovery").join("today"))
+    Ok(life.join(".personal-dashboard/recovery/today"))
 }
 
 fn create_temporary_file(
@@ -2376,7 +2375,7 @@ where
                     )
                 }
             };
-        let document = match self.habit_snapshot_store.load(&snapshot_path) {
+        let document = match load_habit_snapshot_from_vault(&self.habit_snapshot_store, vault) {
             Ok(Some(document)) => document,
             Ok(None) => {
                 if self.has_cached_habit_correction(&snapshot_path, date) {
@@ -2787,7 +2786,7 @@ where
             return Ok(HabitSnapshotView::unconfigured());
         };
         let path = vault.join(SNAPSHOT_RELATIVE_PATH);
-        let document = match self.habit_snapshot_store.load(&path) {
+        let document = match load_habit_snapshot_from_vault(&self.habit_snapshot_store, &vault) {
             Ok(Some(document)) => document,
             Ok(None) => {
                 if self.has_cached_habit_snapshot(&path)? {
@@ -4035,6 +4034,17 @@ fn day_task_target_binding(path: &Path) -> String {
 
 fn canonical_habit_completion_path(vault: &Path) -> PathBuf {
     vault.join("life/.personal-dashboard/habit-completions/v1/completions.json")
+}
+
+fn load_habit_snapshot_from_vault(
+    store: &impl HabitSnapshotStore,
+    vault: &Path,
+) -> Result<Option<Vec<u8>>, String> {
+    let current_path = vault.join(SNAPSHOT_RELATIVE_PATH);
+    match store.load(&current_path)? {
+        Some(document) => Ok(Some(document)),
+        None => store.load(&vault.join(LEGACY_SNAPSHOT_RELATIVE_PATH)),
+    }
 }
 
 fn habit_completion_target_binding(path: &Path) -> String {
@@ -6529,10 +6539,17 @@ mod tests {
         }
     }
 
+    fn record_path(directory: &TempDirectory) -> PathBuf {
+        let path = directory.0.join("life/Journal/Daily/2026-08-10.md");
+        fs::create_dir_all(path.parent().expect("record should have a parent"))
+            .expect("record directory should be created");
+        path
+    }
+
     #[test]
     fn atomic_exchange_detects_an_external_save_after_candidate_sync() {
         let directory = TempDirectory::new();
-        let path = directory.0.join("2026-08-10.md");
+        let path = record_path(&directory);
         let original = b"original daily record\n";
         let external = b"external editor save\n";
         let updated = b"dashboard candidate\n";
@@ -6552,7 +6569,7 @@ mod tests {
             fs::read(&path).expect("canonical record should remain readable"),
             external
         );
-        let recoveries = fs::read_dir(directory.0.join(".personal-dashboard-recovery/today"))
+        let recoveries = fs::read_dir(directory.0.join("life/.personal-dashboard/recovery/today"))
             .expect("recovery directory should remain readable")
             .collect::<Result<Vec<_>, _>>()
             .expect("recovery entries should be readable");
@@ -6567,8 +6584,8 @@ mod tests {
     #[test]
     fn recovery_tracks_the_same_byte_inode_actually_displaced_by_activation() {
         let directory = TempDirectory::new();
-        let path = directory.0.join("2026-08-10.md");
-        let replacement = directory.0.join("external-replacement.md");
+        let path = record_path(&directory);
+        let replacement = path.with_file_name("external-replacement.md");
         let original = b"original daily record\n";
         let updated = b"dashboard candidate\n";
         fs::write(&path, original).expect("original should be written");
@@ -6613,7 +6630,7 @@ mod tests {
             fs::read(&path).expect("canonical record should remain readable"),
             updated
         );
-        let recovery_directory = directory.0.join(".personal-dashboard-recovery/today");
+        let recovery_directory = directory.0.join("life/.personal-dashboard/recovery/today");
         let late_edit_is_recoverable = fs::read_dir(recovery_directory)
             .expect("recovery directory should remain readable")
             .filter_map(Result::ok)

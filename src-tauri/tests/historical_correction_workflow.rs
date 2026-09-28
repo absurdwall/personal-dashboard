@@ -98,7 +98,7 @@ fn app(
 }
 
 fn write_snapshot(vault: &Path) {
-    let path = vault.join(".personal-dashboard/derived/habits-v1.json");
+    let path = vault.join("life/.personal-dashboard/derived/habits-v1.json");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, include_str!("fixtures/habits-v1-complete.json")).unwrap();
 }
@@ -527,7 +527,7 @@ fn historical_projection_retains_the_last_valid_view_after_snapshot_or_local_dam
     fs::write(
         vault
             .path()
-            .join(".personal-dashboard/derived/habits-v1.json"),
+            .join("life/.personal-dashboard/derived/habits-v1.json"),
         b"{\"schemaVersion\":2}",
     )
     .unwrap();
@@ -588,7 +588,7 @@ fn a_persisted_local_history_remains_visible_and_withdrawable_without_a_catalog_
     fs::remove_file(
         vault
             .path()
-            .join(".personal-dashboard/derived/habits-v1.json"),
+            .join("life/.personal-dashboard/derived/habits-v1.json"),
     )
     .unwrap();
 
