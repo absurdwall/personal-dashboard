@@ -747,9 +747,9 @@ fn prepare_daily_review_vault(vault_path: &Path, with_exercise_record: bool) -> 
         "---\ntype: daily-record\ndate: 2026-09-27\n---\n# 2026-09-27\n\n## 早间基准\n\n### 初始安排\n\n- **上午：** Synthetic morning baseline.\n\n### 初始计划依据\n\n- Morning evidence, preserved.\n\n## 今天的大致安排\n\n- **下午：** Synthetic current arrangement.\n\n## 计划依据\n\n- Current evidence, preserved.\n\n## 白天更新\n\n### 11:00 — 更新记录，不作为事实时间\n\n- 观察事实：完成合成工作块。\n\n## 晚间复盘\n\n### 今天发生了什么\n\n- 已有原始复盘。\n\n## 私人扩展\n\n用户自有章节原文。\n",
     )
     .unwrap();
-    fs::create_dir_all(vault_path.join(".personal-dashboard/derived")).unwrap();
+    fs::create_dir_all(vault_path.join("life/.personal-dashboard/derived")).unwrap();
     fs::write(
-        vault_path.join(".personal-dashboard/derived/habits-v1.json"),
+        vault_path.join("life/.personal-dashboard/derived/habits-v1.json"),
         include_bytes!("fixtures/habits-v1-complete.json"),
     )
     .unwrap();
@@ -2299,7 +2299,7 @@ fn local_habit_completion_add_and_withdraw_refresh_today_calendar_and_habits_onl
     let directory = IsolatedDirectory::new();
     let vault_path = directory.vault("vault");
     let daily_path = prepare_daily_review_vault(&vault_path, false);
-    let snapshot_path = vault_path.join(".personal-dashboard/derived/habits-v1.json");
+    let snapshot_path = vault_path.join("life/.personal-dashboard/derived/habits-v1.json");
     let source_snapshot = fs::read(&snapshot_path).unwrap();
     let task_path = vault_path.join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH);
     let vault = MutableVault::new(&vault_path);

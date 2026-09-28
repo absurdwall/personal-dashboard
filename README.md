@@ -47,7 +47,7 @@ environment. It is ad-hoc signed but is not Developer ID signed or notarized.
 The packaged app opens on Today and exposes exactly three primary destinations:
 Today, Calendar, and Habits. Today and Calendar read the selected Tortilla Flat
 vault's Daily Records; Habits reads the validated, on-demand projection at
-`<selected-vault>/.personal-dashboard/derived/habits-v1.json`. The app does not
+`<selected-vault>/life/.personal-dashboard/derived/habits-v1.json`. The app does not
 call Dida365 or run a producer itself.
 
 The retired This Week, History, Settings/Profile, and exercise-reminder
@@ -55,7 +55,7 @@ surfaces are not registered by the 2.0 application runtime. Historical modules
 remain in source only to validate and enumerate old state during the bounded
 cutover and to preserve prior regression evidence.
 
-## Today Daily Record recovery
+## Vault write recovery
 
 Today reads and performs bounded updates directly against the selected Tortilla
 Flat vault's canonical Daily Record. It prepares the recovery directory before
@@ -64,7 +64,7 @@ displaced from the canonical path is still linked at the temporary path, the
 app creates and syncs a same-volume hard-link recovery entry under:
 
 ```text
-<selected-vault>/.personal-dashboard-recovery/today/
+<selected-vault>/life/.personal-dashboard/recovery/today/
 ```
 
 The recovery entry is recovery material, not a second life record: Today never
@@ -79,6 +79,10 @@ unlinks the displaced inode. A successful rollback restores that inode at the
 canonical path and leaves the rejected candidate at its temporary path. If
 rollback also fails, the displaced inode remains linked at the reported
 temporary path for manual recovery.
+
+The same recovery directory protects writes to persistent Tasks, date-scoped
+tasks, and local Habit completions. The app does not scan or replay recovery
+entries; restore one only after manually inspecting it.
 
 Snapshots have no automatic expiry. They remain until the user explicitly
 deletes them, which avoids inventing an unsafe time after which a retained

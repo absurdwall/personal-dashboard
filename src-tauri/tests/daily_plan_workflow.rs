@@ -379,7 +379,10 @@ fn explicit_morning_baseline_correction_changes_only_the_baseline_and_keeps_a_tr
         .find(|update| update.title == "早间基准纠正")
         .expect("baseline correction leaves a visible trace");
     assert!(trace.neutral.iter().any(|line| line.contains("wrong day")));
-    assert!(trace.neutral.iter().any(|line| line.contains("Existing baseline") || line.contains("Prepare")));
+    assert!(trace
+        .neutral
+        .iter()
+        .any(|line| line.contains("Existing baseline") || line.contains("Prepare")));
     assert!(receipt(&vault, "baseline-correction-explicit"));
 }
 
