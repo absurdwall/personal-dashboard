@@ -244,7 +244,7 @@
 }
 
 .habit-completion-control input[type="checkbox"]:disabled {
-  cursor: wait;
+  cursor: not-allowed;
 }
 
 .habit-completion-control small {
@@ -1275,7 +1275,7 @@ button {
 }
 
 button:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.55;
 }
 
@@ -7107,7 +7107,7 @@ body {
 .task-form-grid textarea:disabled,
 .task-form-grid select:disabled {
   background: var(--parity-surface-soft);
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.7;
 }
 
@@ -8183,7 +8183,7 @@ button.habit-cell:focus-visible {
 .tasks-refresh-button:disabled,
 #choose-background-image:disabled,
 #refresh-habits:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.55;
 }
 
@@ -8953,91 +8953,11 @@ button.habit-cell:focus-visible {
   line-height: 1.55;
 }
 
-.collaboration-external-apps {
-  margin: 0;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--parity-border);
-  border-radius: 0.42rem;
-  background: color-mix(in srgb, var(--parity-accent-soft) 42%, white);
-}
-
-.collaboration-external-apps legend {
-  padding: 0 0.25rem;
-  color: var(--parity-accent-strong);
-  font-size: 0.62rem;
-  font-weight: 700;
-}
-
-.collaboration-external-apps > p,
-.collaboration-external-capability-list p {
-  margin: 0 0 0.4rem;
+.collaboration-composer-status {
+  margin: -0.15rem 0 0;
   color: var(--parity-muted);
-  font-size: 0.57rem;
-  line-height: 1.45;
-}
-
-#collaboration-external-app-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.collaboration-external-app-option {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0 0.35rem;
-  align-items: start;
-  padding: 0.35rem 0.45rem;
-  border: 1px solid var(--parity-border);
-  border-radius: 0.36rem;
-  background: white;
-  cursor: pointer;
-}
-
-.collaboration-external-app-option input {
-  grid-row: span 2;
-  margin-top: 0.12rem;
-}
-
-.collaboration-external-app-option strong,
-.collaboration-external-app-option small {
-  overflow-wrap: anywhere;
-}
-
-.collaboration-external-app-option strong {
-  color: #303633;
-  font-size: 0.59rem;
-}
-
-.collaboration-external-app-option small {
-  color: var(--parity-muted);
-  font-size: 0.51rem;
-}
-
-.collaboration-external-capability-list {
-  display: grid;
-  gap: 0.35rem;
-  margin: 0;
-  padding-inline-start: 1rem;
-}
-
-.collaboration-external-capability-list > li > strong {
-  margin-inline-end: 0.4rem;
-}
-
-.collaboration-external-capability-list > li > small {
-  color: var(--parity-muted);
-  font-size: 0.57rem;
-}
-
-.collaboration-external-capability-list ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.2rem 0.7rem;
-  margin: 0.2rem 0 0;
-  padding-inline-start: 1rem;
-  color: var(--parity-muted);
-  font-size: 0.54rem;
+  font-size: 0.6rem;
+  line-height: 1.4;
 }
 
 .collaboration-voice-controls {

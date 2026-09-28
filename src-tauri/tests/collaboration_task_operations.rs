@@ -308,8 +308,6 @@ impl AppServerTransport for DynamicRuntime {
                 reasoning_efforts: Vec::new(),
                 is_default: true,
             }],
-            external_apps: Vec::new(),
-            external_discovery_error: None,
             selected_model: Some("synthetic-model".into()),
             selected_reasoning_effort: None,
             error: None,

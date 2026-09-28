@@ -947,34 +947,6 @@ pub struct ModelOptionView {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ExternalAppToolView {
-    pub id: String,
-    pub title: String,
-    pub description: String,
-    pub enabled: bool,
-    pub read_only: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExternalAppOptionView {
-    pub id: String,
-    pub display_name: String,
-    pub description: String,
-    pub accessible: bool,
-    pub enabled: bool,
-    pub callable: bool,
-    pub tools: Vec<ExternalAppToolView>,
-}
-
-impl ExternalAppOptionView {
-    pub fn available_for_explicit_use(&self) -> bool {
-        self.accessible && self.enabled && self.callable
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RuntimeConnectionView {
     pub executable_path: Option<String>,
     pub version: Option<String>,
@@ -986,8 +958,6 @@ pub struct RuntimeConnectionView {
     pub account_email: Option<String>,
     pub plan_type: Option<String>,
     pub models: Vec<ModelOptionView>,
-    pub external_apps: Vec<ExternalAppOptionView>,
-    pub external_discovery_error: Option<String>,
     pub selected_model: Option<String>,
     pub selected_reasoning_effort: Option<String>,
     pub error: Option<String>,
@@ -1008,8 +978,6 @@ impl RuntimeConnectionView {
             account_email: None,
             plan_type: None,
             models: Vec::new(),
-            external_apps: Vec::new(),
-            external_discovery_error: None,
             selected_model: None,
             selected_reasoning_effort: None,
             error: Some(error.into()),
@@ -1027,7 +995,6 @@ pub struct RuntimeTurnRequest {
     pub context: CollaborationContextView,
     pub memory: CollaborationMemoryView,
     pub working_directory: PathBuf,
-    pub external_apps: Vec<ExternalAppOptionView>,
 }
 
 pub type RuntimeExternalActionHandler = Arc<dyn Fn(ExternalToolActionView) + Send + Sync>;
@@ -1110,17 +1077,6 @@ pub trait CollaborationContextSource: Send + Sync {
 
 pub trait AppServerTransport: Send {
     fn inspect(&mut self) -> Result<RuntimeConnectionView, String>;
-    fn inspect_external_apps_for_thread(
-        &mut self,
-        _thread_id: &str,
-    ) -> Result<(Vec<ExternalAppOptionView>, Option<String>), String> {
-        self.inspect().map(|connection| {
-            (
-                connection.external_apps,
-                connection.external_discovery_error,
-            )
-        })
-    }
     fn start_chatgpt_login(&mut self) -> Result<(), String>;
     fn start_thread(&mut self, model: Option<&str>, instructions: &str) -> Result<String, String>;
     fn start_thread_with_dynamic_tools(
@@ -1515,8 +1471,6 @@ pub struct CollaborationApplication {
     run_cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     shutting_down: Arc<AtomicBool>,
     runtime_shutdown: RuntimeShutdownHandle,
-    pending_external_approvals:
-        Arc<Mutex<HashMap<String, mpsc::SyncSender<HashMap<String, String>>>>>,
 }
 
 #[derive(Clone)]
@@ -1526,7 +1480,6 @@ struct QueuedCollaborationTurn {
     execution_id: String,
     target_date: String,
     user_text: String,
-    external_app_ids: Vec<String>,
     queue_order: u64,
     automatic_plan: bool,
 }
@@ -1556,7 +1509,6 @@ impl CollaborationApplication {
             run_cancellations: Arc::new(Mutex::new(HashMap::new())),
             shutting_down: Arc::new(AtomicBool::new(false)),
             runtime_shutdown,
-            pending_external_approvals: Arc::new(Mutex::new(HashMap::new())),
         };
         let _ = application.mark_incomplete_runs_interrupted();
         application
@@ -5293,31 +5245,10 @@ impl CollaborationApplication {
         target_date: &str,
         text: &str,
     ) -> Result<CollaborationSessionView, String> {
-        self.submit_message_for_selected_vault_with_external_apps(
-            session_id,
-            target_date,
-            text,
-            &[],
-        )
-    }
-
-    pub fn submit_message_for_selected_vault_with_external_apps(
-        &self,
-        session_id: &str,
-        target_date: &str,
-        text: &str,
-        external_app_ids: &[String],
-    ) -> Result<CollaborationSessionView, String> {
         let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
             "Choose a Vault in Settings before starting a collaboration session.".to_string()
         })?;
-        self.submit_message_with_external_apps(
-            &vault_key,
-            session_id,
-            target_date,
-            text,
-            external_app_ids,
-        )
+        self.submit_message(&vault_key, session_id, target_date, text)
     }
 
     pub fn submit_message(
@@ -5326,17 +5257,6 @@ impl CollaborationApplication {
         session_id: &str,
         target_date: &str,
         text: &str,
-    ) -> Result<CollaborationSessionView, String> {
-        self.submit_message_with_external_apps(vault_key, session_id, target_date, text, &[])
-    }
-
-    pub fn submit_message_with_external_apps(
-        &self,
-        vault_key: &str,
-        session_id: &str,
-        target_date: &str,
-        text: &str,
-        external_app_ids: &[String],
     ) -> Result<CollaborationSessionView, String> {
         validate_date(target_date)?;
         let trimmed = text.trim();
@@ -5355,22 +5275,11 @@ impl CollaborationApplication {
             );
         }
 
-        let external_app_ids = normalize_external_app_ids(external_app_ids)?;
-        if !external_app_ids.is_empty() {
-            let connection = self
-                .runtime
-                .lock()
-                .map_err(|_| "Codex runtime state is unavailable.".to_string())?
-                .inspect()?;
-            select_available_external_apps(&connection, &external_app_ids)?;
-        }
-
         let now = self.clock.current_timestamp();
         let message_date = self.clock.current_date();
         let execution_id = next_identifier("run");
         let target_date_owned = target_date.to_owned();
         let text_owned = trimmed.to_owned();
-        let external_app_ids_owned = external_app_ids.clone();
         let session = self.update_state(|state| {
             if state.sessions.iter().any(|candidate| {
                 candidate.vault_key.as_deref() == Some(vault_key)
@@ -5431,9 +5340,10 @@ impl CollaborationApplication {
                 queue_order: Some(queue_order),
                 result_checked: false,
                 automatic_plan: false,
-                external_app_ids: external_app_ids_owned.clone(),
+                external_app_ids: Vec::new(),
                 external_actions: Vec::new(),
-                pending_external_approval: None,            });
+                pending_external_approval: None,
+            });
             Ok(session_view(session))
         })?;
 
@@ -5865,7 +5775,6 @@ impl CollaborationApplication {
                             execution_id: message.execution_id.clone()?,
                             target_date: message.target_date.clone(),
                             user_text: message.text.clone(),
-                            external_app_ids: message.external_app_ids.clone(),
                             queue_order: message.queue_order?,
                             automatic_plan: message.automatic_plan,
                         },
@@ -5908,7 +5817,6 @@ impl CollaborationApplication {
                 &turn.target_date,
                 &turn.user_text,
                 turn.automatic_plan,
-                &turn.external_app_ids,
                 cancellation,
             ),
             Ok(false) => {}
@@ -6063,7 +5971,6 @@ impl CollaborationApplication {
         target_date: &str,
         user_text: &str,
         automatic_plan: bool,
-        external_app_ids: &[String],
         cancellation: Arc<AtomicBool>,
     ) {
         if cancellation.load(Ordering::SeqCst) {
@@ -6324,38 +6231,6 @@ impl CollaborationApplication {
             self.finish_error(vault_key, session_id, run_id, error);
             return;
         }
-        let external_apps = if external_app_ids.is_empty() {
-            Vec::new()
-        } else {
-            let (available_external_apps, external_discovery_error) =
-                match runtime.inspect_external_apps_for_thread(&thread_id) {
-                    Ok(result) => result,
-                    Err(error) => {
-                        drop(runtime);
-                        self.finish_error(
-                            vault_key,
-                            session_id,
-                            run_id,
-                            format!(
-                            "Connected apps could not be verified for this conversation: {error}"
-                        ),
-                        );
-                        return;
-                    }
-                };
-            match select_available_external_apps_from(
-                &available_external_apps,
-                external_discovery_error.as_deref(),
-                external_app_ids,
-            ) {
-                Ok(apps) => apps,
-                Err(error) => {
-                    drop(runtime);
-                    self.finish_error(vault_key, session_id, run_id, error);
-                    return;
-                }
-            }
-        };
         let selected_vault = match self.context_source.current_vault_key() {
             Ok(selected_vault) => selected_vault,
             Err(error) => {
@@ -6395,7 +6270,6 @@ impl CollaborationApplication {
             context,
             memory,
             working_directory: self.working_directory.clone(),
-            external_apps,
         };
         let tool_handler = (((self.task_service.is_available()
             || self.daily_data_service.is_available())
@@ -6438,26 +6312,12 @@ impl CollaborationApplication {
                 action,
             );
         });
-        let application = self.clone();
-        let expected_vault_key = vault_key.to_owned();
-        let expected_session_id = session_id.to_owned();
-        let expected_execution_id = run_id.to_owned();
-        let expected_cancellation = Arc::clone(&cancellation);
-        let external_approval_handler: RuntimeExternalApprovalHandler = Arc::new(move |request| {
-            application.request_external_approval(
-                &expected_vault_key,
-                &expected_session_id,
-                &expected_execution_id,
-                request,
-                &expected_cancellation,
-            )
-        });
         let result = runtime.send_turn_with_external_actions(
             request,
             Arc::clone(&cancellation),
             tool_handler,
             Some(external_action_handler),
-            Some(external_approval_handler),
+            None,
         );
         drop(runtime);
 
@@ -6532,145 +6392,6 @@ impl CollaborationApplication {
             session.last_activity_at = self.clock.current_timestamp();
             Ok(())
         })
-    }
-
-    fn request_external_approval(
-        &self,
-        vault_key: &str,
-        session_id: &str,
-        run_id: &str,
-        mut request: ExternalAppApprovalRequest,
-        cancellation: &AtomicBool,
-    ) -> Result<HashMap<String, String>, String> {
-        let default_answers = default_external_approval_answers(&request)?;
-        let (sender, receiver) = mpsc::sync_channel(1);
-        self.pending_external_approvals
-            .lock()
-            .map_err(|_| "External app approval state is unavailable.".to_string())?
-            .insert(request.id.clone(), sender);
-        let request_id = request.id.clone();
-        let update_result = self.update_state(|state| {
-            let session = matching_session_mut(state, vault_key, session_id)?;
-            let message = session
-                .messages
-                .iter_mut()
-                .find(|message| message.execution_id.as_deref() == Some(run_id))
-                .ok_or_else(|| {
-                    "This external app approval is no longer attached to a request.".to_string()
-                })?;
-            attach_external_approval_action(message, &mut request)?;
-            message.pending_external_approval = Some(request);
-            session.progress =
-                "A connected app is waiting for your approval in this conversation.".into();
-            session.last_activity_at = self.clock.current_timestamp();
-            Ok(())
-        });
-        if let Err(error) = update_result {
-            if let Ok(mut pending) = self.pending_external_approvals.lock() {
-                pending.remove(&request_id);
-            }
-            return Err(error);
-        }
-
-        let deadline = std::time::Instant::now() + APP_SERVER_REQUEST_TIMEOUT;
-        let answer = loop {
-            if cancellation.load(Ordering::SeqCst) || self.shutting_down.load(Ordering::SeqCst) {
-                break (default_answers.clone(), false);
-            }
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            if remaining.is_zero() {
-                break (default_answers.clone(), false);
-            }
-            match receiver.recv_timeout(Duration::from_millis(200).min(remaining)) {
-                Ok(answers) => break (answers, true),
-                Err(mpsc::RecvTimeoutError::Timeout) => continue,
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    break (default_answers.clone(), false)
-                }
-            }
-        };
-        if let Ok(mut pending) = self.pending_external_approvals.lock() {
-            pending.remove(&request_id);
-        }
-        let (answer, user_responded) = answer;
-        let _ = self.update_state(|state| {
-            let session = matching_session_mut(state, vault_key, session_id)?;
-            let mut cleared = false;
-            if let Some(message) = session
-                .messages
-                .iter_mut()
-                .find(|message| message.execution_id.as_deref() == Some(run_id))
-            {
-                if message
-                    .pending_external_approval
-                    .as_ref()
-                    .is_some_and(|pending| pending.id == request_id)
-                {
-                    message.pending_external_approval = None;
-                    cleared = true;
-                }
-            }
-            if cleared && session.run_id.as_deref() == Some(run_id) {
-                session.progress = if user_responded {
-                    "Your response was sent to the connected app. Waiting for its action result.".into()
-                } else {
-                    "The connected app approval expired or the request stopped; the action was declined.".into()
-                };
-                session.last_activity_at = self.clock.current_timestamp();
-            }
-            Ok(())
-        });
-        Ok(answer)
-    }
-
-    pub fn resolve_external_approval_for_selected_vault(
-        &self,
-        session_id: &str,
-        execution_id: &str,
-        approval_id: &str,
-        answers: HashMap<String, String>,
-    ) -> Result<CollaborationSessionView, String> {
-        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
-            "Choose a Vault before responding to an external app approval.".to_string()
-        })?;
-        let approval = self.read_state(|state| {
-            let session = state
-                .sessions
-                .iter()
-                .find(|session| {
-                    session.id == session_id && session.vault_key.as_deref() == Some(&vault_key)
-                })
-                .ok_or_else(|| {
-                    "This collaboration session is not available in the selected Vault.".to_string()
-                })?;
-            let message = session
-                .messages
-                .iter()
-                .find(|message| message.execution_id.as_deref() == Some(execution_id))
-                .ok_or_else(|| {
-                    "This collaboration request is not available in the selected Vault.".to_string()
-                })?;
-            message
-                .pending_external_approval
-                .as_ref()
-                .filter(|request| request.id == approval_id)
-                .cloned()
-                .ok_or_else(|| "This external app approval is no longer pending.".to_string())
-        })??;
-        validate_external_approval_answers(&approval, &answers)?;
-        let sender = self
-            .pending_external_approvals
-            .lock()
-            .map_err(|_| "External app approval state is unavailable.".to_string())?
-            .remove(approval_id)
-            .ok_or_else(|| {
-                "This external app approval expired. Refresh the conversation before retrying."
-                    .to_string()
-            })?;
-        sender
-            .send(answers)
-            .map_err(|_| "This external app approval has already ended. Refresh the conversation before retrying.".to_string())?;
-        self.session_for_selected_vault(session_id)
     }
 
     fn set_progress(
@@ -10522,10 +10243,6 @@ impl AppServerTransport for CodexAppServerRuntime {
             "model/list",
             json!({ "limit": 100, "includeHidden": false }),
         )?;
-        let (external_apps, external_discovery_error) = match discover_external_apps(client, None) {
-            Ok(apps) => (apps, None),
-            Err(error) => (Vec::new(), Some(error)),
-        };
         let account = account.get("account").filter(|account| !account.is_null());
         let auth_mode = account
             .and_then(|account| account.get("type"))
@@ -10593,22 +10310,9 @@ impl AppServerTransport for CodexAppServerRuntime {
             account_email,
             plan_type,
             models,
-            external_apps,
-            external_discovery_error,
             selected_model: None,
             selected_reasoning_effort: None,
             error: None,
-        })
-    }
-
-    fn inspect_external_apps_for_thread(
-        &mut self,
-        thread_id: &str,
-    ) -> Result<(Vec<ExternalAppOptionView>, Option<String>), String> {
-        let client = self.ensure_client()?;
-        Ok(match discover_external_apps(client, Some(thread_id)) {
-            Ok(apps) => (apps, None),
-            Err(error) => (Vec::new(), Some(error)),
         })
     }
 
@@ -10752,20 +10456,13 @@ impl AppServerTransport for CodexAppServerRuntime {
                 "Could not prepare current Dashboard context and selected-Vault memory: {error}"
             )
         })?;
-        let app_markers = external_app_markers(&request.external_apps);
-        let user_text = if app_markers.is_empty() {
-            request.user_text.clone()
-        } else {
-            format!("{app_markers} {}", request.user_text)
-        };
         let input_text = format!(
-        "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. For an explicitly reported daytime event or update, use `dashboard_task_operation` with operation `saveDailyPlan`, transition `daytimeEvent`, the exact factual text in `event`, and empty `arrangement`/`evidence` unless the current arrangement also changes; this appends under `## 白天更新` and preserves the plan and morning baseline. Use `daytimeReplan` only for a material plan change. Use `saveEveningReview` with mode `addition` only for a new evening-review note or supplement; never route an explicit daytime event to the evening review. Do not invent `appendDailyRecord` or `addShortRecord`. For a clear, unique local write, use `dashboard_task_operation` with `executionMode=execute` only when the user clearly asks to save now without a later review; quote the exact instruction in `authorizationQuote`. Use `prepareProposal` whenever the user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires `prepareProposal`, even when it uses a direct action verb. The Dashboard verifies the current request, selected Vault, binding, and revision before saving. Ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` whenever the user asks to review, confirm, or wait for approval before saving. Use a connected external app only when the user explicitly selected it for this message. Keep external actions within the user's requested source, object, and target-date scope. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
-            user_text, request.context.date, context
+        "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. For an explicitly reported daytime event or update, use `dashboard_task_operation` with operation `saveDailyPlan`, transition `daytimeEvent`, the exact factual text in `event`, and empty `arrangement`/`evidence` unless the current arrangement also changes; this appends under `## 白天更新` and preserves the plan and morning baseline. Use `daytimeReplan` only for a material plan change. Use `saveEveningReview` with mode `addition` only for a new evening-review note or supplement; never route an explicit daytime event to the evening review. Do not invent `appendDailyRecord` or `addShortRecord`. For a clear, unique local write, use `dashboard_task_operation` with `executionMode=execute` only when the user clearly asks to save now without a later review; quote the exact instruction in `authorizationQuote`. Use `prepareProposal` whenever the user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires `prepareProposal`, even when it uses a direct action verb. The Dashboard verifies the current request, selected Vault, binding, and revision before saving. Ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` whenever the user asks to review, confirm, or wait for approval before saving. Connected external apps are disabled in this Dashboard session; do not use them. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
+            request.user_text, request.context.date, context
         );
         let working_directory = self.working_directory.to_string_lossy().into_owned();
         let client = self.ensure_client()?;
-        let mut input = vec![json!({ "type": "text", "text": input_text })];
-        input.extend(external_app_mention_items(&request.external_apps));
+        let input = vec![json!({ "type": "text", "text": input_text })];
         let mut params = json!({
             "threadId": request.thread_id,
             "input": input,
@@ -10896,208 +10593,6 @@ impl AppServerTransport for CodexAppServerRuntime {
     }
 }
 
-fn discover_external_apps(
-    client: &mut StdioJsonlClient,
-    thread_id: Option<&str>,
-) -> Result<Vec<ExternalAppOptionView>, String> {
-    let mut listed_apps = Vec::<Value>::new();
-    let mut cursor = Value::Null;
-    for _ in 0..8 {
-        let force_refetch = cursor.is_null();
-        let mut params = json!({
-            "cursor": cursor,
-            "limit": 100,
-            "forceRefetch": force_refetch
-        });
-        if let Some(thread_id) = thread_id {
-            params["threadId"] = json!(thread_id);
-        }
-        let page = client
-            .request("app/list", params)
-            .map_err(|error| format!("Could not discover connected Codex apps: {error}"))?;
-        listed_apps.extend(
-            page.get("data")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .cloned(),
-        );
-        let next_cursor = page.get("nextCursor").cloned().unwrap_or(Value::Null);
-        if next_cursor.is_null() || next_cursor == cursor {
-            break;
-        }
-        cursor = next_cursor;
-    }
-    let ids = listed_apps
-        .iter()
-        .filter(|app| app.get("isAccessible").and_then(Value::as_bool) == Some(true))
-        .filter_map(|app| app.get("id").and_then(Value::as_str))
-        .take(100)
-        .map(str::to_owned)
-        .collect::<Vec<_>>();
-    let mut installed_params = json!({ "forceRefresh": true });
-    if let Some(thread_id) = thread_id {
-        installed_params["threadId"] = json!(thread_id);
-    }
-    let installed = client
-        .request("app/installed", installed_params)
-        .map_err(|error| format!("Could not verify connected Codex app availability: {error}"))?;
-    let installed_apps = installed
-        .get("apps")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "Codex App Server returned an invalid installed-app status.".to_string())?;
-    let details = if ids.is_empty() {
-        Vec::new()
-    } else {
-        client
-            .request("app/read", json!({ "appIds": ids, "includeTools": true }))
-            .map_err(|error| format!("Could not read connected Codex app capabilities: {error}"))?
-            .get("apps")
-            .and_then(Value::as_array)
-            .cloned()
-            .ok_or_else(|| {
-                "Codex App Server returned invalid connected-app capabilities.".to_string()
-            })?
-    };
-
-    let mut apps = Vec::new();
-    for app in listed_apps {
-        let Some(id) = app.get("id").and_then(Value::as_str) else {
-            continue;
-        };
-        let runtime = installed_apps
-            .iter()
-            .find(|runtime| runtime.get("id").and_then(Value::as_str) == Some(id));
-        let detail = details
-            .iter()
-            .find(|detail| detail.get("id").and_then(Value::as_str) == Some(id));
-        let tools = detail
-            .and_then(|detail| detail.get("toolSummaries"))
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|tool| {
-                let id = tool.get("name").and_then(Value::as_str)?;
-                Some(ExternalAppToolView {
-                    id: id.to_owned(),
-                    title: tool
-                        .get("title")
-                        .and_then(Value::as_str)
-                        .unwrap_or(id)
-                        .to_owned(),
-                    description: tool
-                        .get("description")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .to_owned(),
-                    enabled: tool.get("isEnabled").and_then(Value::as_bool) == Some(true),
-                    read_only: tool.get("isReadOnly").and_then(Value::as_bool) == Some(true),
-                })
-            })
-            .collect();
-        apps.push(ExternalAppOptionView {
-            id: id.to_owned(),
-            display_name: app
-                .get("name")
-                .or_else(|| runtime.and_then(|runtime| runtime.get("runtimeName")))
-                .and_then(Value::as_str)
-                .unwrap_or(id)
-                .to_owned(),
-            description: app
-                .get("description")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned(),
-            accessible: app.get("isAccessible").and_then(Value::as_bool) == Some(true),
-            enabled: app.get("isEnabled").and_then(Value::as_bool) == Some(true)
-                && runtime
-                    .and_then(|runtime| runtime.get("enabled"))
-                    .and_then(Value::as_bool)
-                    == Some(true),
-            callable: runtime
-                .and_then(|runtime| runtime.get("callable"))
-                .and_then(Value::as_bool)
-                == Some(true),
-            tools,
-        });
-    }
-    Ok(apps)
-}
-
-fn normalize_external_app_ids(ids: &[String]) -> Result<Vec<String>, String> {
-    let mut normalized = Vec::new();
-    for id in ids {
-        let id = id.trim();
-        if id.is_empty()
-            || id.len() > 100
-            || !id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
-        {
-            return Err("The selected external app identifier is invalid. Refresh the connector list and try again.".into());
-        }
-        if !normalized.iter().any(|existing| existing == id) {
-            normalized.push(id.to_owned());
-        }
-    }
-    if normalized.len() > 8 {
-        return Err("Choose at most eight connected apps for one message.".into());
-    }
-    Ok(normalized)
-}
-
-fn select_available_external_apps(
-    connection: &RuntimeConnectionView,
-    ids: &[String],
-) -> Result<Vec<ExternalAppOptionView>, String> {
-    select_available_external_apps_from(
-        &connection.external_apps,
-        connection.external_discovery_error.as_deref(),
-        ids,
-    )
-}
-
-fn select_available_external_apps_from(
-    available_apps: &[ExternalAppOptionView],
-    discovery_error: Option<&str>,
-    ids: &[String],
-) -> Result<Vec<ExternalAppOptionView>, String> {
-    if ids.is_empty() {
-        return Ok(Vec::new());
-    }
-    if let Some(error) = discovery_error {
-        return Err(format!("Connected apps could not be verified: {error}"));
-    }
-    ids.iter()
-        .map(|id| {
-            available_apps
-                .iter()
-                .find(|app| &app.id == id && app.available_for_explicit_use())
-                .cloned()
-                .ok_or_else(|| format!("Connected app `{id}` is no longer available for this request. Refresh the connector list and choose an available app."))
-        })
-        .collect()
-}
-
-fn external_app_markers(apps: &[ExternalAppOptionView]) -> String {
-    apps.iter()
-        .map(|app| format!("${}", app.id))
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn external_app_mention_items(apps: &[ExternalAppOptionView]) -> Vec<Value> {
-    apps.iter()
-        .map(|app| {
-            json!({
-                "type": "mention",
-                "name": app.display_name,
-                "path": format!("app://{}", app.id)
-            })
-        })
-        .collect()
-}
-
 fn upsert_external_action(
     message: &mut StoredCollaborationMessage,
     action: ExternalToolActionView,
@@ -11136,6 +10631,7 @@ fn default_external_approval_answers(
         .collect()
 }
 
+#[cfg(test)]
 fn validate_external_approval_answers(
     request: &ExternalAppApprovalRequest,
     answers: &HashMap<String, String>,
@@ -11255,6 +10751,7 @@ fn external_approval_request(
     })
 }
 
+#[cfg(test)]
 fn attach_external_approval_action(
     message: &StoredCollaborationMessage,
     request: &mut ExternalAppApprovalRequest,
@@ -12040,89 +11537,6 @@ fn isolated_codex_command(executable: &Path, codex_home_dir: &Path) -> Command {
 #[cfg(test)]
 mod external_app_tests {
     use super::*;
-
-    fn app(id: &str, accessible: bool, enabled: bool, callable: bool) -> ExternalAppOptionView {
-        ExternalAppOptionView {
-            id: id.into(),
-            display_name: format!("{id} display"),
-            description: "synthetic capability".into(),
-            accessible,
-            enabled,
-            callable,
-            tools: vec![ExternalAppToolView {
-                id: "search".into(),
-                title: "Search".into(),
-                description: "Synthetic search".into(),
-                enabled: true,
-                read_only: true,
-            }],
-        }
-    }
-
-    fn connection(apps: Vec<ExternalAppOptionView>) -> RuntimeConnectionView {
-        RuntimeConnectionView {
-            executable_path: Some("/synthetic/codex".into()),
-            version: Some("synthetic".into()),
-            experimental: true,
-            read_only_text_turns_available: true,
-            text_turn_unavailable_reason: None,
-            authenticated: true,
-            auth_mode: Some("chatgpt".into()),
-            account_email: None,
-            plan_type: None,
-            models: Vec::new(),
-            external_apps: apps,
-            external_discovery_error: None,
-            selected_model: None,
-            selected_reasoning_effort: None,
-            error: None,
-        }
-    }
-
-    #[test]
-    fn explicit_app_selection_requires_a_fresh_callable_runtime_entry() {
-        let runtime = connection(vec![app("calendar", true, true, true)]);
-        assert_eq!(
-            select_available_external_apps(&runtime, &["calendar".into()]).unwrap(),
-            vec![app("calendar", true, true, true)]
-        );
-        assert!(select_available_external_apps(&runtime, &["drive".into()])
-            .unwrap_err()
-            .contains("no longer available"));
-        let unavailable = connection(vec![app("calendar", true, false, false)]);
-        assert!(select_available_external_apps(&unavailable, &["calendar".into()]).is_err());
-        let mut discovery_failed = connection(Vec::new());
-        discovery_failed.external_discovery_error = Some("synthetic offline".into());
-        assert!(
-            select_available_external_apps(&discovery_failed, &["calendar".into()])
-                .unwrap_err()
-                .contains("synthetic offline")
-        );
-    }
-
-    #[test]
-    fn selection_is_deduplicated_and_only_selected_apps_become_mentions() {
-        let selected = normalize_external_app_ids(&["calendar".into(), "calendar".into()]).unwrap();
-        assert_eq!(selected, vec!["calendar"]);
-        assert!(normalize_external_app_ids(&["calendar $drive".into()]).is_err());
-        let available = vec![
-            app("calendar", true, true, true),
-            app("drive", true, true, true),
-        ];
-        let selected_apps =
-            select_available_external_apps(&connection(available), &selected).unwrap();
-        assert_eq!(external_app_markers(&selected_apps), "$calendar");
-        assert_eq!(
-            external_app_mention_items(&selected_apps),
-            vec![json!({
-                "type": "mention",
-                "name": "calendar display",
-                "path": "app://calendar"
-            })]
-        );
-        assert!(external_app_markers(&[]).is_empty());
-        assert!(external_app_mention_items(&[]).is_empty());
-    }
 
     #[test]
     fn external_action_audit_keeps_object_identity_and_redacts_credentials() {

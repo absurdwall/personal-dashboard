@@ -269,12 +269,6 @@
                       </div>
                       <p id="collaboration-automatic-plan-status" class="settings-status" role="status" aria-live="polite" data-i18n="collaboration.automaticPlanNotLoaded">Automatic schedule status has not been loaded.</p>
                     </div>
-                    <div class="setting-row">
-                      <h3 data-i18n="collaboration.externalCapabilitiesHeading">Connected external apps</h3>
-                      <p id="collaboration-external-capability-status" class="settings-status" role="status" aria-live="polite" data-i18n="collaboration.externalCapabilitiesNotChecked">External app capabilities have not been checked.</p>
-                      <ul id="collaboration-external-capabilities" class="collaboration-external-capability-list"></ul>
-                      <p data-i18n="collaboration.externalCapabilitiesBoundary">The list comes from this Dashboard-owned Codex runtime. Other Codex client configuration is not imported.</p>
-                    </div>
                   </section>
                 </div>
               </div>
@@ -335,18 +329,14 @@
                   <div id="collaboration-message-list" class="collaboration-message-list" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation messages" data-i18n-aria-label="collaboration.conversationLabel"></div>
                   <form id="collaboration-composer" class="collaboration-composer">
                     <label for="collaboration-message-draft" data-i18n="collaboration.messageLabel">Message</label>
-                    <textarea id="collaboration-message-draft" rows="3" maxlength="12000" data-i18n-placeholder="collaboration.messagePlaceholder" placeholder="Describe what you want to discuss…" disabled></textarea>
-                    <fieldset id="collaboration-external-apps" class="collaboration-external-apps" hidden>
-                      <legend data-i18n="collaboration.externalUseHeading">External apps for this message</legend>
-                      <p data-i18n="collaboration.externalUseBoundary">External use is off by default. Select an available app only when this request asks to use it. External changes may not be reversible.</p>
-                      <div id="collaboration-external-app-options"></div>
-                    </fieldset>
+                    <textarea id="collaboration-message-draft" rows="3" maxlength="12000" data-i18n-placeholder="collaboration.messagePlaceholder" placeholder="Describe what you want to discuss…" aria-describedby="collaboration-composer-status" disabled></textarea>
+                    <p id="collaboration-composer-status" class="collaboration-composer-status" role="status" aria-live="polite" hidden></p>
                     <div class="collaboration-voice-controls">
                       <label for="collaboration-voice-language" data-i18n="collaboration.voiceLanguage">Voice language</label>
                       <select id="collaboration-voice-language" disabled aria-describedby="collaboration-voice-privacy">
                         <option value="" data-i18n="collaboration.voiceLanguageLoading">Checking local speech models…</option>
                       </select>
-                      <button id="collaboration-voice-start" type="button" data-i18n="collaboration.voiceStart" disabled>Start recording</button>
+                      <button id="collaboration-voice-start" type="button" data-i18n="collaboration.voiceStart" aria-describedby="collaboration-composer-status collaboration-voice-status" disabled>Start recording</button>
                       <button id="collaboration-voice-cancel" type="button" data-i18n="collaboration.voiceCancel" hidden>Cancel</button>
                       <p id="collaboration-voice-privacy" data-i18n="collaboration.voicePrivacy">Audio is transcribed on this Mac only after you start recording; it is discarded after transcription.</p>
                     </div>
