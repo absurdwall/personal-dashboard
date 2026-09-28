@@ -21,6 +21,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::ffi::OsStr;
 use std::fs::{self, OpenOptions};
 use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Write};
@@ -11396,19 +11397,55 @@ fn bounded_string(value: &str, max_chars: usize) -> String {
     bounded
 }
 
-fn discover_codex_cli() -> Result<PathBuf, String> {
+fn codex_cli_candidates(path: Option<&OsStr>, home: Option<&Path>) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
-    if let Some(path) = std::env::var_os("PATH") {
-        candidates.extend(std::env::split_paths(&path).map(|directory| directory.join("codex")));
-    }
-    if let Some(home) = std::env::var_os("HOME") {
-        candidates.push(PathBuf::from(home).join(".local/bin/codex"));
+    let path_directories = path
+        .map(|path| std::env::split_paths(path).collect::<Vec<_>>())
+        .unwrap_or_default();
+    candidates.extend(
+        path_directories
+            .iter()
+            .map(|directory| directory.join("codex")),
+    );
+    if let Some(home) = home {
+        candidates.push(home.join(".local/bin/codex"));
     }
     candidates.extend([
         PathBuf::from("/opt/homebrew/bin/codex"),
         PathBuf::from("/usr/local/bin/codex"),
     ]);
+    #[cfg(target_os = "macos")]
+    {
+        candidates.extend(
+            path_directories
+                .iter()
+                .filter_map(|directory| chatgpt_cli_from_path_entry(directory)),
+        );
+        if let Some(home) = home {
+            candidates
+                .push(home.join("Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"));
+        }
+        candidates.push(PathBuf::from(
+            "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+        ));
+    }
     candidates.dedup();
+    candidates
+}
+
+#[cfg(target_os = "macos")]
+fn chatgpt_cli_from_path_entry(directory: &Path) -> Option<PathBuf> {
+    if directory.file_name() != Some(OsStr::new("codex-path")) {
+        return None;
+    }
+    let codex_cli_directory = directory.parent()?;
+    if codex_cli_directory.file_name() != Some(OsStr::new("codex-cli")) {
+        return None;
+    }
+    Some(codex_cli_directory.join("bin/codex"))
+}
+
+fn resolve_codex_cli(candidates: impl IntoIterator<Item = PathBuf>) -> Result<PathBuf, String> {
     for candidate in candidates {
         if candidate.is_file() {
             return candidate.canonicalize().map_err(|error| {
@@ -11420,6 +11457,65 @@ fn discover_codex_cli() -> Result<PathBuf, String> {
         }
     }
     Err("Codex CLI was not found. Install Codex CLI or add its `codex` executable to PATH, then refresh the connection.".into())
+}
+
+fn discover_codex_cli() -> Result<PathBuf, String> {
+    let path = std::env::var_os("PATH");
+    let home = std::env::var_os("HOME");
+    resolve_codex_cli(codex_cli_candidates(
+        path.as_deref(),
+        home.as_deref().map(Path::new),
+    ))
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod codex_cli_discovery_tests {
+    use super::*;
+
+    fn make_fake_cli(path: &Path) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, "synthetic Codex CLI").unwrap();
+    }
+
+    fn test_root(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "personal-dashboard-codex-discovery-{label}-{}-{nonce}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn discovers_chatgpt_cli_from_user_applications_without_gui_path() {
+        let root = test_root("user-applications");
+        let home = root.join("home");
+        let executable =
+            home.join("Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex");
+        make_fake_cli(&executable);
+
+        let discovered = resolve_codex_cli(codex_cli_candidates(None, Some(&home))).unwrap();
+        assert_eq!(discovered, executable.canonicalize().unwrap());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn discovers_chatgpt_cli_relative_to_codex_path_helper() {
+        let root = test_root("path-helper");
+        let codex_cli = root.join("ChatGPT.app/Contents/Resources/codex-cli");
+        let helper_directory = codex_cli.join("codex-path");
+        let executable = codex_cli.join("bin/codex");
+        make_fake_cli(&executable);
+        let path = std::env::join_paths([helper_directory.as_os_str()]).unwrap();
+
+        let discovered = resolve_codex_cli(codex_cli_candidates(Some(&path), None)).unwrap();
+        assert_eq!(discovered, executable.canonicalize().unwrap());
+
+        fs::remove_dir_all(root).unwrap();
+    }
 }
 
 #[cfg(target_os = "macos")]
