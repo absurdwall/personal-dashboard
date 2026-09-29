@@ -24,17 +24,12 @@ test("Collaboration is a latest-shell destination with the adjacent approved A w
   assert.match(css, /grid-template-columns:\s*13\.5rem minmax\(25rem, 1\.45fr\) minmax\(19rem, 1fr\)/);
 });
 
-test("external apps are discoverable but only callable apps can be explicitly selected per message", () => {
-  const main = readFileSync("frontend/main.ts", "utf8");
-  assert.match(main, /let selectedCollaborationExternalAppIds = new Set<string>\(\)/);
-  assert.match(main, /const selectable = apps\.filter\(\(app\) => app\.accessible && app\.enabled && app\.callable\)/);
-  assert.match(main, /if \(!selectableIds\.has\(selectedId\)\) selectedCollaborationExternalAppIds\.delete\(selectedId\)/);
-  assert.match(main, /input\.checked = selectedCollaborationExternalAppIds\.has\(app\.id\)/);
-  assert.match(main, /const externalAppIds = \[\.\.\.selectedCollaborationExternalAppIds\]/);
-  assert.match(main, /"collaboration_submit_message"[\s\S]*?externalAppIds/);
-  assert.match(main, /function renderCollaborationMessages[\s\S]*?message\.externalActions/);
-  assert.match(main, /approval\.sourceName[\s\S]*approval\.toolId[\s\S]*approval\.inputSummary/);
-  assert.match(main, /collaboration_resolve_external_approval/);
+test("external apps stay disabled in Dashboard collaboration", () => {
+  assert.doesNotMatch(html, /collaboration-external-capabilities|collaboration-external-apps/);
+  assert.doesNotMatch(main, /selectedCollaborationExternalAppIds|renderCollaborationExternalCapabilities/);
+  assert.doesNotMatch(main, /collaboration_external_apps|collaboration_resolve_external_approval/);
+  assert.doesNotMatch(main, /"collaboration_submit_message"[\s\S]{0,180}externalAppIds/);
+  assert.match(main, /collaboration\.externalDisabledNotice/);
 });
 
 test("Codex settings report experimental status and runtime capability instead of promising every install", () => {
@@ -54,7 +49,17 @@ test("the composer remains gated on authenticated runtime plus verified read-onl
   assert.match(main, /currentCollaborationConnection\?\.authenticated === true\s*&&\s*currentCollaborationConnection\.authMode === "chatgpt"\s*&&\s*currentCollaborationConnection\.readOnlyTextTurnsAvailable/);
   assert.match(html, /id="collaboration-message-draft"[^>]*disabled/);
   assert.match(html, /id="collaboration-send-message"[^>]*disabled/);
+  assert.match(html, /id="collaboration-composer-status"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(html, /aria-describedby="collaboration-composer-status"/);
+  assert.match(main, /collaboration\.composerNewSession/);
+  assert.match(main, /collaboration\.composerConnect/);
   assert.match(main, /"collaboration_submit_message"/);
+});
+
+test("disabled controls show unavailable state without a wait cursor", () => {
+  assert.match(css, /button:disabled\s*\{[^}]*cursor:\s*not-allowed/);
+  assert.doesNotMatch(css, /button:disabled\s*\{[^}]*cursor:\s*wait/);
+  assert.match(copies, /"collaboration\.composerNewSession":\s*\{[^\n]*zh:[^\n]*en:/);
 });
 
 test("multi-session history keeps target dates and drafts with each session", () => {

@@ -847,24 +847,6 @@ type CollaborationModelOption = Readonly<{
   isDefault: boolean;
 }>;
 
-type CollaborationExternalAppTool = Readonly<{
-  id: string;
-  title: string;
-  description: string;
-  enabled: boolean;
-  readOnly: boolean;
-}>;
-
-type CollaborationExternalApp = Readonly<{
-  id: string;
-  displayName: string;
-  description: string;
-  accessible: boolean;
-  enabled: boolean;
-  callable: boolean;
-  tools: readonly CollaborationExternalAppTool[];
-}>;
-
 type CollaborationConnectionView = Readonly<{
   executablePath: string | null;
   version: string | null;
@@ -876,8 +858,6 @@ type CollaborationConnectionView = Readonly<{
   accountEmail: string | null;
   planType: string | null;
   models: readonly CollaborationModelOption[];
-  externalApps: readonly CollaborationExternalApp[];
-  externalDiscoveryError: string | null;
   selectedModel: string | null;
   selectedReasoningEffort: string | null;
   error: string | null;
@@ -957,7 +937,6 @@ let taskReturnToCollaborationSessionId: string | null = null;
 let dailyPlanReturnToCollaborationSessionId: string | null = null;
 let dailyPlanReturnToCollaborationDate: string | null = null;
 let currentCollaborationConnection: CollaborationConnectionView | null = null;
-let selectedCollaborationExternalAppIds = new Set<string>();
 let collaborationWorkspaceRequest = 0;
 let collaborationConnectionRequest = 0;
 let collaborationStatusTimer: number | null = null;
@@ -1061,10 +1040,7 @@ const collaborationTaskOperations = document.querySelector<HTMLElement>("#collab
 const collaborationTaskToolNotice = document.querySelector<HTMLElement>("#collaboration-task-tool-notice");
 const collaborationComposer = document.querySelector<HTMLFormElement>("#collaboration-composer");
 const collaborationMessageDraft = document.querySelector<HTMLTextAreaElement>("#collaboration-message-draft");
-const collaborationExternalApps = document.querySelector<HTMLElement>("#collaboration-external-apps");
-const collaborationExternalAppOptions = document.querySelector<HTMLElement>("#collaboration-external-app-options");
-const collaborationExternalCapabilityStatus = document.querySelector<HTMLElement>("#collaboration-external-capability-status");
-const collaborationExternalCapabilities = document.querySelector<HTMLElement>("#collaboration-external-capabilities");
+const collaborationComposerStatus = document.querySelector<HTMLElement>("#collaboration-composer-status");
 const collaborationVoiceLanguageSelect = document.querySelector<HTMLSelectElement>("#collaboration-voice-language");
 const collaborationVoiceStartButton = document.querySelector<HTMLButtonElement>("#collaboration-voice-start");
 const collaborationVoiceCancelButton = document.querySelector<HTMLButtonElement>("#collaboration-voice-cancel");
@@ -1947,13 +1923,6 @@ function renderCollaborationConnection(): void {
     if (collaborationModelSelect) collaborationModelSelect.disabled = true;
     if (collaborationReasoningEffortSelect) collaborationReasoningEffortSelect.disabled = true;
     if (collaborationConnectButton) collaborationConnectButton.disabled = true;
-    if (collaborationExternalCapabilityStatus) {
-      setCopy(collaborationExternalCapabilityStatus, "collaboration.externalCapabilitiesNotChecked");
-      collaborationExternalCapabilityStatus.dataset.state = "unavailable";
-    }
-    collaborationExternalCapabilities?.replaceChildren();
-    if (collaborationExternalApps) collaborationExternalApps.hidden = true;
-    collaborationExternalAppOptions?.replaceChildren();
     return;
   }
 
@@ -1995,7 +1964,6 @@ function renderCollaborationConnection(): void {
       collaborationRuntimeDetails.hidden = true;
     }
   }
-  renderCollaborationExternalCapabilities(connection);
   if (collaborationTurnCapability) {
     if (connection.readOnlyTextTurnsAvailable) {
       setCopy(collaborationTurnCapability, "collaboration.turnAvailable");
@@ -2178,75 +2146,6 @@ async function openDailyPlanAutomationRun(): Promise<void> {
   }
 }
 
-function renderCollaborationExternalCapabilities(connection: CollaborationConnectionView): void {
-  const apps = connection.externalApps ?? [];
-  if (collaborationExternalCapabilityStatus) {
-    if (connection.externalDiscoveryError) {
-      setRawText(collaborationExternalCapabilityStatus, connection.externalDiscoveryError);
-      collaborationExternalCapabilityStatus.dataset.state = "unavailable";
-    } else if (apps.length === 0) {
-      setCopy(collaborationExternalCapabilityStatus, "collaboration.externalCapabilitiesEmpty");
-      collaborationExternalCapabilityStatus.dataset.state = "unavailable";
-    } else {
-      setCopy(collaborationExternalCapabilityStatus, "collaboration.externalCapabilitiesReady");
-      collaborationExternalCapabilityStatus.dataset.state = "ready";
-    }
-  }
-  if (collaborationExternalCapabilities) {
-    collaborationExternalCapabilities.replaceChildren();
-    for (const app of apps) {
-      const item = document.createElement("li");
-      const heading = document.createElement("strong");
-      heading.textContent = app.displayName;
-      const state = document.createElement("small");
-      const usable = app.accessible && app.enabled && app.callable;
-      state.textContent = usable
-        ? t("collaboration.externalAppAvailable")
-        : t("collaboration.externalAppUnavailable");
-      item.append(heading, state);
-      if (app.description) {
-        const description = document.createElement("p");
-        description.textContent = app.description;
-        item.append(description);
-      }
-      const tools = app.tools.filter((tool) => tool.enabled);
-      if (tools.length > 0) {
-        const toolList = document.createElement("ul");
-        for (const tool of tools) {
-          const toolItem = document.createElement("li");
-          toolItem.textContent = `${tool.title}${tool.readOnly ? ` · ${t("collaboration.externalToolReadOnly")}` : ` · ${t("collaboration.externalToolMayWrite")}`}`;
-          toolList.append(toolItem);
-        }
-        item.append(toolList);
-      }
-      collaborationExternalCapabilities.append(item);
-    }
-  }
-  if (collaborationExternalApps && collaborationExternalAppOptions) {
-    const selectable = apps.filter((app) => app.accessible && app.enabled && app.callable);
-    const selectableIds = new Set(selectable.map((app) => app.id));
-    for (const selectedId of selectedCollaborationExternalAppIds) {
-      if (!selectableIds.has(selectedId)) selectedCollaborationExternalAppIds.delete(selectedId);
-    }
-    collaborationExternalApps.hidden = selectable.length === 0;
-    collaborationExternalAppOptions.replaceChildren();
-    for (const app of selectable) {
-      const label = document.createElement("label");
-      label.className = "collaboration-external-app-option";
-      const input = document.createElement("input");
-      input.type = "checkbox";
-      input.dataset.externalAppId = app.id;
-      input.checked = selectedCollaborationExternalAppIds.has(app.id);
-      const name = document.createElement("strong");
-      name.textContent = app.displayName;
-      const detail = document.createElement("small");
-      detail.textContent = app.tools.filter((tool) => tool.enabled).map((tool) => tool.title).join(" · ") || t("collaboration.externalToolCapabilityUnknown");
-      label.append(input, name, detail);
-      collaborationExternalAppOptions.append(label);
-    }
-  }
-}
-
 async function refreshCollaborationConnection(): Promise<void> {
   const request = ++collaborationConnectionRequest;
   if (collaborationRefreshConnectionButton) collaborationRefreshConnectionButton.disabled = true;
@@ -2272,8 +2171,6 @@ async function refreshCollaborationConnection(): Promise<void> {
       accountEmail: null,
       planType: null,
       models: [],
-      externalApps: [],
-      externalDiscoveryError: String(error),
       selectedModel: null,
       selectedReasoningEffort: null,
       error: String(error),
@@ -2394,10 +2291,7 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
     if (message.role === "user" && message.externalAppIds.length > 0) {
       const selectedApps = document.createElement("small");
       selectedApps.className = "collaboration-message-boundary";
-      const labels = message.externalAppIds.map((id) =>
-        currentCollaborationConnection?.externalApps.find((app) => app.id === id)?.displayName ?? id
-      );
-      selectedApps.textContent = `${t("collaboration.externalSelectedApps")}: ${labels.join(", ")}`;
+      selectedApps.textContent = `${t("collaboration.externalSelectedApps")}: ${message.externalAppIds.join(", ")}`;
       article.append(selectedApps);
     }
     if (message.role === "user" && message.externalActions.length > 0) {
@@ -2427,68 +2321,13 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
       }
       article.append(activity);
     }
-    if (message.role === "user" && message.pendingExternalApproval && message.executionId) {
-      const approval = message.pendingExternalApproval;
+    if (message.role === "user" && message.pendingExternalApproval) {
       const panel = document.createElement("section");
       panel.className = "collaboration-external-approval";
       panel.setAttribute("aria-label", t("collaboration.externalApprovalHeading"));
-      const title = document.createElement("strong");
-      title.textContent = t("collaboration.externalApprovalHeading");
-      const boundary = document.createElement("p");
-      boundary.textContent = t("collaboration.externalApprovalResponse");
-      const actionTitle = document.createElement("strong");
-      actionTitle.textContent = `${approval.sourceName} · ${approval.toolId}`;
-      const actionScope = document.createElement("small");
-      actionScope.textContent = `${t("collaboration.messageTargetDate", { date: approval.targetScope })} · ${approval.sourceId}`;
-      const actionSummary = document.createElement("p");
-      actionSummary.textContent = `${t("collaboration.externalRequestSummary")}: ${approval.inputSummary}`;
-      const form = document.createElement("form");
-      for (const question of approval.questions) {
-        const label = document.createElement("label");
-        label.className = "collaboration-external-approval-question";
-        const questionText = document.createElement("span");
-        questionText.textContent = `${question.header}: ${question.question}`;
-        const select = document.createElement("select");
-        select.required = true;
-        select.dataset.approvalQuestionId = question.id;
-        const placeholder = document.createElement("option");
-        placeholder.value = "";
-        placeholder.textContent = t("collaboration.externalApprovalResponse");
-        select.append(placeholder);
-        for (const option of question.options) {
-          const choice = document.createElement("option");
-          choice.value = option.label;
-          choice.textContent = option.description
-            ? `${option.label} — ${option.description}`
-            : option.label;
-          select.append(choice);
-        }
-        label.append(questionText, select);
-        form.append(label);
-      }
-      const submit = document.createElement("button");
-      submit.type = "submit";
-      submit.className = "collaboration-message-action";
-      submit.textContent = t("collaboration.externalApprovalSubmit");
-      form.append(submit);
-      form.addEventListener("submit", (event) => {
-        event.preventDefault();
-        if (!form.reportValidity()) return;
-        const answers = Object.fromEntries(
-          [...form.querySelectorAll<HTMLSelectElement>("select[data-approval-question-id]")]
-            .map((select) => [select.dataset.approvalQuestionId!, select.value]),
-        );
-        submit.disabled = true;
-        void resolveCollaborationExternalApproval(
-          session.id,
-          message.executionId!,
-          approval.id,
-          answers,
-        ).finally(() => {
-          submit.disabled = false;
-        });
-      });
-      panel.append(title, boundary, actionTitle, actionScope, actionSummary, form);
+      const notice = document.createElement("p");
+      notice.textContent = t("collaboration.externalDisabledNotice");
+      panel.append(notice);
       article.append(panel);
     }
     if (message.role === "user" && message.executionId) {
@@ -4151,25 +3990,45 @@ function renderCollaborationWorkspace(): void {
     currentCollaborationConnection.readOnlyTextTurnsAvailable;
   const vaultAvailable = Boolean(workspace?.context.vaultName);
   const recoveryBlocked = Boolean(workspace?.recoveryRequired);
+  const targetDate = session
+    ? collaborationTargetDates.get(session.id) ?? (collaborationTargetDateInput?.value || collaborationTargetDate)
+    : "";
+  const targetKey = session ? collaborationDraftKey(session.id, targetDate) : "";
+  const targetDatePending = Boolean(session && collaborationTargetDatePendingSession === session.id);
+  const sendingDraft = targetKey !== "" && collaborationSendingDrafts.has(targetKey);
   if (collaborationMessageDraft) {
-    const targetDate = collaborationTargetDates.get(session?.id ?? "") ??
-      (collaborationTargetDateInput?.value || collaborationTargetDate);
-    const targetKey = session ? collaborationDraftKey(session.id, targetDate) : "";
     collaborationMessageDraft.disabled = !session || !connected || !vaultAvailable || recoveryBlocked ||
-      collaborationTargetDatePendingSession === session?.id ||
-      (targetKey !== "" && collaborationSendingDrafts.has(targetKey));
+      targetDatePending || sendingDraft;
     if (session && document.activeElement !== collaborationMessageDraft) {
       collaborationMessageDraft.value = collaborationDraftForDate(session, targetDate);
     }
   }
   if (collaborationSendButton) {
-    const targetDate = session
-      ? collaborationTargetDates.get(session.id) ?? (collaborationTargetDateInput?.value || collaborationTargetDate)
-      : "";
-    const targetKey = session ? collaborationDraftKey(session.id, targetDate) : "";
     collaborationSendButton.disabled = !session || !connected || !vaultAvailable || recoveryBlocked ||
-      (targetKey !== "" && collaborationSendingDrafts.has(targetKey)) ||
+      sendingDraft ||
       !(collaborationMessageDraft?.value.trim());
+  }
+  let composerStatus: InterfaceCopyKey | null = null;
+  if (!vaultAvailable) {
+    composerStatus = "collaboration.composerSelectVault";
+  } else if (recoveryBlocked) {
+    composerStatus = "collaboration.composerRecover";
+  } else if (!session) {
+    composerStatus = "collaboration.composerNewSession";
+  } else if (!connected) {
+    composerStatus = "collaboration.composerConnect";
+  } else if (targetDatePending) {
+    composerStatus = "collaboration.composerSavingDate";
+  } else if (sendingDraft) {
+    composerStatus = "collaboration.composerSending";
+  }
+  if (collaborationComposerStatus) {
+    collaborationComposerStatus.hidden = composerStatus === null;
+    if (composerStatus) {
+      setCopy(collaborationComposerStatus, composerStatus);
+    } else {
+      setRawText(collaborationComposerStatus, "");
+    }
   }
   if (collaborationStopButton) {
     const stoppable = Boolean(
@@ -4254,9 +4113,6 @@ function saveCollaborationDraft(
 }
 
 function selectCollaborationSession(session: CollaborationSessionView): void {
-  if (session.id !== currentCollaborationSession?.id) {
-    selectedCollaborationExternalAppIds.clear();
-  }
   cancelCollaborationVoiceCaptureForSelectionChange();
   stashCollaborationDraft();
   currentCollaborationSession = session;
@@ -4315,7 +4171,6 @@ async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
     }
     if (session?.id !== previousId) {
       stashCollaborationDraft();
-      selectedCollaborationExternalAppIds.clear();
     }
     currentCollaborationSession = session;
     if (session) {
@@ -4480,30 +4335,6 @@ async function reconcileCollaborationRun(sessionId: string, executionId: string)
   } catch (error) {
     if (currentCollaborationSession?.id === sessionId && collaborationRunStatus) {
       setCopyError(collaborationRunStatus, "collaboration.sessionLoadFailed", error);
-      collaborationRunStatus.dataset.state = "error";
-    }
-  }
-}
-
-async function resolveCollaborationExternalApproval(
-  sessionId: string,
-  executionId: string,
-  approvalId: string,
-  answers: Readonly<Record<string, string>>,
-): Promise<void> {
-  try {
-    const updated = await window.__TAURI__.core.invoke<CollaborationSessionView>(
-      "collaboration_resolve_external_approval",
-      { sessionId, executionId, approvalId, answers },
-    );
-    if (currentCollaborationSession?.id === sessionId) {
-      currentCollaborationSession = updated;
-      renderCollaborationWorkspace();
-      watchCollaborationSession(updated);
-    }
-  } catch (error) {
-    if (currentCollaborationSession?.id === sessionId && collaborationRunStatus) {
-      setCopyError(collaborationRunStatus, "collaboration.externalApprovalFailed", error);
       collaborationRunStatus.dataset.state = "error";
     }
   }
@@ -4716,7 +4547,6 @@ async function sendCollaborationMessage(): Promise<void> {
   const targetDate = collaborationTargetDates.get(session.id) ??
     (collaborationTargetDateInput?.value || collaborationTargetDate);
   const target = { sessionId: session.id, targetDate };
-  const externalAppIds = [...selectedCollaborationExternalAppIds];
   const draftKey = collaborationDraftKey(session.id, targetDate);
   if (collaborationSendingDrafts.has(draftKey)) return;
   collaborationSendingDrafts.add(draftKey);
@@ -4729,14 +4559,10 @@ async function sendCollaborationMessage(): Promise<void> {
     await flushCollaborationDraft(target, message);
     const queued = await window.__TAURI__.core.invoke<CollaborationSessionView>(
       "collaboration_submit_message",
-      { sessionId: session.id, targetDate, text: message, externalAppIds },
+      { sessionId: session.id, targetDate, text: message },
     );
     cacheCollaborationDrafts(queued);
     collaborationDrafts.set(draftKey, "");
-    selectedCollaborationExternalAppIds.clear();
-    if (currentCollaborationConnection) {
-      renderCollaborationExternalCapabilities(currentCollaborationConnection);
-    }
     if (currentCollaborationSession?.id === session.id) {
       if (collaborationMessageDraft && isCurrentCollaborationVoiceTarget(target)) {
         collaborationMessageDraft.value = "";
@@ -10407,16 +10233,6 @@ collaborationSaveAutomaticPlanSettingsButton?.addEventListener("click", () => {
 
 collaborationOpenAutomaticPlanRunButton?.addEventListener("click", () => {
   void openDailyPlanAutomationRun();
-});
-
-collaborationExternalAppOptions?.addEventListener("change", (event) => {
-  const checkbox = (event.target as HTMLElement).closest<HTMLInputElement>(
-    "input[data-external-app-id]",
-  );
-  const appId = checkbox?.dataset.externalAppId;
-  if (!checkbox || !appId) return;
-  if (checkbox.checked) selectedCollaborationExternalAppIds.add(appId);
-  else selectedCollaborationExternalAppIds.delete(appId);
 });
 
 collaborationModelSelect?.addEventListener("change", () => {
