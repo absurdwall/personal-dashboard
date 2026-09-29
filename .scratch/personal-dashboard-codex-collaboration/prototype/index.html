@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Personal Dashboard 内新增协作页的交互原型。" />
+    <title>Personal Dashboard · 协作页原型</title>
+    <link rel="stylesheet" href="/__app/styles.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell" data-workspace-destination="collaboration">
+      <header class="product-toolbar" aria-label="工作区工具栏">
+        <div class="product-toolbar-brand">
+          <div class="feature-mark" role="img" aria-label="Personal Dashboard">P</div>
+          <div>
+            <p class="product-toolbar-name">Personal Dashboard</p>
+            <p class="product-toolbar-area">每日生活</p>
+          </div>
+        </div>
+        <span class="product-toolbar-space" aria-hidden="true"></span>
+        <div class="product-toolbar-actions">
+          <button id="open-settings" type="button" class="product-toolbar-button">设置</button>
+          <button type="button" class="product-toolbar-button language-button" data-action="language">中 / EN</button>
+          <button type="button" class="product-toolbar-button product-toolbar-more" data-action="more">•••</button>
+          <span class="product-toolbar-caption">本地</span>
+        </div>
+      </header>
+
+      <aside class="workspace-sidebar" aria-label="主要导航">
+        <div class="workspace-rail-context">
+          <p class="section-label">TODAY · 2026-09-26</p>
+          <strong>9月26日 周六</strong>
+          <small>早间 · 当日 · 晚间</small>
+        </div>
+        <nav class="workspace-navigation" aria-label="工作区页面">
+          <button type="button" class="destination-button" data-existing-destination="今天"><span class="destination-icon" aria-hidden="true">☀</span><span>今天</span></button>
+          <button type="button" class="destination-button" data-existing-destination="任务"><span class="destination-icon" aria-hidden="true">□</span><span>任务</span></button>
+          <button type="button" class="destination-button" data-existing-destination="日历"><span class="destination-icon" aria-hidden="true">▦</span><span>日历</span></button>
+          <button type="button" class="destination-button" data-existing-destination="习惯"><span class="destination-icon" aria-hidden="true">◉</span><span>习惯</span></button>
+          <button type="button" class="destination-button" data-workspace-destination="collaboration" aria-current="page"><span class="destination-icon" aria-hidden="true">✳</span><span>协作</span><span class="destination-new">新</span></button>
+        </nav>
+        <div class="workspace-compact-navigation">
+          <label for="destination-select">页面</label>
+          <select id="destination-select" aria-label="页面">
+            <option value="今天">今天</option>
+            <option value="任务">任务</option>
+            <option value="日历">日历</option>
+            <option value="习惯">习惯</option>
+            <option value="协作" selected>协作</option>
+          </select>
+        </div>
+        <div class="sidebar-status">
+          <div class="runtime-status"><span>本地 Rust 应用已就绪 · 离线</span></div>
+          <p class="sidebar-reassurance">隐私数据留在这台 Mac。</p>
+        </div>
+      </aside>
+
+      <section class="workspace-shell" aria-label="Personal Dashboard 工作区">
+        <header class="workspace-header">
+          <div>
+            <p class="section-label">DAILY LIFE · COLLABORATION</p>
+            <h1>协作</h1>
+            <p class="workspace-description">在现有 Daily Record、任务、日历与习惯旁继续处理日常事务；保存结果仍回到原有页面。</p>
+          </div>
+          <div class="workspace-context-status">当前页面：协作 · 原型数据</div>
+        </header>
+
+        <div class="workspace-regions">
+          <section class="workspace-information" aria-label="协作页面">
+            <section id="workspace-destination-collaboration" class="workspace-destination collaboration-destination">
+              <div id="collaboration-content"></div>
+            </section>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <div class="variant-switcher" aria-label="原型布局切换">
+      <span>布局原型</span>
+      <button type="button" data-variant="A" aria-pressed="true">A</button>
+      <button type="button" data-variant="B" aria-pressed="false">B</button>
+      <button type="button" data-variant="C" aria-pressed="false">C</button>
+      <small id="variant-name">会话列表 + 对话 + 当前对象</small>
+    </div>
+
+    <div id="overlay-root"></div>
+    <div id="toast" class="prototype-toast" role="status" aria-live="polite"></div>
+    <script src="app.js" defer></script>
+  </body>
+</html>
