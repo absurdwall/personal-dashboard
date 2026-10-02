@@ -5442,7 +5442,36 @@ function renderDatedNoteComposer(view: TodayView): void {
   }
 }
 
-function renderToday(view: TodayView): void {
+function captureTodayTaskEditors(view: TodayView): Set<string> {
+  const open = new Set<string>();
+  const previous = currentTodayView;
+  const binding = previous?.tasks.targetBinding;
+  if (!previous || !binding || previous.date !== view.date || binding !== view.tasks.targetBinding) {
+    return open;
+  }
+  for (const form of taskEditorForms("today")) {
+    const id = form.dataset.taskEditor;
+    const task = previous.tasks.tasks.find((candidate) => candidate.id === id);
+    if (form.hidden || !id || !task || !view.tasks.tasks.some((candidate) => candidate.id === id)) continue;
+    open.add(id);
+    const draft = readTaskDraft(form);
+    const key = taskDraftKey(binding, id);
+    if (
+      draft.name !== task.name || draft.content !== (task.content ?? "") ||
+      draft.date !== (task.date ?? "") || draft.time !== (task.time ?? "") ||
+      draft.listId !== task.listId || draft.completionDate !== (task.completion?.completedOn ?? "") ||
+      draft.completionTime !== (task.completion?.completedTime ?? "")
+    ) {
+      taskEditDrafts.set(key, draft);
+    } else {
+      taskEditDrafts.delete(key);
+    }
+  }
+  return open;
+}
+
+function renderToday(view: TodayView, preserveTaskEditors = false): void {
+  const openTaskEditors = preserveTaskEditors ? captureTodayTaskEditors(view) : new Set<string>();
   stashEveningReviewDraft();
   todayPresentationFresh = true;
   const previousView = currentTodayView;
@@ -5465,7 +5494,7 @@ function renderToday(view: TodayView): void {
   renderWorkspaceRailContext(currentWorkspaceDestination);
   renderVaultSettings(view);
   renderDatedNoteComposer(view);
-  renderTodayTasks(view);
+  renderTodayTasks(view, openTaskEditors);
   renderLegacyDayTasks(view.dayTasks);
   renderHistoricalHabitCorrections(view);
   if (todayDate) {
@@ -5842,7 +5871,7 @@ function renderLegacyDayTasks(dayTasks: DayTaskListView): void {
   );
 }
 
-function renderTodayTasks(view: TodayView): void {
+function renderTodayTasks(view: TodayView, openEditors = new Set<string>()): void {
   clearTaskEditorDialogs("today");
   const shared = view.tasks;
   const archivedListIds = new Set(
@@ -5873,7 +5902,7 @@ function renderTodayTasks(view: TodayView): void {
   }
   if (todayTaskScheduled) {
     todayTaskScheduled.replaceChildren(
-      ...groups.scheduled.map((task) => taskEditor(task, writable, shared, "today")),
+      ...groups.scheduled.map((task) => taskEditor(task, writable, shared, "today", openEditors.has(task.id))),
     );
   }
   if (todayTaskOverdueCount) {
@@ -5882,7 +5911,7 @@ function renderTodayTasks(view: TodayView): void {
   todayTaskOverdueSection?.toggleAttribute("hidden", groups.overdue.length === 0);
   if (todayTaskOverdue) {
     todayTaskOverdue.replaceChildren(
-      ...groups.overdue.map((task) => taskEditor(task, writable, shared, "today")),
+      ...groups.overdue.map((task) => taskEditor(task, writable, shared, "today", openEditors.has(task.id))),
     );
   }
   if (todayTaskOverdueEmpty) {
@@ -6250,7 +6279,7 @@ async function saveDatedNote(): Promise<boolean> {
     datedNoteDrafts.delete(loaded.targetBinding);
     correctingShortRecordId = null;
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
-      renderToday(preserveTodayDayTaskPlanError(loaded, view));
+      renderToday(preserveTodayDayTaskPlanError(loaded, view), true);
       showTodayMutationCopy(
         correctionId ? "today.correctionSaved" : "today.noteSaved",
         "ready",
@@ -8321,6 +8350,7 @@ function taskEditor(
   writable: boolean,
   view: TasksView | null = currentTasksView,
   surface: TaskSurface = "tasks",
+  expanded = false,
 ): HTMLElement {
   const binding = view?.targetBinding;
   const draft = binding
@@ -8354,7 +8384,7 @@ function taskEditor(
   detailsButton.type = "button";
   detailsButton.className = "task-row-action task-editor-toggle";
   detailsButton.dataset.taskEditorOpen = task.id;
-  detailsButton.setAttribute("aria-expanded", String(Boolean(draft)));
+  detailsButton.setAttribute("aria-expanded", String(surface === "today" ? expanded : Boolean(draft)));
   detailsButton.setAttribute("aria-label", `${t("tasks.details")} · ${task.name}`);
   setCopy(detailsButton, "tasks.details");
   stateActions.append(detailsButton);
@@ -8441,7 +8471,7 @@ function taskEditor(
   title.type = "button";
   title.className = "task-title-button task-editor-toggle";
   title.dataset.taskEditorOpen = task.id;
-  title.setAttribute("aria-expanded", String(Boolean(draft)));
+  title.setAttribute("aria-expanded", String(surface === "today" ? expanded : Boolean(draft)));
   title.textContent = task.name;
   title.setAttribute("aria-label", `${t("tasks.details")} · ${task.name}`);
   const taskList = view ? taskListForId(view, task.listId) : undefined;
@@ -8473,7 +8503,7 @@ function taskEditor(
     surface === "tasks" ? "task-editor-details" : "task-editor-details task-editor-inline";
   editorForm.dataset.taskEditor = task.id;
   editorForm.dataset.taskSurface = surface;
-  editorForm.hidden = surface !== "tasks";
+  editorForm.hidden = surface !== "tasks" && !expanded;
   editorForm.setAttribute("aria-label", t("tasks.editLabel", { task: task.name }));
   const grid = document.createElement("div");
   grid.className = "task-form-grid";

@@ -134,6 +134,68 @@ function clockHarness(state: 'pending' | 'completed', open: boolean, draft = fal
   return context;
 }
 
+function noteRefreshHarness(state: 'pending' | 'completed', nextBinding = 'tasks-a', edited = true) {
+  const task = { id: 'task-1', name: 'original', content: null, date: '2026-10-01', time: null,
+    listId: 'inbox', state, source: { kind: 'manual' }, deletedAt: null,
+    completion: state === 'completed' ? { completedOn: '2026-10-01', completedTime: '22:00' } : null };
+  const draft = { name: edited ? 'unsaved edit' : task.name, content: '', date: task.date, time: '',
+    listId: 'inbox', completionDate: task.completion?.completedOn ?? '', completionTime: task.completion?.completedTime ?? '' };
+  const fields: Record<string, string> = { 'task-name': draft.name, 'task-content': draft.content,
+    'task-date': draft.date, 'task-time': draft.time, 'task-list': draft.listId,
+    'task-completion-date': draft.completionDate, 'task-completion-time': draft.completionTime };
+  const form = { hidden: false, dataset: { taskEditor: task.id, taskSurface: 'today' },
+    querySelector: (selector: string) => ({ value: fields[selector.slice(6, -1)] ?? '' }) };
+  const view = { date: task.date, targetBinding: 'record-a', isToday: false,
+    tasks: { targetBinding: 'tasks-a', tasks: [task] } };
+  const next = { ...view, tasks: { ...view.tasks, targetBinding: nextBinding } };
+  const text = (value: string) => { const node = new Element(); node.textContent = value; return node; };
+  const context = createContext({ currentTodayView: view, next, currentWorkspaceDestination: 'today',
+    taskEditDrafts: new Map(), document: { querySelectorAll: () => [form], createElement: () => new Element(), createTextNode: text },
+    currentTasksView: null, taskEditorDialogRoot: null, rows: [] as Element[], todayDate: null,
+    stashEveningReviewDraft() {}, stashDatedNoteDraft() {}, stashTodayTaskCreateDraft() {},
+    renderWorkspaceRailContext() {}, renderVaultSettings() {}, renderDatedNoteComposer() {},
+    renderLegacyDayTasks() {}, renderHistoricalHabitCorrections() {},
+    taskStateCopyKey: (value: string) => value, taskScheduleText: () => '', taskChangeHistory: () => null,
+    taskCompletionMoment: () => '', taskCompletionSourceText: () => '', calendarDateLabel: (value: string) => value,
+    taskListForId: () => ({ id: 'inbox', name: 'Inbox' }), taskListDisplayName: () => 'Inbox',
+    renderTaskListSelect() {}, normalizeTaskDateTimeFields() {}, t: (key: string) => key,
+    setCopy: (node: Element, key: string) => { node.textContent = key; },
+  });
+  const capture = main.includes('function captureTodayTaskEditors(')
+    ? handler('function captureTodayTaskEditors(', 'function renderToday(') : '';
+  runInContext(handler('function taskDraftKey(', 'function readTaskDraft(') +
+    handler('function readTaskDraft(', 'function isBlankTaskDraft(') +
+    handler('function taskEditorForms(', 'function clearTaskEditorDialogs(') +
+    handler('function taskEditor(', 'function renderTasks(') + capture +
+    handler('function renderToday(', 'if (todayVault)') + '}\n' +
+    `function renderTodayTasks(view, openIds) {
+      rows = view.tasks.tasks.map(task => taskEditor(task, true, view.tasks, 'today', openIds?.has(task.id) ?? false));
+    }`, context);
+  runInContext('renderToday(next, true)', context);
+  const editor = context.rows[0].children.find((node: Element) => node.dataset.taskEditor === task.id)!;
+  const name = editor.children[0].children[0].children[0].children[0] as Element & { value: string };
+  return { context, editor, name };
+}
+
+for (const state of ['pending', 'completed'] as const) {
+  test(`saving a note keeps the open ${state} Today Task editor and its actual field values`, () => {
+    const { context, editor, name } = noteRefreshHarness(state);
+    assert.equal(editor.hidden, false);
+    assert.equal(name.value, 'unsaved edit');
+    assert.equal(context.taskEditDrafts.get('tasks-a:task-1')?.name, 'unsaved edit');
+  });
+}
+
+test('note refresh keeps an untouched open editor without creating a false dirty draft; new Vault binding stays closed', () => {
+  const unchanged = noteRefreshHarness('pending', 'tasks-a', false);
+  assert.equal(unchanged.editor.hidden, false);
+  assert.equal(unchanged.context.taskEditDrafts.size, 0);
+  const switched = noteRefreshHarness('pending', 'tasks-b');
+  assert.equal(switched.editor.hidden, true);
+  assert.equal(switched.name.value, 'original');
+  assert.equal(switched.context.taskEditDrafts.size, 0);
+});
+
 for (const state of ['pending', 'completed'] as const) {
   for (const draft of [false, true]) {
     test(`${state} Today Task ${draft ? 'draft' : 'unmodified open editor'} remains on the visible day at 04:00`, async () => {
