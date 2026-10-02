@@ -9521,3 +9521,46 @@ button.habit-cell:focus-visible {
     max-height: 29rem;
   }
 }
+
+/* Voice actions belong to the message input, including at narrow window widths. */
+.collaboration-composer-input {
+  min-width: 0;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.collaboration-composer-input textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
+}
+.collaboration-composer-input .collaboration-voice-controls {
+  justify-content: flex-end;
+  padding: 0.35rem 0.5rem;
+}
+.collaboration-voice-language-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.collaboration-voice-controls .collaboration-microphone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+}
+.collaboration-stop-icon,
+.collaboration-microphone[data-action="stop"] .collaboration-microphone-icon { display: none; }
+.collaboration-microphone[data-action="stop"] .collaboration-stop-icon { display: block; }
+.collaboration-microphone[data-action="stop"] { color: var(--parity-accent-strong); }
+.collaboration-voice-privacy {
+  margin: 0;
+  color: var(--parity-muted);
+  font-size: 0.6rem;
+  line-height: 1.45;
+}

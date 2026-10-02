@@ -149,7 +149,8 @@ private struct VoiceHelper {
         SFSpeechRecognizer.supportedLocales()
             .compactMap { locale -> VoiceLocale? in
                 guard let recognizer = SFSpeechRecognizer(locale: locale),
-                      recognizer.supportsOnDeviceRecognition else {
+                      recognizer.supportsOnDeviceRecognition,
+                      recognizer.isAvailable else {
                     return nil
                 }
                 let identifier = locale.identifier
