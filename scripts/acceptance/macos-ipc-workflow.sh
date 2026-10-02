@@ -469,6 +469,10 @@ driver_binary="$acceptance_directory/macos-ui-driver"
 app_pid_file="$acceptance_directory/app.pid"
 /usr/bin/ditto "$source_app_bundle" "$app_bundle" || fail "could not copy the packaged app"
 app_executable="$app_bundle/Contents/MacOS/personal-dashboard"
+if [[ "${PERSONAL_DASHBOARD_ACCEPTANCE_POINTER_FREE:-0}" == "1" ]]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.tortillaflat.personal-dashboard.acceptance" "$app_bundle/Contents/Info.plist"
+  /usr/bin/codesign --force --deep --sign - "$app_bundle" >/dev/null 2>&1 || fail "could not sign isolated acceptance identity"
+fi
 
 current_step="compiling macOS accessibility driver"
 swiftc "$script_directory/macos-ui-driver.swift" \
@@ -2533,6 +2537,7 @@ run_historical_corrections_scenario() {
   local completions="$vault/life/.personal-dashboard/habit-completions/v1/completions.json"
   local completion_label='更正 2026-09-07 的“Reset living space”本地完成'
   local record_hash
+  local today_record_hash
   local snapshot_hash
   local completion_change_count
   local completed_change_count
@@ -2562,7 +2567,22 @@ date: 2026-09-07
 
 - 历史复盘正文必须逐字保留。
 EOF
+  # An absent current plan starts the separate automatic morning-plan workflow.
+  # Seed it so this scenario isolates historical corrections and verifies that
+  # they leave the current Daily Record byte-identical as well.
+  cat > "$today_record" <<'EOF'
+---
+type: daily-record
+date: 2026-09-08
+---
+# 2026-09-08
+
+## 今天的大致安排
+
+- **11:00：** 当前日验收基准必须逐字保留。
+EOF
   record_hash="$(shasum -a 256 "$past_record" | awk '{print $1}')"
+  today_record_hash="$(shasum -a 256 "$today_record" | awk '{print $1}')"
   snapshot_hash="$(shasum -a 256 "$snapshot" | awk '{print $1}')"
 
   current_step="opening the selected past date without mutating its review"
@@ -2630,8 +2650,8 @@ EOF
   run_driver press "$completion_label" 10
   run_driver wait-active-text "本地完成已取消" 20
   run_driver assert-active-text "本地更正记录 · 2"
-  run_driver scroll-text-visible "2026-09-08T00:30-04:00 · 补记本地完成" 10
-  run_driver scroll-text-visible "2026-09-08T00:30-04:00 · 撤回本地完成" 10
+  run_driver scroll-text-visible "2026-09-08T10:30-04:00 · 补记本地完成" 10
+  run_driver scroll-text-visible "2026-09-08T10:30-04:00 · 撤回本地完成" 10
   run_driver press "$completion_label" 10
   run_driver wait-active-text "本地完成已保存到所选 Vault" 20
   run_driver assert-state "$completion_label|selected" 10
@@ -2640,10 +2660,10 @@ EOF
   run_driver wait-active-text "所选日期 · 2026-09-07" 20
   run_driver assert-state "$completion_label|selected" 10
   run_driver assert-active-text "本地更正记录 · 3"
-  run_driver scroll-text-visible "2026-09-08T00:30-04:00 · 补记本地完成" 10
+  run_driver scroll-text-visible "2026-09-08T10:30-04:00 · 补记本地完成" 10
   wait_for_file_text "$completions" '"livedDate": "2026-09-07"' ||
     fail "historical habit completion was not bound to the selected lived date"
-  completion_change_count="$(awk '/"changedAt": "2026-09-08T00:30-04:00"/ { count++ } END { print count + 0 }' "$completions")"
+  completion_change_count="$(awk '/"changedAt": "2026-09-08T10:30-04:00"/ { count++ } END { print count + 0 }' "$completions")"
   completed_change_count="$(awk '/"kind": "completed"/ { count++ } END { print count + 0 }' "$completions")"
   withdrawn_change_count="$(awk '/"kind": "withdrawn"/ { count++ } END { print count + 0 }' "$completions")"
   [[ "$completion_change_count" == "3" && "$completed_change_count" == "2" &&
@@ -2666,7 +2686,8 @@ EOF
   run_driver wait-active-text "今天 · 2026-09-08" 20
   run_driver assert-active-absent-text "本地习惯更正"
   [[ ! -e "$today_tasks" ]] || fail "historical task correction created today's task document"
-  [[ ! -e "$today_record" ]] || fail "historical habit correction created today's Daily Record"
+  [[ "$(shasum -a 256 "$today_record" | awk '{print $1}')" == "$today_record_hash" ]] ||
+    fail "historical habit correction changed today's Daily Record"
 
   current_step="relaunching and verifying historical traces in English"
   if ! stop_app; then
@@ -2690,7 +2711,7 @@ EOF
   run_driver wait-active-text "2026-09-07 · Reset living space" 20
   run_driver assert-active-text "Review and record local habit completion for 2026-09-07"
   run_driver press "Review and record local habit completion for 2026-09-07" 10
-  run_driver wait-active-text "Selected date · 2026-09-07" 20
+  run_driver wait-active-text "Selected day · 2026-09-07" 20
   run_driver assert-window-visible "Local habit corrections" 10
   run_driver assert-window-visible "2026-09-07" 10
   run_driver assert-active-text "Local correction history · 3"
@@ -6403,7 +6424,12 @@ run_lived_day_repairs_scenario() {
   local record="$vault/life/Journal/Daily/2026/2026-10/2026-10-01.md"
   local tasks="$vault/life/.personal-dashboard/tasks/v1/tasks.json"
   local captures="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory/captures}"
-  local natural_date lived_date boundary_epoch record_hash
+  local natural_date lived_date boundary_epoch record_hash note_record natural_record note_record_hash
+  local task_state="${PERSONAL_DASHBOARD_ACCEPTANCE_ROLLOVER_TASK_STATE:-completed}"
+  case "$task_state" in completed | pending) ;; *) fail "rollover Task state must be completed or pending" ;; esac
+  local probe_name="$task_state rollover probe"
+  local edited_name="$task_state rollover edited"
+  local note_text="Pending note across 04:00"
   mkdir -p "$vault/.obsidian" "$(dirname "$record")" "$(dirname "$tasks")" "$acceptance_data_directory" "$captures"
   cat > "$record" <<'EOF'
 ---
@@ -6427,11 +6453,14 @@ EOF
   fixed_utc_offset_minutes=-240
   current_step="checking folded boundary stacks in the packaged timeline"
   launch_app_waiting_for_text "Today" 30
+  run_driver set-size "1120x760" 10
   run_driver press "Today" 10
   run_driver press "Daytime progress" 10
   run_driver assert-axis-overlap-stack "Folded start alpha|Folded start beta" 10
   run_driver cycle-axis-stack "" 10
-  run_driver assert-focused-text "Folded start beta" 10
+  if [[ "${PERSONAL_DASHBOARD_ACCEPTANCE_POINTER_FREE:-0}" != "1" ]]; then
+    run_driver assert-focused-text "Folded start beta" 10
+  fi
   run_driver assert-axis-cards-fit "Folded start alpha|06:00;Folded start beta|06:50" 10
   run_driver capture-window "$captures/folded-start.png" 10
   run_driver assert-axis-overlap-stack "Folded end alpha|Folded end beta" 10
@@ -6444,50 +6473,91 @@ EOF
   [[ "$(shasum -a 256 "$record" | awk '{print $1}')" == "$record_hash" ]] || fail "timeline reading changed its source"
   stop_app || fail "timeline candidate did not stop"
 
-  current_step="preparing a completed Task edit spanning an advancing local 04:00"
+  current_step="preparing a $task_state Task edit spanning an advancing local 04:00"
   natural_date="$(/bin/date -u '+%Y-%m-%d')"
   lived_date="$(/bin/date -u -v-1d '+%Y-%m-%d')"
+  note_record="$vault/life/Journal/Daily/${lived_date:0:4}/${lived_date:0:7}/$lived_date.md"
+  natural_record="$vault/life/Journal/Daily/${natural_date:0:4}/${natural_date:0:7}/$natural_date.md"
   fixed_utc_offset_minutes=$((238 - 10#$(/bin/date -u '+%H') * 60 - 10#$(/bin/date -u '+%M')))
   boundary_epoch=$(( $(/bin/date '+%s') + 120 - 10#$(/bin/date -u '+%S') ))
-  node --input-type=module - "$tasks" "$lived_date" <<'EOF'
+  node --input-type=module - "$tasks" "$lived_date" "$task_state" "$probe_name" <<'EOF'
 import { writeFileSync } from 'node:fs';
-const [path, date] = process.argv.slice(2);
-const timestamp = `${date}T22:00:00Z`;
+const [path, date, state, name] = process.argv.slice(2);
+const timestamp = `${date}T22:00:00+00:00`;
 writeFileSync(path, JSON.stringify({ schemaVersion: 2,
   lists: [{ id: 'inbox', name: 'Inbox', system: true, archived: false }],
-  tasks: [{ id: 'rollover-edit', name: 'Completed rollover probe', content: null, date, time: null,
-    listId: 'inbox', source: { kind: 'manual', reference: null }, state: 'completed', deletedAt: null,
-    completion: { completedOn: date, completedTime: '22:00', recordedAt: timestamp, source: 'checkbox' },
+  tasks: [{ id: 'rollover-edit', name, content: null, date, time: null,
+    listId: 'inbox', source: { kind: 'manual', reference: null }, state, deletedAt: null,
+    completion: state === 'completed' ? { completedOn: date, completedTime: '22:00', recordedAt: timestamp, source: 'checkbox' } : null,
     createdAt: timestamp, modifiedAt: timestamp, changes: [] }],
 }, null, 2));
 EOF
+  # Keep this Task/timeline scenario independent of automatic model planning.
+  for seeded_date in "$natural_date" "$lived_date"; do
+    local seeded_record="$vault/life/Journal/Daily/${seeded_date:0:4}/${seeded_date:0:7}/$seeded_date.md"
+    if [[ ! -e "$seeded_record" ]]; then
+      mkdir -p "$(dirname "$seeded_record")"
+      printf '%s\n' '---' 'type: daily-record' "date: $seeded_date" '---' "# $seeded_date" '' '## 今天的大致安排' '' '- 12:00 Synthetic acceptance baseline' > "$seeded_record"
+    fi
+  done
   today_time_axis_real_clock=2
   launch_app_waiting_for_text "Today" 30
   run_driver press "Today" 10
   run_driver wait-active-text "Today · $lived_date" 20
-  run_driver press-contains "Details · Completed rollover probe" 10
-  run_driver type-text "Task name|Completed rollover edited" 10
+  run_driver press-contains "Details · $probe_name" 10
+  run_driver type-text "Name|$edited_name" 10
+  if [[ "$task_state" == "pending" ]]; then
+    /bin/cp "$note_record" "$acceptance_directory/record-before-note.md"
+    run_driver type-text "Short record text|$note_text" 10
+  fi
   current_step="waiting for real epoch to cross synthetic local 04:00 with an open Task editor"
   while (( $(/bin/date '+%s') < boundary_epoch + 2 )); do sleep 0.2; done
-  run_driver hide "synthetic lived-day boundary" 10
-  run_driver wait-active-text "Selected date · $lived_date" 20
-  run_driver assert-active-text "Completed rollover edited" 10
+  if [[ "${PERSONAL_DASHBOARD_ACCEPTANCE_POINTER_FREE:-0}" != "1" ]]; then
+    run_driver hide "synthetic lived-day boundary" 10
+  fi
+  # Shared-desktop mode does not activate the candidate. Allow its normal
+  # 60-second clock timer to observe rollover instead of forcing a focus event.
+  run_driver wait-active-text "Selected day · $lived_date" 80
+  run_driver assert-active-text "$edited_name" 10
+  if [[ "$task_state" == "pending" ]]; then
+    run_driver press "Save note" 10
+    wait_for_file_text "$note_record" "$note_text" || fail "retained note did not save on its original date"
+    node --input-type=module - "$acceptance_directory/record-before-note.md" "$note_record" <<'EOF'
+import { readFileSync } from 'node:fs';
+const [before, after] = process.argv.slice(2).map(path => readFileSync(path, 'utf8'));
+if (!after.includes(before.trimEnd())) throw new Error('Note write changed the original plan text');
+EOF
+    ! rg -Fq "$note_text" "$natural_record" || fail "note was also written to the new lived date"
+    record_hash="$(shasum -a 256 "$record" | awk '{print $1}')"
+  fi
+  note_record_hash="$(shasum -a 256 "$note_record" | awk '{print $1}')"
   run_driver press "Save" 10
-  wait_for_task_property "$tasks" rollover-edit name "Completed rollover edited" || fail "retained editor did not save"
+  wait_for_task_property "$tasks" rollover-edit name "$edited_name" || fail "retained editor did not save"
   assert_task_property "$tasks" rollover-edit date "$lived_date" || fail "rollover edit moved the Task date"
-  assert_task_property "$tasks" rollover-edit state completed || fail "rollover edit changed completion state"
+  assert_task_property "$tasks" rollover-edit state "$task_state" || fail "rollover edit changed completion state"
   run_driver capture-window "$captures/rollover-saved.png" 10
   stop_app || fail "rollover candidate did not stop"
   current_step="restarting after 04:00 and verifying default Today plus saved Task history"
   launch_app_waiting_for_text "Today" 30
   run_driver press "Today" 10
   run_driver wait-active-text "Today · $natural_date" 20
-  run_driver assert-active-absent-text "Completed rollover edited" 10
+  if [[ "$task_state" == "completed" ]]; then
+    run_driver assert-active-absent-text "$edited_name" 10
+  else
+    run_driver assert-active-text "$edited_name" 10
+    run_driver assert-active-text "Overdue · no failure inferred" 10
+  fi
   run_driver press "Tasks" 10
-  run_driver wait-active-text "Completed rollover edited" 20
+  run_driver wait-active-text "$edited_name" 20
   assert_task_property "$tasks" rollover-edit date "$lived_date" || fail "restart moved the Task date"
   [[ "$(shasum -a 256 "$record" | awk '{print $1}')" == "$record_hash" ]] || fail "Task edits changed the Daily Record"
-  echo "Packaged lived-day repair acceptance passed: folded boundary reveal, expansion, cross-midnight source labels, active completed Task edit/focus across 04:00, saved identity/date/state, and restart default"
+  [[ "$(shasum -a 256 "$note_record" | awk '{print $1}')" == "$note_record_hash" ]] || fail "Task edits changed their original-date Daily Record"
+  echo "Packaged lived-day repair acceptance passed: folded boundary reveal, expansion, cross-midnight source labels, active $task_state Task edit across 04:00, saved identity/date/state, and restart default"
+  if [[ "${PERSONAL_DASHBOARD_ACCEPTANCE_POINTER_FREE:-0}" == "1" ]]; then
+    echo "Shared-desktop limitation: native overlap focus, focus return, and physical sleep/wake were not exercised; candidate activation and global input were disabled"
+  else
+    echo "Focus return after hiding the candidate was exercised"
+  fi
   echo "Captures: $captures"
   echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
 }

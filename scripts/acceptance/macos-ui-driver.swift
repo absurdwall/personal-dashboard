@@ -3,6 +3,23 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+// Opt-in acceptance mode for a shared desktop. AX actions and process-targeted
+// keys remain available; any attempted mouse fallback fails before posting it.
+let pointerFreeAcceptance = ProcessInfo.processInfo.environment["PERSONAL_DASHBOARD_ACCEPTANCE_POINTER_FREE"] == "1"
+
+func pointerInputSource(_ source: CGEventSource) throws -> CGEventSource {
+    if pointerFreeAcceptance {
+        throw DriverError.actionFailed("pointer input is disabled for shared-desktop acceptance", .failure)
+    }
+    return source
+}
+
+func activateCandidate(_ pid: pid_t) {
+    if !pointerFreeAcceptance {
+        _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    }
+}
+
 enum DriverError: Error, CustomStringConvertible {
     case usage
     case invalidPid(String)
@@ -356,8 +373,15 @@ func focusPressable(
 ) throws {
     let deadline = Date().addingTimeInterval(timeout)
     repeat {
-        if let element = findVisiblePressable(application, text, contains: contains) {
-            _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+        let focusable = findVisiblePressable(application, text, contains: contains) ??
+            findTextPaths(application, text, contains: contains).first(where: { path in
+                var settable = DarwinBoolean(false)
+                return (path.ancestors + [path.element]).allSatisfy { visibleAttribute($0, "AXHidden") } &&
+                    AXUIElementIsAttributeSettable(path.element, "AXFocused" as CFString, &settable) == .success &&
+                    settable.boolValue
+            })?.element
+        if let element = focusable {
+            activateCandidate(pid)
             Thread.sleep(forTimeInterval: 0.05)
             let error = AXUIElementSetAttributeValue(
                 element,
@@ -366,6 +390,11 @@ func focusPressable(
             )
             guard error == .success else {
                 throw DriverError.actionFailed("focus \(text)", error)
+            }
+            if pointerFreeAcceptance {
+                // An inactive app may not expose AXFocusedUIElement. Verify
+                // the following targeted-key effect in the scenario instead.
+                return
             }
             let focusDeadline = min(deadline, Date().addingTimeInterval(1))
             repeat {
@@ -403,6 +432,10 @@ func keyCode(_ text: String) -> CGKeyCode? {
         return 115
     case "end":
         return 119
+    case "pageup":
+        return 116
+    case "pagedown":
+        return 121
     default:
         return nil
     }
@@ -430,6 +463,9 @@ func postKey(_ pid: pid_t, _ text: String) throws {
 }
 
 func postGlobalKey(_ text: String) throws {
+    if pointerFreeAcceptance {
+        throw DriverError.actionFailed("global keyboard input is disabled for shared-desktop acceptance", .failure)
+    }
     guard let code = keyCode(text) else {
         throw DriverError.usage
     }
@@ -453,6 +489,9 @@ func postGlobalKey(_ text: String) throws {
 }
 
 func postGlobalText(_ text: String) throws {
+    if pointerFreeAcceptance {
+        throw DriverError.actionFailed("global keyboard input is disabled for shared-desktop acceptance", .failure)
+    }
     guard let source = CGEventSource(stateID: .combinedSessionState),
           let keyDown = CGEvent(
               keyboardEventSource: source,
@@ -602,7 +641,7 @@ func typeText(
     let deadline = Date().addingTimeInterval(timeout)
     repeat {
         if let element = findVisibleTextField(application, label) {
-            _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+            activateCandidate(pid)
             let role = stringAttribute(element, "AXRole")
             try setAccessibilityAttribute(
                 element,
@@ -683,6 +722,9 @@ func typeText(
 }
 
 func postGlobalShortcut(keyCode: CGKeyCode, flags: CGEventFlags) throws {
+    if pointerFreeAcceptance {
+        throw DriverError.actionFailed("global keyboard input is disabled for shared-desktop acceptance", .failure)
+    }
     guard let source = CGEventSource(stateID: .combinedSessionState),
           let keyDown = CGEvent(
               keyboardEventSource: source,
@@ -710,6 +752,7 @@ func activateApplication(
     guard let runningApplication = NSRunningApplication(processIdentifier: pid) else {
         throw DriverError.invalidPid(String(pid))
     }
+    if pointerFreeAcceptance { return }
     let deadline = Date().addingTimeInterval(max(1, timeout))
     var lastAccessibilityError: AXError?
     repeat {
@@ -1104,6 +1147,9 @@ func characterKeyCode(_ character: Character) -> CGKeyCode? {
 }
 
 func postGlobalCharacters(_ text: String) throws {
+    if pointerFreeAcceptance {
+        throw DriverError.actionFailed("global keyboard input is disabled for shared-desktop acceptance", .failure)
+    }
     guard let source = CGEventSource(stateID: .combinedSessionState) else {
         throw DriverError.actionFailed("type (text)", .failure)
     }
@@ -1141,17 +1187,13 @@ func pressGlobalKeyRepeated(_ text: String, count: Int) throws {
 }
 
 func pressKey(_ pid: pid_t, _ text: String) throws {
-    _ = NSRunningApplication(processIdentifier: pid)?.activate(
-        options: []
-    )
+    activateCandidate(pid)
     try postKey(pid, text)
     Thread.sleep(forTimeInterval: 0.25)
 }
 
 func pressKeyRepeated(_ pid: pid_t, _ text: String, count: Int) throws {
-    _ = NSRunningApplication(processIdentifier: pid)?.activate(
-        options: []
-    )
+    activateCandidate(pid)
     for _ in 0..<count {
         try postKey(pid, text)
         Thread.sleep(forTimeInterval: 0.01)
@@ -1298,7 +1340,7 @@ func captureWindow(_ application: AXUIElement, pid: pid_t, outputPath: String) t
           let windowFrame = frame(window) else {
         throw DriverError.timeout("main window frame for capture")
     }
-    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    activateCandidate(pid)
     Thread.sleep(forTimeInterval: 0.25)
     guard let id = windowID(pid: pid, matching: windowFrame),
           let bitmap = renderedBitmap(windowID: id),
@@ -1588,9 +1630,23 @@ func scrollAxisCardIntoWindow(
         let afterPage = axisCardLink(application, title: title, time: time)
             .flatMap { frame($0.link) }
         if actionError != .success || afterPage.map({ abs($0.minY - cardFrame.minY) < 1 }) != false {
+            if pointerFreeAcceptance {
+                let revealError = AXUIElementPerformAction(card.link, "AXScrollToVisible" as CFString)
+                if revealError == .success {
+                    Thread.sleep(forTimeInterval: 0.15)
+                    let revealedY = axisCardLink(application, title: title, time: time).flatMap { frame($0.link)?.minY }
+                    if let revealedY, abs(revealedY - cardFrame.minY) >= 1 {
+                        continue
+                    }
+                }
+                try setAccessibilityAttribute(surface, "AXFocused", kCFBooleanTrue, "focus timeline scroll surface")
+                try postKey(pid, direction == "down" ? "pagedown" : "pageup")
+                Thread.sleep(forTimeInterval: 0.15)
+                continue
+            }
             guard let source = CGEventSource(stateID: .combinedSessionState),
                   let move = CGEvent(
-                    mouseEventSource: source,
+                    mouseEventSource: try pointerInputSource(source),
                     mouseType: .mouseMoved,
                     mouseCursorPosition: CGPoint(x: surfaceFrame.midX, y: surfaceFrame.midY),
                     mouseButton: .left
@@ -1744,7 +1800,7 @@ func focusAxisCard(_ application: AXUIElement, pid: pid_t, title: String) throws
     guard let card = axisCardLink(application, title: title) else {
         throw DriverError.timeout("visible rendered time-axis card link: \(title)")
     }
-    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    activateCandidate(pid)
     let error = AXUIElementSetAttributeValue(card.link, "AXFocused" as CFString, kCFBooleanTrue)
     guard error == .success else {
         throw DriverError.actionFailed("focus time-axis card \(title)", error)
@@ -1767,7 +1823,7 @@ func scrollAxisHorizontally(
           let source = CGEventSource(stateID: .combinedSessionState) else {
         throw DriverError.timeout("horizontal time-axis scroll surface for: \(targetTitle)")
     }
-    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    activateCandidate(pid)
     var movedFrame = frame(card.link)
     let focusError = AXUIElementSetAttributeValue(
         surface,
@@ -1835,7 +1891,7 @@ func scrollAxisHorizontally(
     } ?? false
     if !movedInRequestedDirection {
         guard let move = CGEvent(
-                  mouseEventSource: source,
+                  mouseEventSource: try pointerInputSource(source),
                   mouseType: .mouseMoved,
                   mouseCursorPosition: CGPoint(x: surfaceFrame.midX, y: surfaceFrame.midY),
                   mouseButton: .left
@@ -1957,7 +2013,7 @@ func scrollTextIntoWindow(
        let window = mainWindow(application), let windowFrame = frame(window) else {
         throw DriverError.timeout("scroll target with measurable bounds: \(text)")
     }
-    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    activateCandidate(pid)
     let visibleWindow = windowFrame.insetBy(dx: -2, dy: -2)
     for _ in 0..<8 {
         guard let textElement = visibleRenderedElement(application, label: text),
@@ -1981,10 +2037,24 @@ func scrollTextIntoWindow(
         let afterActionY = visibleRenderedElement(application, label: text)
             .flatMap(frame)?.minY
         if afterActionY == nil || abs(afterActionY! - textFrame.minY) < 1 {
+            if pointerFreeAcceptance {
+                let revealError = AXUIElementPerformAction(textElement, "AXScrollToVisible" as CFString)
+                if revealError == .success {
+                    Thread.sleep(forTimeInterval: 0.15)
+                    let revealedY = visibleRenderedElement(application, label: text).flatMap(frame)?.minY
+                    if let revealedY, abs(revealedY - textFrame.minY) >= 1 {
+                        continue
+                    }
+                }
+                try setAccessibilityAttribute(surface, "AXFocused", kCFBooleanTrue, "focus text scroll surface")
+                try postKey(pid, textFrame.maxY > windowFrame.maxY ? "pagedown" : "pageup")
+                Thread.sleep(forTimeInterval: 0.15)
+                continue
+            }
             guard let surfaceFrame = frame(surface),
                   let source = CGEventSource(stateID: .combinedSessionState),
                   let move = CGEvent(
-                    mouseEventSource: source,
+                    mouseEventSource: try pointerInputSource(source),
                     mouseType: .mouseMoved,
                     mouseCursorPosition: CGPoint(x: surfaceFrame.midX, y: surfaceFrame.midY),
                     mouseButton: .left
@@ -2977,6 +3047,10 @@ func clickElement(
     pid: pid_t,
     mirroredY: Bool = false
 ) throws {
+    if pointerFreeAcceptance {
+        try performAccessibilityAction(element, "AXPress", "activate control without pointer")
+        return
+    }
     var targetFrame: CGRect?
     var eventSource: CGEventSource?
     for _ in 0..<5 {
@@ -3000,26 +3074,26 @@ func clickElement(
         y: mirroredY ? screenHeight - elementFrame.midY : elementFrame.midY
     )
     guard let move = CGEvent(
-              mouseEventSource: source,
+              mouseEventSource: try pointerInputSource(source),
               mouseType: .mouseMoved,
               mouseCursorPosition: clickPoint,
               mouseButton: .left
           ),
           let mouseDown = CGEvent(
-              mouseEventSource: source,
+              mouseEventSource: try pointerInputSource(source),
               mouseType: .leftMouseDown,
               mouseCursorPosition: clickPoint,
               mouseButton: .left
           ),
           let mouseUp = CGEvent(
-              mouseEventSource: source,
+              mouseEventSource: try pointerInputSource(source),
               mouseType: .leftMouseUp,
               mouseCursorPosition: clickPoint,
               mouseButton: .left
           ) else {
         throw DriverError.actionFailed("click menu option", .failure)
     }
-    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    activateCandidate(pid)
     move.post(tap: .cghidEventTap)
     Thread.sleep(forTimeInterval: 0.1)
     mouseDown.post(tap: .cghidEventTap)
@@ -3055,7 +3129,7 @@ func scrollMenuOptionIntoView(
         )
         guard let source = CGEventSource(stateID: .combinedSessionState),
               let move = CGEvent(
-                  mouseEventSource: source,
+                  mouseEventSource: try pointerInputSource(source),
                   mouseType: .mouseMoved,
                   mouseCursorPosition: pointer,
                   mouseButton: .left
@@ -3070,7 +3144,7 @@ func scrollMenuOptionIntoView(
               ) else {
             throw DriverError.actionFailed("scroll menu option", .failure)
         }
-        _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+        activateCandidate(pid)
         move.post(tap: .cghidEventTap)
         scroll.post(tap: .cghidEventTap)
         Thread.sleep(forTimeInterval: 0.1)
@@ -3121,7 +3195,7 @@ func assertScrollableSurface(
           ) else {
         throw DriverError.timeout("scrollable active surface: \(label)")
     }
-    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    activateCandidate(pid)
     var anchorFrameChanged = false
     enum ScrollAttemptResult {
         case moved
@@ -3139,7 +3213,7 @@ func assertScrollableSurface(
     func postMouseScroll(toProcess: Bool) throws -> ScrollAttemptResult {
         guard let source = CGEventSource(stateID: .combinedSessionState),
               let move = CGEvent(
-                  mouseEventSource: source,
+                  mouseEventSource: try pointerInputSource(source),
                   mouseType: .mouseMoved,
                   mouseCursorPosition: CGPoint(
                       x: beforeAnchorFrame.midX,
@@ -3310,7 +3384,7 @@ func scrollSurfaceToBottom(
         throw DriverError.timeout("scrollable active surface: \(label)")
     }
 
-    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    activateCandidate(pid)
     for _ in 0..<8 {
         let pageError = AXUIElementPerformAction(
             surface,
@@ -3322,7 +3396,7 @@ func scrollSurfaceToBottom(
         }
         guard let source = CGEventSource(stateID: .combinedSessionState),
               let move = CGEvent(
-                  mouseEventSource: source,
+                  mouseEventSource: try pointerInputSource(source),
                   mouseType: .mouseMoved,
                   mouseCursorPosition: CGPoint(
                       x: surfaceFrame.midX,
@@ -3873,7 +3947,7 @@ func resizeWindow(
     guard let value = AXValueCreate(.cgSize, &size) else {
         throw DriverError.actionFailed("resize \(text)", .failure)
     }
-    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    activateCandidate(pid)
     var position = CGPoint(x: 40, y: 40)
     if let positionValue = AXValueCreate(.cgPoint, &position) {
         try setAccessibilityAttribute(
@@ -3901,7 +3975,7 @@ func resizeWindow(
         throw DriverError.timeout("resize window: \(text)")
     }
     Thread.sleep(forTimeInterval: 0.15)
-    _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    activateCandidate(pid)
 }
 
 func assertWindowSize(
@@ -4231,7 +4305,7 @@ do {
         repeat {
             if let element = findVisiblePressable(application, text, contains: true),
                (attribute(element, "AXEnabled") as? NSNumber)?.boolValue == true {
-                _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+                activateCandidate(pid)
                 Thread.sleep(forTimeInterval: 0.05)
                 let error = AXUIElementPerformAction(element, "AXPress" as CFString)
                 guard error == .success else {
@@ -4252,7 +4326,7 @@ do {
         repeat {
             if let element = findVisiblePressable(application, text, contains: true),
                (attribute(element, "AXEnabled") as? NSNumber)?.boolValue == true {
-                _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+                activateCandidate(pid)
                 Thread.sleep(forTimeInterval: 0.05)
                 let error = AXUIElementPerformAction(element, "AXPress" as CFString)
                 guard error == .success else {
