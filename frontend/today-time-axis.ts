@@ -136,9 +136,10 @@ export function clockTickDecision(
   selectedDate: string | null,
   viewDate: string,
   clockDate: string,
+  hasEditingTarget = false,
 ): ClockTickDecision {
   if (viewDate === clockDate) return 'update-marker';
-  return selectedDate === null ? 'reload-today' : 'preserve-history';
+  return selectedDate === null && !hasEditingTarget ? 'reload-today' : 'preserve-history';
 }
 
 export function clockResultMatchesSession(

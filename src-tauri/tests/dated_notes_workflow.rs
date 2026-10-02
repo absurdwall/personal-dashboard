@@ -435,3 +435,32 @@ fn duplicate_add_and_correction_clicks_are_idempotent_and_unknown_ids_fail() {
         .expect_err("unknown record should fail");
     assert!(error.contains("找不到"));
 }
+
+#[test]
+fn lived_day_defaults_and_bound_note_persist_across_four_am_and_reopen() {
+    let vault = TempDirectory::new("lived-day-boundary");
+    prepare_compatible_vault(vault.path());
+    let clock = AdjustableClock::new("2027-01-01", "2027-01-01T03:59:59-05:00");
+    let application = app(vault.path(), clock.clone());
+    let before = application.read().unwrap();
+    assert_eq!(before.date, "2026-12-31");
+    assert!(before.is_today);
+    let input = add_input(&before, "年末散步");
+    assert_eq!(application.local_clock().date, "2027-01-01");
+    assert_eq!(application.local_clock().lived_date(), "2026-12-31");
+
+    *clock.timestamp.borrow_mut() = "2027-01-01T04:00:00-05:00".into();
+    assert_eq!(application.read().unwrap().date, "2027-01-01");
+    let saved = application.add_dated_note(input).unwrap();
+    assert_eq!(saved.date, "2026-12-31");
+    assert!(!saved.is_today);
+    assert_eq!(
+        saved.daytime.short_records[0].created_at,
+        "2027-01-01T04:00:00-05:00"
+    );
+    assert!(!record_path(vault.path(), "2027-01-01").exists());
+    let reopened = app(vault.path(), clock);
+    assert_eq!(reopened.read().unwrap().date, "2027-01-01");
+    let history = reopened.read_date("2026-12-31").unwrap();
+    assert_eq!(history.daytime.short_records[0].text, "年末散步");
+}

@@ -256,4 +256,33 @@ mod tests {
             ("1970-01-01", "00:00")
         );
     }
+    #[test]
+    fn lived_day_uses_local_four_am_through_month_year_and_dst_boundaries() {
+        use crate::today::TodayClockView;
+        for (date, time, expected) in [
+            ("2026-10-01", "03:59:59", "2026-09-30"),
+            ("2027-01-01", "03:59:59", "2026-12-31"),
+            ("2026-03-08", "01:59", "2026-03-07"),
+            ("2026-03-08", "03:00", "2026-03-07"),
+            ("2026-03-08", "04:00:00", "2026-03-08"),
+            ("2026-11-01", "01:30", "2026-10-31"),
+            ("2026-11-01", "04:00:00", "2026-11-01"),
+        ] {
+            let clock = TodayClockView {
+                date: date.into(),
+                time: time.into(),
+            };
+            assert_eq!(clock.lived_date(), expected);
+            assert_eq!(clock.date, date);
+        }
+        // Both instances of the repeated fall-back wall hour retain the same day.
+        assert_eq!(
+            clock_view_from_epoch_and_offset(1_793_511_000_000, -240).lived_date(),
+            "2026-10-31"
+        );
+        assert_eq!(
+            clock_view_from_epoch_and_offset(1_793_514_600_000, -300).lived_date(),
+            "2026-10-31"
+        );
+    }
 }

@@ -269,3 +269,9 @@ test('clock ticks update the locator without rebuilding readable timeline entrie
   assert.ok(helperStart >= 0 && helperEnd > helperStart);
   assert.equal(source.slice(helperStart, helperEnd).includes('replaceChildren('), false);
 });
+
+ test('a draft or pending write preserves its visible target at the lived-day boundary', () => {
+  assert.equal(clockTickDecision(null, '2026-09-30', '2026-10-01', true), 'preserve-history');
+  assert.equal(clockTickDecision(null, '2026-09-30', '2026-09-30', true), 'update-marker');
+  assert.equal(clockTickDecision(null, '2026-09-30', '2026-10-01', false), 'reload-today');
+});

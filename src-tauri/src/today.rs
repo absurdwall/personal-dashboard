@@ -83,6 +83,10 @@ pub trait TodayClock {
         }
     }
 
+    fn current_lived_date(&self) -> String {
+        self.current_local_time().lived_date()
+    }
+
     fn resolve_local_wall_time(&self, _date: &str, _minute: u16) -> LocalWallTimeResolution {
         LocalWallTimeResolution::Unique {
             utc_offset_minutes: 0,
@@ -107,6 +111,10 @@ impl<T: TodayClock + ?Sized> TodayClock for &T {
         (**self).current_local_time()
     }
 
+    fn current_lived_date(&self) -> String {
+        (**self).current_lived_date()
+    }
+
     fn resolve_local_wall_time(&self, date: &str, minute: u16) -> LocalWallTimeResolution {
         (**self).resolve_local_wall_time(date, minute)
     }
@@ -119,11 +127,34 @@ pub enum LocalWallTimeResolution {
     Ambiguous,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TodayClockView {
     pub date: String,
     pub time: String,
+}
+
+impl TodayClockView {
+    /// The date belongs to the local wall clock, independent of UTC offsets
+    /// and elapsed hours on daylight-saving transition days.
+    pub fn lived_date(&self) -> String {
+        if self.time.as_str() < "04:00" {
+            if let Some(date) = CalendarDate::parse(&self.date) {
+                return date.plus_days(-1).to_string();
+            }
+        }
+        self.date.clone()
+    }
+}
+
+impl Serialize for TodayClockView {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut view = serializer.serialize_struct("TodayClockView", 3)?;
+        view.serialize_field("date", &self.date)?;
+        view.serialize_field("time", &self.time)?;
+        view.serialize_field("livedDate", &self.lived_date())?;
+        view.end()
+    }
 }
 
 pub trait TodayRecordStore {
@@ -2446,7 +2477,7 @@ where
         let names_configuration = load_habit_names(vault);
         match project_habit_corrections_with_names(
             &document,
-            &self.clock.current_date(),
+            &self.clock.current_lived_date(),
             date,
             local_records,
             local_completions.clone(),
@@ -2500,7 +2531,7 @@ where
         local_completions: Vec<LocalHabitCompletion>,
     ) -> HabitCorrectionView {
         match project_uncatalogued_habit_corrections(
-            &self.clock.current_date(),
+            &self.clock.current_lived_date(),
             date,
             state,
             message,
@@ -2804,7 +2835,7 @@ where
                 return Ok(HabitSnapshotView::error(error));
             }
         };
-        let today = self.clock.current_date();
+        let today = self.clock.current_lived_date();
         let current_timestamp = self.clock.current_timestamp_label();
         let dates = match snapshot_dates(&document, &today) {
             Ok(dates) => dates,
@@ -2902,7 +2933,7 @@ where
     }
 
     pub fn open(&self) -> Result<TodayView, String> {
-        let date = self.clock.current_local_time().date;
+        let date = self.clock.current_lived_date();
         self.open_date(&date)
     }
 
@@ -2911,7 +2942,7 @@ where
     }
 
     pub fn read(&self) -> Result<TodayView, String> {
-        let date = self.clock.current_local_time().date;
+        let date = self.clock.current_lived_date();
         self.read_date(&date)
     }
 
@@ -2926,7 +2957,7 @@ where
     fn view_date(&self, date: &str, receive_planning_input: bool) -> Result<TodayView, String> {
         canonical_record_path(Path::new("."), date)?;
         let clock = self.clock.current_local_time();
-        let is_today = date == clock.date;
+        let is_today = date == clock.lived_date();
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(TodayView {
                 state: TodayState::Unconfigured,
@@ -2990,7 +3021,7 @@ where
         // The 4.0 page reads old day-task files without accepting their planning
         // input. Legacy producer reconciliation remains available only through
         // the explicit `open` compatibility path used by the old flow.
-        let view = self.reload_vault(&vault, self.clock.current_date())?;
+        let view = self.reload_vault(&vault, self.clock.current_lived_date())?;
         if changed {
             self.persistence.save_selected_vault(&vault)?;
         }
@@ -3198,7 +3229,7 @@ where
         let selected = CalendarDate::parse(date).ok_or_else(|| {
             "The selected date is not a valid YYYY-MM-DD calendar date.".to_string()
         })?;
-        let today = CalendarDate::parse(&self.clock.current_date())
+        let today = CalendarDate::parse(&self.clock.current_lived_date())
             .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
         if selected.unix_days() > today.unix_days() {
             return Err("不能在未来日期记录已经发生的事实。请选择今天或过去日期。".into());
@@ -3227,17 +3258,17 @@ where
         let (heading, body) = daytime_block(&input, &self.clock.current_time_label())?;
         let (vault, path, document) = self.load_writable_record()?;
         require_revision(&document, &input.expected_revision)?;
-        validate_writable_daily_record(&document, &self.clock.current_date())?;
+        validate_writable_daily_record(&document, &self.clock.current_lived_date())?;
         let updated = append_to_canonical_section(
             &document,
             "白天更新",
             &format!("### {heading}\n\n{body}"),
             Some("晚间复盘"),
         );
-        validate_writable_daily_record(&updated, &self.clock.current_date())?;
+        validate_writable_daily_record(&updated, &self.clock.current_lived_date())?;
         self.record_store
             .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
-        self.reload_vault(&vault, self.clock.current_date())
+        self.reload_vault(&vault, self.clock.current_lived_date())
     }
 
     pub fn save_daily_plan(&self, input: DailyPlanWriteInput) -> Result<TodayView, String> {
@@ -3245,7 +3276,7 @@ where
         canonical_record_path(Path::new("."), &input.date)?;
         if matches!(input.transition, DailyPlanTransition::DaytimeEvent) {
             let date = CalendarDate::parse(&input.date).expect("validated daily plan date");
-            let today = CalendarDate::parse(&self.clock.current_date())
+            let today = CalendarDate::parse(&self.clock.current_lived_date())
                 .ok_or_else(|| "系统时钟没有提供有效日期；未写入任何内容。".to_string())?;
             if date.unix_days() > today.unix_days() {
                 return Err("不能把未来日期的内容记录为已发生事件；未写入任何内容。".into());
@@ -3690,7 +3721,7 @@ where
         validate_short_text(&input.content, "晚间复盘更新")?;
         let (vault, path, document) = self.load_writable_record()?;
         require_revision(&document, &input.expected_revision)?;
-        validate_writable_daily_record(&document, &self.clock.current_date())?;
+        validate_writable_daily_record(&document, &self.clock.current_lived_date())?;
         let updated = match input.mode {
             EveningUpdateMode::Addition => update_evening_subsection(
                 &document,
@@ -3705,10 +3736,10 @@ where
                 true,
             )?,
         };
-        validate_writable_daily_record(&updated, &self.clock.current_date())?;
+        validate_writable_daily_record(&updated, &self.clock.current_lived_date())?;
         self.record_store
             .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
-        self.reload_vault(&vault, self.clock.current_date())
+        self.reload_vault(&vault, self.clock.current_lived_date())
     }
 
     fn load_writable_record(&self) -> Result<(PathBuf, PathBuf, String), String> {
@@ -3716,7 +3747,7 @@ where
             "请先选择 Tortilla Flat vault，再更新今天的 Daily Record。".to_string()
         })?;
         validate_compatible_vault(&vault).map_err(|error| format!("{error}；未写入任何内容。"))?;
-        let path = canonical_record_path(&vault, &self.clock.current_date())?;
+        let path = canonical_record_path(&vault, &self.clock.current_lived_date())?;
         let bytes = self.record_store.load(&path)?.ok_or_else(|| {
             "今天还没有 Daily Record。请先让 Codex 运行早间流程，然后刷新 Today。".to_string()
         })?;
@@ -3741,10 +3772,10 @@ where
         receive_planning_input: bool,
     ) -> Result<TodayView, String> {
         let clock = self.clock.current_local_time();
-        let is_today = date == clock.date;
+        let is_today = date == clock.lived_date();
         let current_time = is_today.then_some(clock.time.clone());
         let can_record = CalendarDate::parse(&date).is_some_and(|selected| {
-            CalendarDate::parse(&clock.date)
+            CalendarDate::parse(&clock.lived_date())
                 .is_some_and(|today| selected.unix_days() <= today.unix_days())
         });
         let vault_name = vault
