@@ -464,3 +464,30 @@ fn lived_day_defaults_and_bound_note_persist_across_four_am_and_reopen() {
     let history = reopened.read_date("2026-12-31").unwrap();
     assert_eq!(history.daytime.short_records[0].text, "年末散步");
 }
+
+#[test]
+fn explicit_current_natural_date_is_writable_before_four_am_but_tomorrow_is_not() {
+    let vault = TempDirectory::new("explicit-natural-date");
+    prepare_compatible_vault(vault.path());
+    let clock = AdjustableClock::new("2026-10-02", "2026-10-02T01:00-04:00");
+    let application = app(vault.path(), clock);
+    assert_eq!(application.read().unwrap().date, "2026-10-01");
+    let explicit = application.read_date("2026-10-02").unwrap();
+    assert!(!explicit.is_today);
+    assert!(explicit.can_record);
+    let saved = application
+        .add_dated_note(add_input(&explicit, "明确记录 10 月 2 日"))
+        .unwrap();
+    assert_eq!(saved.date, "2026-10-02");
+    assert_eq!(
+        saved.daytime.short_records[0].created_at,
+        "2026-10-02T01:00-04:00"
+    );
+    let tomorrow = application.read_date("2026-10-03").unwrap();
+    assert!(!tomorrow.can_record);
+    assert!(application
+        .add_dated_note(add_input(&tomorrow, "未来事实"))
+        .is_err());
+    assert!(!record_path(vault.path(), "2026-10-03").exists());
+    assert_eq!(application.read().unwrap().date, "2026-10-01");
+}

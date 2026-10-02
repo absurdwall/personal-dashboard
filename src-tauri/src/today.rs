@@ -1,8 +1,9 @@
 use crate::habits::{
-    load_habit_names, project_habit_corrections_with_names, project_snapshot_with_names,
-    project_uncatalogued_habit_corrections, snapshot_dates, FileHabitSnapshotStore,
-    HabitCorrectionView, HabitLocalCompletionChangeView, HabitSnapshotStore, LocalHabitCompletion,
-    LocalHabitRecord, LEGACY_SNAPSHOT_RELATIVE_PATH, SNAPSHOT_RELATIVE_PATH,
+    load_habit_names, project_habit_corrections_with_recording_limit, project_snapshot_with_names,
+    project_uncatalogued_habit_corrections_with_recording_limit, snapshot_dates,
+    FileHabitSnapshotStore, HabitCorrectionView, HabitLocalCompletionChangeView,
+    HabitSnapshotStore, LocalHabitCompletion, LocalHabitRecord, LEGACY_SNAPSHOT_RELATIVE_PATH,
+    SNAPSHOT_RELATIVE_PATH,
 };
 pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
@@ -2475,9 +2476,10 @@ where
             })
             .collect();
         let names_configuration = load_habit_names(vault);
-        match project_habit_corrections_with_names(
+        match project_habit_corrections_with_recording_limit(
             &document,
             &self.clock.current_lived_date(),
+            &self.clock.current_date(),
             date,
             local_records,
             local_completions.clone(),
@@ -2530,8 +2532,9 @@ where
         completion_target_binding: String,
         local_completions: Vec<LocalHabitCompletion>,
     ) -> HabitCorrectionView {
-        match project_uncatalogued_habit_corrections(
+        match project_uncatalogued_habit_corrections_with_recording_limit(
             &self.clock.current_lived_date(),
+            &self.clock.current_date(),
             date,
             state,
             message,
@@ -3229,7 +3232,7 @@ where
         let selected = CalendarDate::parse(date).ok_or_else(|| {
             "The selected date is not a valid YYYY-MM-DD calendar date.".to_string()
         })?;
-        let today = CalendarDate::parse(&self.clock.current_lived_date())
+        let today = CalendarDate::parse(&self.clock.current_date())
             .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
         if selected.unix_days() > today.unix_days() {
             return Err("不能在未来日期记录已经发生的事实。请选择今天或过去日期。".into());
@@ -3276,7 +3279,7 @@ where
         canonical_record_path(Path::new("."), &input.date)?;
         if matches!(input.transition, DailyPlanTransition::DaytimeEvent) {
             let date = CalendarDate::parse(&input.date).expect("validated daily plan date");
-            let today = CalendarDate::parse(&self.clock.current_lived_date())
+            let today = CalendarDate::parse(&self.clock.current_date())
                 .ok_or_else(|| "系统时钟没有提供有效日期；未写入任何内容。".to_string())?;
             if date.unix_days() > today.unix_days() {
                 return Err("不能把未来日期的内容记录为已发生事件；未写入任何内容。".into());
@@ -3775,7 +3778,7 @@ where
         let is_today = date == clock.lived_date();
         let current_time = is_today.then_some(clock.time.clone());
         let can_record = CalendarDate::parse(&date).is_some_and(|selected| {
-            CalendarDate::parse(&clock.lived_date())
+            CalendarDate::parse(&clock.date)
                 .is_some_and(|today| selected.unix_days() <= today.unix_days())
         });
         let vault_name = vault

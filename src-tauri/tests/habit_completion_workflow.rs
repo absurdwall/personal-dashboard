@@ -832,3 +832,52 @@ fn habits_share_today_lived_date_and_keep_pending_completion_bound() {
             .counts_as_completion
     );
 }
+
+#[test]
+fn explicit_current_natural_habit_date_is_writable_before_four_am() {
+    struct EarlyClock;
+    impl TodayClock for EarlyClock {
+        fn current_date(&self) -> String {
+            "2026-10-02".into()
+        }
+        fn current_time_label(&self) -> String {
+            "01:00".into()
+        }
+        fn current_timestamp_label(&self) -> String {
+            "2026-10-02T01:00-04:00".into()
+        }
+    }
+    let vault = TempVault::new("explicit-natural-habit");
+    write_snapshot(
+        vault.path(),
+        include_str!("fixtures/habits-v1-complete.json"),
+    );
+    let application =
+        TodayApplication::new(SelectedVault(vault.path().into()), NoSelection, EarlyClock);
+    let defaults = application.habits().unwrap();
+    assert_eq!(defaults.habit("reset").unwrap().today.date, "2026-10-01");
+    let explicit = application.read_date("2026-10-02").unwrap();
+    assert!(explicit.habit_corrections.can_record);
+    assert!(!explicit.habit_corrections.message.contains("未来日期"));
+    let tomorrow = application.read_date("2026-10-03").unwrap();
+    assert!(!tomorrow.habit_corrections.can_record);
+    let input = HabitCompletionMutationInput {
+        habit_key: "reset".into(),
+        lived_date: "2026-10-02".into(),
+        completed: true,
+        change_id: "explicit-current".into(),
+        target_binding: defaults.completion_target_binding.unwrap(),
+        expected_revision: defaults.completion_revision,
+    };
+    let mut future_input = input.clone();
+    future_input.lived_date = "2026-10-03".into();
+    future_input.change_id = "future-habit".into();
+    assert!(application
+        .set_local_habit_completion(future_input)
+        .is_err());
+    let saved = application.set_local_habit_completion(input).unwrap();
+    assert_eq!(saved.habit("reset").unwrap().today.date, "2026-10-01");
+    let document = fs::read_to_string(completion_path(vault.path())).unwrap();
+    assert!(document.contains("2026-10-02"));
+    assert!(document.contains("2026-10-02T01:00-04:00"));
+}
