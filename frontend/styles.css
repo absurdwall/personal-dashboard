@@ -6734,6 +6734,7 @@ body {
 
 .today-axis-entry-detail {
   min-width: 0;
+  container-type: inline-size;
   border: 1px solid var(--parity-border);
   border-radius: 8px;
   background: var(--parity-surface, #fff);
@@ -6744,7 +6745,7 @@ body {
 
 .today-axis-entry-detail > summary {
   display: grid;
-  grid-template-columns: minmax(4.5rem, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 9rem) minmax(0, 1fr);
   align-items: start;
   gap: 8px;
   min-height: 38px;
@@ -6753,13 +6754,34 @@ body {
 }
 
 .today-axis-entry-detail > summary :is(time, .today-axis-entry-time-label) {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--parity-accent-strong, #315f4a);
   font-variant-numeric: tabular-nums;
   font-weight: 800;
 }
 
 .today-axis-entry-detail > summary span {
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* Today has a narrow side rail even in a wide window. Respond to each card's
+   actual space so its label cannot squeeze the complete body into a sliver. */
+@container (max-width: 24rem) {
+  .today-axis-entry-detail > summary {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 3px;
+  }
+}
+
+/* Older WebKit versions on the supported Mac baseline still need a readable
+   side rail, even when per-card container queries are unavailable. */
+@supports not (container-type: inline-size) {
+  .today-axis-unlocated .today-axis-entry-detail > summary {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 3px;
+  }
 }
 
 .today-axis-entry-summary-metadata {
@@ -6782,6 +6804,11 @@ body {
   padding: 0 8px 8px;
   color: var(--parity-muted);
   font-size: 10px;
+}
+
+.today-axis-entry-metadata > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .today-daytime-source-details {
