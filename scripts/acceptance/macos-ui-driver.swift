@@ -30,7 +30,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|assert-elements-disjoint|assert-regions-disjoint|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|assert-elements-disjoint|assert-regions-disjoint|assert-collaboration-columns|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -3807,6 +3807,42 @@ func dumpText(_ application: AXUIElement) {
     }
 }
 
+// Measure the shipped labelled panes, rather than inferring layout from source.
+func assertCollaborationColumns(_ application: AXUIElement, specification: String) throws {
+    let parts = specification.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+    guard parts.count == 4, ["three", "two", "single", "two-context"].contains(parts[0]),
+          let window = mainWindow(application), let windowFrame = frame(window) else { throw DriverError.usage }
+    let chat = try regionFrame(application, label: parts[2])
+    guard chat.width >= (parts[0] == "single" ? 200 : 360),
+          chat.minX >= windowFrame.minX, chat.maxX <= windowFrame.maxX else {
+        throw DriverError.unexpectedText("conversation has unusable rendered width: \(chat), window=\(windowFrame)")
+    }
+    if parts[0] != "single" {
+        let history = try regionFrame(application, label: parts[1])
+        guard abs(history.minY - chat.minY) <= 4, history.maxX <= chat.minX,
+              history.width >= 180, chat.width > history.width else {
+            throw DriverError.unexpectedText("Sessions must sit beside a wider conversation: \(history), chat=\(chat)")
+        }
+        if parts[0] == "three" {
+            let context = try regionFrame(application, label: parts[3])
+            guard abs(context.minY - chat.minY) <= 4, context.minX >= chat.maxX,
+                  context.maxX <= windowFrame.maxX else {
+                throw DriverError.unexpectedText("context must sit beside conversation: \(context), chat=\(chat)")
+            }
+            print("Rendered collaboration three columns: Sessions=\(history), conversation=\(chat), context=\(context)")
+        } else if parts[0] == "two-context" {
+            let context = try regionFrame(application, label: parts[3])
+            guard context.minY >= chat.maxY, context.minX >= windowFrame.minX,
+                  context.maxX <= windowFrame.maxX else {
+                throw DriverError.unexpectedText("disclosed context must fit below conversation: \(context), chat=\(chat)")
+            }
+            print("Rendered two columns with context below: Sessions=\(history), conversation=\(chat), context=\(context)")
+        } else {
+            print("Rendered collaboration two columns: Sessions=\(history), conversation=\(chat)")
+        }
+    } else { print("Rendered collaboration single column: conversation=\(chat)") }
+}
+
 func renderedLeafFrame(_ application: AXUIElement, label: String) throws -> CGRect {
     let leafRoles = Set(["AXStaticText", "AXHeading", "AXButton", "AXTextField", "AXTextArea", "AXLink"])
     let candidates = findTextPaths(application, label).compactMap { path -> CGRect? in
@@ -4305,6 +4341,8 @@ do {
             firstLabel: parts[0],
             secondLabel: parts[1]
         )
+    case "assert-collaboration-columns":
+        try assertCollaborationColumns(application, specification: text)
     case "assert-regions-disjoint":
         let parts = text.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
             .map(String.init)

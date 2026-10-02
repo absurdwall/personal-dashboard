@@ -6419,6 +6419,85 @@ EOF
   echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
 }
 
+run_collaboration_layout_scenario() {
+  local vault="$acceptance_directory/collaboration-layout-vault"
+  local captures="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory/captures}"
+  local session_title="Automatic morning plan · layout probe"
+  local draft="Synthetic retained draft 中文 English"
+  local index=0 mode window_size
+  mkdir -p "$vault/.obsidian" "$acceptance_data_directory" "$captures"
+  printf '{"schemaVersion":1,"selectedVault":"%s"}\n' "$vault" > "$acceptance_data_directory/today-workspace.json"
+  printf '{"schemaVersion":1,"interfaceLanguage":"en"}\n' > "$acceptance_data_directory/interface-language.json"
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Collaboration" 10
+  run_driver set-size "1440x900" 10
+  run_driver press "New chat" 10
+  stop_app || fail "isolated app did not stop before fixture preparation"
+  # Keep the actual newly created session's Vault identity; only isolated fixture data is changed.
+  node - "$acceptance_data_directory/collaboration/collaboration-v1.json" "$session_title" "$draft" <<'NODE'
+const fs = require('node:fs');
+const [file, title, draft] = process.argv.slice(2);
+const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+const session = state.sessions[0];
+if (!session) throw new Error('isolated New chat did not create a session');
+session.title = title;
+session.draft = draft;
+session.draftsByDate = { [session.targetDate]: draft };
+session.messages = [{ id: 'layout-message', role: 'assistant', text: 'Synthetic morning plan: 上午整理资料 / afternoon reading. No model request is made.',
+  messageDate: session.createdDate, targetDate: session.targetDate, createdAt: session.lastActivityAt,
+  deliveryState: 'completed', automaticPlan: true }];
+fs.writeFileSync(file, JSON.stringify(state));
+NODE
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Collaboration" 10
+  run_driver press "$session_title" 10
+  for window_size in "1440x900" "1040x800" "640x720" "1440x900"; do
+    index=$((index + 1))
+    current_step="checking collaboration columns at $window_size"
+    run_driver set-size "$window_size" 10
+    run_driver assert-size "$window_size" 10
+    run_driver scroll-text-visible "$session_title" 10
+    run_driver capture-window "$captures/collaboration-$index-$window_size.png" 10
+    run_driver dump-text "" 10 > "$captures/collaboration-$index-$window_size-accessibility.txt"
+    case "$window_size" in
+      "640x720") mode=single ;;
+      "1040x800") mode=two ;;
+      *) mode=three ;;
+    esac
+    run_driver assert-collaboration-columns "$mode|Sessions|$session_title|Current context" 10
+    if [[ "$mode" != "single" ]]; then run_driver assert-window-visible "New chat" 10; fi
+    run_driver assert-text "$draft" 10
+  done
+  current_step="checking intermediate disclosure and manual collapse"
+  run_driver set-size "1040x800" 10
+  run_driver press "Current work" 10
+  run_driver assert-collaboration-columns "two-context|Sessions|$session_title|Current context" 10
+  run_driver scroll-text-visible "Current context" 10
+  run_driver assert-window-visible "Current context" 10
+  run_driver capture-window "$captures/collaboration-context-disclosed.png" 10
+  run_driver scroll-text-visible "Current work" 10
+  run_driver press "Current work" 10
+  run_driver press "Session history" 10
+  run_driver assert-collaboration-columns "single|Sessions|$session_title|Current context" 10
+  run_driver press "Session history" 10
+  run_driver assert-collaboration-columns "two|Sessions|$session_title|Current context" 10
+  current_step="checking bilingual collaboration and restart"
+  run_driver press "Switch to Chinese" 10
+  run_driver assert-collaboration-columns "two|会话|$session_title|当前 context" 10
+  run_driver assert-text "$draft" 10
+  run_driver capture-window "$captures/collaboration-two-zh.png" 10
+  stop_app || fail "isolated app did not stop before restart"
+  launch_app_waiting_for_text "今天" 30
+  run_driver press "协作" 10
+  run_driver set-size "1040x800" 10
+  run_driver press "$session_title" 10
+  run_driver assert-collaboration-columns "two|会话|$session_title|当前 context" 10
+  run_driver assert-text "$draft" 10
+  run_driver capture-window "$captures/collaboration-restarted-zh.png" 10
+  echo "Packaged collaboration width/disclosure/bilingual/restart sequence passed; captures: $captures"
+  echo "Synthetic session/draft only; no model request or selected-Vault business write. User acceptance remains pending."
+}
+
 run_lived_day_repairs_scenario() {
   local vault="$acceptance_directory/lived-day-repairs-vault"
   local record="$vault/life/Journal/Daily/2026/2026-10/2026-10-01.md"
@@ -6660,6 +6739,7 @@ case "$acceptance_scenario" in
   readable-task-cards) run_readable_task_cards_scenario ;;
   tasks-return-after-today-abandon) run_tasks_return_after_today_abandon_scenario ;;
   today-shared-task-axis) run_today_shared_task_axis_scenario ;;
+  collaboration-layout) run_collaboration_layout_scenario ;;
   lived-day-repairs) run_lived_day_repairs_scenario ;;
   drive-compatibility) run_drive_compatibility_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
