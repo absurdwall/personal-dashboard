@@ -1600,6 +1600,27 @@ func axisScrollSurface(in path: AccessibilityPath) -> AXUIElement? {
     })
 }
 
+func scrollWithoutPointer(
+    _ target: AXUIElement,
+    surface: AXUIElement,
+    pid: pid_t,
+    previousY: CGFloat,
+    pageKey: String,
+    focusAction: String,
+    positionY: () -> CGFloat?
+) throws {
+    let revealError = AXUIElementPerformAction(target, "AXScrollToVisible" as CFString)
+    if revealError == .success {
+        Thread.sleep(forTimeInterval: 0.15)
+        if let revealedY = positionY(), abs(revealedY - previousY) >= 1 {
+            return
+        }
+    }
+    try setAccessibilityAttribute(surface, "AXFocused", kCFBooleanTrue, focusAction)
+    try postKey(pid, pageKey)
+    Thread.sleep(forTimeInterval: 0.15)
+}
+
 func scrollAxisCardIntoWindow(
     _ application: AXUIElement,
     pid: pid_t,
@@ -1631,17 +1652,16 @@ func scrollAxisCardIntoWindow(
             .flatMap { frame($0.link) }
         if actionError != .success || afterPage.map({ abs($0.minY - cardFrame.minY) < 1 }) != false {
             if pointerFreeAcceptance {
-                let revealError = AXUIElementPerformAction(card.link, "AXScrollToVisible" as CFString)
-                if revealError == .success {
-                    Thread.sleep(forTimeInterval: 0.15)
-                    let revealedY = axisCardLink(application, title: title, time: time).flatMap { frame($0.link)?.minY }
-                    if let revealedY, abs(revealedY - cardFrame.minY) >= 1 {
-                        continue
-                    }
+                try scrollWithoutPointer(
+                    card.link,
+                    surface: surface,
+                    pid: pid,
+                    previousY: cardFrame.minY,
+                    pageKey: direction == "down" ? "pagedown" : "pageup",
+                    focusAction: "focus timeline scroll surface"
+                ) {
+                    axisCardLink(application, title: title, time: time).flatMap { frame($0.link)?.minY }
                 }
-                try setAccessibilityAttribute(surface, "AXFocused", kCFBooleanTrue, "focus timeline scroll surface")
-                try postKey(pid, direction == "down" ? "pagedown" : "pageup")
-                Thread.sleep(forTimeInterval: 0.15)
                 continue
             }
             guard let source = CGEventSource(stateID: .combinedSessionState),
@@ -2038,17 +2058,16 @@ func scrollTextIntoWindow(
             .flatMap(frame)?.minY
         if afterActionY == nil || abs(afterActionY! - textFrame.minY) < 1 {
             if pointerFreeAcceptance {
-                let revealError = AXUIElementPerformAction(textElement, "AXScrollToVisible" as CFString)
-                if revealError == .success {
-                    Thread.sleep(forTimeInterval: 0.15)
-                    let revealedY = visibleRenderedElement(application, label: text).flatMap(frame)?.minY
-                    if let revealedY, abs(revealedY - textFrame.minY) >= 1 {
-                        continue
-                    }
+                try scrollWithoutPointer(
+                    textElement,
+                    surface: surface,
+                    pid: pid,
+                    previousY: textFrame.minY,
+                    pageKey: textFrame.maxY > windowFrame.maxY ? "pagedown" : "pageup",
+                    focusAction: "focus text scroll surface"
+                ) {
+                    visibleRenderedElement(application, label: text).flatMap(frame)?.minY
                 }
-                try setAccessibilityAttribute(surface, "AXFocused", kCFBooleanTrue, "focus text scroll surface")
-                try postKey(pid, textFrame.maxY > windowFrame.maxY ? "pagedown" : "pageup")
-                Thread.sleep(forTimeInterval: 0.15)
                 continue
             }
             guard let surfaceFrame = frame(surface),
