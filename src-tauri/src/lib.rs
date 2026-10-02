@@ -58,10 +58,10 @@ use interface_language::{
     InterfaceLanguage, InterfaceLanguageApplication, InterfaceLanguagePreferences,
 };
 use platform::{
-    appearance_background_directory_for, appearance_file_for, interface_language_file_for,
-    legacy_exercise_directory_for, profile_file_for, today_workspace_file_for,
-    FileAppearancePersistence, FileInterfaceLanguagePersistence, FileTodayWorkspacePersistence,
-    NativeAppearanceImageLibrary, NativeTodayWorkspaceExchange,
+    appearance_background_directory_for, appearance_file_for, application_data_directory_for,
+    interface_language_file_for, legacy_exercise_directory_for, profile_file_for,
+    today_workspace_file_for, FileAppearancePersistence, FileInterfaceLanguagePersistence,
+    FileTodayWorkspacePersistence, NativeAppearanceImageLibrary, NativeTodayWorkspaceExchange,
 };
 use tasks::{
     FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput,
@@ -664,7 +664,7 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
             let today_workspace_file = today_workspace_file_for(&app_handle)?;
-            let collaboration_app_data_dir = app_handle.path().app_data_dir()?;
+            let collaboration_app_data_dir = application_data_directory_for(&app_handle)?;
             std::fs::create_dir_all(&collaboration_app_data_dir)?;
             let appearance_file = appearance_file_for(&app_handle)?;
             let appearance_background_directory = appearance_background_directory_for(&app_handle)?;
