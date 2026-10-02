@@ -6538,6 +6538,7 @@ date: 2026-10-01
 - 06:00 Folded start alpha
 - 06:50 Folded start beta
 - 12:00 Reading anchor probe
+- 22:00 Reading late anchor probe
 - 23:10 Folded end alpha
 - 23:59 Folded end beta
 - 2026-10-01 23:30–2026-10-02 01:00 Cross midnight range
@@ -6566,14 +6567,18 @@ EOF
   run_driver scroll-text-visible "Reading anchor probe" 10
   run_driver assert-axis-disclosure-anchor "04:00–06:00|Reading anchor probe|12:00" 10
   run_driver assert-text "04:00–06:00 · Collapse" 10
-  run_driver assert-axis-disclosure-anchor "Next day 00:00–04:00|Reading anchor probe|12:00" 10
+  run_driver scroll-text-visible "Next day 00:00–04:00" 10
+  run_driver assert-axis-disclosure-anchor "Next day 00:00–04:00|Reading late anchor probe|22:00" 10
   run_driver assert-text "Next day 00:00–04:00 · Collapse" 10
+  run_driver scroll-text-visible "Reading anchor probe" 10
   run_driver assert-axis-disclosure-anchor "04:00–06:00|Reading anchor probe|12:00" 10
   run_driver assert-text "04:00–06:00 · Expand" 10
   run_driver assert-text "Next day 00:00–04:00 · Collapse" 10
-  run_driver assert-axis-disclosure-anchor "Next day 00:00–04:00|Reading anchor probe|12:00" 10
+  run_driver scroll-text-visible "Next day 00:00–04:00" 10
+  run_driver assert-axis-disclosure-anchor "Next day 00:00–04:00|Reading late anchor probe|22:00" 10
   run_driver assert-text "Next day 00:00–04:00 · Expand" 10
-  run_driver assert-axis-disclosure-anchor "Next day 00:00–04:00|Reading anchor probe|12:00" 10
+  run_driver scroll-text-visible "Next day 00:00–04:00" 10
+  run_driver assert-axis-disclosure-anchor "Next day 00:00–04:00|Reading late anchor probe|22:00" 10
   run_driver assert-text "2026-10-02" 10
   run_driver assert-axis-cards-fit "2026-10-01 23:30–2026-10-02 01:00 Cross midnight range|23:30–01:00 · 2026-10-02" 10
   [[ "$(shasum -a 256 "$record" | awk '{print $1}')" == "$record_hash" ]] || fail "timeline reading changed its source"
