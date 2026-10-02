@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+while read -r local_ref local_oid remote_ref remote_oid; do
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    printf '%s\n' 'main is protected. Push a feature branch and merge through a GitHub PR.' >&2
+    exit 1
+  fi
+done

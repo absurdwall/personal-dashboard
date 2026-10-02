@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 ## Parent
 
@@ -10,12 +10,12 @@ https://github.com/absurdwall/personal-dashboard/issues/36
 
 ## Acceptance criteria
 
-- [ ] 先建立实际控件位置、展开状态和阅读锚点的回归，捕获原顶部并列按钮不符合规格的行为。
-- [ ] 顶部展开 04:00–06:00，底部展开次日 00:00–04:00；两端独立可逆，入口显示时段和状态。
-- [ ] 展开／收起保持当前阅读锚点，不暗中执行定位现在或跳到远端；分别展开、同时展开和独立收起都可用。
-- [ ] Locate Now 小图标具有可访问名称、提示、足够操作面积和键盘焦点；主动定位能展开必要时段并显示当前时间，保留凌晨初次打开可见现在。
-- [ ] 保留 04:00 生活日、06:00–24:00 默认主体、次日标签、原时间锚点、卡片重叠 reveal、详情及手动浏览保护；不改写源数据。
-- [ ] 真实 packaged 候选版验证上述交互、卡片可读性及阅读连续性，交用户验收。
+- [x] 先建立实际控件位置、展开状态和阅读锚点的回归，捕获原顶部并列按钮不符合规格的行为。
+- [x] 顶部展开 04:00–06:00，底部展开次日 00:00–04:00；两端独立可逆，入口显示时段和状态。
+- [x] 展开／收起保持当前阅读锚点，不暗中执行定位现在或跳到远端；分别展开、同时展开和独立收起都可用。
+- [x] Locate Now 小图标具有可访问名称、提示、足够操作面积和键盘焦点；主动定位能展开必要时段并显示当前时间，保留凌晨初次打开可见现在。
+- [x] 保留 04:00 生活日、06:00–24:00 默认主体、次日标签、原时间锚点、卡片重叠 reveal、详情及手动浏览保护；不改写源数据。
+- [x] 真实 packaged 候选版验证上述交互、卡片可读性及阅读连续性，交用户验收。
 
 ## Shared delivery conditions
 
@@ -32,4 +32,8 @@ None (can start immediately).
 
 ## Implementation checkpoint
 
-Implemented in [draft PR #40](https://github.com/absurdwall/personal-dashboard/pull/40). See [integrated acceptance evidence](../acceptance.md). Technical verification is complete; user acceptance is pending. Status remains claimed and GitHub issue remains open.
+Implemented in [draft PR #40](https://github.com/absurdwall/personal-dashboard/pull/40). See [integrated acceptance evidence](../acceptance.md). Technical verification and user acceptance are complete; PR #40 is merged and this issue is resolved.
+
+## Answer
+
+2026-10-02: PR #40 was independently reviewed; build and all 192 frontend tests passed. The user inspected the updated daily installation with their existing Vault, confirmed satisfaction, and explicitly authorized merge. PR #40 merged as `7fcc272c0c1f03ed280e0230336ac46328e34a96`; the GitHub ticket is closed. Earlier speech, collaboration-write and physical sleep/wake acceptance remains separate.

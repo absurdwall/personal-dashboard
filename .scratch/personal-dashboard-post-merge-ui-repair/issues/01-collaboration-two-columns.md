@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 ## Parent
 
@@ -10,11 +10,11 @@ https://github.com/absurdwall/personal-dashboard/issues/36
 
 ## Acceptance criteria
 
-- [ ] 在含 PR #35 的基线复现缺少两栏过渡的症状，以实际渲染回归先捕获失败。
-- [ ] 宽→稍窄→极窄→放宽均显示正确内容；两栏对话占主要空间，辅助上下文可访问且不迫使整页横向滚动。
-- [ ] 自动响应与用户主动收起分开处理；旧偏好不会永久跳过两栏，已保存宽度被约束到有效范围，不清空全部偏好。
-- [ ] 保留拖动／键盘调宽、焦点、草稿、会话选择、重启恢复及中英文界面；automatic morning plan 仍是原会话流程。
-- [ ] 在真实 packaged Mac 候选版中操作同一宽度序列，记录构建、窗口尺寸和截图，交用户验收。
+- [x] 在含 PR #35 的基线复现缺少两栏过渡的症状，以实际渲染回归先捕获失败。
+- [x] 宽→稍窄→极窄→放宽均显示正确内容；两栏对话占主要空间，辅助上下文可访问且不迫使整页横向滚动。
+- [x] 自动响应与用户主动收起分开处理；旧偏好不会永久跳过两栏，已保存宽度被约束到有效范围，不清空全部偏好。
+- [x] 保留拖动／键盘调宽、焦点、草稿、会话选择、重启恢复及中英文界面；automatic morning plan 仍是原会话流程。
+- [x] 在真实 packaged Mac 候选版中操作同一宽度序列，记录构建、窗口尺寸和截图，交用户验收。
 
 ## Shared delivery conditions
 
@@ -31,4 +31,8 @@ None (can start immediately).
 
 ## Implementation checkpoint
 
-Implemented in [draft PR #40](https://github.com/absurdwall/personal-dashboard/pull/40). See [integrated acceptance evidence](../acceptance.md). Technical verification is complete; user acceptance is pending. Status remains claimed and GitHub issue remains open.
+Implemented in [draft PR #40](https://github.com/absurdwall/personal-dashboard/pull/40). See [integrated acceptance evidence](../acceptance.md). Technical verification and user acceptance are complete; PR #40 is merged and this issue is resolved.
+
+## Answer
+
+2026-10-02: PR #40 was independently reviewed; build and all 192 frontend tests passed. The user inspected the updated daily installation with their existing Vault, confirmed satisfaction, and explicitly authorized merge. PR #40 merged as `7fcc272c0c1f03ed280e0230336ac46328e34a96`; the GitHub ticket is closed. Earlier speech, collaboration-write and physical sleep/wake acceptance remains separate.

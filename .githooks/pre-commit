@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+
+if [ "$(git symbolic-ref --quiet --short HEAD || true)" = "main" ]; then
+  printf '%s\n' 'main is protected. Commit on a codex/ branch and merge through a GitHub PR.' >&2
+  exit 1
+fi
