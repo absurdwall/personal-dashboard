@@ -903,7 +903,7 @@ pub fn project_habit_corrections_with_recording_limit(
                     &source_by_key,
                     &local,
                     local_completion,
-                    today_date,
+                    recording_limit,
                 ),
             }
         })
@@ -969,7 +969,7 @@ pub fn project_uncatalogued_habit_corrections_with_recording_limit(
     message: impl Into<String>,
     local_completions: Vec<LocalHabitCompletion>,
 ) -> Result<HabitCorrectionView, String> {
-    let today_date = CalendarDate::parse(today)
+    CalendarDate::parse(today)
         .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
     let recording_limit = CalendarDate::parse(latest_recordable_date)
         .ok_or_else(|| "The recording date limit is invalid.".to_string())?;
@@ -998,7 +998,7 @@ pub fn project_uncatalogued_habit_corrections_with_recording_limit(
                 &source_by_key,
                 &[],
                 Some(completion),
-                today_date,
+                recording_limit,
             ),
         })
         .collect();
