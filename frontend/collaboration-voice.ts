@@ -1,3 +1,37 @@
+export type CollaborationVoiceLanguage = "zh-CN" | "en-US";
+
+const VOICE_LANGUAGE_PREFERENCE = "personal-dashboard.collaboration.voice-language";
+
+// Keep the actual installed identifier for IPC; normalize only to compare aliases.
+export function collaborationVoiceLocale(
+  language: CollaborationVoiceLanguage,
+  locales: readonly Readonly<{ id: string }>[],
+): string | undefined {
+  if (language !== "zh-CN" && language !== "en-US") return undefined;
+  const aliases = language === "zh-CN" ? ["zh-cn", "zh-hans-cn", "zh-hans"] : ["en-us"];
+  for (const alias of aliases) {
+    const installed = locales.find(({ id }) => id.replaceAll("_", "-").toLowerCase() === alias);
+    if (installed) return installed.id;
+  }
+  return undefined;
+}
+
+export function readCollaborationVoiceLanguage(
+  storage: Pick<Storage, "getItem"> | undefined,
+): CollaborationVoiceLanguage | undefined {
+  try {
+    const language = storage?.getItem(VOICE_LANGUAGE_PREFERENCE);
+    return language === "zh-CN" || language === "en-US" ? language : undefined;
+  } catch { return undefined; }
+}
+
+export function rememberCollaborationVoiceLanguage(
+  storage: Pick<Storage, "setItem"> | undefined,
+  language: CollaborationVoiceLanguage,
+): void {
+  try { storage?.setItem(VOICE_LANGUAGE_PREFERENCE, language); } catch { /* Preference storage may be unavailable. */ }
+}
+
 export type CollaborationVoiceTarget = Readonly<{
   sessionId: string;
   targetDate: string;
@@ -35,7 +69,8 @@ export type CollaborationVoiceFailure =
   | "capture-unavailable"
   | "recording-failed"
   | "empty-recording"
-  | "recognition-failed";
+  | "recognition-failed"
+  | "locale-unavailable";
 
 export interface CollaborationVoiceRecording {
   start(onComplete: (audio: Blob) => void, onFailure: (error: unknown) => void): void;
@@ -206,8 +241,10 @@ export class CollaborationVoiceInputController {
       this.#active = null;
       this.handlers.onTranscript(active.target, transcript);
       this.handlers.onState("idle", active.target);
-    } catch {
-      this.#fail(active, "recognition-failed");
+    } catch (error) {
+      const reason = String(error);
+      this.#fail(active, reason.includes("locale_not_installed") || reason.includes("locale_unavailable")
+        ? "locale-unavailable" : "recognition-failed");
     }
   }
 }

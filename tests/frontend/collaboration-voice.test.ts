@@ -5,6 +5,9 @@ import {
   beginVoiceTranscriptSave,
   BrowserCollaborationVoiceRuntime,
   collaborationVoiceControls,
+  collaborationVoiceLocale,
+  readCollaborationVoiceLanguage,
+  rememberCollaborationVoiceLanguage,
   CollaborationVoiceInputController,
   enqueueCollaborationDraftWrite,
   voiceDraftKey,
@@ -349,4 +352,66 @@ test("browser recording keeps its input track alive until the final encoded chun
   assert.ok(audio.size > 0, "the final dataavailable chunk must be included");
   assert.equal(audio.type, "audio/mp4; codecs=mp4a.40.2");
   assert.equal(trackStopped, true, "onstop releases the microphone tracks after flush");
+});
+
+
+test("target languages map only to actual Mandarin and US English capabilities", () => {
+  const locales = [{ id: "en-AU" }, { id: "en_GB" }, { id: "zh-TW" }, { id: "zh-HK" }];
+  assert.equal(collaborationVoiceLocale("en-US", locales), undefined);
+  assert.equal(collaborationVoiceLocale("zh-CN", locales), undefined);
+  assert.equal(collaborationVoiceLocale("en-US", [...locales, { id: "en_US" }]), "en_US");
+  assert.equal(collaborationVoiceLocale("zh-CN", [...locales, { id: "zh_Hans_CN" }]), "zh_Hans_CN");
+  assert.equal(collaborationVoiceLocale("zh-CN", [{ id: "zh-Hans" }, { id: "zh-CN" }]), "zh-CN");
+});
+
+test("voice language preference survives restart without adopting an unsupported saved variant", () => {
+  const stored = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => stored.get(key) ?? null,
+    setItem: (key: string, value: string) => { stored.set(key, value); },
+  };
+  assert.equal(readCollaborationVoiceLanguage(storage), undefined);
+  rememberCollaborationVoiceLanguage(storage, "zh-CN");
+  assert.equal(readCollaborationVoiceLanguage(storage), "zh-CN");
+  rememberCollaborationVoiceLanguage(storage, "en-US");
+  assert.equal(readCollaborationVoiceLanguage(storage), "en-US");
+  assert.equal(readCollaborationVoiceLanguage({ getItem: () => "en-AU" }), undefined);
+  assert.equal(readCollaborationVoiceLanguage({ getItem: () => { throw new Error("denied"); } }), undefined);
+  assert.doesNotThrow(() => rememberCollaborationVoiceLanguage({ setItem: () => { throw new Error("denied"); } }, "zh-CN"));
+});
+
+test("a selected language becoming unavailable reports failure and preserves the draft", async () => {
+  const { runtime, controller, failures, transcripts } = harness();
+  runtime.transcription = async () => { throw "locale_not_installed"; };
+  const target = { sessionId: "origin", targetDate: "2026-10-01" };
+  await controller.start(target, "zh-CN");
+  controller.stop();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(failures, [{ target, failure: "locale-unavailable" }]);
+  assert.deepEqual(transcripts, []);
+  assert.equal(controller.state, "idle");
+});
+
+test("cancelling during transcription ignores its later result", async () => {
+  const { runtime, controller, transcripts } = harness();
+  let finish!: (text: string) => void;
+  runtime.transcription = () => new Promise((resolve) => { finish = resolve; });
+  await controller.start({ sessionId: "origin", targetDate: "2026-10-01" }, "en-US");
+  controller.stop();
+  controller.cancel();
+  finish("late text");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(transcripts, []);
+  assert.equal(controller.state, "idle");
+});
+
+
+test("an empty successful recognizer response is a failure and never changes a draft", async () => {
+  const { runtime, controller, failures, transcripts } = harness();
+  runtime.transcription = async () => "  ";
+  await controller.start({ sessionId: "origin", targetDate: "2026-10-01" }, "zh-CN");
+  controller.stop();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(failures.map(({ failure }) => failure), ["recognition-failed"]);
+  assert.deepEqual(transcripts, []);
 });
