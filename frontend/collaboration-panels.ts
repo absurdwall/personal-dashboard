@@ -3,6 +3,7 @@ export type PanelPreferences = {
   history: { expanded: boolean; width: number };
   context: { expanded: boolean; width: number };
   narrow?: { history: boolean; context: boolean };
+  compact?: { context: boolean };
 };
 type Side = "history" | "context";
 const preferenceKey = "personal-dashboard.collaboration-panels.v1";
@@ -19,6 +20,9 @@ export function readPanelPreferences(value: string | null): PanelPreferences {
     if (typeof saved?.narrow?.history === "boolean" && typeof saved?.narrow?.context === "boolean") {
       result.narrow = { history: saved.narrow.history, context: saved.narrow.context };
     }
+    if (typeof saved?.compact?.context === "boolean") {
+      result.compact = { context: saved.compact.context };
+    }
     for (const side of ["history", "context"] as const) {
       const panel = saved?.[side];
       if (typeof panel?.expanded === "boolean") result[side].expanded = panel.expanded;
@@ -30,22 +34,30 @@ export function readPanelPreferences(value: string | null): PanelPreferences {
   return result;
 }
 
-/** Reserve a usable conversation before distributing auxiliary width. */
+/** Width-driven disclosures are separate from the user's roomy-window choices. */
 export function panelGeometry(available: number, preferences: PanelPreferences) {
-  const narrow = available < 900;
-  const visible = (["history", "context"] as const).filter(side => preferences[side].expanded);
+  const mode = available < 556 ? "single" : available < 900 ? "two" : "three";
+  const narrow = mode === "single";
+  const historyExpanded = narrow ? preferences.narrow?.history ?? false : preferences.history.expanded;
+  const contextExpanded = narrow ? preferences.narrow?.context ?? false
+    : mode === "two" ? preferences.compact?.context ?? false : preferences.context.expanded;
+  const visible = (["history", "context"] as const).filter(side =>
+    side === "history" ? historyExpanded && !narrow : contextExpanded && mode === "three");
   const separators = visible.length * 16;
   const budget = Math.max(0, available - 360 - separators);
+  // Keep Sessions compact in the middle mode, even for oversized saved widths.
+  const requested = { history: mode === "two" ? Math.min(260, preferences.history.width) : preferences.history.width,
+    context: preferences.context.width };
   const base = visible.reduce((sum, side) => sum + minimum[side], 0);
-  const extra = visible.reduce((sum, side) => sum + preferences[side].width - minimum[side], 0);
+  const extra = visible.reduce((sum, side) => sum + requested[side] - minimum[side], 0);
   const extraScale = extra > 0 ? Math.min(1, Math.max(0, budget - base) / extra) : 1;
-  const width = (side: Side) => preferences[side].expanded
-    ? minimum[side] + (preferences[side].width - minimum[side]) * extraScale : 0;
+  const width = (side: Side) => visible.includes(side)
+    ? minimum[side] + (requested[side] - minimum[side]) * extraScale : 0;
   return {
-    narrow,
-    history: width("history"),
-    context: width("context"),
-    budget,
+    mode, narrow, historyExpanded, contextExpanded,
+    history: width("history"), context: width("context"), budget,
+    historyMaximum: mode === "two" ? Math.min(260, budget) : Math.min(640, budget - width("context")),
+    contextMaximum: Math.min(640, budget - width("history")),
   };
 }
 
@@ -67,41 +79,44 @@ export function initializeCollaborationPanels(): void {
     history: document.getElementById("collaboration-history-resizer")!,
     context: document.getElementById("collaboration-context-resizer")!,
   };
-  // Narrow windows retain separate disclosure choices, preserving roomy-window preferences.
-  const narrowExpanded = preferences.narrow ?? { history: false, context: false };
+  // Old narrow defaults apply only when two columns genuinely no longer fit.
+  const narrowExpanded = preferences.narrow ??= { history: false, context: false };
+  const compactExpanded = preferences.compact ??= { context: false };
   const focusTargets: Partial<Record<Side, HTMLElement>> = {};
   let available = layout.getBoundingClientRect().width;
   let geometry = panelGeometry(available, preferences);
   const save = () => {
-    try { localStorage.setItem(preferenceKey, JSON.stringify({ ...preferences, narrow: narrowExpanded })); } catch { /* Layout remains usable. */ }
+    try { localStorage.setItem(preferenceKey, JSON.stringify(preferences)); } catch { /* Layout remains usable. */ }
   };
   const render = () => {
     geometry = panelGeometry(available, preferences);
     layout.dataset.narrow = String(geometry.narrow);
+    layout.dataset.columns = geometry.mode;
     for (const side of sides) {
-      const expanded = geometry.narrow ? narrowExpanded[side] : preferences[side].expanded;
+      const expanded = side === "history" ? geometry.historyExpanded : geometry.contextExpanded;
       if (!expanded && panels[side].contains(document.activeElement)) {
         focusTargets[side] = document.activeElement as HTMLElement;
         toggles[side].focus();
       }
       panels[side].hidden = !expanded;
       toggles[side].setAttribute("aria-expanded", String(expanded));
-      resizers[side].hidden = !expanded || geometry.narrow;
-      const maxWidth = Math.max(minimum[side], geometry.budget - (side === "history" ? geometry.context : geometry.history));
+      resizers[side].hidden = !expanded || geometry.narrow || (side === "context" && geometry.mode === "two");
+      const maxWidth = Math.max(minimum[side], side === "history" ? geometry.historyMaximum : geometry.contextMaximum);
       resizers[side].setAttribute("aria-valuemin", String(minimum[side]));
       resizers[side].setAttribute("aria-valuemax", String(Math.round(maxWidth)));
       resizers[side].setAttribute("aria-valuenow", String(Math.round(geometry[side])));
     }
     if (geometry.narrow) layout.style.gridTemplateColumns = "minmax(0, 1fr)";
     else layout.style.gridTemplateColumns = [
-      preferences.history.expanded ? `${geometry.history}px 16px` : "",
+      geometry.historyExpanded ? `${geometry.history}px 16px` : "",
       "minmax(0, 1fr)",
-      preferences.context.expanded ? `16px ${geometry.context}px` : "",
+      geometry.context > 0 ? `16px ${geometry.context}px` : "",
     ].filter(Boolean).join(" ");
   };
   for (const side of sides) {
     toggles[side].addEventListener("click", () => {
       if (geometry.narrow) { narrowExpanded[side] = !narrowExpanded[side]; save(); }
+      else if (geometry.mode === "two" && side === "context") { compactExpanded.context = !compactExpanded.context; save(); }
       else { preferences[side].expanded = !preferences[side].expanded; save(); }
       render();
       if (!panels[side].hidden) {
@@ -111,8 +126,8 @@ export function initializeCollaborationPanels(): void {
     });
     const resize = (width: number) => {
       const other = side === "history" ? "context" : "history";
-      const max = Math.min(640, geometry.budget - geometry[other]);
-      if (preferences[other].expanded) preferences[other].width = geometry[other];
+      const max = side === "history" ? geometry.historyMaximum : geometry.contextMaximum;
+      if (geometry[other] > 0) preferences[other].width = geometry[other];
       preferences[side].width = Math.max(minimum[side], Math.min(max, width));
       render();
     };

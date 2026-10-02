@@ -9586,3 +9586,8 @@ button.habit-cell:focus-visible {
 }
 .today-continuous-axis { --today-axis-gutter: 5rem; }
 .today-time-axis-actions { flex-wrap: wrap; }
+
+/* In the middle layout Sessions stays beside chat; context is disclosed below. */
+.collaboration-layout[data-columns="two"] .collaboration-context-pane { grid-column: 1 / -1; grid-row: 2; margin-top: 0.65rem; }
+.collaboration-layout[data-columns="two"] .collaboration-session-pane { padding: 0.65rem; }
+.collaboration-layout[data-columns="two"] .collaboration-session-button { overflow-wrap: anywhere; }
