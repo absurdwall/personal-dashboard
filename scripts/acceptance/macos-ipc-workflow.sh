@@ -2570,6 +2570,9 @@ EOF
   run_driver set-size "680x760" 10
   run_driver press "查看并补记 2026-09-07 的本地习惯完成" 10
   run_driver wait-active-text "所选日期 · 2026-09-07" 20
+  run_driver assert-window-visible "本地习惯更正" 10
+  run_driver assert-window-visible "2026-09-07" 10
+  run_driver assert-window-visible "$completion_label" 10
 
   current_step="selecting a prior-week correction date from Habits"
   run_driver set-size "1120x760" 10
@@ -2581,6 +2584,8 @@ EOF
   run_driver assert-active-text "查看并补记 2026-08-31 的本地习惯完成"
   run_driver press "查看并补记 2026-08-31 的本地习惯完成" 10
   run_driver wait-active-text "所选日期 · 2026-08-31" 20
+  run_driver assert-window-visible "本地习惯更正" 10
+  run_driver assert-window-visible "2026-08-31" 10
 
   current_step="verifying today's Habits cell has no historical correction action"
   run_driver press "习惯" 10
@@ -2621,6 +2626,10 @@ EOF
   run_driver scroll-text-visible "2026-09-08T00:30-04:00 · 撤回本地完成" 10
   run_driver press "$completion_label" 10
   run_driver wait-active-text "本地完成已保存到所选 Vault" 20
+  run_driver assert-state "$completion_label|selected" 10
+  run_driver assert-active-text "本地更正记录 · 3"
+  run_driver press "刷新" 10
+  run_driver wait-active-text "所选日期 · 2026-09-07" 20
   run_driver assert-state "$completion_label|selected" 10
   run_driver assert-active-text "本地更正记录 · 3"
   run_driver scroll-text-visible "2026-09-08T00:30-04:00 · 补记本地完成" 10
@@ -2672,6 +2681,11 @@ EOF
   run_driver press-contains "2026-09-07 · Reset living space" 10
   run_driver wait-active-text "2026-09-07 · Reset living space" 20
   run_driver assert-active-text "Review and record local habit completion for 2026-09-07"
+  run_driver press "Review and record local habit completion for 2026-09-07" 10
+  run_driver wait-active-text "Selected date · 2026-09-07" 20
+  run_driver assert-window-visible "Local habit corrections" 10
+  run_driver assert-window-visible "2026-09-07" 10
+  run_driver assert-active-text "Local correction history · 3"
   run_driver press "Today" 10
   run_driver wait-active-text "Today · 2026-09-08" 20
   run_driver assert-active-absent-text "Local habit corrections"
