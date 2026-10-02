@@ -181,9 +181,12 @@ fn collaboration_context(
 #[tauri::command]
 fn collaboration_create_session(
     application: State<'_, collaboration::CollaborationApplication>,
-    date: String,
+    date: Option<String>,
 ) -> Result<collaboration::CollaborationSessionView, String> {
-    application.create_session(&date)
+    match date {
+        Some(date) => application.create_session(&date),
+        None => application.create_default_session(),
+    }
 }
 
 #[tauri::command]
