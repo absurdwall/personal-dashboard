@@ -9750,7 +9750,7 @@ mod collaboration_memory_tests {
             ("04:00", "07:00", false),
             ("07:00", "07:00", true),
         ] {
-            assert_eq!(daily_plan_schedule_is_due(now, scheduled).unwrap(), due);
+            assert_eq!(super::daily_plan_schedule_is_due(now, scheduled).unwrap(), due);
         }
     }
 
