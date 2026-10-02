@@ -877,6 +877,18 @@ fn explicit_current_natural_habit_date_is_writable_before_four_am() {
         .is_err());
     let saved = application.set_local_habit_completion(input).unwrap();
     assert_eq!(saved.habit("reset").unwrap().today.date, "2026-10-01");
+    let selected = application.read_date("2026-10-02").unwrap();
+    let reset = selected
+        .habit_corrections
+        .habits
+        .iter()
+        .find(|habit| habit.key == "reset")
+        .unwrap();
+    assert!(reset.cell.counts_as_completion);
+    assert_eq!(
+        reset.cell.local_completion_state,
+        HabitLocalCompletionState::Completed
+    );
     let document = fs::read_to_string(completion_path(vault.path())).unwrap();
     assert!(document.contains("2026-10-02"));
     assert!(document.contains("2026-10-02T01:00-04:00"));
