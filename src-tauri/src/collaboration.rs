@@ -1852,7 +1852,7 @@ impl CollaborationApplication {
     }
 
     fn automation_view(&self) -> Result<DailyPlanAutomationView, String> {
-        let date = self.clock.current_date();
+        let date = self.clock.current_lived_date();
         let time = self.clock.current_time();
         validate_date(&date)?;
         validate_daily_plan_time(&time)?;
@@ -2060,7 +2060,7 @@ impl CollaborationApplication {
             "Generate and save the automatic first-draft plan for {date}. Scheduled time: {scheduled_time}. Current local time: {}. Use only the supplied current Daily Record, Tasks, habit context, and available background. Do not create or change Tasks. Save only an InitialPlan. Do not claim past planned time happened; plan only the remaining day and preserve unknowns as unknown.",
             self.clock.current_time()
         );
-        let view = self.automation_view()?;
+        let message_date = self.clock.current_date();
         let queue_order = self.update_state(|state| {
             let existing_index = state
                 .daily_plan_automation_runs
@@ -2080,8 +2080,8 @@ impl CollaborationApplication {
                 id: session_id.clone(),
                 vault_key: Some(vault_key.to_owned()),
                 title: format!("Automatic morning plan · {date}"),
-                created_date: view.date.clone(),
-                activity_dates: vec![date.to_owned()],
+                created_date: message_date.clone(),
+                activity_dates: vec![message_date.clone()],
                 last_activity_at: now.clone(),
                 target_date: date.to_owned(),
                 run_id: Some(execution_id.clone()),
@@ -2096,7 +2096,7 @@ impl CollaborationApplication {
                     id: message_id.clone(),
                     role: "user".into(),
                     text: user_text.clone(),
-                    message_date: view.date.clone(),
+                    message_date: message_date.clone(),
                     target_date: date.to_owned(),
                     created_at: now.clone(),
                     execution_id: Some(execution_id.clone()),
@@ -4394,7 +4394,7 @@ impl CollaborationApplication {
                 );
             }
             validate_date(target_date)?;
-            if self.clock.current_date() != target_date {
+            if self.clock.current_lived_date() != target_date {
                 return Err(
                     "The automatic morning plan is no longer targeting today. Nothing was saved."
                         .into(),
@@ -6121,6 +6121,19 @@ impl CollaborationApplication {
             return;
         }
         if automatic_plan {
+            if self.clock.current_lived_date() != target_date {
+                let message = "The lived day changed while this automatic request was queued. Its original target was preserved; no model turn was sent and no plan was saved.";
+                self.finish_error(vault_key, session_id, run_id, message.into());
+                let _ = self.record_daily_plan_automation_state(
+                    vault_key,
+                    target_date,
+                    "needsReview",
+                    message,
+                    Some(session_id.to_owned()),
+                    Some(run_id.to_owned()),
+                );
+                return;
+            }
             match self.automatic_plan_target_exists(vault_key, target_date) {
                 Ok(true) => {
                     self.finish_automatic_plan_existing(
@@ -6366,9 +6379,15 @@ impl CollaborationApplication {
             reasoning_effort: selected_reasoning_effort,
             user_text: user_text.to_owned(),
             context,
-            dates: collaboration_date_context(self.clock.as_ref(), target_date, session.messages.iter()
-                .find(|message| message.execution_id.as_deref() == Some(run_id))
-                .map(|message| (message.created_at.as_str(), message.message_date.as_str()))),
+            dates: collaboration_date_context(
+                self.clock.as_ref(),
+                target_date,
+                session
+                    .messages
+                    .iter()
+                    .find(|message| message.execution_id.as_deref() == Some(run_id))
+                    .map(|message| (message.created_at.as_str(), message.message_date.as_str())),
+            ),
             memory,
             working_directory: self.working_directory.clone(),
         };
@@ -7411,7 +7430,14 @@ fn validate_daily_plan_time(value: &str) -> Result<(), String> {
 fn daily_plan_schedule_is_due(current_time: &str, scheduled_time: &str) -> Result<bool, String> {
     validate_daily_plan_time(current_time)?;
     validate_daily_plan_time(scheduled_time)?;
-    Ok(current_time >= scheduled_time)
+    // Order wall-clock times within the lived day, starting at 04:00.
+    // Elapsed-hour subtraction would give the wrong boundary on DST days.
+    let lived_minute = |time: &str| {
+        let hour = time[..2].parse::<u16>().expect("validated hour");
+        let minute = time[3..].parse::<u16>().expect("validated minute");
+        (hour * 60 + minute + 24 * 60 - 4 * 60) % (24 * 60)
+    };
+    Ok(lived_minute(current_time) >= lived_minute(scheduled_time))
 }
 
 fn daily_record_has_plan(view: &TodayView) -> bool {
@@ -9710,6 +9736,21 @@ mod collaboration_memory_tests {
             external_app_ids: Vec::new(),
             external_actions: Vec::new(),
             pending_external_approval: None,
+        }
+    }
+
+    #[test]
+    fn automatic_schedule_orders_time_within_the_four_am_lived_day() {
+        for (now, scheduled, due) in [
+            ("00:29", "00:30", false),
+            ("00:30", "00:30", true),
+            ("03:59", "00:30", true),
+            ("04:00", "00:30", false),
+            ("01:00", "07:00", true),
+            ("04:00", "07:00", false),
+            ("07:00", "07:00", true),
+        ] {
+            assert_eq!(daily_plan_schedule_is_due(now, scheduled).unwrap(), due);
         }
     }
 
