@@ -11,7 +11,6 @@ import {
   refreshTodayPresentation,
 } from "./today-refresh.js";
 import {
-  axisGeometry,
   axisMarkerLayout,
   axisOverlapPlacements,
   clockResultMatchesSession,
@@ -19,8 +18,7 @@ import {
   hourTickIsClearFromNow,
   hourTickMinutes,
   locateNow,
-  minuteOfDay,
-  minutePosition,
+  livedAxisMinute,
   onManualScroll,
   stripLeadingAxisTimeLabel,
   type TodayAxisFollowState,
@@ -4742,8 +4740,23 @@ function todayTimelineItem(block: MorningBlockView): HTMLLIElement {
   return item;
 }
 
+let todayAxisEarlyExpanded = false;
+let todayAxisLateExpanded = false;
+let todayAxisRenderedDate: string | null = null;
+function axisBounds(): readonly [number, number] {
+  return [todayAxisEarlyExpanded ? 240 : 360, todayAxisLateExpanded ? 1680 : 1440];
+}
+function minutePosition(minute: number): number {
+  const [start, end] = axisBounds();
+  return (minute - start) / (end - start);
+}
+function nextAxisDate(date: string): string {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + 1);
+  return value.toISOString().slice(0, 10);
+}
 function formatAxisMinute(minute: number): string {
-  if (minute === 1440) return "24:00";
+  minute %= 1440;
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 }
 
@@ -4756,7 +4769,9 @@ function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): s
     return t("today.unlocatedLabel");
   }
   const start = formatAxisMinute(entry.startMinute);
-  return entry.endMinute === null ? start : `${start}–${formatAxisMinute(entry.endMinute)}`;
+  const label = entry.endMinute === null ? start : `${start}–${formatAxisMinute(entry.endMinute)}`;
+  return entry.startMinute >= 1440 || (entry.endMinute ?? 0) > 1440
+    ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
 }
 
 function axisEntryMetadataCopyKeys(
@@ -4801,12 +4816,12 @@ function axisEntryDetails(
   if (entry.startMinute === null) time.className = "today-axis-entry-time-label";
   time.textContent = axisEntryTimeLabel(entry, lane);
   if (entry.startMinute !== null) {
-    time.setAttribute("datetime", `${entry.sourceDate}T${formatAxisMinute(entry.startMinute)}`);
+    time.setAttribute("datetime", `${entry.startMinute >= 1440 ? nextAxisDate(currentTodayView?.date ?? entry.sourceDate) : (currentTodayView?.date ?? entry.sourceDate)}T${formatAxisMinute(entry.startMinute)}`);
   }
   const excerpt = document.createElement("span");
   excerpt.textContent = entry.text;
   summary.append(time, excerpt);
-  if (entry.continuesFromPreviousDay || entry.continuesIntoNextDay) {
+  {
     const continuation = document.createElement("span");
     continuation.className = "today-axis-entry-summary-metadata";
     const sourceDate = document.createElement("span");
@@ -4877,7 +4892,9 @@ function renderTodayTimeAxisEntries(
     detailElements.set(index, axisEntryDetails(entry, entry.lane, index));
   });
   todayTimedDetails.replaceChildren(...ordered.map(({ index }) => detailElements.get(index)!));
-  const timedEntries = ordered.filter(({ entry }) => entry.startMinute !== null);
+  const [visibleStart, visibleEnd] = axisBounds();
+  const timedEntries = ordered.filter(({ entry }) => entry.startMinute !== null &&
+    entry.startMinute < visibleEnd && (entry.endMinute ?? entry.startMinute) >= visibleStart);
   const stackPlacements = axisOverlapPlacements(
     timedEntries.map(({ entry }) => ({
       startMinute: entry.startMinute!,
@@ -4889,7 +4906,9 @@ function renderTodayTimeAxisEntries(
   );
   const markersByStack = new Map<number, HTMLLIElement[]>();
   todayTimedEvents.replaceChildren(
-    ...ordered.flatMap(({ entry, index }) => {
+    ...timedEntries.flatMap(({ entry: original, index }) => {
+      const entry = { ...original, startMinute: Math.max(original.startMinute!, visibleStart),
+        endMinute: original.endMinute === null ? null : Math.min(original.endMinute, visibleEnd) };
       if (entry.startMinute === null) return [];
       const durationMinutes = entry.endMinute === null ? null : entry.endMinute - entry.startMinute;
       const markerLayout = axisMarkerLayout({
@@ -4909,14 +4928,14 @@ function renderTodayTimeAxisEntries(
       marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);
       marker.style.setProperty(
         "--axis-label-center",
-        `${minutePosition(markerLayout.centerMinute) * 100}%`,
+        `${minutePosition(Math.min(Math.max(markerLayout.centerMinute, visibleStart + 24), visibleEnd - 24)) * 100}%`,
       );
       const stackOffset = Math.min(placement.stackIndex, 4) * 5;
       marker.style.setProperty("--axis-stack-offset", `${stackOffset}px`);
       marker.style.zIndex = String(3 + placement.stackIndex);
       marker.style.setProperty("--axis-stack-index", String(placement.stackIndex));
       marker.style.setProperty("--axis-stack-size", String(placement.stackSize));
-      marker.style.height = `${minutePosition(markerLayout.heightMinutes) * 100}%`;
+      marker.style.height = `${markerLayout.heightMinutes / (visibleEnd - visibleStart) * 100}%`;
       marker.dataset.stackId = String(placement.stackId);
       marker.classList.toggle("is-stacked", placement.stackSize > 1);
       marker.classList.toggle("is-centered-label", markerLayout.isCenteredLabel);
@@ -4925,7 +4944,7 @@ function renderTodayTimeAxisEntries(
       const link = document.createElement("a");
       link.href = `#today-axis-${entry.lane}-entry-${index}`;
       link.className = "today-axis-marker-link";
-      link.dataset.axisItemTime = axisEntryTimeLabel(entry, entry.lane);
+      link.dataset.axisItemTime = axisEntryTimeLabel(original, original.lane);
       link.dataset.axisItemText = entry.text;
       link.dataset.axisMetadataCopyKeys = JSON.stringify(
         axisEntryMetadataCopyKeys(entry, entry.lane),
@@ -4933,15 +4952,15 @@ function renderTodayTimeAxisEntries(
       updateTodayAxisMarkerAccessibleName(link, currentInterfaceLanguage);
       const timeLabel = document.createElement("span");
       timeLabel.className = "today-axis-marker-time";
-      timeLabel.textContent = axisEntryTimeLabel(entry, entry.lane);
+      timeLabel.textContent = axisEntryTimeLabel(original, original.lane);
       const title = document.createElement("span");
       title.className = "today-axis-marker-title";
       title.textContent = entry.task
         ? entry.text
         : stripLeadingAxisTimeLabel(
           entry.text,
-          formatAxisMinute(entry.startMinute),
-          entry.endMinute === null ? null : formatAxisMinute(entry.endMinute),
+          formatAxisMinute(original.startMinute!),
+          original.endMinute === null ? null : formatAxisMinute(original.endMinute),
         );
       const metadata = document.createElement("span");
       metadata.className = "today-axis-marker-source-status";
@@ -4987,25 +5006,23 @@ function renderTodayTimeAxisEntries(
     if (members.length > 1) members[0].classList.add("is-stack-front");
   }
   todayTimedDurations.replaceChildren(
-    ...ordered.flatMap(({ entry, index }) => {
+    ...timedEntries.flatMap(({ entry: original, index }) => {
+      const entry = { ...original, startMinute: Math.max(original.startMinute!, visibleStart),
+        endMinute: original.endMinute === null ? null : Math.min(original.endMinute, visibleEnd) };
       if (entry.startMinute === null) return [];
       const markerLayout = axisMarkerLayout({
         startMinute: entry.startMinute,
         endMinute: entry.endMinute,
       });
       if (entry.endMinute !== null && !markerLayout.isCenteredLabel) return [];
-      const geometry = axisGeometry({
-        startMinute: entry.startMinute,
-        endMinute: entry.endMinute,
-      });
       const duration = document.createElement("span");
       duration.className = entry.endMinute === null ? "today-axis-point" : "today-axis-range";
       duration.classList.add(
         entry.lane === "arrangement" ? "is-arrangement" :
           entry.lane === "facts" ? "is-fact" : "is-task",
       );
-      duration.style.top = `${geometry.top * 100}%`;
-      if (entry.endMinute !== null) duration.style.height = `${geometry.height * 100}%`;
+      duration.style.top = `${minutePosition(entry.startMinute) * 100}%`;
+      if (entry.endMinute !== null) duration.style.height = `${(entry.endMinute! - entry.startMinute) / (visibleEnd - visibleStart) * 100}%`;
       return [duration];
     }),
   );
@@ -5028,7 +5045,7 @@ function renderTodayTimeAxisEntries(
 
 function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTime): void {
   if (!todayContinuousAxis) return;
-  const currentMinute = currentTime ? minuteOfDay(currentTime) : null;
+  const currentMinute = currentTime ? livedAxisMinute(currentTime) : null;
   const showNow = view.isToday && currentMinute !== null;
   todayContinuousAxis.dataset.hasNow = String(showNow);
   todayContinuousAxis.classList.toggle("is-today", showNow);
@@ -5047,7 +5064,7 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
   });
   todayHourTicks?.querySelectorAll<HTMLElement>(".today-hour-tick").forEach((tick) => {
     const tickMinute = Number(tick.dataset.minute);
-    tick.hidden = !Number.isInteger(tickMinute) || !hourTickIsClearFromNow(tickMinute, showNow ? currentMinute : null);
+    tick.hidden = tickMinute < axisBounds()[0] || tickMinute > axisBounds()[1] || !Number.isInteger(tickMinute) || !hourTickIsClearFromNow(tickMinute, showNow ? currentMinute : null);
   });
   if (todayLocateNowButton) todayLocateNowButton.hidden = !showNow;
   if (showNow && currentMinute !== null && todayCurrentTime) {
@@ -5055,8 +5072,8 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
       "--today-now-position",
       `${minutePosition(currentMinute) * 100}%`,
     );
-    todayCurrentTime.textContent = currentTime;
-    todayCurrentTime.dateTime = `${view.date}T${currentTime}`;
+    todayCurrentTime.textContent = currentMinute >= 1440 ? `${nextAxisDate(view.date)} ${currentTime}` : currentTime;
+    todayCurrentTime.dateTime = `${currentMinute >= 1440 ? nextAxisDate(view.date) : view.date}T${currentTime}`;
     todayCurrentTime.hidden = false;
   } else if (todayCurrentTime) {
     todayCurrentTime.hidden = true;
@@ -5067,6 +5084,16 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
 
 function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): void {
   if (!todayContinuousAxis) return;
+  if (todayAxisRenderedDate !== view.date) {
+    todayAxisRenderedDate = view.date;
+    const now = view.isToday && currentTime ? livedAxisMinute(currentTime) : null;
+    todayAxisEarlyExpanded = now !== null && now < 360;
+    todayAxisLateExpanded = now !== null && now >= 1440;
+  }
+  todayContinuousAxis.style.setProperty("--today-axis-plot-height", `calc(${(axisBounds()[1] - axisBounds()[0]) / 60} * var(--today-axis-hour-height))`);
+  for (const [id, expanded] of [["today-expand-early", todayAxisEarlyExpanded], ["today-expand-late", todayAxisLateExpanded]] as const) {
+    document.getElementById(id)?.setAttribute("aria-expanded", String(expanded));
+  }
   todayHourTicks?.replaceChildren(
     ...hourTickMinutes().map((minute) => {
       const tick = document.createElement("span");
@@ -5074,6 +5101,11 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
       tick.dataset.minute = String(minute);
       tick.style.top = `${minutePosition(minute) * 100}%`;
       tick.textContent = formatAxisMinute(minute);
+      if (minute >= 1440) {
+        const dateLabel = document.createElement("small");
+        dateLabel.textContent = nextAxisDate(view.date);
+        tick.prepend(dateLabel);
+      }
       tick.setAttribute("aria-hidden", "true");
       return tick;
     }),
@@ -6266,6 +6298,12 @@ async function refreshToday(
 }
 
 function scrollTodayAxisToNow(): void {
+  const now = currentTodayView?.isToday && currentTodayView.currentTime ? livedAxisMinute(currentTodayView.currentTime) : null;
+  if (now !== null && currentTodayView && ((now < 360 && !todayAxisEarlyExpanded) || (now >= 1440 && !todayAxisLateExpanded))) {
+    if (now < 360) todayAxisEarlyExpanded = true;
+    if (now >= 1440) todayAxisLateExpanded = true;
+    renderTodayTimeAxis(currentTodayView);
+  }
   if (
     currentWorkspaceDestination !== "today" ||
     !currentTodayView?.isToday ||
@@ -11198,3 +11236,12 @@ window.addEventListener("focus", () => {
 void connectToApplication();
 
 export {};
+
+for (const id of ["today-expand-early", "today-expand-late"]) {
+  document.getElementById(id)?.addEventListener("click", () => {
+    if (id === "today-expand-early") todayAxisEarlyExpanded = !todayAxisEarlyExpanded;
+    else todayAxisLateExpanded = !todayAxisLateExpanded;
+    todayAxisFollowState = onManualScroll(todayAxisFollowState);
+    if (currentTodayView) renderTodayTimeAxis(currentTodayView);
+  });
+}

@@ -4780,6 +4780,8 @@ date: 2026-08-10
 ## 今天的大致安排
 
 - 2026-08-10 23:30–2026-08-11 00:30 跨午夜合成安排。
+- 2026-08-11 03:59 次日凌晨可见安排。
+- 2026-08-11 04:00 下一生活日边界安排。
 
 ## 白天更新
 
@@ -4812,10 +4814,15 @@ EOF
   run_driver set-size "1120x760" 10
   run_driver wait-active-text "今天 · 2026-08-10" 20
   run_driver assert-text "23:59"
-  run_driver assert-text "23:30–24:00"
+  run_driver assert-text "23:30–00:30 · 2026-08-11"
   run_driver press-contains "跨午夜合成安排" 10
   run_driver assert-text "来源日期：2026-08-10"
-  run_driver assert-text "延续至下一天"
+  run_driver assert-absent-text "延续至下一天"
+  run_driver press "次日 00:00–04:00" 10
+  run_driver scroll-text-visible "次日凌晨可见安排" 10
+  run_driver assert-text "03:59 · 2026-08-11"
+  run_driver press "04:00–06:00" 10
+  run_driver press "定位现在" 10
   run_driver assert-text "23:50"
   run_driver capture-window "$capture_directory/today-time-axis-midnight-before.png" 10
 
@@ -4825,13 +4832,17 @@ EOF
   fi
   fixed_now_epoch_millis="$((epoch_after_midnight * 1000))"
   launch_app_waiting_for_text "当日进展" 30
-  run_driver wait-active-text "今天 · 2026-08-11" 20
+  run_driver wait-active-text "今天 · 2026-08-10" 20
   run_driver assert-text "00:01"
-  run_driver assert-text "00:00–00:30"
+  run_driver assert-text "23:30–00:30 · 2026-08-11"
+  run_driver press "定位现在" 10
+  run_driver assert-window-visible "00:01" 10
+  run_driver scroll-text-visible "次日凌晨可见安排" 10
+  run_driver assert-window-visible "次日凌晨可见安排" 10
   run_driver press-contains "跨午夜合成安排" 10
   run_driver assert-text "来源日期：2026-08-10"
-  run_driver assert-text "延续自前一天"
-  run_driver assert-absent-text "午夜前确认事实"
+  run_driver assert-absent-text "延续自前一天"
+  run_driver assert-text "午夜前确认事实"
   run_driver capture-window "$capture_directory/today-time-axis-midnight-after.png" 10
   [[ "$(shasum -a 256 "$boundary_start" | awk '{print $1}')" == "$boundary_start_hash" ]] ||
     fail "the packaged midnight reading changed its synthetic start-day record"
@@ -4867,7 +4878,7 @@ EOF
   echo "Packaged IPC today-time-axis acceptance passed"
   echo "Real clock: live packaged Today updated after one local minute and after foreground recovery"
   echo "History: the selected prior date remained selected across a clock tick and exposed no current-time locator"
-  echo "Midnight: packaged 23:59 and 00:01 launches showed the correctly clipped cross-date plan; confirmed facts were not copied"
+  echo "Lived day: packaged 23:59 and 00:01 launches retained the same record and complete cross-midnight plan; next-date labels, expand controls, locator were checked"
   echo "Layout: bilingual A lanes remained accessible at 1120x760 and 640x520; the locator was keyboard activated"
   echo "Records: synthetic Daily Records remained byte-identical and empty history did not create a file"
   echo "Capture directory: $capture_directory"

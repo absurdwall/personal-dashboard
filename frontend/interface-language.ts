@@ -582,7 +582,9 @@ const interfaceCopies = {
   "today.noTimedItems": { zh: "当天暂无带明确时刻的任务、日记安排或事实。", en: "There are no timed tasks, Diary arrangements, or facts for this day yet." },
   "today.overlapStackReveal": { zh: "显示下一项（共 {count} 项）", en: "Show next item ({count} total)" },
   "today.currentLocalTime": { zh: "当前本地时间", en: "Current local time" },
-  "today.fullDayScale": { zh: "全天时间刻度 00:00 至 24:00", en: "Full-day time scale from 00:00 to 24:00" },
+  "today.fullDayScale": { zh: "生活日时间刻度 04:00 至次日 04:00", en: "Lived-day time scale from 04:00 to next-day 04:00" },
+  "today.expandEarly": { zh: "04:00–06:00", en: "04:00–06:00" },
+  "today.expandLate": { zh: "次日 00:00–04:00", en: "Next day 00:00–04:00" },
   "today.axisScrollRegion": {
     zh: "当天任务、日记安排和已确认事实共用的时间轴。",
     en: "Shared timeline of today's tasks, Diary arrangements, and confirmed facts.",

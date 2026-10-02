@@ -9579,3 +9579,10 @@ button.habit-cell:focus-visible {
 .collaboration-layout .collaboration-pane-heading { flex-wrap: wrap; }
 .collaboration-layout .collaboration-composer-footer { flex-wrap: wrap; }
 .collaboration-layout .collaboration-message { overflow-wrap: anywhere; }
+.today-hour-tick small {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 8px;
+}
+.today-continuous-axis { --today-axis-gutter: 5rem; }
+.today-time-axis-actions { flex-wrap: wrap; }

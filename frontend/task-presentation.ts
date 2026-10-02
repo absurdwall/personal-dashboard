@@ -356,7 +356,6 @@ export function todayTaskTimeAxisEntries<T extends TodayTaskTimeAxisCandidate>(
 ): readonly TodayTaskTimeAxisEntry[] {
   return tasks.flatMap((task) => {
     if (
-      task.date !== selectedDate ||
       task.time === null ||
       task.deletedAt !== null ||
       task.state === "abandoned" ||
@@ -365,12 +364,18 @@ export function todayTaskTimeAxisEntries<T extends TodayTaskTimeAxisCandidate>(
     if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(task.time)) return [];
     const hour = Number(task.time.slice(0, 2));
     const minute = Number(task.time.slice(3, 5));
+    const nextDay = new Date(`${selectedDate}T12:00:00Z`);
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+    const wallMinute = hour * 60 + minute;
+    const projected = task.date === selectedDate ? wallMinute :
+      task.date === nextDay.toISOString().slice(0, 10) ? wallMinute + 1440 : -1;
+    if (projected < 240 || projected >= 1680) return [];
     return [{
       period: null,
       id: task.id,
       text: task.name,
-      sourceDate: selectedDate,
-      startMinute: hour * 60 + minute,
+      sourceDate: task.date!,
+      startMinute: projected,
       endMinute: null,
       continuesFromPreviousDay: false,
       continuesIntoNextDay: false,
