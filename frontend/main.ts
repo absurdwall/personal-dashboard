@@ -201,7 +201,7 @@ type TimeAxisView = Readonly<{
   unlocatedConfirmedFacts: readonly TimeAxisEntryView[];
 }>;
 
-type TodayClockView = Readonly<{ date: string; time: string }>;
+type TodayClockView = Readonly<{ date: string; time: string; livedDate: string }>;
 
 type EveningView = Readonly<{
   account: readonly string[];
@@ -6281,7 +6281,18 @@ async function refreshTodayClock(): Promise<void> {
   ) {
     return;
   }
-  const decision = clockTickDecision(selectedTodayDate, current.date, clock.date);
+  stashDatedNoteDraft();
+  stashTodayTaskCreateDraft();
+  const hasEditingTarget = Boolean(
+    (current.targetBinding && datedNoteDrafts.has(current.targetBinding)) ||
+    (current.tasks.targetBinding && todayTaskCreateDrafts.has(
+      todayTaskCreateDraftKey(current.tasks.targetBinding, current.date),
+    )) || todayOperationCount > 0 || taskOperationCount > 0,
+  );
+  const decision = clockTickDecision(selectedTodayDate, current.date, clock.livedDate, hasEditingTarget);
+  if (selectedTodayDate === null && current.date !== clock.livedDate && hasEditingTarget) {
+    selectedTodayDate = current.date;
+  }
   if (decision === "reload-today") {
     await refreshToday(null, true);
     return;
@@ -11107,11 +11118,15 @@ workspaceInformation?.addEventListener("scroll", () => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     void refreshTodayClock();
+    if (currentWorkspaceDestination === "habits") void refreshHabits();
   }
 });
 
 window.setInterval(() => {
   void refreshTodayClock();
+  if (document.visibilityState === "visible" && currentWorkspaceDestination === "habits") {
+    void refreshHabits();
+  }
 }, 60_000);
 
 window.setInterval(() => {
@@ -11127,8 +11142,7 @@ window.setInterval(() => {
 
 window.addEventListener("focus", () => {
   if (currentWorkspaceDestination === "today") {
-    void refreshTodayClock();
-    void refreshToday();
+    void refreshTodayClock().then(() => refreshToday());
   } else if (currentWorkspaceDestination === "calendar") {
     void openCalendar();
   } else if (currentWorkspaceDestination === "tasks") {

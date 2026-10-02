@@ -762,3 +762,73 @@ fn a_local_record_outside_the_new_twelve_week_window_is_not_deleted() {
         .unwrap()
         .contains("historical-window-completion"));
 }
+
+#[test]
+fn habits_share_today_lived_date_and_keep_pending_completion_bound() {
+    use std::rc::Rc;
+    #[derive(Clone)]
+    struct BoundaryClock(Rc<Cell<bool>>);
+    impl TodayClock for BoundaryClock {
+        fn current_date(&self) -> String {
+            "2026-09-09".into()
+        }
+        fn current_time_label(&self) -> String {
+            if self.0.get() { "04:00" } else { "03:59" }.into()
+        }
+        fn current_timestamp_label(&self) -> String {
+            format!("2026-09-09T{}-04:00", self.current_time_label())
+        }
+    }
+    let vault = TempVault::new("lived-day-bound-completion");
+    write_snapshot(
+        vault.path(),
+        include_str!("fixtures/habits-v1-complete.json"),
+    );
+    let snapshot_before = fs::read(snapshot_path(vault.path())).unwrap();
+    let clock = BoundaryClock(Rc::new(Cell::new(false)));
+    let application = TodayApplication::new(
+        SelectedVault(vault.path().into()),
+        NoSelection,
+        clock.clone(),
+    );
+    let before = application.habits().unwrap();
+    assert_eq!(before.habit("reset").unwrap().today.date, "2026-09-08");
+    assert_eq!(application.read().unwrap().date, "2026-09-08");
+    let input = HabitCompletionMutationInput {
+        habit_key: "reset".into(),
+        lived_date: "2026-09-08".into(),
+        completed: true,
+        change_id: "bound-completion".into(),
+        target_binding: before.completion_target_binding.unwrap(),
+        expected_revision: before.completion_revision,
+    };
+    clock.0.set(true);
+    let saved = application.set_local_habit_completion(input).unwrap();
+    assert_eq!(saved.habit("reset").unwrap().today.date, "2026-09-09");
+    assert!(
+        saved
+            .habit("reset")
+            .unwrap()
+            .cell("2026-09-08")
+            .unwrap()
+            .counts_as_completion
+    );
+    let document = fs::read_to_string(completion_path(vault.path())).unwrap();
+    assert!(document.contains("2026-09-08"));
+    assert!(document.contains("2026-09-09T04:00-04:00"));
+    assert_eq!(
+        fs::read(snapshot_path(vault.path())).unwrap(),
+        snapshot_before
+    );
+    let reopened = TodayApplication::new(SelectedVault(vault.path().into()), NoSelection, clock);
+    assert!(
+        reopened
+            .habits()
+            .unwrap()
+            .habit("reset")
+            .unwrap()
+            .cell("2026-09-08")
+            .unwrap()
+            .counts_as_completion
+    );
+}
