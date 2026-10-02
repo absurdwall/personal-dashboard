@@ -6,6 +6,13 @@ This project is a private, cross-device habit-tracking web app.
 - Keep personal data, credentials, and secrets out of version control.
 - Do not add dependencies, external services, or deployment configuration without explicit approval.
 
+## Git and local releases
+
+- `main` is protected: create changes on a `codex/` branch and merge through a GitHub PR. Do not commit on `main` or push directly to it, including as an administrator.
+- Enable the checked-in commit/push guards in each clone with `git config --local core.hooksPath .githooks`.
+- After merge, verify reachability and preserve unique files before removing feature branches and worktrees. Keep only `main` locally and remotely between tasks.
+- Keep `/Applications/Personal Dashboard.app` as the sole searchable installation. Archive obsolete App bundles and unregister test/build copies from Launch Services; keep temporary bundles outside Spotlight indexing. Preserve personal Vault and profile data.
+
 ## Agent skills
 
 ### Issue tracker

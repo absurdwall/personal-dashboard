@@ -1,4 +1,4 @@
-Status: claimed
+Status: resolved
 
 ## Parent
 
@@ -10,11 +10,11 @@ https://github.com/absurdwall/personal-dashboard/issues/36
 
 ## Acceptance criteria
 
-- [ ] 以“白天（具体时段未定）”和长正文组合复现细长条症状，建立实际渲染的失败回归。
-- [ ] 长标签不无限占据横向空间；稍窄窗口正文不逐字形成极高细条，不以截断或隐藏正文规避问题。
-- [ ] 覆盖长短标签、长短中文／英文／混合文本和无空格长字符串，验证折行、上下排列、无重叠和无横向溢出。
-- [ ] 完整内容、来源和详情操作仍可访问，原始 Daily Record 与相关事实不因呈现改变。
-- [ ] packaged Mac 中以合成数据在宽／稍窄／极窄窗口检查真实效果，提供对应候选版供用户验收。
+- [x] 以“白天（具体时段未定）”和长正文组合复现细长条症状，建立实际渲染的失败回归。
+- [x] 长标签不无限占据横向空间；稍窄窗口正文不逐字形成极高细条，不以截断或隐藏正文规避问题。
+- [x] 覆盖长短标签、长短中文／英文／混合文本和无空格长字符串，验证折行、上下排列、无重叠和无横向溢出。
+- [x] 完整内容、来源和详情操作仍可访问，原始 Daily Record 与相关事实不因呈现改变。
+- [x] packaged Mac 中以合成数据在宽／稍窄／极窄窗口检查真实效果，提供对应候选版供用户验收。
 
 ## Shared delivery conditions
 
@@ -31,4 +31,8 @@ None (can start immediately).
 
 ## Implementation checkpoint
 
-Implemented in [draft PR #40](https://github.com/absurdwall/personal-dashboard/pull/40). See [integrated acceptance evidence](../acceptance.md). Technical verification is complete; user acceptance is pending. Status remains claimed and GitHub issue remains open.
+Implemented in [draft PR #40](https://github.com/absurdwall/personal-dashboard/pull/40). See [integrated acceptance evidence](../acceptance.md). Technical verification and user acceptance are complete; PR #40 is merged and this issue is resolved.
+
+## Answer
+
+2026-10-02: PR #40 was independently reviewed; build and all 192 frontend tests passed. The user inspected the updated daily installation with their existing Vault, confirmed satisfaction, and explicitly authorized merge. PR #40 merged as `7fcc272c0c1f03ed280e0230336ac46328e34a96`; the GitHub ticket is closed. Earlier speech, collaboration-write and physical sleep/wake acceptance remains separate.

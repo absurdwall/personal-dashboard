@@ -1,6 +1,6 @@
 # Spec #36 candidate acceptance
 
-Status: implementation and technical verification complete; user acceptance pending
+Status: implementation, technical verification and user acceptance complete; PR #40 merged
 
 PR: https://github.com/absurdwall/personal-dashboard/pull/40
 Baseline: `3cf574a4e2b1387f953bb38a6d693768fccd8082` (merged PR #35).
@@ -44,3 +44,7 @@ The PR remains draft until candidate acceptance. No installed daily app or real 
 ## Previous acceptance
 
 GitHub #28–#34 and #19 remain open at the start of this run. Speech recognition, native collaboration proposal/approval/persisted-write, and physical sleep/wake acceptance are separate from these three UI repairs. This candidate does not close those requirements.
+
+## User acceptance and merge — 2026-10-02
+
+The user separately authorized replacing the daily `/Applications/Personal Dashboard.app`, then inspected it with their existing Vault and confirmed: “可以，这帮我很满意，我们可以去 merge 了。” This accepts the three UI repairs and explicitly authorizes PR #40 merge. The reviewed head `4b71bb21585a54d818d6ceccd8427ec800478052` merged as `7fcc272c0c1f03ed280e0230336ac46328e34a96`; #36–#39 are closed. Installed version remains 4.0.4, with normal bundle identity and binary SHA-256 `c928465e5ed4a17b125374e5555dd4f79d8e70f616fcd08a42e52d6d34f07505`. Its executable sections match the isolated candidate; signing metadata differs. Launch verification retained the selected Vault and all 27 Daily Record hashes. Historical pending decisions above describe the earlier candidate checkpoint and are superseded for these three repairs by this acceptance. Other old acceptance items remain separate.
