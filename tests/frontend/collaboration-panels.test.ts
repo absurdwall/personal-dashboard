@@ -77,6 +77,7 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
   let active: any;
   class Node {
     hidden = false;
+    isConnected = true;
     dataset: Record<string, string> = {};
     style = { gridTemplateColumns: "" };
     attributes = new Map<string, string>();
@@ -104,6 +105,19 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
     for (const [key, value] of Object.entries({ document, localStorage, ResizeObserver })) Object.defineProperty(globalThis, key, { value, configurable: true });
     initializeCollaborationPanels();
     assert.equal(layout.dataset.columns, "three");
+    const contextResizer = nodes["collaboration-context-resizer"];
+    contextResizer.focus();
+    resize(750);
+    assert.equal(contextResizer.hidden, true);
+    assert.equal(active, contextToggle, "three-to-two must move focus off the hidden sibling separator");
+    contextToggle.click();
+    assert.equal(context.hidden, false);
+    assert.notEqual(active, contextResizer, "compact disclosure must not restore focus to its still-hidden separator");
+    contextToggle.click();
+    resize(1100);
+    contextToggle.click();
+    contextToggle.click();
+    assert.equal(active, contextResizer, "roomy disclosure can restore the saved visible separator");
     active = context.child;
     resize(750);
     assert.equal(layout.dataset.columns, "two");
@@ -116,6 +130,14 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
     const resizer = nodes["collaboration-history-resizer"];
     resizer.listeners.get("keydown")?.({ key: "End", shiftKey: false, preventDefault() {} });
     assert.equal(resizer.attributes.get("aria-valuenow"), "260");
+    resizer.focus();
+    resize(500);
+    assert.equal(resizer.hidden, true);
+    assert.equal(active, historyToggle, "two-to-single must move focus off the hidden history separator");
+    historyToggle.click();
+    assert.notEqual(active, resizer, "single-column disclosure must not focus its hidden separator");
+    historyToggle.click();
+    resize(750);
     historyToggle.click();
     assert.equal(history.hidden, true);
     historyToggle.click();

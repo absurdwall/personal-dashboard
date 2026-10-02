@@ -1410,7 +1410,7 @@ func visibleRenderedElement(_ application: AXUIElement, label: String) -> AXUIEl
         .element
 }
 
-func assertLongTextFits(_ application: AXUIElement, text: String) throws {
+func assertLongTextFits(_ application: AXUIElement, text: String, minimumWidth: CGFloat = 0) throws {
     guard text.count >= 80,
           let element = visibleRenderedElement(application, label: text),
           let textFrame = frame(element),
@@ -1430,13 +1430,14 @@ func assertLongTextFits(_ application: AXUIElement, text: String) throws {
                 "frame=\(textFrame) window=\(windowFrame)"
         )
     }
-    guard textFrame.height >= 28,
+    guard textFrame.height >= 28, textFrame.width >= minimumWidth,
           textFrame.width <= windowFrame.width - 24 else {
         throw DriverError.timeout(
             "long rendered text did not wrap within the available layout: \(text) " +
-                "frame=\(textFrame) window=\(windowFrame)"
+                "frame=\(textFrame) window=\(windowFrame) minimumWidth=\(minimumWidth)"
         )
     }
+    print("Long rendered text geometry: frame=\(textFrame), window=\(windowFrame), minimumWidth=\(minimumWidth)")
 }
 
 func visibleAxisTitlePaths(_ application: AXUIElement, title: String) -> [AccessibilityPath] {
@@ -4350,7 +4351,12 @@ do {
         try scrollTextIntoWindow(application, text: text, pid: pid)
         print("Scrolled rendered text into the visible window: \(text)")
     case "assert-long-text-fits":
-        try assertLongTextFits(application, text: text)
+        let parts = text.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        if parts.count == 2, let minimumWidth = Double(parts[1]), minimumWidth >= 0 {
+            try assertLongTextFits(application, text: parts[0], minimumWidth: CGFloat(minimumWidth))
+        } else {
+            try assertLongTextFits(application, text: text)
+        }
         print("Long rendered text wraps within the visible window: \(text)")
     case "assert-document-fixed":
         try assertDocumentFixed(application)
