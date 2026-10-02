@@ -1419,6 +1419,21 @@ func assertLongTextFits(_ application: AXUIElement, text: String, minimumWidth: 
         throw DriverError.timeout("long rendered text with measurable bounds: \(text)")
     }
     let tolerance: CGFloat = 2
+    var summaryFrame: CGRect?
+    var effectiveMinimum = minimumWidth
+    if minimumWidth > 0 {
+        guard let path = findTextPaths(application, text).first(where: { CFEqual($0.element, element) }),
+              let summary = path.ancestors.reversed().first(where: {
+                  stringAttribute($0, "AXRole") == "AXDisclosureTriangle"
+              }), let measuredSummary = frame(summary), measuredSummary.width > 32 else {
+            throw DriverError.timeout("long rendered text has no measurable containing summary: \(text)")
+        }
+        summaryFrame = measuredSummary
+        // Compare AX glyph bounds with the card's available width. The summary
+        // uses 16px horizontal padding; glyph bounds can omit up to one 16px
+        // trailing blank at the line end. Preserve the existing 2px rounding tolerance.
+        effectiveMinimum = min(minimumWidth, measuredSummary.width - 32)
+    }
     let visibleWindow = windowFrame.insetBy(dx: -tolerance, dy: -tolerance)
     guard visibleWindow.contains(
         CGPoint(x: textFrame.minX, y: textFrame.minY)
@@ -1430,14 +1445,14 @@ func assertLongTextFits(_ application: AXUIElement, text: String, minimumWidth: 
                 "frame=\(textFrame) window=\(windowFrame)"
         )
     }
-    guard textFrame.height >= 28, textFrame.width + tolerance >= minimumWidth,
+    guard textFrame.height >= 28, textFrame.width + tolerance >= effectiveMinimum,
           textFrame.width <= windowFrame.width - 24 else {
         throw DriverError.timeout(
             "long rendered text did not wrap within the available layout: \(text) " +
-                "frame=\(textFrame) window=\(windowFrame) minimumWidth=\(minimumWidth)"
+                "frame=\(textFrame) window=\(windowFrame) requestedMinimum=\(minimumWidth) effectiveMinimum=\(effectiveMinimum) summary=\(String(describing: summaryFrame))"
         )
     }
-    print("Long rendered text geometry: frame=\(textFrame), window=\(windowFrame), minimumWidth=\(minimumWidth)")
+    print("Long rendered text geometry: frame=\(textFrame), window=\(windowFrame), requestedMinimum=\(minimumWidth) effectiveMinimum=\(effectiveMinimum) summary=\(String(describing: summaryFrame))")
 }
 
 func visibleAxisTitlePaths(_ application: AXUIElement, title: String) -> [AccessibilityPath] {
