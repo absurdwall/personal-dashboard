@@ -585,6 +585,10 @@ const interfaceCopies = {
   "today.fullDayScale": { zh: "生活日时间刻度 04:00 至次日 04:00", en: "Lived-day time scale from 04:00 to next-day 04:00" },
   "today.expandEarly": { zh: "04:00–06:00", en: "04:00–06:00" },
   "today.expandLate": { zh: "次日 00:00–04:00", en: "Next day 00:00–04:00" },
+  "today.expandEarlyCollapsed": { zh: "04:00–06:00 · 展开", en: "04:00–06:00 · Expand" },
+  "today.expandEarlyExpanded": { zh: "04:00–06:00 · 收起", en: "04:00–06:00 · Collapse" },
+  "today.expandLateCollapsed": { zh: "次日 00:00–04:00 · 展开", en: "Next day 00:00–04:00 · Expand" },
+  "today.expandLateExpanded": { zh: "次日 00:00–04:00 · 收起", en: "Next day 00:00–04:00 · Collapse" },
   "today.axisScrollRegion": {
     zh: "当天任务、日记安排和已确认事实共用的时间轴。",
     en: "Shared timeline of today's tasks, Diary arrangements, and confirmed facts.",

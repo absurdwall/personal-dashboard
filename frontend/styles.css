@@ -9618,3 +9618,44 @@ button.habit-cell:focus-visible {
 .collaboration-layout[data-columns="two"] .collaboration-context-pane { grid-column: 1 / -1; grid-row: 2; margin-top: 0.65rem; }
 .collaboration-layout[data-columns="two"] .collaboration-session-pane { padding: 0.65rem; }
 .collaboration-layout[data-columns="two"] .collaboration-session-button { overflow-wrap: anywhere; }
+/* Lived-day quiet hours open at the endpoint being browsed. */
+.today-axis-disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid var(--parity-border);
+  border-radius: 8px;
+  background: var(--parity-surface, #fff);
+  color: var(--parity-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+#today-expand-early { margin-bottom: 8px; }
+#today-expand-late { margin-top: 8px; }
+.today-axis-disclosure[aria-expanded="true"] { color: var(--parity-accent-strong); }
+.today-locate-now {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border: 1px solid var(--parity-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--parity-muted);
+  cursor: pointer;
+}
+.today-locate-now svg { fill: none; stroke: currentColor; stroke-width: 1.6; }
+.today-locate-now:hover,
+.today-axis-disclosure:hover { background: var(--parity-accent-soft); }
+.today-locate-now:focus-visible,
+.today-axis-disclosure:focus-visible {
+  outline: 2px solid var(--parity-accent);
+  outline-offset: 2px;
+}
+.today-continuous-axis { overflow-anchor: none; }

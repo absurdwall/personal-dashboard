@@ -1451,6 +1451,41 @@ func visibleAxisTitlePath(_ application: AXUIElement, title: String) -> Accessib
     visibleAxisTitlePaths(application, title: title).first
 }
 
+// Timeline disclosures have opposite spatial anchors and may be exercised
+// through AX while preserving a manually browsed, visible midday card.
+func assertAxisDisclosureEndpoints(_ application: AXUIElement) throws {
+    guard let early = findPressable(application, "04:00–06:00", contains: true),
+          let late = findPressable(application, "Next day 00:00–04:00", contains: true),
+          let locate = findPressable(application, "Locate now", contains: true),
+          let earlyFrame = frame(early), let lateFrame = frame(late), let locateFrame = frame(locate),
+          let first = axisCardLink(application, title: "Folded start alpha", time: "06:00"),
+          let last = axisCardLink(application, title: "Folded end beta", time: "23:59"),
+          let firstFrame = frame(first.link), let lastFrame = frame(last.link) else {
+        throw DriverError.timeout("timeline endpoint controls and rendered boundary cards")
+    }
+    guard earlyFrame.maxY <= firstFrame.minY + 3,
+          lateFrame.minY >= lastFrame.maxY - 3,
+          locateFrame.width >= 32, locateFrame.height >= 32,
+          locateFrame.width <= 48, locateFrame.height <= 48 else {
+        throw DriverError.unexpectedText("timeline controls misplaced or locator not a small accessible target: early=\(earlyFrame) first=\(firstFrame) late=\(lateFrame) last=\(lastFrame) locate=\(locateFrame)")
+    }
+    print("Timeline controls are at their respective endpoints; Locate now target=\(locateFrame)")
+}
+
+func assertAxisDisclosureAnchor(_ application: AXUIElement, control: String, title: String, time: String) throws {
+    guard let before = axisCardLink(application, title: title, time: time).flatMap({ frame($0.link) }),
+          let button = findPressable(application, control, contains: true) else {
+        throw DriverError.timeout("reading anchor or disclosure: \(title) / \(control)")
+    }
+    try performAccessibilityAction(button, "AXPress", "toggle quiet hours while manually browsing")
+    Thread.sleep(forTimeInterval: 0.25)
+    guard let after = axisCardLink(application, title: title, time: time).flatMap({ frame($0.link) }),
+          abs(before.minY - after.minY) <= 3 else {
+        throw DriverError.unexpectedText("quiet-hour disclosure moved the current reading card: \(title) before=\(before)")
+    }
+    print("Quiet-hour disclosure preserved reading anchor: \(control), \(title), y=\(before.minY)")
+}
+
 func assertAxisEntryCard(
     _ application: AXUIElement,
     startLabel: String,
@@ -4143,6 +4178,12 @@ do {
             timeout: timeout
         )
         print("Rendered element is near the window center: \(parts[0])")
+    case "assert-axis-disclosure-endpoints":
+        try assertAxisDisclosureEndpoints(application)
+    case "assert-axis-disclosure-anchor":
+        let parts = text.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 3 else { throw DriverError.usage }
+        try assertAxisDisclosureAnchor(application, control: parts[0], title: parts[1], time: parts[2])
     case "assert-axis-entry-card":
         let parts = text.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
         guard parts.count == 3 else {
