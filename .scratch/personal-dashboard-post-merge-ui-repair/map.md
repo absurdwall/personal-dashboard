@@ -13,3 +13,7 @@
 2026-10-02：#37–#39 在含 PR #35 的隔离分支认领并并行实现，draft PR #40。用户验收与明确 merge 授权仍是独立门槛；旧 #28–#34、#19 的其他未验收项保留。
 
 [本地规格](spec.md) · [发布回执](ticket-publication.json) · [Management 检查](ticket-management-receipt.json)
+
+## Implementation checkpoint
+
+PR #40 implements all three repairs. Technical checks and isolated packaged Mac scenarios passed; runnable candidate and evidence are recorded in [acceptance.md](acceptance.md). Tickets remain claimed and open pending user acceptance. PR remains draft; merge and daily installation need separate explicit authorization.

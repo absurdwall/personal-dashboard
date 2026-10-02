@@ -29,3 +29,7 @@ https://github.com/absurdwall/personal-dashboard/issues/36
 ## Blocked by
 
 None (can start immediately).
+
+## Implementation checkpoint
+
+Implemented in [draft PR #40](https://github.com/absurdwall/personal-dashboard/pull/40). See [integrated acceptance evidence](../acceptance.md). Technical verification is complete; user acceptance is pending. Status remains claimed and GitHub issue remains open.
