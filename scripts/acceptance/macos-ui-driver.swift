@@ -1453,7 +1453,8 @@ func visibleAxisTitlePath(_ application: AXUIElement, title: String) -> Accessib
 }
 
 // Timeline disclosures have opposite spatial anchors and may be exercised
-// through AX while preserving a manually browsed, visible midday card.
+// through AX while preserving a manually browsed visible card. Native late
+// activation first brings that endpoint into view, as a user would.
 func assertAxisDisclosureEndpoints(_ application: AXUIElement) throws {
     guard let early = findPressable(application, "04:00–06:00", contains: true),
           let late = findPressable(application, "Next day 00:00–04:00", contains: true),
@@ -1478,11 +1479,15 @@ func assertAxisDisclosureAnchor(_ application: AXUIElement, control: String, tit
           let button = findPressable(application, control, contains: true) else {
         throw DriverError.timeout("reading anchor or disclosure: \(title) / \(control)")
     }
+    guard let window = mainWindow(application), let windowFrame = frame(window),
+          before.intersects(windowFrame) else {
+        throw DriverError.unexpectedText("reading anchor is outside the visible window: \(title) before=\(before)")
+    }
     try performAccessibilityAction(button, "AXPress", "toggle quiet hours while manually browsing")
     Thread.sleep(forTimeInterval: 0.25)
-    guard let after = axisCardLink(application, title: title, time: time).flatMap({ frame($0.link) }),
-          abs(before.minY - after.minY) <= 3 else {
-        throw DriverError.unexpectedText("quiet-hour disclosure moved the current reading card: \(title) before=\(before)")
+    let after = axisCardLink(application, title: title, time: time).flatMap({ frame($0.link) })
+    guard let after, after.intersects(windowFrame), abs(before.minY - after.minY) <= 3 else {
+        throw DriverError.unexpectedText("quiet-hour disclosure moved the current reading card: \(title) before=\(before) after=\(String(describing: after)) window=\(windowFrame)")
     }
     print("Quiet-hour disclosure preserved reading anchor: \(control), \(title), y=\(before.minY)")
 }
