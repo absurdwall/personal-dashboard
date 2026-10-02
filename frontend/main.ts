@@ -4925,16 +4925,17 @@ function renderTodayTimeAxisEntries(
   const visibleEntries = timedEntries.map(({ entry: original, index }) => {
     const entry = { ...original, startMinute: Math.max(original.startMinute!, visibleStart),
       endMinute: original.endMinute === null ? null : Math.min(original.endMinute, visibleEnd) };
-    return { original, entry, index, markerLayout: axisMarkerLayout(entry) };
+    return { original, entry, index, markerLayout: axisMarkerLayout(entry, [visibleStart, visibleEnd]) };
   });
   const stackPlacements = axisOverlapPlacements(
-    timedEntries.map(({ entry }) => ({
+    visibleEntries.map(({ entry }) => ({
       startMinute: entry.startMinute!,
       endMinute: entry.endMinute,
     })),
+    [visibleStart, visibleEnd],
   );
   const placementByIndex = new Map(
-    timedEntries.map(({ index }, placementIndex) => [index, stackPlacements[placementIndex]]),
+    visibleEntries.map(({ index }, placementIndex) => [index, stackPlacements[placementIndex]]),
   );
   const markersByStack = new Map<number, HTMLLIElement[]>();
   todayTimedEvents.replaceChildren(
@@ -4953,7 +4954,7 @@ function renderTodayTimeAxisEntries(
       marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);
       marker.style.setProperty(
         "--axis-label-center",
-        `${minutePosition(Math.min(Math.max(markerLayout.centerMinute, visibleStart + 24), visibleEnd - 24)) * 100}%`,
+        `${minutePosition(markerLayout.centerMinute) * 100}%`,
       );
       const stackOffset = Math.min(placement.stackIndex, 4) * 5;
       marker.style.setProperty("--axis-stack-offset", `${stackOffset}px`);
@@ -5391,6 +5392,9 @@ function hasTodayEditingTarget(view: TodayView): boolean {
   return Boolean(
     (view.targetBinding && (datedNoteDrafts.has(view.targetBinding) || eveningReviewDrafts.has(view.targetBinding))) ||
     (view.tasks.targetBinding && todayTaskCreateDrafts.has(todayTaskCreateDraftKey(view.tasks.targetBinding, view.date))) ||
+    taskEditorForms("today").some((form) => !form.hidden ||
+      (view.tasks.targetBinding && form.dataset.taskEditor &&
+        taskEditDrafts.has(taskDraftKey(view.tasks.targetBinding, form.dataset.taskEditor)))) ||
     todayOperationCount > 0 || taskOperationCount > 0
   );
 }
@@ -11272,7 +11276,12 @@ window.setInterval(() => {
 
 window.addEventListener("focus", () => {
   if (currentWorkspaceDestination === "today") {
-    void refreshTodayClock().then(() => refreshToday());
+    void refreshTodayClock().then(() => {
+      // An automatic focus refresh must not replace an editor just preserved
+      // by the clock check. Explicit navigation/refresh remains available.
+      if (currentWorkspaceDestination === "today" && currentTodayView &&
+          !hasTodayEditingTarget(currentTodayView)) return refreshToday();
+    });
   } else if (currentWorkspaceDestination === "calendar") {
     void openCalendar();
   } else if (currentWorkspaceDestination === "tasks") {
