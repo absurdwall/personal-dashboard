@@ -1419,6 +1419,7 @@ type DatedNoteDraft = {
   correctionId: string | null;
 };
 const datedNoteDrafts = new Map<string, DatedNoteDraft>();
+const eveningReviewDrafts = new Map<string, Readonly<{ content: string; mode: string }>>();
 let correctingShortRecordId: string | null = null;
 let currentCalendarMonth: CalendarMonthView | null = null;
 let currentCalendarSummaryView: TodayView | null = null;
@@ -4921,6 +4922,11 @@ function renderTodayTimeAxisEntries(
   const [visibleStart, visibleEnd] = axisBounds();
   const timedEntries = ordered.filter(({ entry }) => entry.startMinute !== null &&
     entry.startMinute < visibleEnd && (entry.endMinute ?? entry.startMinute) >= visibleStart);
+  const visibleEntries = timedEntries.map(({ entry: original, index }) => {
+    const entry = { ...original, startMinute: Math.max(original.startMinute!, visibleStart),
+      endMinute: original.endMinute === null ? null : Math.min(original.endMinute, visibleEnd) };
+    return { original, entry, index, markerLayout: axisMarkerLayout(entry) };
+  });
   const stackPlacements = axisOverlapPlacements(
     timedEntries.map(({ entry }) => ({
       startMinute: entry.startMinute!,
@@ -4932,15 +4938,8 @@ function renderTodayTimeAxisEntries(
   );
   const markersByStack = new Map<number, HTMLLIElement[]>();
   todayTimedEvents.replaceChildren(
-    ...timedEntries.flatMap(({ entry: original, index }) => {
-      const entry = { ...original, startMinute: Math.max(original.startMinute!, visibleStart),
-        endMinute: original.endMinute === null ? null : Math.min(original.endMinute, visibleEnd) };
-      if (entry.startMinute === null) return [];
+    ...visibleEntries.flatMap(({ original, entry, index, markerLayout }) => {
       const durationMinutes = entry.endMinute === null ? null : entry.endMinute - entry.startMinute;
-      const markerLayout = axisMarkerLayout({
-        startMinute: entry.startMinute,
-        endMinute: entry.endMinute,
-      });
       const placement = placementByIndex.get(index)!;
       const marker = document.createElement("li");
       marker.className = "today-axis-marker";
@@ -5032,14 +5031,7 @@ function renderTodayTimeAxisEntries(
     if (members.length > 1) members[0].classList.add("is-stack-front");
   }
   todayTimedDurations.replaceChildren(
-    ...timedEntries.flatMap(({ entry: original, index }) => {
-      const entry = { ...original, startMinute: Math.max(original.startMinute!, visibleStart),
-        endMinute: original.endMinute === null ? null : Math.min(original.endMinute, visibleEnd) };
-      if (entry.startMinute === null) return [];
-      const markerLayout = axisMarkerLayout({
-        startMinute: entry.startMinute,
-        endMinute: entry.endMinute,
-      });
+    ...visibleEntries.flatMap(({ entry, markerLayout }) => {
       if (entry.endMinute !== null && !markerLayout.isCenteredLabel) return [];
       const duration = document.createElement("span");
       duration.className = entry.endMinute === null ? "today-axis-point" : "today-axis-range";
@@ -5382,6 +5374,27 @@ function selectedShortRecordCategory(): ShortRecordCategory {
   return todayDaytimeKind?.value === "exercise" ? "exercise" : "ordinary";
 }
 
+function stashEveningReviewDraft(): void {
+  const binding = currentTodayView?.targetBinding;
+  if (!binding || !todayEveningContent || !todayEveningMode) return;
+  if (todayEveningContent.value) {
+    eveningReviewDrafts.set(binding, { content: todayEveningContent.value, mode: todayEveningMode.value });
+  } else {
+    eveningReviewDrafts.delete(binding);
+  }
+}
+
+function hasTodayEditingTarget(view: TodayView): boolean {
+  stashDatedNoteDraft();
+  stashEveningReviewDraft();
+  stashTodayTaskCreateDraft();
+  return Boolean(
+    (view.targetBinding && (datedNoteDrafts.has(view.targetBinding) || eveningReviewDrafts.has(view.targetBinding))) ||
+    (view.tasks.targetBinding && todayTaskCreateDrafts.has(todayTaskCreateDraftKey(view.tasks.targetBinding, view.date))) ||
+    todayOperationCount > 0 || taskOperationCount > 0
+  );
+}
+
 function stashDatedNoteDraft(): void {
   const draftKey = currentTodayView?.targetBinding;
   if (!currentTodayView || !draftKey || !todayDaytimeContent) {
@@ -5426,6 +5439,7 @@ function renderDatedNoteComposer(view: TodayView): void {
 }
 
 function renderToday(view: TodayView): void {
+  stashEveningReviewDraft();
   todayPresentationFresh = true;
   const previousView = currentTodayView;
   const startsTodaySession = view.isToday && (
@@ -5500,8 +5514,11 @@ function renderToday(view: TodayView): void {
     todayDaytimeForm.hidden = !view.canRecord;
   }
   if (todayEveningForm) {
-    todayEveningForm.hidden = !view.isToday;
+    todayEveningForm.hidden = !view.canRecord;
   }
+  const eveningDraft = view.targetBinding ? eveningReviewDrafts.get(view.targetBinding) : undefined;
+  if (todayEveningContent) todayEveningContent.value = eveningDraft?.content ?? "";
+  if (todayEveningMode) todayEveningMode.value = eveningDraft?.mode ?? "addition";
 
   const knownUpdates = view.daytime.updates.filter(
     (update) => update.observedFacts.length > 0,
@@ -6261,7 +6278,7 @@ async function saveTodayMutation(
   successMessage: InterfaceCopyKey,
 ): Promise<boolean> {
   const loaded = currentTodayView;
-  if (!loaded?.revision || todayOperationCount > 0) {
+  if (!loaded?.revision || !loaded.targetBinding || todayOperationCount > 0) {
     showTodayMutationCopy("today.refreshBeforeSave", "error");
     return false;
   }
@@ -6271,6 +6288,8 @@ async function saveTodayMutation(
   try {
     const view = await window.__TAURI__.core.invoke<TodayView>(command, {
       input: { ...input, expectedRevision },
+      date: loaded.date,
+      targetBinding: loaded.targetBinding,
     });
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
       renderToday(preserveTodayDayTaskPlanError(loaded, view));
@@ -6296,6 +6315,9 @@ async function refreshToday(
     !canStartManualTodayRefresh(todayOperationCount, taskOperationCount)
   ) {
     return;
+  }
+  if (date === null && currentTodayView && hasTodayEditingTarget(currentTodayView)) {
+    date = currentTodayView.date;
   }
   await refreshTodayPresentation({
     requests: todayPresentationRequests,
@@ -6380,14 +6402,7 @@ async function refreshTodayClock(): Promise<void> {
   ) {
     return;
   }
-  stashDatedNoteDraft();
-  stashTodayTaskCreateDraft();
-  const hasEditingTarget = Boolean(
-    (current.targetBinding && datedNoteDrafts.has(current.targetBinding)) ||
-    (current.tasks.targetBinding && todayTaskCreateDrafts.has(
-      todayTaskCreateDraftKey(current.tasks.targetBinding, current.date),
-    )) || todayOperationCount > 0 || taskOperationCount > 0,
-  );
+  const hasEditingTarget = hasTodayEditingTarget(current);
   const decision = clockTickDecision(selectedTodayDate, current.date, clock.livedDate, hasEditingTarget);
   if (selectedTodayDate === null && current.date !== clock.livedDate && hasEditingTarget) {
     selectedTodayDate = current.date;
@@ -11159,19 +11174,24 @@ cancelNoteCorrectionButton?.addEventListener("click", () => {
   todayDaytimeContent?.focus();
 });
 
+todayEveningContent?.addEventListener("input", stashEveningReviewDraft);
+todayEveningMode?.addEventListener("change", stashEveningReviewDraft);
+
 todayEveningForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!todayEveningMode || !todayEveningContent) {
     return;
   }
+  const savedBinding = currentTodayView?.targetBinding;
   void pendingWrites.track((async () => {
     const saved = await saveTodayMutation(
       "update_evening_review",
       { mode: todayEveningMode.value, content: todayEveningContent.value },
       "today.eveningSaved",
     );
-    if (saved) {
-      todayEveningContent.value = "";
+    if (saved && savedBinding) {
+      eveningReviewDrafts.delete(savedBinding);
+      if (currentTodayView?.targetBinding === savedBinding) todayEveningContent.value = "";
     }
     return saved;
   })());

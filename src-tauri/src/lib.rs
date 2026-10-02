@@ -585,8 +585,10 @@ async fn select_today_vault(
 fn append_daytime_update(
     application: State<'_, DesktopTodayApplication>,
     input: DaytimeUpdateInput,
+    date: Option<String>,
+    target_binding: Option<String>,
 ) -> Result<TodayView, String> {
-    application.append_daytime_update(input)
+    application.append_daytime_update_for_target(input, date.as_deref(), target_binding.as_deref())
 }
 
 #[tauri::command]
@@ -649,8 +651,10 @@ fn planning_day_task_context(
 fn update_evening_review(
     application: State<'_, DesktopTodayApplication>,
     input: EveningUpdateInput,
+    date: Option<String>,
+    target_binding: Option<String>,
 ) -> Result<TodayView, String> {
-    application.update_evening_review(input)
+    application.update_evening_review_for_target(input, date.as_deref(), target_binding.as_deref())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

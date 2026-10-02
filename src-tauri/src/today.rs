@@ -3257,21 +3257,31 @@ where
     }
 
     pub fn append_daytime_update(&self, input: DaytimeUpdateInput) -> Result<TodayView, String> {
+        self.append_daytime_update_for_target(input, None, None)
+    }
+
+    pub fn append_daytime_update_for_target(
+        &self,
+        input: DaytimeUpdateInput,
+        date: Option<&str>,
+        target_binding: Option<&str>,
+    ) -> Result<TodayView, String> {
         validate_short_text(&input.content, "白天更新")?;
         let (heading, body) = daytime_block(&input, &self.clock.current_time_label())?;
-        let (vault, path, document) = self.load_writable_record()?;
+        let (vault, path, document, date) =
+            self.load_writable_record_for_target(date, target_binding)?;
         require_revision(&document, &input.expected_revision)?;
-        validate_writable_daily_record(&document, &self.clock.current_lived_date())?;
+        validate_writable_daily_record(&document, &date)?;
         let updated = append_to_canonical_section(
             &document,
             "白天更新",
             &format!("### {heading}\n\n{body}"),
             Some("晚间复盘"),
         );
-        validate_writable_daily_record(&updated, &self.clock.current_lived_date())?;
+        validate_writable_daily_record(&updated, &date)?;
         self.record_store
             .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
-        self.reload_vault(&vault, self.clock.current_lived_date())
+        self.reload_vault(&vault, date)
     }
 
     pub fn save_daily_plan(&self, input: DailyPlanWriteInput) -> Result<TodayView, String> {
@@ -3721,10 +3731,20 @@ where
     }
 
     pub fn update_evening_review(&self, input: EveningUpdateInput) -> Result<TodayView, String> {
+        self.update_evening_review_for_target(input, None, None)
+    }
+
+    pub fn update_evening_review_for_target(
+        &self,
+        input: EveningUpdateInput,
+        date: Option<&str>,
+        target_binding: Option<&str>,
+    ) -> Result<TodayView, String> {
         validate_short_text(&input.content, "晚间复盘更新")?;
-        let (vault, path, document) = self.load_writable_record()?;
+        let (vault, path, document, date) =
+            self.load_writable_record_for_target(date, target_binding)?;
         require_revision(&document, &input.expected_revision)?;
-        validate_writable_daily_record(&document, &self.clock.current_lived_date())?;
+        validate_writable_daily_record(&document, &date)?;
         let updated = match input.mode {
             EveningUpdateMode::Addition => update_evening_subsection(
                 &document,
@@ -3739,25 +3759,39 @@ where
                 true,
             )?,
         };
-        validate_writable_daily_record(&updated, &self.clock.current_lived_date())?;
+        validate_writable_daily_record(&updated, &date)?;
         self.record_store
             .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
-        self.reload_vault(&vault, self.clock.current_lived_date())
+        self.reload_vault(&vault, date)
     }
 
-    fn load_writable_record(&self) -> Result<(PathBuf, PathBuf, String), String> {
+    fn load_writable_record_for_target(
+        &self,
+        date: Option<&str>,
+        target_binding: Option<&str>,
+    ) -> Result<(PathBuf, PathBuf, String, String), String> {
+        if date.is_some() != target_binding.is_some() {
+            return Err("A record date and Vault target binding must be supplied together.".into());
+        }
+        let date = date
+            .map(str::to_owned)
+            .unwrap_or_else(|| self.clock.current_lived_date());
+        self.validate_event_date(&date)?;
         let vault = self.persistence.load_selected_vault()?.ok_or_else(|| {
             "请先选择 Tortilla Flat vault，再更新今天的 Daily Record。".to_string()
         })?;
         validate_compatible_vault(&vault).map_err(|error| format!("{error}；未写入任何内容。"))?;
-        let path = canonical_record_path(&vault, &self.clock.current_lived_date())?;
+        let path = canonical_record_path(&vault, &date)?;
+        if target_binding.is_some_and(|binding| record_target_binding(&path) != binding) {
+            return Err("Vault 或日期保存目标已经变化。草稿仍保留；未写入任何内容。".into());
+        }
         let bytes = self.record_store.load(&path)?.ok_or_else(|| {
             "今天还没有 Daily Record。请先让 Codex 运行早间流程，然后刷新 Today。".to_string()
         })?;
         let document = String::from_utf8(bytes).map_err(|_| {
             "今天的 Daily Record 不是有效的 UTF-8 文本；未写入任何内容。".to_string()
         })?;
-        Ok((vault, path, document))
+        Ok((vault, path, document, date))
     }
 
     fn open_vault(&self, vault: &Path, date: String) -> Result<TodayView, String> {
