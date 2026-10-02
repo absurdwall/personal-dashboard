@@ -313,21 +313,18 @@ date: 2026-08-10
 
     let cross_date = &view.time_axis.current_arrangement[0];
     assert_eq!(cross_date.source_date, "2026-08-09");
-    assert_eq!(cross_date.start_minute, Some(0));
-    assert_eq!(cross_date.end_minute, Some(1440));
+    assert_eq!(cross_date.start_minute, Some(240));
+    assert_eq!(cross_date.end_minute, Some(1470));
     assert!(cross_date.continues_from_previous_day);
-    assert!(cross_date.continues_into_next_day);
-    let iso_cross_date = view
-        .time_axis
-        .current_arrangement
-        .iter()
-        .find(|entry| entry.text.contains("ISO 本地跨日安排"))
-        .expect("ISO local timestamps should retain their explicit dates");
-    assert_eq!(iso_cross_date.source_date, "2026-08-09");
-    assert_eq!(iso_cross_date.start_minute, Some(0));
-    assert_eq!(iso_cross_date.end_minute, Some(30));
-    assert!(iso_cross_date.continues_from_previous_day);
-    assert!(!iso_cross_date.continues_into_next_day);
+    assert!(!cross_date.continues_into_next_day);
+    assert!(
+        !view
+            .time_axis
+            .current_arrangement
+            .iter()
+            .any(|entry| entry.text.contains("ISO 本地跨日安排")),
+        "the previous natural-date segment ends before this lived day begins"
+    );
     assert!(view
         .time_axis
         .unlocated_current_arrangement
@@ -2571,4 +2568,44 @@ fn a_workspace_selection_commit_failure_preserves_the_previous_selection() {
 
     assert!(error.contains("disk full"));
     assert_eq!(selected.borrow().as_deref(), Some(old_vault.path()));
+}
+
+#[test]
+fn lived_axis_bounds_keep_original_records_and_explicit_calendar_times() {
+    let view = open_synthetic_time_axis_record(
+        r#"---
+type: daily-record
+date: 2026-08-10
+---
+# 2026-08-10
+## 今天的大致安排
+- 04:00 新生活日起点。
+- 2026-08-11 03:59 次日凌晨。
+- 2026-08-11 04:00 下一生活日起点。
+- 2026-08-10 23:30–2026-08-11 01:00 跨午夜。
+- 01:00 旧记录原自然日事实。
+## 白天更新
+## 晚间复盘
+"#,
+    );
+    let entries = &view.time_axis.current_arrangement;
+    assert_eq!(
+        entries
+            .iter()
+            .map(|entry| (entry.start_minute, entry.end_minute))
+            .collect::<Vec<_>>(),
+        vec![
+            (Some(240), None),
+            (Some(1679), None),
+            (Some(1410), Some(1500))
+        ]
+    );
+    assert_eq!(entries[1].source_date, "2026-08-11");
+    assert_eq!(
+        view.time_axis.unlocated_current_arrangement[0].source_date,
+        "2026-08-10"
+    );
+    assert!(view.time_axis.unlocated_current_arrangement[0]
+        .text
+        .contains("旧记录"));
 }

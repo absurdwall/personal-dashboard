@@ -9521,3 +9521,11 @@ button.habit-cell:focus-visible {
     max-height: 29rem;
   }
 }
+
+.today-hour-tick small {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 8px;
+}
+.today-continuous-axis { --today-axis-gutter: 5rem; }
+.today-time-axis-actions { flex-wrap: wrap; }

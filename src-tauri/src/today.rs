@@ -5562,7 +5562,14 @@ fn project_axis_item<C: TodayClock>(
                 unlocated.push(unlocated_axis_entry(period, text, expected_date));
                 return;
             };
-            if source_day != CalendarDate::parse(expected_date).unwrap_or(source_day) {
+            let expected_day = CalendarDate::parse(expected_date).unwrap_or(source_day);
+            let projected =
+                (source_day.unix_days() - expected_day.unix_days()) * 1440 + i64::from(minute);
+            if !(240..1680).contains(&projected) {
+                // Retain old record facts at their original date without relocating them.
+                if source_day == expected_day {
+                    unlocated.push(unlocated_axis_entry(period, text, source_date));
+                }
                 return;
             }
             if !matches!(
@@ -5576,7 +5583,7 @@ fn project_axis_item<C: TodayClock>(
                 period,
                 text: text.to_owned(),
                 source_date: source_date.to_owned(),
-                start_minute: Some(minute),
+                start_minute: Some(projected as u16),
                 end_minute: None,
                 continues_from_previous_day: false,
                 continues_into_next_day: false,
@@ -5610,7 +5617,12 @@ fn project_axis_item<C: TodayClock>(
                 unlocated.push(unlocated_axis_entry(period, text, source_date));
                 return;
             }
-            if expected_day < start_day || expected_day > end_day {
+            let window_start = expected_day.unix_days() * 1440 + 240;
+            let window_end = window_start + 1440;
+            if end_absolute <= window_start || start_absolute >= window_end {
+                if start_day == expected_day {
+                    unlocated.push(unlocated_axis_entry(period, text, source_date));
+                }
                 return;
             }
             let start_resolution = clock.resolve_local_wall_time(source_date, start_minute);
@@ -5631,24 +5643,16 @@ fn project_axis_item<C: TodayClock>(
                 unlocated.push(unlocated_axis_entry(period, text, source_date));
                 return;
             }
-            let start = if start_day == expected_day {
-                start_minute
-            } else {
-                0
-            };
-            let end = if end_day == expected_day {
-                end_minute
-            } else {
-                1440
-            };
+            let start = (start_absolute.max(window_start) - expected_day.unix_days() * 1440) as u16;
+            let end = (end_absolute.min(window_end) - expected_day.unix_days() * 1440) as u16;
             located.push(TimeAxisEntryView {
                 period,
                 text: text.to_owned(),
                 source_date: source_date.to_owned(),
                 start_minute: Some(start),
                 end_minute: Some(end),
-                continues_from_previous_day: expected_day > start_day,
-                continues_into_next_day: expected_day < end_day,
+                continues_from_previous_day: start_absolute < window_start,
+                continues_into_next_day: end_absolute > window_end,
             });
         }
     }
@@ -5675,7 +5679,10 @@ fn explicit_time_expression(text: &str) -> ExplicitTimeExpression {
     match occurrences.as_slice() {
         [] => ExplicitTimeExpression::None,
         [one] => match (one.date.as_ref(), one.minute) {
-            (None, Some(minute)) => ExplicitTimeExpression::Point { date: None, minute },
+            (_, Some(minute)) => ExplicitTimeExpression::Point {
+                date: one.date.clone(),
+                minute,
+            },
             _ => ExplicitTimeExpression::Invalid,
         },
         [start, end]

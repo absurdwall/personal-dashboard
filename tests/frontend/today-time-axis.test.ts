@@ -12,6 +12,7 @@ import {
   hourTickMinutes,
   locateNow,
   minuteOfDay,
+  livedAxisMinute,
   minutePosition,
   onManualScroll,
   stripLeadingAxisTimeLabel,
@@ -43,22 +44,22 @@ function elements(): ElementNode[] {
 }
 
 test('maps points, ranges, and overlaps without changing time anchors', () => {
-  assert.equal(minutePosition(0), 0);
+  assert.equal(minutePosition(240), 0);
   assert.equal(minuteOfDay('00:00'), 0);
   assert.equal(minuteOfDay('12:30'), 750);
   assert.equal(minuteOfDay('23:59'), 1439);
   assert.equal(minuteOfDay('24:00'), null);
   assert.equal(minuteOfDay('7:30'), null);
   assert.equal(minuteOfDay('24:01'), null);
-  assert.equal(minutePosition(750), 750 / 1440);
-  assert.equal(minutePosition(1440), 1);
-  assert.deepEqual(hourTickMinutes(), Array.from({ length: 25 }, (_, hour) => hour * 60));
+  assert.equal(minutePosition(750), 510 / 1440);
+  assert.equal(minutePosition(1680), 1);
+  assert.deepEqual(hourTickMinutes(), Array.from({ length: 25 }, (_, hour) => (hour + 4) * 60));
   assert.deepEqual(axisGeometry({ startMinute: 750, endMinute: null }), {
-    top: 750 / 1440,
+    top: 510 / 1440,
     height: 0,
   });
   assert.deepEqual(axisGeometry({ startMinute: 570, endMinute: 645 }), {
-    top: 570 / 1440,
+    top: 330 / 1440,
     height: 75 / 1440,
   });
   assert.equal(
@@ -102,14 +103,14 @@ test('groups overlapping time-axis cards into one readable stack instead of hori
       { stackId: 0, stackIndex: 1, stackSize: 2 },
     ],
   );
-  assert.equal(axisLabelCenterMinute(0), TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
-  assert.equal(axisLabelCenterMinute(12), TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
-  assert.equal(axisLabelCenterMinute(1420), 1440 - TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
-  assert.equal(axisLabelCenterMinute(1440), 1440 - TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
+  assert.equal(axisLabelCenterMinute(240), 240 + TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
+  assert.equal(axisLabelCenterMinute(252), 240 + TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
+  assert.equal(axisLabelCenterMinute(1660), 1680 - TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
+  assert.equal(axisLabelCenterMinute(1680), 1680 - TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2);
   assert.deepEqual(
     axisOverlapPlacements([
-      { startMinute: 0, endMinute: null },
-      { startMinute: 30, endMinute: 50 },
+      { startMinute: 240, endMinute: null },
+      { startMinute: 270, endMinute: 290 },
     ]),
     [
       { stackId: 0, stackIndex: 0, stackSize: 2 },
@@ -118,8 +119,8 @@ test('groups overlapping time-axis cards into one readable stack instead of hori
   );
   assert.deepEqual(
     axisOverlapPlacements([
-      { startMinute: 1430, endMinute: 1431 },
-      { startMinute: 1416, endMinute: 1440 },
+      { startMinute: 1670, endMinute: 1671 },
+      { startMinute: 1656, endMinute: 1680 },
     ]),
     [
       { stackId: 0, stackIndex: 0, stackSize: 2 },
@@ -274,4 +275,10 @@ test('clock ticks update the locator without rebuilding readable timeline entrie
   assert.equal(clockTickDecision(null, '2026-09-30', '2026-10-01', true), 'preserve-history');
   assert.equal(clockTickDecision(null, '2026-09-30', '2026-09-30', true), 'update-marker');
   assert.equal(clockTickDecision(null, '2026-09-30', '2026-10-01', false), 'reload-today');
+});
+
+test('now maps the early natural date into the late lived-day segment', () => {
+  assert.equal(livedAxisMinute('03:59'), 1679);
+  assert.equal(livedAxisMinute('04:00'), 240);
+  assert.equal(livedAxisMinute('00:00'), 1440);
 });

@@ -27,15 +27,15 @@ export function stripLeadingAxisTimeLabel(
 }
 
 export function minutePosition(minute: number): number {
-  if (!Number.isInteger(minute) || minute < 0 || minute > TODAY_AXIS_MINUTES) {
-    throw new RangeError('Today axis positions must be whole minutes from 0 through 1440.');
+  if (!Number.isInteger(minute) || minute < 240 || minute > 1680) {
+    throw new RangeError('Today axis positions must be whole minutes from 240 through 1680.');
   }
-  return minute / TODAY_AXIS_MINUTES;
+  return (minute - 240) / TODAY_AXIS_MINUTES;
 }
 
 export function axisLabelCenterMinute(anchorMinute: number): number {
   const halfLabel = TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2;
-  return Math.min(Math.max(anchorMinute, halfLabel), TODAY_AXIS_MINUTES - halfLabel);
+  return Math.min(Math.max(anchorMinute, 240 + halfLabel), 1680 - halfLabel);
 }
 
 export function axisMarkerLayout(entry: TimeAxisEntry): AxisMarkerLayout {
@@ -61,7 +61,7 @@ export function minuteOfDay(label: string): number | null {
 }
 
 export function hourTickMinutes(): readonly number[] {
-  return Array.from({ length: 25 }, (_, hour) => hour * 60);
+  return Array.from({ length: 25 }, (_, hour) => (hour + 4) * 60);
 }
 
 export function hourTickIsClearFromNow(tickMinute: number, currentMinute: number | null): boolean {
@@ -147,4 +147,9 @@ export function clockResultMatchesSession(
   current: TodayAxisSession,
 ): boolean {
   return requested.date === current.date && requested.targetBinding === current.targetBinding;
+}
+
+export function livedAxisMinute(label: string): number | null {
+  const minute = minuteOfDay(label);
+  return minute === null ? null : minute < 240 ? minute + 1440 : minute;
 }
