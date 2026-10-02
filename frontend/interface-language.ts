@@ -5,6 +5,10 @@ export type InterfaceLanguagePreferences = Readonly<{
 }>;
 
 const interfaceCopies = {
+  "collaboration.toggleHistory": { zh: "会话历史", en: "Session history" },
+  "collaboration.toggleContext": { zh: "当前工作", en: "Current work" },
+  "collaboration.resizeHistory": { zh: "调整会话历史宽度（方向键调整，Home 最窄，End 最宽）", en: "Resize session history (arrow keys adjust, Home minimum, End maximum)" },
+  "collaboration.resizeContext": { zh: "调整当前工作宽度（方向键调整，Home 最窄，End 最宽）", en: "Resize current work (arrow keys adjust, Home minimum, End maximum)" },
   "toolbar.label": { zh: "工作区工具栏", en: "Workspace toolbar" },
   "toolbar.themeSample": { zh: "全局主题色样本", en: "Global accent sample" },
   "toolbar.settings": { zh: "设置", en: "Settings" },
