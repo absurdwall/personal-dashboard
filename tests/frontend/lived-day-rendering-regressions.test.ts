@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +24,8 @@ function handler(start: string, end: string): string {
 }
 
 class Element {
+  tagName: string;
+  constructor(tagName = 'div') { this.tagName = tagName; }
   children: Element[] = [];
   dataset: Record<string, string> = {};
   attributes = new Map<string, string>();
@@ -57,7 +59,7 @@ class Element {
 
 function renderTimeline(entries: { startMinute: number; endMinute: number | null }[], early = false, late = false) {
   const context = createContext({
-    ...axis, document: { createElement: () => new Element() },
+    ...axis, document: { createElement: (tag: string) => new Element(tag) },
     currentTodayView: { date: '2026-10-01' }, currentInterfaceLanguage: 'en',
     todayAxisFollowState: 'following',
     t: (key: string) => key, setCopy() {}, updateTodayAxisMarkerAccessibleName() {},
@@ -107,6 +109,81 @@ test('expanding quiet hours recomputes stacks and exposes next-day entries', () 
   assert.equal(full.todayTimedEvents.children[2].children[0].children[0].textContent, '01:00 · 2026-10-02');
   assert.equal(renderTimeline(entries).todayTimedEvents.children.length, 2);
 });
+
+function html(node: Element): string {
+  const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
+  return `<${node.tagName} class="${escape(node.className)}">${escape(node.textContent)}${node.children.map(html).join('')}</${node.tagName}>`;
+}
+
+test('compiled Today long labels and complete multilingual content keep readable widths in the shipped WebKit layout',
+  { skip: process.platform !== 'darwin' }, () => {
+    const probe = join(output, 'rendered-today-layout');
+    execFileSync('swiftc', [join(root, 'tests/frontend/helpers/rendered-today-layout.swift'), '-o', probe], { timeout: 60_000 });
+    const context = renderTimeline([]);
+    context.t = (key: string) => key === 'today.unlocatedPlanLabel' ? '计划' : key;
+    context.setCopy = (node: Element, key: string) => { node.textContent = key; };
+    const bodies = [
+      '保留完整来源和详情。'.repeat(20),
+      'Keep the complete source, original wording and details available while wrapping this long explanation. '.repeat(5),
+      '检查 Today 长内容与英文 explanation，完整保留 source 和相关边界。'.repeat(12),
+      'abcdefghijklmnopqrstuvwxyz0123456789'.repeat(14),
+      '短内容',
+    ];
+    const periods = ['白天（具体时段未定）', '下午', 'Daytime (exact time is still undecided)', 'LongUnspacedPeriod'.repeat(8)];
+    const entries = periods.flatMap(period => bodies.map(text => ({ startMinute: null, endMinute: null, text,
+      period, sourceDate: '2026-10-01' })));
+    context.longEntries = entries;
+    const details = runInContext('longEntries.map((entry, index) => axisEntryDetails(entry, "arrangement-unlocated", index))', context) as Element[];
+    // Use the real surrounding markup and all shipped CSS: the narrow side rail
+    // is exactly where a viewport-only media query misses the reported failure.
+    const page = readFileSync(join(root, 'frontend/index.html'), 'utf8').replace(/<script[^]*?<\/script>/g, '');
+    writeFileSync(join(output, 'index.html'), page);
+    copyFileSync(join(root, 'frontend/styles.css'), join(output, 'styles.css'));
+    const script = `(() => {
+      document.querySelector('#workspace-destination-today').hidden = false;
+      document.querySelector('#today-ready').hidden = false;
+      document.querySelector('#today-handoff').hidden = true;
+      const region = document.querySelector('#today-unlocated-time-region');
+      region.hidden = false;
+      region.querySelector('.today-axis-unlocated-lane').hidden = false;
+      document.querySelector('#today-current-arrangement-unlocated').innerHTML = ${JSON.stringify(details.map(html).join(''))};
+      const rect = node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom }; };
+      const rows = [...document.querySelectorAll('#today-current-arrangement-unlocated details')].map(detail => {
+        const summary = detail.querySelector('summary');
+        const [label, body] = summary.children;
+        const closed = { summary: rect(summary), label: rect(label), body: rect(body), text: body.textContent, scrollWidth: summary.scrollWidth, clientWidth: summary.clientWidth };
+        detail.open = true;
+        const copy = detail.querySelector('p');
+        const metadata = detail.querySelector('.today-axis-entry-metadata');
+        const opened = { text: copy.textContent, copy: rect(copy), metadata: metadata.textContent, scrollWidth: metadata.scrollWidth, clientWidth: metadata.clientWidth };
+        detail.open = false;
+        return { ...closed, opened };
+      });
+      return JSON.stringify({ width: innerWidth, rows });
+    })()`;
+    const scriptPath = join(output, 'today-geometry.js');
+    writeFileSync(scriptPath, script);
+    for (const width of [1440, 1100, 900, 680, 520]) {
+      const result = JSON.parse(execFileSync(probe, [join(output, 'index.html'), scriptPath, String(width)], { encoding: 'utf8', timeout: 30_000 }));
+      assert.equal(result.width, width);
+      assert.equal(result.rows.length, entries.length, 'all compiled entry details are actually rendered');
+      for (const [index, row] of result.rows.entries()) {
+        const diagnostic = `viewport ${width}, entry ${index}: ${JSON.stringify(row)}`;
+        assert.ok(row.summary.width >= 100 && row.summary.height >= 30, `visible summary has measurable bounds: ${diagnostic}`);
+        assert.ok(row.body.width >= Math.min(180, row.summary.width - 16) - 2, `body remains readable: ${diagnostic}`);
+        assert.ok(row.body.right <= row.summary.right + 1, `body stays inside summary: ${diagnostic}`);
+        assert.ok(row.scrollWidth <= row.clientWidth + 1, `no horizontal overflow: ${diagnostic}`);
+        assert.ok(row.label.bottom <= row.body.y + 1 || row.label.right <= row.body.x + 1, `label/body do not overlap: ${diagnostic}`);
+        assert.equal(row.text, entries[index].text, 'summary retains full content');
+        assert.equal(row.opened.text, entries[index].text, 'expanded details retain full content');
+        assert.ok(row.opened.scrollWidth <= row.opened.clientWidth + 1, `expanded metadata stays in the card: ${diagnostic}`);
+        assert.match(row.opened.metadata, /today.sourceArrangement.*today.sourceDate/, 'source and details remain available');
+        if (row.summary.width <= 384) assert.ok(row.body.y >= row.label.bottom - 1, `narrow card stacks label above body: ${diagnostic}`);
+        if (row.summary.width > 384) assert.ok(row.label.width <= 144 + 1, `wide card bounds label space: ${diagnostic}`);
+        if (index === 9) assert.ok(row.summary.height <= 120, `short label/content stay compact: ${diagnostic}`);
+      }
+    }
+  });
 
 function clockHarness(state: 'pending' | 'completed', open: boolean, draft = false, surface = 'today') {
   const form = { hidden: !open, dataset: { taskEditor: 'task-1', taskSurface: surface } };
