@@ -27,18 +27,24 @@ export function stripLeadingAxisTimeLabel(
 }
 
 export function minutePosition(minute: number): number {
-  if (!Number.isInteger(minute) || minute < 0 || minute > TODAY_AXIS_MINUTES) {
-    throw new RangeError('Today axis positions must be whole minutes from 0 through 1440.');
+  if (!Number.isInteger(minute) || minute < 240 || minute > 1680) {
+    throw new RangeError('Today axis positions must be whole minutes from 240 through 1680.');
   }
-  return minute / TODAY_AXIS_MINUTES;
+  return (minute - 240) / TODAY_AXIS_MINUTES;
 }
 
-export function axisLabelCenterMinute(anchorMinute: number): number {
+export function axisLabelCenterMinute(
+  anchorMinute: number,
+  bounds: readonly [number, number] = [240, 1680],
+): number {
   const halfLabel = TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2;
-  return Math.min(Math.max(anchorMinute, halfLabel), TODAY_AXIS_MINUTES - halfLabel);
+  return Math.min(Math.max(anchorMinute, bounds[0] + halfLabel), bounds[1] - halfLabel);
 }
 
-export function axisMarkerLayout(entry: TimeAxisEntry): AxisMarkerLayout {
+export function axisMarkerLayout(
+  entry: TimeAxisEntry,
+  bounds: readonly [number, number] = [240, 1680],
+): AxisMarkerLayout {
   const duration = entry.endMinute === null ? null : entry.endMinute - entry.startMinute;
   if (duration !== null && duration < 0) {
     throw new RangeError('Today axis range ends must not precede their start.');
@@ -47,7 +53,7 @@ export function axisMarkerLayout(entry: TimeAxisEntry): AxisMarkerLayout {
   return {
     isCenteredLabel,
     heightMinutes: isCenteredLabel ? TODAY_AXIS_LABEL_MINIMUM_MINUTES : duration!,
-    centerMinute: axisLabelCenterMinute(entry.startMinute),
+    centerMinute: axisLabelCenterMinute(entry.startMinute, bounds),
   };
 }
 
@@ -61,7 +67,7 @@ export function minuteOfDay(label: string): number | null {
 }
 
 export function hourTickMinutes(): readonly number[] {
-  return Array.from({ length: 25 }, (_, hour) => hour * 60);
+  return Array.from({ length: 25 }, (_, hour) => (hour + 4) * 60);
 }
 
 export function hourTickIsClearFromNow(tickMinute: number, currentMinute: number | null): boolean {
@@ -79,7 +85,10 @@ export function axisGeometry(entry: TimeAxisEntry): Readonly<{ top: number; heig
   return { top, height: (entry.endMinute - entry.startMinute) / TODAY_AXIS_MINUTES };
 }
 
-export function axisOverlapPlacements(entries: readonly TimeAxisEntry[]): readonly AxisOverlapPlacement[] {
+export function axisOverlapPlacements(
+  entries: readonly TimeAxisEntry[],
+  bounds: readonly [number, number] = [240, 1680],
+): readonly AxisOverlapPlacement[] {
   const placements = entries.map(() => ({ stackId: 0, stackIndex: 0, stackSize: 1 }));
   const ordered = entries
     .map((entry, index) => {
@@ -87,7 +96,7 @@ export function axisOverlapPlacements(entries: readonly TimeAxisEntry[]): readon
       if (duration < 0) {
         throw new RangeError('Today axis range ends must not precede their start.');
       }
-      const marker = axisMarkerLayout(entry);
+      const marker = axisMarkerLayout(entry, bounds);
       const labelStart = marker.centerMinute - marker.heightMinutes / 2;
       const labelEnd = marker.centerMinute + marker.heightMinutes / 2;
       return {
@@ -136,9 +145,10 @@ export function clockTickDecision(
   selectedDate: string | null,
   viewDate: string,
   clockDate: string,
+  hasEditingTarget = false,
 ): ClockTickDecision {
   if (viewDate === clockDate) return 'update-marker';
-  return selectedDate === null ? 'reload-today' : 'preserve-history';
+  return selectedDate === null && !hasEditingTarget ? 'reload-today' : 'preserve-history';
 }
 
 export function clockResultMatchesSession(
@@ -146,4 +156,9 @@ export function clockResultMatchesSession(
   current: TodayAxisSession,
 ): boolean {
   return requested.date === current.date && requested.targetBinding === current.targetBinding;
+}
+
+export function livedAxisMinute(label: string): number | null {
+  const minute = minuteOfDay(label);
+  return minute === null ? null : minute < 240 ? minute + 1440 : minute;
 }

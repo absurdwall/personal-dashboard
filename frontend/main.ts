@@ -1,15 +1,16 @@
+import { initializeCollaborationPanels } from "./collaboration-panels.js";
 import {
   DatedNoteTargetChangedError,
   submitDatedNote,
 } from "./dated-note-command.js";
 import { LatestRequest } from "./latest-request.js";
+import { HistoricalHabitArrival } from "./historical-habit-arrival.js";
 import {
   canMutateTodayTasks,
   canStartManualTodayRefresh,
   refreshTodayPresentation,
 } from "./today-refresh.js";
 import {
-  axisGeometry,
   axisMarkerLayout,
   axisOverlapPlacements,
   clockResultMatchesSession,
@@ -17,8 +18,7 @@ import {
   hourTickIsClearFromNow,
   hourTickMinutes,
   locateNow,
-  minuteOfDay,
-  minutePosition,
+  livedAxisMinute,
   onManualScroll,
   stripLeadingAxisTimeLabel,
   type TodayAxisFollowState,
@@ -61,6 +61,10 @@ import {
   beginVoiceTranscriptSave,
   BrowserCollaborationVoiceRuntime,
   collaborationVoiceControls,
+  collaborationVoiceLocale,
+  readCollaborationVoiceLanguage,
+  rememberCollaborationVoiceLanguage,
+  type CollaborationVoiceLanguage,
   CollaborationVoiceInputController,
   enqueueCollaborationDraftWrite,
   type CollaborationVoiceFailure,
@@ -201,7 +205,7 @@ type TimeAxisView = Readonly<{
   unlocatedConfirmedFacts: readonly TimeAxisEntryView[];
 }>;
 
-type TodayClockView = Readonly<{ date: string; time: string }>;
+type TodayClockView = Readonly<{ date: string; time: string; livedDate: string }>;
 
 type EveningView = Readonly<{
   account: readonly string[];
@@ -909,7 +913,8 @@ type CollaborationVoiceStatusKey =
   | "collaboration.voiceRecordingFailed"
   | "collaboration.voiceEmptyRecording"
   | "collaboration.voiceRecognitionFailed"
-  | "collaboration.voiceDraftSaveFailed";
+  | "collaboration.voiceDraftSaveFailed"
+  | "collaboration.voiceSelectedUnavailable";
 
 function localCalendarDate(): string {
   const now = new Date();
@@ -918,8 +923,10 @@ function localCalendarDate(): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
-let collaborationActivityDate = localCalendarDate();
-let collaborationTargetDate = collaborationActivityDate;
+let collaborationActivityDate = "";
+let collaborationActivityDateExplicit = false;
+let collaborationEmptyTargetDate: string | null = null;
+let collaborationTargetDate = "";
 let currentCollaborationWorkspace: CollaborationWorkspaceView | null = null;
 let currentCollaborationSession: CollaborationSessionView | null = null;
 let currentDailyPlanAutomation: DailyPlanAutomationView | null = null;
@@ -949,6 +956,10 @@ let collaborationVoiceCapabilities: CollaborationVoiceCapabilities | null = null
 let collaborationVoiceCapabilityLoading = false;
 let collaborationVoiceCapabilityRequest = 0;
 let collaborationVoiceAuthorizationPending = false;
+let collaborationVoiceAuthorizationRequest = 0;
+let collaborationVoiceAuthorizationTarget: CollaborationVoiceTarget | null = null;
+let preferredCollaborationVoiceLanguage: CollaborationVoiceLanguage | undefined;
+try { preferredCollaborationVoiceLanguage = readCollaborationVoiceLanguage(window.localStorage); } catch { /* Storage is optional. */ }
 let activeCollaborationVoiceTarget: CollaborationVoiceTarget | null = null;
 const collaborationVoiceStatuses = new Map<string, CollaborationVoiceStatusKey>();
 const collaborationSendingDrafts = new Set<string>();
@@ -1048,6 +1059,7 @@ const collaborationVoiceStatus = document.querySelector<HTMLElement>("#collabora
 const collaborationSendButton = document.querySelector<HTMLButtonElement>("#collaboration-send-message");
 const collaborationChatHeading = document.querySelector<HTMLElement>("#collaboration-chat-heading");
 const collaborationChatDate = document.querySelector<HTMLElement>("#collaboration-chat-date");
+const collaborationComposerDate = document.querySelector<HTMLElement>("#collaboration-composer-date");
 const collaborationRunStatus = document.querySelector<HTMLElement>("#collaboration-run-status");
 const collaborationStopButton = document.querySelector<HTMLButtonElement>("#collaboration-stop-run");
 const collaborationVaultLabel = document.querySelector<HTMLElement>("#collaboration-context-vault");
@@ -1400,12 +1412,14 @@ const taskListCreateDrafts = new Map<string, string>();
 const taskListRenameDrafts = new Map<string, string>();
 const taskOperationIds = new TaskOperationIdentityStore();
 let selectedTodayDate: string | null = null;
+const historicalHabitArrival = new HistoricalHabitArrival();
 type DatedNoteDraft = {
   content: string;
   category: ShortRecordCategory;
   correctionId: string | null;
 };
 const datedNoteDrafts = new Map<string, DatedNoteDraft>();
+const eveningReviewDrafts = new Map<string, Readonly<{ content: string; mode: string }>>();
 let correctingShortRecordId: string | null = null;
 let currentCalendarMonth: CalendarMonthView | null = null;
 let currentCalendarSummaryView: TodayView | null = null;
@@ -1489,6 +1503,8 @@ function setRawText(element: HTMLElement | null, value: string): void {
   element.textContent = value;
 }
 
+initializeCollaborationPanels();
+
 function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): void {
   currentInterfaceLanguage = preferences.interfaceLanguage;
   applyInterfaceLanguage(currentInterfaceLanguage);
@@ -1546,6 +1562,7 @@ async function chooseInterfaceLanguage(interfaceLanguage: InterfaceLanguage): Pr
 }
 
 function resetVaultScopedWorkspaceState(): void {
+  historicalHabitArrival.clear();
   taskRequests.invalidate();
   todayTaskRequests.invalidate();
   calendarMonthRequests.invalidate();
@@ -1567,8 +1584,10 @@ function resetVaultScopedWorkspaceState(): void {
   collaborationDrafts.clear();
   collaborationTargetDates.clear();
   collaborationSendingDrafts.clear();
-  collaborationActivityDate = localCalendarDate();
-  collaborationTargetDate = collaborationActivityDate;
+  collaborationActivityDate = "";
+  collaborationActivityDateExplicit = false;
+  collaborationEmptyTargetDate = null;
+  collaborationTargetDate = "";
   currentCalendarMonth = null;
   currentCalendarSummaryView = null;
   selectedCalendarDate = null;
@@ -2138,6 +2157,7 @@ async function openDailyPlanAutomationRun(): Promise<void> {
     );
     if (collaborationDateInput) collaborationDateInput.value = run.date;
     collaborationActivityDate = run.date;
+    collaborationActivityDateExplicit = true;
     showWorkspaceDestination("collaboration");
     selectCollaborationSession(session);
   } catch (error) {
@@ -2396,6 +2416,7 @@ function collaborationVoiceFailureStatus(failure: CollaborationVoiceFailure): Co
     case "recording-failed": return "collaboration.voiceRecordingFailed";
     case "empty-recording": return "collaboration.voiceEmptyRecording";
     case "recognition-failed": return "collaboration.voiceRecognitionFailed";
+    case "locale-unavailable": return "collaboration.voiceSelectedUnavailable";
   }
 }
 
@@ -2420,19 +2441,19 @@ function renderCollaborationVoiceControls(): void {
   const capabilities = collaborationVoiceCapabilities;
   const selectedLocale = collaborationVoiceLanguageSelect.value;
   const locales = capabilities?.available ? capabilities.locales : [];
-  const selectedLocaleIsInstalled = locales.some((locale) => locale.id === selectedLocale);
+  const selectedLocaleIsInstalled = Boolean(collaborationVoiceLocale(selectedLocale as CollaborationVoiceLanguage, locales));
   const currentTarget = currentCollaborationVoiceTarget();
   const currentDraftKey = currentTarget
     ? collaborationDraftKey(currentTarget.sessionId, currentTarget.targetDate)
     : "";
   const controlState = collaborationVoiceControls({
-    state: active,
+    state: collaborationVoiceAuthorizationPending ? "requesting" : active,
     hasTarget: Boolean(currentTarget),
     composerDisabled: collaborationMessageDraft?.disabled === true ||
       (currentDraftKey !== "" && collaborationSendingDrafts.has(currentDraftKey)),
     capabilityLoading: collaborationVoiceCapabilityLoading || collaborationVoiceAuthorizationPending,
     hasInstalledLocale: Boolean(capabilities?.available && selectedLocaleIsInstalled),
-    hasInstalledLocales: Boolean(capabilities?.available && locales.length > 0),
+    hasInstalledLocales: true, // Both target choices remain available even when their model is missing.
   });
   const status = currentTarget
     ? collaborationVoiceStatuses.get(currentDraftKey)
@@ -2452,16 +2473,24 @@ function renderCollaborationVoiceControls(): void {
         ? "collaboration.voiceRecording"
         : "collaboration.voiceTranscribing";
     setCopy(collaborationVoiceStatus, activeStatus);
+  } else if (active !== "idle" && activeCollaborationVoiceTarget) {
+    setRawText(collaborationVoiceStatus, t("collaboration.voiceProcessingOrigin", {
+      date: activeCollaborationVoiceTarget.targetDate,
+    }));
   } else if (status) {
     setCopy(collaborationVoiceStatus, status);
   } else if (!selectedLocaleIsInstalled) {
-    setCopy(collaborationVoiceStatus, "collaboration.voiceLanguageRequired");
+    setCopy(collaborationVoiceStatus, "collaboration.voiceSelectedUnavailable");
   } else {
     setRawText(collaborationVoiceStatus, "");
   }
 
-  setCopy(collaborationVoiceStartButton,
-    controlState.startAction === "stop" ? "collaboration.voiceStop" : "collaboration.voiceStart");
+  const actionLabel = t(controlState.startAction === "stop" ? "collaboration.voiceStop" : "collaboration.voiceStart");
+  collaborationVoiceStartButton.setAttribute("aria-label", actionLabel);
+  collaborationVoiceStartButton.title = actionLabel;
+  collaborationVoiceStartButton.dataset.action = controlState.startAction;
+  collaborationVoiceStartButton.setAttribute("aria-pressed", String(active === "recording"));
+  if (collaborationVoiceStatus) collaborationVoiceStatus.dataset.state = active;
   collaborationVoiceStartButton.disabled = controlState.startDisabled;
   collaborationVoiceCancelButton?.toggleAttribute("hidden", !controlState.cancelVisible);
   if (collaborationVoiceCancelButton) {
@@ -2472,35 +2501,16 @@ function renderCollaborationVoiceControls(): void {
 
 function renderCollaborationVoiceLocales(): void {
   if (!collaborationVoiceLanguageSelect) return;
-  const selected = collaborationVoiceLanguageSelect.value;
-  const capabilities = collaborationVoiceCapabilities;
-  const locales = capabilities?.available ? capabilities.locales : [];
-  const placeholder = document.createElement("option");
-  placeholder.value = "";
-  if (collaborationVoiceCapabilityLoading) {
-    setCopy(placeholder, "collaboration.voiceLanguageLoading");
-  } else if (locales.length > 0) {
-    setCopy(placeholder, "collaboration.voiceChooseLanguage");
-  } else {
-    setCopy(placeholder, "collaboration.voiceLanguageUnavailable");
-  }
-  const options = locales.map((locale) => {
+  const selected = preferredCollaborationVoiceLanguage ??
+    (currentInterfaceLanguage === "zh" ? "zh-CN" : "en-US");
+  const options = (["zh-CN", "en-US"] as const).map((language) => {
     const option = document.createElement("option");
-    option.value = locale.id;
-    option.textContent = locale.displayName;
+    option.value = language;
+    setCopy(option, language === "zh-CN" ? "collaboration.voiceChinese" : "collaboration.voiceAmericanEnglish");
     return option;
   });
-  collaborationVoiceLanguageSelect.replaceChildren(placeholder, ...options);
-
-  if (locales.some((locale) => locale.id === selected)) {
-    collaborationVoiceLanguageSelect.value = selected;
-  } else if (!selected && locales.length > 0) {
-    const languagePrefix = currentInterfaceLanguage === "zh" ? "zh" : "en";
-    const preferred = locales.find((locale) => locale.id.toLowerCase().startsWith(`${languagePrefix}-`));
-    collaborationVoiceLanguageSelect.value = preferred?.id ?? "";
-  } else {
-    collaborationVoiceLanguageSelect.value = "";
-  }
+  collaborationVoiceLanguageSelect.replaceChildren(...options);
+  collaborationVoiceLanguageSelect.value = selected;
   renderCollaborationVoiceControls();
 }
 
@@ -2570,6 +2580,12 @@ function handleCollaborationVoiceTranscript(target: CollaborationVoiceTarget, te
 }
 
 function cancelCollaborationVoiceCaptureForSelectionChange(): void {
+  if (collaborationVoiceAuthorizationPending) {
+    ++collaborationVoiceAuthorizationRequest;
+    collaborationVoiceAuthorizationPending = false;
+    if (collaborationVoiceAuthorizationTarget) setCollaborationVoiceStatus(collaborationVoiceAuthorizationTarget, "collaboration.voiceCancelled");
+    collaborationVoiceAuthorizationTarget = null;
+  }
   const state = collaborationVoiceController.state;
   if (state === "requesting" || state === "recording") collaborationVoiceController.cancel();
 }
@@ -2580,8 +2596,12 @@ async function startOrStopCollaborationVoice(): Promise<void> {
     return;
   }
   const target = currentCollaborationVoiceTarget();
-  const locale = collaborationVoiceLanguageSelect?.value ?? "";
-  if (!target || !locale) return;
+  const language = collaborationVoiceLanguageSelect?.value as CollaborationVoiceLanguage;
+  const locale = collaborationVoiceCapabilities?.available
+    ? collaborationVoiceLocale(language, collaborationVoiceCapabilities.locales) : undefined;
+  if (!target || !locale || collaborationVoiceController.state !== "idle") return;
+  preferredCollaborationVoiceLanguage = language;
+  try { rememberCollaborationVoiceLanguage(window.localStorage, language); } catch { /* Storage is optional. */ }
   if (collaborationMessageDraft) {
     collaborationDrafts.set(
       collaborationDraftKey(target.sessionId, target.targetDate),
@@ -2589,7 +2609,9 @@ async function startOrStopCollaborationVoice(): Promise<void> {
     );
   }
   if (collaborationVoiceAuthorizationPending) return;
+  const request = ++collaborationVoiceAuthorizationRequest;
   collaborationVoiceAuthorizationPending = true;
+  collaborationVoiceAuthorizationTarget = target;
   renderCollaborationVoiceControls();
   let authorized = false;
   try {
@@ -2597,18 +2619,22 @@ async function startOrStopCollaborationVoice(): Promise<void> {
       "collaboration_voice_authorize",
     );
   } catch {
-    setCollaborationVoiceStatus(target, "collaboration.voiceRecognitionFailed");
+    if (request === collaborationVoiceAuthorizationRequest) setCollaborationVoiceStatus(target, "collaboration.voiceRecognitionFailed");
     return;
   } finally {
-    collaborationVoiceAuthorizationPending = false;
-    renderCollaborationVoiceControls();
+    if (request === collaborationVoiceAuthorizationRequest) {
+      collaborationVoiceAuthorizationPending = false;
+      collaborationVoiceAuthorizationTarget = null;
+      renderCollaborationVoiceControls();
+    }
   }
+  if (request !== collaborationVoiceAuthorizationRequest) return;
   if (!authorized) {
     setCollaborationVoiceStatus(target, "collaboration.voicePermissionDenied");
     renderCollaborationVoiceControls();
     return;
   }
-  if (!isCurrentCollaborationVoiceTarget(target) || collaborationVoiceLanguageSelect?.value !== locale) {
+  if (!isCurrentCollaborationVoiceTarget(target) || collaborationVoiceLanguageSelect?.value !== language) {
     return;
   }
   void collaborationVoiceController.start(target, locale);
@@ -3791,6 +3817,7 @@ async function openCollaborationSessionFromMemory(
   activityDate: string,
 ): Promise<void> {
   collaborationActivityDate = activityDate;
+  collaborationActivityDateExplicit = true;
   if (collaborationDateInput) collaborationDateInput.value = activityDate;
   await refreshCollaborationWorkspace();
   if (currentCollaborationSession?.id === sessionId) return;
@@ -3969,6 +3996,9 @@ function renderCollaborationWorkspace(): void {
         : "",
     );
   }
+  setRawText(collaborationComposerDate, collaborationTargetDate
+    ? `${t("collaboration.targetDateLabel")}: ${collaborationDateLabel(collaborationTargetDate)}`
+    : "");
   if (collaborationRunStatus) {
     if (!session) {
       setRawText(collaborationRunStatus, "");
@@ -4116,6 +4146,7 @@ function selectCollaborationSession(session: CollaborationSessionView): void {
   cancelCollaborationVoiceCaptureForSelectionChange();
   stashCollaborationDraft();
   currentCollaborationSession = session;
+  collaborationEmptyTargetDate = null;
   cacheCollaborationDrafts(session);
   collaborationTargetDate = collaborationTargetDates.get(session.id) ?? session.targetDate;
   collaborationTargetDates.set(session.id, collaborationTargetDate);
@@ -4147,12 +4178,18 @@ function refreshCollaborationRunOwner(session: CollaborationSessionView): void {
 
 async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
   const request = ++collaborationWorkspaceRequest;
-  const date = collaborationDateInput?.value || collaborationActivityDate;
-  collaborationActivityDate = date;
+  let date = collaborationActivityDate;
   if (!quiet && collaborationSessionsStatus) {
     setCopy(collaborationSessionsStatus, "collaboration.loading");
   }
   try {
+    if (!collaborationActivityDateExplicit && (!currentCollaborationSession || !date)) {
+      const clock = await window.__TAURI__.core.invoke<TodayClockView>("today_clock");
+      if (request !== collaborationWorkspaceRequest) return;
+      date = clock.livedDate;
+    }
+    collaborationActivityDate = date;
+    if (collaborationDateInput) collaborationDateInput.value = date;
     const workspace = await window.__TAURI__.core.invoke<CollaborationWorkspaceView>(
       "collaboration_workspace",
       { date },
@@ -4165,7 +4202,7 @@ async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
       workspace.sessions[0] ?? null;
     const nextTargetDate = session
       ? collaborationTargetDates.get(session.id) ?? session.targetDate
-      : date;
+      : collaborationEmptyTargetDate ?? date;
     if (session?.id !== previousId || nextTargetDate !== previousTargetDate) {
       cancelCollaborationVoiceCaptureForSelectionChange();
     }
@@ -4248,6 +4285,7 @@ async function saveCollaborationTargetDate(): Promise<void> {
   const session = currentCollaborationSession;
   const date = collaborationTargetDateInput?.value || collaborationTargetDate;
   if (!session) {
+    collaborationEmptyTargetDate = date;
     collaborationTargetDate = date;
     void refreshCollaborationContext();
     return;
@@ -4360,16 +4398,19 @@ async function resumeCollaborationRequest(sessionId: string, executionId: string
 }
 
 async function createCollaborationSession(): Promise<void> {
-  const date = collaborationDateInput?.value || collaborationActivityDate;
+  const explicitDate = collaborationEmptyTargetDate ??
+    (collaborationActivityDateExplicit ? collaborationActivityDate : null);
   try {
     const session = await window.__TAURI__.core.invoke<CollaborationSessionView>(
       "collaboration_create_session",
-      { date },
+      { date: explicitDate },
     );
+    const date = session.createdDate;
     cancelCollaborationVoiceCaptureForSelectionChange();
     stashCollaborationDraft();
     cacheCollaborationDrafts(session);
     currentCollaborationSession = session;
+    collaborationEmptyTargetDate = null;
     collaborationTargetDates.set(session.id, date);
     collaborationActivityDate = date;
     collaborationTargetDate = date;
@@ -4409,7 +4450,9 @@ async function openCollaborationForTask(
     currentCollaborationSession = session;
     cacheCollaborationDrafts(session);
     collaborationActivityDate = targetDate;
+    collaborationActivityDateExplicit = true;
     collaborationTargetDate = targetDate;
+    collaborationTargetDates.set(session.id, targetDate);
     const key = collaborationDraftKey(session.id, targetDate);
     const existingDraft = collaborationDrafts.get(key) ?? session.draftsByDate[targetDate] ?? "";
     const taskReference = t("collaboration.taskFocusDraft", {
@@ -4452,7 +4495,9 @@ async function returnToCollaborationFromTask(): Promise<void> {
       );
     currentCollaborationSession = session;
     collaborationActivityDate = session.targetDate;
+    collaborationActivityDateExplicit = true;
     collaborationTargetDate = session.targetDate;
+    collaborationTargetDates.set(session.id, session.targetDate);
     if (collaborationDateInput) collaborationDateInput.value = session.targetDate;
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = session.targetDate;
     taskReturnToCollaborationSessionId = null;
@@ -4486,6 +4531,7 @@ async function returnToCollaborationFromDailyRecord(): Promise<void> {
     cacheCollaborationDrafts(session);
     collaborationTargetDates.set(session.id, targetDate);
     collaborationActivityDate = targetDate;
+    collaborationActivityDateExplicit = true;
     collaborationTargetDate = targetDate;
     if (collaborationDateInput) collaborationDateInput.value = targetDate;
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = targetDate;
@@ -4721,8 +4767,23 @@ function todayTimelineItem(block: MorningBlockView): HTMLLIElement {
   return item;
 }
 
+let todayAxisEarlyExpanded = false;
+let todayAxisLateExpanded = false;
+let todayAxisRenderedDate: string | null = null;
+function axisBounds(): readonly [number, number] {
+  return [todayAxisEarlyExpanded ? 240 : 360, todayAxisLateExpanded ? 1680 : 1440];
+}
+function minutePosition(minute: number): number {
+  const [start, end] = axisBounds();
+  return (minute - start) / (end - start);
+}
+function nextAxisDate(date: string): string {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + 1);
+  return value.toISOString().slice(0, 10);
+}
 function formatAxisMinute(minute: number): string {
-  if (minute === 1440) return "24:00";
+  minute %= 1440;
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 }
 
@@ -4735,7 +4796,9 @@ function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): s
     return t("today.unlocatedLabel");
   }
   const start = formatAxisMinute(entry.startMinute);
-  return entry.endMinute === null ? start : `${start}–${formatAxisMinute(entry.endMinute)}`;
+  const label = entry.endMinute === null ? start : `${start}–${formatAxisMinute(entry.endMinute)}`;
+  return entry.startMinute >= 1440 || (entry.endMinute ?? 0) > 1440
+    ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
 }
 
 function axisEntryMetadataCopyKeys(
@@ -4780,12 +4843,12 @@ function axisEntryDetails(
   if (entry.startMinute === null) time.className = "today-axis-entry-time-label";
   time.textContent = axisEntryTimeLabel(entry, lane);
   if (entry.startMinute !== null) {
-    time.setAttribute("datetime", `${entry.sourceDate}T${formatAxisMinute(entry.startMinute)}`);
+    time.setAttribute("datetime", `${entry.startMinute >= 1440 ? nextAxisDate(currentTodayView?.date ?? entry.sourceDate) : (currentTodayView?.date ?? entry.sourceDate)}T${formatAxisMinute(entry.startMinute)}`);
   }
   const excerpt = document.createElement("span");
   excerpt.textContent = entry.text;
   summary.append(time, excerpt);
-  if (entry.continuesFromPreviousDay || entry.continuesIntoNextDay) {
+  {
     const continuation = document.createElement("span");
     continuation.className = "today-axis-entry-summary-metadata";
     const sourceDate = document.createElement("span");
@@ -4856,25 +4919,28 @@ function renderTodayTimeAxisEntries(
     detailElements.set(index, axisEntryDetails(entry, entry.lane, index));
   });
   todayTimedDetails.replaceChildren(...ordered.map(({ index }) => detailElements.get(index)!));
-  const timedEntries = ordered.filter(({ entry }) => entry.startMinute !== null);
+  const [visibleStart, visibleEnd] = axisBounds();
+  const timedEntries = ordered.filter(({ entry }) => entry.startMinute !== null &&
+    entry.startMinute < visibleEnd && (entry.endMinute ?? entry.startMinute) >= visibleStart);
+  const visibleEntries = timedEntries.map(({ entry: original, index }) => {
+    const entry = { ...original, startMinute: Math.max(original.startMinute!, visibleStart),
+      endMinute: original.endMinute === null ? null : Math.min(original.endMinute, visibleEnd) };
+    return { original, entry, index, markerLayout: axisMarkerLayout(entry, [visibleStart, visibleEnd]) };
+  });
   const stackPlacements = axisOverlapPlacements(
-    timedEntries.map(({ entry }) => ({
+    visibleEntries.map(({ entry }) => ({
       startMinute: entry.startMinute!,
       endMinute: entry.endMinute,
     })),
+    [visibleStart, visibleEnd],
   );
   const placementByIndex = new Map(
-    timedEntries.map(({ index }, placementIndex) => [index, stackPlacements[placementIndex]]),
+    visibleEntries.map(({ index }, placementIndex) => [index, stackPlacements[placementIndex]]),
   );
   const markersByStack = new Map<number, HTMLLIElement[]>();
   todayTimedEvents.replaceChildren(
-    ...ordered.flatMap(({ entry, index }) => {
-      if (entry.startMinute === null) return [];
+    ...visibleEntries.flatMap(({ original, entry, index, markerLayout }) => {
       const durationMinutes = entry.endMinute === null ? null : entry.endMinute - entry.startMinute;
-      const markerLayout = axisMarkerLayout({
-        startMinute: entry.startMinute,
-        endMinute: entry.endMinute,
-      });
       const placement = placementByIndex.get(index)!;
       const marker = document.createElement("li");
       marker.className = "today-axis-marker";
@@ -4895,7 +4961,7 @@ function renderTodayTimeAxisEntries(
       marker.style.zIndex = String(3 + placement.stackIndex);
       marker.style.setProperty("--axis-stack-index", String(placement.stackIndex));
       marker.style.setProperty("--axis-stack-size", String(placement.stackSize));
-      marker.style.height = `${minutePosition(markerLayout.heightMinutes) * 100}%`;
+      marker.style.height = `${markerLayout.heightMinutes / (visibleEnd - visibleStart) * 100}%`;
       marker.dataset.stackId = String(placement.stackId);
       marker.classList.toggle("is-stacked", placement.stackSize > 1);
       marker.classList.toggle("is-centered-label", markerLayout.isCenteredLabel);
@@ -4904,7 +4970,7 @@ function renderTodayTimeAxisEntries(
       const link = document.createElement("a");
       link.href = `#today-axis-${entry.lane}-entry-${index}`;
       link.className = "today-axis-marker-link";
-      link.dataset.axisItemTime = axisEntryTimeLabel(entry, entry.lane);
+      link.dataset.axisItemTime = axisEntryTimeLabel(original, original.lane);
       link.dataset.axisItemText = entry.text;
       link.dataset.axisMetadataCopyKeys = JSON.stringify(
         axisEntryMetadataCopyKeys(entry, entry.lane),
@@ -4912,15 +4978,15 @@ function renderTodayTimeAxisEntries(
       updateTodayAxisMarkerAccessibleName(link, currentInterfaceLanguage);
       const timeLabel = document.createElement("span");
       timeLabel.className = "today-axis-marker-time";
-      timeLabel.textContent = axisEntryTimeLabel(entry, entry.lane);
+      timeLabel.textContent = axisEntryTimeLabel(original, original.lane);
       const title = document.createElement("span");
       title.className = "today-axis-marker-title";
       title.textContent = entry.task
         ? entry.text
         : stripLeadingAxisTimeLabel(
           entry.text,
-          formatAxisMinute(entry.startMinute),
-          entry.endMinute === null ? null : formatAxisMinute(entry.endMinute),
+          formatAxisMinute(original.startMinute!),
+          original.endMinute === null ? null : formatAxisMinute(original.endMinute),
         );
       const metadata = document.createElement("span");
       metadata.className = "today-axis-marker-source-status";
@@ -4966,25 +5032,16 @@ function renderTodayTimeAxisEntries(
     if (members.length > 1) members[0].classList.add("is-stack-front");
   }
   todayTimedDurations.replaceChildren(
-    ...ordered.flatMap(({ entry, index }) => {
-      if (entry.startMinute === null) return [];
-      const markerLayout = axisMarkerLayout({
-        startMinute: entry.startMinute,
-        endMinute: entry.endMinute,
-      });
+    ...visibleEntries.flatMap(({ entry, markerLayout }) => {
       if (entry.endMinute !== null && !markerLayout.isCenteredLabel) return [];
-      const geometry = axisGeometry({
-        startMinute: entry.startMinute,
-        endMinute: entry.endMinute,
-      });
       const duration = document.createElement("span");
       duration.className = entry.endMinute === null ? "today-axis-point" : "today-axis-range";
       duration.classList.add(
         entry.lane === "arrangement" ? "is-arrangement" :
           entry.lane === "facts" ? "is-fact" : "is-task",
       );
-      duration.style.top = `${geometry.top * 100}%`;
-      if (entry.endMinute !== null) duration.style.height = `${geometry.height * 100}%`;
+      duration.style.top = `${minutePosition(entry.startMinute) * 100}%`;
+      if (entry.endMinute !== null) duration.style.height = `${(entry.endMinute! - entry.startMinute) / (visibleEnd - visibleStart) * 100}%`;
       return [duration];
     }),
   );
@@ -5007,7 +5064,7 @@ function renderTodayTimeAxisEntries(
 
 function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTime): void {
   if (!todayContinuousAxis) return;
-  const currentMinute = currentTime ? minuteOfDay(currentTime) : null;
+  const currentMinute = currentTime ? livedAxisMinute(currentTime) : null;
   const showNow = view.isToday && currentMinute !== null;
   todayContinuousAxis.dataset.hasNow = String(showNow);
   todayContinuousAxis.classList.toggle("is-today", showNow);
@@ -5026,7 +5083,7 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
   });
   todayHourTicks?.querySelectorAll<HTMLElement>(".today-hour-tick").forEach((tick) => {
     const tickMinute = Number(tick.dataset.minute);
-    tick.hidden = !Number.isInteger(tickMinute) || !hourTickIsClearFromNow(tickMinute, showNow ? currentMinute : null);
+    tick.hidden = tickMinute < axisBounds()[0] || tickMinute > axisBounds()[1] || !Number.isInteger(tickMinute) || !hourTickIsClearFromNow(tickMinute, showNow ? currentMinute : null);
   });
   if (todayLocateNowButton) todayLocateNowButton.hidden = !showNow;
   if (showNow && currentMinute !== null && todayCurrentTime) {
@@ -5034,8 +5091,8 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
       "--today-now-position",
       `${minutePosition(currentMinute) * 100}%`,
     );
-    todayCurrentTime.textContent = currentTime;
-    todayCurrentTime.dateTime = `${view.date}T${currentTime}`;
+    todayCurrentTime.textContent = currentMinute >= 1440 ? `${nextAxisDate(view.date)} ${currentTime}` : currentTime;
+    todayCurrentTime.dateTime = `${currentMinute >= 1440 ? nextAxisDate(view.date) : view.date}T${currentTime}`;
     todayCurrentTime.hidden = false;
   } else if (todayCurrentTime) {
     todayCurrentTime.hidden = true;
@@ -5046,6 +5103,16 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
 
 function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): void {
   if (!todayContinuousAxis) return;
+  if (todayAxisRenderedDate !== view.date) {
+    todayAxisRenderedDate = view.date;
+    const now = view.isToday && currentTime ? livedAxisMinute(currentTime) : null;
+    todayAxisEarlyExpanded = now !== null && now < 360;
+    todayAxisLateExpanded = now !== null && now >= 1440;
+  }
+  todayContinuousAxis.style.setProperty("--today-axis-plot-height", `calc(${(axisBounds()[1] - axisBounds()[0]) / 60} * var(--today-axis-hour-height))`);
+  for (const [id, expanded] of [["today-expand-early", todayAxisEarlyExpanded], ["today-expand-late", todayAxisLateExpanded]] as const) {
+    document.getElementById(id)?.setAttribute("aria-expanded", String(expanded));
+  }
   todayHourTicks?.replaceChildren(
     ...hourTickMinutes().map((minute) => {
       const tick = document.createElement("span");
@@ -5053,6 +5120,11 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
       tick.dataset.minute = String(minute);
       tick.style.top = `${minutePosition(minute) * 100}%`;
       tick.textContent = formatAxisMinute(minute);
+      if (minute >= 1440) {
+        const dateLabel = document.createElement("small");
+        dateLabel.textContent = nextAxisDate(view.date);
+        tick.prepend(dateLabel);
+      }
       tick.setAttribute("aria-hidden", "true");
       return tick;
     }),
@@ -5303,6 +5375,30 @@ function selectedShortRecordCategory(): ShortRecordCategory {
   return todayDaytimeKind?.value === "exercise" ? "exercise" : "ordinary";
 }
 
+function stashEveningReviewDraft(): void {
+  const binding = currentTodayView?.targetBinding;
+  if (!binding || !todayEveningContent || !todayEveningMode) return;
+  if (todayEveningContent.value) {
+    eveningReviewDrafts.set(binding, { content: todayEveningContent.value, mode: todayEveningMode.value });
+  } else {
+    eveningReviewDrafts.delete(binding);
+  }
+}
+
+function hasTodayEditingTarget(view: TodayView): boolean {
+  stashDatedNoteDraft();
+  stashEveningReviewDraft();
+  stashTodayTaskCreateDraft();
+  return Boolean(
+    (view.targetBinding && (datedNoteDrafts.has(view.targetBinding) || eveningReviewDrafts.has(view.targetBinding))) ||
+    (view.tasks.targetBinding && todayTaskCreateDrafts.has(todayTaskCreateDraftKey(view.tasks.targetBinding, view.date))) ||
+    taskEditorForms("today").some((form) => !form.hidden ||
+      (view.tasks.targetBinding && form.dataset.taskEditor &&
+        taskEditDrafts.has(taskDraftKey(view.tasks.targetBinding, form.dataset.taskEditor)))) ||
+    todayOperationCount > 0 || taskOperationCount > 0
+  );
+}
+
 function stashDatedNoteDraft(): void {
   const draftKey = currentTodayView?.targetBinding;
   if (!currentTodayView || !draftKey || !todayDaytimeContent) {
@@ -5346,7 +5442,37 @@ function renderDatedNoteComposer(view: TodayView): void {
   }
 }
 
-function renderToday(view: TodayView): void {
+function captureTodayTaskEditors(view: TodayView): Set<string> {
+  const open = new Set<string>();
+  const previous = currentTodayView;
+  const binding = previous?.tasks.targetBinding;
+  if (!previous || !binding || previous.date !== view.date || binding !== view.tasks.targetBinding) {
+    return open;
+  }
+  for (const form of taskEditorForms("today")) {
+    const id = form.dataset.taskEditor;
+    const task = previous.tasks.tasks.find((candidate) => candidate.id === id);
+    if (form.hidden || !id || !task || !view.tasks.tasks.some((candidate) => candidate.id === id)) continue;
+    open.add(id);
+    const draft = readTaskDraft(form);
+    const key = taskDraftKey(binding, id);
+    if (
+      draft.name !== task.name || draft.content !== (task.content ?? "") ||
+      draft.date !== (task.date ?? "") || draft.time !== (task.time ?? "") ||
+      draft.listId !== task.listId || draft.completionDate !== (task.completion?.completedOn ?? "") ||
+      draft.completionTime !== (task.completion?.completedTime ?? "")
+    ) {
+      taskEditDrafts.set(key, draft);
+    } else {
+      taskEditDrafts.delete(key);
+    }
+  }
+  return open;
+}
+
+function renderToday(view: TodayView, preserveTaskEditors = false): void {
+  const openTaskEditors = preserveTaskEditors ? captureTodayTaskEditors(view) : new Set<string>();
+  stashEveningReviewDraft();
   todayPresentationFresh = true;
   const previousView = currentTodayView;
   const startsTodaySession = view.isToday && (
@@ -5368,7 +5494,7 @@ function renderToday(view: TodayView): void {
   renderWorkspaceRailContext(currentWorkspaceDestination);
   renderVaultSettings(view);
   renderDatedNoteComposer(view);
-  renderTodayTasks(view);
+  renderTodayTasks(view, openTaskEditors);
   renderLegacyDayTasks(view.dayTasks);
   renderHistoricalHabitCorrections(view);
   if (todayDate) {
@@ -5421,8 +5547,11 @@ function renderToday(view: TodayView): void {
     todayDaytimeForm.hidden = !view.canRecord;
   }
   if (todayEveningForm) {
-    todayEveningForm.hidden = !view.isToday;
+    todayEveningForm.hidden = !view.canRecord;
   }
+  const eveningDraft = view.targetBinding ? eveningReviewDrafts.get(view.targetBinding) : undefined;
+  if (todayEveningContent) todayEveningContent.value = eveningDraft?.content ?? "";
+  if (todayEveningMode) todayEveningMode.value = eveningDraft?.mode ?? "addition";
 
   const knownUpdates = view.daytime.updates.filter(
     (update) => update.observedFacts.length > 0,
@@ -5575,6 +5704,20 @@ function renderToday(view: TodayView): void {
     }
   }
   showTodayPhase(currentTodayPhase);
+  const arrival = !view.isToday ? historicalHabitArrival.forDate(view.date) : null;
+  if (arrival) {
+    showTodayPhase("daytime");
+    window.requestAnimationFrame(() => {
+      if (
+        currentWorkspaceDestination !== "today" ||
+        !historicalHabitCorrections ||
+        historicalHabitCorrections.hidden ||
+        !historicalHabitArrival.consume(arrival, currentTodayView?.date ?? null)
+      ) return;
+      historicalHabitCorrections.scrollIntoView({ block: "start" });
+      historicalHabitCorrections.focus({ preventScroll: true });
+    });
+  }
   if (startsTodaySession) {
     todayAxisFollowState = "following";
     scheduleTodayAxisFollowScroll();
@@ -5728,7 +5871,7 @@ function renderLegacyDayTasks(dayTasks: DayTaskListView): void {
   );
 }
 
-function renderTodayTasks(view: TodayView): void {
+function renderTodayTasks(view: TodayView, openEditors = new Set<string>()): void {
   clearTaskEditorDialogs("today");
   const shared = view.tasks;
   const archivedListIds = new Set(
@@ -5759,7 +5902,7 @@ function renderTodayTasks(view: TodayView): void {
   }
   if (todayTaskScheduled) {
     todayTaskScheduled.replaceChildren(
-      ...groups.scheduled.map((task) => taskEditor(task, writable, shared, "today")),
+      ...groups.scheduled.map((task) => taskEditor(task, writable, shared, "today", openEditors.has(task.id))),
     );
   }
   if (todayTaskOverdueCount) {
@@ -5768,7 +5911,7 @@ function renderTodayTasks(view: TodayView): void {
   todayTaskOverdueSection?.toggleAttribute("hidden", groups.overdue.length === 0);
   if (todayTaskOverdue) {
     todayTaskOverdue.replaceChildren(
-      ...groups.overdue.map((task) => taskEditor(task, writable, shared, "today")),
+      ...groups.overdue.map((task) => taskEditor(task, writable, shared, "today", openEditors.has(task.id))),
     );
   }
   if (todayTaskOverdueEmpty) {
@@ -6136,7 +6279,7 @@ async function saveDatedNote(): Promise<boolean> {
     datedNoteDrafts.delete(loaded.targetBinding);
     correctingShortRecordId = null;
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
-      renderToday(preserveTodayDayTaskPlanError(loaded, view));
+      renderToday(preserveTodayDayTaskPlanError(loaded, view), true);
       showTodayMutationCopy(
         correctionId ? "today.correctionSaved" : "today.noteSaved",
         "ready",
@@ -6168,7 +6311,7 @@ async function saveTodayMutation(
   successMessage: InterfaceCopyKey,
 ): Promise<boolean> {
   const loaded = currentTodayView;
-  if (!loaded?.revision || todayOperationCount > 0) {
+  if (!loaded?.revision || !loaded.targetBinding || todayOperationCount > 0) {
     showTodayMutationCopy("today.refreshBeforeSave", "error");
     return false;
   }
@@ -6178,6 +6321,8 @@ async function saveTodayMutation(
   try {
     const view = await window.__TAURI__.core.invoke<TodayView>(command, {
       input: { ...input, expectedRevision },
+      date: loaded.date,
+      targetBinding: loaded.targetBinding,
     });
     if (todayPresentationRequests.isCurrent(presentationRequest)) {
       renderToday(preserveTodayDayTaskPlanError(loaded, view));
@@ -6203,6 +6348,9 @@ async function refreshToday(
     !canStartManualTodayRefresh(todayOperationCount, taskOperationCount)
   ) {
     return;
+  }
+  if (date === null && currentTodayView && hasTodayEditingTarget(currentTodayView)) {
+    date = currentTodayView.date;
   }
   await refreshTodayPresentation({
     requests: todayPresentationRequests,
@@ -6231,6 +6379,12 @@ async function refreshToday(
 }
 
 function scrollTodayAxisToNow(): void {
+  const now = currentTodayView?.isToday && currentTodayView.currentTime ? livedAxisMinute(currentTodayView.currentTime) : null;
+  if (now !== null && currentTodayView && ((now < 360 && !todayAxisEarlyExpanded) || (now >= 1440 && !todayAxisLateExpanded))) {
+    if (now < 360) todayAxisEarlyExpanded = true;
+    if (now >= 1440) todayAxisLateExpanded = true;
+    renderTodayTimeAxis(currentTodayView);
+  }
   if (
     currentWorkspaceDestination !== "today" ||
     !currentTodayView?.isToday ||
@@ -6281,7 +6435,11 @@ async function refreshTodayClock(): Promise<void> {
   ) {
     return;
   }
-  const decision = clockTickDecision(selectedTodayDate, current.date, clock.date);
+  const hasEditingTarget = hasTodayEditingTarget(current);
+  const decision = clockTickDecision(selectedTodayDate, current.date, clock.livedDate, hasEditingTarget);
+  if (selectedTodayDate === null && current.date !== clock.livedDate && hasEditingTarget) {
+    selectedTodayDate = current.date;
+  }
   if (decision === "reload-today") {
     await refreshToday(null, true);
     return;
@@ -8192,6 +8350,7 @@ function taskEditor(
   writable: boolean,
   view: TasksView | null = currentTasksView,
   surface: TaskSurface = "tasks",
+  expanded = false,
 ): HTMLElement {
   const binding = view?.targetBinding;
   const draft = binding
@@ -8225,7 +8384,7 @@ function taskEditor(
   detailsButton.type = "button";
   detailsButton.className = "task-row-action task-editor-toggle";
   detailsButton.dataset.taskEditorOpen = task.id;
-  detailsButton.setAttribute("aria-expanded", String(Boolean(draft)));
+  detailsButton.setAttribute("aria-expanded", String(surface === "today" ? expanded : Boolean(draft)));
   detailsButton.setAttribute("aria-label", `${t("tasks.details")} · ${task.name}`);
   setCopy(detailsButton, "tasks.details");
   stateActions.append(detailsButton);
@@ -8312,7 +8471,7 @@ function taskEditor(
   title.type = "button";
   title.className = "task-title-button task-editor-toggle";
   title.dataset.taskEditorOpen = task.id;
-  title.setAttribute("aria-expanded", String(Boolean(draft)));
+  title.setAttribute("aria-expanded", String(surface === "today" ? expanded : Boolean(draft)));
   title.textContent = task.name;
   title.setAttribute("aria-label", `${t("tasks.details")} · ${task.name}`);
   const taskList = view ? taskListForId(view, task.listId) : undefined;
@@ -8344,7 +8503,7 @@ function taskEditor(
     surface === "tasks" ? "task-editor-details" : "task-editor-details task-editor-inline";
   editorForm.dataset.taskEditor = task.id;
   editorForm.dataset.taskSurface = surface;
-  editorForm.hidden = surface !== "tasks";
+  editorForm.hidden = surface !== "tasks" && !expanded;
   editorForm.setAttribute("aria-label", t("tasks.editLabel", { task: task.name }));
   const grid = document.createElement("div");
   grid.className = "task-form-grid";
@@ -9958,12 +10117,14 @@ function showWorkspaceDestination(
     destination === "today" &&
     (destinationChanged || selectedTodayDate !== dailyDate);
   if (leavingToday || changingTodaySelection) {
+    historicalHabitArrival.clear();
     todayPresentationRequests.invalidate();
     todayClockRequests.invalidate();
     todayTaskRequests.invalidate();
     if (changingTodaySelection) {
       stashTodayTaskCreateDraft();
       currentTodayView = null;
+      historicalHabitCorrections?.toggleAttribute("hidden", true);
     }
   }
   if (leavingTasks) {
@@ -10173,25 +10334,28 @@ function shiftDate(date: string, days: number): string {
 }
 
 document.querySelector<HTMLButtonElement>("#collaboration-date-previous")?.addEventListener("click", () => {
+  collaborationActivityDateExplicit = true;
   collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, -1);
   if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
   void refreshCollaborationWorkspace();
 });
 
 document.querySelector<HTMLButtonElement>("#collaboration-date-next")?.addEventListener("click", () => {
+  collaborationActivityDateExplicit = true;
   collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, 1);
   if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
   void refreshCollaborationWorkspace();
 });
 
 document.querySelector<HTMLButtonElement>("#collaboration-date-today")?.addEventListener("click", () => {
-  collaborationActivityDate = localCalendarDate();
-  if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
+  collaborationActivityDateExplicit = false;
+  collaborationActivityDate = "";
   void refreshCollaborationWorkspace();
 });
 
 collaborationDateInput?.addEventListener("change", () => {
-  collaborationActivityDate = collaborationDateInput.value || localCalendarDate();
+  collaborationActivityDateExplicit = Boolean(collaborationDateInput.value);
+  collaborationActivityDate = collaborationDateInput.value;
   void refreshCollaborationWorkspace();
 });
 
@@ -10283,6 +10447,8 @@ collaborationContinuitySaveButton?.addEventListener("click", () => {
 });
 
 collaborationVoiceLanguageSelect?.addEventListener("change", () => {
+  preferredCollaborationVoiceLanguage = collaborationVoiceLanguageSelect.value as CollaborationVoiceLanguage;
+  try { rememberCollaborationVoiceLanguage(window.localStorage, preferredCollaborationVoiceLanguage); } catch { /* Storage is optional. */ }
   const target = currentCollaborationVoiceTarget();
   if (target && collaborationVoiceLanguageSelect.value) {
     collaborationVoiceStatuses.delete(collaborationDraftKey(target.sessionId, target.targetDate));
@@ -10295,7 +10461,10 @@ collaborationVoiceStartButton?.addEventListener("click", () => {
 });
 
 collaborationVoiceCancelButton?.addEventListener("click", () => {
+  cancelCollaborationVoiceCaptureForSelectionChange();
   collaborationVoiceController.cancel();
+  renderCollaborationVoiceControls();
+  collaborationMessageDraft?.focus();
 });
 
 collaborationMessageDraft?.addEventListener("keydown", (event) => {
@@ -10680,6 +10849,7 @@ habitsDestination?.addEventListener("click", (event) => {
       return;
     }
     showWorkspaceDestination("today", true, date);
+    historicalHabitArrival.select(date);
     return;
   }
 
@@ -11038,19 +11208,24 @@ cancelNoteCorrectionButton?.addEventListener("click", () => {
   todayDaytimeContent?.focus();
 });
 
+todayEveningContent?.addEventListener("input", stashEveningReviewDraft);
+todayEveningMode?.addEventListener("change", stashEveningReviewDraft);
+
 todayEveningForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!todayEveningMode || !todayEveningContent) {
     return;
   }
+  const savedBinding = currentTodayView?.targetBinding;
   void pendingWrites.track((async () => {
     const saved = await saveTodayMutation(
       "update_evening_review",
       { mode: todayEveningMode.value, content: todayEveningContent.value },
       "today.eveningSaved",
     );
-    if (saved) {
-      todayEveningContent.value = "";
+    if (saved && savedBinding) {
+      eveningReviewDrafts.delete(savedBinding);
+      if (currentTodayView?.targetBinding === savedBinding) todayEveningContent.value = "";
     }
     return saved;
   })());
@@ -11107,11 +11282,15 @@ workspaceInformation?.addEventListener("scroll", () => {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     void refreshTodayClock();
+    if (currentWorkspaceDestination === "habits") void refreshHabits();
   }
 });
 
 window.setInterval(() => {
   void refreshTodayClock();
+  if (document.visibilityState === "visible" && currentWorkspaceDestination === "habits") {
+    void refreshHabits();
+  }
 }, 60_000);
 
 window.setInterval(() => {
@@ -11127,8 +11306,12 @@ window.setInterval(() => {
 
 window.addEventListener("focus", () => {
   if (currentWorkspaceDestination === "today") {
-    void refreshTodayClock();
-    void refreshToday();
+    void refreshTodayClock().then(() => {
+      // An automatic focus refresh must not replace an editor just preserved
+      // by the clock check. Explicit navigation/refresh remains available.
+      if (currentWorkspaceDestination === "today" && currentTodayView &&
+          !hasTodayEditingTarget(currentTodayView)) return refreshToday();
+    });
   } else if (currentWorkspaceDestination === "calendar") {
     void openCalendar();
   } else if (currentWorkspaceDestination === "tasks") {
@@ -11141,3 +11324,12 @@ window.addEventListener("focus", () => {
 void connectToApplication();
 
 export {};
+
+for (const id of ["today-expand-early", "today-expand-late"]) {
+  document.getElementById(id)?.addEventListener("click", () => {
+    if (id === "today-expand-early") todayAxisEarlyExpanded = !todayAxisEarlyExpanded;
+    else todayAxisLateExpanded = !todayAxisLateExpanded;
+    todayAxisFollowState = onManualScroll(todayAxisFollowState);
+    if (currentTodayView) renderTodayTimeAxis(currentTodayView);
+  });
+}

@@ -812,6 +812,26 @@ pub fn project_habit_corrections_with_names(
     local_completions: Vec<LocalHabitCompletion>,
     names_configuration: &HabitNamesConfiguration,
 ) -> Result<HabitCorrectionView, String> {
+    project_habit_corrections_with_recording_limit(
+        document,
+        today,
+        today,
+        selected_date,
+        local_records,
+        local_completions,
+        names_configuration,
+    )
+}
+
+pub fn project_habit_corrections_with_recording_limit(
+    document: &[u8],
+    today: &str,
+    latest_recordable_date: &str,
+    selected_date: &str,
+    local_records: Vec<LocalHabitRecord>,
+    local_completions: Vec<LocalHabitCompletion>,
+    names_configuration: &HabitNamesConfiguration,
+) -> Result<HabitCorrectionView, String> {
     let snapshot = parse_and_validate(document, today)?;
     let today_date = CalendarDate::parse(today)
         .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
@@ -839,7 +859,9 @@ pub fn project_habit_corrections_with_names(
     let selected_week = selected.monday();
     let selected_week_label = selected_week.to_string();
     let current_week = today_date.monday();
-    let can_record = selected <= today_date;
+    let recording_limit = CalendarDate::parse(latest_recordable_date)
+        .ok_or_else(|| "The recording date limit is invalid.".to_string())?;
+    let can_record = selected <= recording_limit;
     let habits = snapshot
         .habits
         .iter()
@@ -881,7 +903,7 @@ pub fn project_habit_corrections_with_names(
                     &source_by_key,
                     &local,
                     local_completion,
-                    today_date,
+                    recording_limit,
                 ),
             }
         })
@@ -889,7 +911,7 @@ pub fn project_habit_corrections_with_names(
     let generated_date = snapshot.generated_at.get(..10).unwrap_or_default();
     let outside_coverage = selected < CalendarDate::parse(&snapshot.range.from).unwrap()
         || selected > CalendarDate::parse(&snapshot.range.to).unwrap();
-    let (state, message) = if selected > today_date {
+    let (state, message) = if selected > recording_limit {
         (
             HabitSnapshotState::Ready,
             "未来日期仅供查看；不能记录尚未发生的本地习惯完成。".to_string(),
@@ -929,8 +951,28 @@ pub fn project_uncatalogued_habit_corrections(
     message: impl Into<String>,
     local_completions: Vec<LocalHabitCompletion>,
 ) -> Result<HabitCorrectionView, String> {
-    let today_date = CalendarDate::parse(today)
+    project_uncatalogued_habit_corrections_with_recording_limit(
+        today,
+        today,
+        selected_date,
+        state,
+        message,
+        local_completions,
+    )
+}
+
+pub fn project_uncatalogued_habit_corrections_with_recording_limit(
+    today: &str,
+    latest_recordable_date: &str,
+    selected_date: &str,
+    state: HabitSnapshotState,
+    message: impl Into<String>,
+    local_completions: Vec<LocalHabitCompletion>,
+) -> Result<HabitCorrectionView, String> {
+    CalendarDate::parse(today)
         .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
+    let recording_limit = CalendarDate::parse(latest_recordable_date)
+        .ok_or_else(|| "The recording date limit is invalid.".to_string())?;
     let selected = CalendarDate::parse(selected_date)
         .ok_or_else(|| "The selected date is not a valid YYYY-MM-DD calendar date.".to_string())?;
     let source_by_key: HashMap<&str, &Source> = HashMap::new();
@@ -956,7 +998,7 @@ pub fn project_uncatalogued_habit_corrections(
                 &source_by_key,
                 &[],
                 Some(completion),
-                today_date,
+                recording_limit,
             ),
         })
         .collect();
@@ -964,7 +1006,7 @@ pub fn project_uncatalogued_habit_corrections(
         state,
         message: message.into(),
         date: selected_date.into(),
-        can_record: selected <= today_date,
+        can_record: selected <= recording_limit,
         completion_revision: None,
         completion_target_binding: None,
         names_configuration_state: HabitNamesConfigurationState::Missing,

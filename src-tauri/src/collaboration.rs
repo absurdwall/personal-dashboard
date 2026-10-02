@@ -993,8 +993,62 @@ pub struct RuntimeTurnRequest {
     pub reasoning_effort: Option<String>,
     pub user_text: String,
     pub context: CollaborationContextView,
+    pub dates: CollaborationDateContext,
     pub memory: CollaborationMemoryView,
     pub working_directory: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationDateContext {
+    pub current_local_timestamp: String,
+    pub natural_date: String,
+    pub lived_date: String,
+    pub target_date: String,
+    pub request_local_timestamp: String,
+    pub request_natural_date: String,
+    pub request_lived_date: String,
+}
+
+fn collaboration_date_context(
+    clock: &dyn CollaborationClock,
+    target_date: &str,
+    submitted: Option<(&str, &str)>,
+) -> CollaborationDateContext {
+    let current_local_timestamp = clock.current_timestamp();
+    let local_time = collaboration_local_time(&current_local_timestamp)
+        .unwrap_or_else(|| crate::today::TodayClockView {
+            date: clock.current_date(),
+            time: clock.current_time(),
+        });
+    let natural_date = local_time.date.clone();
+    let lived_date = local_time.lived_date();
+    let (request_timestamp, request_date) = submitted
+        .unwrap_or((&current_local_timestamp, &natural_date));
+    let request_lived_date = request_timestamp.split_once('T')
+        .and_then(|(_, time)| time.get(..5))
+        .map(|time| crate::today::TodayClockView {
+            date: request_date.to_owned(),
+            time: time.to_owned(),
+        }.lived_date())
+        .unwrap_or_else(|| request_date.to_owned());
+    CollaborationDateContext {
+        request_local_timestamp: request_timestamp.to_owned(),
+        request_natural_date: request_date.to_owned(),
+        request_lived_date,
+        current_local_timestamp,
+        natural_date,
+        lived_date,
+        target_date: target_date.to_owned(),
+    }
+}
+
+fn collaboration_local_time(timestamp: &str) -> Option<crate::today::TodayClockView> {
+    let (date, suffix) = timestamp.split_once('T')?;
+    let time = suffix.get(..5)?;
+    validate_date(date).ok()?;
+    validate_daily_plan_time(time).ok()?;
+    Some(crate::today::TodayClockView { date: date.to_owned(), time: time.to_owned() })
 }
 
 pub type RuntimeExternalActionHandler = Arc<dyn Fn(ExternalToolActionView) + Send + Sync>;
@@ -1047,6 +1101,13 @@ pub trait CollaborationClock: Send + Sync {
     fn current_timestamp(&self) -> String;
     fn current_date(&self) -> String;
 
+    fn current_lived_date(&self) -> String {
+        collaboration_local_time(&self.current_timestamp()).unwrap_or_else(|| crate::today::TodayClockView {
+            date: self.current_date(),
+            time: self.current_time(),
+        }).lived_date()
+    }
+
     fn current_time(&self) -> String {
         self.current_timestamp()
             .split_once('T')
@@ -1062,6 +1123,10 @@ impl CollaborationClock for SystemClock {
 
     fn current_date(&self) -> String {
         TodayClock::current_date(self)
+    }
+
+    fn current_lived_date(&self) -> String {
+        TodayClock::current_lived_date(self)
     }
 }
 
@@ -1787,7 +1852,7 @@ impl CollaborationApplication {
     }
 
     fn automation_view(&self) -> Result<DailyPlanAutomationView, String> {
-        let date = self.clock.current_date();
+        let date = self.clock.current_lived_date();
         let time = self.clock.current_time();
         validate_date(&date)?;
         validate_daily_plan_time(&time)?;
@@ -1995,7 +2060,7 @@ impl CollaborationApplication {
             "Generate and save the automatic first-draft plan for {date}. Scheduled time: {scheduled_time}. Current local time: {}. Use only the supplied current Daily Record, Tasks, habit context, and available background. Do not create or change Tasks. Save only an InitialPlan. Do not claim past planned time happened; plan only the remaining day and preserve unknowns as unknown.",
             self.clock.current_time()
         );
-        let view = self.automation_view()?;
+        let message_date = self.clock.current_date();
         let queue_order = self.update_state(|state| {
             let existing_index = state
                 .daily_plan_automation_runs
@@ -2015,8 +2080,8 @@ impl CollaborationApplication {
                 id: session_id.clone(),
                 vault_key: Some(vault_key.to_owned()),
                 title: format!("Automatic morning plan · {date}"),
-                created_date: view.date.clone(),
-                activity_dates: vec![date.to_owned()],
+                created_date: message_date.clone(),
+                activity_dates: vec![message_date.clone()],
                 last_activity_at: now.clone(),
                 target_date: date.to_owned(),
                 run_id: Some(execution_id.clone()),
@@ -2031,7 +2096,7 @@ impl CollaborationApplication {
                     id: message_id.clone(),
                     role: "user".into(),
                     text: user_text.clone(),
-                    message_date: view.date.clone(),
+                    message_date: message_date.clone(),
                     target_date: date.to_owned(),
                     created_at: now.clone(),
                     execution_id: Some(execution_id.clone()),
@@ -2196,6 +2261,10 @@ impl CollaborationApplication {
             sources,
             self.clock.as_ref(),
         ))
+    }
+
+    pub fn create_default_session(&self) -> Result<CollaborationSessionView, String> {
+        self.create_session(&self.clock.current_lived_date())
     }
 
     pub fn create_session(&self, date: &str) -> Result<CollaborationSessionView, String> {
@@ -3977,10 +4046,25 @@ impl CollaborationApplication {
             .and_then(Value::as_str)
             .unwrap_or("")
             .trim();
+        let operation_target_date = match call.arguments.get("targetDate") {
+            None | Some(Value::Null) => target_date,
+            Some(Value::String(date)) if validate_date(date).is_ok() => date,
+            _ => return RuntimeDynamicToolResult {
+                text: "The resolved targetDate must be a valid YYYY-MM-DD date. No data was changed.".into(),
+                success: false,
+            },
+        };
+        if automatic_plan && operation_target_date != target_date {
+            return RuntimeDynamicToolResult {
+                text: "An automatic plan cannot change its captured target date. No data was changed.".into(),
+                success: false,
+            };
+        }
         let mut operation_arguments = call.arguments.clone();
         if let Some(arguments) = operation_arguments.as_object_mut() {
             arguments.remove("executionMode");
             arguments.remove("authorizationQuote");
+            arguments.remove("targetDate");
         }
         if let Err(error) = validate_task_operation_required_fields(&operation_arguments) {
             return RuntimeDynamicToolResult {
@@ -4057,6 +4141,7 @@ impl CollaborationApplication {
             &call.turn_id,
             &call.call_id,
             target_date,
+            operation_target_date,
             operation,
         ) {
             Ok(proposal)
@@ -4309,7 +4394,7 @@ impl CollaborationApplication {
                 );
             }
             validate_date(target_date)?;
-            if self.clock.current_date() != target_date {
+            if self.clock.current_lived_date() != target_date {
                 return Err(
                     "The automatic morning plan is no longer targeting today. Nothing was saved."
                         .into(),
@@ -4607,6 +4692,7 @@ impl CollaborationApplication {
         runtime_thread_id: &str,
         runtime_turn_id: &str,
         call_id: &str,
+        request_target_date: &str,
         target_date: &str,
         operation: CollaborationTaskOperation,
     ) -> Result<CollaborationTaskOperationView, String> {
@@ -4618,6 +4704,7 @@ impl CollaborationApplication {
                 runtime_thread_id,
                 runtime_turn_id,
                 call_id,
+                request_target_date,
                 target_date,
                 operation,
             );
@@ -4634,6 +4721,7 @@ impl CollaborationApplication {
                 runtime_thread_id,
                 runtime_turn_id,
                 call_id,
+                request_target_date,
                 target_date,
                 operation,
             );
@@ -4649,6 +4737,7 @@ impl CollaborationApplication {
                 runtime_thread_id,
                 runtime_turn_id,
                 call_id,
+                request_target_date,
                 target_date,
                 operation,
             );
@@ -4713,7 +4802,7 @@ impl CollaborationApplication {
                 .iter()
                 .find(|message| message.execution_id.as_deref() == Some(execution_id))
                 .ok_or_else(|| "This task action has no saved user request.".to_string())?;
-            if message.target_date != target_date || message.delivery_state != "in-progress" {
+            if message.target_date != request_target_date || message.delivery_state != "in-progress" {
                 return Err("The target date or request state changed. Refresh the conversation before proposing a task action.".into());
             }
             if let Some(existing) = session
@@ -4722,6 +4811,7 @@ impl CollaborationApplication {
                 .find(|operation| operation.tool_call_key == tool_call_key)
             {
                 if existing.operation != operation
+                    || existing.target_date != target_date
                     || existing.vault_key != vault_key
                     || existing.runtime_turn_id != runtime_turn_id
                 {
@@ -4771,6 +4861,7 @@ impl CollaborationApplication {
         runtime_thread_id: &str,
         runtime_turn_id: &str,
         call_id: &str,
+        request_target_date: &str,
         target_date: &str,
         operation: CollaborationTaskOperation,
     ) -> Result<CollaborationTaskOperationView, String> {
@@ -4853,7 +4944,7 @@ impl CollaborationApplication {
                 .iter()
                 .find(|message| message.execution_id.as_deref() == Some(execution_id))
                 .ok_or_else(|| "This plan proposal has no saved user request.".to_string())?;
-            if message.target_date != target_date || message.delivery_state != "in-progress" {
+            if message.target_date != request_target_date || message.delivery_state != "in-progress" {
                 return Err("The target date or request state changed. Refresh the conversation before proposing a plan.".into());
             }
             if let Some(existing) = session
@@ -4862,6 +4953,7 @@ impl CollaborationApplication {
                 .find(|proposal| proposal.tool_call_key == tool_call_key)
             {
                 if existing.operation != operation
+                    || existing.target_date != target_date
                     || existing.vault_key != vault_key
                     || existing.runtime_turn_id != runtime_turn_id
                 {
@@ -4911,6 +5003,7 @@ impl CollaborationApplication {
         runtime_thread_id: &str,
         runtime_turn_id: &str,
         call_id: &str,
+        request_target_date: &str,
         target_date: &str,
         operation: CollaborationTaskOperation,
     ) -> Result<CollaborationTaskOperationView, String> {
@@ -4982,6 +5075,7 @@ impl CollaborationApplication {
             runtime_thread_id,
             runtime_turn_id,
             call_id,
+            request_target_date,
             target_date,
             operation,
             target_binding,
@@ -5001,6 +5095,7 @@ impl CollaborationApplication {
         runtime_thread_id: &str,
         runtime_turn_id: &str,
         call_id: &str,
+        request_target_date: &str,
         target_date: &str,
         operation: CollaborationTaskOperation,
     ) -> Result<CollaborationTaskOperationView, String> {
@@ -5043,6 +5138,7 @@ impl CollaborationApplication {
             runtime_thread_id,
             runtime_turn_id,
             call_id,
+            request_target_date,
             target_date,
             operation,
             target_binding,
@@ -5062,6 +5158,7 @@ impl CollaborationApplication {
         runtime_thread_id: &str,
         runtime_turn_id: &str,
         call_id: &str,
+        request_target_date: &str,
         target_date: &str,
         operation: CollaborationTaskOperation,
         target_binding: String,
@@ -5086,7 +5183,7 @@ impl CollaborationApplication {
                 .iter()
                 .find(|message| message.execution_id.as_deref() == Some(execution_id))
                 .ok_or_else(|| format!("This {label} proposal has no saved user request."))?;
-            if message.target_date != target_date || message.delivery_state != "in-progress" {
+            if message.target_date != request_target_date || message.delivery_state != "in-progress" {
                 return Err(format!("The target date or request state changed. Refresh the conversation before proposing a {label}."));
             }
             if let Some(existing) = session
@@ -5095,6 +5192,7 @@ impl CollaborationApplication {
                 .find(|proposal| proposal.tool_call_key == tool_call_key)
             {
                 if existing.operation != operation
+                    || existing.target_date != target_date
                     || existing.vault_key != vault_key
                     || existing.runtime_turn_id != runtime_turn_id
                 {
@@ -6023,6 +6121,19 @@ impl CollaborationApplication {
             return;
         }
         if automatic_plan {
+            if self.clock.current_lived_date() != target_date {
+                let message = "The lived day changed while this automatic request was queued. Its original target was preserved; no model turn was sent and no plan was saved.";
+                self.finish_error(vault_key, session_id, run_id, message.into());
+                let _ = self.record_daily_plan_automation_state(
+                    vault_key,
+                    target_date,
+                    "needsReview",
+                    message,
+                    Some(session_id.to_owned()),
+                    Some(run_id.to_owned()),
+                );
+                return;
+            }
             match self.automatic_plan_target_exists(vault_key, target_date) {
                 Ok(true) => {
                     self.finish_automatic_plan_existing(
@@ -6268,6 +6379,15 @@ impl CollaborationApplication {
             reasoning_effort: selected_reasoning_effort,
             user_text: user_text.to_owned(),
             context,
+            dates: collaboration_date_context(
+                self.clock.as_ref(),
+                target_date,
+                session
+                    .messages
+                    .iter()
+                    .find(|message| message.execution_id.as_deref() == Some(run_id))
+                    .map(|message| (message.created_at.as_str(), message.message_date.as_str())),
+            ),
             memory,
             working_directory: self.working_directory.clone(),
         };
@@ -7310,7 +7430,14 @@ fn validate_daily_plan_time(value: &str) -> Result<(), String> {
 fn daily_plan_schedule_is_due(current_time: &str, scheduled_time: &str) -> Result<bool, String> {
     validate_daily_plan_time(current_time)?;
     validate_daily_plan_time(scheduled_time)?;
-    Ok(current_time >= scheduled_time)
+    // Order wall-clock times within the lived day, starting at 04:00.
+    // Elapsed-hour subtraction would give the wrong boundary on DST days.
+    let lived_minute = |time: &str| {
+        let hour = time[..2].parse::<u16>().expect("validated hour");
+        let minute = time[3..].parse::<u16>().expect("validated minute");
+        (hour * 60 + minute + 24 * 60 - 4 * 60) % (24 * 60)
+    };
+    Ok(lived_minute(current_time) >= lived_minute(scheduled_time))
 }
 
 fn daily_record_has_plan(view: &TodayView) -> bool {
@@ -8629,6 +8756,13 @@ fn collaboration_task_tool_spec(
         required_fields.extend_from_slice(required);
         if include_authorization_fields {
             properties.insert(
+                "targetDate".into(),
+                json!({
+                    "type": ["string", "null"],
+                    "description": "Resolved YYYY-MM-DD record/completion target for this operation; null or omitted preserves the captured request target. Explicit user dates take precedence. Resolve today/tomorrow from the supplied real time, lived day and context, never by a fixed word offset. If a write date remains ambiguous, ask before calling. Task date/time fields remain its separate calendar schedule."
+                }),
+            );
+            properties.insert(
                 "executionMode".into(),
                 json!({
                     "type": "string",
@@ -9605,6 +9739,21 @@ mod collaboration_memory_tests {
         }
     }
 
+    #[test]
+    fn automatic_schedule_orders_time_within_the_four_am_lived_day() {
+        for (now, scheduled, due) in [
+            ("00:29", "00:30", false),
+            ("00:30", "00:30", true),
+            ("03:59", "00:30", true),
+            ("04:00", "00:30", false),
+            ("01:00", "07:00", true),
+            ("04:00", "07:00", false),
+            ("07:00", "07:00", true),
+        ] {
+            assert_eq!(super::daily_plan_schedule_is_due(now, scheduled).unwrap(), due);
+        }
+    }
+
     fn session(
         id: &str,
         vault_key: &str,
@@ -10449,6 +10598,7 @@ impl AppServerTransport for CodexAppServerRuntime {
         let context = serde_json::to_string_pretty(&json!({
             "dashboardExecutionId": request.execution_id,
             "context": request.context,
+            "dates": request.dates,
             "memory": request.memory,
         }))
         .map_err(|error| {
@@ -10457,7 +10607,7 @@ impl AppServerTransport for CodexAppServerRuntime {
             )
         })?;
         let input_text = format!(
-        "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Resolve relative Task schedules against the request target date, keep Task schedule separate from completion date, and copy unchanged fields when editing. For an explicitly reported daytime event or update, use `dashboard_task_operation` with operation `saveDailyPlan`, transition `daytimeEvent`, the exact factual text in `event`, and empty `arrangement`/`evidence` unless the current arrangement also changes; this appends under `## 白天更新` and preserves the plan and morning baseline. Use `daytimeReplan` only for a material plan change. Use `saveEveningReview` with mode `addition` only for a new evening-review note or supplement; never route an explicit daytime event to the evening review. Do not invent `appendDailyRecord` or `addShortRecord`. For a clear, unique local write, use `dashboard_task_operation` with `executionMode=execute` only when the user clearly asks to save now without a later review; quote the exact instruction in `authorizationQuote`. Use `prepareProposal` whenever the user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires `prepareProposal`, even when it uses a direct action verb. The Dashboard verifies the current request, selected Vault, binding, and revision before saving. Ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` whenever the user asks to review, confirm, or wait for approval before saving. Connected external apps are disabled in this Dashboard session; do not use them. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
+        "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Use the supplied dates object to distinguish real local date/time, the 04:00 lived day, and the captured request target. Interpret today/tomorrow using the original request timestamp and user context: at 01:00 either can mean the upcoming daytime on the same natural date. Explicit dates take precedence; never mechanically offset a date based on a word. Ask briefly only if a remaining ambiguity affects a write. Supply a concrete targetDate when a record/completion operation belongs to a different clearly resolved date; omit it or use null to keep the captured request target. The request identity and original target stay bound even if the turn finishes after midnight or 04:00. Keep Task calendar schedules separate from record/completion targets, preserve explicit Task dates/times, and copy unchanged fields when editing. For an explicitly reported daytime event or update, use `dashboard_task_operation` with operation `saveDailyPlan`, transition `daytimeEvent`, the exact factual text in `event`, and empty `arrangement`/`evidence` unless the current arrangement also changes; this appends under `## 白天更新` and preserves the plan and morning baseline. Use `daytimeReplan` only for a material plan change. Use `saveEveningReview` with mode `addition` only for a new evening-review note or supplement; never route an explicit daytime event to the evening review. Do not invent `appendDailyRecord` or `addShortRecord`. For a clear, unique local write, use `dashboard_task_operation` with `executionMode=execute` only when the user clearly asks to save now without a later review; quote the exact instruction in `authorizationQuote`. Use `prepareProposal` whenever the user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires `prepareProposal`, even when it uses a direct action verb. The Dashboard verifies the current request, selected Vault, binding, and revision before saving. Ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` whenever the user asks to review, confirm, or wait for approval before saving. Connected external apps are disabled in this Dashboard session; do not use them. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
             request.user_text, request.context.date, context
         );
         let working_directory = self.working_directory.to_string_lossy().into_owned();

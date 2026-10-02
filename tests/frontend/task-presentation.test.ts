@@ -587,3 +587,17 @@ test("Calendar keeps dated history, including archived-list tasks, without delet
     ["active", "archived"],
   );
 });
+
+test("lived-day Task projection includes next-date early hours exactly once and preserves Calendar schedules", () => {
+  const task = { id: "one", name: "night", listId: "inbox", date: "2026-10-02", time: "03:59", state: "completed" as const, deletedAt: null, timePassed: false };
+  assert.deepEqual(todayTaskTimeAxisEntries([task], "2026-10-01", new Set()).map(entry => [entry.id, entry.sourceDate, entry.startMinute, entry.task.state]), [["one", "2026-10-02", 1679, "completed"]]);
+  assert.deepEqual(todayTaskTimeAxisEntries([task], "2026-10-02", new Set()), []);
+  const boundary = { ...task, time: "04:00" };
+  assert.deepEqual(todayTaskTimeAxisEntries([boundary], "2026-10-01", new Set()), []);
+  assert.equal(todayTaskTimeAxisEntries([boundary], "2026-10-02", new Set())[0].startMinute, 240);
+  assert.equal(task.date, "2026-10-02");
+  assert.equal(task.time, "03:59");
+  const yearEnd = { ...task, date: "2027-01-01", time: "00:00" };
+  assert.equal(todayTaskTimeAxisEntries([yearEnd], "2026-12-31", new Set())[0].startMinute, 1440);
+  assert.deepEqual(todayTaskTimeAxisEntries([{ ...task, time: null }], "2026-10-01", new Set()), []);
+});

@@ -435,3 +435,153 @@ fn duplicate_add_and_correction_clicks_are_idempotent_and_unknown_ids_fail() {
         .expect_err("unknown record should fail");
     assert!(error.contains("找不到"));
 }
+
+#[test]
+fn lived_day_defaults_and_bound_note_persist_across_four_am_and_reopen() {
+    let vault = TempDirectory::new("lived-day-boundary");
+    prepare_compatible_vault(vault.path());
+    let clock = AdjustableClock::new("2027-01-01", "2027-01-01T03:59:59-05:00");
+    let application = app(vault.path(), clock.clone());
+    let before = application.read().unwrap();
+    assert_eq!(before.date, "2026-12-31");
+    assert!(before.is_today);
+    let input = add_input(&before, "年末散步");
+    assert_eq!(application.local_clock().date, "2027-01-01");
+    assert_eq!(application.local_clock().lived_date(), "2026-12-31");
+
+    *clock.timestamp.borrow_mut() = "2027-01-01T04:00:00-05:00".into();
+    assert_eq!(application.read().unwrap().date, "2027-01-01");
+    let saved = application.add_dated_note(input).unwrap();
+    assert_eq!(saved.date, "2026-12-31");
+    assert!(!saved.is_today);
+    assert_eq!(
+        saved.daytime.short_records[0].created_at,
+        "2027-01-01T04:00:00-05:00"
+    );
+    assert!(!record_path(vault.path(), "2027-01-01").exists());
+    let reopened = app(vault.path(), clock);
+    assert_eq!(reopened.read().unwrap().date, "2027-01-01");
+    let history = reopened.read_date("2026-12-31").unwrap();
+    assert_eq!(history.daytime.short_records[0].text, "年末散步");
+}
+
+#[test]
+fn explicit_current_natural_date_is_writable_before_four_am_but_tomorrow_is_not() {
+    let vault = TempDirectory::new("explicit-natural-date");
+    prepare_compatible_vault(vault.path());
+    let clock = AdjustableClock::new("2026-10-02", "2026-10-02T01:00-04:00");
+    let application = app(vault.path(), clock);
+    assert_eq!(application.read().unwrap().date, "2026-10-01");
+    let explicit = application.read_date("2026-10-02").unwrap();
+    assert!(!explicit.is_today);
+    assert!(explicit.can_record);
+    let saved = application
+        .add_dated_note(add_input(&explicit, "明确记录 10 月 2 日"))
+        .unwrap();
+    assert_eq!(saved.date, "2026-10-02");
+    assert_eq!(
+        saved.daytime.short_records[0].created_at,
+        "2026-10-02T01:00-04:00"
+    );
+    let tomorrow = application.read_date("2026-10-03").unwrap();
+    assert!(!tomorrow.can_record);
+    assert!(application
+        .add_dated_note(add_input(&tomorrow, "未来事实"))
+        .is_err());
+    assert!(!record_path(vault.path(), "2026-10-03").exists());
+    assert_eq!(application.read().unwrap().date, "2026-10-01");
+}
+
+#[test]
+fn evening_and_legacy_daytime_writes_keep_captured_date_and_vault_across_four_am() {
+    use personal_dashboard_lib::today::{
+        DaytimeUpdateInput, DaytimeUpdateKind, EveningUpdateInput, EveningUpdateMode,
+        TodayRecordStore,
+    };
+    // The test substitutes only the platform-specific atomic exchange. The
+    // service still validates the captured target and the original revision.
+    struct ConditionalStore;
+    impl TodayRecordStore for ConditionalStore {
+        fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
+            match fs::read(path) {
+                Ok(bytes) => Ok(Some(bytes)),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(error) => Err(error.to_string()),
+            }
+        }
+        fn save_if_unchanged(
+            &self,
+            path: &Path,
+            expected: &[u8],
+            updated: &[u8],
+        ) -> Result<(), String> {
+            if fs::read(path).map_err(|error| error.to_string())? != expected {
+                return Err("Record changed".into());
+            }
+            fs::write(path, updated).map_err(|error| error.to_string())
+        }
+    }
+    let first = TempDirectory::new("bound-evening-original");
+    let second = TempDirectory::new("bound-evening-other-vault");
+    for vault in [&first, &second] {
+        write_record(vault.path(), "2026-10-01", "## 白天更新\n\n## 晚间复盘\n");
+        write_record(vault.path(), "2026-10-02", "## 白天更新\n\n## 晚间复盘\n");
+    }
+    let natural_bytes = fs::read(record_path(first.path(), "2026-10-02")).unwrap();
+    let selected = Rc::new(RefCell::new(first.path().to_path_buf()));
+    let clock = AdjustableClock::new("2026-10-02", "2026-10-02T03:59-04:00");
+    let application = TodayApplication::with_record_store(
+        SelectedVault(selected.clone()),
+        NoSelection,
+        clock.clone(),
+        ConditionalStore,
+    );
+    let before = application.read().unwrap();
+    assert_eq!(before.date, "2026-10-01");
+    let input = EveningUpdateInput {
+        expected_revision: before.revision.unwrap(),
+        mode: EveningUpdateMode::Addition,
+        content: "在换日前开始的复盘".into(),
+    };
+    *clock.timestamp.borrow_mut() = "2026-10-02T04:00-04:00".into();
+    *selected.borrow_mut() = second.path().into();
+    assert!(application
+        .update_evening_review_for_target(
+            input.clone(),
+            Some(&before.date),
+            before.target_binding.as_deref()
+        )
+        .unwrap_err()
+        .contains("保存目标"));
+    *selected.borrow_mut() = first.path().into();
+    let saved = application
+        .update_evening_review_for_target(
+            input,
+            Some(&before.date),
+            before.target_binding.as_deref(),
+        )
+        .unwrap();
+    assert_eq!(saved.date, "2026-10-01");
+    assert!(fs::read_to_string(record_path(first.path(), "2026-10-01"))
+        .unwrap()
+        .contains("在换日前开始的复盘"));
+    let daytime = DaytimeUpdateInput {
+        expected_revision: saved.revision.unwrap(),
+        kind: DaytimeUpdateKind::MeaningfulEvent,
+        content: "原日期的已发生事实".into(),
+        habit_name: None,
+        habit_outcome: None,
+    };
+    let saved = application
+        .append_daytime_update_for_target(
+            daytime,
+            Some(&before.date),
+            before.target_binding.as_deref(),
+        )
+        .unwrap();
+    assert_eq!(saved.date, "2026-10-01");
+    assert_eq!(
+        fs::read(record_path(first.path(), "2026-10-02")).unwrap(),
+        natural_bytes
+    );
+}

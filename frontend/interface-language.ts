@@ -5,6 +5,10 @@ export type InterfaceLanguagePreferences = Readonly<{
 }>;
 
 const interfaceCopies = {
+  "collaboration.toggleHistory": { zh: "会话历史", en: "Session history" },
+  "collaboration.toggleContext": { zh: "当前工作", en: "Current work" },
+  "collaboration.resizeHistory": { zh: "调整会话历史宽度（方向键调整，Home 最窄，End 最宽）", en: "Resize session history (arrow keys adjust, Home minimum, End maximum)" },
+  "collaboration.resizeContext": { zh: "调整当前工作宽度（方向键调整，Home 最窄，End 最宽）", en: "Resize current work (arrow keys adjust, Home minimum, End maximum)" },
   "toolbar.label": { zh: "工作区工具栏", en: "Workspace toolbar" },
   "toolbar.themeSample": { zh: "全局主题色样本", en: "Global accent sample" },
   "toolbar.settings": { zh: "设置", en: "Settings" },
@@ -368,6 +372,9 @@ const interfaceCopies = {
   "collaboration.composerRecover": { zh: "先选择中断的会话并检查已保存结果，再继续。", en: "Select the interrupted chat and check its saved result before continuing." },
   "collaboration.composerSavingDate": { zh: "正在保存会话日期，稍后即可输入。", en: "Saving the session date. You can type when it finishes." },
   "collaboration.composerSending": { zh: "当前消息仍在处理中。", en: "Your current message is still in progress." },
+  "collaboration.voiceChinese": { zh: "中文（普通话）", en: "Chinese (Mandarin)" },
+  "collaboration.voiceAmericanEnglish": { zh: "美式英语", en: "English (US)" },
+  "collaboration.voiceSelectedUnavailable": { zh: "所选语言的离线识别在本机不可用；不会切换语言或下载模型。原有草稿保留。", en: "Offline recognition for the selected language is unavailable on this Mac. No language switch or model download will occur. Your draft was kept." },
   "collaboration.voiceLanguage": { zh: "语音语言", en: "Voice language" },
   "collaboration.voiceLanguageLoading": { zh: "正在检查本地语音模型…", en: "Checking local speech models…" },
   "collaboration.voiceLanguageUnavailable": { zh: "本机没有可用的离线语音模型", en: "No local speech model is available" },
@@ -382,6 +389,7 @@ const interfaceCopies = {
   "collaboration.voiceUnavailable": { zh: "本机的离线语音识别暂不可用。", en: "On-device speech recognition is unavailable on this Mac." },
   "collaboration.voiceRequesting": { zh: "等待语音输入权限…", en: "Waiting for voice input permission…" },
   "collaboration.voiceRecording": { zh: "正在录音；停止后会在本机识别。", en: "Recording. Stop when ready to transcribe on this Mac." },
+  "collaboration.voiceProcessingOrigin": { zh: "正在为原会话的 {date} 草稿识别。你可以取消。", en: "Transcribing for the original chat’s {date} draft. You can cancel." },
   "collaboration.voiceTranscribing": { zh: "正在本机识别；语音不会发送给 Codex。", en: "Transcribing on this Mac. Audio is not sent to Codex." },
   "collaboration.voiceReview": { zh: "识别完成。请先核对或修改文字，再手动发送。", en: "Transcription ready. Review or edit it before sending manually." },
   "collaboration.voiceSavedForDate": { zh: "识别文字已保存在原会话和目标日期的草稿中；返回该日期后可核对。", en: "Transcription is held in the original session and date draft. Return to that date to review it." },
@@ -574,7 +582,9 @@ const interfaceCopies = {
   "today.noTimedItems": { zh: "当天暂无带明确时刻的任务、日记安排或事实。", en: "There are no timed tasks, Diary arrangements, or facts for this day yet." },
   "today.overlapStackReveal": { zh: "显示下一项（共 {count} 项）", en: "Show next item ({count} total)" },
   "today.currentLocalTime": { zh: "当前本地时间", en: "Current local time" },
-  "today.fullDayScale": { zh: "全天时间刻度 00:00 至 24:00", en: "Full-day time scale from 00:00 to 24:00" },
+  "today.fullDayScale": { zh: "生活日时间刻度 04:00 至次日 04:00", en: "Lived-day time scale from 04:00 to next-day 04:00" },
+  "today.expandEarly": { zh: "04:00–06:00", en: "04:00–06:00" },
+  "today.expandLate": { zh: "次日 00:00–04:00", en: "Next day 00:00–04:00" },
   "today.axisScrollRegion": {
     zh: "当天任务、日记安排和已确认事实共用的时间轴。",
     en: "Shared timeline of today's tasks, Diary arrangements, and confirmed facts.",

@@ -386,7 +386,11 @@ impl AppServerTransport for DynamicRuntime {
                 gate.block_automatic_turn();
             }
         }
-        let (call_id, tool, arguments) = if request.user_text
+        // Controlled resolver output exercises the date protocol and persisted
+        // results without claiming these fixtures test model language quality.
+        let (call_id, tool, arguments) = if let Some(arguments) = request.user_text.strip_prefix("date-fixture:") {
+            ("resolved-date-call", "dashboard_task_operation", serde_json::from_str(arguments).unwrap())
+        } else if request.user_text
             == "Please create a task named Synthetic report."
             || request.user_text == "Don't ask me again; create a task named Synthetic report."
             || request.user_text == "I plan to create a task named Synthetic report next week."
@@ -676,6 +680,151 @@ impl AppServerTransport for DynamicRuntime {
     ) -> Result<RuntimeRunReconciliation, String> {
         Ok(RuntimeRunReconciliation::NotFound)
     }
+}
+
+#[test]
+fn collaboration_defaults_share_the_lived_day_and_preserve_explicit_session_history() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    prepare_daily_review_vault(&vault_path, false);
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "03:59");
+    let (application, _, _, _) = new_automatic_application(
+        &directory, &vault, MutableContext::new("vault-a"), clock.clone(), None,
+    );
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
+    let session = application.create_default_session().unwrap();
+    assert_eq!(session.target_date, "2026-09-26");
+    assert_eq!(today.read().unwrap().date, session.target_date);
+    assert_eq!(today.habits().unwrap().habits[0].today.date, session.target_date);
+    application.save_draft_for_selected_vault(&session.id, "2026-09-26", "Original late-night draft").unwrap();
+    clock.set_time("04:00");
+    let next = application.create_default_session().unwrap();
+    assert_eq!(next.target_date, "2026-09-27");
+    assert_eq!(today.read().unwrap().date, next.target_date);
+    assert_eq!(today.habits().unwrap().habits[0].today.date, next.target_date);
+    let original = application.session("vault-a", &session.id).unwrap();
+    assert_eq!(original.created_date, "2026-09-26");
+    assert_eq!(original.target_date, "2026-09-26");
+    assert_eq!(original.draft, "Original late-night draft");
+    let explicit = application.create_session("2026-09-07").unwrap();
+    assert_eq!(explicit.target_date, "2026-09-07");
+}
+
+#[test]
+fn resolved_record_date_preserves_request_identity_and_writes_the_exact_review_date() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let original_path = prepare_daily_review_vault(&vault_path, false);
+    let original = fs::read(&original_path).unwrap();
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "01:00");
+    let (application, _, results, requests) = new_automatic_application(
+        &directory, &vault, MutableContext::new("vault-a"), clock, None,
+    );
+    let session = application.create_default_session().unwrap();
+    let text = format!("date-fixture:{}", json!({
+        "operation": "saveEveningReview", "targetDate": "2026-09-25",
+        "executionMode": "prepareProposal", "authorizationQuote": "",
+        "mode": "addition", "content": "An explicitly dated historical review."
+    }));
+    application.submit_message("vault-a", &session.id, &session.target_date, &text).unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+    assert!(results.lock().unwrap()[0].success);
+    let proposal = application.session("vault-a", &session.id).unwrap().task_operations[0].clone();
+    assert_eq!(proposal.target_date, "2026-09-25");
+    let destination = vault_path.join("life/Journal/Daily/2026/2026-09/2026-09-25.md");
+    assert!(!destination.exists());
+    let sent = requests.lock().unwrap();
+    assert_eq!(sent[0].dates.natural_date, "2026-09-27");
+    assert_eq!(sent[0].dates.lived_date, "2026-09-26");
+    assert_eq!(sent[0].dates.target_date, "2026-09-26");
+    assert_eq!(sent[0].context.date, "2026-09-26");
+    drop(sent);
+    application.approve_task_operation_for_selected_vault(&session.id, &proposal.id).unwrap();
+    let saved = fs::read_to_string(destination).unwrap();
+    assert!(saved.starts_with("---\ntype: daily-record\ndate: 2026-09-25\n"));
+    assert!(saved.contains("An explicitly dated historical review."));
+    assert_eq!(fs::read(original_path).unwrap(), original);
+    let completed = application.session("vault-a", &session.id).unwrap();
+    assert!(completed.messages.iter().all(|message| message.target_date == "2026-09-26"));
+    assert!(completed.messages.iter().all(|message| message.message_date == "2026-09-27"));
+}
+
+#[test]
+fn resolved_habit_date_uses_existing_completion_storage_and_keeps_external_sources_read_only() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    prepare_daily_review_vault(&vault_path, false);
+    let snapshot_path = vault_path.join("life/.personal-dashboard/derived/habits-v1.json");
+    let snapshot = fs::read(&snapshot_path).unwrap();
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "01:00");
+    let (application, _, _, _) = new_automatic_application(
+        &directory, &vault, MutableContext::new("vault-a"), clock, None,
+    );
+    let session = application.create_default_session().unwrap();
+    let text = format!("date-fixture:{}", json!({
+        "operation": "setLocalHabitCompletion", "targetDate": "2026-09-07",
+        "executionMode": "prepareProposal", "authorizationQuote": "",
+        "habitKey": "exercise", "completed": true
+    }));
+    application.submit_message("vault-a", &session.id, &session.target_date, &text).unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+    let proposal = application.session("vault-a", &session.id).unwrap().task_operations[0].clone();
+    assert_eq!(proposal.target_date, "2026-09-07");
+    let completed = application.approve_task_operation_for_selected_vault(&session.id, &proposal.id).unwrap();
+    assert_eq!(completed.task_operations[0].status, "applied");
+    let saved: Value = serde_json::from_slice(&fs::read(vault_path.join("life/.personal-dashboard/habit-completions/v1/completions.json")).unwrap()).unwrap();
+    assert_eq!(saved["completions"][0]["livedDate"], "2026-09-07");
+    assert_eq!(fs::read(snapshot_path).unwrap(), snapshot);
+}
+
+#[test]
+fn queued_request_keeps_submission_dates_and_task_schedule_across_four_am() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "03:59");
+    let gate = Arc::new(AutomaticTurnGate::default());
+    let (application, _, _, requests) = new_automatic_application(
+        &directory, &vault, MutableContext::new("vault-a"), clock.clone(), Some(gate.clone()),
+    );
+    let session = application.create_default_session().unwrap();
+    application.submit_message("vault-a", &session.id, &session.target_date, "hold-worker").unwrap();
+    gate.wait_until_entered();
+    let text = format!("date-fixture:{}", json!({
+        "operation": "createTask", "executionMode": "prepareProposal", "authorizationQuote": "",
+        "name": "Upcoming morning after sleep", "date": "2026-09-27", "time": "09:30",
+        "content": null, "listId": null
+    }));
+    application.submit_message("vault-a", &session.id, &session.target_date, &text).unwrap();
+    clock.set_time("04:00");
+    let next_session = application.create_default_session().unwrap();
+    assert_eq!(next_session.target_date, "2026-09-27");
+    gate.release();
+    wait_for_finish(&application, &session.id, "vault-a");
+    let sent = requests.lock().unwrap();
+    assert_eq!(sent.len(), 2);
+    assert_eq!(sent[1].dates.current_local_timestamp, "2026-09-27T04:00:00-04:00");
+    assert_eq!(sent[1].dates.natural_date, "2026-09-27");
+    assert_eq!(sent[1].dates.lived_date, "2026-09-27");
+    assert_eq!(sent[1].dates.request_local_timestamp, "2026-09-27T03:59:00-04:00");
+    assert_eq!(sent[1].dates.request_lived_date, "2026-09-26");
+    assert_eq!(sent[1].dates.target_date, "2026-09-26");
+    drop(sent);
+    let original = application.session("vault-a", &session.id).unwrap();
+    let proposal = &original.task_operations[0];
+    assert_eq!(proposal.target_date, "2026-09-26");
+    application.approve_task_operation_for_selected_vault(&session.id, &proposal.id).unwrap();
+    let tasks = TaskApplication::new(vault, clock, FileTaskStore).read().unwrap();
+    assert_eq!(tasks.tasks.len(), 1);
+    assert_eq!(tasks.tasks[0].date.as_deref(), Some("2026-09-27"));
+    assert_eq!(tasks.tasks[0].time.as_deref(), Some("09:30"));
+    let original = application.session("vault-a", &session.id).unwrap();
+    assert_eq!(original.target_date, "2026-09-26");
+    assert!(original.messages.iter().all(|message| message.target_date == "2026-09-26"));
+    assert!(application.session("vault-a", &next_session.id).unwrap().task_operations.is_empty());
 }
 
 struct FailNextSaveStore {
@@ -3530,4 +3679,130 @@ fn valid_empty_daily_record_can_receive_the_single_automatic_initial_plan() {
     assert_eq!(saved.state, TodayState::Ready);
     assert_eq!(saved.timeline.len(), 2);
     assert!(saved.evidence.iter().any(|group| group.label == "Tasks"));
+}
+
+#[test]
+fn automatic_after_midnight_schedule_uses_lived_target_and_does_not_repeat_at_four_am() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "00:29");
+    let (application, _, _, requests) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock.clone(),
+        None,
+    );
+    let before = application
+        .update_daily_plan_automation(enabled_automation("00:30"))
+        .unwrap();
+    assert_eq!(before.date, "2026-09-26");
+    assert!(before.current_run.is_none());
+    clock.set_time("00:30");
+    let queued = application.check_daily_plan_automation().unwrap();
+    let session_id = queued.current_run.unwrap().session_id.unwrap();
+    wait_for_finish(&application, &session_id, "vault-a");
+    let session = application.session("vault-a", &session_id).unwrap();
+    assert_eq!(session.target_date, "2026-09-26");
+    assert_eq!(session.messages[0].target_date, "2026-09-26");
+    assert_eq!(session.messages[0].message_date, "2026-09-27");
+    assert!(session.messages[0]
+        .created_at
+        .starts_with("2026-09-27T00:30"));
+    assert_eq!(session.task_operations[0].status, "applied");
+    clock.set_time("03:59");
+    assert_eq!(
+        application
+            .check_daily_plan_automation()
+            .unwrap()
+            .current_run
+            .unwrap()
+            .state,
+        "completed"
+    );
+    clock.set_time("04:00");
+    let next = application.check_daily_plan_automation().unwrap();
+    assert_eq!(next.date, "2026-09-27");
+    assert!(next.current_run.is_none());
+    assert_eq!(requests.lock().unwrap().len(), 1);
+    assert!(!record_path(&vault_path).exists());
+}
+
+#[test]
+fn automatic_morning_schedule_late_open_at_one_am_targets_previous_lived_day() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "01:00");
+    let (application, _, _, requests) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock,
+        None,
+    );
+    let queued = application
+        .update_daily_plan_automation(enabled_automation("07:00"))
+        .unwrap();
+    assert_eq!(queued.date, "2026-09-26");
+    let session_id = queued.current_run.unwrap().session_id.unwrap();
+    wait_for_finish(&application, &session_id, "vault-a");
+    let session = application.session("vault-a", &session_id).unwrap();
+    assert_eq!(session.messages[0].target_date, "2026-09-26");
+    assert_eq!(session.task_operations[0].status, "applied");
+    assert_eq!(requests.lock().unwrap().len(), 1);
+    assert!(!record_path(&vault_path).exists());
+}
+
+#[test]
+fn queued_automatic_plan_is_not_retargeted_after_lived_day_boundary() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "03:59");
+    let gate = Arc::new(AutomaticTurnGate::default());
+    let (application, _, _, requests) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock.clone(),
+        Some(Arc::clone(&gate)),
+    );
+    let holder = application.create_session("2026-09-26").unwrap();
+    application
+        .submit_message("vault-a", &holder.id, "2026-09-26", "hold-worker")
+        .unwrap();
+    gate.wait_until_entered();
+    let run = application
+        .update_daily_plan_automation(enabled_automation("00:30"))
+        .unwrap()
+        .current_run
+        .unwrap();
+    let session_id = run.session_id.unwrap();
+    clock.set_time("04:00");
+    gate.release();
+    wait_for_finish(&application, &holder.id, "vault-a");
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let session = application.session("vault-a", &session_id).unwrap();
+        if session.run_state == "error" {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "queued run did not finish safely"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+    let original = application.session("vault-a", &session_id).unwrap();
+    assert_eq!(original.messages[0].target_date, "2026-09-26");
+    assert!(original.task_operations.is_empty());
+    assert!(original.progress.contains("lived day changed"));
+    assert_eq!(
+        requests.lock().unwrap().len(),
+        1,
+        "only the holder reached the model"
+    );
+    assert!(!record_path(&vault_path).exists());
 }

@@ -762,3 +762,134 @@ fn a_local_record_outside_the_new_twelve_week_window_is_not_deleted() {
         .unwrap()
         .contains("historical-window-completion"));
 }
+
+#[test]
+fn habits_share_today_lived_date_and_keep_pending_completion_bound() {
+    use std::rc::Rc;
+    #[derive(Clone)]
+    struct BoundaryClock(Rc<Cell<bool>>);
+    impl TodayClock for BoundaryClock {
+        fn current_date(&self) -> String {
+            "2026-09-09".into()
+        }
+        fn current_time_label(&self) -> String {
+            if self.0.get() { "04:00" } else { "03:59" }.into()
+        }
+        fn current_timestamp_label(&self) -> String {
+            format!("2026-09-09T{}-04:00", self.current_time_label())
+        }
+    }
+    let vault = TempVault::new("lived-day-bound-completion");
+    write_snapshot(
+        vault.path(),
+        include_str!("fixtures/habits-v1-complete.json"),
+    );
+    let snapshot_before = fs::read(snapshot_path(vault.path())).unwrap();
+    let clock = BoundaryClock(Rc::new(Cell::new(false)));
+    let application = TodayApplication::new(
+        SelectedVault(vault.path().into()),
+        NoSelection,
+        clock.clone(),
+    );
+    let before = application.habits().unwrap();
+    assert_eq!(before.habit("reset").unwrap().today.date, "2026-09-08");
+    assert_eq!(application.read().unwrap().date, "2026-09-08");
+    let input = HabitCompletionMutationInput {
+        habit_key: "reset".into(),
+        lived_date: "2026-09-08".into(),
+        completed: true,
+        change_id: "bound-completion".into(),
+        target_binding: before.completion_target_binding.unwrap(),
+        expected_revision: before.completion_revision,
+    };
+    clock.0.set(true);
+    let saved = application.set_local_habit_completion(input).unwrap();
+    assert_eq!(saved.habit("reset").unwrap().today.date, "2026-09-09");
+    assert!(
+        saved
+            .habit("reset")
+            .unwrap()
+            .cell("2026-09-08")
+            .unwrap()
+            .counts_as_completion
+    );
+    let document = fs::read_to_string(completion_path(vault.path())).unwrap();
+    assert!(document.contains("2026-09-08"));
+    assert!(document.contains("2026-09-09T04:00-04:00"));
+    assert_eq!(
+        fs::read(snapshot_path(vault.path())).unwrap(),
+        snapshot_before
+    );
+    let reopened = TodayApplication::new(SelectedVault(vault.path().into()), NoSelection, clock);
+    assert!(
+        reopened
+            .habits()
+            .unwrap()
+            .habit("reset")
+            .unwrap()
+            .cell("2026-09-08")
+            .unwrap()
+            .counts_as_completion
+    );
+}
+
+#[test]
+fn explicit_current_natural_habit_date_is_writable_before_four_am() {
+    struct EarlyClock;
+    impl TodayClock for EarlyClock {
+        fn current_date(&self) -> String {
+            "2026-10-02".into()
+        }
+        fn current_time_label(&self) -> String {
+            "01:00".into()
+        }
+        fn current_timestamp_label(&self) -> String {
+            "2026-10-02T01:00-04:00".into()
+        }
+    }
+    let vault = TempVault::new("explicit-natural-habit");
+    write_snapshot(
+        vault.path(),
+        include_str!("fixtures/habits-v1-complete.json"),
+    );
+    let application =
+        TodayApplication::new(SelectedVault(vault.path().into()), NoSelection, EarlyClock);
+    let defaults = application.habits().unwrap();
+    assert_eq!(defaults.habit("reset").unwrap().today.date, "2026-10-01");
+    let explicit = application.read_date("2026-10-02").unwrap();
+    assert!(explicit.habit_corrections.can_record);
+    assert!(!explicit.habit_corrections.message.contains("未来日期"));
+    let tomorrow = application.read_date("2026-10-03").unwrap();
+    assert!(!tomorrow.habit_corrections.can_record);
+    let input = HabitCompletionMutationInput {
+        habit_key: "reset".into(),
+        lived_date: "2026-10-02".into(),
+        completed: true,
+        change_id: "explicit-current".into(),
+        target_binding: defaults.completion_target_binding.unwrap(),
+        expected_revision: defaults.completion_revision,
+    };
+    let mut future_input = input.clone();
+    future_input.lived_date = "2026-10-03".into();
+    future_input.change_id = "future-habit".into();
+    assert!(application
+        .set_local_habit_completion(future_input)
+        .is_err());
+    let saved = application.set_local_habit_completion(input).unwrap();
+    assert_eq!(saved.habit("reset").unwrap().today.date, "2026-10-01");
+    let selected = application.read_date("2026-10-02").unwrap();
+    let reset = selected
+        .habit_corrections
+        .habits
+        .iter()
+        .find(|habit| habit.key == "reset")
+        .unwrap();
+    assert!(reset.cell.counts_as_completion);
+    assert_eq!(
+        reset.cell.local_completion_state,
+        HabitLocalCompletionState::Completed
+    );
+    let document = fs::read_to_string(completion_path(vault.path())).unwrap();
+    assert!(document.contains("2026-10-02"));
+    assert!(document.contains("2026-10-02T01:00-04:00"));
+}

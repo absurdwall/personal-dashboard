@@ -1,8 +1,9 @@
 use crate::habits::{
-    load_habit_names, project_habit_corrections_with_names, project_snapshot_with_names,
-    project_uncatalogued_habit_corrections, snapshot_dates, FileHabitSnapshotStore,
-    HabitCorrectionView, HabitLocalCompletionChangeView, HabitSnapshotStore, LocalHabitCompletion,
-    LocalHabitRecord, LEGACY_SNAPSHOT_RELATIVE_PATH, SNAPSHOT_RELATIVE_PATH,
+    load_habit_names, project_habit_corrections_with_recording_limit, project_snapshot_with_names,
+    project_uncatalogued_habit_corrections_with_recording_limit, snapshot_dates,
+    FileHabitSnapshotStore, HabitCorrectionView, HabitLocalCompletionChangeView,
+    HabitSnapshotStore, LocalHabitCompletion, LocalHabitRecord, LEGACY_SNAPSHOT_RELATIVE_PATH,
+    SNAPSHOT_RELATIVE_PATH,
 };
 pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
@@ -83,6 +84,10 @@ pub trait TodayClock {
         }
     }
 
+    fn current_lived_date(&self) -> String {
+        self.current_local_time().lived_date()
+    }
+
     fn resolve_local_wall_time(&self, _date: &str, _minute: u16) -> LocalWallTimeResolution {
         LocalWallTimeResolution::Unique {
             utc_offset_minutes: 0,
@@ -107,6 +112,10 @@ impl<T: TodayClock + ?Sized> TodayClock for &T {
         (**self).current_local_time()
     }
 
+    fn current_lived_date(&self) -> String {
+        (**self).current_lived_date()
+    }
+
     fn resolve_local_wall_time(&self, date: &str, minute: u16) -> LocalWallTimeResolution {
         (**self).resolve_local_wall_time(date, minute)
     }
@@ -119,11 +128,34 @@ pub enum LocalWallTimeResolution {
     Ambiguous,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TodayClockView {
     pub date: String,
     pub time: String,
+}
+
+impl TodayClockView {
+    /// The date belongs to the local wall clock, independent of UTC offsets
+    /// and elapsed hours on daylight-saving transition days.
+    pub fn lived_date(&self) -> String {
+        if self.time.as_str() < "04:00" {
+            if let Some(date) = CalendarDate::parse(&self.date) {
+                return date.plus_days(-1).to_string();
+            }
+        }
+        self.date.clone()
+    }
+}
+
+impl Serialize for TodayClockView {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut view = serializer.serialize_struct("TodayClockView", 3)?;
+        view.serialize_field("date", &self.date)?;
+        view.serialize_field("time", &self.time)?;
+        view.serialize_field("livedDate", &self.lived_date())?;
+        view.end()
+    }
 }
 
 pub trait TodayRecordStore {
@@ -2444,8 +2476,9 @@ where
             })
             .collect();
         let names_configuration = load_habit_names(vault);
-        match project_habit_corrections_with_names(
+        match project_habit_corrections_with_recording_limit(
             &document,
+            &self.clock.current_lived_date(),
             &self.clock.current_date(),
             date,
             local_records,
@@ -2499,7 +2532,8 @@ where
         completion_target_binding: String,
         local_completions: Vec<LocalHabitCompletion>,
     ) -> HabitCorrectionView {
-        match project_uncatalogued_habit_corrections(
+        match project_uncatalogued_habit_corrections_with_recording_limit(
+            &self.clock.current_lived_date(),
             &self.clock.current_date(),
             date,
             state,
@@ -2804,7 +2838,7 @@ where
                 return Ok(HabitSnapshotView::error(error));
             }
         };
-        let today = self.clock.current_date();
+        let today = self.clock.current_lived_date();
         let current_timestamp = self.clock.current_timestamp_label();
         let dates = match snapshot_dates(&document, &today) {
             Ok(dates) => dates,
@@ -2902,7 +2936,7 @@ where
     }
 
     pub fn open(&self) -> Result<TodayView, String> {
-        let date = self.clock.current_local_time().date;
+        let date = self.clock.current_lived_date();
         self.open_date(&date)
     }
 
@@ -2911,7 +2945,7 @@ where
     }
 
     pub fn read(&self) -> Result<TodayView, String> {
-        let date = self.clock.current_local_time().date;
+        let date = self.clock.current_lived_date();
         self.read_date(&date)
     }
 
@@ -2926,7 +2960,7 @@ where
     fn view_date(&self, date: &str, receive_planning_input: bool) -> Result<TodayView, String> {
         canonical_record_path(Path::new("."), date)?;
         let clock = self.clock.current_local_time();
-        let is_today = date == clock.date;
+        let is_today = date == clock.lived_date();
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(TodayView {
                 state: TodayState::Unconfigured,
@@ -2990,7 +3024,7 @@ where
         // The 4.0 page reads old day-task files without accepting their planning
         // input. Legacy producer reconciliation remains available only through
         // the explicit `open` compatibility path used by the old flow.
-        let view = self.reload_vault(&vault, self.clock.current_date())?;
+        let view = self.reload_vault(&vault, self.clock.current_lived_date())?;
         if changed {
             self.persistence.save_selected_vault(&vault)?;
         }
@@ -3223,21 +3257,31 @@ where
     }
 
     pub fn append_daytime_update(&self, input: DaytimeUpdateInput) -> Result<TodayView, String> {
+        self.append_daytime_update_for_target(input, None, None)
+    }
+
+    pub fn append_daytime_update_for_target(
+        &self,
+        input: DaytimeUpdateInput,
+        date: Option<&str>,
+        target_binding: Option<&str>,
+    ) -> Result<TodayView, String> {
         validate_short_text(&input.content, "白天更新")?;
         let (heading, body) = daytime_block(&input, &self.clock.current_time_label())?;
-        let (vault, path, document) = self.load_writable_record()?;
+        let (vault, path, document, date) =
+            self.load_writable_record_for_target(date, target_binding)?;
         require_revision(&document, &input.expected_revision)?;
-        validate_writable_daily_record(&document, &self.clock.current_date())?;
+        validate_writable_daily_record(&document, &date)?;
         let updated = append_to_canonical_section(
             &document,
             "白天更新",
             &format!("### {heading}\n\n{body}"),
             Some("晚间复盘"),
         );
-        validate_writable_daily_record(&updated, &self.clock.current_date())?;
+        validate_writable_daily_record(&updated, &date)?;
         self.record_store
             .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
-        self.reload_vault(&vault, self.clock.current_date())
+        self.reload_vault(&vault, date)
     }
 
     pub fn save_daily_plan(&self, input: DailyPlanWriteInput) -> Result<TodayView, String> {
@@ -3687,10 +3731,20 @@ where
     }
 
     pub fn update_evening_review(&self, input: EveningUpdateInput) -> Result<TodayView, String> {
+        self.update_evening_review_for_target(input, None, None)
+    }
+
+    pub fn update_evening_review_for_target(
+        &self,
+        input: EveningUpdateInput,
+        date: Option<&str>,
+        target_binding: Option<&str>,
+    ) -> Result<TodayView, String> {
         validate_short_text(&input.content, "晚间复盘更新")?;
-        let (vault, path, document) = self.load_writable_record()?;
+        let (vault, path, document, date) =
+            self.load_writable_record_for_target(date, target_binding)?;
         require_revision(&document, &input.expected_revision)?;
-        validate_writable_daily_record(&document, &self.clock.current_date())?;
+        validate_writable_daily_record(&document, &date)?;
         let updated = match input.mode {
             EveningUpdateMode::Addition => update_evening_subsection(
                 &document,
@@ -3705,25 +3759,39 @@ where
                 true,
             )?,
         };
-        validate_writable_daily_record(&updated, &self.clock.current_date())?;
+        validate_writable_daily_record(&updated, &date)?;
         self.record_store
             .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
-        self.reload_vault(&vault, self.clock.current_date())
+        self.reload_vault(&vault, date)
     }
 
-    fn load_writable_record(&self) -> Result<(PathBuf, PathBuf, String), String> {
+    fn load_writable_record_for_target(
+        &self,
+        date: Option<&str>,
+        target_binding: Option<&str>,
+    ) -> Result<(PathBuf, PathBuf, String, String), String> {
+        if date.is_some() != target_binding.is_some() {
+            return Err("A record date and Vault target binding must be supplied together.".into());
+        }
+        let date = date
+            .map(str::to_owned)
+            .unwrap_or_else(|| self.clock.current_lived_date());
+        self.validate_event_date(&date)?;
         let vault = self.persistence.load_selected_vault()?.ok_or_else(|| {
             "请先选择 Tortilla Flat vault，再更新今天的 Daily Record。".to_string()
         })?;
         validate_compatible_vault(&vault).map_err(|error| format!("{error}；未写入任何内容。"))?;
-        let path = canonical_record_path(&vault, &self.clock.current_date())?;
+        let path = canonical_record_path(&vault, &date)?;
+        if target_binding.is_some_and(|binding| record_target_binding(&path) != binding) {
+            return Err("Vault 或日期保存目标已经变化。草稿仍保留；未写入任何内容。".into());
+        }
         let bytes = self.record_store.load(&path)?.ok_or_else(|| {
             "今天还没有 Daily Record。请先让 Codex 运行早间流程，然后刷新 Today。".to_string()
         })?;
         let document = String::from_utf8(bytes).map_err(|_| {
             "今天的 Daily Record 不是有效的 UTF-8 文本；未写入任何内容。".to_string()
         })?;
-        Ok((vault, path, document))
+        Ok((vault, path, document, date))
     }
 
     fn open_vault(&self, vault: &Path, date: String) -> Result<TodayView, String> {
@@ -3741,7 +3809,7 @@ where
         receive_planning_input: bool,
     ) -> Result<TodayView, String> {
         let clock = self.clock.current_local_time();
-        let is_today = date == clock.date;
+        let is_today = date == clock.lived_date();
         let current_time = is_today.then_some(clock.time.clone());
         let can_record = CalendarDate::parse(&date).is_some_and(|selected| {
             CalendarDate::parse(&clock.date)
@@ -5531,7 +5599,14 @@ fn project_axis_item<C: TodayClock>(
                 unlocated.push(unlocated_axis_entry(period, text, expected_date));
                 return;
             };
-            if source_day != CalendarDate::parse(expected_date).unwrap_or(source_day) {
+            let expected_day = CalendarDate::parse(expected_date).unwrap_or(source_day);
+            let projected =
+                (source_day.unix_days() - expected_day.unix_days()) * 1440 + i64::from(minute);
+            if !(240..1680).contains(&projected) {
+                // Retain old record facts at their original date without relocating them.
+                if source_day == expected_day {
+                    unlocated.push(unlocated_axis_entry(period, text, source_date));
+                }
                 return;
             }
             if !matches!(
@@ -5545,7 +5620,7 @@ fn project_axis_item<C: TodayClock>(
                 period,
                 text: text.to_owned(),
                 source_date: source_date.to_owned(),
-                start_minute: Some(minute),
+                start_minute: Some(projected as u16),
                 end_minute: None,
                 continues_from_previous_day: false,
                 continues_into_next_day: false,
@@ -5579,7 +5654,12 @@ fn project_axis_item<C: TodayClock>(
                 unlocated.push(unlocated_axis_entry(period, text, source_date));
                 return;
             }
-            if expected_day < start_day || expected_day > end_day {
+            let window_start = expected_day.unix_days() * 1440 + 240;
+            let window_end = window_start + 1440;
+            if end_absolute <= window_start || start_absolute >= window_end {
+                if start_day == expected_day {
+                    unlocated.push(unlocated_axis_entry(period, text, source_date));
+                }
                 return;
             }
             let start_resolution = clock.resolve_local_wall_time(source_date, start_minute);
@@ -5600,24 +5680,16 @@ fn project_axis_item<C: TodayClock>(
                 unlocated.push(unlocated_axis_entry(period, text, source_date));
                 return;
             }
-            let start = if start_day == expected_day {
-                start_minute
-            } else {
-                0
-            };
-            let end = if end_day == expected_day {
-                end_minute
-            } else {
-                1440
-            };
+            let start = (start_absolute.max(window_start) - expected_day.unix_days() * 1440) as u16;
+            let end = (end_absolute.min(window_end) - expected_day.unix_days() * 1440) as u16;
             located.push(TimeAxisEntryView {
                 period,
                 text: text.to_owned(),
                 source_date: source_date.to_owned(),
                 start_minute: Some(start),
                 end_minute: Some(end),
-                continues_from_previous_day: expected_day > start_day,
-                continues_into_next_day: expected_day < end_day,
+                continues_from_previous_day: start_absolute < window_start,
+                continues_into_next_day: end_absolute > window_end,
             });
         }
     }
@@ -5644,7 +5716,10 @@ fn explicit_time_expression(text: &str) -> ExplicitTimeExpression {
     match occurrences.as_slice() {
         [] => ExplicitTimeExpression::None,
         [one] => match (one.date.as_ref(), one.minute) {
-            (None, Some(minute)) => ExplicitTimeExpression::Point { date: None, minute },
+            (_, Some(minute)) => ExplicitTimeExpression::Point {
+                date: one.date.clone(),
+                minute,
+            },
             _ => ExplicitTimeExpression::Invalid,
         },
         [start, end]

@@ -826,14 +826,26 @@ fn application_data_file_for<R: Runtime>(
     app: &AppHandle<R>,
     file_name: &str,
 ) -> Result<PathBuf, String> {
-    let data_directory = match std::env::var_os("PERSONAL_DASHBOARD_DATA_DIR") {
-        Some(override_directory) => PathBuf::from(override_directory),
-        None => app
-            .path()
-            .app_data_dir()
-            .map_err(|error| format!("Could not locate the app data directory: {error}"))?,
-    };
+    let data_directory = application_data_directory_for(app)?;
     Ok(data_directory.join(file_name))
+}
+
+pub fn application_data_directory_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    resolve_application_data_directory(std::env::var_os("PERSONAL_DASHBOARD_DATA_DIR"), || {
+        app.path()
+            .app_data_dir()
+            .map_err(|error| format!("Could not locate the app data directory: {error}"))
+    })
+}
+
+fn resolve_application_data_directory(
+    override_directory: Option<std::ffi::OsString>,
+    default_directory: impl FnOnce() -> Result<PathBuf, String>,
+) -> Result<PathBuf, String> {
+    match override_directory {
+        Some(directory) => Ok(PathBuf::from(directory)),
+        None => default_directory(),
+    }
 }
 
 pub fn baseline_file_for<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -870,6 +882,33 @@ mod tests {
     use super::*;
     use crate::today::TodayWorkspaceSelectionState;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn isolated_application_data_does_not_resolve_the_daily_profile() {
+        let isolated = PathBuf::from("/tmp/personal-dashboard-isolated-profile");
+        let actual =
+            resolve_application_data_directory(Some(isolated.clone().into_os_string()), || {
+                panic!(
+                    "an isolated local service must not resolve the daily application's directory"
+                )
+            })
+            .unwrap();
+        assert_eq!(actual, isolated);
+    }
+
+    #[test]
+    fn application_data_without_an_override_preserves_the_native_directory() {
+        let native = PathBuf::from("/native/default-profile");
+        assert_eq!(
+            resolve_application_data_directory(None, || Ok(native.clone())).unwrap(),
+            native
+        );
+        assert_eq!(
+            resolve_application_data_directory(None, || Err("native directory unavailable".into()))
+                .unwrap_err(),
+            "native directory unavailable"
+        );
+    }
 
     #[test]
     fn vault_picker_title_follows_the_current_interface_language() {

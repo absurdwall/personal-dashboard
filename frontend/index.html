@@ -301,8 +301,12 @@
                 <p id="collaboration-work-owner" role="status" aria-live="polite"></p>
                 <button id="collaboration-open-settings" type="button" class="text-button" data-i18n="collaboration.openSettings">Codex connection settings</button>
               </div>
+              <div class="collaboration-panel-toolbar">
+                <button id="collaboration-toggle-history" type="button" class="secondary-button" aria-controls="collaboration-history-panel" aria-expanded="true" data-i18n="collaboration.toggleHistory">Session history</button>
+                <button id="collaboration-toggle-context" type="button" class="secondary-button" aria-controls="collaboration-work-panel" aria-expanded="true" data-i18n="collaboration.toggleContext">Current work</button>
+              </div>
               <div class="collaboration-layout">
-                <section class="collaboration-session-pane" aria-labelledby="collaboration-sessions-heading">
+                <section class="collaboration-session-pane" id="collaboration-history-panel" aria-labelledby="collaboration-sessions-heading">
                   <header class="collaboration-pane-heading">
                     <div>
                       <p class="section-label" data-i18n="collaboration.sessionsLabel">SESSIONS</p>
@@ -313,6 +317,7 @@
                   <p id="collaboration-sessions-status" class="collaboration-pane-status" role="status" aria-live="polite"></p>
                   <ul id="collaboration-session-list" class="collaboration-session-list" aria-label="Collaboration sessions" data-i18n-aria-label="collaboration.sessionsHeading"></ul>
                 </section>
+                <div id="collaboration-history-resizer" class="collaboration-panel-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="collaboration-history-panel" aria-label="Resize session history" data-i18n-aria-label="collaboration.resizeHistory"></div>
                 <section class="collaboration-chat-pane" aria-labelledby="collaboration-chat-heading">
                   <header class="collaboration-pane-heading collaboration-chat-heading">
                     <div>
@@ -328,18 +333,24 @@
                   <p id="collaboration-task-tool-notice" class="collaboration-task-tool-notice" role="status" aria-live="polite" hidden></p>
                   <div id="collaboration-message-list" class="collaboration-message-list" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation messages" data-i18n-aria-label="collaboration.conversationLabel"></div>
                   <form id="collaboration-composer" class="collaboration-composer">
+                    <p id="collaboration-composer-date" class="collaboration-target-date"></p>
                     <label for="collaboration-message-draft" data-i18n="collaboration.messageLabel">Message</label>
+                    <div class="collaboration-composer-input">
                     <textarea id="collaboration-message-draft" rows="3" maxlength="12000" data-i18n-placeholder="collaboration.messagePlaceholder" placeholder="Describe what you want to discuss…" aria-describedby="collaboration-composer-status" disabled></textarea>
-                    <p id="collaboration-composer-status" class="collaboration-composer-status" role="status" aria-live="polite" hidden></p>
                     <div class="collaboration-voice-controls">
-                      <label for="collaboration-voice-language" data-i18n="collaboration.voiceLanguage">Voice language</label>
+                      <label class="collaboration-voice-language-label" for="collaboration-voice-language" data-i18n="collaboration.voiceLanguage">Voice language</label>
                       <select id="collaboration-voice-language" disabled aria-describedby="collaboration-voice-privacy">
                         <option value="" data-i18n="collaboration.voiceLanguageLoading">Checking local speech models…</option>
                       </select>
-                      <button id="collaboration-voice-start" type="button" data-i18n="collaboration.voiceStart" aria-describedby="collaboration-composer-status collaboration-voice-status" disabled>Start recording</button>
+                      <button id="collaboration-voice-start" class="collaboration-microphone" type="button" aria-label="Start recording" aria-describedby="collaboration-composer-status collaboration-voice-status" disabled>
+                        <svg class="collaboration-microphone-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>
+                        <svg class="collaboration-stop-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor"/></svg>
+                      </button>
                       <button id="collaboration-voice-cancel" type="button" data-i18n="collaboration.voiceCancel" hidden>Cancel</button>
-                      <p id="collaboration-voice-privacy" data-i18n="collaboration.voicePrivacy">Audio is transcribed on this Mac only after you start recording; it is discarded after transcription.</p>
                     </div>
+                    </div>
+                    <p id="collaboration-composer-status" class="collaboration-composer-status" role="status" aria-live="polite" hidden></p>
+                    <p id="collaboration-voice-privacy" class="collaboration-voice-privacy" data-i18n="collaboration.voicePrivacy">Audio is transcribed on this Mac only after you start recording; it is discarded after transcription.</p>
                     <p id="collaboration-voice-status" class="collaboration-voice-status" role="status" aria-live="polite"></p>
                     <div class="collaboration-composer-footer">
                       <p data-i18n="collaboration.readOnlyBoundary">Codex may propose Task, Daily Record review/note/plan, or local Habit completion changes. Only the exact approved content is written to the selected Vault. External Habit sources and settings are not changed.</p>
@@ -347,7 +358,8 @@
                     </div>
                   </form>
                 </section>
-                <aside class="collaboration-context-pane" aria-labelledby="collaboration-context-heading">
+                <div id="collaboration-context-resizer" class="collaboration-panel-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="collaboration-work-panel" aria-label="Resize current work" data-i18n-aria-label="collaboration.resizeContext"></div>
+                <aside class="collaboration-context-pane" id="collaboration-work-panel" aria-labelledby="collaboration-context-heading">
                   <header class="collaboration-pane-heading">
                     <div>
                       <p class="section-label" data-i18n="collaboration.currentWorkLabel">CURRENT WORK</p>
@@ -783,6 +795,8 @@
                             时间轴只整理明确事实和当前安排；没有记录的活动继续保持未知。
                           </p>
                           <div class="today-time-axis-actions">
+                            <button id="today-expand-early" type="button" class="secondary-button" aria-expanded="false" data-i18n="today.expandEarly">04:00–06:00</button>
+                            <button id="today-expand-late" type="button" class="secondary-button" aria-expanded="false" data-i18n="today.expandLate">次日 00:00–04:00</button>
                             <button id="today-locate-now" type="button" class="secondary-button" data-i18n="today.locateNow">
                               定位现在
                             </button>
@@ -1050,7 +1064,7 @@
                           </p>
                         </aside>
 
-                    <section id="historical-habit-corrections" class="historical-habit-corrections" aria-labelledby="historical-habit-heading" hidden>
+                    <section id="historical-habit-corrections" class="historical-habit-corrections" tabindex="-1" aria-labelledby="historical-habit-heading historical-habit-date" hidden>
                       <div class="day-task-heading">
                         <div>
                           <p class="section-label" data-i18n="history.section">历史 · 更正</p>

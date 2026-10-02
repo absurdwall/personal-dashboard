@@ -58,10 +58,10 @@ use interface_language::{
     InterfaceLanguage, InterfaceLanguageApplication, InterfaceLanguagePreferences,
 };
 use platform::{
-    appearance_background_directory_for, appearance_file_for, interface_language_file_for,
-    legacy_exercise_directory_for, profile_file_for, today_workspace_file_for,
-    FileAppearancePersistence, FileInterfaceLanguagePersistence, FileTodayWorkspacePersistence,
-    NativeAppearanceImageLibrary, NativeTodayWorkspaceExchange,
+    appearance_background_directory_for, appearance_file_for, application_data_directory_for,
+    interface_language_file_for, legacy_exercise_directory_for, profile_file_for,
+    today_workspace_file_for, FileAppearancePersistence, FileInterfaceLanguagePersistence,
+    FileTodayWorkspacePersistence, NativeAppearanceImageLibrary, NativeTodayWorkspaceExchange,
 };
 use tasks::{
     FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput,
@@ -181,9 +181,12 @@ fn collaboration_context(
 #[tauri::command]
 fn collaboration_create_session(
     application: State<'_, collaboration::CollaborationApplication>,
-    date: String,
+    date: Option<String>,
 ) -> Result<collaboration::CollaborationSessionView, String> {
-    application.create_session(&date)
+    match date {
+        Some(date) => application.create_session(&date),
+        None => application.create_default_session(),
+    }
 }
 
 #[tauri::command]
@@ -582,8 +585,10 @@ async fn select_today_vault(
 fn append_daytime_update(
     application: State<'_, DesktopTodayApplication>,
     input: DaytimeUpdateInput,
+    date: Option<String>,
+    target_binding: Option<String>,
 ) -> Result<TodayView, String> {
-    application.append_daytime_update(input)
+    application.append_daytime_update_for_target(input, date.as_deref(), target_binding.as_deref())
 }
 
 #[tauri::command]
@@ -646,8 +651,10 @@ fn planning_day_task_context(
 fn update_evening_review(
     application: State<'_, DesktopTodayApplication>,
     input: EveningUpdateInput,
+    date: Option<String>,
+    target_binding: Option<String>,
 ) -> Result<TodayView, String> {
-    application.update_evening_review(input)
+    application.update_evening_review_for_target(input, date.as_deref(), target_binding.as_deref())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -657,7 +664,7 @@ pub fn run() {
         .setup(|app| {
             let app_handle = app.handle().clone();
             let today_workspace_file = today_workspace_file_for(&app_handle)?;
-            let collaboration_app_data_dir = app_handle.path().app_data_dir()?;
+            let collaboration_app_data_dir = application_data_directory_for(&app_handle)?;
             std::fs::create_dir_all(&collaboration_app_data_dir)?;
             let appearance_file = appearance_file_for(&app_handle)?;
             let appearance_background_directory = appearance_background_directory_for(&app_handle)?;
