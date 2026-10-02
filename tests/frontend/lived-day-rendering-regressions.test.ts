@@ -293,10 +293,10 @@ test('shipped WebKit timeline keeps endpoint placement, reading anchors, reveal 
         lateTop: late.getBoundingClientRect().top, plotBottom: plot.getBoundingClientRect().bottom,
         locateWidth: todayLocateNowButton.getBoundingClientRect().width, locateHeight: todayLocateNowButton.getBoundingClientRect().height };
       todayTimedEvents.querySelector('.today-axis-stack-reveal').click();
-      const revealed = todayTimedEvents.querySelector('.is-stack-front').dataset.axisEntryId;
+      const revealed = todayTimedEvents.querySelector('.is-stack-front a').getAttribute('href');
       const openDetail = todayTimedDetails.querySelector('details'); openDetail.open = true;
       const openId = openDetail.id;
-      const middle = () => todayTimedEvents.querySelector('[data-axis-entry-id="today-axis-arrangement-entry-2"]');
+      const middle = () => todayTimedEvents.querySelector('a[href="#today-axis-arrangement-entry-2"]').closest('li');
       workspaceInformation.scrollTop += middle().getBoundingClientRect().top - workspaceInformation.getBoundingClientRect().top - 80;
       const initialY = middle().getBoundingClientRect().top;
       const observations = [];
@@ -305,7 +305,7 @@ test('shipped WebKit timeline keeps endpoint placement, reading anchors, reveal 
         observations.push({ y: middle().getBoundingClientRect().top, bounds: axisBounds(),
           early: early.getAttribute('aria-expanded'), late: late.getAttribute('aria-expanded'),
           earlyCopy: early.dataset.i18n, lateCopy: late.dataset.i18n,
-          revealed: todayTimedEvents.querySelector('[data-axis-entry-id="' + revealed + '"]').classList.contains('is-stack-front'),
+          revealed: todayTimedEvents.querySelector('a[href="' + revealed + '"]').closest('li').classList.contains('is-stack-front'),
           detailOpen: document.getElementById(openId).open, follow: todayAxisFollowState });
       }
       currentTodayView = { ...currentTodayView, date: '2026-10-02', currentTime: '01:00' };
@@ -326,7 +326,7 @@ test('shipped WebKit timeline keeps endpoint placement, reading anchors, reveal 
     for (const width of [1440, 1100, 680]) {
       const result = JSON.parse(execFileSync(probe, [join(output, 'index.html'), scriptPath, String(width)], { encoding: 'utf8', timeout: 30_000 }));
       const { placement } = result;
-      assert.ok(placement.earlyBottom <= placement.plotTop && placement.lateTop >= placement.plotBottom, 'actual controls occupy opposite plot endpoints');
+      assert.ok(placement.earlyBottom <= placement.plotTop && placement.lateTop >= placement.plotBottom, `actual controls occupy opposite plot endpoints: ${JSON.stringify(result)}`);
       assert.ok(placement.locateWidth >= 32 && placement.locateWidth <= 48 && placement.locateHeight >= 32, 'icon has an accessible target');
       const bounds = [[240, 1440], [240, 1680], [360, 1680], [360, 1440]];
       result.observations.forEach((observation: any, index: number) => {
