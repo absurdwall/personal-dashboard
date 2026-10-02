@@ -4847,10 +4847,13 @@ EOF
   run_driver press-contains "跨午夜合成安排" 10
   run_driver assert-text "来源日期：2026-08-10"
   run_driver assert-absent-text "延续至下一天"
-  run_driver press "次日 00:00–04:00" 10
+  run_driver scroll-text-visible "次日 00:00–04:00 · 展开" 10
+  run_driver press "次日 00:00–04:00 · 展开" 10
   run_driver scroll-text-visible "次日凌晨可见安排" 10
   run_driver assert-text "03:59 · 2026-08-11"
-  run_driver press "04:00–06:00" 10
+  run_driver scroll-text-visible "04:00–06:00 · 展开" 10
+  run_driver press "04:00–06:00 · 展开" 10
+  run_driver scroll-text-visible "定位现在" 10
   run_driver press "定位现在" 10
   run_driver assert-text "23:50"
   run_driver capture-window "$capture_directory/today-time-axis-midnight-before.png" 10
@@ -6442,6 +6445,7 @@ date: 2026-10-01
 
 - 06:00 Folded start alpha
 - 06:50 Folded start beta
+- 12:00 Reading anchor probe
 - 23:10 Folded end alpha
 - 23:59 Folded end beta
 - 2026-10-01 23:30–2026-10-02 01:00 Cross midnight range
@@ -6466,8 +6470,18 @@ EOF
   run_driver assert-axis-overlap-stack "Folded end alpha|Folded end beta" 10
   run_driver scroll-text-visible "Folded end beta" 10
   run_driver capture-window "$captures/folded-end.png" 10
-  run_driver press "04:00–06:00" 10
-  run_driver press "Next day 00:00–04:00" 10
+  run_driver assert-axis-disclosure-endpoints "" 10
+  run_driver scroll-text-visible "Reading anchor probe" 10
+  run_driver assert-axis-disclosure-anchor "04:00–06:00|Reading anchor probe|12:00" 10
+  run_driver assert-text "04:00–06:00 · Collapse" 10
+  run_driver assert-axis-disclosure-anchor "Next day 00:00–04:00|Reading anchor probe|12:00" 10
+  run_driver assert-text "Next day 00:00–04:00 · Collapse" 10
+  run_driver assert-axis-disclosure-anchor "04:00–06:00|Reading anchor probe|12:00" 10
+  run_driver assert-text "04:00–06:00 · Expand" 10
+  run_driver assert-text "Next day 00:00–04:00 · Collapse" 10
+  run_driver assert-axis-disclosure-anchor "Next day 00:00–04:00|Reading anchor probe|12:00" 10
+  run_driver assert-text "Next day 00:00–04:00 · Expand" 10
+  run_driver assert-axis-disclosure-anchor "Next day 00:00–04:00|Reading anchor probe|12:00" 10
   run_driver assert-text "2026-10-02" 10
   run_driver assert-axis-cards-fit "2026-10-01 23:30–2026-10-02 01:00 Cross midnight range|23:30–01:00 · 2026-10-02" 10
   [[ "$(shasum -a 256 "$record" | awk '{print $1}')" == "$record_hash" ]] || fail "timeline reading changed its source"

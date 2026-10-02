@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,6 +47,7 @@ class Element {
   toggleAttribute() {}
   closest() { return null; }
   querySelector(selector: string) { return this.children.find(child => `.${child.className}` === selector); }
+  querySelectorAll() { return this.children; }
   addEventListener(name: string, callback: (event: unknown) => void) {
     this.listeners.set(name, () => callback({ preventDefault() {}, stopPropagation() {} }));
   }
@@ -107,6 +108,166 @@ test('expanding quiet hours recomputes stacks and exposes next-day entries', () 
   assert.equal(full.todayTimedEvents.children[2].children[0].children[0].textContent, '01:00 · 2026-10-02');
   assert.equal(renderTimeline(entries).todayTimedEvents.children.length, 2);
 });
+
+// Endpoint controls are read from the shipped markup and click handlers from
+// compiled main. Geometry models the constant hour height of the rendered plot.
+test('quiet-hour disclosures sit at opposite timeline endpoints and Locate now is a named icon', () => {
+  const html = readFileSync(join(root, 'frontend/index.html'), 'utf8');
+  const early = html.indexOf('id="today-expand-early"');
+  const late = html.indexOf('id="today-expand-late"');
+  const plot = html.indexOf('class="today-axis-plot"');
+  const details = html.indexOf('id="today-timed-details"');
+  assert.ok(early < plot && late > plot && late < details, 'late disclosure follows the plotted hours, before entry details');
+  const locate = html.match(/<button id="today-locate-now"[^>]*>([\s\S]*?)<\/button>/)!;
+  assert.match(locate[0], /data-i18n-aria-label="today.locateNow"/);
+  assert.match(locate[0], /data-i18n-title="today.locateNow"/);
+  assert.match(locate[1], /<svg/);
+  assert.ok(html.indexOf('id="today-locate-now"') < early, 'locator lives beside the heading');
+});
+
+function expansionHarness() {
+  const controls = new Map(['early', 'late'].map(segment => [`today-expand-${segment}`, new Element()]));
+  const viewport = { scrollTop: 300, getBoundingClientRect: () => ({ top: 0, bottom: 600, height: 600 }),
+    scrollTo({ top }: { top: number }) { this.scrollTop = top; } };
+  const plot = { getBoundingClientRect: () => ({ top: -viewport.scrollTop, bottom: 1080 - viewport.scrollTop, height: 1080 }) };
+  const context = createContext({ ...axis, document: { getElementById: (id: string) => controls.get(id) },
+    currentTodayView: { date: '2026-10-01' }, workspaceInformation: viewport,
+    todayAxisEarlyExpanded: false, todayAxisLateExpanded: false, todayAxisFollowState: 'following',
+    todayContinuousAxis: { querySelector: () => plot },
+    todayTimedDetails: new Element(), todayTimedEvents: new Element(),
+    renderTodayTimeAxis() {}, controls, viewport, plot,
+    requestAnimationFrame: (callback: () => void) => callback(),
+  });
+  // Coordinate locations must reflect current bounds and scroll position.
+  runInContext(handler('function axisBounds(', 'function nextAxisDate('), context);
+  runInContext(`plot.getBoundingClientRect = () => ({
+    top: -viewport.scrollTop,
+    height: (axisBounds()[1] - axisBounds()[0]),
+    bottom: (axisBounds()[1] - axisBounds()[0]) - viewport.scrollTop,
+  });`, context);
+  if (main.includes('function toggleTodayAxisSegment(')) {
+    runInContext(handler('function toggleTodayAxisSegment(', 'function todayEvidenceGroup('), context);
+  }
+  runInContext(main.slice(main.lastIndexOf('for (const id of ["today-expand-early", "today-expand-late"])')), context);
+  return { context, viewport, controls };
+}
+
+test('quiet-hour clicks keep the visible reading minute through independent expansion and collapse', () => {
+  const { context, controls, viewport } = expansionHarness();
+  const readingMinute = () => runInContext('axisBounds()[0] + viewport.scrollTop', context);
+  assert.equal(readingMinute(), 660);
+  controls.get('today-expand-early')!.click();
+  assert.equal(readingMinute(), 660, 'expanding early must compensate added hours above the reading anchor');
+  assert.equal(viewport.scrollTop, 420);
+  controls.get('today-expand-late')!.click();
+  assert.equal(readingMinute(), 660);
+  controls.get('today-expand-early')!.click();
+  assert.equal(readingMinute(), 660);
+  assert.equal(runInContext('todayAxisLateExpanded', context), true);
+  controls.get('today-expand-late')!.click();
+  assert.equal(readingMinute(), 660);
+  assert.equal(context.todayAxisFollowState, 'manual');
+});
+
+test('shipped WebKit timeline keeps endpoint placement, reading anchors, reveal and detail state',
+  { skip: process.platform !== 'darwin' }, () => {
+    const probe = join(output, 'timeline-webkit');
+    execFileSync('swiftc', [join(root, 'tests/frontend/helpers/rendered-today-layout.swift'), '-o', probe], { timeout: 60_000 });
+    writeFileSync(join(output, 'index.html'), readFileSync(join(root, 'frontend/index.html'), 'utf8').replace(/<script[^]*?<\/script>/g, ''));
+    copyFileSync(join(root, 'frontend/styles.css'), join(output, 'styles.css'));
+    const pure = readFileSync(join(output, 'today-time-axis.js'), 'utf8').replaceAll('export ', '');
+    const bindings = ['todayContinuousAxis:today-continuous-axis', 'todayHourTicks:today-hour-ticks',
+      'todayTimedEvents:today-timed-events', 'todayTimedDurations:today-timed-duration', 'todayTimedDetails:today-timed-details',
+      'todayTimedEmpty:today-timed-empty', 'todayCurrentArrangementUnlocated:today-current-arrangement-unlocated',
+      'todayConfirmedFactsUnlocated:today-confirmed-facts-unlocated', 'todayCurrentTime:today-current-time',
+      'todayLocateNowButton:today-locate-now', 'todayUnlocatedTimeRegion:today-unlocated-time-region',
+      'todayUnlocatedTimeShortcut:today-unlocated-time-shortcut'].map(binding => {
+        const [name, id] = binding.split(':'); return `const ${name} = document.getElementById('${id}');`;
+      }).join('\n');
+    const script = `(() => {
+      document.getElementById('workspace-destination-today').hidden = false;
+      document.getElementById('today-ready').hidden = false;
+      document.getElementById('today-handoff').hidden = true;
+      document.getElementById('today-phase-daytime').hidden = false;
+      document.getElementById('today-phase-morning').hidden = true;
+      ${pure}
+      ${bindings}
+      const workspaceInformation = document.querySelector('.workspace-information');
+      let todayAxisFollowState = 'following';
+      let currentInterfaceLanguage = 'en';
+      let currentWorkspaceDestination = 'today';
+      let programmaticTodayAxisScrollUntil = 0;
+      const t = key => key;
+      const setCopy = (node, key) => { node.textContent = key; node.dataset.i18n = key; };
+      const updateTodayAxisMarkerAccessibleName = () => {};
+      const todayTaskTimeAxisEntries = () => [];
+      let currentTodayView = { date: '2026-10-01', isToday: true, currentTime: '12:00', tasks: { tasks: [], lists: [] },
+        timeAxis: { currentArrangement: [360, 410, 720, 1390, 1439, 1500].map((startMinute, i) => ({
+          startMinute, endMinute: null, text: 'Rendered item ' + i, sourceDate: '2026-10-01'
+        })), confirmedFacts: [], unlocatedCurrentArrangement: [], unlocatedConfirmedFacts: [] } };
+      ${handler('let todayAxisEarlyExpanded', 'function todayEvidenceGroup(')}
+      ${handler('function scrollTodayAxisToNow(', 'function scheduleTodayAxisFollowScroll(')}
+      ${main.slice(main.lastIndexOf('for (const id of ["today-expand-early", "today-expand-late"])'))}
+      renderTodayTimeAxis(currentTodayView);
+      const early = document.getElementById('today-expand-early');
+      const late = document.getElementById('today-expand-late');
+      const plot = document.querySelector('.today-axis-plot');
+      const placement = { earlyBottom: early.getBoundingClientRect().bottom, plotTop: plot.getBoundingClientRect().top,
+        lateTop: late.getBoundingClientRect().top, plotBottom: plot.getBoundingClientRect().bottom,
+        locateWidth: todayLocateNowButton.getBoundingClientRect().width, locateHeight: todayLocateNowButton.getBoundingClientRect().height };
+      todayTimedEvents.querySelector('.today-axis-stack-reveal').click();
+      const revealed = todayTimedEvents.querySelector('.is-stack-front').dataset.axisEntryId;
+      const openDetail = todayTimedDetails.querySelector('details'); openDetail.open = true;
+      const openId = openDetail.id;
+      const middle = () => todayTimedEvents.querySelector('[data-axis-entry-id="today-axis-arrangement-entry-2"]');
+      workspaceInformation.scrollTop += middle().getBoundingClientRect().top - workspaceInformation.getBoundingClientRect().top - 80;
+      const initialY = middle().getBoundingClientRect().top;
+      const observations = [];
+      for (const button of [early, late, early, late]) {
+        button.click();
+        observations.push({ y: middle().getBoundingClientRect().top, bounds: axisBounds(),
+          early: early.getAttribute('aria-expanded'), late: late.getAttribute('aria-expanded'),
+          earlyCopy: early.dataset.i18n, lateCopy: late.dataset.i18n,
+          revealed: todayTimedEvents.querySelector('[data-axis-entry-id="' + revealed + '"]').classList.contains('is-stack-front'),
+          detailOpen: document.getElementById(openId).open, follow: todayAxisFollowState });
+      }
+      currentTodayView = { ...currentTodayView, date: '2026-10-02', currentTime: '01:00' };
+      renderTodayTimeAxis(currentTodayView);
+      const initialLate = { bounds: axisBounds(), label: todayCurrentTime.textContent };
+      late.click();
+      scrollTodayAxisToNow();
+      const locatedLate = { bounds: axisBounds(), follow: todayAxisFollowState };
+      currentTodayView = { ...currentTodayView, date: '2026-10-03', currentTime: '04:30' };
+      renderTodayTimeAxis(currentTodayView);
+      const initialEarly = { bounds: axisBounds(), label: todayCurrentTime.textContent };
+      early.click(); scrollTodayAxisToNow();
+      return JSON.stringify({ placement, initialY, observations, initialLate, locatedLate, initialEarly,
+        locatedEarly: { bounds: axisBounds(), follow: todayAxisFollowState } });
+    })()`;
+    const scriptPath = join(output, 'timeline-geometry.js');
+    writeFileSync(scriptPath, script);
+    for (const width of [1440, 1100, 680]) {
+      const result = JSON.parse(execFileSync(probe, [join(output, 'index.html'), scriptPath, String(width)], { encoding: 'utf8', timeout: 30_000 }));
+      const { placement } = result;
+      assert.ok(placement.earlyBottom <= placement.plotTop && placement.lateTop >= placement.plotBottom, 'actual controls occupy opposite plot endpoints');
+      assert.ok(placement.locateWidth >= 32 && placement.locateWidth <= 48 && placement.locateHeight >= 32, 'icon has an accessible target');
+      const bounds = [[240, 1440], [240, 1680], [360, 1680], [360, 1440]];
+      result.observations.forEach((observation: any, index: number) => {
+        assert.ok(Math.abs(observation.y - result.initialY) < 1.1, `viewport ${width} toggle ${index} preserves actual rendered reading y: ${JSON.stringify(result)}`);
+        assert.deepEqual(observation.bounds, bounds[index]);
+        assert.equal(observation.follow, 'manual');
+        assert.equal(observation.detailOpen, true);
+        if (index !== 0) assert.equal(observation.revealed, true);
+        assert.equal(observation.earlyCopy, observation.early === 'true' ? 'today.expandEarlyExpanded' : 'today.expandEarlyCollapsed');
+        assert.equal(observation.lateCopy, observation.late === 'true' ? 'today.expandLateExpanded' : 'today.expandLateCollapsed');
+      });
+      assert.deepEqual(result.initialLate.bounds, [360, 1680]);
+      assert.equal(result.initialLate.label, '2026-10-03 01:00');
+      assert.deepEqual(result.locatedLate, { bounds: [360, 1680], follow: 'following' });
+      assert.deepEqual(result.initialEarly, { bounds: [240, 1440], label: '04:30' });
+      assert.deepEqual(result.locatedEarly, { bounds: [240, 1440], follow: 'following' });
+    }
+  });
 
 function clockHarness(state: 'pending' | 'completed', open: boolean, draft = false, surface = 'today') {
   const form = { hidden: !open, dataset: { taskEditor: 'task-1', taskSurface: surface } };
