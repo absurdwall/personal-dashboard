@@ -3680,3 +3680,129 @@ fn valid_empty_daily_record_can_receive_the_single_automatic_initial_plan() {
     assert_eq!(saved.timeline.len(), 2);
     assert!(saved.evidence.iter().any(|group| group.label == "Tasks"));
 }
+
+#[test]
+fn automatic_after_midnight_schedule_uses_lived_target_and_does_not_repeat_at_four_am() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "00:29");
+    let (application, _, _, requests) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock.clone(),
+        None,
+    );
+    let before = application
+        .update_daily_plan_automation(enabled_automation("00:30"))
+        .unwrap();
+    assert_eq!(before.date, "2026-09-26");
+    assert!(before.current_run.is_none());
+    clock.set_time("00:30");
+    let queued = application.check_daily_plan_automation().unwrap();
+    let session_id = queued.current_run.unwrap().session_id.unwrap();
+    wait_for_finish(&application, &session_id, "vault-a");
+    let session = application.session("vault-a", &session_id).unwrap();
+    assert_eq!(session.target_date, "2026-09-26");
+    assert_eq!(session.messages[0].target_date, "2026-09-26");
+    assert_eq!(session.messages[0].message_date, "2026-09-27");
+    assert!(session.messages[0]
+        .created_at
+        .starts_with("2026-09-27T00:30"));
+    assert_eq!(session.task_operations[0].status, "applied");
+    clock.set_time("03:59");
+    assert_eq!(
+        application
+            .check_daily_plan_automation()
+            .unwrap()
+            .current_run
+            .unwrap()
+            .state,
+        "completed"
+    );
+    clock.set_time("04:00");
+    let next = application.check_daily_plan_automation().unwrap();
+    assert_eq!(next.date, "2026-09-27");
+    assert!(next.current_run.is_none());
+    assert_eq!(requests.lock().unwrap().len(), 1);
+    assert!(!record_path(&vault_path).exists());
+}
+
+#[test]
+fn automatic_morning_schedule_late_open_at_one_am_targets_previous_lived_day() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "01:00");
+    let (application, _, _, requests) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock,
+        None,
+    );
+    let queued = application
+        .update_daily_plan_automation(enabled_automation("07:00"))
+        .unwrap();
+    assert_eq!(queued.date, "2026-09-26");
+    let session_id = queued.current_run.unwrap().session_id.unwrap();
+    wait_for_finish(&application, &session_id, "vault-a");
+    let session = application.session("vault-a", &session_id).unwrap();
+    assert_eq!(session.messages[0].target_date, "2026-09-26");
+    assert_eq!(session.task_operations[0].status, "applied");
+    assert_eq!(requests.lock().unwrap().len(), 1);
+    assert!(!record_path(&vault_path).exists());
+}
+
+#[test]
+fn queued_automatic_plan_is_not_retargeted_after_lived_day_boundary() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let clock = ManualClock::new("2026-09-27", "03:59");
+    let gate = Arc::new(AutomaticTurnGate::default());
+    let (application, _, _, requests) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock.clone(),
+        Some(Arc::clone(&gate)),
+    );
+    let holder = application.create_session("2026-09-26").unwrap();
+    application
+        .submit_message("vault-a", &holder.id, "2026-09-26", "hold-worker")
+        .unwrap();
+    gate.wait_until_entered();
+    let run = application
+        .update_daily_plan_automation(enabled_automation("00:30"))
+        .unwrap()
+        .current_run
+        .unwrap();
+    let session_id = run.session_id.unwrap();
+    clock.set_time("04:00");
+    gate.release();
+    wait_for_finish(&application, &holder.id, "vault-a");
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let session = application.session("vault-a", &session_id).unwrap();
+        if session.run_state == "error" {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "queued run did not finish safely"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+    let original = application.session("vault-a", &session_id).unwrap();
+    assert_eq!(original.messages[0].target_date, "2026-09-26");
+    assert!(original.task_operations.is_empty());
+    assert!(original.progress.contains("lived day changed"));
+    assert_eq!(
+        requests.lock().unwrap().len(),
+        1,
+        "only the holder reached the model"
+    );
+    assert!(!record_path(&vault_path).exists());
+}
