@@ -470,7 +470,11 @@ app_pid_file="$acceptance_directory/app.pid"
 /usr/bin/ditto "$source_app_bundle" "$app_bundle" || fail "could not copy the packaged app"
 app_executable="$app_bundle/Contents/MacOS/personal-dashboard"
 if [[ "${PERSONAL_DASHBOARD_ACCEPTANCE_POINTER_FREE:-0}" == "1" ]]; then
-  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.tortillaflat.personal-dashboard.acceptance" "$app_bundle/Contents/Info.plist"
+  acceptance_bundle_identifier="${PERSONAL_DASHBOARD_ACCEPTANCE_BUNDLE_IDENTIFIER:-com.tortillaflat.personal-dashboard.acceptance}"
+  [[ "$acceptance_bundle_identifier" =~ ^[A-Za-z0-9]+([.-][A-Za-z0-9]+)+$ ]] ||
+    fail "invalid isolated acceptance bundle identifier"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $acceptance_bundle_identifier" "$app_bundle/Contents/Info.plist"
+  printf 'Isolated acceptance bundle identifier: %s\n' "$acceptance_bundle_identifier"
   /usr/bin/codesign --force --deep --sign - "$app_bundle" >/dev/null 2>&1 || fail "could not sign isolated acceptance identity"
 fi
 
@@ -4644,6 +4648,7 @@ run_today_unlocated_panel_layout_scenario() {
   local visual_epoch
   local record_hash
   local failures=0
+  local long_body="长标签排版验收：保留完整来源和详情，逐项检查已确认事实、仍待核对的问题和后续动作 当前没有确定的开始时刻，不能为了排列到时间轴而补造时间。继续阅读这段完整说明，确认正文没有被标签挤成细长条，中文句子能够自然换行，展开详情后仍可查看原始内容和来源日期。"
 
   current_step="preparing long unlocated records in an isolated Vault"
   mkdir -p "$vault/.obsidian" "$(dirname "$today_record")" "$acceptance_data_directory" "$capture_directory"
@@ -4664,12 +4669,20 @@ run_today_unlocated_panel_layout_scenario() {
   fixed_now_epoch_millis="$((visual_epoch * 1000))"
   today_time_axis_real_clock=0
 
-  current_step="checking visible unlocated-panel geometry at the three ticketed sizes"
+  current_step="checking visible unlocated-panel geometry at wide and ticketed sizes"
   launch_app_waiting_for_text "Today" 30
   run_driver press "定位现在" 10
-  for window_size in "960x720" "800x640" "640x520"; do
+  for window_size in "1120x760" "960x720" "800x640" "640x520"; do
     run_driver set-size "$window_size" 10
     run_driver assert-size "$window_size" 10
+    current_step="checking long unlocated label/body geometry at $window_size"
+    run_driver scroll-text-visible "$long_body" 10
+    run_driver assert-window-visible "白天（具体时段未定）" 10
+    run_driver assert-long-text-fits "$long_body|180" 10
+    capture_path="$capture_directory/today-long-content-${window_size}.png"
+    [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+    run_driver capture-window "$capture_path" 10
+    current_step="checking unlocated panel and composer at $window_size"
     run_driver scroll-text-visible "保存记录" 10
     run_driver assert-text "时间未明确的内容" 10
     run_driver assert-window-visible "记录类别" 10
@@ -4688,7 +4701,7 @@ run_today_unlocated_panel_layout_scenario() {
     fail "$failures visible region overlap checks failed; captures: $capture_directory"
   fi
 
-  echo "Packaged unlocated-panel layout passed at 960x720, 800x640 and 640x520"
+  echo "Packaged unlocated-panel layout passed at 1120x760, 960x720, 800x640 and 640x520"
   echo "Synthetic record SHA-256: $record_hash"
   echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
   echo "Capture directory: $capture_directory"
@@ -4847,10 +4860,13 @@ EOF
   run_driver press-contains "跨午夜合成安排" 10
   run_driver assert-text "来源日期：2026-08-10"
   run_driver assert-absent-text "延续至下一天"
-  run_driver press "次日 00:00–04:00" 10
+  run_driver scroll-text-visible "次日 00:00–04:00 · 展开" 10
+  run_driver press "次日 00:00–04:00 · 展开" 10
   run_driver scroll-text-visible "次日凌晨可见安排" 10
   run_driver assert-text "03:59 · 2026-08-11"
-  run_driver press "04:00–06:00" 10
+  run_driver scroll-text-visible "04:00–06:00 · 展开" 10
+  run_driver press "04:00–06:00 · 展开" 10
+  run_driver scroll-text-visible "定位现在" 10
   run_driver press "定位现在" 10
   run_driver assert-text "23:50"
   run_driver capture-window "$capture_directory/today-time-axis-midnight-before.png" 10
@@ -6419,6 +6435,85 @@ EOF
   echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
 }
 
+run_collaboration_layout_scenario() {
+  local vault="$acceptance_directory/collaboration-layout-vault"
+  local captures="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory/captures}"
+  local session_title="Automatic morning plan · layout probe"
+  local draft="Synthetic retained draft 中文 English"
+  local index=0 mode window_size
+  mkdir -p "$vault/.obsidian" "$acceptance_data_directory" "$captures"
+  printf '{"schemaVersion":1,"selectedVault":"%s"}\n' "$vault" > "$acceptance_data_directory/today-workspace.json"
+  printf '{"schemaVersion":1,"interfaceLanguage":"en"}\n' > "$acceptance_data_directory/interface-language.json"
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Collaboration" 10
+  run_driver set-size "1440x900" 10
+  run_driver press "New chat" 10
+  stop_app || fail "isolated app did not stop before fixture preparation"
+  # Keep the actual newly created session's Vault identity; only isolated fixture data is changed.
+  node - "$acceptance_data_directory/collaboration/collaboration-v1.json" "$session_title" "$draft" <<'NODE'
+const fs = require('node:fs');
+const [file, title, draft] = process.argv.slice(2);
+const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+const session = state.sessions[0];
+if (!session) throw new Error('isolated New chat did not create a session');
+session.title = title;
+session.draft = draft;
+session.draftsByDate = { [session.targetDate]: draft };
+session.messages = [{ id: 'layout-message', role: 'assistant', text: 'Synthetic morning plan: 上午整理资料 / afternoon reading. No model request is made.',
+  messageDate: session.createdDate, targetDate: session.targetDate, createdAt: session.lastActivityAt,
+  deliveryState: 'completed', automaticPlan: true }];
+fs.writeFileSync(file, JSON.stringify(state));
+NODE
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Collaboration" 10
+  run_driver press "$session_title" 10
+  for window_size in "1440x900" "1040x800" "640x720" "1440x900"; do
+    index=$((index + 1))
+    current_step="checking collaboration columns at $window_size"
+    run_driver set-size "$window_size" 10
+    run_driver assert-size "$window_size" 10
+    run_driver scroll-text-visible "$session_title" 10
+    run_driver capture-window "$captures/collaboration-$index-$window_size.png" 10
+    run_driver dump-text "" 10 > "$captures/collaboration-$index-$window_size-accessibility.txt"
+    case "$window_size" in
+      "640x720") mode=single ;;
+      "1040x800") mode=two ;;
+      *) mode=three ;;
+    esac
+    run_driver assert-collaboration-columns "$mode|Sessions|$session_title|Current context" 10
+    if [[ "$mode" != "single" ]]; then run_driver assert-window-visible "New chat" 10; fi
+    run_driver assert-text "$draft" 10
+  done
+  current_step="checking intermediate disclosure and manual collapse"
+  run_driver set-size "1040x800" 10
+  run_driver press "Current work" 10
+  run_driver assert-collaboration-columns "two-context|Sessions|$session_title|Current context" 10
+  run_driver scroll-text-visible "Current context" 10
+  run_driver assert-window-visible "Current context" 10
+  run_driver capture-window "$captures/collaboration-context-disclosed.png" 10
+  run_driver scroll-text-visible "Current work" 10
+  run_driver press "Current work" 10
+  run_driver press "Session history" 10
+  run_driver assert-collaboration-columns "single|Sessions|$session_title|Current context" 10
+  run_driver press "Session history" 10
+  run_driver assert-collaboration-columns "two|Sessions|$session_title|Current context" 10
+  current_step="checking bilingual collaboration and restart"
+  run_driver press "Switch to Chinese" 10
+  run_driver assert-collaboration-columns "two|会话|$session_title|当前 context" 10
+  run_driver assert-text "$draft" 10
+  run_driver capture-window "$captures/collaboration-two-zh.png" 10
+  stop_app || fail "isolated app did not stop before restart"
+  launch_app_waiting_for_text "今天" 30
+  run_driver press "协作" 10
+  run_driver set-size "1040x800" 10
+  run_driver press "$session_title" 10
+  run_driver assert-collaboration-columns "two|会话|$session_title|当前 context" 10
+  run_driver assert-text "$draft" 10
+  run_driver capture-window "$captures/collaboration-restarted-zh.png" 10
+  echo "Packaged collaboration width/disclosure/bilingual/restart sequence passed; captures: $captures"
+  echo "Synthetic session/draft only; no model request or selected-Vault business write. User acceptance remains pending."
+}
+
 run_lived_day_repairs_scenario() {
   local vault="$acceptance_directory/lived-day-repairs-vault"
   local record="$vault/life/Journal/Daily/2026/2026-10/2026-10-01.md"
@@ -6442,6 +6537,8 @@ date: 2026-10-01
 
 - 06:00 Folded start alpha
 - 06:50 Folded start beta
+- 12:00 Reading anchor probe
+- 22:00 Reading late anchor probe
 - 23:10 Folded end alpha
 - 23:59 Folded end beta
 - 2026-10-01 23:30–2026-10-02 01:00 Cross midnight range
@@ -6466,8 +6563,22 @@ EOF
   run_driver assert-axis-overlap-stack "Folded end alpha|Folded end beta" 10
   run_driver scroll-text-visible "Folded end beta" 10
   run_driver capture-window "$captures/folded-end.png" 10
-  run_driver press "04:00–06:00" 10
-  run_driver press "Next day 00:00–04:00" 10
+  run_driver assert-axis-disclosure-endpoints "" 10
+  run_driver scroll-text-visible "Reading anchor probe" 10
+  run_driver assert-axis-disclosure-anchor "04:00–06:00|Reading anchor probe|12:00" 10
+  run_driver assert-text "04:00–06:00 · Collapse" 10
+  run_driver scroll-text-visible "Next day 00:00–04:00" 10
+  run_driver assert-axis-disclosure-anchor "Next day 00:00–04:00|Reading late anchor probe|22:00" 10
+  run_driver assert-text "Next day 00:00–04:00 · Collapse" 10
+  run_driver scroll-text-visible "Reading anchor probe" 10
+  run_driver assert-axis-disclosure-anchor "04:00–06:00|Reading anchor probe|12:00" 10
+  run_driver assert-text "04:00–06:00 · Expand" 10
+  run_driver assert-text "Next day 00:00–04:00 · Collapse" 10
+  run_driver scroll-text-visible "Next day 00:00–04:00" 10
+  run_driver assert-axis-disclosure-anchor "Next day 00:00–04:00|Reading late anchor probe|22:00" 10
+  run_driver assert-text "Next day 00:00–04:00 · Expand" 10
+  run_driver scroll-text-visible "Next day 00:00–04:00" 10
+  run_driver assert-axis-disclosure-anchor "Next day 00:00–04:00|Reading late anchor probe|22:00" 10
   run_driver assert-text "2026-10-02" 10
   run_driver assert-axis-cards-fit "2026-10-01 23:30–2026-10-02 01:00 Cross midnight range|23:30–01:00 · 2026-10-02" 10
   [[ "$(shasum -a 256 "$record" | awk '{print $1}')" == "$record_hash" ]] || fail "timeline reading changed its source"
@@ -6660,6 +6771,7 @@ case "$acceptance_scenario" in
   readable-task-cards) run_readable_task_cards_scenario ;;
   tasks-return-after-today-abandon) run_tasks_return_after_today_abandon_scenario ;;
   today-shared-task-axis) run_today_shared_task_axis_scenario ;;
+  collaboration-layout) run_collaboration_layout_scenario ;;
   lived-day-repairs) run_lived_day_repairs_scenario ;;
   drive-compatibility) run_drive_compatibility_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;

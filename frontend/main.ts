@@ -4963,6 +4963,7 @@ function renderTodayTimeAxisEntries(
       marker.style.setProperty("--axis-stack-size", String(placement.stackSize));
       marker.style.height = `${markerLayout.heightMinutes / (visibleEnd - visibleStart) * 100}%`;
       marker.dataset.stackId = String(placement.stackId);
+      marker.dataset.axisEntryId = detailElements.get(index)!.id;
       marker.classList.toggle("is-stacked", placement.stackSize > 1);
       marker.classList.toggle("is-centered-label", markerLayout.isCenteredLabel);
       markersByStack.set(placement.stackId, [...(markersByStack.get(placement.stackId) ?? []), marker]);
@@ -5111,7 +5112,13 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
   }
   todayContinuousAxis.style.setProperty("--today-axis-plot-height", `calc(${(axisBounds()[1] - axisBounds()[0]) / 60} * var(--today-axis-hour-height))`);
   for (const [id, expanded] of [["today-expand-early", todayAxisEarlyExpanded], ["today-expand-late", todayAxisLateExpanded]] as const) {
-    document.getElementById(id)?.setAttribute("aria-expanded", String(expanded));
+    const button = document.getElementById(id);
+    if (button) {
+      button.setAttribute("aria-expanded", String(expanded));
+      setCopy(button, id === "today-expand-early"
+        ? (expanded ? "today.expandEarlyExpanded" : "today.expandEarlyCollapsed")
+        : (expanded ? "today.expandLateExpanded" : "today.expandLateCollapsed"));
+    }
   }
   todayHourTicks?.replaceChildren(
     ...hourTickMinutes().map((minute) => {
@@ -5148,6 +5155,64 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
   if (todayUnlocatedTimeRegion) todayUnlocatedTimeRegion.hidden = !hasUnlocatedEntries;
   todayUnlocatedTimeShortcut?.classList.toggle("is-available", hasUnlocatedEntries);
   updateTodayTimeAxisClock(view, currentTime);
+}
+
+// Disclosures change only the visible window of the same lived day. Preserve
+// the minute at the reader's viewport edge rather than locating the clock.
+function toggleTodayAxisSegment(id: string): void {
+  if (!currentTodayView) return;
+  const plot = todayContinuousAxis?.querySelector<HTMLElement>(".today-axis-plot");
+  const viewport = workspaceInformation?.getBoundingClientRect();
+  const oldPlot = plot?.getBoundingClientRect();
+  const [start, end] = axisBounds();
+  const anchorY = viewport && oldPlot ? Math.max(viewport.top, oldPlot.top) : null;
+  const anchorMinute = anchorY !== null && oldPlot && viewport && oldPlot.height > 0 &&
+    oldPlot.bottom > viewport.top && oldPlot.top < viewport.bottom
+    ? start + (anchorY - oldPlot.top) / oldPlot.height * (end - start) : null;
+  const details = [...(todayTimedDetails?.querySelectorAll<HTMLDetailsElement>("details") ?? [])];
+  const openDetails = new Set(details.filter((detail) => detail.open).map((detail) => detail.id));
+  const detailAnchor = viewport && anchorMinute === null
+    ? details.find((detail) => {
+      const rect = detail.getBoundingClientRect();
+      return rect.bottom > viewport.top && rect.top < viewport.bottom;
+    }) : null;
+  const detailY = detailAnchor?.getBoundingClientRect().top;
+  const frontEntries = new Set(
+    [...(todayTimedEvents?.querySelectorAll<HTMLElement>(".is-stack-front") ?? [])]
+      .map((marker) => marker.dataset.axisEntryId),
+  );
+  if (id === "today-expand-early") todayAxisEarlyExpanded = !todayAxisEarlyExpanded;
+  else todayAxisLateExpanded = !todayAxisLateExpanded;
+  todayAxisFollowState = onManualScroll(todayAxisFollowState);
+  renderTodayTimeAxis(currentTodayView);
+  todayTimedDetails?.querySelectorAll<HTMLDetailsElement>("details").forEach((detail) => {
+    detail.open = openDetails.has(detail.id);
+  });
+  todayTimedEvents?.querySelectorAll<HTMLElement>(".today-axis-marker").forEach((marker) => {
+    // Keep a revealed member at the front when its stack still exists.
+    if (frontEntries.has(marker.dataset.axisEntryId)) {
+      const members = todayTimedEvents?.querySelectorAll<HTMLElement>(".today-axis-marker") ?? [];
+      members.forEach((member) => {
+        if (member.dataset.stackId === marker.dataset.stackId) {
+          member.classList.toggle("is-stack-front", member === marker);
+        }
+      });
+    }
+  });
+  if (!workspaceInformation) return;
+  let delta = 0;
+  if (anchorMinute !== null && anchorY !== null && plot) {
+    const next = plot.getBoundingClientRect();
+    const [nextStart, nextEnd] = axisBounds();
+    const minute = Math.max(nextStart, Math.min(nextEnd, anchorMinute));
+    delta = next.top + (minute - nextStart) / (nextEnd - nextStart) * next.height - anchorY;
+  } else if (detailAnchor && detailY !== undefined) {
+    const next = document.getElementById(detailAnchor.id);
+    if (next) delta = next.getBoundingClientRect().top - detailY;
+  }
+  if (delta !== 0) {
+    workspaceInformation.scrollTo({ top: workspaceInformation.scrollTop + delta, behavior: "instant" });
+  }
 }
 
 function todayEvidenceGroup(group: PlanningEvidenceView): HTMLElement {
@@ -11327,9 +11392,6 @@ export {};
 
 for (const id of ["today-expand-early", "today-expand-late"]) {
   document.getElementById(id)?.addEventListener("click", () => {
-    if (id === "today-expand-early") todayAxisEarlyExpanded = !todayAxisEarlyExpanded;
-    else todayAxisLateExpanded = !todayAxisLateExpanded;
-    todayAxisFollowState = onManualScroll(todayAxisFollowState);
-    if (currentTodayView) renderTodayTimeAxis(currentTodayView);
+    toggleTodayAxisSegment(id);
   });
 }

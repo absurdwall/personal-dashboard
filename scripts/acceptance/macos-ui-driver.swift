@@ -30,7 +30,7 @@ enum DriverError: Error, CustomStringConvertible {
     var description: String {
         switch self {
         case .usage:
-            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|assert-elements-disjoint|assert-regions-disjoint|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
+            return "usage: macos-ui-driver <pid> <wait-text|assert-text|assert-absent-text|wait-active-text|assert-active-text|assert-active-absent-text|assert-focused-text|focus|focus-contains|press-key|type-text|choose-folder|choose-file|cancel-folder|assert-picker-title|assert-visible-focus|assert-semantic|assert-state|assert-centered|assert-axis-entry-card|assert-axis-link-label|assert-axis-cards-fit|assert-axis-card-absent|assert-axis-overlap-stack|cycle-axis-stack|click-axis-card|focus-axis-card|scroll-axis-horizontal|assert-window-visible|assert-window-visible-link|click-visible-link|assert-live|assert-same-rendered-color|assert-rendered-variation|content-background-signature|assert-calendar-cells-transparent|capture-window|assert-capture-non-overwrite|make-image-fixture|scroll-text-visible|assert-long-text-fits|assert-document-fixed|assert-scroll-surface|scroll-to-bottom|assert-destination-inset|assert-select-option|assert-select-absent-option|dump-text|assert-elements-disjoint|assert-regions-disjoint|assert-collaboration-columns|dump-picker|press|press-contains|select-contains|select-contains-allow-unchanged|set-size|assert-size|hide> <text> [timeout-seconds]"
         case let .invalidPid(value):
             return "invalid process id: \(value)"
         case let .timeout(text):
@@ -1410,7 +1410,7 @@ func visibleRenderedElement(_ application: AXUIElement, label: String) -> AXUIEl
         .element
 }
 
-func assertLongTextFits(_ application: AXUIElement, text: String) throws {
+func assertLongTextFits(_ application: AXUIElement, text: String, minimumWidth: CGFloat = 0) throws {
     guard text.count >= 80,
           let element = visibleRenderedElement(application, label: text),
           let textFrame = frame(element),
@@ -1419,6 +1419,21 @@ func assertLongTextFits(_ application: AXUIElement, text: String) throws {
         throw DriverError.timeout("long rendered text with measurable bounds: \(text)")
     }
     let tolerance: CGFloat = 2
+    var summaryFrame: CGRect?
+    var effectiveMinimum = minimumWidth
+    if minimumWidth > 0 {
+        guard let path = findTextPaths(application, text).first(where: { CFEqual($0.element, element) }),
+              let summary = path.ancestors.reversed().first(where: {
+                  stringAttribute($0, "AXRole") == "AXDisclosureTriangle"
+              }), let measuredSummary = frame(summary), measuredSummary.width > 32 else {
+            throw DriverError.timeout("long rendered text has no measurable containing summary: \(text)")
+        }
+        summaryFrame = measuredSummary
+        // Compare AX glyph bounds with the card's available width. The summary
+        // uses 16px horizontal padding; glyph bounds can omit up to one 16px
+        // trailing blank at the line end. Preserve the existing 2px rounding tolerance.
+        effectiveMinimum = min(minimumWidth, measuredSummary.width - 32)
+    }
     let visibleWindow = windowFrame.insetBy(dx: -tolerance, dy: -tolerance)
     guard visibleWindow.contains(
         CGPoint(x: textFrame.minX, y: textFrame.minY)
@@ -1430,13 +1445,14 @@ func assertLongTextFits(_ application: AXUIElement, text: String) throws {
                 "frame=\(textFrame) window=\(windowFrame)"
         )
     }
-    guard textFrame.height >= 28,
+    guard textFrame.height >= 28, textFrame.width + tolerance >= effectiveMinimum,
           textFrame.width <= windowFrame.width - 24 else {
         throw DriverError.timeout(
             "long rendered text did not wrap within the available layout: \(text) " +
-                "frame=\(textFrame) window=\(windowFrame)"
+                "frame=\(textFrame) window=\(windowFrame) requestedMinimum=\(minimumWidth) effectiveMinimum=\(effectiveMinimum) summary=\(String(describing: summaryFrame))"
         )
     }
+    print("Long rendered text geometry: frame=\(textFrame), window=\(windowFrame), requestedMinimum=\(minimumWidth) effectiveMinimum=\(effectiveMinimum) summary=\(String(describing: summaryFrame))")
 }
 
 func visibleAxisTitlePaths(_ application: AXUIElement, title: String) -> [AccessibilityPath] {
@@ -1449,6 +1465,46 @@ func visibleAxisTitlePaths(_ application: AXUIElement, title: String) -> [Access
 
 func visibleAxisTitlePath(_ application: AXUIElement, title: String) -> AccessibilityPath? {
     visibleAxisTitlePaths(application, title: title).first
+}
+
+// Timeline disclosures have opposite spatial anchors and may be exercised
+// through AX while preserving a manually browsed visible card. Native late
+// activation first brings that endpoint into view, as a user would.
+func assertAxisDisclosureEndpoints(_ application: AXUIElement) throws {
+    guard let early = findPressable(application, "04:00–06:00", contains: true),
+          let late = findPressable(application, "Next day 00:00–04:00", contains: true),
+          let locate = findPressable(application, "Locate now", contains: true),
+          let earlyFrame = frame(early), let lateFrame = frame(late), let locateFrame = frame(locate),
+          let first = axisCardLink(application, title: "Folded start alpha", time: "06:00"),
+          let last = axisCardLink(application, title: "Folded end beta", time: "23:59"),
+          let firstFrame = frame(first.link), let lastFrame = frame(last.link) else {
+        throw DriverError.timeout("timeline endpoint controls and rendered boundary cards")
+    }
+    guard earlyFrame.maxY <= firstFrame.minY + 3,
+          lateFrame.minY >= lastFrame.maxY - 3,
+          locateFrame.width >= 32, locateFrame.height >= 32,
+          locateFrame.width <= 48, locateFrame.height <= 48 else {
+        throw DriverError.unexpectedText("timeline controls misplaced or locator not a small accessible target: early=\(earlyFrame) first=\(firstFrame) late=\(lateFrame) last=\(lastFrame) locate=\(locateFrame)")
+    }
+    print("Timeline controls are at their respective endpoints; Locate now target=\(locateFrame)")
+}
+
+func assertAxisDisclosureAnchor(_ application: AXUIElement, control: String, title: String, time: String) throws {
+    guard let before = axisCardLink(application, title: title, time: time).flatMap({ frame($0.link) }),
+          let button = findPressable(application, control, contains: true) else {
+        throw DriverError.timeout("reading anchor or disclosure: \(title) / \(control)")
+    }
+    guard let window = mainWindow(application), let windowFrame = frame(window),
+          before.intersects(windowFrame) else {
+        throw DriverError.unexpectedText("reading anchor is outside the visible window: \(title) before=\(before)")
+    }
+    try performAccessibilityAction(button, "AXPress", "toggle quiet hours while manually browsing")
+    Thread.sleep(forTimeInterval: 0.25)
+    let after = axisCardLink(application, title: title, time: time).flatMap({ frame($0.link) })
+    guard let after, after.intersects(windowFrame), abs(before.minY - after.minY) <= 3 else {
+        throw DriverError.unexpectedText("quiet-hour disclosure moved the current reading card: \(title) before=\(before) after=\(String(describing: after)) window=\(windowFrame)")
+    }
+    print("Quiet-hour disclosure preserved reading anchor: \(control), \(title), y=\(before.minY)")
 }
 
 func assertAxisEntryCard(
@@ -3807,6 +3863,42 @@ func dumpText(_ application: AXUIElement) {
     }
 }
 
+// Measure the shipped labelled panes, rather than inferring layout from source.
+func assertCollaborationColumns(_ application: AXUIElement, specification: String) throws {
+    let parts = specification.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+    guard parts.count == 4, ["three", "two", "single", "two-context"].contains(parts[0]),
+          let window = mainWindow(application), let windowFrame = frame(window) else { throw DriverError.usage }
+    let chat = try regionFrame(application, label: parts[2])
+    guard chat.width >= (parts[0] == "single" ? 200 : 360),
+          chat.minX >= windowFrame.minX, chat.maxX <= windowFrame.maxX else {
+        throw DriverError.unexpectedText("conversation has unusable rendered width: \(chat), window=\(windowFrame)")
+    }
+    if parts[0] != "single" {
+        let history = try regionFrame(application, label: parts[1])
+        guard abs(history.minY - chat.minY) <= 4, history.maxX <= chat.minX,
+              history.width >= 180, chat.width > history.width else {
+            throw DriverError.unexpectedText("Sessions must sit beside a wider conversation: \(history), chat=\(chat)")
+        }
+        if parts[0] == "three" {
+            let context = try regionFrame(application, label: parts[3])
+            guard abs(context.minY - chat.minY) <= 4, context.minX >= chat.maxX,
+                  context.maxX <= windowFrame.maxX else {
+                throw DriverError.unexpectedText("context must sit beside conversation: \(context), chat=\(chat)")
+            }
+            print("Rendered collaboration three columns: Sessions=\(history), conversation=\(chat), context=\(context)")
+        } else if parts[0] == "two-context" {
+            let context = try regionFrame(application, label: parts[3])
+            guard context.minY >= chat.maxY, context.minX >= windowFrame.minX,
+                  context.maxX <= windowFrame.maxX else {
+                throw DriverError.unexpectedText("disclosed context must fit below conversation: \(context), chat=\(chat)")
+            }
+            print("Rendered two columns with context below: Sessions=\(history), conversation=\(chat), context=\(context)")
+        } else {
+            print("Rendered collaboration two columns: Sessions=\(history), conversation=\(chat)")
+        }
+    } else { print("Rendered collaboration single column: conversation=\(chat)") }
+}
+
 func renderedLeafFrame(_ application: AXUIElement, label: String) throws -> CGRect {
     let leafRoles = Set(["AXStaticText", "AXHeading", "AXButton", "AXTextField", "AXTextArea", "AXLink"])
     let candidates = findTextPaths(application, label).compactMap { path -> CGRect? in
@@ -4107,6 +4199,12 @@ do {
             timeout: timeout
         )
         print("Rendered element is near the window center: \(parts[0])")
+    case "assert-axis-disclosure-endpoints":
+        try assertAxisDisclosureEndpoints(application)
+    case "assert-axis-disclosure-anchor":
+        let parts = text.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count == 3 else { throw DriverError.usage }
+        try assertAxisDisclosureAnchor(application, control: parts[0], title: parts[1], time: parts[2])
     case "assert-axis-entry-card":
         let parts = text.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
         guard parts.count == 3 else {
@@ -4273,7 +4371,12 @@ do {
         try scrollTextIntoWindow(application, text: text, pid: pid)
         print("Scrolled rendered text into the visible window: \(text)")
     case "assert-long-text-fits":
-        try assertLongTextFits(application, text: text)
+        let parts = text.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        if parts.count == 2, let minimumWidth = Double(parts[1]), minimumWidth >= 0 {
+            try assertLongTextFits(application, text: parts[0], minimumWidth: CGFloat(minimumWidth))
+        } else {
+            try assertLongTextFits(application, text: text)
+        }
         print("Long rendered text wraps within the visible window: \(text)")
     case "assert-document-fixed":
         try assertDocumentFixed(application)
@@ -4305,6 +4408,8 @@ do {
             firstLabel: parts[0],
             secondLabel: parts[1]
         )
+    case "assert-collaboration-columns":
+        try assertCollaborationColumns(application, specification: text)
     case "assert-regions-disjoint":
         let parts = text.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
             .map(String.init)
