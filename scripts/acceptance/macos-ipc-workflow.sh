@@ -496,6 +496,14 @@ launch_app() {
       PERSONAL_DASHBOARD_DATA_DIR="$acceptance_data_directory" \
       PERSONAL_DASHBOARD_BASELINE_FILE="$acceptance_baseline_file" \
       "$app_executable" >"$acceptance_directory/app.log" 2>&1 &
+  elif [[ "$acceptance_scenario" == "lived-day-repairs" && "$today_time_axis_real_clock" == "2" ]]; then
+    # Advance the real epoch through a synthetic local 04:00, without changing
+    # the Mac clock or introducing a mutable clock into the product runtime.
+    /usr/bin/env -u PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS \
+      PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES="$fixed_utc_offset_minutes" \
+      PERSONAL_DASHBOARD_DATA_DIR="$acceptance_data_directory" \
+      PERSONAL_DASHBOARD_BASELINE_FILE="$acceptance_baseline_file" \
+      "$app_executable" >"$acceptance_directory/app.log" 2>&1 &
   else
     PERSONAL_DASHBOARD_DATA_DIR="$acceptance_data_directory" \
       PERSONAL_DASHBOARD_BASELINE_FILE="$acceptance_baseline_file" \
@@ -2531,7 +2539,7 @@ run_historical_corrections_scenario() {
   local withdrawn_change_count
 
   current_step="preparing an isolated historical-correction Vault"
-  fixed_now_epoch_millis="1788841800000"
+  fixed_now_epoch_millis="1788877800000"
   mkdir -p "$vault/.obsidian" "$(dirname "$past_record")" "$(dirname "$snapshot")" \
     "$acceptance_data_directory"
   printf '{\n  "schemaVersion": 1,\n  "selectedVault": "%s"\n}\n' \
@@ -6390,6 +6398,100 @@ EOF
   echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
 }
 
+run_lived_day_repairs_scenario() {
+  local vault="$acceptance_directory/lived-day-repairs-vault"
+  local record="$vault/life/Journal/Daily/2026/2026-10/2026-10-01.md"
+  local tasks="$vault/life/.personal-dashboard/tasks/v1/tasks.json"
+  local captures="${PERSONAL_DASHBOARD_ACCEPTANCE_CAPTURE_DIRECTORY:-$acceptance_directory/captures}"
+  local natural_date lived_date boundary_epoch record_hash
+  mkdir -p "$vault/.obsidian" "$(dirname "$record")" "$(dirname "$tasks")" "$acceptance_data_directory" "$captures"
+  cat > "$record" <<'EOF'
+---
+type: daily-record
+date: 2026-10-01
+---
+# 2026-10-01
+
+## 今天的大致安排
+
+- 06:00 Folded start alpha
+- 06:50 Folded start beta
+- 23:10 Folded end alpha
+- 23:59 Folded end beta
+- 2026-10-01 23:30–2026-10-02 01:00 Cross midnight range
+EOF
+  record_hash="$(shasum -a 256 "$record" | awk '{print $1}')"
+  printf '{"schemaVersion":1,"selectedVault":"%s"}\n' "$vault" > "$acceptance_data_directory/today-workspace.json"
+  printf '{"schemaVersion":1,"interfaceLanguage":"en"}\n' > "$acceptance_data_directory/interface-language.json"
+  fixed_now_epoch_millis=1790863200000 # 2026-10-01 10:00 at -04:00
+  fixed_utc_offset_minutes=-240
+  current_step="checking folded boundary stacks in the packaged timeline"
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Today" 10
+  run_driver press "Daytime progress" 10
+  run_driver assert-axis-overlap-stack "Folded start alpha|Folded start beta" 10
+  run_driver cycle-axis-stack "" 10
+  run_driver assert-focused-text "Folded start beta" 10
+  run_driver assert-axis-cards-fit "Folded start alpha|06:00;Folded start beta|06:50" 10
+  run_driver capture-window "$captures/folded-start.png" 10
+  run_driver assert-axis-overlap-stack "Folded end alpha|Folded end beta" 10
+  run_driver scroll-text-visible "Folded end beta" 10
+  run_driver capture-window "$captures/folded-end.png" 10
+  run_driver press "04:00–06:00" 10
+  run_driver press "Next day 00:00–04:00" 10
+  run_driver assert-text "2026-10-02" 10
+  run_driver assert-axis-cards-fit "2026-10-01 23:30–2026-10-02 01:00 Cross midnight range|23:30–01:00 · 2026-10-02" 10
+  [[ "$(shasum -a 256 "$record" | awk '{print $1}')" == "$record_hash" ]] || fail "timeline reading changed its source"
+  stop_app || fail "timeline candidate did not stop"
+
+  current_step="preparing a completed Task edit spanning an advancing local 04:00"
+  natural_date="$(/bin/date -u '+%Y-%m-%d')"
+  lived_date="$(/bin/date -u -v-1d '+%Y-%m-%d')"
+  fixed_utc_offset_minutes=$((238 - 10#$(/bin/date -u '+%H') * 60 - 10#$(/bin/date -u '+%M')))
+  boundary_epoch=$(( $(/bin/date '+%s') + 120 - 10#$(/bin/date -u '+%S') ))
+  node --input-type=module - "$tasks" "$lived_date" <<'EOF'
+import { writeFileSync } from 'node:fs';
+const [path, date] = process.argv.slice(2);
+const timestamp = `${date}T22:00:00Z`;
+writeFileSync(path, JSON.stringify({ schemaVersion: 2,
+  lists: [{ id: 'inbox', name: 'Inbox', system: true, archived: false }],
+  tasks: [{ id: 'rollover-edit', name: 'Completed rollover probe', content: null, date, time: null,
+    listId: 'inbox', source: { kind: 'manual', reference: null }, state: 'completed', deletedAt: null,
+    completion: { completedOn: date, completedTime: '22:00', recordedAt: timestamp, source: 'checkbox' },
+    createdAt: timestamp, modifiedAt: timestamp, changes: [] }],
+}, null, 2));
+EOF
+  today_time_axis_real_clock=2
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Today" 10
+  run_driver wait-active-text "Today · $lived_date" 20
+  run_driver press-contains "Details · Completed rollover probe" 10
+  run_driver type-text "Task name|Completed rollover edited" 10
+  current_step="waiting for real epoch to cross synthetic local 04:00 with an open Task editor"
+  while (( $(/bin/date '+%s') < boundary_epoch + 2 )); do sleep 0.2; done
+  run_driver hide "synthetic lived-day boundary" 10
+  run_driver wait-active-text "Selected date · $lived_date" 20
+  run_driver assert-active-text "Completed rollover edited" 10
+  run_driver press "Save" 10
+  wait_for_task_property "$tasks" rollover-edit name "Completed rollover edited" || fail "retained editor did not save"
+  assert_task_property "$tasks" rollover-edit date "$lived_date" || fail "rollover edit moved the Task date"
+  assert_task_property "$tasks" rollover-edit state completed || fail "rollover edit changed completion state"
+  run_driver capture-window "$captures/rollover-saved.png" 10
+  stop_app || fail "rollover candidate did not stop"
+  current_step="restarting after 04:00 and verifying default Today plus saved Task history"
+  launch_app_waiting_for_text "Today" 30
+  run_driver press "Today" 10
+  run_driver wait-active-text "Today · $natural_date" 20
+  run_driver assert-active-absent-text "Completed rollover edited" 10
+  run_driver press "Tasks" 10
+  run_driver wait-active-text "Completed rollover edited" 20
+  assert_task_property "$tasks" rollover-edit date "$lived_date" || fail "restart moved the Task date"
+  [[ "$(shasum -a 256 "$record" | awk '{print $1}')" == "$record_hash" ]] || fail "Task edits changed the Daily Record"
+  echo "Packaged lived-day repair acceptance passed: folded boundary reveal, expansion, cross-midnight source labels, active completed Task edit/focus across 04:00, saved identity/date/state, and restart default"
+  echo "Captures: $captures"
+  echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
+}
+
 run_live_daily_cycle_scenario() {
   local vault_directory="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_VAULT:-}"
   local record_date="${PERSONAL_DASHBOARD_ACCEPTANCE_LIVE_DATE:-}"
@@ -6488,6 +6590,7 @@ case "$acceptance_scenario" in
   readable-task-cards) run_readable_task_cards_scenario ;;
   tasks-return-after-today-abandon) run_tasks_return_after_today_abandon_scenario ;;
   today-shared-task-axis) run_today_shared_task_axis_scenario ;;
+  lived-day-repairs) run_lived_day_repairs_scenario ;;
   drive-compatibility) run_drive_compatibility_scenario ;;
   live-cycle) run_live_daily_cycle_scenario ;;
   *) fail "unknown acceptance scenario: $acceptance_scenario" ;;

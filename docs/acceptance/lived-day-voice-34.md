@@ -1,6 +1,6 @@
 # Issue #34: Mandarin / US English composer voice input
 
-Status: implementation verified automatically on Linux; packaged Mac and real speech acceptance outstanding.
+Status: implementation tested on Linux and Mac; Apple Speech compilation/capabilities checked on Mac; real speech acceptance outstanding.
 
 ## Behavior
 
@@ -20,6 +20,8 @@ Transcripts append to an editable draft for the captured session and target date
 
 ## Outstanding real-device evidence
 
-This Linux environment cannot run the packaged Mac app, compile/check Apple's Speech APIs, request Mac microphone permissions, or measure speech recognition quality. No real Mandarin or US English recording was performed, and no simulated audio result is recognition-quality evidence. Issue #19 remains open; its previously observed English (Australia) failures have not been resolved by an acceptance claim.
+Local Mac follow-up on 2026-10-02: the complete helper and packaged app compiled on macOS 27.0.1 (`26A434`). The native `capabilities` command reported US English (`en-US`) installed but no supported Mandarin locale (`zh-CN`, `zh-Hans-CN`, or `zh-Hans`). Mandarin recording is therefore blocked on this machine without a model installation, which this repair did not perform. US English availability does not establish recognition quality. No microphone recording was performed, and #19 remains open. See the local repair evidence in [lived-day-28.md](lived-day-28.md).
+
+The earlier Linux run could not run the packaged Mac app or compile/check Apple's Speech APIs. No real Mandarin or US English recording was performed in either run, and no simulated audio result is recognition-quality evidence. Issue #19 remains open; its previously observed English (Australia) failures have not been resolved by an acceptance claim.
 
 On a Mac, use an isolated temporary Vault and the existing packaged acceptance workflow. Separately for Mandarin and US English, record live human speech through the microphone button, stop, compare the resulting editable text with the spoken words, correct it, and send manually. Record the OS version, actual capability identifier, transcript errors, and final session/date destination. Also check denial, missing target capability, cancel during permission/capture/transcription, empty result, failure preserving typed text, keyboard start/stop/cancel, restart preference restoration, and switching session/date during transcription (including across 04:00). Inspect saved draft/session facts. These checks must pass before marking the real-recording criteria accepted; this document closes neither #19 nor #34.
