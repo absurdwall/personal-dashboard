@@ -94,13 +94,15 @@ export function initializeCollaborationPanels(): void {
     layout.dataset.columns = geometry.mode;
     for (const side of sides) {
       const expanded = side === "history" ? geometry.historyExpanded : geometry.contextExpanded;
-      if (!expanded && panels[side].contains(document.activeElement)) {
+      const resizerHidden = !expanded || geometry.narrow || (side === "context" && geometry.mode === "two");
+      const active = document.activeElement;
+      if ((!expanded && panels[side].contains(active)) || (resizerHidden && active === resizers[side])) {
         focusTargets[side] = document.activeElement as HTMLElement;
         toggles[side].focus();
       }
       panels[side].hidden = !expanded;
       toggles[side].setAttribute("aria-expanded", String(expanded));
-      resizers[side].hidden = !expanded || geometry.narrow || (side === "context" && geometry.mode === "two");
+      resizers[side].hidden = resizerHidden;
       const maxWidth = Math.max(minimum[side], side === "history" ? geometry.historyMaximum : geometry.contextMaximum);
       resizers[side].setAttribute("aria-valuemin", String(minimum[side]));
       resizers[side].setAttribute("aria-valuemax", String(Math.round(maxWidth)));
@@ -120,7 +122,9 @@ export function initializeCollaborationPanels(): void {
       else { preferences[side].expanded = !preferences[side].expanded; save(); }
       render();
       if (!panels[side].hidden) {
-        const target = focusTargets[side] ?? panels[side].querySelector<HTMLElement>("button, input, [tabindex]");
+        const saved = focusTargets[side];
+        const target = saved?.isConnected && !saved.hidden ? saved
+          : panels[side].querySelector<HTMLElement>("button, input, [tabindex]");
         if (target?.isConnected) target.focus();
       }
     });

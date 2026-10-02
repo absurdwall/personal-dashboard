@@ -470,7 +470,11 @@ app_pid_file="$acceptance_directory/app.pid"
 /usr/bin/ditto "$source_app_bundle" "$app_bundle" || fail "could not copy the packaged app"
 app_executable="$app_bundle/Contents/MacOS/personal-dashboard"
 if [[ "${PERSONAL_DASHBOARD_ACCEPTANCE_POINTER_FREE:-0}" == "1" ]]; then
-  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.tortillaflat.personal-dashboard.acceptance" "$app_bundle/Contents/Info.plist"
+  acceptance_bundle_identifier="${PERSONAL_DASHBOARD_ACCEPTANCE_BUNDLE_IDENTIFIER:-com.tortillaflat.personal-dashboard.acceptance}"
+  [[ "$acceptance_bundle_identifier" =~ ^[A-Za-z0-9]+([.-][A-Za-z0-9]+)+$ ]] ||
+    fail "invalid isolated acceptance bundle identifier"
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $acceptance_bundle_identifier" "$app_bundle/Contents/Info.plist"
+  printf 'Isolated acceptance bundle identifier: %s\n' "$acceptance_bundle_identifier"
   /usr/bin/codesign --force --deep --sign - "$app_bundle" >/dev/null 2>&1 || fail "could not sign isolated acceptance identity"
 fi
 
@@ -4644,6 +4648,7 @@ run_today_unlocated_panel_layout_scenario() {
   local visual_epoch
   local record_hash
   local failures=0
+  local long_body="长标签排版验收：保留完整来源和详情，逐项检查已确认事实、仍待核对的问题和后续动作；当前没有确定的开始时刻，不能为了排列到时间轴而补造时间。继续阅读这段完整说明，确认正文没有被标签挤成细长条，中文句子能够自然换行，展开详情后仍可查看原始内容和来源日期。"
 
   current_step="preparing long unlocated records in an isolated Vault"
   mkdir -p "$vault/.obsidian" "$(dirname "$today_record")" "$acceptance_data_directory" "$capture_directory"
@@ -4670,6 +4675,14 @@ run_today_unlocated_panel_layout_scenario() {
   for window_size in "960x720" "800x640" "640x520"; do
     run_driver set-size "$window_size" 10
     run_driver assert-size "$window_size" 10
+    current_step="checking long unlocated label/body geometry at $window_size"
+    run_driver scroll-text-visible "$long_body" 10
+    run_driver assert-window-visible "白天（具体时段未定）" 10
+    run_driver assert-long-text-fits "$long_body|180" 10
+    capture_path="$capture_directory/today-long-content-${window_size}.png"
+    [[ ! -e "$capture_path" ]] || fail "refusing to overwrite packaged capture $capture_path"
+    run_driver capture-window "$capture_path" 10
+    current_step="checking unlocated panel and composer at $window_size"
     run_driver scroll-text-visible "保存记录" 10
     run_driver assert-text "时间未明确的内容" 10
     run_driver assert-window-visible "记录类别" 10
