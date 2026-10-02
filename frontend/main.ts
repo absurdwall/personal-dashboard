@@ -918,8 +918,10 @@ function localCalendarDate(): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
-let collaborationActivityDate = localCalendarDate();
-let collaborationTargetDate = collaborationActivityDate;
+let collaborationActivityDate = "";
+let collaborationActivityDateExplicit = false;
+let collaborationEmptyTargetDate: string | null = null;
+let collaborationTargetDate = "";
 let currentCollaborationWorkspace: CollaborationWorkspaceView | null = null;
 let currentCollaborationSession: CollaborationSessionView | null = null;
 let currentDailyPlanAutomation: DailyPlanAutomationView | null = null;
@@ -1048,6 +1050,7 @@ const collaborationVoiceStatus = document.querySelector<HTMLElement>("#collabora
 const collaborationSendButton = document.querySelector<HTMLButtonElement>("#collaboration-send-message");
 const collaborationChatHeading = document.querySelector<HTMLElement>("#collaboration-chat-heading");
 const collaborationChatDate = document.querySelector<HTMLElement>("#collaboration-chat-date");
+const collaborationComposerDate = document.querySelector<HTMLElement>("#collaboration-composer-date");
 const collaborationRunStatus = document.querySelector<HTMLElement>("#collaboration-run-status");
 const collaborationStopButton = document.querySelector<HTMLButtonElement>("#collaboration-stop-run");
 const collaborationVaultLabel = document.querySelector<HTMLElement>("#collaboration-context-vault");
@@ -1567,8 +1570,10 @@ function resetVaultScopedWorkspaceState(): void {
   collaborationDrafts.clear();
   collaborationTargetDates.clear();
   collaborationSendingDrafts.clear();
-  collaborationActivityDate = localCalendarDate();
-  collaborationTargetDate = collaborationActivityDate;
+  collaborationActivityDate = "";
+  collaborationActivityDateExplicit = false;
+  collaborationEmptyTargetDate = null;
+  collaborationTargetDate = "";
   currentCalendarMonth = null;
   currentCalendarSummaryView = null;
   selectedCalendarDate = null;
@@ -2138,6 +2143,7 @@ async function openDailyPlanAutomationRun(): Promise<void> {
     );
     if (collaborationDateInput) collaborationDateInput.value = run.date;
     collaborationActivityDate = run.date;
+    collaborationActivityDateExplicit = true;
     showWorkspaceDestination("collaboration");
     selectCollaborationSession(session);
   } catch (error) {
@@ -3791,6 +3797,7 @@ async function openCollaborationSessionFromMemory(
   activityDate: string,
 ): Promise<void> {
   collaborationActivityDate = activityDate;
+  collaborationActivityDateExplicit = true;
   if (collaborationDateInput) collaborationDateInput.value = activityDate;
   await refreshCollaborationWorkspace();
   if (currentCollaborationSession?.id === sessionId) return;
@@ -3969,6 +3976,9 @@ function renderCollaborationWorkspace(): void {
         : "",
     );
   }
+  setRawText(collaborationComposerDate, collaborationTargetDate
+    ? `${t("collaboration.targetDateLabel")}: ${collaborationDateLabel(collaborationTargetDate)}`
+    : "");
   if (collaborationRunStatus) {
     if (!session) {
       setRawText(collaborationRunStatus, "");
@@ -4116,6 +4126,7 @@ function selectCollaborationSession(session: CollaborationSessionView): void {
   cancelCollaborationVoiceCaptureForSelectionChange();
   stashCollaborationDraft();
   currentCollaborationSession = session;
+  collaborationEmptyTargetDate = null;
   cacheCollaborationDrafts(session);
   collaborationTargetDate = collaborationTargetDates.get(session.id) ?? session.targetDate;
   collaborationTargetDates.set(session.id, collaborationTargetDate);
@@ -4147,12 +4158,18 @@ function refreshCollaborationRunOwner(session: CollaborationSessionView): void {
 
 async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
   const request = ++collaborationWorkspaceRequest;
-  const date = collaborationDateInput?.value || collaborationActivityDate;
-  collaborationActivityDate = date;
+  let date = collaborationActivityDate;
   if (!quiet && collaborationSessionsStatus) {
     setCopy(collaborationSessionsStatus, "collaboration.loading");
   }
   try {
+    if (!collaborationActivityDateExplicit && (!currentCollaborationSession || !date)) {
+      const clock = await window.__TAURI__.core.invoke<TodayClockView>("today_clock");
+      if (request !== collaborationWorkspaceRequest) return;
+      date = clock.livedDate;
+    }
+    collaborationActivityDate = date;
+    if (collaborationDateInput) collaborationDateInput.value = date;
     const workspace = await window.__TAURI__.core.invoke<CollaborationWorkspaceView>(
       "collaboration_workspace",
       { date },
@@ -4165,7 +4182,7 @@ async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
       workspace.sessions[0] ?? null;
     const nextTargetDate = session
       ? collaborationTargetDates.get(session.id) ?? session.targetDate
-      : date;
+      : collaborationEmptyTargetDate ?? date;
     if (session?.id !== previousId || nextTargetDate !== previousTargetDate) {
       cancelCollaborationVoiceCaptureForSelectionChange();
     }
@@ -4248,6 +4265,7 @@ async function saveCollaborationTargetDate(): Promise<void> {
   const session = currentCollaborationSession;
   const date = collaborationTargetDateInput?.value || collaborationTargetDate;
   if (!session) {
+    collaborationEmptyTargetDate = date;
     collaborationTargetDate = date;
     void refreshCollaborationContext();
     return;
@@ -4360,16 +4378,19 @@ async function resumeCollaborationRequest(sessionId: string, executionId: string
 }
 
 async function createCollaborationSession(): Promise<void> {
-  const date = collaborationDateInput?.value || collaborationActivityDate;
+  const explicitDate = collaborationEmptyTargetDate ??
+    (collaborationActivityDateExplicit ? collaborationActivityDate : null);
   try {
     const session = await window.__TAURI__.core.invoke<CollaborationSessionView>(
       "collaboration_create_session",
-      { date },
+      { date: explicitDate },
     );
+    const date = session.createdDate;
     cancelCollaborationVoiceCaptureForSelectionChange();
     stashCollaborationDraft();
     cacheCollaborationDrafts(session);
     currentCollaborationSession = session;
+    collaborationEmptyTargetDate = null;
     collaborationTargetDates.set(session.id, date);
     collaborationActivityDate = date;
     collaborationTargetDate = date;
@@ -4409,7 +4430,9 @@ async function openCollaborationForTask(
     currentCollaborationSession = session;
     cacheCollaborationDrafts(session);
     collaborationActivityDate = targetDate;
+    collaborationActivityDateExplicit = true;
     collaborationTargetDate = targetDate;
+    collaborationTargetDates.set(session.id, targetDate);
     const key = collaborationDraftKey(session.id, targetDate);
     const existingDraft = collaborationDrafts.get(key) ?? session.draftsByDate[targetDate] ?? "";
     const taskReference = t("collaboration.taskFocusDraft", {
@@ -4452,7 +4475,9 @@ async function returnToCollaborationFromTask(): Promise<void> {
       );
     currentCollaborationSession = session;
     collaborationActivityDate = session.targetDate;
+    collaborationActivityDateExplicit = true;
     collaborationTargetDate = session.targetDate;
+    collaborationTargetDates.set(session.id, session.targetDate);
     if (collaborationDateInput) collaborationDateInput.value = session.targetDate;
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = session.targetDate;
     taskReturnToCollaborationSessionId = null;
@@ -4486,6 +4511,7 @@ async function returnToCollaborationFromDailyRecord(): Promise<void> {
     cacheCollaborationDrafts(session);
     collaborationTargetDates.set(session.id, targetDate);
     collaborationActivityDate = targetDate;
+    collaborationActivityDateExplicit = true;
     collaborationTargetDate = targetDate;
     if (collaborationDateInput) collaborationDateInput.value = targetDate;
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = targetDate;
@@ -10184,25 +10210,28 @@ function shiftDate(date: string, days: number): string {
 }
 
 document.querySelector<HTMLButtonElement>("#collaboration-date-previous")?.addEventListener("click", () => {
+  collaborationActivityDateExplicit = true;
   collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, -1);
   if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
   void refreshCollaborationWorkspace();
 });
 
 document.querySelector<HTMLButtonElement>("#collaboration-date-next")?.addEventListener("click", () => {
+  collaborationActivityDateExplicit = true;
   collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, 1);
   if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
   void refreshCollaborationWorkspace();
 });
 
 document.querySelector<HTMLButtonElement>("#collaboration-date-today")?.addEventListener("click", () => {
-  collaborationActivityDate = localCalendarDate();
-  if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
+  collaborationActivityDateExplicit = false;
+  collaborationActivityDate = "";
   void refreshCollaborationWorkspace();
 });
 
 collaborationDateInput?.addEventListener("change", () => {
-  collaborationActivityDate = collaborationDateInput.value || localCalendarDate();
+  collaborationActivityDateExplicit = Boolean(collaborationDateInput.value);
+  collaborationActivityDate = collaborationDateInput.value;
   void refreshCollaborationWorkspace();
 });
 
