@@ -3,6 +3,7 @@ import {
   submitDatedNote,
 } from "./dated-note-command.js";
 import { LatestRequest } from "./latest-request.js";
+import { HistoricalHabitArrival } from "./historical-habit-arrival.js";
 import {
   canMutateTodayTasks,
   canStartManualTodayRefresh,
@@ -1400,6 +1401,7 @@ const taskListCreateDrafts = new Map<string, string>();
 const taskListRenameDrafts = new Map<string, string>();
 const taskOperationIds = new TaskOperationIdentityStore();
 let selectedTodayDate: string | null = null;
+const historicalHabitArrival = new HistoricalHabitArrival();
 type DatedNoteDraft = {
   content: string;
   category: ShortRecordCategory;
@@ -1546,6 +1548,7 @@ async function chooseInterfaceLanguage(interfaceLanguage: InterfaceLanguage): Pr
 }
 
 function resetVaultScopedWorkspaceState(): void {
+  historicalHabitArrival.clear();
   taskRequests.invalidate();
   todayTaskRequests.invalidate();
   calendarMonthRequests.invalidate();
@@ -5575,6 +5578,20 @@ function renderToday(view: TodayView): void {
     }
   }
   showTodayPhase(currentTodayPhase);
+  const arrival = !view.isToday ? historicalHabitArrival.forDate(view.date) : null;
+  if (arrival) {
+    showTodayPhase("daytime");
+    window.requestAnimationFrame(() => {
+      if (
+        currentWorkspaceDestination !== "today" ||
+        !historicalHabitCorrections ||
+        historicalHabitCorrections.hidden ||
+        !historicalHabitArrival.consume(arrival, currentTodayView?.date ?? null)
+      ) return;
+      historicalHabitCorrections.scrollIntoView({ block: "start" });
+      historicalHabitCorrections.focus({ preventScroll: true });
+    });
+  }
   if (startsTodaySession) {
     todayAxisFollowState = "following";
     scheduleTodayAxisFollowScroll();
@@ -9969,12 +9986,14 @@ function showWorkspaceDestination(
     destination === "today" &&
     (destinationChanged || selectedTodayDate !== dailyDate);
   if (leavingToday || changingTodaySelection) {
+    historicalHabitArrival.clear();
     todayPresentationRequests.invalidate();
     todayClockRequests.invalidate();
     todayTaskRequests.invalidate();
     if (changingTodaySelection) {
       stashTodayTaskCreateDraft();
       currentTodayView = null;
+      historicalHabitCorrections?.toggleAttribute("hidden", true);
     }
   }
   if (leavingTasks) {
@@ -10691,6 +10710,7 @@ habitsDestination?.addEventListener("click", (event) => {
       return;
     }
     showWorkspaceDestination("today", true, date);
+    historicalHabitArrival.select(date);
     return;
   }
 
