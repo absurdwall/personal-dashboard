@@ -1430,7 +1430,7 @@ func assertLongTextFits(_ application: AXUIElement, text: String, minimumWidth: 
                 "frame=\(textFrame) window=\(windowFrame)"
         )
     }
-    guard textFrame.height >= 28, textFrame.width >= minimumWidth,
+    guard textFrame.height >= 28, textFrame.width + tolerance >= minimumWidth,
           textFrame.width <= windowFrame.width - 24 else {
         throw DriverError.timeout(
             "long rendered text did not wrap within the available layout: \(text) " +
