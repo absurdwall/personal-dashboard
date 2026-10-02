@@ -21,7 +21,9 @@ test("Collaboration is a latest-shell destination with the adjacent approved A w
     assert.ok(html.includes(selector), `missing collaboration surface marker ${selector}`);
   }
   assert.match(css, /\.collaboration-layout\s*\{/);
-  assert.match(css, /grid-template-columns:\s*13\.5rem minmax\(25rem, 1\.45fr\) minmax\(19rem, 1fr\)/);
+  // Width policy is covered by collaboration-panels behavior tests.
+  assert.match(html, /aria-controls="collaboration-history-panel"/);
+  assert.match(html, /aria-controls="collaboration-work-panel"/);
 });
 
 test("external apps stay disabled in Dashboard collaboration", () => {

@@ -301,8 +301,12 @@
                 <p id="collaboration-work-owner" role="status" aria-live="polite"></p>
                 <button id="collaboration-open-settings" type="button" class="text-button" data-i18n="collaboration.openSettings">Codex connection settings</button>
               </div>
+              <div class="collaboration-panel-toolbar">
+                <button id="collaboration-toggle-history" type="button" class="secondary-button" aria-controls="collaboration-history-panel" aria-expanded="true" data-i18n="collaboration.toggleHistory">Session history</button>
+                <button id="collaboration-toggle-context" type="button" class="secondary-button" aria-controls="collaboration-work-panel" aria-expanded="true" data-i18n="collaboration.toggleContext">Current work</button>
+              </div>
               <div class="collaboration-layout">
-                <section class="collaboration-session-pane" aria-labelledby="collaboration-sessions-heading">
+                <section class="collaboration-session-pane" id="collaboration-history-panel" aria-labelledby="collaboration-sessions-heading">
                   <header class="collaboration-pane-heading">
                     <div>
                       <p class="section-label" data-i18n="collaboration.sessionsLabel">SESSIONS</p>
@@ -313,6 +317,7 @@
                   <p id="collaboration-sessions-status" class="collaboration-pane-status" role="status" aria-live="polite"></p>
                   <ul id="collaboration-session-list" class="collaboration-session-list" aria-label="Collaboration sessions" data-i18n-aria-label="collaboration.sessionsHeading"></ul>
                 </section>
+                <div id="collaboration-history-resizer" class="collaboration-panel-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="collaboration-history-panel" aria-label="Resize session history" data-i18n-aria-label="collaboration.resizeHistory"></div>
                 <section class="collaboration-chat-pane" aria-labelledby="collaboration-chat-heading">
                   <header class="collaboration-pane-heading collaboration-chat-heading">
                     <div>
@@ -347,7 +352,8 @@
                     </div>
                   </form>
                 </section>
-                <aside class="collaboration-context-pane" aria-labelledby="collaboration-context-heading">
+                <div id="collaboration-context-resizer" class="collaboration-panel-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="collaboration-work-panel" aria-label="Resize current work" data-i18n-aria-label="collaboration.resizeContext"></div>
+                <aside class="collaboration-context-pane" id="collaboration-work-panel" aria-labelledby="collaboration-context-heading">
                   <header class="collaboration-pane-heading">
                     <div>
                       <p class="section-label" data-i18n="collaboration.currentWorkLabel">CURRENT WORK</p>

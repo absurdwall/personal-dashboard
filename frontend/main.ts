@@ -1,3 +1,4 @@
+import { initializeCollaborationPanels } from "./collaboration-panels.js";
 import {
   DatedNoteTargetChangedError,
   submitDatedNote,
@@ -1488,6 +1489,8 @@ function setRawText(element: HTMLElement | null, value: string): void {
   delete element.dataset.applicationMessage;
   element.textContent = value;
 }
+
+initializeCollaborationPanels();
 
 function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): void {
   currentInterfaceLanguage = preferences.interfaceLanguage;
