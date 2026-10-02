@@ -4648,7 +4648,7 @@ run_today_unlocated_panel_layout_scenario() {
   local visual_epoch
   local record_hash
   local failures=0
-  local long_body="长标签排版验收：保留完整来源和详情，逐项检查已确认事实、仍待核对的问题和后续动作；当前没有确定的开始时刻，不能为了排列到时间轴而补造时间。继续阅读这段完整说明，确认正文没有被标签挤成细长条，中文句子能够自然换行，展开详情后仍可查看原始内容和来源日期。"
+  local long_body="长标签排版验收：保留完整来源和详情，逐项检查已确认事实、仍待核对的问题和后续动作 当前没有确定的开始时刻，不能为了排列到时间轴而补造时间。继续阅读这段完整说明，确认正文没有被标签挤成细长条，中文句子能够自然换行，展开详情后仍可查看原始内容和来源日期。"
 
   current_step="preparing long unlocated records in an isolated Vault"
   mkdir -p "$vault/.obsidian" "$(dirname "$today_record")" "$acceptance_data_directory" "$capture_directory"
@@ -4669,10 +4669,10 @@ run_today_unlocated_panel_layout_scenario() {
   fixed_now_epoch_millis="$((visual_epoch * 1000))"
   today_time_axis_real_clock=0
 
-  current_step="checking visible unlocated-panel geometry at the three ticketed sizes"
+  current_step="checking visible unlocated-panel geometry at wide and ticketed sizes"
   launch_app_waiting_for_text "Today" 30
   run_driver press "定位现在" 10
-  for window_size in "960x720" "800x640" "640x520"; do
+  for window_size in "1120x760" "960x720" "800x640" "640x520"; do
     run_driver set-size "$window_size" 10
     run_driver assert-size "$window_size" 10
     current_step="checking long unlocated label/body geometry at $window_size"
@@ -4701,7 +4701,7 @@ run_today_unlocated_panel_layout_scenario() {
     fail "$failures visible region overlap checks failed; captures: $capture_directory"
   fi
 
-  echo "Packaged unlocated-panel layout passed at 960x720, 800x640 and 640x520"
+  echo "Packaged unlocated-panel layout passed at 1120x760, 960x720, 800x640 and 640x520"
   echo "Synthetic record SHA-256: $record_hash"
   echo "Packaged candidate binary SHA-256: $(shasum -a 256 "$app_executable" | awk '{print $1}')"
   echo "Capture directory: $capture_directory"
