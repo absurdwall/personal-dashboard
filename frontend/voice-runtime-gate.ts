@@ -1,4 +1,5 @@
-type GateResult = Record<string, boolean | string | number>;
+type TimingRow = { startMs: number; endMs: number; arrivalOrdinal: number };
+type GateResult = Record<string, boolean | string | number | TimingRow[]>;
 const result: GateResult = {
   origin: location.origin,
   secureContext: isSecureContext,
@@ -53,11 +54,66 @@ const previewIds=new Set<string>();
 const finalIds=new Set<string>();
 const previewReferences=new Set<string>();
 const finalReferences=new Set<string>();
+const previewTimings: TimingRow[] = [];
+const finalTimings: TimingRow[] = [];
+let timingOrdinal = 0;
+let invalidPreviewTiming = 0;
+let invalidFinalTiming = 0;
+function recordFrameTiming(data: Record<string, any>, preview: boolean): void {
+  // Only called for the configured synthetic source. Never retains identifiers/bodies.
+  const source = preview ? data : data.turn;
+  const startMs = source?.start_ms;
+  const endMs = source?.end_ms;
+  const valid = typeof startMs === "number" && typeof endMs === "number"
+    && Number.isFinite(startMs) && Number.isFinite(endMs)
+    && startMs >= 0 && endMs >= startMs && endMs <= 86_400_000;
+  timingOrdinal += 1;
+  if (!valid) {
+    if (preview) invalidPreviewTiming += 1; else invalidFinalTiming += 1;
+  }
+  const rows = preview ? previewTimings : finalTimings;
+  // Preserve bounded raw numeric intervals, including bounded invalid ranges, for diagnosis.
+  if (rows.length < (preview ? 64 : 32) && typeof startMs === "number" && typeof endMs === "number"
+      && Number.isFinite(startMs) && Number.isFinite(endMs)
+      && Math.abs(startMs) <= 86_400_000 && Math.abs(endMs) <= 86_400_000 && timingOrdinal <= 10_000) {
+    rows.push({ startMs, endMs, arrivalOrdinal: timingOrdinal });
+  }
+  const validRows = (items: TimingRow[]) => items.filter(row => row.startMs >= 0 && row.endMs >= row.startMs);
+  const previews = validRows(previewTimings);
+  const finals = validRows(finalTimings);
+  let containedPairs = 0, overlapPairs = 0, exactPairs = 0, multipleFinalMatches = false;
+  let containedPreviews = 0;
+  for (const p of previews) {
+    let matches = 0;
+    for (const f of finals) {
+      if (p.startMs >= f.startMs && p.endMs <= f.endMs) { containedPairs += 1; matches += 1; }
+      if (Math.max(p.startMs, f.startMs) < Math.min(p.endMs, f.endMs)) overlapPairs += 1;
+      if (p.startMs === f.startMs && p.endMs === f.endMs) exactPairs += 1;
+    }
+    if (matches > 0) containedPreviews += 1;
+    if (matches > 1) multipleFinalMatches = true;
+  }
+  result.syntheticPreviewTimingRows = previewTimings;
+  result.syntheticFinalTimingRows = finalTimings;
+  result.previewValidTimingCount = String(previews.length);
+  result.finalValidTimingCount = String(finals.length);
+  result.previewInvalidTimingCount = String(invalidPreviewTiming);
+  result.finalInvalidTimingCount = String(invalidFinalTiming);
+  result.timingContainedPairCount = String(containedPairs);
+  result.timingOverlapPairCount = String(overlapPairs);
+  result.timingExactBoundaryPairCount = String(exactPairs);
+  result.timingContainedPreviewCount = String(containedPreviews);
+  result.timingAllPreviewsContained = previews.length > 0 && containedPreviews === previews.length;
+  result.timingMultipleFinalMatches = multipleFinalMatches;
+  result.timingRowsTruncated = timingOrdinal > previewTimings.length + finalTimings.length
+    + invalidPreviewTiming + invalidFinalTiming;
+}
 function recordFrameLinkage(data:Record<string,any>):void {
   if(!result.syntheticOnly)return;
   const preview=data.type==="input_transcript.added";
   const final=data.type==="turn.done"&&data.turn?.role==="user";
   if(!preview&&!final)return;
+  recordFrameTiming(data, preview);
   const item=preview?data.item:data.turn;
   if(!item||typeof item!=="object")return;
   const fields=(value:Record<string,unknown>)=>Object.keys(value).filter(key=>/^[a-zA-Z_]{1,40}$/.test(key)).sort().slice(0,32).join(",").slice(0,120);
@@ -76,6 +132,21 @@ function recordFrameLinkage(data:Record<string,any>):void {
   result.previewReferenceMatchesFinal=[...previewReferences].some(id=>finalIds.has(id));
 }
 let cloudPeer: RTCPeerConnection | undefined;
+let cloudChannel: RTCDataChannel | undefined;
+let fixtureSource: AudioBufferSourceNode | undefined;
+let closeDrainTimer: ReturnType<typeof setTimeout> | undefined;
+let closeDrainPending = false;
+async function finishCloseDrain(terminal: boolean): Promise<void> {
+  if (!closeDrainPending) return;
+  closeDrainPending = false;
+  if (closeDrainTimer) clearTimeout(closeDrainTimer);
+  closeDrainTimer = undefined;
+  result.closeDrainTerminal = terminal;
+  result.closeDrainTimedOut = !terminal;
+  result.closeDrainFinalCount = String(finalTurns.size);
+  await stopCloud();
+}
+
 let cloudInput: string | undefined;
 let polling: ReturnType<typeof setInterval> | undefined;
 const invoke = (command: string, args: unknown) => (window as unknown as { __TAURI__: { core: { invoke<T>(command: string, args: unknown): Promise<T> } } }).__TAURI__.core.invoke<any>(command, args);
@@ -90,6 +161,12 @@ document.querySelector("#native-permission")!.addEventListener("click",async()=>
   await report();
 });
 const stopCloud = async () => {
+  if (closeDrainTimer) clearTimeout(closeDrainTimer);
+  closeDrainTimer = undefined;
+  closeDrainPending = false;
+  (document.querySelector("#close-drain") as HTMLButtonElement).disabled = true;
+  try { fixtureSource?.stop(); } catch { /* Already ended. */ }
+
   cloudStream?.getTracks().forEach(track => track.stop());
   fixtureDestination?.stream.getTracks().forEach(track => track.stop());
   try{fixtureClock?.stop();}catch{}
@@ -103,6 +180,29 @@ const stopCloud = async () => {
   (document.querySelector("#stop") as HTMLButtonElement).disabled = true;
   await report();
 };
+document.querySelector("#close-drain")!.addEventListener("click", async () => {
+  // Restricted to the configured synthetic diagnostic, never the production composer.
+  if (!result.syntheticOnly || cloudChannel?.readyState !== "open" || closeDrainPending) return;
+  (document.querySelector("#close-drain") as HTMLButtonElement).disabled = true;
+  closeDrainPending = true;
+  result.closeDrainTerminal = false;
+  result.closeDrainTimedOut = false;
+  try { fixtureSource?.stop(); } catch { /* Already ended. */ }
+  cloudStream?.getTracks().forEach(track => track.stop());
+  fixtureDestination?.stream.getTracks().forEach(track => track.stop());
+  fixtureCaptureStopped = true;
+  result.fixtureCaptureStopped = true;
+  closeDrainTimer = setTimeout(() => { void finishCloseDrain(false); }, 10_000);
+  try {
+    // Known v3 message shape under test; this does not assert flush acknowledgement.
+    cloudChannel.send(JSON.stringify({ type: "session.close" }));
+    result.closeRequestSent = true;
+  } catch {
+    result.closeRequestSent = false;
+    await finishCloseDrain(false);
+  }
+  await report();
+});
 document.querySelector("#cloud")!.addEventListener("click", async () => {
   if (cloudInput) return;
   cloudInput = crypto.randomUUID();
@@ -127,8 +227,11 @@ document.querySelector("#cloud")!.addEventListener("click", async () => {
     cloudPeer = new RTCPeerConnection();
     cloudStream.getAudioTracks().forEach(track => cloudPeer!.addTrack(track, cloudStream!));
     const channel = cloudPeer.createDataChannel("oai-events");
+    cloudChannel = channel;
+    channel.onclose = () => { if (closeDrainPending) void finishCloseDrain(true); };
     channel.onopen = () => {
       result.dataChannelOpen=true;
+      (document.querySelector("#close-drain") as HTMLButtonElement).disabled = !result.syntheticOnly;
       void report();
       if(result.syntheticOnly)void sendFixture();
     };
@@ -136,6 +239,7 @@ document.querySelector("#cloud")!.addEventListener("click", async () => {
       try {
         const data = JSON.parse(String(event.data));
         recordFrameLinkage(data);
+        if (data.type === "session.closed" && closeDrainPending) void finishCloseDrain(true);
         result.rawEventType = String(data.type ?? "unknown");
         result.rawRole = String(data.turn?.role ?? "none");
         result.rawTextLength = String((data.turn?.transcript ?? "").length);
@@ -147,6 +251,7 @@ document.querySelector("#cloud")!.addEventListener("click", async () => {
           result.finalMatchesFixture = (data.turn.transcript ?? "").includes("personal dashboard") && (data.turn.transcript ?? "").includes("tomorrow");
           finalTurns.set(data.turn.id,data.turn.transcript??"");
           result.finalCount=String(finalTurns.size);
+          if (closeDrainPending) result.closeDrainFinalCount = String(finalTurns.size);
           const aggregate=[...finalTurns.values()].join(" ");
           result.aggregateMatchesFixture=aggregate.toLowerCase().includes("personal dashboard")&&aggregate.toLowerCase().includes("tomorrow")&&aggregate.includes("三十");
           result.finalAfterFixtureCaptureStop=fixtureCaptureStopped;
@@ -176,7 +281,10 @@ document.querySelector("#cloud")!.addEventListener("click", async () => {
             result.sidebandFinalIdentity = !!event.itemId;
             document.querySelector("#preview")!.textContent = "User final segment received (body not displayed in diagnostic).";
           }
-          if (event.kind === "failed" || event.kind === "closed") result.serviceEnded = true;
+          if (event.kind === "failed" || event.kind === "closed") {
+            result.serviceEnded = true;
+            if (event.kind === "closed" && closeDrainPending) void finishCloseDrain(true);
+          }
         }
       } catch { result.failure = "dictation-connection-lost"; }
       finally { pending = false; await report(); }
@@ -198,6 +306,7 @@ async function sendFixture():Promise<void> {
   await fixtureContext.resume();
   const audio = await fixtureContext.decodeAudioData(new Uint8Array(bytes).buffer);
   const source = fixtureContext.createBufferSource();
+  fixtureSource = source;
   source.buffer = audio;
   fixtureDestination = fixtureContext.createMediaStreamDestination();
   source.connect(fixtureDestination);
