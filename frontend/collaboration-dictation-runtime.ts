@@ -194,6 +194,15 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
         try {
           const raw: unknown = JSON.parse(String(message.data));
           if (raw && typeof raw === "object" && (raw as {type?:unknown}).type === "session.closed" && closeRequested) {
+            const terminal = raw as {error?:unknown;failure?:unknown;reason?:unknown};
+            // A terminal can report provider failure even after our close.
+            // Unknown reasons are not acknowledgements; never surface their
+            // arbitrary payloads as UI text or diagnostics.
+            if (terminal.error != null || terminal.failure != null ||
+                (terminal.reason != null && terminal.reason !== "" && terminal.reason !== "close_requested")) {
+              fail("dictation-service-failed");
+              return;
+            }
             terminalReceived = true;
             // Preserve events already queued in this channel turn. Native
             // sideband closure is not this terminal and never shortens drain.

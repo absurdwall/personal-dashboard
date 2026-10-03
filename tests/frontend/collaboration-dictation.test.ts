@@ -364,6 +364,29 @@ test("Stop requests the observed v3 close after zero-audio grace and accepts fin
   assert.equal(f.zeroTrackStopped(),true);assert.equal(f.peerClosed(),true);assert.equal(f.nativeActive(),false);
 });
 
+for(const metadata of [
+  {error:{code:"private-provider-detail",message:"private transcript detail"}},
+  {failure:"private-provider-detail"},
+  {reason:"server_error"},
+  {reason:"quota_exceeded"},
+  {reason:{code:"unrecognized"}},
+  {reason:37},
+] as const)test(`failure-bearing requested terminal ${JSON.stringify(Object.keys(metadata))} cannot acknowledge complete input`,async t=>{
+  const f=await browserFixture(t);f.emit(timedPreview("p","received",0,50));f.controller.stop();await tick();
+  t.mock.timers.tick(1_000);await tick();f.emit(timedFinal("turn","correct final",0,50));
+  f.emit({type:"session.closed",...metadata});t.mock.timers.tick(0);await tick();
+  assert.equal(f.draft(),"existing\ncorrect final");assert.equal(f.incomplete(),1);
+  assert.deepEqual(f.failures,["service-failed"],"raw provider failure details never reach UI");
+  assert.equal(f.zeroTrackStopped(),true);assert.equal(f.audioClosed(),true);assert.equal(f.peerClosed(),true);
+});
+
+for(const reason of [undefined,"","close_requested"] as const)test(`requested terminal allows only empty or allowlisted close reason ${String(reason)}`,async t=>{
+  const f=await browserFixture(t);f.emit(timedPreview("p","received",0,50));f.controller.stop();await tick();
+  t.mock.timers.tick(1_000);await tick();f.emit(timedFinal("turn","correct final",0,50));
+  f.emit({type:"session.closed",reason});t.mock.timers.tick(0);await tick();
+  assert.equal(f.draft(),"existing\ncorrect final");assert.equal(f.incomplete(),0);assert.deepEqual(f.failures,[]);
+});
+
 test("native close before queued data-channel final cannot terminate expected close collection",async t=>{
   const f=await browserFixture(t);f.emit(timedPreview("p","received",0,50));f.controller.navigate();await tick();
   t.mock.timers.tick(1_000);await tick();f.nativeClosed();t.mock.timers.tick(200);await tick();

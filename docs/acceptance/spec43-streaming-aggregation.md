@@ -2,7 +2,13 @@
 
 Date: 2026-10-03 (America/New_York). Scope: [ticket #46](https://github.com/absurdwall/personal-dashboard/issues/46). This is implementation and automated evidence; the ticket remains open for human acceptance.
 
-## Implemented behavior
+## Current continuation
+
+The original unresolved association below is superseded by live numeric audio-interval evidence and commits `0134ef7` / `c1da89d`. Previews retain their own identities; a nonempty user final replaces a preview only when the preview's entire positive interval is contained by exactly one nonconflicting final interval. Corrections recompute coverage and can reveal previews again. Missing or conflicting intervals remain preserved and incomplete. Distinct final identities retain equal words; content equality and arrival order are not association rules.
+
+Stop now releases the microphone immediately, substitutes generated zero audio on the existing sender and requests the live-observed v3 `session.close` after one second. Receivers remain within a ten-second total Stop deadline. Completion requires an expected raw terminal, a distinct post-stop final and resolved received-preview coverage. The latest package, review repairs and human acceptance limits are recorded in [ticket #49](spec43-packaged-acceptance-49.md).
+
+## Historical implemented behavior
 
 The public dictation controller aggregates raw user finals by the server `turn.id`. A duplicate final replaces its own text instead of appending again; identical words in distinct turn IDs survive. Raw preview fragments are keyed separately by `input_transcript.added.item.id`, so repeated delivery does not repeat their text. Raw previews have no verified association with final turn IDs. They remain available independently of finals and are recovered in a clearly labeled, unconfirmed section of the same persisted editable draft. Arrival order and text equality are never used to seal or discard them. Assistant events and expired input callbacks never enter the draft.
 
