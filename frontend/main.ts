@@ -4012,8 +4012,12 @@ function saveCollaborationDraft(
     ),
   ).then((saved) => {
     // A response acknowledges its queued snapshot, not edits made since it
-    // was sent. Keep the latest in-memory draft through autosave/dictation.
-    if (collaborationDrafts.get(key) === draft) collaborationUnsavedDrafts.delete(key);
+    // was sent. Equal text can still be an older A in an A → B → A queue;
+    // release protection only after queued and debounced writes settle.
+    if (collaborationDrafts.get(key) === draft &&
+      !collaborationDraftWrites.has(key) && !collaborationDraftSaveTimers.has(key)) {
+      collaborationUnsavedDrafts.delete(key);
+    }
     cacheCollaborationDrafts(saved, true);
     if (currentCollaborationSession?.id === sessionId) {
       currentCollaborationSession = saved;

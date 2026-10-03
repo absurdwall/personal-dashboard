@@ -108,3 +108,46 @@ test("an older save acknowledgement cannot unprotect a newer draft before its ex
   assert.equal(r.collaborationUnsavedDrafts.has(key),false,"only exact current snapshot acknowledgement clears protection");
   assert.equal(r.collaborationMessageDraft.value,"newer edit plus dictation");
 });
+
+
+test("A → B → A queued saves preserve the intentional revert when the last save fails",async()=>{
+  const {r,first}=composer();
+  const target={sessionId:first.id,targetDate:first.targetDate};
+  const writes:Array<{resolve:()=>void;reject:(error:Error)=>void}>=[];
+  r.write=(args:any)=>new Promise((resolve,reject)=>{
+    writes.push({resolve:()=>{
+      first.draft=args.draft;
+      first.draftsByDate[first.targetDate]=args.draft;
+      resolve(structuredClone(first));
+    },reject});
+  });
+  const firstA=r.saveCollaborationDraft(target,"A");
+  const middleB=r.saveCollaborationDraft(target,"B");
+  const lastA=r.saveCollaborationDraft(target,"A");
+  const failedLast=assert.rejects(lastA,/last A failed/);
+  writes[0].resolve();await firstA;await tick();
+  writes[1].resolve();await middleB;await tick();
+  assert.equal(first.draft,"B","native storage currently contains the middle snapshot");
+  await r.refreshCollaborationWorkspace();
+  assert.equal(r.collaborationMessageDraft.value,"A","old equal-valued acknowledgement cannot expose the revert to stale reads");
+  writes[2].reject(new Error("last A failed"));await failedLast;
+  await r.refreshCollaborationWorkspace();
+  assert.equal(r.collaborationMessageDraft.value,"A","failed final save leaves the latest revert editable");
+  assert.equal(r.collaborationMessageDraft.disabled,false);
+  assert.equal(r.collaborationUnsavedDrafts.has(r.collaborationDraftKey(first.id,first.targetDate)),true);
+});
+
+test("an equal-valued acknowledgement cannot clear protection while a reverted edit is still debounced",async()=>{
+  const {r,first}=composer();
+  const target={sessionId:first.id,targetDate:first.targetDate};
+  let acknowledge:(saved:any)=>void=()=>{};
+  r.write=()=>new Promise(resolve=>{acknowledge=resolve;});
+  const older=r.saveCollaborationDraft(target,"A");
+  r.collaborationMessageDraft.value="B";r.stashCollaborationDraft();
+  r.collaborationMessageDraft.value="A";r.stashCollaborationDraft();
+  acknowledge({...first,draft:"A",draftsByDate:{[first.targetDate]:"A"}});
+  await older;
+  const key=r.collaborationDraftKey(first.id,first.targetDate);
+  assert.equal(r.collaborationDraftSaveTimers.has(key),true);
+  assert.equal(r.collaborationUnsavedDrafts.has(key),true,"the reverted edit still needs its debounced persistence attempt");
+});
