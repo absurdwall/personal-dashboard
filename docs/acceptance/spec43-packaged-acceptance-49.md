@@ -2,6 +2,12 @@
 
 [Ticket #49](https://github.com/absurdwall/personal-dashboard/issues/49), 2026-10-03, America/New_York. This record separates normal composer checks, diagnostic transport evidence and pending human speech acceptance. The continuation below supersedes the earlier pending microphone and unresolved association findings. The issue and parent Spec remain open.
 
+## User-reported speech acceptance and UI feedback
+
+After trying the normal candidate, the user reported approximately two minutes of Chinese/English speech, very good recognition, useful live preview and successful finalization on Stop. The user is satisfied with recognition and explicitly requested no recognition/provider changes. This is human experience evidence reported directly by the user; duration was approximate rather than separately timed, and specific proper-name, edit/manual-Send, fault/navigation and relaunch checks were not individually reported.
+
+Two requested UI follow-ups are in scope: make initialization/connection distinct from the point at which speech can actually be received, and make the Stop square visible against its active button background. Startup can take several seconds, so the nearby state must say to wait before speaking and announce recording readiness only at the existing connected gate. Recognition errors were discussed as service limitations, with no raw recording retained to diagnose individual mistakes.
+
 ## Continuation after the initial handoff
 
 The earlier candidate's repeat microphone loop reached Recording in three seconds and cancelled successfully. A separate CUA Start/Cancel check reached the connected Dictating state. Neither check establishes human recognition quality. The previously observed pending permission is no longer a current blocker; its original cause was not established and no global privacy change was made.
