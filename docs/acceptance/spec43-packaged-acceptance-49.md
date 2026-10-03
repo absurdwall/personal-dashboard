@@ -1,6 +1,18 @@
 # Spec #43 packaged candidate acceptance
 
-[Ticket #49](https://github.com/absurdwall/personal-dashboard/issues/49), 2026-10-03, America/New_York. Implementation is delivered on the draft PR; protocol requirements and packaged acceptance remain incomplete. This record separates normal composer checks, diagnostic transport evidence and pending human speech acceptance. The issue and parent Spec remain open.
+[Ticket #49](https://github.com/absurdwall/personal-dashboard/issues/49), 2026-10-03, America/New_York. This record separates normal composer checks, diagnostic transport evidence and pending human speech acceptance. The continuation below supersedes the earlier pending microphone and unresolved association findings. The issue and parent Spec remain open.
+
+## Continuation after the initial handoff
+
+The earlier candidate's repeat microphone loop reached Recording in three seconds and cancelled successfully. A separate CUA Start/Cancel check reached the connected Dictating state. Neither check establishes human recognition quality. The previously observed pending permission is no longer a current blocker; its original cause was not established and no global privacy change was made.
+
+Fresh connected synthetic WebRTC probes showed finite `start_ms`/`end_ms` intervals on preview envelopes and final user turns. A single utterance produced 19 positive preview intervals contained by one nonconflicting user final. Repeating the fixture produced 40 preview intervals contained by a combined final. Equal text and arrival order are not used to infer association. The new shared reducer retains every identified preview and final correction, recomputes coverage, and preserves unresolved fragments with an incomplete status. Unit behavior covers equal words under distinct turn identities; the combined live final does not prove distinct-turn or exact word-multiplicity recognition.
+
+Sending the observed v3 `session.close` command while keeping receivers alive produced a new user final followed by raw `session.closed` in both synthetic runs, without timeout. The single-utterance run returned 81 characters and 19/19 contained previews; the repeated run returned 164 characters and 40/40 contained previews. Both reported stopped source and closed peer. Fixture marker presence is supporting evidence only. These diagnostics contain no personal voice, transcript bodies, raw IDs, SDP or credentials.
+
+Production changes `0134ef7` and `c1da89d` add interval reconciliation and immediate microphone release followed by generated-zero RTP and bounded protocol close drain. The initial continuation passed 73 focused controller/runtime tests, 268 frontend tests and the frontend build. Review found and requested one further repair: failure-bearing terminal events must remain incomplete. Updated production package identity and post-repair acceptance will be recorded below. Human quality and long-form speech remain pending.
+
+## Historical initial candidate checkpoint
 
 ## Candidate and isolation
 
