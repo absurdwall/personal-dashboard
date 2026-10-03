@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import { CodexCollaborationVoiceInputController } from "../../frontend/collaboration-dictation.ts";
 import { BrowserCodexDictationRuntime, parseCodexDictationEvent, type CodexDictationRuntime, type CodexDictationEvent } from "../../frontend/collaboration-dictation-runtime.ts";
-import { appendVoiceTranscript, beginVoiceTranscriptSave, enqueueCollaborationDraftWrite } from "../../frontend/collaboration-voice.ts";
+import { appendVoiceTranscript, beginVoiceTranscriptSave, enqueueCollaborationDraftWrite, submitCollaborationDraftSnapshot } from "../../frontend/collaboration-voice.ts";
 
+const recoveryLabel="[Unconfirmed preview — may overlap the final transcript; review before sending]";
+const recovered=(text:string)=>`${recoveryLabel}\n${text}`;
 const target={sessionId:"synthetic",targetDate:"2026-10-03"};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const preview=(id:string,text:string)=>({type:"input_transcript.added",item:{id,text}});
@@ -36,24 +38,26 @@ function fixture() {
     draft:()=>draft,stopped:()=>stopped,released:()=>released,incomplete:()=>incomplete};
 }
 
-test("ordered user previews are replaced by corrected finals, preserving repetitions by identity",async()=>{
+test("unpaired previews survive delayed and corrected finals without invented sealing",async()=>{
   const f=fixture();await f.controller.start(f.target);
-  f.emit(preview("p1","provisional "));f.emit(preview("p1","provisional "));f.emit(preview("p2","text"));
-  assert.equal(f.previews.at(-1),"provisional text");
+  f.emit(preview("preview-a","provisional A "));
+  f.emit(preview("preview-b","newer B"));
   f.emit(final("assistant-a","assistant response","assistant"));
-  f.emit(final("turn-1","correct final"));f.emit(final("turn-1","correct final"));
-  f.emit(preview("p1","late old preview"));
-  assert.equal(f.previews.at(-1),"correct final");
-  f.emit(preview("p3","new provisional"));
-  f.emit(final("turn-1","corrected final"));
-  assert.equal(f.previews.at(-1),"corrected final\nnew provisional");
-  f.emit(final("turn-2","corrected final"));
-  assert.equal(f.draft(),"typed before dictation");
+  f.emit(final("turn-a","correct final A"));
+  f.emit(final("turn-a","corrected final A"));
+  f.emit(final("turn-a","corrected final A"));
+  assert.equal(f.previews.at(-1),"corrected final A\nprovisional A newer B");
+  f.emit({type:"error"});
+  assert.deepEqual(f.transcripts,[`corrected final A\n${recovered("provisional A newer B")}`]);
+  assert.equal(f.incomplete(),1);assert.equal(f.released(),true);
+});
+
+test("equal authoritative finals from distinct turn IDs survive, duplicate/corrected ID replaces once",async()=>{
+  const f=fixture();await f.controller.start(f.target);
+  f.emit(final("turn-a","old"));f.emit(final("turn-a","repeated"));
+  f.emit(final("turn-b","repeated"));f.emit(final("turn-a","repeated"));
   f.controller.stop();f.complete();await tick();
-  assert.deepEqual(f.transcripts,["corrected final\ncorrected final"]);
-  assert.equal(f.previews.at(-1),"");
-  assert.deepEqual(f.states,["requesting","connecting","recording","transcribing","idle"]);
-  assert.equal(f.released(),true);
+  assert.deepEqual(f.transcripts,["repeated\nrepeated"]);assert.equal(f.incomplete(),0);
 });
 
 test("manual stop waits for the tail and appends once to the latest edited original-target draft",async()=>{
@@ -66,22 +70,22 @@ test("manual stop waits for the tail and appends once to the latest edited origi
   f.emit(preview("tail-preview","最后几个"));f.emit(final("tail","最后几个字。"));
   f.complete();await tick();
   f.emit(final("tail","late correction"));f.complete();await tick();
-  assert.equal(f.draft(),"latest edited draft while finalizing\n开头 Personal Dashboard\nmiddle sentence\n最后几个字。");
-  assert.equal(f.transcripts.length,1);assert.equal(f.incomplete(),0);
+  assert.equal(f.draft(),`latest edited draft while finalizing\n开头 Personal Dashboard\nmiddle sentence\n最后几个字。\n${recovered("最后几个")}`);
+  assert.equal(f.transcripts.length,1);assert.equal(f.incomplete(),1);
 });
 
 test("incomplete finalization preserves user previews and exposes incomplete status",async()=>{
   const f=fixture();await f.controller.start(f.target);
   f.emit(final("opening","opening"));f.emit(preview("tail","unfinished tail"));
   f.controller.stop();f.complete(true);await tick();
-  assert.equal(f.draft(),"typed before dictation\nopening\nunfinished tail");
+  assert.equal(f.draft(),`typed before dictation\nopening\n${recovered("unfinished tail")}`);
   assert.equal(f.incomplete(),1);assert.equal(f.released(),true);
 });
 
 test("service failure preserves received draft text without restarting or sending",async()=>{
   const f=fixture();await f.controller.start(f.target);
   f.emit(preview("tail","received words"));f.emit({type:"error"});f.emit(final("late","discard"));
-  assert.equal(f.draft(),"typed before dictation\nreceived words");
+  assert.equal(f.draft(),`typed before dictation\n${recovered("received words")}`);
   assert.equal(f.incomplete(),1);assert.equal(f.released(),true);assert.equal(f.controller.state,"idle");
 });
 
@@ -122,7 +126,7 @@ test("one aggregate draft save shares the existing queue with pending edits and 
     draft=aggregate.draft;
   }});
   await controller.start(target);draft="edited while older save is pending";
-  emit(preview("p","provisional"));emit(final("turn","correct final"));emit(final("turn","correct final"));
+  emit(final("turn","correct final"));emit(final("turn","correct final"));
   controller.stop();resolveFinal({incomplete:false});await tick();
   const sendFlush=write(draft);releaseFirst();await first;await sendFlush;
   assert.deepEqual(saved,["existing","edited while older save is pending\ncorrect final","edited while older save is pending\ncorrect final"]);
@@ -140,6 +144,7 @@ async function browserFixture(t:TestContext, options: {connecting?:boolean; clos
   const gate=new Promise<void>(resolve=>{release=resolve;});
   let trackStopped=false;
   let peerClosed=false;
+  let nativeActive=false;
   let channel:FakeChannel;
   class FakeChannel extends EventTarget {
     readyState=options.connecting?"connecting":"open";onmessage:((event:{data:string})=>void)|null=null;onclose:(()=>void)|null=null;onopen:(()=>void)|null=null;
@@ -158,6 +163,8 @@ async function browserFixture(t:TestContext, options: {connecting?:boolean; clos
     calls.push(command);
     if(command==="collaboration_dictation_start" && options.pauseAt==="native") { await gate; if(options.rejectNative)throw new Error("dictation-quota-exceeded"); }
     if(command==="collaboration_dictation_poll" && options.pollPending) { await gate; throw new Error("dictation-connection-lost"); }
+    if(command==="collaboration_dictation_start")nativeActive=true;
+    if(command==="collaboration_dictation_stop")nativeActive=false;
     return (command==="collaboration_dictation_start"?{inputId:args.inputId,sdp:"synthetic-answer"}:[]) as T;
   });
   let draft="existing";
@@ -166,7 +173,7 @@ async function browserFixture(t:TestContext, options: {connecting?:boolean; clos
   const controller=new CodexCollaborationVoiceInputController(runtime,{onState:()=>{},onTranscript:(_,text)=>{draft=appendVoiceTranscript(draft,text);},onFailure:(_,failure)=>{failures.push(failure);},onCancel:()=>{},onIncomplete:()=>{incomplete++;}});
   const started=controller.start(target);
   if(options.connecting || options.pauseAt)await tick();else await started;
-  return {controller,calls,started,release,failures,close:()=>channel.onclose?.(),openListener:()=>channel.onopen,emit:(value:unknown)=>channel.onmessage?.({data:JSON.stringify(value)}),draft:()=>draft,incomplete:()=>incomplete,trackStopped:()=>trackStopped,peerClosed:()=>peerClosed};
+  return {controller,calls,started,release,failures,nativeActive:()=>nativeActive,close:()=>channel.onclose?.(),openListener:()=>channel.onopen,emit:(value:unknown)=>channel.onmessage?.({data:JSON.stringify(value)}),draft:()=>draft,incomplete:()=>incomplete,trackStopped:()=>trackStopped,peerClosed:()=>peerClosed};
 }
 
 test("production capture continues beyond two minutes and only manual stop starts bounded finalization",async t=>{
@@ -178,8 +185,17 @@ test("production capture continues beyond two minutes and only manual stop start
   assert.equal(f.trackStopped(),true);assert.equal(f.peerClosed(),false);
   f.emit(preview("tail","ending"));f.emit(final("tail","ending corrected"));
   t.mock.timers.tick(4_000);await tick();
-  assert.equal(f.draft(),"existing\nopening\nmiddle\nending corrected");assert.equal(f.incomplete(),0);
+  assert.equal(f.draft(),`existing\nopening\nmiddle\nending corrected\n${recovered("ending")}`);assert.equal(f.incomplete(),1);
   assert.equal(f.peerClosed(),true);assert.equal(f.calls.filter(c=>c==="collaboration_dictation_stop").length,1);
+});
+
+test("production runtime never acknowledges an unpaired newer preview from a delayed final",async t=>{
+  const f=await browserFixture(t);
+  f.emit(preview("preview-a","A preview "));f.emit(preview("preview-b","newer B preview"));
+  f.controller.stop();f.emit(final("delayed-a","correct A final"));
+  t.mock.timers.tick(4_000);await tick();
+  assert.equal(f.draft(),`existing\ncorrect A final\n${recovered("A preview newer B preview")}`);
+  assert.equal(f.incomplete(),1);assert.equal(f.peerClosed(),true);
 });
 
 test("duplicated pre-stop final cannot falsely acknowledge a new tail",async t=>{
@@ -187,7 +203,7 @@ test("duplicated pre-stop final cannot falsely acknowledge a new tail",async t=>
   f.emit(final("opening","opening"));f.emit(preview("tail","unconfirmed ending"));f.controller.stop();
   f.emit(final("opening","opening"));
   t.mock.timers.tick(4_000);await tick();
-  assert.equal(f.draft(),"existing\nopening\nunconfirmed ending");assert.equal(f.incomplete(),1);assert.equal(f.peerClosed(),true);
+  assert.equal(f.draft(),`existing\nopening\n${recovered("unconfirmed ending")}`);assert.equal(f.incomplete(),1);assert.equal(f.peerClosed(),true);
 });
 
 test("stop without a new final remains incomplete even when no preview has arrived for the tail",async t=>{
@@ -223,7 +239,8 @@ for (const terminate of ["navigate", "cancel"] as const) for (const pauseAt of [
     assert.deepEqual(f.failures,[]);
     if(pauseAt!=="permission")assert.equal(f.peerClosed(),true);
     assert.equal(f.calls.filter(c=>c==="collaboration_dictation_start").length,pauseAt==="native"||pauseAt==="remote"?1:0);
-    assert.equal(f.calls.filter(c=>c==="collaboration_dictation_stop").length,pauseAt==="native"||pauseAt==="remote"?1:0);
+    assert.equal(f.calls.filter(c=>c==="collaboration_dictation_stop").length,pauseAt==="native"?2:pauseAt==="remote"?1:0);
+    assert.equal(f.nativeActive(),false, "a stop that won before start must be repeated after start settles");
   });
 }
 
@@ -231,8 +248,8 @@ test("cancel while native setup later rejects still releases its temporary input
   const f=await browserFixture(t,{pauseAt:"native",rejectNative:true});
   f.controller.cancel();f.release();await f.started;
   assert.equal(f.trackStopped(),true);assert.equal(f.peerClosed(),true);
-  assert.equal(f.calls.filter(c=>c==="collaboration_dictation_stop").length,1);
-  assert.deepEqual(f.failures,[]);
+  assert.equal(f.calls.filter(c=>c==="collaboration_dictation_stop").length,2);
+  assert.deepEqual(f.failures,[]);assert.equal(f.nativeActive(),false);
 });
 
 for (const [code,category] of [["session_expired","login-required"],["insufficient_quota","quota-exceeded"],["dictation-service-ended","service-failed"],["dictation-connection-lost","connection-failed"]]) {
@@ -242,7 +259,7 @@ for (const [code,category] of [["session_expired","login-required"],["insufficie
     f.deliver({inputId:"expired",kind:"failed",failure:code});
     // Use the production parser's error code path for the active input.
     f.emit({type:"error",error:{code}});
-    assert.equal(f.draft(),"typed before dictation\nreceived words");
+    assert.equal(f.draft(),`typed before dictation\n${recovered("received words")}`);
     assert.deepEqual(f.failures,[category]);assert.equal(f.incomplete(),1);
     assert.equal(f.released(),true);
     f.controller.stop();f.emit(final("late","discard"));
@@ -282,9 +299,9 @@ test("close snapshots received text once, releases immediately, and permits a fr
   const f=await browserFixture(t);
   f.emit(preview("p","received before close"));f.controller.stop();f.controller.close();f.controller.close();
   assert.equal(f.trackStopped(),true);assert.equal(f.peerClosed(),true);assert.equal(f.controller.state,"idle");
-  assert.equal(f.draft(),"existing\nreceived before close");assert.equal(f.incomplete(),1);
+  assert.equal(f.draft(),`existing\n${recovered("received before close")}`);assert.equal(f.incomplete(),1);
   f.emit(final("late","not received before close"));t.mock.timers.tick(4_000);await tick();
-  assert.equal(f.draft(),"existing\nreceived before close");
+  assert.equal(f.draft(),`existing\n${recovered("received before close")}`);
   await f.controller.start(target);assert.equal(f.controller.state,"recording");f.controller.cancel();
   assert.equal(f.calls.filter(c=>c==="collaboration_dictation_start").length,2);
 });
@@ -293,7 +310,7 @@ test("a late in-flight poll failure after close cannot overwrite saved input sta
   const f=await browserFixture(t,{pollPending:true});
   f.emit(preview("p","received"));t.mock.timers.tick(200);await tick();
   f.controller.close();f.release();await tick();
-  assert.equal(f.draft(),"existing\nreceived");assert.deepEqual(f.failures,[]);assert.equal(f.incomplete(),1);
+  assert.equal(f.draft(),`existing\n${recovered("received")}`);assert.deepEqual(f.failures,[]);assert.equal(f.incomplete(),1);
 });
 
 test("failed original-target persistence keeps the controller aggregate editable in memory",async()=>{
@@ -327,8 +344,29 @@ for (const phase of ["recording", "transcribing"] as const) {
 test("production service close preserves partial text, reports incomplete failure and ends collection",async t=>{
   const f=await browserFixture(t);
   f.emit(preview("p","received before service close"));f.emit({type:"session.closed"});
-  assert.equal(f.draft(),"existing\nreceived before service close");assert.deepEqual(f.failures,["service-failed"]);
+  assert.equal(f.draft(),`existing\n${recovered("received before service close")}`);assert.deepEqual(f.failures,["service-failed"]);
   assert.equal(f.incomplete(),1);assert.equal(f.trackStopped(),true);assert.equal(f.peerClosed(),true);
   f.emit(final("late","discard"));t.mock.timers.tick(30_000);await tick();
   assert.equal(f.calls.filter(c=>c==="collaboration_dictation_start").length,1);
 });
+
+for (const outcome of ["success", "failure"] as const) {
+  test(`manual send ${outcome} cannot erase dictation delivered while submit is pending`,async()=>{
+    let draft="submitted snapshot";
+    let resolve:()=>void=()=>{};
+    const nativeCleared=new Promise<void>(r=>{resolve=r;});
+    const submit=submitCollaborationDraftSnapshot(draft,()=>draft,async()=>{
+      await nativeCleared;
+      if(outcome==="failure")throw new Error("synthetic submit failure");
+      return {message:"submitted snapshot"};
+    });
+    draft=appendVoiceTranscript(draft,"later dictation");
+    const newest=draft;resolve();
+    if(outcome==="success") {
+      const acknowledged=await submit;
+      draft=acknowledged.draft;
+      assert.equal(acknowledged.result.message,"submitted snapshot");
+    } else await assert.rejects(submit,/synthetic submit failure/);
+    assert.equal(draft,newest);
+  });
+}

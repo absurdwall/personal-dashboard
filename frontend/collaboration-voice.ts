@@ -68,3 +68,15 @@ export function appendVoiceTranscript(draft: string, transcript: string): string
   if (!draft) return cleanTranscript;
   return `${draft}${draft.endsWith("\n") ? "" : "\n"}${cleanTranscript}`;
 }
+
+// A submit acknowledgement owns only its snapshot. A later dictation delivery
+// or edit remains the draft even when the native submit clears its stored copy.
+export async function submitCollaborationDraftSnapshot<T>(
+  submitted: string,
+  latestDraft: () => string,
+  submit: () => Promise<T>,
+): Promise<Readonly<{ result: T; draft: string }>> {
+  const result = await submit();
+  const latest = latestDraft();
+  return { result, draft: latest === submitted ? "" : latest };
+}
