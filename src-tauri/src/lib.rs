@@ -40,6 +40,64 @@ fn collaboration_voice_gate_fixture() -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+#[cfg(target_os = "macos")]
+fn voice_gate_microphone_authorization() -> &'static str {
+    objc2::runtime::AnyClass::get(c"AVCaptureDevice")
+        .map(|class| {
+            let audio = objc2_foundation::NSString::from_str("soun");
+            let status: isize =
+                unsafe { objc2::msg_send![class, authorizationStatusForMediaType: &*audio] };
+            match status {
+                0 => "not-determined",
+                1 => "restricted",
+                2 => "denied",
+                3 => "authorized",
+                _ => "unknown",
+            }
+        })
+        .unwrap_or("class-unavailable")
+}
+
+#[tauri::command]
+async fn collaboration_voice_gate_request_microphone(
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    if std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_none() {
+        return Err("Gate is not enabled".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let (sender, receiver) = std::sync::mpsc::channel::<String>();
+        app.run_on_main_thread(move || {
+            let Some(class) = objc2::runtime::AnyClass::get(c"AVCaptureDevice") else {
+                let _ = sender.send("class-unavailable".into());
+                return;
+            };
+            let callback = block2::RcBlock::new(move |_granted: objc2::runtime::Bool| {
+                let _ = sender.send(voice_gate_microphone_authorization().into());
+            });
+            let audio = objc2_foundation::NSString::from_str("soun");
+            // AVFoundation copies this escaping completion block. This explicit
+            // diagnostic requests only the ordinary OS microphone permission.
+            unsafe {
+                let _: () = objc2::msg_send![class, requestAccessForMediaType: &*audio, completionHandler: &*callback];
+            }
+        }).map_err(|_| "Could not dispatch the gated permission request".to_string())?;
+        tauri::async_runtime::spawn_blocking(move || {
+            receiver
+                .recv_timeout(std::time::Duration::from_secs(15))
+                .unwrap_or_else(|_| "request-pending".into())
+        })
+        .await
+        .map_err(|_| "Could not read the gated permission result".to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Ok("unsupported-platform".into())
+    }
+}
+
 #[tauri::command]
 fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), String> {
     let path = std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT")
@@ -79,8 +137,23 @@ fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), Str
         "fixtureCaptureStopped",
         "sourceReadyBeforeOffer",
         "fixturePacketsSent",
+        "previewEnvelopeFields",
+        "finalEnvelopeFields",
+        "previewItemFields",
+        "finalTurnFields",
+        "previewIdentityCount",
+        "finalIdentityCount",
+        "previewFinalIdentityIntersect",
+        "finalReferenceMatchesPreview",
+        "previewReferenceMatchesFinal",
+        "currentPeerState",
+        "currentIceState",
+        "currentSignalingState",
+        "syntheticAudioContextState",
+        "syntheticOutboundPackets",
+        "nativeMicrophoneRequestOutcome",
     ];
-    let filtered: serde_json::Map<String, serde_json::Value> = result
+    let mut filtered: serde_json::Map<String, serde_json::Value> = result
         .as_object()
         .ok_or("Invalid gate result")?
         .iter()
@@ -90,6 +163,13 @@ fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), Str
         })
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
+    #[cfg(target_os = "macos")]
+    {
+        // Read-only authorization metadata in this explicitly gated process.
+        // Do not load frameworks, request access, or alter system permissions.
+        let status = voice_gate_microphone_authorization();
+        filtered.insert("nativeMicrophoneAuthorization".into(), status.into());
+    }
     std::fs::write(
         path,
         serde_json::to_vec_pretty(&filtered).map_err(|_| "Could not encode gate metadata")?,
@@ -869,6 +949,7 @@ pub fn run() {
             collaboration_submit_message,
             collaboration_voice_gate_fixture,
             collaboration_voice_runtime_gate,
+            collaboration_voice_gate_request_microphone,
             collaboration_dictation_start,
             collaboration_dictation_poll,
             collaboration_dictation_stop,
@@ -941,6 +1022,7 @@ pub fn run() {
         collaboration_submit_message,
         collaboration_voice_gate_fixture,
         collaboration_voice_runtime_gate,
+        collaboration_voice_gate_request_microphone,
         collaboration_dictation_start,
         collaboration_dictation_poll,
         collaboration_dictation_stop,

@@ -7,6 +7,17 @@ const result: GateResult = {
   peerConnection: typeof RTCPeerConnection === "function",
 };
 async function report(): Promise<void> {
+  if(result.syntheticOnly&&cloudPeer) {
+    result.currentPeerState=cloudPeer.connectionState;
+    result.currentIceState=cloudPeer.iceConnectionState;
+    result.currentSignalingState=cloudPeer.signalingState;
+    result.syntheticAudioContextState=fixtureContext?.state??"none";
+    void cloudPeer.getStats().then(stats=>{
+      let packets=0;
+      stats.forEach(stat=>{if(stat.type==="outbound-rtp"&&stat.kind==="audio")packets+=Number(stat.packetsSent??0);});
+      result.syntheticOutboundPackets=String(packets);
+    }).catch(()=>undefined);
+  }
   document.querySelector("#result")!.textContent = JSON.stringify(result, null, 2);
   await (window as unknown as { __TAURI__: { core: { invoke(command: string, args: unknown): Promise<void> } } }).__TAURI__.core.invoke("collaboration_voice_runtime_gate", { result });
 }
@@ -37,10 +48,47 @@ let cloudStream: MediaStream | undefined;
 let fixtureCaptureStopped=false;
 let fixtureClock:ConstantSourceNode|undefined;
 const finalTurns=new Map<string,string>();
+// Synthetic diagnostic only: report field names/counts, never ID values or bodies.
+const previewIds=new Set<string>();
+const finalIds=new Set<string>();
+const previewReferences=new Set<string>();
+const finalReferences=new Set<string>();
+function recordFrameLinkage(data:Record<string,any>):void {
+  if(!result.syntheticOnly)return;
+  const preview=data.type==="input_transcript.added";
+  const final=data.type==="turn.done"&&data.turn?.role==="user";
+  if(!preview&&!final)return;
+  const item=preview?data.item:data.turn;
+  if(!item||typeof item!=="object")return;
+  const fields=(value:Record<string,unknown>)=>Object.keys(value).filter(key=>/^[a-zA-Z_]{1,40}$/.test(key)).sort().slice(0,32).join(",").slice(0,120);
+  result[preview?"previewEnvelopeFields":"finalEnvelopeFields"]=fields(data);
+  result[preview?"previewItemFields":"finalTurnFields"]=fields(item);
+  const ids=preview?previewIds:finalIds;
+  const refs=preview?previewReferences:finalReferences;
+  if(typeof item.id==="string")ids.add(item.id);
+  for(const value of [data,item])for(const [key,reference]of Object.entries(value)) {
+    if(key!=="id"&&/(?:_id|Id)$/.test(key)&&typeof reference==="string")refs.add(reference);
+  }
+  result.previewIdentityCount=String(previewIds.size);
+  result.finalIdentityCount=String(finalIds.size);
+  result.previewFinalIdentityIntersect=[...previewIds].some(id=>finalIds.has(id));
+  result.finalReferenceMatchesPreview=[...finalReferences].some(id=>previewIds.has(id));
+  result.previewReferenceMatchesFinal=[...previewReferences].some(id=>finalIds.has(id));
+}
 let cloudPeer: RTCPeerConnection | undefined;
 let cloudInput: string | undefined;
 let polling: ReturnType<typeof setInterval> | undefined;
 const invoke = (command: string, args: unknown) => (window as unknown as { __TAURI__: { core: { invoke<T>(command: string, args: unknown): Promise<T> } } }).__TAURI__.core.invoke<any>(command, args);
+document.querySelector("#native-permission")!.addEventListener("click",async()=>{
+  (document.querySelector("#native-permission")as HTMLButtonElement).disabled=true;
+  result.nativeMicrophoneRequestOutcome="request-pending";
+  await report();
+  try {
+    const status=await invoke("collaboration_voice_gate_request_microphone",{});
+    result.nativeMicrophoneRequestOutcome=["not-determined","restricted","denied","authorized","class-unavailable","request-pending","unsupported-platform"].includes(status)?status:"unknown";
+  }catch{result.nativeMicrophoneRequestOutcome="request-failed";}
+  await report();
+});
 const stopCloud = async () => {
   cloudStream?.getTracks().forEach(track => track.stop());
   fixtureDestination?.stream.getTracks().forEach(track => track.stop());
@@ -87,6 +135,7 @@ document.querySelector("#cloud")!.addEventListener("click", async () => {
     channel.onmessage = event => {
       try {
         const data = JSON.parse(String(event.data));
+        recordFrameLinkage(data);
         result.rawEventType = String(data.type ?? "unknown");
         result.rawRole = String(data.turn?.role ?? "none");
         result.rawTextLength = String((data.turn?.transcript ?? "").length);
