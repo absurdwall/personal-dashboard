@@ -8,7 +8,7 @@ const outputDirectory = join(repositoryRoot, "dist");
 
 await mkdir(outputDirectory, { recursive: true });
 await Promise.all(
-  ["index.html", "styles.css"].map((filename) =>
+  ["index.html", "styles.css", "voice-runtime-gate.html"].map((filename) =>
     copyFile(join(frontendDirectory, filename), join(outputDirectory, filename)),
   ),
 );
