@@ -423,7 +423,23 @@ document.querySelector("#production-stop")!.addEventListener("click", async () =
       result.productionZeroContextsClosed = zeroContexts.every(zero => zero.state === "closed");
       result.productionFinalizeReturned = true;
     } catch { result.productionFailure = "finalize-failed"; }
-    finally { cleanFixture(); await report(); }
+    finally {
+      cleanFixture();
+      await report(); // Initial finalize observation precedes asynchronous context close.
+      await new Promise<void>(resolve => {
+        const finish = () => {
+          clearTimeout(timer);
+          zeroContexts.forEach(zero => zero.removeEventListener("statechange", observe));
+          resolve();
+        };
+        const observe = () => { if (zeroContexts.every(zero => zero.state === "closed")) finish(); };
+        const timer = setTimeout(finish, 1_000);
+        zeroContexts.forEach(zero => zero.addEventListener("statechange", observe));
+        observe();
+      });
+      result.productionZeroContextsClosed = zeroContexts.every(zero => zero.state === "closed");
+      await report(); // Same safe boolean, after at most one second of observation.
+    }
   };
   try {
     // This command requires the environment-gated fixture before any global substitution.
