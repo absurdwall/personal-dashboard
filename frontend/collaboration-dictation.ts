@@ -1,3 +1,4 @@
+import { CodexDictationTranscript } from "./collaboration-dictation-transcript.js";
 import type {
   CollaborationVoiceTarget, CollaborationVoiceState,
   CollaborationVoiceFailure, CollaborationVoiceHandlers,
@@ -27,8 +28,7 @@ type ActiveInput = {
   state: Exclude<CollaborationVoiceState, "idle">;
   abort: AbortController;
   capture?: CodexDictationCapture;
-  finals: Map<string, string>;
-  previews: Map<string, string>;
+  transcript: CodexDictationTranscript;
   ended: boolean;
 };
 
@@ -54,7 +54,7 @@ export class CodexCollaborationVoiceInputController {
     if (this.#active || !target.sessionId || !target.targetDate) return;
     const active: ActiveInput = {
       id: crypto.randomUUID(), target: { ...target }, state: "requesting",
-      abort: new AbortController(), finals: new Map(), previews: new Map(),
+      abort: new AbortController(), transcript: new CodexDictationTranscript(),
       ended: false,
     };
     this.#active = active;
@@ -122,36 +122,25 @@ export class CodexCollaborationVoiceInputController {
       }
       return;
     }
-    if (event.role !== "user" || !event.itemId) return;
-    if (event.kind === "preview") {
-      // Raw input_transcript.added is one identified text fragment, not a
-      // cumulative final. Re-delivery replaces that fragment, preserving
-      // equal words carried by distinct IDs.
-      active.previews.set(event.itemId, event.text ?? "");
-    }
-    if (event.kind === "final") {
-      // Only raw turn identity can replace an authoritative final. Preview IDs
-      // are unrelated; preserve them until a verified association is available.
-      active.finals.set(event.itemId, event.text ?? "");
-    }
+    active.transcript.update(event);
     this.handlers.onPreview?.(active.target, this.#text(active, true));
   }
 
   #text(active: ActiveInput, includePreview: boolean): string {
-    const preview = [...active.previews.values()].join("");
-    return [...active.finals.values(), ...(includePreview ? [preview] : [])]
-      .filter(Boolean).join("\n").trim();
+    const snapshot = active.transcript.snapshot();
+    return includePreview ? snapshot.displayText : snapshot.finalText;
   }
 
   #finish(active: ActiveInput, incomplete: boolean, failure?: CollaborationVoiceFailure): void {
     if (this.#active !== active || active.ended) return;
-    incomplete ||= active.previews.size > 0;
+    const snapshot = active.transcript.snapshot();
+    incomplete ||= snapshot.unresolved;
     active.ended = true;
     this.#active = null;
     active.abort.abort();
     void active.capture?.cancel().catch(() => undefined);
-    const finalText = this.#text(active, false);
-    const previewText = [...active.previews.values()].join("").trim();
+    const finalText = snapshot.finalText;
+    const previewText = snapshot.unconfirmedPreviewText;
     // Keep ambiguous received text in the same persisted editable draft, clearly
     // separated from finals. Never infer matching by arrival order or equal text.
     const recoveredPreview = previewText
