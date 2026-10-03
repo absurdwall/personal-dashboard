@@ -20,6 +20,14 @@ At source `af61cd3f`, diagnostic executable SHA-256 `d19a17210016eda574e357ff2a8
 
 The known English markers appeared once each. The exact Chinese `三十` marker appeared zero times in this final run (once in the preceding run); numeric representation or recognition cannot be distinguished from saved metadata. No recognition-quality or last-word guarantee is inferred. This is a successful real-service production-runtime convergence/cleanup test with synthetic audio; physical microphone speech, normal-composer speech append and human quality remain separate acceptance criteria.
 
+### Renewed normal-composer package
+
+The normal `index.html` candidate was rebuilt from exact source `af61cd3fc3a9abcc3731cf1ab583a285d9f15c36`. Executable SHA-256 is `1d8fd0a280391c188954e39dd19afe16d1600e5e9eecb2306398e122d96366be`, version 4.0.4, same unique identifier and isolated persistent profile; package/signature checks passed. It launched as PID 60774 with direct existing Dashboard authentication and no synthetic-fixture environment.
+
+CUA opened Collaboration and verified the draft was editable. The first Start remained in permission-pending and was cancelled without losing editability. After raising the candidate window and manually starting again, it reached actual `Dictating through Codex` with the Stop control enabled. Stop returned to idle with an editable draft and enabled manual Send, no pending/recording state and no save-failure indication. The cause of the transient initial request is unknown; raising/retry is an observation, not a proven fix. Neither ad-hoc signature differences nor foreground attribution were established as its cause. No global permission, privacy or security setting changed.
+
+The daily installed bundle and synthetic business files matched their before-check hashes. No daily installation replacement or PR merge occurred. The candidate is open for human testing. Required Mandarin/English/mixed/proper-name recognition, at least two minutes of real speech, opening/middle/final-clause completeness, intentional speech during navigation/network faults and post-dictation relaunch remain pending. Earlier typed draft persistence/failed-save/manual-Send evidence remains valid support; it does not replace these human checks.
+
 ## Historical initial candidate checkpoint
 
 ## Candidate and isolation
