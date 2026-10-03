@@ -1,6 +1,6 @@
 # Triage Labels
 
-| Canonical role    | Local status       | Meaning                                |
+| Canonical role    | GitHub label       | Meaning                                |
 | ----------------- | ------------------ | -------------------------------------- |
 | `needs-triage`    | `needs-triage`     | Maintainer evaluation required         |
 | `needs-info`      | `needs-info`       | Waiting for more information           |
@@ -8,4 +8,4 @@
 | `ready-for-human` | `ready-for-human`  | Requires human implementation          |
 | `wontfix`         | `wontfix`          | Will not be actioned                   |
 
-When a skill names a canonical role, use the matching local status.
+When a skill names a canonical role, use the matching GitHub label.
