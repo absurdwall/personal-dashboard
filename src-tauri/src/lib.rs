@@ -163,6 +163,10 @@ fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), Str
         "timingAllPreviewsContained",
         "timingMultipleFinalMatches",
         "timingRowsTruncated",
+        "closeRequestSent",
+        "closeDrainTerminal",
+        "closeDrainTimedOut",
+        "closeDrainFinalCount",
     ];
     let mut filtered: serde_json::Map<String, serde_json::Value> = result
         .as_object()

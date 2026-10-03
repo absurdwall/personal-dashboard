@@ -132,6 +132,21 @@ function recordFrameLinkage(data:Record<string,any>):void {
   result.previewReferenceMatchesFinal=[...previewReferences].some(id=>finalIds.has(id));
 }
 let cloudPeer: RTCPeerConnection | undefined;
+let cloudChannel: RTCDataChannel | undefined;
+let fixtureSource: AudioBufferSourceNode | undefined;
+let closeDrainTimer: ReturnType<typeof setTimeout> | undefined;
+let closeDrainPending = false;
+async function finishCloseDrain(terminal: boolean): Promise<void> {
+  if (!closeDrainPending) return;
+  closeDrainPending = false;
+  if (closeDrainTimer) clearTimeout(closeDrainTimer);
+  closeDrainTimer = undefined;
+  result.closeDrainTerminal = terminal;
+  result.closeDrainTimedOut = !terminal;
+  result.closeDrainFinalCount = String(finalTurns.size);
+  await stopCloud();
+}
+
 let cloudInput: string | undefined;
 let polling: ReturnType<typeof setInterval> | undefined;
 const invoke = (command: string, args: unknown) => (window as unknown as { __TAURI__: { core: { invoke<T>(command: string, args: unknown): Promise<T> } } }).__TAURI__.core.invoke<any>(command, args);
@@ -146,6 +161,12 @@ document.querySelector("#native-permission")!.addEventListener("click",async()=>
   await report();
 });
 const stopCloud = async () => {
+  if (closeDrainTimer) clearTimeout(closeDrainTimer);
+  closeDrainTimer = undefined;
+  closeDrainPending = false;
+  (document.querySelector("#close-drain") as HTMLButtonElement).disabled = true;
+  try { fixtureSource?.stop(); } catch { /* Already ended. */ }
+
   cloudStream?.getTracks().forEach(track => track.stop());
   fixtureDestination?.stream.getTracks().forEach(track => track.stop());
   try{fixtureClock?.stop();}catch{}
@@ -159,6 +180,29 @@ const stopCloud = async () => {
   (document.querySelector("#stop") as HTMLButtonElement).disabled = true;
   await report();
 };
+document.querySelector("#close-drain")!.addEventListener("click", async () => {
+  // Restricted to the configured synthetic diagnostic, never the production composer.
+  if (!result.syntheticOnly || cloudChannel?.readyState !== "open" || closeDrainPending) return;
+  (document.querySelector("#close-drain") as HTMLButtonElement).disabled = true;
+  closeDrainPending = true;
+  result.closeDrainTerminal = false;
+  result.closeDrainTimedOut = false;
+  try { fixtureSource?.stop(); } catch { /* Already ended. */ }
+  cloudStream?.getTracks().forEach(track => track.stop());
+  fixtureDestination?.stream.getTracks().forEach(track => track.stop());
+  fixtureCaptureStopped = true;
+  result.fixtureCaptureStopped = true;
+  closeDrainTimer = setTimeout(() => { void finishCloseDrain(false); }, 10_000);
+  try {
+    // Known v3 message shape under test; this does not assert flush acknowledgement.
+    cloudChannel.send(JSON.stringify({ type: "session.close" }));
+    result.closeRequestSent = true;
+  } catch {
+    result.closeRequestSent = false;
+    await finishCloseDrain(false);
+  }
+  await report();
+});
 document.querySelector("#cloud")!.addEventListener("click", async () => {
   if (cloudInput) return;
   cloudInput = crypto.randomUUID();
@@ -183,8 +227,11 @@ document.querySelector("#cloud")!.addEventListener("click", async () => {
     cloudPeer = new RTCPeerConnection();
     cloudStream.getAudioTracks().forEach(track => cloudPeer!.addTrack(track, cloudStream!));
     const channel = cloudPeer.createDataChannel("oai-events");
+    cloudChannel = channel;
+    channel.onclose = () => { if (closeDrainPending) void finishCloseDrain(true); };
     channel.onopen = () => {
       result.dataChannelOpen=true;
+      (document.querySelector("#close-drain") as HTMLButtonElement).disabled = !result.syntheticOnly;
       void report();
       if(result.syntheticOnly)void sendFixture();
     };
@@ -192,6 +239,7 @@ document.querySelector("#cloud")!.addEventListener("click", async () => {
       try {
         const data = JSON.parse(String(event.data));
         recordFrameLinkage(data);
+        if (data.type === "session.closed" && closeDrainPending) void finishCloseDrain(true);
         result.rawEventType = String(data.type ?? "unknown");
         result.rawRole = String(data.turn?.role ?? "none");
         result.rawTextLength = String((data.turn?.transcript ?? "").length);
@@ -203,6 +251,7 @@ document.querySelector("#cloud")!.addEventListener("click", async () => {
           result.finalMatchesFixture = (data.turn.transcript ?? "").includes("personal dashboard") && (data.turn.transcript ?? "").includes("tomorrow");
           finalTurns.set(data.turn.id,data.turn.transcript??"");
           result.finalCount=String(finalTurns.size);
+          if (closeDrainPending) result.closeDrainFinalCount = String(finalTurns.size);
           const aggregate=[...finalTurns.values()].join(" ");
           result.aggregateMatchesFixture=aggregate.toLowerCase().includes("personal dashboard")&&aggregate.toLowerCase().includes("tomorrow")&&aggregate.includes("三十");
           result.finalAfterFixtureCaptureStop=fixtureCaptureStopped;
@@ -232,7 +281,10 @@ document.querySelector("#cloud")!.addEventListener("click", async () => {
             result.sidebandFinalIdentity = !!event.itemId;
             document.querySelector("#preview")!.textContent = "User final segment received (body not displayed in diagnostic).";
           }
-          if (event.kind === "failed" || event.kind === "closed") result.serviceEnded = true;
+          if (event.kind === "failed" || event.kind === "closed") {
+            result.serviceEnded = true;
+            if (event.kind === "closed" && closeDrainPending) void finishCloseDrain(true);
+          }
         }
       } catch { result.failure = "dictation-connection-lost"; }
       finally { pending = false; await report(); }
@@ -254,6 +306,7 @@ async function sendFixture():Promise<void> {
   await fixtureContext.resume();
   const audio = await fixtureContext.decodeAudioData(new Uint8Array(bytes).buffer);
   const source = fixtureContext.createBufferSource();
+  fixtureSource = source;
   source.buffer = audio;
   fixtureDestination = fixtureContext.createMediaStreamDestination();
   source.connect(fixtureDestination);
