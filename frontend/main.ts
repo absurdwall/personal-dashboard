@@ -890,6 +890,9 @@ type DailyPlanAutomationView = Readonly<{
 type CollaborationVoiceStatusKey =
   | "collaboration.voiceIncomplete"
   | "collaboration.voiceLoginRequired"
+  | "collaboration.voiceConnectionFailed"
+  | "collaboration.voiceServiceFailed"
+  | "collaboration.voiceQuotaExceeded"
   | "collaboration.voiceConnecting"
   | "collaboration.voiceRequesting"
   | "collaboration.voiceRecording"
@@ -942,6 +945,8 @@ const collaborationDraftSaveTimers = new Map<string, number>();
 const collaborationTargetDates = new Map<string, string>();
 let activeCollaborationVoiceTarget: CollaborationVoiceTarget | null = null;
 const collaborationVoiceStatuses = new Map<string, CollaborationVoiceStatusKey>();
+const collaborationIncompleteVoiceDrafts = new Set<string>();
+const collaborationVoicePreviews = new Map<string, string>();
 const collaborationSendingDrafts = new Set<string>();
 
 const collaborationVoiceController = new CodexCollaborationVoiceInputController(
@@ -949,7 +954,10 @@ const collaborationVoiceController = new CodexCollaborationVoiceInputController(
   {
     onState: (state, target) => {
       activeCollaborationVoiceTarget = state === "idle" ? null : target;
-      if (state === "requesting") setCollaborationVoiceStatus(target, "collaboration.voiceRequesting");
+      if (state === "requesting") {
+        collaborationIncompleteVoiceDrafts.delete(collaborationDraftKey(target.sessionId, target.targetDate));
+        setCollaborationVoiceStatus(target, "collaboration.voiceRequesting");
+      }
       if (state === "connecting") setCollaborationVoiceStatus(target, "collaboration.voiceConnecting");
       if (state === "recording") setCollaborationVoiceStatus(target, "collaboration.voiceRecording");
       if (state === "transcribing") setCollaborationVoiceStatus(target, "collaboration.voiceTranscribing");
@@ -957,9 +965,14 @@ const collaborationVoiceController = new CodexCollaborationVoiceInputController(
     },
     onTranscript: handleCollaborationVoiceTranscript,
     onPreview: (target, text) => {
+      const key = collaborationDraftKey(target.sessionId, target.targetDate);
+      if (text) collaborationVoicePreviews.set(key,text); else collaborationVoicePreviews.delete(key);
       if (isCurrentCollaborationVoiceTarget(target)) setRawText(collaborationVoicePreview,text?t("collaboration.voicePreview",{text}):"");
     },
-    onIncomplete: (target) => setCollaborationVoiceStatus(target,"collaboration.voiceIncomplete"),
+    onIncomplete: (target) => {
+      collaborationIncompleteVoiceDrafts.add(collaborationDraftKey(target.sessionId, target.targetDate));
+      setCollaborationVoiceStatus(target,"collaboration.voiceIncomplete");
+    },
     onFailure: (target, failure) => {
       setCollaborationVoiceStatus(target, collaborationVoiceFailureStatus(failure));
       renderCollaborationVoiceControls();
@@ -2383,7 +2396,12 @@ function setCollaborationVoiceStatus(
   status: CollaborationVoiceStatusKey,
 ): void {
   collaborationVoiceStatuses.set(collaborationDraftKey(target.sessionId, target.targetDate), status);
-  if (isCurrentCollaborationVoiceTarget(target)) setCopy(collaborationVoiceStatus, status);
+  if (isCurrentCollaborationVoiceTarget(target)) setRawText(collaborationVoiceStatus, collaborationVoiceStatusText(target, status));
+}
+
+function collaborationVoiceStatusText(target: CollaborationVoiceTarget, status: CollaborationVoiceStatusKey): string {
+  const incomplete = collaborationIncompleteVoiceDrafts.has(collaborationDraftKey(target.sessionId, target.targetDate));
+  return t(status) + (incomplete && status !== "collaboration.voiceIncomplete" ? "\n" + t("collaboration.voiceIncomplete") : "");
 }
 
 function collaborationVoiceFailureStatus(failure: CollaborationVoiceFailure): CollaborationVoiceStatusKey {
@@ -2394,7 +2412,9 @@ function collaborationVoiceFailureStatus(failure: CollaborationVoiceFailure): Co
     case "empty-recording": return "collaboration.voiceEmptyRecording";
     case "recognition-failed": return "collaboration.voiceRecognitionFailed";
     case "login-required": return "collaboration.voiceLoginRequired";
-    case "connection-failed": return "collaboration.voiceRecognitionFailed";
+    case "connection-failed": return "collaboration.voiceConnectionFailed";
+    case "service-failed": return "collaboration.voiceServiceFailed";
+    case "quota-exceeded": return "collaboration.voiceQuotaExceeded";
   }
 }
 
@@ -2406,11 +2426,13 @@ function renderCollaborationVoiceControls(): void {
   const status=target?collaborationVoiceStatuses.get(key):undefined;
   const activeHere=target&&activeCollaborationVoiceTarget&&
     collaborationDraftKey(activeCollaborationVoiceTarget.sessionId,activeCollaborationVoiceTarget.targetDate)===key;
+  const preview = activeHere ? collaborationVoicePreviews.get(key) : undefined;
+  setRawText(collaborationVoicePreview,preview?t("collaboration.voicePreview",{text:preview}):"");
   if(state!=="idle"&&activeHere) {
     setCopy(collaborationVoiceStatus,state==="requesting"?"collaboration.voiceRequesting":state==="connecting"?"collaboration.voiceConnecting":state==="recording"?"collaboration.voiceRecording":"collaboration.voiceTranscribing");
   } else if(state!=="idle"&&activeCollaborationVoiceTarget) {
     setRawText(collaborationVoiceStatus,t("collaboration.voiceProcessingOrigin",{date:activeCollaborationVoiceTarget.targetDate}));
-  } else if(status) setCopy(collaborationVoiceStatus,status);
+  } else if(status && target) setRawText(collaborationVoiceStatus,collaborationVoiceStatusText(target,status));
   else setRawText(collaborationVoiceStatus,"");
   const stop=state==="recording";
   const label=t(stop?"collaboration.voiceStop":"collaboration.voiceStart");
@@ -2473,9 +2495,7 @@ function handleCollaborationVoiceTranscript(target: CollaborationVoiceTarget, te
 }
 
 function cancelCollaborationVoiceCaptureForSelectionChange(): void {
-  const state=collaborationVoiceController.state;
-  if(state==="requesting"||state==="connecting")collaborationVoiceController.cancel();
-  if(state==="recording")collaborationVoiceController.stop();
+  collaborationVoiceController.navigate();
 }
 
 async function startOrStopCollaborationVoice(): Promise<void> {
@@ -10435,12 +10455,23 @@ collaborationContinuitySaveButton?.addEventListener("click", () => {
   void saveCollaborationContinuityNote();
 });
 
+// macOS closes the window by hiding it, so unload alone cannot stop capture.
+window.addEventListener("personal-dashboard-closing", (event) => {
+  collaborationVoiceController.close();
+  if ((event as CustomEvent<{ quitting?: boolean }>).detail?.quitting) {
+    // Let the existing original-target queue settle within the native bounded
+    // exit grace period. Neither an IPC result nor a late tail is guaranteed.
+    void Promise.allSettled([...collaborationDraftWrites.values()]).then(() =>
+      window.__TAURI__.core.invoke("collaboration_dictation_close_ready").catch(() => undefined));
+  }
+});
+window.addEventListener("beforeunload", () => collaborationVoiceController.close());
+
 collaborationVoiceStartButton?.addEventListener("click", () => {
   startOrStopCollaborationVoice();
 });
 
 collaborationVoiceCancelButton?.addEventListener("click", () => {
-  cancelCollaborationVoiceCaptureForSelectionChange();
   collaborationVoiceController.cancel();
   renderCollaborationVoiceControls();
   collaborationMessageDraft?.focus();

@@ -298,6 +298,42 @@ async fn collaboration_dictation_stop(
         .map_err(|_| "dictation-runtime-unavailable")?
 }
 
+// Only app exit uses this bounded acknowledgement. Hiding a window merely
+// closes the current input; it must leave the reusable dictation manager alive.
+#[derive(Default)]
+struct DictationExitHandoff {
+    exiting: std::sync::atomic::AtomicBool,
+    ready: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>>,
+}
+
+#[tauri::command]
+fn collaboration_dictation_close_ready(state: State<'_, DictationExitHandoff>) {
+    if let Ok(mut ready) = state.ready.lock() {
+        if let Some(sender) = ready.take() { let _ = sender.send(()); }
+    }
+}
+
+fn request_dictation_exit(app: &tauri::AppHandle, api: &tauri::ExitRequestApi) {
+    let handoff = app.state::<DictationExitHandoff>();
+    if handoff.exiting.swap(true, std::sync::atomic::Ordering::SeqCst) { return; }
+    api.prevent_exit();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    if let Ok(mut ready) = handoff.ready.lock() { *ready = Some(sender); }
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.eval("window.dispatchEvent(new CustomEvent('personal-dashboard-closing', {detail:{quitting:true}}))");
+    }
+    let app = app.clone();
+    // A background bounded receive does not block the window/event loop. The
+    // frontend stops tracks synchronously, then acknowledges its draft queue.
+    // Hung/absent frontend still exits; this is best-effort persistence only.
+    std::thread::spawn(move || {
+        let _ = receiver.recv_timeout(std::time::Duration::from_millis(1_000));
+        let _ = app.state::<collaboration::CollaborationApplication>().shutdown();
+        app.state::<collaboration::DictationApplication>().shutdown();
+        app.exit(0);
+    });
+}
+
 #[tauri::command]
 fn collaboration_save_draft(
     application: State<'_, collaboration::CollaborationApplication>,
@@ -807,6 +843,7 @@ pub fn run() {
                     appearance_background_directory,
                 ),
             ));
+            app.manage(DictationExitHandoff::default());
             app.manage(InterfaceLanguageApplication::new(
                 FileInterfaceLanguagePersistence::new(interface_language_file),
             ));
@@ -818,6 +855,9 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
+                if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
+                    let _ = webview.eval("window.dispatchEvent(new CustomEvent('personal-dashboard-closing', {detail:{quitting:false}}))");
+                }
                 let _ = window.hide();
             }
         })
@@ -840,6 +880,7 @@ pub fn run() {
             collaboration_dictation_start,
             collaboration_dictation_poll,
             collaboration_dictation_stop,
+            collaboration_dictation_close_ready,
             collaboration_save_draft,
             collaboration_set_target_date,
             collaboration_stop_run,
@@ -911,6 +952,7 @@ pub fn run() {
         collaboration_dictation_start,
         collaboration_dictation_poll,
         collaboration_dictation_stop,
+        collaboration_dictation_close_ready,
         collaboration_save_draft,
         collaboration_set_target_date,
         collaboration_stop_run,
@@ -968,13 +1010,8 @@ pub fn run() {
 
     #[cfg(target_os = "macos")]
     application.run(|app_handle, event| {
-        if matches!(&event, RunEvent::ExitRequested { .. }) {
-            let _ = app_handle
-                .state::<collaboration::CollaborationApplication>()
-                .shutdown();
-            app_handle
-                .state::<collaboration::DictationApplication>()
-                .shutdown();
+        if let RunEvent::ExitRequested { api, .. } = &event {
+            request_dictation_exit(app_handle, api);
         }
         if let RunEvent::Reopen {
             has_visible_windows: false,
@@ -990,13 +1027,8 @@ pub fn run() {
 
     #[cfg(not(target_os = "macos"))]
     application.run(|app_handle, event| {
-        if matches!(&event, RunEvent::ExitRequested { .. }) {
-            let _ = app_handle
-                .state::<collaboration::CollaborationApplication>()
-                .shutdown();
-            app_handle
-                .state::<collaboration::DictationApplication>()
-                .shutdown();
+        if let RunEvent::ExitRequested { api, .. } = &event {
+            request_dictation_exit(app_handle, api);
         }
     });
 }
