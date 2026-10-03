@@ -5439,7 +5439,8 @@ EOF
     fail "late completion did not persist a completed state"
   wait_for_task_property "$tasks_a" "late-task" "date" "2026-09-07" ||
     fail "late completion moved the scheduled task date"
-  run_driver wait-active-text "已完成" 20
+  run_driver select-contains "已完成" 10
+  run_driver wait-active-text "$late_task" 20
   run_driver press-contains "详情 · $late_task" 10
   run_driver type-text "实际完成日期 · $late_task|2026-09-07" 10
   run_driver type-text "实际完成时刻（可空） · $late_task|18:30" 10
@@ -5471,7 +5472,7 @@ EOF
     fail "restored task did not clear its tombstone"
 
   current_step="verifying list archive and restore without changing task state"
-  run_driver select-contains "全部未删除" 10
+  run_driver select-contains "待办与历史" 10
   run_driver press "新建清单" 10
   run_driver press "归档清单" 10
   wait_for_list_property "$tasks_a" "focus-list" "archived" "true" ||
@@ -5598,6 +5599,8 @@ EOF
   run_driver assert-size "640x520" 10
   run_driver press "Tasks" 10
   run_driver press "New task" 10
+  run_driver assert-active-absent-text "$shared_task"
+  run_driver press-contains "Completed and abandoned" 10
   run_driver wait-active-text "$shared_task" 20
   run_driver assert-active-text "New task name"
   run_driver assert-active-text "Add to Inbox"
@@ -5614,6 +5617,8 @@ EOF
   run_driver assert-active-text "$shared_task"
   run_driver capture-window "$capture_directory/product-en-calendar-narrow.png" 10
   run_driver press "Today" 10
+  run_driver assert-active-absent-text "$shared_task"
+  run_driver press-contains "Completed ·" 10
   run_driver wait-active-text "$shared_task" 20
   run_driver assert-active-text "Today tasks"
   run_driver assert-active-text "Overdue pending"
@@ -5630,9 +5635,10 @@ EOF
   launch_app_waiting_for_text "$record_marker" 30
   run_driver press "Tasks" 10
   run_driver wait-active-text "$new_task" 20
-  run_driver assert-active-text "$shared_task"
-  run_driver assert-active-text "Completed"
+  run_driver assert-active-absent-text "$shared_task"
+  run_driver assert-active-text "Completed and abandoned"
   run_driver select-contains "Completed" 10
+  run_driver assert-active-text "$shared_task"
   run_driver wait-active-text "$late_task" 20
   run_driver press-contains "Details · $late_task" 10
   run_driver assert-active-text "Task date: Mon, Sep 7 · 09:00"
@@ -5662,7 +5668,7 @@ EOF
   run_driver assert-active-text "Pending"
 
   current_step="proving a bounded external task change retains a recoverable draft"
-  run_driver select-contains "All active" 10
+  run_driver select-contains "Pending and history" 10
   run_driver press "New task" 10
   run_driver type-text "New task name|Conflict draft preserved after refresh" 10
   /bin/cp "$tasks_a" "$external_candidate"

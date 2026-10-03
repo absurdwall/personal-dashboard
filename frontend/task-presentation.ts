@@ -451,3 +451,38 @@ export function taskListMutationConfirmed(
 ): boolean {
   return responseIsCurrent && (viewState === "ready" || viewState === "empty") && listFound;
 }
+
+/** Ended work is history, never a pending row, even in the default All view. */
+export function taskDisplaySections<T extends Readonly<{ state: string }>>(
+  tasks: readonly T[],
+  stateFilter: TaskStateFilter,
+): Readonly<{ main: readonly T[]; history: readonly T[] }> {
+  return stateFilter === "all"
+    ? { main: tasks.filter(task => task.state === "pending"), history: tasks.filter(task => task.state !== "pending") }
+    : { main: tasks, history: [] };
+}
+
+export function taskHistoryDate(task: Readonly<{
+  state: string;
+  completion: Readonly<{ completedOn: string }> | null;
+  changes?: readonly Readonly<{ kind: string; changedAt: string }>[];
+}>): string | null {
+  if (task.state === "completed") return task.completion?.completedOn ?? null;
+  return [...(task.changes ?? [])].reverse().find(change => change.kind === "abandoned")?.changedAt.slice(0, 10) ?? null;
+}
+
+export function taskHistoryGroups<T extends Parameters<typeof taskHistoryDate>[0]>(
+  tasks: readonly T[],
+  limit: number,
+): readonly Readonly<{ date: string | null; tasks: readonly T[] }>[] {
+  const sorted = tasks.map((task, index) => ({ task, index, date: taskHistoryDate(task) }))
+    .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "") || a.index - b.index)
+    .slice(0, limit);
+  const groups: { date: string | null; tasks: T[] }[] = [];
+  for (const entry of sorted) {
+    const last = groups.at(-1);
+    if (last && last.date === entry.date) last.tasks.push(entry.task);
+    else groups.push({ date: entry.date, tasks: [entry.task] });
+  }
+  return groups;
+}

@@ -9659,3 +9659,7 @@ button.habit-cell:focus-visible {
   outline-offset: 2px;
 }
 .today-continuous-axis { overflow-anchor: none; }
+
+.task-ended-history { margin-top: 16px; border-top: 1px solid var(--parity-border); padding-top: 12px; }
+.task-ended-history > summary { cursor: pointer; color: var(--parity-muted); font-size: 13px; }
+.task-history-date-group > h4 { font-size: 12px; color: var(--parity-muted); margin: 16px 0 8px; }

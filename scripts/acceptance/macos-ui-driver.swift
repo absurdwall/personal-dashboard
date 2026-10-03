@@ -3518,12 +3518,12 @@ func selectOption(
             ? "月份"
             : nil
     let taskStateOption = Set([
-        "全部未删除",
+        "待办与历史",
         "待办",
         "已完成",
         "已放弃",
         "已删除",
-        "All active",
+        "Pending and history",
         "Pending",
         "Completed",
         "Abandoned",
@@ -3799,6 +3799,18 @@ func findVisibleMenu(_ application: AXUIElement) -> AXUIElement? {
 }
 
 func findMenuItem(_ menu: AXUIElement, _ text: String) -> AXUIElement? {
+    // Prefer an exact option so Pending does not select Pending and history.
+    var exactMatch: AXUIElement?
+    _ = walk(menu) { element in
+        guard stringAttribute(element, "AXRole") == "AXMenuItem",
+              nodeText(element).trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(text) == .orderedSame else {
+            return false
+        }
+        exactMatch = element
+        return true
+    }
+    if let exactMatch { return exactMatch }
     var match: AXUIElement?
     _ = walk(menu) { element in
         guard stringAttribute(element, "AXRole") == "AXMenuItem",
