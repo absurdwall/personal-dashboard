@@ -197,9 +197,10 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
             const terminal = raw as {error?:unknown;failure?:unknown;reason?:unknown};
             // A terminal can report provider failure even after our close.
             // Unknown reasons are not acknowledgements; never surface their
-            // arbitrary payloads as UI text or diagnostics.
+            // arbitrary payloads as UI text or diagnostics. client_request is
+            // the successful close reason observed in the packaged v3 probe.
             if (terminal.error != null || terminal.failure != null ||
-                (terminal.reason != null && terminal.reason !== "" && terminal.reason !== "close_requested")) {
+                (terminal.reason != null && terminal.reason !== "" && terminal.reason !== "client_request")) {
               fail("dictation-service-failed");
               return;
             }
