@@ -9,4 +9,8 @@ Candidate bundles stay in temporary `.noindex` directories. This work does not r
 
 ## Current evidence
 
-Implementation started; packaged runtime gate and all acceptance criteria pending.
+- Base: `55f2955` (current `origin/main` at implementation start).
+- Baseline frontend suite: 200 tests passed before implementation.
+- Initial packaged capability probe: `tauri://localhost` is a secure context; live microphone capture, `RTCPeerConnection`, `createOffer` and `setLocalDescription` passed. Capture and peer were released after the probe. This probe used isolated app data and did not access a Vault or account.
+- Cloud SDP exchange, user transcription, draft behavior, restricted-thread integration, human speech quality and full acceptance remain pending. Local offer success does not complete ticket #45.
+- A restricted temporary thread must explicitly disable filesystem/execution environments, external apps/MCP/plugins, agents and web tools; prompt text is not an execution boundary. Harmless built-in utilities must remain isolated from formal Collaboration messages and operations.
