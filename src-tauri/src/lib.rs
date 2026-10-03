@@ -152,6 +152,17 @@ fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), Str
         "syntheticAudioContextState",
         "syntheticOutboundPackets",
         "nativeMicrophoneRequestOutcome",
+        "previewValidTimingCount",
+        "finalValidTimingCount",
+        "previewInvalidTimingCount",
+        "finalInvalidTimingCount",
+        "timingContainedPairCount",
+        "timingOverlapPairCount",
+        "timingExactBoundaryPairCount",
+        "timingContainedPreviewCount",
+        "timingAllPreviewsContained",
+        "timingMultipleFinalMatches",
+        "timingRowsTruncated",
     ];
     let mut filtered: serde_json::Map<String, serde_json::Value> = result
         .as_object()
@@ -163,6 +174,25 @@ fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), Str
         })
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
+    // Raw timing numbers are accepted only for an explicitly configured synthetic fixture.
+    // Reconstruct every row from three known numeric fields; never copy a payload object.
+    if std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE").is_some()
+        && result.get("syntheticOnly").and_then(serde_json::Value::as_bool) == Some(true)
+    {
+        for (key, limit) in [("syntheticPreviewTimingRows", 64), ("syntheticFinalTimingRows", 32)] {
+            if let Some(rows) = result.get(key).and_then(serde_json::Value::as_array) {
+                let safe_rows: Vec<serde_json::Value> = rows.iter().take(limit).filter_map(|row| {
+                    let start = row.get("startMs")?.as_f64()?;
+                    let end = row.get("endMs")?.as_f64()?;
+                    let ordinal = row.get("arrivalOrdinal")?.as_u64()?;
+                    if !start.is_finite() || !end.is_finite() || start.abs() > 86_400_000.0
+                        || end.abs() > 86_400_000.0 || ordinal > 10_000 { return None; }
+                    Some(serde_json::json!({ "startMs": start, "endMs": end, "arrivalOrdinal": ordinal }))
+                }).collect();
+                filtered.insert(key.into(), safe_rows.into());
+            }
+        }
+    }
     #[cfg(target_os = "macos")]
     {
         // Read-only authorization metadata in this explicitly gated process.

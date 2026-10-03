@@ -1,4 +1,5 @@
-type GateResult = Record<string, boolean | string | number>;
+type TimingRow = { startMs: number; endMs: number; arrivalOrdinal: number };
+type GateResult = Record<string, boolean | string | number | TimingRow[]>;
 const result: GateResult = {
   origin: location.origin,
   secureContext: isSecureContext,
@@ -53,11 +54,66 @@ const previewIds=new Set<string>();
 const finalIds=new Set<string>();
 const previewReferences=new Set<string>();
 const finalReferences=new Set<string>();
+const previewTimings: TimingRow[] = [];
+const finalTimings: TimingRow[] = [];
+let timingOrdinal = 0;
+let invalidPreviewTiming = 0;
+let invalidFinalTiming = 0;
+function recordFrameTiming(data: Record<string, any>, preview: boolean): void {
+  // Only called for the configured synthetic source. Never retains identifiers/bodies.
+  const source = preview ? data : data.turn;
+  const startMs = source?.start_ms;
+  const endMs = source?.end_ms;
+  const valid = typeof startMs === "number" && typeof endMs === "number"
+    && Number.isFinite(startMs) && Number.isFinite(endMs)
+    && startMs >= 0 && endMs >= startMs && endMs <= 86_400_000;
+  timingOrdinal += 1;
+  if (!valid) {
+    if (preview) invalidPreviewTiming += 1; else invalidFinalTiming += 1;
+  }
+  const rows = preview ? previewTimings : finalTimings;
+  // Preserve bounded raw numeric intervals, including bounded invalid ranges, for diagnosis.
+  if (rows.length < (preview ? 64 : 32) && typeof startMs === "number" && typeof endMs === "number"
+      && Number.isFinite(startMs) && Number.isFinite(endMs)
+      && Math.abs(startMs) <= 86_400_000 && Math.abs(endMs) <= 86_400_000 && timingOrdinal <= 10_000) {
+    rows.push({ startMs, endMs, arrivalOrdinal: timingOrdinal });
+  }
+  const validRows = (items: TimingRow[]) => items.filter(row => row.startMs >= 0 && row.endMs >= row.startMs);
+  const previews = validRows(previewTimings);
+  const finals = validRows(finalTimings);
+  let containedPairs = 0, overlapPairs = 0, exactPairs = 0, multipleFinalMatches = false;
+  let containedPreviews = 0;
+  for (const p of previews) {
+    let matches = 0;
+    for (const f of finals) {
+      if (p.startMs >= f.startMs && p.endMs <= f.endMs) { containedPairs += 1; matches += 1; }
+      if (Math.max(p.startMs, f.startMs) < Math.min(p.endMs, f.endMs)) overlapPairs += 1;
+      if (p.startMs === f.startMs && p.endMs === f.endMs) exactPairs += 1;
+    }
+    if (matches > 0) containedPreviews += 1;
+    if (matches > 1) multipleFinalMatches = true;
+  }
+  result.syntheticPreviewTimingRows = previewTimings;
+  result.syntheticFinalTimingRows = finalTimings;
+  result.previewValidTimingCount = String(previews.length);
+  result.finalValidTimingCount = String(finals.length);
+  result.previewInvalidTimingCount = String(invalidPreviewTiming);
+  result.finalInvalidTimingCount = String(invalidFinalTiming);
+  result.timingContainedPairCount = String(containedPairs);
+  result.timingOverlapPairCount = String(overlapPairs);
+  result.timingExactBoundaryPairCount = String(exactPairs);
+  result.timingContainedPreviewCount = String(containedPreviews);
+  result.timingAllPreviewsContained = previews.length > 0 && containedPreviews === previews.length;
+  result.timingMultipleFinalMatches = multipleFinalMatches;
+  result.timingRowsTruncated = timingOrdinal > previewTimings.length + finalTimings.length
+    + invalidPreviewTiming + invalidFinalTiming;
+}
 function recordFrameLinkage(data:Record<string,any>):void {
   if(!result.syntheticOnly)return;
   const preview=data.type==="input_transcript.added";
   const final=data.type==="turn.done"&&data.turn?.role==="user";
   if(!preview&&!final)return;
+  recordFrameTiming(data, preview);
   const item=preview?data.item:data.turn;
   if(!item||typeof item!=="object")return;
   const fields=(value:Record<string,unknown>)=>Object.keys(value).filter(key=>/^[a-zA-Z_]{1,40}$/.test(key)).sort().slice(0,32).join(",").slice(0,120);
