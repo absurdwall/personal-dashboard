@@ -8,6 +8,14 @@ After trying the normal candidate, the user reported approximately two minutes o
 
 Two requested UI follow-ups are in scope: make initialization/connection distinct from the point at which speech can actually be received, and make the Stop square visible against its active button background. Startup can take several seconds, so the nearby state must say to wait before speaking and announce recording readiness only at the existing connected gate. Recognition errors were discussed as service limitations, with no raw recording retained to diagnose individual mistakes.
 
+### UI follow-up accepted by the user
+
+UI commit `a23b798` preserves the existing controller/runtime and moves the one live status node into the input's voice controls. Requesting/connecting/finalizing use a waiting badge and reduced-motion-aware spinner; recording uses a dark-green badge with contrasting text saying “正在录音，可以说话” / “Recording · You can speak”. The Stop SVG square now uses the button's contrasting foreground rather than the same accent color as its background; explicit SVG dimensions retain visibility. No provider, recognition logic, recording-ready gate or duration policy changed.
+
+The package built from source `4c8476eea2a3a3b180f5cd3f82c1a65564cb7984`, executable SHA-256 `aa57e4f9443541ed98dff5042ef2c1bae43d8f0a7e4b0214c39279075edc4cc5`, passed build/signature checks. 281 frontend tests and independent source review passed. CUA observed the loading badge/spinner in the normal packaged input. Physical-microphone initialization again stayed pending during the automated check; it was cancelled. Subsequent UI actions were blocked because the user changed the app, so automation stopped. Recording-state visual acceptance is supplied by the user's subsequent direct report that the updated candidate worked very well, passed and was satisfactory; it is not claimed as a CUA recording screenshot.
+
+The candidate remains open, with user-authored drafts preserved and the daily installation unchanged. Two rounds of direct feedback now establish user satisfaction with the approximately two-minute mixed-language dictation, live preview/Stop and the requested readiness/Stop-icon refinements. Individually unreported fault/navigation, exact timed duration, proper-name, post-dictation relaunch and edit/manual-Send scenarios remain explicitly outside this reported evidence. This update does not merge the PR or replace the daily installation.
+
 ## Continuation after the initial handoff
 
 The earlier candidate's repeat microphone loop reached Recording in three seconds and cancelled successfully. A separate CUA Start/Cancel check reached the connected Dictating state. Neither check establishes human recognition quality. The previously observed pending permission is no longer a current blocker; its original cause was not established and no global privacy change was made.
