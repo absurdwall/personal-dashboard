@@ -1,6 +1,6 @@
 # 01: 收起 Task 已完成历史
 
-Status: ready-for-human
+Status: resolved
 Type: task
 Blocked by: None
 
@@ -16,7 +16,7 @@ Blocked by: None
 
 ## Answer
 
-实现完成，候选等待用户审阅与日用安装授权：
+实现完成，并已更新日用安装：
 
 - 默认主区只保留待办；完成／放弃保存后立即移入默认折叠历史，侧栏统计待办。
 - Tasks 历史按真实完成日期／最后一次放弃日期倒序分组，未知日期不补造；每次显示 30 项。
@@ -28,4 +28,6 @@ Blocked by: None
 
 原生 Computer Use 直接验证：隔离 Vault 的 2 个待办和 35 个历史；完成后 1 待办／36 折叠历史；展开按日期分组，查看更多追加余下 6 项；重开同一任务恢复待办；放弃后收起，历史可恢复；Today 打勾后收起且保留逾期；独立 Completed 筛选与英文默认文案；重启并将仅该进程的合成时钟推进到下一天后旧完成项退出 Today、逾期待办保留。合成正本中保留 completed/reopened/completed 与 abandoned/restored 变更链。
 
-日用 `/Applications/Personal Dashboard.app` 未替换，真实 Vault／profile 未修改。完整旧 `dashboard-4` 脚本未运行，本次原生验证使用 CUA。无 Dida365 写入、自动化或语音修改。
+日用 `/Applications/Personal Dashboard.app` 已替换并重启；在现有 Vault 只读确认主区 2 个待办、默认关闭的历史 6 项。任务正本、28 个 Daily Record 与 3 个设置文件共 32 项哈希完全一致。旧程序已保存到 `Documents/Codex/backups/personal-dashboard-before-task-history-2026-10-03.zip` 并通过压缩包完整性与旧程序指纹检查。真实任务没有进行完成或恢复测试。完整旧 `dashboard-4` 脚本未运行，本次原生验证使用 CUA。无 Dida365 写入、自动化或语音修改。
+
+日用新程序 SHA-256：`75c962632e1dfd7949e6bef42415196d56ef3f89fb2e79d225a09aee95cdb8f3`；版本保持 4.0.4。代码通过 [PR #42](https://github.com/absurdwall/personal-dashboard/pull/42) 合并路径。用户主观使用验收未代替为自动通过。
