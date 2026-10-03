@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 #[cfg(target_os = "macos")]
 use tauri::WindowEvent;
-use tauri::{AppHandle, Manager, RunEvent, State};
+use tauri::{Manager, RunEvent, State};
 
 pub mod appearance;
 pub mod backup;
@@ -25,7 +25,6 @@ pub mod profile;
 pub mod task_adapter;
 pub mod tasks;
 pub mod today;
-pub mod voice_input;
 
 #[tauri::command]
 fn collaboration_voice_gate_fixture() -> Result<Vec<u8>, String> {
@@ -96,25 +95,6 @@ fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), Str
         serde_json::to_vec_pretty(&filtered).map_err(|_| "Could not encode gate metadata")?,
     )
     .map_err(|_| "Could not save gate metadata".to_string())
-}
-
-fn voice_helper_path(app_handle: &AppHandle) -> Option<std::path::PathBuf> {
-    if let Ok(resource_directory) = app_handle.path().resource_dir() {
-        let packaged_helper = resource_directory.join("personal-dashboard-voice-helper");
-        if packaged_helper.is_file() {
-            return Some(packaged_helper);
-        }
-    }
-
-    #[cfg(all(target_os = "macos", debug_assertions))]
-    if let Some(development_helper) = option_env!("PERSONAL_DASHBOARD_VOICE_HELPER_PATH") {
-        let development_helper = std::path::PathBuf::from(development_helper);
-        if development_helper.is_file() {
-            return Some(development_helper);
-        }
-    }
-
-    None
 }
 
 use appearance::{
@@ -316,38 +296,6 @@ async fn collaboration_dictation_stop(
     tauri::async_runtime::spawn_blocking(move || application.stop_dictation(&input_id))
         .await
         .map_err(|_| "dictation-runtime-unavailable")?
-}
-
-#[tauri::command]
-fn collaboration_voice_capabilities(
-    application: State<'_, voice_input::VoiceInputApplication>,
-) -> voice_input::VoiceInputCapabilitiesView {
-    application.capabilities()
-}
-
-#[tauri::command]
-async fn collaboration_voice_authorize(
-    application: State<'_, voice_input::VoiceInputApplication>,
-) -> Result<bool, String> {
-    let application = application.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || application.authorize())
-        .await
-        .map_err(|error| format!("voice_permission_task_failed: {error}"))?
-}
-
-#[tauri::command]
-async fn collaboration_transcribe_voice(
-    application: State<'_, voice_input::VoiceInputApplication>,
-    audio: Vec<u8>,
-    mime_type: String,
-    locale: String,
-) -> Result<String, String> {
-    let application = application.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        application.transcribe(&audio, &mime_type, &locale)
-    })
-    .await
-    .map_err(|error| format!("voice_task_failed: {error}"))?
 }
 
 #[tauri::command]
@@ -847,9 +795,6 @@ pub fn run() {
             collaboration_application
                 .start_daily_plan_automation_scheduler()
                 .map_err(std::io::Error::other)?;
-            app.manage(voice_input::VoiceInputApplication::new_local(
-                voice_helper_path(&app_handle),
-            ));
             app.manage(TaskApplication::new(
                 FileTodayWorkspacePersistence::new(today_workspace_file),
                 SystemClock,
@@ -895,9 +840,6 @@ pub fn run() {
             collaboration_dictation_start,
             collaboration_dictation_poll,
             collaboration_dictation_stop,
-            collaboration_voice_capabilities,
-            collaboration_voice_authorize,
-            collaboration_transcribe_voice,
             collaboration_save_draft,
             collaboration_set_target_date,
             collaboration_stop_run,
@@ -969,9 +911,6 @@ pub fn run() {
         collaboration_dictation_start,
         collaboration_dictation_poll,
         collaboration_dictation_stop,
-        collaboration_voice_capabilities,
-        collaboration_voice_authorize,
-        collaboration_transcribe_voice,
         collaboration_save_draft,
         collaboration_set_target_date,
         collaboration_stop_run,
