@@ -70,7 +70,9 @@ export type CollaborationVoiceFailure =
   | "recording-failed"
   | "empty-recording"
   | "recognition-failed"
-  | "locale-unavailable";
+  | "locale-unavailable"
+  | "login-required"
+  | "connection-failed";
 
 export interface CollaborationVoiceRecording {
   start(onComplete: (audio: Blob) => void, onFailure: (error: unknown) => void): void;
