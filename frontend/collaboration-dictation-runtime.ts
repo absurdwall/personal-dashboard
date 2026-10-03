@@ -1,6 +1,7 @@
 export type CodexDictationEvent = Readonly<{
   inputId: string;
-  kind: "preview" | "final" | "failed";
+  kind: "preview" | "final" | "failed" | "phase";
+  phase?: "connecting";
   itemId?: string;
   role?: "user";
   text?: string;
@@ -22,7 +23,8 @@ export function parseCodexDictationEvent(inputId: string, value: unknown): Codex
   if (!value || typeof value !== "object") return undefined;
   const data = value as {type?: unknown;item?: {id?: unknown;text?: unknown};turn?: {id?: unknown;role?: unknown;transcript?: unknown}};
   if (data.type === "input_transcript.added" && typeof data.item?.text === "string") {
-    return {inputId,kind:"preview",role:"user",itemId:typeof data.item.id === "string" ? data.item.id : undefined,text:data.item.text};
+    if (typeof data.item.id !== "string" || !data.item.id) return {inputId,kind:"failed",failure:"dictation-transcript-identity-unavailable"};
+    return {inputId,kind:"preview",role:"user",itemId:data.item.id,text:data.item.text};
   }
   if (data.type === "turn.done" && data.turn?.role === "user" && typeof data.turn.transcript === "string") {
     if (typeof data.turn.id !== "string" || !data.turn.id) return {inputId,kind:"failed",failure:"dictation-transcript-identity-unavailable"};
@@ -46,10 +48,14 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
     let stopRequested = false;
     let captureStopped = false;
     let finalAfterStop = false;
+    const finalIds = new Set<string>();
+    const previewIds = new Set<string>();
+    const sealedPreviewIds = new Set<string>();
     let pendingPreview = false;
     let failed = false;
     let finishWait: (() => void) | undefined;
     let startSettled = false;
+    let rejectConnecting: (() => void) | undefined;
     const stopCapture = () => {
       captureStopped = true;
       stream?.getTracks().forEach(track => track.stop());
@@ -57,6 +63,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
     const cleanup = async () => {
       if (disposed) return;
       disposed = true;
+      rejectConnecting?.();
       stopCapture();
       if (pollTimer) clearInterval(pollTimer);
       if (peer) {
@@ -79,6 +86,8 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
     try {
       stream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
       if (signal.aborted || stopRequested) { stopCapture(); throw new DOMException("Cancelled", "AbortError"); }
+      onEvent({inputId,kind:"phase",phase:"connecting"});
+      if (disposed || signal.aborted) { stopCapture(); throw new DOMException("Cancelled", "AbortError"); }
       peer = new RTCPeerConnection();
       stream.getAudioTracks().forEach(track => peer!.addTrack(track,stream!));
       const channel = peer.createDataChannel("oai-events");
@@ -88,8 +97,14 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
           const event = parseCodexDictationEvent(inputId,JSON.parse(String(message.data)));
           if (!event) return;
           if (event.kind === "failed") { fail(event.failure ?? "dictation-service-failed"); return; }
-          if (event.kind === "preview") pendingPreview = true;
-          if (event.kind === "final") {
+          if (event.kind === "preview" && event.itemId && !sealedPreviewIds.has(event.itemId)) {
+            previewIds.add(event.itemId);
+            pendingPreview = true;
+          }
+          if (event.kind === "final" && event.itemId && !finalIds.has(event.itemId)) {
+            finalIds.add(event.itemId);
+            for (const id of previewIds) sealedPreviewIds.add(id);
+            previewIds.clear();
             pendingPreview = false;
             if (captureStopped) finalAfterStop = true;
           }
@@ -113,14 +128,27 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
       await peer.setRemoteDescription({type:"answer",sdp:answer.sdp});
       // The data channel is the actual connected gate; accepting SDP alone is
       // insufficient to announce recording readiness.
-      await new Promise<void>((resolve,reject) => {
+      await new Promise<void>((resolve, reject) => {
+        if (disposed || failed || signal.aborted) {
+          reject(new DOMException("Cancelled", "AbortError"));
+          return;
+        }
         if (channel.readyState === "open") { resolve(); return; }
-        const timer = setTimeout(() => reject(new Error("dictation-connection-timeout")),15_000);
-        channel.onopen = () => {clearTimeout(timer);resolve();};
-        const onAbort = () => {clearTimeout(timer);reject(new DOMException("Cancelled","AbortError"));};
-        signal.addEventListener("abort",onAbort,{once:true});
-        channel.addEventListener("open",() => signal.removeEventListener("abort",onAbort),{once:true});
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const settle = (error?: Error) => {
+          if (timer) clearTimeout(timer);
+          signal.removeEventListener("abort", onAbort);
+          channel.onopen = null;
+          rejectConnecting = undefined;
+          if (error) reject(error); else resolve();
+        };
+        const onAbort = () => settle(new DOMException("Cancelled", "AbortError"));
+        rejectConnecting = onAbort;
+        timer = setTimeout(() => settle(new Error("dictation-connection-timeout")), 15_000);
+        channel.onopen = () => settle();
+        signal.addEventListener("abort", onAbort, {once:true});
       });
+      if (disposed || failed || signal.aborted) throw new DOMException("Cancelled", "AbortError");
       let polling = false;
       pollTimer = setInterval(async () => {
         if (disposed || polling) return;

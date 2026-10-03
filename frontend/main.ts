@@ -890,6 +890,7 @@ type DailyPlanAutomationView = Readonly<{
 type CollaborationVoiceStatusKey =
   | "collaboration.voiceIncomplete"
   | "collaboration.voiceLoginRequired"
+  | "collaboration.voiceConnecting"
   | "collaboration.voiceRequesting"
   | "collaboration.voiceRecording"
   | "collaboration.voiceTranscribing"
@@ -949,13 +950,14 @@ const collaborationVoiceController = new CodexCollaborationVoiceInputController(
     onState: (state, target) => {
       activeCollaborationVoiceTarget = state === "idle" ? null : target;
       if (state === "requesting") setCollaborationVoiceStatus(target, "collaboration.voiceRequesting");
+      if (state === "connecting") setCollaborationVoiceStatus(target, "collaboration.voiceConnecting");
       if (state === "recording") setCollaborationVoiceStatus(target, "collaboration.voiceRecording");
       if (state === "transcribing") setCollaborationVoiceStatus(target, "collaboration.voiceTranscribing");
       renderCollaborationVoiceControls();
     },
     onTranscript: handleCollaborationVoiceTranscript,
     onPreview: (target, text) => {
-      if (isCurrentCollaborationVoiceTarget(target)) setRawText(collaborationVoicePreview,text);
+      if (isCurrentCollaborationVoiceTarget(target)) setRawText(collaborationVoicePreview,text?t("collaboration.voicePreview",{text}):"");
     },
     onIncomplete: (target) => setCollaborationVoiceStatus(target,"collaboration.voiceIncomplete"),
     onFailure: (target, failure) => {
@@ -973,14 +975,13 @@ function collaborationDraftKey(sessionId: string, targetDate: string): string {
   return `${sessionId}\u0000${targetDate}`;
 }
 
-function cacheCollaborationDrafts(session: CollaborationSessionView): void {
+function cacheCollaborationDrafts(session: CollaborationSessionView, preserveLocal = false): void {
   for (const [date, draft] of Object.entries(session.draftsByDate)) {
-    collaborationDrafts.set(collaborationDraftKey(session.id, date), draft);
+    const key = collaborationDraftKey(session.id, date);
+    if (!preserveLocal || !collaborationDrafts.has(key)) collaborationDrafts.set(key, draft);
   }
-  collaborationDrafts.set(
-    collaborationDraftKey(session.id, session.targetDate),
-    session.draft,
-  );
+  const targetKey = collaborationDraftKey(session.id, session.targetDate);
+  if (!preserveLocal || !collaborationDrafts.has(targetKey)) collaborationDrafts.set(targetKey, session.draft);
 }
 
 function collaborationDraftForDate(session: CollaborationSessionView, date: string): string {
@@ -2406,7 +2407,7 @@ function renderCollaborationVoiceControls(): void {
   const activeHere=target&&activeCollaborationVoiceTarget&&
     collaborationDraftKey(activeCollaborationVoiceTarget.sessionId,activeCollaborationVoiceTarget.targetDate)===key;
   if(state!=="idle"&&activeHere) {
-    setCopy(collaborationVoiceStatus,state==="requesting"?"collaboration.voiceRequesting":state==="recording"?"collaboration.voiceRecording":"collaboration.voiceTranscribing");
+    setCopy(collaborationVoiceStatus,state==="requesting"?"collaboration.voiceRequesting":state==="connecting"?"collaboration.voiceConnecting":state==="recording"?"collaboration.voiceRecording":"collaboration.voiceTranscribing");
   } else if(state!=="idle"&&activeCollaborationVoiceTarget) {
     setRawText(collaborationVoiceStatus,t("collaboration.voiceProcessingOrigin",{date:activeCollaborationVoiceTarget.targetDate}));
   } else if(status) setCopy(collaborationVoiceStatus,status);
@@ -2417,7 +2418,7 @@ function renderCollaborationVoiceControls(): void {
   collaborationVoiceStartButton.title=label;
   collaborationVoiceStartButton.dataset.action=stop?"stop":"start";
   collaborationVoiceStartButton.setAttribute("aria-pressed",String(stop));
-  collaborationVoiceStartButton.disabled=state==="requesting"||state==="transcribing"||
+  collaborationVoiceStartButton.disabled=state==="requesting"||state==="connecting"||state==="transcribing"||
     (state==="idle"&&(!target||collaborationMessageDraft?.disabled===true||collaborationSendingDrafts.has(key)));
   collaborationVoiceCancelButton?.toggleAttribute("hidden",state==="idle");
   if(collaborationVoiceCancelButton)collaborationVoiceCancelButton.disabled=state==="idle";
@@ -2441,6 +2442,12 @@ function handleCollaborationVoiceTranscript(target: CollaborationVoiceTarget, te
   const isCurrentTarget = isCurrentCollaborationVoiceTarget(target);
   const currentDraft = collaborationDraftForTarget(target) ??
     (isCurrentTarget ? collaborationMessageDraft?.value ?? "" : "");
+  // The older debounced snapshot must not be enqueued after this aggregate.
+  const timer = collaborationDraftSaveTimers.get(key);
+  if (timer !== undefined) {
+    window.clearTimeout(timer);
+    collaborationDraftSaveTimers.delete(key);
+  }
   const { draft, saved } = beginVoiceTranscriptSave(
     target,
     text,
@@ -2467,7 +2474,7 @@ function handleCollaborationVoiceTranscript(target: CollaborationVoiceTarget, te
 
 function cancelCollaborationVoiceCaptureForSelectionChange(): void {
   const state=collaborationVoiceController.state;
-  if(state==="requesting")collaborationVoiceController.cancel();
+  if(state==="requesting"||state==="connecting")collaborationVoiceController.cancel();
   if(state==="recording")collaborationVoiceController.stop();
 }
 
@@ -3963,6 +3970,7 @@ function saveCollaborationDraft(
 ): Promise<CollaborationSessionView> {
   const { sessionId, targetDate } = target;
   const key = collaborationDraftKey(sessionId, targetDate);
+  collaborationDrafts.set(key, draft);
   return enqueueCollaborationDraftWrite(
     collaborationDraftWrites,
     target,
@@ -3971,8 +3979,9 @@ function saveCollaborationDraft(
       { sessionId, targetDate, draft },
     ),
   ).then((saved) => {
-    cacheCollaborationDrafts(saved);
-    collaborationDrafts.set(key, draft);
+    // A response acknowledges its queued snapshot, not edits made since it
+    // was sent. Keep the latest in-memory draft through autosave/dictation.
+    cacheCollaborationDrafts(saved, true);
     if (currentCollaborationSession?.id === sessionId) {
       currentCollaborationSession = saved;
       renderCollaborationWorkspace();
