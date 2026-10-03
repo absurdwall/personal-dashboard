@@ -37,7 +37,7 @@ export type CollaborationVoiceTarget = Readonly<{
   targetDate: string;
 }>;
 
-export type CollaborationVoiceState = "idle" | "requesting" | "recording" | "transcribing";
+export type CollaborationVoiceState = "idle" | "requesting" | "connecting" | "recording" | "transcribing";
 
 export type CollaborationVoiceControls = Readonly<{
   startAction: "start" | "stop";
