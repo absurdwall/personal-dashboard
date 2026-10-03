@@ -160,6 +160,16 @@ test("an empty final cannot silently consume received preview words",async()=>{
   assert.deepEqual(f.transcripts,[recovered("received words")]);assert.equal(f.incomplete(),1);
 });
 
+test("recovery preserves separate word chunks when a finalized middle preview is removed",async()=>{
+  const f=fixture();await f.controller.start(target);
+  f.emit(timedPreview("first","buy",0,10));
+  f.emit(timedPreview("middle","covered middle",10,20));
+  f.emit(timedPreview("last","milk",20,30));
+  f.emit(timedFinal("middle-final","correct middle",10,20));
+  f.controller.stop();f.complete();await tick();
+  assert.deepEqual(f.transcripts,[`correct middle\n${recovered("buy\nmilk")}`]);assert.equal(f.incomplete(),1);
+});
+
 test("parser retains finite numeric raw envelope and nested turn timings without coercion",()=>{
   const p=parseCodexDictationEvent("input",timedPreview("p","words",0,25));
   assert.equal(p?.startMs,0);assert.equal(p?.endMs,25);
@@ -179,7 +189,7 @@ test("unpaired previews survive delayed and corrected finals without invented se
   f.emit(final("turn-a","corrected final A"));
   assert.equal(f.previews.at(-1),"provisional A newer B\ncorrected final A");
   f.emit({type:"error"});
-  assert.deepEqual(f.transcripts,[`corrected final A\n${recovered("provisional A newer B")}`]);
+  assert.deepEqual(f.transcripts,[`corrected final A\n${recovered("provisional A \nnewer B")}`]);
   assert.equal(f.incomplete(),1);assert.equal(f.released(),true);
 });
 
@@ -266,7 +276,7 @@ test("one aggregate draft save shares the existing queue with pending edits and 
 
 // Exercise the production browser runtime through the controller boundary with
 // a synthetic peer and clock. No actual microphone, cloud calls or long waits.
-async function browserFixture(t:TestContext, options: {connecting?:boolean; closeDuringSetup?:boolean; pauseAt?:"permission"|"offer"|"native"|"remote"; rejectNative?:boolean; pollPending?:boolean} = {}) {
+async function browserFixture(t:TestContext, options: {connecting?:boolean; closeDuringSetup?:boolean; pauseAt?:"permission"|"offer"|"native"|"remote"; rejectNative?:boolean; pollPending?:boolean; tailPause?:"resume"|"replace"; tailReject?:boolean; closePending?:boolean; closeSendReject?:boolean} = {}) {
   t.mock.timers.enable({apis:["setTimeout","setInterval","Date"]});
   const descriptors=new Map<string,PropertyDescriptor|undefined>();
   const replace=(name:string,value:unknown)=>{descriptors.set(name,Object.getOwnPropertyDescriptor(globalThis,name));Object.defineProperty(globalThis,name,{configurable:true,value});};
@@ -276,27 +286,55 @@ async function browserFixture(t:TestContext, options: {connecting?:boolean; clos
   let trackStopped=false;
   let peerClosed=false;
   let nativeActive=false;
+  let captureRequests=0;
+  let audioCreated=0,audioClosed=false,zeroTrackStopped=false,sourceStopped=false;
+  let zeroOffset=1;
+  const replacements:unknown[]=[];
+  const zeroTrack={kind:"audio",generated:true,stop:()=>{zeroTrackStopped=true;}};
+  let senderTrack:unknown;
+  const sender={replaceTrack:async(next:unknown)=>{
+    replacements.push(next);
+    if(options.tailPause==="replace")await gate;
+    senderTrack=next;
+  }};
+  class FakeAudioContext {
+    state="suspended";
+    constructor(){audioCreated++;}
+    createMediaStreamDestination(){return {stream:{getAudioTracks:()=>[zeroTrack],getTracks:()=>[zeroTrack]}};}
+    createConstantSource(){return {offset:{get value(){return zeroOffset;},set value(value:number){zeroOffset=value;}},
+      connect(){},disconnect(){},start(){},stop(){sourceStopped=true;}};}
+    async resume(){if(options.tailPause==="resume")await gate;if(options.tailReject)throw new Error("synthetic resume failure");this.state="running";}
+    async close(){audioClosed=true;this.state="closed";if(options.closePending)await gate;}
+  }
+  const sent:unknown[]=[];
+  const nativeEvents:Array<{inputId:string;kind:string}>=[];
+  let connection:FakePeer;
   let channel:FakeChannel;
   class FakeChannel extends EventTarget {
+    send(text:string){if(options.closeSendReject)throw new Error("synthetic closed channel");sent.push(JSON.parse(text));}
     readyState=options.connecting?"connecting":"open";onmessage:((event:{data:string})=>void)|null=null;onclose:(()=>void)|null=null;onopen:(()=>void)|null=null;
   }
   class FakePeer {
+    constructor(){connection=this;}
     connectionState="connected";onconnectionstatechange:(()=>void)|null=null;
-    addTrack(){}createDataChannel(){channel=new FakeChannel();return channel;}
+    addTrack(track:unknown){senderTrack=track;return sender;}createDataChannel(){channel=new FakeChannel();return channel;}
     async createOffer(){if(options.pauseAt==="offer")await gate;return {sdp:"synthetic-offer"};}async setLocalDescription(){}async setRemoteDescription(){if(options.pauseAt==="remote")await gate;if(options.closeDuringSetup)channel.onclose?.();}
     close(){peerClosed=true;}
   }
   const track={stop:()=>{trackStopped=true;}};
-  replace("navigator",{mediaDevices:{getUserMedia:async()=>{if(options.pauseAt==="permission")await gate;return {getTracks:()=>[track],getAudioTracks:()=>[track]};}}});
+  replace("navigator",{mediaDevices:{getUserMedia:async()=>{captureRequests++;if(options.pauseAt==="permission")await gate;return {getTracks:()=>[track],getAudioTracks:()=>[track]};}}});
   replace("RTCPeerConnection",FakePeer);
+  replace("AudioContext",FakeAudioContext);
+  replace("performance",{now:()=>Date.now()});
+  let runtimeInputId="";
   const calls:string[]=[];
   const runtime=new BrowserCodexDictationRuntime(async<T>(command:string,args:Record<string,unknown>):Promise<T>=>{
-    calls.push(command);
+    calls.push(command);runtimeInputId=String(args.inputId);
     if(command==="collaboration_dictation_start" && options.pauseAt==="native") { await gate; if(options.rejectNative)throw new Error("dictation-quota-exceeded"); }
     if(command==="collaboration_dictation_poll" && options.pollPending) { await gate; throw new Error("dictation-connection-lost"); }
     if(command==="collaboration_dictation_start")nativeActive=true;
     if(command==="collaboration_dictation_stop")nativeActive=false;
-    return (command==="collaboration_dictation_start"?{inputId:args.inputId,sdp:"synthetic-answer"}:[]) as T;
+    return (command==="collaboration_dictation_start"?{inputId:args.inputId,sdp:"synthetic-answer"}:command==="collaboration_dictation_poll"?nativeEvents.splice(0):[]) as T;
   });
   let draft="existing";
   let incomplete=0;
@@ -304,8 +342,133 @@ async function browserFixture(t:TestContext, options: {connecting?:boolean; clos
   const controller=new CodexCollaborationVoiceInputController(runtime,{onState:()=>{},onTranscript:(_,text)=>{draft=appendVoiceTranscript(draft,text);},onFailure:(_,failure)=>{failures.push(failure);},onCancel:()=>{},onIncomplete:()=>{incomplete++;}});
   const started=controller.start(target);
   if(options.connecting || options.pauseAt)await tick();else await started;
-  return {controller,calls,started,release,failures,nativeActive:()=>nativeActive,close:()=>channel.onclose?.(),openListener:()=>channel.onopen,emit:(value:unknown)=>channel.onmessage?.({data:JSON.stringify(value)}),draft:()=>draft,incomplete:()=>incomplete,trackStopped:()=>trackStopped,peerClosed:()=>peerClosed};
+  return {controller,calls,started,release,failures,sent,
+    nativeClosed:()=>nativeEvents.push({inputId:runtimeInputId,kind:"closed"}),
+    disconnect:()=>{connection.connectionState="failed";connection.onconnectionstatechange?.();},captureRequests:()=>captureRequests,
+    audioCreated:()=>audioCreated,audioClosed:()=>audioClosed,zeroTrackStopped:()=>zeroTrackStopped,
+    sourceStopped:()=>sourceStopped,zeroOffset:()=>zeroOffset,replacements:()=>replacements,senderTrack:()=>senderTrack,
+    nativeActive:()=>nativeActive,close:()=>channel.onclose?.(),openListener:()=>channel.onopen,emit:(value:unknown)=>channel.onmessage?.({data:JSON.stringify(value)}),draft:()=>draft,incomplete:()=>incomplete,trackStopped:()=>trackStopped,peerClosed:()=>peerClosed};
 }
+
+
+test("Stop requests the observed v3 close after zero-audio grace and accepts final then raw terminal",async t=>{
+  const f=await browserFixture(t);
+  f.emit(timedPreview("p","uncorrected",0,50));f.controller.stop();await tick();
+  assert.equal(f.trackStopped(),true);assert.deepEqual(f.sent,[]);
+  t.mock.timers.tick(999);await tick();assert.deepEqual(f.sent,[]);
+  t.mock.timers.tick(1);await tick();assert.deepEqual(f.sent,[{type:"session.close"}]);
+  f.emit(timedFinal("turn","correct final",0,50));f.emit(timedFinal("turn","corrected final",0,50));
+  f.emit({type:"session.closed"});
+  t.mock.timers.tick(0);await tick();
+  assert.equal(f.draft(),"existing\ncorrected final");assert.equal(f.incomplete(),0);assert.deepEqual(f.failures,[]);
+  assert.equal(f.zeroTrackStopped(),true);assert.equal(f.peerClosed(),true);assert.equal(f.nativeActive(),false);
+});
+
+test("native close before queued data-channel final cannot terminate expected close collection",async t=>{
+  const f=await browserFixture(t);f.emit(timedPreview("p","received",0,50));f.controller.navigate();await tick();
+  t.mock.timers.tick(1_000);await tick();f.nativeClosed();t.mock.timers.tick(200);await tick();
+  assert.equal(f.controller.state,"transcribing");assert.equal(f.peerClosed(),false);assert.deepEqual(f.failures,[]);
+  f.emit(timedFinal("turn","correct final",0,50));f.emit({type:"session.closed"});
+  t.mock.timers.tick(0);await tick();
+  assert.equal(f.draft(),"existing\ncorrect final");assert.equal(f.incomplete(),0);
+});
+
+test("expected terminal without a new final preserves previews and remains incomplete",async t=>{
+  const f=await browserFixture(t);f.emit(timedPreview("p","received ending",0,50));f.controller.stop();await tick();
+  t.mock.timers.tick(1_000);await tick();f.emit({type:"session.closed"});t.mock.timers.tick(0);await tick();
+  assert.equal(f.draft(),`existing\n${recovered("received ending")}`);assert.equal(f.incomplete(),1);assert.deepEqual(f.failures,[]);
+});
+
+test("a final queued in the raw-terminal turn is retained before cleanup",async t=>{
+  const f=await browserFixture(t);f.emit(timedPreview("p","received",0,50));f.controller.stop();await tick();
+  t.mock.timers.tick(1_000);await tick();f.emit({type:"session.closed"});
+  f.emit(timedFinal("turn","queued final",0,50));t.mock.timers.tick(0);await tick();
+  assert.equal(f.draft(),"existing\nqueued final");assert.equal(f.incomplete(),0);assert.deepEqual(f.failures,[]);
+});
+
+test("a final without a raw terminal never claims complete drain",async t=>{
+  const f=await browserFixture(t);f.controller.stop();await tick();t.mock.timers.tick(1_000);await tick();
+  f.emit(timedFinal("turn","correct final",0,50));t.mock.timers.tick(9_000);await tick();
+  assert.equal(f.draft(),"existing\ncorrect final");assert.equal(f.incomplete(),1);assert.equal(f.peerClosed(),true);
+});
+
+for(const failure of ["send","disconnect"] as const)test(`close-drain ${failure} failure releases generated audio and keeps received text`,async t=>{
+  const f=await browserFixture(t,{closeSendReject:failure==="send"});
+  f.emit(timedPreview("p","received",0,50));f.controller.stop();await tick();t.mock.timers.tick(1_000);await tick();
+  if(failure==="disconnect")f.disconnect();await tick();
+  assert.equal(f.draft(),`existing\n${recovered("received")}`);assert.equal(f.incomplete(),1);
+  assert.deepEqual(f.failures,["connection-failed"]);assert.equal(f.zeroTrackStopped(),true);assert.equal(f.audioClosed(),true);assert.equal(f.peerClosed(),true);
+});
+
+test("manual stop releases the real microphone immediately and sends generated zeros for at most ten seconds",async t=>{
+  const f=await browserFixture(t);
+  t.mock.timers.tick(121_000);await tick();
+  assert.equal(f.controller.state,"recording");assert.equal(f.audioCreated(),0);
+  f.emit(timedPreview("tail","uncorrected ending",0,50));
+  f.controller.stop();
+  assert.equal(f.trackStopped(),true,"capture releases before asynchronous tail setup");
+  await tick();
+  assert.equal(f.audioCreated(),1);assert.equal(f.zeroOffset(),0);
+  assert.equal(f.replacements().length,1);assert.equal((f.senderTrack() as any).generated,true);
+  assert.equal(f.captureRequests(),1,"generated silence never reacquires the microphone");
+  f.emit(timedFinal("tail","correct ending",0,50));f.emit(timedFinal("tail","corrected ending",0,50));
+  t.mock.timers.tick(9_999);await tick();
+  assert.equal(f.controller.state,"transcribing");assert.equal(f.zeroTrackStopped(),false);
+  t.mock.timers.tick(1);await tick();
+  assert.equal(f.draft(),"existing\ncorrected ending");assert.equal(f.incomplete(),1);
+  assert.equal(f.zeroTrackStopped(),true);assert.equal(f.sourceStopped(),true);assert.equal(f.audioClosed(),true);
+  assert.equal(f.peerClosed(),true);assert.equal(f.controller.state,"idle");
+});
+
+for(const tailPause of ["resume","replace"] as const)test(`cancel while generated-tail ${tailPause} is pending releases everything and late settlement cannot restart audio`,async t=>{
+  const f=await browserFixture(t,{tailPause});
+  f.controller.stop();await tick();
+  assert.equal(f.trackStopped(),true);assert.equal(f.audioCreated(),1);
+  f.controller.cancel();await tick();
+  assert.equal(f.zeroTrackStopped(),true);assert.equal(f.audioClosed(),true);assert.equal(f.peerClosed(),true);
+  f.release();await tick();
+  assert.equal(f.zeroTrackStopped(),true);assert.equal(f.sourceStopped(),true);
+  assert.equal(f.replacements().length,tailPause==="resume"?0:1);
+  assert.equal(f.captureRequests(),1);assert.equal(f.draft(),"existing");assert.equal(f.controller.state,"idle");
+  t.mock.timers.tick(10_000);await tick();assert.deepEqual(f.sent,[],"cancel never sends session.close");
+});
+
+for(const tailPause of ["resume","replace"] as const)test(`a never-settling ${tailPause} and context close cannot extend the ten-second drain`,async t=>{
+  const f=await browserFixture(t,{tailPause,closePending:true});
+  f.emit(timedPreview("p","received ending",0,50));
+  f.controller.stop();await tick();
+  t.mock.timers.tick(10_000);await tick();
+  assert.equal(f.controller.state,"idle");assert.equal(f.trackStopped(),true);
+  assert.equal(f.zeroTrackStopped(),true);assert.equal(f.audioClosed(),true);assert.equal(f.peerClosed(),true);
+  assert.equal(f.draft(),`existing\n${recovered("received ending")}`);assert.equal(f.incomplete(),1);
+  f.release();await tick();
+  assert.equal(f.replacements().length,tailPause==="resume"?0:1);assert.equal(f.captureRequests(),1);
+  assert.deepEqual(f.sent,[{type:"session.close"}],"pending setup never blocks bounded close");
+});
+
+test("navigation uses generated tail on the original target while service failure releases it immediately",async t=>{
+  const f=await browserFixture(t);
+  f.emit(timedPreview("p","received ending",0,50));f.controller.navigate();await tick();
+  assert.equal(f.trackStopped(),true);assert.equal(f.audioCreated(),1);
+  f.emit({type:"session.closed"});await tick();
+  assert.equal(f.zeroTrackStopped(),true);assert.equal(f.audioClosed(),true);assert.equal(f.peerClosed(),true);
+  assert.equal(f.draft(),`existing\n${recovered("received ending")}`);assert.equal(f.incomplete(),1);
+  assert.deepEqual(f.failures,["service-failed"]);
+});
+
+for(const end of ["cancel","close"] as const)test(`${end} while recording never starts generated-tail audio`,async t=>{
+  const f=await browserFixture(t);f.controller[end]();await tick();
+  assert.equal(f.trackStopped(),true);assert.equal(f.peerClosed(),true);assert.equal(f.audioCreated(),0);
+});
+
+test("failed generated-audio setup remains incomplete even if a user final arrives",async t=>{
+  const f=await browserFixture(t,{tailReject:true});
+  f.emit(timedPreview("p","received ending",0,50));f.controller.stop();await tick();
+  f.emit(timedFinal("turn","correct ending",0,50));
+  t.mock.timers.tick(10_000);await tick();
+  assert.equal(f.draft(),"existing\ncorrect ending");assert.equal(f.incomplete(),1);
+  assert.equal(f.zeroTrackStopped(),true);assert.equal(f.audioClosed(),true);assert.equal(f.peerClosed(),true);
+});
 
 test("production capture continues beyond two minutes and only manual stop starts bounded finalization",async t=>{
   const f=await browserFixture(t);
@@ -315,7 +478,7 @@ test("production capture continues beyond two minutes and only manual stop start
   f.emit(final("middle","middle"));f.controller.stop();
   assert.equal(f.trackStopped(),true);assert.equal(f.peerClosed(),false);
   f.emit(preview("tail","ending"));f.emit(final("tail","ending corrected"));
-  t.mock.timers.tick(4_000);await tick();
+  t.mock.timers.tick(10_000);await tick();
   assert.equal(f.draft(),`existing\nopening\nmiddle\nending corrected\n${recovered("ending")}`);assert.equal(f.incomplete(),1);
   assert.equal(f.peerClosed(),true);assert.equal(f.calls.filter(c=>c==="collaboration_dictation_stop").length,1);
 });
@@ -323,9 +486,9 @@ test("production capture continues beyond two minutes and only manual stop start
 test("production runtime uses interval coverage while retaining the independent post-stop final gate",async t=>{
   const f=await browserFixture(t);
   f.emit(timedPreview("p","uncorrected",0,50));
-  f.controller.stop();f.emit(timedFinal("turn","correct final",0,50));
-  t.mock.timers.tick(4_000);await tick();
-  assert.equal(f.draft(),"existing\ncorrect final");assert.equal(f.incomplete(),0);
+  f.controller.stop();await tick();f.emit(timedFinal("turn","correct final",0,50));
+  t.mock.timers.tick(10_000);await tick();
+  assert.equal(f.draft(),"existing\ncorrect final");assert.equal(f.incomplete(),1);
   assert.equal(f.peerClosed(),true);assert.equal(f.trackStopped(),true);
 });
 
@@ -333,7 +496,7 @@ test("covered previews cannot turn a duplicate pre-stop final into a tail acknow
   const f=await browserFixture(t);
   f.emit(timedPreview("p","uncorrected",0,50));f.emit(timedFinal("turn","correct final",0,50));
   f.controller.stop();f.emit(timedFinal("turn","correct final",0,50));
-  t.mock.timers.tick(4_000);await tick();
+  t.mock.timers.tick(10_000);await tick();
   assert.equal(f.draft(),"existing\ncorrect final");assert.equal(f.incomplete(),1);
 });
 
@@ -341,8 +504,8 @@ test("production runtime never acknowledges an unpaired newer preview from a del
   const f=await browserFixture(t);
   f.emit(preview("preview-a","A preview "));f.emit(preview("preview-b","newer B preview"));
   f.controller.stop();f.emit(final("delayed-a","correct A final"));
-  t.mock.timers.tick(4_000);await tick();
-  assert.equal(f.draft(),`existing\ncorrect A final\n${recovered("A preview newer B preview")}`);
+  t.mock.timers.tick(10_000);await tick();
+  assert.equal(f.draft(),`existing\ncorrect A final\n${recovered("A preview \nnewer B preview")}`);
   assert.equal(f.incomplete(),1);assert.equal(f.peerClosed(),true);
 });
 
@@ -350,13 +513,13 @@ test("duplicated pre-stop final cannot falsely acknowledge a new tail",async t=>
   const f=await browserFixture(t);
   f.emit(final("opening","opening"));f.emit(preview("tail","unconfirmed ending"));f.controller.stop();
   f.emit(final("opening","opening"));
-  t.mock.timers.tick(4_000);await tick();
+  t.mock.timers.tick(10_000);await tick();
   assert.equal(f.draft(),`existing\nopening\n${recovered("unconfirmed ending")}`);assert.equal(f.incomplete(),1);assert.equal(f.peerClosed(),true);
 });
 
 test("stop without a new final remains incomplete even when no preview has arrived for the tail",async t=>{
   const f=await browserFixture(t);
-  f.emit(final("opening","opening"));f.controller.stop();t.mock.timers.tick(4_000);await tick();
+  f.emit(final("opening","opening"));f.controller.stop();t.mock.timers.tick(10_000);await tick();
   assert.equal(f.draft(),"existing\nopening");assert.equal(f.incomplete(),1);
 });
 
@@ -448,7 +611,7 @@ test("close snapshots received text once, releases immediately, and permits a fr
   f.emit(preview("p","received before close"));f.controller.stop();f.controller.close();f.controller.close();
   assert.equal(f.trackStopped(),true);assert.equal(f.peerClosed(),true);assert.equal(f.controller.state,"idle");
   assert.equal(f.draft(),`existing\n${recovered("received before close")}`);assert.equal(f.incomplete(),1);
-  f.emit(final("late","not received before close"));t.mock.timers.tick(4_000);await tick();
+  f.emit(final("late","not received before close"));t.mock.timers.tick(10_000);await tick();
   assert.equal(f.draft(),`existing\n${recovered("received before close")}`);
   await f.controller.start(target);assert.equal(f.controller.state,"recording");f.controller.cancel();
   assert.equal(f.calls.filter(c=>c==="collaboration_dictation_start").length,2);
@@ -484,7 +647,7 @@ for (const phase of ["recording", "transcribing"] as const) {
     if(phase==="transcribing")f.controller.stop();
     f.controller.cancel();f.controller.cancel();
     assert.equal(f.trackStopped(),true);assert.equal(f.peerClosed(),true);
-    f.emit(final("late","discard"));t.mock.timers.tick(4_000);await tick();
+    f.emit(final("late","discard"));t.mock.timers.tick(10_000);await tick();
     assert.equal(f.draft(),"existing");assert.equal(f.incomplete(),0);assert.deepEqual(f.failures,[]);
   });
 }

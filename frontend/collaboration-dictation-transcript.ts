@@ -59,11 +59,26 @@ export class CodexDictationTranscript {
         }
       }
     }
-    const uncovered = [...this.previews.values()].filter(preview => {
+    const previews = [...this.previews.values()].sort(chronological);
+    const previewPositions = new Map(previews.map((preview, index) => [preview, index]));
+    const uncovered = previews.filter(preview => {
       if (!hasInterval(preview)) return true;
       const owners = timedFinals.filter(final => final.startMs <= preview.startMs && preview.endMs <= final.endMs);
       return owners.length !== 1 || conflicting.has(owners[0]) || !owners[0].text.trim();
-    }).sort(chronological);
+    });
+    let unconfirmedPreviewText = "";
+    let previousPreview: Segment | undefined;
+    for (const preview of uncovered) {
+      if (previousPreview) {
+        const contiguous = hasInterval(previousPreview) && hasInterval(preview) &&
+          previousPreview.endMs === preview.startMs &&
+          previewPositions.get(preview)! === previewPositions.get(previousPreview)! + 1;
+        // Removed regions and unknown/gapped timing must not merge words.
+        if (!contiguous) unconfirmedPreviewText += "\n";
+      }
+      unconfirmedPreviewText += preview.text;
+      previousPreview = preview;
+    }
     const displayed = [...finals, ...uncovered].sort(chronological);
     let displayText = "";
     let previousKind: Segment["kind"] | undefined;
@@ -75,7 +90,7 @@ export class CodexDictationTranscript {
     }
     return {
       finalText: finals.map(segment => segment.text).filter(Boolean).join("\n").trim(),
-      unconfirmedPreviewText: uncovered.map(segment => segment.text).join("").trim(),
+      unconfirmedPreviewText: unconfirmedPreviewText.trim(),
       displayText: displayText.trim(),
       unresolved: uncovered.length > 0 || conflicting.size > 0 || timedFinals.length !== finals.length ||
         finals.some(final => !final.text.trim()),
