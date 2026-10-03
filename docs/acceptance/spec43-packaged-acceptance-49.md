@@ -1,6 +1,6 @@
 # Spec #43 packaged candidate acceptance
 
-[Ticket #49](https://github.com/absurdwall/personal-dashboard/issues/49), 2026-10-03, America/New_York. Product implementation is complete on the draft PR; packaged acceptance is incomplete. This record separates normal composer checks, diagnostic transport evidence and pending human speech acceptance. The issue and parent Spec remain open.
+[Ticket #49](https://github.com/absurdwall/personal-dashboard/issues/49), 2026-10-03, America/New_York. Implementation is delivered on the draft PR; protocol requirements and packaged acceptance remain incomplete. This record separates normal composer checks, diagnostic transport evidence and pending human speech acceptance. The issue and parent Spec remain open.
 
 ## Candidate and isolation
 
@@ -28,7 +28,7 @@ The final package build and `codesign --verify --deep --strict` passed. Micropho
 
 The script is `scripts/acceptance/macos-codex-dictation-mic-loop.sh`; actual invocation was `bash scripts/acceptance/macos-codex-dictation-mic-loop.sh '/tmp/pd-spec43-final.noindex/Personal Dashboard.app' /tmp/pd-spec43-final.noindex/macos-ui-driver`. Its exit 1 correctly records a failed Recording gate, not a pass. It targets exactly one task-owned process, suppresses AX/body output, bounds the wait and cancels on exit.
 
-Final build command: `CARGO_TARGET_DIR=/Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/src-tauri/target npm run build:mac -- --config /tmp/pd-spec43-final.noindex/candidate-config.json`. Frontend 231 tests passed; native 380 tests passed on the final production source, and native check/build passed with the gated diagnostics. Source-review repairs and their targeted evidence are recorded in [review fixes](spec43-review-fixes.md); automated mocks and suites do not replace these packaged outcomes.
+Final build command: `CARGO_TARGET_DIR=/Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/src-tauri/target npm run build:mac -- --config /tmp/pd-spec43-final.noindex/candidate-config.json`. Frontend 231 tests passed. The native 380-test suite passed at checkpoint `741286a`; subsequent production fixes changed frontend code only. The gated native diagnostic changes passed native check/build, without a repeat of the full native suite. Source-review repairs and their targeted evidence are recorded in [review fixes](spec43-review-fixes.md); automated mocks and suites do not replace these packaged outcomes.
 
 ## Microphone and cloud diagnosis
 
