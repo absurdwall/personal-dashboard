@@ -23,3 +23,9 @@ Every preview-bearing input can consequently be incomplete, and its recovered pr
 - Sixteen native Collaboration workflow tests pass, including submission of an older snapshot after newer dictation was saved, preservation across reopening, and clearing an exactly matching whitespace-containing submitted draft.
 
 The broad transport trait and duplicated JSON/CLI security flags are optional design improvements, not proven policy violations. They are deferred to keep this repair focused on the concrete behavioral failures; existing isolation checks still enforce both paths. Human language quality, two-minute microphone capture, real last words and final packaged acceptance remain pending #49.
+
+## Refresh and navigation follow-up
+
+A final review found that ordinary workspace refresh and session reselection still replaced failed-save memory drafts with older stored text. Local keyboard/debounced and voice draft writes now protect their original session/date cache entry until the exact current snapshot is acknowledged. An older queued acknowledgement cannot unprotect a newer edit. All cache paths respect that protection; manual send releases only its cleared target. The existing failed voice-save status remains visible when returning to the original target.
+
+Two frontend regressions execute the production composer delivery, IPC-save queue, workspace refresh, session selection, target-date failure and editor/status rendering functions, with synthetic IPC and unrelated pane rendering. Both fail against the previous `be30477` source and pass after this change. They cover failed voice persistence followed by refresh and navigation/return, independent second-target text, and an older acknowledgement while a newer save is still pending. Frontend build and all 229 frontend tests pass. This follow-up changes no native source; the earlier native evidence remains applicable.

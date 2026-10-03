@@ -941,6 +941,7 @@ let collaborationConnectionRequest = 0;
 let collaborationStatusTimer: number | null = null;
 let collaborationTargetDatePendingSession: string | null = null;
 const collaborationDrafts = new Map<string, string>();
+const collaborationUnsavedDrafts = new Set<string>();
 const collaborationDraftWrites = new Map<string, Promise<CollaborationSessionView>>();
 const collaborationDraftSaveTimers = new Map<string, number>();
 const collaborationTargetDates = new Map<string, string>();
@@ -991,12 +992,18 @@ function collaborationDraftKey(sessionId: string, targetDate: string): string {
 }
 
 function cacheCollaborationDrafts(session: CollaborationSessionView, preserveLocal = false): void {
+  // Reads and navigation cannot replace edits awaiting or lacking a save ack.
+  // Only acknowledgement of the exact current snapshot releases protection.
   for (const [date, draft] of Object.entries(session.draftsByDate)) {
     const key = collaborationDraftKey(session.id, date);
-    if (!preserveLocal || !collaborationDrafts.has(key)) collaborationDrafts.set(key, draft);
+    if ((!preserveLocal && !collaborationUnsavedDrafts.has(key)) || !collaborationDrafts.has(key)) {
+      collaborationDrafts.set(key, draft);
+    }
   }
   const targetKey = collaborationDraftKey(session.id, session.targetDate);
-  if (!preserveLocal || !collaborationDrafts.has(targetKey)) collaborationDrafts.set(targetKey, session.draft);
+  if ((!preserveLocal && !collaborationUnsavedDrafts.has(targetKey)) || !collaborationDrafts.has(targetKey)) {
+    collaborationDrafts.set(targetKey, session.draft);
+  }
 }
 
 function collaborationDraftForDate(session: CollaborationSessionView, date: string): string {
@@ -1574,6 +1581,7 @@ function resetVaultScopedWorkspaceState(): void {
   currentCollaborationWorkspace = null;
   currentCollaborationSession = null;
   collaborationDrafts.clear();
+  collaborationUnsavedDrafts.clear();
   collaborationTargetDates.clear();
   collaborationSendingDrafts.clear();
   collaborationActivityDate = "";
@@ -3946,6 +3954,7 @@ function stashCollaborationDraft(): void {
     const targetDate = collaborationTargetDates.get(sessionId) ?? collaborationTargetDate;
     const key = collaborationDraftKey(sessionId, targetDate);
     collaborationDrafts.set(key, collaborationMessageDraft.value);
+    collaborationUnsavedDrafts.add(key);
     const previousTimer = collaborationDraftSaveTimers.get(key);
     if (previousTimer !== undefined) window.clearTimeout(previousTimer);
     const draft = collaborationMessageDraft.value;
@@ -3993,6 +4002,7 @@ function saveCollaborationDraft(
   const { sessionId, targetDate } = target;
   const key = collaborationDraftKey(sessionId, targetDate);
   collaborationDrafts.set(key, draft);
+  collaborationUnsavedDrafts.add(key);
   return enqueueCollaborationDraftWrite(
     collaborationDraftWrites,
     target,
@@ -4003,6 +4013,7 @@ function saveCollaborationDraft(
   ).then((saved) => {
     // A response acknowledges its queued snapshot, not edits made since it
     // was sent. Keep the latest in-memory draft through autosave/dictation.
+    if (collaborationDrafts.get(key) === draft) collaborationUnsavedDrafts.delete(key);
     cacheCollaborationDrafts(saved, true);
     if (currentCollaborationSession?.id === sessionId) {
       currentCollaborationSession = saved;
@@ -4483,6 +4494,7 @@ async function sendCollaborationMessage(): Promise<void> {
     );
     cacheCollaborationDrafts(queued, true);
     collaborationDrafts.set(draftKey, remainingDraft);
+    if (!remainingDraft) collaborationUnsavedDrafts.delete(draftKey);
     if (remainingDraft) {
       // Keep any newer memory snapshot durable through the
       // existing write queue, keeping it editable if persistence fails.
