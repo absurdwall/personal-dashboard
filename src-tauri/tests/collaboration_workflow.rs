@@ -87,7 +87,7 @@ impl SyntheticMemoryService {
     fn long_term_view(version: u64, content: &str) -> LongTermMemoryDocumentView {
         LongTermMemoryDocumentView {
             state: "ready".into(),
-            source_path: "everyday/wiki/Life Operating Principles.md".into(),
+            source_path: "life/Self.md".into(),
             content: content.to_owned(),
             revision: Some(format!("synthetic-memory-v{version}")),
             message: "Synthetic long-term background loaded.".into(),
@@ -105,7 +105,7 @@ impl CollaborationMemoryService for SyntheticMemoryService {
             long_term: Self::long_term_view(document.0, &document.1),
             routine_reference: RoutineMemoryReferenceView {
                 state: "ready".into(),
-                source_path: "everyday/.agents/skills/life-companion/SKILL.md".into(),
+                source_path: ".agents/skills/life-daily-loop/SKILL.md".into(),
                 content: "Synthetic daily routine reference.".into(),
                 message: "Synthetic routine reference loaded.".into(),
             },

@@ -1,7 +1,8 @@
 use crate::clock::SystemClock;
 use crate::collaboration_memory::{
     CollaborationMemoryService, CollaborationMemorySources, LongTermMemoryDocumentView,
-    RoutineMemoryReferenceView, SelectedVaultCollaborationMemoryService,
+    RoutineMemoryReferenceView, SelectedVaultCollaborationMemoryService, LONG_TERM_CONTEXT_PATH,
+    ROUTINE_REFERENCE_PATH,
 };
 use crate::habits::{HabitSnapshotState, HabitSnapshotView};
 use crate::platform::FileTodayWorkspacePersistence;
@@ -815,14 +816,14 @@ impl CollaborationMemoryService for UnavailableCollaborationMemoryService {
         Ok(CollaborationMemorySources {
             long_term: LongTermMemoryDocumentView {
                 state: "unconfigured".into(),
-                source_path: "everyday/wiki/Life Operating Principles.md".into(),
+                source_path: LONG_TERM_CONTEXT_PATH.into(),
                 content: String::new(),
                 revision: None,
                 message: "Long-term background is unavailable in this collaboration runtime.".into(),
             },
             routine_reference: RoutineMemoryReferenceView {
                 state: "unconfigured".into(),
-                source_path: "everyday/.agents/skills/life-companion/SKILL.md".into(),
+                source_path: ROUTINE_REFERENCE_PATH.into(),
                 content: String::new(),
                 message: "The existing daily workflow reference is unavailable in this collaboration runtime.".into(),
             },
@@ -2203,7 +2204,7 @@ impl CollaborationApplication {
             memory.long_term.message = "Saved in the original Vault. The selected Vault changed; reopen the original session to review the update.".into();
         } else {
             memory.long_term.message =
-                "Long-term background updated in the existing Life Operating Principles document."
+                "Long-term background updated in the existing life/Self.md document."
                     .into();
         }
         Ok(memory)
@@ -2419,7 +2420,7 @@ impl CollaborationApplication {
                 let still_selected =
                     self.context_source.current_vault_key()?.as_deref() == Some(&vault_key);
                 let result_message = if still_selected {
-                    "Saved the approved durable update in the existing Life Operating Principles document.".to_owned()
+                    "Saved the approved durable update in the existing life/Self.md document.".to_owned()
                 } else {
                     "Saved in the original Vault. The selected Vault has changed; reopen the original session to review it.".to_owned()
                 };
@@ -4285,7 +4286,7 @@ impl CollaborationApplication {
         let sources = self.memory_service.read(Some(vault_key))?;
         if sources.long_term.state != "ready" {
             return Err(format!(
-                "The existing Life Operating Principles document is unavailable: {}",
+                "The existing life/Self.md document is unavailable: {}",
                 sources.long_term.message
             ));
         }
@@ -7035,14 +7036,14 @@ fn collaboration_memory_view(
     let sources = sources.unwrap_or_else(|error| CollaborationMemorySources {
         long_term: LongTermMemoryDocumentView {
             state: "error".into(),
-            source_path: "everyday/wiki/Life Operating Principles.md".into(),
+            source_path: LONG_TERM_CONTEXT_PATH.into(),
             content: String::new(),
             revision: None,
             message: format!("Could not read the existing long-term background: {error}"),
         },
         routine_reference: RoutineMemoryReferenceView {
             state: "error".into(),
-            source_path: "everyday/.agents/skills/life-companion/SKILL.md".into(),
+            source_path: ROUTINE_REFERENCE_PATH.into(),
             content: String::new(),
             message: format!("Could not read the existing daily workflow reference: {error}"),
         },
@@ -8899,7 +8900,7 @@ fn collaboration_task_tool_spec(
 fn collaboration_memory_tool_spec() -> Value {
     json!({
         "name": COLLABORATION_MEMORY_TOOL,
-        "description": "Update the existing Life Operating Principles document only for an explicitly authorized durable change or a durable inference the user directly confirmed after you asked. Quote the exact current user instruction or confirmation in authorizationQuote. Use executionMode=execute for an explicit direct change; use prepareProposal only when the user explicitly asks to review before saving. One-day or temporary states must stay out of durable memory.",
+        "description": "Update the existing life/Self.md document only for an explicitly authorized durable change or a durable inference the user directly confirmed after you asked. Quote the exact current user instruction or confirmation in authorizationQuote. Use executionMode=execute for an explicit direct change; use prepareProposal only when the user explicitly asks to review before saving. One-day or temporary states must stay out of durable memory.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -9704,6 +9705,7 @@ mod collaboration_memory_tests {
         CollaborationMemorySources, CollaborationState, CollaborationToolExecutionMode,
         LongTermMemoryDocumentView, MemoryUpdateBasis, RoutineMemoryReferenceView,
         StoredCollaborationContinuityNote, StoredCollaborationMessage, StoredCollaborationSession,
+        LONG_TERM_CONTEXT_PATH, ROUTINE_REFERENCE_PATH,
     };
     use std::collections::HashMap;
 
@@ -9789,14 +9791,14 @@ mod collaboration_memory_tests {
         CollaborationMemorySources {
             long_term: LongTermMemoryDocumentView {
                 state: "ready".into(),
-                source_path: "everyday/wiki/Life Operating Principles.md".into(),
+                source_path: LONG_TERM_CONTEXT_PATH.into(),
                 content: "Synthetic background only.".into(),
                 revision: Some("synthetic-revision".into()),
                 message: "Synthetic source loaded.".into(),
             },
             routine_reference: RoutineMemoryReferenceView {
                 state: "ready".into(),
-                source_path: "everyday/.agents/skills/life-companion/SKILL.md".into(),
+                source_path: ROUTINE_REFERENCE_PATH.into(),
                 content: "Synthetic workflow only.".into(),
                 message: "Synthetic reference loaded.".into(),
             },

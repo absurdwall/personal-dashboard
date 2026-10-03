@@ -20,8 +20,8 @@ test("the A context pane exposes existing long-term background and a read-only r
   assert.match(html, /id="collaboration-recent-memory-list"/);
   assert.match(html, /id="collaboration-open-matters-list"/);
   assert.match(html, /id="collaboration-continuity-note"/);
-  assert.match(memory, /everyday\/wiki\/Life Operating Principles\.md/);
-  assert.match(memory, /everyday\/\.agents\/skills\/life-companion\/SKILL\.md/);
+  assert.match(memory, /life\/Self\.md/);
+  assert.match(memory, /\.agents\/skills\/life-daily-loop\/SKILL\.md/);
   assert.match(memory, /will not create a second profile/);
 });
 
