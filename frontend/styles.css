@@ -8994,10 +8994,6 @@ button.habit-cell:focus-visible {
   font-size: 0.6rem;
 }
 
-.collaboration-voice-controls select {
-  max-width: min(12rem, 100%);
-}
-
 .collaboration-voice-controls button {
   min-height: 2rem;
   padding: 0.35rem 0.65rem;
@@ -9563,14 +9559,6 @@ button.habit-cell:focus-visible {
 .collaboration-composer-input .collaboration-voice-controls {
   justify-content: flex-end;
   padding: 0.35rem 0.5rem;
-}
-.collaboration-voice-language-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
 }
 .collaboration-voice-controls .collaboration-microphone {
   display: inline-flex;

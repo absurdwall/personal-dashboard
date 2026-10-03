@@ -901,8 +901,7 @@ type CollaborationVoiceStatusKey =
   | "collaboration.voiceRecordingFailed"
   | "collaboration.voiceEmptyRecording"
   | "collaboration.voiceRecognitionFailed"
-  | "collaboration.voiceDraftSaveFailed"
-  | "collaboration.voiceSelectedUnavailable";
+  | "collaboration.voiceDraftSaveFailed";
 
 function localCalendarDate(): string {
   const now = new Date();
@@ -1514,7 +1513,7 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
   renderWorkspaceRailContext(currentWorkspaceDestination);
   renderWorkspaceContextStatus(currentWorkspaceDestination);
   renderCollaborationWorkspace();
-  renderCollaborationVoiceLocales();
+  renderCollaborationVoiceControls();
   renderCollaborationConnection();
 }
 
@@ -2393,7 +2392,6 @@ function collaborationVoiceFailureStatus(failure: CollaborationVoiceFailure): Co
     case "recording-failed": return "collaboration.voiceRecordingFailed";
     case "empty-recording": return "collaboration.voiceEmptyRecording";
     case "recognition-failed": return "collaboration.voiceRecognitionFailed";
-    case "locale-unavailable": return "collaboration.voiceSelectedUnavailable";
     case "login-required": return "collaboration.voiceLoginRequired";
     case "connection-failed": return "collaboration.voiceRecognitionFailed";
   }
@@ -2426,8 +2424,6 @@ function renderCollaborationVoiceControls(): void {
   if(collaborationVoiceStatus)collaborationVoiceStatus.dataset.state=state;
 }
 
-function renderCollaborationVoiceLocales(): void { renderCollaborationVoiceControls(); }
-async function refreshCollaborationVoiceCapabilities(): Promise<void> { renderCollaborationVoiceControls(); }
 
 function collaborationDraftForTarget(target: CollaborationVoiceTarget): string | undefined {
   const key = collaborationDraftKey(target.sessionId, target.targetDate);
@@ -10208,7 +10204,7 @@ function showWorkspaceDestination(
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = collaborationTargetDate;
     void refreshCollaborationWorkspace();
     void refreshCollaborationConnection();
-    void refreshCollaborationVoiceCapabilities();
+    renderCollaborationVoiceControls();
   }
 }
 
