@@ -1,3 +1,5 @@
+import { BrowserCodexDictationRuntime, type CodexDictationCapture, type DictationInvoke } from "./collaboration-dictation-runtime.js";
+import { CodexDictationTranscript } from "./collaboration-dictation-transcript.js";
 type TimingRow = { startMs: number; endMs: number; arrivalOrdinal: number };
 type GateResult = Record<string, boolean | string | number | TimingRow[]>;
 const result: GateResult = {
@@ -331,3 +333,144 @@ async function sendFixture():Promise<void> {
 document.querySelector("#fixture")!.addEventListener("click",()=>{void sendFixture();});
 
 document.querySelector("#product")!.addEventListener("click",()=>{location.href="index.html";});
+
+// Uses the unmodified production runtime. Only its physical input boundary is
+// substituted in this explicitly configured synthetic diagnostic document.
+document.querySelector("#production-stop")!.addEventListener("click", async () => {
+  const buttons = [...document.querySelectorAll<HTMLButtonElement>("button")];
+  buttons.forEach(button => { button.disabled = true; });
+  let context: AudioContext | undefined;
+  let source: AudioBufferSourceNode | undefined;
+  let clock: ConstantSourceNode | undefined;
+  let syntheticStream: MediaStream | undefined;
+  let capture: CodexDictationCapture | undefined;
+  const abort = new AbortController();
+  const transcript = new CodexDictationTranscript();
+  const finalIds = new Set<string>();
+  const observedPeers: RTCPeerConnection[] = [];
+  const zeroContexts: AudioContext[] = [];
+  const zeroTracks: MediaStreamTrack[] = [];
+  let stopStarted = false;
+  const NativePeer = globalThis.RTCPeerConnection;
+  const NativeContext = globalThis.AudioContext;
+  const media = navigator.mediaDevices;
+  const originalCapture = Object.getOwnPropertyDescriptor(media, "getUserMedia");
+  const fields = (value: Record<string, unknown>) => Object.keys(value)
+    .filter(key => /^[a-zA-Z_]{1,40}$/.test(key)).sort().slice(0,32).join(",").slice(0,120);
+  class ProbePeer extends NativePeer {
+    constructor(configuration?: RTCConfiguration) { super(configuration); observedPeers.push(this); }
+    override createDataChannel(label: string, options?: RTCDataChannelInit): RTCDataChannel {
+      const channel = super.createDataChannel(label, options);
+      channel.addEventListener("message", message => {
+        try {
+          const raw = JSON.parse(String(message.data));
+          recordFrameLinkage(raw);
+          if (raw.type === "session.closed") {
+            result.productionTerminalFields = fields(raw);
+            result.productionTerminalErrorPresent = raw.error !== undefined && raw.error !== null;
+            const reasons = ["normal", "completed", "finished", "cancelled", "client_requested", "client_request", "client_close", "close_requested", "session_timeout", "error", "failed"];
+            result.productionTerminalReason = raw.reason === undefined ? "absent" : raw.reason === null ? "null" : raw.reason === "" ? "empty" : reasons.includes(raw.reason) ? raw.reason : "unrecognized";
+            result.productionTerminalSeen = true;
+            void report();
+          }
+        } catch { /* Never persist the payload or arbitrary field values. */ }
+      });
+      return channel;
+    }
+  }
+  class ProbeContext extends NativeContext {
+    constructor(options?: AudioContextOptions) { super(options); zeroContexts.push(this); }
+    override createMediaStreamDestination(): MediaStreamAudioDestinationNode {
+      const destination = super.createMediaStreamDestination();
+      zeroTracks.push(...destination.stream.getTracks());
+      return destination;
+    }
+  }
+  const cleanFixture = () => {
+    try { source?.stop(); } catch { /* Already ended. */ }
+    try { clock?.stop(); } catch { /* Already ended. */ }
+    syntheticStream?.getTracks().forEach(track => track.stop());
+    void context?.close().catch(() => undefined);
+  };
+  const stopAndFinalize = async () => {
+    if (stopStarted || !capture) return;
+    stopStarted = true;
+    result.productionStopRequested = true;
+    const started = performance.now();
+    // Observe generated-zero resource lifetimes without changing their behavior.
+    globalThis.AudioContext = ProbeContext;
+    let finalized: Promise<Readonly<{ incomplete: boolean }>>;
+    try {
+      capture.stopCapture();
+      result.productionInputTracksStoppedAtStop = syntheticStream?.getTracks().every(track => track.readyState === "ended") ?? false;
+      finalized = capture.finalize();
+    } finally { globalThis.AudioContext = NativeContext; }
+    try {
+      const outcome = await finalized;
+      const snapshot = transcript.snapshot();
+      result.productionIncomplete = outcome.incomplete;
+      result.productionTranscriptUnresolved = snapshot.unresolved;
+      result.productionUnconfirmedCharacters = String(snapshot.unconfirmedPreviewText.length);
+      result.productionFinalCharacters = String(snapshot.finalText.length);
+      result.productionFinalCount = String(finalIds.size);
+      result.productionPersonalDashboardMarkers = String((snapshot.finalText.toLowerCase().match(/personal\s+dashboard/g) ?? []).length);
+      result.productionTomorrowMarkers = String((snapshot.finalText.toLowerCase().match(/tomorrow/g) ?? []).length);
+      result.productionChineseDurationMarkers = String((snapshot.finalText.match(/三十/g) ?? []).length);
+      result.productionStopMilliseconds = String(Math.round(performance.now() - started));
+      result.productionPeersClosed = observedPeers.every(peer => peer.connectionState === "closed");
+      result.productionZeroCreated = zeroContexts.length > 0 && zeroTracks.length > 0;
+      result.productionZeroTracksStopped = zeroTracks.every(track => track.readyState === "ended");
+      result.productionZeroContextsClosed = zeroContexts.every(zero => zero.state === "closed");
+      result.productionFinalizeReturned = true;
+    } catch { result.productionFailure = "finalize-failed"; }
+    finally { cleanFixture(); await report(); }
+  };
+  try {
+    // This command requires the environment-gated fixture before any global substitution.
+    const bytes = await invoke("collaboration_voice_gate_fixture", {});
+    result.syntheticOnly = true;
+    result.productionRuntimeProbe = true;
+    context = new NativeContext();
+    await context.resume();
+    const audio = await context.decodeAudioData(new Uint8Array(bytes).buffer);
+    const destination = context.createMediaStreamDestination();
+    syntheticStream = destination.stream;
+    clock = context.createConstantSource(); clock.offset.value = 0; clock.connect(destination); clock.start();
+    source = context.createBufferSource(); source.buffer = audio; source.connect(destination);
+    source.onended = () => { result.productionFixtureEnded = true; void stopAndFinalize(); };
+    Object.defineProperty(media, "getUserMedia", { configurable: true, writable: true, value: async () => syntheticStream! });
+    globalThis.RTCPeerConnection = ProbePeer;
+    const runtimeInvoke: DictationInvoke = async <T>(command: string, args: Record<string, unknown>): Promise<T> => {
+      if (command === "collaboration_dictation_stop") result.productionNativeStopCompleted = false;
+      const value = await invoke(command, args);
+      if (command === "collaboration_dictation_stop") {
+        result.productionNativeStopCompleted = true;
+        await report();
+      }
+      return value as T;
+    };
+    try {
+      capture = await new BrowserCodexDictationRuntime(runtimeInvoke).start(crypto.randomUUID(), event => {
+        if (event.kind === "failed") result.productionFailure = "runtime-failed";
+        if (event.kind === "preview" || event.kind === "final") {
+          transcript.update(event);
+          if (event.kind === "final" && event.itemId) finalIds.add(event.itemId);
+        }
+      }, abort.signal);
+    } finally {
+      globalThis.RTCPeerConnection = NativePeer;
+      if (originalCapture) Object.defineProperty(media, "getUserMedia", originalCapture);
+      else delete (media as unknown as Record<string, unknown>).getUserMedia;
+    }
+    result.productionRuntimeConnected = true;
+    source.start();
+    result.productionFixtureStarted = true;
+    await report();
+  } catch {
+    result.productionFailure = "start-failed";
+    abort.abort();
+    await capture?.cancel().catch(() => undefined);
+    cleanFixture();
+    await report();
+  }
+});
