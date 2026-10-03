@@ -3518,12 +3518,12 @@ func selectOption(
             ? "月份"
             : nil
     let taskStateOption = Set([
-        "全部未删除",
+        "待办与历史",
         "待办",
         "已完成",
         "已放弃",
         "已删除",
-        "All active",
+        "Pending and history",
         "Pending",
         "Completed",
         "Abandoned",

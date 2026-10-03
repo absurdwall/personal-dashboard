@@ -84,6 +84,8 @@ import {
   taskListMutationConfirmed,
   taskListScopeForId,
   taskScopeCount,
+  taskDisplaySections,
+  taskHistoryGroups,
   taskMutationConfirmed,
   taskVisibleInScope,
   todayTaskGroups,
@@ -5950,7 +5952,8 @@ function renderTodayTasks(view: TodayView, openEditors = new Set<string>()): voi
     state: shared.state,
     isPresentationCurrent: todayPresentationFresh,
   });
-  const displayedCount = groups.scheduled.length + groups.overdue.length;
+  const { main: scheduled, history: completed } = taskDisplaySections(groups.scheduled, "all");
+  const displayedCount = scheduled.length + groups.overdue.length;
   if (todayTaskCount) setCopy(todayTaskCount, "today.tasksCount", { count: displayedCount });
   if (todayTaskStatus) {
     if (shared.state === "error") {
@@ -5967,7 +5970,8 @@ function renderTodayTasks(view: TodayView, openEditors = new Set<string>()): voi
   }
   if (todayTaskScheduled) {
     todayTaskScheduled.replaceChildren(
-      ...groups.scheduled.map((task) => taskEditor(task, writable, shared, "today", openEditors.has(task.id))),
+      ...scheduled.map((task) => taskEditor(task, writable, shared, "today", openEditors.has(task.id))),
+      ...(completed.length ? [taskHistorySection(completed, shared, "today", true)!] : []),
     );
   }
   if (todayTaskOverdueCount) {
@@ -8223,7 +8227,7 @@ function renderTaskListScopeButtons(view: TasksView): void {
     setCopy(label, copyKey);
     const count = document.createElement("strong");
     count.textContent = String(
-      taskScopeCount(view.tasks, scope, taskStateScope, view.currentDate, archivedListIds),
+      taskScopeCount(view.tasks, scope, "pending", view.currentDate, archivedListIds),
     );
     button.append(label, count);
     if (scope === "all") {
@@ -8248,7 +8252,7 @@ function renderTaskListScopeButtons(view: TasksView): void {
       taskScopeCount(
         view.tasks,
         taskListScopeForId(list.id),
-        taskStateScope,
+        "pending",
         view.currentDate,
         archivedListIds,
       ),
@@ -8786,8 +8790,80 @@ function taskEditor(
   return row;
 }
 
+function taskHistorySection(
+  tasks: readonly TaskView[], view: TasksView,
+  surface: TaskSurface, folded: boolean,
+): HTMLElement | null {
+  if (!tasks.length) return null;
+  const section = document.createElement(folded ? "details" : "section");
+  section.className = "task-ended-history";
+  const heading = document.createElement(folded ? "summary" : "h4");
+  const headingKey = surface === "today" || (!folded && tasks[0].state === "completed")
+    ? "tasks.completedHistory"
+    : !folded && tasks[0].state === "abandoned"
+      ? "tasks.abandonedHistory"
+      : "tasks.endedHistory";
+  setCopy(heading, headingKey, { count: tasks.length });
+  const rows = document.createElement("div");
+  rows.className = "tasks-list";
+  section.append(heading, rows);
+  let limit = 30;
+  const editors = new Map<string, HTMLElement>();
+  const render = (): void => {
+    if (folded && !(section as HTMLDetailsElement).open) {
+      return;
+    }
+    const writable = surface === "today"
+      ? canMutateTodayTasks({ todayOperationCount, taskOperationCount,
+          hasTargetBinding: Boolean(view.targetBinding), state: view.state,
+          isPresentationCurrent: todayPresentationFresh })
+      : Boolean(view.targetBinding) && view.state !== "error" && view.state !== "unconfigured" && taskOperationCount === 0;
+    const visibleGroups = [...taskHistoryGroups(tasks, limit)];
+    const focused = surface === "tasks" && taskFocusRequestId
+      ? tasks.find(task => task.id === taskFocusRequestId) : undefined;
+    if (focused && !visibleGroups.some(group => group.tasks.some(task => task.id === focused.id))) {
+      visibleGroups.unshift(...taskHistoryGroups([focused], 1));
+    }
+    const groups = visibleGroups.map(group => {
+      const container = document.createElement("section");
+      container.className = "task-history-date-group";
+      const date = document.createElement("h4");
+      if (group.date) date.textContent = group.date;
+      else setCopy(date, "tasks.historyUnknownDate");
+      container.append(date, ...group.tasks.map(task => {
+        let editor = editors.get(task.id);
+        if (!editor) {
+          editor = taskEditor(task, writable, view, surface);
+          editors.set(task.id, editor);
+        }
+        return editor;
+      }));
+      return container;
+    });
+    rows.replaceChildren(...groups);
+    if (tasks.length > limit) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "secondary-button";
+      setCopy(more, "tasks.historyMore", { count: Math.min(30, tasks.length - limit) });
+      more.addEventListener("click", () => { limit += 30; render(); });
+      rows.append(more);
+    }
+  };
+  section.addEventListener("toggle", render);
+  if (!folded) render();
+  return section;
+}
+
 function renderTasks(view: TasksView): void {
   currentTasksView = view;
+  if (taskFocusRequestId) {
+    const focused = view.tasks.find(task => task.id === taskFocusRequestId);
+    if (focused) {
+      taskStateScope = focused.deletedAt ? "deleted" : focused.state;
+      if (view.lists.some(list => list.id === focused.listId && list.archived)) taskScope = "archived";
+    }
+  }
   const scopedListId = taskListIdFromScope(taskScope);
   const scopedList = scopedListId ? taskListForId(view, scopedListId) : undefined;
   if (
@@ -8809,7 +8885,7 @@ function renderTasks(view: TasksView): void {
     taskScope === "today" && view.currentDate
       ? todayTaskGroups(view.tasks, view.currentDate, true, archivedListIds)
       : null;
-  const visibleTasks = todayGroups
+  const scopedTasks = todayGroups
     ? [...todayGroups.scheduled, ...todayGroups.overdue].filter(
         (task) => taskStateScope === "all" || task.state === taskStateScope,
       )
@@ -8820,6 +8896,7 @@ function renderTasks(view: TasksView): void {
           taskStateScope,
         ),
       );
+  const { main: visibleTasks, history: historyTasks } = taskDisplaySections(scopedTasks, taskStateScope);
   taskListScopes?.querySelectorAll<HTMLButtonElement>("[data-task-scope]").forEach((button) => {
     const selected = button.dataset.taskScope === taskScope;
     button.setAttribute("aria-selected", String(selected));
@@ -8853,13 +8930,9 @@ function renderTasks(view: TasksView): void {
         tasksEmpty,
         taskStateScope === "deleted"
           ? "tasks.emptyDeleted"
-          : taskScope === "today"
-            ? "today.tasksEmpty"
-          : taskScope === "inbox"
-            ? "tasks.empty"
-            : taskScope === "archived"
-              ? "tasks.emptyArchived"
-            : "tasks.emptyAll",
+          : taskStateScope === "all" || taskStateScope === "pending"
+            ? "tasks.emptyPending"
+            : "tasks.emptyFiltered",
       );
     }
   }
@@ -8916,8 +8989,13 @@ function renderTasks(view: TasksView): void {
     !writable || taskScope === "archived",
   );
   clearTaskEditorDialogs("tasks");
+  const historyFilter = taskStateScope === "completed" || taskStateScope === "abandoned";
+  const history = taskHistorySection(
+    historyFilter ? visibleTasks : historyTasks, view, "tasks", !historyFilter,
+  );
   tasksList?.replaceChildren(
-    ...visibleTasks.map((task) => taskEditor(task, canOperate, view, "tasks")),
+    ...(historyFilter ? [] : visibleTasks.map((task) => taskEditor(task, canOperate, view, "tasks"))),
+    ...(history ? [history] : []),
   );
   if (taskReturnToCollaborationButton) {
     taskReturnToCollaborationButton.hidden = !taskReturnToCollaborationSessionId;
