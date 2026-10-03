@@ -128,7 +128,7 @@
           <div id="runtime-status" class="runtime-status" role="status" aria-live="polite">
             <span data-i18n="runtime.connecting">正在连接本地应用…</span>
           </div>
-          <p class="sidebar-reassurance" data-i18n="runtime.private">隐私数据留在这台 Mac。</p>
+          <p class="sidebar-reassurance" data-i18n="runtime.private">Vault 和任务数据保存在本机。</p>
         </div>
       </aside>
 
@@ -338,11 +338,7 @@
                     <div class="collaboration-composer-input">
                     <textarea id="collaboration-message-draft" rows="3" maxlength="12000" data-i18n-placeholder="collaboration.messagePlaceholder" placeholder="Describe what you want to discuss…" aria-describedby="collaboration-composer-status" disabled></textarea>
                     <div class="collaboration-voice-controls">
-                      <label class="collaboration-voice-language-label" for="collaboration-voice-language" data-i18n="collaboration.voiceLanguage">Voice language</label>
-                      <select id="collaboration-voice-language" disabled aria-describedby="collaboration-voice-privacy">
-                        <option value="" data-i18n="collaboration.voiceLanguageLoading">Checking local speech models…</option>
-                      </select>
-                      <button id="collaboration-voice-start" class="collaboration-microphone" type="button" aria-label="Start recording" aria-describedby="collaboration-composer-status collaboration-voice-status" disabled>
+                      <button id="collaboration-voice-start" class="collaboration-microphone" type="button" aria-label="Start dictation" aria-describedby="collaboration-composer-status collaboration-voice-status collaboration-voice-privacy" disabled>
                         <svg class="collaboration-microphone-icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></svg>
                         <svg class="collaboration-stop-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor"/></svg>
                       </button>
@@ -350,7 +346,8 @@
                     </div>
                     </div>
                     <p id="collaboration-composer-status" class="collaboration-composer-status" role="status" aria-live="polite" hidden></p>
-                    <p id="collaboration-voice-privacy" class="collaboration-voice-privacy" data-i18n="collaboration.voicePrivacy">Audio is transcribed on this Mac only after you start recording; it is discarded after transcription.</p>
+                    <p id="collaboration-voice-privacy" class="collaboration-voice-privacy" data-i18n="collaboration.voicePrivacy">Audio is processed online through Codex after you start dictation. Review the editable transcript before sending.</p>
+                    <p id="collaboration-voice-preview" class="collaboration-voice-preview" aria-live="polite"></p>
                     <p id="collaboration-voice-status" class="collaboration-voice-status" role="status" aria-live="polite"></p>
                     <div class="collaboration-composer-footer">
                       <p data-i18n="collaboration.readOnlyBoundary">Codex may propose Task, Daily Record review/note/plan, or local Habit completion changes. Only the exact approved content is written to the selected Vault. External Habit sources and settings are not changed.</p>

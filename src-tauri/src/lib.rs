@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 #[cfg(target_os = "macos")]
 use tauri::WindowEvent;
-use tauri::{AppHandle, Manager, RunEvent, State};
+use tauri::{Manager, RunEvent, State};
 
 pub mod appearance;
 pub mod backup;
@@ -25,25 +25,76 @@ pub mod profile;
 pub mod task_adapter;
 pub mod tasks;
 pub mod today;
-pub mod voice_input;
 
-fn voice_helper_path(app_handle: &AppHandle) -> Option<std::path::PathBuf> {
-    if let Ok(resource_directory) = app_handle.path().resource_dir() {
-        let packaged_helper = resource_directory.join("personal-dashboard-voice-helper");
-        if packaged_helper.is_file() {
-            return Some(packaged_helper);
-        }
+#[tauri::command]
+fn collaboration_voice_gate_fixture() -> Result<Vec<u8>, String> {
+    if std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_none() {
+        return Err("Gate is not enabled".into());
     }
-
-    #[cfg(all(target_os = "macos", debug_assertions))]
-    if let Some(development_helper) = option_env!("PERSONAL_DASHBOARD_VOICE_HELPER_PATH") {
-        let development_helper = std::path::PathBuf::from(development_helper);
-        if development_helper.is_file() {
-            return Some(development_helper);
-        }
+    let path = std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE")
+        .ok_or("Fixture is not configured")?;
+    let bytes = std::fs::read(path).map_err(|_| "Fixture unavailable")?;
+    if bytes.len() > 1_000_000 {
+        return Err("Fixture exceeds gate limit".into());
     }
+    Ok(bytes)
+}
 
-    None
+#[tauri::command]
+fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), String> {
+    let path = std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT")
+        .ok_or("Runtime gate is not enabled.")?;
+    // Diagnostic metadata only; never accepts audio, SDP or transcript text.
+    let allowed = [
+        "origin",
+        "secureContext",
+        "mediaDevices",
+        "getUserMedia",
+        "peerConnection",
+        "microphone",
+        "offer",
+        "failure",
+        "captureStopped",
+        "peerClosed",
+        "dataChannelOpen",
+        "userFinal",
+        "userFinalIdentity",
+        "dataChannelTranscript",
+        "connectionState",
+        "remoteAnswer",
+        "sidebandUserFinal",
+        "sidebandFinalIdentity",
+        "serviceEnded",
+        "fixtureSent",
+        "finalTextLength",
+        "finalMatchesFixture",
+        "finalTurnIdPresent",
+        "rawEventType",
+        "rawRole",
+        "rawTextLength",
+        "syntheticOnly",
+        "finalCount",
+        "aggregateMatchesFixture",
+        "finalAfterFixtureCaptureStop",
+        "fixtureCaptureStopped",
+        "sourceReadyBeforeOffer",
+        "fixturePacketsSent",
+    ];
+    let filtered: serde_json::Map<String, serde_json::Value> = result
+        .as_object()
+        .ok_or("Invalid gate result")?
+        .iter()
+        .filter(|(key, value)| {
+            allowed.contains(&key.as_str())
+                && (value.is_boolean() || value.as_str().is_some_and(|s| s.len() <= 120))
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    std::fs::write(
+        path,
+        serde_json::to_vec_pretty(&filtered).map_err(|_| "Could not encode gate metadata")?,
+    )
+    .map_err(|_| "Could not save gate metadata".to_string())
 }
 
 use appearance::{
@@ -216,35 +267,35 @@ fn collaboration_submit_message(
 }
 
 #[tauri::command]
-fn collaboration_voice_capabilities(
-    application: State<'_, voice_input::VoiceInputApplication>,
-) -> voice_input::VoiceInputCapabilitiesView {
-    application.capabilities()
-}
-
-#[tauri::command]
-async fn collaboration_voice_authorize(
-    application: State<'_, voice_input::VoiceInputApplication>,
-) -> Result<bool, String> {
+async fn collaboration_dictation_start(
+    application: State<'_, collaboration::DictationApplication>,
+    input_id: String,
+    sdp: String,
+) -> Result<collaboration::DictationConnection, String> {
     let application = application.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || application.authorize())
+    tauri::async_runtime::spawn_blocking(move || application.start_dictation(&input_id, &sdp))
         .await
-        .map_err(|error| format!("voice_permission_task_failed: {error}"))?
+        .map_err(|_| "dictation-runtime-unavailable")?
 }
-
 #[tauri::command]
-async fn collaboration_transcribe_voice(
-    application: State<'_, voice_input::VoiceInputApplication>,
-    audio: Vec<u8>,
-    mime_type: String,
-    locale: String,
-) -> Result<String, String> {
+async fn collaboration_dictation_poll(
+    application: State<'_, collaboration::DictationApplication>,
+    input_id: String,
+) -> Result<Vec<collaboration::DictationEvent>, String> {
     let application = application.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        application.transcribe(&audio, &mime_type, &locale)
-    })
-    .await
-    .map_err(|error| format!("voice_task_failed: {error}"))?
+    tauri::async_runtime::spawn_blocking(move || application.poll_dictation(&input_id))
+        .await
+        .map_err(|_| "dictation-runtime-unavailable")?
+}
+#[tauri::command]
+async fn collaboration_dictation_stop(
+    application: State<'_, collaboration::DictationApplication>,
+    input_id: String,
+) -> Result<(), String> {
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || application.stop_dictation(&input_id))
+        .await
+        .map_err(|_| "dictation-runtime-unavailable")?
 }
 
 #[tauri::command]
@@ -723,6 +774,19 @@ pub fn run() {
                 NativeTodayWorkspaceExchange::new(app_handle.clone()),
                 SystemClock,
             ));
+            // Diagnostic profile override is only honored in the explicit gate.
+            // It references the existing profile directly; credentials are not copied.
+            let dictation_data_dir =
+                if std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_some() {
+                    std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_DATA_DIR")
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| collaboration_app_data_dir.clone())
+                } else {
+                    collaboration_app_data_dir.clone()
+                };
+            app.manage(collaboration::DictationApplication::new_local(
+                dictation_data_dir,
+            ));
             let collaboration_application = collaboration::CollaborationApplication::new_local(
                 collaboration_app_data_dir,
                 today_workspace_file.clone(),
@@ -731,9 +795,6 @@ pub fn run() {
             collaboration_application
                 .start_daily_plan_automation_scheduler()
                 .map_err(std::io::Error::other)?;
-            app.manage(voice_input::VoiceInputApplication::new_local(
-                voice_helper_path(&app_handle),
-            ));
             app.manage(TaskApplication::new(
                 FileTodayWorkspacePersistence::new(today_workspace_file),
                 SystemClock,
@@ -774,9 +835,11 @@ pub fn run() {
             collaboration_list_sessions,
             collaboration_session,
             collaboration_submit_message,
-            collaboration_voice_capabilities,
-            collaboration_voice_authorize,
-            collaboration_transcribe_voice,
+            collaboration_voice_gate_fixture,
+            collaboration_voice_runtime_gate,
+            collaboration_dictation_start,
+            collaboration_dictation_poll,
+            collaboration_dictation_stop,
             collaboration_save_draft,
             collaboration_set_target_date,
             collaboration_stop_run,
@@ -843,9 +906,11 @@ pub fn run() {
         collaboration_list_sessions,
         collaboration_session,
         collaboration_submit_message,
-        collaboration_voice_capabilities,
-        collaboration_voice_authorize,
-        collaboration_transcribe_voice,
+        collaboration_voice_gate_fixture,
+        collaboration_voice_runtime_gate,
+        collaboration_dictation_start,
+        collaboration_dictation_poll,
+        collaboration_dictation_stop,
         collaboration_save_draft,
         collaboration_set_target_date,
         collaboration_stop_run,
@@ -907,6 +972,9 @@ pub fn run() {
             let _ = app_handle
                 .state::<collaboration::CollaborationApplication>()
                 .shutdown();
+            app_handle
+                .state::<collaboration::DictationApplication>()
+                .shutdown();
         }
         if let RunEvent::Reopen {
             has_visible_windows: false,
@@ -925,6 +993,9 @@ pub fn run() {
         if matches!(&event, RunEvent::ExitRequested { .. }) {
             let _ = app_handle
                 .state::<collaboration::CollaborationApplication>()
+                .shutdown();
+            app_handle
+                .state::<collaboration::DictationApplication>()
                 .shutdown();
         }
     });

@@ -90,13 +90,18 @@ test("queue ownership, cancellation, and restart recovery are visible and action
   assert.match(copies, /"collaboration\.resumeNotStarted":\s*\{[\s\S]*?zh:[^\n]*en:/);
 });
 
-test("local voice transcripts enter the existing editable composer and shared saved-draft queue", () => {
-  assert.match(html, /id="collaboration-voice-language"[^>]*disabled/);
+test("Codex voice transcripts enter the existing editable composer and shared saved-draft queue", () => {
+  assert.doesNotMatch(html, /id="collaboration-voice-language"/);
+  assert.match(html, /id="collaboration-voice-preview"/);
   assert.match(html, /id="collaboration-voice-start"[^>]*disabled/);
   assert.match(html, /id="collaboration-voice-cancel"[^>]*hidden/);
   assert.match(html, /id="collaboration-voice-privacy"[^>]*data-i18n="collaboration\.voicePrivacy"/);
-  assert.match(main, /"collaboration_voice_capabilities"/);
-  assert.match(main, /"collaboration_transcribe_voice"/);
+  assert.match(main, /new BrowserCodexDictationRuntime/);
+  assert.doesNotMatch(main, /collaboration_transcribe_voice|collaboration_voice_capabilities|collaboration_voice_authorize/);
+  assert.doesNotMatch(copies, /Checking local speech models|No offline speech model|On-device speech recognition|This app will not.*upload audio/);
+  assert.match(copies, /"collaboration\.voicePrivacy": \{ zh: "[^"\n]*Codex[^"\n]*在线[^"\n]*手动发送[^"\n]*", en: "Audio is processed online through Codex[^"\n]*sending/);
+  assert.match(html, /id="collaboration-voice-status"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(html, /id="collaboration-voice-start"[^>]*aria-describedby="collaboration-composer-status collaboration-voice-status collaboration-voice-privacy"/);
   assert.match(main, /onTranscript: handleCollaborationVoiceTranscript/);
   const transcriptHandler = main.match(/function handleCollaborationVoiceTranscript\([\s\S]*?\n}\n/);
   assert.ok(transcriptHandler, "voice results have one draft routing handler");
@@ -109,7 +114,7 @@ test("local voice transcripts enter the existing editable composer and shared sa
 
 test("voice completion keeps the recording-time session/date when navigation changes", () => {
   assert.match(main, /targetDate: collaborationTargetDates\.get\(session\.id\)[\s\S]*?collaborationTargetDate/);
-  assert.match(main, /void collaborationVoiceController\.start\(target, locale\)/);
+  assert.match(main, /void collaborationVoiceController\.start\(target\)/);
   assert.match(main, /saveCollaborationDraft\(\{ sessionId, targetDate \}, draft\)/);
   assert.match(main, /collaborationDrafts\.set\(key, draft\)/);
 });

@@ -59,17 +59,12 @@ import {
 import { preserveTodayDayTaskPlanError } from "./day-task-presentation.js";
 import {
   beginVoiceTranscriptSave,
-  BrowserCollaborationVoiceRuntime,
-  collaborationVoiceControls,
-  collaborationVoiceLocale,
-  readCollaborationVoiceLanguage,
-  rememberCollaborationVoiceLanguage,
-  type CollaborationVoiceLanguage,
-  CollaborationVoiceInputController,
   enqueueCollaborationDraftWrite,
   type CollaborationVoiceFailure,
   type CollaborationVoiceTarget,
 } from "./collaboration-voice.js";
+import { BrowserCodexDictationRuntime } from "./collaboration-dictation-runtime.js";
+import { CodexCollaborationVoiceInputController } from "./collaboration-dictation.js";
 import {
   calendarTasksForDate,
   isCurrentTaskResponse,
@@ -892,18 +887,9 @@ type DailyPlanAutomationView = Readonly<{
   currentRun: DailyPlanAutomationRunView | null;
 }>;
 
-type CollaborationVoiceLocale = Readonly<{
-  id: string;
-  displayName: string;
-}>;
-
-type CollaborationVoiceCapabilities = Readonly<{
-  available: boolean;
-  reasonCode: string | null;
-  locales: readonly CollaborationVoiceLocale[];
-}>;
-
 type CollaborationVoiceStatusKey =
+  | "collaboration.voiceIncomplete"
+  | "collaboration.voiceLoginRequired"
   | "collaboration.voiceRequesting"
   | "collaboration.voiceRecording"
   | "collaboration.voiceTranscribing"
@@ -915,8 +901,7 @@ type CollaborationVoiceStatusKey =
   | "collaboration.voiceRecordingFailed"
   | "collaboration.voiceEmptyRecording"
   | "collaboration.voiceRecognitionFailed"
-  | "collaboration.voiceDraftSaveFailed"
-  | "collaboration.voiceSelectedUnavailable";
+  | "collaboration.voiceDraftSaveFailed";
 
 function localCalendarDate(): string {
   const now = new Date();
@@ -954,27 +939,12 @@ const collaborationDrafts = new Map<string, string>();
 const collaborationDraftWrites = new Map<string, Promise<CollaborationSessionView>>();
 const collaborationDraftSaveTimers = new Map<string, number>();
 const collaborationTargetDates = new Map<string, string>();
-let collaborationVoiceCapabilities: CollaborationVoiceCapabilities | null = null;
-let collaborationVoiceCapabilityLoading = false;
-let collaborationVoiceCapabilityRequest = 0;
-let collaborationVoiceAuthorizationPending = false;
-let collaborationVoiceAuthorizationRequest = 0;
-let collaborationVoiceAuthorizationTarget: CollaborationVoiceTarget | null = null;
-let preferredCollaborationVoiceLanguage: CollaborationVoiceLanguage | undefined;
-try { preferredCollaborationVoiceLanguage = readCollaborationVoiceLanguage(window.localStorage); } catch { /* Storage is optional. */ }
 let activeCollaborationVoiceTarget: CollaborationVoiceTarget | null = null;
 const collaborationVoiceStatuses = new Map<string, CollaborationVoiceStatusKey>();
 const collaborationSendingDrafts = new Set<string>();
 
-const collaborationVoiceController = new CollaborationVoiceInputController(
-  new BrowserCollaborationVoiceRuntime(async (audio, locale) => {
-    const bytes = new Uint8Array(await audio.arrayBuffer());
-    return window.__TAURI__.core.invoke<string>("collaboration_transcribe_voice", {
-      audio: Array.from(bytes),
-      mimeType: audio.type || "audio/mp4",
-      locale,
-    });
-  }),
+const collaborationVoiceController = new CodexCollaborationVoiceInputController(
+  new BrowserCodexDictationRuntime((command, args) => window.__TAURI__.core.invoke(command,args)),
   {
     onState: (state, target) => {
       activeCollaborationVoiceTarget = state === "idle" ? null : target;
@@ -984,6 +954,10 @@ const collaborationVoiceController = new CollaborationVoiceInputController(
       renderCollaborationVoiceControls();
     },
     onTranscript: handleCollaborationVoiceTranscript,
+    onPreview: (target, text) => {
+      if (isCurrentCollaborationVoiceTarget(target)) setRawText(collaborationVoicePreview,text);
+    },
+    onIncomplete: (target) => setCollaborationVoiceStatus(target,"collaboration.voiceIncomplete"),
     onFailure: (target, failure) => {
       setCollaborationVoiceStatus(target, collaborationVoiceFailureStatus(failure));
       renderCollaborationVoiceControls();
@@ -1054,7 +1028,7 @@ const collaborationTaskToolNotice = document.querySelector<HTMLElement>("#collab
 const collaborationComposer = document.querySelector<HTMLFormElement>("#collaboration-composer");
 const collaborationMessageDraft = document.querySelector<HTMLTextAreaElement>("#collaboration-message-draft");
 const collaborationComposerStatus = document.querySelector<HTMLElement>("#collaboration-composer-status");
-const collaborationVoiceLanguageSelect = document.querySelector<HTMLSelectElement>("#collaboration-voice-language");
+const collaborationVoicePreview = document.querySelector<HTMLElement>("#collaboration-voice-preview");
 const collaborationVoiceStartButton = document.querySelector<HTMLButtonElement>("#collaboration-voice-start");
 const collaborationVoiceCancelButton = document.querySelector<HTMLButtonElement>("#collaboration-voice-cancel");
 const collaborationVoiceStatus = document.querySelector<HTMLElement>("#collaboration-voice-status");
@@ -1539,7 +1513,7 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
   renderWorkspaceRailContext(currentWorkspaceDestination);
   renderWorkspaceContextStatus(currentWorkspaceDestination);
   renderCollaborationWorkspace();
-  renderCollaborationVoiceLocales();
+  renderCollaborationVoiceControls();
   renderCollaborationConnection();
 }
 
@@ -2418,128 +2392,38 @@ function collaborationVoiceFailureStatus(failure: CollaborationVoiceFailure): Co
     case "recording-failed": return "collaboration.voiceRecordingFailed";
     case "empty-recording": return "collaboration.voiceEmptyRecording";
     case "recognition-failed": return "collaboration.voiceRecognitionFailed";
-    case "locale-unavailable": return "collaboration.voiceSelectedUnavailable";
-  }
-}
-
-function collaborationVoiceCapabilityStatus(
-  capabilities: CollaborationVoiceCapabilities | null,
-): InterfaceCopyKey {
-  if (!capabilities) return "collaboration.voiceUnavailable";
-  switch (capabilities.reasonCode) {
-    case "requires_macos_26": return "collaboration.voiceUnsupported";
-    case "no_installed_model":
-    case "locale_not_installed":
-      return "collaboration.voiceModelMissing";
-    default:
-      return "collaboration.voiceUnavailable";
+    case "login-required": return "collaboration.voiceLoginRequired";
+    case "connection-failed": return "collaboration.voiceRecognitionFailed";
   }
 }
 
 function renderCollaborationVoiceControls(): void {
-  if (!collaborationVoiceLanguageSelect || !collaborationVoiceStartButton) return;
-
-  const active = collaborationVoiceController.state;
-  const capabilities = collaborationVoiceCapabilities;
-  const selectedLocale = collaborationVoiceLanguageSelect.value;
-  const locales = capabilities?.available ? capabilities.locales : [];
-  const selectedLocaleIsInstalled = Boolean(collaborationVoiceLocale(selectedLocale as CollaborationVoiceLanguage, locales));
-  const currentTarget = currentCollaborationVoiceTarget();
-  const currentDraftKey = currentTarget
-    ? collaborationDraftKey(currentTarget.sessionId, currentTarget.targetDate)
-    : "";
-  const controlState = collaborationVoiceControls({
-    state: collaborationVoiceAuthorizationPending ? "requesting" : active,
-    hasTarget: Boolean(currentTarget),
-    composerDisabled: collaborationMessageDraft?.disabled === true ||
-      (currentDraftKey !== "" && collaborationSendingDrafts.has(currentDraftKey)),
-    capabilityLoading: collaborationVoiceCapabilityLoading || collaborationVoiceAuthorizationPending,
-    hasInstalledLocale: Boolean(capabilities?.available && selectedLocaleIsInstalled),
-    hasInstalledLocales: true, // Both target choices remain available even when their model is missing.
-  });
-  const status = currentTarget
-    ? collaborationVoiceStatuses.get(currentDraftKey)
-    : undefined;
-
-  if (collaborationVoiceCapabilityLoading) {
-    setCopy(collaborationVoiceStatus, "collaboration.voiceLanguageLoading");
-  } else if (collaborationVoiceAuthorizationPending) {
-    setCopy(collaborationVoiceStatus, "collaboration.voiceRequesting");
-  } else if (!capabilities?.available || locales.length === 0) {
-    setCopy(collaborationVoiceStatus, collaborationVoiceCapabilityStatus(capabilities));
-  } else if (active !== "idle" && activeCollaborationVoiceTarget && currentTarget &&
-    collaborationDraftKey(activeCollaborationVoiceTarget.sessionId, activeCollaborationVoiceTarget.targetDate) === currentDraftKey) {
-    const activeStatus: CollaborationVoiceStatusKey = active === "requesting"
-      ? "collaboration.voiceRequesting"
-      : active === "recording"
-        ? "collaboration.voiceRecording"
-        : "collaboration.voiceTranscribing";
-    setCopy(collaborationVoiceStatus, activeStatus);
-  } else if (active !== "idle" && activeCollaborationVoiceTarget) {
-    setRawText(collaborationVoiceStatus, t("collaboration.voiceProcessingOrigin", {
-      date: activeCollaborationVoiceTarget.targetDate,
-    }));
-  } else if (status) {
-    setCopy(collaborationVoiceStatus, status);
-  } else if (!selectedLocaleIsInstalled) {
-    setCopy(collaborationVoiceStatus, "collaboration.voiceSelectedUnavailable");
-  } else {
-    setRawText(collaborationVoiceStatus, "");
-  }
-
-  const actionLabel = t(controlState.startAction === "stop" ? "collaboration.voiceStop" : "collaboration.voiceStart");
-  collaborationVoiceStartButton.setAttribute("aria-label", actionLabel);
-  collaborationVoiceStartButton.title = actionLabel;
-  collaborationVoiceStartButton.dataset.action = controlState.startAction;
-  collaborationVoiceStartButton.setAttribute("aria-pressed", String(active === "recording"));
-  if (collaborationVoiceStatus) collaborationVoiceStatus.dataset.state = active;
-  collaborationVoiceStartButton.disabled = controlState.startDisabled;
-  collaborationVoiceCancelButton?.toggleAttribute("hidden", !controlState.cancelVisible);
-  if (collaborationVoiceCancelButton) {
-    collaborationVoiceCancelButton.disabled = !controlState.cancelVisible;
-  }
-  collaborationVoiceLanguageSelect.disabled = controlState.localeDisabled;
+  if (!collaborationVoiceStartButton) return;
+  const state=collaborationVoiceController.state;
+  const target=currentCollaborationVoiceTarget();
+  const key=target?collaborationDraftKey(target.sessionId,target.targetDate):"";
+  const status=target?collaborationVoiceStatuses.get(key):undefined;
+  const activeHere=target&&activeCollaborationVoiceTarget&&
+    collaborationDraftKey(activeCollaborationVoiceTarget.sessionId,activeCollaborationVoiceTarget.targetDate)===key;
+  if(state!=="idle"&&activeHere) {
+    setCopy(collaborationVoiceStatus,state==="requesting"?"collaboration.voiceRequesting":state==="recording"?"collaboration.voiceRecording":"collaboration.voiceTranscribing");
+  } else if(state!=="idle"&&activeCollaborationVoiceTarget) {
+    setRawText(collaborationVoiceStatus,t("collaboration.voiceProcessingOrigin",{date:activeCollaborationVoiceTarget.targetDate}));
+  } else if(status) setCopy(collaborationVoiceStatus,status);
+  else setRawText(collaborationVoiceStatus,"");
+  const stop=state==="recording";
+  const label=t(stop?"collaboration.voiceStop":"collaboration.voiceStart");
+  collaborationVoiceStartButton.setAttribute("aria-label",label);
+  collaborationVoiceStartButton.title=label;
+  collaborationVoiceStartButton.dataset.action=stop?"stop":"start";
+  collaborationVoiceStartButton.setAttribute("aria-pressed",String(stop));
+  collaborationVoiceStartButton.disabled=state==="requesting"||state==="transcribing"||
+    (state==="idle"&&(!target||collaborationMessageDraft?.disabled===true||collaborationSendingDrafts.has(key)));
+  collaborationVoiceCancelButton?.toggleAttribute("hidden",state==="idle");
+  if(collaborationVoiceCancelButton)collaborationVoiceCancelButton.disabled=state==="idle";
+  if(collaborationVoiceStatus)collaborationVoiceStatus.dataset.state=state;
 }
 
-function renderCollaborationVoiceLocales(): void {
-  if (!collaborationVoiceLanguageSelect) return;
-  const selected = preferredCollaborationVoiceLanguage ??
-    (currentInterfaceLanguage === "zh" ? "zh-CN" : "en-US");
-  const options = (["zh-CN", "en-US"] as const).map((language) => {
-    const option = document.createElement("option");
-    option.value = language;
-    setCopy(option, language === "zh-CN" ? "collaboration.voiceChinese" : "collaboration.voiceAmericanEnglish");
-    return option;
-  });
-  collaborationVoiceLanguageSelect.replaceChildren(...options);
-  collaborationVoiceLanguageSelect.value = selected;
-  renderCollaborationVoiceControls();
-}
-
-async function refreshCollaborationVoiceCapabilities(): Promise<void> {
-  const request = ++collaborationVoiceCapabilityRequest;
-  collaborationVoiceCapabilityLoading = true;
-  renderCollaborationVoiceLocales();
-  try {
-    const capabilities = await window.__TAURI__.core.invoke<CollaborationVoiceCapabilities>(
-      "collaboration_voice_capabilities",
-    );
-    if (request !== collaborationVoiceCapabilityRequest) return;
-    collaborationVoiceCapabilities = capabilities;
-  } catch {
-    if (request !== collaborationVoiceCapabilityRequest) return;
-    collaborationVoiceCapabilities = {
-      available: false,
-      reasonCode: "runtime_unavailable",
-      locales: [],
-    };
-  } finally {
-    if (request === collaborationVoiceCapabilityRequest) {
-      collaborationVoiceCapabilityLoading = false;
-      renderCollaborationVoiceLocales();
-    }
-  }
-}
 
 function collaborationDraftForTarget(target: CollaborationVoiceTarget): string | undefined {
   const key = collaborationDraftKey(target.sessionId, target.targetDate);
@@ -2582,64 +2466,17 @@ function handleCollaborationVoiceTranscript(target: CollaborationVoiceTarget, te
 }
 
 function cancelCollaborationVoiceCaptureForSelectionChange(): void {
-  if (collaborationVoiceAuthorizationPending) {
-    ++collaborationVoiceAuthorizationRequest;
-    collaborationVoiceAuthorizationPending = false;
-    if (collaborationVoiceAuthorizationTarget) setCollaborationVoiceStatus(collaborationVoiceAuthorizationTarget, "collaboration.voiceCancelled");
-    collaborationVoiceAuthorizationTarget = null;
-  }
-  const state = collaborationVoiceController.state;
-  if (state === "requesting" || state === "recording") collaborationVoiceController.cancel();
+  const state=collaborationVoiceController.state;
+  if(state==="requesting")collaborationVoiceController.cancel();
+  if(state==="recording")collaborationVoiceController.stop();
 }
 
 async function startOrStopCollaborationVoice(): Promise<void> {
-  if (collaborationVoiceController.state === "recording") {
-    collaborationVoiceController.stop();
-    return;
-  }
-  const target = currentCollaborationVoiceTarget();
-  const language = collaborationVoiceLanguageSelect?.value as CollaborationVoiceLanguage;
-  const locale = collaborationVoiceCapabilities?.available
-    ? collaborationVoiceLocale(language, collaborationVoiceCapabilities.locales) : undefined;
-  if (!target || !locale || collaborationVoiceController.state !== "idle") return;
-  preferredCollaborationVoiceLanguage = language;
-  try { rememberCollaborationVoiceLanguage(window.localStorage, language); } catch { /* Storage is optional. */ }
-  if (collaborationMessageDraft) {
-    collaborationDrafts.set(
-      collaborationDraftKey(target.sessionId, target.targetDate),
-      collaborationMessageDraft.value,
-    );
-  }
-  if (collaborationVoiceAuthorizationPending) return;
-  const request = ++collaborationVoiceAuthorizationRequest;
-  collaborationVoiceAuthorizationPending = true;
-  collaborationVoiceAuthorizationTarget = target;
-  renderCollaborationVoiceControls();
-  let authorized = false;
-  try {
-    authorized = await window.__TAURI__.core.invoke<boolean>(
-      "collaboration_voice_authorize",
-    );
-  } catch {
-    if (request === collaborationVoiceAuthorizationRequest) setCollaborationVoiceStatus(target, "collaboration.voiceRecognitionFailed");
-    return;
-  } finally {
-    if (request === collaborationVoiceAuthorizationRequest) {
-      collaborationVoiceAuthorizationPending = false;
-      collaborationVoiceAuthorizationTarget = null;
-      renderCollaborationVoiceControls();
-    }
-  }
-  if (request !== collaborationVoiceAuthorizationRequest) return;
-  if (!authorized) {
-    setCollaborationVoiceStatus(target, "collaboration.voicePermissionDenied");
-    renderCollaborationVoiceControls();
-    return;
-  }
-  if (!isCurrentCollaborationVoiceTarget(target) || collaborationVoiceLanguageSelect?.value !== language) {
-    return;
-  }
-  void collaborationVoiceController.start(target, locale);
+  if(collaborationVoiceController.state==="recording") { collaborationVoiceController.stop();return; }
+  const target=currentCollaborationVoiceTarget();
+  if(!target||collaborationVoiceController.state!=="idle")return;
+  if(collaborationMessageDraft)collaborationDrafts.set(collaborationDraftKey(target.sessionId,target.targetDate),collaborationMessageDraft.value);
+  void collaborationVoiceController.start(target);
 }
 
 function collaborationTaskSchedule(date: string | null, time: string | null): string {
@@ -10371,7 +10208,7 @@ function showWorkspaceDestination(
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = collaborationTargetDate;
     void refreshCollaborationWorkspace();
     void refreshCollaborationConnection();
-    void refreshCollaborationVoiceCapabilities();
+    renderCollaborationVoiceControls();
   }
 }
 
@@ -10591,16 +10428,6 @@ collaborationContinuityNote?.addEventListener("input", () => {
 
 collaborationContinuitySaveButton?.addEventListener("click", () => {
   void saveCollaborationContinuityNote();
-});
-
-collaborationVoiceLanguageSelect?.addEventListener("change", () => {
-  preferredCollaborationVoiceLanguage = collaborationVoiceLanguageSelect.value as CollaborationVoiceLanguage;
-  try { rememberCollaborationVoiceLanguage(window.localStorage, preferredCollaborationVoiceLanguage); } catch { /* Storage is optional. */ }
-  const target = currentCollaborationVoiceTarget();
-  if (target && collaborationVoiceLanguageSelect.value) {
-    collaborationVoiceStatuses.delete(collaborationDraftKey(target.sessionId, target.targetDate));
-  }
-  renderCollaborationVoiceControls();
 });
 
 collaborationVoiceStartButton?.addEventListener("click", () => {
