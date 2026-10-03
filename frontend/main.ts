@@ -5971,7 +5971,7 @@ function renderTodayTasks(view: TodayView, openEditors = new Set<string>()): voi
   if (todayTaskScheduled) {
     todayTaskScheduled.replaceChildren(
       ...scheduled.map((task) => taskEditor(task, writable, shared, "today", openEditors.has(task.id))),
-      ...(completed.length ? [taskHistorySection(completed, shared, "today", true)!] : []),
+      ...(completed.length ? [taskHistorySection(completed, shared, "today", true, openEditors)!] : []),
     );
   }
   if (todayTaskOverdueCount) {
@@ -8793,10 +8793,14 @@ function taskEditor(
 function taskHistorySection(
   tasks: readonly TaskView[], view: TasksView,
   surface: TaskSurface, folded: boolean,
+  openEditors: ReadonlySet<string> = new Set(),
 ): HTMLElement | null {
   if (!tasks.length) return null;
   const section = document.createElement(folded ? "details" : "section");
   section.className = "task-ended-history";
+  if (folded && tasks.some(task => openEditors.has(task.id))) {
+    (section as HTMLDetailsElement).open = true;
+  }
   const heading = document.createElement(folded ? "summary" : "h4");
   const headingKey = surface === "today" || (!folded && tasks[0].state === "completed")
     ? "tasks.completedHistory"
@@ -8818,12 +8822,10 @@ function taskHistorySection(
           hasTargetBinding: Boolean(view.targetBinding), state: view.state,
           isPresentationCurrent: todayPresentationFresh })
       : Boolean(view.targetBinding) && view.state !== "error" && view.state !== "unconfigured" && taskOperationCount === 0;
-    const visibleGroups = [...taskHistoryGroups(tasks, limit)];
-    const focused = surface === "tasks" && taskFocusRequestId
-      ? tasks.find(task => task.id === taskFocusRequestId) : undefined;
-    if (focused && !visibleGroups.some(group => group.tasks.some(task => task.id === focused.id))) {
-      visibleGroups.unshift(...taskHistoryGroups([focused], 1));
-    }
+    const includedTaskIds = new Set(openEditors);
+    if (surface === "tasks" && taskFocusRequestId) includedTaskIds.add(taskFocusRequestId);
+    const visibleGroups = taskHistoryGroups(tasks, limit, includedTaskIds);
+    const visibleCount = visibleGroups.reduce((count, group) => count + group.tasks.length, 0);
     const groups = visibleGroups.map(group => {
       const container = document.createElement("section");
       container.className = "task-history-date-group";
@@ -8833,7 +8835,7 @@ function taskHistorySection(
       container.append(date, ...group.tasks.map(task => {
         let editor = editors.get(task.id);
         if (!editor) {
-          editor = taskEditor(task, writable, view, surface);
+          editor = taskEditor(task, writable, view, surface, openEditors.has(task.id));
           editors.set(task.id, editor);
         }
         return editor;
@@ -8841,17 +8843,19 @@ function taskHistorySection(
       return container;
     });
     rows.replaceChildren(...groups);
-    if (tasks.length > limit) {
+    if (tasks.length > visibleCount) {
       const more = document.createElement("button");
       more.type = "button";
       more.className = "secondary-button";
-      setCopy(more, "tasks.historyMore", { count: Math.min(30, tasks.length - limit) });
+      const nextCount = taskHistoryGroups(tasks, limit + 30, includedTaskIds)
+        .reduce((count, group) => count + group.tasks.length, 0);
+      setCopy(more, "tasks.historyMore", { count: nextCount - visibleCount });
       more.addEventListener("click", () => { limit += 30; render(); });
       rows.append(more);
     }
   };
   section.addEventListener("toggle", render);
-  if (!folded) render();
+  if (!folded || (section as HTMLDetailsElement).open) render();
   return section;
 }
 

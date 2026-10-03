@@ -1,55 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import vm from "node:vm";
 import test from "node:test";
-import { stripTypeScriptTypes } from "node:module";
+import { renderer } from "./task-history-harness.ts";
 import * as presentation from "../../frontend/task-presentation.ts";
 
-const main = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
-class Element {
-  children: any[] = [];
-  dataset = {};
-  open = false;
-  textContent = "";
-  listeners = new Map<string, Function>();
-  tagName: string;
-  constructor(tagName = "div") { this.tagName = tagName; }
-  append(...children: any[]) { this.children.push(...children); }
-  replaceChildren(...children: any[]) { this.children = children; }
-  addEventListener(name: string, listener: Function) { this.listeners.set(name, listener); }
-  querySelector() { return null; }
-}
-function renderer() {
-  const context: any = { ...presentation, canMutateTodayTasks: () => true, todayOperationCount: 0,
-    todayPresentationFresh: true, document: { createElement: (tag: string) => new Element(tag) },
-    CSS: { escape: (value: string) => value }, tasksList: new Element(), tasksCount: new Element(), taskScope: "all", taskStateScope: "all",
-    taskOperationCount: 0, taskCreateOpen: false, taskListManagementOpen: false,
-    taskFocusRequestId: null, taskReturnToCollaborationSessionId: null,
-    taskCreateDrafts: new Map(), taskListCreateDrafts: new Map(),
-    setCopy: (element: any, key: string, params: any) => { element.copyKey = key; element.params = params; },
-    taskEditor: (task: any) => ({ tagName: "task", id: task.id }),
-    taskListForId: () => undefined, renderTaskListScopeButtons: () => {},
-    renderTaskListManagement: () => {}, clearTaskEditorDialogs: () => {},
-  };
-  for (const name of ["taskListScopes", "taskFilter", "tasksStatus", "tasksEmpty", "taskListsManagementPanel",
-    "taskListCreateForm", "taskCreateForm", "taskCreateSubmit", "taskReturnToCollaborationButton"]) context[name] = null;
-  for (const name of ["todayTaskStatus", "todayTaskEmpty", "todayTaskOverdueSection", "todayTaskOverdueEmpty",
-    "todayTaskCreateForm", "todayTaskCreateName", "todayTaskCreateContent", "todayTaskCreateDate", "todayTaskCreateTime", "todayTaskCreateSubmit"]) context[name] = null;
-  context.todayTaskScheduled = new Element();
-  context.todayTaskOverdue = new Element();
-  context.todayTaskCount = new Element();
-  context.todayTaskOverdueCount = new Element();
-  context.todayTaskCreateDrafts = new Map();
-  context.todayTaskCreateDraftKey = () => "synthetic";
-  const todayStart = main.indexOf("function renderTodayTasks(");
-  const todayEnd = main.indexOf("function renderHistoricalHabitCorrections", todayStart);
-  const start = main.indexOf("function renderTasks(");
-  const end = main.indexOf("function stableTaskOperationId", start);
-  const historyStart = main.indexOf("function taskHistorySection(");
-  const historyCode = historyStart < 0 ? "" : main.slice(historyStart, start);
-  vm.runInNewContext(stripTypeScriptTypes(historyCode + main.slice(start, end) + main.slice(todayStart, todayEnd)), context);
-  return context;
-}
 const pending = { id: "pending", name: "pending", listId: "inbox", state: "pending", deletedAt: null, date: null };
 const completed = { ...pending, id: "done", state: "completed", completion: { completedOn: "2026-10-02" }, modifiedAt: "2026-10-02T12:00:00-04:00" };
 const abandoned = { ...completed, id: "abandoned", state: "abandoned", completion: null };
