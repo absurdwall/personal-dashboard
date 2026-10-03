@@ -6,6 +6,21 @@ import type {
   CodexDictationRuntime, CodexDictationCapture, CodexDictationEvent,
 } from "./collaboration-dictation-runtime.js";
 
+// Return only a bounded product category; raw provider messages never enter UI.
+export function codexDictationFailure(error: unknown): CollaborationVoiceFailure {
+  if (error instanceof DOMException) {
+    if (error.name === "NotAllowedError" || error.name === "SecurityError") return "permission-denied";
+    if (["NotFoundError", "NotReadableError", "OverconstrainedError"].includes(error.name)) return "capture-unavailable";
+  }
+  const code = String(error).toLowerCase();
+  if (/login-required|unauthorized|authentication|invalid_api_key|session_expired/.test(code)) return "login-required";
+  if (/quota|rate.limit|usage.limit|too_many_requests|429/.test(code)) return "quota-exceeded";
+  if (code.includes("capture-unavailable")) return "capture-unavailable";
+  if (/connection|network|timeout/.test(code)) return "connection-failed";
+  if (/service|runtime-unavailable/.test(code)) return "service-failed";
+  return "recognition-failed";
+}
+
 type ActiveInput = {
   id: string;
   target: CollaborationVoiceTarget;
@@ -52,12 +67,8 @@ export class CodexCollaborationVoiceInputController {
       this.handlers.onState("recording", active.target);
     } catch (error) {
       if (this.#active !== active) return;
-      const failure: CollaborationVoiceFailure = error instanceof DOMException &&
-        (error.name === "NotAllowedError" || error.name === "SecurityError")
-        ? "permission-denied"
-        : String(error).includes("dictation-login-required") ? "login-required"
-        : String(error).includes("capture-unavailable") ? "capture-unavailable" : "connection-failed";
-      this.#finish(active, false, failure);
+      const failure = codexDictationFailure(error);
+      this.#finish(active, true, failure);
     }
   }
 
@@ -69,8 +80,24 @@ export class CodexCollaborationVoiceInputController {
     this.handlers.onState("transcribing", active.target);
     void active.capture.finalize().then(
       result => this.#finish(active, result.incomplete),
-      () => this.#finish(active, true, "recognition-failed"),
+      error => this.#finish(active, true, codexDictationFailure(error)),
     );
+  }
+
+  // Navigation never waits for the remote tail. Ownership stays on the
+  // copied start target while another session/date/page is already visible.
+  navigate(): void {
+    if (this.state === "requesting" || this.state === "connecting") this.cancel();
+    else this.stop();
+  }
+
+  // App/window close has no dependable tail-drain opportunity: preserve only
+  // received text now and release capture before any asynchronous draft save.
+  close(): void {
+    const active = this.#active;
+    if (!active) return;
+    if ((active.state === "requesting" || active.state === "connecting") && !this.#text(active,true)) this.cancel();
+    else this.#finish(active, true);
   }
 
   cancel(): void {
@@ -79,7 +106,7 @@ export class CodexCollaborationVoiceInputController {
     this.#active = null;
     active.ended = true;
     active.abort.abort();
-    void active.capture?.cancel();
+    void active.capture?.cancel().catch(() => undefined);
     this.handlers.onPreview?.(active.target, "");
     this.handlers.onCancel(active.target);
     this.handlers.onState("idle", active.target);
@@ -87,7 +114,7 @@ export class CodexCollaborationVoiceInputController {
 
   #event(active: ActiveInput, event: CodexDictationEvent): void {
     if (this.#active !== active || active.ended || event.inputId !== active.id) return;
-    if (event.kind === "failed") { this.#finish(active, true, "recognition-failed"); return; }
+    if (event.kind === "failed") { this.#finish(active, true, codexDictationFailure(event.failure)); return; }
     if (event.kind === "phase") {
       if (active.state === "requesting" && event.phase === "connecting") {
         active.state = "connecting";
@@ -129,12 +156,13 @@ export class CodexCollaborationVoiceInputController {
     active.ended = true;
     this.#active = null;
     active.abort.abort();
-    void active.capture?.cancel();
+    void active.capture?.cancel().catch(() => undefined);
     const text = this.#text(active, incomplete);
     this.handlers.onPreview?.(active.target, "");
     if (text) this.handlers.onTranscript(active.target, text);
     else this.handlers.onFailure(active.target, failure ?? "empty-recording");
     if (incomplete && text) this.handlers.onIncomplete?.(active.target);
+    if (failure && text) this.handlers.onFailure(active.target, failure);
     this.handlers.onState("idle", active.target);
   }
 }

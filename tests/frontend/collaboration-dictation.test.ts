@@ -131,11 +131,13 @@ test("one aggregate draft save shares the existing queue with pending edits and 
 
 // Exercise the production browser runtime through the controller boundary with
 // a synthetic peer and clock. No actual microphone, cloud calls or long waits.
-async function browserFixture(t:TestContext, options: {connecting?:boolean; closeDuringSetup?:boolean} = {}) {
+async function browserFixture(t:TestContext, options: {connecting?:boolean; closeDuringSetup?:boolean; pauseAt?:"permission"|"offer"|"native"|"remote"; rejectNative?:boolean; pollPending?:boolean} = {}) {
   t.mock.timers.enable({apis:["setTimeout","setInterval","Date"]});
   const descriptors=new Map<string,PropertyDescriptor|undefined>();
   const replace=(name:string,value:unknown)=>{descriptors.set(name,Object.getOwnPropertyDescriptor(globalThis,name));Object.defineProperty(globalThis,name,{configurable:true,value});};
   t.after(()=>{for(const[name,descriptor]of descriptors){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else Reflect.deleteProperty(globalThis,name);}});
+  let release:()=>void=()=>{};
+  const gate=new Promise<void>(resolve=>{release=resolve;});
   let trackStopped=false;
   let peerClosed=false;
   let channel:FakeChannel;
@@ -145,23 +147,26 @@ async function browserFixture(t:TestContext, options: {connecting?:boolean; clos
   class FakePeer {
     connectionState="connected";onconnectionstatechange:(()=>void)|null=null;
     addTrack(){}createDataChannel(){channel=new FakeChannel();return channel;}
-    async createOffer(){return {sdp:"synthetic-offer"};}async setLocalDescription(){}async setRemoteDescription(){if(options.closeDuringSetup)channel.onclose?.();}
+    async createOffer(){if(options.pauseAt==="offer")await gate;return {sdp:"synthetic-offer"};}async setLocalDescription(){}async setRemoteDescription(){if(options.pauseAt==="remote")await gate;if(options.closeDuringSetup)channel.onclose?.();}
     close(){peerClosed=true;}
   }
   const track={stop:()=>{trackStopped=true;}};
-  replace("navigator",{mediaDevices:{getUserMedia:async()=>({getTracks:()=>[track],getAudioTracks:()=>[track]})}});
+  replace("navigator",{mediaDevices:{getUserMedia:async()=>{if(options.pauseAt==="permission")await gate;return {getTracks:()=>[track],getAudioTracks:()=>[track]};}}});
   replace("RTCPeerConnection",FakePeer);
   const calls:string[]=[];
   const runtime=new BrowserCodexDictationRuntime(async<T>(command:string,args:Record<string,unknown>):Promise<T>=>{
     calls.push(command);
+    if(command==="collaboration_dictation_start" && options.pauseAt==="native") { await gate; if(options.rejectNative)throw new Error("dictation-quota-exceeded"); }
+    if(command==="collaboration_dictation_poll" && options.pollPending) { await gate; throw new Error("dictation-connection-lost"); }
     return (command==="collaboration_dictation_start"?{inputId:args.inputId,sdp:"synthetic-answer"}:[]) as T;
   });
   let draft="existing";
   let incomplete=0;
-  const controller=new CodexCollaborationVoiceInputController(runtime,{onState:()=>{},onTranscript:(_,text)=>{draft=appendVoiceTranscript(draft,text);},onFailure:()=>{},onCancel:()=>{},onIncomplete:()=>{incomplete++;}});
+  const failures:string[]=[];
+  const controller=new CodexCollaborationVoiceInputController(runtime,{onState:()=>{},onTranscript:(_,text)=>{draft=appendVoiceTranscript(draft,text);},onFailure:(_,failure)=>{failures.push(failure);},onCancel:()=>{},onIncomplete:()=>{incomplete++;}});
   const started=controller.start(target);
-  if(options.connecting)await tick();else await started;
-  return {controller,calls,started,close:()=>channel.onclose?.(),openListener:()=>channel.onopen,emit:(value:unknown)=>channel.onmessage?.({data:JSON.stringify(value)}),draft:()=>draft,incomplete:()=>incomplete,trackStopped:()=>trackStopped,peerClosed:()=>peerClosed};
+  if(options.connecting || options.pauseAt)await tick();else await started;
+  return {controller,calls,started,release,failures,close:()=>channel.onclose?.(),openListener:()=>channel.onopen,emit:(value:unknown)=>channel.onmessage?.({data:JSON.stringify(value)}),draft:()=>draft,incomplete:()=>incomplete,trackStopped:()=>trackStopped,peerClosed:()=>peerClosed};
 }
 
 test("production capture continues beyond two minutes and only manual stop starts bounded finalization",async t=>{
@@ -205,4 +210,125 @@ test("a channel already closed during SDP setup never waits for a future abort e
   const f=await browserFixture(t,{closeDuringSetup:true});
   assert.equal(f.controller.state,"idle");assert.equal(f.trackStopped(),true);assert.equal(f.peerClosed(),true);
   assert.equal(f.calls.filter(c=>c==="collaboration_dictation_stop").length,1);
+});
+
+for (const terminate of ["navigate", "cancel"] as const) for (const pauseAt of ["permission", "offer", "native", "remote"] as const) {
+  test(`${terminate} cancels pending ${pauseAt} and late completion cannot restart capture`, async t => {
+    const f=await browserFixture(t,{pauseAt});
+    assert.notEqual(f.controller.state,"idle");
+    f.controller[terminate]();
+    assert.equal(f.controller.state,"idle");
+    f.release();await f.started;
+    assert.equal(f.trackStopped(),true);assert.equal(f.draft(),"existing");
+    assert.deepEqual(f.failures,[]);
+    if(pauseAt!=="permission")assert.equal(f.peerClosed(),true);
+    assert.equal(f.calls.filter(c=>c==="collaboration_dictation_start").length,pauseAt==="native"||pauseAt==="remote"?1:0);
+    assert.equal(f.calls.filter(c=>c==="collaboration_dictation_stop").length,pauseAt==="native"||pauseAt==="remote"?1:0);
+  });
+}
+
+test("cancel while native setup later rejects still releases its temporary input",async t=>{
+  const f=await browserFixture(t,{pauseAt:"native",rejectNative:true});
+  f.controller.cancel();f.release();await f.started;
+  assert.equal(f.trackStopped(),true);assert.equal(f.peerClosed(),true);
+  assert.equal(f.calls.filter(c=>c==="collaboration_dictation_stop").length,1);
+  assert.deepEqual(f.failures,[]);
+});
+
+for (const [code,category] of [["session_expired","login-required"],["insufficient_quota","quota-exceeded"],["dictation-service-ended","service-failed"],["dictation-connection-lost","connection-failed"]]) {
+  test(`${category} preserves partial text with a specific failure and incomplete status`,async()=>{
+    const f=fixture();await f.controller.start(target);
+    f.emit(preview("partial","received words"));
+    f.deliver({inputId:"expired",kind:"failed",failure:code});
+    // Use the production parser's error code path for the active input.
+    f.emit({type:"error",error:{code}});
+    assert.equal(f.draft(),"typed before dictation\nreceived words");
+    assert.deepEqual(f.failures,[category]);assert.equal(f.incomplete(),1);
+    assert.equal(f.released(),true);
+    f.controller.stop();f.emit(final("late","discard"));
+    assert.equal(f.transcripts.length,1);assert.equal(f.controller.state,"idle");
+  });
+}
+
+test("session/date/Today navigation finalizes only the immutable original target and latest original draft",async()=>{
+  const original={sessionId:"old-session",targetDate:"2026-10-03"};
+  const next={sessionId:"new-session",targetDate:"2026-10-04"};
+  let visible={...original};
+  const drafts=new Map([[JSON.stringify(original),"old draft"],[JSON.stringify(next),"new draft"]]);
+  const saved:Array<{owner:typeof original;text:string}>=[];
+  let emit:(event:CodexDictationEvent)=>void=()=>{};let id="";
+  let complete:(result:{incomplete:boolean})=>void=()=>{};let stopped=0;
+  const controller=new CodexCollaborationVoiceInputController({start:async(inputId,onEvent)=>{
+    id=inputId;emit=onEvent;
+    return {stopCapture:()=>{stopped++;},cancel:async()=>{},finalize:()=>new Promise(resolve=>{complete=resolve;})};
+  }},{onState:()=>{},onCancel:()=>{},onFailure:()=>assert.fail("unexpected failure"),onTranscript:(owner,text)=>{
+    const key=JSON.stringify(owner);
+    const aggregate=beginVoiceTranscriptSave(owner,text,drafts.get(key)??"",async(target,text)=>{saved.push({owner:target,text});});
+    drafts.set(key,aggregate.draft);
+  }});
+  await controller.start(visible);
+  // A lived-day change mutates the caller's target, but never the input owner.
+  visible.targetDate="2026-10-04";visible={...next};
+  controller.navigate();controller.navigate();assert.equal(stopped,1);
+  drafts.set(JSON.stringify(original),"latest original edit");
+  emit({inputId:id,kind:"final",role:"user",itemId:"tail",text:"received tail"});
+  complete({incomplete:false});await tick();
+  assert.deepEqual(saved,[{owner:original,text:"latest original edit\nreceived tail"}]);
+  assert.equal(drafts.get(JSON.stringify(next)),"new draft");
+  assert.deepEqual(visible,next);
+});
+
+test("close snapshots received text once, releases immediately, and permits a fresh input after reopen",async t=>{
+  const f=await browserFixture(t);
+  f.emit(preview("p","received before close"));f.controller.stop();f.controller.close();f.controller.close();
+  assert.equal(f.trackStopped(),true);assert.equal(f.peerClosed(),true);assert.equal(f.controller.state,"idle");
+  assert.equal(f.draft(),"existing\nreceived before close");assert.equal(f.incomplete(),1);
+  f.emit(final("late","not received before close"));t.mock.timers.tick(4_000);await tick();
+  assert.equal(f.draft(),"existing\nreceived before close");
+  await f.controller.start(target);assert.equal(f.controller.state,"recording");f.controller.cancel();
+  assert.equal(f.calls.filter(c=>c==="collaboration_dictation_start").length,2);
+});
+
+test("a late in-flight poll failure after close cannot overwrite saved input status",async t=>{
+  const f=await browserFixture(t,{pollPending:true});
+  f.emit(preview("p","received"));t.mock.timers.tick(200);await tick();
+  f.controller.close();f.release();await tick();
+  assert.equal(f.draft(),"existing\nreceived");assert.deepEqual(f.failures,[]);assert.equal(f.incomplete(),1);
+});
+
+test("failed original-target persistence keeps the controller aggregate editable in memory",async()=>{
+  let memory="latest original edit";const persisted="existing saved draft";
+  let saveFailed=false;let saved:Promise<unknown>|undefined;
+  let emit:(event:CodexDictationEvent)=>void=()=>{};let id="";
+  const controller=new CodexCollaborationVoiceInputController({start:async(inputId,onEvent)=>{
+    id=inputId;emit=onEvent;
+    return {stopCapture:()=>{},cancel:async()=>{},finalize:async()=>({incomplete:false})};
+  }},{onState:()=>{},onCancel:()=>{},onFailure:()=>assert.fail("unexpected failure"),onTranscript:(owner,text)=>{
+    const save=beginVoiceTranscriptSave(owner,text,memory,async()=>{throw new Error("synthetic disk failure");});
+    memory=save.draft;saved=save.saved.catch(()=>{saveFailed=true;});
+  }});
+  await controller.start(target);
+  emit({inputId:id,kind:"final",role:"user",itemId:"turn",text:"received"});
+  controller.stop();await tick();await saved;
+  assert.equal(memory,"latest original edit\nreceived");assert.equal(persisted,"existing saved draft");assert.equal(saveFailed,true);
+});
+
+for (const phase of ["recording", "transcribing"] as const) {
+  test(`explicit cancellation during ${phase} discards all text and ignores delayed finalization`,async t=>{
+    const f=await browserFixture(t);f.emit(preview("p","discard preview"));f.emit(final("turn","discard final"));
+    if(phase==="transcribing")f.controller.stop();
+    f.controller.cancel();f.controller.cancel();
+    assert.equal(f.trackStopped(),true);assert.equal(f.peerClosed(),true);
+    f.emit(final("late","discard"));t.mock.timers.tick(4_000);await tick();
+    assert.equal(f.draft(),"existing");assert.equal(f.incomplete(),0);assert.deepEqual(f.failures,[]);
+  });
+}
+
+test("production service close preserves partial text, reports incomplete failure and ends collection",async t=>{
+  const f=await browserFixture(t);
+  f.emit(preview("p","received before service close"));f.emit({type:"session.closed"});
+  assert.equal(f.draft(),"existing\nreceived before service close");assert.deepEqual(f.failures,["service-failed"]);
+  assert.equal(f.incomplete(),1);assert.equal(f.trackStopped(),true);assert.equal(f.peerClosed(),true);
+  f.emit(final("late","discard"));t.mock.timers.tick(30_000);await tick();
+  assert.equal(f.calls.filter(c=>c==="collaboration_dictation_start").length,1);
 });

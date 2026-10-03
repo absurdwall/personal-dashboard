@@ -12,7 +12,9 @@ export type CollaborationVoiceFailure =
   | "empty-recording"
   | "recognition-failed"
   | "login-required"
-  | "connection-failed";
+  | "connection-failed"
+  | "service-failed"
+  | "quota-exceeded";
 
 export function enqueueCollaborationDraftWrite<T>(
   pendingWrites: Map<string, Promise<T>>,
