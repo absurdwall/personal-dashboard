@@ -3799,6 +3799,18 @@ func findVisibleMenu(_ application: AXUIElement) -> AXUIElement? {
 }
 
 func findMenuItem(_ menu: AXUIElement, _ text: String) -> AXUIElement? {
+    // Prefer an exact option so Pending does not select Pending and history.
+    var exactMatch: AXUIElement?
+    _ = walk(menu) { element in
+        guard stringAttribute(element, "AXRole") == "AXMenuItem",
+              nodeText(element).trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(text) == .orderedSame else {
+            return false
+        }
+        exactMatch = element
+        return true
+    }
+    if let exactMatch { return exactMatch }
     var match: AXUIElement?
     _ = walk(menu) { element in
         guard stringAttribute(element, "AXRole") == "AXMenuItem",
