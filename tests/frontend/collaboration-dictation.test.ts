@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
-import { CodexCollaborationVoiceInputController } from "../../frontend/collaboration-dictation.ts";
-import { BrowserCodexDictationRuntime, parseCodexDictationEvent, type CodexDictationRuntime, type CodexDictationEvent } from "../../frontend/collaboration-dictation-runtime.ts";
+import { registerHooks } from "node:module";
+import type { CodexDictationRuntime, CodexDictationEvent } from "../../frontend/collaboration-dictation-runtime.ts";
+// Production emits .js imports; this source-level test resolves its one shared
+// reducer to TypeScript without requiring generated dist artifacts.
+const sourceHook=registerHooks({resolve(specifier,context,nextResolve){
+  return nextResolve(specifier==="./collaboration-dictation-transcript.js"
+    ? "./collaboration-dictation-transcript.ts" : specifier,context);
+}});
+const { CodexCollaborationVoiceInputController } = await import("../../frontend/collaboration-dictation.ts");
+const { BrowserCodexDictationRuntime, parseCodexDictationEvent } = await import("../../frontend/collaboration-dictation-runtime.ts");
+sourceHook.deregister();
 import { appendVoiceTranscript, beginVoiceTranscriptSave, enqueueCollaborationDraftWrite, submitCollaborationDraftSnapshot } from "../../frontend/collaboration-voice.ts";
 
 const recoveryLabel="[Unconfirmed preview — may overlap the final transcript; review before sending]";
@@ -38,6 +47,128 @@ function fixture() {
     draft:()=>draft,stopped:()=>stopped,released:()=>released,incomplete:()=>incomplete};
 }
 
+const timedPreview=(id:string,text:string,start:unknown,end:unknown)=>({...preview(id,text),start_ms:start,end_ms:end});
+const timedFinal=(id:string,text:string,start:unknown,end:unknown)=>({type:"turn.done",turn:{id,role:"user",transcript:text,start_ms:start,end_ms:end}});
+
+test("whole nonconflicting audio intervals replace corresponding previews and order delayed finals chronologically",async()=>{
+  const f=fixture();await f.controller.start(target);
+  f.emit(timedPreview("preview-a","wrong A",10,30));
+  f.emit(timedPreview("preview-b","wrong B",110,130));
+  f.emit(timedFinal("turn-b","correct B",100,150));
+  f.emit(timedFinal("turn-a","old A",0,50));
+  f.emit(timedFinal("turn-a","correct A",0,50));
+  f.emit(timedFinal("turn-a","correct A",0,50));
+  assert.equal(f.previews.at(-1),"correct A\ncorrect B");
+  f.edit("latest concurrent edit");f.controller.stop();f.complete();await tick();
+  assert.equal(f.draft(),"latest concurrent edit\ncorrect A\ncorrect B");
+  assert.equal(f.incomplete(),0);assert.equal(f.transcripts.length,1);
+});
+
+test("delayed A final covers only A's interval, preserving a newer B preview on failure",async()=>{
+  const f=fixture();await f.controller.start(target);
+  f.emit(timedPreview("preview-a","provisional A ",5,25));
+  f.emit(timedPreview("preview-b","received B",60,90));
+  f.emit(timedFinal("turn-a","correct A",0,50));
+  assert.equal(f.previews.at(-1),"correct A\nreceived B");
+  f.emit({type:"error"});
+  assert.deepEqual(f.transcripts,[`correct A\n${recovered("received B")}`]);
+  assert.equal(f.incomplete(),1);
+});
+
+for(const expandAgain of [false,true])test(`shrinking final correction re-exposes retained preview${expandAgain?" until range expands again":""}`,async()=>{
+  const f=fixture();await f.controller.start(target);
+  f.emit(timedPreview("tail","received tail",80,100));
+  f.emit(timedFinal("turn","wide final",0,120));
+  assert.equal(f.previews.at(-1),"wide final");
+  f.emit(timedFinal("turn","narrow corrected final",0,60));
+  assert.equal(f.previews.at(-1),"narrow corrected final\nreceived tail");
+  if(expandAgain)f.emit(timedFinal("turn","wide corrected final",0,120));
+  f.controller.stop();f.complete();await tick();
+  assert.deepEqual(f.transcripts,[expandAgain?"wide corrected final":`narrow corrected final\n${recovered("received tail")}`]);
+  assert.equal(f.incomplete(),expandAgain?0:1);
+});
+
+test("equal words in distinct adjacent final intervals survive, exact boundary containment is allowed",async()=>{
+  const f=fixture();await f.controller.start(target);
+  f.emit(timedPreview("second-preview","repeated",50,100));
+  f.emit(timedPreview("first-preview","repeated",0,50));
+  f.emit(timedFinal("second-turn","repeated",50,100));
+  f.emit(timedFinal("first-turn","repeated",0,50));
+  f.controller.stop();f.complete();await tick();
+  assert.deepEqual(f.transcripts,["repeated\nrepeated"]);assert.equal(f.incomplete(),0);
+});
+
+for(const overlap of [false,true])test(`${overlap?"overlapping final owners":"preview crossing adjacent final boundaries"} remain ambiguous`,async()=>{
+  const f=fixture();await f.controller.start(target);
+  f.emit(timedPreview("p","received fragment",overlap?10:20,overlap?30:80));
+  f.emit(timedFinal("a","A",0,overlap?100:50));
+  f.emit(timedFinal("b","B",overlap?90:50,150));
+  f.controller.stop();f.complete();await tick();
+  assert.deepEqual(f.transcripts,[`A\nB\n${recovered("received fragment")}`]);
+  assert.equal(f.incomplete(),1);
+});
+
+for(const [name,start,end] of [
+  ["missing",undefined,undefined],["zero-width",0,0],["negative",-1,20],
+  ["reversed",20,10],["nonfinite",0,Infinity],["numeric strings","0","20"],
+] as const)test(`${name} preview timing never permits destructive coverage`,async()=>{
+  const f=fixture();await f.controller.start(target);
+  f.emit(timedPreview("p","received fragment",start,end));
+  f.emit(timedFinal("turn","correct final",0,100));
+  f.controller.stop();f.complete();await tick();
+  assert.deepEqual(f.transcripts,[`correct final\n${recovered("received fragment")}`]);assert.equal(f.incomplete(),1);
+});
+
+test("preview revisions recompute coverage and chronological order without losing the retained identity",async()=>{
+  const f=fixture();await f.controller.start(target);
+  f.emit(timedFinal("later","later final",100,150));
+  f.emit(timedPreview("p","earlier preview",10,30));
+  assert.equal(f.previews.at(-1),"earlier preview\nlater final");
+  f.emit(timedFinal("earlier","earlier final",0,50));
+  assert.equal(f.previews.at(-1),"earlier final\nlater final");
+  f.emit(timedPreview("p","revised uncovered words",60,80));
+  assert.equal(f.previews.at(-1),"earlier final\nrevised uncovered words\nlater final");
+  f.controller.stop();f.complete();await tick();
+  assert.deepEqual(f.transcripts,[`earlier final\nlater final\n${recovered("revised uncovered words")}`]);assert.equal(f.incomplete(),1);
+});
+
+test("an invalid corrected final interval re-exposes preview and flags unresolved ordering",async()=>{
+  const f=fixture();await f.controller.start(target);
+  f.emit(timedPreview("p","received fragment",10,30));
+  f.emit(timedFinal("turn","valid final",0,50));
+  assert.equal(f.previews.at(-1),"valid final");
+  f.emit(timedFinal("turn","corrected final",50,0));
+  f.controller.stop();f.complete();await tick();
+  assert.deepEqual(f.transcripts,[`corrected final\n${recovered("received fragment")}`]);assert.equal(f.incomplete(),1);
+});
+
+test("a conflicting final arriving later re-exposes formerly covered preview",async()=>{
+  const f=fixture();await f.controller.start(target);
+  f.emit(timedPreview("p","received fragment",10,30));
+  f.emit(timedFinal("a","A",0,100));
+  assert.equal(f.previews.at(-1),"A");
+  f.emit(timedFinal("b","B",90,150));
+  f.controller.stop();f.complete();await tick();
+  assert.deepEqual(f.transcripts,[`A\nB\n${recovered("received fragment")}`]);assert.equal(f.incomplete(),1);
+});
+
+test("an empty final cannot silently consume received preview words",async()=>{
+  const f=fixture();await f.controller.start(target);
+  f.emit(timedPreview("p","received words",10,30));
+  f.emit(timedFinal("turn","",0,50));
+  f.controller.stop();f.complete();await tick();
+  assert.deepEqual(f.transcripts,[recovered("received words")]);assert.equal(f.incomplete(),1);
+});
+
+test("parser retains finite numeric raw envelope and nested turn timings without coercion",()=>{
+  const p=parseCodexDictationEvent("input",timedPreview("p","words",0,25));
+  assert.equal(p?.startMs,0);assert.equal(p?.endMs,25);
+  const f=parseCodexDictationEvent("input",timedFinal("t","words",10,30));
+  assert.equal(f?.startMs,10);assert.equal(f?.endMs,30);
+  const malformed=parseCodexDictationEvent("input",timedPreview("p","words","0",Infinity));
+  assert.equal(malformed?.startMs,undefined);assert.equal(malformed?.endMs,undefined);
+});
+
 test("unpaired previews survive delayed and corrected finals without invented sealing",async()=>{
   const f=fixture();await f.controller.start(f.target);
   f.emit(preview("preview-a","provisional A "));
@@ -46,7 +177,7 @@ test("unpaired previews survive delayed and corrected finals without invented se
   f.emit(final("turn-a","correct final A"));
   f.emit(final("turn-a","corrected final A"));
   f.emit(final("turn-a","corrected final A"));
-  assert.equal(f.previews.at(-1),"corrected final A\nprovisional A newer B");
+  assert.equal(f.previews.at(-1),"provisional A newer B\ncorrected final A");
   f.emit({type:"error"});
   assert.deepEqual(f.transcripts,[`corrected final A\n${recovered("provisional A newer B")}`]);
   assert.equal(f.incomplete(),1);assert.equal(f.released(),true);
@@ -57,7 +188,7 @@ test("equal authoritative finals from distinct turn IDs survive, duplicate/corre
   f.emit(final("turn-a","old"));f.emit(final("turn-a","repeated"));
   f.emit(final("turn-b","repeated"));f.emit(final("turn-a","repeated"));
   f.controller.stop();f.complete();await tick();
-  assert.deepEqual(f.transcripts,["repeated\nrepeated"]);assert.equal(f.incomplete(),0);
+  assert.deepEqual(f.transcripts,["repeated\nrepeated"]);assert.equal(f.incomplete(),1);
 });
 
 test("manual stop waits for the tail and appends once to the latest edited original-target draft",async()=>{
@@ -187,6 +318,23 @@ test("production capture continues beyond two minutes and only manual stop start
   t.mock.timers.tick(4_000);await tick();
   assert.equal(f.draft(),`existing\nopening\nmiddle\nending corrected\n${recovered("ending")}`);assert.equal(f.incomplete(),1);
   assert.equal(f.peerClosed(),true);assert.equal(f.calls.filter(c=>c==="collaboration_dictation_stop").length,1);
+});
+
+test("production runtime uses interval coverage while retaining the independent post-stop final gate",async t=>{
+  const f=await browserFixture(t);
+  f.emit(timedPreview("p","uncorrected",0,50));
+  f.controller.stop();f.emit(timedFinal("turn","correct final",0,50));
+  t.mock.timers.tick(4_000);await tick();
+  assert.equal(f.draft(),"existing\ncorrect final");assert.equal(f.incomplete(),0);
+  assert.equal(f.peerClosed(),true);assert.equal(f.trackStopped(),true);
+});
+
+test("covered previews cannot turn a duplicate pre-stop final into a tail acknowledgement",async t=>{
+  const f=await browserFixture(t);
+  f.emit(timedPreview("p","uncorrected",0,50));f.emit(timedFinal("turn","correct final",0,50));
+  f.controller.stop();f.emit(timedFinal("turn","correct final",0,50));
+  t.mock.timers.tick(4_000);await tick();
+  assert.equal(f.draft(),"existing\ncorrect final");assert.equal(f.incomplete(),1);
 });
 
 test("production runtime never acknowledges an unpaired newer preview from a delayed final",async t=>{

@@ -1,3 +1,5 @@
+import { CodexDictationTranscript } from "./collaboration-dictation-transcript.js";
+
 export type CodexDictationEvent = Readonly<{
   inputId: string;
   kind: "preview" | "final" | "failed" | "phase";
@@ -5,6 +7,8 @@ export type CodexDictationEvent = Readonly<{
   itemId?: string;
   role?: "user";
   text?: string;
+  startMs?: number;
+  endMs?: number;
   failure?: string;
 }>;
 export interface CodexDictationCapture {
@@ -17,18 +21,24 @@ export interface CodexDictationRuntime {
 }
 export type DictationInvoke = <T>(command: string, args: Record<string, unknown>) => Promise<T>;
 
+function finiteTiming(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 // CLI 0.160.0 v3 data-channel events retain turn identity; normalized flat
 // App Server transcript events do not. Preview IDs are explicitly provisional.
 export function parseCodexDictationEvent(inputId: string, value: unknown): CodexDictationEvent | undefined {
   if (!value || typeof value !== "object") return undefined;
-  const data = value as {type?: unknown;error?: {code?: unknown;type?: unknown;message?: unknown};code?: unknown;message?: unknown;item?: {id?: unknown;text?: unknown};turn?: {id?: unknown;role?: unknown;transcript?: unknown}};
+  const data = value as {type?: unknown;error?: {code?: unknown;type?: unknown;message?: unknown};code?: unknown;message?: unknown;start_ms?: unknown;end_ms?: unknown;item?: {id?: unknown;text?: unknown};turn?: {id?: unknown;role?: unknown;transcript?: unknown;start_ms?: unknown;end_ms?: unknown}};
   if (data.type === "input_transcript.added" && typeof data.item?.text === "string") {
     if (typeof data.item.id !== "string" || !data.item.id) return {inputId,kind:"failed",failure:"dictation-transcript-identity-unavailable"};
-    return {inputId,kind:"preview",role:"user",itemId:data.item.id,text:data.item.text};
+    return {inputId,kind:"preview",role:"user",itemId:data.item.id,text:data.item.text,
+      startMs:finiteTiming(data.start_ms),endMs:finiteTiming(data.end_ms)};
   }
   if (data.type === "turn.done" && data.turn?.role === "user" && typeof data.turn.transcript === "string") {
     if (typeof data.turn.id !== "string" || !data.turn.id) return {inputId,kind:"failed",failure:"dictation-transcript-identity-unavailable"};
-    return {inputId,kind:"final",role:"user",itemId:data.turn.id,text:data.turn.transcript};
+    return {inputId,kind:"final",role:"user",itemId:data.turn.id,text:data.turn.transcript,
+      startMs:finiteTiming(data.turn.start_ms),endMs:finiteTiming(data.turn.end_ms)};
   }
   if (data.type === "session.closed") return {inputId,kind:"failed",failure:"dictation-service-ended"};
   if (data.type === "error") return {inputId,kind:"failed",failure:String(data.error?.code ?? data.error?.type ?? data.code ?? data.error?.message ?? data.message ?? "dictation-service-failed")};
@@ -49,7 +59,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
     let captureStopped = false;
     let finalAfterStop = false;
     const finalIds = new Set<string>();
-    let pendingPreview = false;
+    const transcript = new CodexDictationTranscript();
     let failed = false;
     let finishWait: (() => void) | undefined;
     let nativeStartRequested = false;
@@ -107,7 +117,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
           const event = parseCodexDictationEvent(inputId,JSON.parse(String(message.data)));
           if (!event) return;
           if (event.kind === "failed") { fail(event.failure ?? "dictation-service-failed"); return; }
-          if (event.kind === "preview") pendingPreview = true;
+          transcript.update(event);
           if (event.kind === "final" && event.itemId && !finalIds.has(event.itemId)) {
             finalIds.add(event.itemId);
             if (captureStopped) finalAfterStop = true;
@@ -189,7 +199,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
             finishWait = () => {clearTimeout(timer);resolve();};
             if (disposed) finishWait();
           });
-          const incomplete = failed || pendingPreview || !finalAfterStop;
+          const incomplete = failed || transcript.snapshot().unresolved || !finalAfterStop;
           await cleanup();
           return {incomplete};
         },
