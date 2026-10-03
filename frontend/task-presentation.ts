@@ -471,13 +471,14 @@ export function taskHistoryDate(task: Readonly<{
   return [...(task.changes ?? [])].reverse().find(change => change.kind === "abandoned")?.changedAt.slice(0, 10) ?? null;
 }
 
-export function taskHistoryGroups<T extends Parameters<typeof taskHistoryDate>[0]>(
+export function taskHistoryGroups<T extends Parameters<typeof taskHistoryDate>[0] & Readonly<{ id: string }>>(
   tasks: readonly T[],
   limit: number,
+  includedTaskIds: ReadonlySet<string> = new Set(),
 ): readonly Readonly<{ date: string | null; tasks: readonly T[] }>[] {
   const sorted = tasks.map((task, index) => ({ task, index, date: taskHistoryDate(task) }))
     .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? "") || a.index - b.index)
-    .slice(0, limit);
+    .filter((entry, index) => index < limit || includedTaskIds.has(entry.task.id));
   const groups: { date: string | null; tasks: T[] }[] = [];
   for (const entry of sorted) {
     const last = groups.at(-1);
