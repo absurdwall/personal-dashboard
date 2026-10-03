@@ -17,25 +17,19 @@ This project is a private, cross-device habit-tracking web app.
 
 ### Issue tracker
 
-Issues and specs are tracked as local Markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
+Before publishing or fetching specs and implementation tickets, read `docs/agents/issue-tracker.md`. The canonical tracker is GitHub Issues in `absurdwall/personal-dashboard`; `.scratch/` holds supporting records.
 
 ### Triage labels
 
-Use the default five-role triage vocabulary. See `docs/agents/triage-labels.md`.
+Use the default five-role GitHub label vocabulary in `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
-Use a single-context domain documentation layout. See `docs/agents/domain.md`.
+Before exploring or changing the project, read `docs/agents/domain.md` for the single-context layout and domain documentation rules.
 
 ## Shared management connection
 
-- Project id: `product-personal-dashboard`; canonical working directory:
-  `personal-dashboard` inside the Tortilla Flat workspace;
-  repository: `absurdwall/personal-dashboard`; source id:
-  `source-personal-dashboard-3`.
-- After actual publication, native claim, completion/blockage, or an explicit
-  reconcile request, use the user-local `tortilla-flat-management` skill and
-  its installed helper. If its install, version, or workspace binding is
-  missing, report setup required; do not infer identity from chat or create a
-  Registry. Preserve this repository's local issue workflow and approval
-  boundaries.
+- Management project id: `product-personal-dashboard`.
+- Use the user-local `tortilla-flat-management` skill only when the user
+  explicitly requests Management connection or reconciliation.
+- Preserve this repository's GitHub issue workflow and approval boundaries.
