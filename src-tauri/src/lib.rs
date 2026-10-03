@@ -810,18 +810,10 @@ pub fn run() {
                 NativeTodayWorkspaceExchange::new(app_handle.clone()),
                 SystemClock,
             ));
-            // Diagnostic profile override is only honored in the explicit gate.
-            // It references the existing profile directly; credentials are not copied.
-            let dictation_data_dir =
-                if std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_some() {
-                    std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_DATA_DIR")
-                        .map(PathBuf::from)
-                        .unwrap_or_else(|| collaboration_app_data_dir.clone())
-                } else {
-                    collaboration_app_data_dir.clone()
-                };
+            // Runtime redirects only the authenticated profile in the explicit
+            // gate; working directories and permission probes remain isolated.
             app.manage(collaboration::DictationApplication::new_local(
-                dictation_data_dir,
+                collaboration_app_data_dir.clone(),
             ));
             let collaboration_application = collaboration::CollaborationApplication::new_local(
                 collaboration_app_data_dir,

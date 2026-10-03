@@ -29,13 +29,13 @@ type ActiveInput = {
   capture?: CodexDictationCapture;
   finals: Map<string, string>;
   previews: Map<string, string>;
-  sealedPreviews: Set<string>;
   ended: boolean;
 };
 
 type DictationHandlers = CollaborationVoiceHandlers & {
   onPreview?(target: CollaborationVoiceTarget, text: string): void;
   onIncomplete?(target: CollaborationVoiceTarget): void;
+  unconfirmedPreviewLabel?(): string;
 };
 
 export class CodexCollaborationVoiceInputController {
@@ -55,7 +55,7 @@ export class CodexCollaborationVoiceInputController {
     const active: ActiveInput = {
       id: crypto.randomUUID(), target: { ...target }, state: "requesting",
       abort: new AbortController(), finals: new Map(), previews: new Map(),
-      sealedPreviews: new Set(), ended: false,
+      ended: false,
     };
     this.#active = active;
     this.handlers.onState("requesting", active.target);
@@ -124,22 +124,15 @@ export class CodexCollaborationVoiceInputController {
     }
     if (event.role !== "user" || !event.itemId) return;
     if (event.kind === "preview") {
-      if (active.sealedPreviews.has(event.itemId)) return;
       // Raw input_transcript.added is one identified text fragment, not a
       // cumulative final. Re-delivery replaces that fragment, preserving
       // equal words carried by distinct IDs.
       active.previews.set(event.itemId, event.text ?? "");
     }
     if (event.kind === "final") {
-      const newTurn = !active.finals.has(event.itemId);
+      // Only raw turn identity can replace an authoritative final. Preview IDs
+      // are unrelated; preserve them until a verified association is available.
       active.finals.set(event.itemId, event.text ?? "");
-      // V3 preview IDs and turn IDs inhabit different namespaces. Only a
-      // newly completed user turn seals the current ordered preview batch;
-      // duplicate/corrected old finals must never erase a newer preview.
-      if (newTurn) {
-        for (const id of active.previews.keys()) active.sealedPreviews.add(id);
-        active.previews.clear();
-      }
     }
     this.handlers.onPreview?.(active.target, this.#text(active, true));
   }
@@ -157,7 +150,14 @@ export class CodexCollaborationVoiceInputController {
     this.#active = null;
     active.abort.abort();
     void active.capture?.cancel().catch(() => undefined);
-    const text = this.#text(active, incomplete);
+    const finalText = this.#text(active, false);
+    const previewText = [...active.previews.values()].join("").trim();
+    // Keep ambiguous received text in the same persisted editable draft, clearly
+    // separated from finals. Never infer matching by arrival order or equal text.
+    const recoveredPreview = previewText
+      ? `${this.handlers.unconfirmedPreviewLabel?.() ?? "[Unconfirmed preview — may overlap the final transcript; review before sending]"}\n${previewText}`
+      : "";
+    const text = [finalText, recoveredPreview].filter(Boolean).join("\n");
     this.handlers.onPreview?.(active.target, "");
     if (text) this.handlers.onTranscript(active.target, text);
     else this.handlers.onFailure(active.target, failure ?? "empty-recording");

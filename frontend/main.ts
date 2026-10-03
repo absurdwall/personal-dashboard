@@ -60,6 +60,7 @@ import { preserveTodayDayTaskPlanError } from "./day-task-presentation.js";
 import {
   beginVoiceTranscriptSave,
   enqueueCollaborationDraftWrite,
+  submitCollaborationDraftSnapshot,
   type CollaborationVoiceFailure,
   type CollaborationVoiceTarget,
 } from "./collaboration-voice.js";
@@ -961,9 +962,10 @@ const collaborationVoiceController = new CodexCollaborationVoiceInputController(
       if (state === "connecting") setCollaborationVoiceStatus(target, "collaboration.voiceConnecting");
       if (state === "recording") setCollaborationVoiceStatus(target, "collaboration.voiceRecording");
       if (state === "transcribing") setCollaborationVoiceStatus(target, "collaboration.voiceTranscribing");
-      renderCollaborationVoiceControls();
+      renderCollaborationWorkspace();
     },
     onTranscript: handleCollaborationVoiceTranscript,
+    unconfirmedPreviewLabel: () => t("collaboration.voiceUnconfirmedPreview"),
     onPreview: (target, text) => {
       const key = collaborationDraftKey(target.sessionId, target.targetDate);
       if (text) collaborationVoicePreviews.set(key,text); else collaborationVoicePreviews.delete(key);
@@ -3901,7 +3903,7 @@ function renderCollaborationWorkspace(): void {
   }
   if (collaborationSendButton) {
     collaborationSendButton.disabled = !session || !connected || !vaultAvailable || recoveryBlocked ||
-      sendingDraft ||
+      sendingDraft || collaborationVoiceController.state !== "idle" ||
       !(collaborationMessageDraft?.value.trim());
   }
   let composerStatus: InterfaceCopyKey | null = null;
@@ -4457,7 +4459,7 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
 async function sendCollaborationMessage(): Promise<void> {
   const session = currentCollaborationSession;
   const message = collaborationMessageDraft?.value ?? "";
-  if (!session || !message.trim()) return;
+  if (!session || !message.trim() || collaborationVoiceController.state !== "idle") return;
   const targetDate = collaborationTargetDates.get(session.id) ??
     (collaborationTargetDateInput?.value || collaborationTargetDate);
   const target = { sessionId: session.id, targetDate };
@@ -4471,15 +4473,27 @@ async function sendCollaborationMessage(): Promise<void> {
     // This save is queued behind every keyboard or voice write for this same
     // session and date, so the send uses the final editable snapshot.
     await flushCollaborationDraft(target, message);
-    const queued = await window.__TAURI__.core.invoke<CollaborationSessionView>(
-      "collaboration_submit_message",
-      { sessionId: session.id, targetDate, text: message },
+    const { result: queued, draft: remainingDraft } = await submitCollaborationDraftSnapshot(
+      message,
+      () => collaborationDrafts.get(draftKey) ?? message,
+      () => window.__TAURI__.core.invoke<CollaborationSessionView>(
+        "collaboration_submit_message",
+        { sessionId: session.id, targetDate, text: message },
+      ),
     );
-    cacheCollaborationDrafts(queued);
-    collaborationDrafts.set(draftKey, "");
+    cacheCollaborationDrafts(queued, true);
+    collaborationDrafts.set(draftKey, remainingDraft);
+    if (remainingDraft) {
+      // Keep any newer memory snapshot durable through the
+      // existing write queue, keeping it editable if persistence fails.
+      void saveCollaborationDraft(target, remainingDraft).catch(() => {
+        setCollaborationVoiceStatus(target, "collaboration.voiceDraftSaveFailed");
+        renderCollaborationVoiceControls();
+      });
+    }
     if (currentCollaborationSession?.id === session.id) {
       if (collaborationMessageDraft && isCurrentCollaborationVoiceTarget(target)) {
-        collaborationMessageDraft.value = "";
+        collaborationMessageDraft.value = remainingDraft;
       }
       currentCollaborationSession = queued;
     }
@@ -4491,10 +4505,11 @@ async function sendCollaborationMessage(): Promise<void> {
       void refreshCollaborationWorkspace();
     }
   } catch (error) {
-    collaborationDrafts.set(draftKey, message);
+    const latestDraft = collaborationDrafts.get(draftKey) ?? message;
+    collaborationDrafts.set(draftKey, latestDraft);
     if (currentCollaborationSession?.id === session.id && collaborationMessageDraft &&
       isCurrentCollaborationVoiceTarget(target)) {
-      collaborationMessageDraft.value = message;
+      collaborationMessageDraft.value = latestDraft;
     }
     renderCollaborationWorkspace();
     if (currentCollaborationSession?.id === session.id && collaborationRunStatus) {

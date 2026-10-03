@@ -1167,6 +1167,15 @@ pub trait AppServerTransport: Send {
     ) -> Result<DictationConnection, String> {
         Err("dictation-unavailable".into())
     }
+    fn start_dictation_cancellable(
+        &mut self,
+        input_id: &str,
+        sdp: &str,
+        cancellation: RuntimeShutdownHandle,
+    ) -> Result<DictationConnection, String> {
+        if cancellation.is_requested() { return Err("dictation-input-ended".into()); }
+        self.start_dictation(input_id, sdp)
+    }
     fn poll_dictation(&mut self, _input_id: &str) -> Result<Vec<DictationEvent>, String> {
         Err("dictation-unavailable".into())
     }
@@ -1559,6 +1568,7 @@ impl CollaborationStore for FileCollaborationStore {
 #[derive(Clone)]
 pub struct DictationApplication {
     runtime: Arc<Mutex<Box<dyn AppServerTransport>>>,
+    pending_starts: Arc<Mutex<HashMap<String, RuntimeShutdownHandle>>>,
     shutdown: RuntimeShutdownHandle,
 }
 
@@ -1570,6 +1580,7 @@ impl DictationApplication {
         let shutdown = runtime.shutdown_handle();
         Self {
             runtime: Arc::new(Mutex::new(runtime)),
+            pending_starts: Arc::new(Mutex::new(HashMap::new())),
             shutdown,
         }
     }
@@ -1580,13 +1591,28 @@ impl DictationApplication {
         input_id: &str,
         sdp: &str,
     ) -> Result<DictationConnection, String> {
+        if self.shutdown.is_requested() { return Err("dictation-input-ended".into()); }
         if input_id.is_empty() || input_id.len() > 128 || sdp.len() > 128_000 {
             return Err("dictation-invalid-input".into());
         }
-        self.runtime
-            .lock()
-            .map_err(|_| "dictation-runtime-unavailable")?
-            .start_dictation(input_id, sdp)
+        let cancellation = RuntimeShutdownHandle::default();
+        {
+            let mut pending = self.pending_starts.lock().map_err(|_| "dictation-runtime-unavailable")?;
+            if pending.contains_key(input_id) { return Err("dictation-already-active".into()); }
+            pending.insert(input_id.to_owned(), cancellation.clone());
+        }
+        let result = (|| {
+            let mut runtime = self.runtime.lock().map_err(|_| "dictation-runtime-unavailable")?;
+            if cancellation.is_requested() { return Err("dictation-input-ended".into()); }
+            let result = runtime.start_dictation_cancellable(input_id, sdp, cancellation.clone());
+            if cancellation.is_requested() {
+                let _ = runtime.stop_dictation(input_id);
+                return Err("dictation-input-ended".into());
+            }
+            result
+        })();
+        if let Ok(mut pending) = self.pending_starts.lock() { pending.remove(input_id); }
+        result
     }
 
     pub fn poll_dictation(&self, input_id: &str) -> Result<Vec<DictationEvent>, String> {
@@ -1597,6 +1623,13 @@ impl DictationApplication {
     }
 
     pub fn stop_dictation(&self, input_id: &str) -> Result<(), String> {
+        // Kill only this pending input's child before waiting for the runtime
+        // mutex. This interrupts blocking start requests without poisoning the
+        // reusable manager or another input/formal Collaboration process.
+        if let Some(cancellation) = self.pending_starts.lock()
+            .map_err(|_| "dictation-runtime-unavailable")?.get(input_id).cloned() {
+            cancellation.request_shutdown();
+        }
         self.runtime
             .lock()
             .map_err(|_| "dictation-runtime-unavailable")?
@@ -1605,6 +1638,9 @@ impl DictationApplication {
 
     pub fn shutdown(&self) {
         self.shutdown.request_shutdown();
+        if let Ok(pending) = self.pending_starts.lock() {
+            for cancellation in pending.values() { cancellation.request_shutdown(); }
+        }
     }
 }
 
@@ -5491,7 +5527,11 @@ impl CollaborationApplication {
                 "queued" | "reading" | "thinking" | "stopping" | "stop-unconfirmed"
             );
             session.target_date = target_date_owned.clone();
-            session.drafts_by_date.remove(&target_date_owned);
+            // A queued submit owns its exact untrimmed composer snapshot only.
+            // Newer saved dictation/edits must survive native message creation.
+            if session.drafts_by_date.get(&target_date_owned).map(String::as_str) == Some(text) {
+                session.drafts_by_date.remove(&target_date_owned);
+            }
             session.draft = session
                 .drafts_by_date
                 .get(&target_date_owned)
@@ -9822,11 +9862,33 @@ fn dictation_event(input_id: &str, thread_id: &str, value: &Value) -> Option<Dic
 
 const COLLABORATION_READ_PERMISSION_PROFILE: &str = "personal-dashboard-collaboration-read";
 
-fn generate_restricted_read_permission_profile(
+// Local version/schema probes are also input-scoped and cancellable; cold
+// setup must not retain the runtime mutex indefinitely before sideband spawn.
+fn local_codex_probe_output(command: &mut Command, cancellation: Option<&RuntimeShutdownHandle>) -> std::io::Result<std::process::Output> {
+    if cancellation.is_none() { return command.output(); }
+    let cancellation = cancellation.expect("checked above");
+    if cancellation.is_requested() {
+        return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Dictation cancelled"));
+    }
+    let mut child = command.stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if cancellation.is_requested() || std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Dictation probe ended"));
+        }
+        if child.try_wait()?.is_some() { return child.wait_with_output(); }
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+fn generate_restricted_read_permission_profile_cancellable(
     executable: &Path,
     codex_home_dir: &Path,
     app_data_dir: &Path,
     working_directory: &Path,
+    cancellation: Option<&RuntimeShutdownHandle>,
 ) -> Result<Option<String>, String> {
     ensure_private_codex_home(codex_home_dir)?;
     ensure_empty_working_directory(working_directory)?;
@@ -9839,15 +9901,15 @@ fn generate_restricted_read_permission_profile(
     ));
     fs::create_dir(&schema_directory)
         .map_err(|error| format!("Could not create the local protocol check directory: {error}"))?;
-    let generated = isolated_codex_command(executable, codex_home_dir)
-        .args([
+    let mut command = isolated_codex_command(executable, codex_home_dir);
+    command.args([
             "app-server",
             "generate-json-schema",
             "--experimental",
             "--out",
         ])
-        .arg(&schema_directory)
-        .output()
+        .arg(&schema_directory);
+    let generated = local_codex_probe_output(&mut command, cancellation)
         .map_err(|error| format!("Could not inspect the local App Server protocol: {error}"));
     let result = match generated {
         Ok(output) if output.status.success() => (|| {
@@ -10506,6 +10568,10 @@ impl CodexAppServerRuntime {
     }
 
     fn inspect_read_only_capability(&mut self, executable: &Path, version: &str) {
+        self.inspect_read_only_capability_cancellable(executable, version, None);
+    }
+
+    fn inspect_read_only_capability_cancellable(&mut self, executable: &Path, version: &str, cancellation: Option<&RuntimeShutdownHandle>) {
         if self.capability_probe_version.as_ref()
             == Some(&(executable.to_path_buf(), version.to_owned()))
         {
@@ -10513,12 +10579,20 @@ impl CodexAppServerRuntime {
         }
         self.capability_probe_version = Some((executable.to_path_buf(), version.to_owned()));
         self.restricted_read_permission_profile = None;
-        let capability = generate_restricted_read_permission_profile(
+        let capability = generate_restricted_read_permission_profile_cancellable(
             executable,
             &self.codex_home_dir,
             &self.app_data_dir,
             &self.working_directory,
+            cancellation,
         );
+        if cancellation.is_some_and(RuntimeShutdownHandle::is_requested) {
+            self.capability_probe_version = None;
+            return;
+        }
+        if cancellation.is_some() && capability.is_err() {
+            self.capability_probe_version = None;
+        }
         match capability {
             Ok(Some(profile)) => {
                 self.restricted_read_permission_profile = Some(profile);
@@ -10576,14 +10650,18 @@ impl CodexAppServerRuntime {
     }
 
     fn identity(&mut self) -> Result<(PathBuf, String), String> {
+        self.identity_cancellable(None)
+    }
+
+    fn identity_cancellable(&mut self, cancellation: Option<&RuntimeShutdownHandle>) -> Result<(PathBuf, String), String> {
         ensure_empty_working_directory(&self.working_directory)?;
         ensure_private_codex_home(&self.codex_home_dir)?;
         let executable = discover_codex_cli()?;
         if self.executable.as_deref() != Some(executable.as_path()) || self.version.is_none() {
             self.executable = Some(executable.clone());
-            let output = isolated_codex_command(&executable, &self.codex_home_dir)
-                .arg("--version")
-                .output()
+            let mut command = isolated_codex_command(&executable, &self.codex_home_dir);
+            command.arg("--version");
+            let output = local_codex_probe_output(&mut command, cancellation)
                 .map_err(|error| format!("Could not read the Codex CLI version: {error}"))?;
             if !output.status.success() {
                 return Err("Codex CLI could not report its version. Reinstall or update Codex CLI and retry.".into());
@@ -10607,27 +10685,39 @@ impl AppServerTransport for CodexAppServerRuntime {
         input_id: &str,
         sdp: &str,
     ) -> Result<DictationConnection, String> {
+        self.start_dictation_cancellable(input_id, sdp, RuntimeShutdownHandle::default())
+    }
+
+    fn start_dictation_cancellable(
+        &mut self,
+        input_id: &str,
+        sdp: &str,
+        cancellation: RuntimeShutdownHandle,
+    ) -> Result<DictationConnection, String> {
+        if cancellation.is_requested() { return Err("dictation-input-ended".into()); }
         if self.dictation.is_some() {
             return Err("dictation-already-active".into());
         }
         let (executable, version) = self
-            .identity()
+            .identity_cancellable(Some(&cancellation))
             .map_err(|_| "dictation-runtime-unavailable")?;
-        self.inspect_read_only_capability(&executable, &version);
+        self.inspect_read_only_capability_cancellable(&executable, &version, Some(&cancellation));
         let permission = self
             .restricted_read_permission_profile
             .clone()
             .ok_or("dictation-protocol-unavailable")?;
-        // Separate streaming client, same app-owned profile and shutdown handle:
+        if cancellation.is_requested() { return Err("dictation-input-ended".into()); }
+        // Separate streaming client and input cancellation, same app-owned profile:
         // formal text turns must not consume realtime notifications or block
         // microphone cleanup while waiting for model responses.
         let mut client = StdioJsonlClient::spawn_with_dictation_isolation(
             &executable,
             &self.codex_home_dir,
-            self.shutdown_handle.clone(),
+            cancellation.clone(),
             true,
         )
         .map_err(|_| "dictation-runtime-unavailable")?;
+        self.shutdown_handle.register_child(Arc::clone(&client.child));
         client
             .initialize()
             .map_err(|_| "dictation-runtime-unavailable")?;
@@ -10745,14 +10835,44 @@ impl AppServerTransport for CodexAppServerRuntime {
         let Some(mut active) = self.dictation.take() else {
             return Ok(());
         };
-        let _ = active
-            .client
-            .request("thread/realtime/stop", json!({"threadId":active.thread_id}));
-        let _ = active
-            .client
-            .request("thread/unsubscribe", json!({"threadId":active.thread_id}));
+        // One absolute budget covers both requests, including notification
+        // traffic. A hung sideband cannot hold the input mutex for minutes.
+        let deadline = std::time::Instant::now() + Duration::from_millis(500);
+        // A blocked stdio write must obey the same budget as response reads.
+        // The watchdog can kill this child without the runtime mutex.
+        let completed = Arc::new(AtomicBool::new(false));
+        let watchdog_completed = Arc::clone(&completed);
+        let cleanup_shutdown = RuntimeShutdownHandle::default();
+        cleanup_shutdown.register_child(Arc::clone(&active.client.child));
+        let watchdog_shutdown = cleanup_shutdown.clone();
+        let watchdog = match thread::Builder::new().name("dictation-cleanup-deadline".into()).spawn(move || {
+            while !watchdog_completed.load(Ordering::SeqCst) {
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if remaining.is_zero() {
+                    watchdog_shutdown.request_shutdown();
+                    break;
+                }
+                thread::park_timeout(remaining);
+            }
+        }) {
+            Ok(watchdog) => watchdog,
+            Err(_) => {
+                cleanup_shutdown.request_shutdown();
+                return Ok(());
+            }
+        };
+        let _ = active.client.request_until(
+            "thread/realtime/stop", json!({"threadId":active.thread_id}), deadline,
+        );
+        let _ = active.client.request_until(
+            "thread/unsubscribe", json!({"threadId":active.thread_id}), deadline,
+        );
         // Dropping also terminates its dedicated sideband process, even if
         // stop/unsubscribe failed. No reconnect survives this cleanup.
+        drop(active);
+        completed.store(true, Ordering::SeqCst);
+        watchdog.thread().unpark();
+        let _ = watchdog.join();
         Ok(())
     }
 
@@ -11676,6 +11796,13 @@ impl StdioJsonlClient {
     }
 
     fn request(&mut self, method: &str, params: Value) -> Result<Value, String> {
+        self.request_until(method, params, std::time::Instant::now() + APP_SERVER_REQUEST_TIMEOUT)
+    }
+
+    fn request_until(&mut self, method: &str, params: Value, deadline: std::time::Instant) -> Result<Value, String> {
+        if std::time::Instant::now() >= deadline {
+            return Err("Codex App Server cleanup deadline elapsed.".into());
+        }
         if !self.initialized && method != "initialize" {
             return Err("Codex App Server connection has not been initialized.".into());
         }
@@ -11683,7 +11810,9 @@ impl StdioJsonlClient {
         self.next_id += 1;
         self.write_json(&json!({ "id": request_id, "method": method, "params": params }))?;
         loop {
-            let value = self.receive_value_from_output(APP_SERVER_REQUEST_TIMEOUT)?;
+            let remaining = deadline.checked_duration_since(std::time::Instant::now())
+                .ok_or("Codex App Server cleanup deadline elapsed.")?;
+            let value = self.receive_value_from_output(remaining)?;
             if value.get("id").and_then(Value::as_u64) == Some(request_id) {
                 if let Some(error) = value.get("error") {
                     return Err(format!(
@@ -12424,6 +12553,7 @@ mod dictation_transport_tests {
     struct SyntheticDictationTransport {
         started: Arc<AtomicBool>,
         stopped: Arc<AtomicBool>,
+        pending_probe: Option<PathBuf>,
     }
     impl AppServerTransport for SyntheticDictationTransport {
         fn inspect(&mut self) -> Result<RuntimeConnectionView, String> {
@@ -12452,6 +12582,14 @@ mod dictation_transport_tests {
                 sdp: "synthetic-answer".into(),
             })
         }
+        fn start_dictation_cancellable(&mut self, input_id: &str, sdp: &str, cancellation: RuntimeShutdownHandle) -> Result<DictationConnection, String> {
+            if let Some(root) = self.pending_probe.take() {
+                let mut client = StdioJsonlClient::spawn(&root.join("fake-codex"), &root.join("codex-home"), cancellation)?;
+                self.started.store(true, Ordering::SeqCst);
+                client.initialize()?;
+            }
+            self.start_dictation(input_id, sdp)
+        }
         fn poll_dictation(&mut self, input_id: &str) -> Result<Vec<DictationEvent>, String> {
             let values = [
                 json!({"id":1,"method":"item/tool/call","params":{"threadId":"temporary","name":"dashboard_write"}}),
@@ -12469,6 +12607,78 @@ mod dictation_transport_tests {
             self.stopped.store(true, Ordering::SeqCst);
             Ok(())
         }
+    }
+
+    #[cfg(unix)]
+    fn fake_server_root(script: &str) -> PathBuf {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("personal-dashboard-dictation-review-{}-{nonce}", std::process::id()));
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("fake-codex"), script).unwrap();
+        fs::set_permissions(root.join("fake-codex"), fs::Permissions::from_mode(0o700)).unwrap();
+        root
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pending_native_start_is_killed_without_waiting_for_runtime_mutex_and_manager_reopens() {
+        let root = fake_server_root("#!/bin/sh\nwhile IFS= read -r request; do :; done\n");
+        let started = Arc::new(AtomicBool::new(false));
+        let stopped = Arc::new(AtomicBool::new(false));
+        let app = DictationApplication::with_transport(Box::new(SyntheticDictationTransport {
+            started: started.clone(), stopped: stopped.clone(), pending_probe: Some(root.clone()),
+        }));
+        let worker_app = app.clone();
+        let worker = thread::spawn(move || worker_app.start_dictation("pending", "offer"));
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while !started.load(Ordering::SeqCst) {
+            assert!(std::time::Instant::now() < deadline, "synthetic start must reach blocking initialization");
+            thread::sleep(Duration::from_millis(5));
+        }
+        let cancellation_started = std::time::Instant::now();
+        app.stop_dictation("pending").unwrap();
+        assert!(cancellation_started.elapsed() < Duration::from_secs(1));
+        assert!(worker.join().unwrap().is_err());
+        assert!(app.pending_starts.lock().unwrap().is_empty());
+        assert!(app.start_dictation("fresh", "offer").is_ok());
+        app.stop_dictation("fresh").unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hung_sideband_cleanup_shares_one_deadline_and_terminates_child() {
+        let root = fake_server_root("#!/bin/sh\nIFS= read -r initialize\nprintf '%s\\n' '{\"id\":1,\"result\":{}}'\nIFS= read -r initialized\nwhile IFS= read -r request; do printf '%s\\n' '{\"method\":\"notification\",\"params\":{}}'; done\n");
+        let mut client = StdioJsonlClient::spawn(&root.join("fake-codex"), &root.join("codex-home"), RuntimeShutdownHandle::default()).unwrap();
+        client.initialize().unwrap();
+        let child = Arc::clone(&client.child);
+        let mut runtime = CodexAppServerRuntime::new(root.clone());
+        runtime.dictation = Some(ActiveDictationTransport { input_id:"input".into(), thread_id:"temporary".into(), client });
+        let started = std::time::Instant::now();
+        runtime.stop_dictation("input").unwrap();
+        assert!(started.elapsed() < Duration::from_secs(1), "stop and unsubscribe must share a 500ms total budget");
+        assert!(runtime.dictation.is_none());
+        assert!(child.lock().unwrap().try_wait().unwrap().is_some(), "cleanup must terminate the owned child");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cold_local_probe_is_cancelled_without_poisoning_a_fresh_input() {
+        let cancellation = RuntimeShutdownHandle::default();
+        let worker_cancellation = cancellation.clone();
+        let worker = thread::spawn(move || {
+            let mut command = Command::new("/bin/sh");
+            command.args(["-c", "while :; do :; done"]);
+            local_codex_probe_output(&mut command, Some(&worker_cancellation))
+        });
+        thread::sleep(Duration::from_millis(20));
+        let started = std::time::Instant::now();
+        cancellation.request_shutdown();
+        assert!(worker.join().unwrap().is_err());
+        assert!(started.elapsed() < Duration::from_secs(1));
+        let mut command = Command::new("/usr/bin/true");
+        assert!(local_codex_probe_output(&mut command, Some(&RuntimeShutdownHandle::default())).unwrap().status.success());
     }
 
     #[test]
@@ -12506,6 +12716,7 @@ mod dictation_transport_tests {
         let app = DictationApplication::with_transport(Box::new(SyntheticDictationTransport {
             started: started.clone(),
             stopped: stopped.clone(),
+            pending_probe: None,
         }));
         assert_eq!(
             app.start_dictation("input-a", "synthetic-offer")

@@ -49,8 +49,6 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
     let captureStopped = false;
     let finalAfterStop = false;
     const finalIds = new Set<string>();
-    const previewIds = new Set<string>();
-    const sealedPreviewIds = new Set<string>();
     let pendingPreview = false;
     let failed = false;
     let finishWait: (() => void) | undefined;
@@ -69,8 +67,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
       if (pollTimer) clearInterval(pollTimer);
       if (channel) {
         channel.onmessage = null;
-        channel.onerror = () => fail("dictation-connection-lost");
-      channel.onclose = null;
+        channel.onclose = null;
         channel.onopen = null;
         channel.onerror = null;
       }
@@ -110,15 +107,9 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
           const event = parseCodexDictationEvent(inputId,JSON.parse(String(message.data)));
           if (!event) return;
           if (event.kind === "failed") { fail(event.failure ?? "dictation-service-failed"); return; }
-          if (event.kind === "preview" && event.itemId && !sealedPreviewIds.has(event.itemId)) {
-            previewIds.add(event.itemId);
-            pendingPreview = true;
-          }
+          if (event.kind === "preview") pendingPreview = true;
           if (event.kind === "final" && event.itemId && !finalIds.has(event.itemId)) {
             finalIds.add(event.itemId);
-            for (const id of previewIds) sealedPreviewIds.add(id);
-            previewIds.clear();
-            pendingPreview = false;
             if (captureStopped) finalAfterStop = true;
           }
           onEvent(event);
@@ -134,7 +125,16 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
       await peer.setLocalDescription(offer);
       if (disposed || failed || signal.aborted) throw new DOMException("Cancelled", "AbortError");
       nativeStartRequested = true;
-      const answer = await this.invoke<{inputId:string;sdp:string}>("collaboration_dictation_start", {inputId,sdp:offer.sdp});
+      let answer: {inputId:string;sdp:string};
+      try {
+        answer = await this.invoke<{inputId:string;sdp:string}>("collaboration_dictation_start", {inputId,sdp:offer.sdp});
+      } finally {
+        // Stop may have reached native before its independently scheduled start.
+        // Always stop again after a cancelled start settles (including rejection).
+        if (disposed || signal.aborted) {
+          await this.invoke("collaboration_dictation_stop", {inputId}).catch(() => undefined);
+        }
+      }
 
       if (disposed || signal.aborted) {
         throw new DOMException("Cancelled", "AbortError");
@@ -183,7 +183,7 @@ export class BrowserCodexDictationRuntime implements CodexDictationRuntime {
           stopCapture();
           // This bounds post-capture draining, never recording duration. V3
           // has no verified whole-input flush acknowledgement; a missing new
-          // user final or unresolved preview is explicitly incomplete.
+          // user final or any unpaired preview is explicitly incomplete.
           await new Promise<void>(resolve => {
             const timer = setTimeout(resolve,4_000);
             finishWait = () => {clearTimeout(timer);resolve();};
