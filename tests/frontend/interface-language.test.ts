@@ -565,3 +565,10 @@ test("Ready Habits copy and tagged source-result grammar have paired translation
   assert.equal(localizeCollaborationDiagnostic(diagnostic, "zh"), `已将任务“${name}”（stable-id）保存到共享 Tasks 正本，目标日期 2026-10-09。Tasks、Today 和 Calendar 使用同一对象。`);
   assert.equal(localizeCollaborationDiagnostic("Snapshot atomic publication failed: OS error 17 /保留/path", "zh"), "快照原子发布失败：OS error 17 /保留/path");
 });
+
+test("actual native Dida readback diagnostic suffix localizes while exact source identities remain intact", () => {
+  const prefix = "Current Dida source readback confirms the requested outcome for the recorded stable object identity. No write was replayed; source confirmation does not reconstruct a lost original receipt.";
+  const native = `${prefix} Source object IDs: source-id-a, source-id-b.`;
+  assert.equal(localizeCollaborationDiagnostic(native, "en"), native);
+  assert.equal(localizeCollaborationDiagnostic(native, "zh"), `${localizeCollaborationDiagnostic(prefix, "zh")} 来源对象 ID：source-id-a, source-id-b。`);
+});

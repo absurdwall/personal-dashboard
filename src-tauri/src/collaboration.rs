@@ -1293,6 +1293,9 @@ pub trait AppServerTransport: Send {
     }
     fn configure_external_writes(&mut self, _allowed: bool) {}
     fn external_capability_fingerprint(&self) -> Option<String> { None }
+    /// Probe discovery only. A configured native startup failure may replace
+    /// its transport once before the current request is sent to the model.
+    fn external_source_startup_failed(&mut self, _thread_id: &str) -> bool { false }
     fn configure_external_habit_writes(&mut self, _allowed: bool) {}
     fn reconcile_external_action(&mut self, action: ExternalToolActionView) -> ExternalToolActionView { action }
     fn resume_thread(&mut self, thread_id: &str) -> Result<(), String>;
@@ -7012,11 +7015,11 @@ impl CollaborationApplication {
                     &self.skill_instructions, session, run_id,
                 );
                 runtime.start_thread_with_dynamic_tools(
-                    selected_model.as_deref(), &instructions, dynamic_tools,
+                    selected_model.as_deref(), &instructions, dynamic_tools.clone(),
                 )
             }
         };
-        let thread_id = match thread_id {
+        let mut thread_id = match thread_id {
             Ok(thread_id) => thread_id,
             Err(error) => {
                 drop(runtime);
@@ -7024,6 +7027,22 @@ impl CollaborationApplication {
                 return;
             }
         };
+        if !cancellation.load(Ordering::SeqCst) && runtime.external_source_startup_failed(&thread_id) {
+            // A thread-scoped failed MCP startup is cached by the native runtime.
+            // Reuse #55's history-preserving rotation with precisely this round's
+            // tools/config. Discovery sends no model input or business action.
+            let instructions = restored_collaboration_instructions(&self.skill_instructions, session, run_id);
+            if !cancellation.load(Ordering::SeqCst) {
+                if let Ok(recovered) = runtime.start_thread_with_dynamic_tools(
+                    selected_model.as_deref(), &instructions, dynamic_tools,
+                ) {
+                    thread_id = recovered;
+                    runtime.external_source_startup_failed(&thread_id);
+                }
+            }
+            // No further attempt: a still-unavailable source does not prevent
+            // current local work, nor authorize replay of an earlier effect.
+        }
         if let Err(error) = self.save_runtime_thread(
             vault_key,
             session_id,
@@ -10805,6 +10824,7 @@ pub struct CodexAppServerRuntime {
     text_turn_unavailable_reason: Option<String>,
     client: Option<StdioJsonlClient>,
     selected_dida_connection: Option<Value>,
+    prepared_dida_status: Option<(String, Value)>,
     dida_writes_allowed: bool,
     dida_habit_writes_allowed: bool,
     shutdown_handle: RuntimeShutdownHandle,
@@ -11754,6 +11774,7 @@ impl CodexAppServerRuntime {
             text_turn_unavailable_reason: None,
             client: None,
             selected_dida_connection: None,
+            prepared_dida_status: None,
             dida_writes_allowed: false,
             dida_habit_writes_allowed: true,
             shutdown_handle: RuntimeShutdownHandle::default(),
@@ -11815,10 +11836,12 @@ impl CodexAppServerRuntime {
         let selected_dida_connection = dida::discover(&executable);
         if self.selected_dida_connection != selected_dida_connection {
             self.client = None;
+            self.prepared_dida_status = None;
             self.selected_dida_connection = selected_dida_connection;
         }
         if self.executable.as_deref() != Some(executable.as_path()) || self.client.is_none() {
             self.client = None;
+            self.prepared_dida_status = None;
             let output = isolated_codex_command(&executable, &self.codex_home_dir)
                 .arg("--version")
                 .output()
@@ -12233,6 +12256,17 @@ impl AppServerTransport for CodexAppServerRuntime {
         dida::capability_fingerprint(self.selected_dida_connection.as_ref())
     }
 
+    fn external_source_startup_failed(&mut self, thread_id: &str) -> bool {
+        let catalog = self.ensure_client().and_then(|client| client.request(
+            "mcpServerStatus/list",
+            json!({"serverName":dida::SERVER,"threadId":thread_id,"limit":100,"detail":"toolsAndAuthOnly"}),
+        ));
+        let status = dida::source_status(catalog);
+        let failed = self.selected_dida_connection.is_some() && dida::startup_failed(&status);
+        self.prepared_dida_status = Some((thread_id.into(), status));
+        failed
+    }
+
     fn reconcile_external_action(&mut self, mut action: ExternalToolActionView) -> ExternalToolActionView {
         if !dida_writes::is_mutation(&action) { return action; }
         // Recovery must work after process restart, before any model round or
@@ -12335,10 +12369,14 @@ impl AppServerTransport for CodexAppServerRuntime {
                 "Could not prepare current Dashboard context and selected-Vault memory: {error}"
             )
         })?;
-        let dida_status = dida::source_status(self.ensure_client()?.request(
-            "mcpServerStatus/list",
-            json!({"serverName":dida::SERVER,"threadId":request.thread_id,"limit":100,"detail":"toolsAndAuthOnly"}),
-        ));
+        self.ensure_client()?;
+        let dida_status = match self.prepared_dida_status.take().filter(|(thread,_)|thread==&request.thread_id) {
+            Some((_,status)) => status,
+            None => dida::source_status(self.ensure_client()?.request(
+                "mcpServerStatus/list",
+                json!({"serverName":dida::SERVER,"threadId":request.thread_id,"limit":100,"detail":"toolsAndAuthOnly"}),
+            )),
+        };
         let input_text = format!(
         "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Use the supplied dates object to distinguish real local date/time, the 04:00 lived day, and the captured request target. Interpret today/tomorrow using the original request timestamp and user context: at 01:00 either can mean the upcoming daytime on the same natural date. Explicit dates take precedence; never mechanically offset a date based on a word. Ask briefly only if a remaining ambiguity affects a write. Supply a concrete targetDate when a record/completion operation belongs to a different clearly resolved date; omit it or use null to keep the captured request target. The request identity and original target stay bound even if the turn finishes after midnight or 04:00. Keep Task calendar schedules separate from record/completion targets, preserve explicit Task dates/times, and copy unchanged fields when editing. For an explicitly reported daytime event or update, use `dashboard_task_operation` with operation `saveDailyPlan`, transition `daytimeEvent`, the exact factual text in `event`, and empty `arrangement`/`evidence` unless the current arrangement also changes; this appends under `## 白天更新` and preserves the plan and morning baseline. Use `daytimeReplan` only for a material plan change. Use `saveEveningReview` with mode `addition` only for a new evening-review note or supplement; never route an explicit daytime event to the evening review. Use `createShortRecord` for a new ordinary/exercise Short record and `correctShortRecord` for a correction by stable ID. Do not invent `appendDailyRecord` or `addShortRecord`. For a clear, unique local write, use `dashboard_task_operation` with `executionMode=execute` for a clear daily commitment, reported fact or request without a later review; quote the exact instruction in `authorizationQuote`. Use `prepareProposal` whenever the user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires `prepareProposal`, even when it uses a direct action verb. The Dashboard verifies the current request, selected Vault, binding, and revision before saving. Ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` whenever the user asks to review, confirm, or wait for approval before saving. Use the host-supplied Dida connection status and read guidance below. Other external apps are unavailable. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
             request.user_text, request.context.date, context

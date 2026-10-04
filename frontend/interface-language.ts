@@ -1109,6 +1109,9 @@ const chineseCollaborationDiagnostics: Readonly<Record<string, string>> = {
 };
 
 export function localizeCollaborationDiagnostic(message: string, language: InterfaceLanguage): string {
+  const sourceIds = /^(.*) Source object IDs: ([^\n]+)\.$/s.exec(message);
+  if (sourceIds) return localizeCollaborationDiagnostic(sourceIds[1], language)
+    + (language === "zh" ? ` 来源对象 ID：${sourceIds[2]}。` : ` Source object IDs: ${sourceIds[2]}.`);
   const refreshed = /^(Verified (\d+) explicitly mapped external Habits; unmapped source coverage remains partial\/unknown\. Rebuilt exact\/threshold Daily Record evidence\. )(.*)$/s.exec(message);
   if (refreshed) return language === "en" ? refreshed[1] + localizeApplicationMessage(refreshed[3], language)
     : `已核验 ${refreshed[2]} 个明确映射的外部 Habit；未映射来源的覆盖仍为部分或未知。已重新生成 Daily Record 的精确时间或阈值证据。${localizeApplicationMessage(refreshed[3], language)}`;
