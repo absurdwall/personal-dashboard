@@ -16,7 +16,13 @@ use personal_dashboard_lib::today::{
     HabitLocalCompletionState, ShortRecordCategory, TodayApplication, TodayClock, TodayState,
     TodayWorkspaceExchange, TodayWorkspacePersistence,
 };
+use personal_dashboard_lib::collaboration_memory::{
+    CollaborationMemoryService, CollaborationMemorySources, LongTermMemoryDocumentView,
+    SelectedVaultCollaborationMemoryService,
+};
 use serde_json::{json, Value};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -281,12 +287,68 @@ impl CollaborationContextSource for MutableContext {
     }
 }
 
+// Adapt only the fixture context key; persistence uses the production selected-
+// Vault memory service and its real revision/atomic-write checks.
+struct FixtureMemoryService {
+    inner: SelectedVaultCollaborationMemoryService,
+    actual_key: String,
+}
+
+impl FixtureMemoryService {
+    fn new(directory: &IsolatedDirectory, vault: &MutableVault) -> Self {
+        let path = vault.load_selected_vault().unwrap().unwrap();
+        fs::create_dir_all(path.join("life")).unwrap();
+        if !path.join("life/Self.md").exists() {
+            fs::write(
+                path.join("life/Self.md"),
+                "# Synthetic durable background\n",
+            )
+            .unwrap();
+        }
+        let workspace = directory.path().join("memory-workspace.json");
+        fs::write(
+            &workspace,
+            serde_json::to_vec(&json!({"schemaVersion":1, "selectedVault":path})).unwrap(),
+        )
+        .unwrap();
+        let mut hasher = DefaultHasher::new();
+        path.canonicalize().unwrap().hash(&mut hasher);
+        Self {
+            inner: SelectedVaultCollaborationMemoryService::new(workspace),
+            actual_key: format!("vault-{:016x}", hasher.finish()),
+        }
+    }
+}
+
+impl CollaborationMemoryService for FixtureMemoryService {
+    fn read(&self, expected: Option<&str>) -> Result<CollaborationMemorySources, String> {
+        if expected != Some("vault-a") {
+            return Err("fixture Vault changed".into());
+        }
+        self.inner.read(Some(&self.actual_key))
+    }
+
+    fn save_long_term(
+        &self,
+        expected: &str,
+        revision: &str,
+        content: &str,
+    ) -> Result<LongTermMemoryDocumentView, String> {
+        if expected != "vault-a" {
+            return Err("fixture Vault changed".into());
+        }
+        self.inner
+            .save_long_term(&self.actual_key, revision, content)
+    }
+}
+
 #[derive(Clone)]
 struct DynamicRuntime {
     registered_tools: Arc<Mutex<Vec<Value>>>,
     results: Arc<Mutex<Vec<RuntimeDynamicToolResult>>>,
     requests: Arc<Mutex<Vec<RuntimeTurnRequest>>>,
     automatic_gate: Option<Arc<AutomaticTurnGate>>,
+    starts: Arc<Mutex<Vec<String>>>,
 }
 
 impl AppServerTransport for DynamicRuntime {
@@ -329,18 +391,20 @@ impl AppServerTransport for DynamicRuntime {
     fn start_thread_with_dynamic_tools(
         &mut self,
         _model: Option<&str>,
-        _instructions: &str,
+        instructions: &str,
         dynamic_tools: Vec<Value>,
     ) -> Result<String, String> {
         *self
             .registered_tools
             .lock()
             .map_err(|_| "tool lock poisoned")? = dynamic_tools;
-        Ok("synthetic-thread".into())
+        let mut starts = self.starts.lock().unwrap();
+        starts.push(instructions.to_owned());
+        Ok(format!("synthetic-thread-{}", starts.len()))
     }
 
     fn resume_thread(&mut self, thread_id: &str) -> Result<(), String> {
-        if thread_id == "synthetic-thread" {
+        if thread_id.starts_with("synthetic-thread-") {
             Ok(())
         } else {
             Err("unexpected synthetic thread id".into())
@@ -386,10 +450,26 @@ impl AppServerTransport for DynamicRuntime {
                 gate.block_automatic_turn();
             }
         }
+        if automatic_plan {
+            // Even a transport delivering a tool outside the advertised narrow
+            // schema cannot expand this automatic round's write authority.
+            for (tool, arguments) in [
+                ("dashboard_task_operation", json!({"operation":"createTask", "name":"Unauthorized automatic Task", "content":null, "date":null, "time":null, "listId":null})),
+                ("dashboard_memory_update", json!({"operation":"proposeLongTermUpdate", "basis":"explicitUserInstruction", "executionMode":"execute", "authorizationQuote":request.user_text, "change":"Unauthorized automatic memory", "replaces":null})),
+            ] {
+                let rejected = handler(RuntimeDynamicToolCall {
+                    thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
+                    call_id: format!("unauthorized-{tool}"), tool: tool.into(), arguments,
+                });
+                if rejected.success { return Err("automatic round expanded its write authority".into()); }
+            }
+        }
         // Controlled resolver output exercises the date protocol and persisted
         // results without claiming these fixtures test model language quality.
-        let (call_id, tool, arguments) = if let Some(arguments) = request.user_text.strip_prefix("date-fixture:") {
+        let (call_id, tool, mut arguments) = if let Some(arguments) = request.user_text.strip_prefix("date-fixture:") {
             ("resolved-date-call", "dashboard_task_operation", serde_json::from_str(arguments).unwrap())
+        } else if let Some(arguments) = request.user_text.strip_prefix("memory-fixture:") {
+            ("resolved-memory-call", "dashboard_memory_update", serde_json::from_str(arguments).unwrap())
         } else if request.user_text
             == "Please create a task named Synthetic report."
             || request.user_text == "Don't ask me again; create a task named Synthetic report."
@@ -409,7 +489,7 @@ impl AppServerTransport for DynamicRuntime {
                     "listId": null
                 }),
             )
-        } else if request.user_text == "create task" {
+        } else if request.user_text == "create task" || request.user_text == "missing current execution mode" {
             (
                 "reused-turn-scoped-call-id",
                 "dashboard_task_operation",
@@ -649,6 +729,10 @@ impl AppServerTransport for DynamicRuntime {
                 request.user_text
             ));
         };
+        if !automatic_plan && request.user_text != "missing current execution mode" {
+            arguments.as_object_mut().unwrap().entry("executionMode")
+                .or_insert(json!("prepareProposal"));
+        }
         let call = RuntimeDynamicToolCall {
             thread_id: request.thread_id.clone(),
             turn_id: format!("turn-{}", request.execution_id),
@@ -875,6 +959,7 @@ fn new_application(
             results: Arc::clone(&results),
             requests: Arc::new(Mutex::new(Vec::new())),
             automatic_gate: None,
+            starts: Arc::new(Mutex::new(Vec::new())),
         }),
         Arc::new(context),
         Arc::new(FixedClock),
@@ -967,6 +1052,7 @@ fn new_automatic_application(
             results: Arc::clone(&results),
             requests: Arc::clone(&requests),
             automatic_gate,
+            starts: Arc::new(Mutex::new(Vec::new())),
         }),
         Arc::new(context),
         Arc::new(clock),
@@ -1761,7 +1847,7 @@ fn daily_plan_vault_switch_and_stale_revision_require_conflict_refresh_and_new_a
 }
 
 #[test]
-fn legacy_thread_keeps_task_proposals_but_requires_a_new_chat_for_daily_plans() {
+fn legacy_thread_keeps_task_proposals_and_recovers_daily_plans_in_the_same_chat() {
     let directory = IsolatedDirectory::new();
     let vault_path = directory.vault("vault");
     let vault = MutableVault::new(&vault_path);
@@ -1804,15 +1890,15 @@ fn legacy_thread_keeps_task_proposals_but_requires_a_new_chat_for_daily_plans() 
         .unwrap();
     wait_for_finish(&restarted, &session.id, "vault-a");
     let result = plan_results.lock().unwrap()[0].clone();
-    assert!(!result.success);
-    assert!(result.text.contains("older proposal-tool schema"));
+    assert!(result.success);
+    assert!(result.text.contains("proposal"));
     assert_eq!(
         restarted
             .session("vault-a", &session.id)
             .unwrap()
             .task_operations
             .len(),
-        1
+        2
     );
     assert!(!vault_path
         .join("life/Journal/Daily/2026/2026-09/2026-09-27.md")
@@ -1823,9 +1909,9 @@ fn legacy_thread_keeps_task_proposals_but_requires_a_new_chat_for_daily_plans() 
         .unwrap();
     wait_for_finish(&restarted, &session.id, "vault-a");
     let after_task_proposal = restarted.session("vault-a", &session.id).unwrap();
-    assert_eq!(after_task_proposal.task_operations.len(), 2);
-    assert!(after_task_proposal.task_operations.iter().all(|operation| {
-        !matches!(
+    assert_eq!(after_task_proposal.task_operations.len(), 3);
+    assert!(after_task_proposal.task_operations.iter().any(|operation| {
+        matches!(
             &operation.operation,
             CollaborationTaskOperation::SaveDailyPlan { .. }
         )
@@ -3805,4 +3891,339 @@ fn queued_automatic_plan_is_not_retargeted_after_lived_day_boundary() {
         "only the holder reached the model"
     );
     assert!(!record_path(&vault_path).exists());
+}
+
+#[test]
+fn automatic_session_human_continuation_saves_tasks_records_habits_and_memory_then_reopens() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    fs::create_dir_all(vault_path.join("life/.personal-dashboard/derived")).unwrap();
+    let mut snapshot: Value =
+        serde_json::from_slice(include_bytes!("fixtures/habits-v1-complete.json")).unwrap();
+    snapshot["generatedAt"] = json!("2026-09-27T06:55:00-04:00");
+    snapshot["range"]["from"] = json!("2026-07-06");
+    snapshot["range"]["to"] = json!("2026-09-26");
+    fs::write(
+        vault_path.join("life/.personal-dashboard/derived/habits-v1.json"),
+        serde_json::to_vec(&snapshot).unwrap(),
+    )
+    .unwrap();
+    let vault = MutableVault::new(&vault_path);
+    let context = MutableContext::new("vault-a");
+    let clock = ManualClock::new("2026-09-27", "07:00");
+    let tasks = TaskApplication::new(vault.clone(), clock.clone(), FileTaskStore);
+    let empty = tasks.read().unwrap();
+    tasks
+        .create(TaskCreateInput {
+            target_binding: empty.target_binding.unwrap(),
+            expected_revision: empty.revision,
+            task_id: "human-task".into(),
+            name: "Synthetic report".into(),
+            content: None,
+            date: Some("2026-09-27".into()),
+            time: None,
+            list_id: None,
+        })
+        .unwrap();
+    let (application, registered, results, requests) =
+        new_automatic_application(&directory, &vault, context.clone(), clock.clone(), None);
+    let application =
+        application.with_memory_service(Arc::new(FixtureMemoryService::new(&directory, &vault)));
+    let run = application
+        .update_daily_plan_automation(enabled_automation("07:00"))
+        .unwrap();
+    let session_id = run.current_run.unwrap().session_id.unwrap();
+    wait_for_finish(&application, &session_id, "vault-a");
+    let automatic = application.session("vault-a", &session_id).unwrap();
+    let native_thread_before = automatic.runtime_thread_id.clone();
+    assert!(
+        !automatic.task_tool_available
+            && !automatic.daily_record_tool_available
+            && !automatic.memory_tool_available
+    );
+    assert_eq!(automatic.task_operations[0].status, "applied");
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
+    let baseline = today.read_date("2026-09-27").unwrap().baseline;
+    let operations = [
+        json!({"operation":"completeTask", "taskId":"human-task", "executionMode":"execute", "authorizationQuote":"Complete my task Synthetic report."}),
+        json!({"operation":"saveDailyPlan", "transition":"daytimeReplan", "executionMode":"execute", "authorizationQuote":"Replan my day.",
+            "arrangement":[{"period":"afternoon", "title":"Rest after the report", "detail":null}],
+            "evidence":[{"label":"User decision", "items":["Rest after the report"]}],
+            "calibrationNote":null, "baselineCorrectionReason":null, "event":null,
+            "originalIntent":"Finish the report", "changeReason":"The report is complete", "revisedDirection":"Rest"}),
+        json!({"operation":"setLocalHabitCompletion", "habitKey":"exercise", "completed":true,
+            "executionMode":"execute", "authorizationQuote":"Mark exercise done."}),
+    ];
+    for operation in operations {
+        application
+            .submit_message(
+                "vault-a",
+                &session_id,
+                "2026-09-27",
+                &format!("date-fixture:{operation}"),
+            )
+            .unwrap();
+        wait_for_finish(&application, &session_id, "vault-a");
+        let current = application.session("vault-a", &session_id).unwrap();
+        assert!(
+            current.task_tool_available
+                && current.daily_record_tool_available
+                && current.memory_tool_available
+        );
+        assert_eq!(
+            current.task_operations.last().unwrap().status,
+            "applied",
+            "{:?}",
+            current.task_operations.last()
+        );
+    }
+    let memory = json!({"operation":"proposeLongTermUpdate", "basis":"explicitUserInstruction", "executionMode":"execute",
+        "authorizationQuote":"Please remember that I prefer early planning.", "change":"Prefers early planning.", "replaces":null});
+    application
+        .submit_message(
+            "vault-a",
+            &session_id,
+            "2026-09-27",
+            &format!("memory-fixture:{memory}"),
+        )
+        .unwrap();
+    wait_for_finish(&application, &session_id, "vault-a");
+    let saved = application.session("vault-a", &session_id).unwrap();
+    assert_ne!(
+        saved.runtime_thread_id, native_thread_before,
+        "upgrade the transport without creating a Dashboard session"
+    );
+    assert_eq!(saved.id, session_id);
+    assert_eq!(saved.messages.len(), 10);
+    assert_eq!(saved.memory_proposals[0].status, "applied");
+    assert_eq!(application.list_sessions("2026-09-27").unwrap().len(), 1);
+    assert_eq!(tasks.read().unwrap().tasks[0].state, TaskState::Completed);
+    let record = today.read_date("2026-09-27").unwrap();
+    assert_eq!(record.baseline, baseline);
+    assert_eq!(record.timeline[0].title, "Rest after the report");
+    assert_eq!(
+        record
+            .habit_corrections
+            .habit("exercise")
+            .unwrap()
+            .cell
+            .local_completion_state,
+        HabitLocalCompletionState::Completed
+    );
+    assert!(fs::read_to_string(vault_path.join("life/Self.md"))
+        .unwrap()
+        .contains("Prefers early planning."));
+    assert_eq!(
+        requests.lock().unwrap().len(),
+        5,
+        "old requests are never replayed"
+    );
+    assert!(results.lock().unwrap().iter().all(|result| result.success));
+    let tools = registered.lock().unwrap();
+    assert_eq!(tools.len(), 2);
+    let variants = tools[0]["inputSchema"]["oneOf"].as_array().unwrap();
+    for name in [
+        "completeTask",
+        "createList",
+        "restoreList",
+        "saveDailyPlan",
+        "saveEveningReview",
+        "correctShortRecord",
+        "setLocalHabitCompletion",
+    ] {
+        assert!(variants
+            .iter()
+            .any(|variant| variant["properties"]["operation"]["const"] == name));
+    }
+    drop(tools);
+    drop(application);
+    let reopened = new_automatic_application(&directory, &vault, context, clock, None)
+        .0
+        .with_memory_service(Arc::new(FixtureMemoryService::new(&directory, &vault)));
+    let restored = reopened.session("vault-a", &session_id).unwrap();
+    assert_eq!(restored.messages, saved.messages);
+    assert_eq!(restored.task_operations, saved.task_operations);
+    assert_eq!(restored.memory_proposals, saved.memory_proposals);
+    assert_eq!(tasks.read().unwrap().tasks[0].state, TaskState::Completed);
+    assert!(reopened
+        .workspace("2026-09-27")
+        .unwrap()
+        .memory
+        .long_term
+        .content
+        .contains("Prefers early planning."));
+}
+
+#[test]
+fn missing_current_execution_mode_is_rejected_instead_of_silently_preparing_a_proposal() {
+    let directory = IsolatedDirectory::new();
+    let vault = MutableVault::new(&directory.vault("vault"));
+    let (application, _, results) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "vault-a",
+            &session.id,
+            "2026-09-27",
+            "missing current execution mode",
+        )
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+    assert!(application
+        .session("vault-a", &session.id)
+        .unwrap()
+        .task_operations
+        .is_empty());
+    assert!(!results.lock().unwrap()[0].success);
+    assert!(results.lock().unwrap()[0]
+        .text
+        .contains("requires executionMode"));
+    assert!(TaskApplication::new(vault, FixedClock, FileTaskStore)
+        .read()
+        .unwrap()
+        .tasks
+        .is_empty());
+}
+
+#[test]
+fn legacy_session_without_registration_fields_upgrades_without_replaying_or_approving_history() {
+    let directory = IsolatedDirectory::new();
+    let vault = MutableVault::new(&directory.vault("vault"));
+    let context = MutableContext::new("vault-a");
+    let (application, _, _) = new_application(
+        &directory,
+        &vault,
+        context.clone(),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    let old_proposal = submit_for_proposal(&application, &session.id, "create list");
+    let old_messages = application
+        .session("vault-a", &session.id)
+        .unwrap()
+        .messages;
+    drop(application);
+    let path = directory.path().join("collaboration/collaboration.json");
+    let mut history: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let legacy = history["sessions"][0].as_object_mut().unwrap();
+    for field in [
+        "runtimeToolSchemaFingerprint",
+        "taskToolRegistered",
+        "dailyPlanToolRegistered",
+        "dailyRecordToolRegistered",
+        "memoryToolRegistered",
+    ] {
+        legacy.remove(field);
+    }
+    legacy.insert("runtimeThreadId".into(), json!("legacy-native-thread"));
+    fs::write(&path, serde_json::to_vec(&history).unwrap()).unwrap();
+    let (reopened, _, results) = new_application(
+        &directory,
+        &vault,
+        context,
+        Arc::new(AtomicBool::new(false)),
+    );
+    reopened
+        .submit_message(
+            "vault-a",
+            &session.id,
+            "2026-09-27",
+            "Please create a task named Synthetic report.",
+        )
+        .unwrap();
+    wait_for_finish(&reopened, &session.id, "vault-a");
+    let upgraded = reopened.session("vault-a", &session.id).unwrap();
+    assert_eq!(upgraded.id, session.id);
+    assert_eq!(
+        &upgraded.messages[..old_messages.len()],
+        old_messages.as_slice()
+    );
+    assert_eq!(upgraded.task_operations[0].id, old_proposal.id);
+    assert_eq!(upgraded.task_operations[0].status, "awaitingApproval");
+    assert_eq!(upgraded.task_operations[1].status, "applied");
+    assert_eq!(
+        results.lock().unwrap().len(),
+        1,
+        "only the new current request was delivered"
+    );
+    assert_ne!(
+        upgraded.runtime_thread_id.as_deref(),
+        Some("legacy-native-thread")
+    );
+    let tasks = TaskApplication::new(vault, FixedClock, FileTaskStore)
+        .read()
+        .unwrap();
+    assert_eq!(tasks.tasks.len(), 1);
+    assert_eq!(
+        tasks.lists.len(),
+        1,
+        "the old list proposal was not approved by a new Task instruction"
+    );
+}
+
+#[test]
+fn memory_document_readback_after_history_failure_confirms_effect_without_rewriting_it() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let context = MutableContext::new("vault-a");
+    let fail_save = Arc::new(AtomicBool::new(false));
+    let (application, _, _) =
+        new_application(&directory, &vault, context.clone(), Arc::clone(&fail_save));
+    let application =
+        application.with_memory_service(Arc::new(FixtureMemoryService::new(&directory, &vault)));
+    let session = application.create_session("2026-09-27").unwrap();
+    let request = json!({"operation":"proposeLongTermUpdate", "basis":"explicitUserInstruction", "executionMode":"prepareProposal",
+        "authorizationQuote":"Please remember that I prefer early planning.", "change":"Prefers early planning.", "replaces":null});
+    application
+        .submit_message(
+            "vault-a",
+            &session.id,
+            "2026-09-27",
+            &format!("memory-fixture:{request}"),
+        )
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+    let proposal = application
+        .session("vault-a", &session.id)
+        .unwrap()
+        .memory_proposals[0]
+        .clone();
+    fail_save.store(true, Ordering::SeqCst);
+    assert!(application
+        .approve_memory_proposal_for_selected_vault(&session.id, &proposal.id)
+        .unwrap_err()
+        .contains("result could not be saved"));
+    let bytes = fs::read(vault_path.join("life/Self.md")).unwrap();
+    assert!(String::from_utf8_lossy(&bytes).contains("Prefers early planning."));
+    drop(application);
+    let (reopened, _, _) = new_application(
+        &directory,
+        &vault,
+        context,
+        Arc::new(AtomicBool::new(false)),
+    );
+    let reopened =
+        reopened.with_memory_service(Arc::new(FixtureMemoryService::new(&directory, &vault)));
+    let confirmed = reopened
+        .approve_memory_proposal_for_selected_vault(&session.id, &proposal.id)
+        .unwrap();
+    assert_eq!(confirmed.memory_proposals[0].status, "applied");
+    assert!(confirmed.memory_proposals[0]
+        .result_message
+        .as_deref()
+        .unwrap()
+        .contains("readback confirms"));
+    assert_eq!(fs::read(vault_path.join("life/Self.md")).unwrap(), bytes);
+    assert_eq!(
+        String::from_utf8_lossy(&bytes)
+            .matches("Prefers early planning.")
+            .count(),
+        1
+    );
 }
