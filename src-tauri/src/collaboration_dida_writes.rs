@@ -308,6 +308,9 @@ pub(super) fn attach_verification(action: &mut ExternalToolActionView, item: &Va
         _ => {}
     }
     action.verification = Some(json!({"checks":checks}));
+    if action.tool_id=="upsert_habit_checkins" {
+        action.verification.as_mut().unwrap()["habitCheckin"] = json!({"habitId":args.get("habit_id"),"stamp":args["checkin_data"].get("stamp"),"status":args["checkin_data"].get("status")});
+    }
     let native_failure = item.get("status").and_then(Value::as_str) == Some("failed")
         || item
             .get("result")
@@ -1051,6 +1054,17 @@ mod runtime_gate {
             payload(&call(&mut client, "get_habit", json!({"habit_id":id})).unwrap())["name"],
             name
         );
+        // #62 explicit local-only capability is enforced by the native schema,
+        // while unrelated Task writes retain their separately authorized scope.
+        let local=client.request("thread/start",json!({"cwd":root,"permissions":COLLABORATION_READ_PERMISSION_PROFILE,"approvalPolicy":"never","ephemeral":true,"config":dida::thread_config_with_habit_writes(Some(&connection),true,false)})).unwrap();
+        let local_thread=local["thread"]["id"].as_str().unwrap();
+        let local_catalog=client.request("mcpServerStatus/list",json!({"threadId":local_thread,"serverName":dida::SERVER,"detail":"toolsAndAuthOnly"})).unwrap();
+        let names:Vec<_>=local_catalog["data"][0]["tools"].as_object().unwrap().values().filter_map(|tool|tool["name"].as_str()).collect();
+        assert!(names.contains(&"get_habit_checkins") && names.contains(&"create_task"));
+        for tool in ["create_habit","update_habit","upsert_habit_checkins"] { assert!(!names.contains(&tool),"Only-local native schema must exclude {tool}"); }
+        let current=client.request("mcpServer/tool/call",json!({"threadId":local_thread,"server":dida::SERVER,"tool":"get_habit","arguments":{"habit_id":id}})).unwrap();
+        assert_eq!(payload(&current)["id"],id);
+        std::fs::write("/tmp/pd-spec54/dual62-native-scope-evidence.json",json!({"source":"dida365","localOnlyHabitMutationsAbsent":true,"taskWriteSchemaPreserved":true,"ownedStableIdReadConfirmed":true,"ownedCheckinResetConfirmed":true,"ownedNameRestored":true}).to_string()).unwrap();
         drop(client);
         std::fs::remove_dir_all(root).unwrap();
         assert!(

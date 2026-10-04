@@ -64,6 +64,12 @@ impl HabitRefreshReport {
     }
 }
 
+pub fn invalidates_native_evidence(item: &Value) -> bool {
+    item.get("type").and_then(Value::as_str)==Some("mcpToolCall")
+        && item.get("server").and_then(Value::as_str)==Some("dida365")
+        && [Some("create_habit"),Some("update_habit"),Some("upsert_habit_checkins")].contains(&item.get("tool").and_then(Value::as_str))
+}
+
 pub fn native_source_read(item: &Value) -> Option<Value> {
     let tool = item.get("tool")?.as_str()?;
     if item.get("type")?.as_str()? != "mcpToolCall"
@@ -81,6 +87,38 @@ pub fn native_source_read(item: &Value) -> Option<Value> {
         return None;
     }
     Some(json!({"tool":tool,"arguments":item.get("arguments")?,"result":result}))
+}
+/// Current-turn evidence only. A successful newer full envelope supersedes
+/// older covered reads; partial/narrower scopes cannot erase other coverage.
+pub fn cache_native_read(reads: &mut Vec<Value>, read: Value) {
+    let covered = checkin_read_scope(&read);
+    reads.retain(|old| {
+        if old["tool"] != read["tool"] { return true; }
+        if read["tool"] == "get_habit_checkins" {
+            let Some((new_ids, new_from, new_to)) = &covered else { return true; };
+            let Some((old_ids, old_from, old_to)) = checkin_read_scope(old) else { return true; };
+            !(old_ids.is_subset(new_ids) && new_from <= &old_from && new_to >= &old_to
+                && old["arguments"]["client_timezone"] == read["arguments"]["client_timezone"])
+        } else { old["arguments"] != read["arguments"] }
+    });
+    if reads.len() < 32 { reads.push(read); }
+}
+fn checkin_read_scope(read: &Value) -> Option<(BTreeSet<String>, i64, i64)> {
+    if read["tool"] != "get_habit_checkins" { return None; }
+    let args=&read["arguments"];
+    let from=args["from_stamp"].as_i64()?; let to=args["to_stamp"].as_i64()?;
+    if from >= to { return None; }
+    let requested: BTreeSet<String> = args["habit_ids"].as_array()?.iter().map(|id|id.as_str().map(str::to_owned)).collect::<Option<_>>()?;
+    if requested.is_empty() { return None; }
+    let Value::Array(results) = payload(read)? else { return None; };
+    if !results.is_empty() {
+        let observed: BTreeSet<String> = results.iter().map(|entry| {
+            entry["checkins"].as_array()?;
+            entry["habitId"].as_str().map(str::to_owned)
+        }).collect::<Option<_>>()?;
+        if !requested.is_subset(&observed) { return None; }
+    }
+    Some((requested,from,to))
 }
 pub fn supply_native_evidence(arguments: &mut Value, reads: &[Value]) {
     if let Some(arguments) = arguments.as_object_mut() {
@@ -207,12 +245,13 @@ pub fn rebuild(
         let Some(Value::Array(results)) = payload(read) else {
             continue;
         };
+        let mut current = BTreeMap::<String, Vec<Value>>::new();
         if results.is_empty() {
             // Native RPC success with an explicit empty result proves no check-ins
             // for its requested IDs/range. Missing/malformed/error is never empty.
             for id in &requested {
                 if ids.contains(id) {
-                    checkins.entry(id.clone()).or_default();
+                    current.entry(id.clone()).or_default();
                 }
             }
         }
@@ -226,11 +265,14 @@ pub fn rebuild(
             let Some(entries) = result["checkins"].as_array() else {
                 continue;
             };
-            checkins
+            current
                 .entry(id.to_owned())
                 .or_default()
                 .extend(entries.iter().cloned());
         }
+        // Each accepted read covers the full publication window. Keep the
+        // latest confirmed state per returned ID, including successful empty.
+        for (id,entries) in current { checkins.insert(id,entries); }
     }
     if !external_ids.iter().all(|id| checkins.contains_key(id)) {
         return Err(fail("query","Source query did not prove the full mapped Habit/date coverage; previous snapshot is retained"));
@@ -350,6 +392,11 @@ pub fn rebuild(
                         (Some(previous),Some(next)) if next<previous => {},
                         _=>return Err(fail("generation","Contradictory equal/unknown-time check-ins require a verified latest source outcome")),
                     }
+                }
+                Some((previous_time, _)) if op_time.is_some() && (previous_time.is_none() || op_time > *previous_time) => {
+                    // Repeated equal outcomes still advance the latest source
+                    // watermark, so an older contradictory entry cannot win.
+                    external.insert(date, (op_time, observation));
                 }
                 None => {
                     external.insert(date, (op_time, observation));
@@ -509,6 +556,52 @@ mod tests {
         let read = native_source_read(&base).unwrap();
         supply_native_evidence(&mut arguments, &[read.clone()]);
         assert_eq!(arguments["hostSourceReads"], json!([read]));
+    }
+    #[test]
+    fn newer_full_scope_empty_supersedes_positive_but_partial_or_narrower_reads_preserve_coverage() {
+        let read=|ids:Value,from:i64,to:i64,result:Value|json!({"tool":"get_habit_checkins","arguments":{"habit_ids":ids,"from_stamp":from,"to_stamp":to,"client_timezone":"Asia/Shanghai"},"result":{"structuredContent":{"result":result}}});
+        let positive=read(json!(["a"]),20260901,20260930,json!([{"habitId":"a","checkins":[{"stamp":20260926,"status":2}]}]));
+        let mut cache=vec![positive.clone()];
+        cache_native_read(&mut cache,read(json!(["a"]),20260920,20260930,json!([])));
+        assert_eq!(cache.len(),2,"Narrow new envelope cannot erase larger old coverage");
+        cache_native_read(&mut cache,read(json!(["a","b"]),20260831,20261001,json!([{"habitId":"a","checkins":[]}])));
+        assert_eq!(cache.len(),3,"Partial multi-ID response does not prove entire queried coverage");
+        let empty=read(json!(["b","a"]),20260831,20261001,json!([]));
+        cache_native_read(&mut cache,empty.clone());assert_eq!(cache.len(),2);
+        assert!(!cache.contains(&positive)); assert!(cache.contains(&empty));
+        cache_native_read(&mut cache,empty);assert_eq!(cache.len(),2,"Exact duplicate scope replaces earlier receipt");
+    }
+    #[test]
+    fn latest_full_window_empty_and_equal_outcome_watermark_control_the_published_projection() {
+        let catalog=json!({"tool":"get_habit","arguments":{"habit_id":"a"},"result":{"structuredContent":{"id":"a","name":"Owned source"}}});
+        let source=|entries:Value|json!({"tool":"get_habit_checkins","arguments":{"habit_ids":["a"],"from_stamp":20260701,"to_stamp":20260930},"result":{"structuredContent":{"result":entries}}});
+        let wrapped=|entries:Value|json!([{"habitId":"a","year":2026,"checkins":entries}]);
+        let positive=source(wrapped(json!([{"stamp":20260927,"status":2,"opTime":10}])));
+        let render=|reads:Vec<Value>| {
+            let input=HabitRefreshInput{mappings:BTreeMap::from([("exercise".into(),"a".into())]),authorization_quote:"refresh habits exercise=a".into(),execution_mode:"execute".into(),host_source_reads:reads};
+            serde_json::from_slice::<Value>(&rebuild(include_bytes!("../tests/fixtures/habits-v1-complete.json"),&input,"2026-09-27T21:00:00-04:00","2026-09-27",&BTreeMap::new()).unwrap()).unwrap()
+        };
+        let doc=render(vec![catalog.clone(),positive,source(json!([]))]);
+        let observations=&doc["habits"][0]["days"].as_array().unwrap().iter().find(|day|day["livedDate"]=="2026-09-27").unwrap()["observations"];
+        assert_eq!(observations,&json!([]),"Latest successful empty query must supersede earlier completed source entry");
+        let doc=render(vec![catalog,source(wrapped(json!([
+            {"stamp":20260927,"status":2,"opTime":10},
+            {"stamp":20260927,"status":2,"opTime":30},
+            {"stamp":20260927,"status":0,"opTime":20}
+        ])))]);
+        let observations=&doc["habits"][0]["days"].as_array().unwrap().iter().find(|day|day["livedDate"]=="2026-09-27").unwrap()["observations"];
+        assert_eq!(observations[0]["status"],"completed","Equal-outcome latest timestamp must prevent older withdrawal from winning");
+    }
+    #[test]
+    fn native_habit_mutations_invalidate_pre_write_reads_even_without_a_success_receipt() {
+        for tool in ["create_habit","update_habit","upsert_habit_checkins"] {
+            for status in ["inProgress","completed","failed"] {
+                assert!(invalidates_native_evidence(&json!({"type":"mcpToolCall","server":"dida365","tool":tool,"status":status,"error":{"code":500}})));
+            }
+        }
+        for (server,tool) in [("other","upsert_habit_checkins"),("dida365","get_habit_checkins"),("dida365","update_task")] {
+            assert!(!invalidates_native_evidence(&json!({"type":"mcpToolCall","server":server,"tool":tool})));
+        }
     }
     #[test]
     fn atomic_publication_preserves_old_and_concurrent_bytes_on_failed_activation() {

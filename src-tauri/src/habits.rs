@@ -691,11 +691,19 @@ pub fn project_snapshot_with_names_at_local_date(
             .as_ref()
             .map(goal_label)
             .unwrap_or_else(|| "未配置目标 · 不计入汇总".into());
-        let source_keys: HashSet<&str> = habit
+        let mut source_keys: HashSet<&str> = habit
             .days
             .iter()
             .flat_map(|day| day.observations.iter().map(|item| item.source.as_str()))
             .collect();
+        // A verified producer mapping survives confirmed-empty reads and
+        // withdrawal (status 0 has no completion observation).
+        let mapping_key = format!("dida-{}", habit.key);
+        if let Some(source) = source_by_key.get(mapping_key.as_str()) {
+            if source.label.starts_with(&format!("Dida365 explicit mapping {}=", habit.key)) {
+                source_keys.insert(source.key.as_str());
+            }
+        }
         let mut source_labels: Vec<String> = source_keys
             .into_iter()
             .filter_map(|key| source_by_key.get(key).map(|source| source.label.clone()))
