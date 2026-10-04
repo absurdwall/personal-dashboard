@@ -306,6 +306,7 @@ const interfaceCopies = {
   "collaboration.operationNoEvidence": { zh: "没有当前来源条目。", en: "No current source entries." },
   "collaboration.dailyRecordAction.reviewAddition": { zh: "补充复盘：{content}", en: "Add to review: {content}" },
   "collaboration.dailyRecordAction.reviewCorrection": { zh: "更正复盘：{content}", en: "Correct review: {content}" },
+  "collaboration.dailyRecordAction.shortRecordCreation": { zh: "新增{category}简短记录：{content}", en: "Add {category} Short Record: {content}" },
   "collaboration.dailyRecordAction.shortRecordCorrection": { zh: "更正{category}简短记录 {id}：{content}", en: "Correct {category} Short Record {id}: {content}" },
   "collaboration.habitCompletionAction.add": { zh: "补记“{name}”于 {date} 完成", en: "Record {name} completed on {date}" },
   "collaboration.habitCompletionAction.withdraw": { zh: "撤回“{name}”于 {date} 的本地完成补记", en: "Withdraw local completion for {name} on {date}" },

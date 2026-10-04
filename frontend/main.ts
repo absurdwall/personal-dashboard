@@ -729,6 +729,7 @@ type CollaborationTaskOperation =
       revisedDirection: string | null;
     }>
   | Readonly<{ operation: "saveEveningReview"; mode: "addition" | "correction"; content: string }>
+  | Readonly<{ operation: "createShortRecord"; category: "ordinary" | "exercise"; content: string }>
   | Readonly<{ operation: "correctShortRecord"; recordId: string; content: string }>
   | Readonly<{ operation: "setLocalHabitCompletion"; habitKey: string; completed: boolean }>;
 
@@ -2926,6 +2927,11 @@ function collaborationTaskOperationText(
           : "collaboration.dailyRecordAction.reviewCorrection",
         { content: operation.content },
       );
+    case "createShortRecord":
+      return t("collaboration.dailyRecordAction.shortRecordCreation", {
+        category: t(`collaboration.shortRecordCategory.${operation.category}` as InterfaceCopyKey),
+        content: operation.content,
+      });
     case "correctShortRecord": {
       const category = baseline.kind === "shortRecord" ? baseline.category : "ordinary";
       return t("collaboration.dailyRecordAction.shortRecordCorrection", {
@@ -3009,6 +3015,7 @@ async function runCollaborationTaskOperationAction(
 function isCanonicalDateProjectionOperation(operation: CollaborationTaskOperation): boolean {
   return operation.operation === "saveDailyPlan" ||
     operation.operation === "saveEveningReview" ||
+    operation.operation === "createShortRecord" ||
     operation.operation === "correctShortRecord" ||
     operation.operation === "setLocalHabitCompletion";
 }
@@ -3207,6 +3214,7 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       ? operation.operation
       : null;
     const dailyReview = operation.operation.operation === "saveEveningReview" ||
+      operation.operation.operation === "createShortRecord" ||
       operation.operation.operation === "correctShortRecord";
     const habitCompletion = operation.operation.operation === "setLocalHabitCompletion";
     const canonicalRecordOperation = dailyReview || habitCompletion;
