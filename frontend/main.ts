@@ -3189,12 +3189,6 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
         message.textContent = t("collaboration.memoryToolUnavailable");
         collaborationTaskToolNotice.append(message);
       }
-      const newChat = document.createElement("button");
-      newChat.type = "button";
-      newChat.className = "text-button";
-      setCopy(newChat, "collaboration.newSession");
-      newChat.addEventListener("click", () => void createCollaborationSession());
-      collaborationTaskToolNotice.append(newChat);
     }
   }
   if (!collaborationTaskOperations) return;
@@ -4374,9 +4368,6 @@ async function openCollaborationForTask(
     await flushCollaborationDraft();
     if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     let session = currentCollaborationSession;
-    if (session?.runtimeThreadId && !session.taskToolAvailable) {
-      session = null;
-    }
     if (!session) {
       session = await window.__TAURI__.core.invoke<CollaborationSessionView>(
         "collaboration_create_session",
