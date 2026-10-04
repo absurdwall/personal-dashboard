@@ -438,14 +438,55 @@ pub fn rebuild(
 }
 
 pub fn publish(vault: &Path, expected: &[u8], candidate: &[u8]) -> Result<(), String> {
-    publish_with_boundaries(vault, expected, candidate, |_| Ok(()), |_| Ok(()))
+    publish_with_source_check(vault, expected, candidate, || Ok(()))
 }
+// Validate the consumed canonical sources on both sides of atomic activation.
+// External editors do not participate in a multi-file transaction; a detected
+// revision change rejects this candidate rather than acknowledging stale facts.
+pub(crate) fn publish_with_source_check(
+    vault: &Path,
+    expected: &[u8],
+    candidate: &[u8],
+    check_sources: impl Fn() -> Result<(), String>,
+) -> Result<(), String> {
+    publish_at_boundaries(
+        vault,
+        expected,
+        candidate,
+        |_| Ok(()),
+        |_| Ok(()),
+        check_sources,
+        |_| Ok(()),
+    )
+}
+
+#[cfg(test)]
 fn publish_with_boundaries(
     vault: &Path,
     expected: &[u8],
     candidate: &[u8],
     before: impl FnOnce(&Path) -> Result<(), String>,
     after: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
+    publish_at_boundaries(
+        vault,
+        expected,
+        candidate,
+        before,
+        after,
+        || Ok(()),
+        |_| Ok(()),
+    )
+}
+
+fn publish_at_boundaries(
+    vault: &Path,
+    expected: &[u8],
+    candidate: &[u8],
+    before: impl FnOnce(&Path) -> Result<(), String>,
+    after: impl FnOnce(&Path) -> Result<(), String>,
+    check_sources: impl Fn() -> Result<(), String>,
+    before_rollback: impl FnMut(&Path) -> Result<(), String>,
 ) -> Result<(), String> {
     let vault = vault.canonicalize().map_err(|e| e.to_string())?;
     let path = vault.join(SNAPSHOT_RELATIVE_PATH);
@@ -476,6 +517,7 @@ fn publish_with_boundaries(
             .map_err(|e| e.to_string())?
             .as_nanos()
     ));
+    let mut activated = false;
     let result = (|| {
         let mut file = OpenOptions::new()
             .create_new(true)
@@ -486,17 +528,20 @@ fn publish_with_boundaries(
             .and_then(|_| file.sync_all())
             .map_err(|e| e.to_string())?;
         before(&path)?;
+        check_sources()?;
         crate::today::atomic_exchange(
             &temporary,
             &path,
             crate::today::StorageDocumentKind::HabitCompletions,
         )
         .map_err(|e| format!("Snapshot atomic publication failed: {e}"))?;
+        activated = true;
         let validation = (|| {
             if fs::read(&temporary).map_err(|e| e.to_string())? != expected {
                 return Err("Snapshot changed at the atomic publication boundary".to_string());
             }
             after(&path)?;
+            check_sources()?;
             fs::File::open(parent)
                 .and_then(|f| f.sync_all())
                 .map_err(|e| e.to_string())?;
@@ -506,27 +551,128 @@ fn publish_with_boundaries(
             Ok(())
         })();
         if let Err(error) = validation {
-            if fs::read(&path).is_ok_and(|bytes| bytes == candidate) {
-                crate::today::atomic_exchange(&temporary,&path,crate::today::StorageDocumentKind::HabitCompletions)
-                    .map_err(|rollback|format!("{error}; snapshot rollback failed: {rollback}; displaced snapshot remains at {}",temporary.display()))?;
-                let _ = fs::File::open(parent).and_then(|f| f.sync_all());
-                return Err(format!(
-                    "{error}; previous/concurrent snapshot bytes restored"
-                ));
-            }
-            return Err(format!(
-                "{error}; a later source writer is active, displaced snapshot preserved at {}",
-                temporary.display()
-            ));
+            return rollback_publication(&path, &temporary, candidate, &error, before_rollback);
         }
         Ok(())
     })();
-    if temporary.exists()
-        && (result.is_ok() || fs::read(&temporary).is_ok_and(|bytes| bytes == candidate))
-    {
+    if temporary.exists() && (result.is_ok() || !activated) {
         let _ = fs::remove_file(temporary);
     }
     result
+}
+
+// Atomic exchange has no compare-and-swap predicate. Preserve every displaced
+// version before an attempted rollback, then inspect what the exchange actually
+// displaced. A writer arriving after the ownership read is a conflict, not a
+// successful restoration. Bounded retries restore its bytes when possible;
+// sustained concurrency leaves all versions linked and reports recovery paths.
+fn rollback_publication(
+    path: &Path,
+    temporary: &Path,
+    candidate: &[u8],
+    error: &str,
+    mut before_exchange: impl FnMut(&Path) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut owned = candidate.to_vec();
+    let mut recovery_paths = vec![temporary.to_path_buf()];
+    let locations = |paths: &[std::path::PathBuf]| {
+        paths
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    for attempt in 0..3 {
+        if !fs::read(path).is_ok_and(|bytes| bytes == owned) {
+            return Err(format!(
+                "{error}; a later snapshot writer is active; displaced versions preserved at {}",
+                locations(&recovery_paths)
+            ));
+        }
+        let restored = fs::read(temporary).map_err(|e| {
+            format!(
+                "{error}; could not read displaced snapshot: {e}; recovery at {}",
+                locations(&recovery_paths)
+            )
+        })?;
+        let recovery = temporary.with_extension(format!("recovery-{attempt}"));
+        let preservation = (|| {
+            let mut file = OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&recovery)?;
+            file.write_all(&restored)?;
+            file.sync_all()?;
+            fs::File::open(path.parent().unwrap())?.sync_all()
+        })();
+        recovery_paths.push(recovery);
+        preservation.map_err(|e| {
+            format!(
+                "{error}; snapshot recovery preservation failed: {e}; recovery at {}",
+                locations(&recovery_paths)
+            )
+        })?;
+        before_exchange(path).map_err(|e| {
+            format!(
+                "{error}; rollback interrupted: {e}; recovery at {}",
+                locations(&recovery_paths)
+            )
+        })?;
+        crate::today::atomic_exchange(
+            temporary,
+            path,
+            crate::today::StorageDocumentKind::HabitCompletions,
+        )
+        .map_err(|e| {
+            format!(
+                "{error}; snapshot rollback failed: {e}; recovery at {}",
+                locations(&recovery_paths)
+            )
+        })?;
+        // The newest displaced writer may not have synced its own file yet.
+        // Keep that recovery file durable even when the retry bound is reached.
+        fs::File::open(temporary)
+            .and_then(|f| f.sync_all())
+            .map_err(|e| {
+                format!(
+                    "{error}; could not sync displaced snapshot: {e}; recovery at {}",
+                    locations(&recovery_paths)
+                )
+            })?;
+        fs::File::open(path.parent().unwrap())
+            .and_then(|f| f.sync_all())
+            .map_err(|e| {
+                format!(
+                    "{error}; could not sync rollback: {e}; recovery at {}",
+                    locations(&recovery_paths)
+                )
+            })?;
+        let displaced = fs::read(temporary).map_err(|e| {
+            format!(
+                "{error}; could not verify rollback: {e}; recovery at {}",
+                locations(&recovery_paths)
+            )
+        })?;
+        if displaced == owned {
+            let status = if fs::read(path).is_ok_and(|bytes| bytes == restored) {
+                if attempt == 0 {
+                    "displaced snapshot restored"
+                } else {
+                    "concurrent snapshot restored after rollback conflict"
+                }
+            } else {
+                "a later snapshot writer is active"
+            };
+            return Err(format!(
+                "{error}; {status}; displaced versions preserved at {}",
+                locations(&recovery_paths)
+            ));
+        }
+        // The exchange displaced a newer writer. Its bytes remain at temporary;
+        // restore them only while the path still contains our prior restoration.
+        owned = restored;
+    }
+    Err(format!("{error}; repeated snapshot writers prevented verified rollback; rollback conflict requires canonical snapshot review, latest displaced writer remains at {}; all displaced versions preserved at {}", temporary.display(), locations(&recovery_paths)))
 }
 
 #[cfg(test)]
@@ -651,5 +797,66 @@ mod tests {
         .unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"new complete snapshot");
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rollback_detects_a_writer_after_ownership_read_and_preserves_every_version() {
+        for writers in [1, 3] {
+            let root = std::env::temp_dir().join(format!(
+                "pd-habit-rollback-{}-{}-{writers}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            let path = root.join(SNAPSHOT_RELATIVE_PATH);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, b"original snapshot").unwrap();
+            let mut exchanges = 0;
+            let error = publish_at_boundaries(
+                &root,
+                b"original snapshot",
+                b"rejected candidate",
+                |_| Ok(()),
+                |_| Err("injected validation failure".into()),
+                || Ok(()),
+                |path| {
+                    exchanges += 1;
+                    if exchanges <= writers {
+                        fs::write(path, format!("later writer {exchanges}")).unwrap();
+                    }
+                    Ok(())
+                },
+            )
+            .unwrap_err();
+            assert!(error.contains("conflict"), "{error}");
+            assert!(error.contains("preserved at"), "{error}");
+            let files: Vec<_> = fs::read_dir(path.parent().unwrap())
+                .unwrap()
+                .map(|entry| fs::read(entry.unwrap().path()).unwrap())
+                .collect();
+            assert!(files.iter().any(|bytes| bytes == b"original snapshot"));
+            for index in 1..=writers {
+                assert!(files
+                    .iter()
+                    .any(|bytes| bytes == format!("later writer {index}").as_bytes()));
+            }
+            if writers == 1 {
+                assert_eq!(fs::read(&path).unwrap(), b"later writer 1");
+                assert!(error.contains("concurrent snapshot restored after rollback conflict"));
+            } else {
+                assert!(error.contains("repeated snapshot writers prevented verified rollback"));
+                assert!(!error.contains("snapshot restored"));
+            }
+            // Every retained recovery file is disclosed in the conflict message.
+            for entry in fs::read_dir(path.parent().unwrap()).unwrap() {
+                let file = entry.unwrap().path();
+                if file != path {
+                    assert!(error.contains(&file.display().to_string()), "{error}");
+                }
+            }
+            fs::remove_dir_all(root).unwrap();
+        }
     }
 }

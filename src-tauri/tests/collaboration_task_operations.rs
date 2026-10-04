@@ -5995,3 +5995,154 @@ fn dual_habit_mixed_local_task_and_other_local_habit_do_not_narrow_default_dual_
         HabitLocalCompletionState::Completed
     );
 }
+
+
+// Change a real synthetic canonical file at the persistence boundary used by
+// publication. The CollaborationApplication and Today adapter remain real.
+struct PublicationRaceVault {
+    vault: PathBuf,
+    record: PathBuf,
+    replacement: Option<Vec<u8>>,
+    armed: Arc<AtomicBool>,
+    changed: Arc<AtomicBool>,
+    reads: AtomicU64,
+    change_on_read: u64,
+}
+
+impl TodayWorkspacePersistence for PublicationRaceVault {
+    fn load_selected_vault(&self) -> Result<Option<PathBuf>, String> {
+        if self.armed.load(Ordering::SeqCst)
+            && self.reads.fetch_add(1, Ordering::SeqCst) + 1 == self.change_on_read
+        {
+            if let Some(bytes) = &self.replacement {
+                fs::write(&self.record, bytes).map_err(|e| e.to_string())?;
+            } else {
+                fs::remove_file(&self.record).map_err(|e| e.to_string())?;
+            }
+            self.changed.store(true, Ordering::SeqCst);
+            self.armed.store(false, Ordering::SeqCst);
+        }
+        Ok(Some(self.vault.clone()))
+    }
+    fn save_selected_vault(&self, _vault: &Path) -> Result<(), String> {
+        Err("This synthetic race fixture does not change selected Vaults".into())
+    }
+}
+
+#[test]
+fn collaboration_habit_publication_rejects_changed_deleted_or_new_canonical_sources_on_both_boundaries(
+) {
+    for boundary in [2, 3] {
+        // before activation, then after activation
+        for change in ["correction", "deletion", "creation"] {
+            let directory = IsolatedDirectory::new();
+            let path = directory.vault("publication-source-race");
+            let record = prepare_daily_review_vault(&path, false);
+            let original = fs::read_to_string(&record)
+                .unwrap()
+                .replace("完成合成工作块。", "今天07:10起床。");
+            let replacement = original.replace("07:10", "07:50").into_bytes();
+            if change == "creation" {
+                fs::remove_file(&record).unwrap();
+            } else {
+                fs::write(&record, &original).unwrap();
+            }
+            let snapshot = path.join(personal_dashboard_lib::habits::SNAPSHOT_RELATIVE_PATH);
+            let previous = fs::read(&snapshot).unwrap();
+            let vault = MutableVault::new(&path);
+            let armed = Arc::new(AtomicBool::new(false));
+            let changed = Arc::new(AtomicBool::new(false));
+            let service =
+                TodayApplicationCollaborationDailyDataAdapter::new(TodayApplication::new(
+                    PublicationRaceVault {
+                        vault: path.clone(),
+                        record: record.clone(),
+                        replacement: if change == "deletion" {
+                            None
+                        } else {
+                            Some(replacement.clone())
+                        },
+                        armed: armed.clone(),
+                        changed: changed.clone(),
+                        reads: AtomicU64::new(0),
+                        change_on_read: boundary,
+                    },
+                    NoVaultPicker,
+                    FixedClock,
+                ));
+            let (app, _, results) = new_application(
+                &directory,
+                &vault,
+                MutableContext::new("vault-a"),
+                Arc::new(AtomicBool::new(false)),
+            );
+            let app = app.with_daily_data_service(Arc::new(service));
+            let session = app.create_default_session().unwrap();
+            armed.store(true, Ordering::SeqCst);
+            app.submit_message(
+                "vault-a",
+                &session.id,
+                &session.target_date,
+                "single-date-fixture:refresh habits exercise=synthetic-habit",
+            )
+            .unwrap();
+            wait_for_finish(&app, &session.id, "vault-a");
+            assert!(
+                changed.load(Ordering::SeqCst),
+                "{change} at boundary {boundary}"
+            );
+            let result = results.lock().unwrap().last().unwrap().clone();
+            assert!(
+                !result.success,
+                "{change} at boundary {boundary}: {}",
+                result.text
+            );
+            let report: Value = serde_json::from_str(&result.text).unwrap();
+            assert_ne!(report["publication"], "published");
+            assert!(report["message"]
+                .as_str()
+                .unwrap()
+                .contains("Canonical Daily Record changed"));
+            assert_eq!(fs::read(&snapshot).unwrap(), previous);
+            if change == "deletion" {
+                assert!(!record.exists());
+            } else {
+                assert_eq!(fs::read(&record).unwrap(), replacement);
+            }
+            let persisted = app
+                .session("vault-a", &session.id)
+                .unwrap()
+                .last_habit_refresh
+                .unwrap();
+            assert_ne!(persisted.publication, "published");
+            // A subsequent user-requested rebuild consumes the changed source,
+            // rather than replaying a rejected candidate or old conversation.
+            app.submit_message(
+                "vault-a",
+                &session.id,
+                &session.target_date,
+                "single-date-fixture:refresh habits exercise=synthetic-habit",
+            )
+            .unwrap();
+            wait_for_finish(&app, &session.id, "vault-a");
+            assert!(results.lock().unwrap().last().unwrap().success);
+            let current = TodayApplication::new(vault, NoVaultPicker, FixedClock)
+                .habits()
+                .unwrap();
+            assert_eq!(
+                current
+                    .habit("wake")
+                    .unwrap()
+                    .today
+                    .actual_time_label
+                    .as_deref(),
+                if change == "deletion" {
+                    None
+                } else {
+                    Some("07:50")
+                }
+            );
+            app.shutdown().unwrap();
+        }
+    }
+}
