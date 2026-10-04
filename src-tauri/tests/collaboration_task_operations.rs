@@ -435,6 +435,13 @@ impl AppServerTransport for DynamicRuntime {
             .lock()
             .map_err(|_| "request lock poisoned".to_string())?
             .push(request.clone());
+        if request.user_text.starts_with("请更新此隔离 Vault 的长期背景") || request.user_text.starts_with("不要更新此隔离 Vault 的长期背景") {
+            let quote=request.user_text.split("这次不要改").next().unwrap().trim();
+            let change="我长期偏好先写简短复盘，再调整计划；未记录的活动保持未知。";
+            let result=handler(RuntimeDynamicToolCall{thread_id:request.thread_id.clone(),turn_id:format!("turn-{}",request.execution_id),call_id:"target-qualified-memory".into(),tool:"dashboard_memory_update".into(),arguments:json!({"operation":"proposeLongTermUpdate","basis":"explicitUserInstruction","executionMode":"execute","authorizationQuote":quote,"change":change,"replaces":null})});
+            self.results.lock().unwrap().push(result);
+            return Ok(RuntimeTurnResult{text:"Verify the existing long-term document; other domains retain their state.".into(),runtime_turn_id:Some(format!("turn-{}",request.execution_id)),stopped:false,external_actions:vec![]});
+        }
         if request.user_text == "hold-worker" {
             if let Some(gate) = &self.automatic_gate {
                 gate.block_automatic_turn();
@@ -5387,7 +5394,7 @@ impl AppServerTransport for DualRuntime {
         self.base.requests.lock().unwrap().push(request.clone());
         let text = &request.user_text;
         let completed = !(text.contains("撤回") || text.contains("撤销") || text.contains("只撤"));
-        let date = if text.contains("2026-09-26") {
+        let date = if text.contains("2026-10-02") { "2026-10-02" } else if text.contains("2026-10-03") { "2026-10-03" } else if text.contains("2026-09-26") {
             "2026-09-26"
         } else {
             request.context.date.as_str()
@@ -5423,7 +5430,7 @@ impl AppServerTransport for DualRuntime {
                 turn_id: turn.clone(),
                 call_id: "independent-local-task".into(),
                 tool: "dashboard_task_operation".into(),
-                arguments: json!({"operation":"createTask","name":"买菜","content":null,"date":null,"time":null,"listId":null,"executionMode":"execute","authorizationQuote":"安排买菜只在本地任务里创建。"}),
+                arguments: json!({"operation":"createTask","name":"买菜","content":null,"date":null,"time":null,"listId":null,"executionMode":"execute","authorizationQuote":text.split('。').find(|c|c.contains("买菜")).unwrap()}),
             });
             self.base.results.lock().unwrap().push(result);
         }
@@ -5456,7 +5463,7 @@ impl AppServerTransport for DualRuntime {
                 turn_id: turn.clone(),
                 call_id: "local-dual-effect".into(),
                 tool: "dashboard_task_operation".into(),
-                arguments: json!({"operation":"setLocalHabitCompletion","habitKey":"exercise","completed":completed,"targetDate":date,"scope":if scope=="local" {"local"} else if completed {"both"}else{"original"},"executionMode":"execute","authorizationQuote":text}),
+                arguments: json!({"operation":"setLocalHabitCompletion","habitKey":"exercise","completed":completed,"targetDate":date,"scope":if scope=="local" {"local"} else if completed {"both"}else{"original"},"executionMode":"execute","authorizationQuote":effect_text}),
             };
             let result = handler(call.clone());
             let duplicate = handler(call);
@@ -5495,7 +5502,7 @@ impl AppServerTransport for DualRuntime {
         // real producer checks identities, range, version and publication.
         let source = self.source.lock().unwrap();
         let catalog = json!({"type":"mcpToolCall","server":"dida365","tool":"get_habit","status":"completed","arguments":{"habit_id":"synthetic-habit"},"result":{"structuredContent":{"id":"synthetic-habit","name":"Owned mapped Habit"}}});
-        let checkins = json!({"type":"mcpToolCall","server":"dida365","tool":"get_habit_checkins","status":"completed","arguments":{"habit_ids":["synthetic-habit"],"from_stamp":20260701,"to_stamp":20260930,"client_timezone":"America/New_York"},"result":{"isError":false,"structuredContent":{"result":[{"habitId":"synthetic-habit","year":2026,"checkins":source.checkins.iter().map(|(stamp,status)|json!({"stamp":stamp,"status":status,"opTime":"2026-09-27T21:00:00-04:00"})).collect::<Vec<_>>()}]}}});
+        let checkins = json!({"type":"mcpToolCall","server":"dida365","tool":"get_habit_checkins","status":"completed","arguments":{"habit_ids":["synthetic-habit"],"from_stamp":20260601,"to_stamp":20261031,"client_timezone":"America/New_York"},"result":{"isError":false,"structuredContent":{"result":[{"habitId":"synthetic-habit","year":2026,"checkins":source.checkins.iter().map(|(stamp,status)|json!({"stamp":stamp,"status":status,"opTime":"2026-09-27T21:00:00-04:00"})).collect::<Vec<_>>()}]}}});
         let reads: Vec<_> = if source.projection_fail || !source.readable {
             vec![]
         } else {
@@ -6094,7 +6101,7 @@ fn collaboration_habit_publication_rejects_changed_deleted_or_new_canonical_sour
                 "vault-a",
                 &session.id,
                 &session.target_date,
-                "single-date-fixture:refresh habits exercise=synthetic-habit",
+                "refresh habits exercise=synthetic-habit",
             )
             .unwrap();
             wait_for_finish(&app, &session.id, "vault-a");
@@ -6132,7 +6139,7 @@ fn collaboration_habit_publication_rejects_changed_deleted_or_new_canonical_sour
                 "vault-a",
                 &session.id,
                 &session.target_date,
-                "single-date-fixture:refresh habits exercise=synthetic-habit",
+                "refresh habits exercise=synthetic-habit",
             )
             .unwrap();
             wait_for_finish(&app, &session.id, "vault-a");
@@ -6156,4 +6163,254 @@ fn collaboration_habit_publication_rejects_changed_deleted_or_new_canonical_sour
             app.shutdown().unwrap();
         }
     }
+}
+
+// A model fixture enumerates effects of one supplied natural message. Every
+// source write, readback, receipt and UI projection below uses production paths.
+struct JourneyRuntime { dual: DualRuntime }
+impl AppServerTransport for JourneyRuntime {
+    fn start_chatgpt_login(&mut self)->Result<(),String>{self.dual.base.start_chatgpt_login()}
+    fn inspect(&mut self)->Result<RuntimeConnectionView,String>{self.dual.inspect()}
+    fn start_thread(&mut self,m:Option<&str>,i:&str)->Result<String,String>{self.dual.start_thread(m,i)}
+    fn start_thread_with_dynamic_tools(&mut self,m:Option<&str>,i:&str,t:Vec<Value>)->Result<String,String>{self.dual.start_thread_with_dynamic_tools(m,i,t)}
+    fn resume_thread(&mut self,t:&str)->Result<(),String>{self.dual.resume_thread(t)}
+    fn configure_external_writes(&mut self,a:bool){self.dual.configure_external_writes(a)}
+    fn configure_external_habit_writes(&mut self,a:bool){self.dual.configure_external_habit_writes(a)}
+    fn send_turn(&mut self,r:RuntimeTurnRequest)->Result<RuntimeTurnResult,String>{self.dual.send_turn(r)}
+    fn send_turn_with_external_actions(&mut self,r:RuntimeTurnRequest,cancel:Arc<AtomicBool>,handler:Option<RuntimeDynamicToolHandler>,actions:Option<personal_dashboard_lib::collaboration::RuntimeExternalActionHandler>,approval:Option<personal_dashboard_lib::collaboration::RuntimeExternalApprovalHandler>)->Result<RuntimeTurnResult,String>{
+        if r.user_text.starts_with("2026-10-03只改滴答 Habit synthetic-habit") {
+            let action=personal_dashboard_lib::collaboration::ExternalToolActionView{action_id:"exact-source-only".into(),source_id:"dida365".into(),source_name:"Dida".into(),tool_id:"upsert_habit_checkins".into(),status:"saved".into(),target_scope:"2026-10-03".into(),input_summary:"Explicit stable source ID/date".into(),result_summary:"Fixture exact current source readback".into(),verification:Some(json!({"habitCheckin":{"habitId":"synthetic-habit","stamp":20261003,"status":2}}))};
+            if let Some(h)=actions {h(action.clone());}
+            return Ok(RuntimeTurnResult{text:"Only the explicitly named source endpoint.".into(),runtime_turn_id:Some(format!("turn-{}",r.execution_id)),stopped:false,external_actions:vec![action]});
+        }
+        if r.user_text=="下周五我要买菜" {
+            let result=handler.unwrap()(RuntimeDynamicToolCall{thread_id:r.thread_id.clone(),turn_id:format!("turn-{}",r.execution_id),call_id:"future-commitment".into(),tool:"dashboard_task_operation".into(),arguments:json!({"operation":"createTask","name":"买菜","content":null,"date":"2026-10-02","time":null,"listId":null,"executionMode":"execute","authorizationQuote":r.user_text})});
+            self.dual.base.results.lock().unwrap().push(result);
+            return Ok(RuntimeTurnResult{text:"Check the original stable Task result.".into(),runtime_turn_id:Some(format!("turn-{}",r.execution_id)),stopped:false,external_actions:vec![]});
+        }
+        if !r.user_text.contains("今天晚间总结") && !r.user_text.starts_with("2026-10-03运动") {
+            return self.dual.base.send_turn_with_dynamic_tools(r,cancel,handler);
+        }
+        let handler=handler.unwrap();
+        if r.user_text.contains("今天晚间总结") {
+            for (id,args) in [
+                ("review",json!({"operation":"saveEveningReview","mode":"addition","content":"今天完成了读书，其他活动未提及。","executionMode":"execute","authorizationQuote":"今天晚间总结：今天完成了读书，其他活动未提及。"})),
+                ("task",json!({"operation":"createTask","name":"买菜","content":null,"date":null,"time":null,"listId":null,"executionMode":"execute","authorizationQuote":"买菜只在本地任务里创建。"})),
+                ("short",json!({"operation":"createShortRecord","category":"ordinary","content":"今天已经读完这本书了。","executionMode":"execute","authorizationQuote":"今天已经读完这本书了。"})),
+                ("tentative",json!({"operation":"createTask","name":"刷墙","content":null,"date":null,"time":null,"listId":null,"executionMode":"execute","authorizationQuote":"也许明天刷墙。"})),
+            ] {
+                let result=handler(RuntimeDynamicToolCall{thread_id:r.thread_id.clone(),turn_id:format!("turn-{}",r.execution_id),call_id:id.into(),tool:"dashboard_task_operation".into(),arguments:args});
+                self.dual.base.results.lock().unwrap().push(result);
+            }
+        }
+        let mut all=Vec::new();
+        for (index,clause) in r.user_text.split(['。','；']).filter(|c|c.contains("运动")).enumerate() {
+            let mut part=r.clone();part.user_text=clause.into();
+            let h=handler.clone();
+            let part_handler:RuntimeDynamicToolHandler=Arc::new(move|mut call|{call.call_id=format!("journey-{index}-{}",call.call_id);h(call)});
+            let source_actions=actions.clone();
+            let part_actions:personal_dashboard_lib::collaboration::RuntimeExternalActionHandler=Arc::new(move|mut action|{action.action_id=format!("journey-{index}-{}",action.action_id);if let Some(h)=&source_actions{h(action)}});
+            let result=self.dual.send_turn_with_external_actions(part,cancel.clone(),Some(part_handler),Some(part_actions),approval.clone())?;
+            all.extend(result.external_actions.into_iter().map(|mut action|{action.action_id=format!("journey-{index}-{}",action.action_id);action}));
+        }
+        Ok(RuntimeTurnResult{text:"Each source result is independent; any unknown endpoint remains unfinished.".into(),runtime_turn_id:Some(format!("turn-{}",r.execution_id)),stopped:false,external_actions:all})
+    }
+}
+
+fn new_journey_application(directory:&IsolatedDirectory,vault:&MutableVault,clock:ManualClock,source:Arc<Mutex<DualSource>>,fail:Arc<AtomicBool>)->CollaborationApplication {
+    let base=DynamicRuntime{registered_tools:Arc::new(Mutex::new(vec![])),results:Arc::new(Mutex::new(vec![])),requests:Arc::new(Mutex::new(vec![])),automatic_gate:None,external_writes_allowed:false,starts:Arc::new(Mutex::new(vec![]))};
+    CollaborationApplication::with_adapters(Arc::new(FailNextSaveStore{inner:FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json")),fail_next_save:fail}),Box::new(JourneyRuntime{dual:DualRuntime{base,source}}),Arc::new(MutableContext::new("vault-a")),Arc::new(clock.clone()),directory.path().join("runtime"),"Model fixture only: no native language-interpretation acceptance claim".into())
+        .with_task_service(Arc::new(TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault.clone(),clock.clone(),FileTaskStore))))
+        .with_daily_data_service(Arc::new(TodayApplicationCollaborationDailyDataAdapter::new(TodayApplication::new(vault.clone(),NoVaultPicker,clock))))
+}
+
+#[test]
+fn one_evening_message_keeps_independent_results_prior_review_and_tentative_activity() {
+    for external_failed in [false,true] {
+        let directory=IsolatedDirectory::new();let path=directory.vault("journey");prepare_dual_vault(&path);
+        let vault=MutableVault::new(&path);let clock=ManualClock::new("2026-09-27","21:00");
+        let source=Arc::new(Mutex::new(DualSource{readable:true,fail:external_failed,projection_fail:external_failed,..Default::default()}));
+        let app=new_journey_application(&directory,&vault,clock.clone(),source.clone(),Arc::new(AtomicBool::new(false)));
+        let session=app.create_default_session().unwrap();
+        app.submit_message("vault-a",&session.id,&session.target_date,"create task").unwrap();wait_for_finish(&app,&session.id,"vault-a");
+        let review=app.session("vault-a",&session.id).unwrap().task_operations[0].id.clone();
+        let message="今天晚间总结：今天完成了读书，其他活动未提及。买菜只在本地任务里创建。今天已经读完这本书了。今天运动完成了。也许明天刷墙。";
+        app.submit_message("vault-a",&session.id,&session.target_date,message).unwrap();wait_for_finish(&app,&session.id,"vault-a");
+        let state=app.session("vault-a",&session.id).unwrap();assert_eq!(state.run_state,"completed");assert!(!state.progress.contains("No Dashboard data was changed"));
+        assert_eq!(state.task_operations.iter().find(|p|p.id==review).unwrap().status,"awaitingApproval");
+        let current=state.messages.iter().find(|m|m.role=="user" && m.text==message).unwrap();
+        assert_eq!(current.action_results.iter().filter(|r|r.source=="Dashboard" && r.status=="applied").count(),4);
+        assert!(current.action_results.iter().all(|r|r.id!=review));
+        assert!(current.action_results.iter().any(|r|r.source=="Habits page" && r.status==if external_failed{"retainedOrMissing"}else{"ready"}));
+        if external_failed {assert!(current.action_results.iter().any(|r|r.source=="Dida" && r.status=="unknown"));}
+        let tasks=TaskApplication::new(vault.clone(),clock.clone(),FileTaskStore).read().unwrap();assert_eq!(tasks.tasks.len(),1);assert_eq!(tasks.tasks[0].name,"买菜");
+        let today=TodayApplication::new(vault.clone(),NoVaultPicker,clock.clone());let record=today.read_date("2026-09-27").unwrap();
+        assert_eq!(record.daytime.short_records.len(),1);assert!(serde_json::to_string(&record.evening).unwrap().contains("完成了读书"));
+        let habits=today.habits().unwrap();assert_eq!(habits.habit("exercise").unwrap().today.local_completion_state,HabitLocalCompletionState::Completed);
+        assert_eq!(habits.habit("nutrition").unwrap().today.local_completion_state,HabitLocalCompletionState::None);
+        let before=fs::read(path.join("life/Journal/Daily/2026/2026-09/2026-09-27.md")).unwrap();
+        app.shutdown().unwrap();drop(app);
+        let reopened=new_journey_application(&directory,&vault,clock,source.clone(),Arc::new(AtomicBool::new(false)));
+        let restored=reopened.session("vault-a",&session.id).unwrap();assert_eq!(restored.messages.iter().find(|m|m.id==current.id).unwrap().action_results,current.action_results);
+        reopened.submit_message("vault-a",&session.id,&session.target_date,message).unwrap();wait_for_finish(&reopened,&session.id,"vault-a");
+        assert_eq!(fs::read(path.join("life/Journal/Daily/2026/2026-09/2026-09-27.md")).unwrap(),before);
+        assert_eq!(TaskApplication::new(vault.clone(),FixedClock,FileTaskStore).read().unwrap().tasks.len(),1);
+        let repeated=reopened.session("vault-a",&session.id).unwrap();
+        assert_eq!(repeated.messages.iter().rev().find(|m|m.role=="user").unwrap().action_results.iter().filter(|r|r.source=="Dashboard" && r.status=="applied").count(),3);
+        assert_eq!(source.lock().unwrap().writes,usize::from(!external_failed));
+        reopened.shutdown().unwrap();
+    }
+}
+
+#[test]
+fn date_qualified_same_habit_effects_keep_local_and_external_scopes_independent() {
+    let directory=IsolatedDirectory::new();let path=directory.vault("multi-date");prepare_dual_vault(&path);
+    let vault=MutableVault::new(&path);let clock=ManualClock::new("2026-10-03","21:00");
+    let source=Arc::new(Mutex::new(DualSource{readable:true,..Default::default()}));
+    let app=new_journey_application(&directory,&vault,clock.clone(),source.clone(),Arc::new(AtomicBool::new(false)));
+    let session=app.create_default_session().unwrap();
+    let text="2026-10-03运动完成，只记本地；2026-10-02运动完成，只记滴答。";
+    app.submit_message("vault-a",&session.id,&session.target_date,text).unwrap();wait_for_finish(&app,&session.id,"vault-a");
+    let state=app.session("vault-a",&session.id).unwrap();assert_eq!(state.run_state,"completed");
+    let local=state.task_operations.iter().find(|p|matches!(p.operation,CollaborationTaskOperation::SetLocalHabitCompletion{..})).unwrap();assert_eq!(local.status,"applied");assert_eq!(local.target_date,"2026-10-03");
+    assert_eq!(serde_json::to_value(&local.baseline).unwrap()["destinationScope"],"local");
+    let user=state.messages.iter().find(|m|m.text==text).unwrap();assert_eq!(user.external_actions.len(),1);assert_eq!(user.external_actions[0].verification.as_ref().unwrap()["habitScope"],"external");
+    assert_eq!(source.lock().unwrap().checkins.get(&20261002),Some(&2));assert!(!source.lock().unwrap().checkins.contains_key(&20261003));
+    let today=TodayApplication::new(vault,NoVaultPicker,clock);let view=today.habits().unwrap();assert_eq!(view.habit("exercise").unwrap().today.local_completion_state,HabitLocalCompletionState::Completed);
+    app.shutdown().unwrap();
+}
+
+struct HistoryFaultAfterTaskSave {
+    inner:TaskApplicationCollaborationAdapter<MutableVault,ManualClock,FileTaskStore>,
+    fail:Arc<AtomicBool>, once:AtomicBool,
+}
+impl CollaborationTaskService for HistoryFaultAfterTaskSave {
+    fn read(&self)->Result<personal_dashboard_lib::tasks::TasksView,String>{self.inner.read()}
+    fn apply(&self,o:&CollaborationTaskOperation,b:&str,r:Option<&str>,id:&str)->Result<personal_dashboard_lib::tasks::TasksView,String>{
+        let saved=self.inner.apply(o,b,r,id)?;
+        if !self.once.swap(true,Ordering::SeqCst){self.fail.store(true,Ordering::SeqCst);}
+        Ok(saved)
+    }
+}
+
+#[test]
+fn repeated_attempted_task_reads_original_id_after_history_failure_and_preserves_later_user_note() {
+    for concurrent_note in [false,true] {
+        let directory=IsolatedDirectory::new();let path=directory.vault("history-fault");prepare_dual_vault(&path);
+        let vault=MutableVault::new(&path);let clock=ManualClock::new("2026-09-27","21:00");let fail=Arc::new(AtomicBool::new(false));let source=Arc::new(Mutex::new(DualSource::default()));
+        let app=new_journey_application(&directory,&vault,clock.clone(),source.clone(),fail.clone()).with_task_service(Arc::new(HistoryFaultAfterTaskSave{inner:TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault.clone(),clock.clone(),FileTaskStore)),fail,once:AtomicBool::new(false)}));
+        let session=app.create_default_session().unwrap();app.submit_message("vault-a",&session.id,&session.target_date,"下周五我要买菜").unwrap();wait_for_finish(&app,&session.id,"vault-a");
+        let operation=app.session("vault-a",&session.id).unwrap().task_operations[0].clone();assert_eq!(operation.status,"awaitingApproval");
+        let tasks=TaskApplication::new(vault.clone(),clock.clone(),FileTaskStore);let view=tasks.read().unwrap();let task=&view.tasks[0];
+        if concurrent_note {tasks.update(personal_dashboard_lib::tasks::TaskUpdateInput{target_binding:view.target_binding.clone().unwrap(),expected_revision:view.revision.clone().unwrap(),task_id:task.id.clone(),change_id:"later-user-note".into(),name:task.name.clone(),content:Some("Concurrent user note stays intact".into()),date:task.date.clone(),time:task.time.clone(),list_id:None}).unwrap();}
+        let before=fs::read(path.join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH)).unwrap();app.shutdown().unwrap();drop(app);
+        let reopened=new_journey_application(&directory,&vault,clock,source,Arc::new(AtomicBool::new(false)));
+        reopened.submit_message("vault-a",&session.id,&session.target_date,"下周五我要买菜").unwrap();wait_for_finish(&reopened,&session.id,"vault-a");
+        let after=tasks.read().unwrap();assert_eq!(after.tasks.len(),1);assert_eq!(after.tasks[0].id,task.id);assert_eq!(fs::read(path.join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH)).unwrap(),before);
+        let state=reopened.session("vault-a",&session.id).unwrap();assert_eq!(state.task_operations.len(),1);assert_eq!(state.task_operations[0].status,if concurrent_note{"conflict"}else{"applied"});
+        reopened.shutdown().unwrap();
+    }
+}
+
+#[test]
+fn natural_explicit_mapping_requires_exact_key_and_verified_source_id() {
+    for (text,accepted) in [
+        ("refresh habits。我确认此隔离 Vault 的 exercise 对应 Dida Habit ID synthetic-habit。",true),
+        ("refresh habits。我确认 exercise对应 Dida Habit ID synthetic-habit。",true),
+        ("refresh habits。我确认 nutrition 对应 Dida Habit ID synthetic-habit，exercise 仍未明确。",false),
+        ("refresh habits。我确认 exercise 对应 Dida Habit ID synthetic-habit-other。",false),
+    ] {
+        let directory=IsolatedDirectory::new();let path=directory.vault("natural-mapping");prepare_daily_review_vault(&path,false);
+        let vault=MutableVault::new(&path);let (app,_,results)=new_application(&directory,&vault,MutableContext::new("vault-a"),Arc::new(AtomicBool::new(false)));
+        let session=app.create_default_session().unwrap();app.submit_message("vault-a",&session.id,&session.target_date,text).unwrap();wait_for_finish(&app,&session.id,"vault-a");
+        let result=results.lock().unwrap().last().unwrap().clone();assert_eq!(result.success,accepted,"{text}: {result:?}");
+        app.shutdown().unwrap();
+    }
+}
+
+struct HistoryFaultAfterRefresh {
+    inner:TodayApplicationCollaborationDailyDataAdapter<MutableVault,NoVaultPicker,FixedClock>,
+    fail:Arc<AtomicBool>,
+}
+impl personal_dashboard_lib::collaboration::CollaborationDailyDataService for HistoryFaultAfterRefresh {
+    fn read_date(&self,date:&str)->Result<personal_dashboard_lib::today::TodayView,String>{self.inner.read_date(date)}
+    fn save(&self,input:DailyPlanWriteInput)->Result<personal_dashboard_lib::today::TodayView,String>{self.inner.save(input)}
+    fn operation_applied(&self,date:&str,binding:&str,id:&str,fingerprint:&str)->Result<bool,String>{self.inner.operation_applied(date,binding,id,fingerprint)}
+    fn read_habit_snapshot(&self)->Result<personal_dashboard_lib::habits::HabitSnapshotView,String>{self.inner.read_habit_snapshot()}
+    fn refresh_habit_snapshot(&self,input:personal_dashboard_lib::habit_producer::HabitRefreshInput)->personal_dashboard_lib::habit_producer::HabitRefreshReport {
+        let report=self.inner.refresh_habit_snapshot(input);self.fail.store(true,Ordering::SeqCst);report
+    }
+}
+
+#[test]
+fn refresh_duplicate_after_successful_publication_and_lost_history_keeps_unknown_result_until_fresh_call() {
+    let directory=IsolatedDirectory::new();let path=directory.vault("refresh-history-fault");prepare_daily_review_vault(&path,false);
+    let vault=MutableVault::new(&path);let fail=Arc::new(AtomicBool::new(false));
+    let (app,_,results)=new_application(&directory,&vault,MutableContext::new("vault-a"),fail.clone());
+    let app=app.with_daily_data_service(Arc::new(HistoryFaultAfterRefresh{inner:TodayApplicationCollaborationDailyDataAdapter::new(TodayApplication::new(vault.clone(),NoVaultPicker,FixedClock)),fail}));
+    let session=app.create_default_session().unwrap();let text="refresh habits exercise=synthetic-habit";
+    app.submit_message("vault-a",&session.id,&session.target_date,text).unwrap();wait_for_finish(&app,&session.id,"vault-a");
+    assert!(!results.lock().unwrap().last().unwrap().success);
+    let state=app.session("vault-a",&session.id).unwrap();let first=state.messages.iter().find(|m|m.role=="user").unwrap();
+    assert_eq!(first.action_results.len(),4);assert!(first.action_results.iter().all(|r|r.status=="unknown"));
+    let persisted=FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json")).load().unwrap();
+    assert_eq!(persisted.sessions[0].habit_refresh_receipts.len(),1);assert!(persisted.sessions[0].habit_refresh_receipts[0].result.is_none());
+    let snapshot=path.join(personal_dashboard_lib::habits::SNAPSHOT_RELATIVE_PATH);let before=fs::read(&snapshot).unwrap();
+    assert!(String::from_utf8_lossy(&before).contains("synthetic-habit"));app.shutdown().unwrap();drop(app);
+    let (reopened,_,new_results)=new_application(&directory,&vault,MutableContext::new("vault-a"),Arc::new(AtomicBool::new(false)));
+    let restored=reopened.session("vault-a",&session.id).unwrap();assert_eq!(restored.messages.iter().find(|m|m.id==first.id).unwrap().action_results,first.action_results);
+    // A new intentional call after fresh source reads can rebuild; the old
+    // delivered call remains unknown and is never silently converted to success.
+    reopened.submit_message("vault-a",&session.id,&session.target_date,text).unwrap();wait_for_finish(&reopened,&session.id,"vault-a");
+    assert!(new_results.lock().unwrap().last().unwrap().success);let final_state=reopened.session("vault-a",&session.id).unwrap();
+    assert_eq!(final_state.messages.iter().find(|m|m.id==first.id).unwrap().action_results,first.action_results);
+    assert!(final_state.messages.iter().rev().find(|m|m.role=="user").unwrap().action_results.iter().any(|r|r.source=="Habits page" && r.status=="ready"));
+    reopened.shutdown().unwrap();
+}
+
+#[test]
+fn planned_header_ranges_survive_unknown_facts_and_diary_comments_stay_hidden_without_source_rewrite() {
+    let directory=IsolatedDirectory::new();let path=directory.vault("native-reading");let record=prepare_daily_review_vault(&path,false);
+    let original=fs::read_to_string(&record).unwrap();
+    let text=original.replace("- **下午：** Synthetic current arrangement.","- **17:00–18:30：** 收拾。实际活动未确认。\n- **18:30–22:30：** 阅读。睡觉分钟不知道。\n- **22:30–23:30：** 休息。23:30 只是计划。").replace("- 观察事实：完成合成工作块。","- 观察事实：今天07:50起床。\n\n<!-- 更正痕迹：原07:10；原事件收据taskop-synthetic -->\n<!-- 多行元数据\n低层收据不显示\n-->\n用户上下文仍可阅读。");
+    fs::write(&record,&text).unwrap();let today=TodayApplication::new(MutableVault::new(&path),NoVaultPicker,FixedClock);let view=today.read_date("2026-09-27").unwrap();
+    assert_eq!(view.time_axis.current_arrangement.iter().map(|e|(e.start_minute,e.end_minute)).collect::<Vec<_>>(),vec![(Some(1020),Some(1110)),(Some(1110),Some(1350)),(Some(1350),Some(1410))]);
+    assert_eq!(view.time_axis.confirmed_facts[0].start_minute,Some(470));
+    let context=serde_json::to_string(&view.daytime.updates).unwrap();assert!(context.contains("用户上下文仍可阅读"));assert!(!context.contains("taskop-synthetic"));assert!(!context.contains("低层收据"));
+    assert_eq!(fs::read_to_string(&record).unwrap(),text);assert_eq!(view.baseline, today.read_date("2026-09-27").unwrap().baseline);
+}
+
+#[test]
+fn target_qualified_explicit_memory_instruction_preserves_all_other_domain_sources_and_negation() {
+    for declined in [false,true] {
+        let directory=IsolatedDirectory::new();let path=directory.vault("target-memory");let record=prepare_daily_review_vault(&path,false);
+        let vault=MutableVault::new(&path);let (app,_,results)=new_application(&directory,&vault,MutableContext::new("vault-a"),Arc::new(AtomicBool::new(false)));
+        let memory=FixtureMemoryService::new(&directory,&vault);let self_path=path.join("life/Self.md");let self_before=fs::read(&self_path).unwrap();let record_before=fs::read(&record).unwrap();let snapshot=path.join(personal_dashboard_lib::habits::SNAPSHOT_RELATIVE_PATH);let snapshot_before=fs::read(&snapshot).unwrap();
+        let app=app.with_memory_service(Arc::new(memory));let session=app.create_default_session().unwrap();
+        let text="请更新此隔离 Vault 的长期背景：我长期偏好先写简短复盘，再调整计划；未记录的活动保持未知。这是我明确确认的长期规划偏好，请通过 Dashboard 长期背景操作保存，保留 Self 原有内容。这次不要改 Daily Record、Tasks、Habits 或任何 Dida 数据。";
+        let text=if declined{text.replacen("请更新","不要更新",1)}else{text.into()};
+        app.submit_message("vault-a",&session.id,&session.target_date,&text).unwrap();wait_for_finish(&app,&session.id,"vault-a");
+        assert_eq!(results.lock().unwrap().last().unwrap().success,!declined);
+        let saved=fs::read(&self_path).unwrap();assert!(saved.starts_with(&self_before));
+        if declined{assert_eq!(saved,self_before)}else{assert!(String::from_utf8_lossy(&saved).contains("我长期偏好先写简短复盘，再调整计划；未记录的活动保持未知。"));let state=app.session("vault-a",&session.id).unwrap();assert!(state.messages.iter().find(|m|m.text==text).unwrap().action_results.iter().any(|r|r.source=="Long-term background" && r.status=="applied"));}
+        assert_eq!(fs::read(&record).unwrap(),record_before);assert_eq!(fs::read(&snapshot).unwrap(),snapshot_before);assert!(!path.join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH).exists());
+        app.shutdown().unwrap();
+    }
+}
+
+struct UnavailableDailyIdentity;
+impl personal_dashboard_lib::collaboration::CollaborationDailyDataService for UnavailableDailyIdentity {
+    fn is_available(&self)->bool{false}
+    fn read_date(&self,_:&str)->Result<personal_dashboard_lib::today::TodayView,String>{Err("Local identity unavailable".into())}
+    fn save(&self,_:DailyPlanWriteInput)->Result<personal_dashboard_lib::today::TodayView,String>{Err("No local write".into())}
+    fn operation_applied(&self,_:&str,_:&str,_:&str,_:&str)->Result<bool,String>{Err("No local receipt".into())}
+}
+#[test]
+fn exact_native_habit_id_retains_external_only_origin_when_local_catalog_is_unavailable() {
+    let directory=IsolatedDirectory::new();let path=directory.vault("only-source-id");prepare_dual_vault(&path);let vault=MutableVault::new(&path);
+    let app=new_journey_application(&directory,&vault,ManualClock::new("2026-10-03","21:00"),Arc::new(Mutex::new(DualSource::default())),Arc::new(AtomicBool::new(false))).with_daily_data_service(Arc::new(UnavailableDailyIdentity));
+    let session=app.create_default_session().unwrap();app.submit_message("vault-a",&session.id,&session.target_date,"2026-10-03只改滴答 Habit synthetic-habit，记录运动完成。买菜只在本地任务里创建。").unwrap();wait_for_finish(&app,&session.id,"vault-a");
+    let state=app.session("vault-a",&session.id).unwrap();assert!(state.task_operations.is_empty());let action=&state.messages.iter().find(|m|m.role=="user").unwrap().external_actions[0];
+    assert_eq!(action.verification.as_ref().unwrap()["habitScope"],"external");assert!(!path.join("life/.personal-dashboard/habit-completions/v1/completions.json").exists());
+    app.shutdown().unwrap();
 }

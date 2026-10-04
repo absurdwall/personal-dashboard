@@ -73,3 +73,19 @@ Calendar can open a past date in Today and expose completion-type habits for tha
 The current week uses the catalog's current goal. An earlier week uses only an exact matching `goalHistory.weekOf`; if none exists, the UI says that the historical goal is unknown and does not backfill one. Outside snapshot coverage, external state remains unknown even when a retained local completion is still correctable by stable habit key. If no catalog survives a restart, persisted local habit/date pairs remain visible under their stable keys and may be completed or withdrawn, while their display name, external state, and historical goal remain explicitly unknown; no new habit/date pair may be created without a verifiable catalog. Merely opening an empty past date creates no completion document or Daily Record; an explicit local correction creates only the versioned completion document. Future lived-date completions are rejected.
 
 If a refresh damages or makes the local document unreadable, an already-running application retains its last valid merged view and reports the error. After restart, an invalid local document fails closed rather than hiding the damage. Recovery snapshots from conditional atomic writes live outside the canonical path and are never interpreted as current completion state.
+
+## Mapped completion actions
+
+A clear Collaboration completion fact can independently authorize this local record
+and an explicitly mapped Dida Habit/check-in. Explicit single-end scope is respected.
+The saved local operation receipt retains its fact date, selected-Vault identity,
+original destination scope, and mapped external ID; legacy receipts remain local-only.
+External source results and snapshot/page refresh results are separate saved outcomes.
+An external failure cannot roll back an independently saved local completion, and a
+successful external completion can survive a local failure. Default withdrawal follows
+the original receipt scope; withdrawing one end can leave OR completion true.
+
+This action does not change the local schema or introduce a second completion store.
+Actual activity minutes/durations and threshold wording stay in dated Daily Record
+facts. A stale valid catalog can identify a clearly authorized local fact; current
+external state and fresh projection require successful source queries.

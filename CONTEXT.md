@@ -25,11 +25,11 @@ The Personal Dashboard destination for locating and opening a dated Daily Record
 _Avoid_: Exercise history, event calendar
 
 **Habits**:
-The Personal Dashboard destination for reviewing sourced habit evidence across the current week, recent days, and bounded history. It may record or withdraw explicit local completion for catalog completion-type habits and may add or correct dated exercise Short records, but it does not write back to an external source, edit goals, or schedule activity.
+The Personal Dashboard destination for reviewing sourced habit evidence and dated exercise context across current and bounded historical periods. Local and explicitly mapped external completion evidence retain separate identities and count once when either confirms completion.
 _Avoid_: Exercise tracker, automatic external check-in, generic habit framework
 
 **Habit snapshot**:
-A bounded, dated projection of habit evidence with explicit provenance and coverage, prepared outside Personal Dashboard for Habits to read.
+A rebuildable, bounded projection of habit evidence with explicit provenance, generation date, and source coverage. Its freshness and publication result are separate from canonical local completion facts.
 _Avoid_: Habit database, live sync, Dida365 mirror
 
 **Short record**:
@@ -45,7 +45,7 @@ The latest explicit arrangement for the lived day; daytime replanning may change
 _Avoid_: Morning baseline, inferred schedule
 
 **Daily-flow producer**:
-The external Agent flow that writes compatible Daily Records and atomically publishes validated habit snapshots from already-read sources. Personal Dashboard is not this producer.
+The daily workflow that creates compatible Daily Records and rebuilds validated Habit snapshots from observed source evidence. Its generated projections retain source coverage and leave uncertain activity unknown.
 _Avoid_: Dashboard sync, background poller
 
 **Retired Exercise runtime**:
@@ -69,6 +69,10 @@ _Avoid_: Backlog item, recurring habit, automatic carry-over
 **Local habit completion**:
 An explicit dated habit-completion record made by the user in Personal Dashboard, distinct from completion evidence read from Dida365.
 _Avoid_: Short record, habit snapshot, Dida365 write-back
+
+**Mapped habit completion**:
+A dated completion action for an existing local Habit and its explicitly confirmed external Habit identity. Each endpoint keeps its own result; withdrawing one endpoint can leave completion supported by the other.
+_Avoid_: Name matching, synchronized Habit database
 
 **Habit threshold check-in**:
 An explicit record that a habit's time target was met, such as getting up before a target time. It does not establish the actual time of the activity.
@@ -126,5 +130,5 @@ Selected-Vault long-term background and read-only workflow reference, supplement
 _Avoid_: Current business state, replacement for saved sessions
 
 **Connected external app**:
-An external source discovered through Codex App Server and explicitly selected for a message. Its actions retain their source identity and status; they are not Dashboard or Vault writes and are not automatically synchronized.
+An available external source whose actions retain stable source and object identities with independently verifiable results. External and selected-Vault effects remain separate even when one user instruction authorizes both.
 _Avoid_: Dashboard data source, automatic two-way sync

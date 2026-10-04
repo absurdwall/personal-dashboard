@@ -627,6 +627,7 @@ type CollaborationMemoryView = Readonly<{
 
 type CollaborationMemoryProposalView = Readonly<{
   id: string;
+  executionAttempted?: boolean;
   status: string;
   basis: string;
   authorizationQuote: string;
@@ -671,6 +672,7 @@ type CollaborationMessageView = Readonly<{
   automaticPlan: boolean;
   externalAppIds: readonly string[];
   externalActions: readonly CollaborationExternalToolAction[];
+  actionResults?: readonly Readonly<{ id: string; source: string; status: string; targetDate: string | null; message: string }>[];
   pendingExternalApproval: CollaborationExternalApprovalRequest | null;
 }>;
 
@@ -788,6 +790,8 @@ type CollaborationTaskOperationBaseline =
 
 type CollaborationTaskOperationView = Readonly<{
   id: string;
+  executionId?: string;
+  executionAttempted?: boolean;
   operation: CollaborationTaskOperation;
   status: "awaitingApproval" | "applied" | "rejected" | "conflict" | "failed" | string;
   targetDate: string;
@@ -2318,6 +2322,31 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
     const body = document.createElement("p");
     body.textContent = message.text;
     article.append(heading, body);
+    if (message.role === "user" && (message.actionResults?.length ?? 0) > 0) {
+      const results = document.createElement("details");
+      results.className = "collaboration-action-results";
+      results.open = true;
+      const summary = document.createElement("summary");
+      summary.textContent = t("collaboration.actionResults");
+      results.append(summary);
+      for (const result of message.actionResults ?? []) {
+        const item = document.createElement("p");
+        item.dataset.actionId = result.id;
+        item.dataset.state = result.status;
+        const statusKey = `collaboration.taskOperationStatus.${result.status}` as InterfaceCopyKey;
+        const refreshKey = `collaboration.habitRefreshState.${result.status}` as InterfaceCopyKey;
+        const status = ["awaitingApproval", "applied", "rejected", "conflict", "failed", "unknown"].includes(result.status) ? t(statusKey)
+          : ["verifiedMappedScope", "received", "verified", "validated", "published", "notPublished", "notStarted", "retainedOrMissing", "ready", "stale", "retained", "missing", "error", "unconfigured"].includes(result.status) ? t(refreshKey) : result.status;
+        const source = result.source === "Habit source query" ? t("collaboration.habitRefreshStage.query")
+          : result.source === "Habit generation" ? t("collaboration.habitRefreshStage.generation")
+          : result.source === "Habit publication" ? t("collaboration.habitRefreshStage.publication")
+          : result.source === "Habits page" ? t("collaboration.habitRefreshStage.display")
+          : result.source === "Long-term background" ? t("collaboration.longTermHeading") : result.source;
+        item.textContent = `${source} · ${status}${result.targetDate ? ` · ${collaborationDateLabel(result.targetDate)}` : ""} — ${result.message}`;
+        results.append(item);
+      }
+      article.append(results);
+    }
     if (message.role === "user" && message.externalAppIds.length > 0) {
       const selectedApps = document.createElement("small");
       selectedApps.className = "collaboration-message-boundary";
@@ -3274,7 +3303,7 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
     );
     const status = document.createElement("span");
     status.className = "collaboration-task-operation-status";
-    setCopy(status, `collaboration.taskOperationStatus.${operation.status}` as InterfaceCopyKey);
+    setCopy(status, `collaboration.taskOperationStatus.${operation.status === "awaitingApproval" && operation.executionAttempted ? "unknown" : operation.status}` as InterfaceCopyKey);
     heading.append(title, status);
     const target = document.createElement("small");
     target.textContent = t(plan
@@ -3389,7 +3418,7 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       actions.append(button);
     };
     if (operation.status === "awaitingApproval") {
-      if (actionError?.includes("was saved")) {
+      if (operation.executionAttempted || actionError?.includes("was saved")) {
         addAction("reconcile", "collaboration.taskCheckResult");
       } else {
         addAction("approve", "collaboration.taskApprove");
@@ -3661,7 +3690,7 @@ function renderCollaborationMemoryProposals(session: CollaborationSessionView | 
     const heading = document.createElement("strong");
     heading.textContent = t("collaboration.memoryProposalTitle");
     const status = document.createElement("small");
-    status.textContent = t(`collaboration.memoryProposalStatus.${proposal.status}` as InterfaceCopyKey);
+    status.textContent = t(`collaboration.memoryProposalStatus.${proposal.status === "awaitingApproval" && proposal.executionAttempted ? "unknown" : proposal.status}` as InterfaceCopyKey);
     const date = document.createElement("small");
     date.textContent = t("collaboration.memoryProposalDate", {
       date: collaborationDateLabel(proposal.createdAt.slice(0, 10)),
@@ -3700,7 +3729,7 @@ function renderCollaborationMemoryProposals(session: CollaborationSessionView | 
       error.textContent = errorMessage;
       card.append(error);
     }
-    if (session && proposal.status === "awaitingApproval") {
+    if (session && proposal.status === "awaitingApproval" && !proposal.executionAttempted) {
       const actions = document.createElement("div");
       actions.className = "collaboration-memory-actions";
       for (const [action, label] of [
