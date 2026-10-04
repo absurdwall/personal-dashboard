@@ -554,7 +554,10 @@ struct Observation {
 }
 
 pub fn snapshot_dates(document: &[u8], today: &str) -> Result<Vec<String>, String> {
-    let snapshot = parse_and_validate(document, today)?;
+    snapshot_dates_at_local_date(document,today,today)
+}
+pub fn snapshot_dates_at_local_date(document: &[u8], today: &str, local_date: &str) -> Result<Vec<String>, String> {
+    let snapshot = parse_and_validate_at_local_date(document, today, local_date)?;
     let end = CalendarDate::parse(today).expect("validated current date");
     let snapshot_start =
         CalendarDate::parse(&snapshot.range.from).expect("validated snapshot start");
@@ -587,7 +590,15 @@ pub fn project_snapshot_with_names(
     local_completions: Vec<LocalHabitCompletion>,
     names_configuration: &HabitNamesConfiguration,
 ) -> Result<HabitSnapshotView, String> {
-    let snapshot = parse_and_validate(document, today)?;
+    project_snapshot_with_names_at_local_date(document,today,today,local_records,local_completions,names_configuration)
+}
+
+pub fn project_snapshot_with_names_at_local_date(
+    document: &[u8], today: &str, local_date: &str,
+    local_records: Vec<LocalHabitRecord>, local_completions: Vec<LocalHabitCompletion>,
+    names_configuration: &HabitNamesConfiguration,
+) -> Result<HabitSnapshotView, String> {
+    let snapshot = parse_and_validate_at_local_date(document, today, local_date)?;
     let today_date = CalendarDate::parse(today).expect("validated current date");
     let week_start = today_date.monday();
     let history_start = week_start.plus_days(-7 * (HISTORY_WEEKS - 1));
@@ -832,7 +843,7 @@ pub fn project_habit_corrections_with_recording_limit(
     local_completions: Vec<LocalHabitCompletion>,
     names_configuration: &HabitNamesConfiguration,
 ) -> Result<HabitCorrectionView, String> {
-    let snapshot = parse_and_validate(document, today)?;
+    let snapshot = parse_and_validate_at_local_date(document, today, latest_recordable_date)?;
     let today_date = CalendarDate::parse(today)
         .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
     let selected = CalendarDate::parse(selected_date)
@@ -1211,7 +1222,8 @@ fn project_cell(
     }
 }
 
-fn parse_and_validate(document: &[u8], today: &str) -> Result<SnapshotDocument, String> {
+fn parse_and_validate_at_local_date(document: &[u8], today: &str, local_date: &str) -> Result<SnapshotDocument, String> {
+    let local_date=CalendarDate::parse(local_date).ok_or_else(|| "Invalid local calendar date".to_string())?;
     let today = CalendarDate::parse(today)
         .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
     let snapshot: SnapshotDocument = serde_json::from_slice(document)
@@ -1229,7 +1241,7 @@ fn parse_and_validate(document: &[u8], today: &str) -> Result<SnapshotDocument, 
     })?;
     let generated_date = CalendarDate::parse(&snapshot.generated_at[..10])
         .expect("validated timestamp contains a valid date");
-    if generated_date > today {
+    if generated_date > local_date {
         return Err("Habits 快照 generatedAt 不能晚于当前本地日期。".into());
     }
     let range_from = CalendarDate::parse(&snapshot.range.from)
@@ -1441,7 +1453,7 @@ fn valid_time(value: &str) -> bool {
         && value[3..].parse::<u32>().is_ok_and(|minute| minute < 60)
 }
 
-fn timestamp_epoch_seconds(value: &str) -> Option<i64> {
+pub(crate) fn timestamp_epoch_seconds(value: &str) -> Option<i64> {
     if value.len() != 25
         || &value[10..11] != "T"
         || &value[13..14] != ":"

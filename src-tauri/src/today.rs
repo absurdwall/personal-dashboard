@@ -1,6 +1,6 @@
 use crate::habits::{
-    load_habit_names, project_habit_corrections_with_recording_limit, project_snapshot_with_names,
-    project_uncatalogued_habit_corrections_with_recording_limit, snapshot_dates,
+    load_habit_names, project_habit_corrections_with_recording_limit, project_snapshot_with_names_at_local_date,
+    project_uncatalogued_habit_corrections_with_recording_limit, snapshot_dates_at_local_date,
     FileHabitSnapshotStore, HabitCorrectionView, HabitLocalCompletionChangeView,
     HabitSnapshotStore, LocalHabitCompletion, LocalHabitRecord, LEGACY_SNAPSHOT_RELATIVE_PATH,
     SNAPSHOT_RELATIVE_PATH,
@@ -790,7 +790,7 @@ fn sync_parent(path: &Path, kind: StorageDocumentKind) -> Result<(), String> {
 }
 
 #[cfg(target_os = "macos")]
-fn atomic_exchange(left: &Path, right: &Path, kind: StorageDocumentKind) -> Result<(), String> {
+pub(crate) fn atomic_exchange(left: &Path, right: &Path, kind: StorageDocumentKind) -> Result<(), String> {
     use std::ffi::CString;
     use std::os::unix::ffi::OsStrExt;
 
@@ -832,7 +832,7 @@ fn atomic_exchange(left: &Path, right: &Path, kind: StorageDocumentKind) -> Resu
 }
 
 #[cfg(not(target_os = "macos"))]
-fn atomic_exchange(_left: &Path, _right: &Path, kind: StorageDocumentKind) -> Result<(), String> {
+pub(crate) fn atomic_exchange(_left: &Path, _right: &Path, kind: StorageDocumentKind) -> Result<(), String> {
     Err(kind.text(
         "Atomic conditional Daily Record replacement is currently supported only on macOS.",
         "Atomic conditional day-task replacement is currently supported only on macOS.",
@@ -2815,6 +2815,211 @@ where
         Ok(false)
     }
 
+    pub fn refresh_habit_snapshot(
+        &self,
+        input: crate::habit_producer::HabitRefreshInput,
+    ) -> crate::habit_producer::HabitRefreshReport {
+        use crate::habit_producer::{publish, rebuild, HabitRefreshReport};
+        let generation = (|| -> Result<_, (String, String)> {
+            let vault = self
+                .persistence
+                .load_selected_vault()
+                .map_err(|e| ("generation".into(), e))?
+                .ok_or_else(|| {
+                    (
+                        "generation".into(),
+                        "Select a Vault before rebuilding Habits".into(),
+                    )
+                })?;
+            validate_compatible_vault(&vault).map_err(|e| ("generation".into(), e))?;
+            let today = self.clock.current_lived_date();
+            let clock_label = self.clock.current_timestamp_label();
+            // Existing Today clocks label minutes; snapshot v1 requires seconds for generation provenance.
+            let now = if clock_label.len() == 22 {
+                format!("{}:00{}", &clock_label[..16], &clock_label[16..])
+            } else {
+                clock_label
+            };
+            if crate::habits::timestamp_epoch_seconds(&now).is_none() {
+                return Err((
+                    "generation".into(),
+                    "Generation clock did not provide a valid offset-bearing time".into(),
+                ));
+            }
+            let prior = self
+                .habit_snapshot_store
+                .load(&vault.join(SNAPSHOT_RELATIVE_PATH))
+                .map_err(|e| ("generation".into(), e))?
+                .ok_or_else(|| {
+                    (
+                        "generation".into(),
+                        "No existing Habit catalog snapshot; refresh cannot create local Habits"
+                            .into(),
+                    )
+                })?;
+            let mut facts = std::collections::BTreeMap::new();
+            let mut date = CalendarDate::parse(&now[..10])
+                .unwrap()
+                .monday()
+                .plus_days(-77);
+            let end = CalendarDate::parse(&today).unwrap();
+            while date <= end {
+                let label = date.to_string();
+                let path =
+                    canonical_record_path(&vault, &label).map_err(|e| ("generation".into(), e))?;
+                if let Some(bytes) = self
+                    .record_store
+                    .load(&path)
+                    .map_err(|e| ("generation".into(), e))?
+                {
+                    let document = String::from_utf8(bytes)
+                        .map_err(|e| ("generation".into(), e.to_string()))?;
+                    let (_, _, _, daytime, evening) = parse_daily_record(&document, &label)
+                        .map_err(|e| ("generation".into(), e))?;
+                    let short_records = parse_short_records(&document, &label)
+                        .map_err(|e| ("generation".into(), e))?;
+                    let text = daytime
+                        .updates
+                        .iter()
+                        .flat_map(|u| u.observed_facts.iter())
+                        .chain(short_records.iter().map(|r| &r.text))
+                        .chain(evening.account.iter())
+                        .chain(evening.additions.iter())
+                        .chain(evening.corrections.iter());
+                    let mut day_facts = std::collections::BTreeMap::new();
+                    for fact in text {
+                        for clause in fact.split(['，', ',', '。', ';', '；', '\n', '并', '和'])
+                        {
+                            let lower = clause.to_lowercase();
+                            let keys: Vec<&str> = [
+                                ("wake", ["起床", "woke", "got up"]),
+                                ("sleep", ["睡觉", "入睡", "slept"]),
+                            ]
+                            .into_iter()
+                            .filter_map(|(key, words)| {
+                                words.iter().any(|word| lower.contains(word)).then_some(key)
+                            })
+                            .collect();
+                            if keys.is_empty() {
+                                continue;
+                            }
+                            if keys.len() > 1
+                                || [
+                                    "未知",
+                                    "不知道",
+                                    "不清楚",
+                                    "未",
+                                    "没有",
+                                    "不是",
+                                    "写错",
+                                    "撤回",
+                                    "错误",
+                                    "wrong",
+                                    "retract",
+                                    "unknown",
+                                    "not ",
+                                ]
+                                .iter()
+                                .any(|m| lower.contains(m))
+                            {
+                                for key in keys {
+                                    day_facts.remove(key);
+                                }
+                                continue;
+                            }
+                            let key = keys[0];
+                            if [
+                                "计划", "打算", "准备", "可能", "也许", "will ", "plan ", "maybe",
+                            ]
+                            .iter()
+                            .any(|m| lower.contains(m))
+                            {
+                                continue;
+                            }
+                            let note = format!(
+                                "Daily Record {label}; {}: {}",
+                                record_target_binding(&path),
+                                clause.trim()
+                            );
+                            let mut observation = serde_json::json!({"source":"dashboard-daily-record", "observedAt":now, "note":note});
+                            match explicit_time_expression(clause) {
+                                ExplicitTimeExpression::Point {
+                                    date: occurred,
+                                    minute,
+                                } if minute < 1440 => {
+                                    let occurred = occurred.unwrap_or_else(|| {
+                                        if clause.contains("次日") {
+                                            date.plus_days(1).to_string()
+                                        } else {
+                                            label.clone()
+                                        }
+                                    });
+                                    let Some(day) = CalendarDate::parse(&occurred) else {
+                                        continue;
+                                    };
+                                    let relation = if day == date {
+                                        "same-day"
+                                    } else if day == date.plus_days(1) {
+                                        "next-day"
+                                    } else {
+                                        continue;
+                                    };
+                                    let LocalWallTimeResolution::Unique { utc_offset_minutes } =
+                                        self.clock.resolve_local_wall_time(&occurred, minute)
+                                    else {
+                                        continue;
+                                    };
+                                    observation["status"] = serde_json::json!("actual-time");
+                                    observation["evidence"] = serde_json::json!("explicit-time");
+                                    observation["actualTime"] = serde_json::json!({"occurredOn":occurred,"localTime":format!("{:02}:{:02}",minute/60,minute%60),"utcOffsetMinutes":utc_offset_minutes,"dayRelation":relation});
+                                }
+                                ExplicitTimeExpression::None
+                                    if lower.contains("按时") || lower.contains("on time") =>
+                                {
+                                    observation["status"] = serde_json::json!("threshold-met");
+                                    observation["evidence"] =
+                                        serde_json::json!("threshold-check-in");
+                                }
+                                _ => continue,
+                            }
+                            // Newer canonical additions/corrections replace earlier facts from this source.
+                            day_facts.insert(key.to_owned(), observation);
+                        }
+                    }
+                    for (key, observation) in day_facts {
+                        facts.insert((key, label.clone()), vec![observation]);
+                    }
+                }
+                date = date.plus_days(1);
+            }
+            let candidate = rebuild(&prior, &input, &now, &today, &facts)?;
+            if self
+                .persistence
+                .load_selected_vault()
+                .map_err(|e| ("publication".into(), e))?
+                .as_deref()
+                != Some(vault.as_path())
+            {
+                return Err((
+                    "publication".into(),
+                    "Selected Vault changed; snapshot was not published".into(),
+                ));
+            }
+            publish(&vault, &prior, &candidate).map_err(|e| ("publication".into(), e))?;
+            Ok((today, now, input.mappings.len()))
+        })();
+        match generation {
+            Err((stage, error)) => HabitRefreshReport::failed(&stage, error),
+            Ok((today, now, mapped)) => {
+                let display = self.habits();
+                HabitRefreshReport { query:"verifiedMappedScope".into(),generation:"validated".into(),publication:"published".into(),
+                    display:display.as_ref().map(|v| format!("{:?}",v.state).to_lowercase()).unwrap_or_else(|_|"error".into()),
+                    generated_at:Some(now.clone()),range_from:Some(CalendarDate::parse(&now[..10]).unwrap().monday().plus_days(-77).to_string()),range_to:Some(today),
+                    message:format!("Verified {mapped} explicitly mapped external Habits; unmapped source coverage remains partial/unknown. Rebuilt exact/threshold Daily Record evidence. {}",display.map(|v| v.message).unwrap_or_else(|e|e)) }
+            }
+        }
+    }
+
     pub fn habits(&self) -> Result<HabitSnapshotView, String> {
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(HabitSnapshotView::unconfigured());
@@ -2840,7 +3045,7 @@ where
         };
         let today = self.clock.current_lived_date();
         let current_timestamp = self.clock.current_timestamp_label();
-        let dates = match snapshot_dates(&document, &today) {
+        let dates = match snapshot_dates_at_local_date(&document, &today, &self.clock.current_date()) {
             Ok(dates) => dates,
             Err(error) => return Ok(self.retained_or_error(&path, error)?),
         };
@@ -2890,9 +3095,10 @@ where
             }
         }
         let names_configuration = load_habit_names(&vault);
-        match project_snapshot_with_names(
+        match project_snapshot_with_names_at_local_date(
             &document,
             &today,
+            &self.clock.current_date(),
             local_records,
             local_completions,
             &names_configuration,

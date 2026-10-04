@@ -969,6 +969,7 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
         ],
         task_operations: Vec::new(),
         memory_proposals: Vec::new(),
+        last_habit_refresh: None,
         draft: "Recovered draft".into(),
         drafts_by_date: HashMap::new(),
     });
@@ -1124,6 +1125,7 @@ fn interruption_before_thread_id_is_saved_can_be_reviewed_without_replay() {
         }],
         task_operations: Vec::new(),
         memory_proposals: Vec::new(),
+        last_habit_refresh: None,
         draft: String::new(),
         drafts_by_date: HashMap::new(),
     });
