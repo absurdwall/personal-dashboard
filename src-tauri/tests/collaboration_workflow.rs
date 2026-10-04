@@ -1000,6 +1000,7 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
                 target_scope: "unknown".into(),
                 input_summary: "{\"eventId\":\"evt-7\"}".into(),
                 result_summary: "{\"status\":\"created\"}".into(),
+                verification: None,
             }],
         },
     )])));
@@ -1689,4 +1690,165 @@ fn queued_submit_clears_only_its_exact_snapshot_and_preserves_newer_saved_dictat
     let sent = reopened.submit_message("synthetic-vault", &second.id, "2026-09-27", submitted).unwrap();
     assert!(sent.draft.is_empty());assert!(!sent.drafts_by_date.contains_key("2026-09-27"));
     wait_until_finished(&reopened, &second.id);
+}
+
+#[derive(Default)]
+struct DidaSourceFixture {
+    objects: HashMap<String, String>,
+    writes: usize,
+    reads: usize,
+    readable: bool,
+    last_action: Option<ExternalToolActionView>,
+    last_execution: Option<String>,
+    scopes: Vec<bool>,
+}
+
+struct DidaWorkflowTransport {
+    base: FakeAppServer,
+    source: Arc<Mutex<DidaSourceFixture>>,
+    writes_allowed: bool,
+}
+
+impl AppServerTransport for DidaWorkflowTransport {
+    fn inspect(&mut self) -> Result<RuntimeConnectionView, String> { self.base.inspect() }
+    fn start_chatgpt_login(&mut self) -> Result<(), String> { self.base.start_chatgpt_login() }
+    fn start_thread(&mut self, model: Option<&str>, instructions: &str) -> Result<String, String> { self.base.start_thread(model,instructions) }
+    fn resume_thread(&mut self, thread: &str) -> Result<(), String> { self.base.resume_thread(thread) }
+    fn configure_external_writes(&mut self, allowed: bool) {
+        self.writes_allowed = allowed;
+        self.source.lock().unwrap().scopes.push(allowed);
+    }
+    fn reconcile_external_action(&mut self, mut action: ExternalToolActionView) -> ExternalToolActionView {
+        let mut source = self.source.lock().unwrap();
+        source.reads += 1;
+        if source.readable && source.objects.get("external-owned-id").is_some_and(|title| title == "Owned Task") {
+            action.status = "saved".into();
+            action.result_summary = "Current source confirms the same external-owned-id; no creation replayed.".into();
+        } else {
+            action.status = "unknown".into();
+            action.result_summary = "Current source unavailable or later changed; creation must not be repeated.".into();
+        }
+        if let Some(verification) = action.verification.as_mut() {
+            verification["sourceObserved"] = serde_json::json!(source.readable);
+        }
+        action
+    }
+    fn send_turn(&mut self, request: RuntimeTurnRequest) -> Result<RuntimeTurnResult, String> {
+        self.base.prompts.lock().unwrap().push(request.clone());
+        assert!(!request.prior_external_actions.iter().any(|a| a.status == "unknown" && a.verification.as_ref().and_then(|v|v.get("sourceObserved")).and_then(serde_json::Value::as_bool) != Some(true)) || !self.writes_allowed);
+        Ok(RuntimeTurnResult {text:"Current local work remains available; external outcomes reported separately.".into(),runtime_turn_id:Some("read-turn".into()),stopped:false,external_actions:Vec::new()})
+    }
+    fn send_turn_with_external_actions(
+        &mut self,
+        request: RuntimeTurnRequest,
+        _cancel: Arc<AtomicBool>,
+        _tools: Option<RuntimeDynamicToolHandler>,
+        actions: Option<personal_dashboard_lib::collaboration::RuntimeExternalActionHandler>,
+        _approvals: Option<personal_dashboard_lib::collaboration::RuntimeExternalApprovalHandler>,
+    ) -> Result<RuntimeTurnResult, String> {
+        if request.user_text != "create-owned" { return self.send_turn(request); }
+        assert!(self.writes_allowed,"Explicit manual fixture request must receive write capability");
+        let action = ExternalToolActionView {action_id:format!("{}:external-create-1",request.thread_id),source_id:"dida365".into(),source_name:"Dida".into(),tool_id:"create_task".into(),status:"unknown".into(),target_scope:request.context.date.clone(),input_summary:"external-owned-id".into(),result_summary:"Receipt lost; source readback required.".into(),verification:Some(serde_json::json!({"checks":[{"tool":"get_task_by_id","arguments":{"task_id":"external-owned-id"}}]}))};
+        {
+            let mut source = self.source.lock().unwrap();
+            source.objects.insert("external-owned-id".into(),"Owned Task".into());
+            source.writes += 1;
+            source.last_action = Some(action.clone());
+            source.last_execution = Some(request.execution_id.clone());
+        }
+        if let Some(handler) = actions { handler(action); }
+        Err("Synthetic transport lost the native mutation receipt after external source save".into())
+    }
+    fn reconcile_turn(&mut self, _thread: &str, execution: &str) -> Result<RuntimeRunReconciliation, String> {
+        let action = {
+            let source = self.source.lock().unwrap();
+            assert_eq!(source.last_execution.as_deref(),Some(execution));
+            source.last_action.clone().unwrap()
+        };
+        let checked = self.reconcile_external_action(action);
+        Ok(RuntimeRunReconciliation::Interrupted {runtime_turn_id:"external-turn".into(),external_actions:vec![checked]})
+    }
+}
+
+fn dida_workflow_application(directory: &IsolatedDirectory, source: Arc<Mutex<DidaSourceFixture>>) -> CollaborationApplication {
+    CollaborationApplication::with_adapters(
+        Arc::new(FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"))),
+        Box::new(DidaWorkflowTransport {
+            base: FakeAppServer {prompts:Arc::new(Mutex::new(Vec::new())),calls:Arc::new(Mutex::new(Vec::new())),read_only_text_turns_available:true,switch_vault_on_inspect:None,turn_gate:None,reconciliations:Arc::new(Mutex::new(HashMap::new())),memory_call:None,memory_tool_results:Arc::new(Mutex::new(Vec::new()))},
+            source,
+            writes_allowed:false,
+        }),
+        Arc::new(FixtureContext),Arc::new(FixedClock),directory.path().to_path_buf(),"Synthetic external workflow".into(),
+    )
+}
+
+#[test]
+fn external_receipt_loss_recovers_current_source_before_write_capability_without_duplicate_creation() {
+    let directory = IsolatedDirectory::new();
+    let source = Arc::new(Mutex::new(DidaSourceFixture::default()));
+    let application = dida_workflow_application(&directory,Arc::clone(&source));
+    let session = application.create_session("2026-09-27").unwrap();
+    let submitted = application.submit_message("synthetic-vault",&session.id,"2026-09-27","create-owned").unwrap();
+    let execution = submitted.messages.iter().find_map(|m| m.execution_id.clone()).unwrap();
+    let lost = wait_for_session(&application,&session.id,|s| s.run_state == "stop-unconfirmed" || s.run_state == "interrupted");
+    assert_eq!(source.lock().unwrap().writes,1);
+    assert_eq!(lost.messages[0].external_actions[0].status,"unknown");
+    drop(application);
+    let reopened = dida_workflow_application(&directory,Arc::clone(&source));
+    reopened.reconcile_run_for_selected_vault(&session.id,&execution).unwrap();
+    reopened.submit_message("synthetic-vault",&session.id,"2026-09-27","continue-owned").unwrap();
+    let unavailable = wait_for_session(&reopened,&session.id,|s| s.run_state == "completed");
+    assert_eq!(unavailable.messages[0].external_actions[0].status,"unknown");
+    assert_eq!(source.lock().unwrap().scopes.last(),Some(&false));
+    assert_eq!(source.lock().unwrap().objects.len(),1);
+    source.lock().unwrap().readable = true;
+    reopened.submit_message("synthetic-vault",&session.id,"2026-09-27","continue-owned").unwrap();
+    let confirmed = wait_for_session(&reopened,&session.id,|s| s.run_state == "completed" && s.messages.len() >= 5);
+    assert_eq!(confirmed.messages[0].external_actions[0].status,"saved");
+    let remote = source.lock().unwrap();
+    assert_eq!(remote.scopes.last(),Some(&true),"Current source confirmation unlocks the still-authorized current manual round");
+    assert_eq!(remote.writes,1,"Neither checking/reopening nor continuing replays creation");
+    assert_eq!(remote.objects.len(),1);
+    assert!(remote.reads >= 3);
+    drop(remote);
+    reopened.submit_message("synthetic-vault",&session.id,"2026-09-27","先给我看方案，再决定滴答修改").unwrap();
+    wait_for_session(&reopened,&session.id,|s| s.run_state == "completed" && s.messages.len() >= 7);
+    assert_eq!(source.lock().unwrap().scopes.last(),Some(&false),"Review-first has no native external mutation capability");
+}
+
+#[test]
+fn later_source_edit_does_not_replay_old_effect_or_block_unrelated_current_request() {
+    let directory = IsolatedDirectory::new();
+    let source = Arc::new(Mutex::new(DidaSourceFixture::default()));
+    let application = dida_workflow_application(&directory,Arc::clone(&source));
+    let session = application.create_session("2026-09-27").unwrap();
+    let submitted = application.submit_message("synthetic-vault",&session.id,"2026-09-27","create-owned").unwrap();
+    let execution = submitted.messages.iter().find_map(|m|m.execution_id.clone()).unwrap();
+    wait_for_session(&application,&session.id,|s|s.run_state == "stop-unconfirmed" || s.run_state == "interrupted");
+    {
+        let mut remote = source.lock().unwrap();
+        remote.readable = true;
+        remote.objects.insert("external-owned-id".into(),"Later user edit".into());
+    }
+    application.reconcile_run_for_selected_vault(&session.id,&execution).unwrap();
+    application.submit_message("synthetic-vault",&session.id,"2026-09-27","continue an unrelated explicitly authorized current request").unwrap();
+    let result = wait_for_session(&application,&session.id,|s|s.run_state == "completed");
+    assert_eq!(result.messages[0].external_actions[0].status,"unknown","Later source state does not reconstruct the old effect");
+    let remote = source.lock().unwrap();
+    assert_eq!(remote.scopes.last(),Some(&true),"Successful current read resolves source uncertainty for this current request");
+    assert_eq!(remote.objects["external-owned-id"],"Later user edit");
+    assert_eq!(remote.writes,1,"Old create/effect is never replayed to match stale expectations");
+}
+
+fn wait_for_session(
+    application: &CollaborationApplication,
+    id: &str,
+    condition: impl Fn(&personal_dashboard_lib::collaboration::CollaborationSessionView) -> bool,
+) -> personal_dashboard_lib::collaboration::CollaborationSessionView {
+    for _ in 0..300 {
+        let session = application.session("synthetic-vault",id).unwrap();
+        if condition(&session) { return session; }
+        thread::sleep(Duration::from_millis(10));
+    }
+    panic!("Controlled external workflow failed to reach expected state");
 }

@@ -83,6 +83,7 @@ fn selected_connection(source: Value) -> Option<Value> {
     let disabled = source.get("disabled_tools").and_then(Value::as_array);
     let reads: Vec<_> = READ_TOOLS
         .iter()
+        .chain(super::dida_writes::WRITE_TOOLS.iter())
         .filter(|tool| {
             selected.map_or(true, |tools| {
                 tools.iter().any(|v| v.as_str() == Some(**tool))
@@ -132,6 +133,18 @@ pub(super) fn configure(command: &mut Command, connection: Option<&Value>) {
             command.env("HOME", home);
         }
         for (key, value) in connection {
+            let filtered;
+            let value = if key == "enabled_tools" {
+                filtered = json!(value
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|v| v.as_str().is_some_and(|tool| READ_TOOLS.contains(&tool)))
+                    .collect::<Vec<_>>());
+                &filtered
+            } else {
+                value
+            };
             if let Some(value) = toml_value(value) {
                 command.args(["-c", &format!("mcp_servers.{SERVER}.{key}={value}")]);
             }
@@ -157,6 +170,23 @@ pub(super) fn configure(command: &mut Command, connection: Option<&Value>) {
             }
         }
     }
+}
+
+pub(super) fn thread_config(connection: Option<&Value>, writes_allowed: bool) -> Value {
+    let tools: Vec<_> = connection
+        .and_then(|c| c.get("enabled_tools"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|value| {
+            value.as_str().is_some_and(|tool| {
+                READ_TOOLS.contains(&tool)
+                    || (writes_allowed && super::dida_writes::WRITE_TOOLS.contains(&tool))
+            })
+        })
+        .cloned()
+        .collect();
+    json!({"mcp_servers.dida365.enabled_tools":tools})
 }
 
 pub(super) fn validate_config(effective: &Value) -> Result<(), String> {
@@ -221,7 +251,7 @@ pub(super) fn source_status(catalog: Result<Value, String>) -> Value {
         "coverage":"Tool discovery is not a successful business query. Query the needed current objects and dates; each result establishes only that query's coverage. Reading does not refresh the Habits snapshot."})
 }
 
-pub(super) const READ_GUIDANCE: &str = "The host-selected existing dida365 MCP reads are available as needed in manual and automatic morning turns, including existing sessions; no per-message source selection is required. Use the discovered MCP tool schemas directly for current Task/list, Habit/check-in/history and timezone preference queries. Keep stable external object identities and query date/range/source distinct from local Dashboard Task identities. Use actual query results, not old chat or retained snapshots. Report confirmed empty results separately from failure, authentication-required, partial coverage and unavailable sources. Preserve useful source/date/coverage in replies and morning evidence, without raw dumps or sensitive configuration. Discovery alone does not confirm a query or refresh Habits. External failure does not prevent supported local work. This connection currently exposes only reads; do not create/copy/write external objects or infer local Tasks from external ones.";
+pub(super) const READ_GUIDANCE: &str = "The host-selected existing dida365 MCP reads are available as needed in manual and automatic morning turns, including existing sessions; no per-message source selection is required. Use the discovered MCP tool schemas directly for current Task/list, Habit/check-in/history and timezone preference queries. Keep stable external object identities and query date/range/source distinct from local Dashboard Task identities. Use actual query results, not old chat or retained snapshots. Report confirmed empty results separately from failure, authentication-required, partial coverage and unavailable sources. Preserve useful source/date/coverage in replies and morning evidence, without raw dumps or sensitive configuration. Discovery alone does not confirm a query or refresh Habits. External failure does not prevent supported local work. Writes depend on the current round capability; automatic and review-first turns remain read-only. Do not infer local Tasks from external ones.";
 
 #[cfg(test)]
 mod tests {
@@ -233,7 +263,19 @@ mod tests {
         let tools = selected["enabled_tools"].as_array().unwrap();
         assert!(tools.contains(&json!("list_habits")));
         assert!(!tools.contains(&json!("search_task")));
-        assert!(!tools.contains(&json!("create_task")));
+        assert!(tools.contains(&json!("create_task")));
+        assert!(
+            !thread_config(Some(&selected), false)["mcp_servers.dida365.enabled_tools"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("create_task"))
+        );
+        assert!(
+            thread_config(Some(&selected), true)["mcp_servers.dida365.enabled_tools"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("create_task"))
+        );
         assert!(selected_connection(
             json!({"name":"unrelated","enabled":true,"transport":source["transport"]})
         )
