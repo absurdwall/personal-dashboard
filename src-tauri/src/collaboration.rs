@@ -1,3 +1,6 @@
+#[path = "collaboration_dida.rs"]
+mod dida;
+
 use crate::clock::SystemClock;
 use crate::collaboration_memory::{
     CollaborationMemoryService, CollaborationMemorySources, LongTermMemoryDocumentView,
@@ -9731,6 +9734,7 @@ pub struct CodexAppServerRuntime {
     restricted_read_permission_profile: Option<String>,
     text_turn_unavailable_reason: Option<String>,
     client: Option<StdioJsonlClient>,
+    selected_dida_connection: Option<Value>,
     shutdown_handle: RuntimeShutdownHandle,
     dictation: Option<ActiveDictationTransport>,
 }
@@ -10585,6 +10589,7 @@ impl CodexAppServerRuntime {
             restricted_read_permission_profile: None,
             text_turn_unavailable_reason: None,
             client: None,
+            selected_dida_connection: None,
             shutdown_handle: RuntimeShutdownHandle::default(),
             dictation: None,
         }
@@ -10641,6 +10646,11 @@ impl CodexAppServerRuntime {
         ensure_empty_working_directory(&self.working_directory)?;
         ensure_private_codex_home(&self.codex_home_dir)?;
         let executable = discover_codex_cli()?;
+        let selected_dida_connection = dida::discover(&executable);
+        if self.selected_dida_connection != selected_dida_connection {
+            self.client = None;
+            self.selected_dida_connection = selected_dida_connection;
+        }
         if self.executable.as_deref() != Some(executable.as_path()) || self.client.is_none() {
             self.client = None;
             let output = isolated_codex_command(&executable, &self.codex_home_dir)
@@ -10658,10 +10668,11 @@ impl CodexAppServerRuntime {
                 );
             }
             self.version = Some(version);
-            self.client = Some(StdioJsonlClient::spawn(
+            self.client = Some(StdioJsonlClient::spawn_with_selected_dida(
                 &executable,
                 &self.codex_home_dir,
                 self.shutdown_handle.clone(),
+                self.selected_dida_connection.as_ref(),
             )?);
             self.executable = Some(executable);
         }
@@ -10669,6 +10680,8 @@ impl CodexAppServerRuntime {
         if !client.initialized {
             client.initialize()?;
         }
+        let effective = client.request("config/read", json!({"includeLayers":false}))?;
+        dida::validate_config(&effective)?;
         Ok(client)
     }
 
@@ -11126,12 +11139,17 @@ impl AppServerTransport for CodexAppServerRuntime {
                 "Could not prepare current Dashboard context and selected-Vault memory: {error}"
             )
         })?;
+        let dida_status = dida::source_status(self.ensure_client()?.request(
+            "mcpServerStatus/list",
+            json!({"serverName":dida::SERVER,"threadId":request.thread_id,"limit":100,"detail":"toolsAndAuthOnly"}),
+        ));
         let input_text = format!(
-        "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Use the supplied dates object to distinguish real local date/time, the 04:00 lived day, and the captured request target. Interpret today/tomorrow using the original request timestamp and user context: at 01:00 either can mean the upcoming daytime on the same natural date. Explicit dates take precedence; never mechanically offset a date based on a word. Ask briefly only if a remaining ambiguity affects a write. Supply a concrete targetDate when a record/completion operation belongs to a different clearly resolved date; omit it or use null to keep the captured request target. The request identity and original target stay bound even if the turn finishes after midnight or 04:00. Keep Task calendar schedules separate from record/completion targets, preserve explicit Task dates/times, and copy unchanged fields when editing. For an explicitly reported daytime event or update, use `dashboard_task_operation` with operation `saveDailyPlan`, transition `daytimeEvent`, the exact factual text in `event`, and empty `arrangement`/`evidence` unless the current arrangement also changes; this appends under `## 白天更新` and preserves the plan and morning baseline. Use `daytimeReplan` only for a material plan change. Use `saveEveningReview` with mode `addition` only for a new evening-review note or supplement; never route an explicit daytime event to the evening review. Do not invent `appendDailyRecord` or `addShortRecord`. For a clear, unique local write, use `dashboard_task_operation` with `executionMode=execute` only when the user clearly asks to save now without a later review; quote the exact instruction in `authorizationQuote`. Use `prepareProposal` whenever the user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires `prepareProposal`, even when it uses a direct action verb. The Dashboard verifies the current request, selected Vault, binding, and revision before saving. Ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` whenever the user asks to review, confirm, or wait for approval before saving. Connected external apps are disabled in this Dashboard session; do not use them. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
+        "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Use the supplied dates object to distinguish real local date/time, the 04:00 lived day, and the captured request target. Interpret today/tomorrow using the original request timestamp and user context: at 01:00 either can mean the upcoming daytime on the same natural date. Explicit dates take precedence; never mechanically offset a date based on a word. Ask briefly only if a remaining ambiguity affects a write. Supply a concrete targetDate when a record/completion operation belongs to a different clearly resolved date; omit it or use null to keep the captured request target. The request identity and original target stay bound even if the turn finishes after midnight or 04:00. Keep Task calendar schedules separate from record/completion targets, preserve explicit Task dates/times, and copy unchanged fields when editing. For an explicitly reported daytime event or update, use `dashboard_task_operation` with operation `saveDailyPlan`, transition `daytimeEvent`, the exact factual text in `event`, and empty `arrangement`/`evidence` unless the current arrangement also changes; this appends under `## 白天更新` and preserves the plan and morning baseline. Use `daytimeReplan` only for a material plan change. Use `saveEveningReview` with mode `addition` only for a new evening-review note or supplement; never route an explicit daytime event to the evening review. Do not invent `appendDailyRecord` or `addShortRecord`. For a clear, unique local write, use `dashboard_task_operation` with `executionMode=execute` only when the user clearly asks to save now without a later review; quote the exact instruction in `authorizationQuote`. Use `prepareProposal` whenever the user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires `prepareProposal`, even when it uses a direct action verb. The Dashboard verifies the current request, selected Vault, binding, and revision before saving. Ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` whenever the user asks to review, confirm, or wait for approval before saving. Use the host-supplied Dida connection status and read guidance below. Other external apps are unavailable. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
             request.user_text, request.context.date, context
         );
         let working_directory = self.working_directory.to_string_lossy().into_owned();
         let client = self.ensure_client()?;
+        let input_text = format!("{input_text}\n\nCurrent Dida connection: {dida_status}\n{}", dida::READ_GUIDANCE);
         let input = vec![json!({ "type": "text", "text": input_text })];
         let mut params = json!({
             "threadId": request.thread_id,
@@ -11715,13 +11733,23 @@ struct StdioJsonlClient {
 }
 
 impl StdioJsonlClient {
+    #[cfg(test)]
     fn spawn(
         executable: &Path,
         codex_home_dir: &Path,
         shutdown_handle: RuntimeShutdownHandle,
     ) -> Result<Self, String> {
         ensure_private_codex_home(codex_home_dir)?;
-        Self::spawn_with_dictation_isolation(executable,codex_home_dir,shutdown_handle,false)
+        Self::spawn_with_selected_dida(executable,codex_home_dir,shutdown_handle,None)
+    }
+
+    fn spawn_with_selected_dida(
+        executable: &Path,
+        codex_home_dir: &Path,
+        shutdown_handle: RuntimeShutdownHandle,
+        connection: Option<&Value>,
+    ) -> Result<Self, String> {
+        Self::spawn_with_options(executable, codex_home_dir, shutdown_handle, false, connection)
     }
 
     fn spawn_with_dictation_isolation(
@@ -11730,8 +11758,19 @@ impl StdioJsonlClient {
         shutdown_handle: RuntimeShutdownHandle,
         dictation: bool,
     ) -> Result<Self, String> {
+        Self::spawn_with_options(executable, codex_home_dir, shutdown_handle, dictation, None)
+    }
+
+    fn spawn_with_options(
+        executable: &Path,
+        codex_home_dir: &Path,
+        shutdown_handle: RuntimeShutdownHandle,
+        dictation: bool,
+        connection: Option<&Value>,
+    ) -> Result<Self, String> {
         ensure_private_codex_home(codex_home_dir)?;
         let mut command=isolated_codex_command(executable,codex_home_dir);
+        if !dictation && connection.is_some() { dida::configure(&mut command, connection); }
         if dictation {
             // Highest-precedence startup overrides remove implicit Apps/plugin
             // inventories before initialize or MCP discovery, without changing
