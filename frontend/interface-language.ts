@@ -765,6 +765,7 @@ const interfaceCopies = {
   "tasks.completionDate": { zh: "实际完成日期", en: "Actual completion date" },
   "tasks.completionTime": { zh: "实际完成时刻（可空）", en: "Actual completion time (optional)" },
   "tasks.completionSourceCheckbox": { zh: "手动打勾", en: "Checkbox" },
+  "tasks.completionSourceReported": { zh: "用户报告", en: "User report" },
   "tasks.completionSourceCorrection": { zh: "手动日期更正", en: "Date correction" },
   "tasks.completionSourceDailyFlow": { zh: "每日流程", en: "Daily flow" },
   "tasks.completionUnknown": { zh: "未知", en: "Unknown" },

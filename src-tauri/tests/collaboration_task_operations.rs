@@ -190,7 +190,7 @@ impl AutomaticTurnGate {
 
 impl CollaborationClock for FixedClock {
     fn current_timestamp(&self) -> String {
-        "2026-09-27T09:15:00-04:00".into()
+        "2026-09-27T09:15-04:00".into()
     }
 
     fn current_date(&self) -> String {
@@ -464,12 +464,47 @@ impl AppServerTransport for DynamicRuntime {
                 if rejected.success { return Err("automatic round expanded its write authority".into()); }
             }
         }
+        if matches!(request.user_text.as_str(), "补记：昨天洗衣服做完了" | "补记：9月25日18:00洗衣服做完了") {
+            let dated = request.user_text.contains("18:00");
+            let mut task_id = String::new();
+            for (index, mut args) in [
+                json!({"operation":"createTask", "name":"洗衣服", "content":null, "date":null, "time":null, "listId":null}),
+                json!({"operation":"completeTask", "taskId":"", "targetDate":if dated {"2026-09-25"} else {"2026-09-26"}, "completedTime":if dated {json!("18:00")} else {Value::Null}}),
+            ].into_iter().enumerate() {
+                args["executionMode"] = json!("execute");
+                args["authorizationQuote"] = json!(request.user_text);
+                if index == 1 { args["taskId"] = json!(task_id); }
+                let call = RuntimeDynamicToolCall {
+                    thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
+                    call_id: format!("historical-task-{index}"), tool: "dashboard_task_operation".into(), arguments: args,
+                };
+                let first = handler(call.clone());
+                let repeated = handler(call);
+                if first != repeated { return Err("historical Task duplicate delivery changed its result".into()); }
+                if !first.success { return Err(first.text); }
+                let receipt: Value = serde_json::from_str(&first.text).map_err(|error| error.to_string())?;
+                if index == 0 { task_id = receipt["taskId"].as_str().unwrap().to_owned(); }
+                self.results.lock().unwrap().push(first);
+            }
+            return Ok(RuntimeTurnResult { text: "Synthetic historical Task sequence completed.".into(),
+                runtime_turn_id: Some(format!("turn-{}", request.execution_id)), stopped:false, external_actions:Vec::new() });
+        }
         // Controlled resolver output exercises the date protocol and persisted
         // results without claiming these fixtures test model language quality.
         let (call_id, tool, mut arguments) = if let Some(arguments) = request.user_text.strip_prefix("date-fixture:") {
             ("resolved-date-call", "dashboard_task_operation", serde_json::from_str(arguments).unwrap())
         } else if let Some(arguments) = request.user_text.strip_prefix("memory-fixture:") {
             ("resolved-memory-call", "dashboard_memory_update", serde_json::from_str(arguments).unwrap())
+        } else if matches!(request.user_text.as_str(), "下周五我要买菜" | "也许下周五可以买菜" | "以后再创建买菜任务" | "下周五我要买菜，加到滴答") {
+            ("natural-create-task", "dashboard_task_operation", json!({"operation":"createTask", "executionMode":"execute",
+                "authorizationQuote":request.user_text, "name":"买菜", "content":null,
+                "date":if request.user_text.contains("下周五") {json!("2026-10-02")} else {Value::Null}, "time":null, "listId":null}))
+        } else if request.user_text == "我要整理书架，不安排日期" {
+            ("natural-undated-task", "dashboard_task_operation", json!({"operation":"createTask", "executionMode":"execute", "authorizationQuote":request.user_text,
+                "name":"整理书架", "content":null, "date":null, "time":null, "listId":null}))
+        } else if matches!(request.user_text.as_str(), "洗衣服做完了" | "洗衣服没做完" | "滴答里的洗衣服做完了") {
+            ("natural-complete-task", "dashboard_task_operation", json!({"operation":"completeTask", "taskId":"laundry-task", "completedTime":null,
+                "executionMode":"execute", "authorizationQuote":request.user_text}))
         } else if request.user_text
             == "Please create a task named Synthetic report."
             || request.user_text == "Don't ask me again; create a task named Synthetic report."
@@ -1425,7 +1460,7 @@ fn exact_current_user_instruction_executes_task_without_a_second_approval() {
 }
 
 #[test]
-fn future_task_intent_does_not_execute_a_task_immediately() {
+fn discussion_of_creating_a_task_later_does_not_execute_it_now() {
     let directory = IsolatedDirectory::new();
     let vault_path = directory.vault("vault-a");
     let vault = MutableVault::new(&vault_path);
@@ -3191,6 +3226,7 @@ fn task_application_adapter_preserves_date_completion_and_list_lifecycle_semanti
         .apply(
             &CollaborationTaskOperation::CompleteTask {
                 task_id: task_id.clone(),
+                completed_time: None,
             },
             &binding,
             view.revision.as_deref(),
@@ -4226,4 +4262,596 @@ fn memory_document_readback_after_history_failure_confirms_effect_without_rewrit
             .count(),
         1
     );
+}
+
+#[test]
+fn natural_commitments_create_local_future_and_undated_tasks_without_duplicate_requests() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let (application, _, results) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    for text in [
+        "下周五我要买菜",
+        "下周五我要买菜",
+        "我要整理书架，不安排日期",
+    ] {
+        application
+            .submit_message("vault-a", &session.id, "2026-09-27", text)
+            .unwrap();
+        wait_for_finish(&application, &session.id, "vault-a");
+    }
+    let tasks = TaskApplication::new(vault.clone(), FixedClock, FileTaskStore)
+        .read()
+        .unwrap();
+    assert_eq!(tasks.tasks.len(), 2);
+    let groceries = tasks.tasks.iter().find(|task| task.name == "买菜").unwrap();
+    assert_eq!(groceries.date.as_deref(), Some("2026-10-02"));
+    assert!(groceries.time.is_none());
+    assert_eq!(
+        groceries.source.kind,
+        personal_dashboard_lib::tasks::TaskSourceKind::Manual
+    );
+    let shelves = tasks
+        .tasks
+        .iter()
+        .find(|task| task.name == "整理书架")
+        .unwrap();
+    assert!(shelves.date.is_none() && shelves.time.is_none());
+    assert!(results.lock().unwrap().iter().all(|result| result.success));
+    assert_eq!(
+        application
+            .session("vault-a", &session.id)
+            .unwrap()
+            .task_operations
+            .len(),
+        2
+    );
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock);
+    assert_eq!(
+        today
+            .read_date("2026-09-27")
+            .unwrap()
+            .tasks
+            .tasks
+            .iter()
+            .find(|task| task.name == "买菜")
+            .unwrap()
+            .date
+            .as_deref(),
+        Some("2026-10-02")
+    );
+    assert!(today
+        .calendar_month(2026, 9)
+        .unwrap()
+        .day("2026-09-27")
+        .unwrap()
+        .task_summaries
+        .iter()
+        .all(|task| task.name != "买菜"));
+    assert!(today
+        .calendar_month(2026, 10)
+        .unwrap()
+        .day("2026-10-02")
+        .unwrap()
+        .task_summaries
+        .iter()
+        .any(|task| task.name == "买菜"));
+    assert!(today
+        .read_date("2026-10-02")
+        .unwrap()
+        .tasks
+        .tasks
+        .iter()
+        .any(|task| task.name == "买菜"));
+    drop(application);
+    let (reopened, _, _) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    reopened
+        .submit_message("vault-a", &session.id, "2026-09-27", "下周五我要买菜")
+        .unwrap();
+    wait_for_finish(&reopened, &session.id, "vault-a");
+    assert_eq!(
+        TaskApplication::new(vault, FixedClock, FileTaskStore)
+            .read()
+            .unwrap()
+            .tasks
+            .len(),
+        2
+    );
+}
+
+#[test]
+fn tentative_meta_and_explicit_external_task_requests_do_not_create_local_tasks() {
+    let directory = IsolatedDirectory::new();
+    let vault = MutableVault::new(&directory.vault("vault"));
+    let (application, _, results) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    for text in [
+        "也许下周五可以买菜",
+        "以后再创建买菜任务",
+        "下周五我要买菜，加到滴答",
+    ] {
+        application
+            .submit_message("vault-a", &session.id, "2026-09-27", text)
+            .unwrap();
+        wait_for_finish(&application, &session.id, "vault-a");
+    }
+    assert!(results.lock().unwrap().iter().all(|result| !result.success));
+    assert!(application
+        .session("vault-a", &session.id)
+        .unwrap()
+        .task_operations
+        .is_empty());
+    assert!(TaskApplication::new(vault, FixedClock, FileTaskStore)
+        .read()
+        .unwrap()
+        .tasks
+        .is_empty());
+}
+
+#[test]
+fn natural_completion_fact_uses_unique_local_identity_and_preserves_schedule_unknown_time() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let tasks = TaskApplication::new(vault.clone(), FixedClock, FileTaskStore);
+    let empty = tasks.read().unwrap();
+    tasks
+        .create(TaskCreateInput {
+            target_binding: empty.target_binding.unwrap(),
+            expected_revision: empty.revision,
+            task_id: "laundry-task".into(),
+            name: "洗衣服".into(),
+            content: Some("User-authored task note.".into()),
+            date: Some("2026-09-25".into()),
+            time: Some("09:30".into()),
+            list_id: None,
+        })
+        .unwrap();
+    let (application, _, results) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    for text in ["洗衣服没做完", "滴答里的洗衣服做完了", "洗衣服做完了"] {
+        application
+            .submit_message("vault-a", &session.id, "2026-09-27", text)
+            .unwrap();
+        wait_for_finish(&application, &session.id, "vault-a");
+    }
+    assert!(!results.lock().unwrap()[0].success && !results.lock().unwrap()[1].success);
+    assert!(results.lock().unwrap()[2].success);
+    let saved = tasks.read().unwrap();
+    let task = &saved.tasks[0];
+    assert_eq!(task.id, "laundry-task");
+    assert_eq!(task.state, TaskState::Completed);
+    assert_eq!(task.date.as_deref(), Some("2026-09-25"));
+    assert_eq!(task.time.as_deref(), Some("09:30"));
+    assert_eq!(task.content.as_deref(), Some("User-authored task note."));
+    assert_eq!(task.completion.as_ref().unwrap().completed_on, "2026-09-27");
+    assert!(task.completion.as_ref().unwrap().completed_time.is_none());
+    assert_eq!(task.completion.as_ref().unwrap().source, personal_dashboard_lib::tasks::TaskCompletionSourceKind::Reported);
+    assert_eq!(
+        task.completion.as_ref().unwrap().recorded_at,
+        "2026-09-27T09:15-04:00"
+    );
+}
+
+#[test]
+fn same_name_local_tasks_require_a_source_list_or_identity_before_natural_completion() {
+    let directory = IsolatedDirectory::new();
+    let vault = MutableVault::new(&directory.vault("vault"));
+    let tasks = TaskApplication::new(vault.clone(), FixedClock, FileTaskStore);
+    for id in ["laundry-task", "another-laundry-task"] {
+        let current = tasks.read().unwrap();
+        tasks
+            .create(TaskCreateInput {
+                target_binding: current.target_binding.unwrap(),
+                expected_revision: current.revision,
+                task_id: id.into(),
+                name: "洗衣服".into(),
+                content: None,
+                date: None,
+                time: None,
+                list_id: None,
+            })
+            .unwrap();
+    }
+    let (application, _, results) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message("vault-a", &session.id, "2026-09-27", "洗衣服做完了")
+        .unwrap();
+    wait_for_finish(&application, &session.id, "vault-a");
+    assert!(!results.lock().unwrap()[0].success);
+    assert!(results.lock().unwrap()[0]
+        .text
+        .contains("unique local Task"));
+    assert!(tasks
+        .read()
+        .unwrap()
+        .tasks
+        .iter()
+        .all(|task| task.state == TaskState::Pending));
+}
+
+#[test]
+fn historical_completed_task_compound_work_preserves_actual_date_time_and_reopens_without_debt() {
+    for (text, date, time) in [
+        ("补记：昨天洗衣服做完了", "2026-09-26", None),
+        (
+            "补记：9月25日18:00洗衣服做完了",
+            "2026-09-25",
+            Some("18:00"),
+        ),
+    ] {
+        let directory = IsolatedDirectory::new();
+        let vault_path = directory.vault("vault");
+        let vault = MutableVault::new(&vault_path);
+        let (application, _, results) = new_application(
+            &directory,
+            &vault,
+            MutableContext::new("vault-a"),
+            Arc::new(AtomicBool::new(false)),
+        );
+        let session = application.create_session("2026-09-27").unwrap();
+        for _ in 0..2 {
+            application
+                .submit_message("vault-a", &session.id, "2026-09-27", text)
+                .unwrap();
+            wait_for_finish(&application, &session.id, "vault-a");
+        }
+        let tasks = TaskApplication::new(vault.clone(), FixedClock, FileTaskStore)
+            .read()
+            .unwrap();
+        assert_eq!(tasks.tasks.len(), 1);
+        let task = &tasks.tasks[0];
+        assert_eq!(task.state, TaskState::Completed);
+        assert!(
+            task.date.is_none() && task.time.is_none(),
+            "a completion date is not a Task schedule"
+        );
+        assert!(!task.overdue);
+        assert_eq!(task.completion.as_ref().unwrap().completed_on, date);
+        assert_eq!(
+            task.completion.as_ref().unwrap().completed_time.as_deref(),
+            time
+        );
+        assert!(results.lock().unwrap().iter().all(|result| result.success));
+        let stable_id = task.id.clone();
+        drop(application);
+        let (reopened, _, _) = new_application(
+            &directory,
+            &vault,
+            MutableContext::new("vault-a"),
+            Arc::new(AtomicBool::new(false)),
+        );
+        assert!(reopened
+            .session("vault-a", &session.id)
+            .unwrap()
+            .task_operations
+            .iter()
+            .all(|operation| operation.status == "applied"));
+        let saved = TaskApplication::new(vault, FixedClock, FileTaskStore)
+            .read()
+            .unwrap();
+        assert_eq!(saved.tasks[0].id, stable_id);
+        assert_eq!(
+            saved.tasks[0].completion.as_ref().unwrap().completed_on,
+            date
+        );
+    }
+}
+
+#[test]
+fn natural_task_and_list_lifecycle_share_saved_objects_and_preserve_unchanged_fields() {
+    let directory = IsolatedDirectory::new();
+    let vault = MutableVault::new(&directory.vault("vault"));
+    let (application, _, results) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    let tasks = TaskApplication::new(vault.clone(), FixedClock, FileTaskStore);
+    let submit = |operation: Value| {
+        application
+            .submit_message(
+                "vault-a",
+                &session.id,
+                "2026-09-27",
+                &format!("date-fixture:{operation}"),
+            )
+            .unwrap();
+        wait_for_finish(&application, &session.id, "vault-a");
+        let deliveries = results.lock().unwrap();
+        assert!(
+            deliveries.last().unwrap().success,
+            "{}",
+            deliveries.last().unwrap().text
+        );
+        drop(deliveries);
+        tasks.read().unwrap()
+    };
+    let first = submit(
+        json!({"operation":"createList", "name":"家务", "executionMode":"execute", "authorizationQuote":"新建家务清单"}),
+    );
+    let list_id = first
+        .lists
+        .iter()
+        .find(|list| list.name == "家务")
+        .unwrap()
+        .id
+        .clone();
+    let second = submit(
+        json!({"operation":"createList", "name":"生活", "executionMode":"execute", "authorizationQuote":"建个生活清单"}),
+    );
+    let destination_id = second
+        .lists
+        .iter()
+        .find(|list| list.name == "生活")
+        .unwrap()
+        .id
+        .clone();
+    let created = submit(
+        json!({"operation":"createTask", "name":"整理书架", "content":"用户备注", "date":"2026-09-28", "time":"10:00", "listId":list_id,
+        "executionMode":"execute", "authorizationQuote":"明天10:00我要整理书架，加到家务清单，备注用户备注"}),
+    );
+    let task_id = created.tasks[0].id.clone();
+    let changed = submit(
+        json!({"operation":"updateTask", "taskId":task_id, "name":"整理书架", "content":"用户备注", "date":"2026-10-02", "time":"10:00", "listId":destination_id,
+        "executionMode":"execute", "authorizationQuote":"把整理书架挪到下周五，移到生活清单"}),
+    );
+    assert_eq!(changed.tasks[0].date.as_deref(), Some("2026-10-02"));
+    assert_eq!(changed.tasks[0].time.as_deref(), Some("10:00"));
+    assert_eq!(changed.tasks[0].list_id, destination_id);
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock);
+    assert_eq!(
+        today
+            .calendar_month(2026, 10)
+            .unwrap()
+            .day("2026-10-02")
+            .unwrap()
+            .task_summaries[0]
+            .id,
+        task_id
+    );
+    let cleared = submit(
+        json!({"operation":"updateTask", "taskId":task_id, "name":"整理书架", "content":"用户备注", "date":null, "time":null, "listId":null,
+        "executionMode":"execute", "authorizationQuote":"整理书架取消日期，不安排日期"}),
+    );
+    assert!(cleared.tasks[0].date.is_none() && cleared.tasks[0].time.is_none());
+    assert_eq!(cleared.tasks[0].content.as_deref(), Some("用户备注"));
+    assert_eq!(cleared.tasks[0].list_id, destination_id);
+    assert!(today
+        .calendar_month(2026, 10)
+        .unwrap()
+        .day("2026-10-02")
+        .unwrap()
+        .task_summaries
+        .is_empty());
+    let completed = submit(
+        json!({"operation":"completeTask", "taskId":task_id, "completedTime":null,
+        "executionMode":"execute", "authorizationQuote":"整理书架做完了"}),
+    );
+    assert!(completed.tasks[0]
+        .completion
+        .as_ref()
+        .unwrap()
+        .completed_time
+        .is_none());
+    let corrected = submit(
+        json!({"operation":"correctCompletion", "taskId":task_id, "completedOn":"2026-09-25", "completedTime":"18:00",
+        "executionMode":"execute", "authorizationQuote":"整理书架其实是9月25日18:00完成的，更正完成日期和时间"}),
+    );
+    assert_eq!(
+        corrected.tasks[0].completion.as_ref().unwrap().completed_on,
+        "2026-09-25"
+    );
+    assert_eq!(
+        corrected.tasks[0]
+            .completion
+            .as_ref()
+            .unwrap()
+            .completed_time
+            .as_deref(),
+        Some("18:00")
+    );
+    assert!(corrected.tasks[0].date.is_none());
+    assert_eq!(corrected.tasks[0].completion.as_ref().unwrap().source, personal_dashboard_lib::tasks::TaskCompletionSourceKind::DateCorrection);
+    for (operation, quote, state, deleted) in [
+        (
+            "reopenTask",
+            "整理书架还没做，重开",
+            TaskState::Pending,
+            false,
+        ),
+        ("abandonTask", "整理书架不做了", TaskState::Abandoned, false),
+        ("reopenTask", "整理书架恢复待办", TaskState::Pending, false),
+        ("deleteTask", "删掉整理书架", TaskState::Pending, true),
+        ("restoreTask", "恢复整理书架", TaskState::Pending, false),
+    ] {
+        let saved = submit(
+            json!({"operation":operation, "taskId":task_id, "executionMode":"execute", "authorizationQuote":quote}),
+        );
+        assert_eq!(saved.tasks[0].state, state);
+        assert_eq!(saved.tasks[0].deleted_at.is_some(), deleted);
+    }
+    let renamed = submit(
+        json!({"operation":"renameList", "listId":destination_id, "name":"日常", "executionMode":"execute", "authorizationQuote":"生活清单改名为日常"}),
+    );
+    assert_eq!(renamed.tasks[0].list_id, destination_id);
+    for (operation, quote, archived) in [
+        ("archiveList", "把日常清单归档", true),
+        ("restoreList", "恢复日常清单", false),
+    ] {
+        let saved = submit(
+            json!({"operation":operation, "listId":destination_id, "executionMode":"execute", "authorizationQuote":quote}),
+        );
+        assert_eq!(
+            saved
+                .lists
+                .iter()
+                .find(|list| list.id == destination_id)
+                .unwrap()
+                .archived,
+            archived
+        );
+        assert_eq!(saved.tasks[0].state, TaskState::Pending);
+    }
+    assert_eq!(
+        today.read_date("2026-09-27").unwrap().tasks.tasks[0].id,
+        task_id
+    );
+    let disk_before = tasks.read().unwrap();
+    assert!(disk_before.tasks[0].changes.len() >= 8);
+    drop(application);
+    let (reopened, _, _) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    assert!(reopened
+        .session("vault-a", &session.id)
+        .unwrap()
+        .task_operations
+        .iter()
+        .all(|operation| operation.status == "applied"));
+    assert_eq!(tasks.read().unwrap(), disk_before);
+}
+
+#[test]
+fn task_edit_does_not_clear_unspecified_content_or_invent_completion_minutes() {
+    let directory = IsolatedDirectory::new();
+    let vault = MutableVault::new(&directory.vault("vault"));
+    let tasks = TaskApplication::new(vault.clone(), FixedClock, FileTaskStore);
+    let empty = tasks.read().unwrap();
+    tasks
+        .create(TaskCreateInput {
+            target_binding: empty.target_binding.unwrap(),
+            expected_revision: empty.revision,
+            task_id: "laundry-task".into(),
+            name: "洗衣服".into(),
+            content: Some("Preserve this note".into()),
+            date: Some("2026-09-28".into()),
+            time: Some("10:00".into()),
+            list_id: None,
+        })
+        .unwrap();
+    let before = tasks.read().unwrap();
+    let (application, _, results) = new_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let session = application.create_session("2026-09-27").unwrap();
+    for operation in [
+        json!({"operation":"updateTask", "taskId":"laundry-task", "name":"洗衣服", "content":null, "date":"2026-10-02", "time":"10:00", "listId":null, "executionMode":"execute", "authorizationQuote":"洗衣服改到下周五"}),
+        json!({"operation":"completeTask", "taskId":"laundry-task", "completedTime":"09:15", "executionMode":"execute", "authorizationQuote":"洗衣服做完了"}),
+    ] {
+        application
+            .submit_message(
+                "vault-a",
+                &session.id,
+                "2026-09-27",
+                &format!("date-fixture:{operation}"),
+            )
+            .unwrap();
+        wait_for_finish(&application, &session.id, "vault-a");
+    }
+    assert!(results.lock().unwrap().iter().all(|result| !result.success));
+    assert_eq!(tasks.read().unwrap(), before);
+}
+
+#[test]
+fn queued_natural_completion_keeps_original_lived_day_across_four_am() {
+    let directory = IsolatedDirectory::new();
+    let vault = MutableVault::new(&directory.vault("vault"));
+    let clock = ManualClock::new("2026-09-27", "03:59");
+    let tasks = TaskApplication::new(vault.clone(), clock.clone(), FileTaskStore);
+    let empty = tasks.read().unwrap();
+    tasks
+        .create(TaskCreateInput {
+            target_binding: empty.target_binding.unwrap(),
+            expected_revision: empty.revision,
+            task_id: "laundry-task".into(),
+            name: "洗衣服".into(),
+            content: None,
+            date: Some("2026-09-27".into()),
+            time: Some("10:00".into()),
+            list_id: None,
+        })
+        .unwrap();
+    let gate = Arc::new(AutomaticTurnGate::default());
+    let (application, _, results, requests) = new_automatic_application(
+        &directory,
+        &vault,
+        MutableContext::new("vault-a"),
+        clock.clone(),
+        Some(gate.clone()),
+    );
+    let session = application.create_default_session().unwrap();
+    assert_eq!(session.target_date, "2026-09-26");
+    application
+        .submit_message("vault-a", &session.id, &session.target_date, "hold-worker")
+        .unwrap();
+    gate.wait_until_entered();
+    application
+        .submit_message("vault-a", &session.id, &session.target_date, "洗衣服做完了")
+        .unwrap();
+    clock.set_time("04:00");
+    let next = application.create_default_session().unwrap();
+    gate.release();
+    wait_for_finish(&application, &session.id, "vault-a");
+    assert!(results.lock().unwrap()[0].success);
+    let saved = tasks.read().unwrap();
+    assert_eq!(
+        saved.tasks[0].completion.as_ref().unwrap().completed_on,
+        "2026-09-26"
+    );
+    assert!(saved.tasks[0]
+        .completion
+        .as_ref()
+        .unwrap()
+        .completed_time
+        .is_none());
+    assert_eq!(
+        saved.tasks[0].completion.as_ref().unwrap().recorded_at,
+        "2026-09-27T04:00-04:00"
+    );
+    assert_eq!(saved.tasks[0].date.as_deref(), Some("2026-09-27"));
+    let sent = requests.lock().unwrap();
+    assert_eq!(sent[1].dates.request_lived_date, "2026-09-26");
+    assert_eq!(sent[1].dates.lived_date, "2026-09-27");
+    assert_eq!(next.target_date, "2026-09-27");
+    assert!(application
+        .session("vault-a", &next.id)
+        .unwrap()
+        .task_operations
+        .is_empty());
 }

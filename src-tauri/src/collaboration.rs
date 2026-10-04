@@ -337,6 +337,8 @@ pub enum CollaborationTaskOperation {
     },
     CompleteTask {
         task_id: String,
+        #[serde(default)]
+        completed_time: Option<String>,
     },
     AbandonTask {
         task_id: String,
@@ -537,6 +539,16 @@ pub trait CollaborationTaskService: Send + Sync {
         expected_revision: Option<&str>,
         operation_id: &str,
     ) -> Result<TasksView, String>;
+    fn apply_for_date(
+        &self,
+        operation: &CollaborationTaskOperation,
+        target_binding: &str,
+        expected_revision: Option<&str>,
+        operation_id: &str,
+        _target_date: &str,
+    ) -> Result<TasksView, String> {
+        self.apply(operation, target_binding, expected_revision, operation_id)
+    }
 }
 
 struct UnavailableCollaborationTaskService;
@@ -579,6 +591,36 @@ where
 {
     fn read(&self) -> Result<TasksView, String> {
         self.application.read()
+    }
+
+    fn apply_for_date(
+        &self,
+        operation: &CollaborationTaskOperation,
+        target_binding: &str,
+        expected_revision: Option<&str>,
+        operation_id: &str,
+        target_date: &str,
+    ) -> Result<TasksView, String> {
+        if let CollaborationTaskOperation::CompleteTask {
+            task_id,
+            completed_time,
+        } = operation
+        {
+            return self.application.complete_on(
+                TaskStateInput {
+                    target_binding: target_binding.to_owned(),
+                    expected_revision: expected_revision
+                        .ok_or_else(|| "Tasks has no current revision.".to_owned())?
+                        .to_owned(),
+                    task_id: task_id.clone(),
+                    change_id: operation_id.to_owned(),
+                    state: TaskState::Completed,
+                },
+                target_date,
+                completed_time.as_deref(),
+            );
+        }
+        self.apply(operation, target_binding, expected_revision, operation_id)
     }
 
     fn apply(
@@ -629,7 +671,7 @@ where
                 time: time.clone(),
                 list_id: list_id.clone(),
             }),
-            CollaborationTaskOperation::CompleteTask { task_id } => {
+            CollaborationTaskOperation::CompleteTask { task_id, .. } => {
                 self.application.set_state(TaskStateInput {
                     target_binding: target_binding.to_owned(),
                     expected_revision: required_revision()?,
@@ -2754,11 +2796,12 @@ impl CollaborationApplication {
             );
         }
 
-        match self.task_service.apply(
+        match self.task_service.apply_for_date(
             &proposal.operation,
             &proposal.target_binding,
             proposal.expected_revision.as_deref(),
             &proposal.operation_id,
+            &proposal.target_date,
         ) {
             Ok(saved_view) => {
                 let still_selected =
@@ -4301,6 +4344,8 @@ impl CollaborationApplication {
                 execution_id,
                 &operation,
                 authorization_quote,
+                &stable_tool_operation_id(expected_thread_id, &call.turn_id, &call.call_id),
+                operation_target_date,
             ) {
                 return RuntimeDynamicToolResult {
                     text: format!("A direct Dashboard write requires a clear, exact instruction in the current user message: {error}. No data was changed."),
@@ -4338,7 +4383,7 @@ impl CollaborationApplication {
                 match self.approve_task_operation_for_selected_vault(session_id, &proposal.id) {
                     Ok(session) => match session.task_operations.iter().find(|item| item.id == proposal.id) {
                         Some(item) if item.status == "applied" => RuntimeDynamicToolResult {
-                            text: item.result_message.clone().unwrap_or_else(|| "The explicitly authorized Dashboard change was saved.".into()),
+                            text: task_tool_saved_receipt(item),
                             success: true,
                         },
                         Some(item) => RuntimeDynamicToolResult {
@@ -4383,33 +4428,57 @@ impl CollaborationApplication {
         execution_id: &str,
         operation: &CollaborationTaskOperation,
         authorization_quote: &str,
+        operation_id: &str,
+        target_date: &str,
     ) -> Result<(), String> {
-        self.read_state(|state| {
-            let session = state
-                .sessions
-                .iter()
-                .find(|session| {
-                    session.id == session_id && session.vault_key.as_deref() == Some(vault_key)
-                })
-                .ok_or_else(|| {
-                    "The current request is no longer available in the selected Vault.".to_string()
-                })?;
-            if !matches!(session.run_state.as_str(), "thinking" | "reading") {
-                return Err("The current request is no longer active.".into());
-            }
-            let message = session
-                .messages
-                .iter()
-                .find(|message| {
-                    message.role == "user"
-                        && message.execution_id.as_deref() == Some(execution_id)
-                        && message.delivery_state == "in-progress"
-                })
-                .ok_or_else(|| {
-                    "There is no active user instruction for this action.".to_string()
-                })?;
-            validate_task_operation_authority(operation, authorization_quote, &message.text)
-        })??;
+        let (current_message, already_applied) =
+            self.read_state(|state| -> Result<(String, bool), String> {
+                let session = state
+                    .sessions
+                    .iter()
+                    .find(|session| {
+                        session.id == session_id && session.vault_key.as_deref() == Some(vault_key)
+                    })
+                    .ok_or_else(|| {
+                        "The current request is no longer available in the selected Vault."
+                            .to_string()
+                    })?;
+                if !matches!(session.run_state.as_str(), "thinking" | "reading") {
+                    return Err("The current request is no longer active.".into());
+                }
+                let message = session
+                    .messages
+                    .iter()
+                    .find(|message| {
+                        message.role == "user"
+                            && message.execution_id.as_deref() == Some(execution_id)
+                            && message.delivery_state == "in-progress"
+                    })
+                    .ok_or_else(|| {
+                        "There is no active user instruction for this action.".to_string()
+                    })?;
+                validate_task_operation_authority(operation, authorization_quote, &message.text)?;
+                // A duplicate delivery returns its original receipt. A rename or
+                // deletion may have changed the source label; it is not new intent.
+                let already_applied = session.task_operations.iter().any(|saved| {
+                    saved.operation_id == operation_id
+                        && saved.execution_id == execution_id
+                        && saved.operation == *operation
+                        && saved.target_date == target_date
+                        && saved.status == "applied"
+                });
+                Ok((message.text.clone(), already_applied))
+            })??;
+        if is_task_list_operation(operation) && !already_applied {
+            let current_tasks = self.task_service.read()?;
+            require_task_view_writable(&current_tasks)?;
+            validate_task_effect_target(
+                operation,
+                authorization_quote,
+                &current_message,
+                &current_tasks,
+            )?;
+        }
         Ok(())
     }
 
@@ -4964,6 +5033,85 @@ impl CollaborationApplication {
         }
         let task_view = self.task_service.read()?;
         require_task_view_writable(&task_view)?;
+        let tool_call_key = format!("{runtime_thread_id}:{runtime_turn_id}:{call_id}");
+        let delivered = self.read_state(
+            |state| -> Result<Option<CollaborationTaskOperationView>, String> {
+                let session = state
+                    .sessions
+                    .iter()
+                    .find(|session| {
+                        session.id == session_id && session.vault_key.as_deref() == Some(vault_key)
+                    })
+                    .ok_or_else(|| "This task action has no saved Dashboard session.".to_owned())?;
+                if session.runtime_thread_id.as_deref() != Some(runtime_thread_id)
+                    || session.run_id.as_deref() != Some(execution_id)
+                    || !matches!(session.run_state.as_str(), "thinking" | "reading")
+                {
+                    return Err(
+                        "This task action is no longer attached to the active Dashboard request."
+                            .into(),
+                    );
+                }
+                let Some(saved) = session
+                    .task_operations
+                    .iter()
+                    .find(|saved| saved.tool_call_key == tool_call_key)
+                else {
+                    return Ok(None);
+                };
+                if saved.operation != operation
+                    || saved.target_date != target_date
+                    || saved.execution_id != execution_id
+                {
+                    return Err(
+                        "This App Server call identity already belongs to a different task action."
+                            .into(),
+                    );
+                }
+                Ok(Some(task_operation_view(saved)))
+            },
+        )??;
+        if let Some(saved) = delivered {
+            return Ok(saved);
+        }
+
+        if matches!(operation, CollaborationTaskOperation::CreateTask { .. }) {
+            let replay = self.read_state(|state| {
+                let session = state.sessions.iter().find(|session| {
+                    session.id == session_id && session.vault_key.as_deref() == Some(vault_key)
+                })?;
+                let current = session.messages.iter().find(|message| {
+                    message.execution_id.as_deref() == Some(execution_id) && message.role == "user"
+                })?;
+                if has_authority_marker(
+                    &current.text.to_lowercase(),
+                    "another|a second|duplicate|再建|另建|另一个",
+                ) {
+                    return None;
+                }
+                session
+                    .task_operations
+                    .iter()
+                    .find(|saved| {
+                        saved.status == "applied"
+                            && saved.operation == operation
+                            && saved.target_date == target_date
+                            && session.messages.iter().any(|message| {
+                                message.role == "user"
+                                    && message.execution_id.as_deref()
+                                        == Some(saved.execution_id.as_str())
+                                    && message.text == current.text
+                            })
+                    })
+                    .cloned()
+            })?;
+            if let Some(saved) = replay {
+                if task_operation_effect_matches(&saved, &task_view) {
+                    return Ok(task_operation_view(&saved));
+                }
+                return Err("This exact commitment already created a stable Task, whose current fields have since changed. Read that existing Task and use an explicit update; do not create a duplicate.".into());
+            }
+        }
         let target_binding = task_view
             .target_binding
             .clone()
@@ -4975,7 +5123,7 @@ impl CollaborationApplication {
                 Some(stable_child_identifier("task", &operation_id))
             }
             CollaborationTaskOperation::UpdateTask { task_id, .. }
-            | CollaborationTaskOperation::CompleteTask { task_id }
+            | CollaborationTaskOperation::CompleteTask { task_id, .. }
             | CollaborationTaskOperation::AbandonTask { task_id }
             | CollaborationTaskOperation::ReopenTask { task_id }
             | CollaborationTaskOperation::DeleteTask { task_id }
@@ -8107,7 +8255,7 @@ fn task_operation_baseline(
             }
             Ok(baseline)
         }
-        CollaborationTaskOperation::CompleteTask { task_id }
+        CollaborationTaskOperation::CompleteTask { task_id, .. }
         | CollaborationTaskOperation::AbandonTask { task_id }
         | CollaborationTaskOperation::ReopenTask { task_id }
         | CollaborationTaskOperation::DeleteTask { task_id }
@@ -8276,7 +8424,6 @@ fn task_operation_effect_matches(
             list_id,
         } => task.is_some_and(|task| {
             task.deleted_at.is_none()
-                && task.state == TaskState::Pending
                 && task.name == name.trim()
                 && task.content == normalized_optional_text(content.as_deref())
                 && task.date == normalized_optional_text(date.as_deref())
@@ -8304,8 +8451,12 @@ fn task_operation_effect_matches(
                     && task.list_id == list_id.as_deref().unwrap_or(previous_list_id)
             })
         }
-        CollaborationTaskOperation::CompleteTask { .. } => {
-            task.is_some_and(|task| task.deleted_at.is_none() && task.state == TaskState::Completed)
+        CollaborationTaskOperation::CompleteTask { completed_time, .. } => {
+            task.is_some_and(|task| task.deleted_at.is_none() && task.state == TaskState::Completed
+                && task.completion.as_ref().is_some_and(|completion| {
+                    completion.source == crate::tasks::TaskCompletionSourceKind::Checkbox
+                        || (completion.completed_on == operation.target_date && completion.completed_time == *completed_time)
+                }))
         }
         CollaborationTaskOperation::AbandonTask { .. } => {
             task.is_some_and(|task| task.deleted_at.is_none() && task.state == TaskState::Abandoned)
@@ -8343,6 +8494,19 @@ fn task_operation_effect_matches(
         | CollaborationTaskOperation::CorrectShortRecord { .. }
         | CollaborationTaskOperation::SetLocalHabitCompletion { .. } => false,
     }
+}
+
+fn task_tool_saved_receipt(operation: &CollaborationTaskOperationView) -> String {
+    json!({
+        "status": operation.status,
+        "operationId": operation.id,
+        "targetDate": operation.target_date,
+        "taskId": operation.task_id,
+        "listId": operation.list_id,
+        "resultMessage": operation.result_message,
+        "resultRevision": operation.result_revision,
+        "resultSnapshot": operation.result_snapshot,
+    }).to_string()
 }
 
 fn task_operation_saved_message(
@@ -8472,6 +8636,287 @@ fn collaboration_tool_execution_mode(
     }
 }
 
+fn is_task_list_operation(operation: &CollaborationTaskOperation) -> bool {
+    matches!(
+        operation,
+        CollaborationTaskOperation::CreateTask { .. }
+            | CollaborationTaskOperation::UpdateTask { .. }
+            | CollaborationTaskOperation::CompleteTask { .. }
+            | CollaborationTaskOperation::AbandonTask { .. }
+            | CollaborationTaskOperation::ReopenTask { .. }
+            | CollaborationTaskOperation::DeleteTask { .. }
+            | CollaborationTaskOperation::RestoreTask { .. }
+            | CollaborationTaskOperation::CorrectCompletion { .. }
+            | CollaborationTaskOperation::CreateList { .. }
+            | CollaborationTaskOperation::RenameList { .. }
+            | CollaborationTaskOperation::ArchiveList { .. }
+            | CollaborationTaskOperation::RestoreList { .. }
+    )
+}
+
+// The model resolves language and dates. These checks only bound a proposed
+// Task/list effect to the quoted commitment or fact; no second intent model.
+fn task_list_natural_authority(operation: &CollaborationTaskOperation, quote: &str) -> bool {
+    let contains = |markers: &str| has_authority_marker(quote, markers);
+    let completion_fact =
+        contains("做完了|做完的|已经完成|完成了|已完成|finished|completed|is done|was done|i did ");
+    match operation {
+        CollaborationTaskOperation::CreateTask { name, .. } => {
+            quote.contains(&name.to_lowercase()) && (completion_fact
+                || contains("我要|我会|需要|必须|我打算|我准备|安排|补建|补记|下周|明天|后天|i need to|i have to|i will|i plan to|i want to|i'm going to|tomorrow|next week|on friday|add |create "))
+        }
+        CollaborationTaskOperation::UpdateTask { task_id, name, .. } => (quote.contains(&name.to_lowercase()) || quote.contains(&task_id.to_lowercase()))
+            && contains("改|挪|移到|移去|延期|清空|取消日期|取消时间|rename|move|reschedule|clear|undated|no date|change|update"),
+        CollaborationTaskOperation::CompleteTask { .. } => completion_fact,
+        CollaborationTaskOperation::AbandonTask { .. } => contains("不做了|放弃|作废|不再做|cancel|abandon|drop|give up"),
+        CollaborationTaskOperation::ReopenTask { .. } => contains("还没做|未完成|重新列为|重开|重新打开|恢复待办|reopen|not done|incomplete|undo completion"),
+        CollaborationTaskOperation::DeleteTask { .. } => contains("删掉|删除|delete|trash"),
+        CollaborationTaskOperation::RestoreTask { .. } => contains("恢复|还原|restore|recover|undelete"),
+        CollaborationTaskOperation::CorrectCompletion { .. } => contains("更正|修正|实际|其实|完成日期|完成时间|actually|correct|fix|completion date|completion time")
+            && (completion_fact || contains("完成|做完|completion|completed")),
+        CollaborationTaskOperation::CreateList { name } => quote.contains(&name.to_lowercase()) && contains("新建|建个|建一个|添加|create|add"),
+        CollaborationTaskOperation::RenameList { name, .. } => quote.contains(&name.to_lowercase()) && contains("改名|重命名|改成|rename|call|change"),
+        CollaborationTaskOperation::ArchiveList { .. } => contains("归档|收起来|archive"),
+        CollaborationTaskOperation::RestoreList { .. } => contains("恢复|还原|restore|unarchive"),
+        _ => false,
+    }
+}
+
+fn validate_task_effect_target(
+    operation: &CollaborationTaskOperation,
+    quote: &str,
+    current_message: &str,
+    tasks: &TasksView,
+) -> Result<(), String> {
+    let normalized = quote.to_lowercase();
+    let clause = if let Some((prefix, suffix)) = current_message.split_once(quote) {
+        let prefix = prefix
+            .rsplit(['.', ',', ';', '\n', '。', '，', '；'])
+            .next()
+            .unwrap_or("");
+        let suffix = suffix
+            .split(['.', ',', ';', '\n', '。', '，', '；'])
+            .next()
+            .unwrap_or("");
+        format!("{prefix}{quote}{suffix}").to_lowercase()
+    } else {
+        normalized.clone()
+    };
+    if has_authority_marker(&normalized, "滴答|dida|ticktick|tick tick")
+        || (has_authority_marker(&clause, "滴答|dida|ticktick|tick tick")
+            && !has_authority_marker(&normalized, "本地|dashboard"))
+    {
+        return Err("This request names Dida365/TickTick. A local Dashboard operation cannot silently substitute for that source; use the connected source tools or report that source unavailable.".into());
+    }
+    if has_authority_marker(&clause, "maybe|perhaps|也许|可能|要不要|如果|what if") {
+        return Err(
+            "The current clause is tentative; keep it as discussion rather than a Task write."
+                .into(),
+        );
+    }
+    if matches!(operation, CollaborationTaskOperation::CompleteTask { .. })
+        && has_authority_marker(&clause, "没做完|没完成|未完成|尚未|还没有|not done|not completed|did not finish|haven't finished|have not finished")
+    {
+        return Err("The current clause does not report a completed Task.".into());
+    }
+    if let CollaborationTaskOperation::CompleteTask {
+        completed_time: Some(time),
+        ..
+    } = operation
+    {
+        if has_authority_marker(
+            &normalized,
+            "不知道时间|不记得时间|不确定时间|unknown time|time unknown|not sure when",
+        ) || (!quote.contains(time) && !has_authority_marker(quote, "点|时|分"))
+        {
+            return Err("The request does not supply an actual completion time. Leave completedTime null; do not use the save time.".into());
+        }
+    }
+    match operation {
+        CollaborationTaskOperation::CreateTask { name, .. }
+        | CollaborationTaskOperation::CreateList { name } => {
+            if !normalized.contains(&name.to_lowercase()) {
+                return Err("The proposed name is not grounded in the current quoted commitment. Preserve the user's action wording instead of inventing or translating an object.".into());
+            }
+        }
+        _ => {}
+    }
+    let task_id = match operation {
+        CollaborationTaskOperation::UpdateTask { task_id, .. }
+        | CollaborationTaskOperation::CompleteTask { task_id, .. }
+        | CollaborationTaskOperation::AbandonTask { task_id }
+        | CollaborationTaskOperation::ReopenTask { task_id }
+        | CollaborationTaskOperation::DeleteTask { task_id }
+        | CollaborationTaskOperation::RestoreTask { task_id }
+        | CollaborationTaskOperation::CorrectCompletion { task_id, .. } => Some(task_id),
+        _ => None,
+    };
+    if let Some(task_id) = task_id {
+        let target = tasks
+            .tasks
+            .iter()
+            .find(|task| task.id == *task_id)
+            .ok_or_else(|| {
+                "The stable Task identity is not in the current local source.".to_owned()
+            })?;
+        if let CollaborationTaskOperation::UpdateTask {
+            name,
+            content,
+            date,
+            time,
+            list_id,
+            ..
+        } = operation
+        {
+            if name != &target.name && !normalized.contains(&name.to_lowercase()) {
+                return Err(
+                    "The proposed Task rename was not expressed in the current request.".into(),
+                );
+            }
+            if content != &target.content
+                && !has_authority_marker(&normalized, "备注|内容|说明|note|content|description")
+            {
+                return Err("Keep the Task's unchanged content; this request does not authorize replacing or clearing it.".into());
+            }
+            let clear_date = has_authority_marker(&normalized, "无日期|不安排日期|不指定日期|取消日期|清空日期|clear date|remove date|undated|no date|unscheduled");
+            if date != &target.date {
+                let schedule = has_authority_marker(&normalized, "明天|后天|下周|周一|周二|周三|周四|周五|周六|周日|日期|改期|挪|月|号|tomorrow|next |date|schedule|reschedule|move|on ");
+                if (date.is_none() && !clear_date)
+                    || (date.is_some()
+                        && !schedule
+                        && !date.as_ref().is_some_and(|date| quote.contains(date)))
+                {
+                    return Err("Keep the Task's unchanged date; the current request does not authorize this date change.".into());
+                }
+            }
+            if time != &target.time {
+                let time_change = has_authority_marker(&normalized, "时间|点|时|分|time| at ")
+                    || time.as_ref().is_some_and(|time| quote.contains(time));
+                if !(clear_date && date.is_none()) && !time_change {
+                    return Err(
+                        "Keep the Task's unchanged time; do not silently clear or invent it."
+                            .into(),
+                    );
+                }
+            }
+            if let Some(list_id) = list_id {
+                if list_id != &target.list_id {
+                    let list = tasks
+                        .lists
+                        .iter()
+                        .find(|list| list.id == *list_id)
+                        .ok_or_else(|| "The destination list is not available.".to_owned())?;
+                    if !normalized.contains(&list_id.to_lowercase())
+                        && !normalized.contains(&list.name.to_lowercase())
+                        && !(list.is_system && normalized.contains("收件箱"))
+                    {
+                        return Err(
+                            "The current request does not identify that destination Task list."
+                                .into(),
+                        );
+                    }
+                }
+            }
+        }
+        if let CollaborationTaskOperation::CorrectCompletion { completed_time, .. } = operation {
+            if let Some(saved) = &target.completion {
+                if completed_time != &saved.completed_time {
+                    let specified = completed_time
+                        .as_ref()
+                        .is_some_and(|time| quote.contains(time))
+                        || has_authority_marker(
+                            &normalized,
+                            "完成时间|点|时|分|completion time|unknown time|clear time",
+                        );
+                    if !specified {
+                        return Err("Keep the saved completion time unchanged unless the user corrects or clears that time explicitly.".into());
+                    }
+                }
+            }
+        }
+        if normalized.contains(&task_id.to_lowercase()) {
+            return Ok(());
+        }
+        let candidates: Vec<_> = tasks
+            .tasks
+            .iter()
+            .filter(|task| {
+                task.name.eq_ignore_ascii_case(&target.name)
+                    && normalized.contains(&task.name.to_lowercase())
+                    && (task.deleted_at.is_some()
+                        == matches!(operation, CollaborationTaskOperation::RestoreTask { .. }))
+            })
+            .collect();
+        let candidates = if candidates.len() > 1 {
+            let source_lists: Vec<_> = tasks
+                .lists
+                .iter()
+                .filter(|list| {
+                    let name = list.name.to_lowercase();
+                    [
+                        format!("{name}里的"),
+                        format!("{name}清单里的"),
+                        format!("{name}中的"),
+                        format!("from {name}"),
+                        format!("in {name}"),
+                    ]
+                    .iter()
+                    .any(|phrase| normalized.contains(phrase))
+                })
+                .collect();
+            if source_lists.is_empty() {
+                candidates
+            } else {
+                candidates
+                    .into_iter()
+                    .filter(|task| source_lists.iter().any(|list| list.id == task.list_id))
+                    .collect()
+            }
+        } else {
+            candidates
+        };
+        if candidates.len() == 1 && candidates[0].id == *task_id {
+            return Ok(());
+        }
+        return Err("The current wording does not identify one unique local Task. Ask which stable Task/source/list the user means; no task was changed.".into());
+    }
+    let list_id = match operation {
+        CollaborationTaskOperation::RenameList { list_id, .. }
+        | CollaborationTaskOperation::ArchiveList { list_id }
+        | CollaborationTaskOperation::RestoreList { list_id } => Some(list_id),
+        _ => None,
+    };
+    if let Some(list_id) = list_id {
+        if let CollaborationTaskOperation::RenameList { name, .. } = operation {
+            if !normalized.contains(&name.to_lowercase()) {
+                return Err("The request does not supply the proposed list name.".into());
+            }
+        }
+        let target = tasks
+            .lists
+            .iter()
+            .find(|list| list.id == *list_id)
+            .ok_or_else(|| {
+                "The stable list identity is not in the current local source.".to_owned()
+            })?;
+        if normalized.contains(&list_id.to_lowercase()) {
+            return Ok(());
+        }
+        let candidates: Vec<_> = tasks
+            .lists
+            .iter()
+            .filter(|list| {
+                list.name.eq_ignore_ascii_case(&target.name)
+                    && normalized.contains(&list.name.to_lowercase())
+            })
+            .collect();
+        if candidates.len() != 1 {
+            return Err("The request does not identify one unique Task list. Ask which list the user means.".into());
+        }
+    }
+    Ok(())
+}
+
 fn validate_task_operation_authority(
     operation: &CollaborationTaskOperation,
     authorization_quote: &str,
@@ -8486,10 +8931,16 @@ fn validate_task_operation_authority(
         );
     }
     let normalized_quote = authorization_quote.to_lowercase();
+    let task_authorized = task_list_natural_authority(operation, &normalized_quote);
+    if matches!(operation, CollaborationTaskOperation::CreateTask { .. })
+        && has_authority_marker(&normalized_quote, "i plan to create|i will create|tomorrow create|next week create|tomorrow add a task|next week add a task|i plan to add a task|i will add a task|create a task later|create the task later|以后再创建|之后再创建|以后再建|稍后再建|下周再创建|明天再创建|以后再添加|之后再添加|稍后再添加")
+    {
+        return Err("The user is discussing creating a Task later, rather than authorizing creation now.".into());
+    }
     let (direct_intent_markers, declined_intent_markers) =
         task_operation_authority_markers(operation);
     if is_deferred_completion_intent(operation, &normalized_quote)
-        || has_deferred_operation_intent(&normalized_quote, direct_intent_markers)
+        || (!task_authorized && has_deferred_operation_intent(&normalized_quote, direct_intent_markers))
     {
         return Err(
             "the quoted wording describes a future operation rather than authorizing it now".into(),
@@ -8565,7 +9016,7 @@ fn validate_task_operation_authority(
     {
         return Err("the quoted wording declines the operation being attempted".into());
     }
-    if !has_authority_marker(&normalized_quote, direct_intent_markers) {
+    if !task_authorized && !has_authority_marker(&normalized_quote, direct_intent_markers) {
         return Err("the quoted wording does not directly authorize this operation".into());
     }
     Ok(())
@@ -8991,7 +9442,13 @@ fn collaboration_task_tool_spec(
             .cloned()
             .expect("task tool properties are defined as an object");
         let mut operation_property = json!({ "type": "string", "const": name });
-        if name == "saveDailyPlan" {
+        if name == "createTask" {
+            operation_property["description"] = json!("Clear new commitments default to local Dashboard Tasks, including future or explicitly undated activities. Command words are not required. Tentative suggestions and discussing creation later are not writes. Preserve the user's action wording and specified source; never copy an explicitly Dida task locally. For an unrecorded completed activity create the unscheduled Task first, then use the returned taskId with completeTask for the actual completion date/time; do not create task debt from its completion date.");
+        } else if name == "updateTask" {
+            operation_property["description"] = json!("Update the unique existing local Task by its stable taskId and current source/list. Send all desired fields, preserving every field the user did not change. Clearing date/time, moving lists and renaming are separate explicit effects. Do not merge same-name objects or convert schedule changes into completion changes.");
+        } else if name == "completeTask" {
+            operation_property["description"] = json!("A clear completion fact such as 洗衣服做完了 authorizes the unique existing local Task without command words. Ask when source or same-name identity is ambiguous. Use targetDate for actual completion day resolved from the original request's dates context; preserve Task schedule. Use completedTime only when supplied by the user, otherwise null means unknown, never the save timestamp. If an existing completion date/time was wrong, use correctCompletion instead.");
+        } else if name == "saveDailyPlan" {
             operation_property["description"] = json!("For an explicitly reported daytime event or update, use transition=daytimeEvent and put the exact factual text in event. Leave arrangement and evidence empty unless the current plan itself must change. This writes under `## 白天更新` and preserves the plan and morning baseline.");
         } else if name == "saveEveningReview" {
             operation_property["description"] = json!("For a new note or supplement to the selected Daily Record's `## 晚间复盘`, use this operation with mode=addition and put the exact note in content. For an explicitly daytime event or update, use saveDailyPlan with transition=daytimeEvent instead. Do not invent appendDailyRecord or addShortRecord operations.");
@@ -9046,7 +9503,7 @@ fn collaboration_task_tool_spec(
             json!({"taskId": string, "name": string, "content": nullable_string, "date": nullable_string, "time": nullable_string, "listId": nullable_string}),
             &["taskId", "name", "content", "date", "time", "listId"],
         ),
-        operation("completeTask", json!({"taskId": string}), &["taskId"]),
+        operation("completeTask", json!({"taskId": string, "completedTime": {"type":["string","null"], "description":"Actual HH:MM only when the user supplies it; otherwise null/omitted means unknown. Use targetDate for the resolved completion date, never the Task schedule or save time."}}), &["taskId"]),
         operation("abandonTask", json!({"taskId": string}), &["taskId"]),
         operation("reopenTask", json!({"taskId": string}), &["taskId"]),
         operation("deleteTask", json!({"taskId": string}), &["taskId"]),
@@ -12732,6 +13189,7 @@ mod collaboration_task_authority_tests {
     fn explanatory_and_deferred_completion_language_cannot_mark_work_complete() {
         let operation = CollaborationTaskOperation::CompleteTask {
             task_id: "task-1".into(),
+            completed_time: None,
         };
         let question = "How do I complete a task named Submit the report?";
         assert!(validate_task_operation_authority(&operation, question, question).is_err());
