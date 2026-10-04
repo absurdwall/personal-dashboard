@@ -4292,14 +4292,7 @@ impl CollaborationApplication {
                         let quote=&input.authorization_quote;
                         if quote.is_empty() || !message.text.contains(quote) || is_review_before_write_request(&message.text.to_lowercase())
                             || has_cancellation_after_authorization_quote(&message.text,quote) {return Err("Quote an active exact request; review/cancellation prevents publication".into());}
-                        let lower=quote.to_lowercase();
-                        if ["maybe","perhaps","也许","可能","不要","先别","don't","do not"].iter().any(|m| lower.contains(m)) {return Err("Habit refresh intent is uncertain or declined".into());}
-                        let factual = daily_record_natural_authority(&CollaborationTaskOperation::CreateShortRecord { category: ShortRecordCategory::Ordinary, content:quote.clone() }, &lower)
-                            && ["起床","睡觉","入睡","woke","slept","got up"].iter().any(|m|lower.contains(m));
-                        let completion_fact = habit_dual::natural_authority(true,&lower) || habit_dual::natural_authority(false,&lower);
-                        if !factual && !completion_fact && !has_authority_marker(&lower,"刷新习惯|更新习惯|刷新打卡|refresh habits|refresh my habits|update habits|refresh habit") {
-                            return Err("The current message does not authorize this Habit rebuild".into());
-                        }
+                        require_habit_refresh_intent(quote)?;
                         Ok(())
                     })??;
                 if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
@@ -9822,6 +9815,36 @@ fn task_operation_authority_markers(
 
 fn has_authority_marker(text: &str, marker_list: &str) -> bool {
     marker_list.split('|').any(|marker| text.contains(marker))
+}
+
+fn require_habit_refresh_intent(quote: &str) -> Result<(), String> {
+    let markers = "刷新习惯|更新习惯|刷新打卡|生成习惯快照|发布习惯快照|生成发布习惯快照|重新生成习惯|refresh habits|refresh my habits|update habits|refresh habit|generate habit snapshot|publish habit snapshot|rebuild habit snapshot";
+    let clauses: Vec<_> = quote.split(['。','；',';','\n','!','！','?','？']).collect();
+    let explicit: Vec<_> = clauses.iter().copied().filter(|clause|has_authority_marker(&clause.to_lowercase(),markers)).collect();
+    let declined = |text: &str| ["maybe","perhaps","也许","可能","不要","先别","don't","do not"].iter().any(|marker|text.contains(marker));
+    // An exact quote may contain several separately authorized effects and
+    // preservation limits. A ban on creating external objects or changing Self
+    // cannot revoke its explicit Habit snapshot request. Declined snapshot
+    // clauses and subsequent cancellation still veto publication.
+    if !explicit.is_empty() {
+        let declined_snapshot = clauses.iter().any(|clause| {
+            let lower=clause.to_lowercase();
+            declined(&lower) && (has_authority_marker(&lower,markers)
+                || ((lower.contains("快照") || lower.contains("snapshot"))
+                    && ["刷新","生成","发布","创建","修改","改写","refresh","generate","publish","create","change","update","write"].iter().any(|m|lower.contains(m)))
+                || ["don't refresh it","do not refresh it","don't publish it","do not publish it"].iter().any(|m|lower.contains(m)))
+        });
+        if declined_snapshot || explicit.iter().any(|clause|has_cancellation_after_authorization_quote(quote,clause)) {
+            return Err("Habit refresh intent is uncertain or declined".into());
+        }
+        return Ok(());
+    }
+    let lower=quote.to_lowercase();
+    if declined(&lower) {return Err("Habit refresh intent is uncertain or declined".into());}
+    let factual = daily_record_natural_authority(&CollaborationTaskOperation::CreateShortRecord { category: ShortRecordCategory::Ordinary, content:quote.into() }, &lower)
+        && ["起床","睡觉","入睡","woke","slept","got up"].iter().any(|m|lower.contains(m));
+    let completion = habit_dual::natural_authority(true,&lower) || habit_dual::natural_authority(false,&lower);
+    if factual || completion {Ok(())} else {Err("The current message does not authorize this Habit rebuild".into())}
 }
 
 fn has_cancellation_after_authorization_quote(message: &str, authorization_quote: &str) -> bool {

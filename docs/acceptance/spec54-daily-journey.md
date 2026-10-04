@@ -47,6 +47,10 @@ fixtures verify host orchestration and persistence rather than native model sema
   Habits and Dida.
 - Bilingual message results preserve independent saved, unknown and retained states
   after serialization/reopen; an older refresh cannot become a later request's result.
+- The exact combined candidate request's explicit snapshot directive is independent
+  of its ban on creating external objects and its limits preserving other sources.
+  Application tests publish from current verified source reads, preserve the pending
+  review and other source bytes, and reject tentative, declined or cancelled refreshes.
 - A confirmed configured native source startup failure permits one fresh transport
   and discovery probe before the current model turn, with the same scoped capabilities.
   Failed recovery still permits local work. Application fixtures preserve earlier
@@ -97,6 +101,8 @@ results, not replacement of `/Applications/Personal Dashboard.app`.
 | Phase C, `fc00484` | Natural evening request saved review, next-day local Task, daytime replan preserving morning baseline and local completion. Real source readback and publication completed independently. | The native call reported an approval-policy refusal under `never`; its original receipt lacks typed pre-execution provenance and remains unknown. Fresh exact source readback confirmed no new check-in. Local successes remain saved. The bounded native approval fix and final model retry are a separate frontier. |
 | Phase D, `1afaae1` | Explicit long-term background retry preserved the original Self paragraph and saved one confirmed update. Planned header times appeared; correction metadata remained in the raw source and disappeared from reading context. After reconnect, the current authorized remaining external endpoint saved and fresh source reads generated a validated/published/ready snapshot; local plus external completion counted once. | First native source startup failed, so that turn made no external effect or refresh and retained local results. This candidate still used the old reply status/footer and diagnostic wording; subsequent source fixes do not prove candidate D UI acceptance. |
 | Phase D next-day continuation, `1afaae1` | Reopening preserved the original chat and exactly one next-day pending Task, without fabricating a Daily Record. Yesterday's existing local completion and the future Task retained their identities. Local-only withdrawal saved locally; native reads confirmed the external end remained completed, so the refreshed OR count stayed one. Original-range withdrawal then confirmed external unmarked state and published a count of zero. | Repeated cached native startup failure prevented fresh source/refresh during the first cross-date request. A later policy-driven native thread rotation recovered discovery within the same running App Server; this is evidence for the recovery seam, not proof of automatic recovery under identical configuration. |
+| Phase E, `90dffdc` | The original chat and pending review reopened. Chinese reply status/footer appeared once and remained truthful; host external diagnostics and source-ID suffix were localized while source and user text remained intact. Natural yesterday completion saved locally and through the mapped native Habit with source readback; time/duration stayed unknown. Ordinary month-plan read/edit/readback appended execution principles while preserving all previous paragraphs, references and the manual preservation section. | Native startup was healthy with unchanged native ID/fingerprint, so bounded failed-startup recovery did not run. A same-request snapshot refresh was rejected by the unrelated external-creation prohibition; previous snapshot retained. This combined-input failure requires the final narrow refresh-only native retry. |
+| Phase E withdrawal, `90dffdc` | A separate natural original-range withdrawal confirmed both ends withdrawn/unmarked, queried the complete source range, and produced validated/published/ready display with zero known exercise completions. Exact wake 07:50, threshold-only sleep, mapping, other Task identities and pending review remained intact. | Sixteen local operations and one memory proposal remained; no effect replay or external object creation. The owned Habit name stayed unchanged and both tested source dates returned to unmarked state. |
 
 The actual installed Dashboard bundle and personal profile/Vault remained unchanged.
 Phase D finished with fourteen local operations and one memory proposal, without
@@ -107,11 +113,13 @@ retained owned Habit has no verified teardown operation and remains outside repo
 
 ## Remaining acceptance
 
-The approval fix and phase D continuation verified the remaining authorized external
-endpoint after current source readback. Same-configuration pre-turn native recovery
-still needs candidate E evidence if startup failure recurs. Complete the final ordinary
-month-plan/reference/boundary checks and verify corrected per-request/reply presentation
-in the final isolated candidate. Cross-date results above retain their observed source
-failure boundary. Append actual observations rather than infer them from tests.
+Phases D and E verified the remaining external endpoint, natural dual save/withdrawal,
+ordinary month-plan preservation, and corrected result/reply presentation. Phase E's
+combined refresh intent failure has a bounded source fix and exact application regression;
+candidate F's refresh-only retry under unrelated preservation clauses remains pending.
+Same-configuration pre-turn native recovery remains application-tested rather than
+observed in a failed-startup candidate: E started healthy, and D's observed recovery
+changed the tool policy. Cross-date results retain their recorded source failure
+boundary. Append actual observations rather than infer them from tests.
 Any final installed-app replacement, main-branch merge, human acceptance,
 issue closure or parent-spec completion requires its separately authorized workflow.
