@@ -120,7 +120,8 @@ pub(super) fn scope_for_habit(text: &str, key: &str, name: &str) -> Option<&'sta
                 "only dida",
                 "only external",
             ]
-            .contains(&qualifier_text.as_str());
+            .contains(&qualifier_text.as_str())
+            || (previous_target && scoped == Some("ambiguous") && qualifier_text.starts_with("只"));
         if target || qualifier {
             scopes.push(scoped);
         }
@@ -139,6 +140,23 @@ pub(super) fn scope_for_habit(text: &str, key: &str, name: &str) -> Option<&'sta
     } else {
         None
     }
+}
+/// A verified source check-in stamp belongs to its own factual date clause.
+/// Other dated reports about the same Habit cannot change this action's scope.
+pub(super) fn scope_for_habit_date(text: &str, key: &str, name: &str, stamp: &str) -> Option<&'static str> {
+    if stamp.len()!=8 { return scope_for_habit(text,key,name); }
+    let date=format!("{}-{}-{}",&stamp[..4],&stamp[4..6],&stamp[6..]);
+    let clauses:Vec<_>=text.split(['。','；',';','\n','!','！','?','？'])
+        .filter(|clause| clause.contains(&date) && names_target(clause,key,name) && !task_clause(clause)).collect();
+    if clauses.is_empty() { return scope_for_habit(text,key,name); }
+    scope_for_habit(&clauses.join("；"),key,name)
+}
+pub(super) fn scope_for_effect(message:&str,quote:&str,key:&str,name:&str,date:&str)->Option<&'static str> {
+    let current=scope_for_habit_date(message,key,name,&date.replace('-',""));
+    let quoted=scope_for_habit(quote,key,name);
+    // Exact per-effect quotes separate otherwise conflicting date clauses, but
+    // cannot omit a destination already explicit for this concrete date.
+    if current==Some("ambiguous") { quoted.or(current) } else { current.or(quoted) }
 }
 pub(super) fn only_local_habit_effects(text: &str, snapshot: &HabitSnapshotView) -> bool {
     let mentioned: Vec<_> = snapshot
@@ -205,7 +223,7 @@ pub(super) fn original_scope(
             let v = external.verification.as_ref()?;
             let scope = v["habitScope"]
                 .as_str()
-                .or_else(|| scope_for_habit(&message.text, key, ""))
+                .or_else(|| scope_for_habit_date(&message.text, key, "", &format!("{stamp:08}")))
                 .unwrap_or("both");
             return Some((scope.into(), mapped.map(str::to_owned)));
         }
@@ -289,6 +307,8 @@ pub(super) fn natural_authority(completed: bool, quote: &str) -> bool {
                 "已完成",
                 "锻炼了",
                 "运动了",
+                "运动完成",
+                "锻炼完成",
                 "做完了",
                 "finished",
                 "completed",
@@ -323,6 +343,13 @@ pub(super) const GUIDANCE: &str = "For an eligible existing completion-type Habi
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn exact_date_scope_cannot_be_omitted_by_a_shorter_effect_quote() {
+        let message="2026-10-03运动完成，只记本地；2026-10-02运动完成，只记滴答。";
+        assert_eq!(scope_for_effect(message,"2026-10-03运动完成","exercise","Exercise","2026-10-03"),Some("local"));
+        assert_eq!(scope_for_effect(message,"2026-10-02运动完成","exercise","Exercise","2026-10-02"),Some("external"));
+        assert_eq!(scope_for_effect("2026-10-03运动完成，只记本地又只记滴答。","2026-10-03运动完成","exercise","Exercise","2026-10-03"),Some("ambiguous"));
+    }
     #[test]
     fn destination_scope_is_per_habit_clause_and_never_inherited_from_tasks_or_other_names() {
         assert_eq!(

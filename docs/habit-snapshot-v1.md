@@ -6,11 +6,18 @@ Personal Dashboard reads one rebuildable, on-demand JSON projection at:
 <selected Tortilla Flat vault>/life/.personal-dashboard/derived/habits-v1.json
 ```
 
-The Dashboard reads this rebuildable external projection. It does not call Dida365,
-poll a source, start an Agent, create the snapshot, or write it. Life Daily Loop
-is the producer and writes only the canonical
-`life/.personal-dashboard/derived/habits-v1.json` target after an explicit Habits
-refresh request.
+The projection can be supplied by Life Daily Loop or rebuilt on an explicitly
+requested manual Collaboration refresh. Dashboard’s bounded producer uses current
+successful native Dida source reads, explicit stable semantic-key mappings, and
+canonical dated Daily Record facts. Automatic morning planning reads the snapshot;
+it does not publish or mutate external Habits. Refresh is on demand, without polling.
+
+A first mapping requires direct key-to-ID confirmation and current native proof of
+that source ID; names never establish identity. Latest complete source envelopes,
+including a confirmed empty response, replace earlier evidence for the same scope.
+Partial/failed responses retain unknown coverage. Mutation attempts invalidate
+pre-write producer reads. Exact wake/sleep facts can rebuild actual-time evidence;
+threshold-only wording never supplies a minute.
 
 For compatibility, the reader checks the former root
 `.personal-dashboard/derived/habits-v1.json` only when the canonical file is
@@ -29,11 +36,11 @@ external IDs.
 
 1. Establish the local lived date for this generation run. The 12-week window starts on Monday eleven weeks before that generation date's Monday. `range.to` is the latest date actually proved by the source read, cannot be after `generatedAt`'s local date, and cannot be in the future.
 2. Build a complete candidate document from already-read source results. Preserve the stable catalog `key` when a display `name` changes. Never fuzzy-match similar names.
-3. Validate the entire candidate against this contract before it can replace the canonical file. A source failure, empty response, invalid date, unsupported schema, or partial candidate must leave the prior canonical file untouched.
+3. Validate the entire candidate against this contract before it can replace the canonical file. A source failure, malformed response, invalid date, unsupported schema, or invalid candidate must leave the prior canonical file untouched.
 4. Write the candidate to a new temporary file in the same directory, flush the file, atomically rename it over `habits-v1.json`, then flush the parent directory. Do not truncate or update the canonical file in place.
 5. Report producer failure in the Agent flow; do not replace prior history with an empty snapshot. Dashboard refresh also keeps the last valid in-process reading if a later canonical read is malformed. After an app restart, durable recovery depends on the producer having honored the atomic replacement rule.
 
-Life Daily Loop supplies this path after an explicit Habits refresh request. Its
+Life Daily Loop and the bounded Dashboard producer supply this path after an explicit Habits refresh request. Its
 writer creates the `life/.personal-dashboard/derived/` parent as needed and
 atomically replaces only the canonical target.
 
@@ -115,3 +122,18 @@ Only `status: "actual-time"` with `evidence: "explicit-time"` may include `actua
 - Invalid first read: `error`; no data is synthesized.
 
 The recent strip covers the seven lived dates ending today. Expanded history always exposes the 12 Monday–Sunday weeks in the bounded window. A dot means there is a source observation or Dashboard short record; its color/status and date detail show whether it counted.
+
+## Collaboration publication and result recovery
+
+The producer validates the complete candidate before atomic activation, then confirms
+publication and page readback separately. Canonical Daily Record existence and exact
+bytes are rechecked before activation and final confirmation. Changed/created/deleted
+sources reject the candidate while preserving their user-authored bytes. Publication
+rollback preserves any concurrently displaced snapshot bytes and reports exact recovery
+locations if continuous races prevent verified restoration.
+
+The saved Collaboration history associates each refresh call with its originating
+request and first result. Duplicate delivery cannot publish again or turn a failed call
+into success. An interrupted final history save leaves that call unknown; reread the
+canonical snapshot and query fresh sources before an intentional new call. A failed
+refresh keeps successful local/external completions and prior valid projections distinct.

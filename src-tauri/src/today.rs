@@ -5797,7 +5797,12 @@ fn project_axis_item<C: TodayClock>(
     expected_date: &str,
     clock: &C,
 ) {
-    match explicit_time_expression(text) {
+    // Planned header timing is authoritative for the arrangement block. Body
+    // uncertainty describes facts and must not erase or invent scheduled time.
+    let timing=period.as_deref().map(explicit_time_expression)
+        .filter(|value| !matches!(value,ExplicitTimeExpression::None|ExplicitTimeExpression::Invalid))
+        .unwrap_or_else(||explicit_time_expression(text));
+    match timing {
         ExplicitTimeExpression::None | ExplicitTimeExpression::Invalid => {
             unlocated.push(unlocated_axis_entry(period, text, expected_date));
         }
@@ -6719,8 +6724,16 @@ fn parse_reading_content(body: &str) -> ReadingContent {
             paragraph.clear();
         }
     };
+    let mut in_comment = false;
     for line in scan_markdown_lines(body) {
         let trimmed = line.text.trim();
+        // Diary metadata stays in canonical Markdown and marker parsing, but
+        // ordinary HTML comment lines are not visible reading context.
+        if !line.in_fenced_code && (in_comment || trimmed.starts_with("<!--")) {
+            in_comment = !trimmed.contains("-->");
+            flush_paragraph(&mut paragraph, &mut content.paragraphs);
+            continue;
+        }
         if trimmed.is_empty() {
             flush_paragraph(&mut paragraph, &mut content.paragraphs);
         } else if line.fence_boundary {

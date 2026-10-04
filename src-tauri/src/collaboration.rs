@@ -118,6 +118,7 @@ pub struct CollaborationMessageView {
     pub external_app_ids: Vec<String>,
     pub external_actions: Vec<ExternalToolActionView>,
     pub pending_external_approval: Option<ExternalAppApprovalRequest>,
+    pub action_results: Vec<CollaborationActionResultView>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -207,6 +208,7 @@ pub struct CollaborationMemoryProposalView {
     pub result_message: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub execution_attempted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -269,6 +271,8 @@ pub struct StoredCollaborationMemoryProposal {
     pub result_message: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default)]
+    execution_attempted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -485,6 +489,8 @@ pub enum CollaborationTaskOperationBaseline {
 #[serde(rename_all = "camelCase")]
 pub struct CollaborationTaskOperationView {
     pub id: String,
+    pub execution_id: String,
+    pub execution_attempted: bool,
     pub operation: CollaborationTaskOperation,
     pub status: String,
     pub target_date: String,
@@ -520,6 +526,10 @@ pub struct StoredCollaborationTaskOperation {
     result_revision: Option<String>,
     #[serde(default)]
     effect_fingerprint: Option<String>,
+    #[serde(default)]
+    execute_attempted: bool,
+    #[serde(default)]
+    observed_in_executions: Vec<String>,
     #[serde(default)]
     automatic_plan: bool,
     task_id: Option<String>,
@@ -1147,7 +1157,7 @@ pub struct RuntimeDynamicToolCall {
     pub arguments: Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeDynamicToolResult {
     pub text: String,
     pub success: bool,
@@ -1493,6 +1503,26 @@ pub struct StoredCollaborationMessage {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct StoredHabitRefreshReceipt {
+    pub execution_id: String,
+    pub call_key: String,
+    pub request_fingerprint: String,
+    pub report: crate::habit_producer::HabitRefreshReport,
+    pub result: Option<RuntimeDynamicToolResult>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationActionResultView {
+    pub id: String,
+    pub source: String,
+    pub status: String,
+    pub target_date: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StoredCollaborationSession {
     pub id: String,
     pub vault_key: Option<String>,
@@ -1520,6 +1550,8 @@ pub struct StoredCollaborationSession {
     pub task_operations: Vec<StoredCollaborationTaskOperation>,
     #[serde(default)]
     pub memory_proposals: Vec<StoredCollaborationMemoryProposal>,
+    #[serde(default)]
+    pub habit_refresh_receipts: Vec<StoredHabitRefreshReceipt>,
     #[serde(default)]
     pub last_habit_refresh: Option<crate::habit_producer::HabitRefreshReport>,
     #[serde(default)]
@@ -2332,6 +2364,7 @@ impl CollaborationApplication {
                 task_operations: Vec::new(),
                 memory_proposals: Vec::new(),
             last_habit_refresh: None,
+            habit_refresh_receipts: Vec::new(),
                 draft: String::new(),
                 drafts_by_date: HashMap::new(),
             };
@@ -2515,6 +2548,7 @@ impl CollaborationApplication {
             task_operations: Vec::new(),
             memory_proposals: Vec::new(),
             last_habit_refresh: None,
+            habit_refresh_receipts: Vec::new(),
             draft: String::new(),
             drafts_by_date: HashMap::new(),
         };
@@ -4057,7 +4091,7 @@ impl CollaborationApplication {
         if proposal.vault_key != vault_key
             || !matches!(
                 proposal.status.as_str(),
-                "awaitingApproval" | "conflict" | "failed"
+                "awaitingApproval" | "conflict" | "failed" | "applied"
             )
         {
             return Err("This task change cannot be reconciled in the selected Vault.".into());
@@ -4206,6 +4240,33 @@ impl CollaborationApplication {
             };
         }
         if call.tool == COLLABORATION_HABIT_REFRESH_TOOL {
+            let call_key = format!("{}:{}:{}", call.thread_id, call.turn_id, call.call_id);
+            let mut request = call.arguments.clone();
+            if let Some(object) = request.as_object_mut() { object.remove("hostSourceReads"); }
+            let fingerprint = stable_effect_fingerprint(&request);
+            let cached = self.read_state(|state| state.sessions.iter()
+                .find(|s| s.id == session_id && s.vault_key.as_deref() == Some(vault_key))
+                .and_then(|s| s.habit_refresh_receipts.iter().find(|r| r.execution_id == execution_id && r.call_key == call_key)).cloned());
+            match cached {
+                Ok(Some(receipt)) if receipt.request_fingerprint == fingerprint => return refresh_receipt_result(&receipt),
+                Ok(Some(_)) => return RuntimeDynamicToolResult {success:false,text:"This refresh call identity belongs to different input; no publication attempted.".into()},
+                Err(error) => return RuntimeDynamicToolResult {success:false,text:format!("Refresh history unavailable; no publication attempted: {error}")},
+                _ => {}
+            }
+            // Save the call association before any publication. A crash or failed
+            // final history save keeps this call unknown, never a second attempt.
+            let pending = StoredHabitRefreshReceipt {
+                execution_id: execution_id.into(), call_key:call_key.clone(), request_fingerprint:fingerprint,
+                report: crate::habit_producer::HabitRefreshReport::failed("query", "Refresh result is unconfirmed. Read the canonical snapshot and query fresh sources before a new refresh call; this call will not be replayed.".into()),
+                result:None,
+            };
+            if let Err(error) = self.update_state(|state| {
+                let session = matching_session_mut(state,vault_key,session_id)?;
+                if session.run_id.as_deref()!=Some(execution_id) || !matches!(session.run_state.as_str(),"thinking"|"reading") {
+                    return Err("Refresh is no longer part of the active request".into());
+                }
+                session.habit_refresh_receipts.push(pending.clone()); Ok(())
+            }) { return RuntimeDynamicToolResult {success:false,text:format!("Refresh identity could not be saved; no publication attempted: {error}")}; }
             let result = (|| -> Result<crate::habit_producer::HabitRefreshReport, String> {
                 if automatic_plan || !daily_record_tool_registered {
                     return Err(
@@ -4252,11 +4313,14 @@ impl CollaborationApplication {
             let persisted = self.update_state(|state| {
                 let session = matching_session_mut(state, vault_key, session_id)?;
                 session.last_habit_refresh = Some(report.clone());
-                Ok(())
+                let receipt = session.habit_refresh_receipts.iter_mut().find(|r| r.execution_id == execution_id && r.call_key == call_key)
+                    .ok_or("Refresh identity is unavailable")?;
+                receipt.report = report.clone();
+                receipt.result = Some(RuntimeDynamicToolResult { success:report.publication=="published" && report.display=="ready",
+                    text:serde_json::to_string(&report).unwrap_or_default() });
+                Ok(refresh_receipt_result(receipt))
             });
-            return RuntimeDynamicToolResult { success:report.publication=="published" && persisted.is_ok(),
-                    text:match persisted {Ok(())=>serde_json::to_string(&report).unwrap_or_default(),
-                        Err(error)=>format!("{} Snapshot stage report could not be saved to conversation history: {error}. Re-read the canonical snapshot before retrying.",serde_json::to_string(&report).unwrap_or_default())} };
+            return persisted.unwrap_or_else(|_| refresh_receipt_result(&pending));
         }
         if automatic_plan && call.tool == COLLABORATION_MEMORY_TOOL {
             return RuntimeDynamicToolResult {
@@ -4297,6 +4361,11 @@ impl CollaborationApplication {
                 execution_mode,
             ) {
                 Ok(proposal) if execution_mode == CollaborationToolExecutionMode::Execute => {
+                    if let Err(error)=self.update_state(|state| {
+                        let session=matching_session_mut(state,vault_key,session_id)?;
+                        let item=session.memory_proposals.iter_mut().find(|item|item.id==proposal.id).ok_or("Memory proposal is unavailable")?;
+                        item.execution_attempted=true; Ok(())
+                    }) {return RuntimeDynamicToolResult{success:false,text:format!("No memory source write attempted: {error}")};}
                     match self.approve_memory_proposal_for_selected_vault(session_id, &proposal.id) {
                         Ok(session) => {
                             let stored = session.memory_proposals.iter().find(|item| item.id == proposal.id);
@@ -4490,6 +4559,16 @@ impl CollaborationApplication {
             habit_scope,
         ) {
             Ok(proposal) if execution_mode == CollaborationToolExecutionMode::Execute => {
+                let attempted = self.update_state(|state| {
+                    let session = matching_session_mut(state, vault_key, session_id)?;
+                    let operation = session.task_operations.iter_mut().find(|item| item.id == proposal.id)
+                        .ok_or("The saved operation is unavailable")?;
+                    operation.execute_attempted = true;
+                    Ok(())
+                });
+                if let Err(error) = attempted {
+                    return RuntimeDynamicToolResult { success:false, text:format!("No source write attempted: execution intent could not be saved: {error}") };
+                }
                 match self.approve_task_operation_for_selected_vault(session_id, &proposal.id) {
                     Ok(session) => match session.task_operations.iter().find(|item| item.id == proposal.id) {
                         Some(item) if item.status == "applied" => RuntimeDynamicToolResult {
@@ -4583,7 +4662,7 @@ impl CollaborationApplication {
             if !already_applied {
                 let snapshot=self.daily_data_service.read_habit_snapshot()?;
                 let habit=snapshot.habit(habit_key).ok_or("The local Habit identity is unavailable; keep external source work independent")?;
-                if habit_dual::scope_for_habit(&current_message,habit_key,&habit.name)==Some("external") {
+                if habit_dual::scope_for_effect(&current_message,authorization_quote,habit_key,&habit.name,target_date)==Some("external") {
                     return Err("This only-external request cannot change the local Habit endpoint.".into());
                 }
                 let quote=authorization_quote.to_lowercase();
@@ -4766,6 +4845,7 @@ impl CollaborationApplication {
                 replaces: replaces.clone(),
                 source_revision: source_revision.clone(),
                 expected_document_fingerprint: Some(stable_effect_fingerprint(&expected_document)),
+                execution_attempted: false,
                 status: "awaitingApproval".into(),
                 result_message: None,
                 created_at: now.clone(),
@@ -5062,6 +5142,8 @@ impl CollaborationApplication {
                         result_snapshot: Some(result_snapshot),
                         result_revision: saved.revision.clone(),
                         effect_fingerprint: Some(fingerprint),
+                        execute_attempted: false,
+                observed_in_executions: Vec::new(),
                         automatic_plan: true,
                         task_id: None,
                         list_id: None,
@@ -5085,6 +5167,17 @@ impl CollaborationApplication {
         })
     }
 
+    fn associate_checked_operation(&self,vault_key:&str,session_id:&str,execution_id:&str,id:&str)->Result<(),String> {
+        self.update_state(|state| {
+            let session=matching_session_mut(state,vault_key,session_id)?;
+            let operation=session.task_operations.iter_mut().find(|item|item.id==id).ok_or("Checked source operation is unavailable")?;
+            if operation.execution_id!=execution_id && !operation.observed_in_executions.iter().any(|e|e==execution_id) {
+                operation.observed_in_executions.push(execution_id.into());
+            }
+            Ok(())
+        })
+    }
+
     fn propose_task_operation(
         &self,
         vault_key: &str,
@@ -5099,6 +5192,29 @@ impl CollaborationApplication {
         authorization_quote: Option<&str>,
         habit_scope: Option<&str>,
     ) -> Result<CollaborationTaskOperationView, String> {
+        // Only repeated, explicitly executing effects can recover an original
+        // receipt. A pending review is never approval for a later request.
+        if authorization_quote.is_some() && !is_task_list_operation(&operation) {
+            let prior = self.read_state(|state| {
+                let session=state.sessions.iter().find(|s|s.id==session_id && s.vault_key.as_deref()==Some(vault_key))?;
+                let current=session.messages.iter().find(|m|m.role=="user" && m.execution_id.as_deref()==Some(execution_id))?;
+                if has_authority_marker(&current.text.to_lowercase(),"another|a second|duplicate|再建|另建|另一个") { return None; }
+                session.task_operations.iter().find(|item| item.execution_id!=execution_id
+                    && (item.execute_attempted || item.status=="applied") && item.status!="rejected"
+                    && item.operation==operation && item.target_date==target_date
+                    && (!matches!(operation,CollaborationTaskOperation::SetLocalHabitCompletion{..})
+                        || habit_scope==habit_dual::receipt_scope(&item.baseline).map(|(scope,_)|scope))
+                    && session.messages.iter().any(|m|m.role=="user" && m.execution_id.as_deref()==Some(&item.execution_id) && m.text==current.text))
+                    .map(|item|item.id.clone())
+            })?;
+            if let Some(id)=prior {
+                let checked=self.reconcile_task_operation_for_selected_vault(session_id,&id)?;
+                let item=checked.task_operations.iter().find(|item|item.id==id).ok_or("Prior source result is unavailable")?;
+                self.associate_checked_operation(vault_key,session_id,execution_id,&item.id)?;
+                if item.status=="applied" { return Ok(item.clone()); }
+                return Err("This exact effect has a previous unconfirmed source result. Re-read its stable receipt before continuing; no duplicate operation was created.".into());
+            }
+        }
         if matches!(operation, CollaborationTaskOperation::SaveDailyPlan { .. }) {
             return self.propose_daily_plan_operation(
                 vault_key,
@@ -5145,6 +5261,7 @@ impl CollaborationApplication {
                 target_date,
                 operation,
                 habit_scope.unwrap_or("local"),
+                authorization_quote,
             );
         }
         if !self.task_service.is_available() {
@@ -5245,7 +5362,7 @@ impl CollaborationApplication {
                     .task_operations
                     .iter()
                     .find(|saved| {
-                        saved.status == "applied"
+                        (saved.status == "applied" || saved.execute_attempted)
                             && saved.operation == operation
                             && saved.target_date == target_date
                             && session.messages.iter().any(|message| {
@@ -5258,6 +5375,20 @@ impl CollaborationApplication {
                     .cloned()
             })?;
             if let Some(saved) = replay {
+                if saved.status != "applied" {
+                    // Read the original stable source effect before continuing. Review-first
+                    // proposals never enter this path, including legacy proposals.
+                    let reconciled = self.reconcile_task_operation_for_selected_vault(session_id, &saved.id)?;
+                    let prior = reconciled.task_operations.iter().find(|item| item.id == saved.id)
+                        .ok_or("Prior execution result is unavailable")?;
+                    self.associate_checked_operation(vault_key,session_id,execution_id,&prior.id)?;
+                    if prior.status == "applied" { return Ok(prior.clone()); }
+                    if prior.status == "awaitingApproval" && task_view.revision == saved.expected_revision {
+                        return Ok(prior.clone());
+                    }
+                    return Err("The previous attempted Task has an unconfirmed or changed source result. Read its original stable ID before continuing; do not create a duplicate.".into());
+                }
+                self.associate_checked_operation(vault_key,session_id,execution_id,&saved.id)?;
                 if task_operation_effect_matches(&saved, &task_view) {
                     return Ok(task_operation_view(&saved));
                 }
@@ -5348,6 +5479,8 @@ impl CollaborationApplication {
                 result_snapshot: None,
                 result_revision: None,
                 effect_fingerprint: None,
+                execute_attempted: false,
+                observed_in_executions: Vec::new(),
                 automatic_plan: false,
                 task_id: task_id.clone(),
                 list_id: list_id.clone(),
@@ -5490,6 +5623,8 @@ impl CollaborationApplication {
                 result_snapshot: None,
                 result_revision: None,
                 effect_fingerprint: Some(fingerprint),
+                        execute_attempted: false,
+                observed_in_executions: Vec::new(),
                 automatic_plan: false,
                 task_id: None,
                 list_id: None,
@@ -5612,6 +5747,7 @@ impl CollaborationApplication {
         target_date: &str,
         operation: CollaborationTaskOperation,
         requested_scope: &str,
+        authorization_quote: Option<&str>,
     ) -> Result<CollaborationTaskOperationView, String> {
         if !self.daily_data_service.is_available() {
             return Err(
@@ -5643,7 +5779,7 @@ impl CollaborationApplication {
         let (scope, external_id) = self.read_state(|state| -> Result<(String,Option<String>),String> {
             let session = state.sessions.iter().find(|session|session.id==session_id && session.vault_key.as_deref()==Some(vault_key)).ok_or("Current Habit request is unavailable")?;
             let message = session.messages.iter().find(|message|message.execution_id.as_deref()==Some(execution_id)).ok_or("Current Habit instruction is unavailable")?;
-            let explicit = habit_dual::scope_for_habit(&message.text,habit_key,&habit.name);
+            let explicit = habit_dual::scope_for_effect(&message.text,authorization_quote.unwrap_or(&message.text),habit_key,&habit.name,target_date);
             if matches!(explicit,Some("external"|"ambiguous")) { return Err("This request does not authorize the local endpoint; use only the specified native external source or clarify conflicting scopes.".into()); }
             if explicit==Some("local") && requested_scope!="local" { return Err("Only-local intent must preserve local-only scope.".into()); }
             let current_id = habit_dual::mapped_id(&snapshot,habit_key);
@@ -5758,6 +5894,8 @@ impl CollaborationApplication {
                 result_snapshot: None,
                 result_revision: None,
                 effect_fingerprint: Some(effect_fingerprint),
+                execute_attempted: false,
+                observed_in_executions: Vec::new(),
                 automatic_plan: false,
                 task_id: None,
                 list_id: None,
@@ -7079,16 +7217,19 @@ impl CollaborationApplication {
                     if verification.get("habitScope").is_none() {
                         let message=session.messages.iter().find(|message|message.execution_id.as_deref()==Some(run_id)).ok_or("External Habit request is unavailable")?;
                         let id=verification["habitCheckin"]["habitId"].as_str();
-                        let scope=self.daily_data_service.read_habit_snapshot().ok().and_then(|snapshot| {
+                        let stamp=format!("{:08}",verification["habitCheckin"]["stamp"].as_i64().unwrap_or(0));
+                        let explicit_source_scope=id.and_then(|id|habit_dual::scope_for_habit_date(&message.text,id,"",&stamp)).map(str::to_owned);
+                        let scope=explicit_source_scope.or_else(||self.daily_data_service.read_habit_snapshot().ok().and_then(|snapshot| {
                             let habit=snapshot.habits.iter().find(|habit|habit_dual::mapped_id(&snapshot,&habit.key).as_deref()==id && id.is_some())?;
-                            habit_dual::scope_for_habit(&message.text,&habit.key,&habit.name).map(str::to_owned).or_else(|| {
+                            habit_dual::scope_for_habit_date(&message.text,&habit.key,&habit.name,
+                                &format!("{:08}",verification["habitCheckin"]["stamp"].as_i64().unwrap_or(0))).map(str::to_owned).or_else(|| {
                                 if verification["habitCheckin"]["status"]!=0 { return None; }
                                 let stamp=format!("{:08}",verification["habitCheckin"]["stamp"].as_i64()?);
                                 if stamp.len()!=8 { return None; }
                                 let date=format!("{}-{}-{}",&stamp[..4],&stamp[4..6],&stamp[6..]);
                                 habit_dual::original_scope(session,&habit.key,&date,id).map(|(scope,_)|scope)
                             })
-                        });
+                        }));
                         verification["habitScope"]=json!(scope.unwrap_or_else(||"both".into()));
                     }
                 }
@@ -7239,7 +7380,7 @@ impl CollaborationApplication {
             } else {
                 session.run_state = "completed".into();
                 session.progress =
-                    "Codex returned a text reply. No Dashboard data was changed.".into();
+                    "Reply saved. Check each action's source result; unconfirmed actions remain unfinished.".into();
             }
             Ok(())
         })
@@ -7490,6 +7631,38 @@ impl CollaborationApplication {
     }
 }
 
+fn refresh_receipt_result(receipt: &StoredHabitRefreshReceipt) -> RuntimeDynamicToolResult {
+    receipt.result.clone().unwrap_or_else(|| RuntimeDynamicToolResult {
+        success:false, text:serde_json::to_string(&receipt.report).unwrap_or_default(),
+    })
+}
+
+fn message_action_results(session: &StoredCollaborationSession, message: &StoredCollaborationMessage) -> Vec<CollaborationActionResultView> {
+    if message.role != "user" { return Vec::new(); }
+    let Some(execution) = message.execution_id.as_deref() else { return Vec::new(); };
+    let mut results:Vec<_> = session.task_operations.iter().filter(|item| item.execution_id == execution || item.observed_in_executions.iter().any(|e|e==execution))
+        .map(|item| CollaborationActionResultView {
+            id:item.id.clone(), source:"Dashboard".into(), status:if item.status=="awaitingApproval" && item.execute_attempted {"unknown".into()} else {item.status.clone()},
+            target_date:Some(item.target_date.clone()), message:item.result_message.clone().unwrap_or_else(||
+                if item.execute_attempted {"Source result unconfirmed; check the saved action before retrying.".into()} else {"Prepared for review; not saved to the source.".into()}),
+        }).collect();
+    results.extend(session.memory_proposals.iter().filter(|item|item.execution_id==execution).map(|item|CollaborationActionResultView {
+        id:item.id.clone(),source:"Long-term background".into(),status:if item.status=="awaitingApproval" && item.execution_attempted {"unknown".into()}else{item.status.clone()},
+        target_date:None,message:item.result_message.clone().unwrap_or_else(||if item.execution_attempted {"Background save is unconfirmed; read the existing Self document before retrying.".into()}else{"Prepared for review; long-term background not changed.".into()}),
+    }));
+    results.extend(message.external_actions.iter().map(|action| CollaborationActionResultView {
+        id:action.action_id.clone(),source:action.source_name.clone(),status:action.status.clone(),target_date:None,message:action.result_summary.clone(),
+    }));
+    for receipt in session.habit_refresh_receipts.iter().filter(|r| r.execution_id == execution) {
+        let report=&receipt.report;
+        for (source,status) in [("Habit source query",&report.query),("Habit generation",&report.generation),("Habit publication",&report.publication),("Habits page",&report.display)] {
+            results.push(CollaborationActionResultView {id:format!("{}:{source}",receipt.call_key),source:source.into(),
+                status:if receipt.result.is_none(){"unknown".into()}else{status.clone()},target_date:report.range_to.clone(),message:report.message.clone()});
+        }
+    }
+    results
+}
+
 fn matching_session_mut<'a>(
     state: &'a mut CollaborationState,
     vault_key: &str,
@@ -7599,6 +7772,7 @@ fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionVie
                 external_app_ids: message.external_app_ids.clone(),
                 external_actions: message.external_actions.clone(),
                 pending_external_approval: message.pending_external_approval.clone(),
+                action_results: message_action_results(session, message),
             })
             .collect(),
         task_operations: session
@@ -7947,6 +8121,7 @@ fn memory_proposal_view(
 ) -> CollaborationMemoryProposalView {
     CollaborationMemoryProposalView {
         id: proposal.id.clone(),
+        execution_attempted: proposal.execution_attempted,
         status: proposal.status.clone(),
         basis: proposal.basis.clone(),
         authorization_quote: proposal.authorization_quote.clone(),
@@ -7964,6 +8139,8 @@ fn task_operation_view(
 ) -> CollaborationTaskOperationView {
     CollaborationTaskOperationView {
         id: operation.id.clone(),
+        execution_id: operation.execution_id.clone(),
+        execution_attempted: operation.execute_attempted,
         operation: operation.operation.clone(),
         status: operation.status.clone(),
         target_date: operation.target_date.clone(),
@@ -8914,7 +9091,7 @@ fn task_list_natural_authority(operation: &CollaborationTaskOperation, quote: &s
     match operation {
         CollaborationTaskOperation::CreateTask { name, .. } => {
             quote.contains(&name.to_lowercase()) && (completion_fact
-                || contains("我要|我会|需要|必须|我打算|我准备|安排|补建|补记|下周|明天|后天|i need to|i have to|i will|i plan to|i want to|i'm going to|tomorrow|next week|on friday|add |create "))
+                || contains("我要|我会|需要|必须|我打算|我准备|安排|创建|补建|补记|下周|明天|后天|i need to|i have to|i will|i plan to|i want to|i'm going to|tomorrow|next week|on friday|add |create "))
         }
         CollaborationTaskOperation::UpdateTask { task_id, name, .. } => (quote.contains(&name.to_lowercase()) || quote.contains(&task_id.to_lowercase()))
             && contains("改|挪|移到|移去|延期|清空|取消日期|取消时间|rename|move|reschedule|clear|undated|no date|change|update"),
@@ -10106,6 +10283,16 @@ fn is_explicit_memory_instruction(text: &str) -> bool {
     ]
     .iter()
     .any(|marker| normalized.contains(marker))
+        || normalized.split(['。','；',';','\n']).any(|clause| {
+            if ["不要","别","先不","暂不","可能","也许","以后","讨论","如果","要不要"].iter().any(|m|clause.contains(m)) {return false;}
+            ["请更新","更新","请写入","请记录","请添加"].iter().any(|action| {
+                clause.find(action).is_some_and(|start| {
+                    let target=&clause[start+action.len()..];
+                    ["长期背景","长期记忆"].iter().any(|object|target.find(object).is_some_and(|end|
+                        target[..end].chars().count()<=48 && !target[..end].contains(['：',':','。','；',';','，',',','?','？'])))
+                })
+            })
+        })
 }
 
 fn is_affirmative_memory_confirmation(text: &str) -> bool {
@@ -11004,6 +11191,7 @@ mod collaboration_memory_tests {
             task_operations: Vec::new(),
             memory_proposals: Vec::new(),
             last_habit_refresh: None,
+            habit_refresh_receipts: Vec::new(),
             draft: String::new(),
             drafts_by_date: HashMap::new(),
         }

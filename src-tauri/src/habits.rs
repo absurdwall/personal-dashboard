@@ -785,7 +785,7 @@ pub fn project_snapshot_with_names_at_local_date(
     } else {
         (
             HabitSnapshotState::Ready,
-            "已读取按需生成的本地快照；Dashboard 未连接或轮询外部服务。".to_string(),
+            "已读取按需生成的本地快照；来源覆盖与刷新结果可分别核对。".to_string(),
         )
     };
     Ok(HabitSnapshotView {
