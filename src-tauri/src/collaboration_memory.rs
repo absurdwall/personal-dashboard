@@ -9,8 +9,8 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const LONG_TERM_CONTEXT_PATH: &str = "everyday/wiki/Life Operating Principles.md";
-const ROUTINE_REFERENCE_PATH: &str = "everyday/.agents/skills/life-companion/SKILL.md";
+pub(crate) const LONG_TERM_CONTEXT_PATH: &str = "life/Self.md";
+pub(crate) const ROUTINE_REFERENCE_PATH: &str = ".agents/skills/life-daily-loop/SKILL.md";
 const MAX_CONTEXT_BYTES: u64 = 64 * 1024;
 static TEMPORARY_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
@@ -217,7 +217,7 @@ fn read_long_term_document(root: &Path) -> LongTermMemoryDocumentView {
                 source_path: LONG_TERM_CONTEXT_PATH.into(),
                 content: String::new(),
                 revision: None,
-                message: "The existing Life Operating Principles document was not found. Personal Dashboard will not create a second profile.".into(),
+                message: "The existing life/Self.md document was not found. Personal Dashboard will not create a second profile.".into(),
             },
             Err(error) => memory_document_error(error),
         },
@@ -395,15 +395,15 @@ mod tests {
                 "dashboard-memory-test-{}-{nonce}-{sequence}",
                 std::process::id()
             ));
-            fs::create_dir_all(root.join("everyday/wiki")).unwrap();
-            fs::create_dir_all(root.join("everyday/.agents/skills/life-companion")).unwrap();
+            fs::create_dir_all(root.join("life")).unwrap();
+            fs::create_dir_all(root.join(".agents/skills/life-daily-loop")).unwrap();
             fs::write(
-                root.join("everyday/wiki/Life Operating Principles.md"),
+                root.join("life/Self.md"),
                 "# Synthetic operating principles\n\nPrefer a short morning plan.\n",
             )
             .unwrap();
             fs::write(
-                root.join("everyday/.agents/skills/life-companion/SKILL.md"),
+                root.join(".agents/skills/life-daily-loop/SKILL.md"),
                 "# Synthetic daily workflow reference\nRead current facts first.\n",
             )
             .unwrap();
@@ -451,20 +451,93 @@ mod tests {
         let sources = service.read(Some(&key(vault.path()))).unwrap();
 
         assert_eq!(sources.long_term.state, "ready");
+        assert_eq!(sources.long_term.source_path, "life/Self.md");
         assert!(sources
             .long_term
             .content
             .contains("Prefer a short morning plan."));
         assert_eq!(sources.routine_reference.state, "ready");
+        assert_eq!(
+            sources.routine_reference.source_path,
+            ".agents/skills/life-daily-loop/SKILL.md"
+        );
         assert!(sources
             .routine_reference
             .content
             .contains("Read current facts first."));
+        assert_eq!(fs::read_dir(vault.path().join("life")).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn legacy_background_is_never_read_or_written_even_when_self_is_missing() {
+        let vault = IsolatedVault::new();
+        let legacy = vault
+            .path()
+            .join("everyday/wiki/Life Operating Principles.md");
+        fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        fs::write(&legacy, "Legacy source retained for recovery only.\n").unwrap();
+        let service = SelectedVaultCollaborationMemoryService::new(workspace_file(
+            vault.path(),
+            vault.path(),
+        ));
+        let before = service.read(Some(&key(vault.path()))).unwrap().long_term;
+        assert!(!before.content.contains("Legacy source"));
+        let updated = service
+            .save_long_term(
+                &key(vault.path()),
+                before.revision.as_deref().unwrap(),
+                "# Synthetic Self\n\nConfirmed durable context.\n",
+            )
+            .unwrap();
+        assert_eq!(updated.source_path, "life/Self.md");
         assert_eq!(
-            fs::read_dir(vault.path().join("everyday/wiki"))
-                .unwrap()
-                .count(),
-            1
+            fs::read_to_string(&legacy).unwrap(),
+            "Legacy source retained for recovery only.\n"
+        );
+
+        fs::remove_file(vault.path().join("life/Self.md")).unwrap();
+        let missing = service.read(Some(&key(vault.path()))).unwrap().long_term;
+        assert_eq!(missing.state, "missing");
+        assert!(missing.content.is_empty());
+        assert!(service
+            .save_long_term(
+                &key(vault.path()),
+                updated.revision.as_deref().unwrap(),
+                "must not recreate or fall back"
+            )
+            .unwrap_err()
+            .contains("missing"));
+        assert!(!vault.path().join("life/Self.md").exists());
+        assert_eq!(
+            fs::read_to_string(&legacy).unwrap(),
+            "Legacy source retained for recovery only.\n"
+        );
+    }
+
+    #[test]
+    fn repeated_reads_and_unchanged_saves_preserve_the_merged_document() {
+        let vault = IsolatedVault::new();
+        let merged = "# Synthetic Self\n\nExisting preferences.\n\n## Preserved source\n\n# Synthetic legacy principles\n\nOriginal context.\n";
+        fs::write(vault.path().join("life/Self.md"), merged).unwrap();
+        let service = SelectedVaultCollaborationMemoryService::new(workspace_file(
+            vault.path(),
+            vault.path(),
+        ));
+        let first = service.read(Some(&key(vault.path()))).unwrap().long_term;
+        for _ in 0..2 {
+            let saved = service
+                .save_long_term(
+                    &key(vault.path()),
+                    first.revision.as_deref().unwrap(),
+                    merged,
+                )
+                .unwrap();
+            assert_eq!(saved.content, merged);
+            assert_eq!(saved.revision, first.revision);
+        }
+        assert_eq!(
+            fs::read_to_string(vault.path().join("life/Self.md")).unwrap(),
+            merged
         );
     }
 
@@ -486,24 +559,16 @@ mod tests {
 
         assert_eq!(updated.state, "ready");
         assert!(updated.content.contains("Keep Mondays open."));
-        assert!(fs::read_to_string(
-            other
-                .path()
-                .join("everyday/wiki/Life Operating Principles.md")
-        )
-        .unwrap()
-        .contains("Prefer a short morning plan."));
+        assert!(fs::read_to_string(other.path().join("life/Self.md"))
+            .unwrap()
+            .contains("Prefer a short morning plan."));
         assert!(service
             .save_long_term(&key(vault.path()), &revision, "stale overwrite")
             .unwrap_err()
             .contains("changed outside Personal Dashboard"));
-        assert!(fs::read_to_string(
-            vault
-                .path()
-                .join("everyday/wiki/Life Operating Principles.md")
-        )
-        .unwrap()
-        .contains("Keep Mondays open."));
+        assert!(fs::read_to_string(vault.path().join("life/Self.md"))
+            .unwrap()
+            .contains("Keep Mondays open."));
     }
 
     #[test]
@@ -523,12 +588,8 @@ mod tests {
             )
             .unwrap_err()
             .contains("selected Vault changed"));
-        assert!(fs::read_to_string(
-            vault
-                .path()
-                .join("everyday/wiki/Life Operating Principles.md")
-        )
-        .unwrap()
-        .contains("Prefer a short morning plan."));
+        assert!(fs::read_to_string(vault.path().join("life/Self.md"))
+            .unwrap()
+            .contains("Prefer a short morning plan."));
     }
 }
