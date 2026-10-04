@@ -8994,10 +8994,6 @@ button.habit-cell:focus-visible {
   font-size: 0.6rem;
 }
 
-.collaboration-voice-controls select {
-  max-width: min(12rem, 100%);
-}
-
 .collaboration-voice-controls button {
   min-height: 2rem;
   padding: 0.35rem 0.65rem;
@@ -9564,14 +9560,6 @@ button.habit-cell:focus-visible {
   justify-content: flex-end;
   padding: 0.35rem 0.5rem;
 }
-.collaboration-voice-language-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
 .collaboration-voice-controls .collaboration-microphone {
   display: inline-flex;
   align-items: center;
@@ -9582,7 +9570,58 @@ button.habit-cell:focus-visible {
 .collaboration-stop-icon,
 .collaboration-microphone[data-action="stop"] .collaboration-microphone-icon { display: none; }
 .collaboration-microphone[data-action="stop"] .collaboration-stop-icon { display: block; }
-.collaboration-microphone[data-action="stop"] { color: var(--parity-accent-strong); }
+.collaboration-microphone[data-action="stop"] {
+  background: var(--parity-accent-strong);
+  color: var(--parity-accent-on);
+}
+.collaboration-microphone svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
+.collaboration-voice-controls .collaboration-voice-status {
+  margin-right: auto;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+.collaboration-voice-status:is([data-state="requesting"], [data-state="connecting"], [data-state="transcribing"], [data-state="recording"]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.4rem;
+  background: var(--parity-accent-soft);
+  color: var(--parity-ink);
+}
+.collaboration-voice-status:is([data-state="requesting"], [data-state="connecting"], [data-state="transcribing"])::before {
+  content: "";
+  width: 0.75rem;
+  height: 0.75rem;
+  flex: 0 0 0.75rem;
+  border: 2px solid var(--parity-border);
+  border-top-color: var(--parity-accent-strong);
+  border-radius: 50%;
+  animation: collaboration-voice-wait 0.8s linear infinite;
+}
+.collaboration-voice-status[data-state="recording"] {
+  background: #214e43;
+  color: #ffffff;
+  font-weight: 700;
+}
+.collaboration-voice-status[data-state="recording"]::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: 0 0 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+@keyframes collaboration-voice-wait { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .collaboration-voice-status::before { animation: none; }
+}
 .collaboration-voice-privacy {
   margin: 0;
   color: var(--parity-muted);

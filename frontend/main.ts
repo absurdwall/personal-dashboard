@@ -59,17 +59,13 @@ import {
 import { preserveTodayDayTaskPlanError } from "./day-task-presentation.js";
 import {
   beginVoiceTranscriptSave,
-  BrowserCollaborationVoiceRuntime,
-  collaborationVoiceControls,
-  collaborationVoiceLocale,
-  readCollaborationVoiceLanguage,
-  rememberCollaborationVoiceLanguage,
-  type CollaborationVoiceLanguage,
-  CollaborationVoiceInputController,
   enqueueCollaborationDraftWrite,
+  submitCollaborationDraftSnapshot,
   type CollaborationVoiceFailure,
   type CollaborationVoiceTarget,
 } from "./collaboration-voice.js";
+import { BrowserCodexDictationRuntime } from "./collaboration-dictation-runtime.js";
+import { CodexCollaborationVoiceInputController } from "./collaboration-dictation.js";
 import {
   calendarTasksForDate,
   isCurrentTaskResponse,
@@ -892,18 +888,13 @@ type DailyPlanAutomationView = Readonly<{
   currentRun: DailyPlanAutomationRunView | null;
 }>;
 
-type CollaborationVoiceLocale = Readonly<{
-  id: string;
-  displayName: string;
-}>;
-
-type CollaborationVoiceCapabilities = Readonly<{
-  available: boolean;
-  reasonCode: string | null;
-  locales: readonly CollaborationVoiceLocale[];
-}>;
-
 type CollaborationVoiceStatusKey =
+  | "collaboration.voiceIncomplete"
+  | "collaboration.voiceLoginRequired"
+  | "collaboration.voiceConnectionFailed"
+  | "collaboration.voiceServiceFailed"
+  | "collaboration.voiceQuotaExceeded"
+  | "collaboration.voiceConnecting"
   | "collaboration.voiceRequesting"
   | "collaboration.voiceRecording"
   | "collaboration.voiceTranscribing"
@@ -915,8 +906,7 @@ type CollaborationVoiceStatusKey =
   | "collaboration.voiceRecordingFailed"
   | "collaboration.voiceEmptyRecording"
   | "collaboration.voiceRecognitionFailed"
-  | "collaboration.voiceDraftSaveFailed"
-  | "collaboration.voiceSelectedUnavailable";
+  | "collaboration.voiceDraftSaveFailed";
 
 function localCalendarDate(): string {
   const now = new Date();
@@ -951,39 +941,42 @@ let collaborationConnectionRequest = 0;
 let collaborationStatusTimer: number | null = null;
 let collaborationTargetDatePendingSession: string | null = null;
 const collaborationDrafts = new Map<string, string>();
+const collaborationUnsavedDrafts = new Set<string>();
 const collaborationDraftWrites = new Map<string, Promise<CollaborationSessionView>>();
+let collaborationVaultSwitchDraftWrites: Promise<unknown>[] | null = null;
+let collaborationVaultSelectionRevision = 0;
 const collaborationDraftSaveTimers = new Map<string, number>();
 const collaborationTargetDates = new Map<string, string>();
-let collaborationVoiceCapabilities: CollaborationVoiceCapabilities | null = null;
-let collaborationVoiceCapabilityLoading = false;
-let collaborationVoiceCapabilityRequest = 0;
-let collaborationVoiceAuthorizationPending = false;
-let collaborationVoiceAuthorizationRequest = 0;
-let collaborationVoiceAuthorizationTarget: CollaborationVoiceTarget | null = null;
-let preferredCollaborationVoiceLanguage: CollaborationVoiceLanguage | undefined;
-try { preferredCollaborationVoiceLanguage = readCollaborationVoiceLanguage(window.localStorage); } catch { /* Storage is optional. */ }
 let activeCollaborationVoiceTarget: CollaborationVoiceTarget | null = null;
 const collaborationVoiceStatuses = new Map<string, CollaborationVoiceStatusKey>();
+const collaborationIncompleteVoiceDrafts = new Set<string>();
+const collaborationVoicePreviews = new Map<string, string>();
 const collaborationSendingDrafts = new Set<string>();
 
-const collaborationVoiceController = new CollaborationVoiceInputController(
-  new BrowserCollaborationVoiceRuntime(async (audio, locale) => {
-    const bytes = new Uint8Array(await audio.arrayBuffer());
-    return window.__TAURI__.core.invoke<string>("collaboration_transcribe_voice", {
-      audio: Array.from(bytes),
-      mimeType: audio.type || "audio/mp4",
-      locale,
-    });
-  }),
+const collaborationVoiceController = new CodexCollaborationVoiceInputController(
+  new BrowserCodexDictationRuntime((command, args) => window.__TAURI__.core.invoke(command,args)),
   {
     onState: (state, target) => {
       activeCollaborationVoiceTarget = state === "idle" ? null : target;
-      if (state === "requesting") setCollaborationVoiceStatus(target, "collaboration.voiceRequesting");
+      if (state === "requesting") {
+        setCollaborationVoiceStatus(target, "collaboration.voiceRequesting");
+      }
+      if (state === "connecting") setCollaborationVoiceStatus(target, "collaboration.voiceConnecting");
       if (state === "recording") setCollaborationVoiceStatus(target, "collaboration.voiceRecording");
       if (state === "transcribing") setCollaborationVoiceStatus(target, "collaboration.voiceTranscribing");
-      renderCollaborationVoiceControls();
+      renderCollaborationWorkspace();
     },
     onTranscript: handleCollaborationVoiceTranscript,
+    unconfirmedPreviewLabel: () => t("collaboration.voiceUnconfirmedPreview"),
+    onPreview: (target, text) => {
+      const key = collaborationDraftKey(target.sessionId, target.targetDate);
+      if (text) collaborationVoicePreviews.set(key,text); else collaborationVoicePreviews.delete(key);
+      if (isCurrentCollaborationVoiceTarget(target)) setRawText(collaborationVoicePreview,text?t("collaboration.voicePreview",{text}):"");
+    },
+    onIncomplete: (target) => {
+      collaborationIncompleteVoiceDrafts.add(collaborationDraftKey(target.sessionId, target.targetDate));
+      setCollaborationVoiceStatus(target,"collaboration.voiceIncomplete");
+    },
     onFailure: (target, failure) => {
       setCollaborationVoiceStatus(target, collaborationVoiceFailureStatus(failure));
       renderCollaborationVoiceControls();
@@ -999,14 +992,19 @@ function collaborationDraftKey(sessionId: string, targetDate: string): string {
   return `${sessionId}\u0000${targetDate}`;
 }
 
-function cacheCollaborationDrafts(session: CollaborationSessionView): void {
+function cacheCollaborationDrafts(session: CollaborationSessionView, preserveLocal = false): void {
+  // Reads and navigation cannot replace edits awaiting or lacking a save ack.
+  // Only acknowledgement of the exact current snapshot releases protection.
   for (const [date, draft] of Object.entries(session.draftsByDate)) {
-    collaborationDrafts.set(collaborationDraftKey(session.id, date), draft);
+    const key = collaborationDraftKey(session.id, date);
+    if ((!preserveLocal && !collaborationUnsavedDrafts.has(key)) || !collaborationDrafts.has(key)) {
+      collaborationDrafts.set(key, draft);
+    }
   }
-  collaborationDrafts.set(
-    collaborationDraftKey(session.id, session.targetDate),
-    session.draft,
-  );
+  const targetKey = collaborationDraftKey(session.id, session.targetDate);
+  if ((!preserveLocal && !collaborationUnsavedDrafts.has(targetKey)) || !collaborationDrafts.has(targetKey)) {
+    collaborationDrafts.set(targetKey, session.draft);
+  }
 }
 
 function collaborationDraftForDate(session: CollaborationSessionView, date: string): string {
@@ -1054,7 +1052,7 @@ const collaborationTaskToolNotice = document.querySelector<HTMLElement>("#collab
 const collaborationComposer = document.querySelector<HTMLFormElement>("#collaboration-composer");
 const collaborationMessageDraft = document.querySelector<HTMLTextAreaElement>("#collaboration-message-draft");
 const collaborationComposerStatus = document.querySelector<HTMLElement>("#collaboration-composer-status");
-const collaborationVoiceLanguageSelect = document.querySelector<HTMLSelectElement>("#collaboration-voice-language");
+const collaborationVoicePreview = document.querySelector<HTMLElement>("#collaboration-voice-preview");
 const collaborationVoiceStartButton = document.querySelector<HTMLButtonElement>("#collaboration-voice-start");
 const collaborationVoiceCancelButton = document.querySelector<HTMLButtonElement>("#collaboration-voice-cancel");
 const collaborationVoiceStatus = document.querySelector<HTMLElement>("#collaboration-voice-status");
@@ -1539,7 +1537,7 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
   renderWorkspaceRailContext(currentWorkspaceDestination);
   renderWorkspaceContextStatus(currentWorkspaceDestination);
   renderCollaborationWorkspace();
-  renderCollaborationVoiceLocales();
+  renderCollaborationVoiceControls();
   renderCollaborationConnection();
 }
 
@@ -1584,6 +1582,8 @@ function resetVaultScopedWorkspaceState(): void {
   currentCollaborationWorkspace = null;
   currentCollaborationSession = null;
   collaborationDrafts.clear();
+  collaborationUnsavedDrafts.clear();
+  collaborationVoicePreviews.clear();
   collaborationTargetDates.clear();
   collaborationSendingDrafts.clear();
   collaborationActivityDate = "";
@@ -2408,7 +2408,12 @@ function setCollaborationVoiceStatus(
   status: CollaborationVoiceStatusKey,
 ): void {
   collaborationVoiceStatuses.set(collaborationDraftKey(target.sessionId, target.targetDate), status);
-  if (isCurrentCollaborationVoiceTarget(target)) setCopy(collaborationVoiceStatus, status);
+  if (isCurrentCollaborationVoiceTarget(target)) setRawText(collaborationVoiceStatus, collaborationVoiceStatusText(target, status));
+}
+
+function collaborationVoiceStatusText(target: CollaborationVoiceTarget, status: CollaborationVoiceStatusKey): string {
+  const incomplete = collaborationIncompleteVoiceDrafts.has(collaborationDraftKey(target.sessionId, target.targetDate));
+  return t(status) + (incomplete && status !== "collaboration.voiceIncomplete" ? "\n" + t("collaboration.voiceIncomplete") : "");
 }
 
 function collaborationVoiceFailureStatus(failure: CollaborationVoiceFailure): CollaborationVoiceStatusKey {
@@ -2418,128 +2423,42 @@ function collaborationVoiceFailureStatus(failure: CollaborationVoiceFailure): Co
     case "recording-failed": return "collaboration.voiceRecordingFailed";
     case "empty-recording": return "collaboration.voiceEmptyRecording";
     case "recognition-failed": return "collaboration.voiceRecognitionFailed";
-    case "locale-unavailable": return "collaboration.voiceSelectedUnavailable";
-  }
-}
-
-function collaborationVoiceCapabilityStatus(
-  capabilities: CollaborationVoiceCapabilities | null,
-): InterfaceCopyKey {
-  if (!capabilities) return "collaboration.voiceUnavailable";
-  switch (capabilities.reasonCode) {
-    case "requires_macos_26": return "collaboration.voiceUnsupported";
-    case "no_installed_model":
-    case "locale_not_installed":
-      return "collaboration.voiceModelMissing";
-    default:
-      return "collaboration.voiceUnavailable";
+    case "login-required": return "collaboration.voiceLoginRequired";
+    case "connection-failed": return "collaboration.voiceConnectionFailed";
+    case "service-failed": return "collaboration.voiceServiceFailed";
+    case "quota-exceeded": return "collaboration.voiceQuotaExceeded";
   }
 }
 
 function renderCollaborationVoiceControls(): void {
-  if (!collaborationVoiceLanguageSelect || !collaborationVoiceStartButton) return;
-
-  const active = collaborationVoiceController.state;
-  const capabilities = collaborationVoiceCapabilities;
-  const selectedLocale = collaborationVoiceLanguageSelect.value;
-  const locales = capabilities?.available ? capabilities.locales : [];
-  const selectedLocaleIsInstalled = Boolean(collaborationVoiceLocale(selectedLocale as CollaborationVoiceLanguage, locales));
-  const currentTarget = currentCollaborationVoiceTarget();
-  const currentDraftKey = currentTarget
-    ? collaborationDraftKey(currentTarget.sessionId, currentTarget.targetDate)
-    : "";
-  const controlState = collaborationVoiceControls({
-    state: collaborationVoiceAuthorizationPending ? "requesting" : active,
-    hasTarget: Boolean(currentTarget),
-    composerDisabled: collaborationMessageDraft?.disabled === true ||
-      (currentDraftKey !== "" && collaborationSendingDrafts.has(currentDraftKey)),
-    capabilityLoading: collaborationVoiceCapabilityLoading || collaborationVoiceAuthorizationPending,
-    hasInstalledLocale: Boolean(capabilities?.available && selectedLocaleIsInstalled),
-    hasInstalledLocales: true, // Both target choices remain available even when their model is missing.
-  });
-  const status = currentTarget
-    ? collaborationVoiceStatuses.get(currentDraftKey)
-    : undefined;
-
-  if (collaborationVoiceCapabilityLoading) {
-    setCopy(collaborationVoiceStatus, "collaboration.voiceLanguageLoading");
-  } else if (collaborationVoiceAuthorizationPending) {
-    setCopy(collaborationVoiceStatus, "collaboration.voiceRequesting");
-  } else if (!capabilities?.available || locales.length === 0) {
-    setCopy(collaborationVoiceStatus, collaborationVoiceCapabilityStatus(capabilities));
-  } else if (active !== "idle" && activeCollaborationVoiceTarget && currentTarget &&
-    collaborationDraftKey(activeCollaborationVoiceTarget.sessionId, activeCollaborationVoiceTarget.targetDate) === currentDraftKey) {
-    const activeStatus: CollaborationVoiceStatusKey = active === "requesting"
-      ? "collaboration.voiceRequesting"
-      : active === "recording"
-        ? "collaboration.voiceRecording"
-        : "collaboration.voiceTranscribing";
-    setCopy(collaborationVoiceStatus, activeStatus);
-  } else if (active !== "idle" && activeCollaborationVoiceTarget) {
-    setRawText(collaborationVoiceStatus, t("collaboration.voiceProcessingOrigin", {
-      date: activeCollaborationVoiceTarget.targetDate,
-    }));
-  } else if (status) {
-    setCopy(collaborationVoiceStatus, status);
-  } else if (!selectedLocaleIsInstalled) {
-    setCopy(collaborationVoiceStatus, "collaboration.voiceSelectedUnavailable");
-  } else {
-    setRawText(collaborationVoiceStatus, "");
-  }
-
-  const actionLabel = t(controlState.startAction === "stop" ? "collaboration.voiceStop" : "collaboration.voiceStart");
-  collaborationVoiceStartButton.setAttribute("aria-label", actionLabel);
-  collaborationVoiceStartButton.title = actionLabel;
-  collaborationVoiceStartButton.dataset.action = controlState.startAction;
-  collaborationVoiceStartButton.setAttribute("aria-pressed", String(active === "recording"));
-  if (collaborationVoiceStatus) collaborationVoiceStatus.dataset.state = active;
-  collaborationVoiceStartButton.disabled = controlState.startDisabled;
-  collaborationVoiceCancelButton?.toggleAttribute("hidden", !controlState.cancelVisible);
-  if (collaborationVoiceCancelButton) {
-    collaborationVoiceCancelButton.disabled = !controlState.cancelVisible;
-  }
-  collaborationVoiceLanguageSelect.disabled = controlState.localeDisabled;
+  if (!collaborationVoiceStartButton) return;
+  const state=collaborationVoiceController.state;
+  const target=currentCollaborationVoiceTarget();
+  const key=target?collaborationDraftKey(target.sessionId,target.targetDate):"";
+  const status=target?collaborationVoiceStatuses.get(key):undefined;
+  const activeHere=target&&activeCollaborationVoiceTarget&&
+    collaborationDraftKey(activeCollaborationVoiceTarget.sessionId,activeCollaborationVoiceTarget.targetDate)===key;
+  const preview = activeHere ? collaborationVoicePreviews.get(key) : undefined;
+  setRawText(collaborationVoicePreview,preview?t("collaboration.voicePreview",{text:preview}):"");
+  if(state!=="idle"&&activeHere) {
+    setCopy(collaborationVoiceStatus,state==="requesting"?"collaboration.voiceRequesting":state==="connecting"?"collaboration.voiceConnecting":state==="recording"?"collaboration.voiceRecording":"collaboration.voiceTranscribing");
+  } else if(state!=="idle"&&activeCollaborationVoiceTarget) {
+    setRawText(collaborationVoiceStatus,t("collaboration.voiceProcessingOrigin",{date:activeCollaborationVoiceTarget.targetDate}));
+  } else if(status && target) setRawText(collaborationVoiceStatus,collaborationVoiceStatusText(target,status));
+  else setRawText(collaborationVoiceStatus,"");
+  const stop=state==="recording";
+  const label=t(stop?"collaboration.voiceStop":"collaboration.voiceStart");
+  collaborationVoiceStartButton.setAttribute("aria-label",label);
+  collaborationVoiceStartButton.title=label;
+  collaborationVoiceStartButton.dataset.action=stop?"stop":"start";
+  collaborationVoiceStartButton.setAttribute("aria-pressed",String(stop));
+  collaborationVoiceStartButton.disabled=vaultSelectionInProgress||state==="requesting"||state==="connecting"||state==="transcribing"||
+    (state==="idle"&&(!target||collaborationMessageDraft?.disabled===true||collaborationSendingDrafts.has(key)));
+  collaborationVoiceCancelButton?.toggleAttribute("hidden",state==="idle");
+  if(collaborationVoiceCancelButton)collaborationVoiceCancelButton.disabled=state==="idle";
+  if(collaborationVoiceStatus)collaborationVoiceStatus.dataset.state=state;
 }
 
-function renderCollaborationVoiceLocales(): void {
-  if (!collaborationVoiceLanguageSelect) return;
-  const selected = preferredCollaborationVoiceLanguage ??
-    (currentInterfaceLanguage === "zh" ? "zh-CN" : "en-US");
-  const options = (["zh-CN", "en-US"] as const).map((language) => {
-    const option = document.createElement("option");
-    option.value = language;
-    setCopy(option, language === "zh-CN" ? "collaboration.voiceChinese" : "collaboration.voiceAmericanEnglish");
-    return option;
-  });
-  collaborationVoiceLanguageSelect.replaceChildren(...options);
-  collaborationVoiceLanguageSelect.value = selected;
-  renderCollaborationVoiceControls();
-}
-
-async function refreshCollaborationVoiceCapabilities(): Promise<void> {
-  const request = ++collaborationVoiceCapabilityRequest;
-  collaborationVoiceCapabilityLoading = true;
-  renderCollaborationVoiceLocales();
-  try {
-    const capabilities = await window.__TAURI__.core.invoke<CollaborationVoiceCapabilities>(
-      "collaboration_voice_capabilities",
-    );
-    if (request !== collaborationVoiceCapabilityRequest) return;
-    collaborationVoiceCapabilities = capabilities;
-  } catch {
-    if (request !== collaborationVoiceCapabilityRequest) return;
-    collaborationVoiceCapabilities = {
-      available: false,
-      reasonCode: "runtime_unavailable",
-      locales: [],
-    };
-  } finally {
-    if (request === collaborationVoiceCapabilityRequest) {
-      collaborationVoiceCapabilityLoading = false;
-      renderCollaborationVoiceLocales();
-    }
-  }
-}
 
 function collaborationDraftForTarget(target: CollaborationVoiceTarget): string | undefined {
   const key = collaborationDraftKey(target.sessionId, target.targetDate);
@@ -2557,6 +2476,12 @@ function handleCollaborationVoiceTranscript(target: CollaborationVoiceTarget, te
   const isCurrentTarget = isCurrentCollaborationVoiceTarget(target);
   const currentDraft = collaborationDraftForTarget(target) ??
     (isCurrentTarget ? collaborationMessageDraft?.value ?? "" : "");
+  // The older debounced snapshot must not be enqueued after this aggregate.
+  const timer = collaborationDraftSaveTimers.get(key);
+  if (timer !== undefined) {
+    window.clearTimeout(timer);
+    collaborationDraftSaveTimers.delete(key);
+  }
   const { draft, saved } = beginVoiceTranscriptSave(
     target,
     text,
@@ -2582,64 +2507,15 @@ function handleCollaborationVoiceTranscript(target: CollaborationVoiceTarget, te
 }
 
 function cancelCollaborationVoiceCaptureForSelectionChange(): void {
-  if (collaborationVoiceAuthorizationPending) {
-    ++collaborationVoiceAuthorizationRequest;
-    collaborationVoiceAuthorizationPending = false;
-    if (collaborationVoiceAuthorizationTarget) setCollaborationVoiceStatus(collaborationVoiceAuthorizationTarget, "collaboration.voiceCancelled");
-    collaborationVoiceAuthorizationTarget = null;
-  }
-  const state = collaborationVoiceController.state;
-  if (state === "requesting" || state === "recording") collaborationVoiceController.cancel();
+  collaborationVoiceController.navigate();
 }
 
 async function startOrStopCollaborationVoice(): Promise<void> {
-  if (collaborationVoiceController.state === "recording") {
-    collaborationVoiceController.stop();
-    return;
-  }
-  const target = currentCollaborationVoiceTarget();
-  const language = collaborationVoiceLanguageSelect?.value as CollaborationVoiceLanguage;
-  const locale = collaborationVoiceCapabilities?.available
-    ? collaborationVoiceLocale(language, collaborationVoiceCapabilities.locales) : undefined;
-  if (!target || !locale || collaborationVoiceController.state !== "idle") return;
-  preferredCollaborationVoiceLanguage = language;
-  try { rememberCollaborationVoiceLanguage(window.localStorage, language); } catch { /* Storage is optional. */ }
-  if (collaborationMessageDraft) {
-    collaborationDrafts.set(
-      collaborationDraftKey(target.sessionId, target.targetDate),
-      collaborationMessageDraft.value,
-    );
-  }
-  if (collaborationVoiceAuthorizationPending) return;
-  const request = ++collaborationVoiceAuthorizationRequest;
-  collaborationVoiceAuthorizationPending = true;
-  collaborationVoiceAuthorizationTarget = target;
-  renderCollaborationVoiceControls();
-  let authorized = false;
-  try {
-    authorized = await window.__TAURI__.core.invoke<boolean>(
-      "collaboration_voice_authorize",
-    );
-  } catch {
-    if (request === collaborationVoiceAuthorizationRequest) setCollaborationVoiceStatus(target, "collaboration.voiceRecognitionFailed");
-    return;
-  } finally {
-    if (request === collaborationVoiceAuthorizationRequest) {
-      collaborationVoiceAuthorizationPending = false;
-      collaborationVoiceAuthorizationTarget = null;
-      renderCollaborationVoiceControls();
-    }
-  }
-  if (request !== collaborationVoiceAuthorizationRequest) return;
-  if (!authorized) {
-    setCollaborationVoiceStatus(target, "collaboration.voicePermissionDenied");
-    renderCollaborationVoiceControls();
-    return;
-  }
-  if (!isCurrentCollaborationVoiceTarget(target) || collaborationVoiceLanguageSelect?.value !== language) {
-    return;
-  }
-  void collaborationVoiceController.start(target, locale);
+  if(collaborationVoiceController.state==="recording") { collaborationVoiceController.stop();return; }
+  const target=currentCollaborationVoiceTarget();
+  if(!target||vaultSelectionInProgress||collaborationVoiceController.state!=="idle")return;
+  if(collaborationMessageDraft)collaborationDrafts.set(collaborationDraftKey(target.sessionId,target.targetDate),collaborationMessageDraft.value);
+  void collaborationVoiceController.start(target);
 }
 
 function collaborationTaskSchedule(date: string | null, time: string | null): string {
@@ -4030,14 +3906,14 @@ function renderCollaborationWorkspace(): void {
   const sendingDraft = targetKey !== "" && collaborationSendingDrafts.has(targetKey);
   if (collaborationMessageDraft) {
     collaborationMessageDraft.disabled = !session || !connected || !vaultAvailable || recoveryBlocked ||
-      targetDatePending || sendingDraft;
+      targetDatePending || sendingDraft || vaultSelectionInProgress;
     if (session && document.activeElement !== collaborationMessageDraft) {
       collaborationMessageDraft.value = collaborationDraftForDate(session, targetDate);
     }
   }
   if (collaborationSendButton) {
     collaborationSendButton.disabled = !session || !connected || !vaultAvailable || recoveryBlocked ||
-      sendingDraft ||
+      sendingDraft || vaultSelectionInProgress || collaborationVoiceController.state !== "idle" ||
       !(collaborationMessageDraft?.value.trim());
   }
   let composerStatus: InterfaceCopyKey | null = null;
@@ -4070,16 +3946,23 @@ function renderCollaborationWorkspace(): void {
     collaborationStopButton.disabled = session?.runState === "stopping";
   }
   const createButton = document.querySelector<HTMLButtonElement>("#collaboration-new-session");
-  if (createButton) createButton.disabled = !vaultAvailable;
+  if (createButton) createButton.disabled = !vaultAvailable || vaultSelectionInProgress;
+  if (collaborationTargetDateInput) collaborationTargetDateInput.disabled = vaultSelectionInProgress || targetDatePending;
   renderCollaborationVoiceControls();
 }
 
-function stashCollaborationDraft(): void {
+function stashCollaborationDraft(forVaultSwitch = false): void {
+  if (vaultSelectionInProgress && !forVaultSwitch) return;
   if (currentCollaborationSession && collaborationMessageDraft) {
     const sessionId = currentCollaborationSession.id;
     const targetDate = collaborationTargetDates.get(sessionId) ?? collaborationTargetDate;
     const key = collaborationDraftKey(sessionId, targetDate);
     collaborationDrafts.set(key, collaborationMessageDraft.value);
+    if (!collaborationMessageDraft.value) {
+      collaborationIncompleteVoiceDrafts.delete(key);
+      collaborationVoiceStatuses.delete(key);
+    }
+    collaborationUnsavedDrafts.add(key);
     const previousTimer = collaborationDraftSaveTimers.get(key);
     if (previousTimer !== undefined) window.clearTimeout(previousTimer);
     const draft = collaborationMessageDraft.value;
@@ -4104,7 +3987,7 @@ function flushCollaborationDraft(
   draftOverride?: string,
 ): Promise<CollaborationSessionView | void> {
   const session = currentCollaborationSession;
-  if (!target && (!session || !collaborationMessageDraft)) return Promise.resolve();
+  if (!target && (vaultSelectionInProgress || !session || !collaborationMessageDraft)) return Promise.resolve();
   const saveTarget = target ?? {
     sessionId: session!.id,
     targetDate: collaborationTargetDates.get(session!.id) ?? collaborationTargetDate,
@@ -4126,7 +4009,9 @@ function saveCollaborationDraft(
 ): Promise<CollaborationSessionView> {
   const { sessionId, targetDate } = target;
   const key = collaborationDraftKey(sessionId, targetDate);
-  return enqueueCollaborationDraftWrite(
+  collaborationDrafts.set(key, draft);
+  collaborationUnsavedDrafts.add(key);
+  const write = enqueueCollaborationDraftWrite(
     collaborationDraftWrites,
     target,
     () => window.__TAURI__.core.invoke<CollaborationSessionView>(
@@ -4134,14 +4019,59 @@ function saveCollaborationDraft(
       { sessionId, targetDate, draft },
     ),
   ).then((saved) => {
-    cacheCollaborationDrafts(saved);
-    collaborationDrafts.set(key, draft);
+    // A response acknowledges its queued snapshot, not edits made since it
+    // was sent. Equal text can still be an older A in an A → B → A queue;
+    // release protection only after queued and debounced writes settle.
+    if (collaborationDrafts.get(key) === draft &&
+      !collaborationDraftWrites.has(key) && !collaborationDraftSaveTimers.has(key)) {
+      collaborationUnsavedDrafts.delete(key);
+    }
+    cacheCollaborationDrafts(saved, true);
     if (currentCollaborationSession?.id === sessionId) {
       currentCollaborationSession = saved;
       renderCollaborationWorkspace();
     }
     return saved;
   });
+  collaborationVaultSwitchDraftWrites?.push(write);
+  return write;
+}
+
+async function prepareCollaborationForVaultSwitch(): Promise<void> {
+  // These transactions own their eventual updates. Do not stash a debounce
+  // that could restore submitted text or move a half-changed date's draft.
+  if (collaborationSendingDrafts.size || collaborationTargetDatePendingSession) {
+    collaborationVoiceController.navigate();
+    throw new Error("collaboration-write-pending");
+  }
+  // Snapshot visible edits before Stop's state callback rerenders the editor.
+  stashCollaborationDraft(true);
+  const finishing = collaborationVoiceController.settleForVaultSwitch();
+  renderCollaborationWorkspace();
+  await finishing;
+  await drainCollaborationDraftsForVaultSwitch();
+}
+
+async function drainCollaborationDraftsForVaultSwitch(): Promise<void> {
+  // One observer belongs to the whole Vault selection, including unrelated
+  // pending-write waits. Rejections survive removal from the normal queue.
+  const observed = collaborationVaultSwitchDraftWrites!;
+  while (true) {
+    const results = await Promise.allSettled(observed.splice(0));
+    const failure = results.find(result => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
+    if (observed.length) continue;
+    const keys = new Set([...collaborationUnsavedDrafts, ...collaborationDraftSaveTimers.keys()]);
+    if (!keys.size && !collaborationDraftWrites.size) return;
+    observed.push(...collaborationDraftWrites.values());
+    for (const key of keys) {
+      const draft = collaborationDrafts.get(key);
+      // Never manufacture an empty origin after navigation or a cache reset.
+      if (draft === undefined) throw new Error("collaboration-draft-unavailable");
+      const [sessionId, targetDate] = key.split("\u0000");
+      flushCollaborationDraft({sessionId, targetDate}, draft);
+    }
+  }
 }
 
 function selectCollaborationSession(session: CollaborationSessionView): void {
@@ -4284,6 +4214,7 @@ async function refreshCollaborationContext(): Promise<void> {
 }
 
 async function saveCollaborationTargetDate(): Promise<void> {
+  if (vaultSelectionInProgress) return;
   const session = currentCollaborationSession;
   const date = collaborationTargetDateInput?.value || collaborationTargetDate;
   if (!session) {
@@ -4400,6 +4331,8 @@ async function resumeCollaborationRequest(sessionId: string, executionId: string
 }
 
 async function createCollaborationSession(): Promise<void> {
+  if (vaultSelectionInProgress) return;
+  const vaultRevision = collaborationVaultSelectionRevision;
   const explicitDate = collaborationEmptyTargetDate ??
     (collaborationActivityDateExplicit ? collaborationActivityDate : null);
   try {
@@ -4407,6 +4340,7 @@ async function createCollaborationSession(): Promise<void> {
       "collaboration_create_session",
       { date: explicitDate },
     );
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     const date = session.createdDate;
     cancelCollaborationVoiceCaptureForSelectionChange();
     stashCollaborationDraft();
@@ -4419,8 +4353,10 @@ async function createCollaborationSession(): Promise<void> {
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = date;
     renderCollaborationWorkspace();
     await refreshCollaborationWorkspace();
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     if (collaborationSessionsStatus) setCopy(collaborationSessionsStatus, "collaboration.sessionCreated");
   } catch (error) {
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     if (collaborationSessionsStatus) {
       setCopyError(collaborationSessionsStatus, "collaboration.sessionLoadFailed", error);
     }
@@ -4432,8 +4368,11 @@ async function openCollaborationForTask(
   taskName: string,
   targetDate: string,
 ): Promise<void> {
+  if (vaultSelectionInProgress) return;
+  const vaultRevision = collaborationVaultSelectionRevision;
   try {
     await flushCollaborationDraft();
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     let session = currentCollaborationSession;
     if (session?.runtimeThreadId && !session.taskToolAvailable) {
       session = null;
@@ -4449,6 +4388,7 @@ async function openCollaborationForTask(
         { sessionId: session.id, targetDate },
       );
     }
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     currentCollaborationSession = session;
     cacheCollaborationDrafts(session);
     collaborationActivityDate = targetDate;
@@ -4465,10 +4405,14 @@ async function openCollaborationForTask(
     const draft = existingDraft.includes(taskId)
       ? existingDraft
       : [existingDraft.trim(), taskReference].filter(Boolean).join("\n\n");
+    // Keep the current editor and cached task draft on the same snapshot even
+    // while this save is pending; a Vault preflight must not stash older text.
+    if (collaborationMessageDraft) collaborationMessageDraft.value = draft;
     const saved = await saveCollaborationDraft(
       { sessionId: session.id, targetDate },
       draft,
     );
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     currentCollaborationSession = saved;
     if (collaborationDateInput) collaborationDateInput.value = targetDate;
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = targetDate;
@@ -4476,6 +4420,7 @@ async function openCollaborationForTask(
     renderCollaborationWorkspace();
     window.requestAnimationFrame(() => collaborationMessageDraft?.focus());
   } catch (error) {
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     if (collaborationRunStatus) {
       setRawText(collaborationRunStatus, String(error));
       collaborationRunStatus.dataset.state = "error";
@@ -4591,7 +4536,7 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
 async function sendCollaborationMessage(): Promise<void> {
   const session = currentCollaborationSession;
   const message = collaborationMessageDraft?.value ?? "";
-  if (!session || !message.trim()) return;
+  if (!session || !message.trim() || vaultSelectionInProgress || collaborationVoiceController.state !== "idle") return;
   const targetDate = collaborationTargetDates.get(session.id) ??
     (collaborationTargetDateInput?.value || collaborationTargetDate);
   const target = { sessionId: session.id, targetDate };
@@ -4605,15 +4550,32 @@ async function sendCollaborationMessage(): Promise<void> {
     // This save is queued behind every keyboard or voice write for this same
     // session and date, so the send uses the final editable snapshot.
     await flushCollaborationDraft(target, message);
-    const queued = await window.__TAURI__.core.invoke<CollaborationSessionView>(
-      "collaboration_submit_message",
-      { sessionId: session.id, targetDate, text: message },
+    const { result: queued, draft: remainingDraft } = await submitCollaborationDraftSnapshot(
+      message,
+      () => collaborationDrafts.get(draftKey) ?? message,
+      () => window.__TAURI__.core.invoke<CollaborationSessionView>(
+        "collaboration_submit_message",
+        { sessionId: session.id, targetDate, text: message },
+      ),
     );
-    cacheCollaborationDrafts(queued);
-    collaborationDrafts.set(draftKey, "");
+    cacheCollaborationDrafts(queued, true);
+    collaborationDrafts.set(draftKey, remainingDraft);
+    if (!remainingDraft) {
+      collaborationUnsavedDrafts.delete(draftKey);
+      collaborationIncompleteVoiceDrafts.delete(draftKey);
+      collaborationVoiceStatuses.delete(draftKey);
+    }
+    if (remainingDraft) {
+      // Keep any newer memory snapshot durable through the
+      // existing write queue, keeping it editable if persistence fails.
+      void saveCollaborationDraft(target, remainingDraft).catch(() => {
+        setCollaborationVoiceStatus(target, "collaboration.voiceDraftSaveFailed");
+        renderCollaborationVoiceControls();
+      });
+    }
     if (currentCollaborationSession?.id === session.id) {
       if (collaborationMessageDraft && isCurrentCollaborationVoiceTarget(target)) {
-        collaborationMessageDraft.value = "";
+        collaborationMessageDraft.value = remainingDraft;
       }
       currentCollaborationSession = queued;
     }
@@ -4625,10 +4587,11 @@ async function sendCollaborationMessage(): Promise<void> {
       void refreshCollaborationWorkspace();
     }
   } catch (error) {
-    collaborationDrafts.set(draftKey, message);
+    const latestDraft = collaborationDrafts.get(draftKey) ?? message;
+    collaborationDrafts.set(draftKey, latestDraft);
     if (currentCollaborationSession?.id === session.id && collaborationMessageDraft &&
       isCurrentCollaborationVoiceTarget(target)) {
-      collaborationMessageDraft.value = message;
+      collaborationMessageDraft.value = latestDraft;
     }
     renderCollaborationWorkspace();
     if (currentCollaborationSession?.id === session.id && collaborationRunStatus) {
@@ -6533,10 +6496,15 @@ async function selectTodayVault(): Promise<void> {
     return;
   }
   vaultSelectionInProgress = true;
+  collaborationVaultSelectionRevision += 1;
+  collaborationVaultSwitchDraftWrites = [...collaborationDraftWrites.values()];
   try {
-    await flushCollaborationDraft();
+    await prepareCollaborationForVaultSwitch();
   } catch (error) {
+    collaborationVaultSwitchDraftWrites = null;
     vaultSelectionInProgress = false;
+    renderCollaborationWorkspace();
+    renderPendingWriteFailure();
     if (collaborationRunStatus) {
       setCopyError(collaborationRunStatus, "collaboration.draftSaveFailed", error);
       collaborationRunStatus.dataset.state = "error";
@@ -6557,7 +6525,17 @@ async function selectTodayVault(): Promise<void> {
         isCurrent: () => vaultSelectionRequests.isCurrent(selectionRequest),
         isPresentationCurrent: () => todayPresentationRequests.isCurrent(presentationRequest),
         currentDestination: () => currentWorkspaceDestination,
-        waitForPendingWrites,
+        waitForPendingWrites: async () => {
+          if (!await waitForPendingWrites()) return false;
+          // Existing asynchronous saves may settle while other panes wait.
+          // Check their retained outcomes immediately before the picker.
+          try {
+            await drainCollaborationDraftsForVaultSwitch();
+            return true;
+          } catch {
+            return false;
+          }
+        },
         renderPendingWriteFailure,
         prepareForVaultSwitch: (view) => {
           resetVaultScopedWorkspaceState();
@@ -6577,7 +6555,9 @@ async function selectTodayVault(): Promise<void> {
       renderVaultSelectionError(error);
     }
   } finally {
+    collaborationVaultSwitchDraftWrites = null;
     vaultSelectionInProgress = false;
+    renderCollaborationWorkspace();
     updateTodayOperationState(-1);
   }
 }
@@ -10371,7 +10351,7 @@ function showWorkspaceDestination(
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = collaborationTargetDate;
     void refreshCollaborationWorkspace();
     void refreshCollaborationConnection();
-    void refreshCollaborationVoiceCapabilities();
+    renderCollaborationVoiceControls();
   }
 }
 
@@ -10507,6 +10487,7 @@ collaborationDateInput?.addEventListener("change", () => {
 });
 
 collaborationTargetDateInput?.addEventListener("change", () => {
+  if (vaultSelectionInProgress) return;
   cancelCollaborationVoiceCaptureForSelectionChange();
   collaborationTargetDate = collaborationTargetDateInput.value || collaborationActivityDate;
   void saveCollaborationTargetDate();
@@ -10593,22 +10574,23 @@ collaborationContinuitySaveButton?.addEventListener("click", () => {
   void saveCollaborationContinuityNote();
 });
 
-collaborationVoiceLanguageSelect?.addEventListener("change", () => {
-  preferredCollaborationVoiceLanguage = collaborationVoiceLanguageSelect.value as CollaborationVoiceLanguage;
-  try { rememberCollaborationVoiceLanguage(window.localStorage, preferredCollaborationVoiceLanguage); } catch { /* Storage is optional. */ }
-  const target = currentCollaborationVoiceTarget();
-  if (target && collaborationVoiceLanguageSelect.value) {
-    collaborationVoiceStatuses.delete(collaborationDraftKey(target.sessionId, target.targetDate));
+// macOS closes the window by hiding it, so unload alone cannot stop capture.
+window.addEventListener("personal-dashboard-closing", (event) => {
+  collaborationVoiceController.close();
+  if ((event as CustomEvent<{ quitting?: boolean }>).detail?.quitting) {
+    // Let the existing original-target queue settle within the native bounded
+    // exit grace period. Neither an IPC result nor a late tail is guaranteed.
+    void Promise.allSettled([...collaborationDraftWrites.values()]).then(() =>
+      window.__TAURI__.core.invoke("collaboration_dictation_close_ready").catch(() => undefined));
   }
-  renderCollaborationVoiceControls();
 });
+window.addEventListener("beforeunload", () => collaborationVoiceController.close());
 
 collaborationVoiceStartButton?.addEventListener("click", () => {
   startOrStopCollaborationVoice();
 });
 
 collaborationVoiceCancelButton?.addEventListener("click", () => {
-  cancelCollaborationVoiceCaptureForSelectionChange();
   collaborationVoiceController.cancel();
   renderCollaborationVoiceControls();
   collaborationMessageDraft?.focus();

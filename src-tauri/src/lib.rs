@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 #[cfg(target_os = "macos")]
 use tauri::WindowEvent;
-use tauri::{AppHandle, Manager, RunEvent, State};
+use tauri::{Manager, RunEvent, State};
 
 pub mod appearance;
 pub mod backup;
@@ -25,25 +25,216 @@ pub mod profile;
 pub mod task_adapter;
 pub mod tasks;
 pub mod today;
-pub mod voice_input;
 
-fn voice_helper_path(app_handle: &AppHandle) -> Option<std::path::PathBuf> {
-    if let Ok(resource_directory) = app_handle.path().resource_dir() {
-        let packaged_helper = resource_directory.join("personal-dashboard-voice-helper");
-        if packaged_helper.is_file() {
-            return Some(packaged_helper);
+#[tauri::command]
+fn collaboration_voice_gate_fixture() -> Result<Vec<u8>, String> {
+    if std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_none() {
+        return Err("Gate is not enabled".into());
+    }
+    let path = std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE")
+        .ok_or("Fixture is not configured")?;
+    let bytes = std::fs::read(path).map_err(|_| "Fixture unavailable")?;
+    if bytes.len() > 1_000_000 {
+        return Err("Fixture exceeds gate limit".into());
+    }
+    Ok(bytes)
+}
+
+#[cfg(target_os = "macos")]
+fn voice_gate_microphone_authorization() -> &'static str {
+    objc2::runtime::AnyClass::get(c"AVCaptureDevice")
+        .map(|class| {
+            let audio = objc2_foundation::NSString::from_str("soun");
+            let status: isize =
+                unsafe { objc2::msg_send![class, authorizationStatusForMediaType: &*audio] };
+            match status {
+                0 => "not-determined",
+                1 => "restricted",
+                2 => "denied",
+                3 => "authorized",
+                _ => "unknown",
+            }
+        })
+        .unwrap_or("class-unavailable")
+}
+
+#[tauri::command]
+async fn collaboration_voice_gate_request_microphone(
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    if std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT").is_none() {
+        return Err("Gate is not enabled".into());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let (sender, receiver) = std::sync::mpsc::channel::<String>();
+        app.run_on_main_thread(move || {
+            let Some(class) = objc2::runtime::AnyClass::get(c"AVCaptureDevice") else {
+                let _ = sender.send("class-unavailable".into());
+                return;
+            };
+            let callback = block2::RcBlock::new(move |_granted: objc2::runtime::Bool| {
+                let _ = sender.send(voice_gate_microphone_authorization().into());
+            });
+            let audio = objc2_foundation::NSString::from_str("soun");
+            // AVFoundation copies this escaping completion block. This explicit
+            // diagnostic requests only the ordinary OS microphone permission.
+            unsafe {
+                let _: () = objc2::msg_send![class, requestAccessForMediaType: &*audio, completionHandler: &*callback];
+            }
+        }).map_err(|_| "Could not dispatch the gated permission request".to_string())?;
+        tauri::async_runtime::spawn_blocking(move || {
+            receiver
+                .recv_timeout(std::time::Duration::from_secs(15))
+                .unwrap_or_else(|_| "request-pending".into())
+        })
+        .await
+        .map_err(|_| "Could not read the gated permission result".to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Ok("unsupported-platform".into())
+    }
+}
+
+#[tauri::command]
+fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), String> {
+    let path = std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_RESULT")
+        .ok_or("Runtime gate is not enabled.")?;
+    // Diagnostic metadata only; never accepts audio, SDP or transcript text.
+    let allowed = [
+        "origin",
+        "secureContext",
+        "mediaDevices",
+        "getUserMedia",
+        "peerConnection",
+        "microphone",
+        "offer",
+        "failure",
+        "captureStopped",
+        "peerClosed",
+        "dataChannelOpen",
+        "userFinal",
+        "userFinalIdentity",
+        "dataChannelTranscript",
+        "connectionState",
+        "remoteAnswer",
+        "sidebandUserFinal",
+        "sidebandFinalIdentity",
+        "serviceEnded",
+        "fixtureSent",
+        "finalTextLength",
+        "finalMatchesFixture",
+        "finalTurnIdPresent",
+        "rawEventType",
+        "rawRole",
+        "rawTextLength",
+        "syntheticOnly",
+        "finalCount",
+        "aggregateMatchesFixture",
+        "finalAfterFixtureCaptureStop",
+        "fixtureCaptureStopped",
+        "sourceReadyBeforeOffer",
+        "fixturePacketsSent",
+        "previewEnvelopeFields",
+        "finalEnvelopeFields",
+        "previewItemFields",
+        "finalTurnFields",
+        "previewIdentityCount",
+        "finalIdentityCount",
+        "previewFinalIdentityIntersect",
+        "finalReferenceMatchesPreview",
+        "previewReferenceMatchesFinal",
+        "currentPeerState",
+        "currentIceState",
+        "currentSignalingState",
+        "syntheticAudioContextState",
+        "syntheticOutboundPackets",
+        "nativeMicrophoneRequestOutcome",
+        "previewValidTimingCount",
+        "finalValidTimingCount",
+        "previewInvalidTimingCount",
+        "finalInvalidTimingCount",
+        "timingContainedPairCount",
+        "timingOverlapPairCount",
+        "timingExactBoundaryPairCount",
+        "timingContainedPreviewCount",
+        "timingAllPreviewsContained",
+        "timingMultipleFinalMatches",
+        "timingRowsTruncated",
+        "closeRequestSent",
+        "closeDrainTerminal",
+        "closeDrainTimedOut",
+        "closeDrainFinalCount",
+        "productionRuntimeProbe",
+        "productionRuntimeConnected",
+        "productionFixtureStarted",
+        "productionFixtureEnded",
+        "productionStopRequested",
+        "productionInputTracksStoppedAtStop",
+        "productionIncomplete",
+        "productionTranscriptUnresolved",
+        "productionUnconfirmedCharacters",
+        "productionFinalCharacters",
+        "productionFinalCount",
+        "productionPersonalDashboardMarkers",
+        "productionTomorrowMarkers",
+        "productionChineseDurationMarkers",
+        "productionStopMilliseconds",
+        "productionPeersClosed",
+        "productionZeroCreated",
+        "productionZeroTracksStopped",
+        "productionZeroContextsClosed",
+        "productionFinalizeReturned",
+        "productionFailure",
+        "productionTerminalFields",
+        "productionTerminalErrorPresent",
+        "productionTerminalReason",
+        "productionTerminalSeen",
+        "productionNativeStopCompleted",
+    ];
+    let mut filtered: serde_json::Map<String, serde_json::Value> = result
+        .as_object()
+        .ok_or("Invalid gate result")?
+        .iter()
+        .filter(|(key, value)| {
+            allowed.contains(&key.as_str())
+                && (value.is_boolean() || value.as_str().is_some_and(|s| s.len() <= 120))
+        })
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    // Raw timing numbers are accepted only for an explicitly configured synthetic fixture.
+    // Reconstruct every row from three known numeric fields; never copy a payload object.
+    if std::env::var_os("PERSONAL_DASHBOARD_VOICE_GATE_FIXTURE").is_some()
+        && result.get("syntheticOnly").and_then(serde_json::Value::as_bool) == Some(true)
+    {
+        for (key, limit) in [("syntheticPreviewTimingRows", 64), ("syntheticFinalTimingRows", 32)] {
+            if let Some(rows) = result.get(key).and_then(serde_json::Value::as_array) {
+                let safe_rows: Vec<serde_json::Value> = rows.iter().take(limit).filter_map(|row| {
+                    let start = row.get("startMs")?.as_f64()?;
+                    let end = row.get("endMs")?.as_f64()?;
+                    let ordinal = row.get("arrivalOrdinal")?.as_u64()?;
+                    if !start.is_finite() || !end.is_finite() || start.abs() > 86_400_000.0
+                        || end.abs() > 86_400_000.0 || ordinal > 10_000 { return None; }
+                    Some(serde_json::json!({ "startMs": start, "endMs": end, "arrivalOrdinal": ordinal }))
+                }).collect();
+                filtered.insert(key.into(), safe_rows.into());
+            }
         }
     }
-
-    #[cfg(all(target_os = "macos", debug_assertions))]
-    if let Some(development_helper) = option_env!("PERSONAL_DASHBOARD_VOICE_HELPER_PATH") {
-        let development_helper = std::path::PathBuf::from(development_helper);
-        if development_helper.is_file() {
-            return Some(development_helper);
-        }
+    #[cfg(target_os = "macos")]
+    {
+        // Read-only authorization metadata in this explicitly gated process.
+        // Do not load frameworks, request access, or alter system permissions.
+        let status = voice_gate_microphone_authorization();
+        filtered.insert("nativeMicrophoneAuthorization".into(), status.into());
     }
-
-    None
+    std::fs::write(
+        path,
+        serde_json::to_vec_pretty(&filtered).map_err(|_| "Could not encode gate metadata")?,
+    )
+    .map_err(|_| "Could not save gate metadata".to_string())
 }
 
 use appearance::{
@@ -216,35 +407,71 @@ fn collaboration_submit_message(
 }
 
 #[tauri::command]
-fn collaboration_voice_capabilities(
-    application: State<'_, voice_input::VoiceInputApplication>,
-) -> voice_input::VoiceInputCapabilitiesView {
-    application.capabilities()
-}
-
-#[tauri::command]
-async fn collaboration_voice_authorize(
-    application: State<'_, voice_input::VoiceInputApplication>,
-) -> Result<bool, String> {
+async fn collaboration_dictation_start(
+    application: State<'_, collaboration::DictationApplication>,
+    input_id: String,
+    sdp: String,
+) -> Result<collaboration::DictationConnection, String> {
     let application = application.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || application.authorize())
+    tauri::async_runtime::spawn_blocking(move || application.start_dictation(&input_id, &sdp))
         .await
-        .map_err(|error| format!("voice_permission_task_failed: {error}"))?
+        .map_err(|_| "dictation-runtime-unavailable")?
+}
+#[tauri::command]
+async fn collaboration_dictation_poll(
+    application: State<'_, collaboration::DictationApplication>,
+    input_id: String,
+) -> Result<Vec<collaboration::DictationEvent>, String> {
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || application.poll_dictation(&input_id))
+        .await
+        .map_err(|_| "dictation-runtime-unavailable")?
+}
+#[tauri::command]
+async fn collaboration_dictation_stop(
+    application: State<'_, collaboration::DictationApplication>,
+    input_id: String,
+) -> Result<(), String> {
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || application.stop_dictation(&input_id))
+        .await
+        .map_err(|_| "dictation-runtime-unavailable")?
+}
+
+// Only app exit uses this bounded acknowledgement. Hiding a window merely
+// closes the current input; it must leave the reusable dictation manager alive.
+#[derive(Default)]
+struct DictationExitHandoff {
+    exiting: std::sync::atomic::AtomicBool,
+    ready: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>>,
 }
 
 #[tauri::command]
-async fn collaboration_transcribe_voice(
-    application: State<'_, voice_input::VoiceInputApplication>,
-    audio: Vec<u8>,
-    mime_type: String,
-    locale: String,
-) -> Result<String, String> {
-    let application = application.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        application.transcribe(&audio, &mime_type, &locale)
-    })
-    .await
-    .map_err(|error| format!("voice_task_failed: {error}"))?
+fn collaboration_dictation_close_ready(state: State<'_, DictationExitHandoff>) {
+    if let Ok(mut ready) = state.ready.lock() {
+        if let Some(sender) = ready.take() { let _ = sender.send(()); }
+    }
+}
+
+fn request_dictation_exit(app: &tauri::AppHandle, api: &tauri::ExitRequestApi) {
+    let handoff = app.state::<DictationExitHandoff>();
+    if handoff.exiting.swap(true, std::sync::atomic::Ordering::SeqCst) { return; }
+    api.prevent_exit();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    if let Ok(mut ready) = handoff.ready.lock() { *ready = Some(sender); }
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.eval("window.dispatchEvent(new CustomEvent('personal-dashboard-closing', {detail:{quitting:true}}))");
+    }
+    let app = app.clone();
+    // A background bounded receive does not block the window/event loop. The
+    // frontend stops tracks synchronously, then acknowledges its draft queue.
+    // Hung/absent frontend still exits; this is best-effort persistence only.
+    std::thread::spawn(move || {
+        let _ = receiver.recv_timeout(std::time::Duration::from_millis(1_000));
+        let _ = app.state::<collaboration::CollaborationApplication>().shutdown();
+        app.state::<collaboration::DictationApplication>().shutdown();
+        app.exit(0);
+    });
 }
 
 #[tauri::command]
@@ -723,6 +950,11 @@ pub fn run() {
                 NativeTodayWorkspaceExchange::new(app_handle.clone()),
                 SystemClock,
             ));
+            // Runtime redirects only the authenticated profile in the explicit
+            // gate; working directories and permission probes remain isolated.
+            app.manage(collaboration::DictationApplication::new_local(
+                collaboration_app_data_dir.clone(),
+            ));
             let collaboration_application = collaboration::CollaborationApplication::new_local(
                 collaboration_app_data_dir,
                 today_workspace_file.clone(),
@@ -731,9 +963,6 @@ pub fn run() {
             collaboration_application
                 .start_daily_plan_automation_scheduler()
                 .map_err(std::io::Error::other)?;
-            app.manage(voice_input::VoiceInputApplication::new_local(
-                voice_helper_path(&app_handle),
-            ));
             app.manage(TaskApplication::new(
                 FileTodayWorkspacePersistence::new(today_workspace_file),
                 SystemClock,
@@ -746,6 +975,7 @@ pub fn run() {
                     appearance_background_directory,
                 ),
             ));
+            app.manage(DictationExitHandoff::default());
             app.manage(InterfaceLanguageApplication::new(
                 FileInterfaceLanguagePersistence::new(interface_language_file),
             ));
@@ -757,6 +987,9 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
+                if let Some(webview) = window.app_handle().get_webview_window(window.label()) {
+                    let _ = webview.eval("window.dispatchEvent(new CustomEvent('personal-dashboard-closing', {detail:{quitting:false}}))");
+                }
                 let _ = window.hide();
             }
         })
@@ -774,9 +1007,13 @@ pub fn run() {
             collaboration_list_sessions,
             collaboration_session,
             collaboration_submit_message,
-            collaboration_voice_capabilities,
-            collaboration_voice_authorize,
-            collaboration_transcribe_voice,
+            collaboration_voice_gate_fixture,
+            collaboration_voice_runtime_gate,
+            collaboration_voice_gate_request_microphone,
+            collaboration_dictation_start,
+            collaboration_dictation_poll,
+            collaboration_dictation_stop,
+            collaboration_dictation_close_ready,
             collaboration_save_draft,
             collaboration_set_target_date,
             collaboration_stop_run,
@@ -843,9 +1080,13 @@ pub fn run() {
         collaboration_list_sessions,
         collaboration_session,
         collaboration_submit_message,
-        collaboration_voice_capabilities,
-        collaboration_voice_authorize,
-        collaboration_transcribe_voice,
+        collaboration_voice_gate_fixture,
+        collaboration_voice_runtime_gate,
+        collaboration_voice_gate_request_microphone,
+        collaboration_dictation_start,
+        collaboration_dictation_poll,
+        collaboration_dictation_stop,
+        collaboration_dictation_close_ready,
         collaboration_save_draft,
         collaboration_set_target_date,
         collaboration_stop_run,
@@ -903,10 +1144,8 @@ pub fn run() {
 
     #[cfg(target_os = "macos")]
     application.run(|app_handle, event| {
-        if matches!(&event, RunEvent::ExitRequested { .. }) {
-            let _ = app_handle
-                .state::<collaboration::CollaborationApplication>()
-                .shutdown();
+        if let RunEvent::ExitRequested { api, .. } = &event {
+            request_dictation_exit(app_handle, api);
         }
         if let RunEvent::Reopen {
             has_visible_windows: false,
@@ -922,10 +1161,8 @@ pub fn run() {
 
     #[cfg(not(target_os = "macos"))]
     application.run(|app_handle, event| {
-        if matches!(&event, RunEvent::ExitRequested { .. }) {
-            let _ = app_handle
-                .state::<collaboration::CollaborationApplication>()
-                .shutdown();
+        if let RunEvent::ExitRequested { api, .. } = &event {
+            request_dictation_exit(app_handle, api);
         }
     });
 }

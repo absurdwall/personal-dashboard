@@ -1663,3 +1663,26 @@ fn dashboard_context_reader_uses_canonical_read_services_without_mutating_source
     assert_eq!(fs::read(&daily_record).unwrap(), daily_record_before);
     assert_eq!(fs::read(&habit_snapshot).unwrap(), habit_snapshot_before);
 }
+
+#[test]
+fn queued_submit_clears_only_its_exact_snapshot_and_preserves_newer_saved_dictation() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let application = new_application(&directory, Arc::clone(&prompts));
+    let session = application.create_session("2026-09-27").unwrap();
+    let submitted = "  original composer snapshot  ";
+    let newest = "  original composer snapshot  \nnewer dictation";
+    application.save_draft_for_selected_vault(&session.id, "2026-09-27", newest).unwrap();
+    let queued = application.submit_message("synthetic-vault", &session.id, "2026-09-27", submitted).unwrap();
+    assert_eq!(queued.draft, newest);
+    assert_eq!(queued.drafts_by_date.get("2026-09-27").map(String::as_str), Some(newest));
+    assert_eq!(queued.messages[0].text, submitted.trim());
+    wait_until_finished(&application, &session.id);
+    let reopened = new_application(&directory, prompts);
+    assert_eq!(reopened.session("synthetic-vault", &session.id).unwrap().draft, newest);
+    let second = reopened.create_session("2026-09-27").unwrap();
+    reopened.save_draft_for_selected_vault(&second.id, "2026-09-27", submitted).unwrap();
+    let sent = reopened.submit_message("synthetic-vault", &second.id, "2026-09-27", submitted).unwrap();
+    assert!(sent.draft.is_empty());assert!(!sent.drafts_by_date.contains_key("2026-09-27"));
+    wait_until_finished(&reopened, &second.id);
+}
