@@ -504,7 +504,7 @@ impl AppServerTransport for DynamicRuntime {
         }
         // Controlled resolver output exercises the date protocol and persisted
         // results without claiming these fixtures test model language quality.
-        let (call_id, tool, mut arguments) = if request.user_text.contains("refresh habits") || request.user_text.contains("生成发布习惯快照") {
+        let (call_id, tool, mut arguments) = if request.user_text.contains("refresh habits") || (request.user_text.contains("生成发布习惯快照") || request.user_text.contains("生成习惯快照") || request.user_text.contains("刷新习惯")) {
             ("habit-refresh-call", "dashboard_refresh_habits", habit_refresh_fixture(&request.user_text))
         } else if let Some(arguments) = natural_daily_fixture(&request.user_text) {
             ("natural-daily-call", "dashboard_task_operation", arguments)
@@ -991,7 +991,8 @@ fn habit_refresh_fixture(text: &str) -> Value {
     }
     if text.contains("empty query") {checkins["result"]=json!({"content":[],"isError":false,"structuredContent":{"result":[]}});}
     let reads:Vec<Value> = if text.contains("failed query") {vec![]} else {[catalog,checkins].iter().filter_map(personal_dashboard_lib::habit_producer::native_source_read).collect()};
-    json!({"mappings":{"exercise":"synthetic-habit"},"executionMode":"execute","authorizationQuote":text,"hostSourceReads":reads})
+    let quote=match text {"我准备明天生成习惯快照。"=>"生成习惯快照","不要刷新习惯。"=>"刷新习惯",_=>text};
+    json!({"mappings":{"exercise":"synthetic-habit"},"executionMode":"execute","authorizationQuote":quote,"hostSourceReads":reads})
 }
 
 fn natural_daily_fixture(text: &str) -> Option<Value> {
@@ -6534,9 +6535,22 @@ fn exact_combined_native_request_authorizes_snapshot_without_revoking_other_doma
         (native.replace("再真实查询完整范围生成发布习惯快照","也许再真实查询完整范围生成发布习惯快照"),false),
         (native.replace("再真实查询完整范围生成发布习惯快照","先别生成发布习惯快照"),false),
         (format!("{native}算了，取消刚才的习惯刷新。"),false),
+        ("刷新习惯，不要创建任何外部对象。".into(),true),
+        ("refresh habits, do not create external objects.".into(),true),
+        ("不要刷新习惯。".into(),false),
+        ("刷新习惯，算了，取消刚才。".into(),false),
+        ("刷新习惯，先别执行。".into(),false),
+        ("也许，刷新习惯。".into(),false),
+        ("maybe, refresh habits.".into(),false),
+        ("我准备明天生成习惯快照。".into(),false),
+        ("我计划明天生成习惯快照。".into(),false),
+        ("我在想以后生成习惯快照。".into(),false),
+        ("我在想生成习惯快照。".into(),false),
+        ("我准备明天创建买菜任务，现在刷新习惯。".into(),true),
     ] {
         let directory=IsolatedDirectory::new();let path=directory.vault("refresh-preservation-clauses");prepare_dual_vault(&path);
-        let vault=MutableVault::new(&path);let clock=ManualClock::new("2026-10-04","17:00");
+        let date=if text.starts_with("现在请求日2026-10-04") {"2026-10-04"} else {"2026-09-27"};
+        let vault=MutableVault::new(&path);let clock=ManualClock::new(date,"17:00");
         let month=path.join("life/2026-10-plan.md");let background=path.join("life/Self.md");
         fs::write(&month,"# 月计划\n\n人工补充保留区 · Keep verbatim\n").unwrap();fs::write(&background,"# Self\n\nOriginal durable background\n").unwrap();
         let daily=path.join("life/Journal/Daily/2026/2026-09/2026-09-27.md");
@@ -6553,7 +6567,7 @@ fn exact_combined_native_request_authorizes_snapshot_without_revoking_other_doma
         assert!(TaskApplication::new(vault.clone(),clock,FileTaskStore).read().unwrap().tasks.is_empty());
         for (source,bytes) in preserved {assert_eq!(fs::read(source).unwrap(),bytes);}
         let report=state.last_habit_refresh.unwrap();
-        if authorized {assert_eq!(report.generation,"validated");assert_eq!(report.publication,"published");assert_eq!(report.display,"ready");assert_eq!(report.range_to.as_deref(),Some("2026-10-04"));assert_ne!(fs::read(&snapshot).unwrap(),before);}
+        if authorized {assert_eq!(report.generation,"validated");assert_eq!(report.publication,"published");assert_eq!(report.display,"ready");assert_eq!(report.range_to.as_deref(),Some(date));assert_ne!(fs::read(&snapshot).unwrap(),before);}
         else {assert_eq!(report.publication,"notPublished");assert_eq!(fs::read(&snapshot).unwrap(),before);}
         app.shutdown().unwrap();
     }

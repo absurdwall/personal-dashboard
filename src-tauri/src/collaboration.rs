@@ -4292,7 +4292,7 @@ impl CollaborationApplication {
                         let quote=&input.authorization_quote;
                         if quote.is_empty() || !message.text.contains(quote) || is_review_before_write_request(&message.text.to_lowercase())
                             || has_cancellation_after_authorization_quote(&message.text,quote) {return Err("Quote an active exact request; review/cancellation prevents publication".into());}
-                        require_habit_refresh_intent(quote)?;
+                        require_habit_refresh_intent(&message.text,quote)?;
                         Ok(())
                     })??;
                 if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
@@ -9817,9 +9817,17 @@ fn has_authority_marker(text: &str, marker_list: &str) -> bool {
     marker_list.split('|').any(|marker| text.contains(marker))
 }
 
-fn require_habit_refresh_intent(quote: &str) -> Result<(), String> {
+fn require_habit_refresh_intent(message: &str, quote: &str) -> Result<(), String> {
     let markers = "刷新习惯|更新习惯|刷新打卡|生成习惯快照|发布习惯快照|生成发布习惯快照|重新生成习惯|refresh habits|refresh my habits|update habits|refresh habit|generate habit snapshot|publish habit snapshot|rebuild habit snapshot";
-    let clauses: Vec<_> = quote.split(['。','；',';','\n','!','！','?','？']).collect();
+    // Preserve modifiers belonging to the quoted effect even when the model
+    // quotes only its verb/object. Unrelated sentence effects stay independent.
+    let Some(start)=message.find(quote) else {return Err("The current message does not authorize this Habit rebuild".into());};
+    let quote_end=start+quote.len();
+    let boundary=|c:char| ['。','；',';','\n','.','!','！','?','？'].contains(&c);
+    let scope_start=message[..start].char_indices().filter(|(_,c)|boundary(*c)).last().map(|(i,c)|i+c.len_utf8()).unwrap_or(0);
+    let scope_end=message[quote_end..].char_indices().find(|(_,c)|boundary(*c)).map(|(i,_)|quote_end+i).unwrap_or(message.len());
+    let scope=&message[scope_start..scope_end];
+    let clauses: Vec<_> = scope.split(['。','；',';','\n','.','!','！','?','？',',','，']).collect();
     let explicit: Vec<_> = clauses.iter().copied().filter(|clause|has_authority_marker(&clause.to_lowercase(),markers)).collect();
     let declined = |text: &str| ["maybe","perhaps","也许","可能","不要","先别","don't","do not"].iter().any(|marker|text.contains(marker));
     // An exact quote may contain several separately authorized effects and
@@ -9827,6 +9835,13 @@ fn require_habit_refresh_intent(quote: &str) -> Result<(), String> {
     // cannot revoke its explicit Habit snapshot request. Declined snapshot
     // clauses and subsequent cancellation still veto publication.
     if !explicit.is_empty() {
+        let qualifiers=["maybe","perhaps","也许","可能","也许可以","可能可以","不要","先别","先不要","不要执行","先别执行","先不要执行","不要保存","先别保存","不要发布","先别发布","不要生成","先别生成","不要刷新","先别刷新","don't","do not","明天","以后","下周","稍后","我准备","我打算","我计划","我准备明天","我打算明天","我计划明天","我在想","我在想以后","我在考虑","明天再说","以后再说","明天再做","稍后再做","以后再做","tomorrow","later","i plan to","i intend to","i am thinking","thinking about"];
+        let qualified=clauses.iter().any(|clause|qualifiers.contains(&clause.trim().to_lowercase().as_str()));
+        let deferred=explicit.iter().any(|clause| {
+            let lower=clause.to_lowercase();
+            has_deferred_operation_intent(&lower,markers)
+                || ["我在想","我在考虑","讨论","探讨","设想","假设","thinking about","i'm thinking","i am thinking","considering","discuss","hypothetical"].iter().any(|m|lower.contains(m))
+        });
         let declined_snapshot = clauses.iter().any(|clause| {
             let lower=clause.to_lowercase();
             declined(&lower) && (has_authority_marker(&lower,markers)
@@ -9834,7 +9849,7 @@ fn require_habit_refresh_intent(quote: &str) -> Result<(), String> {
                     && ["刷新","生成","发布","创建","修改","改写","refresh","generate","publish","create","change","update","write"].iter().any(|m|lower.contains(m)))
                 || ["don't refresh it","do not refresh it","don't publish it","do not publish it"].iter().any(|m|lower.contains(m)))
         });
-        if declined_snapshot || explicit.iter().any(|clause|has_cancellation_after_authorization_quote(quote,clause)) {
+        if qualified || deferred || declined_snapshot || explicit.iter().any(|clause|has_cancellation_after_authorization_quote(scope,clause)) {
             return Err("Habit refresh intent is uncertain or declined".into());
         }
         return Ok(());

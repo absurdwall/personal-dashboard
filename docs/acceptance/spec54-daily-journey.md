@@ -51,6 +51,10 @@ fixtures verify host orchestration and persistence rather than native model sema
   of its ban on creating external objects and its limits preserving other sources.
   Application tests publish from current verified source reads, preserve the pending
   review and other source bytes, and reject tentative, declined or cancelled refreshes.
+  Comma-separated limits remain independent. The current sentence surrounding the
+  exact quote retains negation and future/discussion modifiers; a shortened verb/object
+  quote cannot remove them. Future Task planning in another clause does not revoke
+  an explicit current refresh.
 - A confirmed configured native source startup failure permits one fresh transport
   and discovery probe before the current model turn, with the same scoped capabilities.
   Failed recovery still permits local work. Application fixtures preserve earlier
