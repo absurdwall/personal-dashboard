@@ -348,10 +348,14 @@ struct DynamicRuntime {
     results: Arc<Mutex<Vec<RuntimeDynamicToolResult>>>,
     requests: Arc<Mutex<Vec<RuntimeTurnRequest>>>,
     automatic_gate: Option<Arc<AutomaticTurnGate>>,
+    external_writes_allowed: bool,
     starts: Arc<Mutex<Vec<String>>>,
 }
 
 impl AppServerTransport for DynamicRuntime {
+    fn configure_external_writes(&mut self, allowed: bool) {
+        self.external_writes_allowed = allowed;
+    }
     fn inspect(&mut self) -> Result<RuntimeConnectionView, String> {
         Ok(RuntimeConnectionView {
             executable_path: Some("/synthetic/codex".into()),
@@ -446,6 +450,8 @@ impl AppServerTransport for DynamicRuntime {
             .user_text
             .starts_with("Generate and save the automatic first-draft plan");
         if automatic_plan {
+            assert!(request.automatic_morning);
+            assert!(!self.external_writes_allowed, "Automatic morning application round must configure native Dida read-only before thread selection");
             if let Some(gate) = &self.automatic_gate {
                 gate.block_automatic_turn();
             }
@@ -1037,6 +1043,7 @@ fn new_application(
             results: Arc::clone(&results),
             requests: Arc::new(Mutex::new(Vec::new())),
             automatic_gate: None,
+            external_writes_allowed: false,
             starts: Arc::new(Mutex::new(Vec::new())),
         }),
         Arc::new(context),
@@ -1130,6 +1137,7 @@ fn new_automatic_application(
             results: Arc::clone(&results),
             requests: Arc::clone(&requests),
             automatic_gate,
+            external_writes_allowed: false,
             starts: Arc::new(Mutex::new(Vec::new())),
         }),
         Arc::new(context),
