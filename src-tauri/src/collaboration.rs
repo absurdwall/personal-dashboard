@@ -46,6 +46,7 @@ const MAX_MESSAGE_CHARACTERS: usize = 12_000;
 const APP_SERVER_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 const COLLABORATION_SKILL: &str =
     include_str!("../../.agents/skills/personal-dashboard-collaboration/SKILL.md");
+const COLLABORATION_HABIT_REFRESH_TOOL: &str = "dashboard_refresh_habits";
 const COLLABORATION_TASK_TOOL: &str = "dashboard_task_operation";
 const COLLABORATION_MEMORY_TOOL: &str = "dashboard_memory_update";
 const CONTINUITY_MEMORY_MAX_AGE_DAYS: i64 = 14;
@@ -186,6 +187,7 @@ pub struct CollaborationSessionView {
     pub messages: Vec<CollaborationMessageView>,
     pub task_operations: Vec<CollaborationTaskOperationView>,
     pub memory_proposals: Vec<CollaborationMemoryProposalView>,
+    pub last_habit_refresh: Option<crate::habit_producer::HabitRefreshReport>,
     pub draft: String,
     pub drafts_by_date: HashMap<String, String>,
 }
@@ -815,6 +817,9 @@ pub trait CollaborationDailyDataService: Send + Sync {
     fn correct_short_record(&self, _input: DatedNoteCorrectionInput) -> Result<TodayView, String> {
         Err("Short Record corrections are unavailable in this adapter.".into())
     }
+    fn refresh_habit_snapshot(&self, _input: crate::habit_producer::HabitRefreshInput) -> crate::habit_producer::HabitRefreshReport {
+        crate::habit_producer::HabitRefreshReport::failed("generation", "Snapshot producer is unavailable in this adapter".into())
+    }
     fn read_habit_snapshot(&self) -> Result<HabitSnapshotView, String> {
         Err("Habit completion operations are unavailable in this adapter.".into())
     }
@@ -970,6 +975,9 @@ where
         self.application.correct_dated_note(input)
     }
 
+    fn refresh_habit_snapshot(&self, input: crate::habit_producer::HabitRefreshInput) -> crate::habit_producer::HabitRefreshReport {
+        self.application.refresh_habit_snapshot(input)
+    }
     fn read_habit_snapshot(&self) -> Result<HabitSnapshotView, String> {
         self.application.habits()
     }
@@ -1504,6 +1512,8 @@ pub struct StoredCollaborationSession {
     pub task_operations: Vec<StoredCollaborationTaskOperation>,
     #[serde(default)]
     pub memory_proposals: Vec<StoredCollaborationMemoryProposal>,
+    #[serde(default)]
+    pub last_habit_refresh: Option<crate::habit_producer::HabitRefreshReport>,
     #[serde(default)]
     pub draft: String,
     #[serde(default)]
@@ -2313,6 +2323,7 @@ impl CollaborationApplication {
                 }],
                 task_operations: Vec::new(),
                 memory_proposals: Vec::new(),
+            last_habit_refresh: None,
                 draft: String::new(),
                 drafts_by_date: HashMap::new(),
             };
@@ -2495,6 +2506,7 @@ impl CollaborationApplication {
             messages: Vec::new(),
             task_operations: Vec::new(),
             memory_proposals: Vec::new(),
+            last_habit_refresh: None,
             draft: String::new(),
             drafts_by_date: HashMap::new(),
         };
@@ -4180,6 +4192,58 @@ impl CollaborationApplication {
                 text: "This tool call does not belong to the active Dashboard conversation. No data was changed.".into(),
                 success: false,
             };
+        }
+        if call.tool == COLLABORATION_HABIT_REFRESH_TOOL {
+            let result = (|| -> Result<crate::habit_producer::HabitRefreshReport, String> {
+                if automatic_plan || !daily_record_tool_registered {
+                    return Err(
+                        "Habit publication is unavailable in this automatic/read-only round".into(),
+                    );
+                }
+                let input: crate::habit_producer::HabitRefreshInput =
+                    serde_json::from_value(call.arguments.clone()).map_err(|e| e.to_string())?;
+                if input.execution_mode != "execute" {
+                    return Err("A review request does not authorize snapshot publication".into());
+                }
+                self.read_state(|state| -> Result<(), String> {
+                        let session = state.sessions.iter().find(|s| s.id==session_id && s.vault_key.as_deref()==Some(vault_key))
+                            .ok_or_else(|| "Current request is unavailable".to_string())?;
+                        if !matches!(session.run_state.as_str(), "thinking"|"reading") {return Err("Request is no longer active".into());}
+                        let message = session.messages.iter().find(|m| m.role=="user" && m.execution_id.as_deref()==Some(execution_id) && m.delivery_state=="in-progress")
+                            .ok_or_else(|| "No current instruction".to_string())?;
+                        let quote=&input.authorization_quote;
+                        if quote.is_empty() || !message.text.contains(quote) || is_review_before_write_request(&message.text.to_lowercase())
+                            || has_cancellation_after_authorization_quote(&message.text,quote) {return Err("Quote an active exact request; review/cancellation prevents publication".into());}
+                        let lower=quote.to_lowercase();
+                        if ["maybe","perhaps","也许","可能","不要","先别","don't","do not"].iter().any(|m| lower.contains(m)) {return Err("Habit refresh intent is uncertain or declined".into());}
+                        let factual = daily_record_natural_authority(&CollaborationTaskOperation::CreateShortRecord { category: ShortRecordCategory::Ordinary, content:quote.clone() }, &lower)
+                            && ["起床","睡觉","入睡","woke","slept","got up"].iter().any(|m|lower.contains(m));
+                        if !factual && !has_authority_marker(&lower,"刷新习惯|更新习惯|刷新打卡|refresh habits|refresh my habits|update habits|refresh habit") {
+                            return Err("The current message does not authorize this Habit rebuild".into());
+                        }
+                        Ok(())
+                    })??;
+                if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+                    return Err("Selected Vault changed before refresh".into());
+                }
+                if input.host_source_reads.is_empty() {
+                    return Err(
+                        "No successful current native source queries; old snapshot retained".into(),
+                    );
+                }
+                Ok(self.daily_data_service.refresh_habit_snapshot(input))
+            })();
+            let report = result.unwrap_or_else(|error| {
+                crate::habit_producer::HabitRefreshReport::failed("query", error)
+            });
+            let persisted = self.update_state(|state| {
+                let session = matching_session_mut(state, vault_key, session_id)?;
+                session.last_habit_refresh = Some(report.clone());
+                Ok(())
+            });
+            return RuntimeDynamicToolResult { success:report.publication=="published" && persisted.is_ok(),
+                    text:match persisted {Ok(())=>serde_json::to_string(&report).unwrap_or_default(),
+                        Err(error)=>format!("{} Snapshot stage report could not be saved to conversation history: {error}. Re-read the canonical snapshot before retrying.",serde_json::to_string(&report).unwrap_or_default())} };
         }
         if automatic_plan && call.tool == COLLABORATION_MEMORY_TOOL {
             return RuntimeDynamicToolResult {
@@ -6716,6 +6780,9 @@ impl CollaborationApplication {
                 true,
             ));
         }
+        if !automatic_plan && daily_plan_operations_available {
+            dynamic_tools.push(collaboration_habit_refresh_tool_spec());
+        }
         if !automatic_plan && memory_operations_available {
             dynamic_tools.push(collaboration_memory_tool_spec());
         }
@@ -7475,6 +7542,7 @@ fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionVie
             .cloned()
             .unwrap_or_else(|| session.draft.clone()),
         drafts_by_date: session.drafts_by_date.clone(),
+        last_habit_refresh: session.last_habit_refresh.clone(),
     }
 }
 
@@ -9743,6 +9811,15 @@ fn collaboration_task_tool_spec(
     })
 }
 
+fn collaboration_habit_refresh_tool_spec() -> Value {
+    json!({"name":COLLABORATION_HABIT_REFRESH_TOOL,
+        "description":"After an explicit Habits refresh request or saved actual waking/sleeping fact, rebuild existing snapshot v1 from current successful native Dida Habit catalog/object and full-range get_habit_checkins reads plus canonical Daily Records. Query an envelope from the day before the snapshot Monday eleven weeks before the current natural-date Monday through the day after the lived date; equal endpoint/single-day queries do not prove inclusion. The host filters actual source stamps into the snapshot window. Supply explicit verified existing semantic habitKey to external stable ID mappings, never fuzzy names. Unmapped coverage stays partial/unknown. No new local Habits or arbitrary candidate/code writes. Source failures preserve the old snapshot. Unknown minutes stay unknown; saved actual-time/threshold facts rebuild from Daily Records. Report query/generation/publication/display separately. Review/cancellation cannot publish.",
+        "inputSchema":{"type":"object","properties":{
+            "mappings":{"type":"object","additionalProperties":{"type":"string"}},
+            "authorizationQuote":{"type":"string"},"executionMode":{"type":"string","enum":["execute"]}},
+            "required":["mappings","authorizationQuote","executionMode"],"additionalProperties":false}})
+}
+
 fn collaboration_memory_tool_spec() -> Value {
     json!({
         "name": COLLABORATION_MEMORY_TOOL,
@@ -10844,6 +10921,7 @@ mod collaboration_memory_tests {
             messages,
             task_operations: Vec::new(),
             memory_proposals: Vec::new(),
+            last_habit_refresh: None,
             draft: String::new(),
             drafts_by_date: HashMap::new(),
         }
@@ -12822,6 +12900,7 @@ impl StdioJsonlClient {
     ) -> Result<(String, bool, Vec<ExternalToolActionView>), String> {
         let mut text = String::new();
         let mut external_actions: Vec<ExternalToolActionView> = Vec::new();
+        let mut habit_source_reads = Vec::new();
         let mut interrupt_requested = false;
         let deadline = std::time::Instant::now() + APP_SERVER_REQUEST_TIMEOUT;
         loop {
@@ -12857,6 +12936,16 @@ impl StdioJsonlClient {
                 if params.get("threadId").and_then(Value::as_str) == Some(thread_id)
                     && params.get("turnId").and_then(Value::as_str) == Some(turn_id)
                 {
+                    if message.get("method").and_then(Value::as_str)==Some("item/completed") {
+                        if let Some(item)=params.get("item") {
+                            if let Some(read)=crate::habit_producer::native_source_read(item) {
+                                if habit_source_reads.len()<32 { habit_source_reads.push(read); }
+                            } else if item.get("server").and_then(Value::as_str)==Some("dida365")
+                                && [Some("list_habits"),Some("get_habit"),Some("get_habit_checkins")].contains(&item.get("tool").and_then(Value::as_str)) {
+                                habit_source_reads.clear();
+                            }
+                        }
+                    }
                     if let Some(mut action) = params
                         .get("item")
                         .and_then(|item| external_tool_action(thread_id, item, target_scope))
@@ -12910,7 +12999,7 @@ impl StdioJsonlClient {
                     "Codex App Server sent a dynamic tool call without a request id.".to_string()
                 })?;
                 let params = message.get("params").cloned().unwrap_or(Value::Null);
-                let call = RuntimeDynamicToolCall {
+                let mut call = RuntimeDynamicToolCall {
                     thread_id: params
                         .get("threadId")
                         .and_then(Value::as_str)
@@ -12933,6 +13022,10 @@ impl StdioJsonlClient {
                         .to_owned(),
                     arguments: params.get("arguments").cloned().unwrap_or(Value::Null),
                 };
+                if call.tool == COLLABORATION_HABIT_REFRESH_TOOL {
+                    // Never trust agent-supplied evidence, including evidence from a prior turn.
+                    crate::habit_producer::supply_native_evidence(&mut call.arguments, &habit_source_reads);
+                }
                 let result = if call.thread_id != thread_id || call.turn_id != turn_id {
                     RuntimeDynamicToolResult {
                         text: "This Dashboard task tool call belongs to a different active turn. No task was changed.".into(),

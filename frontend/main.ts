@@ -802,6 +802,11 @@ type CollaborationTaskOperationView = Readonly<{
   updatedAt: string;
 }>;
 
+type HabitRefreshReport = Readonly<{
+  query: string; generation: string; publication: string; display: string;
+  generatedAt: string | null; rangeFrom: string | null; rangeTo: string | null; message: string;
+}>;
+
 type CollaborationSessionView = Readonly<{
   id: string;
   title: string;
@@ -820,6 +825,7 @@ type CollaborationSessionView = Readonly<{
   messages: readonly CollaborationMessageView[];
   taskOperations: readonly CollaborationTaskOperationView[];
   memoryProposals: readonly CollaborationMemoryProposalView[];
+  lastHabitRefresh?: HabitRefreshReport | null;
   draft: string;
   draftsByDate: Readonly<Record<string, string>>;
 }>;
@@ -3168,6 +3174,28 @@ async function refreshCollaborationContextAfterOperation(
   }
 }
 
+function appendHabitRefreshReport(container: HTMLElement, report: HabitRefreshReport): void {
+  const card = document.createElement("article");
+  card.className = "collaboration-task-operation";
+  const title = document.createElement("strong");
+  title.textContent = t("collaboration.habitRefreshTitle");
+  card.append(title);
+  for (const stage of ["query", "generation", "publication", "display"] as const) {
+    const row = document.createElement("p");
+    row.textContent = `${t(`collaboration.habitRefreshStage.${stage}` as InterfaceCopyKey)}: ${t(`collaboration.habitRefreshState.${report[stage]}` as InterfaceCopyKey)}`;
+    card.append(row);
+  }
+  if (report.generatedAt && report.rangeFrom && report.rangeTo) {
+    const coverage = document.createElement("small");
+    coverage.textContent = t("collaboration.habitRefreshCoverage", { time: report.generatedAt, from: report.rangeFrom, to: report.rangeTo });
+    card.append(coverage);
+  }
+  const detail = document.createElement("p");
+  detail.textContent = report.message;
+  card.append(detail);
+  container.append(card);
+}
+
 function renderCollaborationTaskOperations(session: CollaborationSessionView | null): void {
   if (collaborationTaskToolNotice) {
     collaborationTaskToolNotice.replaceChildren();
@@ -3201,8 +3229,10 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
   }
   if (!collaborationTaskOperations) return;
   collaborationTaskOperations.replaceChildren();
+  if (session?.lastHabitRefresh) appendHabitRefreshReport(collaborationTaskOperations, session.lastHabitRefresh);
   const operations = session?.taskOperations ?? [];
   if (operations.length === 0) {
+    if (session?.lastHabitRefresh) return;
     const empty = document.createElement("p");
     empty.className = "collaboration-empty-conversation";
     empty.textContent = t("collaboration.noTaskOperations");
