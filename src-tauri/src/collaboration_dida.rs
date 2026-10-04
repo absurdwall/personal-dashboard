@@ -237,6 +237,10 @@ pub(super) fn validate_config(effective: &Value) -> Result<(), String> {
     Ok(())
 }
 
+pub(super) fn startup_failed(status: &Value) -> bool {
+    status["state"] == "unavailable" && status["runtimeStatus"] == "failed"
+}
+
 pub(super) fn source_status(catalog: Result<Value, String>) -> Value {
     let Ok(catalog) = catalog else {
         return json!({"source":SERVER,"state":"unavailable","coverage":"No current external query has succeeded; local work can continue."});
@@ -292,6 +296,15 @@ pub(super) const READ_GUIDANCE: &str = "The host-selected existing dida365 MCP r
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn recovery_requires_confirmed_native_startup_failure_not_auth_or_missing_discovery() {
+        for (runtime,auth,expected) in [("failed","oAuth",true),("failed","notLoggedIn",false),("authenticationRequired","oAuth",false),("disabled","oAuth",false),("cancelled","oAuth",false),("connected","oAuth",false)] {
+            let status=source_status(Ok(json!({"data":[{"name":SERVER,"runtimeStatus":runtime,"authStatus":auth,"tools":{}}]})));
+            assert_eq!(startup_failed(&status),expected,"{runtime}/{auth}");
+        }
+        assert!(!startup_failed(&source_status(Err("No typed runtime startup status".into()))));
+        assert!(!startup_failed(&source_status(Ok(json!({"data":[]})))));
+    }
     #[test]
     fn native_approval_is_per_enabled_manual_tool_and_removed_from_read_only_or_local_habit_scope() {
         let selected=selected_connection(json!({"name":SERVER,"enabled":true,"transport":{"type":"streamable_http","url":"https://example.invalid"},"disabled_tools":["delete_task"]})).unwrap();

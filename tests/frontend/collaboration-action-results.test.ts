@@ -73,3 +73,21 @@ for (const language of ["zh", "en"] as const) {
     assert.ok(!assistant.children[2].textContent.includes("not a saved business change") && !assistant.children[2].textContent.includes("不是已保存"));
   });
 }
+
+for (const language of ["zh", "en"] as const) {
+  test(`native Dida result suffix is localized only for host diagnostics in ${language}`, () => {
+    const native = "Current Dida source readback confirms the requested outcome for the recorded stable object identity. No write was replayed; source confirmation does not reconstruct a lost original receipt. Source object IDs: source-id-a, source-id-b.";
+    const list = element();
+    const session = { messages: [{ role: "user", text: "Current native request", messageDate: "2026-10-03", targetDate: "2026-10-03", externalAppIds: [], externalActions: [], actionResults: [
+      { id: "host", source: "Dida", status: "saved", messageKind: "diagnostic", message: native },
+      { id: "literal", source: "Dida", status: "saved", messageKind: "sourceText", message: native },
+    ] }] };
+    const context = vm.createContext({ document: { createElement: element }, collaborationMessageList: list, session,
+      collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
+      t: (key: any, values: any) => interfaceCopy(key, language, values) });
+    vm.runInContext(renderer + "\nrenderCollaborationMessages(session)", context);
+    const results = list.children[0].children.find((node: any) => node.className === "collaboration-action-results");
+    assert.ok(results.children[1].textContent.endsWith(localizeCollaborationDiagnostic(native, language)));
+    assert.ok(results.children[2].textContent.endsWith(native));
+  });
+}

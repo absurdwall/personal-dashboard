@@ -6440,3 +6440,81 @@ fn exact_native_habit_id_retains_external_only_origin_when_local_catalog_is_unav
     assert_eq!(action.verification.as_ref().unwrap()["habitScope"],"external");assert!(!path.join("life/.personal-dashboard/habit-completions/v1/completions.json").exists());
     app.shutdown().unwrap();
 }
+
+struct StartupRecoveryRuntime {
+    base: DynamicRuntime,
+    configs: Arc<Mutex<Vec<(bool, bool, Vec<Value>)>>>,
+    probes: Arc<Mutex<Vec<(String, bool)>>>,
+    writes: Arc<Mutex<Vec<String>>>,
+    recover_after: usize,
+    habit_writes: bool,
+    unavailable: bool,
+}
+impl AppServerTransport for StartupRecoveryRuntime {
+    fn inspect(&mut self)->Result<RuntimeConnectionView,String>{self.base.inspect()}
+    fn start_chatgpt_login(&mut self)->Result<(),String>{self.base.start_chatgpt_login()}
+    fn configure_external_writes(&mut self,allowed:bool){self.base.configure_external_writes(allowed)}
+    fn configure_external_habit_writes(&mut self,allowed:bool){self.habit_writes=allowed;}
+    fn external_capability_fingerprint(&self)->Option<String>{Some("same-selected-native-source".into())}
+    fn start_thread(&mut self,m:Option<&str>,i:&str)->Result<String,String>{self.base.start_thread(m,i)}
+    fn start_thread_with_dynamic_tools(&mut self,m:Option<&str>,i:&str,t:Vec<Value>)->Result<String,String>{
+        self.configs.lock().unwrap().push((self.base.external_writes_allowed,self.habit_writes,t.clone()));
+        self.base.start_thread_with_dynamic_tools(m,i,t)
+    }
+    fn resume_thread(&mut self,t:&str)->Result<(),String>{self.base.resume_thread(t)}
+    fn external_source_startup_failed(&mut self,t:&str)->bool{
+        self.unavailable=self.base.starts.lock().unwrap().len()<self.recover_after;
+        self.probes.lock().unwrap().push((t.into(),self.unavailable));
+        self.unavailable
+    }
+    fn send_turn(&mut self,r:RuntimeTurnRequest)->Result<RuntimeTurnResult,String>{self.base.send_turn(r)}
+    fn send_turn_with_external_actions(&mut self,r:RuntimeTurnRequest,_cancel:Arc<AtomicBool>,handler:Option<RuntimeDynamicToolHandler>,actions:Option<personal_dashboard_lib::collaboration::RuntimeExternalActionHandler>,_approval:Option<personal_dashboard_lib::collaboration::RuntimeExternalApprovalHandler>)->Result<RuntimeTurnResult,String>{
+        self.base.requests.lock().unwrap().push(r.clone());
+        let mut external=vec![];
+        if r.user_text=="请创建本地任务买菜" {
+            let result=handler.unwrap()(RuntimeDynamicToolCall{thread_id:r.thread_id.clone(),turn_id:format!("turn-{}",r.execution_id),call_id:"current-local".into(),tool:"dashboard_task_operation".into(),arguments:json!({"operation":"createTask","name":"买菜","content":null,"date":null,"time":null,"listId":null,"executionMode":"execute","authorizationQuote":r.user_text})});
+            assert!(result.success,"Local work must continue when native recovery fails: {}",result.text);
+        } else {
+            assert_eq!(r.user_text,"请在滴答创建取包裹任务");
+            if !self.unavailable {
+                assert!(self.base.external_writes_allowed);
+                self.writes.lock().unwrap().push(r.user_text.clone());
+                let action=personal_dashboard_lib::collaboration::ExternalToolActionView{action_id:format!("native-current-{}",r.execution_id),source_id:"dida365".into(),source_name:"Dida".into(),tool_id:"create_task".into(),status:"saved".into(),target_scope:"Source-created task".into(),input_summary:"Only the current request; source generates ID".into(),result_summary:"Current source readback confirmed".into(),verification:Some(json!({"sourceCreatedId":"synthetic-source-generated-id"}))};
+                if let Some(h)=actions {h(action.clone());}
+                external.push(action);
+            }
+        }
+        Ok(RuntimeTurnResult{text:if self.unavailable{"Native source unavailable; supported local work remains saved."}else{"Current native catalog recovered; only current authorized effect executed."}.into(),runtime_turn_id:Some(format!("turn-{}",r.execution_id)),stopped:false,external_actions:external})
+    }
+}
+
+#[test]
+fn failed_native_startup_has_one_same_config_recovery_before_current_turn_and_never_replays_local_success() {
+    for recover_after in [3,usize::MAX] {
+        let directory=IsolatedDirectory::new();let path=directory.vault("startup-recovery");let vault=MutableVault::new(&path);
+        let seed=new_application(&directory,&vault,MutableContext::new("vault-a"),Arc::new(AtomicBool::new(false))).0;
+        let session=seed.create_default_session().unwrap();
+        seed.submit_message("vault-a",&session.id,&session.target_date,"create task").unwrap();wait_for_finish(&seed,&session.id,"vault-a");
+        let prior_review=seed.session("vault-a",&session.id).unwrap().task_operations[0].clone();assert_eq!(prior_review.status,"awaitingApproval");seed.shutdown().unwrap();
+        let starts=Arc::new(Mutex::new(vec![]));let requests=Arc::new(Mutex::new(vec![]));let configs=Arc::new(Mutex::new(vec![]));let probes=Arc::new(Mutex::new(vec![]));let writes=Arc::new(Mutex::new(vec![]));
+        let runtime=StartupRecoveryRuntime{base:DynamicRuntime{registered_tools:Arc::new(Mutex::new(vec![])),results:Arc::new(Mutex::new(vec![])),requests:requests.clone(),automatic_gate:None,external_writes_allowed:false,starts:starts.clone()},configs:configs.clone(),probes:probes.clone(),writes:writes.clone(),recover_after,habit_writes:true,unavailable:true};
+        let app=CollaborationApplication::with_adapters(Arc::new(FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"))),Box::new(runtime),Arc::new(MutableContext::new("vault-a")),Arc::new(FixedClock),directory.path().join("runtime"),"Current instructions; fixture proves host orchestration, not native model interpretation".into()).with_task_service(Arc::new(TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault.clone(),FixedClock,FileTaskStore))));
+        assert_eq!(app.session("vault-a",&session.id).unwrap().id,session.id);
+        app.submit_message("vault-a",&session.id,&session.target_date,"请创建本地任务买菜").unwrap();wait_for_finish(&app,&session.id,"vault-a");
+        let first=app.session("vault-a",&session.id).unwrap();assert_eq!(first.runtime_thread_id.as_deref(),Some("synthetic-thread-2"));assert_eq!(first.task_operations.len(),2);assert_eq!(first.task_operations[1].status,"applied");assert_eq!(first.task_operations[0],prior_review);
+        let operation=first.task_operations[1].clone();assert_eq!(starts.lock().unwrap().len(),2,"Only one recovery despite still failed source");
+        app.submit_message("vault-a",&session.id,&session.target_date,"请在滴答创建取包裹任务").unwrap();wait_for_finish(&app,&session.id,"vault-a");
+        let final_state=app.session("vault-a",&session.id).unwrap();assert_eq!(final_state.id,session.id);assert_eq!(final_state.runtime_thread_id.as_deref(),Some("synthetic-thread-3"));assert_eq!(final_state.task_operations,vec![prior_review,operation]);
+        assert_eq!(requests.lock().unwrap().len(),2,"Each current request reaches model only once");
+        let sent=requests.lock().unwrap();assert_eq!(sent[0].thread_id,"synthetic-thread-2");assert_eq!(sent[1].thread_id,"synthetic-thread-3");drop(sent);
+        let config=configs.lock().unwrap();assert_eq!(config.len(),3);assert!(config.iter().all(|c|c==&config[0]),"Rotation must not widen current schema/native capability");drop(config);
+        let history=starts.lock().unwrap();assert!(history[2].contains("Do not replay"));assert!(history[2].contains("请创建本地任务买菜"));assert!(!history[2].contains("请在滴答创建取包裹任务"));drop(history);
+        assert_eq!(probes.lock().unwrap().len(),4,"Initial + one recovery probe per request");
+        assert_eq!(writes.lock().unwrap().as_slice(),if recover_after==3 {vec!["请在滴答创建取包裹任务".to_owned()]}else{vec![]}.as_slice());
+        let latest=TaskApplication::new(vault,FixedClock,FileTaskStore).read().unwrap();assert_eq!(latest.tasks.len(),1);assert_eq!(latest.tasks[0].name,"买菜");
+        assert_eq!(final_state.messages.iter().flat_map(|m|&m.external_actions).count(),usize::from(recover_after==3));
+        app.shutdown().unwrap();
+        let reloaded=new_application(&directory,&MutableVault::new(&path),MutableContext::new("vault-a"),Arc::new(AtomicBool::new(false))).0;
+        let restored=reloaded.session("vault-a",&session.id).unwrap();assert_eq!(restored.id,session.id);assert_eq!(restored.runtime_thread_id,final_state.runtime_thread_id);assert_ne!(restored.runtime_thread_id,session.runtime_thread_id);assert_eq!(restored.task_operations,final_state.task_operations);assert_eq!(serde_json::to_value(&restored.messages).unwrap(),serde_json::to_value(&final_state.messages).unwrap());reloaded.shutdown().unwrap();
+    }
+}
