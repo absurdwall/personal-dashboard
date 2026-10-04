@@ -189,6 +189,16 @@ pub(super) fn thread_config(connection: Option<&Value>, writes_allowed: bool) ->
     json!({"mcp_servers.dida365.enabled_tools":tools})
 }
 
+pub(super) fn thread_config_with_habit_writes(connection: Option<&Value>, writes_allowed:bool, habit_writes_allowed:bool) -> Value {
+    let mut config=thread_config(connection,writes_allowed);
+    if !habit_writes_allowed {
+        if let Some(tools)=config["mcp_servers.dida365.enabled_tools"].as_array_mut() {
+            tools.retain(|tool| ![Some("create_habit"),Some("update_habit"),Some("upsert_habit_checkins")].contains(&tool.as_str()));
+        }
+    }
+    config
+}
+
 pub(super) fn validate_config(effective: &Value) -> Result<(), String> {
     let servers = effective
         .get("config")
@@ -256,6 +266,16 @@ pub(super) const READ_GUIDANCE: &str = "The host-selected existing dida365 MCP r
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn only_local_habit_scope_removes_native_habit_mutations_but_keeps_task_authority() {
+        let connection=selected_connection(json!({"name":SERVER,"enabled":true,"transport":{"type":"streamable_http","url":"https://example.invalid"}})).unwrap();
+        let local=thread_config_with_habit_writes(Some(&connection),true,false);
+        let tools=local["mcp_servers.dida365.enabled_tools"].as_array().unwrap();
+        assert!(tools.contains(&json!("create_task")) && tools.contains(&json!("get_habit_checkins")));
+        for tool in ["create_habit","update_habit","upsert_habit_checkins"] { assert!(!tools.contains(&json!(tool))); }
+        let automatic=thread_config_with_habit_writes(Some(&connection),false,true);
+        assert!(automatic["mcp_servers.dida365.enabled_tools"].as_array().unwrap().iter().all(|tool|!super::super::dida_writes::WRITE_TOOLS.contains(&tool.as_str().unwrap())));
+    }
     #[test]
     fn only_selected_enabled_dida_reads_are_reused() {
         let source = json!({"name":SERVER,"enabled":true,"transport":{"type":"streamable_http","url":"https://example.invalid","http_headers":{"Authorization":"synthetic secret"}},"disabled_tools":["search_task"]});

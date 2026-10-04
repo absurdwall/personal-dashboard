@@ -774,6 +774,10 @@ impl AppServerTransport for DynamicRuntime {
                 request.user_text
             ));
         };
+        if arguments.get("operation").and_then(Value::as_str)==Some("setLocalHabitCompletion") {
+            let scope=if arguments.get("completed")==Some(&json!(false)) {"original"}else{"local"};
+            arguments.as_object_mut().unwrap().entry("scope").or_insert(json!(scope));
+        }
         if !automatic_plan && request.user_text != "missing current execution mode" {
             arguments.as_object_mut().unwrap().entry("executionMode")
                 .or_insert(json!("prepareProposal"));
@@ -5284,4 +5288,710 @@ fn habit_refresh_before_four_preserves_generation_natural_date_and_explicit_next
     assert_eq!(view.habit("sleep").unwrap().today.actual_time_label.as_deref(),Some("次日 00:30"));
     let date_view=today.read_date("2026-09-27").unwrap();
     assert!(serde_json::to_string(&date_view.habit_corrections).unwrap().contains("次日 00:30"));
+}
+
+// Scripted native MCP actor with only an external source fault seam. Local
+// writes, receipts, snapshots, restart and consumer reads use production stores.
+#[derive(Default)]
+struct DualSource {
+    checkins: std::collections::BTreeMap<i64, i64>,
+    writes: usize,
+    reads: usize,
+    fail: bool,
+    lost_receipt: bool,
+    readable: bool,
+    projection_fail: bool,
+    habit_writes_allowed: bool,
+    last_execution: Option<String>,
+    last_action: Option<personal_dashboard_lib::collaboration::ExternalToolActionView>,
+}
+struct DualRuntime {
+    base: DynamicRuntime,
+    source: Arc<Mutex<DualSource>>,
+}
+impl AppServerTransport for DualRuntime {
+    fn inspect(&mut self) -> Result<RuntimeConnectionView, String> {
+        self.base.inspect()
+    }
+    fn start_chatgpt_login(&mut self) -> Result<(), String> {
+        self.base.start_chatgpt_login()
+    }
+    fn start_thread(&mut self, m: Option<&str>, i: &str) -> Result<String, String> {
+        self.base.start_thread(m, i)
+    }
+    fn start_thread_with_dynamic_tools(
+        &mut self,
+        m: Option<&str>,
+        i: &str,
+        t: Vec<Value>,
+    ) -> Result<String, String> {
+        self.base.start_thread_with_dynamic_tools(m, i, t)
+    }
+    fn resume_thread(&mut self, t: &str) -> Result<(), String> {
+        self.base.resume_thread(t)
+    }
+    fn configure_external_writes(&mut self, a: bool) {
+        self.base.configure_external_writes(a)
+    }
+    fn configure_external_habit_writes(&mut self, a: bool) {
+        self.source.lock().unwrap().habit_writes_allowed = a;
+    }
+
+    fn send_turn(&mut self, r: RuntimeTurnRequest) -> Result<RuntimeTurnResult, String> {
+        self.base.send_turn(r)
+    }
+    fn reconcile_external_action(
+        &mut self,
+        mut action: personal_dashboard_lib::collaboration::ExternalToolActionView,
+    ) -> personal_dashboard_lib::collaboration::ExternalToolActionView {
+        let mut source = self.source.lock().unwrap();
+        source.reads += 1;
+        let effect = action.verification.as_ref().unwrap()["habitCheckin"].clone();
+        if source.readable
+            && source.checkins.get(&effect["stamp"].as_i64().unwrap())
+                == effect["status"].as_i64().as_ref()
+        {
+            action.status = "saved".into();
+            action.result_summary="Current source readback confirms exact stable Habit and historical stamp, no write replayed.".into();
+            action.verification.as_mut().unwrap()["sourceObserved"] = json!(true);
+        } else {
+            action.status = "unknown".into();
+            action.verification.as_mut().unwrap()["sourceObserved"] = json!(source.readable);
+        }
+        action
+    }
+    fn reconcile_turn(
+        &mut self,
+        _: &str,
+        execution: &str,
+    ) -> Result<RuntimeRunReconciliation, String> {
+        let action = {
+            let source = self.source.lock().unwrap();
+            assert_eq!(source.last_execution.as_deref(), Some(execution));
+            source.last_action.clone().unwrap()
+        };
+        Ok(RuntimeRunReconciliation::Interrupted {
+            runtime_turn_id: "lost-dual-turn".into(),
+            external_actions: vec![self.reconcile_external_action(action)],
+        })
+    }
+    fn send_turn_with_external_actions(
+        &mut self,
+        request: RuntimeTurnRequest,
+        _: Arc<AtomicBool>,
+        handler: Option<RuntimeDynamicToolHandler>,
+        actions: Option<personal_dashboard_lib::collaboration::RuntimeExternalActionHandler>,
+        _: Option<personal_dashboard_lib::collaboration::RuntimeExternalApprovalHandler>,
+    ) -> Result<RuntimeTurnResult, String> {
+        let handler = handler.unwrap();
+        self.base.requests.lock().unwrap().push(request.clone());
+        let text = &request.user_text;
+        let completed = !(text.contains("撤回") || text.contains("撤销") || text.contains("只撤"));
+        let date = if text.contains("2026-09-26") {
+            "2026-09-26"
+        } else {
+            request.context.date.as_str()
+        };
+        let stamp = date.replace('-', "").parse::<i64>().unwrap();
+        let desired = if completed { 2 } else { 0 };
+        let effect_text = text
+            .split('。')
+            .find(|clause| clause.contains("运动") || clause.contains("锻炼"))
+            .unwrap_or(text);
+        let mut scope = if effect_text.contains("只记本地") || effect_text.contains("只撤本地")
+        {
+            "local"
+        } else if effect_text.contains("只记滴答") || effect_text.contains("只撤滴答") {
+            "external"
+        } else {
+            "both"
+        };
+        if !completed && scope == "both" {
+            if let Some(original) = request.habit_completion_context["origins"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["habitKey"] == "exercise" && item["date"] == date)
+            {
+                scope = original["scope"].as_str().unwrap();
+            }
+        }
+        let turn = format!("turn-{}", request.execution_id);
+        if text.contains("买菜") {
+            let result = handler(RuntimeDynamicToolCall {
+                thread_id: request.thread_id.clone(),
+                turn_id: turn.clone(),
+                call_id: "independent-local-task".into(),
+                tool: "dashboard_task_operation".into(),
+                arguments: json!({"operation":"createTask","name":"买菜","content":null,"date":null,"time":null,"listId":null,"executionMode":"execute","authorizationQuote":"安排买菜只在本地任务里创建。"}),
+            });
+            self.base.results.lock().unwrap().push(result);
+        }
+        if text.contains("营养药完成了，只记本地") {
+            let result = handler(RuntimeDynamicToolCall {
+                thread_id: request.thread_id.clone(),
+                turn_id: turn.clone(),
+                call_id: "independent-local-nutrition".into(),
+                tool: "dashboard_task_operation".into(),
+                arguments: json!({"operation":"setLocalHabitCompletion","habitKey":"nutrition","completed":true,"targetDate":date,"scope":"local","executionMode":"execute","authorizationQuote":"营养药完成了，只记本地。"}),
+            });
+            self.base.results.lock().unwrap().push(result);
+        }
+        let local_state = request.habit_completion_context["targets"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|target| target["habitKey"] == "exercise")
+            .and_then(|target| target["localDates"].as_array())
+            .and_then(|days| days.iter().find(|day| day["date"] == date))
+            .and_then(|day| day["state"].as_str());
+        let local_confirmed = if completed {
+            local_state == Some("Completed")
+        } else {
+            local_state == Some("Withdrawn")
+        };
+        if scope != "external" && !local_confirmed {
+            let call = RuntimeDynamicToolCall {
+                thread_id: request.thread_id.clone(),
+                turn_id: turn.clone(),
+                call_id: "local-dual-effect".into(),
+                tool: "dashboard_task_operation".into(),
+                arguments: json!({"operation":"setLocalHabitCompletion","habitKey":"exercise","completed":completed,"targetDate":date,"scope":if scope=="local" {"local"} else if completed {"both"}else{"original"},"executionMode":"execute","authorizationQuote":text}),
+            };
+            let result = handler(call.clone());
+            let duplicate = handler(call);
+            assert_eq!(
+                result, duplicate,
+                "Duplicate delivery returns same local receipt"
+            );
+            self.base.results.lock().unwrap().push(result);
+        }
+        let mut external_actions = Vec::new();
+        if scope != "local" {
+            let mut source = self.source.lock().unwrap();
+            source.reads += 1;
+            if source.checkins.get(&stamp) != Some(&desired) {
+                assert!(
+                    self.base.external_writes_allowed || source.fail,
+                    "Uncertain source reads must not grant native write capability"
+                );
+                if !source.fail {
+                    source.checkins.insert(stamp, desired);
+                    source.writes += 1;
+                }
+                let action=personal_dashboard_lib::collaboration::ExternalToolActionView {action_id:format!("{}:dual-checkin-{}",request.thread_id,request.execution_id),source_id:"dida365".into(),source_name:"Dida".into(),tool_id:"upsert_habit_checkins".into(),status:if source.fail || source.lost_receipt {"unknown"}else{"saved"}.into(),target_scope:date.into(),input_summary:"Exact verified synthetic-habit+stamp, supported status only; no invented minute".into(),result_summary:if source.fail {"External source failed; local success remains."}else if source.lost_receipt {"Native receipt lost; reread before retry."}else{"Current exact source readback confirmed."}.into(),verification:Some(json!({"habitCheckin":{"habitId":"synthetic-habit","stamp":stamp,"status":desired},"checks":[{"tool":"get_habit_checkins","arguments":{"habit_ids":["synthetic-habit"]}}]}))};
+                source.last_action = Some(action.clone());
+                source.last_execution = Some(request.execution_id.clone());
+                if let Some(handler) = &actions {
+                    handler(action.clone());
+                }
+                external_actions.push(action);
+                if source.lost_receipt {
+                    return Err("Native stream lost after the external write; endpoints must be reconciled independently".into());
+                }
+            }
+        }
+        // Native reads are freshly generated after the endpoint attempts. The
+        // real producer checks identities, range, version and publication.
+        let source = self.source.lock().unwrap();
+        let catalog = json!({"type":"mcpToolCall","server":"dida365","tool":"get_habit","status":"completed","arguments":{"habit_id":"synthetic-habit"},"result":{"structuredContent":{"id":"synthetic-habit","name":"Owned mapped Habit"}}});
+        let checkins = json!({"type":"mcpToolCall","server":"dida365","tool":"get_habit_checkins","status":"completed","arguments":{"habit_ids":["synthetic-habit"],"from_stamp":20260701,"to_stamp":20260930,"client_timezone":"America/New_York"},"result":{"isError":false,"structuredContent":{"result":[{"habitId":"synthetic-habit","year":2026,"checkins":source.checkins.iter().map(|(stamp,status)|json!({"stamp":stamp,"status":status,"opTime":"2026-09-27T21:00:00-04:00"})).collect::<Vec<_>>()}]}}});
+        let reads: Vec<_> = if source.projection_fail || !source.readable {
+            vec![]
+        } else {
+            [catalog, checkins]
+                .iter()
+                .filter_map(personal_dashboard_lib::habit_producer::native_source_read)
+                .collect()
+        };
+        drop(source);
+        let refreshed = handler(RuntimeDynamicToolCall {
+            thread_id: request.thread_id.clone(),
+            turn_id: turn.clone(),
+            call_id: "projection-after-endpoints".into(),
+            tool: "dashboard_refresh_habits".into(),
+            arguments: json!({"mappings":{"exercise":"synthetic-habit"},"executionMode":"execute","authorizationQuote":text,"hostSourceReads":reads}),
+        });
+        self.base.results.lock().unwrap().push(refreshed);
+        Ok(RuntimeTurnResult {text:"Local and Dida endpoints are independent; source readback and snapshot stage report describe current outcomes. OR counts once; no successful endpoint was rolled back.".into(),runtime_turn_id:Some(turn),stopped:false,external_actions})
+    }
+}
+
+fn new_dual_application(
+    directory: &IsolatedDirectory,
+    vault: &MutableVault,
+    clock: ManualClock,
+    source: Arc<Mutex<DualSource>>,
+) -> (
+    CollaborationApplication,
+    Arc<Mutex<Vec<RuntimeDynamicToolResult>>>,
+) {
+    let results = Arc::new(Mutex::new(Vec::new()));
+    let runtime = DualRuntime {
+        base: DynamicRuntime {
+            registered_tools: Arc::new(Mutex::new(Vec::new())),
+            results: Arc::clone(&results),
+            requests: Arc::new(Mutex::new(Vec::new())),
+            automatic_gate: None,
+            external_writes_allowed: false,
+            starts: Arc::new(Mutex::new(Vec::new())),
+        },
+        source,
+    };
+    let app = CollaborationApplication::with_adapters(
+        Arc::new(FileCollaborationStore::new(
+            directory.path().join("collaboration/collaboration.json"),
+        )),
+        Box::new(runtime),
+        Arc::new(MutableContext::new("vault-a")),
+        Arc::new(clock.clone()),
+        directory.path().join("runtime"),
+        "Scripted dual-source acceptance, no model language claim".into(),
+    )
+    .with_task_service(Arc::new(TaskApplicationCollaborationAdapter::new(
+        TaskApplication::new(vault.clone(), clock.clone(), FileTaskStore),
+    )))
+    .with_daily_data_service(Arc::new(
+        TodayApplicationCollaborationDailyDataAdapter::new(TodayApplication::new(
+            vault.clone(),
+            NoVaultPicker,
+            clock,
+        )),
+    ));
+    (app, results)
+}
+fn prepare_dual_vault(path: &Path) {
+    prepare_daily_review_vault(path, false);
+    let snapshot = path.join(personal_dashboard_lib::habits::SNAPSHOT_RELATIVE_PATH);
+    let mut doc: Value = serde_json::from_slice(&fs::read(&snapshot).unwrap()).unwrap();
+    doc["sources"].as_array_mut().unwrap().push(json!({"key":"dida-exercise","kind":"dida365","label":"Dida365 explicit mapping exercise=synthetic-habit"}));
+    let exercise = doc["habits"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|h| h["key"] == "exercise")
+        .unwrap();
+    for day in exercise["days"].as_array_mut().unwrap() {
+        day["observations"].as_array_mut().unwrap().clear();
+    }
+    fs::write(snapshot, serde_json::to_vec(&doc).unwrap()).unwrap();
+}
+fn dual_completion_bytes(path: &Path) -> Value {
+    serde_json::from_slice(
+        &fs::read(path.join("life/.personal-dashboard/habit-completions/v1/completions.json"))
+            .unwrap(),
+    )
+    .unwrap()
+}
+fn dual_submit(app: &CollaborationApplication, session: &str, text: &str) {
+    app.submit_message("vault-a", session, "2026-09-27", text)
+        .unwrap();
+    wait_for_finish(app, session, "vault-a");
+}
+
+#[test]
+fn dual_habit_natural_history_completion_repeat_restart_and_default_withdrawal_count_once() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("dual-history");
+    prepare_dual_vault(&path);
+    let vault = MutableVault::new(&path);
+    let clock = ManualClock::new("2026-09-27", "21:00");
+    let source = Arc::new(Mutex::new(DualSource {
+        readable: true,
+        ..Default::default()
+    }));
+    let (app, results) =
+        new_dual_application(&directory, &vault, clock.clone(), Arc::clone(&source));
+    let session = app.create_default_session().unwrap();
+    dual_submit(&app, &session.id, "2026-09-26锻炼完成了，具体时刻不知道。");
+    assert!(
+        results.lock().unwrap().iter().all(|r| r.success),
+        "{:?}",
+        results.lock().unwrap()
+    );
+    let saved = app.session("vault-a", &session.id).unwrap();
+    assert_eq!(saved.task_operations[0].status, "applied");
+    let baseline = serde_json::to_value(&saved.task_operations[0].baseline).unwrap();
+    assert_eq!(baseline["destinationScope"], "both");
+    assert_eq!(baseline["externalHabitId"], "synthetic-habit");
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
+    let snapshot = today.habits().unwrap();
+    let habit = snapshot.habit("exercise").unwrap();
+    let cell = habit.cell("2026-09-26").unwrap();
+    assert!(cell.has_external_completion && cell.counts_as_completion);
+    assert_eq!(
+        cell.local_completion_state,
+        HabitLocalCompletionState::Completed
+    );
+    assert_eq!(habit.completed_count, Some(1));
+    let original = dual_completion_bytes(&path);
+    assert_eq!(original["completions"][0]["livedDate"], "2026-09-26");
+    assert!(original["completions"][0]["completedAt"]
+        .as_str()
+        .unwrap()
+        .contains("2026-09-27"));
+    dual_submit(&app, &session.id, "2026-09-26锻炼完成了，具体时刻不知道。");
+    assert_eq!(source.lock().unwrap().writes, 1);
+    assert_eq!(
+        dual_completion_bytes(&path),
+        original,
+        "Confirmed local endpoint is not retried"
+    );
+    app.shutdown().unwrap();
+    let (reopened, _) =
+        new_dual_application(&directory, &vault, clock.clone(), Arc::clone(&source));
+    dual_submit(
+        &reopened,
+        &session.id,
+        "撤回2026-09-26锻炼完成，这个打卡记错了。",
+    );
+    let after = TodayApplication::new(vault, NoVaultPicker, clock)
+        .habits()
+        .unwrap();
+    let habit = after.habit("exercise").unwrap();
+    let cell = habit.cell("2026-09-26").unwrap();
+    assert!(!cell.counts_as_completion && !cell.has_external_completion);
+    assert_eq!(
+        cell.local_completion_state,
+        HabitLocalCompletionState::Withdrawn
+    );
+    assert_eq!(habit.completed_count, Some(0));
+    assert_eq!(source.lock().unwrap().checkins[&20260926], 0);
+    assert_eq!(
+        dual_completion_bytes(&path)["completions"][0]["changes"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert_eq!(
+        reopened
+            .session("vault-a", &session.id)
+            .unwrap()
+            .last_habit_refresh
+            .unwrap()
+            .publication,
+        "published"
+    );
+}
+
+#[test]
+fn dual_habit_single_end_withdrawal_preserves_other_end_or_and_legacy_local_scope() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("dual-single");
+    prepare_dual_vault(&path);
+    let vault = MutableVault::new(&path);
+    let clock = ManualClock::new("2026-09-27", "21:00");
+    let source = Arc::new(Mutex::new(DualSource {
+        readable: true,
+        ..Default::default()
+    }));
+    let (app, _) = new_dual_application(&directory, &vault, clock.clone(), Arc::clone(&source));
+    let session = app.create_default_session().unwrap();
+    dual_submit(&app, &session.id, "2026-09-26锻炼完成了。");
+    dual_submit(&app, &session.id, "只撤本地2026-09-26锻炼完成，滴答保留。");
+    let snapshot = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone())
+        .habits()
+        .unwrap();
+    let cell = snapshot
+        .habit("exercise")
+        .unwrap()
+        .cell("2026-09-26")
+        .unwrap();
+    assert!(cell.counts_as_completion && cell.has_external_completion);
+    assert_eq!(
+        cell.local_completion_state,
+        HabitLocalCompletionState::Withdrawn
+    );
+    assert_eq!(source.lock().unwrap().writes, 1);
+    dual_submit(
+        &app,
+        &session.id,
+        "只撤滴答2026-09-26锻炼完成，其他记录保留。",
+    );
+    let snapshot = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone())
+        .habits()
+        .unwrap();
+    assert!(
+        !snapshot
+            .habit("exercise")
+            .unwrap()
+            .cell("2026-09-26")
+            .unwrap()
+            .counts_as_completion
+    );
+    dual_submit(&app, &session.id, "只记本地2026-09-26锻炼完成了。");
+    let before = source.lock().unwrap().writes;
+    // Simulate a legacy saved receipt that predates explicit scope metadata.
+    let state_path = directory.path().join("collaboration/collaboration.json");
+    app.shutdown().unwrap();
+    let mut state: Value = serde_json::from_slice(&fs::read(&state_path).unwrap()).unwrap();
+    let latest = state["sessions"][0]["taskOperations"]
+        .as_array_mut()
+        .unwrap()
+        .last_mut()
+        .unwrap();
+    latest["baseline"]
+        .as_object_mut()
+        .unwrap()
+        .remove("destinationScope");
+    latest["baseline"]
+        .as_object_mut()
+        .unwrap()
+        .remove("externalHabitId");
+    fs::write(&state_path, serde_json::to_vec(&state).unwrap()).unwrap();
+    let (reopened, _) = new_dual_application(&directory, &vault, clock, Arc::clone(&source));
+    dual_submit(
+        &reopened,
+        &session.id,
+        "撤回2026-09-26锻炼完成，这个本地事实记错了。",
+    );
+    assert_eq!(
+        source.lock().unwrap().writes,
+        before,
+        "Legacy local-only completion must not silently withdraw Dida"
+    );
+    let original_local = dual_completion_bytes(&path);
+    dual_submit(&reopened, &session.id, "只记滴答2026-09-26锻炼完成了。");
+    assert_eq!(dual_completion_bytes(&path), original_local);
+    dual_submit(
+        &reopened,
+        &session.id,
+        "撤回2026-09-26锻炼完成，这个打卡记错了。",
+    );
+    assert_eq!(dual_completion_bytes(&path),original_local,"Latest explicit external-only fact drives original withdrawal scope even after older local-only receipts");
+    assert_eq!(source.lock().unwrap().checkins[&20260926], 0);
+    let final_state = reopened.session("vault-a", &session.id).unwrap();
+    let final_action = final_state
+        .messages
+        .iter()
+        .flat_map(|message| &message.external_actions)
+        .last()
+        .unwrap();
+    assert_eq!(
+        final_action.verification.as_ref().unwrap()["habitScope"],
+        "external",
+        "Withdrawal action retains original external-only scope"
+    );
+}
+
+#[test]
+fn dual_habit_external_failure_projection_failure_and_lost_receipt_keep_local_success() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("dual-faults");
+    prepare_dual_vault(&path);
+    let vault = MutableVault::new(&path);
+    let clock = ManualClock::new("2026-09-27", "21:00");
+    let source = Arc::new(Mutex::new(DualSource {
+        fail: true,
+        readable: false,
+        ..Default::default()
+    }));
+    let (app, _) = new_dual_application(&directory, &vault, clock.clone(), Arc::clone(&source));
+    let session = app.create_default_session().unwrap();
+    dual_submit(&app, &session.id, "2026-09-26锻炼完成了。");
+    let saved = dual_completion_bytes(&path);
+    let state = app.session("vault-a", &session.id).unwrap();
+    assert_eq!(state.task_operations[0].status, "applied");
+    assert_eq!(state.messages[0].external_actions[0].status, "unknown");
+    assert_ne!(state.last_habit_refresh.unwrap().publication, "published");
+    {
+        let mut s = source.lock().unwrap();
+        s.fail = false;
+        s.readable = true;
+        s.lost_receipt = true;
+    }
+    app.submit_message(
+        "vault-a",
+        &session.id,
+        "2026-09-27",
+        "2026-09-26锻炼完成了，继续核对这件事。",
+    )
+    .unwrap();
+    for _ in 0..300 {
+        if app.session("vault-a", &session.id).unwrap().run_state == "interrupted" {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    let lost = app.session("vault-a", &session.id).unwrap();
+    assert_eq!(lost.run_state, "interrupted");
+    let execution = lost
+        .messages
+        .iter()
+        .filter_map(|m| m.execution_id.clone())
+        .last()
+        .unwrap();
+    assert_eq!(source.lock().unwrap().writes, 1);
+    assert_eq!(dual_completion_bytes(&path), saved);
+    app.shutdown().unwrap();
+    let (reopened, _) =
+        new_dual_application(&directory, &vault, clock.clone(), Arc::clone(&source));
+    {
+        let mut s = source.lock().unwrap();
+        s.lost_receipt = false;
+        s.projection_fail = true;
+    }
+    reopened
+        .reconcile_run_for_selected_vault(&session.id, &execution)
+        .unwrap();
+    dual_submit(
+        &reopened,
+        &session.id,
+        "2026-09-26锻炼完成了，继续核对记录。",
+    );
+    assert_eq!(source.lock().unwrap().writes, 1);
+    assert_eq!(dual_completion_bytes(&path), saved);
+    assert_ne!(
+        reopened
+            .session("vault-a", &session.id)
+            .unwrap()
+            .last_habit_refresh
+            .unwrap()
+            .publication,
+        "published"
+    );
+    source.lock().unwrap().projection_fail = false;
+    dual_submit(
+        &reopened,
+        &session.id,
+        "2026-09-26锻炼完成了，继续核对记录。",
+    );
+    assert_eq!(source.lock().unwrap().writes, 1);
+    assert_eq!(dual_completion_bytes(&path), saved);
+    assert_eq!(
+        TodayApplication::new(vault, NoVaultPicker, clock)
+            .habits()
+            .unwrap()
+            .habit("exercise")
+            .unwrap()
+            .completed_count,
+        Some(1)
+    );
+}
+
+#[test]
+fn dual_habit_local_storage_failure_preserves_external_success_and_original_0400_target() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("dual-local-fault");
+    prepare_dual_vault(&path);
+    let vault = MutableVault::new(&path);
+    let clock = ManualClock::new("2026-09-28", "01:00");
+    let source = Arc::new(Mutex::new(DualSource {
+        readable: true,
+        ..Default::default()
+    }));
+    let completion = path.join("life/.personal-dashboard/habit-completions/v1/completions.json");
+    fs::create_dir_all(completion.parent().unwrap()).unwrap();
+    fs::write(&completion, b"invalid local store fixture").unwrap();
+    let (app, results) =
+        new_dual_application(&directory, &vault, clock.clone(), Arc::clone(&source));
+    let session = app.create_default_session().unwrap();
+    assert_eq!(session.target_date, "2026-09-27");
+    dual_submit(&app, &session.id, "2026-09-26锻炼完成了。");
+    assert!(!results.lock().unwrap()[0].success);
+    assert_eq!(
+        fs::read(&completion).unwrap(),
+        b"invalid local store fixture"
+    );
+    assert_eq!(source.lock().unwrap().checkins[&20260926], 2);
+    assert_eq!(source.lock().unwrap().writes, 1);
+    let state = app.session("vault-a", &session.id).unwrap();
+    assert_eq!(state.messages[0].external_actions[0].status, "saved");
+    assert_eq!(state.last_habit_refresh.unwrap().publication, "published");
+    fs::remove_file(&completion).unwrap();
+    dual_submit(&app, &session.id, "2026-09-26锻炼完成了，继续核对记录。");
+    assert_eq!(
+        source.lock().unwrap().writes,
+        1,
+        "Retry only unconfirmed local end"
+    );
+    let snapshot = TodayApplication::new(vault, NoVaultPicker, clock)
+        .habits()
+        .unwrap();
+    let cell = snapshot
+        .habit("exercise")
+        .unwrap()
+        .cell("2026-09-26")
+        .unwrap();
+    assert!(cell.counts_as_completion && cell.has_external_completion);
+    assert_eq!(
+        cell.local_completion_state,
+        HabitLocalCompletionState::Completed
+    );
+}
+
+#[test]
+fn dual_habit_mixed_local_task_and_other_local_habit_do_not_narrow_default_dual_exercise() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("dual-mixed-scopes");
+    prepare_dual_vault(&path);
+    let vault = MutableVault::new(&path);
+    let clock = ManualClock::new("2026-09-27", "21:00");
+    let source = Arc::new(Mutex::new(DualSource {
+        readable: true,
+        ..Default::default()
+    }));
+    let (app, results) =
+        new_dual_application(&directory, &vault, clock.clone(), Arc::clone(&source));
+    let session = app.create_default_session().unwrap();
+    dual_submit(
+        &app,
+        &session.id,
+        "安排买菜只在本地任务里创建。营养药完成了，只记本地。今天运动完成了。",
+    );
+    assert!(
+        results.lock().unwrap().iter().all(|result| result.success),
+        "{:?}",
+        results.lock().unwrap()
+    );
+    let tasks = TaskApplication::new(vault.clone(), clock.clone(), FileTaskStore)
+        .read()
+        .unwrap();
+    assert_eq!(tasks.tasks.len(), 1);
+    assert_eq!(tasks.tasks[0].name, "买菜");
+    let saved = app.session("vault-a", &session.id).unwrap();
+    let scopes = saved
+        .task_operations
+        .iter()
+        .filter_map(|operation| {
+            let baseline = serde_json::to_value(&operation.baseline).unwrap();
+            baseline["key"].as_str().map(|key| {
+                (
+                    key.to_owned(),
+                    baseline["destinationScope"].as_str().unwrap().to_owned(),
+                )
+            })
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    assert_eq!(scopes["nutrition"], "local");
+    assert_eq!(scopes["exercise"], "both");
+    assert_eq!(
+        saved.messages[0].external_actions[0]
+            .verification
+            .as_ref()
+            .unwrap()["habitScope"],
+        "both"
+    );
+    assert!(
+        source.lock().unwrap().habit_writes_allowed,
+        "Default exercise still needs the real native Habit mutation schema"
+    );
+    assert_eq!(source.lock().unwrap().writes, 1);
+    let view = TodayApplication::new(vault, NoVaultPicker, clock)
+        .habits()
+        .unwrap();
+    assert!(
+        view.habit("exercise")
+            .unwrap()
+            .today
+            .has_external_completion
+    );
+    assert_eq!(
+        view.habit("nutrition")
+            .unwrap()
+            .today
+            .local_completion_state,
+        HabitLocalCompletionState::Completed
+    );
 }
