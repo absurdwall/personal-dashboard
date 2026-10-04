@@ -4528,6 +4528,13 @@ impl CollaborationApplication {
             );
         }
         if execution_mode == CollaborationToolExecutionMode::Execute {
+            match self.confirmed_daytime_proposal(vault_key, session_id, execution_id,
+                &operation, authorization_quote, operation_target_date) {
+                Ok(Some(id)) => return self.execute_task_proposal(vault_key, session_id, execution_id, &id),
+                Ok(None) => {}
+                Err(error) => return RuntimeDynamicToolResult { success: false,
+                    text: format!("{error} No data was changed.") },
+            }
             if let Err(error) = self.validate_current_task_operation_authority(
                 vault_key,
                 session_id,
@@ -4537,6 +4544,23 @@ impl CollaborationApplication {
                 &stable_tool_operation_id(expected_thread_id, &call.turn_id, &call.call_id),
                 operation_target_date,
             ) {
+                // Keep the exact unresolved daytime effect as a bounded draft.
+                // A later confirmation can approve this payload and its original
+                // revision, rather than requiring the user to repeat a formula.
+                if error == "the quoted wording does not directly authorize this operation"
+                    && is_daytime_event_operation(&operation)
+                    && has_authority_marker(&authorization_quote.to_lowercase(),
+                        "update|更新|保存|记下|记入|记到|记录|record |save |log |write |append ")
+                {
+                    match self.propose_task_operation(vault_key, session_id, execution_id,
+                        expected_thread_id, &call.turn_id, &call.call_id, target_date,
+                        operation_target_date, operation.clone(), None, habit_scope) {
+                        Ok(proposal) => return RuntimeDynamicToolResult { success: false,
+                            text: format!("The exact daytime draft {} is saved in this session for confirmation; no Daily Record data was changed. Show its date and content. A clear confirmation in the next user message can execute this same payload with its original Vault/revision; do not ask the user to repeat special authorization wording.", proposal.id) },
+                        Err(draft_error) => return RuntimeDynamicToolResult { success: false,
+                            text: format!("{error}; the draft could not be retained: {draft_error}. No data was changed.") },
+                    }
+                }
                 return RuntimeDynamicToolResult {
                     text: format!("A direct Dashboard write requires a clear, exact instruction in the current user message: {error}. No data was changed."),
                     success: false,
@@ -4557,36 +4581,7 @@ impl CollaborationApplication {
             habit_scope,
         ) {
             Ok(proposal) if execution_mode == CollaborationToolExecutionMode::Execute => {
-                let attempted = self.update_state(|state| {
-                    let session = matching_session_mut(state, vault_key, session_id)?;
-                    let operation = session.task_operations.iter_mut().find(|item| item.id == proposal.id)
-                        .ok_or("The saved operation is unavailable")?;
-                    operation.execute_attempted = true;
-                    Ok(())
-                });
-                if let Err(error) = attempted {
-                    return RuntimeDynamicToolResult { success:false, text:format!("No source write attempted: execution intent could not be saved: {error}") };
-                }
-                match self.approve_task_operation_for_selected_vault(session_id, &proposal.id) {
-                    Ok(session) => match session.task_operations.iter().find(|item| item.id == proposal.id) {
-                        Some(item) if item.status == "applied" => RuntimeDynamicToolResult {
-                            text: task_tool_saved_receipt(item),
-                            success: true,
-                        },
-                        Some(item) => RuntimeDynamicToolResult {
-                            text: item.result_message.clone().unwrap_or_else(|| format!("The Dashboard change was not saved (status: {}).", item.status)),
-                            success: true,
-                        },
-                        None => RuntimeDynamicToolResult {
-                            text: "The Dashboard change result is missing from collaboration history. Check the saved result before retrying.".into(),
-                            success: false,
-                        },
-                    },
-                    Err(error) => RuntimeDynamicToolResult {
-                        text: format!("The explicitly authorized Dashboard change was not confirmed as saved: {error}"),
-                        success: false,
-                    },
-                }
+                self.execute_task_proposal(vault_key, session_id, execution_id, &proposal.id)
             }
             Ok(proposal) => RuntimeDynamicToolResult {
                 text: if matches!(
@@ -4606,6 +4601,130 @@ impl CollaborationApplication {
                 success: false,
             },
         }
+    }
+
+    fn execute_task_proposal(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        execution_id: &str,
+        proposal_id: &str,
+    ) -> RuntimeDynamicToolResult {
+        if let Ok(Some(message)) = self.read_state(|state| {
+            let session = state
+                .sessions
+                .iter()
+                .find(|s| s.id == session_id && s.vault_key.as_deref() == Some(vault_key))?;
+            let operation = session
+                .task_operations
+                .iter()
+                .find(|item| item.id == proposal_id)?;
+            (operation
+                .observed_in_executions
+                .iter()
+                .any(|id| id == execution_id)
+                && operation.status == "conflict")
+                .then(|| operation.result_message.clone())?
+        }) {
+            return RuntimeDynamicToolResult {
+                success: true,
+                text: message,
+            };
+        }
+        let attempted = self.update_state(|state| {
+            let session = matching_session_mut(state, vault_key, session_id)?;
+            let operation = session
+                .task_operations
+                .iter_mut()
+                .find(|item| item.id == proposal_id)
+                .ok_or("The saved operation is unavailable")?;
+            operation.execute_attempted = true;
+            if operation.execution_id != execution_id
+                && !operation
+                    .observed_in_executions
+                    .iter()
+                    .any(|id| id == execution_id)
+            {
+                operation.observed_in_executions.push(execution_id.into());
+            }
+            Ok(())
+        });
+        if let Err(error) = attempted {
+            return RuntimeDynamicToolResult {
+                success: false,
+                text: format!(
+                    "No source write attempted: execution intent could not be saved: {error}"
+                ),
+            };
+        }
+        match self.approve_task_operation_for_selected_vault(session_id, proposal_id) {
+                    Ok(session) => match session.task_operations.iter().find(|item| item.id == proposal_id) {
+                        Some(item) if item.status == "applied" => RuntimeDynamicToolResult {
+                            text: task_tool_saved_receipt(item),
+                            success: true,
+                        },
+                        Some(item) => RuntimeDynamicToolResult {
+                            text: item.result_message.clone().unwrap_or_else(|| format!("The Dashboard change was not saved (status: {}).", item.status)),
+                            success: true,
+                        },
+                        None => RuntimeDynamicToolResult {
+                            text: "The Dashboard change result is missing from collaboration history. Check the saved result before retrying.".into(),
+                            success: false,
+                        },
+                    },
+                    Err(error) => RuntimeDynamicToolResult {
+                        text: format!("The explicitly authorized Dashboard change was not confirmed as saved: {error}"),
+                        success: false,
+                    },
+        }
+    }
+
+    fn confirmed_daytime_proposal(
+        &self,
+        vault_key: &str,
+        session_id: &str,
+        execution_id: &str,
+        operation: &CollaborationTaskOperation,
+        quote: &str,
+        target_date: &str,
+    ) -> Result<Option<String>, String> {
+        if !is_daytime_event_operation(operation) || !is_daytime_confirmation(quote) {
+            return Ok(None);
+        }
+        self.read_state(|state| {
+            let session = state.sessions.iter().find(|s| s.id == session_id
+                && s.vault_key.as_deref() == Some(vault_key))
+                .ok_or("The current Dashboard session is unavailable")?;
+            let current_index = session.messages.iter().position(|m| m.role == "user"
+                && m.execution_id.as_deref() == Some(execution_id)
+                && m.delivery_state == "in-progress")
+                .ok_or("There is no active user confirmation")?;
+            let current = &session.messages[current_index];
+            if session.run_id.as_deref() != Some(execution_id)
+                || !matches!(session.run_state.as_str(), "thinking" | "reading")
+                || current.text.trim() != quote || current.automatic_plan
+                || !is_daytime_confirmation(&current.text) {
+                return Err("Confirm the complete current instruction, without omitted qualifications".into());
+            }
+            let prior = session.messages[..current_index].iter().rev()
+                .find(|m| m.role == "user")
+                .ok_or("There is no preceding daytime draft to confirm")?;
+            if prior.automatic_plan || prior.target_date != current.target_date {
+                return Err("The preceding draft belongs to a different request target".into());
+            }
+            let candidates: Vec<_> = session.task_operations.iter().filter(|item|
+                Some(item.execution_id.as_str()) == prior.execution_id.as_deref()
+                && !item.automatic_plan
+                && (item.status == "awaitingApproval"
+                    || item.observed_in_executions.iter().any(|id| id == execution_id)))
+                .collect();
+            if candidates.len() != 1 || candidates[0].operation != *operation
+                || candidates[0].target_date != target_date
+                || candidates[0].vault_key != vault_key {
+                return Err("The confirmation must match one immediately preceding draft's exact content, date and Vault. Show that draft instead of requesting special authorization wording".into());
+            }
+            Ok(Some(candidates[0].id.clone()))
+        })?
     }
 
     fn validate_current_task_operation_authority(
@@ -9367,8 +9486,15 @@ fn validate_task_operation_authority(
         );
     }
     let normalized_quote = authorization_quote.to_lowercase();
+    let daytime_instruction = if is_daytime_event_operation(operation) {
+        daytime_record_instruction_clause(&normalized_quote)
+    } else { None };
     let daily_authorized = daily_record_natural_authority(operation, &normalized_quote);
     let task_authorized = task_list_natural_authority(operation, &normalized_quote);
+    if daytime_instruction.is_some_and(|clause| has_authority_marker(clause,
+        "不要|先别|别把|不保存|不更新|don't|do not")) {
+        return Err("the quoted wording declines the operation being attempted".into());
+    }
     if matches!(operation, CollaborationTaskOperation::CreateTask { .. })
         && has_authority_marker(&normalized_quote, "i plan to create|i will create|tomorrow create|next week create|tomorrow add a task|next week add a task|i plan to add a task|i will add a task|create a task later|create the task later|以后再创建|之后再创建|以后再建|稍后再建|下周再创建|明天再创建|以后再添加|之后再添加|稍后再添加")
     {
@@ -9376,7 +9502,9 @@ fn validate_task_operation_authority(
     }
     let (direct_intent_markers, declined_intent_markers) =
         task_operation_authority_markers(operation);
-    if is_deferred_completion_intent(operation, &normalized_quote)
+    if daytime_instruction.is_some_and(|clause| has_deferred_operation_intent(clause,
+        "记入|记到|记下|记录|补记|保存|写入|update|record |log |save |write |append "))
+        || is_deferred_completion_intent(operation, &normalized_quote)
         || (!task_authorized && !daily_authorized && has_deferred_operation_intent(&normalized_quote, direct_intent_markers))
     {
         return Err(
@@ -9418,9 +9546,13 @@ fn validate_task_operation_authority(
         "可以吗",
         "建议",
     ];
+    // Tentative activity inside a record is data. Evaluate the actual save
+    // instruction separately, so "record this; later I may tidy up" can save
+    // that uncertainty without turning it into a completion.
+    let intent_text = daytime_instruction.unwrap_or(&normalized_quote);
     if uncertain_intent_markers
         .iter()
-        .any(|marker| normalized_quote.contains(marker))
+        .any(|marker| intent_text.contains(marker))
     {
         return Err("the quoted wording leaves the requested change uncertain".into());
     }
@@ -9471,7 +9603,8 @@ fn daily_record_natural_authority(operation: &CollaborationTaskOperation, quote:
     };
     match operation {
         CollaborationTaskOperation::SaveDailyPlan { transition, event, .. } => match transition {
-            DailyPlanTransition::DaytimeEvent => event.as_deref().is_some_and(exact_fact),
+            DailyPlanTransition::DaytimeEvent => daytime_record_instruction_clause(quote).is_some()
+                || event.as_deref().is_some_and(exact_fact),
             DailyPlanTransition::MorningCalibration => has("校准|调整|改一下|adjust|calibrate")
                 && has("今天安排|今天计划|晨间|早上|morning|my plan"),
             DailyPlanTransition::DaytimeReplan => has("改到|挪到|留到|推到|改为|优先|instead|move |reschedule|rearrange")
@@ -9487,6 +9620,41 @@ fn daily_record_natural_authority(operation: &CollaborationTaskOperation, quote:
             && has("写错|不是|实际|应是|correct|wrong|actually|instead") && quote.contains(&content.trim().to_lowercase()),
         _ => false,
     }
+}
+
+fn is_daytime_event_operation(operation: &CollaborationTaskOperation) -> bool {
+    matches!(
+        operation,
+        CollaborationTaskOperation::SaveDailyPlan {
+            transition: DailyPlanTransition::DaytimeEvent,
+            ..
+        }
+    )
+}
+
+fn daytime_record_instruction_clause(quote: &str) -> Option<&str> {
+    if !has_authority_marker(quote, "白天|日记录|daily record|daytime|daily tracking") {
+        return None;
+    }
+    let verbs = "记入|记到|记下|记录|补记|保存|写入|update|record |log |save |write |append ";
+    quote
+        .split(['。', '，', ',', ';', '；', '\n', '?', '？', '!', ':', '：'])
+        .map(str::trim)
+        .find(|clause| {
+            has_authority_marker(clause, verbs)
+                && (has_authority_marker(
+                    clause,
+                    "把|请|帮我|替我|你|给我|将|please|can you|could you",
+                ) || verbs.split('|').any(|verb| clause.starts_with(verb)))
+        })
+}
+
+fn is_daytime_confirmation(text: &str) -> bool {
+    let text = text.trim().to_lowercase();
+    text.chars().count() <= 120
+        && has_authority_marker(&text, "授权|确认保存|同意保存|就update|就 update|就更新|直接保存|save it|go ahead|approved")
+        && !has_authority_marker(&text, "不要|先别|不授权|不确认|不同意|不保存|不更新|取消|算了|稍后|以后|明天|可能|也许|如果|吗|？|?|maybe|perhaps|if |don't|do not|not |later|tomorrow|cancel|never mind")
+        && !is_review_before_write_request(&text)
 }
 
 fn has_deferred_operation_intent(normalized_quote: &str, direct_intent_markers: &str) -> bool {
@@ -9714,7 +9882,7 @@ fn task_operation_authority_markers(
                 concat!(
                     "don't record this event|do not record this event|",
                     "don't record a daytime event|do not record a daytime event|",
-                    "不要记录事件|不要记录白天事件|先别记录事件"
+                    "不要记录|先别记录|别记|不要保存|先别保存|不要更新|先别更新|不要写入|别写入|明天再保存|稍后再保存|以后再保存|save later|save tomorrow"
                 ),
             ),
             DailyPlanTransition::DaytimeReplan => (
@@ -9920,13 +10088,13 @@ fn is_review_before_write_request(text: &str) -> bool {
             return false;
         };
         let clause_start = text[..start]
-            .rfind(|character: char| {
+            .char_indices().rev().find(|(_, character)| {
                 matches!(
                     character,
                     '.' | ',' | ';' | '!' | '?' | '\n' | '。' | '，' | '；' | '！' | '？'
                 )
             })
-            .map_or(0, |index| index + 1);
+            .map_or(0, |(index, character)| index + character.len_utf8());
         let clause_prefix = text[clause_start..start].trim();
         let declined_markers = [
             "don't",
@@ -10113,6 +10281,9 @@ fn collaboration_task_tool_spec(
     } else {
         "Save one automatic first-draft Daily Record plan for the current target date only. This path is enabled by the user and cannot change Tasks or record facts."
     };
+    let description = if include_authorization_fields {
+        format!("{description} For a clear daytime save instruction, quote its action clause rather than unrelated tentative activities in the narrative. A saved daytime draft can be confirmed conversationally by the immediately following user message: quote that complete confirmation, use execute, and resend the exact draft payload/date without rewriting it. Dashboard requires one unique adjacent draft and retains its original Vault binding and revision. If a tool retained a draft after rejecting unclear wording, show its exact date/content and ask once about that concrete draft; never request special authorization formulas. A confirmation without a unique saved draft cannot execute.")
+    } else { description.to_owned() };
     json!({
         "name": COLLABORATION_TASK_TOOL,
         "description": description,
@@ -13753,6 +13924,31 @@ mod collaboration_task_authority_tests {
             time: None,
             list_id: None,
         }
+    }
+
+    #[test]
+    fn daytime_save_intent_is_separate_from_tentative_record_content() {
+        let operation: CollaborationTaskOperation = serde_json::from_value(serde_json::json!({
+            "operation":"saveDailyPlan", "transition":"daytimeEvent", "arrangement":[], "evidence":[],
+            "calibrationNote":null,"baselineCorrectionReason":null,"event":"上午已读完报告；饭后计划整理书桌，尚未完成。",
+            "originalIntent":null,"changeReason":null,"revisedDirection":null
+        })).unwrap();
+        for request in [
+            "今天上午读完报告了，晚上可能整理书桌。这属于 daily tracking，你把那个东西 update 一下。",
+            "把我上一条说的今天经过，记入 2026-10-04 Daily Record 的白天更新",
+            "请保存白天更新：上午读完报告了，饭后准备整理书桌，尚未完成。",
+            "Please record this in the daytime update: I finished reading; later I may tidy up.",
+        ] {
+            assert!(validate_task_operation_authority(&operation, request, request).is_ok(), "{request}");
+        }
+        for request in [
+            "也许把今天经过记入白天更新", "明天再把今天经过记入白天更新",
+            "请保存白天更新，但先给我看方案", "不要把今天经过记入白天更新",
+            "把今天经过记入白天更新，稍后再保存", "Maybe record this in the daytime update.",
+        ] {
+            assert!(validate_task_operation_authority(&operation, request, request).is_err(), "{request}");
+        }
+        assert!(validate_task_operation_authority(&operation, "授权", "其他请求").is_err());
     }
 
     #[test]

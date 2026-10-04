@@ -435,6 +435,10 @@ impl AppServerTransport for DynamicRuntime {
             .lock()
             .map_err(|_| "request lock poisoned".to_string())?
             .push(request.clone());
+        if request.user_text == "请先整理白天情况，暂时不要保存：上午已读完报告；晚饭后计划整理书桌，尚未完成。" {
+            return Ok(RuntimeTurnResult { text: "待保存白天记录：上午已读完报告；晚饭后计划整理书桌，尚未完成。".into(),
+                runtime_turn_id: Some(format!("turn-{}", request.execution_id)), stopped: false, external_actions: Vec::new() });
+        }
         if request.user_text.starts_with("请更新此隔离 Vault 的长期背景") || request.user_text.starts_with("不要更新此隔离 Vault 的长期背景") {
             let quote=request.user_text.split("这次不要改").next().unwrap().trim();
             let change="我长期偏好先写简短复盘，再调整计划；未记录的活动保持未知。";
@@ -1009,6 +1013,17 @@ fn natural_daily_fixture(text: &str) -> Option<Value> {
         "今天先安排上午写报告，下午散步。" => plan("initialPlan", "写报告", None),
         "校准今天安排，上午优先处理急事。" => plan("morningCalibration", "处理急事", None),
         "今天07:10起床，具体睡觉时刻不知道。" => plan("daytimeEvent", "", Some(text)),
+        "把我上一条说的今天经过，记入 2026-10-04 Daily Record 的白天更新"
+        | "你把那个东西 update 一下。" | "哦,授权,你就update就可以了" | "授权"
+        | "授权？" | "不要保存白天更新" | "授权，先给我看方案"
+        | "我授权，但明天再保存" | "授权，改写成已经整理完书桌" => {
+            let mut resolved = plan("daytimeEvent", "", Some("上午已读完报告；晚饭后计划整理书桌，尚未完成。"));
+            resolved["targetDate"] = json!("2026-10-04");
+            if text == "授权，改写成已经整理完书桌" {
+                resolved["event"] = json!("上午已读完报告；已经整理完书桌。");
+            }
+            resolved
+        }
         "下午改为休息，报告挪到明天。" => plan("daytimeReplan", "休息", None),
         "早间基准写错了，上午原定看邮件，请更正。" => plan("morningBaselineCorrection", "看邮件", None),
         "今晚复盘：今天已经写完报告，按时起床，睡觉分钟不知道。" => json!({"operation":"saveEveningReview","mode":"addition","content":"今天已经写完报告，按时起床，睡觉分钟不知道。"}),
@@ -1029,6 +1044,239 @@ fn natural_daily_fixture(text: &str) -> Option<Value> {
     value.as_object_mut().unwrap().entry("executionMode").or_insert(json!("execute"));
     value["authorizationQuote"] = json!(text);
     Some(value)
+}
+
+#[test]
+fn explicit_daytime_save_with_prior_content_reaches_the_real_vault_writer() {
+    let dir = IsolatedDirectory::new();
+    let path = dir.vault("explicit-daytime-save");
+    let fixture = prepare_daily_review_vault(&path, false);
+    let target = path.join("life/Journal/Daily/2026/2026-10/2026-10-04.md");
+    fs::create_dir_all(target.parent().unwrap()).unwrap();
+    fs::write(
+        &target,
+        fs::read_to_string(fixture)
+            .unwrap()
+            .replace("2026-09-27", "2026-10-04"),
+    )
+    .unwrap();
+    let vault = MutableVault::new(&path);
+    let clock = ManualClock::new("2026-10-04", "17:00");
+    let (app, _, results, _) =
+        new_automatic_application(&dir, &vault, MutableContext::new("vault-a"), clock, None);
+    let chat = app.create_default_session().unwrap();
+    app.submit_message(
+        "vault-a",
+        &chat.id,
+        "2026-10-04",
+        "请先整理白天情况，暂时不要保存：上午已读完报告；晚饭后计划整理书桌，尚未完成。",
+    )
+    .unwrap();
+    wait_for_finish(&app, &chat.id, "vault-a");
+    let before = fs::read(&target).unwrap();
+    let instruction = "把我上一条说的今天经过，记入 2026-10-04 Daily Record 的白天更新";
+    app.submit_message("vault-a", &chat.id, "2026-10-04", instruction)
+        .unwrap();
+    wait_for_finish(&app, &chat.id, "vault-a");
+    let result = results.lock().unwrap().last().unwrap().clone();
+    assert!(result.success, "{}", result.text);
+    let record = fs::read_to_string(&target).unwrap();
+    assert!(record.contains("## 白天更新"));
+    assert!(record.contains("上午已读完报告；晚饭后计划整理书桌，尚未完成。"));
+    assert!(record.contains("Synthetic morning baseline."));
+    assert!(record.contains("Synthetic current arrangement."));
+    assert!(record.contains("用户自有章节原文。"));
+    let after = fs::read(&target).unwrap();
+    assert_ne!(before, after);
+    app.submit_message("vault-a", &chat.id, "2026-10-04", instruction)
+        .unwrap();
+    wait_for_finish(&app, &chat.id, "vault-a");
+    assert_eq!(
+        fs::read(&target).unwrap(),
+        after,
+        "explicit retry must return its receipt, without duplicating the event"
+    );
+}
+
+#[test]
+fn daytime_confirmation_executes_only_the_exact_adjacent_draft_and_keeps_its_revision() {
+    for (confirmation, mutate_file, allowed) in [
+        ("哦,授权,你就update就可以了", false, true),
+        ("授权", false, true),
+        ("授权？", false, false),
+        ("不要保存白天更新", false, false),
+        ("授权，先给我看方案", false, false),
+        ("我授权，但明天再保存", false, false),
+        ("授权，改写成已经整理完书桌", false, false),
+        ("授权", true, false),
+    ] {
+        let dir = IsolatedDirectory::new();
+        let path = dir.vault("daytime-confirmation");
+        let fixture = prepare_daily_review_vault(&path, false);
+        let target = path.join("life/Journal/Daily/2026/2026-10/2026-10-04.md");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(
+            &target,
+            fs::read_to_string(fixture)
+                .unwrap()
+                .replace("2026-09-27", "2026-10-04"),
+        )
+        .unwrap();
+        let vault = MutableVault::new(&path);
+        let clock = ManualClock::new("2026-10-04", "17:00");
+        let (app, _, results, _) =
+            new_automatic_application(&dir, &vault, MutableContext::new("vault-a"), clock, None);
+        let chat = app.create_default_session().unwrap();
+        let before = fs::read(&target).unwrap();
+        app.submit_message(
+            "vault-a",
+            &chat.id,
+            "2026-10-04",
+            "你把那个东西 update 一下。",
+        )
+        .unwrap();
+        wait_for_finish(&app, &chat.id, "vault-a");
+        assert_eq!(
+            fs::read(&target).unwrap(),
+            before,
+            "a draft is not a source write"
+        );
+        let draft = app.session("vault-a", &chat.id).unwrap().task_operations[0].clone();
+        assert_eq!(draft.status, "awaitingApproval");
+        if mutate_file {
+            fs::write(
+                &target,
+                format!(
+                    "{}\n保留后来的用户编辑。\n",
+                    String::from_utf8(before).unwrap()
+                ),
+            )
+            .unwrap();
+        }
+        let before_confirmation = fs::read(&target).unwrap();
+        app.submit_message("vault-a", &chat.id, "2026-10-04", confirmation)
+            .unwrap();
+        wait_for_finish(&app, &chat.id, "vault-a");
+        let saved = app.session("vault-a", &chat.id).unwrap();
+        let original = saved
+            .task_operations
+            .iter()
+            .find(|p| p.id == draft.id)
+            .unwrap();
+        if allowed {
+            assert!(results.lock().unwrap().last().unwrap().success);
+            assert_eq!(original.status, "applied");
+            let record = fs::read_to_string(&target).unwrap();
+            assert!(record.contains("晚饭后计划整理书桌，尚未完成。"));
+            assert_eq!(
+                record
+                    .matches("上午已读完报告；晚饭后计划整理书桌，尚未完成。")
+                    .count(),
+                1
+            );
+            assert_eq!(saved.task_operations.len(), 1);
+        } else {
+            assert_eq!(
+                fs::read(&target).unwrap(),
+                before_confirmation,
+                "{confirmation}"
+            );
+            assert_ne!(original.status, "applied");
+        }
+    }
+}
+
+#[test]
+fn daytime_confirmation_cannot_replay_missing_ambiguous_or_nonadjacent_drafts() {
+    for scenario in [
+        "missing",
+        "ambiguous",
+        "intervening",
+        "target-changed",
+        "reopened",
+    ] {
+        let dir = IsolatedDirectory::new();
+        let path = dir.vault("confirmation-scope");
+        let fixture = prepare_daily_review_vault(&path, false);
+        let target = path.join("life/Journal/Daily/2026/2026-10/2026-10-04.md");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::write(
+            &target,
+            fs::read_to_string(fixture)
+                .unwrap()
+                .replace("2026-09-27", "2026-10-04"),
+        )
+        .unwrap();
+        let vault = MutableVault::new(&path);
+        let clock = ManualClock::new("2026-10-04", "17:00");
+        let (mut app, _, _, _) = new_automatic_application(
+            &dir,
+            &vault,
+            MutableContext::new("vault-a"),
+            clock.clone(),
+            None,
+        );
+        let chat = app.create_default_session().unwrap();
+        if scenario != "missing" {
+            app.submit_message(
+                "vault-a",
+                &chat.id,
+                "2026-10-04",
+                "你把那个东西 update 一下。",
+            )
+            .unwrap();
+            wait_for_finish(&app, &chat.id, "vault-a");
+        }
+        if scenario == "ambiguous" {
+            let store =
+                FileCollaborationStore::new(dir.path().join("collaboration/collaboration.json"));
+            let mut state = store.load().unwrap();
+            let session = state.sessions.iter_mut().find(|s| s.id == chat.id).unwrap();
+            let mut another = json!(&session.task_operations[0]);
+            another["id"] = json!("another-daytime-draft");
+            session
+                .task_operations
+                .push(serde_json::from_value(another).unwrap());
+            store.save(&state).unwrap();
+        }
+        if scenario == "intervening" {
+            app.submit_message(
+                "vault-a",
+                &chat.id,
+                "2026-10-04",
+                "请先整理白天情况，暂时不要保存：上午已读完报告；晚饭后计划整理书桌，尚未完成。",
+            )
+            .unwrap();
+            wait_for_finish(&app, &chat.id, "vault-a");
+        }
+        if scenario == "reopened" {
+            app = new_automatic_application(
+                &dir,
+                &vault,
+                MutableContext::new("vault-a"),
+                clock,
+                None,
+            )
+            .0;
+        }
+        let before = fs::read(&target).unwrap();
+        let request_date = if scenario == "target-changed" {
+            "2026-10-05"
+        } else {
+            "2026-10-04"
+        };
+        app.submit_message("vault-a", &chat.id, request_date, "授权")
+            .unwrap();
+        wait_for_finish(&app, &chat.id, "vault-a");
+        let saved = app.session("vault-a", &chat.id).unwrap();
+        if scenario == "reopened" {
+            assert_eq!(saved.task_operations[0].status, "applied");
+            assert!(fs::read_to_string(&target).unwrap().contains("尚未完成。"));
+        } else {
+            assert_eq!(fs::read(&target).unwrap(), before, "{scenario}");
+            assert!(saved.task_operations.iter().all(|p| p.status != "applied"));
+        }
+    }
 }
 
 struct FailNextSaveStore {
