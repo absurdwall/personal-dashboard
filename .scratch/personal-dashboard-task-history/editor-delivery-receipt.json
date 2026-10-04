@@ -1,0 +1,24 @@
+{
+  "archive": "Documents/Codex/backups/personal-dashboard-before-editor-fix-2026-10-03.zip",
+  "oldExecutableSha256": "75c962632e1dfd7949e6bef42415196d56ef3f89fb2e79d225a09aee95cdb8f3",
+  "mergedSha": "a79b9ab5ca269158a79d0237ee4443b4667f7d67",
+  "installed": "/Applications/Personal Dashboard.app",
+  "installedExecutableSha256": "a79d7f2da9f0ca23f975fcd5aa78227009a9c6acd9863d65a70ad8ce001efb43",
+  "version": "4.0.4",
+  "nativeReadOnly": {
+    "selectedVaultVerified": true,
+    "pending": 3,
+    "foldedHistory": 6
+  },
+  "preservation": {
+    "checked": 5948,
+    "unchanged": 5947,
+    "missing": 0,
+    "vaultFilesUnchanged": 70,
+    "dailyRecordsUnchanged": 29,
+    "settingsUnchanged": 4,
+    "changedReason": "Existing startup mark_incomplete_runs_interrupted loads and reserializes collaboration state. Its byte identity is not claimed. No collaboration action was initiated; 29 saved sessions remain readable.",
+    "collaborationSessionsReadable": 29,
+    "changedFile": "collaboration/collaboration-v1.json"
+  }
+}

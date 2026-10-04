@@ -1,0 +1,54 @@
+[
+  {
+    "ordinal": "01",
+    "title": "[生活日体验 01] Today 与习惯按凌晨 4 点切换生活日",
+    "number": 29,
+    "url": "https://github.com/absurdwall/personal-dashboard/issues/29",
+    "path": ".scratch/personal-dashboard-lived-day-usability/issues/01-lived-day-recording.md",
+    "blockedBy": []
+  },
+  {
+    "ordinal": "02",
+    "title": "[生活日体验 02] 完整生活日时间轴与活跃时段聚焦",
+    "number": 30,
+    "url": "https://github.com/absurdwall/personal-dashboard/issues/30",
+    "path": ".scratch/personal-dashboard-lived-day-usability/issues/02-lived-day-timeline.md",
+    "blockedBy": [
+      29
+    ]
+  },
+  {
+    "ordinal": "03",
+    "title": "[生活日体验 03] 协作接入生活日与自然语言日期判断",
+    "number": 31,
+    "url": "https://github.com/absurdwall/personal-dashboard/issues/31",
+    "path": ".scratch/personal-dashboard-lived-day-usability/issues/03-collaboration-date-context.md",
+    "blockedBy": [
+      29
+    ]
+  },
+  {
+    "ordinal": "04",
+    "title": "[生活日体验 04] 历史习惯入口直接到达补记操作",
+    "number": 32,
+    "url": "https://github.com/absurdwall/personal-dashboard/issues/32",
+    "path": ".scratch/personal-dashboard-lived-day-usability/issues/04-habit-history-entry.md",
+    "blockedBy": []
+  },
+  {
+    "ordinal": "05",
+    "title": "[生活日体验 05] 协作辅助栏可收起、调宽并适配窗口",
+    "number": 33,
+    "url": "https://github.com/absurdwall/personal-dashboard/issues/33",
+    "path": ".scratch/personal-dashboard-lived-day-usability/issues/05-collaboration-resizable-panels.md",
+    "blockedBy": []
+  },
+  {
+    "ordinal": "06",
+    "title": "[生活日体验 06] 中文／美式英语单语言录音与输入区麦克风",
+    "number": 34,
+    "url": "https://github.com/absurdwall/personal-dashboard/issues/34",
+    "path": ".scratch/personal-dashboard-lived-day-usability/issues/06-single-language-voice.md",
+    "blockedBy": []
+  }
+]

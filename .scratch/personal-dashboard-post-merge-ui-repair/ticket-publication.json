@@ -1,0 +1,26 @@
+[
+  {
+    "ordinal": "01",
+    "title": "[界面验收修复 01] 协作三栏到两栏过渡与偏好恢复",
+    "url": "https://github.com/absurdwall/personal-dashboard/issues/37",
+    "number": 37,
+    "path": ".scratch/personal-dashboard-post-merge-ui-repair/issues/01-collaboration-two-columns.md",
+    "blockedBy": []
+  },
+  {
+    "ordinal": "02",
+    "title": "[界面验收修复 02] Today 长时段标签与正文可读排版",
+    "url": "https://github.com/absurdwall/personal-dashboard/issues/38",
+    "number": 38,
+    "path": ".scratch/personal-dashboard-post-merge-ui-repair/issues/02-today-readable-content.md",
+    "blockedBy": []
+  },
+  {
+    "ordinal": "03",
+    "title": "[界面验收修复 03] 时间轴两端原地展开与小图标定位现在",
+    "url": "https://github.com/absurdwall/personal-dashboard/issues/39",
+    "number": 39,
+    "path": ".scratch/personal-dashboard-post-merge-ui-repair/issues/03-timeline-inline-expansion.md",
+    "blockedBy": []
+  }
+]

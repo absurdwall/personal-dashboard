@@ -1,0 +1,25 @@
+{
+  "outcome": "confirmed",
+  "publication": "local Markdown specification",
+  "projectId": "product-personal-dashboard",
+  "sourceId": "source-personal-dashboard-codex-dictation",
+  "operationId": "management-codex-dictation-spec-2d10965d-3c53-4a15-a4cc-8de544563acd",
+  "registryRevision": "87bda6d30006dc54",
+  "sourceRevision": "6a8fafcb32b5ff24",
+  "sourceState": "current",
+  "sourceIssueCount": 1,
+  "sourceMalformedReferences": [],
+  "specification": ".scratch/personal-dashboard-codex-voice/spec.md",
+  "trackerItem": {
+    "canonicalDestination": ".scratch/personal-dashboard-codex-voice/issues/01-codex-webrtc-dictation-spec.md",
+    "sourceReference": "01-codex-webrtc-dictation-spec.md",
+    "revision": "5bcd6e09a1109c92",
+    "nativeState": "ready-for-agent",
+    "queueState": "ready"
+  },
+  "coverage": "newly published specification source only",
+  "implementationStarted": false,
+  "implementationTicketsPublished": false,
+  "summarySubmitted": false,
+  "pendingRecovery": []
+}

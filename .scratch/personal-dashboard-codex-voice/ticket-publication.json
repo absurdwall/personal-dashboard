@@ -1,0 +1,138 @@
+{
+  "parentIssue": "https://github.com/absurdwall/personal-dashboard/issues/43",
+  "approval": "User: sounds good",
+  "tickets": [
+    {
+      "order": 1,
+      "number": 45,
+      "id": 5692573018,
+      "title": "打通打包 Mac 的 Codex WebRTC 听写到草稿",
+      "url": "https://github.com/absurdwall/personal-dashboard/issues/45",
+      "blockedByNumbers": [],
+      "verification": {
+        "state": "open",
+        "labels": [
+          "enhancement",
+          "ready-for-agent"
+        ],
+        "bodyMatchesApproved": true,
+        "nativeBlockedByVerified": true,
+        "assignees": [],
+        "bodySha256": "4197b5b9d990b5c2f0b2561adf5d9a8d2bcc0bfdf60f6f616ee6121eb96e641b"
+      }
+    },
+    {
+      "order": 2,
+      "number": 46,
+      "id": 5692573339,
+      "title": "完成流式预览、连续口述与尾段合并",
+      "url": "https://github.com/absurdwall/personal-dashboard/issues/46",
+      "blockedByNumbers": [
+        45
+      ],
+      "verification": {
+        "state": "open",
+        "labels": [
+          "enhancement",
+          "ready-for-agent"
+        ],
+        "bodyMatchesApproved": true,
+        "nativeBlockedByVerified": true,
+        "assignees": [],
+        "bodySha256": "8a0373181da11d5b650e79ab50985df376165c9bdea4e53ac921f83662d701e6"
+      }
+    },
+    {
+      "order": 3,
+      "number": 47,
+      "id": 5692573627,
+      "title": "保护取消、断线与跨会话听写结果",
+      "url": "https://github.com/absurdwall/personal-dashboard/issues/47",
+      "blockedByNumbers": [
+        46
+      ],
+      "verification": {
+        "state": "open",
+        "labels": [
+          "enhancement",
+          "ready-for-agent"
+        ],
+        "bodyMatchesApproved": true,
+        "nativeBlockedByVerified": true,
+        "assignees": [],
+        "bodySha256": "7e6b31b54d12b724947a3a1ce3fd65582fa68219f6d4f051024530fe8c5ab98e"
+      }
+    },
+    {
+      "order": 4,
+      "number": 48,
+      "id": 5692573895,
+      "title": "退役 Apple 离线依赖并形成 Codex-only 候选包",
+      "url": "https://github.com/absurdwall/personal-dashboard/issues/48",
+      "blockedByNumbers": [
+        45
+      ],
+      "verification": {
+        "state": "open",
+        "labels": [
+          "enhancement",
+          "ready-for-agent"
+        ],
+        "bodyMatchesApproved": true,
+        "nativeBlockedByVerified": true,
+        "assignees": [],
+        "bodySha256": "9f0d78a074686dbfe5f65a97e7e6e3f099a2dababe7e55806d901b8b5505629e"
+      }
+    },
+    {
+      "order": 5,
+      "number": 49,
+      "id": 5692574311,
+      "title": "完成 Codex 听写候选的真人与故障验收",
+      "url": "https://github.com/absurdwall/personal-dashboard/issues/49",
+      "blockedByNumbers": [
+        47,
+        48
+      ],
+      "verification": {
+        "state": "open",
+        "labels": [
+          "enhancement",
+          "ready-for-agent"
+        ],
+        "bodyMatchesApproved": true,
+        "nativeBlockedByVerified": true,
+        "assignees": [],
+        "bodySha256": "7ebea0bc873227354b8ee436d534ba1bd53d1bce605ff723b943b0ffac73d3e7"
+      }
+    }
+  ],
+  "dependencies": [
+    {
+      "blockedIssue": 46,
+      "blockingIssue": 45
+    },
+    {
+      "blockedIssue": 47,
+      "blockingIssue": 46
+    },
+    {
+      "blockedIssue": 48,
+      "blockingIssue": 45
+    },
+    {
+      "blockedIssue": 49,
+      "blockingIssue": 47
+    },
+    {
+      "blockedIssue": 49,
+      "blockingIssue": 48
+    }
+  ],
+  "state": "confirmed",
+  "parentContentStateLabelsAndCommentsUnchanged": true,
+  "implementationStarted": false,
+  "currentFrontier": [
+    45
+  ]
+}

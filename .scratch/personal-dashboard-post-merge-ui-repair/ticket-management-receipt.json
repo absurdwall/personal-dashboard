@@ -1,0 +1,37 @@
+{
+  "outcome": "confirmed",
+  "registryRevision": "97b35ec79cf7c76b",
+  "sourceRevision": "add9959354e15c87",
+  "tickets": [
+    {
+      "canonicalDestination": "https://github.com/absurdwall/personal-dashboard/issues/37",
+      "revision": "44ec17a988b784b5",
+      "queueState": "unknown",
+      "blockers": [
+        "None (can start immediately)."
+      ]
+    },
+    {
+      "canonicalDestination": "https://github.com/absurdwall/personal-dashboard/issues/38",
+      "revision": "664d92285b70e78a",
+      "queueState": "unknown",
+      "blockers": [
+        "None (can start immediately)."
+      ]
+    },
+    {
+      "canonicalDestination": "https://github.com/absurdwall/personal-dashboard/issues/39",
+      "revision": "faf1fc0b57f59e32",
+      "queueState": "unknown",
+      "blockers": [
+        "None (can start immediately)."
+      ]
+    }
+  ],
+  "gaps": [
+    "summary-needs-reconciliation",
+    "source-source-personal-dashboard-codex-collaboration-malformed"
+  ],
+  "action": null,
+  "pendingRecovery": []
+}
