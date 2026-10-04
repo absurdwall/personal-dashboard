@@ -158,6 +158,9 @@ fn daily_record_path(vault: &Path, lived_date: &str) -> PathBuf {
 fn run_cli(request: Value) -> Value {
     let mut child = Command::new(env!("CARGO_BIN_EXE_personal-dashboard"))
         .arg("--daily-flow-tasks")
+        // Keep the CLI and in-process RehearsalClock at the same fixture instant.
+        .env("PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS", "1790510400000")
+        .env("PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES", "0")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -181,6 +184,9 @@ fn run_cli(request: Value) -> Value {
 fn run_cli_failure(request: Value) -> String {
     let mut child = Command::new(env!("CARGO_BIN_EXE_personal-dashboard"))
         .arg("--daily-flow-tasks")
+        // Keep the CLI and in-process RehearsalClock at the same fixture instant.
+        .env("PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS", "1790510400000")
+        .env("PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES", "0")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

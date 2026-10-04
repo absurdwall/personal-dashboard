@@ -28,7 +28,9 @@ The current completion record contains:
 - `completedTime`: an optional `HH:MM` value;
 - `recordedAt`: the actual local timestamp at which the app recorded the
   operation;
-- `source`: `checkbox`, `date-correction`, or `daily-flow`.
+- `source`: `checkbox`, `reported`, `date-correction`, or `daily-flow`.
+
+A Collaboration completion fact uses `reported`: its resolved actual date and optional user-supplied time are separate from `recordedAt`. An absent activity minute remains unknown. It uses the existing completion/state/history receipt path; a later correction retains `date-correction` provenance. Existing checkbox and daily-flow records keep their original meaning.
 
 Normal checkbox completion uses the current local timestamp. A late completion
 therefore leaves the task's scheduled `date` and `time` unchanged. A correction

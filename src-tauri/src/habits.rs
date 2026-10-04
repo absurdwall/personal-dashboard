@@ -11,6 +11,17 @@ const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 const HABIT_NAMES_SCHEMA_VERSION: u32 = 1;
 const HISTORY_WEEKS: i64 = 12;
 
+// Snapshot v1 retains this verified association in the existing source label.
+// Keep its encoder and readers together without changing the persisted schema.
+pub(crate) fn explicit_dida_mapping_label(key: &str, id: &str) -> String {
+    format!("Dida365 explicit mapping {key}={id}")
+}
+
+pub(crate) fn explicit_dida_mapping_id<'a>(label: &'a str, key: &str) -> Option<&'a str> {
+    let id = label.strip_prefix(&explicit_dida_mapping_label(key, ""))?;
+    (!id.is_empty() && id.len() <= 160 && !id.contains(char::is_whitespace)).then_some(id)
+}
+
 pub trait HabitSnapshotStore {
     fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String>;
 }
@@ -554,7 +565,10 @@ struct Observation {
 }
 
 pub fn snapshot_dates(document: &[u8], today: &str) -> Result<Vec<String>, String> {
-    let snapshot = parse_and_validate(document, today)?;
+    snapshot_dates_at_local_date(document,today,today)
+}
+pub fn snapshot_dates_at_local_date(document: &[u8], today: &str, local_date: &str) -> Result<Vec<String>, String> {
+    let snapshot = parse_and_validate_at_local_date(document, today, local_date)?;
     let end = CalendarDate::parse(today).expect("validated current date");
     let snapshot_start =
         CalendarDate::parse(&snapshot.range.from).expect("validated snapshot start");
@@ -587,7 +601,15 @@ pub fn project_snapshot_with_names(
     local_completions: Vec<LocalHabitCompletion>,
     names_configuration: &HabitNamesConfiguration,
 ) -> Result<HabitSnapshotView, String> {
-    let snapshot = parse_and_validate(document, today)?;
+    project_snapshot_with_names_at_local_date(document,today,today,local_records,local_completions,names_configuration)
+}
+
+pub fn project_snapshot_with_names_at_local_date(
+    document: &[u8], today: &str, local_date: &str,
+    local_records: Vec<LocalHabitRecord>, local_completions: Vec<LocalHabitCompletion>,
+    names_configuration: &HabitNamesConfiguration,
+) -> Result<HabitSnapshotView, String> {
+    let snapshot = parse_and_validate_at_local_date(document, today, local_date)?;
     let today_date = CalendarDate::parse(today).expect("validated current date");
     let week_start = today_date.monday();
     let history_start = week_start.plus_days(-7 * (HISTORY_WEEKS - 1));
@@ -680,11 +702,19 @@ pub fn project_snapshot_with_names(
             .as_ref()
             .map(goal_label)
             .unwrap_or_else(|| "未配置目标 · 不计入汇总".into());
-        let source_keys: HashSet<&str> = habit
+        let mut source_keys: HashSet<&str> = habit
             .days
             .iter()
             .flat_map(|day| day.observations.iter().map(|item| item.source.as_str()))
             .collect();
+        // A verified producer mapping survives confirmed-empty reads and
+        // withdrawal (status 0 has no completion observation).
+        let mapping_key = format!("dida-{}", habit.key);
+        if let Some(source) = source_by_key.get(mapping_key.as_str()) {
+            if explicit_dida_mapping_id(&source.label, &habit.key).is_some() {
+                source_keys.insert(source.key.as_str());
+            }
+        }
         let mut source_labels: Vec<String> = source_keys
             .into_iter()
             .filter_map(|key| source_by_key.get(key).map(|source| source.label.clone()))
@@ -766,7 +796,7 @@ pub fn project_snapshot_with_names(
     } else {
         (
             HabitSnapshotState::Ready,
-            "已读取按需生成的本地快照；Dashboard 未连接或轮询外部服务。".to_string(),
+            "已读取按需生成的本地快照；来源覆盖与刷新结果可分别核对。".to_string(),
         )
     };
     Ok(HabitSnapshotView {
@@ -832,7 +862,7 @@ pub fn project_habit_corrections_with_recording_limit(
     local_completions: Vec<LocalHabitCompletion>,
     names_configuration: &HabitNamesConfiguration,
 ) -> Result<HabitCorrectionView, String> {
-    let snapshot = parse_and_validate(document, today)?;
+    let snapshot = parse_and_validate_at_local_date(document, today, latest_recordable_date)?;
     let today_date = CalendarDate::parse(today)
         .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
     let selected = CalendarDate::parse(selected_date)
@@ -1211,7 +1241,8 @@ fn project_cell(
     }
 }
 
-fn parse_and_validate(document: &[u8], today: &str) -> Result<SnapshotDocument, String> {
+fn parse_and_validate_at_local_date(document: &[u8], today: &str, local_date: &str) -> Result<SnapshotDocument, String> {
+    let local_date=CalendarDate::parse(local_date).ok_or_else(|| "Invalid local calendar date".to_string())?;
     let today = CalendarDate::parse(today)
         .ok_or_else(|| "The system clock did not provide a valid calendar date.".to_string())?;
     let snapshot: SnapshotDocument = serde_json::from_slice(document)
@@ -1229,7 +1260,7 @@ fn parse_and_validate(document: &[u8], today: &str) -> Result<SnapshotDocument, 
     })?;
     let generated_date = CalendarDate::parse(&snapshot.generated_at[..10])
         .expect("validated timestamp contains a valid date");
-    if generated_date > today {
+    if generated_date > local_date {
         return Err("Habits 快照 generatedAt 不能晚于当前本地日期。".into());
     }
     let range_from = CalendarDate::parse(&snapshot.range.from)
@@ -1441,7 +1472,7 @@ fn valid_time(value: &str) -> bool {
         && value[3..].parse::<u32>().is_ok_and(|minute| minute < 60)
 }
 
-fn timestamp_epoch_seconds(value: &str) -> Option<i64> {
+pub(crate) fn timestamp_epoch_seconds(value: &str) -> Option<i64> {
     if value.len() != 25
         || &value[10..11] != "T"
         || &value[13..14] != ":"
