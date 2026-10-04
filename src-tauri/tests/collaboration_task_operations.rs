@@ -6011,7 +6011,18 @@ struct PublicationRaceVault {
 
 impl TodayWorkspacePersistence for PublicationRaceVault {
     fn load_selected_vault(&self) -> Result<Option<PathBuf>, String> {
+        // Count publication checks only. Current-request Habit target reads can
+        // precede generation; the real candidate file identifies this boundary.
+        let staged = fs::read_dir(self.vault.join("life/.personal-dashboard/derived"))
+            .map_err(|e| e.to_string())?
+            .filter_map(Result::ok)
+            .any(|entry| {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                name.starts_with(".habits-v1-") && name.ends_with(".tmp")
+            });
         if self.armed.load(Ordering::SeqCst)
+            && staged
             && self.reads.fetch_add(1, Ordering::SeqCst) + 1 == self.change_on_read
         {
             if let Some(bytes) = &self.replacement {
@@ -6032,7 +6043,7 @@ impl TodayWorkspacePersistence for PublicationRaceVault {
 #[test]
 fn collaboration_habit_publication_rejects_changed_deleted_or_new_canonical_sources_on_both_boundaries(
 ) {
-    for boundary in [2, 3] {
+    for boundary in [1, 2] {
         // before activation, then after activation
         for change in ["correction", "deletion", "creation"] {
             let directory = IsolatedDirectory::new();
