@@ -107,6 +107,7 @@ results, not replacement of `/Applications/Personal Dashboard.app`.
 | Phase D next-day continuation, `1afaae1` | Reopening preserved the original chat and exactly one next-day pending Task, without fabricating a Daily Record. Yesterday's existing local completion and the future Task retained their identities. Local-only withdrawal saved locally; native reads confirmed the external end remained completed, so the refreshed OR count stayed one. Original-range withdrawal then confirmed external unmarked state and published a count of zero. | Repeated cached native startup failure prevented fresh source/refresh during the first cross-date request. A later policy-driven native thread rotation recovered discovery within the same running App Server; this is evidence for the recovery seam, not proof of automatic recovery under identical configuration. |
 | Phase E, `90dffdc` | The original chat and pending review reopened. Chinese reply status/footer appeared once and remained truthful; host external diagnostics and source-ID suffix were localized while source and user text remained intact. Natural yesterday completion saved locally and through the mapped native Habit with source readback; time/duration stayed unknown. Ordinary month-plan read/edit/readback appended execution principles while preserving all previous paragraphs, references and the manual preservation section. | Native startup was healthy with unchanged native ID/fingerprint, so bounded failed-startup recovery did not run. A same-request snapshot refresh was rejected by the unrelated external-creation prohibition; previous snapshot retained. This combined-input failure requires the final narrow refresh-only native retry. |
 | Phase E withdrawal, `90dffdc` | A separate natural original-range withdrawal confirmed both ends withdrawn/unmarked, queried the complete source range, and produced validated/published/ready display with zero known exercise completions. Exact wake 07:50, threshold-only sleep, mapping, other Task identities and pending review remained intact. | Sixteen local operations and one memory proposal remained; no effect replay or external object creation. The owned Habit name stayed unchanged and both tested source dates returned to unmarked state. |
+| Phase F, `ee8dfc2` | The original chat retained sixteen local operations, one memory proposal and the pending kitchen review. An explicit current refresh with an unrelated external-creation ban in the same sentence issued only two native Habit source reads, then reported verified query, validated generation, published snapshot and ready display. Chinese stages and English reply/Habits display were correct, with zero of three known weekly completions. | Native ID and tool fingerprint stayed unchanged and startup was healthy; identical-configuration failed-startup recovery did not run. All eight checked source files retained their hashes, all Task identities/dates stayed unchanged, and no business write or external object creation occurred. |
 
 The actual installed Dashboard bundle and personal profile/Vault remained unchanged.
 Phase D finished with fourteen local operations and one memory proposal, without
@@ -115,15 +116,23 @@ dates returned to unmarked state and its name remained unchanged. Owned source
 fixtures were reset to their documented baseline where supported; a
 retained owned Habit has no verified teardown operation and remains outside repository data.
 
+Phase F verified the final same-sentence refresh fix through the real native model.
+The two source reads confirmed the owned Habit name and both tested source dates
+remained unchanged and unmarked. Publication retained exactly one current wake
+observation at 07:50, threshold-only sleep without an actual minute, and withdrawn
+local/composite exercise completion. Ordinary month-plan text, the manual supplement
+and appended execution principles remained intact. The review card stayed awaiting
+approval without an execution attempt; prior saved effects were not replayed.
+
 ## Remaining acceptance
 
-Phases D and E verified the remaining external endpoint, natural dual save/withdrawal,
-ordinary month-plan preservation, and corrected result/reply presentation. Phase E's
-combined refresh intent failure has a bounded source fix and exact application regression;
-candidate F's refresh-only retry under unrelated preservation clauses remains pending.
+Phases D through F verified the remaining external endpoint, natural dual save/withdrawal,
+ordinary month-plan preservation, corrected result/reply presentation, and the final
+refresh-only retry under unrelated same-sentence preservation limits. Phase E's recorded
+combined refresh failure remains part of the evidence; F verifies the bounded fix.
 Same-configuration pre-turn native recovery remains application-tested rather than
-observed in a failed-startup candidate: E started healthy, and D's observed recovery
+observed in a failed-startup candidate: E and F started healthy, and D's observed recovery
 changed the tool policy. Cross-date results retain their recorded source failure
-boundary. Append actual observations rather than infer them from tests.
-Any final installed-app replacement, main-branch merge, human acceptance,
+boundary. Text probes do not establish live voice acceptance.
+Any final installed-app replacement, main-branch merge, human daily-use acceptance,
 issue closure or parent-spec completion requires its separately authorized workflow.
