@@ -466,7 +466,9 @@ impl AppServerTransport for DynamicRuntime {
         }
         // Controlled resolver output exercises the date protocol and persisted
         // results without claiming these fixtures test model language quality.
-        let (call_id, tool, mut arguments) = if let Some(arguments) = request.user_text.strip_prefix("date-fixture:") {
+        let (call_id, tool, mut arguments) = if let Some(arguments) = natural_daily_fixture(&request.user_text) {
+            ("natural-daily-call", "dashboard_task_operation", arguments)
+        } else if let Some(arguments) = request.user_text.strip_prefix("date-fixture:") {
             ("resolved-date-call", "dashboard_task_operation", serde_json::from_str(arguments).unwrap())
         } else if let Some(arguments) = request.user_text.strip_prefix("memory-fixture:") {
             ("resolved-memory-call", "dashboard_memory_update", serde_json::from_str(arguments).unwrap())
@@ -909,6 +911,45 @@ fn queued_request_keeps_submission_dates_and_task_schedule_across_four_am() {
     assert_eq!(original.target_date, "2026-09-26");
     assert!(original.messages.iter().all(|message| message.target_date == "2026-09-26"));
     assert!(application.session("vault-a", &next_session.id).unwrap().task_operations.is_empty());
+}
+
+// This scripted resolver maps user narratives to known tool effects. The real
+// application validates current-message authority and writes the isolated Vault.
+// It tests orchestration, not the installed model's language interpretation.
+fn natural_daily_fixture(text: &str) -> Option<Value> {
+    let plan = |transition: &str, title: &str, event: Option<&str>| json!({
+        "operation":"saveDailyPlan", "transition":transition,
+        "arrangement": if transition == "daytimeEvent" { json!([]) } else { json!([{"period":"上午", "title":title, "detail":null}]) },
+        "evidence":if transition=="daytimeEvent" { json!([]) } else {json!([{"label":"当前用户请求", "items":[text]}])}, "calibrationNote":if transition=="morningCalibration" {Some("上午优先处理急事")} else {None},
+        "baselineCorrectionReason":if transition=="morningBaselineCorrection" {Some("早间基准原文写错")} else {None},
+        "event":event, "originalIntent":if transition=="daytimeReplan" {Some("下午写报告")} else {None},
+        "changeReason":if transition=="daytimeReplan" {Some("今天需要休息")} else {None},
+        "revisedDirection":if transition=="daytimeReplan" {Some("报告挪到明天")} else {None}
+    });
+    let mut value = match text {
+        "今天先安排上午写报告，下午散步。" => plan("initialPlan", "写报告", None),
+        "校准今天安排，上午优先处理急事。" => plan("morningCalibration", "处理急事", None),
+        "今天07:10起床，具体睡觉时刻不知道。" => plan("daytimeEvent", "", Some(text)),
+        "下午改为休息，报告挪到明天。" => plan("daytimeReplan", "休息", None),
+        "早间基准写错了，上午原定看邮件，请更正。" => plan("morningBaselineCorrection", "看邮件", None),
+        "今晚复盘：今天已经写完报告，按时起床，睡觉分钟不知道。" => json!({"operation":"saveEveningReview","mode":"addition","content":"今天已经写完报告，按时起床，睡觉分钟不知道。"}),
+        "补充复盘，今天完成了散步。" => json!({"operation":"saveEveningReview","mode":"addition","content":"今天完成了散步。"}),
+        "更正复盘，报告实际是昨天下午完成的。" => json!({"operation":"saveEveningReview","mode":"correction","content":"报告实际是昨天下午完成的。"}),
+        "补记2026-09-25的复盘：当天已经处理完家务。" => json!({"operation":"saveEveningReview","mode":"addition","targetDate":"2026-09-25","content":"当天已经处理完家务。"}),
+        "今天已经读完这本书了。" => json!({"operation":"createShortRecord","category":"ordinary","content":text}),
+        "补记2026-09-25，锻炼了25分钟。" => json!({"operation":"createShortRecord","category":"exercise","targetDate":"2026-09-25","content":"锻炼了25分钟。"}),
+        "先给我看方案，新增简短记录：今天已完成读书。" => json!({"operation":"createShortRecord","category":"ordinary","content":"今天已完成读书。","executionMode":"prepareProposal"}),
+        "也许今天锻炼了25分钟。" | "不要记录，今天锻炼了25分钟。" => json!({"operation":"createShortRecord","category":"exercise","content":"今天锻炼了25分钟。"}),
+        "明天打算锻炼25分钟。" => plan("daytimeEvent", "", Some(text)),
+        "今天07:10起床，请保留原事实。" => json!({"operation":"saveEveningReview","mode":"addition","content":"今天07:10起床"}),
+        _ => {
+            let (id, content) = text.strip_prefix("更正记录 ")?.split_once('：')?;
+            json!({"operation":"correctShortRecord","recordId":id,"content":content})
+        }
+    };
+    value.as_object_mut().unwrap().entry("executionMode").or_insert(json!("execute"));
+    value["authorizationQuote"] = json!(text);
+    Some(value)
 }
 
 struct FailNextSaveStore {
@@ -4226,4 +4267,131 @@ fn memory_document_readback_after_history_failure_confirms_effect_without_rewrit
             .count(),
         1
     );
+}
+
+#[test]
+fn natural_daily_conversation_saves_every_transition_review_and_record_without_repeat_save_commands() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("natural-daily");
+    let vault = MutableVault::new(&path);
+    let (app, _, results, _) = new_automatic_application(&directory, &vault,
+        MutableContext::new("vault-a"), ManualClock::new("2026-09-27", "21:00"), None);
+    let session = app.create_default_session().unwrap();
+    for text in [
+        "今天先安排上午写报告，下午散步。", "校准今天安排，上午优先处理急事。",
+        "今天07:10起床，具体睡觉时刻不知道。", "下午改为休息，报告挪到明天。",
+        "早间基准写错了，上午原定看邮件，请更正。",
+        "今晚复盘：今天已经写完报告，按时起床，睡觉分钟不知道。",
+        "补充复盘，今天完成了散步。", "更正复盘，报告实际是昨天下午完成的。",
+        "今天已经读完这本书了。", "补记2026-09-25，锻炼了25分钟。",
+        "补记2026-09-25的复盘：当天已经处理完家务。",
+    ] {
+        app.submit_message("vault-a", &session.id, &session.target_date, text).unwrap();
+        wait_for_finish(&app, &session.id, "vault-a");
+        let current = app.session("vault-a", &session.id).unwrap();
+        let result = results.lock().unwrap().last().unwrap().clone();
+        assert!(result.success, "{text}: {}", result.text);
+        assert_eq!(current.task_operations.last().unwrap().status, "applied", "{text}: {}", result.text);
+        if text == "下午改为休息，报告挪到明天。" {
+            let view = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock).read_date("2026-09-27").unwrap();
+            assert_eq!(view.baseline.timeline[0].title, "写报告");
+            assert_eq!(view.timeline[0].title, "休息");
+        }
+    }
+    let before = app.session("vault-a", &session.id).unwrap();
+    let ordinary = before.task_operations.iter().find(|op| matches!(op.operation,
+        CollaborationTaskOperation::CreateShortRecord {category:ShortRecordCategory::Ordinary,..})).unwrap();
+    let correction = format!("更正记录 {}：实际读完的是前半本。", ordinary.id);
+    app.submit_message("vault-a", &session.id, &session.target_date, &correction).unwrap();
+    wait_for_finish(&app, &session.id, "vault-a");
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock);
+    let current = today.read_date("2026-09-27").unwrap();
+    assert_eq!(current.baseline.timeline[0].title, "看邮件");
+    assert_eq!(current.timeline[0].title, "休息", "baseline correction retains the current arrangement");
+    assert_eq!(current.daytime.short_records.len(), 1);
+    assert_eq!(current.daytime.short_records[0].text, "实际读完的是前半本。");
+    assert_eq!(current.daytime.short_records[0].changes.len(), 1);
+    assert_eq!(current.daytime.short_records[0].changes[0].old_text, "今天已经读完这本书了。");
+    let doc = fs::read_to_string(record_path(&path)).unwrap();
+    let daytime = canonical_section(&doc, "白天更新", "晚间复盘");
+    assert!(daytime.contains("今天07:10起床，具体睡觉时刻不知道。"));
+    assert!(!doc.split("## 晚间复盘").nth(1).unwrap().contains("今天07:10起床，具体睡觉时刻不知道。"));
+    assert!(!path.join("life/.personal-dashboard/tasks/v1/tasks.json").exists());
+    assert!(!path.join("life/.personal-dashboard/habit-completions/v1/completions.json").exists());
+    let past = today.read_date("2026-09-25").unwrap();
+    assert_eq!(past.daytime.short_records[0].category, ShortRecordCategory::Exercise);
+    assert_eq!(past.daytime.short_records[0].text, "锻炼了25分钟。");
+    let historical = fs::read_to_string(path.join("life/Journal/Daily/2026/2026-09/2026-09-25.md")).unwrap();
+    assert!(historical.contains("当天已经处理完家务。"));
+    let reopened = new_automatic_application(&directory, &vault, MutableContext::new("vault-a"),
+        ManualClock::new("2026-09-28", "01:00"), None).0;
+    assert_eq!(reopened.session("vault-a", &session.id).unwrap().task_operations.len(), 12);
+    assert_eq!(TodayApplication::new(vault, NoVaultPicker, FixedClock).read_date("2026-09-25").unwrap().daytime.short_records.len(), 1);
+}
+
+#[test]
+fn short_record_review_conflict_receipt_recovery_and_factual_authority_use_real_daily_records() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("short-record");
+    let vault = MutableVault::new(&path);
+    let (app, _, results, _) = new_automatic_application(&directory, &vault,
+        MutableContext::new("vault-a"), ManualClock::new("2026-09-27", "21:00"), None);
+    let session = app.create_default_session().unwrap();
+    for text in ["也许今天锻炼了25分钟。", "不要记录，今天锻炼了25分钟。",
+        "明天打算锻炼25分钟。", "今天07:10起床，请保留原事实。"] {
+        app.submit_message("vault-a", &session.id, &session.target_date, text).unwrap();
+        wait_for_finish(&app, &session.id, "vault-a");
+        assert!(!results.lock().unwrap().last().unwrap().success, "{text}");
+        assert!(!record_path(&path).exists());
+    }
+    let text = "先给我看方案，新增简短记录：今天已完成读书。";
+    app.submit_message("vault-a", &session.id, &session.target_date, text).unwrap();
+    wait_for_finish(&app, &session.id, "vault-a");
+    let proposal = app.session("vault-a", &session.id).unwrap().task_operations[0].clone();
+    assert_eq!(proposal.status, "awaitingApproval");
+    assert!(!record_path(&path).exists());
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock);
+    let before = today.read_date("2026-09-27").unwrap();
+    today.add_dated_note(DatedNoteInput {date:"2026-09-27".into(), target_binding:before.target_binding.unwrap(),
+        expected_revision:before.revision, entry_id:"concurrent-human".into(),category:ShortRecordCategory::Ordinary,
+        content:"Unrelated user-authored paragraph".into()}).unwrap();
+    let conflict = app.approve_task_operation_for_selected_vault(&session.id, &proposal.id).unwrap();
+    assert_eq!(conflict.task_operations[0].status, "conflict");
+    app.refresh_task_operation_for_selected_vault(&session.id, &proposal.id).unwrap();
+    app.approve_task_operation_for_selected_vault(&session.id, &proposal.id).unwrap();
+    app.approve_task_operation_for_selected_vault(&session.id, &proposal.id).unwrap();
+    let current = today.read_date("2026-09-27").unwrap();
+    assert_eq!(current.daytime.short_records.len(), 2);
+    assert!(current.daytime.short_records.iter().any(|record| record.id=="concurrent-human" && record.text=="Unrelated user-authored paragraph"));
+    assert_eq!(current.daytime.short_records.iter().filter(|record| record.id==proposal.id).count(), 1);
+}
+
+#[test]
+fn short_record_creation_readback_recovers_after_history_failure_and_later_correction() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("short-record-recovery");
+    let vault = MutableVault::new(&path);
+    let failure = Arc::new(AtomicBool::new(false));
+    let (app, _, _) = new_application(&directory, &vault, MutableContext::new("vault-a"), failure.clone());
+    let session = app.create_default_session().unwrap();
+    let proposal = submit_for_proposal(&app, &session.id, "先给我看方案，新增简短记录：今天已完成读书。");
+    failure.store(true, Ordering::SeqCst);
+    assert!(app.approve_task_operation_for_selected_vault(&session.id, &proposal.id).unwrap_err().contains("saved"));
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock);
+    let saved = today.read_date("2026-09-27").unwrap();
+    assert_eq!(saved.daytime.short_records.len(), 1);
+    assert_eq!(saved.daytime.short_records[0].id, proposal.id);
+    today.correct_dated_note(DatedNoteCorrectionInput {
+        date:"2026-09-27".into(), target_binding:saved.target_binding.unwrap(), expected_revision:saved.revision.unwrap(),
+        entry_id:proposal.id.clone(), change_id:"later-human-correction".into(), content:"实际读的是文章。".into(),
+    }).unwrap();
+    drop(app);
+    let (restarted, _, _) = new_application(&directory, &vault, MutableContext::new("vault-a"), Arc::new(AtomicBool::new(false)));
+    let reconciled = restarted.reconcile_task_operation_for_selected_vault(&session.id, &proposal.id).unwrap();
+    assert_eq!(reconciled.task_operations[0].status, "applied");
+    restarted.approve_task_operation_for_selected_vault(&session.id, &proposal.id).unwrap();
+    let after = today.read_date("2026-09-27").unwrap();
+    assert_eq!(after.daytime.short_records.len(), 1);
+    assert_eq!(after.daytime.short_records[0].text, "实际读的是文章。");
+    assert_eq!(after.daytime.short_records[0].changes.len(), 1);
 }

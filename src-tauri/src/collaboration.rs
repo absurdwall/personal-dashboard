@@ -18,6 +18,7 @@ use crate::today::{
     collaboration_evening_review_fingerprint, daily_plan_effect_fingerprint, BaselineAvailability,
     CollaborationEveningReviewInput, CollaborationEveningReviewMode, DailyPlanBlockInput,
     DailyPlanEvidenceInput, DailyPlanTransition, DailyPlanWriteInput, DatedNoteCorrectionInput,
+    DatedNoteInput,
     HabitCompletionMutationInput, ShortRecordCategory, TodayApplication, TodayClock, TodayState,
     TodayView, TodayWorkspaceExchange, TodayWorkspacePersistence,
 };
@@ -383,6 +384,10 @@ pub enum CollaborationTaskOperation {
         mode: CollaborationEveningReviewMode,
         content: String,
     },
+    CreateShortRecord {
+        category: ShortRecordCategory,
+        content: String,
+    },
     CorrectShortRecord {
         record_id: String,
         content: String,
@@ -718,7 +723,8 @@ where
             }
             CollaborationTaskOperation::SaveDailyPlan { .. }
             | CollaborationTaskOperation::SaveEveningReview { .. }
-            | CollaborationTaskOperation::CorrectShortRecord { .. }
+            | CollaborationTaskOperation::CreateShortRecord { .. }
+        | CollaborationTaskOperation::CorrectShortRecord { .. }
             | CollaborationTaskOperation::SetLocalHabitCompletion { .. } => Err(
                 "Daily Record and Habit changes must be applied through their dedicated service."
                     .into(),
@@ -756,6 +762,9 @@ pub trait CollaborationDailyDataService: Send + Sync {
         _effect_fingerprint: &str,
     ) -> Result<bool, String> {
         Err("Daily Record evening-review operations are unavailable in this adapter.".into())
+    }
+    fn create_short_record(&self, _input: DatedNoteInput) -> Result<TodayView, String> {
+        Err("Short Record creation is unavailable in this adapter.".into())
     }
     fn correct_short_record(&self, _input: DatedNoteCorrectionInput) -> Result<TodayView, String> {
         Err("Short Record corrections are unavailable in this adapter.".into())
@@ -908,6 +917,9 @@ where
             )
     }
 
+    fn create_short_record(&self, input: DatedNoteInput) -> Result<TodayView, String> {
+        self.application.add_dated_note(input)
+    }
     fn correct_short_record(&self, input: DatedNoteCorrectionInput) -> Result<TodayView, String> {
         self.application.correct_dated_note(input)
     }
@@ -2974,6 +2986,15 @@ impl CollaborationApplication {
                     mode: *mode,
                     content: content.clone(),
                 }),
+            CollaborationTaskOperation::CreateShortRecord { category, content } => self
+                .daily_data_service.create_short_record(DatedNoteInput {
+                    date: proposal.target_date.clone(),
+                    target_binding: proposal.target_binding.clone(),
+                    expected_revision: proposal.expected_revision.clone(),
+                    entry_id: proposal.operation_id.clone(),
+                    category: *category,
+                    content: content.clone(),
+                }),
             CollaborationTaskOperation::CorrectShortRecord { record_id, content } => self
                 .daily_data_service
                 .correct_short_record(DatedNoteCorrectionInput {
@@ -3239,6 +3260,15 @@ impl CollaborationApplication {
                     &proposal.operation_id,
                     proposal.effect_fingerprint.as_deref().unwrap_or_default(),
                 )
+            }
+            CollaborationTaskOperation::CreateShortRecord { category, content } => {
+                let current = self.daily_data_service.read_date(&proposal.target_date)?;
+                if current.target_binding.as_deref() != Some(&proposal.target_binding) {
+                    return Err("The target Daily Record is bound to another Vault.".into());
+                }
+                Ok(current.daytime.short_records.iter().any(|record|
+                    record.id == proposal.operation_id && record.category == *category
+                        && (record.text == content.trim() || record.changes.first().is_some_and(|change| change.old_text == content.trim()))))
             }
             CollaborationTaskOperation::CorrectShortRecord { record_id, content } => {
                 let current = self.daily_data_service.read_date(&proposal.target_date)?;
@@ -3684,7 +3714,8 @@ impl CollaborationApplication {
             return Err("The Daily Record is now bound to a different Vault target. This proposal cannot be refreshed across Vaults.".into());
         }
         let baseline = match &proposal.operation {
-            CollaborationTaskOperation::SaveEveningReview { .. } => {
+            CollaborationTaskOperation::SaveEveningReview { .. }
+            | CollaborationTaskOperation::CreateShortRecord { .. } => {
                 daily_review_operation_baseline(&proposal.target_date, &latest)
             }
             CollaborationTaskOperation::CorrectShortRecord { record_id, .. } => {
@@ -4196,7 +4227,7 @@ impl CollaborationApplication {
         }
         if matches!(
             operation_name,
-            Some("saveEveningReview" | "correctShortRecord" | "setLocalHabitCompletion")
+            Some("saveEveningReview" | "createShortRecord" | "correctShortRecord" | "setLocalHabitCompletion")
         ) && !daily_record_tool_registered
         {
             return RuntimeDynamicToolResult {
@@ -4919,6 +4950,7 @@ impl CollaborationApplication {
         if matches!(
             operation,
             CollaborationTaskOperation::SaveEveningReview { .. }
+                | CollaborationTaskOperation::CreateShortRecord { .. }
                 | CollaborationTaskOperation::CorrectShortRecord { .. }
         ) {
             return self.propose_daily_record_operation(
@@ -5250,6 +5282,11 @@ impl CollaborationApplication {
                     daily_review_operation_baseline(target_date, &current),
                     collaboration_evening_review_fingerprint(target_date, *mode, content),
                 )
+            }
+            CollaborationTaskOperation::CreateShortRecord { category, content } => {
+                validate_collaboration_content(content, "Short Record")?;
+                (daily_review_operation_baseline(target_date, &current),
+                 stable_effect_fingerprint(&(target_date, "createShortRecord", category, content.trim())))
             }
             CollaborationTaskOperation::CorrectShortRecord { record_id, content } => {
                 validate_collaboration_content(content, "Short Record correction")?;
@@ -7714,7 +7751,8 @@ fn is_daily_review_or_correction_operation(operation: &CollaborationTaskOperatio
     matches!(
         operation,
         CollaborationTaskOperation::SaveEveningReview { .. }
-            | CollaborationTaskOperation::CorrectShortRecord { .. }
+            | CollaborationTaskOperation::CreateShortRecord { .. }
+        | CollaborationTaskOperation::CorrectShortRecord { .. }
     )
 }
 
@@ -7802,6 +7840,12 @@ fn daily_record_operation_result_snapshot(
         CollaborationTaskOperation::SaveEveningReview { .. } => {
             Some(daily_review_operation_baseline(&proposal.target_date, view))
         }
+        CollaborationTaskOperation::CreateShortRecord { .. } => view.daytime.short_records.iter()
+            .find(|record| record.id == proposal.operation_id)
+            .map(|record| CollaborationTaskOperationBaseline::ShortRecord {
+                date: proposal.target_date.clone(), id: record.id.clone(), category: record.category,
+                text: record.text.clone(), change_count: record.changes.len(), revision: view.revision.clone(),
+            }),
         CollaborationTaskOperation::CorrectShortRecord { record_id, .. } => view
             .daytime
             .short_records
@@ -7828,6 +7872,11 @@ fn daily_record_operation_saved_message(
             CollaborationEveningReviewMode::Addition => "evening review addition",
             CollaborationEveningReviewMode::Correction => "evening review correction",
         },
+        CollaborationTaskOperation::CreateShortRecord { category, .. } => {
+            return format!("Saved {} Short Record {} for {}. This is record context, not Habit or Task completion. Today and Calendar read the same canonical Daily Record (revision {}).",
+                if *category == ShortRecordCategory::Exercise { "exercise" } else { "ordinary" },
+                proposal.operation_id, proposal.target_date, view.revision.as_deref().unwrap_or("unavailable"));
+        }
         CollaborationTaskOperation::CorrectShortRecord { record_id, .. } => {
             let category = match &proposal.baseline {
                 CollaborationTaskOperationBaseline::ShortRecord { category, .. } => *category,
@@ -8208,6 +8257,7 @@ fn task_operation_baseline(
         }
         CollaborationTaskOperation::SaveDailyPlan { .. }
         | CollaborationTaskOperation::SaveEveningReview { .. }
+        | CollaborationTaskOperation::CreateShortRecord { .. }
         | CollaborationTaskOperation::CorrectShortRecord { .. } => {
             Err("A Daily Record proposal requires its date-bound Daily Record baseline.".into())
         }
@@ -8340,6 +8390,7 @@ fn task_operation_effect_matches(
         CollaborationTaskOperation::RestoreList { .. } => list.is_some_and(|list| !list.archived),
         CollaborationTaskOperation::SaveDailyPlan { .. }
         | CollaborationTaskOperation::SaveEveningReview { .. }
+        | CollaborationTaskOperation::CreateShortRecord { .. }
         | CollaborationTaskOperation::CorrectShortRecord { .. }
         | CollaborationTaskOperation::SetLocalHabitCompletion { .. } => false,
     }
@@ -8397,7 +8448,7 @@ fn validate_task_operation_required_fields(arguments: &Value) -> Result<(), Stri
         .ok_or_else(|| "Task operation must include its operation name.".to_string())?;
     if matches!(operation, "appendDailyRecord" | "addShortRecord") {
         return Err(
-            "This operation name is not available. To add a new note to a Daily Record, use `saveEveningReview` with `mode=addition` and put the exact note in `content`. Use `correctShortRecord` only to edit an existing Short Record by `recordId`.".into(),
+            "This operation name is not available. Use `createShortRecord` with category and content for a new ordinary/exercise Short Record, `saveEveningReview` with `mode=addition` for an evening review, and `correctShortRecord` only to edit an existing Short Record by `recordId`.".into(),
         );
     }
     let required: &[&str] = match operation {
@@ -8420,6 +8471,7 @@ fn validate_task_operation_required_fields(arguments: &Value) -> Result<(), Stri
             "baselineCorrectionReason",
         ],
         "saveEveningReview" => &["mode", "content"],
+        "createShortRecord" => &["category", "content"],
         "correctShortRecord" => &["recordId", "content"],
         "setLocalHabitCompletion" => &["habitKey", "completed"],
         _ => return Err(format!("Unknown Dashboard task operation `{operation}`.")),
@@ -8486,10 +8538,11 @@ fn validate_task_operation_authority(
         );
     }
     let normalized_quote = authorization_quote.to_lowercase();
+    let daily_authorized = daily_record_natural_authority(operation, &normalized_quote);
     let (direct_intent_markers, declined_intent_markers) =
         task_operation_authority_markers(operation);
     if is_deferred_completion_intent(operation, &normalized_quote)
-        || has_deferred_operation_intent(&normalized_quote, direct_intent_markers)
+        || (!daily_authorized && has_deferred_operation_intent(&normalized_quote, direct_intent_markers))
     {
         return Err(
             "the quoted wording describes a future operation rather than authorizing it now".into(),
@@ -8565,10 +8618,39 @@ fn validate_task_operation_authority(
     {
         return Err("the quoted wording declines the operation being attempted".into());
     }
-    if !has_authority_marker(&normalized_quote, direct_intent_markers) {
+    if !daily_authorized && !has_authority_marker(&normalized_quote, direct_intent_markers) {
         return Err("the quoted wording does not directly authorize this operation".into());
     }
     Ok(())
+}
+
+fn daily_record_natural_authority(operation: &CollaborationTaskOperation, quote: &str) -> bool {
+    let has = |markers: &str| has_authority_marker(quote, markers);
+    let exact_fact = |content: &str| {
+        let content = content.trim().to_lowercase();
+        !content.is_empty() && quote.contains(&content)
+            && !has("maybe|perhaps|也许|可能|打算|准备|计划去|将要|想要|will |going to|need to|明天|下周|以后|稍后")
+            && (has("已经|刚刚|刚才|实际|了|做完|完成|我感觉|我现在|精力较低|按时起床|按时睡觉|i woke|i got up|i slept|i exercised|i walked|i finished|i completed|i felt|i was|i had")
+                || (has("起床|睡觉|入睡|woke|slept") && quote.as_bytes().windows(4).any(|time|
+                    time[0].is_ascii_digit() && time[1] == b':' && time[2].is_ascii_digit() && time[3].is_ascii_digit())))
+    };
+    match operation {
+        CollaborationTaskOperation::SaveDailyPlan { transition, event, .. } => match transition {
+            DailyPlanTransition::DaytimeEvent => event.as_deref().is_some_and(exact_fact),
+            DailyPlanTransition::MorningCalibration => has("校准|调整|改一下|adjust|calibrate")
+                && has("今天安排|今天计划|晨间|早上|morning|my plan"),
+            DailyPlanTransition::DaytimeReplan => has("改到|挪到|留到|推到|改为|优先|instead|move |reschedule|rearrange")
+                && has("今天|下午|晚上|接下来|剩下|today|afternoon|evening|my day|remaining"),
+            DailyPlanTransition::MorningBaselineCorrection => has("基准|初始|早间|baseline|original plan")
+                && has("写错|错误|更正|修正|incorrect|wrong|correct|fix"),
+            DailyPlanTransition::InitialPlan => false,
+        },
+        CollaborationTaskOperation::SaveEveningReview { content, .. } => has("复盘|晚间总结|evening review") && exact_fact(content),
+        CollaborationTaskOperation::CreateShortRecord { content, .. } => exact_fact(content),
+        CollaborationTaskOperation::CorrectShortRecord { content, .. } => has("记录|笔记|note|record")
+            && has("写错|不是|实际|应是|correct|wrong|actually|instead") && quote.contains(&content.trim().to_lowercase()),
+        _ => false,
+    }
 }
 
 fn has_deferred_operation_intent(normalized_quote: &str, direct_intent_markers: &str) -> bool {
@@ -8772,7 +8854,7 @@ fn task_operation_authority_markers(
             DailyPlanTransition::InitialPlan => (
                 concat!(
                     "plan my day|make a plan|create a plan|prepare daily plan|create daily plan|",
-                    "make today's plan|plan today|制定计划|生成日计划|安排今天|计划今天|规划今天"
+                    "make today's plan|plan today|制定计划|生成日计划|安排今天|计划今天|规划今天|今天先安排|今天这样安排"
                 ),
                 concat!(
                     "don't create a plan|do not create a plan|don't plan my day|do not plan my day|",
@@ -8782,7 +8864,7 @@ fn task_operation_authority_markers(
             DailyPlanTransition::MorningCalibration => (
                 concat!(
                     "calibrate my plan|adjust my plan|update my plan|morning calibration|",
-                    "校准计划|调整计划|修改今天安排|调整今天安排"
+                    "校准计划|调整计划|修改今天安排|调整今天安排|校准今天安排"
                 ),
                 "don't adjust my plan|do not adjust my plan|不要调整计划|先别调整计划",
             ),
@@ -8821,8 +8903,8 @@ fn task_operation_authority_markers(
             CollaborationEveningReviewMode::Addition => (
                 concat!(
                     "save evening review|add to evening review|write an evening review|",
-                    "record this in my daily record|add to my daily record|record this|write down|",
-                    "补充复盘|补记|记录到日记录|记到日记录|记下"
+                    "evening review|tonight review|",
+                    "补充复盘|晚间复盘|今晚复盘|今天复盘|昨天复盘|晚间总结|今晚总结"
                 ),
                 concat!(
                     "don't record this in my daily record|do not record this in my daily record|",
@@ -8843,6 +8925,10 @@ fn task_operation_authority_markers(
                 ),
             ),
         },
+        CollaborationTaskOperation::CreateShortRecord { .. } => (
+            "add a short record|add a short note|record this|write down|log this|记录|补记|记下|新增简短记录",
+            "don't record|do not record|don't log|do not log|不要记录|先别记录|不要补记|先别补记",
+        ),
         CollaborationTaskOperation::CorrectShortRecord { .. } => (
             concat!(
                 "correct the note|correct this note|fix the note|edit the note|",
@@ -8994,7 +9080,10 @@ fn collaboration_task_tool_spec(
         if name == "saveDailyPlan" {
             operation_property["description"] = json!("For an explicitly reported daytime event or update, use transition=daytimeEvent and put the exact factual text in event. Leave arrangement and evidence empty unless the current plan itself must change. This writes under `## 白天更新` and preserves the plan and morning baseline.");
         } else if name == "saveEveningReview" {
-            operation_property["description"] = json!("For a new note or supplement to the selected Daily Record's `## 晚间复盘`, use this operation with mode=addition and put the exact note in content. For an explicitly daytime event or update, use saveDailyPlan with transition=daytimeEvent instead. Do not invent appendDailyRecord or addShortRecord operations.");
+            operation_property["description"] = json!("For a new note or supplement to the selected Daily Record's `## 晚间复盘`, use this operation with mode=addition and put the exact note in content. For an explicitly daytime event or update, use saveDailyPlan with transition=daytimeEvent instead. Use createShortRecord with category ordinary/exercise for a new stable Short record, and correctShortRecord with its stable recordId for a correction. Do not invent appendDailyRecord or addShortRecord operations.");
+        }
+        if name == "createShortRecord" {
+            operation_property["description"] = json!("Create one stable ordinary/exercise Short Record through the existing dated-note store. Preserve the exact reported fact in content, including unknown times; never invent minutes, thresholds or duration. Record text does not complete a Task or Habit. Use the explicit historical targetDate when supplied. Use correctShortRecord with recordId only for an existing record.");
         }
         properties.insert("operation".into(), operation_property);
         let mut required_fields = vec!["operation"];
@@ -9115,6 +9204,11 @@ fn collaboration_task_tool_spec(
                 &["mode", "content"],
             ),
             operation(
+                "createShortRecord",
+                json!({"category": {"type":"string", "enum":["ordinary", "exercise"]}, "content":string}),
+                &["category", "content"],
+            ),
+            operation(
                 "correctShortRecord",
                 json!({"recordId": string, "content": string}),
                 &["recordId", "content"],
@@ -9128,7 +9222,7 @@ fn collaboration_task_tool_spec(
     }
     let alternatives = defs;
     let description = if include_authorization_fields {
-        "Use one exact local Task, list, Daily Record, or local Habit operation. For an explicitly reported daytime event or update, use saveDailyPlan with transition=daytimeEvent, place the exact factual text in event, and leave arrangement/evidence empty unless the current arrangement must also change; this appends under `## 白天更新` and preserves the morning baseline and current arrangement. Use transition=daytimeReplan only for a material arrangement change. For a new evening-review note or supplement, use saveEveningReview with mode=addition and exact text in content; use correction only to revise an existing review entry. Do not route an explicit daytime update to the evening review, and do not invent appendDailyRecord or addShortRecord operations. Select executionMode=prepareProposal whenever the current user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires prepareProposal, even when it uses a direct action verb. Select executionMode=execute only when the user clearly asks to save now without a later review; quote the exact instruction in authorizationQuote. Dashboard rechecks the selected Vault, binding, and latest revision before writing. Ambiguous requests, plans, and suggestions are discussion only. A tool description is not permission."
+        "Use one exact local Task, list, Daily Record, or local Habit operation. For an explicitly reported daytime event or update, use saveDailyPlan with transition=daytimeEvent, place the exact factual text in event, and leave arrangement/evidence empty unless the current arrangement must also change; this appends under `## 白天更新` and preserves the morning baseline and current arrangement. Use transition=daytimeReplan only for a material arrangement change. For a new evening-review note or supplement, use saveEveningReview with mode=addition and exact text in content; use correction only to revise an existing review entry. Do not route an explicit daytime update to the evening review, use createShortRecord for a new stable ordinary/exercise Short record and correctShortRecord for a correction, and do not invent appendDailyRecord or addShortRecord operations. Select executionMode=prepareProposal whenever the current user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires prepareProposal, even when it uses a direct action verb. Select executionMode=execute for a clear daily commitment, reported fact or request without a later review; quote the exact instruction in authorizationQuote. Dashboard rechecks the selected Vault, binding, and latest revision before writing. Ambiguous requests, plans, and suggestions are discussion only. A tool description is not permission."
     } else {
         "Save one automatic first-draft Daily Record plan for the current target date only. This path is enabled by the user and cannot change Tasks or record facts."
     };
@@ -11352,7 +11446,7 @@ impl AppServerTransport for CodexAppServerRuntime {
             json!({"serverName":dida::SERVER,"threadId":request.thread_id,"limit":100,"detail":"toolsAndAuthOnly"}),
         ));
         let input_text = format!(
-        "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Use the supplied dates object to distinguish real local date/time, the 04:00 lived day, and the captured request target. Interpret today/tomorrow using the original request timestamp and user context: at 01:00 either can mean the upcoming daytime on the same natural date. Explicit dates take precedence; never mechanically offset a date based on a word. Ask briefly only if a remaining ambiguity affects a write. Supply a concrete targetDate when a record/completion operation belongs to a different clearly resolved date; omit it or use null to keep the captured request target. The request identity and original target stay bound even if the turn finishes after midnight or 04:00. Keep Task calendar schedules separate from record/completion targets, preserve explicit Task dates/times, and copy unchanged fields when editing. For an explicitly reported daytime event or update, use `dashboard_task_operation` with operation `saveDailyPlan`, transition `daytimeEvent`, the exact factual text in `event`, and empty `arrangement`/`evidence` unless the current arrangement also changes; this appends under `## 白天更新` and preserves the plan and morning baseline. Use `daytimeReplan` only for a material plan change. Use `saveEveningReview` with mode `addition` only for a new evening-review note or supplement; never route an explicit daytime event to the evening review. Do not invent `appendDailyRecord` or `addShortRecord`. For a clear, unique local write, use `dashboard_task_operation` with `executionMode=execute` only when the user clearly asks to save now without a later review; quote the exact instruction in `authorizationQuote`. Use `prepareProposal` whenever the user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires `prepareProposal`, even when it uses a direct action verb. The Dashboard verifies the current request, selected Vault, binding, and revision before saving. Ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` whenever the user asks to review, confirm, or wait for approval before saving. Use the host-supplied Dida connection status and read guidance below. Other external apps are unavailable. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
+        "{}\n\n--- Current Personal Dashboard context and memory for {} ---\n{}\n--- End current Dashboard context and memory ---\nUse the selected Vault's long-term background and daily workflow reference only as durable background and process context. Treat recent summaries, open matters, and continuity corrections as pointers to saved Dashboard sessions, not as the source of current Task, Daily Record, or habit state. Every turn must use the supplied current business facts; an empty Tasks section is a confirmed empty list. For missing, stale, retained, unconfigured, or error sections, say the current data is unavailable and do not fill gaps from prior messages. `taskRecords` and `taskLists` contain stable identities for exact changes. Use the supplied dates object to distinguish real local date/time, the 04:00 lived day, and the captured request target. Interpret today/tomorrow using the original request timestamp and user context: at 01:00 either can mean the upcoming daytime on the same natural date. Explicit dates take precedence; never mechanically offset a date based on a word. Ask briefly only if a remaining ambiguity affects a write. Supply a concrete targetDate when a record/completion operation belongs to a different clearly resolved date; omit it or use null to keep the captured request target. The request identity and original target stay bound even if the turn finishes after midnight or 04:00. Keep Task calendar schedules separate from record/completion targets, preserve explicit Task dates/times, and copy unchanged fields when editing. For an explicitly reported daytime event or update, use `dashboard_task_operation` with operation `saveDailyPlan`, transition `daytimeEvent`, the exact factual text in `event`, and empty `arrangement`/`evidence` unless the current arrangement also changes; this appends under `## 白天更新` and preserves the plan and morning baseline. Use `daytimeReplan` only for a material plan change. Use `saveEveningReview` with mode `addition` only for a new evening-review note or supplement; never route an explicit daytime event to the evening review. Use `createShortRecord` for a new ordinary/exercise Short record and `correctShortRecord` for a correction by stable ID. Do not invent `appendDailyRecord` or `addShortRecord`. For a clear, unique local write, use `dashboard_task_operation` with `executionMode=execute` for a clear daily commitment, reported fact or request without a later review; quote the exact instruction in `authorizationQuote`. Use `prepareProposal` whenever the user asks to review or confirm a proposal, see the proposed change, or wait for approval before saving. A request to wait for approval always requires `prepareProposal`, even when it uses a direct action verb. The Dashboard verifies the current request, selected Vault, binding, and revision before saving. Ask when the request or target is ambiguous. Never turn a one-day status into long-term background. Keep temporary states out of durable memory. Call `dashboard_memory_update` only for a durable change the current user message directly asks to record or confirms after you asked about an inference. Quote the exact authorization from that current message and use `executionMode=execute` for a direct instruction or confirmed inference; use `prepareProposal` whenever the user asks to review, confirm, or wait for approval before saving. Use the host-supplied Dida connection status and read guidance below. Other external apps are unavailable. A tool description is not permission. Do not merge records by name or imply external changes were saved to the Dashboard or Vault. A timeout or missing result is unknown; check the saved action status before retrying.",
             request.user_text, request.context.date, context
         );
         let working_directory = self.working_directory.to_string_lossy().into_owned();
