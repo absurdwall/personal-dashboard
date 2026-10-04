@@ -2819,7 +2819,7 @@ where
         &self,
         input: crate::habit_producer::HabitRefreshInput,
     ) -> crate::habit_producer::HabitRefreshReport {
-        use crate::habit_producer::{publish, rebuild, HabitRefreshReport};
+        use crate::habit_producer::{publish_with_source_check, rebuild, HabitRefreshReport};
         let generation = (|| -> Result<_, (String, String)> {
             let vault = self
                 .persistence
@@ -2858,6 +2858,7 @@ where
                     )
                 })?;
             let mut facts = std::collections::BTreeMap::new();
+            let mut source_revisions = Vec::new();
             let mut date = CalendarDate::parse(&now[..10])
                 .unwrap()
                 .monday()
@@ -2867,11 +2868,14 @@ where
                 let label = date.to_string();
                 let path =
                     canonical_record_path(&vault, &label).map_err(|e| ("generation".into(), e))?;
-                if let Some(bytes) = self
+                let revision = self
                     .record_store
                     .load(&path)
-                    .map_err(|e| ("generation".into(), e))?
-                {
+                    .map_err(|e| ("generation".into(), e))?;
+                // Absence matters too: a record created during generation may
+                // contain an actual-time fact that this candidate never read.
+                source_revisions.push((path.clone(), revision.clone()));
+                if let Some(bytes) = revision {
                     let document = String::from_utf8(bytes)
                         .map_err(|e| ("generation".into(), e.to_string()))?;
                     let (_, _, _, daytime, evening) = parse_daily_record(&document, &label)
@@ -2993,19 +2997,21 @@ where
                 date = date.plus_days(1);
             }
             let candidate = rebuild(&prior, &input, &now, &today, &facts)?;
-            if self
-                .persistence
-                .load_selected_vault()
-                .map_err(|e| ("publication".into(), e))?
-                .as_deref()
-                != Some(vault.as_path())
-            {
-                return Err((
-                    "publication".into(),
-                    "Selected Vault changed; snapshot was not published".into(),
-                ));
-            }
-            publish(&vault, &prior, &candidate).map_err(|e| ("publication".into(), e))?;
+            let check_sources = || -> Result<(), String> {
+                if self.persistence.load_selected_vault()?.as_deref()
+                    != Some(vault.as_path())
+                {
+                    return Err("Selected Vault changed; snapshot publication rejected".into());
+                }
+                for (path, expected) in &source_revisions {
+                    if self.record_store.load(path)? != *expected {
+                        return Err(format!("Canonical Daily Record changed during generation: {}; snapshot publication rejected", path.display()));
+                    }
+                }
+                Ok(())
+            };
+            publish_with_source_check(&vault, &prior, &candidate, check_sources)
+                .map_err(|e| ("publication".into(), e))?;
             Ok((today, now, input.mappings.len()))
         })();
         match generation {
