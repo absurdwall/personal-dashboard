@@ -1,0 +1,13 @@
+{
+  "operationId": "management-task-history-editor-summary-final-62b27ded-cf99-4ef4-aaa4-3eff6afd1b9d",
+  "outcome": "confirmed",
+  "registryRevision": "e5a48a552520281b",
+  "summaryRevision": "8558e880859b7dad",
+  "sourceRevision": "e3338622685fe19a",
+  "coverage": "partial",
+  "uncoveredSource": "source-personal-dashboard-codex-collaboration",
+  "pr": "https://github.com/absurdwall/personal-dashboard/pull/44",
+  "reviewedHead": "fb8785369b21d14a177282dfea86f62c9a0241a4",
+  "merged": false,
+  "installed": false
+}

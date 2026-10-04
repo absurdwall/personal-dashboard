@@ -13,8 +13,12 @@ The Tortilla Flat Obsidian vault explicitly chosen as the source of canonical Da
 _Avoid_: App database, imported vault
 
 **Daily Record**:
-The canonical Markdown record for one lived calendar day in the selected vault.
+The canonical Markdown record for one lived day in the selected vault.
 _Avoid_: App note, dashboard ledger
+
+**Lived day**:
+The personal day used to group daily planning, review and local habit completions, named for the calendar date on which it begins. It runs from 04:00 local time through, but excluding, 04:00 the following calendar date; the actual timestamp of an event remains unchanged.
+_Avoid_: Calendar day, shifted event timestamp
 
 **Today**:
 The Personal Dashboard destination that presents the selected day's Daily Record as morning, daytime, and evening phases and permits only bounded documented updates.
@@ -124,6 +128,10 @@ _Avoid_: Chat-only page, parallel Task or Daily Record store
 **Collaboration session**:
 A persisted user-Codex work thread with its own messages, activity dates, target dates, drafts, and operation history. It may continue across lived dates; its history is not current business state.
 _Avoid_: Single-day conversation, Task list
+
+**Collaboration dictation**:
+A user's spoken input captured as editable draft text for a Collaboration session and target date. The user submits that text as a message separately.
+_Avoid_: Voice conversation, automatic request
 
 **Collaboration memory**:
 Selected-Vault long-term background and read-only workflow reference, supplemented by expiring continuity notes derived from saved sessions. It provides background and pointers; each turn reads current Tasks, Daily Records, and habit facts separately.

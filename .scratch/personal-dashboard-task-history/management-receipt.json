@@ -1,0 +1,39 @@
+{
+  "operationId": "management-task-history-summary-28c60040-243b-41d2-b778-4bcdb1940020",
+  "outcome": "confirmed",
+  "registryRevision": "e27eeb62b40012e8",
+  "summaryRevision": "390333f6746fb89c",
+  "sourceEvidence": [
+    {
+      "sourceId": "source-personal-dashboard-3",
+      "revision": "73f67af62ff88683"
+    },
+    {
+      "sourceId": "source-personal-dashboard-timeline-a-repair",
+      "revision": "6f66259df3b780a1"
+    },
+    {
+      "sourceId": "source-personal-dashboard-3-0-2",
+      "revision": "07bf9d0b79785cbc"
+    },
+    {
+      "sourceId": "source-personal-dashboard-github",
+      "revision": "e7751208571a8a54"
+    },
+    {
+      "sourceId": "source-personal-dashboard-task-history",
+      "revision": "0fc2470005a6801f"
+    }
+  ],
+  "coverage": "partial",
+  "uncoveredSources": [
+    {
+      "sourceId": "source-personal-dashboard-codex-collaboration",
+      "reason": "One or more Markdown issues are malformed and were isolated."
+    }
+  ],
+  "ticketState": "resolved",
+  "pullRequest": "https://github.com/absurdwall/personal-dashboard/pull/42",
+  "mergeCommit": "55f2955bf7e18ba6dadb716ac05c376bc0e8cd54",
+  "supersededValidationAttempt": "management-task-history-summary-0e89658f-7caf-4a23-9eeb-ccf5cf0d1a8c"
+}

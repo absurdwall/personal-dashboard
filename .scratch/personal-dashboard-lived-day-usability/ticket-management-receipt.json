@@ -1,0 +1,67 @@
+{
+  "outcome": "confirmed",
+  "registryRevision": "79bbe770f813c938",
+  "sourceRevision": "f196a8ae52a8f18d",
+  "tickets": [
+    {
+      "sourceReference": "#29",
+      "canonicalDestination": "https://github.com/absurdwall/personal-dashboard/issues/29",
+      "revision": "746bc0aa213bf3f0",
+      "queueState": "unknown",
+      "blockers": [
+        "None (can start immediately)."
+      ]
+    },
+    {
+      "sourceReference": "#30",
+      "canonicalDestination": "https://github.com/absurdwall/personal-dashboard/issues/30",
+      "revision": "b2d3b972e5512105",
+      "queueState": "blocked",
+      "blockers": [
+        "#29"
+      ]
+    },
+    {
+      "sourceReference": "#31",
+      "canonicalDestination": "https://github.com/absurdwall/personal-dashboard/issues/31",
+      "revision": "83fac08228ae4f21",
+      "queueState": "blocked",
+      "blockers": [
+        "#29"
+      ]
+    },
+    {
+      "sourceReference": "#32",
+      "canonicalDestination": "https://github.com/absurdwall/personal-dashboard/issues/32",
+      "revision": "89090e0d4a3316e2",
+      "queueState": "unknown",
+      "blockers": [
+        "None (can start immediately)."
+      ]
+    },
+    {
+      "sourceReference": "#33",
+      "canonicalDestination": "https://github.com/absurdwall/personal-dashboard/issues/33",
+      "revision": "a01b8134dc38ff8e",
+      "queueState": "unknown",
+      "blockers": [
+        "None (can start immediately)."
+      ]
+    },
+    {
+      "sourceReference": "#34",
+      "canonicalDestination": "https://github.com/absurdwall/personal-dashboard/issues/34",
+      "revision": "dc1074f290089ef7",
+      "queueState": "unknown",
+      "blockers": [
+        "None (can start immediately)."
+      ]
+    }
+  ],
+  "gaps": [
+    "summary-needs-reconciliation",
+    "source-source-personal-dashboard-codex-collaboration-malformed"
+  ],
+  "action": null,
+  "pendingRecovery": []
+}

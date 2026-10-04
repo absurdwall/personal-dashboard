@@ -1,0 +1,16 @@
+{
+  "outcome": "confirmed",
+  "registryRevision": "97b35ec79cf7c76b",
+  "sourceRevision": "f40c185348e4012f",
+  "issue": {
+    "canonicalDestination": "https://github.com/absurdwall/personal-dashboard/issues/36",
+    "revision": "9df18e27ec6a5ff6",
+    "queueState": "ready"
+  },
+  "gaps": [
+    "summary-needs-reconciliation",
+    "source-source-personal-dashboard-codex-collaboration-malformed"
+  ],
+  "action": null,
+  "pendingRecovery": []
+}

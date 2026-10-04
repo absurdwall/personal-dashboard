@@ -1,0 +1,23 @@
+{
+  "outcome": "confirmed",
+  "canonicalTracker": "GitHub Issues",
+  "canonicalIssue": {
+    "number": 43,
+    "url": "https://github.com/absurdwall/personal-dashboard/issues/43",
+    "title": "Spec: Collaboration Codex WebRTC 听写输入",
+    "state": "OPEN",
+    "labels": [
+      "enhancement",
+      "ready-for-agent"
+    ],
+    "bodyVerifiedAgainstSubmittedFile": true
+  },
+  "previousLocalTrackerItem": "superseded / wontfix",
+  "previousManagementRegistration": {
+    "sourceId": "source-personal-dashboard-codex-dictation",
+    "state": "registration remains; no further helper operation performed",
+    "previousReceipt": "publication.json"
+  },
+  "implementationStarted": false,
+  "globalManagementSkillChanged": false
+}

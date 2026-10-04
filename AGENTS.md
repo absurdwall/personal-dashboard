@@ -10,6 +10,7 @@ This project is a private, cross-device habit-tracking web app.
 
 - `main` is protected: create changes on a `codex/` branch and merge through a GitHub PR. Do not commit on `main` or push directly to it, including as an administrator.
 - Enable the checked-in commit/push guards in each clone with `git config --local core.hooksPath .githooks`.
+- Before cleanup, inventory uncommitted files. Commit authorized durable project records through a PR; preserve unrelated changes and report any remaining dirty files separately from branch cleanup.
 - After merge, verify reachability and preserve unique files before removing feature branches and worktrees. Keep only `main` locally and remotely between tasks.
 - Keep `/Applications/Personal Dashboard.app` as the sole searchable installation. Archive obsolete App bundles and unregister test/build copies from Launch Services; keep temporary bundles outside Spotlight indexing. Preserve personal Vault and profile data.
 
@@ -29,7 +30,13 @@ Before exploring or changing the project, read `docs/agents/domain.md` for the s
 
 ## Shared management connection
 
-- Management project id: `product-personal-dashboard`.
-- Use the user-local `tortilla-flat-management` skill only when the user
-  explicitly requests Management connection or reconciliation.
-- Preserve this repository's GitHub issue workflow and approval boundaries.
+- Project id: `product-personal-dashboard`; canonical working directory:
+  `personal-dashboard` inside the Tortilla Flat workspace;
+  repository: `absurdwall/personal-dashboard`; source id:
+  `source-personal-dashboard-3`.
+- After actual publication, native claim, completion/blockage, or an explicit
+  reconcile request, use the user-local `tortilla-flat-management` skill and
+  its installed helper. If its install, version, or workspace binding is
+  missing, report setup required; do not infer identity from chat or create a
+  Registry. Preserve this repository's GitHub issue workflow and approval
+  boundaries.
