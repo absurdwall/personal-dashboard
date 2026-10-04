@@ -504,7 +504,7 @@ impl AppServerTransport for DynamicRuntime {
         }
         // Controlled resolver output exercises the date protocol and persisted
         // results without claiming these fixtures test model language quality.
-        let (call_id, tool, mut arguments) = if request.user_text.contains("refresh habits") {
+        let (call_id, tool, mut arguments) = if request.user_text.contains("refresh habits") || (request.user_text.contains("生成发布习惯快照") || request.user_text.contains("生成习惯快照") || request.user_text.contains("刷新习惯")) {
             ("habit-refresh-call", "dashboard_refresh_habits", habit_refresh_fixture(&request.user_text))
         } else if let Some(arguments) = natural_daily_fixture(&request.user_text) {
             ("natural-daily-call", "dashboard_task_operation", arguments)
@@ -978,6 +978,12 @@ fn habit_refresh_fixture(text: &str) -> Value {
     let mut checkins = json!({"type":"mcpToolCall","server":"dida365","tool":"get_habit_checkins","status":"completed",
         "arguments":{"habit_ids":["synthetic-habit"],"from_stamp":20260705,"to_stamp":20260928,"client_timezone":"America/New_York"},
         "result":{"content":[{"type":"text","text":json!({"result":[{"habitId":"synthetic-habit","year":2026,"checkins":[{"id":"synthetic-checkin","stamp":20260927,"status":if text.contains("invalid status") {9} else {2},"opTime":"2026-09-27T13:00:00-04:00"}]}]}).to_string()}]}});
+    if text.contains("现在请求日2026-10-04") {
+        checkins["arguments"]["to_stamp"]=json!(20261005);
+        let mut payload:Value=serde_json::from_str(checkins["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
+        payload["result"][0]["checkins"][0]["stamp"]=json!(20261003);
+        checkins["result"]["content"][0]["text"]=json!(payload.to_string());
+    }
     if text.contains("source reset") {
         let mut payload:Value=serde_json::from_str(checkins["result"]["content"][0]["text"].as_str().unwrap()).unwrap();
         payload["result"][0]["checkins"].as_array_mut().unwrap().push(json!({"id":"reset-checkin","stamp":20260927,"status":0,"opTime":"2026-09-27T14:00:00-04:00"}));
@@ -985,7 +991,8 @@ fn habit_refresh_fixture(text: &str) -> Value {
     }
     if text.contains("empty query") {checkins["result"]=json!({"content":[],"isError":false,"structuredContent":{"result":[]}});}
     let reads:Vec<Value> = if text.contains("failed query") {vec![]} else {[catalog,checkins].iter().filter_map(personal_dashboard_lib::habit_producer::native_source_read).collect()};
-    json!({"mappings":{"exercise":"synthetic-habit"},"executionMode":"execute","authorizationQuote":text,"hostSourceReads":reads})
+    let quote=match text {"我准备明天生成习惯快照。"=>"生成习惯快照","不要刷新习惯。"=>"刷新习惯",_=>text};
+    json!({"mappings":{"exercise":"synthetic-habit"},"executionMode":"execute","authorizationQuote":quote,"hostSourceReads":reads})
 }
 
 fn natural_daily_fixture(text: &str) -> Option<Value> {
@@ -6516,5 +6523,52 @@ fn failed_native_startup_has_one_same_config_recovery_before_current_turn_and_ne
         app.shutdown().unwrap();
         let reloaded=new_application(&directory,&MutableVault::new(&path),MutableContext::new("vault-a"),Arc::new(AtomicBool::new(false))).0;
         let restored=reloaded.session("vault-a",&session.id).unwrap();assert_eq!(restored.id,session.id);assert_eq!(restored.runtime_thread_id,final_state.runtime_thread_id);assert_ne!(restored.runtime_thread_id,session.runtime_thread_id);assert_eq!(restored.task_operations,final_state.task_operations);assert_eq!(serde_json::to_value(&restored.messages).unwrap(),serde_json::to_value(&final_state.messages).unwrap());reloaded.shutdown().unwrap();
+    }
+}
+
+
+#[test]
+fn exact_combined_native_request_authorizes_snapshot_without_revoking_other_domain_limits() {
+    let native="现在请求日2026-10-04。补记昨天：锻炼完成了，实际时刻和时长都没记。按正常本地与已确认映射的测试 Habit 两端规则保存2026-10-03，先回读避免重复，再真实查询完整范围生成发布习惯快照。不要创建任何外部对象。另请读取life/2026-10-plan.md当前内容，保留全部原文和人工补充保留区，在末尾补充本月执行原则：先简短复盘，再调计划，未记录活动保持未知。这是普通个人文档编辑，不是新任务或长期背景更新。其他Tasks、DailyRecord、Self和reviewfirst厨房提案不变。";
+    for (text,authorized) in [
+        (native.to_owned(),true),
+        (native.replace("再真实查询完整范围生成发布习惯快照","也许再真实查询完整范围生成发布习惯快照"),false),
+        (native.replace("再真实查询完整范围生成发布习惯快照","先别生成发布习惯快照"),false),
+        (format!("{native}算了，取消刚才的习惯刷新。"),false),
+        ("刷新习惯，不要创建任何外部对象。".into(),true),
+        ("refresh habits, do not create external objects.".into(),true),
+        ("不要刷新习惯。".into(),false),
+        ("刷新习惯，算了，取消刚才。".into(),false),
+        ("刷新习惯，先别执行。".into(),false),
+        ("也许，刷新习惯。".into(),false),
+        ("maybe, refresh habits.".into(),false),
+        ("我准备明天生成习惯快照。".into(),false),
+        ("我计划明天生成习惯快照。".into(),false),
+        ("我在想以后生成习惯快照。".into(),false),
+        ("我在想生成习惯快照。".into(),false),
+        ("我准备明天创建买菜任务，现在刷新习惯。".into(),true),
+    ] {
+        let directory=IsolatedDirectory::new();let path=directory.vault("refresh-preservation-clauses");prepare_dual_vault(&path);
+        let date=if text.starts_with("现在请求日2026-10-04") {"2026-10-04"} else {"2026-09-27"};
+        let vault=MutableVault::new(&path);let clock=ManualClock::new(date,"17:00");
+        let month=path.join("life/2026-10-plan.md");let background=path.join("life/Self.md");
+        fs::write(&month,"# 月计划\n\n人工补充保留区 · Keep verbatim\n").unwrap();fs::write(&background,"# Self\n\nOriginal durable background\n").unwrap();
+        let daily=path.join("life/Journal/Daily/2026/2026-09/2026-09-27.md");
+        let preserved=[(&month,fs::read(&month).unwrap()),(&background,fs::read(&background).unwrap()),(&daily,fs::read(&daily).unwrap())];
+        let snapshot=path.join(personal_dashboard_lib::habits::SNAPSHOT_RELATIVE_PATH);let before=fs::read(&snapshot).unwrap();
+        let (app,_,results,_)=new_automatic_application(&directory,&vault,MutableContext::new("vault-a"),clock.clone(),None);
+        let session=app.create_default_session().unwrap();
+        app.submit_message("vault-a",&session.id,&session.target_date,"create task").unwrap();wait_for_finish(&app,&session.id,"vault-a");
+        let prior=app.session("vault-a",&session.id).unwrap().task_operations;
+        assert_eq!(prior[0].status,"awaitingApproval");
+        app.submit_message("vault-a",&session.id,&session.target_date,&text).unwrap();wait_for_finish(&app,&session.id,"vault-a");
+        let result=results.lock().unwrap().last().unwrap().clone();assert_eq!(result.success,authorized,"{}",result.text);
+        let state=app.session("vault-a",&session.id).unwrap();assert_eq!(state.task_operations,prior);assert!(state.memory_proposals.is_empty());assert!(state.messages.iter().all(|m|m.external_actions.is_empty()));
+        assert!(TaskApplication::new(vault.clone(),clock,FileTaskStore).read().unwrap().tasks.is_empty());
+        for (source,bytes) in preserved {assert_eq!(fs::read(source).unwrap(),bytes);}
+        let report=state.last_habit_refresh.unwrap();
+        if authorized {assert_eq!(report.generation,"validated");assert_eq!(report.publication,"published");assert_eq!(report.display,"ready");assert_eq!(report.range_to.as_deref(),Some(date));assert_ne!(fs::read(&snapshot).unwrap(),before);}
+        else {assert_eq!(report.publication,"notPublished");assert_eq!(fs::read(&snapshot).unwrap(),before);}
+        app.shutdown().unwrap();
     }
 }
