@@ -107,8 +107,9 @@ Host diagnostics are paired in Chinese and English through actual progress, oper
 memory and external-activity renderers; paths, source IDs and authored/source replies
 remain verbatim. Snapshot v1 mapping-label encoding and parsing share the existing
 format without a schema change. Frontend verification passed 329 tests and its production
-build. Focused publication, cross-chat and private native-readback workflows passed;
-the final full Rust run is recorded separately after integration review.
+build. The full Rust suite passed 453 tests with six opt-in native gates ignored;
+focused publication, cross-chat and private native-readback workflows also passed.
+The default-feature Cargo check passed. Ignored gates supply no native evidence.
 
 An earlier full-suite failure came from CLI subprocesses using the real clock while
 the daily-flow fixture used noon UTC. The test harness now pins the existing clock
