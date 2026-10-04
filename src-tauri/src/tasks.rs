@@ -68,6 +68,7 @@ impl Default for TaskChangeSourceKind {
 #[serde(rename_all = "kebab-case")]
 pub enum TaskCompletionSourceKind {
     Checkbox,
+    Reported,
     DateCorrection,
     DailyFlow,
 }
@@ -740,6 +741,28 @@ where
     }
 
     pub fn set_state(&self, input: TaskStateInput) -> Result<TasksView, String> {
+        self.set_state_with_completion(input, None)
+    }
+
+    /// Record a reported completion without substituting the save time for an
+    /// unknown activity time. Uses the existing state change/receipt write.
+    pub fn complete_on(
+        &self,
+        input: TaskStateInput,
+        completed_on: &str,
+        completed_time: Option<&str>,
+    ) -> Result<TasksView, String> {
+        if input.state != TaskState::Completed {
+            return Err("A reported completion must use the completed state.".into());
+        }
+        self.set_state_with_completion(input, Some((completed_on, completed_time)))
+    }
+
+    fn set_state_with_completion(
+        &self,
+        input: TaskStateInput,
+        reported: Option<(&str, Option<&str>)>,
+    ) -> Result<TasksView, String> {
         validate_local_identifier(&input.task_id, "任务标识")?;
         validate_local_identifier(&input.change_id, "任务修改标识")?;
         let (_vault, path, target_binding) = self.bound_target(&input.target_binding)?;
@@ -752,6 +775,14 @@ where
             if document.tasks[task_index].id == input.task_id
                 && state_change_matches(change, input.state)
                 && lifecycle_result_matches(&document.tasks[task_index], change)
+                && reported.is_none_or(|(date, time)| {
+                    document.tasks[task_index]
+                        .completion
+                        .as_ref()
+                        .is_some_and(|saved| {
+                            saved.completed_on == date && saved.completed_time.as_deref() == time
+                        })
+                })
             {
                 return self.read();
             }
@@ -772,15 +803,30 @@ where
             return Err("任务必须先从放弃状态恢复为待办，再标记完成；未写入任何内容。".into());
         }
         if document.tasks[task_index].state == input.state {
+            if reported.is_some_and(|(date, time)| {
+                document.tasks[task_index]
+                    .completion
+                    .as_ref()
+                    .is_none_or(|saved| {
+                        saved.completed_on != date || saved.completed_time.as_deref() != time
+                    })
+            }) {
+                return Err("This Task is already complete with a different completion date/time. Use the explicit completion correction operation.".into());
+            }
             return self.read();
         }
         let now = self.clock.current_timestamp_label();
         validate_timestamp_label(&now)?;
         let completion = if input.state == TaskState::Completed {
-            Some(completion_from_timestamp(
-                &now,
-                TaskCompletionSourceKind::Checkbox,
-            )?)
+            Some(match reported {
+                Some((date, time)) => completion_from_correction_with_source(
+                    date,
+                    time,
+                    &now,
+                    TaskCompletionSourceKind::Reported,
+                )?,
+                None => completion_from_timestamp(&now, TaskCompletionSourceKind::Checkbox)?,
+            })
         } else {
             None
         };

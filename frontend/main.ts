@@ -298,7 +298,7 @@ type TaskCompletionView = Readonly<{
   completedOn: string;
   completedTime: string | null;
   recordedAt: string;
-  source: "checkbox" | "date-correction" | "daily-flow";
+  source: "checkbox" | "reported" | "date-correction" | "daily-flow";
 }>;
 
 type TaskView = Readonly<{
@@ -711,7 +711,8 @@ type CollaborationExternalApprovalRequest = Readonly<{
 type CollaborationTaskOperation =
   | Readonly<{ operation: "createTask"; name: string; content: string | null; date: string | null; time: string | null; listId: string | null }>
   | Readonly<{ operation: "updateTask"; taskId: string; name: string; content: string | null; date: string | null; time: string | null; listId: string | null }>
-  | Readonly<{ operation: "completeTask" | "abandonTask" | "reopenTask" | "deleteTask" | "restoreTask"; taskId: string }>
+  | Readonly<{ operation: "completeTask"; taskId: string; completedTime?: string | null }>
+  | Readonly<{ operation: "abandonTask" | "reopenTask" | "deleteTask" | "restoreTask"; taskId: string }>
   | Readonly<{ operation: "correctCompletion"; taskId: string; completedOn: string; completedTime: string | null }>
   | Readonly<{ operation: "createList"; name: string }>
   | Readonly<{ operation: "renameList"; listId: string; name: string }>
@@ -8061,6 +8062,7 @@ function taskStateCopyKey(
 function taskCompletionSourceText(source: TaskCompletionView["source"]): string {
   const key: Record<TaskCompletionView["source"], InterfaceCopyKey> = {
     checkbox: "tasks.completionSourceCheckbox",
+    reported: "tasks.completionSourceReported",
     "date-correction": "tasks.completionSourceCorrection",
     "daily-flow": "tasks.completionSourceDailyFlow",
   };
