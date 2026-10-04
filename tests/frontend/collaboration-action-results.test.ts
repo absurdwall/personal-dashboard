@@ -116,20 +116,31 @@ for (const language of ["zh", "en"] as const) {
 for (const language of ["zh", "en"] as const) {
   test(`native file refusal reaches localized run progress without changing relative paths in ${language}`, () => {
     const path = "life/保留.user-text.md";
+    const rawError = "Permission denied /保持原文/OS.file (os error 13)";
     for (const diagnostic of [
       `Native personal-content access refuses a redirected path: ${path}. No model turn was sent.`,
       `Native personal-content access requires a directory: ${path}. No model turn was sent.`,
       "The selected Vault changed before native file access was granted. No model turn was sent.",
+      "The native file access root must be a real directory. No model turn was sent.",
+      `Could not resolve the selected Vault: ${rawError}`,
+      `Could not resolve the selected Vault for native tools: ${rawError}`,
+      `Could not inspect personal-content permissions: ${rawError}`,
     ]) {
-      for (const progress of [diagnostic, `The request outcome could not be confirmed: ${diagnostic}. Check the saved Codex result before continuing; the request will not be replayed.`]) {
-        const context = vm.createContext({ currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
-          t: (key: any, values: any) => interfaceCopy(key, language, values), session: { runState: "interrupted", progress } });
-        vm.runInContext(functionSource("collaborationRunStateLabel") + functionSource("collaborationRunProgressLabel") + "\nactual = collaborationRunProgressLabel(session)", context);
-        const expected = localizeCollaborationDiagnostic(progress, language);
-        assert.ok(context.actual.endsWith(expected));
-        if (language === "zh") assert.ok(!context.actual.includes("No model turn was sent") && !context.actual.includes("outcome could not be confirmed"));
-        else assert.ok(context.actual.endsWith(progress));
-        if (diagnostic.includes(path)) assert.ok(context.actual.includes(path));
+      for (const runState of ["error", "interrupted"]) {
+        for (const progress of [diagnostic, `The request outcome could not be confirmed: ${diagnostic}. Check the saved Codex result before continuing; the request will not be replayed.`]) {
+          const context = vm.createContext({ currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
+            t: (key: any, values: any) => interfaceCopy(key, language, values), session: { runState, progress } });
+          vm.runInContext(functionSource("collaborationRunStateLabel") + functionSource("collaborationRunProgressLabel") + "\nactual = collaborationRunProgressLabel(session)", context);
+          const expected = localizeCollaborationDiagnostic(progress, language);
+          assert.ok(context.actual.endsWith(expected));
+          if (language === "zh") {
+            assert.ok(!context.actual.includes("No model turn was sent") && !context.actual.includes("outcome could not be confirmed"));
+            assert.ok(!context.actual.includes("Could not resolve") && !context.actual.includes("Could not inspect"));
+          }
+          else assert.ok(context.actual.endsWith(progress));
+          if (diagnostic.includes(path)) assert.ok(context.actual.includes(path));
+          if (diagnostic.includes(rawError)) assert.ok(context.actual.includes(rawError));
+        }
       }
     }
   });

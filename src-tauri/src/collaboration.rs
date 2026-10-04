@@ -6984,9 +6984,12 @@ impl CollaborationApplication {
         let external_writes_allowed = !automatic_plan
             && !is_review_before_write_request(&user_text.to_lowercase())
             && !prior_external_actions.iter().any(dida_writes::unresolved);
+        let dates = collaboration_date_context(self.clock.as_ref(), target_date,
+            session.messages.iter().find(|message| message.execution_id.as_deref() == Some(run_id))
+                .map(|message| (message.created_at.as_str(), message.message_date.as_str())));
         let habit_snapshot = self.daily_data_service.read_habit_snapshot().ok();
         let origins = habit_snapshot.as_ref().map(|snapshot| self.read_state(|state| habit_dual::origins(&state.sessions,vault_key,snapshot)).unwrap_or(Value::Null)).unwrap_or(Value::Null);
-        let external_habit_writes_allowed = habit_snapshot.as_ref().is_none_or(|snapshot|habit_dual::native_habit_writes_allowed(user_text,target_date,snapshot,&origins));
+        let external_habit_writes_allowed = habit_snapshot.as_ref().is_none_or(|snapshot|habit_dual::native_habit_writes_allowed(user_text,&dates,snapshot,&origins));
         runtime.configure_external_writes(external_writes_allowed);
         runtime.configure_external_habit_writes(external_habit_writes_allowed);
         // Dynamic tools are immutable for an App Server thread: thread/resume
@@ -7091,15 +7094,7 @@ impl CollaborationApplication {
             reasoning_effort: selected_reasoning_effort,
             user_text: user_text.to_owned(),
             context,
-            dates: collaboration_date_context(
-                self.clock.as_ref(),
-                target_date,
-                session
-                    .messages
-                    .iter()
-                    .find(|message| message.execution_id.as_deref() == Some(run_id))
-                    .map(|message| (message.created_at.as_str(), message.message_date.as_str())),
-            ),
+            dates,
             memory,
             working_directory: self.working_directory.clone(),
             selected_vault: match self.context_source.selected_vault_path(vault_key) {

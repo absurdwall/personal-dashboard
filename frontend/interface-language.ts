@@ -1066,6 +1066,7 @@ const englishApplicationMessages: Readonly<Record<string, string>> = {
 // Only host-owned result diagnostics use this catalog. Source replies and user
 // text bypass it, even if their wording happens to match a diagnostic.
 const chineseCollaborationDiagnostics: Readonly<Record<string, string>> = {
+  "The native file access root must be a real directory. No model turn was sent.": "原生文件访问根路径必须为真实目录。未发送模型请求。",
   "Original Habit completion scope is unconfirmed. Read the current canonical history and source; clarify the endpoints before withdrawing.": "原 Habit 完成范围尚未确认。请读取当前正本历史及来源，撤回前明确要修改的端点。",
   "The selected Vault changed before native file access was granted. No model turn was sent.": "授予原生文件访问前所选 Vault 已更改。未发送模型请求。",
   "Dida reported failure. The external outcome has not been assumed saved; query source state before retrying.": "滴答报告失败。外部结果未被视为已保存；重试前请查询来源状态。",
@@ -1122,6 +1123,13 @@ export function localizeCollaborationDiagnostic(message: string, language: Inter
     : `已核验 ${refreshed[2]} 个明确映射的外部 Habit；未映射来源的覆盖仍为部分或未知。已重新生成 Daily Record 的精确时间或阈值证据。${localizeApplicationMessage(refreshed[3], language)}`;
   const unconfirmed = /^The request outcome could not be confirmed: (.*)\. Check the saved Codex result before continuing; the request will not be replayed\.$/s.exec(message);
   if (unconfirmed) return language === "en" ? message : `请求结果尚未确认：${localizeCollaborationDiagnostic(unconfirmed[1], language)}。继续前请核对已保存的 Codex 结果；不会重放该请求。`;
+  const nativeSetup = /^(Could not resolve the selected Vault|Could not resolve the selected Vault for native tools|Could not inspect personal-content permissions): (.*)$/s.exec(message);
+  if (nativeSetup) {
+    const prefix = nativeSetup[1] === "Could not resolve the selected Vault" ? "无法解析所选 Vault"
+      : nativeSetup[1] === "Could not resolve the selected Vault for native tools" ? "无法为原生工具解析所选 Vault"
+      : "无法检查个人内容权限";
+    return language === "en" ? message : `${prefix}：${nativeSetup[2]}`;
+  }
   const nativePath = /^Native personal-content access (refuses a redirected path|requires a directory): (.*)\. No model turn was sent\.$/s.exec(message);
   if (nativePath) return language === "en" ? message : `原生个人内容访问${nativePath[1] === "refuses a redirected path" ? "拒绝重定向路径" : "要求目录"}：${nativePath[2]}。未发送模型请求。`;
   if (language === "en") return englishTaskDiagnostic(message) ?? englishHabitValidationDiagnostic(message) ?? localizeApplicationMessage(message, language);

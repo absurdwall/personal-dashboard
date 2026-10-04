@@ -2907,8 +2907,8 @@ where
                                 for clause in part.split(['并', '和']) {
                                     let lower = clause.to_lowercase();
                                     // Conjunctions do not turn a future/discussion prefix into a fact.
-                                    let nonfactual = canonical_habit_nonfactual(&lower)
-                                        || (canonical_habit_nonfactual(&prefix)
+                                    let nonfactual = canonical_habit_nonfactual(&lower, occurred_context)
+                                        || (canonical_habit_nonfactual(&prefix, occurred_context)
                                             && !canonical_habit_independent_assertion(&lower, &prefix));
                                     prefix.push_str(&lower);
                                     if nonfactual {
@@ -5980,7 +5980,7 @@ fn canonical_habit_correction(text: &str) -> bool {
         .any(|marker| lower.contains(marker))
 }
 
-fn canonical_habit_nonfactual(lower: &str) -> bool {
+fn canonical_habit_nonfactual(lower: &str, date_bound_fact: bool) -> bool {
     [
         "计划",
         "打算",
@@ -6019,7 +6019,9 @@ fn canonical_habit_nonfactual(lower: &str) -> bool {
         "might ",
     ]
     .iter()
-    .any(|marker| lower.contains(marker))
+    .any(|marker| {
+        !(date_bound_fact && ["昨天", "yesterday"].contains(marker)) && lower.contains(marker)
+    })
 }
 
 // Free-form Short records do not acquire factual authority from their storage section.

@@ -190,7 +190,8 @@ pub(super) fn receipt_scope(
 pub(super) const UNCONFIRMED_SCOPE: &str = "Original Habit completion scope is unconfirmed. Read the current canonical history and source; clarify the endpoints before withdrawing.";
 
 // Scope survives chats, but only within the selected Vault, canonical completion
-// target and exact mapped source identity. Equal/unknown chronology cannot widen it.
+// target and exact mapped source identity. Cross-chat or unproven chronology
+// cannot widen scope; completed direct turns in one chat retain their queue order.
 pub(super) fn original_scope(
     sessions: &[StoredCollaborationSession],
     vault_key: &str,
@@ -235,7 +236,15 @@ pub(super) fn original_scope(
                             _ => false,
                         })
                 });
-                if !newer_local { candidates.push((super::dida_writes::iso_epoch_millis(&local.updated_at), scope.to_owned(), id.map(str::to_owned))); }
+                if !newer_local {
+                    let saved_at = super::dida_writes::iso_epoch_millis(&local.updated_at);
+                    let direct_order = (local.execute_attempted
+                        && local.created_at == local.updated_at && saved_at.is_some() && saved_at == at
+                        && message.delivery_state == "completed"
+                        && !super::is_review_before_write_request(&message.text.to_lowercase()))
+                        .then_some(message.queue_order).flatten().map(|order| (session.id.as_str(), order));
+                    candidates.push((saved_at, scope.to_owned(), id.map(str::to_owned), direct_order));
+                }
             }
             for action in &message.external_actions {
                 let Some(v) = action.verification.as_ref() else {
@@ -255,15 +264,40 @@ pub(super) fn original_scope(
                 let Some(scope) = v["habitScope"].as_str() else {
                     continue;
                 };
-                candidates.push((at, scope.to_owned(), mapped.clone()));
+                let direct_order = (at.is_some()
+                    && message.delivery_state == "completed"
+                    && !super::is_review_before_write_request(&message.text.to_lowercase()))
+                .then_some(message.queue_order)
+                .flatten()
+                .map(|order| (session.id.as_str(), order));
+                candidates.push((at, scope.to_owned(), mapped.clone(), direct_order));
             }
         }
     }
-    let latest = candidates.iter().filter_map(|(at, _, _)| *at).max();
-    let mut scopes = candidates
+    let latest = candidates.iter().filter_map(|(at, _, _, _)| *at).max();
+    let mut latest_candidates = candidates
         .into_iter()
-        .filter(|(at, _, _)| at.is_none() || *at == latest)
-        .map(|(_, scope, id)| (scope, id))
+        .filter(|(at, _, _, _)| at.is_none() || *at == latest)
+        .collect::<Vec<_>>();
+    // Minute-precision timestamps need not erase provable direct-turn ordering.
+    // All tied origins must belong to the same saved chat and be completed direct
+    // turns. Approval/recovery with uncertain save order never borrows this rule.
+    if let Some((session, _)) = latest_candidates.first().and_then(|candidate| candidate.3) {
+        if latest_candidates
+            .iter()
+            .all(|candidate| candidate.3.is_some_and(|(id, _)| id == session))
+        {
+            let newest_order = latest_candidates
+                .iter()
+                .filter_map(|candidate| candidate.3.map(|(_, order)| order))
+                .max();
+            latest_candidates
+                .retain(|candidate| candidate.3.map(|(_, order)| order) == newest_order);
+        }
+    }
+    let mut scopes = latest_candidates
+        .into_iter()
+        .map(|(_, scope, id, _)| (scope, id))
         .collect::<Vec<_>>();
     scopes.sort();
     scopes.dedup();
@@ -314,18 +348,96 @@ pub(super) fn origins(
     })).collect::<Vec<_>>())
 }
 
-pub(super) fn native_habit_writes_allowed(text: &str, target_date: &str, snapshot: &HabitSnapshotView, origins: &Value) -> bool {
-    if only_local_habit_effects(text, snapshot) { return false; }
-    let lower = text.to_lowercase();
-    if !["撤回", "撤销", "withdraw", "retract"].iter().any(|marker| lower.contains(marker)) { return true; }
-    let has_explicit_date = text.split(|c: char| !c.is_ascii_digit() && c != '-').any(|part| crate::today::CalendarDate::parse(part).is_some());
-    snapshot.habits.iter().filter(|habit| names_target(text,&habit.key,&habit.name)).any(|habit| {
-        let dates:Vec<_> = origins.as_array().into_iter().flatten().filter(|origin| origin["habitKey"] == habit.key)
-            .filter(|origin| origin["date"].as_str().is_some_and(|date| text.contains(date) || (!has_explicit_date && date == target_date))).collect();
-        if matches!(scope_for_habit(text,&habit.key,&habit.name),Some("external")) { return true; }
-        dates.iter().any(|origin| ["both","external"].contains(&origin["scope"].as_str().unwrap_or("ambiguous")))
-    })
+// This is preflight capability selection, not a new natural-language date service.
+// Reuse the request's captured calendar date; the 04:00 lived target is a fallback
+// only when no explicit/relative date is stated. The model still resolves effects.
+fn withdrawal_dates(
+    text: &str,
+    key: &str,
+    name: &str,
+    dates: &super::CollaborationDateContext,
+) -> Option<Vec<String>> {
+    let mut resolved = Vec::new();
+    for clause in text
+        .split(['。', '；', ';', '\n'])
+        .filter(|clause| names_target(clause, key, name) && !task_clause(clause))
+    {
+        let explicit = clause
+            .split(|c: char| !c.is_ascii_digit() && c != '-')
+            .filter_map(crate::today::CalendarDate::parse)
+            .map(|date| date.to_string())
+            .collect::<std::collections::BTreeSet<_>>();
+        if explicit.len() > 1 {
+            return None;
+        }
+        if let Some(date) = explicit.into_iter().next() {
+            resolved.push(date);
+            continue;
+        }
+        let lower = clause.to_lowercase();
+        let yesterday = lower.contains("昨天") || lower.contains("yesterday");
+        let today = lower.contains("今天") || lower.contains("today");
+        if yesterday && today {
+            return None;
+        }
+        let date = if yesterday || today {
+            crate::today::CalendarDate::parse(&dates.request_natural_date)?
+                .plus_days(if yesterday { -1 } else { 0 })
+                .to_string()
+        } else {
+            dates.target_date.clone()
+        };
+        resolved.push(date);
+    }
+    Some(resolved)
 }
+
+pub(super) fn native_habit_writes_allowed(
+    text: &str,
+    dates: &super::CollaborationDateContext,
+    snapshot: &HabitSnapshotView,
+    origins: &Value,
+) -> bool {
+    if only_local_habit_effects(text, snapshot) {
+        return false;
+    }
+    let lower = text.to_lowercase();
+    if !["撤回", "撤销", "withdraw", "retract"]
+        .iter()
+        .any(|marker| lower.contains(marker))
+    {
+        return true;
+    }
+    snapshot
+        .habits
+        .iter()
+        .filter(|habit| names_target(text, &habit.key, &habit.name))
+        .any(|habit| {
+            let Some(targets) = withdrawal_dates(text, &habit.key, &habit.name, dates) else {
+                return false;
+            };
+            if matches!(
+                scope_for_habit(text, &habit.key, &habit.name),
+                Some("external")
+            ) {
+                return true;
+            }
+            origins
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|origin| origin["habitKey"] == habit.key)
+                .filter(|origin| {
+                    origin["date"]
+                        .as_str()
+                        .is_some_and(|date| targets.iter().any(|target| target == date))
+                })
+                .any(|origin| {
+                    ["both", "external"].contains(&origin["scope"].as_str().unwrap_or("ambiguous"))
+                })
+        })
+}
+
 pub(super) fn context(snapshot: &HabitSnapshotView) -> Value {
     json!(snapshot.habits.iter().filter(|habit|habit.can_record_completion).map(|habit|json!({
         "habitKey":habit.key,"name":habit.name,"externalHabitId":mapped_id(snapshot,&habit.key),

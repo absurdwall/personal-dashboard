@@ -80,7 +80,8 @@ evening summary displaced an actual wake minute, and a future wish in an ordinar
 Short record became today's actual wake time. Highest `TodayApplication` publication
 regressions now retain the specific minute, recognize explicit correction/withdrawal
 without treating section order as chronology, and leave conflicting unsequenced
-corrections unknown. Ordinary Short records require a bounded occurred/date-qualified
+corrections unknown. Date-bound factual sections retain exact past-relative wording
+(昨天/Yesterday) on their canonical record date; ordinary Short intent remains separate. Ordinary Short records require a bounded occurred/date-qualified
 assertion; questions, conditionals, future wishes and discussion do not establish an
 actual time. Cross-clause qualification is retained, historical dates are not relabeled
 as today, and factual next-day sleep retains its actual date. This is conservative
@@ -90,7 +91,12 @@ Persisted collaboration receipts now retain verified original Habit endpoint sco
 across chats and restart, bound to the selected Vault, canonical local target and exact
 mapped source identity. Applied local save timestamps determine effect chronology;
 unconfirmed external plans cannot become saved origins. Equal or unverifiable conflicting
-origins require clarification. Independent external completion survives a default
+origins across chats or without direct-turn proof require clarification. Completed
+direct turns in the same saved chat retain their queue order within one minute;
+review approvals cannot borrow request order. Relative withdrawal preflight uses the
+captured request calendar date, independently of the pre-04:00 lived target; explicit
+ISO dates take precedence and conflicting relative dates do not enable unrelated
+origins. Independent external completion survives a default
 withdrawal of an originally local-only fact; an explicit single-end override remains
 available. A different canonical Vault target cannot borrow the old local receipt.
 
@@ -107,15 +113,19 @@ Host diagnostics are paired in Chinese and English through actual progress, oper
 memory and external-activity renderers; paths, source IDs and authored/source replies
 remain verbatim. Snapshot v1 mapping-label encoding and parsing share the existing
 format without a schema change. Frontend verification passed 329 tests and its production
-build. The full Rust suite passed 453 tests with six opt-in native gates ignored;
+build. The initial round full Rust suite passed 453 tests with six opt-in native gates ignored;
 focused publication, cross-chat and private native-readback workflows also passed.
-The default-feature Cargo check passed. Ignored gates supply no native evidence.
+The default-feature Cargo check passed. The subsequent same-minute, request-relative
+date, historical-fact and native-setup diagnostic follow-up passed focused workflows;
+its full Rust rerun is recorded separately. Ignored gates supply no native evidence.
 
 An earlier full-suite failure came from CLI subprocesses using the real clock while
 the daily-flow fixture used noon UTC. The test harness now pins the existing clock
 environment for each CLI child to the fixture's date, time and UTC offset; production
 clock behavior is unchanged. Sequential scope-fixture effects also have distinct
-controlled save minutes; a separate equal-time case requires clarification.
+controlled save minutes. Additional same-minute workflows preserve sequential
+direct local-only → Both → default withdrawal across restart, while cross-chat ties
+and an actual delayed review approval require clarification.
 
 This round performed no external actions or packaged native acceptance. Native phases
 A–F below remain evidence for their recorded candidate heads, rather than proof of the
