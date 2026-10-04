@@ -1518,6 +1518,8 @@ pub struct CollaborationActionResultView {
     pub source: String,
     pub status: String,
     pub target_date: Option<String>,
+    /// Host diagnostics are localized; external source text remains verbatim.
+    pub message_kind: String,
     pub message: String,
 }
 
@@ -7643,21 +7645,21 @@ fn message_action_results(session: &StoredCollaborationSession, message: &Stored
     let mut results:Vec<_> = session.task_operations.iter().filter(|item| item.execution_id == execution || item.observed_in_executions.iter().any(|e|e==execution))
         .map(|item| CollaborationActionResultView {
             id:item.id.clone(), source:"Dashboard".into(), status:if item.status=="awaitingApproval" && item.execute_attempted {"unknown".into()} else {item.status.clone()},
-            target_date:Some(item.target_date.clone()), message:item.result_message.clone().unwrap_or_else(||
+            target_date:Some(item.target_date.clone()), message_kind:"diagnostic".into(), message:item.result_message.clone().unwrap_or_else(||
                 if item.execute_attempted {"Source result unconfirmed; check the saved action before retrying.".into()} else {"Prepared for review; not saved to the source.".into()}),
         }).collect();
     results.extend(session.memory_proposals.iter().filter(|item|item.execution_id==execution).map(|item|CollaborationActionResultView {
         id:item.id.clone(),source:"Long-term background".into(),status:if item.status=="awaitingApproval" && item.execution_attempted {"unknown".into()}else{item.status.clone()},
-        target_date:None,message:item.result_message.clone().unwrap_or_else(||if item.execution_attempted {"Background save is unconfirmed; read the existing Self document before retrying.".into()}else{"Prepared for review; long-term background not changed.".into()}),
+        target_date:None,message_kind:"diagnostic".into(),message:item.result_message.clone().unwrap_or_else(||if item.execution_attempted {"Background save is unconfirmed; read the existing Self document before retrying.".into()}else{"Prepared for review; long-term background not changed.".into()}),
     }));
     results.extend(message.external_actions.iter().map(|action| CollaborationActionResultView {
-        id:action.action_id.clone(),source:action.source_name.clone(),status:action.status.clone(),target_date:None,message:action.result_summary.clone(),
+        id:action.action_id.clone(),source:action.source_name.clone(),status:action.status.clone(),target_date:None,message_kind:if action.verification.is_some(){"diagnostic"}else{"sourceText"}.into(),message:action.result_summary.clone(),
     }));
     for receipt in session.habit_refresh_receipts.iter().filter(|r| r.execution_id == execution) {
         let report=&receipt.report;
         for (source,status) in [("Habit source query",&report.query),("Habit generation",&report.generation),("Habit publication",&report.publication),("Habits page",&report.display)] {
             results.push(CollaborationActionResultView {id:format!("{}:{source}",receipt.call_key),source:source.into(),
-                status:if receipt.result.is_none(){"unknown".into()}else{status.clone()},target_date:report.range_to.clone(),message:report.message.clone()});
+                status:if receipt.result.is_none(){"unknown".into()}else{status.clone()},target_date:report.range_to.clone(),message_kind:"diagnostic".into(),message:report.message.clone()});
         }
     }
     results

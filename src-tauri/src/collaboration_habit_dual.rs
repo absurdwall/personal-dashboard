@@ -156,7 +156,8 @@ pub(super) fn scope_for_effect(message:&str,quote:&str,key:&str,name:&str,date:&
     let quoted=scope_for_habit(quote,key,name);
     // Exact per-effect quotes separate otherwise conflicting date clauses, but
     // cannot omit a destination already explicit for this concrete date.
-    if current==Some("ambiguous") { quoted.or(current) } else { current.or(quoted) }
+    if current==Some("ambiguous") && message.contains(date) { current }
+    else if current==Some("ambiguous") { quoted.or(current) } else { current.or(quoted) }
 }
 pub(super) fn only_local_habit_effects(text: &str, snapshot: &HabitSnapshotView) -> bool {
     let mentioned: Vec<_> = snapshot
@@ -349,6 +350,7 @@ mod tests {
         assert_eq!(scope_for_effect(message,"2026-10-03运动完成","exercise","Exercise","2026-10-03"),Some("local"));
         assert_eq!(scope_for_effect(message,"2026-10-02运动完成","exercise","Exercise","2026-10-02"),Some("external"));
         assert_eq!(scope_for_effect("2026-10-03运动完成，只记本地又只记滴答。","2026-10-03运动完成","exercise","Exercise","2026-10-03"),Some("ambiguous"));
+        assert_eq!(scope_for_effect("2026-10-03运动完成，只记本地又只记滴答。","2026-10-03运动完成，只记本地","exercise","Exercise","2026-10-03"),Some("ambiguous"));
     }
     #[test]
     fn destination_scope_is_per_habit_clause_and_never_inherited_from_tasks_or_other_names() {

@@ -449,7 +449,8 @@ const interfaceCopies = {
   "collaboration.statusStopping": { zh: "正在等待 Codex 确认停止", en: "Waiting for Codex to confirm the stop" },
   "collaboration.statusStopped": { zh: "Codex 已确认停止", en: "Codex confirmed the stop" },
   "collaboration.statusStopUnconfirmed": { zh: "停止尚未确认；队列保持暂停", en: "Stop not confirmed; the queue remains paused" },
-  "collaboration.statusCompleted": { zh: "Codex 回复已保存 · Dashboard 数据未更改", en: "Codex reply saved · Dashboard data unchanged" },
+  "collaboration.externalStatusSaved": { zh: "已保存", en: "Saved" },
+  "collaboration.statusCompleted": { zh: "Codex 回复已保存", en: "Codex reply saved" },
   "collaboration.statusError": { zh: "运行失败", en: "Run failed" },
   "collaboration.statusInterrupted": { zh: "上次运行中断；可以检查会话后继续。", en: "The last run was interrupted. Review the session before continuing." },
   "collaboration.statusPartial": { zh: "部分完成", en: "Partially completed" },
@@ -470,7 +471,7 @@ const interfaceCopies = {
   "collaboration.resumeNotStarted": { zh: "继续此请求", en: "Continue this request" },
   "collaboration.stop": { zh: "停止", en: "Stop" },
   "collaboration.draftSaveFailed": { zh: "草稿未能保存：{error}", en: "Draft could not be saved: {error}" },
-  "collaboration.messageSavedBoundary": { zh: "对话已保存在本机；这不是已保存的业务修改。", en: "Conversation saved locally; this is not a saved business change." },
+  "collaboration.messageSavedBoundary": { zh: "回复已保存在本机；请分别核对业务结果。", en: "Reply saved locally; check separate business outcomes." },
   "collaboration.externalSelectedApps": { zh: "本条消息选择的外部应用", en: "External apps selected for this message" },
   "collaboration.externalActivity": { zh: "外部应用活动", en: "Connected app activity" },
   "collaboration.externalRequestSummary": { zh: "请求摘要", en: "Request summary" },
@@ -1039,6 +1040,8 @@ const englishApplicationMessages: Readonly<Record<string, string>> = {
     "No Habits snapshot exists. Dashboard does not generate data automatically; generate one from the daily flow and refresh.",
   "正在显示过期的有效快照；数据不是实时读数。":
     "Showing a valid but stale snapshot; this is not a live reading.",
+  "已读取按需生成的本地快照；来源覆盖与刷新结果可分别核对。":
+    "Loaded the locally generated on-demand snapshot; source coverage and refresh outcomes can be checked separately.",
   "已读取按需生成的本地快照；Dashboard 未连接或轮询外部服务。":
     "Loaded the locally generated on-demand snapshot; Dashboard is not connected to or polling external services.",
   "当前周覆盖不完整；显示已知次数下界，未知不等于未完成。":
@@ -1059,6 +1062,93 @@ const englishApplicationMessages: Readonly<Record<string, string>> = {
     "There are no tasks for this day. Unchecked tasks are not carried over automatically.",
   "已读取这一天的任务。": "Loaded tasks for this day.",
 };
+
+// Only host-owned result diagnostics use this catalog. Source replies and user
+// text bypass it, even if their wording happens to match a diagnostic.
+const chineseCollaborationDiagnostics: Readonly<Record<string, string>> = {
+  "Source result unconfirmed; check the saved action before retrying.": "来源结果尚未确认；重试前请核对已保存的操作。",
+  "Prepared for review; not saved to the source.": "已准备供复核；尚未保存到来源。",
+  "Background save is unconfirmed; read the existing Self document before retrying.": "长期背景保存尚未确认；重试前请读取现有 Self 文档。",
+  "Prepared for review; long-term background not changed.": "已准备供复核；长期背景尚未更改。",
+  "Saved the approved durable update in the existing life/Self.md document.": "已将确认的长期背景更新保存在现有 life/Self.md 文档中。",
+  "Current life/Self.md readback confirms the exact requested durable document. No additional write was performed; the original save response remains unconfirmed.": "当前 life/Self.md 回读确认了请求的完整长期背景文档。未再次写入；原保存响应仍未确认。",
+  "Refresh result is unconfirmed. Read the canonical snapshot and query fresh sources before a new refresh call; this call will not be replayed.": "刷新结果尚未确认。再次刷新前请读取正本快照并重新查询来源；不会重放本次调用。",
+  "No successful current native source queries; old snapshot retained": "尚无本轮成功的来源查询；保留原快照。",
+  "Select a Vault before rebuilding Habits": "重新生成 Habits 前请选择 Vault。",
+  "No existing Habit catalog snapshot; refresh cannot create local Habits": "尚无现有 Habit 目录快照；刷新不能创建本地 Habit。",
+  "Selected Vault changed; snapshot publication rejected": "所选 Vault 已更改；快照发布被拒绝。",
+  "Selected Vault changed before refresh": "刷新前所选 Vault 已更改。",
+  "Explicit verified mappings must identify existing catalog keys; no Habit is created or matched by name": "明确核验的映射必须指向现有目录键；不会创建 Habit 或按名称匹配。",
+  "Every mapping needs a unique stable ID verified by a current native Habit catalog/object read": "每个映射都需要通过本轮 Habit 目录或对象读取核验的唯一稳定 ID。",
+  "Source query did not prove the full mapped Habit/date coverage; previous snapshot is retained": "来源查询未证明映射 Habit 和日期的完整覆盖；保留原快照。",
+  "Explicit source identity conflicts with the existing mapping; no snapshot published": "明确的来源身份与现有映射冲突；未发布快照。",
+  "A first semantic Habit/ID association needs explicit user confirmation; matching display names is insufficient": "首次关联 Habit 与 ID 需要用户明确确认；显示名称相同不足以建立关联。",
+  "Invalid generation date": "生成日期无效。",
+  "Missing existing Habit catalog": "缺少现有 Habit 目录。",
+  "Missing source catalog": "缺少来源目录。",
+  "Local source key already belongs to another source": "本地来源键已属于另一来源。",
+  "Invalid source check-in date": "来源打卡日期无效。",
+  "Unknown source check-in status; previous snapshot retained": "来源打卡状态未知；保留原快照。",
+  "Contradictory equal/unknown-time check-ins require a verified latest source outcome": "同一时间或时间未知的打卡结果互相矛盾；需要核验最新来源结果。",
+  "Snapshot path is redirected; no publication": "快照路径被重定向；未发布。",
+  "Snapshot changed during generation; retained concurrent source bytes": "生成期间快照已更改；保留并发写入的来源内容。",
+  "Snapshot changed at the atomic publication boundary": "原子发布时快照已更改。",
+  "Snapshot readback did not confirm generated bytes": "快照回读未确认生成的内容。",
+  "Habit publication is unavailable in this automatic/read-only round": "本轮自动或只读请求不能发布 Habit 快照。",
+  "A review request does not authorize snapshot publication": "复核请求尚未授权发布快照。",
+  "Current request is unavailable": "当前请求不可用。",
+  "Request is no longer active": "当前请求已不再执行。",
+  "No current instruction": "没有当前指令。",
+  "Quote an active exact request; review/cancellation prevents publication": "请引用当前执行请求的准确指令；复核或取消请求不能发布快照。",
+  "Habit refresh intent is uncertain or declined": "Habit 刷新意图尚不明确或已被拒绝。",
+  "The current message does not authorize this Habit rebuild": "当前消息未授权本次 Habit 重新生成。",
+  "Current Dida source readback confirms the requested outcome for the recorded stable object identity. No write was replayed; source confirmation does not reconstruct a lost original receipt.": "当前滴答来源回读确认了记录中稳定对象的请求结果。未重放写入；来源确认不能补造丢失的原始收据。",
+  "The current source was read, but differs from the earlier requested outcome. That earlier effect remains unknown; preserve later source edits and continue only the current user's authorized request, without replaying the old effect.": "已读取当前来源，但结果与先前请求不同。先前结果仍未知；保留之后的来源修改，仅继续当前用户授权的请求，不重放旧操作。",
+  "Current Dida readback is unavailable. Preserve any confirmed effects, resolve the source state before retrying, and do not repeat creation while unknown.": "当前滴答回读不可用。保留已确认的结果，重试前先查明来源状态；状态未知时不要再次创建。",
+  "The external object identity is unavailable. Read the source and resolve it before any retry; no write was replayed.": "外部对象身份不可用。重试前请读取来源并确定身份；未重放写入。",
+};
+
+export function localizeCollaborationDiagnostic(message: string, language: InterfaceLanguage): string {
+  const refreshed = /^(Verified (\d+) explicitly mapped external Habits; unmapped source coverage remains partial\/unknown\. Rebuilt exact\/threshold Daily Record evidence\. )(.*)$/s.exec(message);
+  if (refreshed) return language === "en" ? refreshed[1] + localizeApplicationMessage(refreshed[3], language)
+    : `已核验 ${refreshed[2]} 个明确映射的外部 Habit；未映射来源的覆盖仍为部分或未知。已重新生成 Daily Record 的精确时间或阈值证据。${localizeApplicationMessage(refreshed[3], language)}`;
+  if (language === "en") return englishTaskDiagnostic(message) ?? englishHabitValidationDiagnostic(message) ?? localizeApplicationMessage(message, language);
+  const exact = chineseCollaborationDiagnostics[message];
+  if (exact) return exact;
+  // Match the full host grammar, preserving every user-owned name, ID, path,
+  // date, revision, and low-level error capture unchanged.
+  const task = /^Saved (task|task list) “(.*)” \((.*)\) in the shared Tasks data for target date (.*)\. Tasks, Today, and Calendar use this same object\.$/s.exec(message);
+  if (task) return `已将${task[1] === "task" ? "任务" : "任务列表"}“${task[2]}”（${task[3]}）保存到共享 Tasks 正本，目标日期 ${task[4]}。Tasks、Today 和 Calendar 使用同一对象。`;
+  const actions: Readonly<Record<string, string>> = { "initial plan": "初始计划", "morning calibration": "早间校准", "daytime event": "白天事件", "daytime replan": "白天重排", "explicit morning-baseline correction": "明确的早间基准更正", "evening review addition": "晚间复盘补充", "evening review correction": "晚间复盘更正", "Daily Record update": "Daily Record 更新", "Daily Record plan change": "Daily Record 计划更改" };
+  const daily = /^Saved the (.*) for (.*)\. Today and Calendar read this same canonical Daily Record \(revision (.*)\)\.$/s.exec(message);
+  if (daily && actions[daily[1]]) return `已保存 ${daily[2]} 的${actions[daily[1]]}。Today 和 Calendar 读取同一 Daily Record 正本（版本 ${daily[3]}）。`;
+  const short = /^Saved (exercise|ordinary) Short Record (.*) for (.*)\. This is record context, not Habit or Task completion\. Today and Calendar read the same canonical Daily Record \(revision (.*)\)\.$/s.exec(message);
+  if (short) return `已保存 ${short[3]} 的${short[1] === "exercise" ? "运动" : "普通"}简短记录 ${short[2]}。这是记录背景，不表示 Habit 或 Task 完成。Today 和 Calendar 读取同一 Daily Record 正本（版本 ${short[4]}）。`;
+  const correction = /^Corrected Short Record (.*) on (.*) with a linked correction trace\. Today and Calendar read this same Daily Record \(revision (.*)\)\.( Exercise records also feed the Habits projection\.)?$/s.exec(message);
+  if (correction) return `已更正 ${correction[2]} 的简短记录 ${correction[1]} 并保留关联的更正痕迹。Today 和 Calendar 读取同一 Daily Record（版本 ${correction[3]}）。${correction[4] ? "运动记录也参与 Habits 展示。" : ""}`;
+  const local = /^Local Habit completion (added|withdrawn|updated) for (.*) on (.*) \(completion revision (.*)\)\. Today refreshed to Daily Record revision (.*); external Habit sources were not changed by this local operation\.(.*)$/s.exec(message);
+  if (local) {
+    const action = { added: "已添加", withdrawn: "已撤回", updated: "已更新" }[local[1]];
+    const both = /^ Original scope=both, mapped Dida Habit ID=(.*)\. This is only the local receipt: read the exact external date before the native remaining action, preserve any already-confirmed end, then publish from fresh post-write reads\. Report all three outcomes separately\.$/s.exec(local[6]);
+    const remaining = both ? ` 原范围为两端；映射的 Dida Habit ID=${both[1]}。这是本地结果：继续外部操作前先读取准确日期，保留已确认的一端，再使用写后新读数发布快照。请分别核对三个结果。`
+      : local[6] === " Original scope=local only. Preserve other endpoints; local OR external can still show completion after a one-end withdrawal. Refresh derived display independently." ? " 原范围仅为本地。保留其他端的结果；撤回一端后，本地或外部仍可能使完成状态成立。请另行刷新派生展示。" : local[6];
+    return `${action} ${local[3]} 的本地 Habit 完成：${local[2]}（完成版本 ${local[4]}）。Today 已刷新到 Daily Record 版本 ${local[5]}；本次本地操作未更改外部 Habit 来源。${remaining}`;
+  }
+  const changed = /^Canonical Daily Record changed during generation: (.*); snapshot publication rejected$/s.exec(message);
+  if (changed) return `生成期间 Daily Record 正本已更改：${changed[1]}；快照发布被拒绝。`;
+  const concurrent = /^(.*); (a later snapshot writer is active|displaced snapshot restored|concurrent snapshot restored after rollback conflict); displaced versions preserved at (.*)$/s.exec(message);
+  if (concurrent) return `${localizeCollaborationDiagnostic(concurrent[1], language)}；${({ "a later snapshot writer is active": "之后的快照写入正在进行", "displaced snapshot restored": "已恢复被替换的快照", "concurrent snapshot restored after rollback conflict": "回退冲突后已恢复并发快照" })[concurrent[2]]}；被替换的版本保留在 ${concurrent[3]}`;
+  const recovery = /^(.*); (could not read displaced snapshot|snapshot recovery preservation failed|rollback interrupted|snapshot rollback failed|could not sync displaced snapshot|could not sync rollback|could not verify rollback): (.*); recovery at (.*)$/s.exec(message);
+  if (recovery) return `${localizeCollaborationDiagnostic(recovery[1], language)}；${({ "could not read displaced snapshot": "无法读取被替换的快照", "snapshot recovery preservation failed": "快照恢复副本保存失败", "rollback interrupted": "回退被中断", "snapshot rollback failed": "快照回退失败", "could not sync displaced snapshot": "无法同步被替换的快照", "could not sync rollback": "无法同步回退内容", "could not verify rollback": "无法核验回退结果" })[recovery[2]]}：${recovery[3]}；恢复副本位于 ${recovery[4]}`;
+  const prefixes: readonly (readonly [string, string])[] = [
+    ["The latest Tasks version confirms that this action was already saved. ", "最新 Tasks 版本确认本次操作已经保存。"],
+    ["The Daily Record receipt confirms that this exact plan was already saved. ", "Daily Record 收据确认这一准确计划已经保存。"],
+    ["Snapshot atomic publication failed: ", "快照原子发布失败："],
+    ["Refresh identity could not be saved; no publication attempted: ", "刷新身份未能保存；未尝试发布："],
+  ];
+  for (const [prefix, translated] of prefixes) if (message.startsWith(prefix)) return translated + localizeCollaborationDiagnostic(message.slice(prefix.length), language);
+  return localizeApplicationError(localizeApplicationMessage(message, language), language);
+}
 
 const englishDailyRecordHeadings: Readonly<Record<string, string>> = {
   "早间基准": "Morning baseline",
