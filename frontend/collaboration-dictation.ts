@@ -30,6 +30,8 @@ type ActiveInput = {
   capture?: CodexDictationCapture;
   transcript: CodexDictationTranscript;
   ended: boolean;
+  settled: Promise<void>;
+  resolveSettled(): void;
 };
 
 type DictationHandlers = CollaborationVoiceHandlers & {
@@ -52,10 +54,12 @@ export class CodexCollaborationVoiceInputController {
 
   async start(target: CollaborationVoiceTarget): Promise<void> {
     if (this.#active || !target.sessionId || !target.targetDate) return;
+    let resolveSettled!: () => void;
+    const settled = new Promise<void>(resolve => { resolveSettled = resolve; });
     const active: ActiveInput = {
       id: crypto.randomUUID(), target: { ...target }, state: "requesting",
       abort: new AbortController(), transcript: new CodexDictationTranscript(),
-      ended: false,
+      ended: false, settled, resolveSettled,
     };
     this.#active = active;
     this.handlers.onState("requesting", active.target);
@@ -91,6 +95,14 @@ export class CodexCollaborationVoiceInputController {
     else this.stop();
   }
 
+  // Vault changes cross a storage boundary: stop now, then await delivery.
+  // Pending capture setup cancels immediately, independent of its promise.
+  settleForVaultSwitch(): Promise<void> {
+    const active = this.#active;
+    this.navigate();
+    return active?.settled ?? Promise.resolve();
+  }
+
   // App/window close has no dependable tail-drain opportunity: preserve only
   // received text now and release capture before any asynchronous draft save.
   close(): void {
@@ -110,6 +122,7 @@ export class CodexCollaborationVoiceInputController {
     this.handlers.onPreview?.(active.target, "");
     this.handlers.onCancel(active.target);
     this.handlers.onState("idle", active.target);
+    active.resolveSettled();
   }
 
   #event(active: ActiveInput, event: CodexDictationEvent): void {
@@ -153,5 +166,6 @@ export class CodexCollaborationVoiceInputController {
     if (incomplete && text) this.handlers.onIncomplete?.(active.target);
     if (failure && text) this.handlers.onFailure(active.target, failure);
     this.handlers.onState("idle", active.target);
+    active.resolveSettled();
   }
 }
