@@ -5431,6 +5431,9 @@ impl AppServerTransport for DualRuntime {
             }
         }
         let turn = format!("turn-{}", request.execution_id);
+        if scope == "ambiguous" {
+            return Ok(RuntimeTurnResult { text: "Original endpoint scope is unconfirmed; clarify before any mutation.".into(), runtime_turn_id: Some(turn), stopped: false, external_actions: vec![] });
+        }
         if text.contains("买菜") {
             let result = handler(RuntimeDynamicToolCall {
                 thread_id: request.thread_id.clone(),
@@ -5470,7 +5473,7 @@ impl AppServerTransport for DualRuntime {
                 turn_id: turn.clone(),
                 call_id: "local-dual-effect".into(),
                 tool: "dashboard_task_operation".into(),
-                arguments: json!({"operation":"setLocalHabitCompletion","habitKey":"exercise","completed":completed,"targetDate":date,"scope":if scope=="local" {"local"} else if completed {"both"}else{"original"},"executionMode":"execute","authorizationQuote":effect_text}),
+                arguments: json!({"operation":"setLocalHabitCompletion","habitKey":"exercise","completed":completed,"targetDate":date,"scope":if !completed && !effect_text.contains("只撤本地") && !effect_text.contains("只记本地") {"original"} else if scope=="local" {"local"} else if completed {"both"}else{"original"},"executionMode":"execute","authorizationQuote":effect_text}),
             };
             let result = handler(call.clone());
             let duplicate = handler(call);
@@ -5493,7 +5496,7 @@ impl AppServerTransport for DualRuntime {
                     source.checkins.insert(stamp, desired);
                     source.writes += 1;
                 }
-                let action=personal_dashboard_lib::collaboration::ExternalToolActionView {action_id:format!("{}:dual-checkin-{}",request.thread_id,request.execution_id),source_id:"dida365".into(),source_name:"Dida".into(),tool_id:"upsert_habit_checkins".into(),status:if source.fail || source.lost_receipt {"unknown"}else{"saved"}.into(),target_scope:date.into(),input_summary:"Exact verified synthetic-habit+stamp, supported status only; no invented minute".into(),result_summary:if source.fail {"External source failed; local success remains."}else if source.lost_receipt {"Native receipt lost; reread before retry."}else{"Current exact source readback confirmed."}.into(),verification:Some(json!({"habitCheckin":{"habitId":"synthetic-habit","stamp":stamp,"status":desired},"checks":[{"tool":"get_habit_checkins","arguments":{"habit_ids":["synthetic-habit"]}}]}))};
+                let action=personal_dashboard_lib::collaboration::ExternalToolActionView {action_id:format!("{}:dual-checkin-{}",request.thread_id,request.execution_id),source_id:"dida365".into(),source_name:"Dida".into(),tool_id:"upsert_habit_checkins".into(),status:if source.fail || source.lost_receipt {"unknown"}else{"saved"}.into(),target_scope:date.into(),input_summary:"Exact verified synthetic-habit+stamp, supported status only; no invented minute".into(),result_summary:if source.fail {"External source failed; local success remains."}else if source.lost_receipt {"Native receipt lost; reread before retry."}else{"Current exact source readback confirmed."}.into(),verification:Some(json!({"habitCheckin":{"habitId":"synthetic-habit","stamp":stamp,"status":desired},"sourceObserved":!source.fail && !source.lost_receipt,"checks":[{"tool":"get_habit_checkins","arguments":{"habit_ids":["synthetic-habit"]}}]}))};
                 source.last_action = Some(action.clone());
                 source.last_execution = Some(request.execution_id.clone());
                 if let Some(handler) = &actions {
@@ -5703,6 +5706,7 @@ fn dual_habit_single_end_withdrawal_preserves_other_end_or_and_legacy_local_scop
     let (app, _) = new_dual_application(&directory, &vault, clock.clone(), Arc::clone(&source));
     let session = app.create_default_session().unwrap();
     dual_submit(&app, &session.id, "2026-09-26锻炼完成了。");
+    clock.set_time("21:01");
     dual_submit(&app, &session.id, "只撤本地2026-09-26锻炼完成，滴答保留。");
     let snapshot = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone())
         .habits()
@@ -5718,6 +5722,7 @@ fn dual_habit_single_end_withdrawal_preserves_other_end_or_and_legacy_local_scop
         HabitLocalCompletionState::Withdrawn
     );
     assert_eq!(source.lock().unwrap().writes, 1);
+    clock.set_time("21:02");
     dual_submit(
         &app,
         &session.id,
@@ -5734,6 +5739,7 @@ fn dual_habit_single_end_withdrawal_preserves_other_end_or_and_legacy_local_scop
             .unwrap()
             .counts_as_completion
     );
+    clock.set_time("21:03");
     dual_submit(&app, &session.id, "只记本地2026-09-26锻炼完成了。");
     let before = source.lock().unwrap().writes;
     // Simulate a legacy saved receipt that predates explicit scope metadata.
@@ -5754,7 +5760,8 @@ fn dual_habit_single_end_withdrawal_preserves_other_end_or_and_legacy_local_scop
         .unwrap()
         .remove("externalHabitId");
     fs::write(&state_path, serde_json::to_vec(&state).unwrap()).unwrap();
-    let (reopened, _) = new_dual_application(&directory, &vault, clock, Arc::clone(&source));
+    let (reopened, _) = new_dual_application(&directory, &vault, clock.clone(), Arc::clone(&source));
+    clock.set_time("21:04");
     dual_submit(
         &reopened,
         &session.id,
@@ -5766,8 +5773,10 @@ fn dual_habit_single_end_withdrawal_preserves_other_end_or_and_legacy_local_scop
         "Legacy local-only completion must not silently withdraw Dida"
     );
     let original_local = dual_completion_bytes(&path);
+    clock.set_time("21:05");
     dual_submit(&reopened, &session.id, "只记滴答2026-09-26锻炼完成了。");
     assert_eq!(dual_completion_bytes(&path), original_local);
+    clock.set_time("21:06");
     dual_submit(
         &reopened,
         &session.id,
@@ -6571,4 +6580,421 @@ fn exact_combined_native_request_authorizes_snapshot_without_revoking_other_doma
         else {assert_eq!(report.publication,"notPublished");assert_eq!(fs::read(&snapshot).unwrap(),before);}
         app.shutdown().unwrap();
     }
+}
+
+
+#[test]
+fn canonical_habit_actual_time_survives_summary_and_explicit_corrections_ignore_section_order() {
+    for (daytime, evening, expected) in [
+        ("今天07:10起床。", "按时起床。", Some("07:10")),
+        ("今天07:10起床。", "今天07:50起床。", None),
+        (
+            "更正：今天实际07:50起床。",
+            "今天07:10起床。",
+            Some("07:50"),
+        ),
+        (
+            "更正：今天实际07:50起床。",
+            "更正：今天实际08:00起床。",
+            None,
+        ),
+        (
+            "起床07:10写错了，今天实际07:50起床。",
+            "今天07:10起床。",
+            Some("07:50"),
+        ),
+        (
+            "今天07:10起床。",
+            "已有原始复盘。\n\n### 用户修正\n\n- 今天实际07:50起床。",
+            Some("07:50"),
+        ),
+        (
+            "今天07:10起床。",
+            "已有原始复盘。\n\n### 用户修正\n\n- 起床时刻未知，原起床记录撤回。",
+            None,
+        ),
+    ] {
+        let directory = IsolatedDirectory::new();
+        let path = directory.vault("fact-specificity");
+        let daily = prepare_daily_review_vault(&path, false);
+        let original = fs::read_to_string(&daily).unwrap();
+        let text = original
+            .replace("完成合成工作块。", daytime)
+            .replace("已有原始复盘。", evening);
+        fs::write(&daily, &text).unwrap();
+        let app = TodayApplication::new(MutableVault::new(&path), NoVaultPicker, FixedClock);
+        let input = serde_json::from_value(habit_refresh_fixture(
+            "refresh habits exercise=synthetic-habit",
+        ))
+        .unwrap();
+        assert_eq!(app.refresh_habit_snapshot(input).publication, "published");
+        let snapshot = app.habits().unwrap();
+        assert_eq!(
+            snapshot
+                .habit("wake")
+                .unwrap()
+                .today
+                .actual_time_label
+                .as_deref(),
+            expected,
+            "{daytime} / {evening}"
+        );
+        assert_eq!(
+            fs::read_to_string(&daily).unwrap(),
+            text,
+            "projection preserves canonical source"
+        );
+    }
+}
+
+#[test]
+fn canonical_short_record_intent_is_not_actual_time_but_occurred_dated_facts_are_retained() {
+    for (content, wake, sleep) in [
+        ("希望明天07:10起床。", None, None),
+        ("明天07:10起床。", None, None),
+        ("我希望07:10起床。", None, None),
+        ("我在考虑07:10起床。", None, None),
+        ("希望明天早起并07:10起床。", None, None),
+        ("希望明天早起，07:10起床。", None, None),
+        ("今天是不是07:10起床？", None, None),
+        ("今天是不是07:10起床?", None, None),
+        ("如果07:10起床就可以赶上车。", None, None),
+        ("如果明天早起，07:10起床就可以赶上车。", None, None),
+        ("如果明天早起，今天07:10起床了就有希望。", None, None),
+        ("Did I get up at 07:10?", None, None),
+        ("If I got up at 07:10 I could catch the bus.", None, None),
+        ("07:10起床", None, None),
+        ("07:10起床了。", Some("07:10"), None),
+        ("Tomorrow I will get up at 07:10.", None, None),
+        ("今天07:10起床，希望明天也能早起。", Some("07:10"), None),
+        ("希望明天早起，今天07:10起床了。", Some("07:10"), None),
+        ("今天07:10起床了。", Some("07:10"), None),
+        ("2026-09-27 07:10起床了。", Some("07:10"), None),
+        ("2026-09-26 07:10起床了。", None, None),
+        ("次日01:20睡觉了。", None, Some("次日 01:20")),
+        ("2026-09-28 01:20睡觉了。", None, Some("次日 01:20")),
+    ] {
+        let directory = IsolatedDirectory::new();
+        let path = directory.vault("short-fact-intent");
+        let daily = prepare_daily_review_vault(&path, false);
+        let app = TodayApplication::new(MutableVault::new(&path), NoVaultPicker, FixedClock);
+        let view = app.read_date("2026-09-27").unwrap();
+        app.add_dated_note(DatedNoteInput {
+            date: "2026-09-27".into(),
+            target_binding: view.target_binding.unwrap(),
+            expected_revision: view.revision,
+            entry_id: "intent-short".into(),
+            category: ShortRecordCategory::Ordinary,
+            content: content.into(),
+        })
+        .unwrap();
+        let source = fs::read(&daily).unwrap();
+        let input = serde_json::from_value(habit_refresh_fixture(
+            "refresh habits exercise=synthetic-habit",
+        ))
+        .unwrap();
+        assert_eq!(
+            app.refresh_habit_snapshot(input).publication,
+            "published",
+            "{content}"
+        );
+        let snapshot = app.habits().unwrap();
+        assert_eq!(
+            snapshot
+                .habit("wake")
+                .unwrap()
+                .today
+                .actual_time_label
+                .as_deref(),
+            wake,
+            "{content}"
+        );
+        assert_eq!(
+            snapshot
+                .habit("sleep")
+                .unwrap()
+                .today
+                .actual_time_label
+                .as_deref(),
+            sleep,
+            "{content}"
+        );
+        assert_eq!(fs::read(&daily).unwrap(), source);
+    }
+}
+
+
+#[test]
+fn cross_session_default_habit_withdrawal_retains_original_local_scope_after_restart() {
+    for restart in [false, true] {
+        let dir = IsolatedDirectory::new();
+        let path = dir.vault("cross-chat-scope");
+        prepare_dual_vault(&path);
+        let vault = MutableVault::new(&path);
+        let clock = ManualClock::new("2026-09-27", "21:00");
+        let source = Arc::new(Mutex::new(DualSource {
+            readable: true,
+            ..Default::default()
+        }));
+        source.lock().unwrap().checkins.insert(20260926, 2);
+        let (app, _) = new_dual_application(&dir, &vault, clock.clone(), Arc::clone(&source));
+        let first = app.create_default_session().unwrap();
+        dual_submit(&app, &first.id, "2026-09-26锻炼完成了，只记本地。");
+        assert_eq!(source.lock().unwrap().writes, 0);
+        let second = app.create_default_session().unwrap();
+        let app = if restart {
+            app.shutdown().unwrap();
+            new_dual_application(&dir, &vault, clock.clone(), Arc::clone(&source)).0
+        } else {
+            app
+        };
+        dual_submit(&app, &second.id, "撤回2026-09-26锻炼完成，这个打卡记错了。");
+        assert_eq!(source.lock().unwrap().checkins[&20260926], 2);
+        assert_eq!(source.lock().unwrap().writes, 0);
+        assert!(
+            !source.lock().unwrap().habit_writes_allowed,
+            "origin-local withdrawal removes native Habit write capability"
+        );
+        let saved = app.session("vault-a", &second.id).unwrap();
+        assert_eq!(
+            serde_json::to_value(&saved.task_operations[0].baseline).unwrap()["destinationScope"],
+            "local"
+        );
+        let view = TodayApplication::new(vault, NoVaultPicker, clock)
+            .habits()
+            .unwrap();
+        let cell = view.habit("exercise").unwrap().cell("2026-09-26").unwrap();
+        assert_eq!(
+            cell.local_completion_state,
+            HabitLocalCompletionState::Withdrawn
+        );
+        assert!(cell.has_external_completion && cell.counts_as_completion);
+    }
+}
+
+#[test]
+fn cross_session_both_scope_and_explicit_single_endpoint_override_preserve_independent_ends() {
+    for (first_text, withdraw, local, external) in [
+        (
+            "2026-09-26锻炼完成了。",
+            "撤回2026-09-26锻炼完成，这个打卡记错了。",
+            HabitLocalCompletionState::Withdrawn,
+            0,
+        ),
+        (
+            "2026-09-26锻炼完成了，只记本地。",
+            "撤回2026-09-26锻炼完成，只撤滴答。",
+            HabitLocalCompletionState::Completed,
+            0,
+        ),
+    ] {
+        let dir = IsolatedDirectory::new();
+        let path = dir.vault("cross-chat-both");
+        prepare_dual_vault(&path);
+        let vault = MutableVault::new(&path);
+        let clock = ManualClock::new("2026-09-27", "21:00");
+        let source = Arc::new(Mutex::new(DualSource {
+            readable: true,
+            ..Default::default()
+        }));
+        source.lock().unwrap().checkins.insert(20260926, 2);
+        let (app, results) = new_dual_application(&dir, &vault, clock.clone(), Arc::clone(&source));
+        let first = app.create_default_session().unwrap();
+        dual_submit(&app, &first.id, first_text);
+        app.shutdown().unwrap();
+        let (app, _) = new_dual_application(&dir, &vault, clock.clone(), Arc::clone(&source));
+        let second = app.create_default_session().unwrap();
+        dual_submit(&app, &second.id, withdraw);
+        assert!(results.lock().unwrap().iter().all(|result| result.success));
+        assert_eq!(source.lock().unwrap().checkins[&20260926], external);
+        assert_eq!(source.lock().unwrap().writes, 1);
+        let view = TodayApplication::new(vault, NoVaultPicker, clock)
+            .habits()
+            .unwrap();
+        assert_eq!(
+            view.habit("exercise")
+                .unwrap()
+                .cell("2026-09-26")
+                .unwrap()
+                .local_completion_state,
+            local
+        );
+    }
+}
+
+#[test]
+fn cross_session_scope_does_not_use_another_canonical_vault_target() {
+    use personal_dashboard_lib::today::HabitCompletionMutationInput;
+    let dir = IsolatedDirectory::new();
+    let a = dir.vault("scope-a");
+    let b = dir.vault("scope-b");
+    prepare_dual_vault(&a);
+    prepare_dual_vault(&b);
+    let vault = MutableVault::new(&a);
+    let clock = ManualClock::new("2026-09-27", "21:00");
+    let source = Arc::new(Mutex::new(DualSource {
+        readable: true,
+        ..Default::default()
+    }));
+    source.lock().unwrap().checkins.insert(20260926, 2);
+    let (app, _) = new_dual_application(&dir, &vault, clock.clone(), Arc::clone(&source));
+    let first = app.create_default_session().unwrap();
+    dual_submit(&app, &first.id, "2026-09-26锻炼完成了，只记本地。");
+    vault.save_selected_vault(&b).unwrap();
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
+    let view = today.habits().unwrap();
+    today
+        .set_historical_habit_completion(HabitCompletionMutationInput {
+            habit_key: "exercise".into(),
+            lived_date: "2026-09-26".into(),
+            completed: true,
+            change_id: "independent-user-completion".into(),
+            target_binding: view.completion_target_binding.unwrap(),
+            expected_revision: view.completion_revision,
+        })
+        .unwrap();
+    let before = dual_completion_bytes(&b);
+    let second = app.create_default_session().unwrap();
+    dual_submit(&app, &second.id, "撤回2026-09-26锻炼完成，这个打卡记错了。");
+    assert_eq!(dual_completion_bytes(&b), before);
+    assert_eq!(source.lock().unwrap().checkins[&20260926], 2);
+    assert_eq!(source.lock().unwrap().writes, 0);
+    assert!(!source.lock().unwrap().habit_writes_allowed);
+    assert!(app
+        .session("vault-a", &second.id)
+        .unwrap()
+        .task_operations
+        .is_empty());
+}
+
+#[test]
+fn cross_session_unconfirmed_external_plan_cannot_override_saved_local_origin() {
+    for status in ["failed", "unknown"] {
+        let dir = IsolatedDirectory::new();
+        let path = dir.vault("unconfirmed-origin");
+        prepare_dual_vault(&path);
+        let vault = MutableVault::new(&path);
+        let clock = ManualClock::new("2026-09-27", "21:00");
+        let source = Arc::new(Mutex::new(DualSource {
+            readable: true,
+            ..Default::default()
+        }));
+        source.lock().unwrap().checkins.insert(20260926, 2);
+        let (app, _) = new_dual_application(&dir, &vault, clock.clone(), Arc::clone(&source));
+        let first = app.create_default_session().unwrap();
+        dual_submit(&app, &first.id, "2026-09-26锻炼完成了，只记本地。");
+        app.shutdown().unwrap();
+        // Inject only the source fault outcome: an unconfirmed later request is
+        // not a saved completion origin even when its identity metadata exists.
+        let store =
+            FileCollaborationStore::new(dir.path().join("collaboration/collaboration.json"));
+        let mut history = serde_json::to_value(store.load().unwrap()).unwrap();
+        let mut message = history["sessions"][0]["messages"][0].clone();
+        message["createdAt"] = json!("2026-09-27T22:00:00-04:00");
+        message["externalActions"] = json!([{"actionId":"unconfirmed-plan","sourceId":"dida365","sourceName":"Dida","toolId":"upsert_habit_checkins","status":status,"targetScope":"2026-09-26","inputSummary":"Owned source fault fixture","resultSummary":"Unconfirmed effect","verification":{"habitCheckin":{"habitId":"synthetic-habit","stamp":20260926,"status":2},"habitScope":"external","sourceObserved":true}}]);
+        history["sessions"][0]["messages"]
+            .as_array_mut()
+            .unwrap()
+            .push(message);
+        store
+            .save(&serde_json::from_value(history).unwrap())
+            .unwrap();
+        let (app, _) = new_dual_application(&dir, &vault, clock.clone(), Arc::clone(&source));
+        let second = app.create_default_session().unwrap();
+        dual_submit(&app, &second.id, "撤回2026-09-26锻炼完成，这个打卡记错了。");
+        assert_eq!(source.lock().unwrap().checkins[&20260926], 2);
+        assert_eq!(source.lock().unwrap().writes, 0);
+        assert!(!source.lock().unwrap().habit_writes_allowed);
+        assert_eq!(
+            TodayApplication::new(vault, NoVaultPicker, clock)
+                .habits()
+                .unwrap()
+                .habit("exercise")
+                .unwrap()
+                .cell("2026-09-26")
+                .unwrap()
+                .local_completion_state,
+            HabitLocalCompletionState::Withdrawn
+        );
+    }
+}
+
+#[test]
+fn cross_session_local_effect_save_time_precedes_old_prepared_request_time() {
+    let dir = IsolatedDirectory::new();
+    let path = dir.vault("late-approved-origin");
+    prepare_dual_vault(&path);
+    let vault = MutableVault::new(&path);
+    let clock = ManualClock::new("2026-09-27", "20:00");
+    let source = Arc::new(Mutex::new(DualSource {
+        readable: true,
+        ..Default::default()
+    }));
+    let (app, _) = new_dual_application(&dir, &vault, clock.clone(), Arc::clone(&source));
+    let first = app.create_default_session().unwrap();
+    dual_submit(&app, &first.id, "2026-09-26锻炼完成了，只记滴答。");
+    clock.set_time("21:00");
+    let local = app.create_default_session().unwrap();
+    dual_submit(&app, &local.id, "2026-09-26锻炼完成了，只记本地。");
+    app.shutdown().unwrap();
+    let store = FileCollaborationStore::new(dir.path().join("collaboration/collaboration.json"));
+    let mut history = serde_json::to_value(store.load().unwrap()).unwrap();
+    // Reproduce a request prepared earlier and approved later. The confirmed
+    // effect's updatedAt remains 21:00 and must determine the saved origin.
+    let local_history = history["sessions"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|s| s["id"] == local.id)
+        .unwrap();
+    local_history["messages"][0]["createdAt"] = json!("2026-09-27T19:00:00-04:00");
+    store
+        .save(&serde_json::from_value(history).unwrap())
+        .unwrap();
+    let (app, _) = new_dual_application(&dir, &vault, clock.clone(), Arc::clone(&source));
+    let next = app.create_default_session().unwrap();
+    dual_submit(&app, &next.id, "撤回2026-09-26锻炼完成，这个打卡记错了。");
+    assert_eq!(
+        source.lock().unwrap().writes,
+        1,
+        "Only the earlier explicit external completion was written"
+    );
+    assert_eq!(source.lock().unwrap().checkins[&20260926], 2);
+    assert!(!source.lock().unwrap().habit_writes_allowed);
+    assert_eq!(
+        TodayApplication::new(vault, NoVaultPicker, clock)
+            .habits()
+            .unwrap()
+            .habit("exercise")
+            .unwrap()
+            .cell("2026-09-26")
+            .unwrap()
+            .local_completion_state,
+        HabitLocalCompletionState::Withdrawn
+    );
+}
+
+#[test]
+fn cross_session_equal_saved_origin_times_require_endpoint_clarification() {
+    let dir = IsolatedDirectory::new();
+    let path = dir.vault("tied-origin-times");
+    prepare_dual_vault(&path);
+    let vault = MutableVault::new(&path);
+    let clock = ManualClock::new("2026-09-27", "21:00");
+    let source = Arc::new(Mutex::new(DualSource { readable: true, ..Default::default() }));
+    let (app, _) = new_dual_application(&dir, &vault, clock.clone(), Arc::clone(&source));
+    let local = app.create_default_session().unwrap();
+    dual_submit(&app, &local.id, "2026-09-26锻炼完成了，只记本地。");
+    let external = app.create_default_session().unwrap();
+    dual_submit(&app, &external.id, "2026-09-26锻炼完成了，只记滴答。");
+    let before = dual_completion_bytes(&path);
+    app.shutdown().unwrap();
+    let (app, _) = new_dual_application(&dir, &vault, clock, Arc::clone(&source));
+    let next = app.create_default_session().unwrap();
+    dual_submit(&app, &next.id, "撤回2026-09-26锻炼完成，这个打卡记错了。");
+    assert_eq!(dual_completion_bytes(&path), before);
+    assert_eq!(source.lock().unwrap().checkins[&20260926], 2);
+    assert_eq!(source.lock().unwrap().writes, 1);
+    assert!(!source.lock().unwrap().habit_writes_allowed);
+    assert!(app.session("vault-a", &next.id).unwrap().task_operations.is_empty());
 }

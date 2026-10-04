@@ -29,7 +29,7 @@ pub(super) fn unresolved(action: &ExternalToolActionView) -> bool {
             != Some(true)
 }
 
-fn payload(result: &Value) -> Value {
+fn decoded_payload(result: &Value) -> Value {
     let structured = result
         .get("structuredContent")
         .filter(|v| !v.is_null())
@@ -47,8 +47,23 @@ fn payload(result: &Value) -> Value {
                 })
             })
     });
-    let decoded = decoded.unwrap_or_else(|| result.clone());
+    decoded.unwrap_or_else(|| result.clone())
+}
+
+fn payload(result: &Value) -> Value {
+    let decoded = decoded_payload(result);
     decoded.get("result").cloned().unwrap_or(decoded)
+}
+
+fn complete_source_envelope(value: &Value) -> bool {
+    !value.get("error").is_some_and(|error| !error.is_null())
+        && value.get("success") != Some(&json!(false))
+        && !["nextCursor", "next_cursor"]
+            .iter()
+            .any(|key| value.get(key).is_some_and(|cursor| !cursor.is_null()))
+        && !["partial", "hasMore", "has_more"]
+            .iter()
+            .any(|key| value.get(key) == Some(&json!(true)))
 }
 
 fn normalized_field(key: &str, value: &Value) -> Value {
@@ -72,8 +87,11 @@ fn normalized_field(key: &str, value: &Value) -> Value {
 
 // Normalize only explicit offset ISO instants; date-only or unknown times stay
 // unchanged. This does not infer local time, a timezone or a completion date.
-fn iso_epoch_millis(text: &str) -> Option<i64> {
+pub(super) fn iso_epoch_millis(text: &str) -> Option<i64> {
     let (date, time) = text.split_once('T')?;
+    let time = if matches!(time.get(5..6), Some("+" | "-" | "Z")) {
+        format!("{}:00{}", time.get(..5)?, time.get(5..)?)
+    } else { time.to_owned() };
     super::validate_date(date).ok()?;
     let year: i64 = date.get(..4)?.parse().ok()?;
     let month: i64 = date.get(5..7)?.parse().ok()?;
@@ -401,7 +419,11 @@ pub(super) fn verify(
             all_sources_observed = false;
             break;
         };
-        let value = payload(&response);
+        let decoded = decoded_payload(&response);
+        if !complete_source_envelope(&response) || !complete_source_envelope(&decoded) {
+            confirmed = false; all_sources_observed = false; break;
+        }
+        let value = decoded.get("result").cloned().unwrap_or(decoded);
         if entry.get("absent").and_then(Value::as_bool) == Some(true) {
             let task_id = entry["arguments"]["task_id"].as_str().unwrap_or("");
             if !task_absent(&response, task_id) {
@@ -413,6 +435,11 @@ pub(super) fn verify(
                 }
             }
             continue;
+        }
+        if tool == "get_task_by_id" && task_absent(&response, entry["arguments"]["task_id"].as_str().unwrap_or("")) {
+            // Exact current absence is observed source state, but cannot prove
+            // that the earlier historical mutation succeeded before deletion.
+            confirmed = false; continue;
         }
         if response.get("isError").and_then(Value::as_bool) == Some(true)
             || value.get("error").is_some()
@@ -505,6 +532,394 @@ pub(super) const GUIDANCE: &str = "Manual Dida writes use the existing discovere
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Only transport/source responses are scripted. Application persistence,
+    // current-round capability gating, Task saves and the verifier are production.
+    #[derive(Clone)]
+    struct WorkflowVault(std::path::PathBuf);
+    impl crate::today::TodayWorkspacePersistence for WorkflowVault {
+        fn load_selected_vault(&self) -> Result<Option<std::path::PathBuf>, String> {
+            Ok(Some(self.0.clone()))
+        }
+        fn save_selected_vault(&self, _: &std::path::Path) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    #[derive(Clone, Copy)]
+    struct WorkflowClock;
+    impl crate::today::TodayClock for WorkflowClock {
+        fn current_date(&self) -> String {
+            "2026-09-27".into()
+        }
+        fn current_time_label(&self) -> String {
+            "12:00".into()
+        }
+        fn current_timestamp_label(&self) -> String {
+            "2026-09-27T12:00:00+00:00".into()
+        }
+    }
+    impl crate::collaboration::CollaborationClock for WorkflowClock {
+        fn current_timestamp(&self) -> String {
+            "2026-09-27T12:00:00+00:00".into()
+        }
+        fn current_date(&self) -> String {
+            "2026-09-27".into()
+        }
+        fn current_time(&self) -> String {
+            "12:00".into()
+        }
+    }
+    struct WorkflowContext;
+    impl crate::collaboration::CollaborationContextSource for WorkflowContext {
+        fn current_vault_key(&self) -> Result<Option<String>, String> {
+            Ok(Some("owned-fixture".into()))
+        }
+        fn read_context(
+            &self,
+            _: Option<&str>,
+            date: &str,
+        ) -> Result<crate::collaboration::CollaborationContextView, String> {
+            use crate::collaboration::{CollaborationContextView, ContextPaneView};
+            let empty = || ContextPaneView {
+                state: "empty".into(),
+                message: "Confirmed empty fixture context".into(),
+                items: vec![],
+            };
+            Ok(CollaborationContextView {
+                date: date.into(),
+                vault_name: Some("synthetic".into()),
+                daily_record: empty(),
+                tasks: empty(),
+                task_revision: None,
+                task_target_binding: None,
+                task_records: vec![],
+                task_lists: vec![],
+                habits: empty(),
+            })
+        }
+    }
+    struct WorkflowSource {
+        response: Result<Value, String>,
+        scopes: Vec<bool>,
+        writes: usize,
+        starts: usize,
+    }
+    struct WorkflowTransport(std::sync::Arc<std::sync::Mutex<WorkflowSource>>);
+    impl crate::collaboration::AppServerTransport for WorkflowTransport {
+        fn inspect(&mut self) -> Result<crate::collaboration::RuntimeConnectionView, String> {
+            Ok(crate::collaboration::RuntimeConnectionView {
+                executable_path: Some("owned-fixture".into()),
+                version: Some("fixture".into()),
+                experimental: true,
+                read_only_text_turns_available: true,
+                text_turn_unavailable_reason: None,
+                authenticated: true,
+                auth_mode: Some("chatgpt".into()),
+                account_email: None,
+                plan_type: None,
+                models: vec![],
+                selected_model: None,
+                selected_reasoning_effort: None,
+                error: None,
+            })
+        }
+        fn start_chatgpt_login(&mut self) -> Result<(), String> {
+            Err("No login in fixture".into())
+        }
+        fn start_thread(&mut self, _: Option<&str>, _: &str) -> Result<String, String> {
+            let mut source = self.0.lock().unwrap();
+            source.starts += 1;
+            Ok(format!("owned-thread-{}", source.starts))
+        }
+        fn resume_thread(&mut self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn configure_external_writes(&mut self, allowed: bool) {
+            self.0.lock().unwrap().scopes.push(allowed);
+        }
+        fn reconcile_external_action(
+            &mut self,
+            mut action: ExternalToolActionView,
+        ) -> ExternalToolActionView {
+            let response = self.0.lock().unwrap().response.clone();
+            verify(&mut action, |_, _| response.clone());
+            action
+        }
+        fn send_turn(
+            &mut self,
+            _: crate::collaboration::RuntimeTurnRequest,
+        ) -> Result<crate::collaboration::RuntimeTurnResult, String> {
+            unreachable!()
+        }
+        fn send_turn_with_external_actions(
+            &mut self,
+            request: crate::collaboration::RuntimeTurnRequest,
+            _: std::sync::Arc<std::sync::atomic::AtomicBool>,
+            tools: Option<crate::collaboration::RuntimeDynamicToolHandler>,
+            actions: Option<crate::collaboration::RuntimeExternalActionHandler>,
+            _: Option<crate::collaboration::RuntimeExternalApprovalHandler>,
+        ) -> Result<crate::collaboration::RuntimeTurnResult, String> {
+            let turn = format!("turn-{}", request.execution_id);
+            let mut effects = vec![];
+            if request.user_text.starts_with("创建买菜任务") {
+                let result = tools.unwrap()(crate::collaboration::RuntimeDynamicToolCall {
+                    thread_id: request.thread_id.clone(),
+                    turn_id: turn.clone(),
+                    call_id: "local-owned-task".into(),
+                    tool: "dashboard_task_operation".into(),
+                    arguments: json!({"operation":"createTask","name":"买菜","date":null,"content":null,"time":null,"listId":null,"executionMode":"execute","authorizationQuote":"创建买菜任务"}),
+                });
+                assert!(result.success, "{:?}", result);
+                let mut effect = if request.user_text.contains("withdraw") {
+                    action(
+                        "upsert_habit_checkins",
+                        json!({"habit_id":"owned-habit","checkin_data":{"stamp":20260927,"status":0}}),
+                        json!({}),
+                    )
+                } else {
+                    action(
+                        "complete_task",
+                        json!({"task_id":"owned-task-a"}),
+                        json!({}),
+                    )
+                };
+                self.0.lock().unwrap().writes += 1;
+                effect = self.reconcile_external_action(effect);
+                actions.as_ref().unwrap()(effect.clone());
+                effects.push(effect);
+            } else if request.user_text == "当前明确授权的其他滴答任务B" {
+                assert_eq!(self.0.lock().unwrap().scopes.last(), Some(&true));
+                let mut effect = action(
+                    "create_task",
+                    json!({"task":{"title":"Owned unrelated B"}}),
+                    json!({"id":"owned-task-b"}),
+                );
+                verify(&mut effect, |_, _| {
+                    Ok(
+                        json!({"isError":false,"structuredContent":{"id":"owned-task-b","title":"Owned unrelated B"}}),
+                    )
+                });
+                self.0.lock().unwrap().writes += 1;
+                actions.as_ref().unwrap()(effect.clone());
+                effects.push(effect);
+            }
+            Ok(crate::collaboration::RuntimeTurnResult {
+                text: "Saved local receipt and independent external readback outcomes.".into(),
+                runtime_turn_id: Some(turn),
+                stopped: false,
+                external_actions: effects,
+            })
+        }
+    }
+    fn workflow_app(
+        root: &std::path::Path,
+        source: std::sync::Arc<std::sync::Mutex<WorkflowSource>>,
+    ) -> crate::collaboration::CollaborationApplication {
+        use crate::collaboration::{
+            CollaborationApplication, FileCollaborationStore, TaskApplicationCollaborationAdapter,
+        };
+        use crate::tasks::{FileTaskStore, TaskApplication};
+        CollaborationApplication::with_adapters(
+            std::sync::Arc::new(FileCollaborationStore::new(
+                root.join("profile/conversation.json"),
+            )),
+            Box::new(WorkflowTransport(source)),
+            std::sync::Arc::new(WorkflowContext),
+            std::sync::Arc::new(WorkflowClock),
+            root.join("runtime"),
+            "Scripted native readback fixture".into(),
+        )
+        .with_task_service(std::sync::Arc::new(
+            TaskApplicationCollaborationAdapter::new(TaskApplication::new(
+                WorkflowVault(root.into()),
+                WorkflowClock,
+                FileTaskStore,
+            )),
+        ))
+    }
+    fn workflow_submit(
+        app: &crate::collaboration::CollaborationApplication,
+        id: &str,
+        text: &str,
+    ) -> crate::collaboration::CollaborationSessionView {
+        app.submit_message("owned-fixture", id, "2026-09-27", text)
+            .unwrap();
+        for _ in 0..300 {
+            let session = app.session("owned-fixture", id).unwrap();
+            if session.run_state == "completed" {
+                return session;
+            }
+            assert_ne!(session.run_state, "error", "{}", session.progress);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("Owned readback workflow did not finish");
+    }
+    #[test]
+    fn highest_native_readback_workflow_preserves_saved_local_receipt_and_never_replays_unknown_effects(
+    ) {
+        use std::sync::{Arc, Mutex};
+        let variants = [
+            json!({"partial":true}),
+            json!({"hasMore":true}),
+            json!({"nextCursor":"next"}),
+            json!({"success":false}),
+        ];
+        for (index, mut marker) in variants.into_iter().enumerate() {
+            let root = std::env::temp_dir().join(format!("pd-readback-{}-{index}", std::process::id()));
+            std::fs::create_dir_all(root.join(".obsidian")).unwrap();
+            std::fs::create_dir_all(root.join("life/Journal/Daily")).unwrap();
+            marker["result"] = json!([]);
+            let source = Arc::new(Mutex::new(WorkflowSource {
+                response: Ok(json!({"isError":false,"structuredContent":marker})),
+                scopes: vec![],
+                writes: 0,
+                starts: 0,
+            }));
+            let app = workflow_app(&root, Arc::clone(&source));
+            let session = app.create_default_session().unwrap();
+            let saved = workflow_submit(
+                &app,
+                &session.id,
+                "创建买菜任务；withdraw owned native check-in",
+            );
+            assert_eq!(saved.task_operations[0].status, "applied");
+            assert_eq!(saved.messages[0].external_actions[0].status, "unknown");
+            assert_eq!(
+                saved.messages[0].external_actions[0]
+                    .verification
+                    .as_ref()
+                    .unwrap()["sourceObserved"],
+                false
+            );
+            let task_id = saved.task_operations[0].task_id.clone();
+            let revision = saved.task_operations[0].result_revision.clone();
+            app.shutdown().unwrap();
+            let app = workflow_app(&root, Arc::clone(&source));
+            let still = workflow_submit(&app, &session.id, "读取当前剩余请求，不重复先前保存");
+            assert_eq!(source.lock().unwrap().scopes.last(), Some(&false));
+            assert_eq!(still.task_operations.len(), 1);
+            assert_eq!(still.task_operations[0].task_id, task_id);
+            assert_eq!(still.task_operations[0].result_revision, revision);
+            source.lock().unwrap().response =
+                Ok(json!({"isError":false,"structuredContent":{"result":[]}}));
+            let confirmed = workflow_submit(&app, &session.id, "读取当前剩余请求，不重复先前保存");
+            assert_eq!(confirmed.messages[0].external_actions[0].status, "saved");
+            assert_eq!(source.lock().unwrap().scopes.last(), Some(&true));
+            assert_eq!(source.lock().unwrap().writes, 1);
+            assert_eq!(confirmed.task_operations.len(), 1);
+            assert_eq!(confirmed.task_operations[0].task_id, task_id);
+            app.shutdown().unwrap();
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+    #[test]
+    fn highest_exact_task_absence_observes_current_source_without_claiming_old_success_or_blocking_unrelated_write(
+    ) {
+        use std::sync::{Arc, Mutex};
+        for restart in [false, true] {
+            let root = std::env::temp_dir().join(format!("pd-absent-{}-{restart}", std::process::id()));
+            std::fs::create_dir_all(root.join(".obsidian")).unwrap();
+            std::fs::create_dir_all(root.join("life/Journal/Daily")).unwrap();
+            let source = Arc::new(Mutex::new(WorkflowSource {
+                response: Err("Network/authentication unavailable".into()),
+                scopes: vec![],
+                writes: 0,
+                starts: 0,
+            }));
+            let app = workflow_app(&root, Arc::clone(&source));
+            let session = app.create_default_session().unwrap();
+            workflow_submit(
+                &app,
+                &session.id,
+                "创建买菜任务；complete owned native Task A",
+            );
+            let app = if restart {
+                app.shutdown().unwrap();
+                workflow_app(&root, Arc::clone(&source))
+            } else {
+                app
+            };
+            let unavailable = workflow_submit(&app, &session.id, "读取当前剩余请求，不重复先前保存");
+            assert_eq!(
+                unavailable.messages[0].external_actions[0].status,
+                "unknown"
+            );
+            assert_eq!(source.lock().unwrap().scopes.last(), Some(&false));
+            source.lock().unwrap().response = Ok(
+                json!({"isError":true,"content":[{"type":"text","text":"Error executing tool get_task_by_id: TickTick API error [resource_not_found]: task not found: owned-task-a (errorId: synthetic)"}]}),
+            );
+            let current = workflow_submit(&app, &session.id, "当前明确授权的其他滴答任务B");
+            assert_eq!(current.messages[0].external_actions[0].status, "unknown");
+            assert_eq!(
+                current.messages[0].external_actions[0]
+                    .verification
+                    .as_ref()
+                    .unwrap()["sourceObserved"],
+                true
+            );
+            assert_eq!(
+                current
+                    .messages
+                    .iter()
+                    .flat_map(|message| &message.external_actions)
+                    .last()
+                    .unwrap()
+                    .status,
+                "saved"
+            );
+            assert_eq!(current.task_operations.len(), 1);
+            assert_eq!(source.lock().unwrap().writes, 2);
+            let current = workflow_submit(&app, &session.id, "读取当前剩余请求，不重复先前保存");
+            assert_eq!(source.lock().unwrap().scopes.last(), Some(&true));
+            assert_eq!(source.lock().unwrap().writes, 2);
+            assert_eq!(current.task_operations.len(), 1);
+            app.shutdown().unwrap();
+            std::fs::remove_dir_all(root).unwrap();
+        }
+    }
+
+    #[test]
+    fn incomplete_empty_withdrawal_readback_is_unknown_and_exact_task_absence_is_observed() {
+        for marker in [
+            json!({"partial":true}),
+            json!({"hasMore":true}),
+            json!({"nextCursor":"next"}),
+            json!({"success":false}),
+        ] {
+            let mut effect = action(
+                "upsert_habit_checkins",
+                json!({"habit_id":"id","checkin_data":{"stamp":20260927,"status":0}}),
+                json!({}),
+            );
+            let mut envelope = marker;
+            envelope["result"] = json!([]);
+            verify(&mut effect, |_, _| {
+                Ok(json!({"isError":false,"structuredContent":envelope}))
+            });
+            assert_eq!(effect.status, "unknown");
+            assert!(unresolved(&effect));
+        }
+        let mut effect = action(
+            "upsert_habit_checkins",
+            json!({"habit_id":"id","checkin_data":{"stamp":20260927,"status":0}}),
+            json!({}),
+        );
+        verify(&mut effect, |_, _| {
+            Ok(json!({"isError":false,"structuredContent":{"result":[]}}))
+        });
+        assert_eq!(effect.status, "saved");
+        let mut old = action("complete_task", json!({"task_id":"id"}), json!({}));
+        verify(&mut old, |_, _| {
+            Ok(
+                json!({"isError":true,"content":[{"type":"text","text":"Error executing tool get_task_by_id: TickTick API error [resource_not_found]: task not found: id (errorId: owned-test)"}]}),
+            )
+        });
+        assert_eq!(old.status, "unknown");
+        assert!(!unresolved(&old));
+        verify(&mut old, |_, _| Err("network unavailable".into()));
+        assert_eq!(old.status, "unknown");
+        assert!(unresolved(&old));
+    }
+
     fn action(tool: &str, args: Value, result: Value) -> ExternalToolActionView {
         let mut action = ExternalToolActionView {
             action_id: "thread:item".into(),

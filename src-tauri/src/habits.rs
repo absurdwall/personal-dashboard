@@ -11,6 +11,17 @@ const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 const HABIT_NAMES_SCHEMA_VERSION: u32 = 1;
 const HISTORY_WEEKS: i64 = 12;
 
+// Snapshot v1 retains this verified association in the existing source label.
+// Keep its encoder and readers together without changing the persisted schema.
+pub(crate) fn explicit_dida_mapping_label(key: &str, id: &str) -> String {
+    format!("Dida365 explicit mapping {key}={id}")
+}
+
+pub(crate) fn explicit_dida_mapping_id<'a>(label: &'a str, key: &str) -> Option<&'a str> {
+    let id = label.strip_prefix(&explicit_dida_mapping_label(key, ""))?;
+    (!id.is_empty() && id.len() <= 160 && !id.contains(char::is_whitespace)).then_some(id)
+}
+
 pub trait HabitSnapshotStore {
     fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String>;
 }
@@ -700,7 +711,7 @@ pub fn project_snapshot_with_names_at_local_date(
         // withdrawal (status 0 has no completion observation).
         let mapping_key = format!("dida-{}", habit.key);
         if let Some(source) = source_by_key.get(mapping_key.as_str()) {
-            if source.label.starts_with(&format!("Dida365 explicit mapping {}=", habit.key)) {
+            if explicit_dida_mapping_id(&source.label, &habit.key).is_some() {
                 source_keys.insert(source.key.as_str());
             }
         }

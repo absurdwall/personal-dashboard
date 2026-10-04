@@ -1,6 +1,6 @@
 //! Rebuild the existing snapshot v1 from host-observed source reads and canonical facts.
 //! This module never executes code from a user Vault and never creates a Habit catalog.
-use crate::habits::{snapshot_dates_at_local_date, SNAPSHOT_RELATIVE_PATH};
+use crate::habits::{explicit_dida_mapping_label, snapshot_dates_at_local_date, SNAPSHOT_RELATIVE_PATH};
 use crate::today::CalendarDate;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -308,7 +308,7 @@ pub fn rebuild(
     let mut mapped_sources = BTreeMap::new();
     for (key, id) in &input.mappings {
         let source_key = format!("dida-{key}");
-        let label = format!("Dida365 explicit mapping {key}={id}");
+        let label = explicit_dida_mapping_label(key, id);
         let previous = sources.iter().find(|s| s["key"] == source_key);
         if previous.is_some_and(|s| s["kind"] != "dida365" || s["label"] != label) {
             return Err(fail("query","Explicit source identity conflicts with the existing mapping; no snapshot published"));
@@ -698,6 +698,18 @@ fn rollback_publication(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn snapshot_v1_mapping_label_roundtrips_exact_identity_and_rejects_malformed_labels() {
+        use crate::habits::explicit_dida_mapping_id;
+        let label = explicit_dida_mapping_label("exercise", "owned-stable-id");
+        assert_eq!(label, "Dida365 explicit mapping exercise=owned-stable-id");
+        assert_eq!(explicit_dida_mapping_id(&label, "exercise"), Some("owned-stable-id"));
+        assert_eq!(explicit_dida_mapping_id(&label, "sleep"), None);
+        for malformed in ["Dida365 explicit mapping exercise=", "Dida365 explicit mapping exercise=bad id", "A display label exercise=owned-stable-id"] {
+            assert_eq!(explicit_dida_mapping_id(malformed, "exercise"), None);
+        }
+    }
+
     #[test]
     fn native_evidence_accepts_only_successful_bounded_selected_reads_and_replaces_forged_evidence()
     {

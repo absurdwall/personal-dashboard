@@ -2885,113 +2885,157 @@ where
                     let text = daytime
                         .updates
                         .iter()
-                        .flat_map(|u| u.observed_facts.iter())
-                        .chain(short_records.iter().map(|r| &r.text))
-                        .chain(evening.account.iter())
-                        .chain(evening.additions.iter())
-                        .chain(evening.corrections.iter());
-                    let mut day_facts = std::collections::BTreeMap::new();
-                    for fact in text {
-                        for clause in fact.split(['，', ',', '。', ';', '；', '\n', '并', '和'])
-                        {
-                            let lower = clause.to_lowercase();
-                            let keys: Vec<&str> = [
-                                ("wake", ["起床", "woke", "got up"]),
-                                ("sleep", ["睡觉", "入睡", "slept"]),
-                            ]
-                            .into_iter()
-                            .filter_map(|(key, words)| {
-                                words.iter().any(|word| lower.contains(word)).then_some(key)
-                            })
-                            .collect();
-                            if keys.is_empty() {
-                                continue;
-                            }
-                            if keys.len() > 1
-                                || [
-                                    "未知",
-                                    "不知道",
-                                    "不清楚",
-                                    "未",
-                                    "没有",
-                                    "不是",
-                                    "写错",
-                                    "撤回",
-                                    "错误",
-                                    "wrong",
-                                    "retract",
-                                    "unknown",
-                                    "not ",
-                                ]
+                        .flat_map(|u| {
+                            u.observed_facts
                                 .iter()
-                                .any(|m| lower.contains(m))
-                            {
-                                for key in keys {
-                                    day_facts.remove(key);
-                                }
-                                continue;
-                            }
-                            let key = keys[0];
-                            if [
-                                "计划", "打算", "准备", "可能", "也许", "will ", "plan ", "maybe",
-                            ]
-                            .iter()
-                            .any(|m| lower.contains(m))
-                            {
-                                continue;
-                            }
-                            let note = format!(
-                                "Daily Record {label}; {}: {}",
-                                record_target_binding(&path),
-                                clause.trim()
-                            );
-                            let mut observation = serde_json::json!({"source":"dashboard-daily-record", "observedAt":now, "note":note});
-                            match explicit_time_expression(clause) {
-                                ExplicitTimeExpression::Point {
-                                    date: occurred,
-                                    minute,
-                                } if minute < 1440 => {
-                                    let occurred = occurred.unwrap_or_else(|| {
-                                        if clause.contains("次日") {
-                                            date.plus_days(1).to_string()
-                                        } else {
-                                            label.clone()
+                                .map(move |fact| (fact, canonical_habit_correction(&u.title), true))
+                        })
+                        .chain(
+                            short_records
+                                .iter()
+                                .map(|r| (&r.text, !r.changes.is_empty(), false)),
+                        )
+                        .chain(evening.account.iter().map(|fact| (fact, false, true)))
+                        .chain(evening.additions.iter().map(|fact| (fact, false, true)))
+                        .chain(evening.corrections.iter().map(|fact| (fact, true, true)));
+                    let mut day_facts =
+                        std::collections::BTreeMap::<String, Vec<(bool, CanonicalHabitEvidence)>>::new();
+                    for (fact, correction_context, occurred_context) in text {
+                        for sentence in fact.split(['。', ';', '；', '\n']) {
+                            let mut prefix = String::new();
+                            for part in sentence.split(['，', ',']) {
+                                for clause in part.split(['并', '和']) {
+                                    let lower = clause.to_lowercase();
+                                    // Conjunctions do not turn a future/discussion prefix into a fact.
+                                    let nonfactual = canonical_habit_nonfactual(&lower)
+                                        || (canonical_habit_nonfactual(&prefix)
+                                            && !canonical_habit_independent_assertion(&lower, &prefix));
+                                    prefix.push_str(&lower);
+                                    if nonfactual {
+                                        continue;
+                                    }
+                                    let correction = correction_context || canonical_habit_correction(sentence);
+                                    let keys: Vec<&str> = [
+                                        ("wake", ["起床", "woke", "got up"]),
+                                        ("sleep", ["睡觉", "入睡", "slept"]),
+                                    ]
+                                    .into_iter()
+                                    .filter_map(|(key, words)| {
+                                        words.iter().any(|word| lower.contains(word)).then_some(key)
+                                    })
+                                    .collect();
+                                    if keys.is_empty() {
+                                        continue;
+                                    }
+                                    if keys.len() > 1
+                                        || [
+                                            "未知",
+                                            "不知道",
+                                            "不清楚",
+                                            "未",
+                                            "没有",
+                                            "不是",
+                                            "写错",
+                                            "撤回",
+                                            "错误",
+                                            "wrong",
+                                            "retract",
+                                            "unknown",
+                                            "not ",
+                                        ]
+                                        .iter()
+                                        .any(|m| lower.contains(m))
+                                    {
+                                        // Uncertainty alone cannot erase a confirmed actual minute.
+                                        // An explicit correction/withdrawal can revoke that evidence.
+                                        if correction || lower.contains("撤回") || lower.contains("retract") {
+                                            for key in keys {
+                                                let evidence = if [
+                                                    "未知",
+                                                    "不知道",
+                                                    "不清楚",
+                                                    "未",
+                                                    "没有",
+                                                    "撤回",
+                                                    "retract",
+                                                    "unknown",
+                                                ]
+                                                .iter()
+                                                .any(|marker| lower.contains(marker))
+                                                {
+                                                    CanonicalHabitEvidence::Unknown
+                                                } else {
+                                                    CanonicalHabitEvidence::Superseded
+                                                };
+                                                day_facts
+                                                    .entry(key.to_owned())
+                                                    .or_default()
+                                                    .push((true, evidence));
+                                            }
                                         }
-                                    });
-                                    let Some(day) = CalendarDate::parse(&occurred) else {
                                         continue;
-                                    };
-                                    let relation = if day == date {
-                                        "same-day"
-                                    } else if day == date.plus_days(1) {
-                                        "next-day"
-                                    } else {
+                                    }
+                                    let key = keys[0];
+                                    if !occurred_context && !canonical_habit_occurred(&lower) {
                                         continue;
-                                    };
-                                    let LocalWallTimeResolution::Unique { utc_offset_minutes } =
-                                        self.clock.resolve_local_wall_time(&occurred, minute)
-                                    else {
-                                        continue;
-                                    };
-                                    observation["status"] = serde_json::json!("actual-time");
-                                    observation["evidence"] = serde_json::json!("explicit-time");
-                                    observation["actualTime"] = serde_json::json!({"occurredOn":occurred,"localTime":format!("{:02}:{:02}",minute/60,minute%60),"utcOffsetMinutes":utc_offset_minutes,"dayRelation":relation});
+                                    }
+                                    let note = format!(
+                                        "Daily Record {label}; {}: {}",
+                                        record_target_binding(&path),
+                                        clause.trim()
+                                    );
+                                    let mut observation = serde_json::json!({"source":"dashboard-daily-record", "observedAt":now, "note":note});
+                                    match explicit_time_expression(clause) {
+                                        ExplicitTimeExpression::Point {
+                                            date: occurred,
+                                            minute,
+                                        } if minute < 1440 => {
+                                            let occurred = occurred.unwrap_or_else(|| {
+                                                if clause.contains("次日") {
+                                                    date.plus_days(1).to_string()
+                                                } else {
+                                                    label.clone()
+                                                }
+                                            });
+                                            let Some(day) = CalendarDate::parse(&occurred) else {
+                                                continue;
+                                            };
+                                            let relation = if day == date {
+                                                "same-day"
+                                            } else if day == date.plus_days(1) {
+                                                "next-day"
+                                            } else {
+                                                continue;
+                                            };
+                                            let LocalWallTimeResolution::Unique { utc_offset_minutes } =
+                                                self.clock.resolve_local_wall_time(&occurred, minute)
+                                            else {
+                                                continue;
+                                            };
+                                            observation["status"] = serde_json::json!("actual-time");
+                                            observation["evidence"] = serde_json::json!("explicit-time");
+                                            observation["actualTime"] = serde_json::json!({"occurredOn":occurred,"localTime":format!("{:02}:{:02}",minute/60,minute%60),"utcOffsetMinutes":utc_offset_minutes,"dayRelation":relation});
+                                        }
+                                        ExplicitTimeExpression::None
+                                            if lower.contains("按时") || lower.contains("on time") =>
+                                        {
+                                            observation["status"] = serde_json::json!("threshold-met");
+                                            observation["evidence"] = serde_json::json!("threshold-check-in");
+                                        }
+                                        _ => continue,
+                                    }
+                                    day_facts
+                                        .entry(key.to_owned())
+                                        .or_default()
+                                        .push((correction, CanonicalHabitEvidence::Observation(observation)));
                                 }
-                                ExplicitTimeExpression::None
-                                    if lower.contains("按时") || lower.contains("on time") =>
-                                {
-                                    observation["status"] = serde_json::json!("threshold-met");
-                                    observation["evidence"] =
-                                        serde_json::json!("threshold-check-in");
-                                }
-                                _ => continue,
                             }
-                            // Newer canonical additions/corrections replace earlier facts from this source.
-                            day_facts.insert(key.to_owned(), observation);
                         }
                     }
-                    for (key, observation) in day_facts {
-                        facts.insert((key, label.clone()), vec![observation]);
+                    for (key, candidates) in day_facts {
+                        if let Some(observation) = canonical_habit_observation(candidates) {
+                            facts.insert((key, label.clone()), vec![observation]);
+                        }
                     }
                 }
                 date = date.plus_days(1);
@@ -5926,6 +5970,139 @@ fn unlocated_axis_entry(
         continues_from_previous_day: false,
         continues_into_next_day: false,
     }
+}
+
+// These are source assertions, not recording timestamps or section chronology.
+fn canonical_habit_correction(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    ["更正", "修正", "纠正", "撤回", "写错", "correct", "retract"]
+        .iter()
+        .any(|marker| lower.contains(marker))
+}
+
+fn canonical_habit_nonfactual(lower: &str) -> bool {
+    [
+        "计划",
+        "打算",
+        "准备",
+        "可能",
+        "也许",
+        "希望",
+        "明天",
+        "明晚",
+        "后天",
+        "以后",
+        "将来",
+        "考虑",
+        "讨论",
+        "想",
+        "假设",
+        "如果",
+        "昨天",
+        "是否",
+        "吗",
+        "？",
+        "?",
+        "will ",
+        "plan ",
+        "maybe",
+        "perhaps",
+        "hope",
+        "tomorrow",
+        "yesterday",
+        "wish",
+        "consider",
+        "discuss",
+        "if ",
+        "would ",
+        "should ",
+        "might ",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+}
+
+// Free-form Short records do not acquire factual authority from their storage section.
+// Accept an occurred/date-qualified assertion; a bare time/action can be a plan.
+fn canonical_habit_occurred(lower: &str) -> bool {
+    [
+        "今天",
+        "当天",
+        "次日",
+        "实际",
+        "已经",
+        "起床了",
+        "入睡了",
+        "睡觉了",
+        "按时",
+        "woke",
+        "got up",
+        "slept",
+        "on time",
+        "today",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+        || matches!(
+            explicit_time_expression(lower),
+            ExplicitTimeExpression::Point { date: Some(_), .. }
+        )
+}
+
+fn canonical_habit_independent_assertion(lower: &str, prefix: &str) -> bool {
+    // A present-day assertion can stand apart from another clause's future wish.
+    // Conditional or tentative framing still qualifies the whole sentence.
+    ![
+        "如果", "假设", "是否", "可能", "也许", "if ", "maybe", "perhaps", "might ",
+    ]
+    .iter()
+    .any(|marker| prefix.contains(marker))
+        && lower.contains("今天")
+        && canonical_habit_occurred(lower)
+}
+
+enum CanonicalHabitEvidence {
+    Observation(serde_json::Value),
+    Unknown,
+    Superseded,
+}
+
+fn canonical_habit_observation(
+    candidates: Vec<(bool, CanonicalHabitEvidence)>,
+) -> Option<serde_json::Value> {
+    // Explicit correction authority outranks older assertions wherever each section lives.
+    // Within ordinary assertions, a threshold summary cannot replace an actual minute.
+    let has_correction = candidates.iter().any(|(correction, _)| *correction);
+    let selected: Vec<_> = candidates
+        .into_iter()
+        .filter(|(correction, _)| !has_correction || *correction)
+        .map(|(_, value)| value)
+        .collect();
+    if selected
+        .iter()
+        .any(|value| matches!(value, CanonicalHabitEvidence::Unknown))
+    {
+        return None;
+    }
+    let observations: Vec<_> = selected
+        .into_iter()
+        .filter_map(|value| match value {
+            CanonicalHabitEvidence::Observation(value) => Some(value),
+            _ => None,
+        })
+        .collect();
+    let actual: Vec<_> = observations
+        .iter()
+        .filter(|value| value["status"] == "actual-time")
+        .collect();
+    if let Some(first) = actual.first() {
+        // Contradictory unsequenced assertions do not establish a unique actual time.
+        return actual
+            .iter()
+            .all(|value| value["actualTime"] == first["actualTime"])
+            .then(|| (*first).clone());
+    }
+    observations.into_iter().next()
 }
 
 fn explicit_time_expression(text: &str) -> ExplicitTimeExpression {

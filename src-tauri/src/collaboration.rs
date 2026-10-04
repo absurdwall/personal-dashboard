@@ -5782,11 +5782,9 @@ impl CollaborationApplication {
             if explicit==Some("local") && requested_scope!="local" { return Err("Only-local intent must preserve local-only scope.".into()); }
             let current_id = habit_dual::mapped_id(&snapshot,habit_key);
             if requested_scope=="original" {
-                if let Some((scope,id))=habit_dual::original_scope(session,habit_key,target_date,current_id.as_deref()) {
-                    if scope=="external" { return Err("Original completion was only-external; preserve local history and withdraw the exact native source ID/date only.".into()); }
-                    return Ok((scope,id));
-                }
-                return Ok(("both".into(),current_id));
+                let (scope,id)=habit_dual::original_scope(&state.sessions,vault_key,&snapshot,habit_key,target_date)?;
+                if scope=="external" { return Err("Original completion was only-external; preserve local history and withdraw the exact native source ID/date only.".into()); }
+                return Ok((scope,id));
             }
             if !*completed && explicit.is_none() && requested_scope!="original" { return Err("A default withdrawal must use the original receipt scope and stable source ID; do not silently narrow or remap it.".into()); }
             if requested_scope=="local" && explicit.is_none() && current_id.is_some() && *completed {
@@ -6986,7 +6984,9 @@ impl CollaborationApplication {
         let external_writes_allowed = !automatic_plan
             && !is_review_before_write_request(&user_text.to_lowercase())
             && !prior_external_actions.iter().any(dida_writes::unresolved);
-        let external_habit_writes_allowed = !self.daily_data_service.read_habit_snapshot().is_ok_and(|snapshot|habit_dual::only_local_habit_effects(user_text,&snapshot));
+        let habit_snapshot = self.daily_data_service.read_habit_snapshot().ok();
+        let origins = habit_snapshot.as_ref().map(|snapshot| self.read_state(|state| habit_dual::origins(&state.sessions,vault_key,snapshot)).unwrap_or(Value::Null)).unwrap_or(Value::Null);
+        let external_habit_writes_allowed = habit_snapshot.as_ref().is_none_or(|snapshot|habit_dual::native_habit_writes_allowed(user_text,target_date,snapshot,&origins));
         runtime.configure_external_writes(external_writes_allowed);
         runtime.configure_external_habit_writes(external_habit_writes_allowed);
         // Dynamic tools are immutable for an App Server thread: thread/resume
@@ -7081,9 +7081,7 @@ impl CollaborationApplication {
             }
             return;
         }
-        let snapshot = self.daily_data_service.read_habit_snapshot().ok();
-        let targets = snapshot.as_ref().map(habit_dual::context).unwrap_or(Value::Null);
-        let origins = snapshot.as_ref().map(|snapshot|habit_dual::origins(&session,snapshot)).unwrap_or(Value::Null);
+        let targets = habit_snapshot.as_ref().map(habit_dual::context).unwrap_or(Value::Null);
         let receipts = session.task_operations.iter().filter(|item|matches!(item.operation,CollaborationTaskOperation::SetLocalHabitCompletion {..})).map(|item|json!({"operation":item.operation,"targetDate":item.target_date,"status":item.status,"baseline":item.baseline})).collect::<Vec<_>>();
         let habit_completion_context=json!({"targets":targets,"receipts":receipts,"origins":origins});
         let request = RuntimeTurnRequest {
@@ -7225,7 +7223,7 @@ impl CollaborationApplication {
         mut action: ExternalToolActionView,
     ) -> Result<(), String> {
         self.update_state(|state| {
-            let session = matching_session_mut(state, vault_key, session_id)?;
+            let session = state.sessions.iter().find(|session| session.id==session_id && session.vault_key.as_deref()==Some(vault_key)).ok_or("This collaboration session is not available in the selected Vault.")?;
             if action.source_id==dida::SERVER && action.tool_id=="upsert_habit_checkins" {
                 if let Some(verification)=action.verification.as_mut() {
                     if verification.get("habitScope").is_none() {
@@ -7237,17 +7235,18 @@ impl CollaborationApplication {
                             let habit=snapshot.habits.iter().find(|habit|habit_dual::mapped_id(&snapshot,&habit.key).as_deref()==id && id.is_some())?;
                             habit_dual::scope_for_habit_date(&message.text,&habit.key,&habit.name,
                                 &format!("{:08}",verification["habitCheckin"]["stamp"].as_i64().unwrap_or(0))).map(str::to_owned).or_else(|| {
-                                if verification["habitCheckin"]["status"]!=0 { return None; }
+                                if verification["habitCheckin"]["status"]!=0 { return Some("both".into()); }
                                 let stamp=format!("{:08}",verification["habitCheckin"]["stamp"].as_i64()?);
                                 if stamp.len()!=8 { return None; }
                                 let date=format!("{}-{}-{}",&stamp[..4],&stamp[4..6],&stamp[6..]);
-                                habit_dual::original_scope(session,&habit.key,&date,id).map(|(scope,_)|scope)
+                                habit_dual::original_scope(&state.sessions,vault_key,&snapshot,&habit.key,&date).ok().map(|(scope,_)|scope)
                             })
                         }));
-                        verification["habitScope"]=json!(scope.unwrap_or_else(||"both".into()));
+                        verification["habitScope"]=json!(scope.unwrap_or_else(||"ambiguous".into()));
                     }
                 }
             }
+            let session = matching_session_mut(state, vault_key, session_id)?;
             let message = session
                 .messages
                 .iter_mut()

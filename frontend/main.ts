@@ -686,6 +686,7 @@ type CollaborationExternalToolAction = Readonly<{
   targetScope: string;
   inputSummary: string;
   resultSummary: string;
+  verification?: unknown | null;
 }>;
 
 type CollaborationExternalApprovalChoice = Readonly<{
@@ -1919,7 +1920,7 @@ function collaborationRunStateLabel(state: string): string {
 function collaborationRunProgressLabel(session: CollaborationSessionView): string {
   const label = collaborationRunStateLabel(session.runState);
   const progress = ["error", "reading", "thinking", "queued", "stopping", "stop-unconfirmed", "interrupted"].includes(session.runState)
-    ? applicationMessage(session.progress) : "";
+    ? localizeCollaborationDiagnostic(session.progress, currentInterfaceLanguage) : "";
   return progress && progress !== label ? `${label} · ${progress}` : label;
 }
 
@@ -2381,7 +2382,9 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
         ] as const) {
           if (!value || value === "null") continue;
           const detail = document.createElement("p");
-          detail.textContent = `${t(labelKey)}: ${value}`;
+          const summary = labelKey === "collaboration.externalResultSummary" && action.verification != null
+            ? localizeCollaborationDiagnostic(value, currentInterfaceLanguage) : value;
+          detail.textContent = `${t(labelKey)}: ${summary}`;
           item.append(detail);
         }
         activity.append(item);
@@ -3356,12 +3359,12 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       result.textContent = operation.status === "applied"
         ? plan
           ? automaticPlan
-            ? operation.resultMessage ?? t("collaboration.automaticPlanResultLabel")
+            ? localizeCollaborationDiagnostic(operation.resultMessage ?? t("collaboration.automaticPlanResultLabel"), currentInterfaceLanguage)
             : t("collaboration.dailyPlanResultSaved")
           : dailyReview || habitCompletion
-            ? operation.resultMessage ?? ""
+            ? localizeCollaborationDiagnostic(operation.resultMessage, currentInterfaceLanguage)
             : t("collaboration.taskResultSaved")
-        : operation.resultMessage;
+        : localizeCollaborationDiagnostic(operation.resultMessage, currentInterfaceLanguage);
       card.append(result);
     }
     const actionError = collaborationTaskActionErrors.get(operation.id);
@@ -3375,7 +3378,7 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
           : canonicalRecordOperation
             ? "collaboration.dailyRecordWriteNeedsCheck"
             : "collaboration.taskWriteNeedsCheck")
-        : actionError;
+        : localizeCollaborationDiagnostic(actionError, currentInterfaceLanguage);
       card.append(error);
     }
     const projectionWarning = collaborationTaskProjectionWarnings.get(operation.id);
@@ -3727,14 +3730,14 @@ function renderCollaborationMemoryProposals(session: CollaborationSessionView | 
       const result = document.createElement("p");
       result.textContent = proposal.status === "applied"
         ? t("collaboration.memoryProposalApplied")
-        : proposal.resultMessage;
+        : localizeCollaborationDiagnostic(proposal.resultMessage, currentInterfaceLanguage);
       card.append(result);
     }
     const errorMessage = collaborationMemoryProposalErrors.get(proposal.id);
     if (errorMessage) {
       const error = document.createElement("p");
       error.setAttribute("role", "alert");
-      error.textContent = errorMessage;
+      error.textContent = localizeCollaborationDiagnostic(errorMessage, currentInterfaceLanguage);
       card.append(error);
     }
     if (session && proposal.status === "awaitingApproval" && !proposal.executionAttempted) {

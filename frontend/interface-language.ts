@@ -1066,6 +1066,11 @@ const englishApplicationMessages: Readonly<Record<string, string>> = {
 // Only host-owned result diagnostics use this catalog. Source replies and user
 // text bypass it, even if their wording happens to match a diagnostic.
 const chineseCollaborationDiagnostics: Readonly<Record<string, string>> = {
+  "Original Habit completion scope is unconfirmed. Read the current canonical history and source; clarify the endpoints before withdrawing.": "原 Habit 完成范围尚未确认。请读取当前正本历史及来源，撤回前明确要修改的端点。",
+  "The selected Vault changed before native file access was granted. No model turn was sent.": "授予原生文件访问前所选 Vault 已更改。未发送模型请求。",
+  "Dida reported failure. The external outcome has not been assumed saved; query source state before retrying.": "滴答报告失败。外部结果未被视为已保存；重试前请查询来源状态。",
+  "External mutation outcome awaits source readback. The tool receipt alone does not prove saved state.": "外部修改结果等待来源回读。仅有工具收据不足以证明已保存。",
+  "This Task is already complete with a different completion date/time. Use the explicit completion correction operation.": "该任务已完成，但完成日期或时间不同。请使用明确的完成记录更正操作。",
   "Source result unconfirmed; check the saved action before retrying.": "来源结果尚未确认；重试前请核对已保存的操作。",
   "Prepared for review; not saved to the source.": "已准备供复核；尚未保存到来源。",
   "Background save is unconfirmed; read the existing Self document before retrying.": "长期背景保存尚未确认；重试前请读取现有 Self 文档。",
@@ -1115,6 +1120,10 @@ export function localizeCollaborationDiagnostic(message: string, language: Inter
   const refreshed = /^(Verified (\d+) explicitly mapped external Habits; unmapped source coverage remains partial\/unknown\. Rebuilt exact\/threshold Daily Record evidence\. )(.*)$/s.exec(message);
   if (refreshed) return language === "en" ? refreshed[1] + localizeApplicationMessage(refreshed[3], language)
     : `已核验 ${refreshed[2]} 个明确映射的外部 Habit；未映射来源的覆盖仍为部分或未知。已重新生成 Daily Record 的精确时间或阈值证据。${localizeApplicationMessage(refreshed[3], language)}`;
+  const unconfirmed = /^The request outcome could not be confirmed: (.*)\. Check the saved Codex result before continuing; the request will not be replayed\.$/s.exec(message);
+  if (unconfirmed) return language === "en" ? message : `请求结果尚未确认：${localizeCollaborationDiagnostic(unconfirmed[1], language)}。继续前请核对已保存的 Codex 结果；不会重放该请求。`;
+  const nativePath = /^Native personal-content access (refuses a redirected path|requires a directory): (.*)\. No model turn was sent\.$/s.exec(message);
+  if (nativePath) return language === "en" ? message : `原生个人内容访问${nativePath[1] === "refuses a redirected path" ? "拒绝重定向路径" : "要求目录"}：${nativePath[2]}。未发送模型请求。`;
   if (language === "en") return englishTaskDiagnostic(message) ?? englishHabitValidationDiagnostic(message) ?? localizeApplicationMessage(message, language);
   const exact = chineseCollaborationDiagnostics[message];
   if (exact) return exact;

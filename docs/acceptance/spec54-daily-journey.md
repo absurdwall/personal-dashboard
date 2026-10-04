@@ -73,6 +73,54 @@ Run the focused Rust application suites with `--no-default-features --lib` plus
 and `npm run build`. Native external/runtime gates are separate opt-in tests;
 ignored gates are not counted as passing native evidence.
 
+## PR #64 review round 2: source verification
+
+The review reproduction first failed on two current-source cases: a threshold-only
+evening summary displaced an actual wake minute, and a future wish in an ordinary
+Short record became today's actual wake time. Highest `TodayApplication` publication
+regressions now retain the specific minute, recognize explicit correction/withdrawal
+without treating section order as chronology, and leave conflicting unsequenced
+corrections unknown. Ordinary Short records require a bounded occurred/date-qualified
+assertion; questions, conditionals, future wishes and discussion do not establish an
+actual time. Cross-clause qualification is retained, historical dates are not relabeled
+as today, and factual next-day sleep retains its actual date. This is conservative
+parsing of supported record forms, not general natural-language classification.
+
+Persisted collaboration receipts now retain verified original Habit endpoint scope
+across chats and restart, bound to the selected Vault, canonical local target and exact
+mapped source identity. Applied local save timestamps determine effect chronology;
+unconfirmed external plans cannot become saved origins. Equal or unverifiable conflicting
+origins require clarification. Independent external completion survives a default
+withdrawal of an originally local-only fact; an explicit single-end override remains
+available. A different canonical Vault target cannot borrow the old local receipt.
+
+Private scripted source transports exercise the production verifier through
+`CollaborationApplication`, its file-backed history and real Task adapter. Incomplete
+or failed paginated readback cannot prove an absent check-in, claim Saved or unlock
+an unresolved retry. Complete verified empty results can confirm withdrawal. Exact
+native stable-Task absence is current observed source state while the earlier mutation
+remains Unknown; it permits a newly authorized unrelated Task without recreating or
+replaying the old object. Network/authentication failure retains the write restriction.
+Earlier saved local receipts survive these faults and restart.
+
+Host diagnostics are paired in Chinese and English through actual progress, operation,
+memory and external-activity renderers; paths, source IDs and authored/source replies
+remain verbatim. Snapshot v1 mapping-label encoding and parsing share the existing
+format without a schema change. Frontend verification passed 329 tests and its production
+build. Focused publication, cross-chat and private native-readback workflows passed;
+the final full Rust run is recorded separately after integration review.
+
+An earlier full-suite failure came from CLI subprocesses using the real clock while
+the daily-flow fixture used noon UTC. The test harness now pins the existing clock
+environment for each CLI child to the fixture's date, time and UTC offset; production
+clock behavior is unchanged. Sequential scope-fixture effects also have distinct
+controlled save minutes; a separate equal-time case requires clarification.
+
+This round performed no external actions or packaged native acceptance. Native phases
+A–F below remain evidence for their recorded candidate heads, rather than proof of the
+review fixes or installed-app replacement. Existing installed, human, voice and
+same-configuration failed-startup recovery boundaries remain pending.
+
 ## Installed Codex runtime evidence
 
 Codex CLI 0.160.0 was actually exercised using isolated native profiles and explicitly

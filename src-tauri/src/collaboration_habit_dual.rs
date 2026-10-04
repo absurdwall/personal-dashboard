@@ -3,17 +3,15 @@
 use super::{
     CollaborationTaskOperation, CollaborationTaskOperationBaseline, StoredCollaborationSession,
 };
-use crate::habits::HabitSnapshotView;
+use crate::habits::{explicit_dida_mapping_id, HabitSnapshotView};
 use serde_json::{json, Value};
 
 pub(super) fn mapped_id(snapshot: &HabitSnapshotView, key: &str) -> Option<String> {
-    let prefix = format!("Dida365 explicit mapping {key}=");
     let mut ids = snapshot
         .habit(key)?
         .source_labels
         .iter()
-        .filter_map(|label| label.strip_prefix(&prefix))
-        .filter(|id| !id.is_empty() && id.len() <= 160 && !id.contains(char::is_whitespace))
+        .filter_map(|label| explicit_dida_mapping_id(label, key))
         .collect::<Vec<_>>();
     ids.sort_unstable();
     ids.dedup();
@@ -189,77 +187,144 @@ pub(super) fn receipt_scope(
     }
 }
 
-// Receipt ordering is the saved conversation ordering, not mutable source names
-// or wall-clock save timestamps. A later explicit external fact remains external.
+pub(super) const UNCONFIRMED_SCOPE: &str = "Original Habit completion scope is unconfirmed. Read the current canonical history and source; clarify the endpoints before withdrawing.";
+
+// Scope survives chats, but only within the selected Vault, canonical completion
+// target and exact mapped source identity. Equal/unknown chronology cannot widen it.
 pub(super) fn original_scope(
-    session: &StoredCollaborationSession,
+    sessions: &[StoredCollaborationSession],
+    vault_key: &str,
+    snapshot: &HabitSnapshotView,
     key: &str,
     date: &str,
-    mapped: Option<&str>,
-) -> Option<(String, Option<String>)> {
-    let stamp = date.replace('-', "").parse::<i64>().ok()?;
-    for message in session
-        .messages
+) -> Result<(String, Option<String>), String> {
+    let mapped = mapped_id(snapshot, key);
+    let stamp = date
+        .replace('-', "")
+        .parse::<i64>()
+        .map_err(|_| UNCONFIRMED_SCOPE)?;
+    let mut candidates = Vec::new();
+    for session in sessions
         .iter()
-        .rev()
-        .filter(|message| message.role == "user")
+        .filter(|session| session.vault_key.as_deref() == Some(vault_key))
     {
-        if let Some(local)=session.task_operations.iter().rev().find(|item| {
-            item.execution_id.as_str()==message.execution_id.as_deref().unwrap_or("") && item.status=="applied" && item.target_date==date
-                && matches!(&item.operation,CollaborationTaskOperation::SetLocalHabitCompletion {habit_key,completed:true} if habit_key==key)
-        }) {
-            let (scope,id)=receipt_scope(&local.baseline).unwrap_or(("local",None));
-            return Some((scope.into(),id.map(str::to_owned)));
-        }
-        if let Some(external) = message.external_actions.iter().rev().find(|action| {
-            action.source_id == "dida365"
-                && action.tool_id == "upsert_habit_checkins"
-                && action.verification.as_ref().is_some_and(|v| {
-                    v["habitCheckin"]["habitId"].as_str() == mapped
-                        && mapped.is_some()
-                        && v["habitCheckin"]["stamp"].as_i64() == Some(stamp)
-                        && v["habitCheckin"]["status"] == 2
-                })
-        }) {
-            let v = external.verification.as_ref()?;
-            let scope = v["habitScope"]
-                .as_str()
-                .or_else(|| scope_for_habit_date(&message.text, key, "", &format!("{stamp:08}")))
-                .unwrap_or("both");
-            return Some((scope.into(), mapped.map(str::to_owned)));
-        }
-    }
-    None
-}
-pub(super) fn origins(session: &StoredCollaborationSession, snapshot: &HabitSnapshotView) -> Value {
-    let mut dates = std::collections::BTreeSet::new();
-    for item in &session.task_operations {
-        if matches!(
-            item.operation,
-            CollaborationTaskOperation::SetLocalHabitCompletion { .. }
-        ) {
-            dates.insert(item.target_date.clone());
-        }
-    }
-    for action in session
-        .messages
-        .iter()
-        .flat_map(|message| &message.external_actions)
-    {
-        if let Some(stamp) = action
-            .verification
-            .as_ref()
-            .and_then(|v| v["habitCheckin"]["stamp"].as_i64())
+        for message in session
+            .messages
+            .iter()
+            .filter(|message| message.role == "user")
         {
-            let stamp = format!("{stamp:08}");
-            if stamp.len() == 8 {
-                dates.insert(format!("{}-{}-{}", &stamp[..4], &stamp[4..6], &stamp[6..]));
+            let at = super::dida_writes::iso_epoch_millis(&message.created_at);
+            for local in session.task_operations.iter().filter(|item| {
+                item.execution_id.as_str() == message.execution_id.as_deref().unwrap_or("")
+                    && item.vault_key == vault_key && item.status == "applied" && item.target_date == date
+                    && snapshot.completion_target_binding.as_deref() == Some(item.target_binding.as_str())
+                    && matches!(&item.operation, CollaborationTaskOperation::SetLocalHabitCompletion { habit_key, completed: true } if habit_key == key)
+            }) {
+                let (scope, id) = receipt_scope(&local.baseline).unwrap_or(("local", None));
+                if id.is_some() && id != mapped.as_deref() { continue; }
+                // A newer independent canonical completion is not this receipt's effect.
+                let newer_local = snapshot.habit(key).and_then(|habit| habit.cell(date)).is_some_and(|cell| {
+                    cell.local_completion_state == crate::habits::HabitLocalCompletionState::Completed
+                        && cell.details.iter().any(|detail| match detail {
+                            crate::habits::HabitDetailView::LocalCompletion { changed_at, .. } => {
+                                match (super::dida_writes::iso_epoch_millis(changed_at), super::dida_writes::iso_epoch_millis(&local.updated_at)) {
+                                    (Some(current), Some(saved)) => current > saved,
+                                    _ => changed_at != &local.updated_at,
+                                }
+                            },
+                            _ => false,
+                        })
+                });
+                if !newer_local { candidates.push((super::dida_writes::iso_epoch_millis(&local.updated_at), scope.to_owned(), id.map(str::to_owned))); }
+            }
+            for action in &message.external_actions {
+                let Some(v) = action.verification.as_ref() else {
+                    continue;
+                };
+                if action.status != "saved"
+                    || v["sourceObserved"] != true
+                    || action.source_id != "dida365"
+                    || action.tool_id != "upsert_habit_checkins"
+                    || mapped.is_none()
+                    || v["habitCheckin"]["habitId"].as_str() != mapped.as_deref()
+                    || v["habitCheckin"]["stamp"].as_i64() != Some(stamp)
+                    || v["habitCheckin"]["status"] != 2
+                {
+                    continue;
+                }
+                let Some(scope) = v["habitScope"].as_str() else {
+                    continue;
+                };
+                candidates.push((at, scope.to_owned(), mapped.clone()));
             }
         }
     }
-    json!(snapshot.habits.iter().filter(|habit|habit.can_record_completion).flat_map(|habit|dates.iter().filter_map(|date| {
-        original_scope(session,&habit.key,date,mapped_id(snapshot,&habit.key).as_deref()).map(|(scope,id)|json!({"habitKey":habit.key,"date":date,"scope":scope,"externalHabitId":id}))
+    let latest = candidates.iter().filter_map(|(at, _, _)| *at).max();
+    let mut scopes = candidates
+        .into_iter()
+        .filter(|(at, _, _)| at.is_none() || *at == latest)
+        .map(|(_, scope, id)| (scope, id))
+        .collect::<Vec<_>>();
+    scopes.sort();
+    scopes.dedup();
+    if scopes.len() == 1 && ["local", "external", "both"].contains(&scopes[0].0.as_str()) {
+        Ok(scopes.remove(0))
+    } else {
+        Err(UNCONFIRMED_SCOPE.into())
+    }
+}
+
+pub(super) fn origins(
+    sessions: &[StoredCollaborationSession],
+    vault_key: &str,
+    snapshot: &HabitSnapshotView,
+) -> Value {
+    let mut dates = std::collections::BTreeSet::new();
+    for session in sessions
+        .iter()
+        .filter(|session| session.vault_key.as_deref() == Some(vault_key))
+    {
+        for item in &session.task_operations {
+            if matches!(
+                item.operation,
+                CollaborationTaskOperation::SetLocalHabitCompletion { .. }
+            ) {
+                dates.insert(item.target_date.clone());
+            }
+        }
+    }
+    for habit in snapshot
+        .habits
+        .iter()
+        .filter(|habit| habit.can_record_completion)
+    {
+        for cell in &habit.history {
+            if cell.has_external_completion
+                || cell.local_completion_state != crate::habits::HabitLocalCompletionState::None
+            {
+                dates.insert(cell.date.clone());
+            }
+        }
+    }
+    json!(snapshot.habits.iter().filter(|habit|habit.can_record_completion).flat_map(|habit|dates.iter().map(|date| {
+        match original_scope(sessions,vault_key,snapshot,&habit.key,date) {
+            Ok((scope,id)) => json!({"habitKey":habit.key,"date":date,"scope":scope,"externalHabitId":id}),
+            Err(_) => json!({"habitKey":habit.key,"date":date,"scope":"ambiguous","message":UNCONFIRMED_SCOPE}),
+        }
     })).collect::<Vec<_>>())
+}
+
+pub(super) fn native_habit_writes_allowed(text: &str, target_date: &str, snapshot: &HabitSnapshotView, origins: &Value) -> bool {
+    if only_local_habit_effects(text, snapshot) { return false; }
+    let lower = text.to_lowercase();
+    if !["撤回", "撤销", "withdraw", "retract"].iter().any(|marker| lower.contains(marker)) { return true; }
+    let has_explicit_date = text.split(|c: char| !c.is_ascii_digit() && c != '-').any(|part| crate::today::CalendarDate::parse(part).is_some());
+    snapshot.habits.iter().filter(|habit| names_target(text,&habit.key,&habit.name)).any(|habit| {
+        let dates:Vec<_> = origins.as_array().into_iter().flatten().filter(|origin| origin["habitKey"] == habit.key)
+            .filter(|origin| origin["date"].as_str().is_some_and(|date| text.contains(date) || (!has_explicit_date && date == target_date))).collect();
+        if matches!(scope_for_habit(text,&habit.key,&habit.name),Some("external")) { return true; }
+        dates.iter().any(|origin| ["both","external"].contains(&origin["scope"].as_str().unwrap_or("ambiguous")))
+    })
 }
 pub(super) fn context(snapshot: &HabitSnapshotView) -> Value {
     json!(snapshot.habits.iter().filter(|habit|habit.can_record_completion).map(|habit|json!({
