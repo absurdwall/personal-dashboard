@@ -93,7 +93,7 @@ function composer(actualVoice=false, pendingStart=false) {
     create:async()=>({...structuredClone(first),createdDate:first.targetDate}),setTarget:async()=>structuredClone(first),
     t:(key:string)=>key,setRawText:(node:any,text:string)=>{if(node)node.textContent=text;},
     setCopy:(node:any,key:string)=>{if(node)node.textContent=key;},setCopyError(node:any,key:string){if(node)node.textContent=key;},
-    collaborationDateLabel:(date:string)=>date,collaborationRunStateLabel:(state:string)=>state,
+    collaborationDateLabel:(date:string)=>date,collaborationRunStateLabel:(state:string)=>state,collaborationRunProgressLabel:(session:any)=>session.runState,
   });
   for(const name of ["renderCollaborationContextPane","renderCollaborationSessionList","renderCollaborationMessages",
     "renderCollaborationTaskOperations","renderCollaborationMemory","watchCollaborationSession","refreshCollaborationContext"])r[name]=()=>{};

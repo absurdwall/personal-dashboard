@@ -43,6 +43,7 @@ import {
   formatInterfaceMonth,
   interfaceCopy,
   localizeApplicationMessage,
+  localizeCollaborationDiagnostic,
   localizeHabitActualTimeLabel,
   localizeHabitCoverageLabel,
   localizeHabitDetail,
@@ -672,7 +673,7 @@ type CollaborationMessageView = Readonly<{
   automaticPlan: boolean;
   externalAppIds: readonly string[];
   externalActions: readonly CollaborationExternalToolAction[];
-  actionResults?: readonly Readonly<{ id: string; source: string; status: string; targetDate: string | null; message: string }>[];
+  actionResults?: readonly Readonly<{ id: string; source: string; status: string; targetDate: string | null; messageKind?: "diagnostic" | "sourceText"; message: string }>[];
   pendingExternalApproval: CollaborationExternalApprovalRequest | null;
 }>;
 
@@ -1915,6 +1916,13 @@ function collaborationRunStateLabel(state: string): string {
   }
 }
 
+function collaborationRunProgressLabel(session: CollaborationSessionView): string {
+  const label = collaborationRunStateLabel(session.runState);
+  const progress = ["error", "reading", "thinking", "queued", "stopping", "stop-unconfirmed", "interrupted"].includes(session.runState)
+    ? applicationMessage(session.progress) : "";
+  return progress && progress !== label ? `${label} · ${progress}` : label;
+}
+
 function collaborationDeliveryStateLabel(state: string): string {
   switch (state) {
     case "queued": return t("collaboration.deliveryQueued");
@@ -2336,13 +2344,13 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
         const statusKey = `collaboration.taskOperationStatus.${result.status}` as InterfaceCopyKey;
         const refreshKey = `collaboration.habitRefreshState.${result.status}` as InterfaceCopyKey;
         const status = ["awaitingApproval", "applied", "rejected", "conflict", "failed", "unknown"].includes(result.status) ? t(statusKey)
-          : ["verifiedMappedScope", "received", "verified", "validated", "published", "notPublished", "notStarted", "retainedOrMissing", "ready", "stale", "retained", "missing", "error", "unconfigured"].includes(result.status) ? t(refreshKey) : result.status;
+          : ["verifiedMappedScope", "received", "verified", "validated", "published", "notPublished", "notStarted", "retainedOrMissing", "ready", "stale", "retained", "missing", "error", "unconfigured"].includes(result.status) ? t(refreshKey) : result.status === "saved" ? t("collaboration.externalStatusSaved") : result.status;
         const source = result.source === "Habit source query" ? t("collaboration.habitRefreshStage.query")
           : result.source === "Habit generation" ? t("collaboration.habitRefreshStage.generation")
           : result.source === "Habit publication" ? t("collaboration.habitRefreshStage.publication")
           : result.source === "Habits page" ? t("collaboration.habitRefreshStage.display")
           : result.source === "Long-term background" ? t("collaboration.longTermHeading") : result.source;
-        item.textContent = `${source} · ${status}${result.targetDate ? ` · ${collaborationDateLabel(result.targetDate)}` : ""} — ${result.message}`;
+        item.textContent = `${source} · ${status}${result.targetDate ? ` · ${collaborationDateLabel(result.targetDate)}` : ""} — ${result.messageKind === "diagnostic" ? localizeCollaborationDiagnostic(result.message, currentInterfaceLanguage) : result.message}`;
         results.append(item);
       }
       article.append(results);
@@ -2363,7 +2371,7 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
         const item = document.createElement("div");
         item.className = "collaboration-external-action";
         const title = document.createElement("strong");
-        title.textContent = `${action.sourceName} · ${action.toolId} · ${action.status}`;
+        title.textContent = `${action.sourceName} · ${action.toolId} · ${action.status === "saved" ? t("collaboration.externalStatusSaved") : ["unknown", "failed"].includes(action.status) ? t(`collaboration.taskOperationStatus.${action.status}` as InterfaceCopyKey) : action.status}`;
         const target = document.createElement("small");
         target.textContent = `${t("collaboration.messageTargetDate", { date: action.targetScope })} · ${action.sourceId}`;
         item.append(title, target);
@@ -3220,7 +3228,7 @@ function appendHabitRefreshReport(container: HTMLElement, report: HabitRefreshRe
     card.append(coverage);
   }
   const detail = document.createElement("p");
-  detail.textContent = report.message;
+  detail.textContent = localizeCollaborationDiagnostic(report.message, currentInterfaceLanguage);
   card.append(detail);
   container.append(card);
 }
@@ -3944,10 +3952,7 @@ function renderCollaborationWorkspace(): void {
       setRawText(collaborationRunStatus, "");
       collaborationRunStatus.dataset.state = "waiting";
     } else {
-      const progress = ["error", "reading", "thinking", "queued", "stopping", "stop-unconfirmed", "interrupted"].includes(session.runState)
-        ? session.progress
-        : collaborationRunStateLabel(session.runState);
-      setRawText(collaborationRunStatus, `${collaborationRunStateLabel(session.runState)} · ${progress}`);
+      setRawText(collaborationRunStatus, collaborationRunProgressLabel(session));
       collaborationRunStatus.dataset.state = session.runState;
     }
   }

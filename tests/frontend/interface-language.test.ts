@@ -8,6 +8,7 @@ import {
   interfaceCopy,
   localizeApplicationError,
   localizeApplicationMessage,
+  localizeCollaborationDiagnostic,
   localizeHabitActualTimeLabel,
   localizeHabitCoverageLabel,
   localizeHabitDetail,
@@ -552,4 +553,15 @@ test("the shared copy entry provides both languages and variable interpolation",
   for (const [language, expected] of examples) {
     assert.equal(interfaceCopy("count.timeBlocks", language, { count: 3 }), expected);
   }
+});
+
+test("Ready Habits copy and tagged source-result grammar have paired translations", () => {
+  const ready = "已读取按需生成的本地快照；来源覆盖与刷新结果可分别核对。";
+  assert.equal(localizeApplicationMessage(ready, "zh"), ready);
+  assert.equal(localizeApplicationMessage(ready, "en"), "Loaded the locally generated on-demand snapshot; source coverage and refresh outcomes can be checked separately.");
+  const name = "Keep my Task · 买菜 · Vault 不兼容：";
+  const diagnostic = `Saved task “${name}” (stable-id) in the shared Tasks data for target date 2026-10-09. Tasks, Today, and Calendar use this same object.`;
+  assert.equal(localizeCollaborationDiagnostic(diagnostic, "en"), diagnostic);
+  assert.equal(localizeCollaborationDiagnostic(diagnostic, "zh"), `已将任务“${name}”（stable-id）保存到共享 Tasks 正本，目标日期 2026-10-09。Tasks、Today 和 Calendar 使用同一对象。`);
+  assert.equal(localizeCollaborationDiagnostic("Snapshot atomic publication failed: OS error 17 /保留/path", "zh"), "快照原子发布失败：OS error 17 /保留/path");
 });

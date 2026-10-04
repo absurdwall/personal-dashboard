@@ -6178,6 +6178,12 @@ impl AppServerTransport for JourneyRuntime {
     fn configure_external_habit_writes(&mut self,a:bool){self.dual.configure_external_habit_writes(a)}
     fn send_turn(&mut self,r:RuntimeTurnRequest)->Result<RuntimeTurnResult,String>{self.dual.send_turn(r)}
     fn send_turn_with_external_actions(&mut self,r:RuntimeTurnRequest,cancel:Arc<AtomicBool>,handler:Option<RuntimeDynamicToolHandler>,actions:Option<personal_dashboard_lib::collaboration::RuntimeExternalActionHandler>,approval:Option<personal_dashboard_lib::collaboration::RuntimeExternalApprovalHandler>)->Result<RuntimeTurnResult,String>{
+        if r.user_text=="2026-10-03运动完成，只记本地又只记滴答。" {
+            let result=handler.unwrap()(RuntimeDynamicToolCall{thread_id:r.thread_id.clone(),turn_id:format!("turn-{}",r.execution_id),call_id:"shorter-local-quote".into(),tool:"dashboard_task_operation".into(),arguments:json!({"operation":"setLocalHabitCompletion","habitKey":"exercise","completed":true,"targetDate":"2026-10-03","scope":"local","executionMode":"execute","authorizationQuote":"2026-10-03运动完成，只记本地"})});
+            assert!(!result.success,"A shorter quote cannot choose one of conflicting same-date destinations");
+            self.dual.base.results.lock().unwrap().push(result);
+            return Ok(RuntimeTurnResult{text:"Clarify the destination for this same dated Habit.".into(),runtime_turn_id:Some(format!("turn-{}",r.execution_id)),stopped:false,external_actions:vec![]});
+        }
         if r.user_text.starts_with("2026-10-03只改滴答 Habit synthetic-habit") {
             let action=personal_dashboard_lib::collaboration::ExternalToolActionView{action_id:"exact-source-only".into(),source_id:"dida365".into(),source_name:"Dida".into(),tool_id:"upsert_habit_checkins".into(),status:"saved".into(),target_scope:"2026-10-03".into(),input_summary:"Explicit stable source ID/date".into(),result_summary:"Fixture exact current source readback".into(),verification:Some(json!({"habitCheckin":{"habitId":"synthetic-habit","stamp":20261003,"status":2}}))};
             if let Some(h)=actions {h(action.clone());}
@@ -6260,6 +6266,26 @@ fn one_evening_message_keeps_independent_results_prior_review_and_tentative_acti
         assert_eq!(source.lock().unwrap().writes,usize::from(!external_failed));
         reopened.shutdown().unwrap();
     }
+}
+
+#[test]
+fn same_date_ambiguous_habit_scope_cannot_be_overridden_by_a_shorter_local_quote() {
+    let directory=IsolatedDirectory::new();let path=directory.vault("same-date-ambiguous");prepare_dual_vault(&path);
+    let vault=MutableVault::new(&path);let clock=ManualClock::new("2026-10-03","21:00");
+    let source=Arc::new(Mutex::new(DualSource{readable:true,..Default::default()}));
+    let today=TodayApplication::new(vault.clone(),NoVaultPicker,clock.clone());
+    let before=today.habits().unwrap();
+    let daily=path.join("life/Journal/Daily/2026/2026-10/2026-10-03.md");
+    let daily_before=fs::read(&daily).ok();
+    let snapshot_before=fs::read(path.join("life/.personal-dashboard/derived/habits-v1.json")).ok();
+    let app=new_journey_application(&directory,&vault,clock,source.clone(),Arc::new(AtomicBool::new(false)));
+    let session=app.create_default_session().unwrap();
+    app.submit_message("vault-a",&session.id,&session.target_date,"2026-10-03运动完成，只记本地又只记滴答。").unwrap();wait_for_finish(&app,&session.id,"vault-a");
+    let state=app.session("vault-a",&session.id).unwrap();assert_eq!(state.run_state,"completed");
+    assert!(state.task_operations.is_empty());assert!(state.messages.iter().all(|m|m.external_actions.is_empty() && m.action_results.is_empty()));
+    assert_eq!(today.habits().unwrap().habit("exercise").unwrap().today.local_completion_state,before.habit("exercise").unwrap().today.local_completion_state);
+    assert_eq!(fs::read(&daily).ok(),daily_before);assert_eq!(fs::read(path.join("life/.personal-dashboard/derived/habits-v1.json")).ok(),snapshot_before);
+    assert!(source.lock().unwrap().checkins.is_empty());app.shutdown().unwrap();
 }
 
 #[test]
