@@ -35,8 +35,9 @@ function composer(actualVoice=false, pendingStart=false) {
     "handleCollaborationVoiceTranscript","cancelCollaborationVoiceCaptureForSelectionChange",
     "renderCollaborationWorkspace","stashCollaborationDraft","flushCollaborationDraft",
     "saveCollaborationDraft","selectCollaborationSession","refreshCollaborationWorkspace","saveCollaborationTargetDate",
-    "collaborationVoiceFailureStatus","startOrStopCollaborationVoice","selectTodayVault","sendCollaborationMessage","resetVaultScopedWorkspaceState","renderPendingWriteFailure",
-    ...(main.includes("function prepareCollaborationForVaultSwitch(")?["prepareCollaborationForVaultSwitch"]:[])];
+    "collaborationVoiceFailureStatus","startOrStopCollaborationVoice","selectTodayVault","sendCollaborationMessage","resetVaultScopedWorkspaceState","renderPendingWriteFailure","openCollaborationForTask","createCollaborationSession",
+    ...(main.includes("function prepareCollaborationForVaultSwitch(")?["prepareCollaborationForVaultSwitch"]:[]),
+    ...(main.includes("function drainCollaborationDraftsForVaultSwitch(")?["drainCollaborationDraftsForVaultSwitch"]:[])];
   const functions=names.map(sourceFunction).join("\n");
   const r:any={};
   for(const name of functions.match(/\b(?:collaboration|currentCollaboration|activeCollaboration)[A-Z]\w*/g)??[])r[name]=null;
@@ -60,13 +61,13 @@ function composer(actualVoice=false, pendingStart=false) {
   for(const name of ["taskCreateListLabel","taskCreateSubmit","taskCreateDate","taskCreateTime","todayTaskCreateDate","todayTaskCreateTime","calendarTaskCreateSubmit","calendarTaskCreateDate","calendarTaskCreateTime","habitsRange","calendarSummaryHeading","collaborationStatusTimer"])r[name]=null;
   Object.assign(r,{beginVoiceTranscriptSave,enqueueCollaborationDraftWrite,submitCollaborationDraftSnapshot,
     CodexCollaborationVoiceInputController,BrowserCodexDictationRuntime:class{constructor(){return runtime;}},crypto,AbortController,
-    vaultSelectionInProgress:false,collaborationVaultSwitchDraftWrites:null,
+    vaultSelectionInProgress:false,collaborationVaultSwitchDraftWrites:null,collaborationVaultSelectionRevision:0,
     selectVaultAndRefresh,vaultSelectionRequests:{begin:()=>1,isCurrent:()=>true},todayPresentationRequests:{begin:()=>1,isCurrent:()=>true},
     currentInterfaceLanguage:"en",currentWorkspaceDestination:"settings",updateTodayOperationState(){},
     waitForPendingWrites:async()=>true,renderPendingWriteFailure(){},renderToday(){},renderWorkspaceContextStatus(){},
     openCalendar(){},refreshHabits(){},refreshTasks(){},renderVaultSelectionError(){},
     normalizeTaskDateTimeFields(){},renderWorkspaceRailContext(){},settingsVaultStatus:element(),
-    refreshCollaborationRunOwner(){},
+    refreshCollaborationRunOwner(){},showWorkspaceDestination(){},
     collaborationDrafts:new Map(),collaborationUnsavedDrafts:new Set(),collaborationDraftWrites:new Map(),
     collaborationDraftSaveTimers:new Map(),collaborationTargetDates:new Map(),collaborationSendingDrafts:new Set(),
     collaborationVoiceStatuses:new Map(),collaborationIncompleteVoiceDrafts:new Set(),collaborationVoicePreviews:new Map(),
@@ -77,16 +78,19 @@ function composer(actualVoice=false, pendingStart=false) {
     collaborationVoiceStartButton:element(),collaborationVoiceStatus:element(),
     collaborationVoiceController:{state:"idle",navigate(){}},
     document:{activeElement:null,querySelector:()=>null},
-    window:{setTimeout:()=>1,clearTimeout(){},clearInterval(){},__TAURI__:{core:{invoke:async(command:string,args:any)=>{
+    window:{setTimeout:()=>1,clearTimeout(){},clearInterval(){},requestAnimationFrame(){},__TAURI__:{core:{invoke:async(command:string,args:any)=>{
       if(command==="today_clock")return {livedDate:"2026-10-03"};
-      if(command==="collaboration_workspace")return structuredClone(workspace);
+      if(command==="collaboration_workspace")return r.readWorkspace();
       if(command==="collaboration_context")return workspace.context;
       if(command==="collaboration_save_draft"){writes.push({vault,args});return r.write(args);}
       if(command==="select_today_vault"){pickerCalls++;vault=nextVault;return {changed:true,view:{defaultPhase:"morning"}};}
       if(command==="collaboration_submit_message")return r.submit(args);
+      if(command==="collaboration_create_session")return r.create(args);
+      if(command==="collaboration_set_target_date")return r.setTarget(args);
       assert.fail(`unexpected IPC ${command}`);
     }}}},
-    write:async()=>{throw new Error("synthetic persistence failure");},submit:async()=>structuredClone(first),
+    readWorkspace:async()=>structuredClone(workspace),write:async()=>{throw new Error("synthetic persistence failure");},submit:async()=>structuredClone(first),
+    create:async()=>({...structuredClone(first),createdDate:first.targetDate}),setTarget:async()=>structuredClone(first),
     t:(key:string)=>key,setRawText:(node:any,text:string)=>{if(node)node.textContent=text;},
     setCopy:(node:any,key:string)=>{if(node)node.textContent=key;},setCopyError(node:any,key:string){if(node)node.textContent=key;},
     collaborationDateLabel:(date:string)=>date,collaborationRunStateLabel:(state:string)=>state,
@@ -324,4 +328,73 @@ test("waiting Vault saves freeze composer and guard new Start, Send and editor-s
   await r.startOrStopCollaborationVoice();await r.sendCollaborationMessage();
   assert.equal(r.controller.state,"idle");assert.equal(r.collaborationSendingDrafts.size,0);
   acknowledge();await switching;assert.equal(f.pickerCalls(),1);
+});
+
+test("Discuss and target-date/create/blur flows cannot append drafts during the unrelated Vault-write wait",async()=>{
+  const f=composer(true);const {r,first}=f;r.write=async(args:any)=>f.persist(args);
+  let release:()=>void=()=>{};r.waitForPendingWrites=()=>new Promise(resolve=>{release=()=>resolve(true);});
+  const switching=r.selectTodayVault();await tick();assert.equal(f.pickerCalls(),0);
+  const beforeWrites=f.writes.length;const before=r.collaborationDrafts.get(r.collaborationDraftKey(first.id,first.targetDate));
+  await r.openCollaborationForTask("unique-task-id","Synthetic task",first.targetDate);
+  r.collaborationTargetDateInput.value="2026-10-02";await r.saveCollaborationTargetDate();
+  await r.createCollaborationSession();await r.flushCollaborationDraft();
+  assert.equal(f.writes.length,beforeWrites,"blocked user actions enqueue no additional draft");
+  assert.equal(r.collaborationDrafts.get(r.collaborationDraftKey(first.id,first.targetDate)),before);
+  assert.equal(r.collaborationTargetDate,first.targetDate);
+  release();await switching;assert.equal(f.pickerCalls(),1);
+});
+
+for(const failedBeforeRecheck of [false,true])test(`late original save ${failedBeforeRecheck?"already failed":"still pending"} after initial prepare blocks the second-wait picker and preserves memory`,async()=>{
+  const f=composer(true);const {r,first,second}=f;r.write=async(args:any)=>f.persist(args);
+  let releaseOther:()=>void=()=>{};r.waitForPendingWrites=()=>new Promise(resolve=>{releaseOther=()=>resolve(true);});
+  const switching=r.selectTodayVault();await tick();
+  let reject:(error:Error)=>void=()=>{};r.write=()=>new Promise((_,failure)=>{reject=failure;});
+  const key=r.collaborationDraftKey(second.id,first.targetDate);
+  const late=r.saveCollaborationDraft({sessionId:second.id,targetDate:first.targetDate},"unique original async draft");
+  const failed=assert.rejects(late,/late save failed/);
+  if(failedBeforeRecheck){reject(new Error("late save failed"));await failed;assert.equal(r.collaborationDraftWrites.has(key),false);}
+  releaseOther();await tick();assert.equal(f.pickerCalls(),0);
+  if(!failedBeforeRecheck){reject(new Error("late save failed"));await failed;}
+  await switching;assert.equal(f.vault(),"A");assert.equal(f.pickerCalls(),0);
+  r.selectCollaborationSession(second);await tick();await r.refreshCollaborationWorkspace();
+  assert.equal(r.collaborationMessageDraft.value,"unique original async draft");
+  assert.equal(r.collaborationUnsavedDrafts.has(key),true);
+  assert.equal(r.settingsVaultStatus.dataset.state,"error");
+});
+
+for(const operation of ["discuss-create","discuss-date","create"] as const)test(`old ${operation} response after a completed Vault switch cannot rebound old caches or save in B`,async()=>{
+  const f=composer(true);const {r,first}=f;r.write=async(args:any)=>f.persist(args);
+  let deliver:(value:any)=>void=()=>{};const response=new Promise(resolve=>{deliver=resolve;});
+  r.create=()=>response;r.setTarget=()=>response;
+  if(operation==="discuss-create")r.currentCollaborationSession=null;
+  const before=operation==="create"?r.createCollaborationSession():r.openCollaborationForTask("unique-task-id","Synthetic task",operation==="discuss-date"?"2026-10-02":first.targetDate);
+  await tick();await r.selectTodayVault();assert.equal(f.vault(),"B");assert.equal(r.vaultSelectionInProgress,false);
+  const count=f.writes.length;
+  deliver({...first,createdDate:first.targetDate,targetDate:"2026-10-02"});await before;
+  assert.equal(r.currentCollaborationSession,null);assert.equal(r.collaborationDrafts.size,0);
+  assert.equal(f.writes.length,count);assert.ok(f.writes.every(write=>write.vault==="A"));
+});
+
+test("a task-focus draft generated before Vault selection remains editable if its original save fails",async()=>{
+  const f=composer(true);const {r,first}=f;r.write=async(args:any)=>f.persist(args);
+  let fail:(error:Error)=>void=()=>{};
+  r.write=(args:any)=>args.draft.includes("collaboration.taskFocusDraft")?new Promise((_,reject)=>{fail=reject;}):Promise.resolve(f.persist(args));
+  const focus=r.openCollaborationForTask("unique-task-id","Synthetic task",first.targetDate);await tick();
+  const key=r.collaborationDraftKey(first.id,first.targetDate);const original=r.collaborationDrafts.get(key);
+  assert.match(original,/collaboration.taskFocusDraft/);
+  const switching=r.selectTodayVault();await tick();fail(new Error("task focus save failed"));await focus;await switching;
+  assert.equal(f.pickerCalls(),0);assert.equal(f.vault(),"A");assert.equal(r.collaborationDrafts.get(key),original);
+  await r.refreshCollaborationWorkspace();assert.equal(r.collaborationMessageDraft.value,original);
+});
+
+for(const response of ["failure","refresh"] as const)test(`old creation ${response} completion cannot publish status under the new Vault`,async()=>{
+  const f=composer(true);const {r,first}=f;r.write=async(args:any)=>f.persist(args);
+  r.collaborationSessionsStatus=element();let complete:(value:any)=>void=()=>{},fail:(error:Error)=>void=()=>{};
+  const pending=new Promise((resolve,reject)=>{complete=resolve;fail=reject;});
+  if(response==="failure")r.create=()=>pending;else r.readWorkspace=()=>pending;
+  const creation=r.createCollaborationSession();await tick();await r.selectTodayVault();assert.equal(f.vault(),"B");
+  const status=r.collaborationSessionsStatus.textContent;
+  if(response==="failure")fail(new Error("old create failed"));else complete({sessions:[first],context:{vaultName:"Synthetic A"}});
+  await creation;assert.equal(r.collaborationSessionsStatus.textContent,status);
+  assert.equal(r.currentCollaborationSession,null);assert.equal(r.collaborationDrafts.size,0);
 });

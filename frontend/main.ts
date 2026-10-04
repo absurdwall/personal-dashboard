@@ -944,6 +944,7 @@ const collaborationDrafts = new Map<string, string>();
 const collaborationUnsavedDrafts = new Set<string>();
 const collaborationDraftWrites = new Map<string, Promise<CollaborationSessionView>>();
 let collaborationVaultSwitchDraftWrites: Promise<unknown>[] | null = null;
+let collaborationVaultSelectionRevision = 0;
 const collaborationDraftSaveTimers = new Map<string, number>();
 const collaborationTargetDates = new Map<string, string>();
 let activeCollaborationVoiceTarget: CollaborationVoiceTarget | null = null;
@@ -3945,7 +3946,8 @@ function renderCollaborationWorkspace(): void {
     collaborationStopButton.disabled = session?.runState === "stopping";
   }
   const createButton = document.querySelector<HTMLButtonElement>("#collaboration-new-session");
-  if (createButton) createButton.disabled = !vaultAvailable;
+  if (createButton) createButton.disabled = !vaultAvailable || vaultSelectionInProgress;
+  if (collaborationTargetDateInput) collaborationTargetDateInput.disabled = vaultSelectionInProgress || targetDatePending;
   renderCollaborationVoiceControls();
 }
 
@@ -3985,7 +3987,7 @@ function flushCollaborationDraft(
   draftOverride?: string,
 ): Promise<CollaborationSessionView | void> {
   const session = currentCollaborationSession;
-  if (!target && (!session || !collaborationMessageDraft)) return Promise.resolve();
+  if (!target && (vaultSelectionInProgress || !session || !collaborationMessageDraft)) return Promise.resolve();
   const saveTarget = target ?? {
     sessionId: session!.id,
     targetDate: collaborationTargetDates.get(session!.id) ?? collaborationTargetDate,
@@ -4036,40 +4038,39 @@ function saveCollaborationDraft(
 }
 
 async function prepareCollaborationForVaultSwitch(): Promise<void> {
-  // Keep failures even after the queue removes a settled promise. Voice
-  // delivery can enqueue its original-target save while we await Finishing.
-  const observed = [...collaborationDraftWrites.values()];
-  collaborationVaultSwitchDraftWrites = observed;
-  try {
-    // A submit owns its eventual draft update. Do not stash a new debounce
-    // that could restore its submitted text after the transaction clears it.
-    if (collaborationSendingDrafts.size) {
-      collaborationVoiceController.navigate();
-      throw new Error("collaboration-send-pending");
+  // These transactions own their eventual updates. Do not stash a debounce
+  // that could restore submitted text or move a half-changed date's draft.
+  if (collaborationSendingDrafts.size || collaborationTargetDatePendingSession) {
+    collaborationVoiceController.navigate();
+    throw new Error("collaboration-write-pending");
+  }
+  // Snapshot visible edits before Stop's state callback rerenders the editor.
+  stashCollaborationDraft(true);
+  const finishing = collaborationVoiceController.settleForVaultSwitch();
+  renderCollaborationWorkspace();
+  await finishing;
+  await drainCollaborationDraftsForVaultSwitch();
+}
+
+async function drainCollaborationDraftsForVaultSwitch(): Promise<void> {
+  // One observer belongs to the whole Vault selection, including unrelated
+  // pending-write waits. Rejections survive removal from the normal queue.
+  const observed = collaborationVaultSwitchDraftWrites!;
+  while (true) {
+    const results = await Promise.allSettled(observed.splice(0));
+    const failure = results.find(result => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
+    if (observed.length) continue;
+    const keys = new Set([...collaborationUnsavedDrafts, ...collaborationDraftSaveTimers.keys()]);
+    if (!keys.size && !collaborationDraftWrites.size) return;
+    observed.push(...collaborationDraftWrites.values());
+    for (const key of keys) {
+      const draft = collaborationDrafts.get(key);
+      // Never manufacture an empty origin after navigation or a cache reset.
+      if (draft === undefined) throw new Error("collaboration-draft-unavailable");
+      const [sessionId, targetDate] = key.split("\u0000");
+      flushCollaborationDraft({sessionId, targetDate}, draft);
     }
-    // Snapshot visible edits before Stop's state callback rerenders the editor.
-    stashCollaborationDraft(true);
-    const finishing = collaborationVoiceController.settleForVaultSwitch();
-    renderCollaborationWorkspace();
-    await finishing;
-    while (true) {
-      const results = await Promise.allSettled(observed.splice(0));
-      const failure = results.find(result => result.status === "rejected");
-      if (failure?.status === "rejected") throw failure.reason;
-      if (observed.length) continue;
-      const keys = new Set([...collaborationUnsavedDrafts, ...collaborationDraftSaveTimers.keys()]);
-      if (!keys.size && !collaborationDraftWrites.size) return;
-      observed.push(...collaborationDraftWrites.values());
-      for (const key of keys) {
-        const draft = collaborationDrafts.get(key);
-        // Never manufacture an empty origin after navigation or a cache reset.
-        if (draft === undefined) throw new Error("collaboration-draft-unavailable");
-        const [sessionId, targetDate] = key.split("\u0000");
-        flushCollaborationDraft({sessionId, targetDate}, draft);
-      }
-    }
-  } finally {
-    collaborationVaultSwitchDraftWrites = null;
   }
 }
 
@@ -4213,6 +4214,7 @@ async function refreshCollaborationContext(): Promise<void> {
 }
 
 async function saveCollaborationTargetDate(): Promise<void> {
+  if (vaultSelectionInProgress) return;
   const session = currentCollaborationSession;
   const date = collaborationTargetDateInput?.value || collaborationTargetDate;
   if (!session) {
@@ -4329,6 +4331,8 @@ async function resumeCollaborationRequest(sessionId: string, executionId: string
 }
 
 async function createCollaborationSession(): Promise<void> {
+  if (vaultSelectionInProgress) return;
+  const vaultRevision = collaborationVaultSelectionRevision;
   const explicitDate = collaborationEmptyTargetDate ??
     (collaborationActivityDateExplicit ? collaborationActivityDate : null);
   try {
@@ -4336,6 +4340,7 @@ async function createCollaborationSession(): Promise<void> {
       "collaboration_create_session",
       { date: explicitDate },
     );
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     const date = session.createdDate;
     cancelCollaborationVoiceCaptureForSelectionChange();
     stashCollaborationDraft();
@@ -4348,8 +4353,10 @@ async function createCollaborationSession(): Promise<void> {
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = date;
     renderCollaborationWorkspace();
     await refreshCollaborationWorkspace();
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     if (collaborationSessionsStatus) setCopy(collaborationSessionsStatus, "collaboration.sessionCreated");
   } catch (error) {
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     if (collaborationSessionsStatus) {
       setCopyError(collaborationSessionsStatus, "collaboration.sessionLoadFailed", error);
     }
@@ -4361,8 +4368,11 @@ async function openCollaborationForTask(
   taskName: string,
   targetDate: string,
 ): Promise<void> {
+  if (vaultSelectionInProgress) return;
+  const vaultRevision = collaborationVaultSelectionRevision;
   try {
     await flushCollaborationDraft();
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     let session = currentCollaborationSession;
     if (session?.runtimeThreadId && !session.taskToolAvailable) {
       session = null;
@@ -4378,6 +4388,7 @@ async function openCollaborationForTask(
         { sessionId: session.id, targetDate },
       );
     }
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     currentCollaborationSession = session;
     cacheCollaborationDrafts(session);
     collaborationActivityDate = targetDate;
@@ -4394,10 +4405,14 @@ async function openCollaborationForTask(
     const draft = existingDraft.includes(taskId)
       ? existingDraft
       : [existingDraft.trim(), taskReference].filter(Boolean).join("\n\n");
+    // Keep the current editor and cached task draft on the same snapshot even
+    // while this save is pending; a Vault preflight must not stash older text.
+    if (collaborationMessageDraft) collaborationMessageDraft.value = draft;
     const saved = await saveCollaborationDraft(
       { sessionId: session.id, targetDate },
       draft,
     );
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     currentCollaborationSession = saved;
     if (collaborationDateInput) collaborationDateInput.value = targetDate;
     if (collaborationTargetDateInput) collaborationTargetDateInput.value = targetDate;
@@ -4405,6 +4420,7 @@ async function openCollaborationForTask(
     renderCollaborationWorkspace();
     window.requestAnimationFrame(() => collaborationMessageDraft?.focus());
   } catch (error) {
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
     if (collaborationRunStatus) {
       setRawText(collaborationRunStatus, String(error));
       collaborationRunStatus.dataset.state = "error";
@@ -6480,9 +6496,12 @@ async function selectTodayVault(): Promise<void> {
     return;
   }
   vaultSelectionInProgress = true;
+  collaborationVaultSelectionRevision += 1;
+  collaborationVaultSwitchDraftWrites = [...collaborationDraftWrites.values()];
   try {
     await prepareCollaborationForVaultSwitch();
   } catch (error) {
+    collaborationVaultSwitchDraftWrites = null;
     vaultSelectionInProgress = false;
     renderCollaborationWorkspace();
     renderPendingWriteFailure();
@@ -6506,7 +6525,17 @@ async function selectTodayVault(): Promise<void> {
         isCurrent: () => vaultSelectionRequests.isCurrent(selectionRequest),
         isPresentationCurrent: () => todayPresentationRequests.isCurrent(presentationRequest),
         currentDestination: () => currentWorkspaceDestination,
-        waitForPendingWrites,
+        waitForPendingWrites: async () => {
+          if (!await waitForPendingWrites()) return false;
+          // Existing asynchronous saves may settle while other panes wait.
+          // Check their retained outcomes immediately before the picker.
+          try {
+            await drainCollaborationDraftsForVaultSwitch();
+            return true;
+          } catch {
+            return false;
+          }
+        },
         renderPendingWriteFailure,
         prepareForVaultSwitch: (view) => {
           resetVaultScopedWorkspaceState();
@@ -6526,6 +6555,7 @@ async function selectTodayVault(): Promise<void> {
       renderVaultSelectionError(error);
     }
   } finally {
+    collaborationVaultSwitchDraftWrites = null;
     vaultSelectionInProgress = false;
     renderCollaborationWorkspace();
     updateTodayOperationState(-1);
@@ -10457,6 +10487,7 @@ collaborationDateInput?.addEventListener("change", () => {
 });
 
 collaborationTargetDateInput?.addEventListener("change", () => {
+  if (vaultSelectionInProgress) return;
   cancelCollaborationVoiceCaptureForSelectionChange();
   collaborationTargetDate = collaborationTargetDateInput.value || collaborationActivityDate;
   void saveCollaborationTargetDate();
