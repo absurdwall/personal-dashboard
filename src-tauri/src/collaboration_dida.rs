@@ -186,7 +186,9 @@ pub(super) fn thread_config(connection: Option<&Value>, writes_allowed: bool) ->
         })
         .cloned()
         .collect();
-    json!({"mcp_servers.dida365.enabled_tools":tools})
+    let mut config=json!({"mcp_servers.dida365.enabled_tools":tools});
+    set_current_tool_approvals(&mut config);
+    config
 }
 
 pub(super) fn thread_config_with_habit_writes(connection: Option<&Value>, writes_allowed:bool, habit_writes_allowed:bool) -> Value {
@@ -196,9 +198,33 @@ pub(super) fn thread_config_with_habit_writes(connection: Option<&Value>, writes
             tools.retain(|tool| ![Some("create_habit"),Some("update_habit"),Some("upsert_habit_checkins")].contains(&tool.as_str()));
         }
     }
+    set_current_tool_approvals(&mut config);
     config
 }
 
+// ApprovalPolicy::Never still rejects native MCP writes classified as requiring
+// approval. Current manual authority is represented by exact per-tool overrides,
+// never a server-wide trust setting. Read-only/only-local catalogs omit them.
+const MANUAL_APPROVAL_POLICY_REVISION: &str = "selected-dida-manual-per-tool-approve-v1";
+fn set_current_tool_approvals(config: &mut Value) {
+    let enabled = config["mcp_servers.dida365.enabled_tools"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let fields = config
+        .as_object_mut()
+        .expect("Host thread configuration object");
+    for tool in super::dida_writes::WRITE_TOOLS {
+        let key = format!("mcp_servers.{SERVER}.tools.{tool}.approval_mode");
+        fields.remove(&key);
+        if enabled.iter().any(|enabled| enabled.as_str() == Some(tool)) {
+            fields.insert(key, json!("approve"));
+        }
+    }
+}
+pub(super) fn capability_fingerprint(connection: Option<&Value>) -> Option<String> {
+    connection.map(|connection|super::stable_effect_fingerprint(&json!({"enabledTools":connection.get("enabled_tools"),"manualApprovalPolicyRevision":MANUAL_APPROVAL_POLICY_REVISION})))
+}
 pub(super) fn validate_config(effective: &Value) -> Result<(), String> {
     let servers = effective
         .get("config")
@@ -266,6 +292,22 @@ pub(super) const READ_GUIDANCE: &str = "The host-selected existing dida365 MCP r
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_approval_is_per_enabled_manual_tool_and_removed_from_read_only_or_local_habit_scope() {
+        let selected=selected_connection(json!({"name":SERVER,"enabled":true,"transport":{"type":"streamable_http","url":"https://example.invalid"},"disabled_tools":["delete_task"]})).unwrap();
+        let manual=thread_config(Some(&selected),true);
+        let overrides:Vec<_>=manual.as_object().unwrap().iter().filter(|(key,_)|key.ends_with(".approval_mode")).collect();
+        assert_eq!(overrides.len(),7); assert!(overrides.iter().all(|(_,value)|**value==json!("approve")));
+        assert!(manual.get("mcp_servers.dida365.tools.delete_task.approval_mode").is_none());
+        assert!(manual.get("mcp_servers.dida365.default_tools_approval_mode").is_none());
+        let readonly=thread_config(Some(&selected),false);
+        assert_eq!(readonly.as_object().unwrap().len(),1);
+        let local=thread_config_with_habit_writes(Some(&selected),true,false);
+        for tool in ["create_habit","update_habit","upsert_habit_checkins"] {assert!(local.get(format!("mcp_servers.dida365.tools.{tool}.approval_mode")).is_none());}
+        assert_eq!(local["mcp_servers.dida365.tools.create_task.approval_mode"],"approve");
+        assert_ne!(capability_fingerprint(Some(&selected)),Some(super::super::stable_effect_fingerprint(&selected.get("enabled_tools"))),"Existing manual native threads must rotate when the approval contract changes");
+        assert!(capability_fingerprint(None).is_none());
+    }
     #[test]
     fn only_local_habit_scope_removes_native_habit_mutations_but_keeps_task_authority() {
         let connection=selected_connection(json!({"name":SERVER,"enabled":true,"transport":{"type":"streamable_http","url":"https://example.invalid"}})).unwrap();
@@ -354,6 +396,27 @@ mod runtime_gate {
         RuntimeShutdownHandle, StdioJsonlClient, COLLABORATION_READ_PERMISSION_PROFILE,
     };
     #[test]
+    #[ignore = "Requires selected Dida; genuine native read-only and only-local catalogs, no mutation"]
+    fn native_catalog_keeps_automatic_review_and_only_local_habit_boundaries_after_manual_approval_change() {
+        let executable=crate::collaboration::discover_codex_cli().unwrap();
+        let connection=discover(&executable).expect("Existing selected source required");
+        let root=std::env::temp_dir().join(format!("personal-dashboard-dida-approval-catalog-{}",std::process::id()));
+        let mut client=StdioJsonlClient::spawn_with_selected_dida(&executable,&root,RuntimeShutdownHandle::default(),Some(&connection)).unwrap();client.initialize().unwrap();
+        for (mode,writes,habit_writes) in [("automatic/review",false,true),("only-local-Habit",true,false)] {
+            let started=client.request("thread/start",json!({"cwd":root,"permissions":COLLABORATION_READ_PERMISSION_PROFILE,"approvalPolicy":"never","ephemeral":true,"config":thread_config_with_habit_writes(Some(&connection),writes,habit_writes)})).unwrap();
+            let thread=started["thread"]["id"].as_str().unwrap();
+            let catalog=client.request("mcpServerStatus/list",json!({"threadId":thread,"serverName":SERVER,"detail":"toolsAndAuthOnly"})).unwrap();
+            let tools=catalog["data"][0]["tools"].as_object().expect("Actual native schema required");
+            let names:Vec<_>=tools.values().filter_map(|tool|tool["name"].as_str()).collect();
+            assert!(names.contains(&"get_habit_checkins"),"{mode} must retain actual current source reads");
+            for tool in super::super::dida_writes::WRITE_TOOLS {
+                if !writes || ["create_habit","update_habit","upsert_habit_checkins"].contains(tool) {assert!(!names.contains(tool),"{mode} cannot expose mutation {tool}");}
+            }
+            if writes {assert!(names.contains(&"create_task"));}
+        }
+        drop(client);std::fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
     #[ignore = "Requires real selected Dida MCP; read-only runtime probe, no personal mutations"]
     fn selected_dida_is_discovered_and_queried_in_dashboard_runtime() {
         let executable = crate::collaboration::discover_codex_cli().unwrap();
@@ -409,5 +472,127 @@ mod runtime_gate {
         );
         drop(client);
         std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod actor_approval_gate {
+    use super::*;
+    use crate::collaboration::{
+        CodexAppServerRuntime, CollaborationApplication, CollaborationClock,
+        CollaborationContextSource, DashboardContextReader, FileCollaborationStore,
+    };
+    use std::sync::Arc;
+    struct GateClock;
+    impl CollaborationClock for GateClock {
+        fn current_timestamp(&self) -> String {
+            "2026-10-03T17:00:00-04:00".into()
+        }
+        fn current_date(&self) -> String {
+            "2026-10-03".into()
+        }
+    }
+    #[test]
+    #[ignore = "Requires explicitly authorized isolated logged-in profile + retained owned Habit; real MODEL mutation/readback and reset"]
+    fn real_model_native_habit_write_is_approved_and_verified_through_dashboard_runtime() {
+        let profile = std::env::var_os("PD_SPEC54_NATIVE_APPROVAL_PROFILE")
+            .map(std::path::PathBuf::from)
+            .expect("Explicit isolated acceptance profile required");
+        assert_eq!(
+            profile,
+            std::path::PathBuf::from("/tmp/pd-spec54-acceptance.noindex/profile")
+        );
+        let workspace: Value =
+            serde_json::from_slice(&std::fs::read(profile.join("today-workspace.json")).unwrap())
+                .unwrap();
+        assert_eq!(
+            workspace["selectedVault"],
+            "/tmp/pd-spec54-acceptance.noindex/vault"
+        );
+        assert!(
+            profile.join("codex-profile/auth.json").is_file(),
+            "Use existing task-owned login in place, never copy credentials"
+        );
+        let owned: Value = serde_json::from_slice(
+            &std::fs::read("/tmp/pd-spec54/dida59-owned-habit.json").unwrap(),
+        )
+        .unwrap();
+        assert_eq!(owned["prepared"], false);
+        let id = owned["id"].as_str().unwrap();
+        let name = owned["name"].as_str().unwrap();
+        let source = Arc::new(DashboardContextReader::new(
+            profile.join("today-workspace.json"),
+        ));
+        let owned_key = source.current_vault_key().unwrap().unwrap();
+        let key = owned_key.as_str();
+        let app=CollaborationApplication::with_adapters(Arc::new(FileCollaborationStore::new(profile.join("native-approval59-actor-history.json"))),Box::new(CodexAppServerRuntime::new(profile.clone())),source,Arc::new(GateClock),profile.join("collaboration-runtime"),"Only the explicitly identified owned external test Habit may be mutated. Use native MCP directly, read exact ID and historical check-in before and after. Do not create objects or change files or genuine personal data.".into());
+        assert!(
+            app.connection().read_only_text_turns_available,
+            "Existing native runtime/login required"
+        );
+        let session = app.create_default_session().unwrap();
+        let wait = || {
+            for _ in 0..3600 {
+                let state = app.session(key, &session.id).unwrap();
+                if [
+                    "completed",
+                    "error",
+                    "interrupted",
+                    "stop-unconfirmed",
+                    "attention",
+                ]
+                .contains(&state.run_state.as_str())
+                {
+                    return state;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            panic!("Owned actor gate did not finish; inspect isolated native history before retry");
+        };
+        let prepare=format!("只改滴答 Habit {id}（{name}）：准备本次独立验收，先读取20261001..20261004相邻范围，只有2026-10-02或2026-10-03仍有完成打卡时才重置支持的 status 0。已未打卡则不写。回读确认，仅该对象这两个日期，不改名称、其他对象、文件或本地记录。");
+        app.submit_message(key, &session.id, "2026-10-03", &prepare)
+            .unwrap();
+        let prepared = wait();
+        assert_eq!(
+            prepared.run_state, "completed",
+            "Actual-model cleanup preparation must finish before any test write"
+        );
+        let complete=format!("只改滴答 Habit：稳定 ID {id}，已明确拥有的测试对象名称 {name}。把2026-10-02完成打卡保存为 status 2，未知实际分钟。先读该对象与20261001..20261003相邻日期范围，仅操作该 ID 的20261002；如果已经是2不要重复。写后回读同一范围并核对精确日期。不要改任何其他对象、文件或本地记录。");
+        app.submit_message(key, &session.id, "2026-10-03", &complete)
+            .unwrap();
+        let saved = wait();
+        let observed = saved
+            .messages
+            .iter()
+            .flat_map(|message| &message.external_actions)
+            .filter(|action| action.tool_id == "upsert_habit_checkins")
+            .cloned()
+            .collect::<Vec<_>>();
+        // Cleanup is another actual MODEL turn, in the same Dashboard session.
+        // It reads current source before deciding whether status0 is necessary.
+        let reset=format!("只改滴答 Habit {id}（{name}）：撤回本测试的2026-10-02及2026-10-03完成打卡，先读取该对象与20261001..20261004相邻日期范围。已是0/未打卡的日期不要重复写；只有精确对应日期仍有完成状态时才重置为支持的 status 0。写后回读确认两个日期都未标记。不要改其他对象、名称、文件或本地记录。");
+        app.submit_message(key, &session.id, "2026-10-03", &reset)
+            .unwrap();
+        let reset_state = wait();
+        let reset_actions = reset_state
+            .messages
+            .iter()
+            .rev()
+            .find(|message| message.role == "user")
+            .unwrap()
+            .external_actions
+            .clone();
+        std::fs::write("/tmp/pd-spec54/native-approval59-model-evidence.json",json!({"sessionId":session.id,"initialMutationActions":observed,"resetActions":reset_actions,"initialRunState":saved.run_state,"resetRunState":reset_state.run_state,"actorTransport":"CodexAppServerRuntime through CollaborationApplication native item handler; no host MCP business write"}).to_string()).unwrap();
+        app.shutdown().unwrap();
+        assert!(observed.iter().any(|action|action.status=="saved" && action.verification.as_ref().is_some_and(|v|v["habitCheckin"]["habitId"]==id && v["habitCheckin"]["stamp"]==20261002 && v["habitCheckin"]["status"]==2)),"The actual model must mutate the exact owned source and the production native handler must confirm saved through source readback; inspect private gate evidence");
+        assert!(
+            reset_actions.iter().any(|action| action.status == "saved"
+                && action
+                    .verification
+                    .as_ref()
+                    .is_some_and(|v| v["habitCheckin"]["stamp"] == 20261002
+                        && v["habitCheckin"]["status"] == 0)),
+            "The actual model cleanup must source-confirm the exact historical reset"
+        );
     }
 }

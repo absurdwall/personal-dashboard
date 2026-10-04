@@ -12040,7 +12040,7 @@ impl AppServerTransport for CodexAppServerRuntime {
     fn configure_external_writes(&mut self, allowed: bool) { self.dida_writes_allowed = allowed; }
     fn configure_external_habit_writes(&mut self, allowed: bool) { self.dida_habit_writes_allowed = allowed; }
     fn external_capability_fingerprint(&self) -> Option<String> {
-        self.selected_dida_connection.as_ref().map(|connection| stable_effect_fingerprint(&connection.get("enabled_tools")))
+        dida::capability_fingerprint(self.selected_dida_connection.as_ref())
     }
 
     fn reconcile_external_action(&mut self, mut action: ExternalToolActionView) -> ExternalToolActionView {
