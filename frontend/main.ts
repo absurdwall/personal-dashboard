@@ -4521,7 +4521,17 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
       if (!["queued", "reading", "thinking", "stopping"].includes(updated.runState)) {
         if (collaborationStatusTimer !== null) window.clearInterval(collaborationStatusTimer);
         collaborationStatusTimer = null;
-        void refreshCollaborationWorkspace();
+        // Native file saves have no Dashboard operation receipt. Re-read canonical
+        // projections even for a stopped/failed turn, which may have saved earlier.
+        // The request's captured date survives target changes and the 04:00 rollover.
+        const request = updated.messages.find((message) =>
+          message.role === "user" && message.executionId === updated.runId);
+        const savedDate = request?.targetDate ?? session.targetDate;
+        void Promise.allSettled([
+          refreshCanonicalDateProjections(savedDate),
+          refreshTasks(),
+          refreshCollaborationWorkspace(),
+        ]);
       }
     }).catch((error: unknown) => {
       if (currentCollaborationSession?.id !== sessionId) return;

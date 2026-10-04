@@ -1638,6 +1638,8 @@ fn dashboard_context_reader_uses_canonical_read_services_without_mutating_source
     .unwrap();
     let reader = DashboardContextReader::new(workspace_file);
     let vault_key = reader.current_vault_key().unwrap().unwrap();
+    assert_eq!(reader.selected_vault_path(&vault_key).unwrap(), Some(vault.canonicalize().unwrap()));
+    assert!(reader.selected_vault_path("unselected-vault").unwrap_err().contains("selected Vault changed"));
     let context = reader.read_context(Some(&vault_key), "2026-09-08").unwrap();
 
     assert_eq!(context.daily_record.state, "ready");
