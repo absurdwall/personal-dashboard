@@ -129,6 +129,14 @@ _Avoid_: Chat-only page, parallel Task or Daily Record store
 A persisted user-Codex work thread with its own messages, activity dates, target dates, drafts, and operation history. It may continue across lived dates; its history is not current business state.
 _Avoid_: Single-day conversation, Task list
 
+**Collaboration proposal**:
+A concrete proposed change presented for the user's requested review before it is saved. It is distinct from an instruction to apply a change directly.
+_Avoid_: Mandatory authorization step, saved change
+
+**Collaboration outcome**:
+The observed result of a requested change to a Task, Daily Record, Habit, document, background memory, or connected external app. Saving the conversation is a separate result; changes to different sources retain independent outcomes.
+_Avoid_: Saved reply, proposal, combined success
+
 **Collaboration dictation**:
 A user's spoken input captured as editable draft text for a Collaboration session and target date. The user submits that text as a message separately.
 _Avoid_: Voice conversation, automatic request

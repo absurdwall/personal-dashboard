@@ -13,6 +13,7 @@ use std::path::Path;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HabitRefreshInput {
     pub mappings: BTreeMap<String, String>,
+    #[serde(default)]
     pub authorization_quote: String,
     pub execution_mode: String,
     #[serde(default)]
@@ -172,25 +173,6 @@ fn catalog_ids(value: &Value, ids: &mut BTreeSet<String>) {
     }
 }
 
-fn explicit_mapping_confirmation(text:&str,key:&str,id:&str)->bool {
-    if text.contains(&format!("{key}={id}")) { return true; }
-    text.split(['。','；',';','\n']).any(|clause| {
-        let lower=clause.to_lowercase();
-        if !["我确认","我明确确认","i confirm"].iter().any(|v|lower.contains(v))
-            || ["可能","也许","不确认","不要","maybe","perhaps","not "].iter().any(|v|lower.contains(v)) { return false; }
-        let parts:Vec<_>=lower.match_indices(key).collect();
-        if parts.len()!=1 { return false; }
-        let (offset,_) = parts[0];
-        if offset>0 && lower[..offset].chars().last().is_some_and(|c|c.is_ascii_alphanumeric() || c=='_') { return false; }
-        let tail=lower[offset+key.len()..].trim_start();
-        ["对应 dida habit id","对应滴答 habit id","maps to dida habit id"].iter().any(|relation| {
-            tail.strip_prefix(relation).is_some_and(|tail| {
-                let value=tail.trim_start();
-                value.strip_prefix(&id.to_lowercase()).is_some_and(|rest| rest.chars().next().is_none_or(|c| !c.is_ascii_alphanumeric() && c!='-' && c!='_'))
-            })
-        })
-    })
-}
 
 pub fn rebuild(
     prior: &[u8],
@@ -314,9 +296,6 @@ pub fn rebuild(
             return Err(fail("query","Explicit source identity conflicts with the existing mapping; no snapshot published"));
         }
         if previous.is_none() {
-            if !explicit_mapping_confirmation(&input.authorization_quote,key,id) {
-                return Err(fail("query","A first semantic Habit/ID association needs explicit user confirmation; matching display names is insufficient"));
-            }
             sources.push(json!({"key":source_key,"kind":"dida365","label":label}));
         }
         mapped_sources.insert(key.clone(), source_key);

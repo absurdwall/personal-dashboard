@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../../frontend/main.ts", import.meta.url), 
 const start = source.indexOf("function renderCollaborationMessages(");
 const rest = source.slice(start);
 const end = /^}\n/m.exec(rest)!;
-const renderer = stripTypeScriptTypes(rest.slice(0, end.index + 2));
+const renderer = ["collaborationVisibleResults", "collaborationOutcomeSummary", "renderCollaborationOutcomes"].map(functionSource).join("\n") + stripTypeScriptTypes(rest.slice(0, end.index + 2));
 function element() { return { textContent: "", dataset: {}, addEventListener() {}, setAttribute() {}, children: [] as any[], append(...nodes: any[]) { this.children.push(...nodes); }, replaceChildren() { this.children = []; } }; }
 for (const language of ["zh", "en"] as const) {
   test(`request results retain independent saved/unknown/retained outcomes after reopen in ${language}`, () => {
@@ -26,7 +26,7 @@ for (const language of ["zh", "en"] as const) {
     const context = vm.createContext({ document: { createElement: element }, collaborationMessageList: list,
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic, t: (key: any, values: any) => interfaceCopy(key, language, values), session });
     vm.runInContext(renderer + "\nrenderCollaborationMessages(session)", context);
-    const first = list.children[0].children.find((node: any) => node.className === "collaboration-action-results");
+    const first = list.children[1].children.find((node: any) => node.className === "collaboration-action-results");
     assert.equal(first.children.length, 4);
     assert.equal(first.children[1].dataset.actionId, "task-1");
     assert.ok(first.children[1].textContent.includes("2026-10-09"));
@@ -35,7 +35,7 @@ for (const language of ["zh", "en"] as const) {
     const previous = first.children.map((node: any) => node.textContent).join("\n");
     context.session = JSON.parse(JSON.stringify(session));
     vm.runInContext("renderCollaborationMessages(session)", context);
-    assert.equal(list.children[0].children.find((node: any) => node.className === "collaboration-action-results").children.map((node: any) => node.textContent).join("\n"), previous);
+    assert.equal(list.children[1].children.find((node: any) => node.className === "collaboration-action-results").children.map((node: any) => node.textContent).join("\n"), previous);
     assert.ok(!previous.includes("Fresh readback confirmed"));
   });
 }
@@ -62,15 +62,14 @@ for (const language of ["zh", "en"] as const) {
     vm.runInContext(functionSource("collaborationRunStateLabel") + functionSource("collaborationRunProgressLabel") + renderer + "\nrenderCollaborationMessages(session); header = collaborationRunProgressLabel(session);", context);
     assert.equal(context.header, interfaceCopy("collaboration.statusCompleted", language));
     assert.ok(!context.header.includes("unchanged") && !context.header.includes("未更改"));
-    const results = list.children[0].children.find((node: any) => node.className === "collaboration-action-results");
+    const results = list.children[1].children.find((node: any) => node.className === "collaboration-action-results");
     assert.ok(results.children[1].textContent.endsWith(localizeCollaborationDiagnostic(literal, language)));
     assert.ok(results.children[2].textContent.includes(interfaceCopy("collaboration.externalStatusSaved", language)));
     assert.ok(results.children[2].textContent.endsWith(literal), "Source-owned wording remains verbatim even when it matches host grammar");
     assert.ok(results.children[3].textContent.includes(interfaceCopy("collaboration.taskOperationStatus.applied", language)));
     const assistant = list.children[1];
     assert.equal(assistant.children[1].textContent, session.messages[1].text);
-    assert.equal(assistant.children[2].textContent, interfaceCopy("collaboration.messageSavedBoundary", language));
-    assert.ok(!assistant.children[2].textContent.includes("not a saved business change") && !assistant.children[2].textContent.includes("不是已保存"));
+    assert.equal(assistant.children[2].className, "collaboration-action-results");
   });
 }
 
@@ -86,7 +85,7 @@ for (const language of ["zh", "en"] as const) {
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
       t: (key: any, values: any) => interfaceCopy(key, language, values) });
     vm.runInContext(renderer + "\nrenderCollaborationMessages(session)", context);
-    const results = list.children[0].children.find((node: any) => node.className === "collaboration-action-results");
+    const results = list.children[1].children.find((node: any) => node.className === "collaboration-action-results");
     assert.ok(results.children[1].textContent.endsWith(localizeCollaborationDiagnostic(native, language)));
     assert.ok(results.children[2].textContent.endsWith(native));
   });
@@ -105,7 +104,7 @@ for (const language of ["zh", "en"] as const) {
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
       t: (key: any, values: any) => interfaceCopy(key, language, values) });
     vm.runInContext(renderer + "\nrenderCollaborationMessages(session)", context);
-    const results = list.children[0].children.find((node: any) => node.className === "collaboration-action-results");
+    const results = list.children[1].children.find((node: any) => node.className === "collaboration-action-results");
     const expected = language === "zh" ? "该任务已完成，但完成日期或时间不同。请使用明确的完成记录更正操作。" : literal;
     assert.ok(results.children[1].textContent.endsWith(expected));
     assert.ok(results.children[2].textContent.endsWith(literal), "source wording is retained verbatim");
@@ -145,7 +144,7 @@ for (const language of ["zh", "en"] as const) {
     }
   });
 
-  test(`expanded external activity localizes verified host summaries and preserves source/input text in ${language}`, () => {
+  test(`expanded external activity shows compact tool status without raw payloads in ${language}`, () => {
     const literal = "Current Dida readback is unavailable. Preserve any confirmed effects, resolve the source state before retrying, and do not repeat creation while unknown.";
     const list = element();
     const action = { sourceName: "Owned source name", sourceId: "dida365", toolId: "upsert_habit_checkins", status: "unknown", targetScope: "2026-09-26", inputSummary: literal, resultSummary: literal };
@@ -156,10 +155,10 @@ for (const language of ["zh", "en"] as const) {
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
       t: (key: any, values: any) => interfaceCopy(key, language, values) });
     vm.runInContext(renderer + "\nrenderCollaborationMessages(session)", context);
-    const activity = list.children[0].children.find((node: any) => node.className === "collaboration-external-activity");
-    assert.ok(activity.children[1].children[2].textContent.endsWith(literal));
-    assert.ok(activity.children[1].children[3].textContent.endsWith(localizeCollaborationDiagnostic(literal, language)));
-    assert.ok(activity.children[2].children[3].textContent.endsWith(literal));
+    const activity = list.children[1].children.find((node: any) => node.className === "collaboration-external-activity");
+    assert.equal(activity.children.length, 3);
+    assert.ok(activity.children[1].textContent.includes("upsert_habit_checkins"));
+    assert.ok(!activity.children[1].textContent.includes(literal), "activity shows compact status, not source payloads");
   });
 
   test(`operation cards localize host failures and Short/local Habit saved diagnostics in ${language}`, () => {

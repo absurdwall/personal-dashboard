@@ -8958,6 +8958,7 @@ button.habit-cell:focus-visible {
 
 .collaboration-composer {
   display: grid;
+  background: var(--parity-surface);
   gap: 0.4rem;
   padding-top: 0.7rem;
   border-top: 1px solid var(--parity-border);
@@ -9558,8 +9559,23 @@ button.habit-cell:focus-visible {
 }
 .collaboration-composer-input .collaboration-voice-controls {
   justify-content: flex-end;
+  flex-wrap: nowrap;
   padding: 0.35rem 0.5rem;
 }
+.collaboration-voice-controls #collaboration-send-message {
+  flex: 0 0 auto;
+  min-height: 2.25rem;
+}
+.collaboration-action-results {
+  margin-top: 0.65rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--parity-border);
+}
+.collaboration-action-results p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.collaboration-outcome-link { display: block; margin-top: 0.2rem; }
 .collaboration-voice-controls .collaboration-microphone {
   display: inline-flex;
   align-items: center;

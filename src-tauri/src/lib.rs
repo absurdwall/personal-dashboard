@@ -513,12 +513,15 @@ fn collaboration_resume_not_started(
 }
 
 #[tauri::command]
-fn collaboration_reconcile_run(
+async fn collaboration_reconcile_run(
     application: State<'_, collaboration::CollaborationApplication>,
     session_id: String,
     execution_id: String,
 ) -> Result<collaboration::CollaborationSessionView, String> {
-    application.reconcile_run_for_selected_vault(&session_id, &execution_id)
+    let application = application.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        application.reconcile_run_for_selected_vault(&session_id, &execution_id)
+    }).await.map_err(|error| format!("Could not check the saved result: {error}"))?
 }
 
 #[tauri::command]

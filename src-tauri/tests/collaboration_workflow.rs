@@ -904,6 +904,34 @@ fn exit_shutdown_returns_promptly_and_restart_reconciles_without_replaying_queue
 }
 
 #[test]
+fn saved_result_check_does_not_wait_for_a_busy_runtime() {
+    let directory = IsolatedDirectory::new();
+    let gate = Arc::new(FakeTurnGate::default());
+    gate.configure_cancellation(true, false);
+    let application = new_application_with_controls(&directory, Arc::new(Mutex::new(Vec::new())),
+        Arc::new(Mutex::new(Vec::new())), Some(Arc::clone(&gate)), Arc::new(Mutex::new(HashMap::new())));
+    let session = application.create_session("2026-09-27").unwrap();
+    let queued = application.submit_message("synthetic-vault", &session.id, "2026-09-27", "Synthetic action").unwrap();
+    gate.wait_for_started(1);
+    // Simulate the saved stop-unconfirmed state while the transport still owns
+    // its mutex. The same condition occurs with a slow source/recovery call.
+    let store = FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"));
+    let mut state = store.load().unwrap();
+    let stored = state.sessions.iter_mut().find(|s|s.id==session.id).unwrap();
+    stored.messages[0].delivery_state="stop-unconfirmed".into();
+    stored.run_state="stop-unconfirmed".into();
+    store.save(&state).unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let checker=application.clone();
+    let worker=thread::spawn(move || tx.send(checker.reconcile_run_for_selected_vault(&session.id, queued.run_id.as_deref().unwrap())).unwrap());
+    let result=rx.recv_timeout(Duration::from_millis(250));
+    gate.release_all();
+    worker.join().unwrap();
+    assert!(result.is_ok(), "saved-result checking must return promptly instead of blocking behind the runtime mutex");
+    assert!(result.unwrap().unwrap_err().contains("busy"));
+}
+
+#[test]
 fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically() {
     let directory = IsolatedDirectory::new();
     let store = FileCollaborationStore::new(
@@ -1420,7 +1448,7 @@ fn direct_memory_update_waits_when_the_user_asks_to_review_before_saving() {
         arguments: serde_json::json!({
             "operation": "proposeLongTermUpdate",
             "basis": "explicitUserInstruction",
-            "executionMode": "execute",
+            "executionMode": "prepareProposal",
             "authorizationQuote": "Please remember that I prefer early planning.",
             "change": "Prefers early planning.",
             "replaces": null
@@ -1445,10 +1473,11 @@ fn direct_memory_update_waits_when_the_user_asks_to_review_before_saving() {
     wait_until_finished(&application, &session.id);
 
     let finished = application.session("synthetic-vault", &session.id).unwrap();
-    assert!(finished.memory_proposals.is_empty());
+    assert_eq!(finished.memory_proposals.len(), 1);
+    assert_eq!(finished.memory_proposals[0].status, "awaitingApproval");
     assert_eq!(memory.content(), "# Synthetic profile\n");
     assert_eq!(memory_results.lock().unwrap().len(), 1);
-    assert!(!memory_results.lock().unwrap()[0].success);
+    assert!(memory_results.lock().unwrap()[0].success);
 }
 
 #[test]
@@ -1817,7 +1846,7 @@ fn external_receipt_loss_recovers_current_source_before_write_capability_without
     drop(remote);
     reopened.submit_message("synthetic-vault",&session.id,"2026-09-27","先给我看方案，再决定滴答修改").unwrap();
     wait_for_session(&reopened,&session.id,|s| s.run_state == "completed" && s.messages.len() >= 7);
-    assert_eq!(source.lock().unwrap().scopes.last(),Some(&false),"Review-first has no native external mutation capability");
+    assert_eq!(source.lock().unwrap().writes,1,"The model fixture sends no mutation when the user asks for review; the host does not classify prose.");
 }
 
 #[test]

@@ -502,23 +502,6 @@ pub(super) fn verify(
     add_source_identity(action);
 }
 
-pub(super) fn with_outcomes(mut text: String, actions: &[ExternalToolActionView]) -> String {
-    let writes = actions
-        .iter()
-        .filter(|action| is_mutation(action))
-        .collect::<Vec<_>>();
-    if !writes.is_empty() {
-        text.push_str("\n\nDida source outcomes:");
-        for action in writes {
-            text.push_str(&format!(
-                "\n- {}: {}. {}",
-                action.tool_id, action.status, action.result_summary
-            ));
-        }
-    }
-    text
-}
-
 #[cfg(test)]
 fn creation_namespace(execution_id: &str) -> String {
     let value =
