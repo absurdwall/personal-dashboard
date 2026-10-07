@@ -46,6 +46,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const COLLABORATION_SCHEMA_VERSION: u32 = 1;
 const MAX_MESSAGE_CHARACTERS: usize = 12_000;
 const APP_SERVER_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
+// A model turn spans reasoning and multiple tools; it is not one JSON-RPC
+// response. Keep stalled turns bounded without abandoning a progressing turn.
+const APP_SERVER_TURN_INACTIVITY_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+const APP_SERVER_TURN_TOTAL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const APP_SERVER_INTERRUPT_TIMEOUT: Duration = Duration::from_secs(5);
 const COLLABORATION_SKILL: &str =
     include_str!("../../.agents/skills/personal-dashboard-collaboration/SKILL.md");
 const COLLABORATION_HABIT_REFRESH_TOOL: &str = "dashboard_refresh_habits";
@@ -11229,7 +11234,7 @@ impl AppServerTransport for CodexAppServerRuntime {
             .and_then(|turn| turn.get("id"))
             .and_then(Value::as_str)
             .ok_or_else(|| "Codex App Server did not start the requested turn.".to_string())?;
-        let (text, stopped, external_actions) = client.wait_for_turn(
+        let result = client.wait_for_turn(
             &request.thread_id,
             turn_id,
             &cancel_requested,
@@ -11237,7 +11242,14 @@ impl AppServerTransport for CodexAppServerRuntime {
             &request.context.date,
             external_action_handler.as_ref(),
             external_approval_handler.as_ref(),
-        )?;
+        );
+        if result.is_err() {
+            // Do not leave a live model issuing calls after its consumer has
+            // exited. Saved threads/receipts remain available for read-only
+            // reconciliation; the original turn is never replayed here.
+            self.client = None;
+        }
+        let (text, stopped, external_actions) = result?;
         Ok(RuntimeTurnResult {
             text,
             runtime_turn_id: Some(turn_id.to_owned()),
@@ -12031,31 +12043,70 @@ impl StdioJsonlClient {
         external_action_handler: Option<&RuntimeExternalActionHandler>,
         external_approval_handler: Option<&RuntimeExternalApprovalHandler>,
     ) -> Result<(String, bool, Vec<ExternalToolActionView>), String> {
+        self.wait_for_turn_with_timeouts(
+            thread_id, turn_id, cancel_requested, tool_handler, target_scope,
+            external_action_handler, external_approval_handler,
+            APP_SERVER_TURN_INACTIVITY_TIMEOUT, APP_SERVER_TURN_TOTAL_TIMEOUT,
+        )
+    }
+
+    fn wait_for_turn_with_timeouts(
+        &mut self,
+        thread_id: &str,
+        turn_id: &str,
+        cancel_requested: &AtomicBool,
+        tool_handler: Option<&RuntimeDynamicToolHandler>,
+        target_scope: &str,
+        external_action_handler: Option<&RuntimeExternalActionHandler>,
+        external_approval_handler: Option<&RuntimeExternalApprovalHandler>,
+        inactivity_timeout: Duration,
+        total_timeout: Duration,
+    ) -> Result<(String, bool, Vec<ExternalToolActionView>), String> {
         let mut text = String::new();
         let mut external_actions: Vec<ExternalToolActionView> = Vec::new();
         let mut habit_source_reads = Vec::new();
         let mut interrupt_requested = false;
-        let deadline = std::time::Instant::now() + APP_SERVER_REQUEST_TIMEOUT;
+        let total_deadline = std::time::Instant::now() + total_timeout;
+        let mut inactivity_deadline = std::time::Instant::now() + inactivity_timeout;
         loop {
             if cancel_requested.load(Ordering::SeqCst) && !interrupt_requested {
                 interrupt_requested = true;
-                let _ = self.request(
+                let _ = self.request_until(
                     "turn/interrupt",
                     json!({ "threadId": thread_id, "turnId": turn_id }),
+                    std::time::Instant::now() + APP_SERVER_INTERRUPT_TIMEOUT.min(inactivity_timeout),
                 );
             }
+            let deadline = total_deadline.min(inactivity_deadline);
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
             if remaining.is_zero() {
-                return Err("Codex App Server did not confirm the turn before its timeout.".into());
+                let error = if std::time::Instant::now() >= total_deadline {
+                    "Codex turn exceeded its total execution limit. Check saved results before continuing."
+                } else {
+                    "Codex turn stopped reporting activity before its inactivity timeout. Check saved results before continuing."
+                };
+                let _ = self.request_until(
+                    "turn/interrupt", json!({ "threadId": thread_id, "turnId": turn_id }),
+                    std::time::Instant::now() + APP_SERVER_INTERRUPT_TIMEOUT.min(inactivity_timeout),
+                );
+                return Err(error.into());
             }
             let message = match self.receive_value(Duration::from_millis(200).min(remaining)) {
                 Ok(message) => message,
                 Err(error) if error.contains("did not respond in time") => continue,
                 Err(error) => return Err(error),
             };
+            let params = message.get("params").unwrap_or(&Value::Null);
+            let message_turn = params.get("turnId").and_then(Value::as_str)
+                .or_else(|| params.get("turn").and_then(|turn| turn.get("id")).and_then(Value::as_str));
+            let current_activity = params.get("threadId").and_then(Value::as_str) == Some(thread_id)
+                && message_turn.is_none_or(|id| id == turn_id);
+            if current_activity {
+                inactivity_deadline = std::time::Instant::now() + inactivity_timeout;
+            }
             if message.get("method").and_then(Value::as_str) == Some("item/agentMessage/delta") {
                 let params = message.get("params").unwrap_or(&Value::Null);
-                if params.get("threadId").and_then(Value::as_str) == Some(thread_id) {
+                if current_activity {
                     if let Some(delta) = params.get("delta").and_then(Value::as_str) {
                         text.push_str(delta);
                     }
@@ -12100,6 +12151,7 @@ impl StdioJsonlClient {
                         if let Some(handler) = external_action_handler {
                             handler(action);
                         }
+                        inactivity_deadline = std::time::Instant::now() + inactivity_timeout;
                     }
                 }
             }
@@ -12188,6 +12240,9 @@ impl StdioJsonlClient {
                         "success": result.success
                     }
                 }))?;
+                if current_activity {
+                    inactivity_deadline = std::time::Instant::now() + inactivity_timeout;
+                }
                 continue;
             }
             if message.get("method").and_then(Value::as_str) == Some("item/tool/requestUserInput") {
@@ -12229,6 +12284,9 @@ impl StdioJsonlClient {
                             "error": { "code": -32602, "message": error }
                         }))?;
                     }
+                }
+                if current_activity {
+                    inactivity_deadline = std::time::Instant::now() + inactivity_timeout;
                 }
                 continue;
             }
@@ -12546,6 +12604,102 @@ mod app_server_request_tests {
 
     const CHILD_MODE: &str = "PERSONAL_DASHBOARD_APP_SERVER_REQUEST_TEST_CHILD";
     const TEST_ROOT: &str = "PERSONAL_DASHBOARD_APP_SERVER_REQUEST_TEST_ROOT";
+
+    fn turn_client() -> (StdioJsonlClient, mpsc::Sender<Result<String, String>>, std::process::ChildStdout) {
+        let mut child = Command::new("/bin/cat")
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let (sender, output) = mpsc::channel();
+        (StdioJsonlClient {
+            child: Arc::new(Mutex::new(child)), stdin, output, next_id: 1,
+            initialized: true, pending_messages: VecDeque::new(),
+        }, sender, stdout)
+    }
+
+    #[test]
+    fn active_morning_turn_keeps_servicing_save_calls_past_the_response_budget() {
+        let (mut client, sender, _stdout) = turn_client();
+        // Scale the real trace: current-turn activity, then an InitialPlan save
+        // after the old fixed response budget, followed by turn completion.
+        let producer = thread::spawn(move || {
+            for _ in 0..6 {
+                thread::sleep(Duration::from_millis(50));
+                if sender.send(Ok(json!({"method":"item/agentMessage/delta",
+                    "params":{"threadId":"morning","turnId":"turn","delta":"Planning. "}}
+                ).to_string())).is_err() { return; }
+            }
+            if sender.send(Ok(json!({"id":"save","method":"item/tool/call","params":{
+                "threadId":"morning","turnId":"turn","callId":"save-plan",
+                "tool":COLLABORATION_TASK_TOOL,"arguments":{"operation":"saveDailyPlan","transition":"initialPlan"}
+            }}).to_string())).is_err() { return; }
+            let _ = sender.send(Ok(json!({"method":"turn/completed","params":{
+                "threadId":"morning","turn":{"id":"turn","status":"completed"}
+            }}).to_string()));
+        });
+        let saved = Arc::new(AtomicBool::new(false));
+        let saved_by_handler = saved.clone();
+        let handler: RuntimeDynamicToolHandler = Arc::new(move |call| {
+            assert_eq!(call.arguments["transition"], "initialPlan");
+            saved_by_handler.store(true, Ordering::SeqCst);
+            RuntimeDynamicToolResult { text: "InitialPlan saved.".into(), success: true }
+        });
+        let result = client.wait_for_turn_with_timeouts("morning", "turn", &AtomicBool::new(false),
+            Some(&handler), "2026-10-06", None, None,
+            Duration::from_millis(200), Duration::from_secs(2));
+        drop(client);
+        producer.join().unwrap();
+        assert!(result.is_ok(), "An active morning turn was abandoned before its save call: {result:?}");
+        assert!(saved.load(Ordering::SeqCst), "The InitialPlan call must still be answered");
+    }
+
+    fn expect_bounded_turn_timeout(inactivity: Duration, total: Duration, notification_turn: Option<&str>, expected: &str) {
+        let (mut client, sender, stdout) = turn_client();
+        let replies = sender.clone();
+        let monitor = thread::spawn(move || {
+            let line = BufReader::new(stdout).lines().next().unwrap().unwrap();
+            let interrupt: Value = serde_json::from_str(&line).unwrap();
+            assert_eq!(interrupt["method"], "turn/interrupt");
+            assert_eq!(interrupt["params"], json!({"threadId":"morning","turnId":"turn"}));
+            let _ = replies.send(Ok(json!({"id":interrupt["id"],"result":{}}).to_string()));
+        });
+        let turn = notification_turn.map(str::to_owned);
+        let producer = thread::spawn(move || {
+            // Retain the channel even for a silent turn; do not confuse a
+            // disconnected transport with the inactivity condition.
+            for _ in 0..30 {
+                thread::sleep(Duration::from_millis(10));
+                if let Some(turn) = &turn {
+                    if sender.send(Ok(json!({"method":"item/agentMessage/delta","params":{
+                        "threadId":"morning","turnId":turn,"delta":"Still working. "
+                    }}).to_string())).is_err() { break; }
+                }
+            }
+        });
+        let started = Instant::now();
+        let result = client.wait_for_turn_with_timeouts("morning", "turn", &AtomicBool::new(false),
+            None, "2026-10-06", None, None, inactivity, total);
+        assert!(result.unwrap_err().contains(expected));
+        assert!(started.elapsed() < Duration::from_millis(250), "Timeout cleanup must remain bounded");
+        drop(client);
+        monitor.join().unwrap();
+        producer.join().unwrap();
+    }
+
+    #[test]
+    fn silent_turn_is_interrupted_without_replaying_the_request() {
+        expect_bounded_turn_timeout(Duration::from_millis(100), Duration::from_secs(2), None, "inactivity timeout");
+    }
+
+    #[test]
+    fn other_turn_activity_does_not_keep_a_stalled_turn_alive() {
+        expect_bounded_turn_timeout(Duration::from_millis(100), Duration::from_secs(2), Some("old-turn"), "inactivity timeout");
+    }
+
+    #[test]
+    fn active_turn_still_has_a_total_execution_limit() {
+        expect_bounded_turn_timeout(Duration::from_millis(100), Duration::from_millis(150), Some("turn"), "total execution limit");
+    }
 
     #[test]
     fn request_skips_async_notifications_and_returns_its_response() {
