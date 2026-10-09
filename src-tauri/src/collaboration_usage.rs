@@ -19,6 +19,9 @@ const DIDA_WRITES: &str =
 const MAPPED_HABITS: &str = include_str!(
     "../../.agents/skills/personal-dashboard-collaboration/references/mapped-habits.md"
 );
+const PERSONAL_RETRO: &str = include_str!(
+    "../../.agents/skills/personal-dashboard-collaboration/references/personal-retro.md"
+);
 const AUTOMATIC: &str = include_str!(
     "../../.agents/skills/personal-dashboard-collaboration/references/automatic-morning.md"
 );
@@ -115,6 +118,7 @@ pub(super) fn binding(
             DIDA_READS,
             DIDA_WRITES,
             MAPPED_HABITS,
+            PERSONAL_RETRO,
             AUTOMATIC,
             AUTOMATIC_FILES,
             AUTOMATIC_REQUEST,
@@ -133,7 +137,7 @@ pub(super) fn instructions(binding: &CollaborationUsageBinding, extra: &str) -> 
     let guidance = if binding.automatic_morning {
         format!("{AUTOMATIC}\n{AUTOMATIC_FILES}\n{DIDA_READS}")
     } else {
-        format!("{SKILL}\n{DOCUMENTS}\n{DIDA_READS}\n{DIDA_WRITES}\n{MAPPED_HABITS}")
+        format!("{SKILL}\n{DOCUMENTS}\n{DIDA_READS}\n{DIDA_WRITES}\n{MAPPED_HABITS}\n{PERSONAL_RETRO}")
     };
     // Thread instructions persist across turns: execution identity belongs in
     // each saved binding, while this header describes the immutable tool set.
