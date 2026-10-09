@@ -1,5 +1,33 @@
 # Issue tracker: GitHub
 
+## Scoped local tracker: Collaboration redesign
+
+On 2026-10-09 the user explicitly chose a fully local tracker for the
+Collaboration redesign while their GitHub account is unavailable. For this
+initiative, `.scratch/personal-dashboard-collaboration-redesign/map.md` is the
+canonical tracker and its linked `spec.md` is the canonical specification.
+Subsequent approved tickets and execution records stay in the same local
+tracker. This exception takes precedence over the GitHub publication, fetch,
+claim, dependency and closeout instructions below for this initiative only.
+
+- Preserve stable local IDs, complete bodies, parent/dependency links, the
+  existing five-role triage vocabulary, and explicit lifecycle/acceptance state.
+- Read and update the local records instead of querying or writing GitHub.
+  A Git commit records a local publication or state transition; it is not a
+  GitHub Issue publication, native claim, PR merge or release acceptance.
+- Commit authorized durable records on a `codex/` branch. Main remains
+  protected. Do not infer permission to merge locally, push, or install an app.
+- A ready specification does not authorize ticket creation or implementation.
+  Follow the user's subsequent request for each stage.
+- Do not automatically migrate this tracker back to GitHub when access returns.
+  A later authorized migration must preserve IDs, dependencies and evidence
+  and leave a clear pointer to the new canonical location.
+
+All other initiatives retain the GitHub conventions below. Historical local
+records remain historical; this exception does not reactivate old queues.
+
+## Default tracker
+
 The canonical tracker for Personal Dashboard specs and implementation tickets
 is GitHub Issues in `absurdwall/personal-dashboard`. Use the `gh` CLI with
 `--repo absurdwall/personal-dashboard` explicitly.
