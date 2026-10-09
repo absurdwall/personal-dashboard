@@ -1256,6 +1256,14 @@ pub struct RuntimeTurnRequest {
     pub habit_completion_context: Value,
 }
 
+/// Derived calendar facts for a report, not a write target or intent route.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationDatePeriod {
+    pub from_date: String,
+    pub to_date: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollaborationDateContext {
@@ -1266,6 +1274,7 @@ pub struct CollaborationDateContext {
     pub request_local_timestamp: String,
     pub request_natural_date: String,
     pub request_lived_date: String,
+    pub default_personal_retro_period: Option<CollaborationDatePeriod>,
 }
 
 fn collaboration_date_context(
@@ -1290,7 +1299,16 @@ fn collaboration_date_context(
             time: time.to_owned(),
         }.lived_date())
         .unwrap_or_else(|| request_date.to_owned());
+    // Anchor to the original real request's lived day, not the browsed target
+    // or a later worker clock. Civil date arithmetic preserves the 04:00 rule
+    // across midnight, DST and queued execution without inferring user intent.
+    let default_personal_retro_period = crate::today::CalendarDate::parse(&request_lived_date)
+        .map(|date| CollaborationDatePeriod {
+            from_date: date.plus_days(-7).to_string(),
+            to_date: date.plus_days(-1).to_string(),
+        });
     CollaborationDateContext {
+        default_personal_retro_period,
         request_local_timestamp: request_timestamp.to_owned(),
         request_natural_date: request_date.to_owned(),
         request_lived_date,
