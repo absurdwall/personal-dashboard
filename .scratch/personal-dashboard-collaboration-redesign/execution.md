@@ -80,3 +80,5 @@ role, not an assertion that every blocker has completed or that work is running.
 ## Authorized implementation run
 
 - 2026-10-09: User invoked implement-spec with `codex/collaboration-redesign-spec` as baseline and local tracker/normal commits. Integration base: `9939c23`. Work proceeds through isolated ticket branches/worktrees and TDD at the previously confirmed seams. No GitHub, main merge, formal installation or personal-data writes are included.
+
+- 2026-10-09: User confirmed isolated Dida test objects are not prepared. PDCR-12 live acceptance remains unmet; continue other implementation. Baseline frontend: 331 tests passed before product edits (`npm run test:frontend`, private log `/tmp/pdcr-exploration/frontend-baseline.log`). Management skill 1.0.3 connect/discover confirmed existing project/workspace; redesign source registration remains pending, independently of local claims.
