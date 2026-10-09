@@ -42,6 +42,100 @@ pub(super) fn automatic_request(date: &str, scheduled_time: &str, current_time: 
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RuntimeThreadConfiguration {
+    pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
+    pub model_provider: Option<String>,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationExecutionConfiguration {
+    pub thread_id: String,
+    pub captured_at: String,
+    pub runtime_executable: Option<String>,
+    pub runtime_version: Option<String>,
+    pub app_version: String,
+    pub app_build_revision: Option<String>,
+    pub requested_model: Option<String>,
+    pub requested_reasoning_effort: Option<String>,
+    pub effective_model: Option<String>,
+    pub effective_reasoning_effort: Option<String>,
+    pub model_provider: Option<String>,
+    pub configuration_source: Option<String>,
+    pub tool_schema_fingerprint: String,
+    pub gaps: Vec<String>,
+}
+
+pub(super) fn thread_configuration(value: &Value, source: &str) -> RuntimeThreadConfiguration {
+    let field = |name: &str| {
+        value[name]
+            .as_str()
+            .or_else(|| value["thread"][name].as_str())
+            .map(str::to_owned)
+    };
+    RuntimeThreadConfiguration {
+        model: field("model"),
+        reasoning_effort: field("reasoningEffort"),
+        model_provider: field("modelProvider"),
+        source: source.into(),
+    }
+}
+
+pub(super) fn capture_configuration(
+    connection: &super::RuntimeConnectionView,
+    thread: Option<RuntimeThreadConfiguration>,
+    requested_model: Option<&str>,
+    requested_effort: Option<&str>,
+    thread_id: &str,
+    captured_at: &str,
+    tool_schema: &str,
+) -> CollaborationExecutionConfiguration {
+    let mut gaps = Vec::new();
+    let effective_model = thread
+        .as_ref()
+        .and_then(|config| config.model.clone())
+        .filter(|model| requested_model.is_none_or(|requested| requested == model));
+    let effective_effort = thread
+        .as_ref()
+        .and_then(|config| config.reasoning_effort.clone())
+        .filter(|effort| requested_effort.is_none_or(|requested| requested == effort));
+    if effective_model.is_none() {
+        gaps.push("Effective model unavailable or turn override differs from observed thread response; requested model is separate.".into());
+    }
+    if effective_effort.is_none() {
+        gaps.push("Effective reasoning effort unset/unavailable or turn override not independently confirmed.".into());
+    }
+    if connection.version.is_none() || connection.executable_path.is_none() {
+        gaps.push("Actual runtime version/executable unavailable at execution start.".into());
+    }
+    let build = option_env!("PERSONAL_DASHBOARD_BUILD_REVISION").map(str::to_owned);
+    if build.is_none() {
+        gaps.push("App version is captured; source build revision was not embedded.".into());
+    }
+    CollaborationExecutionConfiguration {
+        thread_id: thread_id.into(),
+        captured_at: captured_at.into(),
+        runtime_executable: connection.executable_path.clone(),
+        runtime_version: connection.version.clone(),
+        app_version: env!("CARGO_PKG_VERSION").into(),
+        app_build_revision: build,
+        requested_model: requested_model.map(str::to_owned),
+        requested_reasoning_effort: requested_effort.map(str::to_owned),
+        effective_model,
+        effective_reasoning_effort: effective_effort,
+        model_provider: thread
+            .as_ref()
+            .and_then(|config| config.model_provider.clone()),
+        configuration_source: thread.map(|config| config.source),
+        tool_schema_fingerprint: tool_schema.into(),
+        gaps,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CollaborationUsageBinding {
     pub execution_id: String,
     pub skill_name: String,
@@ -52,6 +146,8 @@ pub struct CollaborationUsageBinding {
     pub registered_operations: BTreeMap<String, Vec<String>>,
     pub external_capability_fingerprint: Option<String>,
     pub automatic_morning: bool,
+    #[serde(default)]
+    pub configuration: Option<CollaborationExecutionConfiguration>,
 }
 
 pub(super) fn description(key: &str) -> &'static str {
@@ -130,6 +226,7 @@ pub(super) fn binding(
         registered_operations,
         external_capability_fingerprint,
         automatic_morning,
+        configuration: None,
     }
 }
 
