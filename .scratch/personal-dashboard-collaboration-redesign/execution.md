@@ -1,7 +1,7 @@
 # Collaboration redesign — local execution tracking
 
 Date: 2026-10-09
-Status: review round2 repairs in progress; PDCR-02/09 reopened, original PDCR-03/11/12 gates retained
+Status: review repairs accepted; nine tickets closed; PDCR-03/11/12 acceptance gates retained
 Canonical tracker: [map](map.md)
 Parent: [PDCR-SPEC-01](spec.md)
 Approved breakdown: [review record](ticket-breakdown-proposal.md)
@@ -140,3 +140,12 @@ role, not an assertion that every blocker has completed or that work is running.
   single isolated review-fix implementer; base `d180ad1`, branch
   `codex/pdcr-review-fixes`. [Round2 record](evidence/review-round-2.md).
   No other acceptance/lifecycle or release boundary changed.
+
+- 2026-10-09: Round2 repairs integrated `8a37b38`; final diagnostic provenance
+  fix `d26de52` integrated `ac65cfa`. Independent Standards and Spec reviews
+  are satisfied, recorded separately in [round2](evidence/review-round-2.md).
+  Final full495 Rust/0 failed/6 explicit native-live gates ignored,388 frontend,
+ 7 reader and build pass. PDCR-02/09 reclosed; nine total closed. New Rust/UI/
+  reader source requires affected native reassessment, so PDCR-11 criteria
+ 1/2/4/5 are unchecked for this candidate while historical evidence is retained.
+  PDCR-03/11 remain blocked,12 open/unclaimed, parent open; no eligible frontier.

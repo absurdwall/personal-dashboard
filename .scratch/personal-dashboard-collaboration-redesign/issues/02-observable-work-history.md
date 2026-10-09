@@ -9,8 +9,8 @@
 
 **ID:** PDCR-02
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** review repairs in progress
+**Lifecycle:** closed
+**Implementation:** complete
 **Assignee:** Codex single review-fix implementer
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
@@ -50,3 +50,10 @@
   and source-boundary fixes at `d180ad1`. One implementer owns review round2 on
   `codex/pdcr-review-fixes`; [findings/claim](../evidence/review-round-2.md).
   Existing native/live acceptance gates remain unchanged.
+
+- 2026-10-09: Reclosed after fixed source `ac65cfa`, full checks and independent
+  Standards/Spec repair review. Authoritative recovery merges available items;
+  prospective optional-copy budgets preserve original failures/receipts and
+  qualify retained prior observations. [Round2 closeout](../evidence/review-round-2.md)
+  records495 Rust/6 explicit environment gates,388 frontend,7 reader and build.
+  Affected native acceptance remains PDCR-11, with historical evidence preserved.

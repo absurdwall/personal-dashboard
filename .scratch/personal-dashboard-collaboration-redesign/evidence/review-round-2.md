@@ -1,4 +1,4 @@
-# Independent review round 2 — repair in progress
+# Independent review round 2 — repairs accepted; native/live gates retained
 
 2026-10-09. Reviewed baseline `9939c23f4f14d0b87dc9949c0ce3850e24e994a2`
 and target `d180ad188945d320eb2711263eabd087d401a0ed`. The user authorized
@@ -83,3 +83,40 @@ reader7 and build passed. All four commands exited0. Private full logs:
 `/tmp/pdcr-review-round2-full-{rust,frontend,reader,build}.log`.
 The remaining diagnostic repair and independent review still prevent closure.
 New recovery/retention Rust source has no packaged native acceptance run.
+
+## Final diagnostic repair and separate review outcomes
+
+The diagnostic repair `d26de52` was integrated at
+`ac65cfafe2b20fa19e41b1223a521f27b875eca5`. The merge tree equals `d8b437e`.
+Typed, serde-default `diagnosticOrigin` follows the actual validation versus
+external RPC branch. Four exact application messages use paired language
+entries; identical external text and unknown-origin legacy records stay
+verbatim. Recovery and public exports preserve the diagnostic's origin.
+
+Independent **Standards** round3 at `ac65cfa`: zero remaining findings and zero
+smells; the host-source diagnostic P2 is resolved. The reviewer passed17 real
+work-history renderer checks, including Chinese/English and application,
+external-same-text and legacy controls.
+
+Independent **Spec** round3 at `ac65cfa`: zero new actionable findings; all three
+previous repairs remain resolved. Production renderer and actual application
+validation-failure/success/external-same-text, persisted snapshot and exported
+origin regressions passed. The reviewer also repeated100 reordered/Unicode
+reader differential comparisons. Review satisfaction covers these repairs;
+the known PDCR-03 scope criterion and PDCR-11/12 gates remain unmet.
+
+Root's final full checks at the unchanged `ac65cfa` product source all exited0:
+
+- `cargo test --manifest-path src-tauri/Cargo.toml`:495 passed,0 failed,
+  six existing explicit native/live environment gates ignored,26 groups.
+- `npm run test:frontend`:388 passed,0 failed/skipped/cancelled.
+- `python3 tests/developer/workflow_retro_reader_test.py`:7 passed.
+- `npm run build`:passed.
+
+Private logs: `/tmp/pdcr-review-final-{rust,frontend,reader,build}.log`.
+These checks do not stand in for the ignored environment/native gates.
+PDCR-02/09 close after this accepted repair/check combination; parent remains
+open, PDCR-03/11 blocked and PDCR-12 open/unclaimed without isolated objects.
+New Rust recovery/retention and source diagnostic changes require affected
+native acceptance. Historical actual native/model observations keep their
+original `7b3dc8` / `c5be634` identities and are not relabeled new-source runs.

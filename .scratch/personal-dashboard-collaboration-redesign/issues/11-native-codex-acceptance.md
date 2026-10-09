@@ -17,13 +17,13 @@
 
 ## Acceptance criteria
 
-- [x] 在隔离 synthetic Vault 使用实际 app/runtime/model，跑白天记录、mixed intent、
+- [ ] 在隔离 synthetic Vault 使用实际 app/runtime/model，跑白天记录、mixed intent、
   部分失败/恢复、queue/stop/readback 及 reopening，而不是只运行模拟 reducer。
-- [x] 核对 canonical 文件与可见页面、折叠/展开/Markdown/导航，保留原型壳的产品体验。
+- [ ] 核对 canonical 文件与可见页面、折叠/展开/Markdown/导航，保留原型壳的产品体验。
 - [ ] 旧会话/未知结果/跨 04:00/日期与 Vault 隔离、Cmd+Enter/新编辑/听写回归可核查。
-- [x] 真实 runtime optional phase/summary/usage 的支持或降级如实记录；自动早间计划范围
+- [ ] 真实 runtime optional phase/summary/usage 的支持或降级如实记录；自动早间计划范围
   和 delayed-save 消费不回退。
-- [x] 验收候选 revision/runtime/build identities 与 evidence 一致，workflow retro 能
+- [ ] 验收候选 revision/runtime/build identities 与 evidence 一致，workflow retro 能
   消费至少一组该候选的实际执行，personal retro 不改写历史。
 - [x] 标明本地与 external 验收区分；不因本票通过自动安装正式 app、合入 main、
   关闭父 spec 或声称 live Dida 已通过。
@@ -65,3 +65,11 @@ natural long delay remain explicitly qualified.
   ready-for-human; no closure, release, parent closeout or live Dida claim.
   All owned candidate processes/auth/registrations are removed; private
   immutable evidence and `.noindex` candidate copies retained.
+
+- 2026-10-09: Round2 product `ac65cfa` changes native reconciliation, persisted
+  optional evidence, source-read provenance and its UI/reader. The affected
+  complete-candidate criteria1/2/4/5 above are unchecked for this new candidate;
+  earlier successful native observations remain in the linked evidence under
+  `7b3dc8` / `c5be634`, not erased or relabeled. Application/file/stdio/renderer
+  checks and independent source review pass but are not packaged acceptance.
+  Human spoken transcript and PDCR-03 remain unmet; lifecycle stays blocked.

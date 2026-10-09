@@ -9,8 +9,8 @@
 
 **ID:** PDCR-09
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** review repairs in progress
+**Lifecycle:** closed
+**Implementation:** complete
 **Assignee:** Codex single review-fix implementer
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
@@ -62,3 +62,10 @@
   and source-boundary fixes at `d180ad1`. One implementer owns review round2 on
   `codex/pdcr-review-fixes`; [findings/claim](../evidence/review-round-2.md).
   Existing native/live acceptance gates remain unchanged.
+
+- 2026-10-09: Reclosed after fixed source `ac65cfa`, bounded streaming selection
+  with original source SHA/pointers, explicit unavailable scope/omissions and
+  diagnostic provenance. Independent Standards/Spec review is satisfied;
+  [round2 closeout](../evidence/review-round-2.md) records full checks and actual
+  application-to-reader regressions. Earlier actual execution evidence retains
+  its original source; new complete-candidate native execution remains PDCR-11.
