@@ -90,3 +90,21 @@ unknown until its actual receipt/source readback confirms it. Unrelated reads
 and local objects remain available. Actual packaged/live acceptance stays with
 PDCR-11/12; synthetic fixtures are not language-interpretation or live-source
 acceptance. No personal profile or production data was touched.
+
+## Integration receipt
+
+Product commit: `f9fb2bf`. Latest integration `6b620bf` merged as `70b3eba`.
+The two append-only test conflicts retained both sides' tests. PDCR-04's active
+watch across destinations, PDCR-05's phase-navigation revision, and PDCR-08's
+original change witnesses are preserved. Recovery mutates only terminal status
+on the matching existing history, preserving all additive witness fields.
+
+After merge: `tsc --noEmit` passed; all 354 frontend tests passed; Rust library
+90 passed/6 ignored, evening-review 4 passed, Task operations 96 passed,
+workflow 25 passed (215 passed total, 6 pre-existing ignored). `git diff --check`
+passed. No broad retesting followed these successful integration checks.
+
+Application-level acceptance is complete for PDCR-03. Packaged/native/live
+acceptance, installation and parent-spec closeout remain the independent
+PDCR-11/12 gates. Integration tracker rows and management reconciliation belong
+to the root coordinator.
