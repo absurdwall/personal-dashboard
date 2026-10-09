@@ -16,7 +16,7 @@ MAX_TEXT = 64 * 1024
 FIELDS = set("""items id role text messageDate targetDate createdAt executionId runtimeTurnId
  deliveryState resultChecked automaticPlan status sourceState pageState historySequence inputFingerprint itemId callId kind phase summary tool
  firstSequence lastSequence observedAtMs updatedAtMs runtimeStartedAtMs runtimeCompletedAtMs
- runtimeEmittedAtMs authoritative parameters name value diagnostic diagnosticGap changes
+ runtimeEmittedAtMs authoritative parameters name value diagnostic diagnosticOrigin diagnosticGap changes
  changeGap source objectId path operation receiptId beforeRevision afterRevision diff
  verification gaps movePath evidenceVersion threadId turnId sequence updatedAt tokenUsage
  total last modelContextWindow totalTokens inputTokens cachedInputTokens cacheWriteInputTokens

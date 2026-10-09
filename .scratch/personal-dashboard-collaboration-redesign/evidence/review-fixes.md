@@ -279,3 +279,30 @@ keeps its recorded source identity; the new Rust recovery/retention source still
 needs that gate. No native Dida safety policy, mutation authorization, installation,
 profile or personal data was changed. Combined full suites and independent
 Standards/Spec re-review run against the fixed candidate under the root task.
+
+### Source-read diagnostic provenance supplement
+
+The remaining Standards P2 was reproduced through the production WorkHistory
+renderer and real native Habit producer/application/file-store path. Host
+validation errors bypassed the fixed-language formatter and had no stored
+origin. Both regressions failed before the fix:
+`/tmp/pdcr-host-source-origin-render-red.log` and
+`/tmp/pdcr-host-source-origin-adapter-red.log`.
+
+Source-read diagnostics now carry a serde-default typed `diagnosticOrigin`,
+recorded from the actual branch: application validation versus external RPC
+failure. The renderer translates only application-origin host-source reads
+through four exact paired catalog entries. Identical external text and legacy
+unknown-origin text remain verbatim. Recovery retains an original diagnostic's
+origin with that diagnostic; the developer reader allowlists this provenance.
+No text classifier, retry, source mutation or native Dida policy was added.
+
+The related production-label/renderer suites pass 31 tests, including all four
+application messages in both languages and identical external/legacy controls:
+`/tmp/pdcr-host-source-origin-render-green.log`. The real application test passes
+partial validation, subsequent successful refresh and a native RPC rejection
+with the same grammar; saved origins differ mechanically, the prior snapshot
+is retained on failure, and the public reader exports the original application's
+origin: `/tmp/pdcr-host-source-origin-adapter-green.log`. Existing-dependency
+build passes: `/tmp/pdcr-host-source-origin-build.log`. Root runs the affected
+full suites and independent re-review against this fixed source.

@@ -1194,6 +1194,10 @@ const chineseCollaborationDiagnostics: Readonly<Record<string, string>> = {
 };
 
 const workHistoryDiagnosticCopies: Readonly<Record<string, Readonly<{ zh: string; en: string }>>> = {
+  "Native Habit source read failed or exceeded its evidence bound": { zh: "原生 Habit 来源读取失败或超出证据上限", en: "Native Habit source read failed or exceeded its evidence bound" },
+  "Native Habit source coverage is partial, paginated, failed or unavailable": { zh: "原生 Habit 来源覆盖不完整、分页、失败或不可用", en: "Native Habit source coverage is partial, paginated, failed or unavailable" },
+  "Current native Habit object did not verify the exact counterpart ID": { zh: "当前原生 Habit 对象未核实准确的对应 ID", en: "Current native Habit object did not verify the exact counterpart ID" },
+  "Native check-in read did not establish every requested counterpart/range": { zh: "原生打卡读取未确认所有请求的对应对象与范围", en: "Native check-in read did not establish every requested counterpart/range" },
   "Optional visible payload omitted by evidence capacity bounds; original messages, failures and outcome metadata are retained.": { zh: "可选可见内容因证据容量限制而省略；原始消息、失败和结果元数据已保留。", en: "Optional visible payload omitted by evidence capacity bounds; original messages, failures and outcome metadata are retained." },
   "Saved terminal snapshot did not supply authoritative completion for every retained in-progress item; those statuses remain unconfirmed.": { zh: "已保存的终止快照未提供所有保留执行中项目的权威完成信息；这些项目的状态仍未确认。", en: "Saved terminal snapshot did not supply authoritative completion for every retained in-progress item; those statuses remain unconfirmed." },
 

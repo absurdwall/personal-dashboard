@@ -19,6 +19,7 @@ export type CollaborationWorkHistory = Readonly<{
     runtimeEmittedAtMs: number | null; authoritative: boolean;
     parameters?: readonly Readonly<{ name: string; value: string }>[];
     diagnostic?: string | null; diagnosticGap?: string | null;
+    diagnosticOrigin?: "application" | "external" | null;
     changes?: readonly Readonly<{
       id: string; source: string; objectId: string | null; path: string | null; operation: string;
       receiptId: string | null; targetDate: string | null; beforeRevision: string | null;
@@ -189,10 +190,11 @@ export function appendCollaborationWorkHistory(container: HTMLElement, history: 
       if (item.diagnostic || item.diagnosticGap || ["failed", "declined"].includes(item.status)) {
         const cause = doc.createElement("p");
         const hostDiagnostic = item.kind === "dynamicToolCall" && item.tool?.startsWith("dashboard_");
+        const sourceApplicationDiagnostic = item.kind === "hostSourceRead" && item.diagnosticOrigin === "application";
         const commandDiagnostic = item.kind === "commandExecution" && item.parameters?.some(parameter => parameter.name === "exitCode");
         cause.textContent = item.diagnostic
           ? hostDiagnostic ? labels.formatApplicationDiagnostic?.(item.diagnostic) ?? item.diagnostic
-            : commandDiagnostic ? labels.formatDiagnostic?.(item.diagnostic) ?? item.diagnostic : item.diagnostic
+            : commandDiagnostic || sourceApplicationDiagnostic ? labels.formatDiagnostic?.(item.diagnostic) ?? item.diagnostic : item.diagnostic
           : labels.diagnosticUnavailable ?? "Diagnostic unavailable";
         diagnostic.append(cause);
       }
