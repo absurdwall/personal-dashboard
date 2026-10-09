@@ -100,3 +100,12 @@ role, not an assertion that every blocker has completed or that work is running.
 - 2026-10-09: PDCR-09 integrated `dbe5adba`, [workflow retro evidence](pdcr-09-evidence.md). New actual execution at `d5235cd` / CLI 0.160.0 / observed gpt-6.1-sol saved and independently verified a synthetic daytime fact; failed `8af2032` startup remains separate. The absent-Dida transport-only override was fixed. Complete synthetic chain and actual developer skill reports retain resolvable refs/hash/provenance. Actual effective effort and headless page refresh stay unavailable; final-candidate native UI remains PDCR-11. 95 Rust / 6 explicit existing gates, 362 frontend, build and 4 reader checks passed.
 
 - 2026-10-09: PDCR-07 integrated `90e495a2`; [producer evidence](pdcr-07-evidence.md). 99 default-parallel library checks, 102 Collaboration, 27 Habit, 362 frontend, 4 reader and build checks passed. Initial atomic-test failures remain documented; a separate clock probe observed duplicate timestamps, and test-only directory counters now guarantee uniqueness without changing the production writer. Attribution to the original failures remains inference. PDCR-01–10 are closed; PDCR-11 claimed for complete-candidate real app/runtime/model acceptance. Independent Standards/Spec review starts against baseline `9939c23`; PDCR-12 remains unmet without isolated Dida objects.
+
+- 2026-10-09: Independent review at `88315b9` found delayed cross-Vault
+  projection responses, refresh evidence attributed to the active rather than
+  effect-owning execution, and overly broad unknown-Dida mutation blocking.
+  PDCR-03 reopened; one implementer owns all review fixes on
+  `codex/pdcr-review-fixes`. Standards found no documented-standard violations
+  and two narrow nonblocking maintainability suggestions. Native PDCR-11
+  continues independent evidence collection; its final closure requires the
+  reopened blocker and reassessment against the repaired candidate.
