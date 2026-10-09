@@ -7109,7 +7109,10 @@ mod tests {
     use std::fs;
     use std::io::{Seek, SeekFrom, Write};
     use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
 
     struct TempDirectory(PathBuf);
 
@@ -7120,8 +7123,9 @@ mod tests {
                 .expect("system clock should be after the epoch")
                 .as_nanos();
             let path = std::env::temp_dir().join(format!(
-                "personal-dashboard-today-store-{}-{nonce}",
-                std::process::id()
+                "personal-dashboard-today-store-{}-{nonce}-{}",
+                std::process::id(),
+                NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)
             ));
             fs::create_dir_all(&path).expect("temporary directory should be created");
             Self(path)

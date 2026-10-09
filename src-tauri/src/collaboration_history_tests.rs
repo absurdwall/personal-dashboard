@@ -112,6 +112,74 @@ impl AppServerTransport for InjectedTransport {
         observer: Option<RuntimeWorkObserver>,
     ) -> Result<RuntimeTurnResult, String> {
         let (mut client, sender, stdout) = turn_client();
+        if request.user_text == "Refresh saturated native source cache" {
+            let thread=request.thread_id.clone();
+            let read=|id:String,tool:&str,args:Value,result:Value|json!({"method":"item/completed","params":{"threadId":thread,"turnId":"refresh-turn","item":{"id":id,"type":"mcpToolCall","server":"dida365","tool":tool,"status":"completed","arguments":args,"result":{"structuredContent":result}}}});
+            sender.send(Ok(read("source-object".into(),"get_habit",json!({"habit_id":"owned-counterpart"}),json!({"result":{"id":"owned-counterpart","name":"Owned"}})).to_string())).unwrap();
+            sender.send(Ok(read("source-window".into(),"get_habit_checkins",json!({"habit_ids":["owned-counterpart"],"from_stamp":20260719,"to_stamp":20261010}),json!({"result":[{"habitId":"owned-counterpart","checkins":[]}]})).to_string())).unwrap();
+            for index in 0..32 { sender.send(Ok(read(format!("extra-{index}"),"get_habit",json!({"habit_id":format!("unrelated-{index}")}),json!({"result":{"id":format!("unrelated-{index}"),"name":"Unrelated same display name"}})).to_string())).unwrap(); }
+            sender.send(Ok(json!({"method":"item/tool/call","id":"refresh-rpc","params":{"threadId":thread,"turnId":"refresh-turn","callId":"refresh-call","tool":COLLABORATION_HABIT_REFRESH_TOOL,"arguments":{"executionMode":"execute","mappings":{"exercise":"owned-counterpart"}}}}).to_string())).unwrap();
+            sender.send(Ok(json!({"method":"item/completed","params":{"threadId":thread,"turnId":"refresh-turn","item":{"id":"final","type":"agentMessage","phase":"final_answer","text":"Source coverage checked."}}}).to_string())).unwrap();
+            sender.send(Ok(json!({"method":"turn/completed","params":{"threadId":thread,"turn":{"id":"refresh-turn","status":"completed"}}}).to_string())).unwrap();
+            let reader=std::thread::spawn(move ||BufReader::new(stdout).lines().take(1).collect::<Vec<_>>());
+            let result=client.wait_for_turn_observed(&thread,"refresh-turn",&cancel,handler.as_ref(),"2026-10-09",None,None,observer);
+            drop(client);reader.join().unwrap();
+            let (text,stopped,external_actions)=result?;
+            return Ok(RuntimeTurnResult {text,stopped,external_actions,runtime_turn_id:Some("refresh-turn".into())});
+        }
+        if request.user_text.starts_with("Refresh mapped habits") {
+            client.habit_refresh_context = Some(request.habit_completion_context["producer"].clone());
+            let thread = request.thread_id.clone();
+            let response_sender = sender.clone();
+            let response_thread = thread.clone();
+            let partial = request.user_text.ends_with("partial");
+            let duplicate = request.user_text.ends_with("duplicate");
+            let reader = std::thread::spawn(move || {
+                let mut calls = Vec::new();
+                for line in BufReader::new(stdout).lines() {
+                    let call: Value = serde_json::from_str(&line.unwrap()).unwrap();
+                    let result = match call["method"].as_str() {
+                        Some("mcpServerStatus/list") => json!({"data":[{"name":"dida365","runtimeStatus":"connected","tools":{
+                            "get_habit":{"name":"get_habit","inputSchema":{"type":"object","required":["habit_id"],"properties":{"habit_id":{"type":"string"}}}},
+                            "get_habit_checkins":{"name":"get_habit_checkins","inputSchema":{"type":"object","required":["habit_ids","from_stamp","to_stamp"],"properties":{"habit_ids":{"type":"array"},"from_stamp":{"type":"integer"},"to_stamp":{"type":"integer"},"client_timezone":{"type":"string"}}}}
+                        } }]}),
+                        Some("mcpServer/tool/call") => {
+                            assert_eq!(call["params"]["server"], "dida365");
+                            calls.push(call["params"].clone());
+                            match call["params"]["tool"].as_str().unwrap() {
+                                "get_habit" => json!({"structuredContent":{"result":{"id":"owned-counterpart","name":"Same display name is not identity"}}}),
+                                "get_habit_checkins" if partial => json!({"structuredContent":{"partial":true,"result":[{"habitId":"owned-counterpart","checkins":[]}]}}),
+                                "get_habit_checkins" => json!({"structuredContent":{"result":[{"habitId":"owned-counterpart","checkins":[{"stamp":20261003,"status":2}]}]}}),
+                                other => panic!("No mutation/read wrapper: {other}"),
+                            }
+                        },
+                        None if call["id"] == "refresh-rpc" && duplicate => {
+                            response_sender.send(Ok(json!({"method":"item/tool/call","id":"refresh-duplicate","params":{"threadId":response_thread,"turnId":"refresh-turn","callId":"refresh-call","tool":COLLABORATION_HABIT_REFRESH_TOOL,"arguments":{"executionMode":"execute"}}}).to_string())).unwrap();
+                            continue;
+                        },
+                        None if call["id"] == "refresh-rpc" || call["id"] == "refresh-duplicate" => {
+                            response_sender.send(Ok(json!({"method":"item/completed","params":{"threadId":response_thread,"turnId":"refresh-turn","item":{"id":"refresh-final","type":"agentMessage","phase":"final_answer","text":"Refresh outcome checked."}}}).to_string())).unwrap();
+                            response_sender.send(Ok(json!({"method":"turn/completed","params":{"threadId":response_thread,"turn":{"id":"refresh-turn","status":"completed"}}}).to_string())).unwrap();
+                            break;
+                        },
+                        other => panic!("Unexpected native request {other:?}"),
+                    };
+                    response_sender.send(Ok(json!({"id":call["id"],"result":result}).to_string())).unwrap();
+                }
+                calls
+            });
+            sender.send(Ok(json!({"method":"item/tool/call","id":"refresh-rpc","params":{"threadId":thread,"turnId":"refresh-turn","callId":"refresh-call","tool":COLLABORATION_HABIT_REFRESH_TOOL,"arguments":{"executionMode":"execute"}}}).to_string())).unwrap();
+            let result = client.wait_for_turn_observed(&thread,"refresh-turn",&cancel,handler.as_ref(),"2026-10-09",None,None,observer);
+            drop(client);
+            let calls = reader.join().unwrap();
+            if result.is_ok() && !partial {
+                assert_eq!(calls.len(), 2, "producer owns exact-object and full-window reads");
+                assert_eq!(calls[0]["arguments"], json!({"habit_id":"owned-counterpart"}));
+                assert_eq!(calls[1]["arguments"], json!({"habit_ids":["owned-counterpart"],"from_stamp":20260719,"to_stamp":20261010}));
+            }
+            let (text,stopped,external_actions)=result?;
+            return Ok(RuntimeTurnResult {text,stopped,external_actions,runtime_turn_id:Some("refresh-turn".into())});
+        }
         if request.user_text == "Update durable background" {
             for event in [
                 json!({"method":"item/tool/call","id":"memory-rpc","params":{"threadId":request.thread_id,"turnId":"memory-turn","callId":"memory-call","tool":COLLABORATION_MEMORY_TOOL,"arguments":{"operation":"proposeLongTermUpdate","basis":"explicitUserInstruction","executionMode":"execute","change":"Prefers a quiet morning.","replaces":null}}}),
@@ -918,8 +986,121 @@ fn managed_source_conflict_or_later_edit_keeps_observed_revision_and_original_ou
             fs::read_to_string(&path).unwrap(),
             "# Independent correction\nPreserve this content\n"
         );
-        fs::remove_dir_all(root).unwrap();
+        // Completion is observable before the background worker's final history flush.
+        // Only teardown waits; all actual source/outcome assertions above stay immediate.
+        let cleanup_deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            match fs::remove_dir_all(&root) {
+                Ok(()) => break,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+                Err(error) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty
+                    && Instant::now() < cleanup_deadline => thread::sleep(Duration::from_millis(20)),
+                Err(error) => panic!("isolated fixture teardown failed: {error}"),
+            }
+        }
     }
+}
+
+#[test]
+fn simple_refresh_queries_native_full_window_without_model_mappings_or_evidence_assembly() {
+    let root=isolated_root();let vault=root.join("vault");
+    let snapshot_path=vault.join(crate::habits::SNAPSHOT_RELATIVE_PATH);
+    fs::create_dir_all(snapshot_path.parent().unwrap()).unwrap();
+    let mut snapshot:Value=serde_json::from_slice(include_bytes!("../tests/fixtures/habits-v1-complete.json")).unwrap();
+    snapshot["sources"].as_array_mut().unwrap().push(json!({"key":"dida-exercise","kind":"dida365","label":"Dida365 explicit mapping exercise=owned-counterpart"}));
+    fs::write(&snapshot_path,serde_json::to_vec(&snapshot).unwrap()).unwrap();
+    let source=fs::read(&snapshot_path).unwrap();
+    let app=application(&root,Arc::new(FileCollaborationStore::new(root.join("history.json"))))
+        .with_daily_data_service(Arc::new(TodayApplicationCollaborationDailyDataAdapter::new(TodayApplication::new(Workspace(vault),NoVaultPicker,FixedClock))));
+    let session=app.create_session("2026-10-09").unwrap();
+    app.submit_message("history-vault",&session.id,"2026-10-09","Refresh mapped habits").unwrap();
+    let saved=await_end(&app,&session.id);
+    assert_eq!(saved.run_state,"completed");
+    assert_eq!(saved.last_habit_refresh.as_ref().unwrap().publication,"published");
+    assert!(saved.task_operations.is_empty());
+    assert!(saved.messages[0].external_actions.is_empty());
+    assert_ne!(fs::read(&snapshot_path).unwrap(),source);
+    let reads:Vec<_>=saved.work_history[0].items.iter().filter(|item|item.kind=="hostSourceRead").collect();
+    assert_eq!(reads.len(),2);assert!(reads.iter().all(|item|item.status=="completed" && item.authoritative));
+    assert!(reads.iter().all(|item|item.input_fingerprint.as_ref().is_some_and(|value| !value.is_empty()) && !item.parameters.iter().any(|parameter|parameter.name=="inputFingerprint")));
+    let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../.agents/skills/personal-dashboard-workflow-retro/scripts/read_evidence.py");
+    let export = std::process::Command::new("python3").arg(script)
+        .arg("--history").arg(root.join("history.json"))
+        .arg("--execution").arg(saved.run_id.as_ref().unwrap()).output().unwrap();
+    assert!(export.status.success(), "{}", String::from_utf8_lossy(&export.stderr));
+    let exported: Value = serde_json::from_slice(&export.stdout).unwrap();
+    let source_attempts: Vec<_> = exported["executions"][0]["history"]["items"].as_array().unwrap()
+        .iter().filter(|item| item["kind"] == "hostSourceRead").collect();
+    assert_eq!(source_attempts.len(), 2);
+    assert!(source_attempts.iter().all(|item| item["inputFingerprint"].is_string()
+        && item["status"] == "completed" && item["authoritative"] == true));
+    let source: Value = serde_json::from_slice(&fs::read(root.join("history.json")).unwrap()).unwrap();
+    for reference in exported["references"].as_object().unwrap().values() {
+        assert!(source.pointer(reference["pointer"].as_str().unwrap()).is_some());
+    }
+    app.shutdown().unwrap();fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn partial_native_producer_query_retains_snapshot_then_independent_refresh_keeps_failed_history() {
+    let root=isolated_root();let vault=root.join("vault");let path=vault.join(crate::habits::SNAPSHOT_RELATIVE_PATH);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let mut snapshot:Value=serde_json::from_slice(include_bytes!("../tests/fixtures/habits-v1-complete.json")).unwrap();
+    snapshot["sources"].as_array_mut().unwrap().push(json!({"key":"dida-exercise","kind":"dida365","label":"Dida365 explicit mapping exercise=owned-counterpart"}));
+    fs::write(&path,serde_json::to_vec(&snapshot).unwrap()).unwrap();let before=fs::read(&path).unwrap();
+    let app=application(&root,Arc::new(FileCollaborationStore::new(root.join("history.json"))))
+        .with_daily_data_service(Arc::new(TodayApplicationCollaborationDailyDataAdapter::new(TodayApplication::new(Workspace(vault.clone()),NoVaultPicker,FixedClock))));
+    let session=app.create_session("2026-10-09").unwrap();
+    app.submit_message("history-vault",&session.id,"2026-10-09","Refresh mapped habits partial").unwrap();
+    let failed=await_end(&app,&session.id);
+    assert_eq!(failed.last_habit_refresh.as_ref().unwrap().query,"error");
+    assert_eq!(failed.last_habit_refresh.as_ref().unwrap().publication,"notPublished");
+    assert_eq!(fs::read(&path).unwrap(),before);
+    assert!(failed.work_history[0].items.iter().any(|item|item.kind=="hostSourceRead" && item.tool.as_deref()==Some("get_habit_checkins") && item.status=="failed"));
+    app.submit_message("history-vault",&session.id,"2026-10-09","Refresh mapped habits").unwrap();
+    let repaired=await_end(&app,&session.id);
+    assert_eq!(repaired.last_habit_refresh.as_ref().unwrap().publication,"published");
+    assert_eq!(repaired.work_history.len(),2);
+    assert!(repaired.work_history[1].items.iter().any(|item|item.kind=="hostSourceRead" && item.status=="completed"));
+    assert!(repaired.work_history[0].items.iter().any(|item|item.kind=="hostSourceRead" && item.status=="failed"));
+    assert!(repaired.task_operations.is_empty());
+    assert!(!vault.join("life/.personal-dashboard/habit-completions/v1/completions.json").exists());
+    app.shutdown().unwrap();fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn duplicate_refresh_delivery_reuses_source_query_attempts_and_publication_identity() {
+    let root=isolated_root();let vault=root.join("vault");let path=vault.join(crate::habits::SNAPSHOT_RELATIVE_PATH);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let mut snapshot:Value=serde_json::from_slice(include_bytes!("../tests/fixtures/habits-v1-complete.json")).unwrap();
+    snapshot["sources"].as_array_mut().unwrap().push(json!({"key":"dida-exercise","kind":"dida365","label":"Dida365 explicit mapping exercise=owned-counterpart"}));
+    fs::write(&path,serde_json::to_vec(&snapshot).unwrap()).unwrap();
+    let app=application(&root,Arc::new(FileCollaborationStore::new(root.join("history.json"))))
+        .with_daily_data_service(Arc::new(TodayApplicationCollaborationDailyDataAdapter::new(TodayApplication::new(Workspace(vault),NoVaultPicker,FixedClock))));
+    let session=app.create_session("2026-10-09").unwrap();
+    app.submit_message("history-vault",&session.id,"2026-10-09","Refresh mapped habits duplicate").unwrap();
+    let saved=await_end(&app,&session.id);
+    assert_eq!(saved.run_state,"completed");
+    assert_eq!(saved.last_habit_refresh.as_ref().unwrap().publication,"published");
+    assert_eq!(saved.work_history[0].items.iter().filter(|item|item.kind=="hostSourceRead").count(),2);
+    app.shutdown().unwrap();fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn saturated_native_evidence_cache_reports_unknown_coverage_and_retains_snapshot_bytes() {
+    let root=isolated_root();let vault=root.join("vault");let path=vault.join(crate::habits::SNAPSHOT_RELATIVE_PATH);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path,include_bytes!("../tests/fixtures/habits-v1-complete.json")).unwrap();let before=fs::read(&path).unwrap();
+    let app=application(&root,Arc::new(FileCollaborationStore::new(root.join("history.json"))))
+        .with_daily_data_service(Arc::new(TodayApplicationCollaborationDailyDataAdapter::new(TodayApplication::new(Workspace(vault),NoVaultPicker,FixedClock))));
+    let session=app.create_session("2026-10-09").unwrap();
+    app.submit_message("history-vault",&session.id,"2026-10-09","Refresh saturated native source cache").unwrap();
+    let saved=await_end(&app,&session.id);let report=saved.last_habit_refresh.as_ref().unwrap();
+    assert_eq!(report.publication,"notPublished");assert!(report.message.contains("capacity"));
+    assert_eq!(fs::read(&path).unwrap(),before);
+    assert!(saved.work_history[0].items.iter().any(|item|item.status=="failed" && item.diagnostic.as_ref().is_some_and(|diagnostic|diagnostic.contains("capacity"))));
+    app.shutdown().unwrap();fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

@@ -4582,7 +4582,7 @@ impl CollaborationApplication {
         if call.tool == COLLABORATION_HABIT_REFRESH_TOOL {
             let call_key = format!("{}:{}:{}", call.thread_id, call.turn_id, call.call_id);
             let mut request = call.arguments.clone();
-            if let Some(object) = request.as_object_mut() { object.remove("hostSourceReads"); }
+            if let Some(object) = request.as_object_mut() { object.remove("hostSourceReads"); object.remove("hostQueryError"); }
             let fingerprint = stable_effect_fingerprint(&request);
             let cached = self.read_state(|state| state.sessions.iter()
                 .find(|s| s.id == session_id && s.vault_key.as_deref() == Some(vault_key))
@@ -4629,6 +4629,7 @@ impl CollaborationApplication {
                 if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
                     return Err("Selected Vault changed before refresh".into());
                 }
+                if let Some(error) = input.host_query_error.as_ref() { return Err(error.clone()); }
                 if input.host_source_reads.is_empty() {
                     return Err(
                         "No successful current native source queries; old snapshot retained".into(),
@@ -7403,7 +7404,7 @@ impl CollaborationApplication {
         }
         let targets = habit_snapshot.as_ref().map(habit_dual::context).unwrap_or(Value::Null);
         let receipts = session.task_operations.iter().filter(|item|matches!(item.operation,CollaborationTaskOperation::SetLocalHabitCompletion {..})).map(|item|json!({"operation":item.operation,"targetDate":item.target_date,"status":item.status,"baseline":item.baseline})).collect::<Vec<_>>();
-        let habit_completion_context=json!({"targets":targets,"receipts":receipts,"origins":origins});
+        let habit_completion_context=json!({"targets":targets,"receipts":receipts,"origins":origins,"producer":habit_snapshot.as_ref().map(|snapshot| crate::habit_producer::native_refresh_context(snapshot,&dates.natural_date,&dates.lived_date))});
         let request = RuntimeTurnRequest {
             thread_id: thread_id.clone(),
             execution_id: run_id.to_owned(),
@@ -9822,7 +9823,7 @@ fn collaboration_habit_refresh_tool_spec() -> Value {
         "inputSchema":{"type":"object","properties":{
             "mappings":{"type":"object","additionalProperties":{"type":"string"}},
             "executionMode":{"type":"string","enum":["execute"]}},
-            "required":["mappings","executionMode"],"additionalProperties":false}})
+            "required":["executionMode"],"additionalProperties":false}})
 }
 
 fn collaboration_memory_tool_spec() -> Value {
@@ -11864,6 +11865,7 @@ impl AppServerTransport for CodexAppServerRuntime {
         );
         let working_directory = self.working_directory.to_string_lossy().into_owned();
         let client = self.ensure_client()?;
+        client.habit_refresh_context = (!request.automatic_morning).then(|| request.habit_completion_context["producer"].clone()).filter(|value|value.is_object());
         let input = vec![json!({ "type": "text", "text": format!("{input_text}\n\nCurrent Dida connection: {dida_status}") })];
         let mut params = json!({
             "threadId": request.thread_id,
@@ -12453,6 +12455,7 @@ struct StdioJsonlClient {
     next_id: u64,
     initialized: bool,
     pending_messages: VecDeque<Value>,
+    habit_refresh_context: Option<Value>,
 }
 
 impl StdioJsonlClient {
@@ -12559,6 +12562,7 @@ impl StdioJsonlClient {
             next_id: 1,
             initialized: false,
             pending_messages: VecDeque::new(),
+            habit_refresh_context: None,
         })
     }
 
@@ -12729,6 +12733,8 @@ impl StdioJsonlClient {
         history.flush(true)?;
         let mut external_actions: Vec<ExternalToolActionView> = Vec::new();
         let mut habit_source_reads = Vec::new();
+        let mut habit_source_read_gap: Option<String> = None;
+        let mut prepared_refresh_calls: HashMap<String,(String,Value)> = HashMap::new();
         let mut interrupt_requested = false;
         let total_deadline = std::time::Instant::now() + total_timeout;
         let mut inactivity_deadline = std::time::Instant::now() + inactivity_timeout;
@@ -12785,7 +12791,9 @@ impl StdioJsonlClient {
                     if message.get("method").and_then(Value::as_str)==Some("item/completed") {
                         if let Some(item)=params.get("item") {
                             if let Some(read)=crate::habit_producer::native_source_read(item) {
-                                crate::habit_producer::cache_native_read(&mut habit_source_reads,read);
+                                if !crate::habit_producer::cache_native_read(&mut habit_source_reads,read) {
+                                    habit_source_read_gap=Some("Current-turn native source evidence capacity reached; coverage is unavailable, old snapshot retained".into());
+                                }
                             } else if item.get("server").and_then(Value::as_str)==Some("dida365")
                                 && [Some("list_habits"),Some("get_habit"),Some("get_habit_checkins")].contains(&item.get("tool").and_then(Value::as_str)) {
                                 habit_source_reads.clear();
@@ -12871,10 +12879,93 @@ impl StdioJsonlClient {
                     arguments: params.get("arguments").cloned().unwrap_or(Value::Null),
                 };
                 if call.tool == COLLABORATION_HABIT_REFRESH_TOOL {
-                    // Never trust agent-supplied evidence, including evidence from a prior turn.
-                    crate::habit_producer::supply_native_evidence(&mut call.arguments, &habit_source_reads);
+                    if let Some(object) = call.arguments.as_object_mut() {
+                        object.remove("hostQueryError");
+                    }
+                    let refresh_key = format!("{}:{}:{}", call.thread_id, call.turn_id, call.call_id);
+                    let mut original_request = call.arguments.clone();
+                    if let Some(object) = original_request.as_object_mut() {
+                        object.remove("hostSourceReads");
+                    }
+                    let original_fingerprint = stable_effect_fingerprint(&original_request);
+                    let cached = prepared_refresh_calls.get(&refresh_key);
+                    if let Some((fingerprint, prepared)) = cached {
+                        if fingerprint == &original_fingerprint {
+                            call.arguments = prepared.clone();
+                        } else {
+                            call.arguments["hostQueryError"]=json!("This refresh call identity already belongs to a different request; no new source read or publication");
+                        }
+                    } else {
+                        if call.thread_id == thread_id
+                            && call.turn_id == turn_id
+                            && !call.call_id.is_empty()
+                            && !cancel_requested.load(Ordering::SeqCst)
+                            && call.arguments["executionMode"] == "execute"
+                        {
+                            if let Some(context) = self.habit_refresh_context.clone() {
+                                let source_result = (|| -> Result<(), String> {
+                                    if prepared_refresh_calls.len() >= 32 {
+                                        return Err("Current-turn refresh attempt capacity reached; coverage is unavailable, old snapshot retained".into());
+                                    }
+                                    let catalog=self.request_during_turn("mcpServerStatus/list",json!({"threadId":thread_id,"serverName":dida::SERVER,"detail":"toolsAndAuthOnly"}))?;
+                                    let reads = crate::habit_producer::native_refresh_reads(
+                                        &mut call.arguments,
+                                        &context,
+                                        &catalog,
+                                    )?;
+                                    habit_source_reads.clear();
+                                    habit_source_read_gap = None;
+                                    for (index, (tool, args)) in reads.into_iter().enumerate() {
+                                        if cancel_requested.load(Ordering::SeqCst) {
+                                            return Err("Refresh stopped before the next source read; no snapshot publication".into());
+                                        }
+                                        let id = format!("refresh:{}:read:{}", call.call_id, index + 1);
+                                        history.source_query_started(&id, &tool, &args)?;
+                                        let result=self.request_during_turn("mcpServer/tool/call",json!({"threadId":thread_id,"server":dida::SERVER,"tool":tool,"arguments":args}))
+                                                    .and_then(|result|crate::habit_producer::validate_native_refresh_read(&tool,&args,&result));
+                                        history.source_query_finished(
+                                            &id,
+                                            result.as_ref().map(|_| ()).map_err(|error| error.as_str()),
+                                        )?;
+                                        if !crate::habit_producer::cache_native_read(
+                                            &mut habit_source_reads,
+                                            result?,
+                                        ) {
+                                            return Err("Current-turn native source evidence capacity reached; old snapshot retained".into());
+                                        }
+                                    }
+                                    Ok(())
+                                })();
+                                if let Err(error) = source_result {
+                                    if error.starts_with("Could not save Collaboration work history") {
+                                        return Err(error);
+                                    }
+                                    habit_source_reads.clear();
+                                    call.arguments["hostQueryError"] = json!(history::safe_diagnostic(&error)
+                                        .unwrap_or_else(|| {
+                                            "Native source query failed; inspect retained WorkHistory gaps"
+                                                .into()
+                                        }));
+                                }
+                            }
+                        }
+                        if let Some(gap) = habit_source_read_gap.as_ref() {
+                            call.arguments["hostQueryError"] = json!(gap);
+                        }
+                        if prepared_refresh_calls.len() >= 32 {
+                            call.arguments["hostQueryError"] =
+                                json!("Current-turn refresh attempt capacity reached; old snapshot retained");
+                        }
+                        // Never trust model-supplied evidence, including prior-turn reads.
+                        crate::habit_producer::supply_native_evidence(&mut call.arguments, &habit_source_reads);
+                        if prepared_refresh_calls.len() < 32 {
+                            prepared_refresh_calls
+                                .insert(refresh_key, (original_fingerprint, call.arguments.clone()));
+                        }
+                    }
                 }
                 let history_call_id = call.call_id.clone();
+                let history_call_tool = call.tool.clone();
                 let history_call_matches = call.thread_id == thread_id && call.turn_id == turn_id;
                 let result = if call.thread_id != thread_id || call.turn_id != turn_id {
                     RuntimeDynamicToolResult {
@@ -12904,7 +12995,12 @@ impl StdioJsonlClient {
                         "success": result.success
                     }
                 }))?;
-                if history_call_matches { history.tool_result(&history_call_id, result.success, &result.text)?; }
+                if history_call_matches {
+                    let diagnostic=if history_call_tool == COLLABORATION_HABIT_REFRESH_TOOL {
+                        serde_json::from_str::<crate::habit_producer::HabitRefreshReport>(&result.text).ok().map(|report|report.message)
+                    } else { None };
+                    history.tool_result(&history_call_id,result.success,diagnostic.as_deref().unwrap_or(&result.text))?;
+                }
                 if current_activity {
                     inactivity_deadline = std::time::Instant::now() + inactivity_timeout;
                 }
@@ -13278,7 +13374,7 @@ mod app_server_request_tests {
         let (sender, output) = mpsc::channel();
         (StdioJsonlClient {
             child: Arc::new(Mutex::new(child)), stdin, output, next_id: 1,
-            initialized: true, pending_messages: VecDeque::new(),
+            initialized: true, pending_messages: VecDeque::new(), habit_refresh_context: None,
         }, sender, stdout)
     }
 

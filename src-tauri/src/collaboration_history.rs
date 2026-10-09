@@ -554,6 +554,75 @@ impl RuntimeHistory {
         }
     }
 
+    pub fn source_query_started(
+        &mut self,
+        id: &str,
+        tool: &str,
+        arguments: &Value,
+    ) -> Result<(), String> {
+        self.view.sequence += 1;
+        self.view.updated_at_ms = observed_now_ms();
+        let index = self.ensure_item(id, "hostSourceRead");
+        let item = &mut self.view.items[index];
+        item.call_id = Some(id.into());
+        item.tool = Some(tool.into());
+        item.status = "inProgress".into();
+        item.parameters = safe_parameters(arguments);
+        item.parameters.push(CollaborationWorkParameter {
+            name: "source".into(),
+            value: "dida365".into(),
+        });
+        item.input_fingerprint = Some(super::stable_effect_fingerprint(arguments));
+        for name in ["habit_ids", "from_stamp", "to_stamp"] {
+            if let Some(value) = arguments.get(name) {
+                let scope = value.to_string();
+                let displayed: String = scope.chars().take(200).collect();
+                if displayed.len() != scope.len() {
+                    item.diagnostic_gap = Some("Source scope display truncated at 200 characters; inputFingerprint identifies the exact query arguments".into());
+                }
+                item.parameters.push(CollaborationWorkParameter {
+                    name: name.into(),
+                    value: displayed,
+                });
+            }
+        }
+        item.authoritative = true;
+        item.last_sequence = self.view.sequence;
+        item.updated_at_ms = self.view.updated_at_ms;
+        self.dirty = true;
+        self.flush(true)
+    }
+
+    pub fn source_query_finished(
+        &mut self,
+        id: &str,
+        result: Result<(), &str>,
+    ) -> Result<(), String> {
+        self.view.sequence += 1;
+        self.view.updated_at_ms = observed_now_ms();
+        let index = self.ensure_item(id, "hostSourceRead");
+        let item = &mut self.view.items[index];
+        item.status = if result.is_ok() {
+            "completed"
+        } else {
+            "failed"
+        }
+        .into();
+        item.authoritative = true;
+        item.last_sequence = self.view.sequence;
+        item.updated_at_ms = self.view.updated_at_ms;
+        if let Err(error) = result {
+            item.diagnostic = safe_diagnostic(error);
+            if item.diagnostic.is_none() {
+                let withheld = "Source diagnostic withheld by the credential/payload filter";
+                item.diagnostic_gap = Some(item.diagnostic_gap.as_ref()
+                    .map(|gap| format!("{gap}; {withheld}")).unwrap_or_else(|| withheld.into()));
+            }
+        }
+        self.dirty = true;
+        self.flush(true)
+    }
+
     pub fn tool_result(
         &mut self,
         call_id: &str,
