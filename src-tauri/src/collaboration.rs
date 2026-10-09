@@ -6,13 +6,13 @@ mod dida_writes;
 mod habit_dual;
 #[path = "collaboration_usage.rs"]
 mod usage;
-pub use usage::CollaborationUsageBinding;
+pub use usage::{CollaborationUsageBinding, RuntimeThreadConfiguration};
 #[path = "collaboration_history.rs"]
 mod history;
 #[path = "collaboration_changes.rs"]
 mod changes;
 pub use changes::CollaborationChangeEvidence;
-pub use history::{CollaborationWorkHistory, CollaborationWorkItem, RuntimeWorkObserver};
+pub use history::{CollaborationWorkHistory, CollaborationWorkItem, RuntimeWorkObserver, CollaborationRefreshInput};
 use history::RuntimeHistory;
 #[cfg(all(test, unix))]
 #[path = "collaboration_history_tests.rs"]
@@ -1457,6 +1457,7 @@ pub trait AppServerTransport: Send {
     ) -> Result<String, String> {
         self.start_thread(model, instructions)
     }
+    fn thread_configuration(&self, _thread_id: &str) -> Option<RuntimeThreadConfiguration> { None }
     fn configure_external_writes(&mut self, _allowed: bool) {}
     fn external_capability_fingerprint(&self) -> Option<String> { None }
     /// Probe discovery only. A configured native startup failure may replace
@@ -2849,6 +2850,37 @@ impl CollaborationApplication {
                     "This collaboration session is not available in the selected Vault.".into()
                 })
         })?
+    }
+
+    /// Renderer observations only; this operation never reads/writes canonical data.
+    pub fn record_refresh_for_selected_vault(&self, session_id: &str, execution_id: &str, observations: Vec<CollaborationRefreshInput>) -> Result<(), String> {
+        let vault = self.context_source.current_vault_key()?.ok_or("Selected Vault unavailable.")?;
+        if observations.len() > 3 { return Err("Refresh observation batch exceeds three source views.".into()); }
+        for observation in &observations {
+            validate_date(&observation.target_date)?;
+            if !["today","calendar","habits"].contains(&observation.target.as_str())
+                || !["readCompleted","readFailed"].contains(&observation.status.as_str())
+                || !["rendered","cached","notVisible","failed"].contains(&observation.page_state.as_str())
+                || !["confirmedEffect","turnTerminal"].contains(&observation.trigger.as_str())
+                || observation.source_state.as_ref().is_some_and(|state| state.len() > 40 || history::safe_diagnostic(state).is_none()) {
+                return Err("Invalid source refresh observation.".into());
+            }
+        }
+        self.update_state(|state| {
+            let session = matching_session_mut(state, &vault, session_id)?;
+            if !session.messages.iter().any(|message| message.role == "user" && message.execution_id.as_deref() == Some(execution_id)) { return Err("Refresh execution is not in this session.".into()); }
+            let history = session.work_history.iter_mut().find(|history|history.execution_id == execution_id)
+                .ok_or("Work history unavailable; refresh evidence cannot be attached.")?;
+            for observation in observations {
+                if history.refreshes.len() >= 96 {
+                    let gap = "Page refresh observation bound reached (96); later observations unavailable.".to_owned();
+                    if !history.gaps.contains(&gap) { history.gaps.push(gap); }
+                    break;
+                }
+                history.refreshes.push(history::CollaborationRefreshObservation {id:next_identifier("refresh"), observation, observed_at_ms:history::observed_now_ms(), history_sequence:history.sequence});
+            }
+            Ok(())
+        })
     }
 
     pub fn session_for_selected_vault(
@@ -7255,7 +7287,7 @@ impl CollaborationApplication {
         // Dynamic tools are immutable for an App Server thread: thread/resume
         // does not accept dynamicTools. Upgrade the transport thread inside the
         // same Dashboard session whenever the current round's schema changes.
-        let usage_binding = usage::binding(run_id, automatic_plan, &dynamic_tools,
+        let mut usage_binding = usage::binding(run_id, automatic_plan, &dynamic_tools,
             runtime.external_capability_fingerprint());
         let tool_schema_fingerprint = stable_effect_fingerprint(&json!({"dynamicTools":dynamic_tools,"externalWriteAccess":external_writes_allowed,"externalHabitWrites":external_habit_writes_allowed,"externalConnectionTools":runtime.external_capability_fingerprint(),"usagePackage":usage_binding.package_fingerprint}));
         let loaded_instructions = usage::instructions(&usage_binding, &self.skill_instructions);
@@ -7304,6 +7336,7 @@ impl CollaborationApplication {
             // No further attempt: a still-unavailable source does not prevent
             // current local work, nor authorize replay of an earlier effect.
         }
+        usage_binding.configuration = Some(usage::capture_configuration(&connection, runtime.thread_configuration(&thread_id), selected_model.as_deref(), selected_reasoning_effort.as_deref(), &thread_id, &self.clock.current_timestamp(), &tool_schema_fingerprint));
         if let Err(error) = self.save_runtime_thread(
             vault_key,
             session_id,
@@ -7482,7 +7515,11 @@ impl CollaborationApplication {
                     }
                 }
                 if let Some(existing) = session.work_history.iter_mut().find(|entry| entry.execution_id == history_execution) {
-                    if history.sequence > existing.sequence { *existing = history; }
+                    if history.sequence > existing.sequence {
+                        history.refreshes = existing.refreshes.clone();
+                        for gap in &existing.gaps { if !history.gaps.contains(gap) { history.gaps.push(gap.clone()); } }
+                        *existing = history;
+                    }
                 } else { session.work_history.push(history); }
                 Ok(())
             }).map_err(|error| format!("Could not save Collaboration work history: {error}. Business receipts retain their own saved outcomes."))
@@ -10324,6 +10361,7 @@ pub struct CodexAppServerRuntime {
     dida_habit_writes_allowed: bool,
     shutdown_handle: RuntimeShutdownHandle,
     dictation: Option<ActiveDictationTransport>,
+    thread_configurations: HashMap<String, RuntimeThreadConfiguration>,
 }
 
 struct ActiveDictationTransport {
@@ -11191,6 +11229,7 @@ impl CodexAppServerRuntime {
             dida_habit_writes_allowed: true,
             shutdown_handle: RuntimeShutdownHandle::default(),
             dictation: None,
+            thread_configurations: HashMap::new(),
         }
     }
 
@@ -11654,14 +11693,13 @@ impl AppServerTransport for CodexAppServerRuntime {
             params["dynamicTools"] = json!(dynamic_tools);
         }
         let result = client.request("thread/start", params)?;
-        result
-            .get("thread")
-            .and_then(|thread| thread.get("id"))
-            .and_then(Value::as_str)
-            .map(str::to_owned)
-            .ok_or_else(|| "Codex App Server did not return a thread id.".into())
+        let thread_id = result["thread"]["id"].as_str().map(str::to_owned)
+            .ok_or_else(|| "Codex App Server did not return a thread id.".to_owned())?;
+        self.thread_configurations.insert(thread_id.clone(), usage::thread_configuration(&result, "thread/start response before this execution"));
+        Ok(thread_id)
     }
 
+    fn thread_configuration(&self, thread_id: &str) -> Option<RuntimeThreadConfiguration> { self.thread_configurations.get(thread_id).cloned() }
     fn configure_external_writes(&mut self, allowed: bool) { self.dida_writes_allowed = allowed; }
     fn configure_external_habit_writes(&mut self, allowed: bool) { self.dida_habit_writes_allowed = allowed; }
     fn external_capability_fingerprint(&self) -> Option<String> {
@@ -11711,7 +11749,7 @@ impl AppServerTransport for CodexAppServerRuntime {
         let working_directory = self.working_directory.to_string_lossy().into_owned();
         self.ensure_client()?;
         let config = dida::thread_config_with_habit_writes(self.selected_dida_connection.as_ref(),self.dida_writes_allowed,self.dida_habit_writes_allowed);
-        self.ensure_client()?.request(
+        let result = self.ensure_client()?.request(
             "thread/resume",
             json!({
                 "threadId": thread_id,
@@ -11722,6 +11760,7 @@ impl AppServerTransport for CodexAppServerRuntime {
                 "config":config
             }),
         )?;
+        self.thread_configurations.insert(thread_id.to_owned(), usage::thread_configuration(&result, "thread/resume response before this execution"));
         Ok(())
     }
 

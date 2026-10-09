@@ -127,3 +127,17 @@ test("opening Tasks during a Collaboration turn keeps the source watch and reque
   assert.equal(context.currentCollaborationSession.targetDate, "2026-10-08");
   assert.equal(refreshed, true);
 });
+
+test("evidenced refresh carries the original execution into the actual refresh boundary", async () => {
+  let poll: () => void = () => {}; const captured: any[] = [];
+  const initial = { id:"session", runId:"original-execution", runState:"thinking", targetDate:"2026-10-08" };
+  const saved = {...initial, messages:[], taskOperations:[{id:"record", executionId:"original-execution", status:"applied", targetDate:"2026-10-08", resultRevision:"v2"}]};
+  const context = vm.createContext({Promise, currentWorkspaceDestination:"collaboration", currentCollaborationSession:initial,
+    collaborationStatusTimer:null, window:{setInterval(callback:()=>void){poll=callback;return 1;},clearInterval(){},__TAURI__:{core:{async invoke(){return saved;}}}},
+    refreshCollaborationRunOwner(){},renderCollaborationWorkspace(){},async refreshCanonicalDateProjections(_date:string,evidence:any){captured.push(evidence);},async refreshCollaborationContext(){},async refreshTasks(){}});
+  vm.runInContext(production+"\nwatchCollaborationSession(currentCollaborationSession)",context);
+  poll();await tick();
+  assert.equal(captured[0]?.executionId,"original-execution");
+  assert.equal(captured[0]?.sessionId,"session");
+  assert.equal(captured[0]?.trigger,"confirmedEffect");
+});

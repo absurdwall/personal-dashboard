@@ -79,6 +79,15 @@ impl AppServerTransport for InjectedTransport {
         connection.read_only_text_turns_available = true;
         connection.text_turn_unavailable_reason = None;
         connection.error = None;
+        connection.executable_path = Some("/synthetic/codex".into());
+        connection.version = Some("synthetic-runtime-1".into());
+        connection.models = vec![ModelOptionView {
+            id: "synthetic-model".into(),
+            display_name: "Synthetic".into(),
+            default_reasoning_effort: Some("low".into()),
+            reasoning_efforts: vec!["low".into()],
+            is_default: true,
+        }];
         Ok(connection)
     }
     fn start_chatgpt_login(&mut self) -> Result<(), String> {
@@ -190,6 +199,8 @@ impl AppServerTransport for InjectedTransport {
             json!({"method":"item/reasoning/summaryTextDelta","params":{"threadId":thread,"turnId":"turn","itemId":"summary","summaryIndex":0,"delta":"Use the current task revision."}}),
             json!({"method":"item/reasoning/textDelta","params":{"threadId":thread,"turnId":"turn","itemId":"summary","delta":"HIDDEN CONTENT"}}),
             json!({"method":"item/completed","params":{"threadId":thread,"turnId":"turn","item":{"id":"summary","type":"reasoning","summary":["Use the current task revision."],"content":["HIDDEN CONTENT"]}}}),
+            json!({"method":"item/completed","params":{"threadId":thread,"turnId":"turn","item":{"id":"read-1","type":"mcpToolCall","server":"synthetic","tool":"read_tasks","arguments":{"scope":"local","date":"2026-10-09"},"status":"completed"}}}),
+            json!({"method":"item/completed","params":{"threadId":thread,"turnId":"turn","item":{"id":"read-2","type":"mcpToolCall","server":"synthetic","tool":"read_tasks","arguments":{"scope":"local","date":"2026-10-09"},"status":"completed"}}}),
             json!({"method":"item/tool/call","id":"bad","params":{"threadId":thread,"turnId":"turn","callId":"attempt-1","tool":COLLABORATION_TASK_TOOL,"arguments":{"operation":"createTask","executionMode":"invalid"}}}),
             json!({"method":"error","params":{"threadId":thread,"turnId":"turn","willRetry":true,"error":{"message":"API token=PRIVATE DIAGNOSTIC"}}}),
             json!({"method":"item/tool/call","id":"good","params":{"threadId":thread,"turnId":"turn","callId":"attempt-2","tool":COLLABORATION_TASK_TOOL,"arguments":{"operation":"createTask","executionMode":"execute","name":"Synthetic groceries","content":null,"date":"2026-10-09","time":null,"listId":null}}}),
@@ -440,23 +451,44 @@ fn history_failure_after_canonical_save_keeps_receipt_and_returns_tool_reply() {
 #[test]
 fn cancel_received_before_dynamic_action_keeps_canonical_tasks_unchanged() {
     let root = isolated_root();
-    let tasks = Arc::new(TaskApplication::with_file_store(Workspace(root.join("vault")), FixedClock));
+    let tasks = Arc::new(TaskApplication::with_file_store(
+        Workspace(root.join("vault")),
+        FixedClock,
+    ));
     let action_tasks = tasks.clone();
     let handler: RuntimeDynamicToolHandler = Arc::new(move |_| {
         let current = action_tasks.read().unwrap();
-        action_tasks.create(TaskCreateInput { target_binding: current.target_binding.unwrap(), expected_revision: current.revision,
-            task_id: "must-not-start".into(), name: "Canceled synthetic Task".into(), content: None, date: None, time: None, list_id: None }).unwrap();
-        RuntimeDynamicToolResult { success: true, text: "Task saved".into() }
+        action_tasks
+            .create(TaskCreateInput {
+                target_binding: current.target_binding.unwrap(),
+                expected_revision: current.revision,
+                task_id: "must-not-start".into(),
+                name: "Canceled synthetic Task".into(),
+                content: None,
+                date: None,
+                time: None,
+                list_id: None,
+            })
+            .unwrap();
+        RuntimeDynamicToolResult {
+            success: true,
+            text: "Task saved".into(),
+        }
     });
     let cancel = Arc::new(AtomicBool::new(false));
     let observer_cancel = cancel.clone();
     let observed = Arc::new(Mutex::new(Vec::new()));
     let history_observed = observed.clone();
     let observer: RuntimeWorkObserver = Arc::new(move |history| {
-        if history.items.iter().any(|item| item.call_id.as_deref() == Some("late-action")) {
+        if history
+            .items
+            .iter()
+            .any(|item| item.call_id.as_deref() == Some("late-action"))
+        {
             observer_cancel.store(true, Ordering::SeqCst);
         }
-        history_observed.lock().unwrap().push(history); Ok(())
+        history_observed.lock().unwrap().push(history);
+        Ok(())
     });
     let (mut client, sender, stdout) = turn_client();
     sender.send(Ok(json!({"id":"late-rpc","method":"item/tool/call","params":{
@@ -467,17 +499,36 @@ fn cancel_received_before_dynamic_action_keeps_canonical_tasks_unchanged() {
         for line in BufReader::new(stdout).lines() {
             let value: Value = serde_json::from_str(&line.unwrap()).unwrap();
             if value["method"] == "turn/interrupt" {
-                sender.send(Ok(json!({"id":value["id"],"result":{}}).to_string())).unwrap();
-            } else { responses.push(value); }
+                sender
+                    .send(Ok(json!({"id":value["id"],"result":{}}).to_string()))
+                    .unwrap();
+            } else {
+                responses.push(value);
+            }
         }
         responses
     });
-    let result = client.wait_for_turn_observed("stop-thread", "stop-turn", &cancel, Some(&handler), "2026-10-09", None, None, Some(observer));
+    let result = client.wait_for_turn_observed(
+        "stop-thread",
+        "stop-turn",
+        &cancel,
+        Some(&handler),
+        "2026-10-09",
+        None,
+        None,
+        Some(observer),
+    );
     drop(client);
     let responses = reader.join().unwrap();
     assert!(result.unwrap().1);
-    assert_eq!(responses[0]["result"]["success"], false, "stop must prevent a not-yet-started effect");
-    assert!(tasks.read().unwrap().tasks.is_empty(), "canceled action must not save a Task");
+    assert_eq!(
+        responses[0]["result"]["success"], false,
+        "stop must prevent a not-yet-started effect"
+    );
+    assert!(
+        tasks.read().unwrap().tasks.is_empty(),
+        "canceled action must not save a Task"
+    );
     let history = observed.lock().unwrap().last().unwrap().clone();
     assert_eq!(history.status, "interrupted");
     assert_eq!(history.items[0].status, "failed");
@@ -848,4 +899,177 @@ fn managed_source_conflict_or_later_edit_keeps_observed_revision_and_original_ou
         );
         fs::remove_dir_all(root).unwrap();
     }
+}
+
+#[test]
+fn developer_reader_resolves_failed_attempt_and_actual_saved_change_from_application_history() {
+    let root = isolated_root();
+    let history_path = root.join("history/state.json");
+    let app = application(
+        &root,
+        Arc::new(FileCollaborationStore::new(history_path.clone())),
+    );
+    let session = app.create_session("2026-10-09").unwrap();
+    app.submit_message(
+        "history-vault",
+        &session.id,
+        "2026-10-09",
+        "Create Synthetic groceries",
+    )
+    .unwrap();
+    let saved = await_end(&app, &session.id);
+    let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../.agents/skills/personal-dashboard-workflow-retro/scripts/read_evidence.py");
+    let before = fs::read(&history_path).unwrap();
+    let result = std::process::Command::new("python3")
+        .arg(script)
+        .arg("--history")
+        .arg(&history_path)
+        .arg("--execution")
+        .arg(saved.run_id.as_ref().unwrap())
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let exported: Value = serde_json::from_slice(&result.stdout).unwrap();
+    let execution = &exported["executions"][0];
+    assert_eq!(execution["request"]["targetDate"], "2026-10-09");
+    let attempts = execution["history"]["items"].as_array().unwrap();
+    let read_one = attempts
+        .iter()
+        .find(|item| item["itemId"] == "read-1")
+        .unwrap();
+    let read_two = attempts
+        .iter()
+        .find(|item| item["itemId"] == "read-2")
+        .unwrap();
+    assert!(read_one["inputFingerprint"].is_string());
+    assert_eq!(read_one["inputFingerprint"], read_two["inputFingerprint"]);
+    assert!(attempts
+        .iter()
+        .any(|item| item["callId"] == "attempt-1" && item["status"] == "failed"));
+    assert!(attempts
+        .iter()
+        .any(|item| item["callId"] == "attempt-2" && item["status"] == "completed"));
+    assert_eq!(execution["effects"][0]["status"], "applied");
+    assert!(execution["effects"][0]["resultRevision"].is_string());
+    assert_eq!(
+        execution["history"]["tokenUsage"]["last"]["totalTokens"],
+        50
+    );
+    let refs = exported["references"].as_object().unwrap();
+    assert!(!refs.is_empty());
+    let source: Value = serde_json::from_slice(&before).unwrap();
+    for reference in refs.values() {
+        assert!(source
+            .pointer(reference["pointer"].as_str().unwrap())
+            .is_some());
+    }
+    let output = String::from_utf8(result.stdout).unwrap();
+    assert!(
+        !output.contains("HIDDEN CONTENT")
+            && !output.contains("PRIVATE DIAGNOSTIC")
+            && !output.contains("RAW COMMAND OUTPUT")
+    );
+    assert_eq!(
+        fs::read(&history_path).unwrap(),
+        before,
+        "reader leaves source bytes unchanged"
+    );
+    if let Some(destination) = std::env::var_os("PDCR_RETRO_SYNTHETIC_CAPTURE") {
+        let destination = PathBuf::from(destination);
+        fs::create_dir_all(&destination).unwrap();
+        fs::write(destination.join("history.json"), before).unwrap();
+        fs::write(destination.join("export.json"), output).unwrap();
+    }
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn execution_configuration_retains_original_requested_model_after_settings_change() {
+    let root = isolated_root();
+    let app = application(
+        &root,
+        Arc::new(FileCollaborationStore::new(root.join("history/state.json"))),
+    );
+    app.select_model(Some("synthetic-model")).unwrap();
+    app.select_reasoning_effort(Some("low")).unwrap();
+    let session = app.create_session("2026-10-09").unwrap();
+    app.submit_message(
+        "history-vault",
+        &session.id,
+        "2026-10-09",
+        "Create Synthetic groceries",
+    )
+    .unwrap();
+    let saved = await_end(&app, &session.id);
+    app.select_model(None).unwrap();
+    let reopened = app.session("history-vault", &session.id).unwrap();
+    let binding = serde_json::to_value(&reopened.usage_bindings[0]).unwrap();
+    let configuration = &binding["configuration"];
+    assert_eq!(configuration["runtimeVersion"], "synthetic-runtime-1");
+    assert_eq!(configuration["requestedModel"], "synthetic-model");
+    assert_eq!(configuration["requestedReasoningEffort"], "low");
+    assert_eq!(configuration["threadId"], "history-thread");
+    assert_eq!(reopened.work_history, saved.work_history);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn source_refresh_observations_are_scoped_and_do_not_change_canonical_task_revision() {
+    let root = isolated_root();
+    let app = application(
+        &root,
+        Arc::new(FileCollaborationStore::new(root.join("history/state.json"))),
+    );
+    let session = app.create_session("2026-10-09").unwrap();
+    app.submit_message(
+        "history-vault",
+        &session.id,
+        "2026-10-09",
+        "Create Synthetic groceries",
+    )
+    .unwrap();
+    let saved = await_end(&app, &session.id);
+    let tasks = TaskApplication::with_file_store(Workspace(root.join("vault")), FixedClock);
+    let before = tasks.read().unwrap();
+    let observation = CollaborationRefreshInput {
+        target: "habits".into(),
+        target_date: "2026-10-09".into(),
+        status: "readCompleted".into(),
+        source_state: Some("stale".into()),
+        page_state: "rendered".into(),
+        trigger: "turnTerminal".into(),
+    };
+    assert!(app
+        .record_refresh_for_selected_vault(
+            &session.id,
+            "foreign-execution",
+            vec![observation.clone()]
+        )
+        .is_err());
+    app.record_refresh_for_selected_vault(
+        &session.id,
+        saved.run_id.as_ref().unwrap(),
+        vec![observation],
+    )
+    .unwrap();
+    let observed = app.session("history-vault", &session.id).unwrap();
+    assert_eq!(observed.work_history[0].refreshes.len(), 1);
+    assert_eq!(
+        observed.work_history[0].refreshes[0]
+            .observation
+            .source_state
+            .as_deref(),
+        Some("stale")
+    );
+    assert_eq!(
+        observed.work_history[0].refreshes[0].history_sequence,
+        saved.work_history[0].sequence
+    );
+    assert_eq!(tasks.read().unwrap().revision, before.revision);
+    fs::remove_dir_all(root).unwrap();
 }

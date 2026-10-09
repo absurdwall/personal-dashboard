@@ -3255,7 +3255,8 @@ function isCanonicalDateProjectionOperation(operation: CollaborationTaskOperatio
     operation.operation === "setLocalHabitCompletion";
 }
 
-async function refreshCanonicalDateProjections(targetDate: string): Promise<string | null> {
+type CollaborationRefreshContext = Readonly<{ sessionId: string; executionId: string; trigger: "confirmedEffect" | "turnTerminal" }>;
+async function refreshCanonicalDateProjections(targetDate: string, evidence?: CollaborationRefreshContext): Promise<string | null> {
   const [year, month] = targetDate.split("-").map(Number);
   const todayRequest = window.__TAURI__.core.invoke<TodayView>("read_daily_view", { date: targetDate })
     .then((value) => ({ ok: true as const, value }))
@@ -3367,6 +3368,15 @@ async function refreshCanonicalDateProjections(targetDate: string): Promise<stri
     });
   }
 
+  if (evidence) {
+    const observations = [
+      { target: "today", status: today.ok ? "readCompleted" : "readFailed", sourceState: today.ok ? today.value.state : "unavailable", pageState: todayTargetVisible || calendarTargetVisible || habitTargetVisible ? (today.ok ? "rendered" : "failed") : "notVisible" },
+      { target: "calendar", status: calendar.ok ? "readCompleted" : "readFailed", sourceState: calendar.ok ? calendar.value.taskState : "unavailable", pageState: currentWorkspaceDestination === "calendar" && (selectedCalendarDate === targetDate || (currentCalendarMonth?.year === year && currentCalendarMonth.month === month)) ? (calendar.ok ? "rendered" : "failed") : "notVisible" },
+      { target: "habits", status: habits.ok ? "readCompleted" : "readFailed", sourceState: habits.ok ? habits.value.state : "unavailable", pageState: habits.ok ? (currentWorkspaceDestination === "habits" ? "rendered" : "cached") : "failed" },
+    ].map(observation => ({...observation, targetDate, trigger:evidence.trigger}));
+    // Observation persistence never repeats a canonical write or source refresh.
+    void window.__TAURI__.core.invoke("collaboration_record_refresh", {sessionId:evidence.sessionId, executionId:evidence.executionId, observations}).catch(() => {});
+  }
   return unavailable.length > 0 ? [...new Set(unavailable)].join(" · ") : null;
 }
 
@@ -4845,7 +4855,7 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
           if (visibleDate) changedDates.add(visibleDate);
         }
         void Promise.allSettled([
-          ...[...changedDates].map(date => refreshCanonicalDateProjections(date)),
+          ...[...changedDates].map(date => refreshCanonicalDateProjections(date, {sessionId, executionId:updated.runId!, trigger:"confirmedEffect"})),
           ...(tasksChanged ? [refreshTasks()] : []),
           refreshCollaborationContext(),
         ]);
@@ -4860,7 +4870,7 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
           message.role === "user" && message.executionId === updated.runId);
         const savedDate = request?.targetDate ?? session.targetDate;
         void Promise.allSettled([
-          refreshCanonicalDateProjections(savedDate),
+          refreshCanonicalDateProjections(savedDate, {sessionId, executionId:request?.executionId ?? updated.runId!, trigger:"turnTerminal"}),
           refreshTasks(),
           refreshCollaborationWorkspace(),
         ]);

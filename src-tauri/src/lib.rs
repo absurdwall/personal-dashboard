@@ -398,6 +398,11 @@ fn collaboration_session(
 }
 
 #[tauri::command]
+fn collaboration_record_refresh(application: State<'_, collaboration::CollaborationApplication>, session_id: String, execution_id: String, observations: Vec<collaboration::CollaborationRefreshInput>) -> Result<(), String> {
+    application.record_refresh_for_selected_vault(&session_id, &execution_id, observations)
+}
+
+#[tauri::command]
 fn collaboration_submit_message(
     application: State<'_, collaboration::CollaborationApplication>,
     session_id: String,
@@ -1018,6 +1023,7 @@ pub fn run() {
             collaboration_create_session,
             collaboration_list_sessions,
             collaboration_session,
+            collaboration_record_refresh,
             collaboration_submit_message,
             collaboration_voice_gate_fixture,
             collaboration_voice_runtime_gate,
@@ -1092,6 +1098,7 @@ pub fn run() {
         collaboration_create_session,
         collaboration_list_sessions,
         collaboration_session,
+        collaboration_record_refresh,
         collaboration_submit_message,
         collaboration_voice_gate_fixture,
         collaboration_voice_runtime_gate,
