@@ -35,3 +35,7 @@
 按本地 tracker 记录 claim、工作分支、验证结果、具体 evidence 与 commit 回执。
 只有本票验收满足后才更新 lifecycle；缺失的真实环境验收保持未完成，不能用 fixture 替代。
 本票发布不启动实施，也不授权真实个人数据试写、正式安装、merge/push 或关闭父 spec。
+
+## Acceptance prerequisite
+
+- 2026-10-09: User confirmed no isolated Dida test objects have been prepared. Live mutation/readback is not authorized against personal objects. PDCR-12 remains open/unclaimed behind PDCR-11; this is an unmet live acceptance prerequisite, not a fixture success.
