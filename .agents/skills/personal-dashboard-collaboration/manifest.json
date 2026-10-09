@@ -1,8 +1,8 @@
 {
   "contractVersion": 1,
   "skillName": "personal-dashboard-collaboration",
-  "skillVersion": "1.3.0",
-  "toolSetVersion": "1.3.0",
+  "skillVersion": "1.5.0",
+  "toolSetVersion": "1.4.0",
   "loading": "embedded-at-build",
   "entrypoint": "SKILL.md",
   "references": [

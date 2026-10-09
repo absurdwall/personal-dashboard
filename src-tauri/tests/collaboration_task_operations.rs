@@ -1125,8 +1125,8 @@ fn daytime_save_records_the_loaded_usage_and_actual_capabilities_across_reopen()
     let saved = serde_json::to_value(app.session("vault-a", &chat.id).unwrap()).unwrap();
     let binding = &saved["usageBindings"][0];
     assert_eq!(binding["skillName"], "personal-dashboard-collaboration");
-    assert_eq!(binding["skillVersion"], "1.3.0");
-    assert_eq!(binding["toolSetVersion"], "1.3.0");
+    assert_eq!(binding["skillVersion"], "1.5.0");
+    assert_eq!(binding["toolSetVersion"], "1.4.0");
     assert!(binding["packageFingerprint"].as_str().is_some_and(|s| !s.is_empty()));
     let registered = tools.lock().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>();
     assert_eq!(binding["registeredTools"], json!(registered));

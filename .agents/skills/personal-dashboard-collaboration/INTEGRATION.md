@@ -72,3 +72,15 @@ only requested dated cells, no local notes or local completion merge. Native
 navigation reuses the existing Habits destination and exact-date Today reader;
 missing snapshot detail is read-only canonical evidence with unknown goals and
 external state. Automatic initial-plan-only tools are unchanged.
+
+PDCR-07 refresh input requires only executionMode=execute. Existing unique
+counterpart mappings and the current publication window are host-captured from
+actual Habit/clock context; the native adapter validates current read schemas
+and obtains exact object/full adjacent-envelope check-ins. Optional explicit
+mappings retain existing identity/conflict guards. Host source queries are
+hostSourceRead items in the same WorkHistory, with actual tool, bounded scope,
+input fingerprint, host timestamps and independent failure states. Raw source
+results remain only in current-turn producer memory. Partial/error/query
+failure retains the old snapshot, and read-only display repair has no completion
+mutation. An unprepared/legacy adapter retains the prior evidence validation
+path; no new write wrapper or external connection is introduced.
