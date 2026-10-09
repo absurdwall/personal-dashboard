@@ -291,7 +291,6 @@ pub(super) fn source_status(catalog: Result<Value, String>) -> Value {
         "coverage":"Tool discovery is not a successful business query. Query the needed current objects and dates; each result establishes only that query's coverage. Reading does not refresh the Habits snapshot."})
 }
 
-pub(super) const READ_GUIDANCE: &str = "The host-selected existing dida365 MCP reads are available as needed in manual and automatic morning turns, including existing sessions; no per-message source selection is required. Use the discovered MCP tool schemas directly for current Task/list, Habit/check-in/history and timezone preference queries. Keep stable external object identities and query date/range/source distinct from local Dashboard Task identities. Use actual query results, not old chat or retained snapshots. Report confirmed empty results separately from failure, authentication-required, partial coverage and unavailable sources. Preserve useful source/date/coverage in replies and morning evidence, without raw dumps or sensitive configuration. Discovery alone does not confirm a query or refresh Habits. External failure does not prevent supported local work. Writes depend on the current round capability; automatic and review-first turns remain read-only. Do not infer local Tasks from external ones.";
 
 #[cfg(test)]
 mod tests {

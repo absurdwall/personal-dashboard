@@ -1098,6 +1098,66 @@ fn explicit_daytime_save_with_prior_content_reaches_the_real_vault_writer() {
     );
 }
 
+#[test]
+fn daytime_save_records_the_loaded_usage_and_actual_capabilities_across_reopen() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("usage-package");
+    prepare_daily_review_vault(&path, false);
+    let vault = MutableVault::new(&path);
+    let clock = ManualClock::new("2026-09-27", "17:00");
+    let (app, tools, results, _) = new_automatic_application(
+        &directory, &vault, MutableContext::new("vault-a"), clock.clone(), None,
+    );
+    let chat = app.create_default_session().unwrap();
+    app.submit_message("vault-a", &chat.id, &chat.target_date,
+        "今天07:10起床，具体睡觉时刻不知道。").unwrap();
+    wait_for_finish(&app, &chat.id, "vault-a");
+    assert!(results.lock().unwrap().last().unwrap().success);
+    let saved = serde_json::to_value(app.session("vault-a", &chat.id).unwrap()).unwrap();
+    let binding = &saved["usageBindings"][0];
+    assert_eq!(binding["skillName"], "personal-dashboard-collaboration");
+    assert_eq!(binding["skillVersion"], "1.0.0");
+    assert_eq!(binding["toolSetVersion"], "1.0.0");
+    assert!(binding["packageFingerprint"].as_str().is_some_and(|s| !s.is_empty()));
+    let registered = tools.lock().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>();
+    assert_eq!(binding["registeredTools"], json!(registered));
+    assert!(!registered.iter().any(|name| name == "dashboard_memory_update"));
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
+    let readback = today.read_date("2026-09-27").unwrap();
+    assert!(serde_json::to_string(&readback.daytime.updates).unwrap()
+        .contains("今天07:10起床，具体睡觉时刻不知道。"));
+    assert!(serde_json::to_string(&readback.baseline).unwrap().contains("Synthetic morning baseline."));
+    drop(app);
+    let (reopened, _, _, _) = new_automatic_application(
+        &directory, &vault, MutableContext::new("vault-a"), clock, None,
+    );
+    let reopened = serde_json::to_value(reopened.session("vault-a", &chat.id).unwrap()).unwrap();
+    assert_eq!(reopened["usageBindings"], saved["usageBindings"]);
+}
+
+#[test]
+fn automatic_usage_advertises_only_the_existing_initial_plan_capability() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("automatic-usage");
+    let vault = MutableVault::new(&path);
+    let (app, tools, _, _) = new_automatic_application(
+        &directory, &vault, MutableContext::new("vault-a"),
+        ManualClock::new("2026-09-27", "07:00"), None,
+    );
+    let automation = app.update_daily_plan_automation(enabled_automation("07:00")).unwrap();
+    let session_id = automation.current_run.unwrap().session_id.unwrap();
+    wait_for_finish(&app, &session_id, "vault-a");
+    let saved = serde_json::to_value(app.session("vault-a", &session_id).unwrap()).unwrap();
+    let binding = &saved["usageBindings"][0];
+    assert_eq!(binding["automaticMorning"], true);
+    assert_eq!(binding["registeredTools"], json!(["dashboard_task_operation"]));
+    assert_eq!(binding["registeredOperations"]["dashboard_task_operation"], json!(["saveDailyPlan"]));
+    let tool = &tools.lock().unwrap()[0];
+    let variants = tool["inputSchema"]["oneOf"].as_array().unwrap();
+    assert_eq!(variants.len(), 1);
+    assert_eq!(variants[0]["properties"]["transition"]["enum"], json!(["initialPlan"]));
+}
+
 
 
 
@@ -4157,6 +4217,11 @@ fn automatic_session_human_continuation_saves_tasks_records_habits_and_memory_th
     assert_eq!(saved.id, session_id);
     assert_eq!(saved.messages.len(), 10);
     assert_eq!(saved.memory_proposals[0].status, "applied");
+    assert_eq!(saved.usage_bindings.len(), 5);
+    let human_usage = saved.usage_bindings.last().unwrap();
+    assert!(!human_usage.automatic_morning);
+    assert_eq!(human_usage.registered_operations.get("dashboard_memory_update"),
+        Some(&vec!["proposeLongTermUpdate".to_owned()]));
     assert_eq!(application.list_sessions("2026-09-27").unwrap().len(), 1);
     assert_eq!(tasks.read().unwrap().tasks[0].state, TaskState::Completed);
     let record = today.read_date("2026-09-27").unwrap();
@@ -4205,6 +4270,7 @@ fn automatic_session_human_continuation_saves_tasks_records_habits_and_memory_th
     assert_eq!(restored.messages, saved.messages);
     assert_eq!(restored.task_operations, saved.task_operations);
     assert_eq!(restored.memory_proposals, saved.memory_proposals);
+    assert_eq!(restored.usage_bindings, saved.usage_bindings);
     assert_eq!(tasks.read().unwrap().tasks[0].state, TaskState::Completed);
     assert!(reopened
         .workspace("2026-09-27")
@@ -4273,6 +4339,7 @@ fn legacy_session_without_registration_fields_upgrades_without_replaying_or_appr
     let mut history: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     let legacy = history["sessions"][0].as_object_mut().unwrap();
     for field in [
+        "usageBindings",
         "runtimeToolSchemaFingerprint",
         "taskToolRegistered",
         "dailyPlanToolRegistered",

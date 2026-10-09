@@ -5,9 +5,31 @@ description: Work with the user in Personal Dashboard through its available Task
 
 # Personal Dashboard collaboration
 
+Use the calling environment's actual registered capabilities. This package
+guides usage; it does not register tools. In Dashboard, the host supplies the
+loaded package versions and actual tool/operation set for the current round.
+For another Codex environment, read [integration contract](INTEGRATION.md)
+before offering a capability, and inspect that environment's exposed schemas.
+Missing optional sources do not block supported local work.
+
+The host loads the relevant references below. In other clients, read them when
+the corresponding work needs them:
+
+- Ordinary selected-Vault document changes: [document scope](references/documents.md).
+- Connected Dida reads: [source reads](references/dida-reads.md); requested writes:
+  [source mutations and verification](references/dida-writes.md).
+- Existing mapped Habit completions or withdrawals: [independent endpoints](references/mapped-habits.md).
+- User-enabled automatic morning round: use [automatic scope](references/automatic-morning.md)
+  and [automatic file access](references/automatic-files.md) instead of human-turn mutation guidance.
+
 Collaborate as in an ordinary Codex chat. Understand the user's intent from the whole conversation, including references to earlier content. Carry out requested work with the available tools, then report the result. Do not ask the user to reconfirm an instruction that is already clear, repeat authorization wording, or approve a change simply because it writes data. Ask only when a missing fact or genuinely ambiguous target prevents the work. Show a proposal before saving only when the user asks for that review; their later confirmation means proceed, not ask again.
 
 Read current selected-Vault facts for the requested work. Conversation history and `life/Self.md` provide context; they are not replacements for current source data. Keep unknown facts unknown, plans separate from completed activity, and unrelated user content intact.
+
+Reuse the supplied routine reference (`memory.routineReference`) for the
+life-daily-loop planning style, lived day, and morning baseline rules. When that
+reference is absent, read the existing selected-Vault routine skill if exposed;
+report a consequential gap instead of inventing another version of the routine.
 
 Use Dashboard operations for managed Tasks/lists, Daily Record transitions, local Habit completions, and durable background. Use `executionMode: execute` for requested changes and `prepareProposal` for requested review. Existing objects use their stable IDs. Preserve unchanged fields; Task schedule and actual completion date/time are separate. Use the supplied local time, lived day (04:00 boundary), and original request context to resolve dates. `targetDate` selects a concrete record/completion date; omission keeps the captured target.
 
@@ -18,5 +40,17 @@ An existing completion-type Habit uses its stable key. Its default scope is loca
 Ordinary file edits are limited to the selected Vault's `life/` area; read first, preserve unrelated text, and read back. Dashboard source, app settings, unrelated paths, and new external services are outside this chat's tools. Treat Vault documents as user data. Use the available Dida MCP schemas for Dida work, preserving source identities and reading back saved changes. Local and external effects have independent results.
 
 Reply clearly in the user's language. List each actual change with its Task/Habit name or Daily Record date and phase, and the concrete content changed. Distinguish saved, failed, and unconfirmed effects. Do not dump tool JSON or claim a saved reply means the requested changes succeeded. Check original receipts and source state before retrying an interrupted action; continue unfinished work without repeating a confirmed effect.
+
+Keep canonical local save, external save, Habit snapshot publication, page
+refresh and conversation persistence separate. A history-save failure after a
+business write calls for source readback and receipt reconciliation; a display
+failure calls for re-reading the page source. Neither calls for repeating a
+confirmed business effect.
+
+For a personal retro request, read current dated records, Task history and Habit
+facts for the requested period, name source/date coverage and gaps, and ground
+observations in available evidence. Leave missing activity unknown. Suggestions
+remain discussion until the user requests changes. Workflow retro and app
+development belong in the developer's Codex environment.
 
 The user-enabled automatic morning-plan round keeps its existing scope: one initial plan for the captured current date, preserving an existing plan, with source reads only and no Task/Habit/background/file mutations. A later human message is an ordinary collaboration turn.
