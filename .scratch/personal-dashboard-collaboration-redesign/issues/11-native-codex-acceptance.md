@@ -34,6 +34,17 @@
 
 ## Evidence and closeout
 
+2026-10-09 partial native acceptance is recorded in
+[native evidence](../evidence/11-native-acceptance.md): actual complete candidates
+`88315b9` and rebuilt `7b3dc8`, fresh immutable workflow-reader evidence, actual
+three-domain personal retros, natural queue crossing 04:00, automatic initial
+plan scope, source/navigation/reopen and controlled lost-terminal readback.
+Human spoken transcript and PDCR-03 native unknown-scope decision remain unmet;
+the ticket and parent spec are not closed. A bounded injected legacy fixture
+confirmed native original-text compatibility, but the explicit missing-process
+unavailable marker was absent and remains a presentation gap. Fixture/transport support and unobserved
+natural long delay remain explicitly qualified.
+
 按本地 tracker 记录 claim、工作分支、验证结果、具体 evidence 与 commit 回执。
 只有本票验收满足后才更新 lifecycle；缺失的真实环境验收保持未完成，不能用 fixture 替代。
 本票发布不启动实施，也不授权真实个人数据试写、正式安装、merge/push 或关闭父 spec。
