@@ -12,7 +12,7 @@ mod history;
 #[path = "collaboration_changes.rs"]
 mod changes;
 pub use changes::CollaborationChangeEvidence;
-pub use history::{CollaborationPayloadOmission, CollaborationWorkHistory, CollaborationWorkItem, RuntimeWorkObserver, CollaborationRefreshInput};
+pub use history::{CollaborationDiagnosticOrigin, CollaborationPayloadOmission, CollaborationWorkHistory, CollaborationWorkItem, RuntimeWorkObserver, CollaborationRefreshInput};
 use history::RuntimeHistory;
 #[cfg(all(test, unix))]
 #[path = "collaboration_history_tests.rs"]
@@ -12949,11 +12949,15 @@ impl StdioJsonlClient {
                                         }
                                         let id = format!("refresh:{}:read:{}", call.call_id, index + 1);
                                         history.source_query_started(&id, &tool, &args)?;
-                                        let result=self.request_during_turn("mcpServer/tool/call",json!({"threadId":thread_id,"server":dida::SERVER,"tool":tool,"arguments":args}))
-                                                    .and_then(|result|crate::habit_producer::validate_native_refresh_read(&tool,&args,&result));
+                                        // Origin follows the executed branch, not the diagnostic's text.
+                                        let (result, origin) = match self.request_during_turn("mcpServer/tool/call", json!({"threadId":thread_id,"server":dida::SERVER,"tool":tool,"arguments":args})) {
+                                            Ok(result) => (crate::habit_producer::validate_native_refresh_read(&tool, &args, &result), CollaborationDiagnosticOrigin::Application),
+                                            Err(error) => (Err(error), CollaborationDiagnosticOrigin::External),
+                                        };
                                         history.source_query_finished(
                                             &id,
                                             result.as_ref().map(|_| ()).map_err(|error| error.as_str()),
+                                            origin,
                                         )?;
                                         if !crate::habit_producer::cache_native_read(
                                             &mut habit_source_reads,

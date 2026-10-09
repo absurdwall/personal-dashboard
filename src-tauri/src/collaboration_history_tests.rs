@@ -142,6 +142,7 @@ impl AppServerTransport for InjectedTransport {
             let response_sender = sender.clone();
             let response_thread = thread.clone();
             let partial = request.user_text.ends_with("partial");
+            let source_error = request.user_text.ends_with("source error");
             let duplicate = request.user_text.ends_with("duplicate");
             let reader = std::thread::spawn(move || {
                 let mut calls = Vec::new();
@@ -155,6 +156,10 @@ impl AppServerTransport for InjectedTransport {
                         Some("mcpServer/tool/call") => {
                             assert_eq!(call["params"]["server"], "dida365");
                             calls.push(call["params"].clone());
+                            if source_error && call["params"]["tool"] == "get_habit_checkins" {
+                                response_sender.send(Ok(json!({"id":call["id"],"error":{"code":-32000,"message":"Native Habit source coverage is partial, paginated, failed or unavailable"}}).to_string())).unwrap();
+                                continue;
+                            }
                             match call["params"]["tool"].as_str().unwrap() {
                                 "get_habit" => json!({"structuredContent":{"result":{"id":"owned-counterpart","name":"Same display name is not identity"}}}),
                                 "get_habit_checkins" if partial => json!({"structuredContent":{"partial":true,"result":[{"habitId":"owned-counterpart","checkins":[]}]}}),
@@ -1067,6 +1072,8 @@ fn partial_native_producer_query_retains_snapshot_then_independent_refresh_keeps
     assert_eq!(failed.last_habit_refresh.as_ref().unwrap().publication,"notPublished");
     assert_eq!(fs::read(&path).unwrap(),before);
     assert!(failed.work_history[0].items.iter().any(|item|item.kind=="hostSourceRead" && item.tool.as_deref()==Some("get_habit_checkins") && item.status=="failed"));
+    let source_failure=failed.work_history[0].items.iter().find(|item|item.kind=="hostSourceRead" && item.status=="failed").unwrap();
+    assert_eq!(serde_json::to_value(source_failure).unwrap()["diagnosticOrigin"],"application","producer validation origin is mechanically captured, never inferred from error text");
     app.submit_message("history-vault",&session.id,"2026-10-09","Refresh mapped habits").unwrap();
     let repaired=await_end(&app,&session.id);
     assert_eq!(repaired.last_habit_refresh.as_ref().unwrap().publication,"published");
@@ -1075,6 +1082,18 @@ fn partial_native_producer_query_retains_snapshot_then_independent_refresh_keeps
     assert!(repaired.work_history[0].items.iter().any(|item|item.kind=="hostSourceRead" && item.status=="failed"));
     assert!(repaired.task_operations.is_empty());
     assert!(!vault.join("life/.personal-dashboard/habit-completions/v1/completions.json").exists());
+    let retained_snapshot=fs::read(&path).unwrap();
+    app.submit_message("history-vault",&session.id,"2026-10-09","Refresh mapped habits source error").unwrap();
+    let external=await_end(&app,&session.id);
+    let external_failure=external.work_history.last().unwrap().items.iter().find(|item|item.kind=="hostSourceRead" && item.status=="failed").unwrap();
+    assert_eq!(serde_json::to_value(external_failure).unwrap()["diagnosticOrigin"],"external","native RPC failure is not promoted to application origin by matching grammar");
+    assert!(external_failure.diagnostic.as_deref().unwrap().contains("Native Habit source coverage is partial, paginated, failed or unavailable"));
+    assert_eq!(fs::read(&path).unwrap(),retained_snapshot,"source failure does not republish or mutate the prior snapshot");
+    let script=Path::new(env!("CARGO_MANIFEST_DIR")).join("../.agents/skills/personal-dashboard-workflow-retro/scripts/read_evidence.py");
+    let export=std::process::Command::new("python3").arg(script).arg("--history").arg(root.join("history.json")).arg("--execution").arg(failed.run_id.as_ref().unwrap()).output().unwrap();
+    assert!(export.status.success());
+    let exported:Value=serde_json::from_slice(&export.stdout).unwrap();
+    assert!(exported["executions"][0]["history"]["items"].as_array().unwrap().iter().any(|item|item["kind"]=="hostSourceRead" && item["status"]=="failed" && item["diagnosticOrigin"]=="application"));
     app.shutdown().unwrap();fs::remove_dir_all(root).unwrap();
 }
 

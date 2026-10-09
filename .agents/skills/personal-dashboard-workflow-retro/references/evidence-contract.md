@@ -23,7 +23,10 @@ save merely because a runtime item completed.
 Exported records reuse the existing request, WorkHistory, usage binding and
 business receipts. Distinct item/call/receipt identities remain distinct. The
 per-execution runtime thread binding can be explicit null for never-dispatched
-requests; a session's newer thread is not substituted. Legacy missing histories,
+requests; a session's newer thread is not substituted. Host source-read `diagnosticOrigin` is recorded from the actual application
+validation or external RPC branch, never inferred from matching text. Absent
+legacy origin remains unknown; source-owned diagnostics remain verbatim.
+Legacy missing histories,
 configuration, usage and refreshes remain gaps.
 
 Runtime configuration separates captured requested values from observed

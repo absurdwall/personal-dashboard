@@ -189,3 +189,26 @@ for(const language of ["zh","en"] as const) {
     if(language==="zh") assert.ok(!content(body).includes("Optional visible payload omitted"));
   });
 }
+
+for (const language of ["zh", "en"] as const) {
+  test(`host source-read diagnostics translate only mechanically recorded application origin in ${language}`, () => {
+    const context = vm.createContext({ t: (key: any, values: any) => interfaceCopy(key, language, values), currentInterfaceLanguage: language, localizeCollaborationDiagnostic, localizeWorkHistoryDiagnostic });
+    vm.runInContext(fn("collaborationWorkHistoryLabels") + "\nlabels=collaborationWorkHistoryLabels()", context);
+    const diagnostics = [
+      "Native Habit source read failed or exceeded its evidence bound",
+      "Native Habit source coverage is partial, paginated, failed or unavailable",
+      "Current native Habit object did not verify the exact counterpart ID",
+      "Native check-in read did not establish every requested counterpart/range",
+    ];
+    for (const diagnostic of diagnostics) {
+      const body = new Element("article");
+      const items = ["application", "external", null].map((diagnosticOrigin, index) => ({ ...history.items[3], itemId: `source-${index}`, kind: "hostSourceRead", tool: "get_habit_checkins", diagnostic, diagnosticOrigin }));
+      appendCollaborationWorkHistory(body as any, { ...history, items } as any, document, context.labels, () => {});
+      const rows = descendants(body).filter(node => node.className === "collaboration-work-item");
+      if (language === "zh") assert.ok(!content(rows[0]).includes(diagnostic), "the application's fixed grammar has paired Chinese copy");
+      else assert.ok(content(rows[0]).includes(diagnostic));
+      assert.ok(content(rows[1]).includes(diagnostic), "external-owned identical text remains verbatim");
+      assert.ok(content(rows[2]).includes(diagnostic), "legacy unknown origin remains verbatim");
+    }
+  });
+}

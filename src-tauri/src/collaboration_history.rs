@@ -103,6 +103,11 @@ pub struct CollaborationPayloadOmission {
     pub reason_code: String,
 }
 
+/// Host-produced origin, never decoded from native item diagnostic text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CollaborationDiagnosticOrigin { Application, External }
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollaborationWorkItem {
@@ -128,6 +133,8 @@ pub struct CollaborationWorkItem {
     pub parameters: Vec<CollaborationWorkParameter>,
     #[serde(default)]
     pub diagnostic: Option<String>,
+    #[serde(default)]
+    pub diagnostic_origin: Option<CollaborationDiagnosticOrigin>,
     #[serde(default)]
     pub diagnostic_gap: Option<String>,
     #[serde(default)]
@@ -451,6 +458,7 @@ impl RuntimeHistory {
             authoritative: false,
             parameters: Vec::new(),
             diagnostic: None,
+            diagnostic_origin: None,
             diagnostic_gap: None,
             changes: Vec::new(),
             change_gap: None,
@@ -618,6 +626,7 @@ impl RuntimeHistory {
         &mut self,
         id: &str,
         result: Result<(), &str>,
+        origin: CollaborationDiagnosticOrigin,
     ) -> Result<(), String> {
         self.view.sequence += 1;
         self.view.updated_at_ms = observed_now_ms();
@@ -632,6 +641,7 @@ impl RuntimeHistory {
         item.authoritative = true;
         item.last_sequence = self.view.sequence;
         item.updated_at_ms = self.view.updated_at_ms;
+        item.diagnostic_origin = result.is_err().then_some(origin);
         if let Err(error) = result {
             item.diagnostic = safe_diagnostic(error);
             if item.diagnostic.is_none() {
@@ -690,6 +700,7 @@ pub(super) fn merge_recovered(existing: &mut CollaborationWorkHistory, recovered
             incoming.last_sequence = sequence;
             incoming.observed_at_ms = item.observed_at_ms;
             incoming.runtime_started_at_ms = item.runtime_started_at_ms.or(incoming.runtime_started_at_ms);
+            if incoming.diagnostic.is_none() { incoming.diagnostic_origin = item.diagnostic_origin.clone(); }
             incoming.diagnostic = incoming.diagnostic.or(item.diagnostic.clone());
             incoming.diagnostic_gap = incoming.diagnostic_gap.or(item.diagnostic_gap.clone());
             incoming.input_fingerprint = incoming.input_fingerprint.or(item.input_fingerprint.clone());
