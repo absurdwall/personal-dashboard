@@ -32,3 +32,23 @@ unknown Dida object-scope, live-source or release gates.
 The original atomic-test failure logs and test-only uniqueness repair remain
 in [producer evidence](../pdcr-07-evidence.md); these green results do not
 retroactively establish the original failure's cause.
+
+## Pure frontend supplement at c5be634
+
+Legacy unavailable presentation source `505fdb3`, integrated
+`c5be634d75b8921a6244135593b3128588398150`, changes only three frontend source
+files plus production-renderer tests/evidence. `src-tauri` and `.agents` trees
+are identical to `7b3dc8`; the Rust/reader/native-permission results above remain
+applicable to those unchanged sources and were not rerun.
+
+- Production-renderer red: three new missing-label assertions failed. Green:
+  32 related checks passed. [Red/green evidence](review-fixes.md).
+- Complete frontend: **378 passed, zero failed/skipped/cancelled**, private log
+  `/tmp/pdcr-legacy-all-frontend.log`; `npm run build` passed,
+  `/tmp/pdcr-legacy-build.log`. Root reread the logs and checked source scope.
+- Independent targeted Standards/Spec reviews found no new issue. Spec review
+  separately passed seven new production-renderer checks without repeating the
+  full suite. [Distinct review axes](review.md).
+- Bounded no-auth native legacy reassessment is recorded separately with its
+  build/source identity in [native evidence](11-native-acceptance.md). It does
+  not create model, voice or live-Dida evidence.

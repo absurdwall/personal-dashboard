@@ -80,3 +80,53 @@ No new actionable Spec regression or scope creep found in the changed source. Na
 Verification performed here: both isolated production probes plus 18 targeted production-handler tests passed. Root owns full-suite verification. Complete-candidate native acceptance and live Dida acceptance remain separate outstanding gates.
 
 Repair review: Standards 0 findings; Spec 1 remaining finding, worst P2 (unknown native Dida object scope).
+
+# Native legacy finding and repair at c5be634
+
+A bounded native fixture at `7b3dc8` retained old text but omitted the explicit
+missing-process label required by spec section5 and the history/restart failure
+row. This presentation defect was discovered after the initial review, then
+fixed by the same single review-fix implementer in `505fdb3`, integrated
+`c5be634d75b8921a6244135593b3128588398150`. Native reassessment remains separately
+recorded in [PDCR-11 evidence](11-native-acceptance.md).
+
+## Standards
+
+# Targeted Standards re-review — legacy execution evidence
+
+Read-only comparison: `464058bc8ca3f0a531131018036664652ebab73e...c5be634d75b8921a6244135593b3128588398150`, including source commit `505fdb3` and its integration merges. Retained the documented sources and complete smell baseline from the initial Standards review. No tests rerun or GitHub operations.
+
+## Documented standards
+
+No new documented-standard violation found.
+
+- `frontend/main.ts`: the change remains presentation behavior. Saved assistant work and terminated requests without replies expose absent evidence; pending requests remain distinct. Original messages and saved outcomes continue through existing renderers.
+- `frontend/collaboration-work-history.ts`: the nullable branch creates an explicit unavailable paragraph without fabricating runtime work, usage, receipts or execution identities. It uses the existing DOM-only rendering boundary.
+- `frontend/interface-language.ts`: the new copy is present in both supported interface languages. It preserves the domain distinction between conversation text, process evidence and observed outcomes.
+- The test changes exercise actual production renderer/helpers, preservation of original text and outcomes, absence of fabricated items, unchanged session data, and no backend invocation during rendering. The evidence append qualifies those checks separately from native acceptance.
+
+No dependencies, external services, deployment configuration, persistence change or authorization layer was added. These changes are consistent with ADR-0006's requirement to leave unavailable evidence unknown.
+
+## Baseline smells — judgment calls
+
+No additional actionable smell found in these narrow hunks. The nullable helper centralizes the unavailable presentation used by both saved-reply and terminated-request paths; its optional localized label follows the existing label contract. The terminal-state condition is a bounded rendering distinction, not grounds for a broader state-model refactor in this fix.
+
+The initial two P3 suggestions remain resolved. This review does not establish whole-spec completion: unknown native Dida scope, human voice acceptance and isolated live-Dida objects remain unmet as previously recorded.
+
+## Spec
+
+Targeted Spec re-review: `464058bc8ca3f0a531131018036664652ebab73e...c5be634d75b8921a6244135593b3128588398150`, source `505fdb3`, integration `5067ba9`/`c5be634`. Read-only; no full-suite repeat.
+
+**Legacy presentation gap resolved at the production-renderer seam.** Spec129: “旧会话仍可读，原文与已保存 receipt 保留；没有的过程、usage 和变更证据标记不可用，不重新生成历史。” `frontend/main.ts:2533–2536` now passes absent WorkHistory to the nullable renderer. `frontend/collaboration-work-history.ts:125–131` appends only an unavailable paragraph; it creates no work items, usage or change evidence. `frontend/interface-language.ts:490` provides explicit Chinese/English missing-process, usage and change-evidence text while retaining original messages and outcomes.
+
+**Failure/restart presentation is covered without replay.** Spec193: “已保存业务效果不重复，旧会话可读，缺失过程明确 unavailable。” `frontend/main.ts:2584–2592` also labels a terminated historical request with no reply. Rendering leaves source/session data unchanged and invokes no backend mutation. Existing receipt rendering remains in place.
+
+**Pending/live requests retain their distinction.** Spec125: “普通消息在当前执行后按现有队列顺序处理，不调用 steer。” The historical-state predicate excludes queued, not-started, paused and in-progress requests. Those states do not acquire a missing-history label merely because execution evidence has not arrived. No queue, runtime, persistence or authorization behavior changed.
+
+No new actionable Spec defect or scope creep found in this narrow diff. All seven new production-renderer checks passed independently, including both languages, historical no-reply, four pending/live states, preserved text/receipt and no fabricated/replayed execution.
+
+This resolves the source-level gap observed by the earlier injected native fixture; the rebuilt candidate's no-auth native reassessment remains pending with the root. Unknown-Dida object scope, live spoken dictation and live Dida acceptance remain unresolved; no overall spec/native acceptance claimed.
+
+Legacy repair review: Standards 0 findings; Spec 0 new findings. Overall Spec
+still retains the P2 unknown native Dida object-scope finding and the separate
+human/live acceptance gates; this is not parent-spec closeout.
