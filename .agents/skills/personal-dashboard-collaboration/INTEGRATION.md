@@ -2,7 +2,7 @@
 
 Contract 1 embeds this package at application build time; selected-Vault or
 installed skill edits do not silently change a running candidate. The host loads
-SKILL.md and the document/Dida/mapped-Habit references for a human turn, or the
+SKILL.md and the document/Dida/mapped-Habit/personal-retro references for a human turn, or the
 automatic-morning/files and Dida-read references for an automatic turn. Hosts
 outside Dashboard should read the referenced files on the matching branch of
 work and supply actual executable capabilities; the package registers none.
@@ -84,3 +84,21 @@ results remain only in current-turn producer memory. Partial/error/query
 failure retains the old snapshot, and read-only display repair has no completion
 mutation. An unprepared/legacy adapter retains the prior evidence validation
 path; no new write wrapper or external connection is introduced.
+
+## Personal retro date facts and reads
+
+`/retro` and natural-language period reviews use this same human usage package;
+there is no host intent route or additional registered tool. The host supplies
+`dates.defaultPersonalRetroPeriod` with inclusive `fromDate`/`toDate`, derived
+from `dates.requestLivedDate` minus seven through minus one civil days. An invalid
+legacy request date leaves this optional period unavailable; no replacement date
+is fabricated. The 04:00 lived-day rule applies before this subtraction. This
+captured request anchor does not change with a browsed target date or later queued execution.
+An explicitly requested period overrides the report default, not any captured
+write target. `dashboard_read_history` still requires explicit bounded dates
+and one actually advertised domain per call; each domain returns its own source
+state, range, coverage and provenance. Personal retro guidance is embedded only
+for human turns and participates in the package fingerprint/thread rotation.
+A report is model output rendered with the existing safe Markdown and internal
+source links. Suggestions alone never execute a mutation; a subsequent explicit
+adoption uses ordinary operations and current revisions.

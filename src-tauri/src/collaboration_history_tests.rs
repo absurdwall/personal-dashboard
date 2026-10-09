@@ -914,7 +914,18 @@ fn managed_source_conflict_or_later_edit_keeps_observed_revision_and_original_ou
             fs::read_to_string(&path).unwrap(),
             "# Independent correction\nPreserve this content\n"
         );
-        fs::remove_dir_all(root).unwrap();
+        // Completion is observable before the background worker's final history flush.
+        // Only teardown waits; all actual source/outcome assertions above stay immediate.
+        let cleanup_deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            match fs::remove_dir_all(&root) {
+                Ok(()) => break,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+                Err(error) if error.kind() == std::io::ErrorKind::DirectoryNotEmpty
+                    && Instant::now() < cleanup_deadline => thread::sleep(Duration::from_millis(20)),
+                Err(error) => panic!("isolated fixture teardown failed: {error}"),
+            }
+        }
     }
 }
 
@@ -939,6 +950,7 @@ fn simple_refresh_queries_native_full_window_without_model_mappings_or_evidence_
     assert_ne!(fs::read(&snapshot_path).unwrap(),source);
     let reads:Vec<_>=saved.work_history[0].items.iter().filter(|item|item.kind=="hostSourceRead").collect();
     assert_eq!(reads.len(),2);assert!(reads.iter().all(|item|item.status=="completed" && item.authoritative));
+    assert!(reads.iter().all(|item|item.input_fingerprint.as_ref().is_some_and(|value| !value.is_empty()) && !item.parameters.iter().any(|parameter|parameter.name=="inputFingerprint")));
     app.shutdown().unwrap();fs::remove_dir_all(root).unwrap();
 }
 

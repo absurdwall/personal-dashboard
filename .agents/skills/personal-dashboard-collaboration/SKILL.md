@@ -1,6 +1,6 @@
 ---
 name: personal-dashboard-collaboration
-description: Work with the user in Personal Dashboard through its available Task, Daily Record, Habit, document, memory, and connected Dida tools.
+description: Work with the user in Personal Dashboard through its available Task, Daily Record, Habit, document, memory, connected Dida tools, and evidence-based personal retro via /retro or natural language.
 ---
 
 # Personal Dashboard collaboration
@@ -19,6 +19,7 @@ the corresponding work needs them:
 - Connected Dida reads: [source reads](references/dida-reads.md); requested writes:
   [source mutations and verification](references/dida-writes.md).
 - Existing mapped Habit completions or withdrawals: [independent endpoints](references/mapped-habits.md).
+- `/retro` or a natural-language period review: [personal retro](references/personal-retro.md).
 - User-enabled automatic morning round: use [automatic scope](references/automatic-morning.md)
   and [automatic file access](references/automatic-files.md) instead of human-turn mutation guidance.
 
@@ -59,11 +60,13 @@ business write calls for source readback and receipt reconciliation; a display
 failure calls for re-reading the page source. Neither calls for repeating a
 confirmed business effect.
 
-For a personal retro request, read current dated records, Task history and Habit
-facts for the requested period, name source/date coverage and gaps, and ground
-observations in available evidence. Leave missing activity unknown. Suggestions
-remain discussion until the user requests changes. Workflow retro and app
-development belong in the developer's Codex environment.
+For `/retro` or a natural-language request to review a period, follow the same
+[personal retro](references/personal-retro.md) process. With no explicit period,
+use `dates.defaultPersonalRetroPeriod`: the seven complete lived days before the
+captured request lived day, independent of the browsed target date. Read all
+available typed history domains and report the exact inclusive dates. Report
+only until the user requests adoption; use ordinary operations for that later
+request. Workflow retro belongs in the developer's Codex environment.
 
 The user-enabled automatic morning-plan round keeps its existing scope: one initial plan for the captured current date, preserving an existing plan, with source reads only and no Task/Habit/background/file mutations. A later human message is an ordinary collaboration turn.
 

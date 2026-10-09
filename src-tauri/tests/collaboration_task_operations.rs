@@ -467,6 +467,49 @@ impl AppServerTransport for DynamicRuntime {
                 gate.block_automatic_turn();
             }
         }
+        // External model boundary fixture: its emitted calls consume the real
+        // registered history dispatcher and file adapters. No product routing.
+        if matches!(request.user_text.as_str(), "/retro" | "请复盘2026-09-26到2026-09-27的计划、实际、Task和Habit，先讨论建议，不要修改。") {
+            if !self.starts.lock().unwrap().last().is_some_and(|text| text.contains("# Personal retro")) {
+                return Err("Personal retro reference was not loaded in the human usage package".into());
+            }
+            let dates = serde_json::to_value(&request.dates).unwrap();
+            // The scripted model emits a known explicit range for this second
+            // request. Natural-language interpretation remains a live11 gate.
+            let explicit = json!({"fromDate":"2026-09-26","toDate":"2026-09-27"});
+            let period = if request.user_text == "/retro" { &dates["defaultPersonalRetroPeriod"] } else { &explicit };
+            if !period["fromDate"].is_string() || !period["toDate"].is_string() {
+                return Err("Captured seven-complete-lived-day period is unavailable".into());
+            }
+            let mut sources = Vec::new();
+            for domain in ["tasks", "dailyRecords", "habits"] {
+                let result = handler(RuntimeDynamicToolCall {
+                    thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
+                    call_id: format!("retro-{domain}"), tool: "dashboard_read_history".into(),
+                    arguments: json!({"domain":domain,"fromDate":period["fromDate"],"toDate":period["toDate"]}),
+                });
+                self.results.lock().unwrap().push(result.clone());
+                if !result.success { return Err(result.text); }
+                sources.push(serde_json::from_str::<Value>(&result.text).map_err(|e| e.to_string())?);
+            }
+            let tasks = &sources[0]; let records = &sources[1]; let habits = &sources[2];
+            let record = records["records"].as_array().unwrap().iter().find(|record| record["state"] == "ready").unwrap();
+            let task = &tasks["tasks"][0]; let local = &habits["canonical"]["records"][0];
+            let text = format!("**Personal retro · {}–{}**\n\n- Morning baseline: {}\n- Current arrangement: {}\n- Recorded actual: {} [Daytime source]({})\n- [Task source](dashboard://task/{}) scheduled {}; completed {} at an unknown time.\n- [Habit source](dashboard://habit/{}?date={}) local state {}; published projection {} ({}).\n\nMissing dates remain unknown; no duration or wasted time inferred. Optional live Dida is unavailable; local evidence remains usable. Suggestions are discussion; no history or plans changed.",
+                period["fromDate"].as_str().unwrap(),period["toDate"].as_str().unwrap(),
+                record["baseline"]["timeline"][0]["title"].as_str().unwrap(),record["currentArrangement"][0]["title"].as_str().unwrap(),
+                record["daytime"]["updates"][0]["observedFacts"][0].as_str().unwrap(),record["links"]["daytime"].as_str().unwrap(),
+                task["id"].as_str().unwrap(),task["date"].as_str().unwrap(),task["completion"]["completedOn"].as_str().unwrap(),
+                local["habitKey"].as_str().unwrap(),local["livedDate"].as_str().unwrap(),local["state"].as_str().unwrap(),
+                habits["projection"]["state"].as_str().unwrap(),habits["projection"]["generatedAt"].as_str().unwrap_or("unavailable"));
+            return Ok(RuntimeTurnResult {text,runtime_turn_id:Some(format!("turn-{}",request.execution_id)),stopped:false,external_actions:Vec::new()});
+        }
+        if request.user_text == "采用刚才的建议：在本地新增下一步 Task，名为 Retro adopted next step，安排2026-09-28。" {
+            let result=handler(RuntimeDynamicToolCall {thread_id:request.thread_id.clone(),turn_id:format!("turn-{}",request.execution_id),call_id:"retro-adoption".into(),tool:"dashboard_task_operation".into(),arguments:json!({"operation":"createTask","name":"Retro adopted next step","content":null,"date":"2026-09-28","time":null,"listId":null,"executionMode":"execute"})});
+            self.results.lock().unwrap().push(result.clone());
+            if !result.success {return Err(result.text);}
+            return Ok(RuntimeTurnResult {text:result.text,runtime_turn_id:Some(format!("turn-{}",request.execution_id)),stopped:false,external_actions:Vec::new()});
+        }
         if matches!(request.user_text.as_str(), "read task history" | "read record history" | "read habit history") {
             let result = handler(RuntimeDynamicToolCall {
                 thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
@@ -7455,4 +7498,142 @@ fn local_habit_receipt_keeps_canonical_success_revision_when_snapshot_read_fails
     app.reconcile_task_operation_for_selected_vault(&session.id,&proposal.id).unwrap();
     app.approve_task_operation_for_selected_vault(&session.id,&proposal.id).unwrap();
     assert_eq!(fs::read(completion_path).unwrap(),before);
+}
+
+
+#[test]
+fn personal_retro_reads_three_real_histories_for_complete_lived_days_without_business_writes() {
+    use personal_dashboard_lib::today::HabitCompletionMutationInput;
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("personal-retro");
+    let record = prepare_daily_review_vault(&path, false);
+    let vault = MutableVault::new(&path);
+    let clock = ManualClock::new("2026-09-28", "10:00");
+    let tasks = TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault.clone(), clock.clone(), FileTaskStore));
+    let opened = tasks.read().unwrap(); let binding = opened.target_binding.unwrap();
+    let created = tasks.apply(&CollaborationTaskOperation::CreateTask {name:"Synthetic report".into(),content:None,date:Some("2026-10-02".into()),time:Some("09:00".into()),list_id:None},&binding,None,"retro-create").unwrap();
+    let id = created.tasks[0].id.clone();
+    tasks.apply_for_date(&CollaborationTaskOperation::CompleteTask {task_id:id.clone(),completed_time:None},&binding,created.revision.as_deref(),"retro-complete","2026-09-26").unwrap();
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
+    let snapshot = today.habits().unwrap();
+    today.set_local_habit_completion(HabitCompletionMutationInput {habit_key:"exercise".into(),lived_date:"2026-09-26".into(),completed:true,change_id:"retro-local".into(),target_binding:snapshot.completion_target_binding.unwrap(),expected_revision:snapshot.completion_revision}).unwrap();
+    let source_paths = [record, path.join("life/.personal-dashboard/tasks/v1/tasks.json"),path.join("life/.personal-dashboard/habit-completions/v1/completions.json"),path.join("life/.personal-dashboard/derived/habits-v1.json")];
+    let before = source_paths.iter().map(|p|fs::read(p).unwrap()).collect::<Vec<_>>();
+    let record_before=before[0].clone();let habit_before=before[2].clone();
+    let (app,_,results,requests) = new_automatic_application(&directory,&vault,MutableContext::new("vault-a"),clock,None);
+    // Browsing an unrelated date must not choose the retro period.
+    let session = app.create_session("2026-08-01").unwrap();
+    app.submit_message("vault-a",&session.id,"2026-08-01","/retro").unwrap();
+    wait_for_finish(&app,&session.id,"vault-a");
+    let saved = app.session("vault-a",&session.id).unwrap();
+    let read_results = results.lock().unwrap();
+    let histories = read_results.iter().map(|r|serde_json::from_str::<Value>(&r.text).unwrap()).collect::<Vec<_>>();
+    assert_eq!(histories.iter().map(|h|h["domain"].as_str().unwrap()).collect::<Vec<_>>(),["tasks","dailyRecords","habits"]);
+    for h in &histories {assert_eq!(h["fromDate"],"2026-09-21");assert_eq!(h["toDate"],"2026-09-27");}
+    assert_eq!(histories[0]["tasks"][0]["id"],id);
+    assert_eq!(histories[0]["tasks"][0]["completion"]["completedTime"],Value::Null);
+    assert_eq!(histories[1]["records"][0]["evidenceAvailability"],"unknown");
+    assert_eq!(histories[2]["projection"]["state"],"stale");
+    assert_eq!(histories[2]["canonical"]["unrecordedState"],"unknown");
+    assert_eq!(histories[2]["canonical"]["records"][0]["changes"][0]["id"],"retro-local");
+    let reply=&saved.messages.last().unwrap().text;
+    assert!(reply.contains("2026-09-21–2026-09-27"));
+    assert!(reply.contains("Synthetic morning baseline."));
+    assert!(reply.contains("Synthetic current arrangement."));
+    assert!(reply.contains("完成合成工作块"));
+    assert!(reply.contains("scheduled 2026-10-02; completed 2026-09-26 at an unknown time"));
+    assert!(reply.contains("Missing dates remain unknown"));
+    assert!(saved.task_operations.is_empty()); assert!(saved.memory_proposals.is_empty());
+    assert_eq!(requests.lock().unwrap()[0].dates.target_date,"2026-08-01");
+    for (file,bytes) in source_paths.iter().zip(before) {assert_eq!(fs::read(file).unwrap(),bytes);}
+    assert!(!path.join("life/Journal/Daily/2026/2026-09/2026-09-21.md").exists());
+    let persisted:CollaborationState=serde_json::from_slice(&fs::read(directory.path().join("collaboration/collaboration.json")).unwrap()).unwrap();
+    assert_eq!(persisted.sessions[0].messages.last().unwrap().text,*reply);
+    drop(read_results);
+    // Optional projection unavailable: the same registered tool still serves
+    // canonical local evidence and the other two domains without a connection.
+    fs::remove_file(&source_paths[3]).unwrap();
+    let before_explicit=source_paths[..3].iter().map(|p|fs::read(p).unwrap()).collect::<Vec<_>>();
+    let natural="请复盘2026-09-26到2026-09-27的计划、实际、Task和Habit，先讨论建议，不要修改。";
+    app.submit_message("vault-a",&session.id,"2026-08-01",natural).unwrap();
+    wait_for_finish(&app,&session.id,"vault-a");
+    let explicit=app.session("vault-a",&session.id).unwrap();
+    let explicit_results=results.lock().unwrap();
+    for result in &explicit_results[3..] {
+        let history:Value=serde_json::from_str(&result.text).unwrap();
+        assert_eq!(history["fromDate"],"2026-09-26");assert_eq!(history["toDate"],"2026-09-27");
+    }
+    let habit:Value=serde_json::from_str(&explicit_results[5].text).unwrap();
+    assert_eq!(habit["projection"]["state"],"missing");
+    assert_eq!(habit["canonical"]["state"],"ready");
+    assert_eq!(requests.lock().unwrap()[1].user_text,natural);
+    assert!(explicit.messages.last().unwrap().text.contains("2026-09-26–2026-09-27"));
+    assert!(explicit.messages.last().unwrap().text.contains("published projection missing (unavailable)"));
+    assert!(explicit.task_operations.is_empty());assert!(explicit.memory_proposals.is_empty());
+    assert_eq!(explicit.usage_bindings.len(),2);
+    for binding in &explicit.usage_bindings {
+        assert_eq!(binding.skill_name,"personal-dashboard-collaboration");
+        assert_eq!(binding.skill_version,"1.5.0");
+        assert_eq!(binding.registered_tools.iter().filter(|tool|*tool=="dashboard_read_history").count(),1);
+    }
+    if let Ok(destination)=std::env::var("PDCR_RETRO_EVIDENCE_DIR") {
+        fs::create_dir_all(&destination).unwrap();
+        fs::write(Path::new(&destination).join("personal-retro-history-reads.json"),serde_json::to_vec_pretty(&explicit_results.iter().map(|result|serde_json::from_str::<Value>(&result.text).unwrap()).collect::<Vec<_>>()).unwrap()).unwrap();
+    }
+    for (file,bytes) in source_paths[..3].iter().zip(before_explicit) {assert_eq!(fs::read(file).unwrap(),bytes);}
+    assert!(!source_paths[3].exists(),"report must not rebuild missing projection");
+    drop(explicit_results);
+    if let Ok(destination)=std::env::var("PDCR_RETRO_EVIDENCE_DIR") {
+        fs::create_dir_all(&destination).unwrap();
+        fs::write(Path::new(&destination).join("personal-retro-default.json"),serde_json::to_vec_pretty(&saved).unwrap()).unwrap();
+        fs::write(Path::new(&destination).join("personal-retro-explicit.json"),serde_json::to_vec_pretty(&explicit).unwrap()).unwrap();
+    }
+    app.submit_message("vault-a",&session.id,"2026-08-01","采用刚才的建议：在本地新增下一步 Task，名为 Retro adopted next step，安排2026-09-28。").unwrap();
+    wait_for_finish(&app,&session.id,"vault-a");
+    let adopted=app.session("vault-a",&session.id).unwrap();
+    assert_eq!(adopted.task_operations.len(),1);
+    assert_eq!(adopted.task_operations[0].status,"applied");
+    let updated=tasks.read().unwrap();
+    assert_eq!(updated.tasks.len(),2);
+    let added=updated.tasks.iter().find(|task|task.name=="Retro adopted next step").unwrap();
+    assert_eq!(added.date.as_deref(),Some("2026-09-28"));
+    assert_eq!(updated.tasks.iter().find(|task|task.id==id).unwrap().date.as_deref(),Some("2026-10-02"));
+    assert_eq!(fs::read(&source_paths[0]).unwrap(),record_before);
+    assert_eq!(fs::read(&source_paths[2]).unwrap(),habit_before);
+    drop(app);
+    let (reopened,_,new_results)=new_application(&directory,&vault,MutableContext::new("vault-a"),Arc::new(AtomicBool::new(false)));
+    let restored=reopened.session("vault-a",&session.id).unwrap();
+    for report in [&saved,&explicit] {
+        let prior=report.messages.last().unwrap();
+        assert_eq!(restored.messages.iter().find(|message|message.id==prior.id).unwrap().text,prior.text);
+    }
+    assert!(new_results.lock().unwrap().is_empty(),"reopening never replays retro or adoption");
+}
+
+#[test]
+fn queued_retro_period_keeps_submission_lived_day_across_four_am_and_browsed_dates() {
+    let directory=IsolatedDirectory::new();
+    let path=directory.vault("retro-four-am");let vault=MutableVault::new(&path);
+    let clock=ManualClock::new("2026-09-28","03:59");
+    let gate=Arc::new(AutomaticTurnGate::default());
+    let (app,_,_,requests)=new_automatic_application(&directory,&vault,MutableContext::new("vault-a"),clock.clone(),Some(gate.clone()));
+    let session=app.create_session("2026-08-01").unwrap();
+    app.submit_message("vault-a",&session.id,"2026-08-01","hold-worker").unwrap();
+    gate.wait_until_entered();
+    app.submit_message("vault-a",&session.id,"2026-08-01","read task history").unwrap();
+    clock.set_time("04:01");gate.release();
+    for _ in 0..300 {
+        if requests.lock().unwrap().len()==2 && app.session("vault-a",&session.id).unwrap().run_state=="completed" {break;}
+        thread::sleep(Duration::from_millis(10));
+    }
+    let captured=serde_json::to_value(&requests.lock().unwrap()[1].dates).unwrap();
+    assert_eq!(captured["livedDate"],"2026-09-28");
+    assert_eq!(captured["requestLivedDate"],"2026-09-27");
+    assert_eq!(captured["targetDate"],"2026-08-01");
+    assert_eq!(captured["defaultPersonalRetroPeriod"],json!({"fromDate":"2026-09-20","toDate":"2026-09-26"}));
+    app.submit_message("vault-a",&session.id,"2026-08-01","read task history").unwrap();
+    wait_for_finish(&app,&session.id,"vault-a");
+    let after=serde_json::to_value(&requests.lock().unwrap()[2].dates).unwrap();
+    assert_eq!(after["defaultPersonalRetroPeriod"],json!({"fromDate":"2026-09-21","toDate":"2026-09-27"}));
+    assert!(!path.join("life/.personal-dashboard/tasks/v1/tasks.json").exists());
 }

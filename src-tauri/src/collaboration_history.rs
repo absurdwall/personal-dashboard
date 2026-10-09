@@ -90,6 +90,8 @@ fn safe_parameters(arguments: &Value) -> Vec<CollaborationWorkParameter> {
 pub struct CollaborationWorkItem {
     pub item_id: String,
     pub call_id: Option<String>,
+    #[serde(default)]
+    pub input_fingerprint: Option<String>,
     pub kind: String,
     pub phase: Option<String>,
     pub text: String,
@@ -385,6 +387,7 @@ impl RuntimeHistory {
         self.view.items.push(CollaborationWorkItem {
             item_id: id.into(),
             call_id: None,
+            input_fingerprint: None,
             kind: kind.into(),
             phase: None,
             text: String::new(),
@@ -531,15 +534,17 @@ impl RuntimeHistory {
             name: "source".into(),
             value: "dida365".into(),
         });
-        item.parameters.push(CollaborationWorkParameter {
-            name: "inputFingerprint".into(),
-            value: super::stable_effect_fingerprint(arguments),
-        });
+        item.input_fingerprint = Some(super::stable_effect_fingerprint(arguments));
         for name in ["habit_ids", "from_stamp", "to_stamp"] {
             if let Some(value) = arguments.get(name) {
+                let scope = value.to_string();
+                let displayed: String = scope.chars().take(200).collect();
+                if displayed.len() != scope.len() {
+                    item.diagnostic_gap = Some("Source scope display truncated at 200 characters; inputFingerprint identifies the exact query arguments".into());
+                }
                 item.parameters.push(CollaborationWorkParameter {
                     name: name.into(),
-                    value: value.to_string().chars().take(200).collect(),
+                    value: displayed,
                 });
             }
         }
@@ -570,10 +575,11 @@ impl RuntimeHistory {
         item.updated_at_ms = self.view.updated_at_ms;
         if let Err(error) = result {
             item.diagnostic = safe_diagnostic(error);
-            item.diagnostic_gap = item
-                .diagnostic
-                .is_none()
-                .then(|| "Source diagnostic withheld by the credential/payload filter".into());
+            if item.diagnostic.is_none() {
+                let withheld = "Source diagnostic withheld by the credential/payload filter";
+                item.diagnostic_gap = Some(item.diagnostic_gap.as_ref()
+                    .map(|gap| format!("{gap}; {withheld}")).unwrap_or_else(|| withheld.into()));
+            }
         }
         self.dirty = true;
         self.flush(true)
