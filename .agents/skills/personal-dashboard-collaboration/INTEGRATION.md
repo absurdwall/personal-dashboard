@@ -44,3 +44,16 @@ query keys, and bounded identity characters; it opens the app's existing source
 read/lookup views. A missing object remains absent. Links cannot select a Vault,
 resolve an arbitrary file path, or execute a write; other URL schemes render as
 inert labels. This is a host navigation contract, not a registered model tool.
+
+## Bounded read-only history
+
+Human rounds advertise `dashboard_read_history` only when a domain's actual
+adapter is available; initially `tasks`. Input is exactly domain, fromDate and
+toDate, inclusive ordered valid dates with at most 366 dates. Selected Vault
+is supplied by the host's captured request, never a model path or binding.
+The response retains domain/range, source state/error, targetBinding, revision,
+current canonical Task/list objects and relevant retained changes/completions.
+The coverage statement distinguishes current state from dated change witnesses
+and unknown older activity. Reads do not create records or change selected date.
+Later dated domains extend this same dispatcher through their existing adapters,
+not additional synonym tools. Automatic tool registration remains unchanged.

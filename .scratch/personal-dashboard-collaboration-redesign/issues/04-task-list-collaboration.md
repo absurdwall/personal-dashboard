@@ -9,19 +9,19 @@
 
 **ID:** PDCR-04
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** in-progress
+**Lifecycle:** closed
+**Implementation:** complete
 **Assignee:** Codex implementer PDCR-04
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
 
 ## Acceptance criteria
 
-- [ ] 复用已有操作，不复制 Task store；对象 stable ID、revision 与原始目标保持。
-- [ ] Task date 和实际完成日期分开；保留无关字段/历史，冲突后重新读取而非覆盖。
-- [ ] 成功 receipt 包含具体名字、日期与改动，链接打开正确对象，相关页面按效果更新。
-- [ ] 可读取指定时期相关 Task、状态和实际完成信息，为个人查询和后续 retro 提供事实。
-- [ ] mixed-intent 请求的 Task 与记录分别形成结果；请求 review 时保留 proposal 行为。
+- [x] 复用已有操作，不复制 Task store；对象 stable ID、revision 与原始目标保持。
+- [x] Task date 和实际完成日期分开；保留无关字段/历史，冲突后重新读取而非覆盖。
+- [x] 成功 receipt 包含具体名字、日期与改动，链接打开正确对象，相关页面按效果更新。
+- [x] 可读取指定时期相关 Task、状态和实际完成信息，为个人查询和后续 retro 提供事实。
+- [x] mixed-intent 请求的 Task 与记录分别形成结果；请求 review 时保留 proposal 行为。
 
 ## Verification
 
@@ -36,3 +36,16 @@
 ## Execution
 
 - 2026-10-09: Claimed after required blockers closed, for authorized implement-spec. Owner: Codex implementer PDCR-04; branch: `codex/pdcr-04`; integration: `codex/collaboration-redesign-integration`. Tests use spec-confirmed seams.
+
+## Completion receipt
+
+- 2026-10-09: PDCR-04 acceptance verified through the spec-confirmed actual
+  file-backed Collaboration/Task adapters and production frontend seams.
+  [Evidence](../pdcr-04-evidence.md) records canonical revisions/completion
+  history, bounded source gaps, stable navigation and early page refresh.
+- Shared history capability/guidance: `62f10ea`; frontend/evidence changes are
+  carried by this closeout commit. 92 Collaboration Task tests, 3 shared
+  Task/Today tests, 342 frontend tests and frontend build passed.
+- Parent/map/execution reconciliation belongs to the integration owner. Native
+  packaged/runtime and live Dida acceptance remain PDCR-11/12, without implied
+  app installation, personal writes, release or parent-spec completion.
