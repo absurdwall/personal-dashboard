@@ -21,13 +21,13 @@ Working branch: codex/collaboration-redesign-integration
 | PDCR-06 | ticket | [06: 本地 Habit 补记、撤回与历史查询](issues/06-local-habit-history.md) | ready-for-agent | closed | PDCR-02 | [Evidence](pdcr-06-evidence.md); implementation 76ef192 / 957a701; integrated 34a253a8 |
 | PDCR-07 | ticket | [07: 映射 Dida Habit 与 snapshot 的独立结果](issues/07-mapped-dida-habit-results.md) | ready-for-agent | in-progress | PDCR-06 | Codex implementer PDCR-07; codex/pdcr-07; claimed 2026-10-09 |
 | PDCR-08 | ticket | [08: 许可文档与背景更新保留可核验的修改](issues/08-document-background-evidence.md) | ready-for-agent | closed | PDCR-02 | [Evidence](pdcr-08-evidence.md); implementation 137e41c / 1b8503a; integrated 669346c4 |
-| PDCR-09 | ticket | [09: 在 Codex 完成一次有证据的 workflow retro](issues/09-workflow-retro.md) | ready-for-agent | in-progress | PDCR-08 | Codex implementer PDCR-09; codex/pdcr-09; claimed 2026-10-09 |
+| PDCR-09 | ticket | [09: 在 Codex 完成一次有证据的 workflow retro](issues/09-workflow-retro.md) | ready-for-agent | closed | PDCR-08 | [Evidence](pdcr-09-evidence.md); products 8af2032 / d5235cd; integrated dbe5adba |
 | PDCR-10 | ticket | [10: 在 Dashboard 完成 personal retro](issues/10-personal-retro.md) | ready-for-agent | closed | PDCR-04, PDCR-05, PDCR-06 | [Evidence](evidence/10-personal-retro.md); implementation b7e26ca; integrated a520c64d |
 | PDCR-11 | ticket | [11: 真实 Codex 与 app 内完整交互验收](issues/11-native-codex-acceptance.md) | ready-for-agent | open | PDCR-03, PDCR-07, PDCR-09, PDCR-10 | unassigned; not-started; breakdown approved 2026-10-09 |
 | PDCR-12 | ticket | [12: 同一候选版本的 live Dida 核验](issues/12-live-dida-acceptance.md) | ready-for-agent | open | PDCR-11 | unassigned; not-started; breakdown approved 2026-10-09 |
 
 Twelve approved tickets are published, each with its own body and acceptance
-criteria. PDCR-01/02/03/04/05/06/08/10 are closed with application evidence. PDCR-07/09 are claimed in isolated worktrees. Ready-for-agent describes the
+criteria. PDCR-01/02/03/04/05/06/08/09/10 are closed with their required implementation/retro evidence. PDCR-07 is claimed; complete-candidate native acceptance remains PDCR-11. Ready-for-agent describes the
 triage role; it does not start implementation or establish delivery.
 
 ## Decisions so far
@@ -43,7 +43,7 @@ triage role; it does not start implementation or establish delivery.
 
 ## Next stage
 
-The user authorized implement-spec on 2026-10-09 using the specification branch as baseline. Follow [execution tracking](execution.md); the current claimed frontier is **PDCR-07/09**.
+The user authorized implement-spec on 2026-10-09 using the specification branch as baseline. Follow [execution tracking](execution.md); the current claimed frontier is **PDCR-07**; native **PDCR-11** waits for it.
 
 The graph has 12 tickets and 16 direct blocking edges. Direct blockers are shown
 above and in each ticket body; after PDCR-02 closes, PDCR-03/04/05/06/08 become
