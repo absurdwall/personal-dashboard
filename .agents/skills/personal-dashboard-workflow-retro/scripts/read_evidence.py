@@ -51,7 +51,8 @@ def selected_export(source, selectors, source_info):
             return None
         if isinstance(value, dict):
             return {key: project(item, pointer + "/" + key.replace("~", "~0").replace("/", "~1"), depth+1)
-                    for key, item in value.items() if key in FIELDS}
+                    for key, item in value.items() if key in FIELDS
+                    and not (key == "content" and "/workHistory/" in pointer)}
         if isinstance(value, list):
             return [project(item, pointer + f"/{index}", depth+1) for index, item in enumerate(value)]
         if isinstance(value, str):
@@ -107,6 +108,15 @@ def selected_export(source, selectors, source_info):
             execution = {"ref": reference(f"execution:{eid}", mp), "executionId": execution_id,
                          "sessionId": session.get("id"), "vaultKey": session.get("vaultKey"),
                          "request": project(message, mp), "gaps": []}
+            execution["terminal"] = {"status": message.get("deliveryState"),
+                                     "ref": reference(f"execution:{eid}/delivery", mp + "/deliveryState") if "deliveryState" in message else None}
+            if session.get("runId") == execution_id:
+                execution["terminal"].update(status=session.get("runState"),
+                    diagnostic=project(session.get("progress"), sp + "/progress"),
+                    ref=reference(f"execution:{eid}/terminal", sp + "/runState"),
+                    diagnosticRef=reference(f"execution:{eid}/terminal-diagnostic", sp + "/progress"))
+            elif message.get("deliveryState") == "error":
+                execution["gaps"].append("Original terminal diagnostic unavailable; a newer session progress is not substituted.")
             matching = [(i, h) for i, h in enumerate(session.get("workHistory", [])) if isinstance(h, dict) and h.get("executionId") == execution_id]
             if matching:
                 hi, history = matching[-1]

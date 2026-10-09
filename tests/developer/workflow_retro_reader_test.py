@@ -70,5 +70,21 @@ class ReaderTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("evidence-source-unavailable", result.stderr)
 
+    def test_failed_start_keeps_original_execution_and_scoped_observed_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self.source(Path(tmp)); source = json.loads(path.read_text())
+            session = source['sessions'][0]
+            session.update(runId='b', runState='error', progress='thread/start: invalid transport')
+            session['messages'][2]['deliveryState'] = 'error'
+            path.write_text(json.dumps(source))
+            failed = json.loads(self.run_reader(path, '--execution', 'b').stdout)['executions'][0]
+            self.assertEqual(failed['terminal']['status'], 'error')
+            self.assertEqual(failed['terminal']['diagnostic'], 'thread/start: invalid transport')
+            self.assertIsNone(failed['history'])
+            session['runId'] = 'a'; session['progress'] = 'Newer status'
+            path.write_text(json.dumps(source))
+            old = json.loads(self.run_reader(path, '--execution', 'b').stdout)['executions'][0]
+            self.assertNotIn('Newer status', json.dumps(old))
+
 if __name__ == "__main__":
     unittest.main()
