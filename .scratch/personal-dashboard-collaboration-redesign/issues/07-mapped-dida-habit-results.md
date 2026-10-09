@@ -9,9 +9,9 @@
 
 **ID:** PDCR-07
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** open
-**Implementation:** not-started
-**Assignee:** unassigned
+**Lifecycle:** in-progress
+**Implementation:** in-progress
+**Assignee:** Codex implementer PDCR-07
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
 
@@ -33,3 +33,7 @@
 按本地 tracker 记录 claim、工作分支、验证结果、具体 evidence 与 commit 回执。
 只有本票验收满足后才更新 lifecycle；缺失的真实环境验收保持未完成，不能用 fixture 替代。
 本票发布不启动实施，也不授权真实个人数据试写、正式安装、merge/push 或关闭父 spec。
+
+## Execution
+
+- 2026-10-09: Claimed after required blockers closed, for authorized implement-spec. Owner: Codex implementer PDCR-07; branch: `codex/pdcr-07`; integration: `codex/collaboration-redesign-integration`. Tests use spec-confirmed seams.
