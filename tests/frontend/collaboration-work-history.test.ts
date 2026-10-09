@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import vm from "node:vm";
 import { appendCollaborationMarkdown, appendCollaborationWorkHistory, parseCollaborationLink } from "../../frontend/collaboration-work-history.ts";
+import { interfaceCopy } from "../../frontend/interface-language.ts";
 
 class Element {
   textContent = ""; className = ""; dataset: Record<string, string> = {}; children: Element[] = [];
@@ -62,6 +63,52 @@ test("completed work is collapsed, retains failed attempt and recovery, and does
 
 const source = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
 function fn(name: string) { const rest = source.slice(source.indexOf(`function ${name}(`)); return stripTypeScriptTypes(rest.slice(0, /^}\n/m.exec(rest)!.index + 2)); }
+
+function renderSession(session: any, language: "zh" | "en" = "en") {
+  const list = new Element("section");
+  const context = vm.createContext({ document, collaborationMessageList: list, session,
+    appendCollaborationWorkHistory, appendCollaborationMarkdown,
+    collaborationDateLabel: (value: string) => value, t: (key: any) => interfaceCopy(key, language),
+    collaborationDeliveryStateLabel: (value: string) => value, pendingCollaborationRunChecks: new Set(),
+    renderCollaborationOutcomes(container: Element, _session: any, request: any) {
+      if (request.actionResults?.length) { const saved = new Element("p"); saved.textContent = "Existing saved receipt"; container.append(saved); }
+    }, navigateCollaborationLink() {},
+    window: {__TAURI__: {core: {invoke() {assert.fail("rendering legacy messages must not reexecute a request");}}}},
+  });
+  vm.runInContext(fn("collaborationWorkHistoryLabels") + fn("renderCollaborationMessages") + "\nrenderCollaborationMessages(session)", context);
+  return list;
+}
+
+for (const language of ["zh", "en"] as const) {
+  test(`production legacy renderer preserves original messages and marks absent execution evidence in ${language}`, () => {
+    const session = {id:"legacy",runState:"completed",messages:[
+      {id:"old-user",role:"user",text:"Original user text",executionId:null,deliveryState:"completed",messageDate:"2026-10-09",targetDate:"2026-10-09",actionResults:[{id:"saved",status:"applied"}]},
+      {id:"old-reply",role:"assistant",text:"Original reply\n- Preserved Markdown",executionId:null,messageDate:"2026-10-09",targetDate:"2026-10-09"},
+    ]};
+    const before=JSON.stringify(session);const list=renderSession(session,language);
+    const gaps=descendants(list).filter(node=>node.className==="collaboration-history-unavailable");
+    assert.equal(gaps.length,1,"the missing history marker belongs to the saved assistant work");
+    assert.match(content(list),/Original user text/);assert.match(content(list),/Original reply/);
+    assert.match(content(list),/Preserved Markdown/);assert.match(content(list),/Existing saved receipt/);
+    assert.match(content(gaps[0]),/usage/);assert.match(content(gaps[0]),language==="zh"?/变更证据/:/change evidence/);
+    assert.equal(descendants(list).some(node=>node.className==="collaboration-work-item"),false);
+    assert.equal(JSON.stringify(session),before,"no synthetic history, usage or message mutation");
+  });
+}
+
+test("a historical terminated request without reply still labels missing history", () => {
+  const list=renderSession({id:"legacy",runState:"error",messages:[{id:"old-user",role:"user",text:"Original failed request",executionId:"old-run",deliveryState:"error",messageDate:"2026-10-09",targetDate:"2026-10-09"}]});
+  assert.equal(descendants(list).filter(node=>node.className==="collaboration-history-unavailable").length,1);
+  assert.match(content(list),/Original failed request/);
+});
+
+for (const deliveryState of ["queued","not-started","paused","in-progress"]) {
+  test(`${deliveryState} request without history is pending rather than missing historical execution`, () => {
+    const list=renderSession({id:"live",runState:"thinking",messages:[{id:"pending",role:"user",text:"Pending original input",executionId:"pending-run",deliveryState,messageDate:"2026-10-09",targetDate:"2026-10-09"}]});
+    assert.equal(descendants(list).some(node=>node.className==="collaboration-history-unavailable"),false);
+    assert.match(content(list),/Pending original input/);
+  });
+}
 test("session polling preserves the reader's scroll and manually expanded work history", () => {
   const list = new Element("section");
   const session = { id: "session", runState: "completed", workHistory: [history], messages: [

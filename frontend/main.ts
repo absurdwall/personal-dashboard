@@ -2424,6 +2424,7 @@ function renderCollaborationOutcomes(container: HTMLElement, session: Collaborat
 
 function collaborationWorkHistoryLabels(): WorkHistoryLabels {
   return {
+    historyMissing: t("collaboration.historyMissing"),
     title: t("collaboration.workHistory"), summary: t("collaboration.reasoningSummary"),
     commentary: t("collaboration.codexProgress"), message: t("collaboration.codexMessage"),
     tool: t("collaboration.toolActivity"), failed: t("collaboration.workFailed"),
@@ -2532,7 +2533,7 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
     if (request && !laterReply) {
       renderCollaborationOutcomes(article, session, request);
       const history = session.workHistory?.find(entry => entry.executionId === request.executionId);
-      if (history) appendCollaborationWorkHistory(article, history, document, collaborationWorkHistoryLabels(), target => navigateCollaborationLink(session, target));
+      appendCollaborationWorkHistory(article, history ?? null, document, collaborationWorkHistoryLabels(), target => navigateCollaborationLink(session, target));
     }
     if (message.role === "user" && message.pendingExternalApproval) {
       const panel = document.createElement("section");
@@ -2580,14 +2581,15 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
     const nextUserIndex = session.messages.findIndex((candidate, index) => index > session.messages.indexOf(message) && candidate.role === "user");
     const matchingReply = session.messages.slice(session.messages.indexOf(message) + 1, nextUserIndex < 0 ? undefined : nextUserIndex)
       .some(candidate => candidate.role === "assistant" && (!message.executionId || candidate.executionId === message.executionId));
+    const historicalRequest = ["completed", "error", "stopped", "interrupted", "stop-unconfirmed"].includes(message.deliveryState);
     if (message.role === "user" && !matchingReply &&
       ((message.actionResults?.length ?? 0) > 0 || (message.externalActions?.length ?? 0) > 0 ||
-        session.workHistory?.some(entry => entry.executionId === message.executionId))) {
+        session.workHistory?.some(entry => entry.executionId === message.executionId) || historicalRequest)) {
       const progress = document.createElement("article");
       progress.className = "collaboration-message collaboration-message-assistant";
       renderCollaborationOutcomes(progress, session, message);
       const history = session.workHistory?.find(entry => entry.executionId === message.executionId);
-      if (history) appendCollaborationWorkHistory(progress, history, document, collaborationWorkHistoryLabels(), target => navigateCollaborationLink(session, target));
+      if (history || historicalRequest) appendCollaborationWorkHistory(progress, history ?? null, document, collaborationWorkHistoryLabels(), target => navigateCollaborationLink(session, target));
       if (progress.children.length) collaborationMessageList.append(progress);
     }
   }
