@@ -202,3 +202,41 @@ for (const language of ["zh", "en"] as const) {
     assert.ok(text.includes(proposal.authorizationQuote) && text.includes(proposal.change));
   });
 }
+
+for (const language of ["zh", "en"] as const) {
+  test(`saved Task summary uses observed schedule and completion rather than the session date in ${language}`, () => {
+    const receipt = { id: "complete", status: "applied", targetDate: "2026-09-24", operation: { operation: "completeTask", taskId: "stable", completedTime: "15:20" },
+      baseline: { kind: "task", name: "Send report", date: "2026-10-02", time: "09:00" },
+      resultSnapshot: { kind: "task", name: "Send report", date: "2026-10-02", time: "09:00", completion: { completedOn: "2026-09-24", completedTime: "15:20" } } };
+    const result = { id: "complete", status: "applied", message: "Generic save" };
+    const context = vm.createContext({ result, session: { taskOperations: [receipt] }, collaborationDateLabel: (date: string) => date,
+      currentInterfaceLanguage: language, t: (key: any, values: any) => interfaceCopy(key, language, values) });
+    vm.runInContext(functionSource("collaborationOutcomeSummary") + "\nactual = collaborationOutcomeSummary(result, session)", context);
+    assert.ok(context.actual.includes("Send report"));
+    assert.ok(context.actual.includes("2026-09-24") && context.actual.includes("15:20"));
+    assert.ok(context.actual.includes("2026-10-02") && context.actual.includes("09:00"));
+  });
+}
+
+for (const object of ["task", "list"]) {
+  test(`saved ${object} outcome opens its canonical stable identity`, () => {
+    const children: any[] = []; const navigation: unknown[] = [];
+    const domElement = () => ({ textContent: "", dataset: {}, children: [] as any[], listeners: {} as any,
+      append(...nodes: any[]) { this.children.push(...nodes); }, addEventListener(name: string, callback: () => void) { this.listeners[name] = callback; } });
+    const receipt = { id: "saved", taskId: object === "task" ? "task-stable" : null, listId: object === "list" ? "list-stable" : null,
+      operation: { operation: object === "task" ? "deleteTask" : "archiveList" }, baseline: { kind: object, name: "Actual name" }, resultSnapshot: { kind: object, deletedAt: object === "task" ? "timestamp" : null } };
+    const context = vm.createContext({ document: { createElement: domElement }, container: { append(...nodes: any[]) { children.push(...nodes); } },
+      session: { id: "source-session", taskOperations: [receipt] }, request: { actionResults: [{ id: "saved", source: "Dashboard", status: "applied", targetDate: "2026-09-24", message: "Saved" }] },
+      collaborationDateLabel: (date: string) => date, currentInterfaceLanguage: "en", t: (key: any, values: any) => interfaceCopy(key, "en", values),
+      taskReturnToCollaborationSessionId: null, taskFocusRequestId: null, taskScope: "all", taskStateScope: "pending", taskListScopeForId: (id: string) => `list:${id}`,
+      showWorkspaceDestination(...args: unknown[]) { navigation.push(args); } });
+    vm.runInContext(["collaborationVisibleResults", "collaborationOutcomeSummary", "renderCollaborationOutcomes"].map(functionSource).join("\n") + "\nrenderCollaborationOutcomes(container, session, request)", context);
+    const button = children[0].children[1].children[0];
+    button.listeners.click();
+    assert.deepEqual(navigation, [["tasks", true]]);
+    assert.equal(context.taskReturnToCollaborationSessionId, "source-session");
+    assert.equal(context.taskFocusRequestId, object === "task" ? "task-stable" : null);
+    assert.equal(context.taskScope, object === "list" ? "list:list-stable" : "all");
+    assert.equal(context.taskStateScope, object === "task" ? "deleted" : "all");
+  });
+}
