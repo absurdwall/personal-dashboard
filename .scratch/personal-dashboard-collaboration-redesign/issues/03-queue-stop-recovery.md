@@ -9,8 +9,8 @@
 
 **ID:** PDCR-03
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** closed
-**Implementation:** complete
+**Lifecycle:** in-progress
+**Implementation:** review-fixes
 **Assignee:** Codex implementer PDCR-03
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
@@ -21,7 +21,7 @@
   或切换页面/日期不重定向原请求，不使用 steer。
 - [x] pending stop 与已停止区分；阻止尚未开始的动作，已确认效果保留，在途结果未知。
 - [x] 纠正先于暂停队列处理；继续/移除待执行消息显式可控，不撤销既有修改。
-- [x] receipt/readback 核对只更新对应结果；恢复不整轮重放，未知不阻塞无关工作。
+- [ ] receipt/readback 核对只更新对应结果；恢复不整轮重放，未知不阻塞无关工作。
 - [x] 超时、transport 失败、历史落盘失败和重启都保留可核对状态；保持 delayed-save
   timeout 修复、draft/Cmd+Enter/听写与 Vault 切换边界。
 
@@ -45,3 +45,11 @@
   handlers, red/green failures, 354 frontend tests, 215 Rust tests passed (6
   existing ignored), and the native per-object pre-dispatch limitation.
   PDCR-11/12 retain packaged/live acceptance; no real data or install was used.
+
+- 2026-10-09: Reopened after independent Spec review at `88315b9`. Unknown
+  native Dida effects currently disable unrelated Task/Habit mutations in the
+  selected Vault, which does not satisfy spec section 5. Read-only recovery,
+  local operations and queue work remain verified. A single review implementer
+  investigates the native constraint on `codex/pdcr-review-fixes`; closure
+  requires a demonstrated fix or an explicit scope decision. PDCR-11 may
+  continue independent checks, but cannot close while this blocker is unmet.

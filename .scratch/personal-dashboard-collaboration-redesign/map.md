@@ -15,7 +15,7 @@ Working branch: codex/collaboration-redesign-integration
 | PDCR-SPEC-01 | spec | [Spec](spec.md) | ready-for-agent | open | none | Test boundary confirmed; [prototype review](prototype-review.md); ADR 0005/0006 |
 | PDCR-01 | ticket | [01: 用统一 usage skill 完成并核验一条白天记录](issues/01-skill-daytime-record.md) | ready-for-agent | closed | none | [Evidence](evidence/01-usage-package.md); implementation 1d656cb; integrated 288f14f; application acceptance met |
 | PDCR-02 | ticket | [02: 显示并保存真实工作过程与最终回复](issues/02-observable-work-history.md) | ready-for-agent | closed | PDCR-01 | [Evidence](evidence/02-work-history.md); implementation 77a1951; integrated 1feeb31c |
-| PDCR-03 | ticket | [03: 排队、停止、纠正与未知结果恢复](issues/03-queue-stop-recovery.md) | ready-for-agent | closed | PDCR-02 | [Evidence](evidence/03-queue-stop-recovery.md); implementation f9fb2bf; integrated b1799b86 |
+| PDCR-03 | ticket | [03: 排队、停止、纠正与未知结果恢复](issues/03-queue-stop-recovery.md) | ready-for-agent | in-progress | PDCR-02 | Reopened by Spec review at 88315b9: unknown Dida effect scope; codex/pdcr-review-fixes; prior evidence retained |
 | PDCR-04 | ticket | [04: Task 与清单协作反映到真实对象和页面](issues/04-task-list-collaboration.md) | ready-for-agent | closed | PDCR-02 | [Evidence](pdcr-04-evidence.md); implementation 62f10ea / 8cf2344; integrated d2157330 |
 | PDCR-05 | ticket | [05: 计划、晚间复盘与历史记录协作](issues/05-daily-record-collaboration.md) | ready-for-agent | closed | PDCR-02 | [Evidence](pdcr-05-evidence.md); implementation 7994d87; integrated 6070afa5 |
 | PDCR-06 | ticket | [06: 本地 Habit 补记、撤回与历史查询](issues/06-local-habit-history.md) | ready-for-agent | closed | PDCR-02 | [Evidence](pdcr-06-evidence.md); implementation 76ef192 / 957a701; integrated 34a253a8 |
@@ -27,7 +27,7 @@ Working branch: codex/collaboration-redesign-integration
 | PDCR-12 | ticket | [12: 同一候选版本的 live Dida 核验](issues/12-live-dida-acceptance.md) | ready-for-agent | open | PDCR-11 | unassigned; not-started; breakdown approved 2026-10-09 |
 
 Twelve approved tickets are published, each with its own body and acceptance
-criteria. PDCR-01–10 are closed with their required implementation/retro evidence. Complete-candidate native acceptance PDCR-11 is claimed; PDCR-12 has no authorized isolated Dida objects. Ready-for-agent describes the
+criteria. PDCR-01/02/04–10 are closed with their required implementation/retro evidence. PDCR-03 is reopened for the unknown Dida effect scope found in independent review. Complete-candidate native acceptance PDCR-11 continues independent checks but cannot close before PDCR-03; PDCR-12 has no authorized isolated Dida objects. Ready-for-agent describes the
 triage role; it does not start implementation or establish delivery.
 
 ## Decisions so far
@@ -43,7 +43,7 @@ triage role; it does not start implementation or establish delivery.
 
 ## Next stage
 
-The user authorized implement-spec on 2026-10-09 using the specification branch as baseline. Follow [execution tracking](execution.md); the current claimed frontier is native **PDCR-11**; **PDCR-12** waits for it and authorized isolated objects.
+The user authorized implement-spec on 2026-10-09 using the specification branch as baseline. Follow [execution tracking](execution.md); **PDCR-03** review fixes are active. Native **PDCR-11** continues independent checks; **PDCR-12** waits for it and authorized isolated objects.
 
 The graph has 12 tickets and 16 direct blocking edges. Direct blockers are shown
 above and in each ticket body; after PDCR-02 closes, PDCR-03/04/05/06/08 become
