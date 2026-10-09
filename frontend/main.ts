@@ -3017,7 +3017,11 @@ function appendHabitCompletionSnapshot(
     name: baseline.name,
     state,
     localState: t(`collaboration.habitLocalState.${baseline.localState.toLowerCase()}` as InterfaceCopyKey),
-    external: t(`collaboration.habitExternalCompletion.${String(baseline.externalCompletion)}` as InterfaceCopyKey),
+    external: baseline.externalCompletion
+      ? t("collaboration.habitExternalCompletion.true")
+      : baseline.sourceSnapshotState === "ready" || baseline.sourceSnapshotState === "stale"
+        ? t("collaboration.habitExternalCompletion.false")
+        : t("common.unknown"),
   });
   const revision = document.createElement("small");
   revision.textContent = t("collaboration.habitSnapshotRevision", {
