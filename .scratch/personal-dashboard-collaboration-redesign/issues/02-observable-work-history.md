@@ -5,7 +5,7 @@
 
 **Blocked by:** [PDCR-01: 用统一 usage skill 完成并核验一条白天记录](01-skill-daytime-record.md)
 
-**Status:** closed
+**Status:** ready-for-agent
 
 **ID:** PDCR-02
 **Parent:** [PDCR-SPEC-01](../spec.md)

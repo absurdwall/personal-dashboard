@@ -5,11 +5,11 @@
 
 **Blocked by:** [PDCR-08: 许可文档与背景更新保留可核验的修改](08-document-background-evidence.md)
 
-**Status:** closed
+**Status:** ready-for-agent
 
 **ID:** PDCR-09
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** complete
+**Lifecycle:** closed
 **Implementation:** complete
 **Assignee:** Codex implementer PDCR-09
 **Date:** 2026-10-09
