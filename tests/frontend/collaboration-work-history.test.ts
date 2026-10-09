@@ -82,3 +82,18 @@ test("session polling preserves the reader's scroll and manually expanded work h
   assert.equal(list.scrollTop, 25);
   assert.equal(list.querySelectorAll("details[data-work-key]")[0].open, true);
 });
+
+test("document history shows the actual bounded diff and unavailable before-state as inert text", () => {
+  const body = new Element("div");
+  const documentHistory = { ...history, items: [{ itemId: "file", kind: "fileChange", status: "completed", firstSequence: 1,
+    changes: [{ id: "file:ordinary", path: "life/ordinary.md", source: "nativeFileChange", operation: "update",
+      verification: "sourceObserved", beforeRevision: null, afterRevision: "observed-v2", diff: "-Old fact\n+<script>inert</script>",
+      gaps: ["Before revision unavailable"], receiptId: null, targetDate: "2026-10-09" }],
+  }] };
+  appendCollaborationWorkHistory(body as unknown as HTMLElement, documentHistory as any, document, labels, () => {});
+  const shown = content(body);
+  assert.match(shown, /life\/ordinary.md/);
+  assert.match(shown, /-Old fact\n\+<script>inert<\/script>/);
+  assert.match(shown, /Before revision unavailable/);
+  assert.equal(descendants(body).some(node => node.tagName === "script"), false);
+});

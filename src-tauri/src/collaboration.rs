@@ -9,6 +9,9 @@ mod usage;
 pub use usage::CollaborationUsageBinding;
 #[path = "collaboration_history.rs"]
 mod history;
+#[path = "collaboration_changes.rs"]
+mod changes;
+pub use changes::CollaborationChangeEvidence;
 pub use history::{CollaborationWorkHistory, CollaborationWorkItem, RuntimeWorkObserver};
 use history::RuntimeHistory;
 #[cfg(all(test, unix))]
@@ -284,6 +287,8 @@ pub struct StoredCollaborationMemoryProposal {
     pub source_revision: String,
     #[serde(default)]
     pub expected_document_fingerprint: Option<String>,
+    #[serde(default)]
+    pub change_evidence: Option<CollaborationChangeEvidence>,
     pub status: String,
     pub result_message: Option<String>,
     pub created_at: String,
@@ -2700,6 +2705,8 @@ impl CollaborationApplication {
                 && stable_effect_fingerprint(&sources.long_term.content) == expected
             {
                 let now = self.clock.current_timestamp();
+                let mut evidence = changes::memory_evidence(&proposal, Some(&sources.long_term));
+                evidence.gaps.push("Current readback reconciles the effect without another write; original save response remains unconfirmed.".into());
                 return self.update_state(|state| {
                     let session = matching_session_mut(state, &vault_key, session_id)?;
                     let stored = session.memory_proposals.iter_mut()
@@ -2708,6 +2715,9 @@ impl CollaborationApplication {
                     stored.status = "applied".into();
                     stored.result_message = Some("Current life/Self.md readback confirms the exact requested durable document. No additional write was performed; the original save response remains unconfirmed.".into());
                     stored.updated_at = now.clone();
+                    stored.change_evidence = Some(evidence);
+                    let completed = stored.clone();
+                    changes::attach_memory_evidence(session, &completed);
                     session.last_activity_at = now;
                     Ok(session_view(session))
                 });
@@ -2737,6 +2747,10 @@ impl CollaborationApplication {
         })();
         match update_result {
             Ok(_) => {
+                // The adapter save result is not substituted for this separate
+                // current-source read. A concurrent source change remains a gap.
+                let observed = self.memory_service.read(Some(&vault_key)).ok();
+                let evidence = changes::memory_evidence(&proposal, observed.as_ref().map(|sources| &sources.long_term));
                 let still_selected =
                     self.context_source.current_vault_key()?.as_deref() == Some(&vault_key);
                 let result_message = if still_selected {
@@ -2756,7 +2770,10 @@ impl CollaborationApplication {
                         stored.status = "applied".into();
                         stored.result_message = Some(result_message.clone());
                         stored.updated_at = now.clone();
+                        stored.change_evidence = Some(evidence.clone());
                     }
+                    let completed = stored.clone();
+                    changes::attach_memory_evidence(session, &completed);
                     session.last_activity_at = now.clone();
                     Ok(session_view(session))
                 })
@@ -4831,6 +4848,7 @@ impl CollaborationApplication {
                 replaces: replaces.clone(),
                 source_revision: source_revision.clone(),
                 expected_document_fingerprint: Some(stable_effect_fingerprint(&expected_document)),
+                change_evidence: None,
                 execution_attempted: false,
                 status: "awaitingApproval".into(),
                 result_message: None,
@@ -7109,6 +7127,9 @@ impl CollaborationApplication {
         let history_session = session_id.to_owned();
         let history_execution = run_id.to_owned();
         let history_thread = thread_id.clone();
+        let history_selected_vault = request.selected_vault.as_ref().and_then(|path| path.canonicalize().ok());
+        let history_cwd = request.working_directory.clone();
+        let history_target_date = request.dates.target_date.clone();
         let observer: RuntimeWorkObserver = Arc::new(move |mut history| {
             if history.thread_id != history_thread { return Ok(()); }
             application.update_state(|state| {
@@ -7121,10 +7142,33 @@ impl CollaborationApplication {
                 if request.runtime_turn_id.as_deref().is_some_and(|turn| turn != history.turn_id) { return Ok(()); }
                 request.runtime_turn_id = Some(history.turn_id.clone());
                 history.execution_id = history_execution.clone();
+                if session.work_history.iter().any(|entry| entry.execution_id == history_execution && entry.sequence >= history.sequence) { return Ok(()); }
+                let selected_vault_still_matches = application.context_source.current_vault_key().ok().flatten().as_deref() == Some(&history_vault);
                 // Typed receipt facts enrich readable activity; they do not turn
                 // transport completion into a confirmed business-save status.
                 for item in &mut history.items {
+                    let previous = session.work_history.iter().find(|entry| entry.execution_id == history_execution)
+                        .and_then(|entry| entry.items.iter().find(|stored| stored.item_id == item.item_id));
+                    for change in &mut item.changes {
+                        changes::observe_native(&item.item_id, change, history_selected_vault.as_deref(), &history_cwd,
+                            &history_target_date, item.authoritative && selected_vault_still_matches, &item.status, automatic_plan,
+                            previous.map(|item| item.changes.as_slice()).unwrap_or(&[]), history.updated_at_ms);
+                        if !selected_vault_still_matches && change.observed_at_ms.is_none() {
+                            change.gaps.push("Selected Vault changed; no source readback was attempted for this event.".into());
+                        }
+                    }
+                    if item.changes.is_empty() {
+                        if let Some(previous) = previous { item.changes = previous.changes.clone(); }
+                    }
                     let key = format!("{}:{}:{}", history.thread_id, history.turn_id, item.call_id.as_deref().unwrap_or(&item.item_id));
+                    if let Some(receipt) = session.memory_proposals.iter().find(|receipt| receipt.tool_call_key == key) {
+                        if let Some(change) = receipt.change_evidence.as_ref() {
+                            item.changes.retain(|existing| existing.id != change.id);
+                            item.changes.push(change.clone());
+                        } else if receipt.execution_attempted {
+                            item.change_gap = Some("Managed background result has no independently observed change witness; inspect its original receipt before retrying.".into());
+                        }
+                    }
                     if let Some(receipt) = session.task_operations.iter().find(|receipt| receipt.tool_call_key == key) {
                         let snapshot = receipt.result_snapshot.as_ref().unwrap_or(&receipt.baseline);
                         let name = match snapshot {
