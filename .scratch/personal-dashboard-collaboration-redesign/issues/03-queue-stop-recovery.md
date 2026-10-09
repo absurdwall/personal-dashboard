@@ -5,12 +5,12 @@
 
 **Blocked by:** [PDCR-02: 显示并保存真实工作过程与最终回复](02-observable-work-history.md)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
 **ID:** PDCR-03
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** review-fixes
+**Lifecycle:** blocked
+**Implementation:** partial; native object-scope criterion unmet
 **Assignee:** Codex review-fix implementer; root coordinates scope decision
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
@@ -53,3 +53,10 @@
   investigates the native constraint on `codex/pdcr-review-fixes`; closure
   requires a demonstrated fix or an explicit scope decision. PDCR-11 may
   continue independent checks, but cannot close while this blocker is unmet.
+
+- 2026-10-09: Concrete frontend repairs and independent review are complete
+  at `7b3dc8`. The native object-scope criterion remains blocked on the explicit
+  [policy decision](../evidence/unknown-dida-scope-decision.md): the actual
+  [native hook probe](../evidence/native-hook-probe.md) fails open on timeout or
+  malformed output. No answer has been received and no native policy was
+  changed. Preserving the current mask is not acceptance of this criterion.
