@@ -141,6 +141,26 @@ pub struct CollaborationTokenUsage {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CollaborationRefreshInput {
+    pub target: String,
+    pub target_date: String,
+    pub status: String,
+    pub source_state: Option<String>,
+    pub page_state: String,
+    pub trigger: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationRefreshObservation {
+    pub id: String,
+    #[serde(flatten)]
+    pub observation: CollaborationRefreshInput,
+    pub observed_at_ms: u64,
+    pub history_sequence: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CollaborationWorkHistory {
     pub evidence_version: u32,
     /// Bound by the application, never trusted from runtime text.
@@ -155,6 +175,10 @@ pub struct CollaborationWorkHistory {
     pub runtime_completed_at_ms: Option<u64>,
     pub items: Vec<CollaborationWorkItem>,
     pub token_usage: Option<CollaborationTokenUsage>,
+    #[serde(default)]
+    pub refreshes: Vec<CollaborationRefreshObservation>,
+    #[serde(default)]
+    pub gaps: Vec<String>,
 }
 
 pub type RuntimeWorkObserver =
@@ -168,7 +192,7 @@ pub(super) struct RuntimeHistory {
     pending_bytes: usize,
 }
 
-fn now_ms() -> u64 {
+pub(super) fn observed_now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -177,7 +201,7 @@ fn now_ms() -> u64 {
 
 impl RuntimeHistory {
     pub fn new(thread_id: &str, turn_id: &str, observer: Option<RuntimeWorkObserver>) -> Self {
-        let now = now_ms();
+        let now = observed_now_ms();
         Self {
             view: CollaborationWorkHistory {
                 evidence_version: 1,
@@ -192,6 +216,8 @@ impl RuntimeHistory {
                 runtime_completed_at_ms: None,
                 items: Vec::new(),
                 token_usage: None,
+                refreshes: Vec::new(),
+                gaps: Vec::new(),
             },
             observer,
             dirty: true,
@@ -219,7 +245,7 @@ impl RuntimeHistory {
     pub fn terminal(&mut self, status: &str) -> Result<(), String> {
         self.view.sequence += 1;
         self.view.status = status.into();
-        self.view.updated_at_ms = now_ms();
+        self.view.updated_at_ms = observed_now_ms();
         self.dirty = true;
         self.flush(true)
     }
@@ -281,7 +307,7 @@ impl RuntimeHistory {
             return Ok(());
         }
         self.view.sequence += 1;
-        self.view.updated_at_ms = now_ms();
+        self.view.updated_at_ms = observed_now_ms();
         self.dirty = true;
         if method == "error" {
             let id = format!("runtime-error:{}", self.view.sequence);
@@ -364,6 +390,7 @@ impl RuntimeHistory {
             item.tool = params["tool"].as_str().map(str::to_owned);
             item.status = "inProgress".into();
             item.parameters = safe_parameters(&params["arguments"]);
+            item.input_fingerprint = Some(super::stable_effect_fingerprint(&params["arguments"]));
         } else if !item.authoritative {
             let delta = params["delta"].as_str().unwrap_or_default();
             self.pending_bytes += delta.len();
@@ -453,7 +480,9 @@ impl RuntimeHistory {
         item.authoritative = completed;
         if kind == "fileChange" {
             let (changes, gap) = super::changes::native_changes(id, &value["changes"]);
-            if !changes.is_empty() { item.changes = changes; }
+            if !changes.is_empty() {
+                item.changes = changes;
+            }
             item.change_gap = gap;
         }
         if kind == "agentMessage" {
@@ -484,11 +513,20 @@ impl RuntimeHistory {
                 .or(item.tool.clone());
             if !value["arguments"].is_null() {
                 item.parameters = safe_parameters(&value["arguments"]);
+                item.input_fingerprint =
+                    Some(super::stable_effect_fingerprint(&value["arguments"]));
             }
             if value["success"].as_bool() == Some(false) || !value["error"].is_null() {
                 item.status = "failed".into();
             }
             if kind == "commandExecution" {
+                if !value["command"].is_null() {
+                    item.input_fingerprint =
+                        Some(super::stable_effect_fingerprint(&serde_json::json!([
+                            value["command"],
+                            value["cwd"]
+                        ])));
+                }
                 if let Some(code) = value["exitCode"].as_i64() {
                     item.parameters
                         .retain(|parameter| parameter.name != "exitCode");
@@ -523,7 +561,7 @@ impl RuntimeHistory {
         arguments: &Value,
     ) -> Result<(), String> {
         self.view.sequence += 1;
-        self.view.updated_at_ms = now_ms();
+        self.view.updated_at_ms = observed_now_ms();
         let index = self.ensure_item(id, "hostSourceRead");
         let item = &mut self.view.items[index];
         item.call_id = Some(id.into());
@@ -561,7 +599,7 @@ impl RuntimeHistory {
         result: Result<(), &str>,
     ) -> Result<(), String> {
         self.view.sequence += 1;
-        self.view.updated_at_ms = now_ms();
+        self.view.updated_at_ms = observed_now_ms();
         let index = self.ensure_item(id, "hostSourceRead");
         let item = &mut self.view.items[index];
         item.status = if result.is_ok() {
@@ -592,7 +630,7 @@ impl RuntimeHistory {
         diagnostic: &str,
     ) -> Result<(), String> {
         self.view.sequence += 1;
-        self.view.updated_at_ms = now_ms();
+        self.view.updated_at_ms = observed_now_ms();
         let index = self.ensure_item(call_id, "dynamicToolCall");
         let item = &mut self.view.items[index];
         item.call_id = Some(call_id.into());
