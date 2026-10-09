@@ -48,12 +48,18 @@ inert labels. This is a host navigation contract, not a registered model tool.
 ## Bounded read-only history
 
 Human rounds advertise `dashboard_read_history` only when a domain's actual
-adapter is available; initially `tasks`. Input is exactly domain, fromDate and
+adapter is available: `tasks` and `dailyRecords` use the existing Task and Today adapters. Input is exactly domain, fromDate and
 toDate, inclusive ordered valid dates with at most 366 dates. Selected Vault
 is supplied by the host's captured request, never a model path or binding.
 The response retains domain/range, source state/error, targetBinding, revision,
 current canonical Task/list objects and relevant retained changes/completions.
 The coverage statement distinguishes current state from dated change witnesses
 and unknown older activity. Reads do not create records or change selected date.
-Later dated domains extend this same dispatcher through their existing adapters,
-not additional synonym tools. Automatic tool registration remains unchanged.
+Daily Record responses include one dated entry per requested day, with source
+availability/revision/binding, morning baseline, current arrangement/basis,
+daytime facts and short records, evening review/correction fields and time axis.
+Missing or damaged records retain unknown evidence; no records are created.
+Each entry exposes existing date/phase links. Short records retain stable IDs
+and correction traces; their appearance in Daytime and Evening refers to the
+same objects, counted once. Other dated domains extend this same dispatcher
+through their existing adapters. Automatic tool registration remains unchanged.

@@ -28,7 +28,11 @@ For period queries, use `dashboard_read_history` when registered, with one
 available `domain` and inclusive `fromDate`/`toDate` (at most 366 dates). Tasks
 return current objects together with retained schedule/completion/change
 witnesses; read their actual completion date/time separately from Task date.
-A reopened Task can retain an earlier completion witness. Missing or damaged
+A reopened Task can retain an earlier completion witness. `dailyRecords` returns
+the original baseline, current arrangement, daytime facts, reviews and short
+records for each requested date. Keep these roles distinct. Short records shown
+in both Daytime and Evening share an ID; count once and retain correction traces.
+Use the returned date/phase links to cite recorded facts. Missing or damaged
 sources and unrecorded earlier activity remain unknown. Use stable Task/list
 IDs for read-only source links and current revisions for subsequent changes.
 
