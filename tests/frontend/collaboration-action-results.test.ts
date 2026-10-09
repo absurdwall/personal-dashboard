@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import vm from "node:vm";
 import { appendCollaborationWorkHistory } from "../../frontend/collaboration-work-history.ts";
-import { interfaceCopy, localizeCollaborationDiagnostic } from "../../frontend/interface-language.ts";
+import { interfaceCopy, localizeCollaborationDiagnostic, localizeWorkHistoryDiagnostic } from "../../frontend/interface-language.ts";
 const source = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
 const start = source.indexOf("function renderCollaborationMessages(");
 const rest = source.slice(start);
@@ -24,7 +24,7 @@ for (const language of ["zh", "en"] as const) {
         { id: "refresh-2", source: "Habits page", status: "ready", targetDate: "2026-10-03", message: "Fresh readback confirmed" },
       ] },
     ] };
-    const context = vm.createContext({ appendCollaborationWorkHistory, document: { createElement: element }, collaborationMessageList: list,
+    const context = vm.createContext({ appendCollaborationWorkHistory, localizeWorkHistoryDiagnostic, document: { createElement: element }, collaborationMessageList: list,
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic, t: (key: any, values: any) => interfaceCopy(key, language, values), session });
     vm.runInContext(renderer + "\nrenderCollaborationMessages(session)", context);
     const first = list.children[1].children.find((node: any) => node.className === "collaboration-action-results");
@@ -57,7 +57,7 @@ for (const language of ["zh", "en"] as const) {
       ] },
       { role: "assistant", text: "My factual reply · 请保留原文", messageDate: "2026-10-03", targetDate: "2026-10-03" },
     ] };
-    const context = vm.createContext({ appendCollaborationWorkHistory, document: { createElement: element }, collaborationMessageList: list, session,
+    const context = vm.createContext({ appendCollaborationWorkHistory, localizeWorkHistoryDiagnostic, document: { createElement: element }, collaborationMessageList: list, session,
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
       applicationMessage: (value: string) => value, t: (key: any, values: any) => interfaceCopy(key, language, values) });
     vm.runInContext(functionSource("collaborationRunStateLabel") + functionSource("collaborationRunProgressLabel") + renderer + "\nrenderCollaborationMessages(session); header = collaborationRunProgressLabel(session);", context);
@@ -82,7 +82,7 @@ for (const language of ["zh", "en"] as const) {
       { id: "host", source: "Dida", status: "saved", messageKind: "diagnostic", message: native },
       { id: "literal", source: "Dida", status: "saved", messageKind: "sourceText", message: native },
     ] }] };
-    const context = vm.createContext({ appendCollaborationWorkHistory, document: { createElement: element }, collaborationMessageList: list, session,
+    const context = vm.createContext({ appendCollaborationWorkHistory, localizeWorkHistoryDiagnostic, document: { createElement: element }, collaborationMessageList: list, session,
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
       t: (key: any, values: any) => interfaceCopy(key, language, values) });
     vm.runInContext(renderer + "\nrenderCollaborationMessages(session)", context);
@@ -101,7 +101,7 @@ for (const language of ["zh", "en"] as const) {
       { id: "host", source: "Dashboard", status: "failed", messageKind: "diagnostic", message: literal },
       { id: "literal", source: "Dida", status: "unknown", messageKind: "sourceText", message: literal },
     ] }] };
-    const context = vm.createContext({ appendCollaborationWorkHistory, document: { createElement: element }, collaborationMessageList: list, session,
+    const context = vm.createContext({ appendCollaborationWorkHistory, localizeWorkHistoryDiagnostic, document: { createElement: element }, collaborationMessageList: list, session,
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
       t: (key: any, values: any) => interfaceCopy(key, language, values) });
     vm.runInContext(renderer + "\nrenderCollaborationMessages(session)", context);
@@ -152,7 +152,7 @@ for (const language of ["zh", "en"] as const) {
     const session = { messages: [{ role: "user", text: "My request", messageDate: "2026-09-27", targetDate: "2026-09-26", externalAppIds: [], externalActions: [
       { ...action, actionId: "host", verification: { checks: [] } }, { ...action, actionId: "source", verification: null },
     ] }] };
-    const context = vm.createContext({ appendCollaborationWorkHistory, document: { createElement: element }, collaborationMessageList: list, session,
+    const context = vm.createContext({ appendCollaborationWorkHistory, localizeWorkHistoryDiagnostic, document: { createElement: element }, collaborationMessageList: list, session,
       collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: language, localizeCollaborationDiagnostic,
       t: (key: any, values: any) => interfaceCopy(key, language, values) });
     vm.runInContext(renderer + "\nrenderCollaborationMessages(session)", context);

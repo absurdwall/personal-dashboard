@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import vm from "node:vm";
 import { appendCollaborationWorkHistory } from "../../frontend/collaboration-work-history.ts";
-import { interfaceCopy, localizeCollaborationDiagnostic } from "../../frontend/interface-language.ts";
+import { interfaceCopy, localizeCollaborationDiagnostic, localizeWorkHistoryDiagnostic } from "../../frontend/interface-language.ts";
 
 const source = readFileSync(new URL("../../frontend/main.ts", import.meta.url), "utf8");
 function fn(name: string) {
@@ -24,7 +24,7 @@ test("tool envelopes never appear as the user's message or visible reply outcome
       { id: "write", source: "Dashboard", status: "applied", messageKind: "diagnostic", message: "Daytime update saved", targetDate: "2026-10-04" }] };
   const session = { id: "session", taskOperations: [], messages: [request,
     { id: "reply", role: "assistant", text: "已记录。", executionId: "run", messageDate: "2026-10-04", targetDate: "2026-10-04" }] };
-  const context = vm.createContext({ appendCollaborationWorkHistory, document: { createElement: element }, collaborationMessageList: list, session,
+  const context = vm.createContext({ appendCollaborationWorkHistory, localizeWorkHistoryDiagnostic, document: { createElement: element }, collaborationMessageList: list, session,
     collaborationDateLabel: (value: string) => value, currentInterfaceLanguage: "zh", localizeCollaborationDiagnostic,
     t: (key: any, values: any) => interfaceCopy(key, "zh", values), collaborationDeliveryStateLabel: (v: string) => v });
   const helpers = ["collaborationVisibleResults", "renderCollaborationOutcomes", "collaborationOutcomeSummary", "collaborationWorkHistoryLabels"].filter(name => source.includes(`function ${name}(`)).map(fn).join("\n");

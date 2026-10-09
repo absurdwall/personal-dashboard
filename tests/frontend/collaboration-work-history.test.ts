@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import vm from "node:vm";
 import { appendCollaborationMarkdown, appendCollaborationWorkHistory, parseCollaborationLink } from "../../frontend/collaboration-work-history.ts";
-import { interfaceCopy } from "../../frontend/interface-language.ts";
+import { interfaceCopy, localizeCollaborationDiagnostic, localizeWorkHistoryDiagnostic } from "../../frontend/interface-language.ts";
 
 class Element {
   textContent = ""; className = ""; dataset: Record<string, string> = {}; children: Element[] = [];
@@ -67,7 +67,7 @@ function fn(name: string) { const rest = source.slice(source.indexOf(`function $
 function renderSession(session: any, language: "zh" | "en" = "en") {
   const list = new Element("section");
   const context = vm.createContext({ document, collaborationMessageList: list, session,
-    appendCollaborationWorkHistory, appendCollaborationMarkdown,
+    appendCollaborationWorkHistory, appendCollaborationMarkdown, localizeWorkHistoryDiagnostic, localizeCollaborationDiagnostic, currentInterfaceLanguage:language,
     collaborationDateLabel: (value: string) => value, t: (key: any) => interfaceCopy(key, language),
     collaborationDeliveryStateLabel: (value: string) => value, pendingCollaborationRunChecks: new Set(),
     renderCollaborationOutcomes(container: Element, _session: any, request: any) {
@@ -116,7 +116,7 @@ test("session polling preserves the reader's scroll and manually expanded work h
     { id: "reply", role: "assistant", text: "Saved.", executionId: "run", messageDate: "2026-10-09", targetDate: "2026-10-09" },
   ] };
   const context = vm.createContext({ document, collaborationMessageList: list, session,
-    appendCollaborationWorkHistory, appendCollaborationMarkdown,
+    appendCollaborationWorkHistory, appendCollaborationMarkdown, localizeWorkHistoryDiagnostic, localizeCollaborationDiagnostic, currentInterfaceLanguage:"en",
     collaborationDateLabel: (value: string) => value, t: (key: string) => key,
     collaborationDeliveryStateLabel: (value: string) => value,
     renderCollaborationOutcomes() {}, navigateCollaborationLink() {},
@@ -144,3 +144,27 @@ test("document history shows the actual bounded diff and unavailable before-stat
   assert.match(shown, /Before revision unavailable/);
   assert.equal(descendants(body).some(node => node.tagName === "script"), false);
 });
+
+for (const language of ["zh", "en"] as const) {
+  test(`work history localizes host grammar and tags while preserving runtime/user bytes in ${language}`, () => {
+    const runtimeText = "Invalid execution mode.";
+    const context = vm.createContext({t:(key:any)=>interfaceCopy(key,language),currentInterfaceLanguage:language,localizeCollaborationDiagnostic,localizeWorkHistoryDiagnostic});
+    vm.runInContext(fn("collaborationWorkHistoryLabels")+"\nlabels = collaborationWorkHistoryLabels()",context);
+    const body = new Element("article");
+    const fixture = {...history,items:[
+      {...history.items[3],tool:"dashboard_task_operation",diagnostic:runtimeText,diagnosticGap:"Tool diagnostic withheld by the credential/payload filter.",changeGap:"Native file-change snapshot did not provide actual changes/diff.",
+        parameters:[{name:"operation",value:"createTask"},{name:"name",value:"User English 名称"}],
+        changes:[{id:"change",path:"life/English 用户.md",operation:"update",verification:"unobserved",diff:"-Original English\n+用户内容",gaps:["Before bytes/revision were not observed; item start may occur after the write."]}]},
+      {...history.items[3],itemId:"runtime-failure",kind:"mcpToolCall",tool:"external_tool",diagnostic:runtimeText},
+    ]};
+    appendCollaborationWorkHistory(body as any,fixture as any,document,context.labels,()=>{});
+    const rows=descendants(body).filter(node=>node.className==="collaboration-work-item");
+    assert.match(content(rows[0]),language==="zh"?/无效|不支持/:/Invalid execution mode/);
+    assert.ok(!content(rows[0]).includes(language==="zh"?"Before bytes/revision were not observed":"未观察到修改前"));
+    assert.match(content(rows[0]),language==="zh"?/操作: 新增 Task/:/Operation: Create Task/);
+    assert.match(content(rows[0]),language==="zh"?/external_tool|失败/:/Failed/);
+    assert.match(content(rows[0]),/life\/English 用户.md/);assert.match(content(rows[0]),/-Original English\n\+用户内容/);assert.match(content(rows[0]),/User English 名称/);
+    assert.match(content(rows[1]),/Invalid execution mode\./,"runtime-owned diagnostics remain verbatim even when they match fixed host grammar");
+    if(language==="zh") assert.ok(!content(rows[0]).includes("Native file-change snapshot"));
+  });
+}

@@ -119,6 +119,11 @@ export type WorkHistoryLabels = Readonly<{
   actions?: Readonly<Record<string, string>>;
   diagnosticUnavailable?: string;
   historyMissing?: string;
+  statuses?: Readonly<Record<string, string>>;
+  changeOperations?: Readonly<Record<string, string>>;
+  operationLabel?: string;
+  formatDiagnostic?: (value: string) => string;
+  formatApplicationDiagnostic?: (value: string) => string;
   changeStates?: Readonly<Record<string, string>>;
 }>;
 
@@ -163,21 +168,32 @@ export function appendCollaborationWorkHistory(container: HTMLElement, history: 
       summary.addEventListener("click", () => { diagnostic.dataset.manual = "true"; });
       const explanation = doc.createElement("p");
       // Only host-filtered labels and actual status/identity/times. No raw payloads.
-      explanation.textContent = `${item.tool ?? item.kind} · ${item.status}`;
+      explanation.textContent = `${item.tool ?? item.kind} · ${labels.statuses?.[item.status] ?? item.status}`;
       const identity = doc.createElement("small");
       identity.textContent = [item.itemId, item.callId, item.observedAtMs ? new Date(item.observedAtMs).toLocaleTimeString() : null].filter(Boolean).join(" · ");
       diagnostic.append(summary, explanation, identity);
       for (const parameter of item.parameters ?? []) {
-        const fact = doc.createElement("p"); fact.textContent = `${parameter.name}: ${parameter.value}`; diagnostic.append(fact);
+        const fact = doc.createElement("p");
+        const operation = parameter.name === "operation";
+        fact.textContent = `${operation ? labels.operationLabel ?? parameter.name : parameter.name}: ${operation ? labels.actions?.[parameter.value] ?? parameter.value : parameter.value}`;
+        diagnostic.append(fact);
       }
       if (item.diagnostic || item.diagnosticGap || ["failed", "declined"].includes(item.status)) {
         const cause = doc.createElement("p");
-        cause.textContent = item.diagnostic ?? labels.diagnosticUnavailable ?? "Diagnostic unavailable";
+        const hostDiagnostic = item.kind === "dynamicToolCall" && item.tool?.startsWith("dashboard_");
+        const commandDiagnostic = item.kind === "commandExecution" && item.parameters?.some(parameter => parameter.name === "exitCode");
+        cause.textContent = item.diagnostic
+          ? hostDiagnostic ? labels.formatApplicationDiagnostic?.(item.diagnostic) ?? item.diagnostic
+            : commandDiagnostic ? labels.formatDiagnostic?.(item.diagnostic) ?? item.diagnostic : item.diagnostic
+          : labels.diagnosticUnavailable ?? "Diagnostic unavailable";
         diagnostic.append(cause);
+      }
+      if (item.diagnosticGap) {
+        const gap = doc.createElement("p"); gap.textContent = labels.formatDiagnostic?.(item.diagnosticGap) ?? item.diagnosticGap; diagnostic.append(gap);
       }
       for (const change of item.changes ?? []) {
         const target = doc.createElement("p");
-        target.textContent = [change.path ?? change.objectId, change.operation, labels.changeStates?.[change.verification] ?? change.verification].filter(Boolean).join(" · ");
+        target.textContent = [change.path ?? change.objectId, labels.changeOperations?.[change.operation] ?? change.operation, labels.changeStates?.[change.verification] ?? change.verification].filter(Boolean).join(" · ");
         diagnostic.append(target);
         if (change.beforeRevision || change.afterRevision) {
           const revisions = doc.createElement("small");
@@ -189,11 +205,11 @@ export function appendCollaborationWorkHistory(container: HTMLElement, history: 
           diff.textContent = change.diff; diagnostic.append(diff);
         }
         for (const gap of change.gaps) {
-          const missing = doc.createElement("p"); missing.textContent = gap; diagnostic.append(missing);
+          const missing = doc.createElement("p"); missing.textContent = labels.formatDiagnostic?.(gap) ?? gap; diagnostic.append(missing);
         }
       }
       if (item.changeGap) {
-        const missing = doc.createElement("p"); missing.textContent = item.changeGap; diagnostic.append(missing);
+        const missing = doc.createElement("p"); missing.textContent = labels.formatDiagnostic?.(item.changeGap) ?? item.changeGap; diagnostic.append(missing);
       }
       row.append(diagnostic);
     }

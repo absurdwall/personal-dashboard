@@ -154,3 +154,20 @@ newer selection, and leaving Habits):
 `/tmp/pdcr-review-round2-destination-red.log`. The same suite, including a
 current-selection positive case, passes 18 tests:
 `/tmp/pdcr-review-round2-destination-green.log`.
+
+### Work-history interface language
+
+The paired language catalog now includes work statuses, file-change operations
+and an exact app-grammar diagnostic/gap formatter. The WorkHistory DOM helper
+uses these labels for tagged status/operation values and application-generated
+gaps, including the actual diagnosticGap rather than just a generic fallback.
+Dashboard dynamic-tool diagnostics use the existing narrow backend formatter;
+external/runtime-owned diagnostic text remains verbatim. Names, paths, IDs,
+revision strings, runtime text and diff bytes are unchanged.
+
+The real helper plus production labels failed the Chinese/English fixed-grammar
+regressions before source changes:
+`/tmp/pdcr-review-round2-language-red.log`. The related real renderer/helper
+suites pass 34 tests, including an external runtime diagnostic whose literal
+text matches host grammar and must remain untranslated:
+`/tmp/pdcr-review-round2-language-green.log`.

@@ -45,6 +45,7 @@ import {
   interfaceCopy,
   localizeApplicationMessage,
   localizeCollaborationDiagnostic,
+  localizeWorkHistoryDiagnostic,
   localizeHabitActualTimeLabel,
   localizeHabitCoverageLabel,
   localizeHabitDetail,
@@ -2425,6 +2426,11 @@ function renderCollaborationOutcomes(container: HTMLElement, session: Collaborat
 function collaborationWorkHistoryLabels(): WorkHistoryLabels {
   return {
     historyMissing: t("collaboration.historyMissing"),
+    formatDiagnostic: value => localizeWorkHistoryDiagnostic(value, currentInterfaceLanguage),
+    formatApplicationDiagnostic: value => localizeWorkHistoryDiagnostic(localizeCollaborationDiagnostic(value, currentInterfaceLanguage), currentInterfaceLanguage),
+    operationLabel: t("collaboration.workOperation"),
+    statuses: {retrying: t("collaboration.workStatus.retrying"), inProgress: t("collaboration.workStatus.inProgress"), completed: t("collaboration.workStatus.completed"), succeeded: t("collaboration.workStatus.succeeded"), failed: t("collaboration.workStatus.failed"), declined: t("collaboration.workStatus.declined"), pending: t("collaboration.workStatus.pending"), interrupted: t("collaboration.workStatus.interrupted"), unknown: t("collaboration.workStatus.unknown")},
+    changeOperations: {add: t("collaboration.changeOperation.add"), update: t("collaboration.changeOperation.update"), delete: t("collaboration.changeOperation.delete"), append: t("collaboration.changeOperation.append"), correct: t("collaboration.changeOperation.correct"), unknown: t("collaboration.changeOperation.unknown")},
     title: t("collaboration.workHistory"), summary: t("collaboration.reasoningSummary"),
     commentary: t("collaboration.codexProgress"), message: t("collaboration.codexMessage"),
     tool: t("collaboration.toolActivity"), failed: t("collaboration.workFailed"),
