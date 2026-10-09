@@ -77,6 +77,9 @@ The same sole implementer is repairing mechanical app-origin provenance and
 paired fixed grammar, retaining unknown external/runtime/legacy text verbatim.
 This finding remains open until fixed-source independent re-review.
 
-At `8a37b38`, full frontend386, public reader7 and build passed. Full Rust is
-still running; no final combination result or ticket closure is inferred.
+At `8a37b38`, full Rust495 passed/0 failed/six existing explicit native/live
+environment gates ignored; frontend386 passed/0 failed/0 skipped; public
+reader7 and build passed. All four commands exited0. Private full logs:
+`/tmp/pdcr-review-round2-full-{rust,frontend,reader,build}.log`.
+The remaining diagnostic repair and independent review still prevent closure.
 New recovery/retention Rust source has no packaged native acceptance run.
