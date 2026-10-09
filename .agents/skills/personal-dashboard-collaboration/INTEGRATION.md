@@ -27,3 +27,20 @@ Use supplied memory.routineReference for existing life-daily-loop rules; if
 missing, report the context gap when it matters. This package does not maintain
 a second copy of that routine. Business source receipts, conversation
 persistence, Habit snapshot publication and page freshness remain independent.
+
+## Read-only reply links
+
+The production Markdown renderer accepts these internal navigation targets:
+
+- `dashboard://task/<stable-task-id>`
+- `dashboard://list/<stable-list-id>`
+- `dashboard://record/YYYY-MM-DD` with optional `?phase=morning|daytime|evening`
+- `dashboard://habit/<stable-habit-key>?date=YYYY-MM-DD`
+
+Use the actual ID/key and date read from current facts or a typed receipt. Links
+may refer to read-only retro sources as well as saved changes. Percent-encode
+identity components when needed. The renderer validates calendar dates, allowed
+query keys, and bounded identity characters; it opens the app's existing source
+read/lookup views. A missing object remains absent. Links cannot select a Vault,
+resolve an arbitrary file path, or execute a write; other URL schemes render as
+inert labels. This is a host navigation contract, not a registered model tool.
