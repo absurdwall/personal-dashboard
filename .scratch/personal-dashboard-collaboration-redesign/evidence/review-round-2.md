@@ -35,3 +35,20 @@ Root coordinates local tracker and sends fixed revision/evidence back for an
 independent two-axis re-review. No GitHub, main merge, installation, live personal
 data change or unknown-Dida policy change. PDCR-03/11 remain blocked, PDCR-12
 open/unclaimed; unrelated prototype preserved.
+
+## Retention clarification from independent reviewer
+
+The reviewer supplied pure synthetic oversized source and a production-function
+Habit navigation probe under `/tmp/pdcr-review-d180ad1/`. Root reproduced the
+legacy reader exit2 for `small-run` in the 33 MiB archive. All fixtures are
+synthetic; no personal profile was read or modified for this reproduction.
+
+The repair must include a **prospective aggregate optional-evidence budget**
+across stored histories/sessions, in addition to per-item/per-execution bounds.
+Existing optional bytes consume available capacity but legacy evidence is not
+evicted or retroactively trimmed. Once full, new optional copies retain explicit
+omission bytes/fingerprint/gaps; failed-attempt, terminal, key receipt and source
+identity metadata remain. Total essential metadata/original messages can
+accumulate without automatic deletion; this must be disclosed rather than
+called a global archive cap. Fixed-working-set streaming reading independently
+handles existing large archives while preserving original SHA/pointers.

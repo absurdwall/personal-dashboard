@@ -27,7 +27,7 @@ Working branch: codex/collaboration-redesign-integration
 | PDCR-12 | ticket | [12: 同一候选版本的 live Dida 核验](issues/12-live-dida-acceptance.md) | ready-for-agent | open | PDCR-11 | unassigned; not-started; no authorized isolated objects (user confirmed); PDCR-11 remains blocked |
 
 Twelve approved tickets are published, each with its own body and acceptance
-criteria. PDCR-01/02/04–10 are closed with their required implementation/retro evidence. PDCR-03 is blocked on the unknown Dida effect scope decision found in independent review. Complete-candidate native evidence is recorded; PDCR-11 is blocked on human spoken transcript and PDCR-03, and cannot close before its blocker; PDCR-12 has no authorized isolated Dida objects. Ready-for-agent describes the
+criteria. PDCR-01/04–08/10 remain closed; PDCR-02/09 are reopened for the active second review repair round. Previous implementation/native observations retain their original source qualification. PDCR-03 is blocked on the unknown Dida effect scope decision found in independent review. Complete-candidate native evidence is recorded; PDCR-11 is blocked on human spoken transcript and PDCR-03, and cannot close before its blocker; PDCR-12 has no authorized isolated Dida objects. Ready-for-agent describes the
 triage role; it does not start implementation or establish delivery.
 
 ## Decisions so far
@@ -43,7 +43,7 @@ triage role; it does not start implementation or establish delivery.
 
 ## Next stage
 
-The user authorized implement-spec on 2026-10-09 using the specification branch as baseline. Follow [execution tracking](execution.md); **PDCR-03** awaits the native recovery policy decision. Native **PDCR-11** awaits human spoken transcript and PDCR-03; **PDCR-12** waits for it and authorized isolated objects. No eligible implementation frontier remains. See [checkpoint](evidence/implementation-checkpoint.md).
+The user authorized implement-spec on 2026-10-09 using the specification branch as baseline. Follow [execution tracking](execution.md); **PDCR-03** awaits the native recovery policy decision. Native **PDCR-11** awaits human spoken transcript and PDCR-03; **PDCR-12** waits for it and authorized isolated objects. The single review-fix implementer is working on PDCR-02/09; no new unassigned ticket is eligible. The previous [checkpoint](evidence/implementation-checkpoint.md) is historical; follow [round2](evidence/review-round-2.md).
 
 The graph has 12 tickets and 16 direct blocking edges. Direct blockers are shown
 above and in each ticket body; after PDCR-02 closes, PDCR-03/04/05/06/08 become
