@@ -21,7 +21,7 @@ for (const state of ["completed", "error", "stopped"]) {
     const finished = { ...initial, runState: state, targetDate: "2026-10-04", messages: [
       { role: "user", executionId: "request", targetDate: "2026-10-02" },
     ] };
-    const context = vm.createContext({
+    const context = vm.createContext({collaborationVaultSelectionRevision:1,vaultSelectionInProgress:false,
       Promise,
       currentWorkspaceDestination: "collaboration", currentCollaborationSession: initial,
       collaborationStatusTimer: null, collaborationMessageDraft: draft,
@@ -53,7 +53,7 @@ test("a confirmed canonical receipt refreshes its captured date once before the 
     { id: "task", status: "applied", targetDate: "2026-10-09", resultRevision: "task-v2", taskId: "task-1", listId: "inbox" },
     { id: "unknown", status: "unknown", targetDate: "2026-10-07", taskId: null, listId: null },
   ] };
-  const context = vm.createContext({ Promise, currentWorkspaceDestination: "collaboration", currentCollaborationSession: initial,
+  const context = vm.createContext({collaborationVaultSelectionRevision:1,vaultSelectionInProgress:false, Promise, currentWorkspaceDestination: "collaboration", currentCollaborationSession: initial,
     collaborationStatusTimer: null, window: { setInterval(callback: () => void) { poll = callback; return 1; }, clearInterval() {},
       __TAURI__: { core: { async invoke() { return saved; } } } },
     refreshCollaborationRunOwner() {}, renderCollaborationWorkspace() {},
@@ -76,7 +76,7 @@ test("observed native file revision refreshes its evidenced date once while work
       { id: "rejected", path: null, targetDate: "2026-10-07", verification: "scopeRejected", afterRevision: null },
     ] },
   ] }] };
-  const context = vm.createContext({ Promise, currentWorkspaceDestination: "collaboration", currentCollaborationSession: initial,
+  const context = vm.createContext({collaborationVaultSelectionRevision:1,vaultSelectionInProgress:false, Promise, currentWorkspaceDestination: "collaboration", currentCollaborationSession: initial,
     collaborationStatusTimer: null, window: { setInterval(callback: () => void) { poll = callback; return 1; }, clearInterval() {},
       __TAURI__: { core: { async invoke() { return observed; } } } },
     refreshCollaborationRunOwner() {}, renderCollaborationWorkspace() {},
@@ -96,7 +96,7 @@ for (const destination of ["today", "calendar"]) {
     let poll: () => void = () => {}; const dates: string[] = [];
     const initial = { id: "session", runId: "run", runState: "thinking", targetDate: "2026-10-09" };
     const updated = { ...initial, taskOperations: [{ id: "task", taskId: "stable", listId: "inbox", status: "applied", resultRevision: "v2", targetDate: "2026-10-08" }], messages: [] };
-    const context = vm.createContext({ Promise, currentWorkspaceDestination: destination, currentCollaborationSession: initial,
+    const context = vm.createContext({collaborationVaultSelectionRevision:1,vaultSelectionInProgress:false, Promise, currentWorkspaceDestination: destination, currentCollaborationSession: initial,
       selectedTodayDate: "2026-10-02", currentTodayView: { date: "2026-10-02" }, selectedCalendarDate: "2026-10-03", currentCalendarSummaryView: { date: "2026-10-03" },
       collaborationStatusTimer: null, window: { setInterval(callback: () => void) { poll = callback; return 1; }, clearInterval() {}, __TAURI__: { core: { async invoke() { return updated; } } } },
       refreshCollaborationRunOwner() {}, renderCollaborationWorkspace() {}, async refreshCanonicalDateProjections(date: string) { dates.push(date); },
@@ -112,7 +112,7 @@ test("opening Tasks during a Collaboration turn keeps the source watch and reque
   let cleared = false; let refreshed = false;
   const rest = source.slice(source.indexOf("function showWorkspaceDestination("));
   const navigation = stripTypeScriptTypes(rest.slice(0, /^}\n/m.exec(rest)!.index + 2));
-  const context = vm.createContext({ currentWorkspaceDestination: "collaboration", selectedTodayDate: null,
+  const context = vm.createContext({collaborationVaultSelectionRevision:1,vaultSelectionInProgress:false, currentWorkspaceDestination: "collaboration", selectedTodayDate: null,
     currentCollaborationSession: { id: "session", targetDate: "2026-10-08", runState: "thinking" }, collaborationStatusTimer: 17,
     cancelCollaborationVoiceCaptureForSelectionChange() {}, stashCollaborationDraft() {},
     renderDailyPlanReturnNavigation() {}, renderWorkspaceNavigationLanguage() {}, renderWorkspaceContextStatus() {}, renderWorkspaceFeatureArea() {}, renderWorkspaceRailContext() {},
@@ -132,7 +132,7 @@ test("evidenced refresh carries the original execution into the actual refresh b
   let poll: () => void = () => {}; const captured: any[] = [];
   const initial = { id:"session", runId:"original-execution", runState:"thinking", targetDate:"2026-10-08" };
   const saved = {...initial, messages:[], taskOperations:[{id:"record", executionId:"original-execution", status:"applied", targetDate:"2026-10-08", resultRevision:"v2"}]};
-  const context = vm.createContext({Promise, currentWorkspaceDestination:"collaboration", currentCollaborationSession:initial,
+  const context = vm.createContext({collaborationVaultSelectionRevision:1,vaultSelectionInProgress:false,Promise, currentWorkspaceDestination:"collaboration", currentCollaborationSession:initial,
     collaborationStatusTimer:null, window:{setInterval(callback:()=>void){poll=callback;return 1;},clearInterval(){},__TAURI__:{core:{async invoke(){return saved;}}}},
     refreshCollaborationRunOwner(){},renderCollaborationWorkspace(){},async refreshCanonicalDateProjections(_date:string,evidence:any){captured.push(evidence);},async refreshCollaborationContext(){},async refreshTasks(){}});
   vm.runInContext(production+"\nwatchCollaborationSession(currentCollaborationSession)",context);
@@ -140,4 +140,70 @@ test("evidenced refresh carries the original execution into the actual refresh b
   assert.equal(captured[0]?.executionId,"original-execution");
   assert.equal(captured[0]?.sessionId,"session");
   assert.equal(captured[0]?.trigger,"confirmedEffect");
+});
+
+test("historical receipt, native witness and message result refreshes retain their distinct effect owners", async () => {
+  let poll: () => void = () => {}; const captured: any[] = [];
+  const initial = {id:"session",runId:"current-execution",runState:"thinking",targetDate:"2026-10-09"};
+  const saved = {...initial,
+    taskOperations:[{id:"historical-record",executionId:"receipt-owner",status:"applied",targetDate:"2026-10-08",resultRevision:"v2"}],
+    workHistory:[{executionId:"native-owner",items:[{changes:[{id:"change",path:"life/note.md",afterRevision:"v3",verification:"sourceObserved",targetDate:"2026-10-08"}]}]}],
+    messages:[{role:"user",executionId:"external-owner",actionResults:[{id:"external",status:"saved",targetDate:"2026-10-07"}]}]};
+  const context=vm.createContext({collaborationVaultSelectionRevision:1,vaultSelectionInProgress:false,Promise,
+    currentWorkspaceDestination:"collaboration",currentCollaborationSession:initial,collaborationStatusTimer:null,
+    window:{setInterval(callback:()=>void){poll=callback;return 1;},clearInterval(){},__TAURI__:{core:{async invoke(){return saved;}}}},
+    refreshCollaborationRunOwner(){},renderCollaborationWorkspace(){},async refreshCanonicalDateProjections(date:string,evidence:any){captured.push({date,...evidence});},async refreshCollaborationContext(){},async refreshTasks(){}});
+  vm.runInContext(production+"\nwatchCollaborationSession(currentCollaborationSession)",context);
+  poll();await tick();poll();await tick();
+  assert.deepEqual(captured.map(entry=>[entry.date,entry.executionId]),[["2026-10-08","receipt-owner"],["2026-10-08","native-owner"],["2026-10-07","external-owner"]]);
+});
+
+test("delayed polling result cannot replace session state after its Vault generation changed", async () => {
+  let poll:()=>void=()=>{};let release:()=>void=()=>{};const barrier=new Promise<void>(resolve=>release=resolve);let renders=0;
+  const initial={id:"session",runId:"run",runState:"thinking",targetDate:"2026-10-09"};
+  const context=vm.createContext({collaborationVaultSelectionRevision:1,vaultSelectionInProgress:false,Promise,
+    currentCollaborationSession:initial,collaborationStatusTimer:null,window:{setInterval(callback:()=>void){poll=callback;return 1;},clearInterval(){},__TAURI__:{core:{async invoke(){await barrier;return {...initial,progress:"old-vault"};}}}},
+    refreshCollaborationRunOwner(){renders++;},renderCollaborationWorkspace(){renders++;}});
+  vm.runInContext(production+"\nwatchCollaborationSession(currentCollaborationSession)",context);poll();
+  context.collaborationVaultSelectionRevision=2;release();await tick();
+  assert.equal(renders,0);assert.equal(context.currentCollaborationSession,initial);
+});
+
+test("different Task effect owners each retain the currently visible projection date", async () => {
+  let poll:()=>void=()=>{};const captured:any[]=[];
+  const initial={id:"session",runId:"current",runState:"thinking",targetDate:"2026-10-09"};
+  const saved={...initial,messages:[],taskOperations:[
+    {id:"task-a",executionId:"owner-a",taskId:"a",status:"applied",targetDate:"2026-10-08",resultRevision:"v2"},
+    {id:"task-b",executionId:"owner-b",taskId:"b",status:"applied",targetDate:"2026-10-07",resultRevision:"v3"}]};
+  const context=vm.createContext({Promise,collaborationVaultSelectionRevision:1,vaultSelectionInProgress:false,
+    currentWorkspaceDestination:"today",selectedTodayDate:"2026-10-02",currentTodayView:{date:"2026-10-02"},
+    currentCollaborationSession:initial,collaborationStatusTimer:null,window:{setInterval(callback:()=>void){poll=callback;return 1;},clearInterval(){},__TAURI__:{core:{async invoke(){return saved;}}}},
+    refreshCollaborationRunOwner(){},renderCollaborationWorkspace(){},async refreshCanonicalDateProjections(date:string,evidence:any){captured.push([date,evidence.executionId]);},async refreshTasks(){},async refreshCollaborationContext(){}});
+  vm.runInContext(production+"\nwatchCollaborationSession(currentCollaborationSession)",context);poll();await tick();
+  assert.deepEqual(captured,[["2026-10-02","owner-a"],["2026-10-02","owner-b"]]);
+});
+
+test("a legacy effect without an owner refreshes business state without borrowing the active execution", async () => {
+  let poll:()=>void=()=>{};const captured:any[]=[];
+  const initial={id:"session",runId:"current",runState:"thinking",targetDate:"2026-10-09"};
+  const saved={...initial,messages:[],taskOperations:[{id:"legacy",status:"applied",targetDate:"2026-10-08",resultRevision:"v2"}]};
+  const context=vm.createContext({Promise,collaborationVaultSelectionRevision:1,vaultSelectionInProgress:false,
+    currentWorkspaceDestination:"collaboration",currentCollaborationSession:initial,collaborationStatusTimer:null,
+    window:{setInterval(callback:()=>void){poll=callback;return 1;},clearInterval(){},__TAURI__:{core:{async invoke(){return saved;}}}},
+    refreshCollaborationRunOwner(){},renderCollaborationWorkspace(){},async refreshCanonicalDateProjections(date:string,evidence:any){captured.push([date,evidence]);},async refreshTasks(){},async refreshCollaborationContext(){}});
+  vm.runInContext(production+"\nwatchCollaborationSession(currentCollaborationSession)",context);poll();await tick();
+  assert.deepEqual(captured,[["2026-10-08",undefined]]);
+});
+
+test("a cancelled Vault picker generation allows discarded effect projections to be read again", async () => {
+  let poll:()=>void=()=>{};const reads:any[]=[];
+  const initial={id:"session",runId:"run",runState:"thinking",targetDate:"2026-10-09"};
+  const saved={...initial,messages:[],taskOperations:[{id:"saved",executionId:"owner",status:"applied",targetDate:"2026-10-08",resultRevision:"v2"}]};
+  const context=vm.createContext({Promise,collaborationVaultSelectionRevision:1,vaultSelectionInProgress:false,
+    currentWorkspaceDestination:"collaboration",currentCollaborationSession:initial,collaborationStatusTimer:null,
+    window:{setInterval(callback:()=>void){poll=callback;return 1;},clearInterval(){},__TAURI__:{core:{async invoke(){return saved;}}}},
+    refreshCollaborationRunOwner(){},renderCollaborationWorkspace(){},async refreshCanonicalDateProjections(date:string,evidence:any){reads.push([date,evidence.executionId]);},async refreshTasks(){},async refreshCollaborationContext(){}});
+  vm.runInContext(production+"\nwatchCollaborationSession(currentCollaborationSession)",context);poll();await tick();
+  context.collaborationVaultSelectionRevision=2;poll();await tick();poll();await tick();
+  assert.deepEqual(reads,[["2026-10-08","owner"],["2026-10-08","owner"]]);
 });
