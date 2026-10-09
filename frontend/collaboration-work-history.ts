@@ -118,10 +118,18 @@ export type WorkHistoryLabels = Readonly<{
   failed: string; completed: string; running: string; details: string;
   actions?: Readonly<Record<string, string>>;
   diagnosticUnavailable?: string;
+  historyMissing?: string;
   changeStates?: Readonly<Record<string, string>>;
 }>;
 
-export function appendCollaborationWorkHistory(container: HTMLElement, history: CollaborationWorkHistory, doc: Document, labels: WorkHistoryLabels, navigate: (target: CollaborationLink) => void): void {
+export function appendCollaborationWorkHistory(container: HTMLElement, history: CollaborationWorkHistory | null, doc: Document, labels: WorkHistoryLabels, navigate: (target: CollaborationLink) => void): void {
+  if (!history) {
+    const missing = doc.createElement("p");
+    missing.className = "collaboration-history-unavailable";
+    missing.textContent = labels.historyMissing ?? "Work history unavailable.";
+    container.append(missing);
+    return;
+  }
   const details = doc.createElement("details");
   details.className = "collaboration-work-history";
   details.dataset.workKey = `${history.executionId}:history`;

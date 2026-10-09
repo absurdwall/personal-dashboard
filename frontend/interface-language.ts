@@ -487,6 +487,7 @@ const interfaceCopies = {
   "collaboration.changeUnconfirmed": { zh: "文件修改证据不完整", en: "File-change evidence incomplete" },
   "collaboration.changeScopeRejected": { zh: "超出许可文件范围；未读取结果", en: "Outside permitted file scope; result not read" },
   "collaboration.diagnosticUnavailable": { zh: "诊断不可用，或因包含凭据／原始输出而省略。", en: "Diagnostic unavailable or withheld because it contained credentials or raw output." },
+  "collaboration.historyMissing": { zh: "过程记录不可用；缺失的 usage 和变更证据不可用。原文与已保存结果保留。", en: "Work history unavailable. Missing usage and change evidence remain unavailable; original messages and saved outcomes are preserved." },
   "collaboration.workAction.createTask": { zh: "新增 Task", en: "Create Task" },
   "collaboration.workAction.updateTask": { zh: "修改 Task", en: "Update Task" },
   "collaboration.workAction.completeTask": { zh: "补记 Task 完成", en: "Record Task completion" },

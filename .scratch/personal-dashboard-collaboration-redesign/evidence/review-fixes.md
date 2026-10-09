@@ -90,3 +90,49 @@ The concrete proposal and exact actual evidence are recorded in
 scope/authority decision and tracker status; PDCR-03's relevant criterion stays
 unmet. Native PDCR-11 must rebuild the complete candidate after these fixes;
 the tests and older actual execution do not replace that acceptance.
+
+
+## Legacy sessions without execution evidence
+
+Native PDCR-11 observed a saved legacy user/reply pair without WorkHistory or
+usage. Original messages remained readable, but the production renderer
+silently omitted the missing process evidence. This supplement fixes that
+renderer gap; it does not replace the native reassessment recorded in
+[PDCR-11 evidence](11-native-acceptance.md).
+
+The existing DOM-only WorkHistory helper now accepts an absent history and
+renders a localized unavailable paragraph. The production saved-reply path
+calls that fallback even without an execution identifier. Completed, failed,
+stopped, interrupted and stop-unconfirmed requests without a reply also retain
+their original input and show the fallback. Queued, not-started, paused and
+in-progress requests without history remain pending rather than being labeled
+as missing historical execution.
+
+The Chinese and English copy explicitly qualifies missing process, usage and
+change evidence. It preserves original messages and any saved outcome cards;
+missing evidence is not reconstructed as zero tokens, process items or a new
+execution. No stored messages, receipts or history are changed. No Rust or
+native Dida safety policy was changed.
+
+### Supplemental red/green evidence
+
+- The actual production `renderCollaborationMessages` and label function, with
+  the real DOM WorkHistory/Markdown helper, first failed three new assertions:
+  missing fallback for legacy Chinese/English replies and a terminated request
+  without a reply. Existing and pending-request tests passed. Log:
+  `/tmp/pdcr-legacy-history-red.log`.
+- After the minimum renderer/helper/copy change, that suite passed 11 tests.
+  Log: `/tmp/pdcr-legacy-history-green.log`. The harness checks original text,
+  preserved Markdown and saved outcome, unchanged serialized session, absence
+  of fabricated work items, and fails if rendering invokes a backend request.
+- Existing conversation/outcome renderer harnesses now include the real helper
+  and actual label function. The three related suites passed 32 tests:
+  `/tmp/pdcr-legacy-targeted-green.log`.
+- Full frontend suite: 378 passed, zero failed:
+  `/tmp/pdcr-legacy-all-frontend.log`. Existing-dependency build passed:
+  `/tmp/pdcr-legacy-build.log`. No dependencies were installed. Rust was not
+  rerun because this supplement changes only frontend rendering and tests.
+
+The complete-candidate native legacy-session reassessment remains PDCR-11's
+acceptance gate. These production renderer tests establish the narrow fix,
+not a fresh packaged-app observation or any live Dida/voice result.
