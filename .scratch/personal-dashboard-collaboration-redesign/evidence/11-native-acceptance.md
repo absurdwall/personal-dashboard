@@ -118,10 +118,11 @@ store/renderer, not real personal history or a model execution.
 
 **The missing-process unavailable label was not displayed.** Production
 `frontend/main.ts` appends work history only when a matching history exists;
-absence is silently omitted. Thus old text compatibility was observed, but the
+absence was silently omitted. Thus old text compatibility was observed, but the
 explicit missing-process marker required by spec section5 and its history/restart
-failure row remains a presentation gap. Do not treat a supporting fallback test
-as a native pass for that label. The initial synthetic fixture incorrectly used
+failure row was a presentation gap on `7b3dc8`. The actual bounded `c5be634`
+reassessment below resolves this marker gap; supporting fallback tests alone
+were not treated as its native pass. The initial synthetic fixture incorrectly used
 an array for `continuityNotes`; correcting it to the existing map schema resolved
 its load error. That setup error is not a product failure.
 
@@ -129,8 +130,62 @@ Private witnesses: `21-legacy-fixture.json`, `21-legacy-launch.json`,
 `21-legacy-work.ax.txt`, `21-legacy-native.png`, `21-legacy-checks.json`, and
 canonical before/after hashes. Final exact owned PID8039 and its WebKit descendants
 were stopped and the bundle unregistered again. All owned auth files remain
-absent; installed PID72704/executable remains unchanged. Any label correction
-needs a fresh, bounded no-auth native reassessment before being claimed accepted.
+absent; installed PID72704/executable remains unchanged. The subsequent correction
+is reassessed below with a fresh, bounded no-auth native run.
+
+## Legacy marker correction — fresh `c5be634` native reassessment
+
+The narrow correction was rebuilt from exact source
+`c5be634d75b8921a6244135593b3128588398150`, app4.0.7. Product diff from `7b3dc8`
+is exactly three frontend source files: missing-history rendering, its production
+caller and the translation. `src-tauri` and `.agents` are unchanged. Existing
+Work-history rendering with present evidence is unchanged. Root's 378 frontend
+checks/build and independent targeted Standards/Spec review are recorded in
+[final combination checks](final-combination-checks.md) and
+[review](review.md). Docs-only integration `cd67ec2` was merged afterward and
+has identical product trees; the bundle remains pinned to `c5be634`.
+
+Build used the same existing-dependency Tauri command with the full source SHA
+in `PERSONAL_DASHBOARD_BUILD_REVISION`; build succeeded and the full revision
+is embedded in the original binary. Original built executable SHA256:
+`33ba9aa2c6fba01fa83c2b2082830b984bc28c7ecfd37791af9a0a4fb9b37db4`.
+Owned signed executable SHA256:
+`4325390f1f8ddf6ab9379b04ccf34c6f65ae471255808179fec423810550167a`.
+Acceptance bundle ID `com.tortillaflat.personal-dashboard.acceptance.pdcr11.legacy`,
+name/display `PDCR11 Legacy Acceptance`, ad-hoc re-sign verified. The original
+built bundle is archived unchanged outside Spotlight; hashes/signature details,
+source hashes and bundle file hashes are in `22-legacy-build-manifest.json`.
+The hash difference is recorded as acceptance metadata/signing, not inferred
+source equivalence from a display name. No model was invoked for this check;
+there is no new effective-model claim. Prior `7b3dc8` model provenance is retained.
+
+The same immutable21 legacy fixture/profile was loaded through the actual native
+store and production renderer on exact owned PID13784, with isolated profile,
+HOME/CODEX_HOME/XDG paths and disabled automation. English AX displayed:
+“Work history unavailable. Missing usage and change evidence remain unavailable;
+original messages and saved outcomes are preserved.” After the native language
+switch, Chinese AX and a scrolled visible-window screenshot displayed:
+“过程记录不可用；缺失的 usage 和变更证据不可用。原文与已保存结果保留。”
+Both original user/reply texts and the Markdown bullet remained readable.
+No CUA/rebind, login, Send, model request or microphone action was used.
+
+Persisted original messages were exactly equal. No new execution/runtime thread,
+work-history item or usage was generated. All four canonical Vault C hashes
+matched the immutable21 before/after hashes, and owned auth count stayed zero.
+Private witnesses: `22-legacy-{en,zh}.ax.txt`, `22-legacy-zh-visible.png`,
+`22-legacy-checks.json`, `22-legacy-history-after.json`, `22-legacy-build.log`.
+Exact PID13784 and its owned WebKit descendants were stopped; the new bundle
+and generated build path were unregistered/archived into `.noindex`. Candidate
+process count and owned registrations are zero. Installed PID72704/executable
+was preserved; temporary `node_modules` link removed.
+
+This fresh run accepts the corrected legacy marker and retained text/list only.
+It does not relabel previous actual business executions as `c5be634` executions.
+The code diff leaves prior `7b3dc8` save/readback, execution ownership, Vault/date,
+natural cross04 queue, automatic initial-plan-only, personal retro and immutable
+workflow-export behavior unaffected; their evidence retains exact prior-source
+qualification. Human spoken transcript, native unknown-scope policy and the
+separately qualified natural long-delay observation remain as below.
 
 ## Limits and unresolved gates
 
