@@ -649,3 +649,51 @@ impl RuntimeHistory {
         self.flush(true)
     }
 }
+
+/// Stable item reconciliation is additive. Runtime sequence numbers belong to
+/// the readback reducer, not the original stream, so preserve original ordering
+/// and host source observations while applying authoritative terminal facts.
+pub(super) fn merge_recovered(existing: &mut CollaborationWorkHistory, recovered: CollaborationWorkHistory) {
+    let base = existing.sequence;
+    let mut sequence = base;
+    for mut incoming in recovered.items {
+        sequence = sequence.saturating_add(1);
+        if let Some(item) = existing.items.iter_mut().find(|item| item.item_id == incoming.item_id) {
+            if item.authoritative && ["failed", "declined"].contains(&item.status.as_str()) && incoming.status != item.status {
+                let gap = "Recovered snapshot conflicts with an original failed attempt; its original failure remains retained.".to_owned();
+                if !existing.gaps.contains(&gap) { existing.gaps.push(gap); }
+                continue;
+            }
+            if !incoming.authoritative { continue; }
+            incoming.first_sequence = item.first_sequence;
+            incoming.last_sequence = sequence;
+            incoming.observed_at_ms = item.observed_at_ms;
+            incoming.runtime_started_at_ms = item.runtime_started_at_ms.or(incoming.runtime_started_at_ms);
+            incoming.diagnostic = incoming.diagnostic.or(item.diagnostic.clone());
+            incoming.diagnostic_gap = incoming.diagnostic_gap.or(item.diagnostic_gap.clone());
+            incoming.input_fingerprint = incoming.input_fingerprint.or(item.input_fingerprint.clone());
+            if incoming.parameters.is_empty() { incoming.parameters = item.parameters.clone(); }
+            // Original independently observed revisions never become a newer
+            // readback attributed to this historical event.
+            for saved in &item.changes {
+                if saved.observed_at_ms.is_some() {
+                    incoming.changes.retain(|change| !(change.id == saved.id ||
+                        (change.path == saved.path && change.operation == saved.operation && change.source == saved.source)));
+                }
+                if !incoming.changes.iter().any(|change| change.id == saved.id) { incoming.changes.push(saved.clone()); }
+            }
+            if incoming.change_gap.is_none() { incoming.change_gap = item.change_gap.clone(); }
+            *item = incoming;
+        } else {
+            incoming.first_sequence = sequence;
+            incoming.last_sequence = sequence;
+            existing.items.push(incoming);
+        }
+    }
+    existing.sequence = sequence.max(base.saturating_add(1));
+    existing.updated_at_ms = recovered.updated_at_ms.max(existing.updated_at_ms);
+    existing.runtime_started_at_ms = existing.runtime_started_at_ms.or(recovered.runtime_started_at_ms);
+    existing.runtime_completed_at_ms = recovered.runtime_completed_at_ms.or(existing.runtime_completed_at_ms);
+    if recovered.token_usage.is_some() { existing.token_usage = recovered.token_usage; }
+    for gap in recovered.gaps { if !existing.gaps.contains(&gap) { existing.gaps.push(gap); } }
+}

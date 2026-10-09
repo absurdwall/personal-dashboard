@@ -5373,6 +5373,7 @@ impl AppServerTransport for DualRuntime {
             source.last_action.clone().unwrap()
         };
         Ok(RuntimeRunReconciliation::Interrupted {
+            work_history: None,
             runtime_turn_id: "lost-dual-turn".into(),
             external_actions: vec![self.reconcile_external_action(action)],
         })

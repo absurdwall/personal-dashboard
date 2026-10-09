@@ -1186,7 +1186,9 @@ const chineseCollaborationDiagnostics: Readonly<Record<string, string>> = {
 };
 
 const workHistoryDiagnosticCopies: Readonly<Record<string, Readonly<{ zh: string; en: string }>>> = {
-  "Native file-change snapshot did not provide actual changes/diff.": { zh: "原生文件修改快照未提供实际修改或 diff。", en: "Native file-change snapshot did not provide actual changes/diff." },
+
+  "Native file-change snapshot recovered; historical source readback/captured cwd unavailable. No write or file read was replayed.": { zh: "已恢复原生文件修改快照；当时的来源回读与工作目录不可用。未重放写入或文件读取。", en: "Native file-change snapshot recovered; historical source readback/captured cwd unavailable. No write or file read was replayed." },
+  "Recovered snapshot conflicts with an original failed attempt; its original failure remains retained.": { zh: "恢复的快照与原始失败尝试冲突；原始失败记录已保留。", en: "Recovered snapshot conflicts with an original failed attempt; its original failure remains retained." },  "Native file-change snapshot did not provide actual changes/diff.": { zh: "原生文件修改快照未提供实际修改或 diff。", en: "Native file-change snapshot did not provide actual changes/diff." },
   "Native file-change snapshot provided no actual changes/diff.": { zh: "原生文件修改快照没有实际修改或 diff。", en: "Native file-change snapshot provided no actual changes/diff." },
   "Before bytes/revision were not observed; item start may occur after the write.": { zh: "未观察到修改前的内容或版本；过程项开始时可能已完成写入。", en: "Before bytes/revision were not observed; item start may occur after the write." },
   "Actual native diff unavailable, empty or exceeds the 64 KiB evidence bound.": { zh: "实际原生 diff 不可用、为空或超过 64 KiB 证据上限。", en: "Actual native diff unavailable, empty or exceeds the 64 KiB evidence bound." },

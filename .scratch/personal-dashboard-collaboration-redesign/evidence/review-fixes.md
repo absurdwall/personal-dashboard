@@ -171,3 +171,31 @@ regressions before source changes:
 suites pass 34 tests, including an external runtime diagnostic whose literal
 text matches host grammar and must remain untranslated:
 `/tmp/pdcr-review-round2-language-green.log`.
+
+### Saved native snapshot reconciliation
+
+The native stdio `thread/read` path now returns its actual authoritative visible
+items alongside final text/terminal outcome. Application recovery binds that
+snapshot to the original execution, thread and turn and merges by stable item
+identity. Available terminal status/diff/timing can finish an in-progress item;
+original first observation/order, failed attempts, source witnesses, refresh
+observations and independently saved receipts remain retained. Conflicting
+original failures gain an explicit gap rather than disappearing. A newer
+session execution never becomes the recovered item's owner. Recovered native
+diffs are qualified as snapshot witnesses; absent historical readback/captured
+cwd is explicit. Recovery performs no new file read or business write.
+
+The file-backed application regression first failed because the new available
+snapshot was ignored (`/tmp/pdcr-review-round2-recovery-red.log`). It now passes
+with the old failed attempt, current execution owner and immutable source
+observation retained (`/tmp/pdcr-review-round2-recovery-green.log`). The actual
+stdio request seam also verifies completed/interrupted/failed saved turns keep
+failed command metadata and actual native diff, and dispatch only thread/read:
+`/tmp/pdcr-review-round2-native-recovery-green.log`. Initial build setup lacked
+frontendDist; an existing-dependency build supplied it. That prerequisite and
+a fixture macro-size correction are not counted as behavior regressions.
+
+The independent Habit navigation script was also rerun against this worktree's
+production navigation/read functions. All three cases issue only the initial
+Vault-A snapshot call, without restoring the old selection or launching a new
+date read: `/tmp/pdcr-review-round2-habit-navigation-green.log`.

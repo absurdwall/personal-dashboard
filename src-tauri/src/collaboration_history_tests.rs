@@ -1341,3 +1341,33 @@ fn source_refresh_observations_are_scoped_and_do_not_change_canonical_task_revis
     assert_eq!(tasks.read().unwrap().revision, before.revision);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn saved_native_turn_read_keeps_authoritative_items_without_dispatching_a_turn() {
+    for status in ["completed", "interrupted", "failed"] {
+        let (mut client, sender, stdout) = turn_client();
+        let turn=json!({"id":"saved-turn","status":status,"startedAt":100,"completedAt":200,"items":[
+            {"id":"user","type":"userMessage","content":[{"text":"{\"dashboardExecutionId\": \"original-execution\"}"}]},
+            {"id":"failed-attempt","type":"commandExecution","status":"failed","exitCode":7},
+            {"id":"changed","type":"fileChange","status":"completed","changes":[{"path":"life/ordinary.md","kind":{"type":"update"},"diff":"-Before\n+After"}]},
+            {"id":"final","type":"agentMessage","phase":"final_answer","text":"Original saved reply"}
+        ]});
+        sender.send(Ok(json!({"id":1,"result":{"thread":{"id":"original-thread","turns":[turn]}}}).to_string())).unwrap();
+        let requests=thread::spawn(move||BufReader::new(stdout).lines().take(1).map(|line|serde_json::from_str::<Value>(&line.unwrap()).unwrap()).collect::<Vec<_>>());
+        let recovered=client.read_saved_turn("original-thread","original-execution").unwrap();
+        let requests=requests.join().unwrap();
+        drop(client);
+        assert_eq!(requests.len(),1);assert_eq!(requests[0]["method"],"thread/read");
+        let history=match recovered {
+            RuntimeRunReconciliation::Completed {text,work_history,..} => {assert_eq!(text,"Original saved reply");work_history.unwrap()},
+            RuntimeRunReconciliation::Interrupted {work_history,..} => work_history.unwrap(),
+            _ => panic!("a matched saved terminal snapshot must be preserved"),
+        };
+        assert_eq!(history.status,status);
+        assert_eq!(history.items.iter().find(|item|item.item_id=="failed-attempt").unwrap().status,"failed");
+        let file=history.items.iter().find(|item|item.item_id=="changed").unwrap();
+        assert!(file.authoritative);assert_eq!(file.changes[0].diff.as_deref(),Some("-Before\n+After"));
+        assert!(file.changes[0].after_revision.is_none());
+        assert_eq!(history.runtime_completed_at_ms,Some(200_000));
+    }
+}

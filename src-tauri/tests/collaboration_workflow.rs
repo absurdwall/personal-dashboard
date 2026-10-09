@@ -1060,6 +1060,7 @@ fn restart_checks_saved_result_and_never_replays_unstarted_queue_automatically()
     let reconciliations = Arc::new(Mutex::new(HashMap::from([(
         "execution-active-1".into(),
         RuntimeRunReconciliation::Completed {
+            work_history: None,
             text: "Recovered synthetic result".into(),
             runtime_turn_id: "runtime-turn-recovered".into(),
             external_actions: vec![ExternalToolActionView {
@@ -1842,7 +1843,7 @@ impl AppServerTransport for DidaWorkflowTransport {
             source.last_action.clone().unwrap()
         };
         let checked = self.reconcile_external_action(action);
-        Ok(RuntimeRunReconciliation::Interrupted {runtime_turn_id:"external-turn".into(),external_actions:vec![checked]})
+        Ok(RuntimeRunReconciliation::Interrupted {work_history:None,runtime_turn_id:"external-turn".into(),external_actions:vec![checked]})
     }
 }
 
@@ -2070,12 +2071,18 @@ fn old_result_check_uses_its_original_thread_and_preserves_newer_execution_and_p
     saved.run_state = "stop-unconfirmed".into();
     saved.messages[0].delivery_state = "stop-unconfirmed".into();
     saved.messages[0].result_checked = false;
-    let old_history: personal_dashboard_lib::collaboration::CollaborationWorkHistory = serde_json::from_value(serde_json::json!({
+    let mut old_history: personal_dashboard_lib::collaboration::CollaborationWorkHistory = serde_json::from_value(serde_json::json!({
         "evidenceVersion":1,"executionId":execution,"threadId":"runtime-thread-1","turnId":"old-turn","sequence":12,"status":"history-save-failed",
         "observedAtMs":10,"updatedAtMs":20,"runtimeStartedAtMs":null,"runtimeCompletedAtMs":null,"tokenUsage":null,
         "items":[{"itemId":"attempt-1","callId":"old-call","kind":"dynamicToolCall","phase":null,"text":"Original failed attempt","summary":[],"tool":"dashboard_tasks","status":"failed",
           "firstSequence":1,"lastSequence":12,"observedAtMs":10,"updatedAtMs":20,"runtimeStartedAtMs":null,"runtimeCompletedAtMs":null,"runtimeEmittedAtMs":null,"authoritative":true,"parameters":[],"diagnostic":"Original error retained"}]
     })).unwrap();
+    let mut pending = old_history.items[0].clone();
+    pending.item_id = "recovered-file".into(); pending.call_id = None; pending.kind = "fileChange".into();
+    pending.status = "inProgress".into(); pending.authoritative = false; pending.diagnostic = None;
+    pending.first_sequence = 2; pending.observed_at_ms = 30;
+    pending.changes = vec![serde_json::from_str(r#"{"id":"original-witness","source":"nativeFileChange","objectId":null,"path":"life/ordinary.md","operation":"update","receiptId":null,"targetDate":null,"beforeRevision":null,"afterRevision":"original-observed-revision","diff":"-Original fact\n+Updated fact","verification":"sourceObserved","observedAtMs":40,"gaps":[]}"#).unwrap()];
+    old_history.items.push(pending);
     saved.work_history = vec![old_history.clone()];
     store.save(&state).unwrap();
     application
@@ -2114,6 +2121,13 @@ fn old_result_check_uses_its_original_thread_and_preserves_newer_execution_and_p
     reconciliations.lock().unwrap().insert(
         execution.clone(),
         RuntimeRunReconciliation::Completed {
+            work_history: Some(serde_json::from_str(r#"{
+                "evidenceVersion":1,"executionId":"untrusted-runtime-identity","threadId":"runtime-thread-1","turnId":"old-turn","sequence":1,"status":"completed",
+                "observedAtMs":500,"updatedAtMs":600,"runtimeStartedAtMs":100,"runtimeCompletedAtMs":600,"tokenUsage":null,
+                "items":[{"itemId":"recovered-file","callId":null,"kind":"fileChange","phase":null,"text":"","summary":[],"tool":null,"status":"completed",
+                  "firstSequence":1,"lastSequence":1,"observedAtMs":500,"updatedAtMs":600,"runtimeStartedAtMs":null,"runtimeCompletedAtMs":600,"runtimeEmittedAtMs":null,"authoritative":true,"parameters":[],
+                  "changes":[{"id":"recovered-file:native:0","source":"nativeFileChange","objectId":null,"path":"life/ordinary.md","operation":"update","receiptId":null,"targetDate":null,"beforeRevision":null,"afterRevision":null,"diff":"-Original fact\n+Updated fact","verification":"unobserved","observedAtMs":null,"gaps":["Before bytes/revision were not observed; item start may occur after the write."]}]}]
+            }"#).unwrap()),
             text: String::new(),
             runtime_turn_id: "old-turn".into(),
             external_actions: Vec::new(),
@@ -2131,10 +2145,18 @@ fn old_result_check_uses_its_original_thread_and_preserves_newer_execution_and_p
     assert_eq!(checked.run_state, newer.run_state);
     assert_eq!(checked.progress, newer.progress);
     assert_eq!(
-        checked.work_history[0].items, old_history.items,
+        checked.work_history[0].items[0], old_history.items[0],
         "Readback preserves errors, tools and observed times"
     );
-    assert_eq!(checked.work_history[0].sequence, old_history.sequence);
+    assert!(checked.work_history[0].sequence > old_history.sequence);
+    assert_eq!(checked.work_history[0].execution_id, execution);
+    assert_eq!(checked.work_history[0].items.len(), 2, "authoritative available snapshot items are retained");
+    assert_eq!(checked.work_history[0].items[1].status, "completed");
+    assert_eq!(checked.work_history[0].items[1].first_sequence, 2);
+    assert_eq!(checked.work_history[0].items[1].observed_at_ms, 30);
+    assert_eq!(checked.work_history[0].items[1].changes[0].diff.as_deref(), Some("-Original fact\n+Updated fact"));
+    assert_eq!(checked.work_history[0].items[1].changes, old_history.items[1].changes, "recovery preserves the immutable original source observation without reading today's file");
+    assert!(checked.work_history[0].items[1].change_gap.as_deref().is_some_and(|gap| gap.contains("recovered")));
     assert_eq!(checked.work_history[0].status, "completed");
     assert_eq!(
         prompts.lock().unwrap().len(),
