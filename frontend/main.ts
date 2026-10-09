@@ -3257,6 +3257,8 @@ function isCanonicalDateProjectionOperation(operation: CollaborationTaskOperatio
 
 type CollaborationRefreshContext = Readonly<{ sessionId: string; executionId: string; trigger: "confirmedEffect" | "turnTerminal" }>;
 async function refreshCanonicalDateProjections(targetDate: string, evidence?: CollaborationRefreshContext): Promise<string | null> {
+  if (vaultSelectionInProgress) return null;
+  const vaultRevision = collaborationVaultSelectionRevision;
   const [year, month] = targetDate.split("-").map(Number);
   const todayRequest = window.__TAURI__.core.invoke<TodayView>("read_daily_view", { date: targetDate })
     .then((value) => ({ ok: true as const, value }))
@@ -3268,6 +3270,7 @@ async function refreshCanonicalDateProjections(targetDate: string, evidence?: Co
     .then((value) => ({ ok: true as const, value }))
     .catch((error: unknown) => ({ ok: false as const, error }));
   const [today, calendar, habits] = await Promise.all([todayRequest, calendarRequest, habitRequest]);
+  if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return null;
   const unavailable: string[] = [];
   const todayTargetVisible = currentWorkspaceDestination === "today" && (
     selectedTodayDate === targetDate ||
@@ -4797,19 +4800,32 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
   if (!["queued", "reading", "thinking", "stopping"].includes(session.runState)) return;
   const sessionId = session.id;
   const refreshedEffects = new Set<string>();
+  let refreshedVaultRevision = collaborationVaultSelectionRevision;
   collaborationStatusTimer = window.setInterval(() => {
-    if (currentCollaborationSession?.id !== sessionId) {
+    if (vaultSelectionInProgress || currentCollaborationSession?.id !== sessionId) {
       return;
+    }
+    const vaultRevision = collaborationVaultSelectionRevision;
+    if (refreshedVaultRevision !== vaultRevision) {
+      refreshedEffects.clear();
+      refreshedVaultRevision = vaultRevision;
     }
     void window.__TAURI__.core.invoke<CollaborationSessionView>(
       "collaboration_session",
       { sessionId },
     ).then((updated) => {
-      if (currentCollaborationSession?.id !== sessionId) return;
+      if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision || currentCollaborationSession?.id !== sessionId) return;
       currentCollaborationSession = updated;
       refreshCollaborationRunOwner(updated);
       renderCollaborationWorkspace();
-      const changedDates = new Set<string>();
+      const changedDates = new Map<string | null, Set<string>>();
+      const addChangedDate = (executionId: string | null | undefined, date: string): void => {
+        const owner = executionId ?? null;
+        const dates = changedDates.get(owner) ?? new Set<string>();
+        dates.add(date);
+        changedDates.set(owner, dates);
+      };
+      const taskEffectExecutions = new Set<string | null>();
       let tasksChanged = false;
       let confirmedEffect = false;
       for (const receipt of updated.taskOperations ?? []) {
@@ -4818,8 +4834,10 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
         if (refreshedEffects.has(key)) continue;
         refreshedEffects.add(key);
         confirmedEffect = true;
-        if (receipt.taskId || receipt.listId) tasksChanged = true;
-        else changedDates.add(receipt.targetDate);
+        if (receipt.taskId || receipt.listId) {
+          tasksChanged = true;
+          taskEffectExecutions.add(receipt.executionId ?? null);
+        } else addChangedDate(receipt.executionId, receipt.targetDate);
       }
       for (const history of updated.workHistory ?? []) {
         for (const item of history.items) {
@@ -4829,7 +4847,7 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
             if (refreshedEffects.has(key)) continue;
             refreshedEffects.add(key);
             confirmedEffect = true;
-            if (change.targetDate) changedDates.add(change.targetDate);
+            if (change.targetDate) addChangedDate(history.executionId, change.targetDate);
           }
         }
       }
@@ -4841,10 +4859,10 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
           if (refreshedEffects.has(key)) continue;
           refreshedEffects.add(key);
           confirmedEffect = true;
-          if (receipt.targetDate) changedDates.add(receipt.targetDate);
+          if (receipt.targetDate) addChangedDate(request.executionId, receipt.targetDate);
         }
       }
-      if (confirmedEffect && ["queued", "reading", "thinking", "stopping"].includes(updated.runState)) {
+      if (confirmedEffect) {
         // A Task's schedule/completion and list state can change any date-based
         // view. Re-read the date being viewed; never redirect the write target.
         if (tasksChanged) {
@@ -4852,10 +4870,13 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
             ? selectedTodayDate ?? currentTodayView?.date
             : currentWorkspaceDestination === "calendar"
               ? selectedCalendarDate ?? currentCalendarSummaryView?.date : null;
-          if (visibleDate) changedDates.add(visibleDate);
+          if (visibleDate) {
+            for (const owner of taskEffectExecutions) addChangedDate(owner, visibleDate);
+          }
         }
         void Promise.allSettled([
-          ...[...changedDates].map(date => refreshCanonicalDateProjections(date, {sessionId, executionId:updated.runId!, trigger:"confirmedEffect"})),
+          ...[...changedDates].flatMap(([executionId, dates]) => [...dates].map(date =>
+            refreshCanonicalDateProjections(date, executionId ? {sessionId, executionId, trigger:"confirmedEffect"} : undefined))),
           ...(tasksChanged ? [refreshTasks()] : []),
           refreshCollaborationContext(),
         ]);
@@ -4876,7 +4897,7 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
         ]);
       }
     }).catch((error: unknown) => {
-      if (currentCollaborationSession?.id !== sessionId) return;
+      if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision || currentCollaborationSession?.id !== sessionId) return;
       if (collaborationRunStatus) {
         setCopyError(collaborationRunStatus, "collaboration.sessionLoadFailed", error);
         collaborationRunStatus.dataset.state = "error";

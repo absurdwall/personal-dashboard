@@ -7500,9 +7500,16 @@ impl CollaborationApplication {
                     let previous = session.work_history.iter().find(|entry| entry.execution_id == history_execution)
                         .and_then(|entry| entry.items.iter().find(|stored| stored.item_id == item.item_id));
                     for change in &mut item.changes {
-                        changes::observe_native(&item.item_id, change, history_selected_vault.as_deref(), &history_cwd,
-                            &history_target_date, item.authoritative && selected_vault_still_matches, &item.status, automatic_plan,
-                            previous.map(|item| item.changes.as_slice()).unwrap_or(&[]), history.updated_at_ms);
+                        changes::observe_native(&item.item_id, change, changes::NativeChangeObservationContext {
+                            selected_vault: history_selected_vault.as_deref(),
+                            working_directory: &history_cwd,
+                            target_date: &history_target_date,
+                            item_authoritative: item.authoritative && selected_vault_still_matches,
+                            item_status: &item.status,
+                            automatic_round: automatic_plan,
+                            previous_witnesses: previous.map(|item| item.changes.as_slice()).unwrap_or(&[]),
+                            observed_at_ms: history.updated_at_ms,
+                        });
                         if !selected_vault_still_matches && change.observed_at_ms.is_none() {
                             change.gaps.push("Selected Vault changed; no source readback was attempted for this event.".into());
                         }

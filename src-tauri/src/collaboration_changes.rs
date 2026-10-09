@@ -173,18 +173,43 @@ fn check_redirects(vault: &Path, relative: &Path) -> Result<(), String> {
     Ok(())
 }
 
+pub(super) struct NativeChangeObservationContext<'a> {
+    pub selected_vault: Option<&'a Path>,
+    pub working_directory: &'a Path,
+    pub target_date: &'a str,
+    pub item_authoritative: bool,
+    pub item_status: &'a str,
+    pub automatic_round: bool,
+    pub previous_witnesses: &'a [CollaborationChangeEvidence],
+    pub observed_at_ms: u64,
+}
+
+fn check_change_redirects(
+    vault: &Path,
+    relative: &str,
+    move_path: Option<&str>,
+) -> Result<(), String> {
+    check_redirects(vault, Path::new(relative))?;
+    move_path
+        .map(|path| check_redirects(vault, Path::new(path)))
+        .unwrap_or(Ok(()))
+}
+
 pub(super) fn observe_native(
     item_id: &str,
     evidence: &mut CollaborationChangeEvidence,
-    vault: Option<&Path>,
-    cwd: &Path,
-    target_date: &str,
-    authoritative: bool,
-    status: &str,
-    automatic: bool,
-    previous: &[CollaborationChangeEvidence],
-    now: u64,
+    context: NativeChangeObservationContext<'_>,
 ) {
+    let NativeChangeObservationContext {
+        selected_vault: vault,
+        working_directory: cwd,
+        target_date,
+        item_authoritative: authoritative,
+        item_status: status,
+        automatic_round: automatic,
+        previous_witnesses: previous,
+        observed_at_ms: now,
+    } = context;
     evidence.target_date = Some(target_date.into());
     let resolved = (|| {
         if automatic {
@@ -249,13 +274,7 @@ pub(super) fn observe_native(
         // rather than auditing a newer file under an old event's identity.
         *evidence = saved.clone();
         if let Some(vault) = vault {
-            let scope = check_redirects(vault, Path::new(&relative)).and_then(|_| {
-                evidence
-                    .move_path
-                    .as_deref()
-                    .map(|path| check_redirects(vault, Path::new(path)))
-                    .unwrap_or(Ok(()))
-            });
+            let scope = check_change_redirects(vault, &relative, evidence.move_path.as_deref());
             if scope.is_err() {
                 let gap = "Later path scope is redirected/unavailable; original observation retained without new readback.".to_owned();
                 if !evidence.gaps.contains(&gap) {
@@ -266,13 +285,7 @@ pub(super) fn observe_native(
         return;
     }
     if let Some(vault) = vault {
-        let scope = check_redirects(vault, Path::new(&relative)).and_then(|_| {
-            evidence
-                .move_path
-                .as_deref()
-                .map(|path| check_redirects(vault, Path::new(path)))
-                .unwrap_or(Ok(()))
-        });
+        let scope = check_change_redirects(vault, &relative, evidence.move_path.as_deref());
         if let Err(gap) = scope {
             evidence.path = None;
             evidence.move_path = None;
@@ -405,14 +418,16 @@ mod tests {
             observe_native(
                 "file",
                 &mut change,
-                Some(&root),
-                &root,
-                "2026-10-09",
-                true,
-                "completed",
-                false,
-                &[],
-                1,
+                NativeChangeObservationContext {
+                    selected_vault: Some(&root),
+                    working_directory: &root,
+                    target_date: "2026-10-09",
+                    item_authoritative: true,
+                    item_status: "completed",
+                    automatic_round: false,
+                    previous_witnesses: &[],
+                    observed_at_ms: 1,
+                },
             );
             assert_eq!(change.verification, "scopeRejected", "{relative}");
             assert!(
@@ -425,14 +440,16 @@ mod tests {
         observe_native(
             "file",
             &mut allowed,
-            Some(&root),
-            &root,
-            "2026-10-09",
-            true,
-            "completed",
-            false,
-            &[],
-            2,
+            NativeChangeObservationContext {
+                selected_vault: Some(&root),
+                working_directory: &root,
+                target_date: "2026-10-09",
+                item_authoritative: true,
+                item_status: "completed",
+                automatic_round: false,
+                previous_witnesses: &[],
+                observed_at_ms: 2,
+            },
         );
         assert_eq!(allowed.verification, "sourceObserved");
         fs::remove_dir_all(root).unwrap();
@@ -447,14 +464,16 @@ mod tests {
         observe_native(
             "file",
             &mut saved,
-            Some(&root),
-            &root,
-            "2026-10-09",
-            true,
-            "completed",
-            false,
-            &[],
-            1,
+            NativeChangeObservationContext {
+                selected_vault: Some(&root),
+                working_directory: &root,
+                target_date: "2026-10-09",
+                item_authoritative: true,
+                item_status: "completed",
+                automatic_round: false,
+                previous_witnesses: &[],
+                observed_at_ms: 1,
+            },
         );
         fs::remove_file(&path).unwrap();
         std::os::unix::fs::symlink(root.join("settings.json"), &path).unwrap();
@@ -462,14 +481,16 @@ mod tests {
         observe_native(
             "file",
             &mut incoming,
-            Some(&root),
-            &root,
-            "2026-10-09",
-            true,
-            "completed",
-            false,
-            &[saved.clone()],
-            2,
+            NativeChangeObservationContext {
+                selected_vault: Some(&root),
+                working_directory: &root,
+                target_date: "2026-10-09",
+                item_authoritative: true,
+                item_status: "completed",
+                automatic_round: false,
+                previous_witnesses: &[saved.clone()],
+                observed_at_ms: 2,
+            },
         );
         assert_eq!(incoming.after_revision, saved.after_revision);
         assert_eq!(incoming.observed_at_ms, saved.observed_at_ms);
@@ -482,6 +503,75 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
+    #[cfg(unix)]
+    fn redirected_move_destination_rejects_new_witness_but_retains_prior_observation() {
+        let root = root();
+        let source = root.join("life/source.md");
+        let destination = root.join("life/destination.md");
+        fs::write(&source, "original").unwrap();
+        fs::write(&destination, "observed move result").unwrap();
+        let mut saved = evidence(&source, "actual move diff");
+        saved.move_path = Some(destination.to_string_lossy().into());
+        observe_native(
+            "move",
+            &mut saved,
+            NativeChangeObservationContext {
+                selected_vault: Some(&root),
+                working_directory: &root,
+                target_date: "2026-10-09",
+                item_authoritative: true,
+                item_status: "completed",
+                automatic_round: false,
+                previous_witnesses: &[],
+                observed_at_ms: 1,
+            },
+        );
+        assert_eq!(saved.verification, "sourceObserved");
+        fs::remove_file(&destination).unwrap();
+        std::os::unix::fs::symlink(root.join("settings.json"), &destination).unwrap();
+        for retained in [false, true] {
+            let mut incoming = evidence(&source, "actual move diff");
+            incoming.move_path = Some(destination.to_string_lossy().into());
+            let previous = if retained {
+                vec![saved.clone()]
+            } else {
+                Vec::new()
+            };
+            observe_native(
+                "move",
+                &mut incoming,
+                NativeChangeObservationContext {
+                    selected_vault: Some(&root),
+                    working_directory: &root,
+                    target_date: "2026-10-09",
+                    item_authoritative: true,
+                    item_status: "completed",
+                    automatic_round: false,
+                    previous_witnesses: &previous,
+                    observed_at_ms: 2,
+                },
+            );
+            if retained {
+                assert_eq!(incoming.after_revision, saved.after_revision);
+                assert_eq!(incoming.observed_at_ms, saved.observed_at_ms);
+                assert!(incoming
+                    .gaps
+                    .iter()
+                    .any(|gap| gap.contains("original observation retained")));
+            } else {
+                assert_eq!(incoming.verification, "scopeRejected");
+                assert!(
+                    incoming.path.is_none()
+                        && incoming.move_path.is_none()
+                        && incoming.diff.is_none()
+                );
+                assert!(incoming.after_revision.is_none());
+            }
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn cwd_missing_diff_readback_bounds_and_automatic_writes_are_explicit_gaps() {
         let root = root();
         let cwd = root.join("isolated-runtime");
@@ -490,28 +580,32 @@ mod tests {
         observe_native(
             "file",
             &mut wrong_cwd,
-            Some(&root),
-            &cwd,
-            "2026-10-09",
-            true,
-            "completed",
-            false,
-            &[],
-            1,
+            NativeChangeObservationContext {
+                selected_vault: Some(&root),
+                working_directory: &cwd,
+                target_date: "2026-10-09",
+                item_authoritative: true,
+                item_status: "completed",
+                automatic_round: false,
+                previous_witnesses: &[],
+                observed_at_ms: 1,
+            },
         );
         assert_eq!(wrong_cwd.verification, "scopeRejected");
         let mut missing = evidence(&root.join("life/missing.md"), "");
         observe_native(
             "file",
             &mut missing,
-            Some(&root),
-            &cwd,
-            "2026-10-09",
-            true,
-            "completed",
-            false,
-            &[],
-            1,
+            NativeChangeObservationContext {
+                selected_vault: Some(&root),
+                working_directory: &cwd,
+                target_date: "2026-10-09",
+                item_authoritative: true,
+                item_status: "completed",
+                automatic_round: false,
+                previous_witnesses: &[],
+                observed_at_ms: 1,
+            },
         );
         assert!(missing.after_revision.is_none());
         assert!(missing
@@ -528,14 +622,16 @@ mod tests {
         observe_native(
             "file",
             &mut bounded,
-            Some(&root),
-            &cwd,
-            "2026-10-09",
-            true,
-            "completed",
-            false,
-            &[],
-            1,
+            NativeChangeObservationContext {
+                selected_vault: Some(&root),
+                working_directory: &cwd,
+                target_date: "2026-10-09",
+                item_authoritative: true,
+                item_status: "completed",
+                automatic_round: false,
+                previous_witnesses: &[],
+                observed_at_ms: 1,
+            },
         );
         assert!(bounded.after_revision.is_none());
         assert!(bounded
@@ -546,14 +642,16 @@ mod tests {
         observe_native(
             "file",
             &mut automatic,
-            Some(&root),
-            &cwd,
-            "2026-10-09",
-            true,
-            "completed",
-            true,
-            &[],
-            1,
+            NativeChangeObservationContext {
+                selected_vault: Some(&root),
+                working_directory: &cwd,
+                target_date: "2026-10-09",
+                item_authoritative: true,
+                item_status: "completed",
+                automatic_round: true,
+                previous_witnesses: &[],
+                observed_at_ms: 1,
+            },
         );
         assert_eq!(automatic.verification, "scopeRejected");
         fs::remove_dir_all(root).unwrap();
