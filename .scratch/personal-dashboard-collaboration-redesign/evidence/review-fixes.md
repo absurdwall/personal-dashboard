@@ -136,3 +136,21 @@ native Dida safety policy was changed.
 The complete-candidate native legacy-session reassessment remains PDCR-11's
 acceptance gate. These production renderer tests establish the narrow fix,
 not a fresh packaged-app observation or any live Dida/voice result.
+
+
+## Independent review round 2 implementation
+
+### Habit destination continuation
+
+The real production destination handler now captures the selected Vault
+generation and selected Habit cell before refreshing Habits. After that
+refresh resolves it starts a selected-date read only if the generation,
+selection object and active destination still match and no Vault selection is
+in progress. A newer selection with equal values is still a new owner.
+No receipt or canonical write is replayed.
+
+Three production-handler regressions failed before the fix (changed Vault,
+newer selection, and leaving Habits):
+`/tmp/pdcr-review-round2-destination-red.log`. The same suite, including a
+current-selection positive case, passes 18 tests:
+`/tmp/pdcr-review-round2-destination-green.log`.

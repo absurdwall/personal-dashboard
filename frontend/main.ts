@@ -10764,7 +10764,10 @@ function showWorkspaceDestination(
   }
   if (destination === "habits") {
     const selection = selectedHabitCell;
+    const vaultRevision = collaborationVaultSelectionRevision;
     void refreshHabits().then(() => {
+      if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision ||
+          currentWorkspaceDestination !== "habits" || selectedHabitCell !== selection) return;
       if (selection) void loadSelectedHabitDate(selection.habitKey, selection.date);
     });
   }
