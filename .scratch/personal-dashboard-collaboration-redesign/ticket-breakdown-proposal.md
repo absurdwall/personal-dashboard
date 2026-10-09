@@ -1,17 +1,17 @@
 # Collaboration redesign — proposed ticket breakdown
 
 Type: ticket-breakdown-proposal
-Status: proposed, awaiting user review
+Status: approved by the user on 2026-10-09
 Date: 2026-10-09
 Parent: [PDCR-SPEC-01](spec.md)
 Spec revision reviewed: 61bd09d
 Implementation: not-started
-Publication: no formal tickets have been created
+Publication: published as PDCR-01–12; current state is in [local map](map.md)
 
-The numbers below are provisional ordering for review, not allocated ticket
-IDs or an executable queue. Once the user approves, publish one full local file
-per ticket, update the local map, and commit the approved dependency graph.
-Do not modify or close the parent specification as part of this proposal.
+This file preserves the reviewed breakdown. The user approved it on 2026-10-09;
+the numbers now correspond to PDCR-01–12. Full per-ticket bodies and current
+state are in the local map, not this review record. Publication does not start
+implementation or modify/close the parent specification.
 
 ## Slicing approach
 
@@ -277,6 +277,5 @@ slice reveals a genuine unbounded mechanical change, revise the graph before
 expanding that ticket; do not silently absorb a broad rewrite.
 
 This proposal does not decide Management source registration or final release.
-Existing pending registration does not block the local ticket workflow. Once
-approved, retain all criteria in per-ticket bodies, declare stable IDs/blockers,
-and record local claims and evidence-driven state changes in the tracker.
+Existing pending registration does not block the local ticket workflow. All approved criteria are retained in per-ticket bodies with stable IDs/blockers.
+Record future local claims and evidence-driven state changes in the tracker.
