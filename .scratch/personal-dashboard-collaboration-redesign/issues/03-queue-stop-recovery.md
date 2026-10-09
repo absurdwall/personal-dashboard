@@ -9,20 +9,20 @@
 
 **ID:** PDCR-03
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** in-progress
+**Lifecycle:** closed
+**Implementation:** complete
 **Assignee:** Codex implementer PDCR-03
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
 
 ## Acceptance criteria
 
-- [ ] 按提交时的 Vault/target/lived-day 上下文处理，执行时读取新事实；跨 04:00
+- [x] 按提交时的 Vault/target/lived-day 上下文处理，执行时读取新事实；跨 04:00
   或切换页面/日期不重定向原请求，不使用 steer。
-- [ ] pending stop 与已停止区分；阻止尚未开始的动作，已确认效果保留，在途结果未知。
-- [ ] 纠正先于暂停队列处理；继续/移除待执行消息显式可控，不撤销既有修改。
-- [ ] receipt/readback 核对只更新对应结果；恢复不整轮重放，未知不阻塞无关工作。
-- [ ] 超时、transport 失败、历史落盘失败和重启都保留可核对状态；保持 delayed-save
+- [x] pending stop 与已停止区分；阻止尚未开始的动作，已确认效果保留，在途结果未知。
+- [x] 纠正先于暂停队列处理；继续/移除待执行消息显式可控，不撤销既有修改。
+- [x] receipt/readback 核对只更新对应结果；恢复不整轮重放，未知不阻塞无关工作。
+- [x] 超时、transport 失败、历史落盘失败和重启都保留可核对状态；保持 delayed-save
   timeout 修复、draft/Cmd+Enter/听写与 Vault 切换边界。
 
 ## Verification
@@ -38,3 +38,10 @@
 ## Execution
 
 - 2026-10-09: Claimed after required blockers closed, for authorized implement-spec. Owner: Codex implementer PDCR-03; branch: `codex/pdcr-03`; integration: `codex/collaboration-redesign-integration`. Tests use spec-confirmed seams.
+
+- 2026-10-09: Application acceptance complete. Product `f9fb2bf`; latest
+  integration `6b620bf` merged as `70b3eba`. [Evidence](../evidence/03-queue-stop-recovery.md)
+  records actual application/file-backed/stdio boundaries, production composer
+  handlers, red/green failures, 354 frontend tests, 215 Rust tests passed (6
+  existing ignored), and the native per-object pre-dispatch limitation.
+  PDCR-11/12 retain packaged/live acceptance; no real data or install was used.

@@ -409,3 +409,24 @@ test("accepted keyboard send stays empty when a late workspace snapshot still ca
   await r.sendCollaborationMessage();await tick();await tick();
   assert.equal(r.collaborationMessageDraft.value,"","a stale source response must not restore the submitted text");
 });
+
+test("unconfirmed prior result leaves the production correction composer and dictation available",()=>{
+  const {r}=composer();
+  r.currentCollaborationWorkspace.recoveryRequired=true;
+  r.collaborationSendButton=element();
+  r.collaborationComposerStatus=element();
+  r.renderCollaborationWorkspace();
+  assert.equal(r.collaborationMessageDraft.disabled,false);
+  assert.equal(r.collaborationSendButton.disabled,false);
+  assert.equal(r.collaborationVoiceStartButton.disabled,false);
+  assert.equal(r.collaborationComposerStatus.textContent,"collaboration.composerRecover");
+});
+
+test("current execution owner stays visible while an older result still needs recovery",()=>{
+  const {r}=composer();
+  r.currentCollaborationWorkspace.recoveryRequired=true;
+  r.currentCollaborationWorkspace.activeRun={sessionId:"s2",sessionTitle:"Fresh correction",runState:"thinking"};
+  r.collaborationWorkOwner=element();
+  r.renderCollaborationWorkspace();
+  assert.equal(r.collaborationWorkOwner.dataset.state,"active");
+});
