@@ -18,6 +18,13 @@ export type CollaborationWorkHistory = Readonly<{
     runtimeEmittedAtMs: number | null; authoritative: boolean;
     parameters?: readonly Readonly<{ name: string; value: string }>[];
     diagnostic?: string | null; diagnosticGap?: string | null;
+    changes?: readonly Readonly<{
+      id: string; source: string; objectId: string | null; path: string | null; operation: string;
+      receiptId: string | null; targetDate: string | null; beforeRevision: string | null;
+      afterRevision: string | null; diff: string | null; verification: string;
+      observedAtMs: number | null; gaps: readonly string[]; movePath?: string | null;
+    }>[];
+    changeGap?: string | null;
   }>[];
 }>;
 
@@ -111,6 +118,7 @@ export type WorkHistoryLabels = Readonly<{
   failed: string; completed: string; running: string; details: string;
   actions?: Readonly<Record<string, string>>;
   diagnosticUnavailable?: string;
+  changeStates?: Readonly<Record<string, string>>;
 }>;
 
 export function appendCollaborationWorkHistory(container: HTMLElement, history: CollaborationWorkHistory, doc: Document, labels: WorkHistoryLabels, navigate: (target: CollaborationLink) => void): void {
@@ -158,6 +166,26 @@ export function appendCollaborationWorkHistory(container: HTMLElement, history: 
         const cause = doc.createElement("p");
         cause.textContent = item.diagnostic ?? labels.diagnosticUnavailable ?? "Diagnostic unavailable";
         diagnostic.append(cause);
+      }
+      for (const change of item.changes ?? []) {
+        const target = doc.createElement("p");
+        target.textContent = [change.path ?? change.objectId, change.operation, labels.changeStates?.[change.verification] ?? change.verification].filter(Boolean).join(" · ");
+        diagnostic.append(target);
+        if (change.beforeRevision || change.afterRevision) {
+          const revisions = doc.createElement("small");
+          revisions.textContent = `${change.beforeRevision ?? "?"} → ${change.afterRevision ?? "?"}`;
+          diagnostic.append(revisions);
+        }
+        if (change.diff) {
+          const diff = doc.createElement("pre"); diff.className = "collaboration-change-diff";
+          diff.textContent = change.diff; diagnostic.append(diff);
+        }
+        for (const gap of change.gaps) {
+          const missing = doc.createElement("p"); missing.textContent = gap; diagnostic.append(missing);
+        }
+      }
+      if (item.changeGap) {
+        const missing = doc.createElement("p"); missing.textContent = item.changeGap; diagnostic.append(missing);
       }
       row.append(diagnostic);
     }

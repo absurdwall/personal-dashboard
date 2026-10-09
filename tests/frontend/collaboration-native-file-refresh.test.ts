@@ -67,6 +67,30 @@ test("a confirmed canonical receipt refreshes its captured date once before the 
   assert.equal(context.currentCollaborationSession.runState, "thinking", "saved effects are visible while the final reply is still pending");
 });
 
+test("observed native file revision refreshes its evidenced date once while work continues", async () => {
+  let poll: () => void = () => {}; const dates: string[] = []; let contexts = 0;
+  const initial = { id: "session", runId: "run", runState: "thinking", targetDate: "2026-10-09" };
+  const observed = { ...initial, messages: [], workHistory: [{ executionId: "run", items: [
+    { itemId: "file", changes: [
+      { id: "file:change", path: "life/Journal/Daily/2026/2026-10/2026-10-08.md", targetDate: "2026-10-08", verification: "sourceObserved", afterRevision: "observed-v2" },
+      { id: "rejected", path: null, targetDate: "2026-10-07", verification: "scopeRejected", afterRevision: null },
+    ] },
+  ] }] };
+  const context = vm.createContext({ Promise, currentWorkspaceDestination: "collaboration", currentCollaborationSession: initial,
+    collaborationStatusTimer: null, window: { setInterval(callback: () => void) { poll = callback; return 1; }, clearInterval() {},
+      __TAURI__: { core: { async invoke() { return observed; } } } },
+    refreshCollaborationRunOwner() {}, renderCollaborationWorkspace() {},
+    async refreshCanonicalDateProjections(date: string) { dates.push(date); },
+    async refreshTasks() { assert.fail("ordinary document evidence does not invent a Task change"); },
+    async refreshCollaborationContext() { contexts++; },
+  });
+  vm.runInContext(production + "\nwatchCollaborationSession(currentCollaborationSession)", context);
+  poll(); await tick(); poll(); await tick();
+  assert.deepEqual(dates, ["2026-10-08"]);
+  assert.equal(contexts, 1);
+  assert.equal(context.currentCollaborationSession.runState, "thinking");
+});
+
 for (const destination of ["today", "calendar"]) {
   test(`confirmed Task effects refresh the visible ${destination} date while the reply remains pending`, async () => {
     let poll: () => void = () => {}; const dates: string[] = [];

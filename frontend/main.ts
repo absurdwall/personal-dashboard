@@ -2423,6 +2423,11 @@ function collaborationWorkHistoryLabels(): WorkHistoryLabels {
     tool: t("collaboration.toolActivity"), failed: t("collaboration.workFailed"),
     completed: t("collaboration.toolCompleted"), running: t("collaboration.workRunning"), details: t("collaboration.workDetails"),
     diagnosticUnavailable: t("collaboration.diagnosticUnavailable"),
+    changeStates: {
+      sourceObserved: t("collaboration.changeObserved"), verified: t("collaboration.changeVerified"),
+      unconfirmed: t("collaboration.changeUnconfirmed"), unobserved: t("collaboration.changeUnconfirmed"),
+      scopeRejected: t("collaboration.changeScopeRejected"),
+    },
     actions: {
       createTask: t("collaboration.workAction.createTask"),
       updateTask: t("collaboration.workAction.updateTask"),
@@ -4768,6 +4773,18 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
         confirmedEffect = true;
         if (receipt.taskId || receipt.listId) tasksChanged = true;
         else changedDates.add(receipt.targetDate);
+      }
+      for (const history of updated.workHistory ?? []) {
+        for (const item of history.items) {
+          for (const change of item.changes ?? []) {
+            if (!change.path || !change.afterRevision || !["sourceObserved", "verified"].includes(change.verification)) continue;
+            const key = `${history.executionId}:${change.id}:${change.afterRevision}`;
+            if (refreshedEffects.has(key)) continue;
+            refreshedEffects.add(key);
+            confirmedEffect = true;
+            if (change.targetDate) changedDates.add(change.targetDate);
+          }
+        }
       }
       for (const request of updated.messages ?? []) {
         for (const receipt of request.actionResults ?? []) {
