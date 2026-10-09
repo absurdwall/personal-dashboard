@@ -994,6 +994,10 @@ pub trait CollaborationDailyDataService: Send + Sync {
     fn refresh_habit_snapshot(&self, _input: crate::habit_producer::HabitRefreshInput) -> crate::habit_producer::HabitRefreshReport {
         crate::habit_producer::HabitRefreshReport::failed("generation", "Snapshot producer is unavailable in this adapter".into())
     }
+    fn habit_history_available(&self) -> bool { false }
+    fn read_habit_completion_history(&self, _dates: &[String]) -> Result<crate::today::HabitCompletionHistoryView, String> {
+        Err("Habit history is unavailable in this adapter".into())
+    }
     fn read_habit_snapshot(&self) -> Result<HabitSnapshotView, String> {
         Err("Habit completion operations are unavailable in this adapter.".into())
     }
@@ -1151,6 +1155,10 @@ where
 
     fn refresh_habit_snapshot(&self, input: crate::habit_producer::HabitRefreshInput) -> crate::habit_producer::HabitRefreshReport {
         self.application.refresh_habit_snapshot(input)
+    }
+    fn habit_history_available(&self) -> bool { true }
+    fn read_habit_completion_history(&self, dates: &[String]) -> Result<crate::today::HabitCompletionHistoryView, String> {
+        self.application.read_habit_completion_history(dates)
     }
     fn read_habit_snapshot(&self) -> Result<HabitSnapshotView, String> {
         self.application.habits()
@@ -2045,6 +2053,16 @@ impl CollaborationApplication {
                     from_date: request.from_date.clone(), to_date: request.to_date.clone(), records,
                     coverage: "Read existing canonical dated records only. Missing, damaged or unavailable dates remain unknown; no record or baseline is created. Morning baseline, current arrangement, dated facts and evening review retain distinct source fields and original correction traces. Short records are context, not Habit or Task completion evidence. Actual timestamps and local dates are preserved; unavailable time allocation remains unknown.",
                 }).map_err(|e| e.to_string())?
+            },
+            "habits" if self.daily_data_service.habit_history_available() => {
+                let view = self.daily_data_service.read_habit_completion_history(&request.dates()?)?;
+                if let Some(root) = selected_root.as_ref() {
+                    if view.vault_path.as_deref().map(Path::new).map(|path| path.canonicalize().unwrap_or_else(|_| path.to_owned()))
+                        != Some(root.canonicalize().unwrap_or_else(|_| root.clone())) {
+                        return Err("Habit history does not belong to the captured selected Vault".into());
+                    }
+                }
+                serde_json::to_value(view).map_err(|e| e.to_string())?
             },
             _ => return Err("Requested history domain is unavailable in this adapter".into()),
         };
@@ -3499,14 +3517,10 @@ impl CollaborationApplication {
                 });
         match result {
             Ok(saved_today) => {
-                let saved_snapshot = self.daily_data_service.read_habit_snapshot()?;
+                let saved_snapshot = self.daily_data_service.read_habit_snapshot().unwrap_or_else(HabitSnapshotView::error);
                 let still_selected =
                     self.context_source.current_vault_key()?.as_deref() == Some(vault_key);
-                let result_snapshot = habit_completion_operation_baseline(
-                    &proposal.target_date,
-                    habit_key,
-                    &saved_snapshot,
-                );
+                let result_snapshot = habit_completion_saved_baseline(&proposal.target_date, habit_key, &saved_snapshot, &saved_today);
                 let result_message = if still_selected {
                     Some(habit_completion_saved_message(
                         proposal,
@@ -3529,7 +3543,7 @@ impl CollaborationApplication {
                             result_message.clone(),
                             still_selected.then(|| result_snapshot.clone()),
                             still_selected
-                                .then(|| saved_snapshot.completion_revision.clone())
+                                .then(|| saved_today.habit_corrections.completion_revision.clone())
                                 .flatten(),
                             &now,
                         );
@@ -3552,20 +3566,16 @@ impl CollaborationApplication {
                     )
                     .unwrap_or(false)
                 {
-                    let saved_snapshot = self.daily_data_service.read_habit_snapshot()?;
+                    let saved_snapshot = self.daily_data_service.read_habit_snapshot().unwrap_or_else(HabitSnapshotView::error);
                     let saved_today = self.daily_data_service.read_date(&proposal.target_date)?;
-                    let result_snapshot = habit_completion_operation_baseline(
-                        &proposal.target_date,
-                        habit_key,
-                        &saved_snapshot,
-                    );
+                    let result_snapshot = habit_completion_saved_baseline(&proposal.target_date, habit_key, &saved_snapshot, &saved_today);
                     return self.mark_habit_completion_operation_applied(
                         vault_key,
                         session_id,
                         operation_id,
                         proposal,
                         &result_snapshot,
-                        saved_snapshot.completion_revision.as_deref(),
+                        saved_today.habit_corrections.completion_revision.as_deref(),
                         &saved_today,
                         "The local Habit completion receipt confirms this change was saved despite an interrupted response.",
                     );
@@ -4223,6 +4233,21 @@ impl CollaborationApplication {
         operation_id: &str,
         proposal: &StoredCollaborationTaskOperation,
     ) -> Result<CollaborationSessionView, String> {
+        let (habit_key, completed) = habit_completion_effect(&proposal.operation)?;
+        if self.daily_data_service.habit_completion_operation_applied(
+            &proposal.target_date, &proposal.target_binding, &proposal.operation_id, habit_key, completed,
+        )? {
+            let saved_today = self.daily_data_service.read_date(&proposal.target_date)?;
+            if self.context_source.current_vault_key()?.as_deref() != Some(vault_key)
+                || saved_today.habit_corrections.completion_target_binding.as_deref() != Some(&proposal.target_binding) {
+                return Err("The selected Vault or canonical Habit completion target changed during receipt read".into());
+            }
+            let snapshot = self.daily_data_service.read_habit_snapshot().unwrap_or_else(HabitSnapshotView::error);
+            let result = habit_completion_saved_baseline(&proposal.target_date, habit_key, &snapshot, &saved_today);
+            return self.mark_habit_completion_operation_applied(vault_key, session_id, operation_id, proposal,
+                &result, saved_today.habit_corrections.completion_revision.as_deref(), &saved_today,
+                "The canonical local Habit completion receipt confirms this exact change was saved; snapshot display is checked separately.");
+        }
         let latest = self.daily_data_service.read_habit_snapshot()?;
         require_habit_snapshot_writable(&latest)?;
         if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
@@ -4232,28 +4257,6 @@ impl CollaborationApplication {
         }
         if latest.completion_target_binding.as_deref() != Some(&proposal.target_binding) {
             return Err("The local Habit completion file is bound to a different Vault target. This result cannot be reconciled across Vaults.".into());
-        }
-        let (habit_key, completed) = habit_completion_effect(&proposal.operation)?;
-        if self.daily_data_service.habit_completion_operation_applied(
-            &proposal.target_date,
-            &proposal.target_binding,
-            &proposal.operation_id,
-            habit_key,
-            completed,
-        )? {
-            let saved_today = self.daily_data_service.read_date(&proposal.target_date)?;
-            let result_snapshot =
-                habit_completion_operation_baseline(&proposal.target_date, habit_key, &latest);
-            return self.mark_habit_completion_operation_applied(
-                vault_key,
-                session_id,
-                operation_id,
-                proposal,
-                &result_snapshot,
-                latest.completion_revision.as_deref(),
-                &saved_today,
-                "The local Habit completion receipt confirms this exact change was saved.",
-            );
         }
         if latest.completion_revision == proposal.expected_revision {
             return self.session(vault_key, session_id);
@@ -7129,7 +7132,7 @@ impl CollaborationApplication {
             ));
         }
         if !automatic_plan && (task_operations_available || daily_plan_operations_available) {
-            dynamic_tools.push(collaboration_history_tool_spec(task_operations_available, daily_plan_operations_available));
+            dynamic_tools.push(collaboration_history_tool_spec(task_operations_available, daily_plan_operations_available, self.daily_data_service.habit_history_available()));
         }
         if !automatic_plan && daily_plan_operations_available {
             dynamic_tools.push(collaboration_habit_refresh_tool_spec());
@@ -8746,6 +8749,19 @@ fn habit_completion_operation_baseline(
     }
 }
 
+fn habit_completion_saved_baseline(date: &str, key: &str, snapshot: &HabitSnapshotView, saved: &TodayView) -> CollaborationTaskOperationBaseline {
+    let mut result = habit_completion_operation_baseline(date, key, snapshot);
+    if let CollaborationTaskOperationBaseline::HabitCompletion { name, local_state, completion_revision, source_evidence, .. } = &mut result {
+        *completion_revision = saved.habit_corrections.completion_revision.clone();
+        if let Some(habit) = saved.habit_corrections.habit(key) {
+            *local_state = format!("{:?}", habit.cell.local_completion_state);
+            if habit.name_known { *name = habit.name.clone(); }
+        }
+        source_evidence.push(format!("Canonical local completion receipt read for stable key {key} on {date}. Snapshot display state={:?}; {}", snapshot.state, snapshot.message));
+    }
+    result
+}
+
 fn habit_completion_saved_message(
     proposal: &StoredCollaborationTaskOperation,
     snapshot: &CollaborationTaskOperationBaseline,
@@ -9181,10 +9197,11 @@ fn task_operation_effect_matches(
     }
 }
 
-fn collaboration_history_tool_spec(tasks_available: bool, daily_records_available: bool) -> Value {
+fn collaboration_history_tool_spec(tasks_available: bool, daily_records_available: bool, habits_available: bool) -> Value {
     let mut domains = Vec::new();
     if tasks_available { domains.push("tasks"); }
     if daily_records_available { domains.push("dailyRecords"); }
+    if habits_available { domains.push("habits"); }
     json!({
         "name": COLLABORATION_HISTORY_TOOL,
         "description": usage::description("tool.readHistory"),

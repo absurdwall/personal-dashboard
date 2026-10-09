@@ -63,3 +63,12 @@ Each entry exposes existing date/phase links. Short records retain stable IDs
 and correction traces; their appearance in Daytime and Evening refers to the
 same objects, counted once. Other dated domains extend this same dispatcher
 through their existing adapters. Automatic tool registration remains unchanged.
+
+PDCR-06 extends the same bounded history capability with `habits` only when the
+adapter implements canonical completion history. The source is TodayApplication's
+existing guarded local completion parser, captured Vault path and revision, not
+Habit snapshot coverage. Snapshot observations are returned separately with
+only requested dated cells, no local notes or local completion merge. Native
+navigation reuses the existing Habits destination and exact-date Today reader;
+missing snapshot detail is read-only canonical evidence with unknown goals and
+external state. Automatic initial-plan-only tools are unchanged.

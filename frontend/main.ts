@@ -1625,6 +1625,7 @@ function resetVaultScopedWorkspaceState(): void {
   currentHabitSnapshot = null;
   selectedHabitCell = null;
   currentHabitDateView = null;
+  habitsDestination?.querySelector(".habit-canonical-detail")?.remove();
   habitNoteStatus = null;
   habitCompletionStatus = null;
   historicalHabitCompletionStatus = null;
@@ -7857,9 +7858,52 @@ function habitExerciseEditor(date: string, cell: HabitCellView): HTMLElement {
   return panel;
 }
 
+function renderCanonicalHabitDetail(): void {
+  const selected = selectedHabitCell;
+  if (!selected || !habitsDestination) return;
+  const corrections = currentHabitDateView?.date === selected.date
+    ? currentHabitDateView.habitCorrections : null;
+  const habit = corrections?.habits.find((item) => item.key === selected.habitKey);
+  const panel = document.createElement("section");
+  panel.className = "habit-canonical-detail";
+  const heading = document.createElement("strong");
+  heading.textContent = `${selected.date} · ${habit?.nameKnown ? displayHabitName(habit) : selected.habitKey}`;
+  const evidence = document.createElement("p");
+  const presentation = habit ? habitCompletionPresentation(habit.cell) : null;
+  setCopy(evidence, presentation ? habitCompletionExplanationLabels[presentation.explanation] : "habits.completionUnknown", {
+    sources: presentation?.sourceLabels.join(currentInterfaceLanguage === "zh" ? "、" : ", ") || t("habits.notDeclared"),
+  });
+  const coverage = document.createElement("p");
+  setCopy(coverage, "habits.canonicalCoverage");
+  const goal = document.createElement("p");
+  setCopy(goal, "history.goalUnknown");
+  const changes = document.createElement("ul");
+  for (const change of habit?.localChanges ?? []) {
+    const item = document.createElement("li");
+    setCopy(item, change.state === "completed" ? "history.localCompletedAt" : "history.localWithdrawnAt", { changedAt: change.changedAt });
+    changes.append(item);
+  }
+  panel.append(heading, evidence, coverage, goal, changes);
+  if (corrections?.message) {
+    const message = document.createElement("p");
+    setAppMessage(message, corrections.message);
+    panel.append(message);
+  }
+  if (habitNoteStatus?.error) {
+    const error = document.createElement("p");
+    setCopyError(error, "habits.loadDateFailed", habitNoteStatus.error);
+    panel.append(error);
+  }
+  habitsDestination.append(panel);
+}
+
 function renderSelectedHabitCell(): void {
+  habitsDestination?.querySelector(".habit-canonical-detail")?.remove();
   const context = selectedHabitContext();
-  if (!context) return;
+  if (!context) {
+    renderCanonicalHabitDetail();
+    return;
+  }
   const { habit, cell, row, detail } = context;
   const history = row.querySelector<HTMLElement>(".habit-history");
   const recent = row.querySelector<HTMLElement>(".habit-recent");
@@ -7911,7 +7955,6 @@ async function loadSelectedHabitDate(habitKey: string, date: string): Promise<vo
   currentHabitDateView = null;
   habitNoteStatus = null;
   renderSelectedHabitCell();
-  if (habitKey !== "exercise") return;
   const request = habitDateRequests.begin();
   try {
     const view = await window.__TAURI__.core.invoke<TodayView>("read_daily_view", { date });
@@ -8162,6 +8205,7 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
     } else {
       setAppMessage(habitsEmptyCopy, view.message);
     }
+    renderSelectedHabitCell();
     return;
   }
   if (habitsSummaryTotal) {
