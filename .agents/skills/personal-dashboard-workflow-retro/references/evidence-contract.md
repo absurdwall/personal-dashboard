@@ -7,11 +7,11 @@ captured `messageDate`, the local lived date; neither current UI target date nor
 host UTC changes it. `--help` is the authoritative argument reference.
 
 The reader performs no app construction, directory creation, runtime login,
-reconciliation or canonical readback. It reads an opened file descriptor once,
-records SHA256 of those exact bytes and projects approved fields. App atomic
-rename permits a stable opened snapshot. A later file replacement can change
-the current source hash; cite the original hashed snapshot instead of assuming
-that current bytes are unchanged. Copy a snapshot only to an explicitly chosen
+reconciliation or canonical readback. Its stdlib streaming selector makes three
+bounded passes over one opened descriptor, hashing all source bytes on each pass.
+It rejects changed bytes/metadata or a replaced source path rather than emitting
+references to an inconsistent snapshot. Original array indices and RFC6901
+pointers survive selection and reordered JSON fields. Copy a snapshot only to an explicitly chosen
 private destination when durable citations were requested.
 
 Each ref resolves through `references[ref]` to an original RFC6901 JSON Pointer
@@ -58,9 +58,31 @@ that scope. Counts can be individually unavailable. Time
 and call counts are separate evidence; export has no per-tool token allocation,
 prices or reconstructed money.
 
-Source reads are bounded to 32 MiB; text fields above 64 KiB are omitted with a
-specific pointer. An export exceeding its explicit byte bound returns
-`unavailable-export-bound`, preserving selection/source metadata and explaining
-that no selected failure/receipt/terminal facts were silently dropped. Narrow
-the selection or explicitly raise the output bound. Empty match is an empty
-selected snapshot; malformed/unsupported schema exits with an error.
+The archive has no whole-source byte cutoff. Traversal uses 64 KiB input/string
+token buffers and an 8 MiB retained selection working budget; strings above the
+token bound are omitted with their exact source pointer. Selected evidence that
+exceeds the working budget returns `unavailable-selection-bound` with the full
+source hash and explicit coverage. It does not silently drop selected failures,
+terminal facts or receipts. Narrow the selection. The independent output byte
+bound returns `unavailable-export-bound`; a larger output argument cannot expand
+the fixed selection working budget. Empty match is a distinct empty snapshot;
+malformed/unsupported or concurrently changed source exits with an error.
+
+New WorkHistory optional text/summary/diff copies have prospective capacities:
+64 KiB per item, 1 MiB per execution, 128 detailed items and 16 summary parts,
+plus 8 MiB across all stored sessions. Existing optional payload counts against
+new capacity but is never retroactively trimmed. Original messages, failed
+attempts, terminal states, receipts and source-observation metadata are retained.
+`payloadOmissions` records field, original/retained bytes, reasonCode and an input
+fingerprint; this fingerprint is not SHA256. `retainedFromPriorObservation`
+marks an earlier retained copy when current authoritative content is omitted;
+it must not be reported as the current authoritative text. Existing copies,
+unmatched items and immutable prior diffs consume capacity during recovery.
+Native terminal recovery preserves
+old source witnesses and available new diffs separately, without reconstructing
+historical readback. Missing item completion remains unconfirmed with a gap.
+
+These capacities bound optional evidence copies and reader working data. They
+do not impose a count/window eviction policy on historical facts or cap total
+archive disk size; the application still loads/saves its canonical state as one
+file. Neither legacy messages nor outcomes are deleted to satisfy a budget.

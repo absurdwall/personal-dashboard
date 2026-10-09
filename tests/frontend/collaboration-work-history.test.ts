@@ -168,3 +168,24 @@ for (const language of ["zh", "en"] as const) {
     if(language==="zh") assert.ok(!content(rows[0]).includes("Native file-change snapshot"));
   });
 }
+
+for(const language of ["zh","en"] as const) {
+  test(`omitted empty reasoning and final payload show qualified capacity evidence in ${language}`,()=>{
+    const context=vm.createContext({t:(key:any,values:any)=>interfaceCopy(key,language,values),currentInterfaceLanguage:language,localizeCollaborationDiagnostic,localizeWorkHistoryDiagnostic});
+    vm.runInContext(fn("collaborationWorkHistoryLabels")+"\nlabels=collaborationWorkHistoryLabels()",context);
+    const body=new Element("article");
+    const omissions=[{field:"summary",originalBytes:90000,retainedBytes:100,retainedFromPriorObservation:true,inputFingerprint:"actual-fingerprint",reasonCode:"itemByteBound"}];
+    const fixture={...history,gaps:["Optional visible payload omitted by evidence capacity bounds; original messages, failures and outcome metadata are retained."],items:[
+      {...history.items[1],payloadOmissions:omissions},
+      {...history.items[5],payloadOmissions:[{...omissions,field:"text",reasonCode:"aggregateByteBound"}]},
+    ]};
+    appendCollaborationWorkHistory(body as any,fixture as any,document,context.labels,()=>{});
+    assert.equal(descendants(body).filter(node=>node.className==="collaboration-payload-omission").length,2);
+    assert.match(content(body),/90000/);assert.match(content(body),/actual-fingerprint/);
+    assert.match(content(body),language==="zh"?/64 KiB/:/64 KiB/);
+    assert.match(content(body),/8 MiB/);
+    assert.match(content(body),language==="zh"?/之前保留的副本/:/earlier retained copy/);
+    assert.ok(!content(body).includes("Saved."),"duplicate final reply is not reconstructed from bounded work evidence");
+    if(language==="zh") assert.ok(!content(body).includes("Optional visible payload omitted"));
+  });
+}

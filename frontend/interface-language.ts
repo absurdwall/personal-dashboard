@@ -502,6 +502,14 @@ const interfaceCopies = {
   "collaboration.changeOperation.append": { zh: "补充", en: "Append" },
   "collaboration.changeOperation.correct": { zh: "更正", en: "Correct" },
   "collaboration.changeOperation.unknown": { zh: "未知操作", en: "Unknown operation" },
+  "collaboration.capacity.itemByteBound": { zh: "可选证据超过每项 64 KiB 上限", en: "Optional evidence exceeds the 64 KiB item bound" },
+  "collaboration.capacity.executionByteBound": { zh: "可选证据超过每次执行 1 MiB 上限", en: "Optional evidence exceeds the 1 MiB execution bound" },
+  "collaboration.capacity.aggregateByteBound": { zh: "可选证据达到全部历史 8 MiB 容量", en: "Optional evidence reaches the 8 MiB archive capacity" },
+  "collaboration.capacity.detailCountBound": { zh: "可选详细内容超过每次执行 128 项上限", en: "Optional detailed payload exceeds 128 items per execution" },
+  "collaboration.capacity.summaryPartBound": { zh: "可选摘要超过每项 16 段上限", en: "Optional summary exceeds 16 parts per item" },
+  "collaboration.capacity.priorCapacityBound": { zh: "该字段此前已受证据容量限制", en: "This field was previously bounded by evidence capacity" },
+  "collaboration.capacity.priorPayload": { zh: "展示的是之前保留的副本；当前权威内容不可用", en: "Displayed payload is an earlier retained copy; current authoritative content is unavailable" },
+  "collaboration.capacity.bytes": { zh: "{field}：原内容 {original} 字节，保留 {retained} 字节；签名 {fingerprint}", en: "{field}: {original} original bytes, {retained} retained bytes; fingerprint {fingerprint}" },
   "collaboration.workOperation": { zh: "操作", en: "Operation" },
   "collaboration.historyMissing": { zh: "过程记录不可用；缺失的 usage 和变更证据不可用。原文与已保存结果保留。", en: "Work history unavailable. Missing usage and change evidence remain unavailable; original messages and saved outcomes are preserved." },
   "collaboration.workAction.createTask": { zh: "新增 Task", en: "Create Task" },
@@ -1186,6 +1194,8 @@ const chineseCollaborationDiagnostics: Readonly<Record<string, string>> = {
 };
 
 const workHistoryDiagnosticCopies: Readonly<Record<string, Readonly<{ zh: string; en: string }>>> = {
+  "Optional visible payload omitted by evidence capacity bounds; original messages, failures and outcome metadata are retained.": { zh: "可选可见内容因证据容量限制而省略；原始消息、失败和结果元数据已保留。", en: "Optional visible payload omitted by evidence capacity bounds; original messages, failures and outcome metadata are retained." },
+  "Saved terminal snapshot did not supply authoritative completion for every retained in-progress item; those statuses remain unconfirmed.": { zh: "已保存的终止快照未提供所有保留执行中项目的权威完成信息；这些项目的状态仍未确认。", en: "Saved terminal snapshot did not supply authoritative completion for every retained in-progress item; those statuses remain unconfirmed." },
 
   "Native file-change snapshot recovered; historical source readback/captured cwd unavailable. No write or file read was replayed.": { zh: "已恢复原生文件修改快照；当时的来源回读与工作目录不可用。未重放写入或文件读取。", en: "Native file-change snapshot recovered; historical source readback/captured cwd unavailable. No write or file read was replayed." },
   "Recovered snapshot conflicts with an original failed attempt; its original failure remains retained.": { zh: "恢复的快照与原始失败尝试冲突；原始失败记录已保留。", en: "Recovered snapshot conflicts with an original failed attempt; its original failure remains retained." },  "Native file-change snapshot did not provide actual changes/diff.": { zh: "原生文件修改快照未提供实际修改或 diff。", en: "Native file-change snapshot did not provide actual changes/diff." },

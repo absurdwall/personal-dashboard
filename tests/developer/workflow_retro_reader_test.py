@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 import unittest
 
 READER = Path(__file__).resolve().parents[2] / ".agents/skills/personal-dashboard-workflow-retro/scripts/read_evidence.py"
@@ -86,6 +87,55 @@ class ReaderTests(unittest.TestCase):
             path.write_text(json.dumps(source))
             old = json.loads(self.run_reader(path, '--execution', 'b').stdout)['executions'][0]
             self.assertNotIn('Newer status', json.dumps(old))
+
+    def test_large_archive_selects_small_execution_with_original_hash_and_reordered_pointers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"history.json"
+            source={"sessions":[{"messages":[{"role":"user","executionId":"old","text":"X"*(33*1024*1024)}],"id":"unrelated"},
+                {"workHistory":[{"items":[{"itemId":"failed","kind":"commandExecution","status":"failed","diagnostic":"Command exited with code 7."}],"status":"completed","executionId":"small-用户"}],
+                 "messages":[{"text":"Original 用户 request","deliveryState":"completed","messageDate":"2026-10-09","executionId":"small-用户","role":"user"},
+                             {"text":"Original reply","executionId":"small-用户","role":"assistant"}],"vaultKey":"owned-vault","id":"selected"}],
+                "runtimeThreadsByExecution":{"small-用户":"original-thread"},"schemaVersion":1}
+            path.write_text(json.dumps(source))
+            before=path.stat()
+            result=self.run_reader(path,"--execution","small-用户")
+            self.assertEqual(result.returncode,0,result.stderr)
+            exported=json.loads(result.stdout)
+            self.assertEqual([item["executionId"] for item in exported["executions"]],["small-用户"])
+            self.assertEqual(exported["source"]["sha256"],hashlib.sha256(path.read_bytes()).hexdigest())
+            for reference in exported["references"].values():
+                value=source
+                for token in reference["pointer"].split("/")[1:]:
+                    token=token.replace("~1","/").replace("~0","~")
+                    value=value[int(token)] if isinstance(value,list) else value[token]
+                self.assertIsNotNone(value)
+            self.assertTrue(any(ref["pointer"]=="/sessions/1/workHistory/0/items/0" for ref in exported["references"].values()))
+            self.assertIn("Command exited with code 7.",result.stdout)
+            self.assertEqual(path.stat().st_mtime_ns,before.st_mtime_ns)
+            self.assertNotIn("unrelated",result.stdout)
+
+    def test_selected_working_overflow_is_explicit_and_keeps_full_source_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"history.json"
+            source={"schemaVersion":1,"sessions":[{"id":"selected","messages":[{"role":"user","executionId":"large-selected","deliveryState":"completed"}],
+                "workHistory":[{"executionId":"large-selected","status":"completed","items":[{"itemId":str(i),"status":"failed","diagnostic":"Observed failure "*1600} for i in range(400)]}]}]}
+            path.write_text(json.dumps(source))
+            result=self.run_reader(path,"--execution","large-selected");self.assertEqual(result.returncode,0,result.stderr)
+            exported=json.loads(result.stdout);self.assertEqual(exported["coverage"],"unavailable-selection-bound")
+            self.assertEqual(exported["executions"],[]);self.assertEqual(exported["references"],{})
+            self.assertEqual(exported["source"]["sha256"],hashlib.sha256(path.read_bytes()).hexdigest())
+            self.assertTrue(any("no failure/receipt/terminal" in omission for omission in exported["omissions"]))
+
+    def test_source_changed_while_reading_never_returns_references(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"history.json"
+            path.write_text(json.dumps({"schemaVersion":1,"sessions":[{"id":"selected","messages":[{"role":"user","executionId":"owned","text":"X"*(33*1024*1024)}]}]}))
+            child=subprocess.Popen(["python3",str(READER),"--history",str(path),"--execution","owned"],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            deadline=time.monotonic()+10
+            while child.poll() is None and time.monotonic()<deadline:
+                path.touch();time.sleep(0.002)
+            stdout,stderr=child.communicate(timeout=5)
+            self.assertEqual(child.returncode,2,stderr);self.assertIn("source changed",stderr);self.assertEqual(stdout,"")
 
 if __name__ == "__main__":
     unittest.main()

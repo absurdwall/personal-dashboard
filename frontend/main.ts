@@ -2429,6 +2429,13 @@ function collaborationWorkHistoryLabels(): WorkHistoryLabels {
     formatDiagnostic: value => localizeWorkHistoryDiagnostic(value, currentInterfaceLanguage),
     formatApplicationDiagnostic: value => localizeWorkHistoryDiagnostic(localizeCollaborationDiagnostic(value, currentInterfaceLanguage), currentInterfaceLanguage),
     operationLabel: t("collaboration.workOperation"),
+    formatOmission: (field, original, retained, fingerprint) => t("collaboration.capacity.bytes", {field, original:String(original), retained:String(retained), fingerprint}),
+    priorPayloadLabel:t("collaboration.capacity.priorPayload"),
+    omissionReasons: {
+      priorCapacityBound:t("collaboration.capacity.priorCapacityBound"),
+      itemByteBound:t("collaboration.capacity.itemByteBound"), executionByteBound:t("collaboration.capacity.executionByteBound"),
+      aggregateByteBound:t("collaboration.capacity.aggregateByteBound"), detailCountBound:t("collaboration.capacity.detailCountBound"), summaryPartBound:t("collaboration.capacity.summaryPartBound"),
+    },
     statuses: {retrying: t("collaboration.workStatus.retrying"), inProgress: t("collaboration.workStatus.inProgress"), completed: t("collaboration.workStatus.completed"), succeeded: t("collaboration.workStatus.succeeded"), failed: t("collaboration.workStatus.failed"), declined: t("collaboration.workStatus.declined"), pending: t("collaboration.workStatus.pending"), interrupted: t("collaboration.workStatus.interrupted"), unknown: t("collaboration.workStatus.unknown")},
     changeOperations: {add: t("collaboration.changeOperation.add"), update: t("collaboration.changeOperation.update"), delete: t("collaboration.changeOperation.delete"), append: t("collaboration.changeOperation.append"), correct: t("collaboration.changeOperation.correct"), unknown: t("collaboration.changeOperation.unknown")},
     title: t("collaboration.workHistory"), summary: t("collaboration.reasoningSummary"),

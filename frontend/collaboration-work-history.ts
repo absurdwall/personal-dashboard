@@ -10,6 +10,7 @@ export type CollaborationWorkHistory = Readonly<{
   turnId: string;
   sequence: number;
   status: string;
+  gaps?: readonly string[];
   items: readonly Readonly<{
     itemId: string; callId: string | null; kind: string; phase: string | null;
     text: string; summary: readonly string[]; tool: string | null; status: string;
@@ -25,6 +26,7 @@ export type CollaborationWorkHistory = Readonly<{
       observedAtMs: number | null; gaps: readonly string[]; movePath?: string | null;
     }>[];
     changeGap?: string | null;
+    payloadOmissions?: readonly Readonly<{field:string; originalBytes:number; retainedBytes:number; retainedFromPriorObservation?:boolean; inputFingerprint:string; reasonCode:string}>[];
   }>[];
 }>;
 
@@ -122,6 +124,9 @@ export type WorkHistoryLabels = Readonly<{
   statuses?: Readonly<Record<string, string>>;
   changeOperations?: Readonly<Record<string, string>>;
   operationLabel?: string;
+  omissionReasons?: Readonly<Record<string,string>>;
+  priorPayloadLabel?: string;
+  formatOmission?: (field:string, original:number, retained:number, fingerprint:string) => string;
   formatDiagnostic?: (value: string) => string;
   formatApplicationDiagnostic?: (value: string) => string;
   changeStates?: Readonly<Record<string, string>>;
@@ -144,9 +149,12 @@ export function appendCollaborationWorkHistory(container: HTMLElement, history: 
   title.addEventListener("click", () => { details.dataset.manual = "true"; });
   title.addEventListener("keydown", (event) => { if (event.key === "Enter" || event.key === " ") details.dataset.manual = "true"; });
   details.append(title);
+  for (const gap of history.gaps ?? []) {
+    const note=doc.createElement("p");note.className="collaboration-history-gap";note.textContent=labels.formatDiagnostic?.(gap) ?? gap;details.append(note);
+  }
   for (const item of [...history.items].sort((left, right) => left.firstSequence - right.firstSequence)) {
-    if (item.kind === "agentMessage" && item.phase === "final_answer") continue;
-    if (item.kind === "reasoning" && !item.summary.some(part => part.trim())) continue;
+    if (item.kind === "agentMessage" && item.phase === "final_answer" && !item.payloadOmissions?.length) continue;
+    if (item.kind === "reasoning" && !item.summary.some(part => part.trim()) && !item.payloadOmissions?.length) continue;
     const row = doc.createElement("section"); row.className = "collaboration-work-item";
     row.dataset.itemId = item.itemId; row.dataset.status = item.status;
     const heading = doc.createElement("strong");
@@ -161,7 +169,7 @@ export function appendCollaborationWorkHistory(container: HTMLElement, history: 
     }
     row.append(heading);
     if (item.kind === "agentMessage" || item.kind === "reasoning") {
-      appendCollaborationMarkdown(row, item.kind === "reasoning" ? item.summary.filter(Boolean).join("\n\n") : item.text, doc, navigate);
+      if (item.phase !== "final_answer") appendCollaborationMarkdown(row, item.kind === "reasoning" ? item.summary.filter(Boolean).join("\n\n") : item.text, doc, navigate);
     } else {
       const diagnostic = doc.createElement("details"); diagnostic.dataset.workKey = `${history.executionId}:${item.itemId}`;
       const summary = doc.createElement("summary"); summary.textContent = labels.details;
@@ -212,6 +220,13 @@ export function appendCollaborationWorkHistory(container: HTMLElement, history: 
         const missing = doc.createElement("p"); missing.textContent = labels.formatDiagnostic?.(item.changeGap) ?? item.changeGap; diagnostic.append(missing);
       }
       row.append(diagnostic);
+    }
+    for (const omission of item.payloadOmissions ?? []) {
+      const note=doc.createElement("p");note.className="collaboration-payload-omission";
+      note.textContent=[labels.omissionReasons?.[omission.reasonCode] ?? omission.reasonCode,
+        omission.retainedFromPriorObservation ? labels.priorPayloadLabel ?? "Earlier retained copy; current authoritative payload unavailable" : null,
+        labels.formatOmission?.(omission.field,omission.originalBytes,omission.retainedBytes,omission.inputFingerprint) ?? `${omission.field}: ${omission.originalBytes} / ${omission.retainedBytes} · ${omission.inputFingerprint}`].filter(Boolean).join(" · ");
+      row.append(note);
     }
     details.append(row);
   }
