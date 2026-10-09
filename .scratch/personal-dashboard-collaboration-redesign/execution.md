@@ -1,7 +1,7 @@
 # Collaboration redesign — local execution tracking
 
 Date: 2026-10-09
-Status: implementation in progress; PDCR-01 closed, PDCR-02 claimed
+Status: implementation in progress; PDCR-01/02 closed, PDCR-03/04/08 claimed
 Canonical tracker: [map](map.md)
 Parent: [PDCR-SPEC-01](spec.md)
 Approved breakdown: [review record](ticket-breakdown-proposal.md)
@@ -84,3 +84,5 @@ role, not an assertion that every blocker has completed or that work is running.
 - 2026-10-09: User confirmed isolated Dida test objects are not prepared. PDCR-12 live acceptance remains unmet; continue other implementation. Baseline frontend: 331 tests passed before product edits (`npm run test:frontend`, private log `/tmp/pdcr-exploration/frontend-baseline.log`). Management skill 1.0.3 connect/discover confirmed existing project/workspace; redesign source registration remains pending, independently of local claims.
 
 - 2026-10-09: PDCR-01 implementation `1d656cb`, closeout `05bf9ef`, integration `288f14f`; 224 passed, 0 failed, 6 explicit native/live gates ignored. Evidence: [usage package](evidence/01-usage-package.md). Frontier advanced to PDCR-02.
+
+- 2026-10-09: PDCR-02 implementation `77a1951`, closeout `819bbc6`, integration `1feeb31c`. [Work history evidence](evidence/02-work-history.md). Raw equal deltas without offsets cannot be uniquely identified; completed snapshots remain authoritative. Real isolated connection prerequisite observed CLI 0.160.0 / authenticated ChatGPT / text turns available; no model/native acceptance claimed from that probe.
