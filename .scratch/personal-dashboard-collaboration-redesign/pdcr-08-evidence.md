@@ -124,4 +124,4 @@ claim that a later edit never occurred. Native missing/deleted/large result
 files retain gaps rather than invented revisions. Before full background
 bytes are not stored; the observed source revision is retained instead.
 Live installed Codex/synthetic-Vault acceptance and packaged end-to-end gates
-remain with PDCR-12; these application/schema tests do not replace them.
+remain with PDCR-11; live Dida remains with PDCR-12. These application/schema tests do not replace either gate.
