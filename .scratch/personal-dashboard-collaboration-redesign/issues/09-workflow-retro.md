@@ -10,7 +10,7 @@
 **ID:** PDCR-09
 **Parent:** [PDCR-SPEC-01](../spec.md)
 **Lifecycle:** in-progress
-**Implementation:** complete
+**Implementation:** review repairs in progress
 **Assignee:** Codex single review-fix implementer
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
