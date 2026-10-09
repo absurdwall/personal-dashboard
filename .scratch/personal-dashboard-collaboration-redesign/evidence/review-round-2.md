@@ -120,3 +120,27 @@ open, PDCR-03/11 blocked and PDCR-12 open/unclaimed without isolated objects.
 New Rust recovery/retention and source diagnostic changes require affected
 native acceptance. Historical actual native/model observations keep their
 original `7b3dc8` / `c5be634` identities and are not relabeled new-source runs.
+
+## Cleanup and local closeout receipt
+
+After reachability and file inventory, the owned review-fix worktree was
+archived through the app and confirmed as `archived_worktree`; Git lists only
+the canonical checkout. Its tip `d8b437e` is reachable from integration; the
+merged owned branch was removed with `git branch -d`. The worktree had no
+tracked or non-ignored untracked changes. Its ignored dist/gen/Python cache
+were reproducible build artifacts; no needed private evidence was stored there.
+Earlier private native fixtures/bundles remain at their recorded locations.
+
+Canonical tracked files are clean. The unrelated untracked prototype is
+preserved with SHA256
+`66e7b27204fcec1980fd334f3cf1456148bb255151ec91710529d0e7cf61a622`.
+Hooks remain `.githooks`. Only durable local tracker/evidence changed after
+the reviewed and fully tested `ac65cfa` product source.
+
+Management helper1.0.3 discover after the actual closeout reconfirmed the bound
+`product-personal-dashboard` canonical workspace. The redesign local source
+is still unregistered/pending; no Registry write or GitHub fetch was performed.
+Private receipt: `/tmp/pdcr-exploration/management-discover-final-review.json`.
+No main merge, push, installation or new real-profile/live-source operation
+was performed in this repair round. The historical routing incident/passive
+history uncertainty remains recorded in the earlier checkpoint.
