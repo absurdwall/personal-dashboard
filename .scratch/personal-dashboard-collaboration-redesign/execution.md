@@ -1,7 +1,7 @@
 # Collaboration redesign — local execution tracking
 
 Date: 2026-10-09
-Status: procedure recorded; implementation not started
+Status: implementation authorized; PDCR-01 claimed
 Canonical tracker: [map](map.md)
 Parent: [PDCR-SPEC-01](spec.md)
 Approved breakdown: [review record](ticket-breakdown-proposal.md)
@@ -76,3 +76,7 @@ role, not an assertion that every blocker has completed or that work is running.
 - Formal ticket publication receipt: the Git commit adding these tickets.
 - Management connection: existing project binding verified during spec work;
   this new source registration remains pending and does not block local work.
+
+## Authorized implementation run
+
+- 2026-10-09: User invoked implement-spec with `codex/collaboration-redesign-spec` as baseline and local tracker/normal commits. Integration base: `9939c23`. Work proceeds through isolated ticket branches/worktrees and TDD at the previously confirmed seams. No GitHub, main merge, formal installation or personal-data writes are included.
