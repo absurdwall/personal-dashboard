@@ -13,8 +13,8 @@ Working branch: codex/collaboration-redesign-integration
 | ID | Type | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | PDCR-SPEC-01 | spec | [Spec](spec.md) | ready-for-agent | open | none | Test boundary confirmed; [prototype review](prototype-review.md); ADR 0005/0006 |
-| PDCR-01 | ticket | [01: 用统一 usage skill 完成并核验一条白天记录](issues/01-skill-daytime-record.md) | ready-for-agent | in-progress | none | Codex implementer PDCR-01; codex/pdcr-01; claimed 2026-10-09 |
-| PDCR-02 | ticket | [02: 显示并保存真实工作过程与最终回复](issues/02-observable-work-history.md) | ready-for-agent | open | PDCR-01 | unassigned; not-started; breakdown approved 2026-10-09 |
+| PDCR-01 | ticket | [01: 用统一 usage skill 完成并核验一条白天记录](issues/01-skill-daytime-record.md) | ready-for-agent | closed | none | [Evidence](evidence/01-usage-package.md); implementation 1d656cb; integrated 288f14f; application acceptance met |
+| PDCR-02 | ticket | [02: 显示并保存真实工作过程与最终回复](issues/02-observable-work-history.md) | ready-for-agent | in-progress | PDCR-01 | Codex implementer PDCR-02; codex/pdcr-02; claimed 2026-10-09 |
 | PDCR-03 | ticket | [03: 排队、停止、纠正与未知结果恢复](issues/03-queue-stop-recovery.md) | ready-for-agent | open | PDCR-02 | unassigned; not-started; breakdown approved 2026-10-09 |
 | PDCR-04 | ticket | [04: Task 与清单协作反映到真实对象和页面](issues/04-task-list-collaboration.md) | ready-for-agent | open | PDCR-02 | unassigned; not-started; breakdown approved 2026-10-09 |
 | PDCR-05 | ticket | [05: 计划、晚间复盘与历史记录协作](issues/05-daily-record-collaboration.md) | ready-for-agent | open | PDCR-02 | unassigned; not-started; breakdown approved 2026-10-09 |
@@ -27,7 +27,7 @@ Working branch: codex/collaboration-redesign-integration
 | PDCR-12 | ticket | [12: 同一候选版本的 live Dida 核验](issues/12-live-dida-acceptance.md) | ready-for-agent | open | PDCR-11 | unassigned; not-started; breakdown approved 2026-10-09 |
 
 Twelve approved tickets are published, each with its own body and acceptance
-criteria. PDCR-01 is claimed; the remaining tickets await their blockers. Ready-for-agent describes the
+criteria. PDCR-01 is closed with application evidence; PDCR-02 is claimed; remaining tickets await their blockers. Ready-for-agent describes the
 triage role; it does not start implementation or establish delivery.
 
 ## Decisions so far
@@ -43,7 +43,7 @@ triage role; it does not start implementation or establish delivery.
 
 ## Next stage
 
-The user authorized implement-spec on 2026-10-09 using the specification branch as baseline. Follow [execution tracking](execution.md); the current frontier is **PDCR-01**, claimed in its isolated worktree.
+The user authorized implement-spec on 2026-10-09 using the specification branch as baseline. Follow [execution tracking](execution.md); the current frontier is **PDCR-02**, claimed in its isolated worktree.
 
 The graph has 12 tickets and 16 direct blocking edges. Direct blockers are shown
 above and in each ticket body; after PDCR-02 closes, PDCR-03/04/05/06/08 become
@@ -85,3 +85,5 @@ PDCR-12 validates the same complete candidate as PDCR-11.
   was performed. The parent spec remains unchanged and open.
 
 - 2026-10-09: User authorized full implementation with local commits and no GitHub dependency. Base `9939c23`; integration branch `codex/collaboration-redesign-integration`. Unrelated untracked `.scratch/collaboration-execution-prototype.html` preserved. Native/live acceptance and release boundaries remain separate.
+
+- 2026-10-09: PDCR-01 closed on application/file-backed evidence, integrated at `288f14f`. Native/live acceptance remains separate. PDCR-02 is now eligible.
