@@ -513,6 +513,14 @@ fn collaboration_resume_not_started(
 }
 
 #[tauri::command]
+fn collaboration_remove_pending(
+    application: State<'_, collaboration::CollaborationApplication>,
+    session_id: String, execution_id: String,
+) -> Result<collaboration::CollaborationSessionView, String> {
+    application.remove_pending_request_for_selected_vault(&session_id, &execution_id)
+}
+
+#[tauri::command]
 async fn collaboration_reconcile_run(
     application: State<'_, collaboration::CollaborationApplication>,
     session_id: String,
@@ -1022,7 +1030,8 @@ pub fn run() {
             collaboration_set_target_date,
             collaboration_stop_run,
             collaboration_resume_not_started,
-            collaboration_reconcile_run,
+            collaboration_remove_pending,
+                collaboration_reconcile_run,
             collaboration_approve_task_operation,
             collaboration_reject_task_operation,
             collaboration_refresh_task_operation,
@@ -1095,6 +1104,7 @@ pub fn run() {
         collaboration_set_target_date,
         collaboration_stop_run,
         collaboration_resume_not_started,
+        collaboration_remove_pending,
         collaboration_reconcile_run,
         collaboration_approve_task_operation,
         collaboration_reject_task_operation,

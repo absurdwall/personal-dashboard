@@ -1913,6 +1913,8 @@ function collaborationRunStateLabel(state: string): string {
   switch (state) {
     case "waiting": return t("collaboration.statusWaiting");
     case "queued": return t("collaboration.statusQueued");
+    case "paused": return t("collaboration.statusPaused");
+    case "removed": return t("collaboration.deliveryRemoved");
     case "reading": return t("collaboration.statusReading");
     case "thinking": return t("collaboration.statusThinking");
     case "stopping": return t("collaboration.statusStopping");
@@ -1936,6 +1938,8 @@ function collaborationRunProgressLabel(session: CollaborationSessionView): strin
 function collaborationDeliveryStateLabel(state: string): string {
   switch (state) {
     case "queued": return t("collaboration.deliveryQueued");
+    case "paused": return t("collaboration.deliveryPaused");
+    case "removed": return t("collaboration.deliveryRemoved");
     case "in-progress": return t("collaboration.deliveryInProgress");
     case "stopping": return t("collaboration.deliveryStopping");
     case "stopped": return t("collaboration.deliveryStopped");
@@ -2553,7 +2557,7 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
           void reconcileCollaborationRun(session.id, message.executionId!);
         });
         article.append(check);
-      } else if (message.deliveryState === "not-started") {
+      } else if (["not-started", "paused"].includes(message.deliveryState)) {
         const resume = document.createElement("button");
         resume.type = "button";
         resume.className = "collaboration-message-action";
@@ -2562,6 +2566,14 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
           void resumeCollaborationRequest(session.id, message.executionId!);
         });
         article.append(resume);
+      }
+      if (["queued", "paused", "not-started"].includes(message.deliveryState)) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "collaboration-message-action";
+        remove.textContent = t("collaboration.removePending");
+        remove.addEventListener("click", () => { void removeCollaborationRequest(session.id, message.executionId!); });
+        article.append(remove);
       }
     }
     collaborationMessageList.append(article);
@@ -4084,7 +4096,7 @@ function renderCollaborationWorkspace(): void {
       if (existing >= 0) sessions[existing] = currentCollaborationSession;
     }
     renderCollaborationSessionList(sessions);
-    if (workspace.recoveryRequired) {
+    if (workspace.recoveryRequired && !workspace.activeRun) {
       setCopy(collaborationWorkOwner, "collaboration.recoveryRequired");
       if (collaborationWorkOwner) collaborationWorkOwner.dataset.state = "recovery";
     } else if (workspace.activeRun) {
@@ -4149,14 +4161,14 @@ function renderCollaborationWorkspace(): void {
   const targetDatePending = Boolean(session && collaborationTargetDatePendingSession === session.id);
   const sendingDraft = targetKey !== "" && collaborationSendingDrafts.has(targetKey);
   if (collaborationMessageDraft) {
-    collaborationMessageDraft.disabled = !session || !connected || !vaultAvailable || recoveryBlocked ||
+    collaborationMessageDraft.disabled = !session || !connected || !vaultAvailable ||
       targetDatePending || sendingDraft || vaultSelectionInProgress;
     if (session && document.activeElement !== collaborationMessageDraft) {
       collaborationMessageDraft.value = collaborationDraftForDate(session, targetDate);
     }
   }
   if (collaborationSendButton) {
-    collaborationSendButton.disabled = !session || !connected || !vaultAvailable || recoveryBlocked ||
+    collaborationSendButton.disabled = !session || !connected || !vaultAvailable ||
       sendingDraft || vaultSelectionInProgress || collaborationVoiceController.state !== "idle" ||
       !(collaborationMessageDraft?.value.trim());
   }
@@ -4516,19 +4528,20 @@ async function saveCollaborationTargetDate(): Promise<void> {
 
 async function stopCollaborationRun(): Promise<void> {
   const session = currentCollaborationSession;
-  if (!session?.runId) return;
+  if (!session?.runId || vaultSelectionInProgress) return;
+  const vaultRevision = collaborationVaultSelectionRevision;
   if (collaborationStopButton) collaborationStopButton.disabled = true;
   try {
     const updated = await window.__TAURI__.core.invoke<CollaborationSessionView>(
       "collaboration_stop_run",
       { sessionId: session.id, executionId: session.runId },
     );
-    if (currentCollaborationSession?.id !== session.id) return;
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision || currentCollaborationSession?.id !== session.id || currentCollaborationSession.runId !== session.runId) return;
     currentCollaborationSession = updated;
     renderCollaborationWorkspace();
     watchCollaborationSession(updated);
   } catch (error) {
-    if (currentCollaborationSession?.id === session.id && collaborationRunStatus) {
+    if (vaultRevision === collaborationVaultSelectionRevision && currentCollaborationSession?.id === session.id && currentCollaborationSession.runId === session.runId && collaborationRunStatus) {
       setCopyError(collaborationRunStatus, "collaboration.sendFailed", error);
       collaborationRunStatus.dataset.state = "error";
     }
@@ -4536,7 +4549,9 @@ async function stopCollaborationRun(): Promise<void> {
 }
 
 async function reconcileCollaborationRun(sessionId: string, executionId: string): Promise<void> {
-  if (pendingCollaborationRunChecks.has(executionId)) return;
+  if (vaultSelectionInProgress || pendingCollaborationRunChecks.has(executionId)) return;
+  const vaultRevision = collaborationVaultSelectionRevision;
+  const runIdAtStart = currentCollaborationSession?.id === sessionId ? currentCollaborationSession.runId : null;
   pendingCollaborationRunChecks.add(executionId);
   renderCollaborationWorkspace();
   try {
@@ -4544,14 +4559,16 @@ async function reconcileCollaborationRun(sessionId: string, executionId: string)
       "collaboration_reconcile_run",
       { sessionId, executionId },
     );
-    if (currentCollaborationSession?.id === sessionId) {
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
+    if (currentCollaborationSession?.id === sessionId && currentCollaborationSession.runId === runIdAtStart) {
       currentCollaborationSession = updated;
       renderCollaborationWorkspace();
     }
     await refreshCollaborationWorkspace();
-    if (currentCollaborationSession?.id === sessionId) watchCollaborationSession(updated);
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
+    if (currentCollaborationSession?.id === sessionId) watchCollaborationSession(currentCollaborationSession);
   } catch (error) {
-    if (currentCollaborationSession?.id === sessionId && collaborationRunStatus) {
+    if (vaultRevision === collaborationVaultSelectionRevision && currentCollaborationSession?.id === sessionId && currentCollaborationSession.runId === runIdAtStart && collaborationRunStatus) {
       setCopyError(collaborationRunStatus, "collaboration.sessionLoadFailed", error);
       collaborationRunStatus.dataset.state = "error";
     }
@@ -4562,21 +4579,33 @@ async function reconcileCollaborationRun(sessionId: string, executionId: string)
 }
 
 async function resumeCollaborationRequest(sessionId: string, executionId: string): Promise<void> {
+  await changeCollaborationPendingRequest(sessionId, executionId, "collaboration_resume_not_started");
+}
+
+async function removeCollaborationRequest(sessionId: string, executionId: string): Promise<void> {
+  await changeCollaborationPendingRequest(sessionId, executionId, "collaboration_remove_pending");
+}
+
+async function changeCollaborationPendingRequest(sessionId: string, executionId: string, command: string): Promise<void> {
+  if (vaultSelectionInProgress || pendingCollaborationRunChecks.has(executionId)) return;
+  const vaultRevision = collaborationVaultSelectionRevision;
+  const runIdAtStart = currentCollaborationSession?.id === sessionId ? currentCollaborationSession.runId : null;
+  pendingCollaborationRunChecks.add(executionId);
   try {
-    const updated = await window.__TAURI__.core.invoke<CollaborationSessionView>(
-      "collaboration_resume_not_started",
-      { sessionId, executionId },
-    );
-    if (currentCollaborationSession?.id === sessionId) {
+    const updated = await window.__TAURI__.core.invoke<CollaborationSessionView>(command, { sessionId, executionId });
+    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
+    if (currentCollaborationSession?.id === sessionId && currentCollaborationSession.runId === runIdAtStart) {
       currentCollaborationSession = updated;
       renderCollaborationWorkspace();
       watchCollaborationSession(updated);
     }
   } catch (error) {
-    if (currentCollaborationSession?.id === sessionId && collaborationRunStatus) {
+    if (vaultRevision === collaborationVaultSelectionRevision && currentCollaborationSession?.id === sessionId && currentCollaborationSession.runId === runIdAtStart && collaborationRunStatus) {
       setCopyError(collaborationRunStatus, "collaboration.sessionLoadFailed", error);
       collaborationRunStatus.dataset.state = "error";
     }
+  } finally {
+    pendingCollaborationRunChecks.delete(executionId);
   }
 }
 

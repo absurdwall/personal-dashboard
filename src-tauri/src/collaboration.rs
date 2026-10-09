@@ -1758,6 +1758,10 @@ pub struct CollaborationState {
     #[serde(default)]
     pub continuity_notes: HashMap<String, StoredCollaborationContinuityNote>,
     #[serde(default)]
+    // Some(thread) is captured before dispatch; an explicit None preserves an
+    // older no-dispatch result when a newer execution creates a thread.
+    pub runtime_threads_by_execution: HashMap<String, Option<String>>,
+    #[serde(default)]
     daily_plan_automation_runs: Vec<StoredDailyPlanAutomationRun>,
 }
 
@@ -1769,6 +1773,7 @@ impl Default for CollaborationState {
             sessions: Vec::new(),
             next_queue_order: 1,
             continuity_notes: HashMap::new(),
+            runtime_threads_by_execution: HashMap::new(),
             daily_plan_automation_runs: Vec::new(),
         }
     }
@@ -1972,6 +1977,10 @@ pub struct CollaborationApplication {
     state_lock: Arc<Mutex<()>>,
     active_vault_workers: Arc<Mutex<HashSet<String>>>,
     run_cancellations: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+    // Stop remains effective if history storage temporarily fails. Persisted
+    // message states are authoritative after reopening. Explicit resume clears
+    // this in-memory dispatch guard only after its queue state is saved.
+    pending_queue_pauses: Arc<Mutex<HashSet<String>>>,
     shutting_down: Arc<AtomicBool>,
     runtime_shutdown: RuntimeShutdownHandle,
 }
@@ -2010,6 +2019,7 @@ impl CollaborationApplication {
             state_lock: Arc::new(Mutex::new(())),
             active_vault_workers: Arc::new(Mutex::new(HashSet::new())),
             run_cancellations: Arc::new(Mutex::new(HashMap::new())),
+            pending_queue_pauses: Arc::new(Mutex::new(HashSet::new())),
             shutting_down: Arc::new(AtomicBool::new(false)),
             runtime_shutdown,
         };
@@ -3076,6 +3086,27 @@ impl CollaborationApplication {
             return Err(
                 "The selected Vault changed. Return to the original session before approving this task change.".into(),
             );
+        }
+        // The source intent ledger is Vault-scoped, even when a fresh request
+        // uses another chat. Only exact operation/date identities are compared;
+        // user prose and semantic similarity never authorize or classify a write.
+        let uncertain = self.read_state(|state| {
+            state.sessions.iter().filter(|candidate| candidate.id != session_id && candidate.vault_key.as_deref() == Some(&vault_key))
+                .find_map(|candidate| candidate.task_operations.iter().find(|item| item.execute_attempted
+                    && !matches!(item.status.as_str(), "applied" | "rejected")
+                    && item.operation == proposal.operation && item.target_date == proposal.target_date
+                    && habit_dual::receipt_scope(&item.baseline) == habit_dual::receipt_scope(&proposal.baseline))
+                    .map(|item| (candidate.id.clone(), item.id.clone())))
+        })?;
+        if let Some((original_session, original_operation)) = uncertain {
+            let checked = self.reconcile_task_operation_for_selected_vault(&original_session, &original_operation);
+            let detail = match checked {
+                Ok(_) => "Its receipt was checked without repeating the action.".to_owned(),
+                Err(error) => format!("Its receipt could not be confirmed: {error}"),
+            };
+            let message = format!("Check the original saved effect {original_operation} in chat {original_session} before repeating this exact action. {detail} No new source write was started.");
+            self.record_task_operation_conflict(&vault_key, session_id, operation_id, message.clone())?;
+            return Err(message);
         }
         if matches!(
             &proposal.operation,
@@ -6219,14 +6250,16 @@ impl CollaborationApplication {
         let target_date_owned = target_date.to_owned();
         let text_owned = trimmed.to_owned();
         let session = self.update_state(|state| {
-            if state.sessions.iter().any(|candidate| {
-                candidate.vault_key.as_deref() == Some(vault_key)
-                    && candidate.messages.iter().any(|message| {
-                        matches!(message.delivery_state.as_str(), "interrupted" | "stop-unconfirmed")
-                            && !message.result_checked
-                    })
-            }) {
-                return Err("A previous Codex request needs a saved-result check before more work can start in this Vault.".into());
+            if let Some(session) = state.sessions.iter().find(|session| session.id == session_id && session.vault_key.as_deref() == Some(vault_key)) {
+                for message in &session.messages {
+                    if matches!(message.delivery_state.as_str(), "interrupted" | "stop-unconfirmed") && !message.result_checked {
+                        if let Some(execution) = &message.execution_id {
+                            let original_thread = session.work_history.iter().find(|history| history.execution_id == *execution)
+                                .map(|history| history.thread_id.clone()).or_else(|| session.runtime_thread_id.clone());
+                            state.runtime_threads_by_execution.entry(execution.clone()).or_insert(original_thread);
+                        }
+                    }
+                }
             }
             let queue_order = state.next_queue_order.max(1);
             state.next_queue_order = queue_order.saturating_add(1);
@@ -6240,7 +6273,7 @@ impl CollaborationApplication {
                 .ok_or_else(|| "This collaboration session is not available in the selected Vault.".to_string())?;
             let already_working = matches!(
                 session.run_state.as_str(),
-                "queued" | "reading" | "thinking" | "stopping" | "stop-unconfirmed"
+                "queued" | "reading" | "thinking" | "stopping"
             );
             session.target_date = target_date_owned.clone();
             // A queued submit owns its exact untrimmed composer snapshot only.
@@ -6305,7 +6338,7 @@ impl CollaborationApplication {
             "Choose a Vault in Settings before stopping collaboration work.".to_string()
         })?;
         let now = self.clock.current_timestamp();
-        let (session, cancellation) = self.update_state(|state| {
+        let (session, cancellation) = self.update_state_with_save_retry(true, |state| {
             let (delivery_state, automatic_plan, target_date) = state
                 .sessions
                 .iter()
@@ -6343,6 +6376,18 @@ impl CollaborationApplication {
             } else {
                 None
             };
+            if !matches!(delivery_state.as_str(), "queued" | "in-progress" | "stopping") {
+                return Err("This collaboration request is no longer running. Check an unconfirmed result before retrying it.".into());
+            }
+            // Cancellation must reach the runtime even if persisting Stop fails.
+            // Keep the state lock through one bounded save retry so a transient
+            // failure cannot let the worker start the old queue in between.
+            if let Some(cancellation) = &cancellation { cancellation.store(true, Ordering::SeqCst); }
+            // Only messages pending when Stop was requested are paused. Fresh
+            // submissions can correct the stopped work without replaying them.
+            let mut paused = pause_pending_requests(state, &vault_key, execution_id);
+            if delivery_state == "queued" { paused.push(execution_id.to_owned()); }
+            self.pending_queue_pauses.lock().map_err(|_| "Pending request controls are unavailable.")?.extend(paused);
             let saved_session = {
                 let session = matching_session_mut(state, &vault_key, session_id)?;
                 let message = session
@@ -6416,23 +6461,51 @@ impl CollaborationApplication {
                 .ok_or_else(|| {
                     "This collaboration request is not available in the selected Vault.".to_string()
                 })?;
-            if message.delivery_state != "not-started" {
-                return Err(
-                    "Only a request confirmed as not started can be resumed directly.".into(),
-                );
+            if !matches!(message.delivery_state.as_str(), "not-started" | "paused") {
+                return Err("Only an unexecuted paused or not-started request can be continued.".into());
             }
+            // Paused requests retain their original FIFO order and captured date.
+            if message.queue_order.is_none() { message.queue_order = Some(queue_order); }
             message.delivery_state = "queued".into();
-            message.queue_order = Some(queue_order);
             message.result_checked = false;
-            session.run_id = Some(execution_id.to_owned());
-            session.run_state = "queued".into();
-            session.progress =
-                "Continued by the user; waiting for its place in the Vault queue.".into();
+            if !matches!(session.run_state.as_str(), "reading" | "thinking" | "stopping") {
+                session.run_id = Some(execution_id.to_owned());
+                session.run_state = "queued".into();
+                session.progress = "Continued by the user; waiting for its place in the Vault queue.".into();
+            }
             Ok((session_view(session), queue_order))
         })?;
         let _ = queue_order;
+        self.pending_queue_pauses.lock().map_err(|_| "Pending request controls are unavailable.")?.remove(execution_id);
         self.schedule_vault_worker(vault_key)?;
         Ok(session)
+    }
+
+    pub fn remove_pending_request_for_selected_vault(
+        &self,
+        session_id: &str,
+        execution_id: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        let vault_key = self
+            .context_source
+            .current_vault_key()?
+            .ok_or("Choose a Vault before removing pending work.")?;
+        self.update_state(|state| {
+            let session = matching_session_mut(state, &vault_key, session_id)?;
+            let message = session.messages.iter_mut().find(|message| message.role == "user"
+                && message.execution_id.as_deref() == Some(execution_id))
+                .ok_or("This pending request is not available in the selected Vault.")?;
+            if !matches!(message.delivery_state.as_str(), "queued" | "paused" | "not-started") {
+                return Err("Only a request that has not started can be removed. Completed changes are retained.".into());
+            }
+            message.delivery_state = "removed".into();
+            message.result_checked = true;
+            if session.run_id.as_deref() == Some(execution_id) {
+                session.run_state = "removed".into();
+                session.progress = "The pending message was removed before execution. Its original text is retained.".into();
+            }
+            Ok(session_view(session))
+        })
     }
 
     pub fn reconcile_run_for_selected_vault(
@@ -6443,7 +6516,7 @@ impl CollaborationApplication {
         let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
             "Choose a Vault in Settings before checking a saved Codex result.".to_string()
         })?;
-        let (thread_id, target_date) = self.read_state(|state| {
+        let (thread_id, target_date, never_dispatched) = self.read_state(|state| {
             let session = state
                 .sessions
                 .iter()
@@ -6469,14 +6542,17 @@ impl CollaborationApplication {
                     "This request does not need a saved-result check.",
                 ));
             }
-            let thread_id = session.runtime_thread_id.clone();
-            if thread_id.is_none()
+            let thread_id = state.runtime_threads_by_execution.get(execution_id).cloned()
+                .unwrap_or_else(|| session.work_history.iter().find(|history| history.execution_id == execution_id)
+                    .map(|history| history.thread_id.clone()).or_else(|| session.runtime_thread_id.clone()));
+            let never_dispatched = state.runtime_threads_by_execution.get(execution_id) == Some(&None);
+            if thread_id.is_none() && !never_dispatched
                 && (session.run_state != "interrupted"
                     || session.run_id.as_deref() != Some(execution_id))
             {
                 return Err("No runtime thread ID is saved while this request may still be active. Wait until the run has stopped, then reopen the Dashboard before reviewing it again.".into());
             }
-            Ok((thread_id, message.target_date.clone()))
+            Ok((thread_id, message.target_date.clone(), never_dispatched))
         })??;
 
         let Some(thread_id) = thread_id else {
@@ -6487,11 +6563,11 @@ impl CollaborationApplication {
             let now = self.clock.current_timestamp();
             let session = self.update_state(|state| {
                 let session = matching_session_mut(state, &vault_key, session_id)?;
-                if session.runtime_thread_id.is_some() {
+                if !never_dispatched && session.runtime_thread_id.is_some() {
                     return Err("A Codex thread was recorded while this request was being checked. Refresh and check the saved result again.".into());
                 }
-                if session.run_state != "interrupted"
-                    || session.run_id.as_deref() != Some(execution_id)
+                if !never_dispatched && (session.run_state != "interrupted"
+                    || session.run_id.as_deref() != Some(execution_id))
                 {
                     return Err("No runtime thread ID is saved while this request may still be active. Wait until the run has stopped, then reopen the Dashboard before reviewing it again.".into());
                 }
@@ -6551,6 +6627,9 @@ impl CollaborationApplication {
                 .iter_mut()
                 .find(|message| message.execution_id.as_deref() == Some(execution_id))
                 .ok_or_else(|| "This collaboration request is no longer available.".to_string())?;
+            if message.result_checked || !matches!(message.delivery_state.as_str(), "interrupted" | "stop-unconfirmed") {
+                return Err("This request was already checked or changed while its saved result was being read. Refresh the session.".into());
+            }
             for action in recovered_actions.clone() {
                 upsert_external_action(message, action);
             }
@@ -6581,12 +6660,13 @@ impl CollaborationApplication {
                             session.progress = "The saved App Server result was recovered and attached to this request. No turn was resent.".into();
                         }
                     }
-                RuntimeRunReconciliation::Completed { .. } => {
-                    message.delivery_state = "interrupted".into();
-                    message.result_checked = false;
+                RuntimeRunReconciliation::Completed { ref runtime_turn_id, .. } => {
+                    message.delivery_state = "completed".into();
+                    message.runtime_turn_id = Some(runtime_turn_id.clone());
+                    message.result_checked = true;
                     if session.run_id.as_deref() == Some(execution_id) {
-                        session.run_state = "interrupted".into();
-                        session.progress = "The saved turn completed without a text reply that can be restored. Review the App Server conversation before continuing.".into();
+                        session.run_state = "completed".into();
+                        session.progress = "The saved turn completed without a final text reply. Its recorded effects are retained; no turn was resent.".into();
                     }
                 }
                 RuntimeRunReconciliation::Interrupted { ref runtime_turn_id, .. } => {
@@ -6614,6 +6694,14 @@ impl CollaborationApplication {
                         session.progress = "No matching saved App Server turn was found. Nothing was resent; review this request before continuing.".into();
                     }
                 }
+            }
+            if let Some(history) = session.work_history.iter_mut().find(|history| history.execution_id == execution_id) {
+                history.status = match reconciliation {
+                    RuntimeRunReconciliation::Completed { .. } => "completed",
+                    RuntimeRunReconciliation::Interrupted { .. } => "interrupted",
+                    RuntimeRunReconciliation::InProgress => "interrupted-unconfirmed",
+                    RuntimeRunReconciliation::NotFound => "result-not-found",
+                }.into();
             }
             session.last_activity_at = now.clone();
             Ok(session_view(session))
@@ -6691,9 +6779,7 @@ impl CollaborationApplication {
 
     fn next_queued_turn(&self, vault_key: &str) -> Result<Option<QueuedCollaborationTurn>, String> {
         self.read_state(|state| {
-            if self.shutting_down.load(Ordering::SeqCst)
-                || recovery_required_for_vault_state(state, Some(vault_key))
-            {
+            if self.shutting_down.load(Ordering::SeqCst) {
                 return None;
             }
             state
@@ -6702,7 +6788,8 @@ impl CollaborationApplication {
                 .filter(|session| session.vault_key.as_deref() == Some(vault_key))
                 .flat_map(|session| {
                     session.messages.iter().filter_map(move |message| {
-                        if message.role != "user" || message.delivery_state != "queued" {
+                        if message.role != "user" || message.delivery_state != "queued"
+                            || message.execution_id.as_ref().is_some_and(|id| self.pending_queue_pauses.lock().map(|paused| paused.contains(id)).unwrap_or(true)) {
                             return None;
                         }
                         Some((session, message))
@@ -6776,7 +6863,7 @@ impl CollaborationApplication {
             return Ok(false);
         }
         self.update_state(|state| {
-            if self.shutting_down.load(Ordering::SeqCst) {
+            if self.shutting_down.load(Ordering::SeqCst) || self.pending_queue_pauses.lock().map_err(|_| "Pending request controls are unavailable.")?.contains(&turn.execution_id) {
                 return Ok(false);
             }
             let session = matching_session_mut(state, &turn.vault_key, &turn.session_id)?;
@@ -7141,17 +7228,19 @@ impl CollaborationApplication {
             dynamic_tools.push(collaboration_memory_tool_spec());
         }
         let mut prior_external_actions = Vec::new();
-        for prior_message in &session.messages {
+        for prior_session in state.sessions.iter().filter(|prior| prior.vault_key.as_deref() == Some(vault_key)) {
+          for prior_message in &prior_session.messages {
             for action in &prior_message.external_actions {
                 let action = if dida_writes::unresolved(action) {
                     let checked = runtime.reconcile_external_action(action.clone());
                     if let Some(prior_id) = prior_message.execution_id.as_deref() {
-                        let _ = self.record_external_action(vault_key, session_id, prior_id, checked.clone());
+                        let _ = self.record_external_action(vault_key, &prior_session.id, prior_id, checked.clone());
                     }
                     checked
                 } else { action.clone() };
                 prior_external_actions.push(action);
             }
+        }
         }
         let external_writes_allowed = !automatic_plan
             && !prior_external_actions.iter().any(dida_writes::unresolved);
@@ -7177,7 +7266,9 @@ impl CollaborationApplication {
         let schema_matches = session.runtime_tool_schema_fingerprint.as_deref()
             == Some(tool_schema_fingerprint.as_str());
         let thread_id = match session.runtime_thread_id.as_deref() {
-            Some(thread_id) if schema_matches => runtime
+            Some(thread_id) if schema_matches && !session.messages.iter().any(|message| {
+                matches!(message.delivery_state.as_str(), "interrupted" | "stop-unconfirmed") && !message.result_checked
+            }) => runtime
                 .resume_thread(thread_id)
                 .map(|_| thread_id.to_owned()),
             _ => {
@@ -7297,8 +7388,12 @@ impl CollaborationApplication {
                 let expected_execution_id = run_id.to_owned();
                 let expected_vault_key = vault_key.to_owned();
                 let expected_target_date = target_date.to_owned();
+                let tool_cancellation = cancellation.clone();
                 let automatic_plan = automatic_plan;
                 Arc::new(move |call| {
+                    if tool_cancellation.load(Ordering::SeqCst) {
+                        return stopped_before_action_result();
+                    }
                     application.handle_runtime_task_tool_call(
                         &expected_vault_key,
                         &expected_session_id,
@@ -7534,6 +7629,7 @@ impl CollaborationApplication {
         memory_tool_registered: bool,
     ) -> Result<(), String> {
         self.update_state(|state| {
+            state.runtime_threads_by_execution.insert(run_id.to_owned(), Some(thread_id.to_owned()));
             let session = matching_session_mut(state, vault_key, session_id)?;
             if session.run_id.as_deref() != Some(run_id) {
                 return Err("This collaboration run is no longer current.".into());
@@ -7569,6 +7665,7 @@ impl CollaborationApplication {
         let now = self.clock.current_timestamp();
         let today = self.clock.current_date();
         self.update_state(|state| {
+            self.persist_pending_queue_pauses(state, vault_key)?;
             let session = matching_session_mut(state, vault_key, session_id)?;
             if session.run_id.as_deref() != Some(run_id) {
                 return Err("This collaboration run is no longer current.".into());
@@ -7676,6 +7773,7 @@ impl CollaborationApplication {
     ) {
         let now = self.clock.current_timestamp();
         let _ = self.update_state(|state| {
+            self.persist_pending_queue_pauses(state, vault_key)?;
             let session = matching_session_mut(state, vault_key, session_id)?;
             let message = session
                 .messages
@@ -7741,6 +7839,11 @@ impl CollaborationApplication {
         let now = self.clock.current_timestamp();
         let status_message = progress.clone();
         let _ = self.update_state(|state| {
+            let user_stopped = self.run_cancellations.lock().map_err(|_| "Stop controls are unavailable.")?
+                .get(run_id).is_some_and(|cancel| cancel.load(Ordering::SeqCst));
+            if user_stopped { self.persist_pending_queue_pauses(state, vault_key)?; }
+            else { pause_pending_requests(state, vault_key, run_id); }
+
             let session = matching_session_mut(state, vault_key, session_id)?;
             if session.run_id.as_deref() != Some(run_id) {
                 return Ok(());
@@ -7867,8 +7970,53 @@ impl CollaborationApplication {
         })
     }
 
+    fn persist_pending_queue_pauses(
+        &self,
+        state: &mut CollaborationState,
+        vault_key: &str,
+    ) -> Result<(), String> {
+        let paused = self
+            .pending_queue_pauses
+            .lock()
+            .map_err(|_| "Pending request controls are unavailable.")?;
+        for session in state
+            .sessions
+            .iter_mut()
+            .filter(|session| session.vault_key.as_deref() == Some(vault_key))
+        {
+            for message in &mut session.messages {
+                if message.delivery_state == "queued"
+                    && message
+                        .execution_id
+                        .as_ref()
+                        .is_some_and(|id| paused.contains(id))
+                {
+                    message.delivery_state = "paused".into();
+                    message.result_checked = true;
+                }
+            }
+            if session.run_state == "queued"
+                && session.messages.iter().any(|message| {
+                    message.execution_id == session.run_id && message.delivery_state == "paused"
+                })
+            {
+                session.run_state = "paused".into();
+                session.progress = "Pending messages are paused. Send a correction, or explicitly continue or remove a pending request.".into();
+            }
+        }
+        Ok(())
+    }
+
     fn update_state<T>(
         &self,
+        operation: impl FnOnce(&mut CollaborationState) -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.update_state_with_save_retry(false, operation)
+    }
+
+    fn update_state_with_save_retry<T>(
+        &self,
+        retry_save: bool,
         operation: impl FnOnce(&mut CollaborationState) -> Result<T, String>,
     ) -> Result<T, String> {
         let _guard = self
@@ -7877,7 +8025,16 @@ impl CollaborationApplication {
             .map_err(|_| "Collaboration history is unavailable.".to_string())?;
         let mut state = self.store.load()?;
         let result = operation(&mut state)?;
-        self.store.save(&state)?;
+        if let Err(error) = self.store.save(&state) {
+            if !retry_save {
+                return Err(error);
+            }
+            self.store.save(&state).map_err(|second| {
+                format!(
+                    "Stop was requested, but Collaboration history could not be saved: {error}; {second}"
+                )
+            })?;
+        }
         Ok(result)
     }
 
@@ -7934,6 +8091,49 @@ fn matching_session_mut<'a>(
         .ok_or_else(|| "This collaboration session is not available in the selected Vault.".into())
 }
 
+fn stopped_before_action_result() -> RuntimeDynamicToolResult {
+    RuntimeDynamicToolResult {
+        text: "This action did not start because the current request was stopped. Previously completed changes are retained.".into(),
+        success: false,
+    }
+}
+
+fn pause_pending_requests(
+    state: &mut CollaborationState,
+    vault_key: &str,
+    stopped: &str,
+) -> Vec<String> {
+    let mut paused = Vec::new();
+    for session in state
+        .sessions
+        .iter_mut()
+        .filter(|session| session.vault_key.as_deref() == Some(vault_key))
+    {
+        for message in &mut session.messages {
+            if message.role == "user"
+                && message.delivery_state == "queued"
+                && message.execution_id.as_deref() != Some(stopped)
+            {
+                message.delivery_state = "paused".into();
+                message.result_checked = true; // Never started, not an unknown effect.
+                if let Some(id) = &message.execution_id {
+                    paused.push(id.clone());
+                }
+            }
+        }
+        if session.run_state == "queued"
+            && session.run_id.as_deref() != Some(stopped)
+            && session.messages.iter().any(|message| {
+                message.execution_id == session.run_id && message.delivery_state == "paused"
+            })
+        {
+            session.run_state = "paused".into();
+            session.progress = "Pending messages are paused. Send a correction, or explicitly continue or remove a pending request.".into();
+        }
+    }
+    paused
+}
+
 fn recovery_required_for_vault_state(state: &CollaborationState, vault_key: Option<&str>) -> bool {
     state.sessions.iter().any(|session| {
         session.vault_key.as_deref() == vault_key
@@ -7971,7 +8171,7 @@ fn active_run_for_vault(
             session.vault_key.as_deref() == vault_key
                 && matches!(
                     session.run_state.as_str(),
-                    "queued" | "reading" | "thinking" | "stopping" | "stop-unconfirmed"
+                    "queued" | "reading" | "thinking" | "stopping"
                 )
         })
         .filter_map(|session| {
@@ -12630,6 +12830,8 @@ impl StdioJsonlClient {
                             .into(),
                         success: false,
                     }
+                } else if cancel_requested.load(Ordering::SeqCst) {
+                    stopped_before_action_result()
                 } else if let Some(handler) = tool_handler {
                     handler(call)
                 } else {
@@ -12660,7 +12862,7 @@ impl StdioJsonlClient {
                 let request_matches = params.get("threadId").and_then(Value::as_str)
                     == Some(thread_id)
                     && params.get("turnId").and_then(Value::as_str) == Some(turn_id);
-                let answer = if request_matches {
+                let answer = if request_matches && !cancel_requested.load(Ordering::SeqCst) {
                     external_approval_request(turn_id, &params).and_then(|request| {
                         if let Some(handler) = external_approval_handler {
                             handler(request)
@@ -12669,7 +12871,7 @@ impl StdioJsonlClient {
                         }
                     })
                 } else {
-                    Err("This connected app approval belongs to a different active turn.".into())
+                    Err("This connected app approval cannot start after Stop or outside its active turn.".into())
                 };
                 match answer {
                     Ok(answers) => {

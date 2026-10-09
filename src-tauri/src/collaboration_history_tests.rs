@@ -438,6 +438,53 @@ fn history_failure_after_canonical_save_keeps_receipt_and_returns_tool_reply() {
 }
 
 #[test]
+fn cancel_received_before_dynamic_action_keeps_canonical_tasks_unchanged() {
+    let root = isolated_root();
+    let tasks = Arc::new(TaskApplication::with_file_store(Workspace(root.join("vault")), FixedClock));
+    let action_tasks = tasks.clone();
+    let handler: RuntimeDynamicToolHandler = Arc::new(move |_| {
+        let current = action_tasks.read().unwrap();
+        action_tasks.create(TaskCreateInput { target_binding: current.target_binding.unwrap(), expected_revision: current.revision,
+            task_id: "must-not-start".into(), name: "Canceled synthetic Task".into(), content: None, date: None, time: None, list_id: None }).unwrap();
+        RuntimeDynamicToolResult { success: true, text: "Task saved".into() }
+    });
+    let cancel = Arc::new(AtomicBool::new(false));
+    let observer_cancel = cancel.clone();
+    let observed = Arc::new(Mutex::new(Vec::new()));
+    let history_observed = observed.clone();
+    let observer: RuntimeWorkObserver = Arc::new(move |history| {
+        if history.items.iter().any(|item| item.call_id.as_deref() == Some("late-action")) {
+            observer_cancel.store(true, Ordering::SeqCst);
+        }
+        history_observed.lock().unwrap().push(history); Ok(())
+    });
+    let (mut client, sender, stdout) = turn_client();
+    sender.send(Ok(json!({"id":"late-rpc","method":"item/tool/call","params":{
+        "threadId":"stop-thread","turnId":"stop-turn","callId":"late-action","tool":COLLABORATION_TASK_TOOL,"arguments":{}}}).to_string())).unwrap();
+    sender.send(Ok(json!({"method":"turn/completed","params":{"threadId":"stop-thread","turn":{"id":"stop-turn","status":"interrupted"}}}).to_string())).unwrap();
+    let reader = thread::spawn(move || {
+        let mut responses = Vec::new();
+        for line in BufReader::new(stdout).lines() {
+            let value: Value = serde_json::from_str(&line.unwrap()).unwrap();
+            if value["method"] == "turn/interrupt" {
+                sender.send(Ok(json!({"id":value["id"],"result":{}}).to_string())).unwrap();
+            } else { responses.push(value); }
+        }
+        responses
+    });
+    let result = client.wait_for_turn_observed("stop-thread", "stop-turn", &cancel, Some(&handler), "2026-10-09", None, None, Some(observer));
+    drop(client);
+    let responses = reader.join().unwrap();
+    assert!(result.unwrap().1);
+    assert_eq!(responses[0]["result"]["success"], false, "stop must prevent a not-yet-started effect");
+    assert!(tasks.read().unwrap().tasks.is_empty(), "canceled action must not save a Task");
+    let history = observed.lock().unwrap().last().unwrap().clone();
+    assert_eq!(history.status, "interrupted");
+    assert_eq!(history.items[0].status, "failed");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn ordinary_native_patch_keeps_actual_diff_and_bound_readback_in_saved_work_history() {
     let root = isolated_root();
     fs::write(
