@@ -15,7 +15,9 @@ hook can deny an exact Task or Habit/date before dispatch while allowing other
 IDs/dates and reads. The same experiment measured fail-open behavior for hook
 exit 1, malformed output and timeout. That hook alone does not establish a
 reliable replacement for the existing capability restriction. No such hook has
-been added to the product.
+been added to the product. The [isolated runtime probe](native-hook-probe.md)
+retains supported-contract, dispatch and failure evidence, including the broad
+trust-bypass scope and unproven concurrent/create-identity cases.
 
 ## Reviewable alternatives
 
