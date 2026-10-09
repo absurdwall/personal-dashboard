@@ -487,6 +487,30 @@ const interfaceCopies = {
   "collaboration.changeUnconfirmed": { zh: "文件修改证据不完整", en: "File-change evidence incomplete" },
   "collaboration.changeScopeRejected": { zh: "超出许可文件范围；未读取结果", en: "Outside permitted file scope; result not read" },
   "collaboration.diagnosticUnavailable": { zh: "诊断不可用，或因包含凭据／原始输出而省略。", en: "Diagnostic unavailable or withheld because it contained credentials or raw output." },
+  "collaboration.workStatus.inProgress": { zh: "执行中", en: "In progress" },
+  "collaboration.workStatus.completed": { zh: "已完成", en: "Completed" },
+  "collaboration.workStatus.succeeded": { zh: "已成功", en: "Succeeded" },
+  "collaboration.workStatus.retrying": { zh: "重试中", en: "Retrying" },
+  "collaboration.workStatus.failed": { zh: "失败", en: "Failed" },
+  "collaboration.workStatus.declined": { zh: "已拒绝", en: "Declined" },
+  "collaboration.workStatus.pending": { zh: "待执行", en: "Pending" },
+  "collaboration.workStatus.interrupted": { zh: "已中断", en: "Interrupted" },
+  "collaboration.workStatus.unknown": { zh: "未知", en: "Unknown" },
+  "collaboration.changeOperation.add": { zh: "新增", en: "Add" },
+  "collaboration.changeOperation.update": { zh: "修改", en: "Update" },
+  "collaboration.changeOperation.delete": { zh: "删除", en: "Delete" },
+  "collaboration.changeOperation.append": { zh: "补充", en: "Append" },
+  "collaboration.changeOperation.correct": { zh: "更正", en: "Correct" },
+  "collaboration.changeOperation.unknown": { zh: "未知操作", en: "Unknown operation" },
+  "collaboration.capacity.itemByteBound": { zh: "可选证据超过每项 64 KiB 上限", en: "Optional evidence exceeds the 64 KiB item bound" },
+  "collaboration.capacity.executionByteBound": { zh: "可选证据超过每次执行 1 MiB 上限", en: "Optional evidence exceeds the 1 MiB execution bound" },
+  "collaboration.capacity.aggregateByteBound": { zh: "可选证据达到全部历史 8 MiB 容量", en: "Optional evidence reaches the 8 MiB archive capacity" },
+  "collaboration.capacity.detailCountBound": { zh: "可选详细内容超过每次执行 128 项上限", en: "Optional detailed payload exceeds 128 items per execution" },
+  "collaboration.capacity.summaryPartBound": { zh: "可选摘要超过每项 16 段上限", en: "Optional summary exceeds 16 parts per item" },
+  "collaboration.capacity.priorCapacityBound": { zh: "该字段此前已受证据容量限制", en: "This field was previously bounded by evidence capacity" },
+  "collaboration.capacity.priorPayload": { zh: "展示的是之前保留的副本；当前权威内容不可用", en: "Displayed payload is an earlier retained copy; current authoritative content is unavailable" },
+  "collaboration.capacity.bytes": { zh: "{field}：原内容 {original} 字节，保留 {retained} 字节；签名 {fingerprint}", en: "{field}: {original} original bytes, {retained} retained bytes; fingerprint {fingerprint}" },
+  "collaboration.workOperation": { zh: "操作", en: "Operation" },
   "collaboration.historyMissing": { zh: "过程记录不可用；缺失的 usage 和变更证据不可用。原文与已保存结果保留。", en: "Work history unavailable. Missing usage and change evidence remain unavailable; original messages and saved outcomes are preserved." },
   "collaboration.workAction.createTask": { zh: "新增 Task", en: "Create Task" },
   "collaboration.workAction.updateTask": { zh: "修改 Task", en: "Update Task" },
@@ -1168,6 +1192,57 @@ const chineseCollaborationDiagnostics: Readonly<Record<string, string>> = {
   "Current Dida readback is unavailable. Preserve any confirmed effects, resolve the source state before retrying, and do not repeat creation while unknown.": "当前滴答回读不可用。保留已确认的结果，重试前先查明来源状态；状态未知时不要再次创建。",
   "The external object identity is unavailable. Read the source and resolve it before any retry; no write was replayed.": "外部对象身份不可用。重试前请读取来源并确定身份；未重放写入。",
 };
+
+const workHistoryDiagnosticCopies: Readonly<Record<string, Readonly<{ zh: string; en: string }>>> = {
+  "Optional visible payload omitted by evidence capacity bounds; original messages, failures and outcome metadata are retained.": { zh: "可选可见内容因证据容量限制而省略；原始消息、失败和结果元数据已保留。", en: "Optional visible payload omitted by evidence capacity bounds; original messages, failures and outcome metadata are retained." },
+  "Saved terminal snapshot did not supply authoritative completion for every retained in-progress item; those statuses remain unconfirmed.": { zh: "已保存的终止快照未提供所有保留执行中项目的权威完成信息；这些项目的状态仍未确认。", en: "Saved terminal snapshot did not supply authoritative completion for every retained in-progress item; those statuses remain unconfirmed." },
+
+  "Native file-change snapshot recovered; historical source readback/captured cwd unavailable. No write or file read was replayed.": { zh: "已恢复原生文件修改快照；当时的来源回读与工作目录不可用。未重放写入或文件读取。", en: "Native file-change snapshot recovered; historical source readback/captured cwd unavailable. No write or file read was replayed." },
+  "Recovered snapshot conflicts with an original failed attempt; its original failure remains retained.": { zh: "恢复的快照与原始失败尝试冲突；原始失败记录已保留。", en: "Recovered snapshot conflicts with an original failed attempt; its original failure remains retained." },  "Native file-change snapshot did not provide actual changes/diff.": { zh: "原生文件修改快照未提供实际修改或 diff。", en: "Native file-change snapshot did not provide actual changes/diff." },
+  "Native file-change snapshot provided no actual changes/diff.": { zh: "原生文件修改快照没有实际修改或 diff。", en: "Native file-change snapshot provided no actual changes/diff." },
+  "Before bytes/revision were not observed; item start may occur after the write.": { zh: "未观察到修改前的内容或版本；过程项开始时可能已完成写入。", en: "Before bytes/revision were not observed; item start may occur after the write." },
+  "Actual native diff unavailable, empty or exceeds the 64 KiB evidence bound.": { zh: "实际原生 diff 不可用、为空或超过 64 KiB 证据上限。", en: "Actual native diff unavailable, empty or exceeds the 64 KiB evidence bound." },
+  "Native change list exceeds 32 entries; omitted entries are an evidence gap.": { zh: "原生修改列表超过 32 项；省略的项属于证据缺口。", en: "Native change list exceeds 32 entries; omitted entries are an evidence gap." },
+  "File-change path could not be resolved against captured cwd.": { zh: "无法根据执行时记录的工作目录解析文件修改路径。", en: "File-change path could not be resolved against captured cwd." },
+  "File-change path is outside the captured selected Vault.": { zh: "文件修改路径位于执行时选定的 Vault 之外。", en: "File-change path is outside the captured selected Vault." },
+  "File-change path is not valid UTF-8.": { zh: "文件修改路径不是有效的 UTF-8。", en: "File-change path is not valid UTF-8." },
+  "File-change path is outside ordinary life/ scope or requires a managed operation.": { zh: "文件修改路径超出普通 life/ 范围，或需要受管理的操作。", en: "File-change path is outside ordinary life/ scope or requires a managed operation." },
+  "File-change evidence refuses redirected/symlink paths.": { zh: "文件修改证据拒绝重定向或符号链接路径。", en: "File-change evidence refuses redirected/symlink paths." },
+  "File-change path metadata could not be observed.": { zh: "无法观察文件修改路径的元数据。", en: "File-change path metadata could not be observed." },
+  "Automatic round cannot publish ordinary file-write evidence.": { zh: "自动轮次不能发布普通文件写入证据。", en: "Automatic round cannot publish ordinary file-write evidence." },
+  "Captured selected Vault unavailable for file evidence.": { zh: "文件证据无法访问执行时选定的 Vault。", en: "Captured selected Vault unavailable for file evidence." },
+  "Native file-change path unavailable.": { zh: "原生文件修改路径不可用。", en: "Native file-change path unavailable." },
+  "Later path scope is redirected/unavailable; original observation retained without new readback.": { zh: "后续路径范围已重定向或不可用；保留原有观察，未重新回读。", en: "Later path scope is redirected/unavailable; original observation retained without new readback." },
+  "File-change result readback unavailable; runtime status alone is not source confirmation.": { zh: "文件修改结果无法回读；仅凭运行状态不能确认来源结果。", en: "File-change result readback unavailable; runtime status alone is not source confirmation." },
+  "File-change result is not a regular unredirected file.": { zh: "文件修改结果不是未经重定向的普通文件。", en: "File-change result is not a regular unredirected file." },
+  "Result metadata unavailable.": { zh: "结果元数据不可用。", en: "Result metadata unavailable." },
+  "File-change result is not a regular file.": { zh: "文件修改结果不是普通文件。", en: "File-change result is not a regular file." },
+  "File-change result readback failed.": { zh: "文件修改结果回读失败。", en: "File-change result readback failed." },
+  "File-change result exceeds the 64 KiB readback bound.": { zh: "文件修改结果超过 64 KiB 回读上限。", en: "File-change result exceeds the 64 KiB readback bound." },
+  "Result revision is current readback after the event, not a guaranteed immediate post-patch snapshot or proof of original intent.": { zh: "结果版本来自事件后的当前回读，不能保证它是修改刚完成时的快照，也不能证明原始意图。", en: "Result revision is current readback after the event, not a guaranteed immediate post-patch snapshot or proof of original intent." },
+  "Before revision was observed when the revision-guarded proposal was prepared; complete document bytes are not retained.": { zh: "修改前版本在准备版本校验提案时观察到；未保留完整文档内容。", en: "Before revision was observed when the revision-guarded proposal was prepared; complete document bytes are not retained." },
+  "Independent current background readback is unavailable or differs from the expected complete document; the original save outcome remains separate.": { zh: "独立的当前背景回读不可用，或与预期完整文档不同；原始保存结果单独保留。", en: "Independent current background readback is unavailable or differs from the expected complete document; the original save outcome remains separate." },
+  "Runtime diagnostic unavailable or withheld by the credential/payload filter.": { zh: "运行诊断不可用，或因凭据与原始输出过滤而省略。", en: "Runtime diagnostic unavailable or withheld by the credential/payload filter." },
+  "Raw command output is not retained in visible work history.": { zh: "可见过程记录不保留原始命令输出。", en: "Raw command output is not retained in visible work history." },
+  "Source scope display truncated at 200 characters; inputFingerprint identifies the exact query arguments": { zh: "来源范围展示已截至 200 字符；inputFingerprint 标识准确的查询参数。", en: "Source scope display truncated at 200 characters; inputFingerprint identifies the exact query arguments" },
+  "Source diagnostic withheld by the credential/payload filter": { zh: "来源诊断因凭据与原始输出过滤而省略。", en: "Source diagnostic withheld by the credential/payload filter" },
+  "Tool diagnostic withheld by the credential/payload filter.": { zh: "工具诊断因凭据与原始输出过滤而省略。", en: "Tool diagnostic withheld by the credential/payload filter." },
+  "Selected Vault changed; no source readback was attempted for this event.": { zh: "所选 Vault 已更改；未为此事件尝试来源回读。", en: "Selected Vault changed; no source readback was attempted for this event." },
+  "Managed background result has no independently observed change witness; inspect its original receipt before retrying.": { zh: "受管理的背景结果没有独立观察的修改证据；重试前请检查原始收据。", en: "Managed background result has no independently observed change witness; inspect its original receipt before retrying." },
+  "Current readback reconciles the effect without another write; original save response remains unconfirmed.": { zh: "当前回读核对了结果，未再次写入；原始保存响应仍未确认。", en: "Current readback reconciles the effect without another write; original save response remains unconfirmed." },
+  "Invalid execution mode.": { zh: "执行模式无效。", en: "Invalid execution mode." },
+};
+
+/** Exact app grammar only; dynamic/runtime text is not a translation input. */
+export function localizeWorkHistoryDiagnostic(message: string, language: InterfaceLanguage): string {
+  const fixed = workHistoryDiagnosticCopies[message];
+  if (fixed) return fixed[language];
+  const command = /^Command exited with code (-?\d+)\.$/.exec(message);
+  if (command) return language === "zh" ? `命令以退出码 ${command[1]} 结束。` : message;
+  const sourceGap = /^(Source scope display truncated at 200 characters; inputFingerprint identifies the exact query arguments); (Source diagnostic withheld by the credential\/payload filter)$/.exec(message);
+  if (sourceGap) return sourceGap.slice(1).map(part => workHistoryDiagnosticCopies[part][language]).join(language === "zh" ? "；" : "; ");
+  return message;
+}
 
 export function localizeCollaborationDiagnostic(message: string, language: InterfaceLanguage): string {
   const sourceIds = /^(.*) Source object IDs: ([^\n]+)\.$/s.exec(message);

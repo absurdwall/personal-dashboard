@@ -112,6 +112,15 @@ impl AppServerTransport for InjectedTransport {
         observer: Option<RuntimeWorkObserver>,
     ) -> Result<RuntimeTurnResult, String> {
         let (mut client, sender, stdout) = turn_client();
+        if request.user_text == "Generate bounded evidence" {
+            let mut items = (0..20).map(|index|json!({"id":format!("comment-{index}"),"type":"agentMessage","phase":"commentary","text":"可见内容".repeat(5461)})).collect::<Vec<_>>();
+            items.push(json!({"id":"failed-command","type":"commandExecution","status":"failed","exitCode":7}));
+            items.push(json!({"id":"file","type":"fileChange","status":"completed","changes":[{"path":request.selected_vault.as_ref().unwrap().join("life/ordinary.md"),"kind":{"type":"update"},"diff":"d".repeat(65536)}]}));
+            items.push(json!({"id":"final","type":"agentMessage","phase":"final_answer","text":"Final original reply ".repeat(4000)}));
+            sender.send(Ok(json!({"method":"turn/completed","params":{"threadId":request.thread_id,"turn":{"id":"budget-turn","status":"completed","items":items}}}).to_string())).unwrap();
+            let (text,stopped,external_actions)=client.wait_for_turn_observed(&request.thread_id,"budget-turn",&cancel,handler.as_ref(),"2026-10-09",None,None,observer)?;
+            return Ok(RuntimeTurnResult{text,stopped,external_actions,runtime_turn_id:Some("budget-turn".into())});
+        }
         if request.user_text == "Refresh saturated native source cache" {
             let thread=request.thread_id.clone();
             let read=|id:String,tool:&str,args:Value,result:Value|json!({"method":"item/completed","params":{"threadId":thread,"turnId":"refresh-turn","item":{"id":id,"type":"mcpToolCall","server":"dida365","tool":tool,"status":"completed","arguments":args,"result":{"structuredContent":result}}}});
@@ -1339,5 +1348,78 @@ fn source_refresh_observations_are_scoped_and_do_not_change_canonical_task_revis
         saved.work_history[0].sequence
     );
     assert_eq!(tasks.read().unwrap().revision, before.revision);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn saved_native_turn_read_keeps_authoritative_items_without_dispatching_a_turn() {
+    for status in ["completed", "interrupted", "failed"] {
+        let (mut client, sender, stdout) = turn_client();
+        let turn=json!({"id":"saved-turn","status":status,"startedAt":100,"completedAt":200,"items":[
+            {"id":"user","type":"userMessage","content":[{"text":"{\"dashboardExecutionId\": \"original-execution\"}"}]},
+            {"id":"failed-attempt","type":"commandExecution","status":"failed","exitCode":7},
+            {"id":"changed","type":"fileChange","status":"completed","changes":[{"path":"life/ordinary.md","kind":{"type":"update"},"diff":"-Before\n+After"}]},
+            {"id":"final","type":"agentMessage","phase":"final_answer","text":"Original saved reply"}
+        ]});
+        sender.send(Ok(json!({"id":1,"result":{"thread":{"id":"original-thread","turns":[turn]}}}).to_string())).unwrap();
+        let requests=thread::spawn(move||BufReader::new(stdout).lines().take(1).map(|line|serde_json::from_str::<Value>(&line.unwrap()).unwrap()).collect::<Vec<_>>());
+        let recovered=client.read_saved_turn("original-thread","original-execution").unwrap();
+        let requests=requests.join().unwrap();
+        drop(client);
+        assert_eq!(requests.len(),1);assert_eq!(requests[0]["method"],"thread/read");
+        let history=match recovered {
+            RuntimeRunReconciliation::Completed {text,work_history,..} => {assert_eq!(text,"Original saved reply");work_history.unwrap()},
+            RuntimeRunReconciliation::Interrupted {work_history,..} => work_history.unwrap(),
+            _ => panic!("a matched saved terminal snapshot must be preserved"),
+        };
+        assert_eq!(history.status,status);
+        assert_eq!(history.items.iter().find(|item|item.item_id=="failed-attempt").unwrap().status,"failed");
+        let file=history.items.iter().find(|item|item.item_id=="changed").unwrap();
+        assert!(file.authoritative);assert_eq!(file.changes[0].diff.as_deref(),Some("-Before\n+After"));
+        assert!(file.changes[0].after_revision.is_none());
+        assert_eq!(history.runtime_completed_at_ms,Some(200_000));
+    }
+}
+
+
+#[test]
+fn prospective_optional_history_budget_preserves_replies_failures_and_existing_archive() {
+    let root=isolated_root();fs::create_dir_all(root.join("vault/life")).unwrap();
+    fs::write(root.join("vault/life/ordinary.md"),"Independent resulting file").unwrap();
+    let store=Arc::new(FileCollaborationStore::new(root.join("history/state.json")));
+    let app=application(&root,store.clone());
+    let await_budget_end = |app: &CollaborationApplication, id: &str| {
+        let deadline=Instant::now()+Duration::from_secs(30);
+        loop { let view=app.session("history-vault",id).unwrap();
+            if !matches!(view.run_state.as_str(),"queued"|"thinking"|"reading") {break view;}
+            assert!(Instant::now()<deadline,"budget fixture did not complete");thread::sleep(Duration::from_millis(30));
+        }
+    };
+    for _ in 0..10 {
+        let session=app.create_session("2026-10-09").unwrap();
+        app.submit_message("history-vault",&session.id,"2026-10-09","Generate bounded evidence").unwrap();
+        let ended=await_budget_end(&app,&session.id);
+        assert_eq!(ended.messages.last().unwrap().text,"Final original reply ".repeat(4000));
+        let history=&ended.work_history[0];
+        assert_eq!(history.status,"completed");
+        assert_eq!(history.items.len(),23,"optional payload limits never evict item skeletons");
+        assert!(history.items.iter().any(|item|item.item_id=="failed-command" && item.status=="failed" && item.diagnostic.as_deref()==Some("Command exited with code 7.")));
+        let file=history.items.iter().find(|item|item.item_id=="file").unwrap();
+        assert!(file.changes[0].after_revision.is_some(),"independently observed source metadata survives optional limits");
+    }
+    let state=store.load().unwrap();
+    let bytes:usize=state.sessions.iter().flat_map(|session|&session.work_history).flat_map(|history|&history.items).map(|item|item.text.len()+item.summary.iter().map(String::len).sum::<usize>()+item.changes.iter().filter_map(|change|change.diff.as_ref()).map(String::len).sum::<usize>()).sum();
+    assert!(bytes<=8*1024*1024,"aggregate optional evidence exceeded the production 8MiB budget: {bytes}");
+    let last=serde_json::to_value(state.sessions.first().unwrap()).unwrap();
+    assert!(last["workHistory"][0]["items"].as_array().unwrap().iter().any(|item|item["payloadOmissions"].as_array().is_some_and(|omissions|omissions.iter().any(|omission|omission["reasonCode"]=="aggregateByteBound"))));
+    let original=state.sessions[0].work_history[0].clone();
+    let mut legacy=state.clone();legacy.sessions[0].work_history[0].items[0].text="Legacy original".repeat(800_000);
+    store.save(&legacy).unwrap();
+    let legacy_history=legacy.sessions[0].work_history[0].clone();
+    let app=application(&root,store.clone());let session=app.create_session("2026-10-09").unwrap();
+    app.submit_message("history-vault",&session.id,"2026-10-09","Generate bounded evidence").unwrap();await_budget_end(&app,&session.id);
+    let retained=store.load().unwrap();let prior=retained.sessions.iter().find(|session|session.id==legacy.sessions[0].id).unwrap();
+    assert_eq!(prior.work_history[0],legacy_history,"legacy archive is never retroactively trimmed");
+    assert_eq!(original.items.len(),prior.work_history[0].items.len());
     fs::remove_dir_all(root).unwrap();
 }

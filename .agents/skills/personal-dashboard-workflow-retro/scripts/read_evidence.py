@@ -9,8 +9,8 @@ from pathlib import Path
 import stat
 import sys
 from urllib.parse import quote
+from stream_history import indexed, read_selected
 
-MAX_SOURCE = 32 * 1024 * 1024
 MAX_TEXT = 64 * 1024
 # Structural keys are explicit: adding a source field never silently exports it.
 FIELDS = set("""items id role text messageDate targetDate createdAt executionId runtimeTurnId
@@ -36,10 +36,15 @@ FIELDS = set("""items id role text messageDate targetDate createdAt executionId 
  stages stage publication display coverage reasonCode success requestFingerprint refreshes
  target observedAt outcome warning reason trigger sourceState snapshotState historyGap
  terminalStatus queuedAt startedAt completedAt durationMs historyCoverage omissions terminalGap
- reconciliationStatus runtimeThreadsByExecution sourceRefreshReceiptId dashboard_task_operation dashboard_daily_record dashboard_memory_update dashboard_refresh_habits dashboard_read_history
+ payloadOmissions originalBytes retainedBytes retainedFromPriorObservation reasonCode reconciliationStatus runtimeThreadsByExecution sourceRefreshReceiptId dashboard_task_operation dashboard_daily_record dashboard_memory_update dashboard_refresh_habits dashboard_read_history
 """.split())
 SECRET_MARKERS = ("bearer ", "authorization:", "api_key", "api-key", "apikey", "access_token",
                   "refresh_token", "password", "secret", "token=", "sk-", "eyj")
+
+
+def selection_info(selectors):
+    return {"session":selectors.session,"execution":selectors.execution,"vault":selectors.vault,
+        "from":selectors.date_from,"to":selectors.date_to,"periodBasis":"captured request messageDate (local lived date)"}
 
 
 def selected_export(source, selectors, source_info):
@@ -72,7 +77,7 @@ def selected_export(source, selectors, source_info):
 
     def records(values, pointer, category, execution_id):
         result = []
-        for index, value in enumerate(values or []):
+        for index, value in indexed(values):
             if not isinstance(value, dict):
                 continue
             if value.get("executionId") != execution_id and execution_id not in value.get("observedInExecutions", []):
@@ -84,7 +89,7 @@ def selected_export(source, selectors, source_info):
             result.append(item)
         return result
 
-    for si, session in enumerate(source.get("sessions", [])):
+    for si, session in indexed(source.get("sessions", [])):
         if not isinstance(session, dict):
             continue
         if selectors.session and session.get("id") != selectors.session:
@@ -92,7 +97,7 @@ def selected_export(source, selectors, source_info):
         if selectors.vault and session.get("vaultKey") != selectors.vault:
             continue
         sp = f"/sessions/{si}"
-        for mi, message in enumerate(session.get("messages", [])):
+        for mi, message in indexed(session.get("messages", [])):
             if not isinstance(message, dict) or message.get("role") != "user":
                 continue
             execution_id = message.get("executionId")
@@ -117,7 +122,7 @@ def selected_export(source, selectors, source_info):
                     diagnosticRef=reference(f"execution:{eid}/terminal-diagnostic", sp + "/progress"))
             elif message.get("deliveryState") == "error":
                 execution["gaps"].append("Original terminal diagnostic unavailable; a newer session progress is not substituted.")
-            matching = [(i, h) for i, h in enumerate(session.get("workHistory", [])) if isinstance(h, dict) and h.get("executionId") == execution_id]
+            matching = [(i, h) for i, h in indexed(session.get("workHistory", [])) if isinstance(h, dict) and h.get("executionId") == execution_id]
             if matching:
                 hi, history = matching[-1]
                 hp = sp + f"/workHistory/{hi}"
@@ -153,7 +158,7 @@ def selected_export(source, selectors, source_info):
             execution["memoryEffects"] = records(session.get("memoryProposals"), sp + "/memoryProposals", "memory", execution_id)
             execution["refreshReceipts"] = records(session.get("habitRefreshReceipts"), sp + "/habitRefreshReceipts", "snapshot", execution_id)
             replies = []
-            for ri, reply in enumerate(session.get("messages", [])):
+            for ri, reply in indexed(session.get("messages", [])):
                 if reply.get("role") == "assistant" and reply.get("executionId") == execution_id:
                     rp = sp + f"/messages/{ri}"
                     entry = project(reply, rp)
@@ -172,8 +177,7 @@ def selected_export(source, selectors, source_info):
                 execution["gaps"].append("External receipt bound reached (64); additional actions may be omitted; visible work items remain separate.")
             executions.append(execution)
     return {"exportVersion": 1, "source": source_info,
-            "selection": {"session": selectors.session, "execution": selectors.execution, "vault": selectors.vault,
-                          "from": selectors.date_from, "to": selectors.date_to, "periodBasis": "captured request messageDate (local lived date)"},
+            "selection": selection_info(selectors),
             "coverage": "selected-snapshot", "executions": executions, "references": references, "omissions": gaps,
             "usageScope": "runtime total is thread aggregate; last is runtime-reported-last aggregate; allocation to the complete app execution/per-tool is unavailable; no prices"}
 
@@ -206,34 +210,19 @@ def main():
     try:
         with os.fdopen(os.open(args.history, os.O_RDONLY | os.O_NONBLOCK), "rb") as stream:
             metadata = os.fstat(stream.fileno())
-            if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > MAX_SOURCE:
-                raise ValueError("source is not a regular file within the 32 MiB read bound")
-            raw = stream.read(MAX_SOURCE + 1)
-        if len(raw) > MAX_SOURCE:
-            raise ValueError("source exceeds the 32 MiB read bound")
-        source = json.loads(raw)
-        if not isinstance(source, dict) or type(source.get("schemaVersion")) is not int or source.get("schemaVersion") != 1 or not isinstance(source.get("sessions"), list):
-            raise ValueError("unsupported history schema; source schemaVersion 1 and sessions array required")
-        for session in source["sessions"]:
-            if not isinstance(session, dict):
-                raise ValueError("damaged session structure")
-            for field in ("messages", "workHistory", "taskOperations", "memoryProposals", "habitRefreshReceipts", "usageBindings"):
-                values = session.get(field, [])
-                if not isinstance(values, list) or any(not isinstance(item, dict) for item in values):
-                    raise ValueError(f"damaged {field} structure")
-            for history in session.get("workHistory", []):
-                items = history.get("items", [])
-                if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
-                    raise ValueError("damaged work items structure")
-                refreshes = history.get("refreshes", [])
-                if not isinstance(refreshes, list) or any(not isinstance(item, dict) for item in refreshes):
-                    raise ValueError("damaged refresh observations structure")
-                for item in items:
-                    changes = item.get("changes", [])
-                    if not isinstance(changes, list) or any(not isinstance(change, dict) for change in changes):
-                        raise ValueError("damaged change evidence structure")
-        info = {"path": str(args.history), "sha256": hashlib.sha256(raw).hexdigest(), "schemaVersion": 1, "bytes": len(raw)}
+            if not stat.S_ISREG(metadata.st_mode):
+                raise ValueError("source is not a regular file")
+            source, (digest, size), stream_omissions, selection_overflow, selected_count = read_selected(stream, args, FIELDS)
+            current = args.history.stat()
+            if (current.st_dev,current.st_ino,current.st_size,current.st_mtime_ns,current.st_ctime_ns) != (metadata.st_dev,metadata.st_ino,metadata.st_size,metadata.st_mtime_ns,metadata.st_ctime_ns):
+                raise ValueError("source path changed during evidence traversal")
+        info = {"path": str(args.history), "sha256": digest, "schemaVersion": 1, "bytes": size}
+        if selection_overflow:
+            print(json.dumps({"exportVersion":1,"source":info,"selection":selection_info(args),"coverage":"unavailable-selection-bound","selectedExecutions":selected_count,"executions":[],"references":{},
+                "omissions":["Selected evidence exceeds the 8 MiB retained working bound; no failure/receipt/terminal facts silently dropped. Select a narrower scope."]}))
+            return 0
         exported = selected_export(source, args, info)
+        exported["omissions"].extend(stream_omissions)
         output = json.dumps(exported, ensure_ascii=False, allow_nan=False, indent=2)
         if len(output.encode()) > args.max_export_bytes:
             output = json.dumps({"exportVersion": 1, "source": info, "selection": exported["selection"], "coverage": "unavailable-export-bound",

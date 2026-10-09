@@ -85,6 +85,24 @@ fn safe_parameters(arguments: &Value) -> Vec<CollaborationWorkParameter> {
     .collect()
 }
 
+const ITEM_OPTIONAL_BYTES: usize = 64 * 1024;
+const EXECUTION_OPTIONAL_BYTES: usize = 1024 * 1024;
+pub(super) const ARCHIVE_OPTIONAL_BYTES: usize = 8 * 1024 * 1024;
+const DETAILED_ITEMS: usize = 128;
+const SUMMARY_PARTS: usize = 16;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationPayloadOmission {
+    pub field: String,
+    pub original_bytes: usize,
+    pub retained_bytes: usize,
+    #[serde(default)]
+    pub retained_from_prior_observation: bool,
+    pub input_fingerprint: String,
+    pub reason_code: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CollaborationWorkItem {
@@ -116,6 +134,8 @@ pub struct CollaborationWorkItem {
     pub changes: Vec<super::changes::CollaborationChangeEvidence>,
     #[serde(default)]
     pub change_gap: Option<String>,
+    #[serde(default)]
+    pub payload_omissions: Vec<CollaborationPayloadOmission>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -233,7 +253,7 @@ impl RuntimeHistory {
                 || self.last_flush.elapsed() >= Duration::from_millis(250))
         {
             if let Some(observer) = &self.observer {
-                observer(self.view.clone())?;
+                observer(bound_optional(self.view.clone(), None, EXECUTION_OPTIONAL_BYTES, false))?;
             }
             self.dirty = false;
             self.pending_bytes = 0;
@@ -434,6 +454,7 @@ impl RuntimeHistory {
             diagnostic_gap: None,
             changes: Vec::new(),
             change_gap: None,
+            payload_omissions: Vec::new(),
         });
         self.view.items.len() - 1
     }
@@ -648,4 +669,139 @@ impl RuntimeHistory {
         self.dirty = true;
         self.flush(true)
     }
+}
+
+/// Stable item reconciliation is additive. Runtime sequence numbers belong to
+/// the readback reducer, not the original stream, so preserve original ordering
+/// and host source observations while applying authoritative terminal facts.
+pub(super) fn merge_recovered(existing: &mut CollaborationWorkHistory, recovered: CollaborationWorkHistory) {
+    let base = existing.sequence;
+    let mut sequence = base;
+    for mut incoming in recovered.items {
+        sequence = sequence.saturating_add(1);
+        if let Some(item) = existing.items.iter_mut().find(|item| item.item_id == incoming.item_id) {
+            if item.authoritative && ["failed", "declined"].contains(&item.status.as_str()) && incoming.status != item.status {
+                let gap = "Recovered snapshot conflicts with an original failed attempt; its original failure remains retained.".to_owned();
+                if !existing.gaps.contains(&gap) { existing.gaps.push(gap); }
+                continue;
+            }
+            if !incoming.authoritative { continue; }
+            incoming.first_sequence = item.first_sequence;
+            incoming.last_sequence = sequence;
+            incoming.observed_at_ms = item.observed_at_ms;
+            incoming.runtime_started_at_ms = item.runtime_started_at_ms.or(incoming.runtime_started_at_ms);
+            incoming.diagnostic = incoming.diagnostic.or(item.diagnostic.clone());
+            incoming.diagnostic_gap = incoming.diagnostic_gap.or(item.diagnostic_gap.clone());
+            incoming.input_fingerprint = incoming.input_fingerprint.or(item.input_fingerprint.clone());
+            if incoming.parameters.is_empty() { incoming.parameters = item.parameters.clone(); }
+            // Original independently observed revisions never become a newer
+            // readback attributed to this historical event.
+            for saved in &item.changes {
+                if saved.observed_at_ms.is_some() {
+                    incoming.changes.retain(|change| !((change.id == saved.id ||
+                        (change.path == saved.path && change.operation == saved.operation && change.source == saved.source)) &&
+                        (change.diff.is_none() || change.diff == saved.diff)));
+                    for change in &mut incoming.changes {
+                        if change.id == saved.id {
+                            change.id = format!("{}:recovered:{}", change.id, super::stable_effect_fingerprint(&change.diff));
+                        }
+                    }
+                }
+                if !incoming.changes.iter().any(|change| change.id == saved.id) { incoming.changes.push(saved.clone()); }
+            }
+            if incoming.change_gap.is_none() { incoming.change_gap = item.change_gap.clone(); }
+            *item = incoming;
+        } else {
+            incoming.first_sequence = sequence;
+            incoming.last_sequence = sequence;
+            existing.items.push(incoming);
+        }
+    }
+    if existing.items.iter().any(|item| item.status == "inProgress") {
+        let gap = "Saved terminal snapshot did not supply authoritative completion for every retained in-progress item; those statuses remain unconfirmed.".to_owned();
+        if !existing.gaps.contains(&gap) { existing.gaps.push(gap); }
+    }
+    existing.sequence = sequence.max(base.saturating_add(1));
+    existing.updated_at_ms = recovered.updated_at_ms.max(existing.updated_at_ms);
+    existing.runtime_started_at_ms = existing.runtime_started_at_ms.or(recovered.runtime_started_at_ms);
+    existing.runtime_completed_at_ms = recovered.runtime_completed_at_ms.or(existing.runtime_completed_at_ms);
+    if recovered.token_usage.is_some() { existing.token_usage = recovered.token_usage; }
+    for gap in recovered.gaps { if !existing.gaps.contains(&gap) { existing.gaps.push(gap); } }
+}
+
+pub(super) fn optional_bytes(history: &CollaborationWorkHistory) -> usize {
+    history.items.iter().map(|item| item.text.len() + item.summary.iter().map(String::len).sum::<usize>() +
+        item.changes.iter().filter_map(|change| change.diff.as_ref()).map(String::len).sum::<usize>()).sum()
+}
+
+/// Prospective optional copies only. Identities/status/failure diagnostics and
+/// receipt/revision metadata are never evicted. Existing observations are not
+/// retroactively trimmed, even if a legacy archive already exceeds the budget.
+pub(super) fn bound_optional(mut history: CollaborationWorkHistory, previous: Option<&CollaborationWorkHistory>, available: usize, aggregate: bool) -> CollaborationWorkHistory {
+    let mut remaining = available;
+    // Recovery retains unmatched original items and immutable source witnesses.
+    // Their existing optional copies consume per-execution/item capacity even
+    // when the authoritative snapshot does not repeat them.
+    let retained_items = previous.map(|previous| previous.items.iter().filter(|old| {
+        !history.items.iter().any(|item| item.item_id == old.item_id)
+    }).map(|item| item.text.len() + item.summary.iter().map(String::len).sum::<usize>() +
+        item.changes.iter().filter_map(|change| change.diff.as_ref()).map(String::len).sum::<usize>()).sum::<usize>()).unwrap_or(0);
+    let mut execution_remaining = EXECUTION_OPTIONAL_BYTES.saturating_sub(retained_items);
+    for (index, item) in history.items.iter_mut().enumerate() {
+        let prior = previous.and_then(|history| history.items.iter().find(|old| old.item_id == item.item_id));
+        let retained_diffs = prior.map(|prior| prior.changes.iter().filter(|saved| {
+            saved.observed_at_ms.is_some() && !item.changes.iter().any(|change| {
+                (change.id == saved.id || (change.path == saved.path && change.operation == saved.operation && change.source == saved.source))
+                    && change.diff == saved.diff
+            })
+        }).filter_map(|change| change.diff.as_ref()).map(String::len).sum::<usize>()).unwrap_or(0);
+        let mut item_remaining = ITEM_OPTIONAL_BYTES.saturating_sub(retained_diffs);
+        execution_remaining = execution_remaining.saturating_sub(retained_diffs);
+        let mut omissions = item.payload_omissions.clone();
+        let mut admit = |field: &str, value: String, old: Option<&str>, force_reason: Option<&str>| -> String {
+            if old == Some(value.as_str()) {
+                item_remaining = item_remaining.saturating_sub(value.len()); execution_remaining = execution_remaining.saturating_sub(value.len());
+                return value;
+            }
+            if value.is_empty() && old.is_some() && omissions.iter().any(|omission|omission.field==field) {
+                let old=old.unwrap().to_owned();
+                item_remaining=item_remaining.saturating_sub(old.len());execution_remaining=execution_remaining.saturating_sub(old.len());
+                if let Some(omission)=omissions.iter_mut().find(|omission|omission.field==field) {omission.retained_bytes=old.len();omission.retained_from_prior_observation=!old.is_empty();}
+                return old;
+            }
+            let reason = force_reason.or_else(|| prior.and_then(|item|item.payload_omissions.iter().find(|omission|omission.field==field)).map(|_|"priorCapacityBound")).or_else(|| if index >= DETAILED_ITEMS {Some("detailCountBound")}
+                else if value.len() > item_remaining {Some("itemByteBound")}
+                else if value.len() > execution_remaining {Some("executionByteBound")}
+                else if value.len() > remaining {Some(if aggregate {"aggregateByteBound"} else {"executionByteBound"})} else {None});
+            if let Some(reason) = reason.filter(|_| !value.is_empty()) {
+                let retained = old.unwrap_or_default().to_owned();
+                omissions.retain(|omission| omission.field != field);
+                item_remaining=item_remaining.saturating_sub(retained.len());execution_remaining=execution_remaining.saturating_sub(retained.len());
+                omissions.push(CollaborationPayloadOmission {field:field.into(),original_bytes:value.len(),retained_bytes:retained.len(),retained_from_prior_observation:!retained.is_empty(),input_fingerprint:super::stable_effect_fingerprint(&value),reason_code:reason.into()});
+                retained
+            } else {remaining = remaining.saturating_sub(value.len()); execution_remaining = execution_remaining.saturating_sub(value.len()); item_remaining = item_remaining.saturating_sub(value.len());value}
+        };
+        item.text = admit("text", std::mem::take(&mut item.text), prior.map(|item|item.text.as_str()), None);
+        let summary = item.summary.join("\n\n");
+        let old_summary = prior.map(|item|item.summary.join("\n\n"));
+        let summary_reason = (item.summary.len() > SUMMARY_PARTS).then_some("summaryPartBound");
+        let admitted = admit("summary", summary.clone(), old_summary.as_deref(), summary_reason);
+        if admitted != summary { item.summary = prior.map(|item|item.summary.clone()).unwrap_or_default(); }
+        for change in &mut item.changes {
+            if let Some(diff) = change.diff.take() {
+                let old = prior.and_then(|item|item.changes.iter().find(|old|old.id==change.id)).and_then(|change|change.diff.as_deref());
+                let admitted = admit(&format!("changes/{}/diff",change.id),diff,old,None);
+                change.diff = (!admitted.is_empty()).then_some(admitted);
+            }
+        }
+        // A legacy observed witness omitted from a newer optional projection is
+        // retained by the application merge; never discard its omission record.
+        if let Some(prior) = prior {for omission in &prior.payload_omissions {if !omissions.iter().any(|item|item.field==omission.field) {omissions.push(omission.clone());}}}
+        item.payload_omissions = omissions;
+    }
+    if history.items.iter().any(|item|!item.payload_omissions.is_empty()) {
+        let gap = "Optional visible payload omitted by evidence capacity bounds; original messages, failures and outcome metadata are retained.".to_owned();
+        if !history.gaps.contains(&gap) {history.gaps.push(gap);}
+    }
+    history
 }

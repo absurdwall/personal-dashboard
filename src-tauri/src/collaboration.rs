@@ -12,7 +12,7 @@ mod history;
 #[path = "collaboration_changes.rs"]
 mod changes;
 pub use changes::CollaborationChangeEvidence;
-pub use history::{CollaborationWorkHistory, CollaborationWorkItem, RuntimeWorkObserver, CollaborationRefreshInput};
+pub use history::{CollaborationPayloadOmission, CollaborationWorkHistory, CollaborationWorkItem, RuntimeWorkObserver, CollaborationRefreshInput};
 use history::RuntimeHistory;
 #[cfg(all(test, unix))]
 #[path = "collaboration_history_tests.rs"]
@@ -1364,11 +1364,13 @@ pub enum RuntimeRunReconciliation {
         text: String,
         runtime_turn_id: String,
         external_actions: Vec<ExternalToolActionView>,
+        work_history: Option<CollaborationWorkHistory>,
     },
     InProgress,
     Interrupted {
         runtime_turn_id: String,
         external_actions: Vec<ExternalToolActionView>,
+        work_history: Option<CollaborationWorkHistory>,
     },
     NotFound,
 }
@@ -6669,9 +6671,20 @@ impl CollaborationApplication {
         if self.context_source.current_vault_key()?.as_deref() != Some(&vault_key) {
             return Err("The selected Vault changed while the saved Codex result was being checked. Refresh the workspace before continuing.".into());
         }
+        let recovered_history = match &reconciliation {
+            RuntimeRunReconciliation::Completed {work_history, runtime_turn_id, ..} |
+            RuntimeRunReconciliation::Interrupted {work_history, runtime_turn_id, ..} => {
+                if work_history.as_ref().is_some_and(|history| history.thread_id != thread_id || history.turn_id != *runtime_turn_id) {
+                    return Err("Saved work history does not match this request's original runtime thread/turn.".into());
+                }
+                work_history.clone()
+            }
+            _ => None,
+        };
         let now = self.clock.current_timestamp();
         let message_date = self.clock.current_date();
         let session = self.update_state(|state| {
+            let remaining_optional = history::ARCHIVE_OPTIONAL_BYTES.saturating_sub(state.sessions.iter().flat_map(|session|&session.work_history).map(history::optional_bytes).sum::<usize>());
             let session = matching_session_mut(state, &vault_key, session_id)?;
             let message = session
                 .messages
@@ -6745,6 +6758,21 @@ impl CollaborationApplication {
                         session.progress = "No matching saved App Server turn was found. Nothing was resent; review this request before continuing.".into();
                     }
                 }
+            }
+            if let Some(mut recovered) = recovered_history.clone() {
+                recovered.execution_id = execution_id.to_owned();
+                recovered = history::bound_optional(recovered, session.work_history.iter().find(|history|history.execution_id==execution_id), remaining_optional, true);
+                for item in &mut recovered.items {
+                    if !item.changes.is_empty() {
+                        item.change_gap = Some("Native file-change snapshot recovered; historical source readback/captured cwd unavailable. No write or file read was replayed.".into());
+                    }
+                }
+                if let Some(existing) = session.work_history.iter_mut().find(|history| history.execution_id == execution_id) {
+                    if existing.thread_id != recovered.thread_id || existing.turn_id != recovered.turn_id {
+                        return Err("Saved work history conflicts with this request's retained runtime thread/turn.".into());
+                    }
+                    history::merge_recovered(existing, recovered);
+                } else { session.work_history.push(recovered); }
             }
             if let Some(history) = session.work_history.iter_mut().find(|history| history.execution_id == execution_id) {
                 history.status = match reconciliation {
@@ -7483,6 +7511,7 @@ impl CollaborationApplication {
         let observer: RuntimeWorkObserver = Arc::new(move |mut history| {
             if history.thread_id != history_thread { return Ok(()); }
             application.update_state(|state| {
+                let remaining_optional = history::ARCHIVE_OPTIONAL_BYTES.saturating_sub(state.sessions.iter().flat_map(|session|&session.work_history).map(history::optional_bytes).sum::<usize>());
                 let Some(session) = state.sessions.iter_mut().find(|session|
                     session.id == history_session && session.vault_key.as_deref() == Some(&history_vault)
                     && session.run_id.as_deref() == Some(&history_execution)
@@ -7540,6 +7569,7 @@ impl CollaborationApplication {
                         item.parameters.push(history::CollaborationWorkParameter { name: "targetDate".into(), value: receipt.target_date.clone() });
                     }
                 }
+                let mut history = history::bound_optional(history, session.work_history.iter().find(|entry|entry.execution_id==history_execution), remaining_optional, true);
                 if let Some(existing) = session.work_history.iter_mut().find(|entry| entry.execution_id == history_execution) {
                     if history.sequence > existing.sequence {
                         history.refreshes = existing.refreshes.clone();
@@ -11920,13 +11950,25 @@ impl AppServerTransport for CodexAppServerRuntime {
         })
     }
 
-    fn reconcile_turn(
+    fn reconcile_turn(&mut self, thread_id: &str, execution_id: &str) -> Result<RuntimeRunReconciliation, String> {
+        let mut result = self.ensure_client()?.read_saved_turn(thread_id, execution_id)?;
+        match &mut result {
+            RuntimeRunReconciliation::Completed {external_actions, ..} | RuntimeRunReconciliation::Interrupted {external_actions, ..} => {
+                for action in external_actions { *action = self.reconcile_external_action(action.clone()); }
+            }
+            _ => {}
+        }
+        Ok(result)
+    }
+}
+
+impl StdioJsonlClient {
+    fn read_saved_turn(
         &mut self,
         thread_id: &str,
         execution_id: &str,
     ) -> Result<RuntimeRunReconciliation, String> {
-        ensure_empty_working_directory(&self.working_directory)?;
-        let result = self.ensure_client()?.request(
+        let result = self.request(
             "thread/read",
             json!({ "threadId": thread_id, "includeTurns": true }),
         )?;
@@ -11971,36 +12013,15 @@ impl AppServerTransport for CodexAppServerRuntime {
                 .into_iter()
                 .flatten()
                 .filter_map(|item| external_tool_action(thread_id, item, "unknown"))
-                .map(|action| self.reconcile_external_action(action))
                 .collect::<Vec<_>>();
+            let mut history = RuntimeHistory::new(thread_id, &runtime_turn_id, None);
+            history.consume(&json!({"method":"turn/completed", "params":{"threadId":thread_id,"turn":turn}}))?;
+            let text = history.final_text();
+            let work_history = Some(history.view);
             return match status {
-                "completed" => {
-                    let mut history = RuntimeHistory::new(thread_id, &runtime_turn_id, None);
-                    history.consume(&json!({"method":"turn/completed", "params":{"threadId":thread_id,"turn":turn}}))?;
-                    let text = history.final_text();
-                                if text.trim().is_empty() {
-                        Ok(RuntimeRunReconciliation::Completed {
-                            text: String::new(),
-                            runtime_turn_id,
-                            external_actions,
-                        })
-                    } else {
-                        Ok(RuntimeRunReconciliation::Completed {
-                            text,
-                            runtime_turn_id,
-                            external_actions,
-                        })
-                    }
-                }
+                "completed" => Ok(RuntimeRunReconciliation::Completed { text, runtime_turn_id, external_actions, work_history }),
                 "inProgress" => Ok(RuntimeRunReconciliation::InProgress),
-                "interrupted" => Ok(RuntimeRunReconciliation::Interrupted {
-                    runtime_turn_id,
-                    external_actions,
-                }),
-                "failed" => Ok(RuntimeRunReconciliation::Interrupted {
-                    runtime_turn_id,
-                    external_actions,
-                }),
+                "interrupted" | "failed" => Ok(RuntimeRunReconciliation::Interrupted { runtime_turn_id, external_actions, work_history }),
                 _ => Err(format!(
                     "Codex App Server returned an unknown saved turn status `{status}`."
                 )),

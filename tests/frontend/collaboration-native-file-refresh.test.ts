@@ -207,3 +207,25 @@ test("a cancelled Vault picker generation allows discarded effect projections to
   context.collaborationVaultSelectionRevision=2;poll();await tick();poll();await tick();
   assert.deepEqual(reads,[["2026-10-08","owner"],["2026-10-08","owner"]]);
 });
+
+for (const supersession of ["vault", "selection", "destination", "none"]) {
+  test(`a delayed Habit destination refresh cannot restore a superseded ${supersession}`, async () => {
+    let resolve!: () => void; const loaded: unknown[] = [];
+    const rest = source.slice(source.indexOf("function showWorkspaceDestination("));
+    const navigation = stripTypeScriptTypes(rest.slice(0, /^}\n/m.exec(rest)!.index + 2));
+    const context = vm.createContext({ collaborationVaultSelectionRevision: 1, vaultSelectionInProgress: false,
+      currentWorkspaceDestination: "habits", selectedTodayDate: null, selectedHabitCell: {habitKey:"original",date:"2026-10-08"},
+      renderDailyPlanReturnNavigation() {}, renderWorkspaceNavigationLanguage() {}, renderWorkspaceContextStatus() {}, renderWorkspaceFeatureArea() {}, renderWorkspaceRailContext() {},
+      workspaceDestinationDetails: { habits: {title:"Habits",description:"Existing Habits"} },
+      appShell:null,workspaceDestinationPanels:[],workspaceInformation:null,workspaceDestinationSelect:null,workspaceTitle:null,workspaceDescription:null,
+      setCopy() {}, window: {}, refreshHabits() {return new Promise<void>(done=>{resolve=done;});},
+      loadSelectedHabitDate(...args: unknown[]) {loaded.push(args);},
+    });
+    vm.runInContext(navigation+"\nshowWorkspaceDestination('habits', true)",context);
+    if (supersession === "vault") context.collaborationVaultSelectionRevision = 2;
+    if (supersession === "selection") context.selectedHabitCell = {habitKey:"newer",date:"2026-10-09"};
+    if (supersession === "destination") context.currentWorkspaceDestination = "tasks";
+    resolve(); await tick();
+    assert.deepEqual(loaded, supersession === "none" ? [["original", "2026-10-08"]] : [], "only the current continuation can start a selected-date read");
+  });
+}
