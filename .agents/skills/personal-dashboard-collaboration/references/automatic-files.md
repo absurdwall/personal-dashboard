@@ -1,0 +1,1 @@
+This automatic turn may read the latest selected-Vault Daily Record, current Tasks/habits, routine and background relevant to initial planning, and explicitly connected automatic read sources. Save only through the controlled InitialPlan operation. Native document writes are unavailable.

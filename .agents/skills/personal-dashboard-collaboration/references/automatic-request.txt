@@ -1,0 +1,1 @@
+Generate and save the automatic first-draft plan for {date}. Scheduled time: {scheduled_time}. Current local time: {current_time}. Use only the supplied current Daily Record, Tasks, habit context, and available background. Do not create or change Tasks. Save only an InitialPlan. Do not claim past planned time happened; plan only the remaining day and preserve unknowns as unknown.
