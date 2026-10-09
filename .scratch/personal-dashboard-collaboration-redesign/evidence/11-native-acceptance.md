@@ -85,9 +85,9 @@ and `history-18-fixed-retro-explicit.json`.
 Native paragraphs, lists, completed Work-history folding/expansion and trusted
 Task/record/Habit links were observed. Model-generated tables displayed literal
 Markdown pipes with navigable links; spec section6 promises paragraphs/lists/
-checklist/internal links, not table rendering. Checklist and legacy-schema
-fallback have supporting production renderer/application regressions; no
-separate native pre-version import or live spoken transcript is claimed.
+checklist/internal links, not table rendering. Checklist has supporting production renderer regressions. A separate injected
+legacy fixture was subsequently loaded through the actual native store/renderer
+(see below); live spoken transcript remains unobserved.
 
 The developer workflow skill consumed a NEW actual `7b3dc8` execution
 `run-18dcf6794ca982e0-9` through the public reader. Its immutable source copy
@@ -103,6 +103,34 @@ Readable `commentary`/`final_answer` phases and runtime token usage were present
 no readable reasoning summary item was observed. Fresh save's total101613 and
 last26042 tokens are respectively thread aggregate and runtime-reported-last
 aggregate; neither is per-tool cost or a complete execution allocation.
+
+## Native legacy fixture — readable, missing-process label absent
+
+After the main cleanup, one bounded no-auth check launched the exact signed
+`7b3dc8` candidate into a separate owned synthetic legacy profile. The injected
+session omitted `workHistory` and `usageBindings` and retained one original user
+message and assistant reply. Exact-PID AX confirmed both original texts and the
+reply's Markdown list were readable. It showed “Codex CLI found · ChatGPT is not
+connected”; no model request, new execution or credential copy was made. All
+four existing Vault C file hashes were unchanged, and message bytes remained
+unchanged. This is injected legacy fixture evidence through the real native
+store/renderer, not real personal history or a model execution.
+
+**The missing-process unavailable label was not displayed.** Production
+`frontend/main.ts` appends work history only when a matching history exists;
+absence is silently omitted. Thus old text compatibility was observed, but the
+explicit missing-process marker required by spec section5 and its history/restart
+failure row remains a presentation gap. Do not treat a supporting fallback test
+as a native pass for that label. The initial synthetic fixture incorrectly used
+an array for `continuityNotes`; correcting it to the existing map schema resolved
+its load error. That setup error is not a product failure.
+
+Private witnesses: `21-legacy-fixture.json`, `21-legacy-launch.json`,
+`21-legacy-work.ax.txt`, `21-legacy-native.png`, `21-legacy-checks.json`, and
+canonical before/after hashes. Final exact owned PID8039 and its WebKit descendants
+were stopped and the bundle unregistered again. All owned auth files remain
+absent; installed PID72704/executable remains unchanged. Any label correction
+needs a fresh, bounded no-auth native reassessment before being claimed accepted.
 
 ## Limits and unresolved gates
 
