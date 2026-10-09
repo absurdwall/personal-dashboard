@@ -597,6 +597,13 @@ impl CollaborationHistoryRequest {
         }
         Ok(())
     }
+    pub fn dates(&self) -> Result<Vec<String>, String> {
+        self.validate()?;
+        let from = crate::today::CalendarDate::parse(&self.from_date).expect("validated date");
+        let to = crate::today::CalendarDate::parse(&self.to_date).expect("validated date");
+        Ok((0..=to.unix_days() - from.unix_days()).map(|offset| from.plus_days(offset).to_string()).collect())
+    }
+
     fn contains(&self, date: Option<&str>) -> bool {
         date.is_some_and(|date| date >= self.from_date.as_str() && date <= self.to_date.as_str())
     }
@@ -645,6 +652,59 @@ fn timestamp_lived_date(timestamp: &str) -> Option<String> {
     let date = crate::today::CalendarDate::parse(timestamp.get(..10)?)?;
     let hour: u32 = timestamp.get(11..13)?.parse().ok()?;
     (hour < 24).then(|| if hour < 4 { date.plus_days(-1) } else { date }.to_string())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CollaborationDailyRecordHistory {
+    domain: &'static str,
+    from_date: String,
+    to_date: String,
+    records: Vec<CollaborationDailyRecordHistoryEntry>,
+    coverage: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CollaborationDailyRecordHistoryEntry {
+    date: String,
+    state: TodayState,
+    daily_record_availability: crate::today::DailyRecordAvailability,
+    evidence_availability: &'static str,
+    message: String,
+    revision: Option<String>,
+    target_binding: Option<String>,
+    baseline: Option<crate::today::MorningBaselineView>,
+    current_arrangement: Option<Vec<crate::today::MorningBlockView>>,
+    current_basis: Option<Vec<crate::today::PlanningEvidenceView>>,
+    daytime: Option<crate::today::DaytimeView>,
+    evening: Option<crate::today::EveningView>,
+    time_axis: Option<crate::today::TimeAxisView>,
+    links: Value,
+}
+
+impl CollaborationDailyRecordHistoryEntry {
+    fn from_result(date: String, result: Result<TodayView, String>) -> Self {
+        let links = json!({ "morning":format!("dashboard://record/{date}?phase=morning"),
+            "daytime":format!("dashboard://record/{date}?phase=daytime"),
+            "evening":format!("dashboard://record/{date}?phase=evening") });
+        match result {
+            Ok(view) => {
+                let available = view.state == TodayState::Ready;
+                Self { date, state: view.state, daily_record_availability: view.daily_record_availability,
+                    evidence_availability: if available { "available" } else { "unknown" },
+                    message: view.message, revision: view.revision, target_binding: view.target_binding,
+                    baseline: available.then_some(view.baseline), current_arrangement: available.then_some(view.timeline),
+                    current_basis: available.then_some(view.evidence), daytime: available.then_some(view.daytime),
+                    evening: available.then_some(view.evening), time_axis: available.then_some(view.time_axis), links }
+            },
+            Err(message) => Self { date, state: TodayState::Error,
+                daily_record_availability: crate::today::DailyRecordAvailability::Error,
+                evidence_availability: "unknown", message, revision: None, target_binding: None,
+                baseline: None, current_arrangement: None, current_basis: None, daytime: None,
+                evening: None, time_axis: None, links },
+        }
+    }
 }
 
 pub trait CollaborationTaskService: Send + Sync {
@@ -1960,6 +2020,26 @@ impl CollaborationApplication {
                     }
                 }
                 serde_json::to_value(task_history(tasks, &request)).map_err(|e| e.to_string())?
+            },
+            "dailyRecords" if self.daily_data_service.is_available() => {
+                let mut records = Vec::new();
+                for date in request.dates()? {
+                    if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+                        return Err("Selected Vault changed during history read; result discarded".into());
+                    }
+                    let result = self.daily_data_service.read_date(&date);
+                    if let (Some(root), Ok(view)) = (selected_root.as_ref(), &result) {
+                        if view.vault_path.as_deref().map(Path::new).map(|path| path.canonicalize().unwrap_or_else(|_| path.to_owned()))
+                            != Some(root.canonicalize().unwrap_or_else(|_| root.clone())) {
+                            return Err("Daily Record history does not belong to the captured selected Vault".into());
+                        }
+                    }
+                    records.push(CollaborationDailyRecordHistoryEntry::from_result(date, result));
+                }
+                serde_json::to_value(CollaborationDailyRecordHistory { domain: "dailyRecords",
+                    from_date: request.from_date.clone(), to_date: request.to_date.clone(), records,
+                    coverage: "Read existing canonical dated records only. Missing, damaged or unavailable dates remain unknown; no record or baseline is created. Morning baseline, current arrangement, dated facts and evening review retain distinct source fields and original correction traces. Short records are context, not Habit or Task completion evidence. Actual timestamps and local dates are preserved; unavailable time allocation remains unknown.",
+                }).map_err(|e| e.to_string())?
             },
             _ => return Err("Requested history domain is unavailable in this adapter".into()),
         };
@@ -7030,8 +7110,8 @@ impl CollaborationApplication {
                 true,
             ));
         }
-        if !automatic_plan && task_operations_available {
-            dynamic_tools.push(collaboration_history_tool_spec());
+        if !automatic_plan && (task_operations_available || daily_plan_operations_available) {
+            dynamic_tools.push(collaboration_history_tool_spec(task_operations_available, daily_plan_operations_available));
         }
         if !automatic_plan && daily_plan_operations_available {
             dynamic_tools.push(collaboration_habit_refresh_tool_spec());
@@ -9057,13 +9137,16 @@ fn task_operation_effect_matches(
     }
 }
 
-fn collaboration_history_tool_spec() -> Value {
+fn collaboration_history_tool_spec(tasks_available: bool, daily_records_available: bool) -> Value {
+    let mut domains = Vec::new();
+    if tasks_available { domains.push("tasks"); }
+    if daily_records_available { domains.push("dailyRecords"); }
     json!({
         "name": COLLABORATION_HISTORY_TOOL,
         "description": usage::description("tool.readHistory"),
         "inputSchema": { "type":"object", "additionalProperties":false,
             "required":["domain","fromDate","toDate"],
-            "properties": { "domain":{"type":"string","enum":["tasks"]},
+            "properties": { "domain":{"type":"string","enum":domains},
                 "fromDate":{"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
                 "toDate":{"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"} }
         }

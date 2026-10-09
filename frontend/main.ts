@@ -1402,6 +1402,7 @@ const todayPresentationRequests = new LatestRequest();
 const todayClockRequests = new LatestRequest();
 const vaultSelectionRequests = new LatestRequest();
 let currentTodayPhase: TodayPhase = "morning";
+let todayPhaseSelectionRevision = 0;
 let todayAxisFollowState: TodayAxisFollowState = "following";
 let programmaticTodayAxisScrollUntil = 0;
 let currentTodayView: TodayView | null = null;
@@ -3613,6 +3614,8 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       openToday.addEventListener("click", () => {
         rememberDailyPlanReturnTarget(session);
         showWorkspaceDestination("today", true, operation.targetDate);
+        showTodayPhase(plan && ["initialPlan", "morningCalibration", "morningBaselineCorrection"].includes(plan.transition)
+          ? "morning" : operation.operation.operation === "saveEveningReview" ? "evening" : "daytime");
       });
       const openCalendar = document.createElement("button");
       openCalendar.type = "button";
@@ -5642,6 +5645,7 @@ function renderReadingList(
 }
 
 function showTodayPhase(phase: TodayPhase, focus = false): void {
+  todayPhaseSelectionRevision += 1;
   const phaseChanged = currentTodayPhase !== phase;
   currentTodayPhase = phase;
   if (todayReady) {
@@ -6673,6 +6677,7 @@ async function refreshToday(
   if (date === null && currentTodayView && hasTodayEditingTarget(currentTodayView)) {
     date = currentTodayView.date;
   }
+  const phaseSelectionRevision = todayPhaseSelectionRevision;
   await refreshTodayPresentation({
     requests: todayPresentationRequests,
     date,
@@ -6681,7 +6686,9 @@ async function refreshToday(
     viewDate: (view) => view.date,
     defaultPhase: (view) => view.defaultPhase,
     onPhase: (phase) => {
-      currentTodayPhase = phase;
+      // Record links and user tab selection may happen after the read starts.
+      // The source's default phase must not overwrite that newer choice.
+      if (todayPhaseSelectionRevision === phaseSelectionRevision) currentTodayPhase = phase;
     },
     onPresent: renderToday,
     onError: (error) => {

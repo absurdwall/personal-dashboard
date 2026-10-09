@@ -467,11 +467,11 @@ impl AppServerTransport for DynamicRuntime {
                 gate.block_automatic_turn();
             }
         }
-        if request.user_text == "read task history" {
+        if matches!(request.user_text.as_str(), "read task history" | "read record history") {
             let result = handler(RuntimeDynamicToolCall {
                 thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
                 call_id: "history-read".into(), tool: "dashboard_read_history".into(),
-                arguments: json!({"domain":"tasks","fromDate":"2026-09-24","toDate":"2026-09-27"}),
+                arguments: json!({"domain":if request.user_text == "read task history" {"tasks"} else {"dailyRecords"},"fromDate":"2026-09-24","toDate":"2026-09-27"}),
             });
             self.results.lock().unwrap().push(result);
             return Ok(RuntimeTurnResult { text: "History read; missing activity remains unknown.".into(), runtime_turn_id: Some(format!("turn-{}", request.execution_id)), stopped: false, external_actions: Vec::new() });
@@ -1125,8 +1125,8 @@ fn daytime_save_records_the_loaded_usage_and_actual_capabilities_across_reopen()
     let saved = serde_json::to_value(app.session("vault-a", &chat.id).unwrap()).unwrap();
     let binding = &saved["usageBindings"][0];
     assert_eq!(binding["skillName"], "personal-dashboard-collaboration");
-    assert_eq!(binding["skillVersion"], "1.1.0");
-    assert_eq!(binding["toolSetVersion"], "1.1.0");
+    assert_eq!(binding["skillVersion"], "1.2.0");
+    assert_eq!(binding["toolSetVersion"], "1.2.0");
     assert!(binding["packageFingerprint"].as_str().is_some_and(|s| !s.is_empty()));
     let registered = tools.lock().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>();
     assert_eq!(binding["registeredTools"], json!(registered));
@@ -7165,7 +7165,7 @@ fn collaboration_period_query_reads_tasks_without_business_receipts_or_writes() 
     assert!(!path.join("life/.personal-dashboard/tasks/v1/tasks.json").exists());
     let tools = tools.lock().unwrap();
     let schema = tools.iter().find(|tool| tool["name"] == "dashboard_read_history").unwrap();
-    assert_eq!(schema["inputSchema"]["properties"]["domain"]["enum"], json!(["tasks"]));
+    assert_eq!(schema["inputSchema"]["properties"]["domain"]["enum"], json!(["tasks", "dailyRecords"]));
     assert_eq!(saved.usage_bindings[0].registered_tools.iter().filter(|name| *name == "dashboard_read_history").count(), 1);
 }
 
@@ -7191,4 +7191,93 @@ fn bounded_task_history_reports_missing_and_damaged_sources_and_rejects_invalid_
     assert_eq!(result["state"], "error");
     assert_eq!(result["errorKind"], "damaged");
     assert_eq!(fs::read_to_string(file).unwrap(), "damaged canonical source");
+}
+
+#[test]
+fn daily_record_period_read_retains_original_phases_and_unknown_gaps_without_creating_history() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("dated-history");
+    let record = prepare_daily_review_vault(&path, false);
+    let original = fs::read(&record).unwrap();
+    let vault = MutableVault::new(&path);
+    let (app, _, _) = new_application(&directory, &vault, MutableContext::new("vault-a"), Arc::new(AtomicBool::new(false)));
+    let result = app.read_history("vault-a", personal_dashboard_lib::collaboration::CollaborationHistoryRequest {
+        domain: "dailyRecords".into(), from_date: "2026-09-26".into(), to_date: "2026-09-28".into(),
+    }).unwrap();
+    assert_eq!(result["domain"], "dailyRecords");
+    let dates = result["records"].as_array().unwrap();
+    assert_eq!(dates.len(), 3);
+    assert_eq!(dates[0]["date"], "2026-09-26");
+    assert_eq!(dates[0]["state"], "missing");
+    assert_eq!(dates[0]["evidenceAvailability"], "unknown");
+    assert_eq!(dates[2]["state"], "missing");
+    assert_eq!(dates[1]["baseline"]["timeline"][0]["title"], "Synthetic morning baseline.");
+    assert_eq!(dates[1]["currentArrangement"][0]["title"], "Synthetic current arrangement.");
+    assert!(dates[1]["daytime"]["updates"][0]["observedFacts"].as_array().unwrap().iter().any(|text| text.as_str().unwrap().contains("完成合成工作块")));
+    assert!(dates[1]["evening"]["account"].as_array().unwrap().iter().any(|text| text.as_str().unwrap().contains("已有原始复盘")));
+    assert_eq!(dates[1]["links"]["daytime"], "dashboard://record/2026-09-27?phase=daytime");
+    assert!(dates[1]["revision"].as_str().is_some());
+    assert!(dates[1].get("habitCorrections").is_none());
+    assert!(dates[1].get("tasks").is_none());
+    assert_eq!(fs::read(&record).unwrap(), original);
+    assert!(!path.join("life/Journal/Daily/2026/2026-09/2026-09-26.md").exists());
+    assert!(!path.join("life/Journal/Daily/2026/2026-09/2026-09-28.md").exists());
+}
+
+#[test]
+fn daily_record_period_read_preserves_corrected_short_record_and_damaged_date_independently() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("correction-history");
+    let record = prepare_daily_review_vault(&path, true);
+    let damaged = path.join("life/Journal/Daily/2026/2026-09/2026-09-26.md");
+    fs::write(&damaged, "---\ntype: daily-record\ndate: 2026-09-25\n---\n# Wrong dated source\n").unwrap();
+    let damaged_bytes = fs::read(&damaged).unwrap();
+    let vault = MutableVault::new(&path);
+    let (app, _, _) = new_application(&directory, &vault, MutableContext::new("vault-a"), Arc::new(AtomicBool::new(false)));
+    let session = app.create_session("2026-09-27").unwrap();
+    let operation = json!({"operation":"correctShortRecord","recordId":"exercise-short-1","content":"Walked outdoors for 25 minutes.","targetDate":"2026-09-27","executionMode":"execute"});
+    app.submit_message("vault-a", &session.id, "2026-09-27", &format!("single-date-fixture:{operation}")).unwrap();
+    wait_for_finish(&app, &session.id, "vault-a");
+    let saved = app.session("vault-a", &session.id).unwrap();
+    assert_eq!(saved.task_operations[0].status, "applied");
+    let result = app.read_history("vault-a", personal_dashboard_lib::collaboration::CollaborationHistoryRequest { domain: "dailyRecords".into(), from_date: "2026-09-26".into(), to_date: "2026-09-27".into() }).unwrap();
+    assert_eq!(result["records"][0]["state"], "error");
+    assert_eq!(result["records"][0]["evidenceAvailability"], "unknown");
+    assert_eq!(result["records"][0]["baseline"], Value::Null);
+    assert_eq!(result["records"][1]["state"], "ready");
+    let short = &result["records"][1]["daytime"]["shortRecords"][0];
+    assert_eq!(short["id"], "exercise-short-1");
+    assert_eq!(short["text"], "Walked outdoors for 25 minutes.");
+    assert_eq!(short["changes"][0]["oldText"], "Walked outdoors for 20 minutes.");
+    assert_eq!(short["changes"][0]["newText"], "Walked outdoors for 25 minutes.");
+    assert_eq!(fs::read(damaged).unwrap(), damaged_bytes);
+    assert!(fs::read_to_string(record).unwrap().contains("用户自有章节原文"));
+    assert!(!path.join("life/.personal-dashboard/habit-completions/v1/completions.json").exists());
+}
+
+#[test]
+fn collaboration_daily_record_query_exposes_actual_domain_and_preserves_missing_dates() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("history-registered-dates");
+    let record = prepare_daily_review_vault(&path, false);
+    let original = fs::read(&record).unwrap();
+    let vault = MutableVault::new(&path);
+    let (app, tools, results) = new_application(&directory, &vault, MutableContext::new("vault-a"), Arc::new(AtomicBool::new(false)));
+    let session = app.create_session("2026-09-27").unwrap();
+    app.submit_message("vault-a", &session.id, "2026-09-27", "read record history").unwrap();
+    wait_for_finish(&app, &session.id, "vault-a");
+    let saved = app.session("vault-a", &session.id).unwrap();
+    assert_eq!(saved.run_state, "completed");
+    let result = &results.lock().unwrap()[0];
+    assert!(result.success);
+    let history: Value = serde_json::from_str(&result.text).unwrap();
+    assert_eq!(history["domain"], "dailyRecords");
+    assert_eq!(history["records"].as_array().unwrap().len(), 4);
+    assert_eq!(history["records"][0]["state"], "missing");
+    assert_eq!(history["records"][3]["state"], "ready");
+    assert!(saved.task_operations.is_empty());
+    let tools = tools.lock().unwrap();
+    let history_tool = tools.iter().find(|tool| tool["name"] == "dashboard_read_history").unwrap();
+    assert!(history_tool["inputSchema"]["properties"]["domain"]["enum"].as_array().unwrap().contains(&json!("dailyRecords")));
+    assert_eq!(fs::read(record).unwrap(), original);
 }
