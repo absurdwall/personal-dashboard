@@ -66,6 +66,7 @@ const APP_SERVER_TURN_TOTAL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const APP_SERVER_INTERRUPT_TIMEOUT: Duration = Duration::from_secs(5);
 const COLLABORATION_HABIT_REFRESH_TOOL: &str = "dashboard_refresh_habits";
 const COLLABORATION_TASK_TOOL: &str = "dashboard_task_operation";
+const COLLABORATION_HISTORY_TOOL: &str = "dashboard_read_history";
 const COLLABORATION_MEMORY_TOOL: &str = "dashboard_memory_update";
 const CONTINUITY_MEMORY_MAX_AGE_DAYS: i64 = 14;
 const MAX_CONTINUITY_NOTE_CHARACTERS: usize = 4_000;
@@ -577,6 +578,78 @@ impl StoredCollaborationTaskOperation {
         self.result_revision = result_revision;
         self.updated_at = updated_at.to_owned();
     }
+}
+
+/// One read-only history capability; only domains backed by available adapters
+/// are advertised. The selected Vault is captured by the caller, never by input.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CollaborationHistoryRequest {
+    pub domain: String,
+    pub from_date: String,
+    pub to_date: String,
+}
+
+impl CollaborationHistoryRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        let from = crate::today::CalendarDate::parse(&self.from_date)
+            .ok_or_else(|| "fromDate must be a valid YYYY-MM-DD date".to_string())?;
+        let to = crate::today::CalendarDate::parse(&self.to_date)
+            .ok_or_else(|| "toDate must be a valid YYYY-MM-DD date".to_string())?;
+        let span = to.unix_days() - from.unix_days();
+        if !(0..366).contains(&span) {
+            return Err("History requires an ordered inclusive range of at most 366 dates".into());
+        }
+        Ok(())
+    }
+    fn contains(&self, date: Option<&str>) -> bool {
+        date.is_some_and(|date| date >= self.from_date.as_str() && date <= self.to_date.as_str())
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CollaborationTaskHistoryView {
+    domain: &'static str,
+    from_date: String,
+    to_date: String,
+    state: TaskDataState,
+    error_kind: Option<crate::tasks::TaskDataErrorKind>,
+    message: String,
+    target_binding: Option<String>,
+    revision: Option<String>,
+    lists: Vec<crate::tasks::TaskListView>,
+    tasks: Vec<crate::tasks::TaskView>,
+    coverage: &'static str,
+}
+
+fn task_history(tasks: TasksView, request: &CollaborationHistoryRequest) -> CollaborationTaskHistoryView {
+    let relevant = |task: &crate::tasks::TaskView| {
+        request.contains(task.date.as_deref())
+            || timestamp_lived_date(&task.created_at).as_deref().is_some_and(|date| request.contains(Some(date)))
+            || request.contains(task.completion.as_ref().map(|c| c.completed_on.as_str()))
+            || task.changes.iter().any(|change| {
+                request.contains(change.previous_date.as_deref()) || request.contains(change.new_date.as_deref())
+                    || request.contains(change.previous_completion.as_ref().map(|c| c.completed_on.as_str()))
+                    || request.contains(change.new_completion.as_ref().map(|c| c.completed_on.as_str()))
+                    || timestamp_lived_date(&change.changed_at).as_deref().is_some_and(|date| request.contains(Some(date)))
+            })
+    };
+    CollaborationTaskHistoryView {
+        domain: "tasks", from_date: request.from_date.clone(), to_date: request.to_date.clone(),
+        state: tasks.state, error_kind: tasks.error_kind, message: tasks.message,
+        target_binding: tasks.target_binding, revision: tasks.revision, lists: tasks.lists,
+        tasks: tasks.tasks.into_iter().filter(relevant).collect(),
+        coverage: "Current canonical objects and retained change witnesses relevant by scheduled date, actual completion date, or local lived date of a change. Current state is not historical state; unrecorded earlier history and actual activity times remain unknown. Empty results do not imply failed or absent activity.",
+    }
+}
+
+// Canonical timestamps carry the original wall clock and offset. Before 04:00
+// the change belongs to the previous lived day; never infer this from UTC.
+fn timestamp_lived_date(timestamp: &str) -> Option<String> {
+    let date = crate::today::CalendarDate::parse(timestamp.get(..10)?)?;
+    let hour: u32 = timestamp.get(11..13)?.parse().ok()?;
+    (hour < 24).then(|| if hour < 4 { date.plus_days(-1) } else { date }.to_string())
 }
 
 pub trait CollaborationTaskService: Send + Sync {
@@ -1874,6 +1947,31 @@ impl CollaborationApplication {
         };
         let _ = application.mark_incomplete_runs_interrupted();
         application
+    }
+
+    pub fn read_history(&self, vault_key: &str, request: CollaborationHistoryRequest) -> Result<Value, String> {
+        request.validate()?;
+        if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+            return Err("Selected Vault changed before history read".into());
+        }
+        let selected_root = self.context_source.selected_vault_path(vault_key)?;
+        let result = match request.domain.as_str() {
+            "tasks" if self.task_service.is_available() => {
+                let tasks = self.task_service.read()?;
+                if let Some(root) = selected_root.as_ref() {
+                    if tasks.vault_path.as_deref().map(Path::new).map(|path| path.canonicalize().unwrap_or_else(|_| path.to_owned()))
+                        != Some(root.canonicalize().unwrap_or_else(|_| root.clone())) {
+                        return Err("Task history does not belong to the captured selected Vault".into());
+                    }
+                }
+                serde_json::to_value(task_history(tasks, &request)).map_err(|e| e.to_string())?
+            },
+            _ => return Err("Requested history domain is unavailable in this adapter".into()),
+        };
+        if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+            return Err("Selected Vault changed during history read; result discarded".into());
+        }
+        Ok(result)
     }
 
     pub fn with_task_service(mut self, task_service: Arc<dyn CollaborationTaskService>) -> Self {
@@ -4296,6 +4394,25 @@ impl CollaborationApplication {
             return RuntimeDynamicToolResult {
                 text: "This tool call does not belong to the active Dashboard conversation. No data was changed.".into(),
                 success: false,
+            };
+        }
+        if call.tool == COLLABORATION_HISTORY_TOOL {
+            let result = (|| -> Result<Value, String> {
+                if automatic_plan { return Err("History tool is unavailable in automatic rounds".into()); }
+                self.read_state(|state| {
+                    let session = state.sessions.iter().find(|session| session.id == session_id && session.vault_key.as_deref() == Some(vault_key))
+                        .ok_or_else(|| "History request session is unavailable".to_string())?;
+                    if session.run_id.as_deref() != Some(execution_id) || !matches!(session.run_state.as_str(), "reading" | "thinking") {
+                        return Err("History request is no longer active".to_string());
+                    }
+                    Ok(())
+                })??;
+                let request = serde_json::from_value(call.arguments).map_err(|e| e.to_string())?;
+                self.read_history(vault_key, request)
+            })();
+            return match result {
+                Ok(value) => RuntimeDynamicToolResult { success: true, text: value.to_string() },
+                Err(error) => RuntimeDynamicToolResult { success: false, text: error },
             };
         }
         if call.tool == COLLABORATION_HABIT_REFRESH_TOOL {
@@ -6931,6 +7048,9 @@ impl CollaborationApplication {
                 true,
             ));
         }
+        if !automatic_plan && task_operations_available {
+            dynamic_tools.push(collaboration_history_tool_spec());
+        }
         if !automatic_plan && daily_plan_operations_available {
             dynamic_tools.push(collaboration_habit_refresh_tool_spec());
         }
@@ -8981,10 +9101,25 @@ fn task_operation_effect_matches(
     }
 }
 
+fn collaboration_history_tool_spec() -> Value {
+    json!({
+        "name": COLLABORATION_HISTORY_TOOL,
+        "description": usage::description("tool.readHistory"),
+        "inputSchema": { "type":"object", "additionalProperties":false,
+            "required":["domain","fromDate","toDate"],
+            "properties": { "domain":{"type":"string","enum":["tasks"]},
+                "fromDate":{"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+                "toDate":{"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"} }
+        }
+    })
+}
+
 fn task_tool_saved_receipt(operation: &CollaborationTaskOperationView) -> String {
     json!({
         "status": operation.status,
         "operationId": operation.id,
+        "operation": operation.operation,
+        "baseline": operation.baseline,
         "targetDate": operation.target_date,
         "taskId": operation.task_id,
         "listId": operation.list_id,

@@ -2327,10 +2327,18 @@ function collaborationOutcomeSummary(result: NonNullable<CollaborationMessageVie
       correctCompletion: "collaboration.taskOpCorrectCompletion", createList: "collaboration.taskOpCreateList",
       renameList: "collaboration.taskOpRenameList", archiveList: "collaboration.taskOpArchiveList", restoreList: "collaboration.taskOpRestoreList",
     };
-    const schedule = "date" in operation && operation.date ? ` · ${operation.date}${operation.time ? ` ${operation.time}` : ""}` : "";
+    const observed = receipt.status === "applied" && receipt.resultSnapshot?.kind === "task" ? receipt.resultSnapshot : null;
+    const scheduleDate = observed?.date ?? ("date" in operation ? operation.date : null);
+    const scheduleTime = observed?.time ?? ("time" in operation ? operation.time : null);
+    const schedule = observed
+      ? ` · ${t("tasks.date")}: ${scheduleDate ?? t("tasks.noDate")}${scheduleTime ? ` ${scheduleTime}` : ""}`
+      : scheduleDate ? ` · ${scheduleDate}${scheduleTime ? ` ${scheduleTime}` : ""}` : "";
+    const completion = observed?.completion
+      ? ` · ${t("tasks.completionDate")}: ${observed.completion.completedOn}${observed.completion.completedTime ? ` ${observed.completion.completedTime}` : ""}` : "";
+    const list = observed?.listName ? ` · ${t("tasks.list")}: ${observed.listName}` : "";
     const content = "content" in operation && operation.content ? `\n${operation.content}` : "";
     return t(labels[operation.operation], { name, previous: "name" in receipt.baseline ? receipt.baseline.name : "", date: "completedOn" in operation ? operation.completedOn : receipt.targetDate,
-      time: "completedTime" in operation ? operation.completedTime ?? t("common.unknown") : t("common.unknown") }) + schedule + content;
+      time: "completedTime" in operation ? operation.completedTime ?? t("common.unknown") : t("common.unknown") }) + schedule + completion + list + content;
   }
   // Old persisted activity may contain JSON envelopes. Keep it out of the UI too.
   if (/^\s*[\[{]/.test(result.message) || result.message === "null") return t("collaboration.sourceResultRecorded");
@@ -2366,7 +2374,7 @@ function renderCollaborationOutcomes(container: HTMLElement, session: Collaborat
         const open = document.createElement("button");
         open.type = "button";
         open.className = "text-button collaboration-outcome-link";
-        open.textContent = t(receipt.taskId ? "collaboration.openSavedTask" : receipt.operation.operation === "setLocalHabitCompletion" ? "collaboration.openHabitDate" : "collaboration.openDailyRecordToday");
+        open.textContent = t(receipt.taskId || receipt.listId ? "collaboration.openSavedTask" : receipt.operation.operation === "setLocalHabitCompletion" ? "collaboration.openHabitDate" : "collaboration.openDailyRecordToday");
         open.addEventListener("click", () => {
           if (receipt.taskId || receipt.listId) {
             taskReturnToCollaborationSessionId = session.id;
@@ -4743,7 +4751,7 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
   const sessionId = session.id;
   const refreshedEffects = new Set<string>();
   collaborationStatusTimer = window.setInterval(() => {
-    if (currentWorkspaceDestination !== "collaboration" || currentCollaborationSession?.id !== sessionId) {
+    if (currentCollaborationSession?.id !== sessionId) {
       return;
     }
     void window.__TAURI__.core.invoke<CollaborationSessionView>(
@@ -4790,6 +4798,15 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
         }
       }
       if (confirmedEffect && ["queued", "reading", "thinking", "stopping"].includes(updated.runState)) {
+        // A Task's schedule/completion and list state can change any date-based
+        // view. Re-read the date being viewed; never redirect the write target.
+        if (tasksChanged) {
+          const visibleDate = currentWorkspaceDestination === "today"
+            ? selectedTodayDate ?? currentTodayView?.date
+            : currentWorkspaceDestination === "calendar"
+              ? selectedCalendarDate ?? currentCalendarSummaryView?.date : null;
+          if (visibleDate) changedDates.add(visibleDate);
+        }
         void Promise.allSettled([
           ...[...changedDates].map(date => refreshCanonicalDateProjections(date)),
           ...(tasksChanged ? [refreshTasks()] : []),
@@ -10567,10 +10584,8 @@ function showWorkspaceDestination(
   if (leavingCollaboration) {
     cancelCollaborationVoiceCaptureForSelectionChange();
     stashCollaborationDraft();
-    if (collaborationStatusTimer !== null) {
-      window.clearInterval(collaborationStatusTimer);
-      collaborationStatusTimer = null;
-    }
+    // Keep the active request observer alive across app navigation; Vault
+    // reset and the actual turn terminal state still stop this shared watch.
   }
   if (leavingSettings && dailyPlanAutomationStatusTimer !== null) {
     window.clearInterval(dailyPlanAutomationStatusTimer);

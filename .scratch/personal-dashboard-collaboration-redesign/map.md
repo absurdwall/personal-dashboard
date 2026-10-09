@@ -16,8 +16,8 @@ Working branch: codex/collaboration-redesign-integration
 | PDCR-01 | ticket | [01: 用统一 usage skill 完成并核验一条白天记录](issues/01-skill-daytime-record.md) | ready-for-agent | closed | none | [Evidence](evidence/01-usage-package.md); implementation 1d656cb; integrated 288f14f; application acceptance met |
 | PDCR-02 | ticket | [02: 显示并保存真实工作过程与最终回复](issues/02-observable-work-history.md) | ready-for-agent | closed | PDCR-01 | [Evidence](evidence/02-work-history.md); implementation 77a1951; integrated 1feeb31c |
 | PDCR-03 | ticket | [03: 排队、停止、纠正与未知结果恢复](issues/03-queue-stop-recovery.md) | ready-for-agent | in-progress | PDCR-02 | Codex implementer PDCR-03; codex/pdcr-03; claimed 2026-10-09 |
-| PDCR-04 | ticket | [04: Task 与清单协作反映到真实对象和页面](issues/04-task-list-collaboration.md) | ready-for-agent | in-progress | PDCR-02 | Codex implementer PDCR-04; codex/pdcr-04; claimed 2026-10-09 |
-| PDCR-05 | ticket | [05: 计划、晚间复盘与历史记录协作](issues/05-daily-record-collaboration.md) | ready-for-agent | open | PDCR-02 | unassigned; not-started; breakdown approved 2026-10-09 |
+| PDCR-04 | ticket | [04: Task 与清单协作反映到真实对象和页面](issues/04-task-list-collaboration.md) | ready-for-agent | closed | PDCR-02 | [Evidence](pdcr-04-evidence.md); implementation 62f10ea / 8cf2344; integrated d2157330 |
+| PDCR-05 | ticket | [05: 计划、晚间复盘与历史记录协作](issues/05-daily-record-collaboration.md) | ready-for-agent | in-progress | PDCR-02 | Codex implementer PDCR-05; codex/pdcr-05; claimed 2026-10-09 |
 | PDCR-06 | ticket | [06: 本地 Habit 补记、撤回与历史查询](issues/06-local-habit-history.md) | ready-for-agent | open | PDCR-02 | unassigned; not-started; breakdown approved 2026-10-09 |
 | PDCR-07 | ticket | [07: 映射 Dida Habit 与 snapshot 的独立结果](issues/07-mapped-dida-habit-results.md) | ready-for-agent | open | PDCR-06 | unassigned; not-started; breakdown approved 2026-10-09 |
 | PDCR-08 | ticket | [08: 许可文档与背景更新保留可核验的修改](issues/08-document-background-evidence.md) | ready-for-agent | in-progress | PDCR-02 | Codex implementer PDCR-08; codex/pdcr-08; claimed 2026-10-09 |
@@ -27,7 +27,7 @@ Working branch: codex/collaboration-redesign-integration
 | PDCR-12 | ticket | [12: 同一候选版本的 live Dida 核验](issues/12-live-dida-acceptance.md) | ready-for-agent | open | PDCR-11 | unassigned; not-started; breakdown approved 2026-10-09 |
 
 Twelve approved tickets are published, each with its own body and acceptance
-criteria. PDCR-01 and PDCR-02 are closed with application evidence; the ready frontier is PDCR-03/04/05/06/08. PDCR-03/04/08 are claimed in isolated worktrees. Ready-for-agent describes the
+criteria. PDCR-01, PDCR-02 and PDCR-04 are closed with application evidence. PDCR-03/05/08 are claimed in isolated worktrees; PDCR-06 is eligible. Ready-for-agent describes the
 triage role; it does not start implementation or establish delivery.
 
 ## Decisions so far
@@ -43,7 +43,7 @@ triage role; it does not start implementation or establish delivery.
 
 ## Next stage
 
-The user authorized implement-spec on 2026-10-09 using the specification branch as baseline. Follow [execution tracking](execution.md); the current frontier is **PDCR-03/04/05/06/08**; three independent slices are claimed in isolated worktrees.
+The user authorized implement-spec on 2026-10-09 using the specification branch as baseline. Follow [execution tracking](execution.md); the current claimed frontier is **PDCR-03/05/08**; **PDCR-06** remains eligible.
 
 The graph has 12 tickets and 16 direct blocking edges. Direct blockers are shown
 above and in each ticket body; after PDCR-02 closes, PDCR-03/04/05/06/08 become
