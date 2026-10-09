@@ -762,7 +762,7 @@ fn same_vault_requests_from_different_sessions_run_in_fifo_order() {
 }
 
 #[test]
-fn next_vault_request_waits_until_the_active_stop_is_confirmed() {
+fn stopping_pauses_older_requests_and_fresh_correction_runs_first() {
     let directory = IsolatedDirectory::new();
     let prompts = Arc::new(Mutex::new(Vec::new()));
     let calls = Arc::new(Mutex::new(Vec::new()));
@@ -804,7 +804,14 @@ fn next_vault_request_waits_until_the_active_stop_is_confirmed() {
     gate.release_all();
 
     let stopped = wait_for_run_state(&application, &active_session.id, "stopped");
-    wait_for_run_state(&application, &queued_session.id, "completed");
+    let pending = application.session("synthetic-vault", &queued_session.id).unwrap();
+    assert_eq!(pending.messages[0].delivery_state, "paused", "stop must retain older pending work without executing it");
+    assert_eq!(gate.started_len(), 1);
+    application.submit_message("synthetic-vault", &active_session.id, "2026-09-20", "Correction after stop").unwrap();
+    let corrected = wait_for_run_state(&application, &active_session.id, "completed");
+    assert_eq!(corrected.messages.last().unwrap().target_date, "2026-09-20");
+    assert_eq!(application.session("synthetic-vault", &queued_session.id).unwrap().messages[0].delivery_state, "paused");
+    assert_eq!(prompts.lock().unwrap().last().unwrap().user_text, "Correction after stop");
     assert_eq!(stopped.messages[0].delivery_state, "stopped");
     assert_eq!(gate.confirmed_stops(), [active.run_id.unwrap()]);
     let events = gate.events();
@@ -812,6 +819,38 @@ fn next_vault_request_waits_until_the_active_stop_is_confirmed() {
     assert!(events[0].starts_with("started:"));
     assert!(events[1].starts_with("stopped:"));
     assert!(events[2].starts_with("started:"));
+}
+
+#[test]
+fn paused_requests_reopen_and_can_be_explicitly_removed_or_resumed_at_the_original_date() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let gate = Arc::new(FakeTurnGate::default());
+    gate.configure_cancellation(false, true);
+    let application = new_application_with_controls(&directory, prompts.clone(), Arc::new(Mutex::new(Vec::new())),
+        Some(gate.clone()), Arc::new(Mutex::new(HashMap::new())));
+    let session = application.create_session("2026-09-27").unwrap();
+    let first = application.submit_message("synthetic-vault", &session.id, "2026-09-27", "Stopped work").unwrap();
+    gate.wait_for_started(1);
+    application.submit_message("synthetic-vault", &session.id, "2026-09-19", "Remove this pending request").unwrap();
+    application.submit_message("synthetic-vault", &session.id, "2026-09-20", "Resume at the original date").unwrap();
+    application.stop_run_for_selected_vault(&session.id, first.run_id.as_deref().unwrap()).unwrap();
+    gate.wait_for_confirmed_stop(); gate.release_all();
+    wait_for_run_state(&application, &session.id, "stopped");
+    let reopened = new_application(&directory, prompts.clone());
+    let paused = reopened.session("synthetic-vault", &session.id).unwrap();
+    assert_eq!(paused.messages[1].delivery_state, "paused");
+    assert_eq!(paused.messages[2].delivery_state, "paused");
+    let removed = reopened.remove_pending_request_for_selected_vault(&session.id, paused.messages[1].execution_id.as_deref().unwrap()).unwrap();
+    assert_eq!(removed.messages[1].delivery_state, "removed");
+    reopened.requeue_not_started_for_selected_vault(&session.id, paused.messages[2].execution_id.as_deref().unwrap()).unwrap();
+    let finished = wait_for_run_state(&reopened, &session.id, "completed");
+    assert_eq!(finished.messages[1].delivery_state, "removed");
+    let sent = prompts.lock().unwrap();
+    assert_eq!(sent.len(), 2);
+    assert_eq!(sent[1].context.date, "2026-09-20");
+    assert_eq!(sent[1].user_text, "Resume at the original date");
+    assert!(reopened.remove_pending_request_for_selected_vault(&session.id, first.run_id.as_deref().unwrap()).is_err());
 }
 
 #[test]
@@ -1860,14 +1899,15 @@ fn later_source_edit_does_not_replay_old_effect_or_block_unrelated_current_reque
     let application = dida_workflow_application(&directory,Arc::clone(&source));
     let session = application.create_session("2026-09-27").unwrap();
     let submitted = application.submit_message("synthetic-vault",&session.id,"2026-09-27","create-owned").unwrap();
-    let execution = submitted.messages.iter().find_map(|m|m.execution_id.clone()).unwrap();
+    let _execution = submitted.messages.iter().find_map(|m|m.execution_id.clone()).unwrap();
     wait_for_session(&application,&session.id,|s|s.run_state == "stop-unconfirmed" || s.run_state == "interrupted");
     {
         let mut remote = source.lock().unwrap();
         remote.readable = true;
         remote.objects.insert("external-owned-id".into(),"Later user edit".into());
     }
-    application.reconcile_run_for_selected_vault(&session.id,&execution).unwrap();
+    // An unresolved older execution must not block unrelated current work.
+    assert!(application.workspace("2026-09-27").unwrap().recovery_required);
     application.submit_message("synthetic-vault",&session.id,"2026-09-27","continue an unrelated explicitly authorized current request").unwrap();
     let result = wait_for_session(&application,&session.id,|s|s.run_state == "completed");
     assert_eq!(result.messages[0].external_actions[0].status,"unknown","Later source state does not reconstruct the old effect");
@@ -1888,4 +1928,361 @@ fn wait_for_session(
         thread::sleep(Duration::from_millis(10));
     }
     panic!("Controlled external workflow failed to reach expected state");
+}
+
+struct FailStopSaveOnce {
+    inner: FileCollaborationStore,
+    failures: Arc<AtomicU64>,
+}
+impl CollaborationStore for FailStopSaveOnce {
+    fn load(&self) -> Result<CollaborationState, String> {
+        self.inner.load()
+    }
+    fn save(&self, state: &CollaborationState) -> Result<(), String> {
+        if state.sessions.iter().any(|s| {
+            s.messages
+                .iter()
+                .any(|m| matches!(m.delivery_state.as_str(), "stopping" | "stopped"))
+        }) && self
+            .failures
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |remaining| {
+                remaining.checked_sub(1)
+            })
+            .is_ok()
+        {
+            return Err("Synthetic stop history save failed".into());
+        }
+        self.inner.save(state)
+    }
+}
+
+fn stop_save_failure_application(
+    directory: &IsolatedDirectory,
+    gate: &Arc<FakeTurnGate>,
+    failures: &Arc<AtomicU64>,
+) -> CollaborationApplication {
+    CollaborationApplication::with_adapters(
+        Arc::new(FailStopSaveOnce {
+            inner: FileCollaborationStore::new(
+                directory.path().join("collaboration/collaboration.json"),
+            ),
+            failures: failures.clone(),
+        }),
+        Box::new(FakeAppServer {
+            prompts: Arc::new(Mutex::new(Vec::new())),
+            calls: Arc::new(Mutex::new(Vec::new())),
+            read_only_text_turns_available: true,
+            switch_vault_on_inspect: None,
+            turn_gate: Some(gate.clone()),
+            reconciliations: Arc::new(Mutex::new(HashMap::new())),
+            memory_call: None,
+            memory_tool_results: Arc::new(Mutex::new(Vec::new())),
+        }),
+        Arc::new(FixtureContext),
+        Arc::new(FixedClock),
+        directory.path().to_path_buf(),
+        "Synthetic context".into(),
+    )
+}
+
+#[test]
+fn failed_stop_history_save_still_cancels_the_running_turn() {
+    for failure_count in [1, 2] {
+        let directory = IsolatedDirectory::new();
+        let gate = Arc::new(FakeTurnGate::default());
+        gate.configure_cancellation(false, true);
+        let failures = Arc::new(AtomicU64::new(0));
+        let application = stop_save_failure_application(&directory, &gate, &failures);
+        let session = application.create_session("2026-09-27").unwrap();
+        application
+            .submit_message(
+                "synthetic-vault",
+                &session.id,
+                "2026-09-27",
+                "Stop even if history cannot be saved",
+            )
+            .unwrap();
+        let execution = gate.wait_for_started(1)[0].clone();
+        application
+            .submit_message(
+                "synthetic-vault",
+                &session.id,
+                "2026-09-20",
+                "Older queued request must stay paused",
+            )
+            .unwrap();
+        failures.store(failure_count, Ordering::SeqCst);
+        let result = application.stop_run_for_selected_vault(&session.id, &execution);
+        if failure_count == 1 {
+            result.unwrap();
+        } else {
+            assert!(result.unwrap_err().contains("Stop was requested"));
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(1);
+        while gate.confirmed_stops().is_empty() && std::time::Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        let stopped = gate.confirmed_stops();
+        gate.release_all();
+        assert_eq!(
+            stopped,
+            vec![execution],
+            "Stop must reach the runtime independently of a history save"
+        );
+        let saved = wait_for_run_state(&application, &session.id, "stopped");
+        assert_eq!(saved.messages[1].delivery_state, "paused");
+        assert_eq!(
+            gate.started_len(),
+            1,
+            "Failed stop saves never release the older queue"
+        );
+    }
+}
+
+#[test]
+fn old_result_check_uses_its_original_thread_and_preserves_newer_execution_and_prior_history() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let reconciliations = Arc::new(Mutex::new(HashMap::new()));
+    let application = new_application_with_controls(
+        &directory,
+        prompts.clone(),
+        calls.clone(),
+        None,
+        reconciliations.clone(),
+    );
+    let session = application.create_session("2026-09-20").unwrap();
+    application
+        .submit_message(
+            "synthetic-vault",
+            &session.id,
+            "2026-09-20",
+            "Older request with missing final receipt",
+        )
+        .unwrap();
+    let original = wait_for_run_state(&application, &session.id, "completed");
+    let execution = original.messages[0].execution_id.clone().unwrap();
+    let store =
+        FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"));
+    let mut state = store.load().unwrap();
+    let saved = &mut state.sessions[0];
+    saved.run_state = "stop-unconfirmed".into();
+    saved.messages[0].delivery_state = "stop-unconfirmed".into();
+    saved.messages[0].result_checked = false;
+    let old_history: personal_dashboard_lib::collaboration::CollaborationWorkHistory = serde_json::from_value(serde_json::json!({
+        "evidenceVersion":1,"executionId":execution,"threadId":"runtime-thread-1","turnId":"old-turn","sequence":12,"status":"history-save-failed",
+        "observedAtMs":10,"updatedAtMs":20,"runtimeStartedAtMs":null,"runtimeCompletedAtMs":null,"tokenUsage":null,
+        "items":[{"itemId":"attempt-1","callId":"old-call","kind":"dynamicToolCall","phase":null,"text":"Original failed attempt","summary":[],"tool":"dashboard_tasks","status":"failed",
+          "firstSequence":1,"lastSequence":12,"observedAtMs":10,"updatedAtMs":20,"runtimeStartedAtMs":null,"runtimeCompletedAtMs":null,"runtimeEmittedAtMs":null,"authoritative":true,"parameters":[],"diagnostic":"Original error retained"}]
+    })).unwrap();
+    saved.work_history = vec![old_history.clone()];
+    store.save(&state).unwrap();
+    application
+        .submit_message(
+            "synthetic-vault",
+            &session.id,
+            "2026-09-21",
+            "New unrelated request",
+        )
+        .unwrap();
+    let newer = wait_for_run_state(&application, &session.id, "completed");
+    assert_ne!(newer.run_id, Some(execution.clone()));
+    assert!(
+        application
+            .workspace("2026-09-21")
+            .unwrap()
+            .active_run
+            .is_none(),
+        "An older unconfirmed outcome is not the current execution owner"
+    );
+    assert_eq!(
+        calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|call| **call == "start-thread")
+            .count(),
+        2,
+        "An uncertain prior turn is never resumed for fresh work"
+    );
+    // The transport's newer thread pointer may differ after schema/source rotation.
+    // Original execution binding must survive that update.
+    let mut state = store.load().unwrap();
+    state.sessions[0].runtime_thread_id = Some("newer-runtime-thread".into());
+    store.save(&state).unwrap();
+    reconciliations.lock().unwrap().insert(
+        execution.clone(),
+        RuntimeRunReconciliation::Completed {
+            text: String::new(),
+            runtime_turn_id: "old-turn".into(),
+            external_actions: Vec::new(),
+        },
+    );
+    let checked = application
+        .reconcile_run_for_selected_vault(&session.id, &execution)
+        .unwrap();
+    assert!(checked.messages[0].result_checked);
+    assert_eq!(
+        checked.messages[0].delivery_state, "completed",
+        "A completed turn without final text is still a confirmed terminal result"
+    );
+    assert_eq!(checked.run_id, newer.run_id);
+    assert_eq!(checked.run_state, newer.run_state);
+    assert_eq!(checked.progress, newer.progress);
+    assert_eq!(
+        checked.work_history[0].items, old_history.items,
+        "Readback preserves errors, tools and observed times"
+    );
+    assert_eq!(checked.work_history[0].sequence, old_history.sequence);
+    assert_eq!(checked.work_history[0].status, "completed");
+    assert_eq!(
+        prompts.lock().unwrap().len(),
+        2,
+        "Readback never sends another turn"
+    );
+    assert!(application
+        .reconcile_run_for_selected_vault(&session.id, &execution)
+        .is_err());
+}
+
+#[test]
+fn never_dispatched_older_request_can_be_reviewed_after_newer_thread_starts() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let application = new_application(&directory, prompts.clone());
+    let session = application.create_session("2026-09-20").unwrap();
+    let store =
+        FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"));
+    let mut state = store.load().unwrap();
+    let saved = &mut state.sessions[0];
+    saved.run_id = Some("never-dispatched".into());
+    saved.run_state = "interrupted".into();
+    saved.messages.push(serde_json::from_value(serde_json::json!({
+        "id":"message-before-thread","role":"user","text":"Never dispatched original","messageDate":"2026-09-20","targetDate":"2026-09-20",
+        "createdAt":"2026-09-20T03:50:00-04:00","executionId":"never-dispatched","runtimeTurnId":null,"deliveryState":"interrupted",
+        "queueOrder":1,"resultChecked":false,"automaticPlan":false,"externalAppIds":[],"externalActions":[],"pendingExternalApproval":null
+    })).unwrap());
+    state.next_queue_order = 2;
+    store.save(&state).unwrap();
+    application
+        .submit_message(
+            "synthetic-vault",
+            &session.id,
+            "2026-09-21",
+            "Fresh unrelated request",
+        )
+        .unwrap();
+    let newer = wait_for_run_state(&application, &session.id, "completed");
+    let checked = application
+        .reconcile_run_for_selected_vault(&session.id, "never-dispatched")
+        .unwrap();
+    assert!(checked.messages[0].result_checked);
+    assert_eq!(checked.run_id, newer.run_id);
+    assert_eq!(checked.run_state, newer.run_state);
+    assert_eq!(
+        prompts.lock().unwrap().len(),
+        1,
+        "No original turn is sent or fabricated from the newer thread"
+    );
+}
+
+#[test]
+fn another_chat_reads_the_original_unknown_external_receipt_without_replaying_it() {
+    let directory = IsolatedDirectory::new();
+    let source = Arc::new(Mutex::new(DidaSourceFixture::default()));
+    let application = dida_workflow_application(&directory, source.clone());
+    let original = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "synthetic-vault",
+            &original.id,
+            "2026-09-27",
+            "create-owned",
+        )
+        .unwrap();
+    wait_for_session(&application, &original.id, |session| {
+        session.run_state == "interrupted"
+    });
+    let store = FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"));
+    let mut state = store.load().unwrap();
+    state.sessions[0].run_state = "stop-unconfirmed".into();
+    state.sessions[0].messages[0].delivery_state = "stop-unconfirmed".into();
+    store.save(&state).unwrap();
+    let other = application.create_session("2026-09-26").unwrap();
+    application
+        .submit_message(
+            "synthetic-vault",
+            &other.id,
+            "2026-09-26",
+            "Unrelated current local work",
+        )
+        .unwrap();
+    wait_for_run_state(&application, &other.id, "completed");
+    assert_eq!(
+        source.lock().unwrap().scopes.last(),
+        Some(&false),
+        "Opening another chat cannot bypass unknown native source receipts"
+    );
+    assert!(application.workspace("2026-09-26").unwrap().active_run.is_none(), "An older unconfirmed turn is a recovery result, not the current work owner");
+    assert_eq!(source.lock().unwrap().writes, 1);
+    source.lock().unwrap().readable = true;
+    application
+        .submit_message(
+            "synthetic-vault",
+            &other.id,
+            "2026-09-26",
+            "Read the original source before continuing",
+        )
+        .unwrap();
+    wait_for_session(&application, &other.id, |session| {
+        session.run_state == "completed" && session.messages.len() == 4
+    });
+    let checked = application
+        .session("synthetic-vault", &original.id)
+        .unwrap();
+    assert_eq!(checked.messages[0].external_actions[0].status, "saved");
+    assert_eq!(checked.messages[0].target_date, "2026-09-27");
+    assert_eq!(
+        checked.run_state, "stop-unconfirmed",
+        "Source readback updates its effect, not the older whole turn"
+    );
+    assert_eq!(source.lock().unwrap().scopes.last(), Some(&true));
+    assert_eq!(source.lock().unwrap().writes, 1);
+}
+
+#[test]
+fn failed_history_save_of_queued_stop_never_dispatches_that_request() {
+    let directory = IsolatedDirectory::new();
+    let gate = Arc::new(FakeTurnGate::default());
+    let failures = Arc::new(AtomicU64::new(0));
+    let application = stop_save_failure_application(&directory, &gate, &failures);
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .submit_message(
+            "synthetic-vault",
+            &session.id,
+            "2026-09-27",
+            "Current running request",
+        )
+        .unwrap();
+    gate.wait_for_started(1);
+    let queued = application
+        .submit_message(
+            "synthetic-vault",
+            &session.id,
+            "2026-09-20",
+            "Queued request to stop",
+        )
+        .unwrap();
+    let pending = queued.messages[1].execution_id.clone().unwrap();
+    failures.store(2, Ordering::SeqCst);
+    assert!(application
+        .stop_run_for_selected_vault(&session.id, &pending)
+        .unwrap_err()
+        .contains("Stop was requested"));
+    gate.release_all();
+    let completed = wait_for_run_state(&application, &session.id, "completed");
+    assert_eq!(completed.messages[1].delivery_state, "paused");
+    assert_eq!(gate.started_len(), 1);
 }

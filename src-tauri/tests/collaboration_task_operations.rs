@@ -7106,3 +7106,34 @@ fn conversational_confirmation_executes_selected_review_without_authorization_wo
         }
     }
 }
+
+#[test]
+fn an_uncertain_exact_effect_in_another_session_is_read_back_before_any_new_write() {
+    let directory = IsolatedDirectory::new();
+    let vault_path = directory.vault("vault");
+    let vault = MutableVault::new(&vault_path);
+    let (application, _, _) = new_application(&directory, &vault, MutableContext::new("vault-a"), Arc::new(AtomicBool::new(false)));
+    let original = application.create_session("2026-09-27").unwrap();
+    let proposal = submit_for_proposal(&application, &original.id, "create task");
+    application.approve_task_operation_for_selected_vault(&original.id, &proposal.id).unwrap();
+    let store = FileCollaborationStore::new(directory.path().join("collaboration/collaboration.json"));
+    let mut state = store.load().unwrap();
+    // Source succeeded but its result acknowledgement was lost. Keep the
+    // persisted original stable operation/task ID and attempted execution.
+    let mut lost = serde_json::to_value(&state.sessions[0].task_operations[0]).unwrap();
+    lost["status"] = json!("awaitingApproval");
+    lost["executeAttempted"] = json!(true);
+    lost["resultSnapshot"] = Value::Null;
+    state.sessions[0].task_operations[0] = serde_json::from_value(lost).unwrap();
+    store.save(&state).unwrap();
+    let other = application.create_session("2026-09-27").unwrap();
+    let repeated = submit_for_proposal(&application, &other.id, "create task");
+    let error = application.approve_task_operation_for_selected_vault(&other.id, &repeated.id).unwrap_err();
+    assert!(error.contains("original saved effect"), "{error}");
+    let tasks = TaskApplication::new(vault, FixedClock, FileTaskStore).read().unwrap();
+    assert_eq!(tasks.tasks.len(), 1, "A different session cannot replay the same uncertain create");
+    let checked = application.session("vault-a", &original.id).unwrap();
+    assert_eq!(checked.task_operations[0].id, proposal.id);
+    assert_eq!(checked.task_operations[0].status, "applied");
+    assert_eq!(application.session("vault-a", &other.id).unwrap().task_operations[0].status, "conflict");
+}
