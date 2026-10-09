@@ -5,7 +5,7 @@ Type: map
 Date: 2026-10-09
 Canonical: this local tracker, explicitly selected by the user
 Stage: implementation
-Implementation: in-progress
+Implementation: blocked on named acceptance/scope gates
 Working branch: codex/collaboration-redesign-integration
 
 ## Records
@@ -23,11 +23,11 @@ Working branch: codex/collaboration-redesign-integration
 | PDCR-08 | ticket | [08: 许可文档与背景更新保留可核验的修改](issues/08-document-background-evidence.md) | ready-for-agent | closed | PDCR-02 | [Evidence](pdcr-08-evidence.md); implementation 137e41c / 1b8503a; integrated 669346c4 |
 | PDCR-09 | ticket | [09: 在 Codex 完成一次有证据的 workflow retro](issues/09-workflow-retro.md) | ready-for-agent | closed | PDCR-08 | [Evidence](pdcr-09-evidence.md); products 8af2032 / d5235cd; integrated dbe5adba |
 | PDCR-10 | ticket | [10: 在 Dashboard 完成 personal retro](issues/10-personal-retro.md) | ready-for-agent | closed | PDCR-04, PDCR-05, PDCR-06 | [Evidence](evidence/10-personal-retro.md); implementation b7e26ca; integrated a520c64d |
-| PDCR-11 | ticket | [11: 真实 Codex 与 app 内完整交互验收](issues/11-native-codex-acceptance.md) | ready-for-agent | in-progress | PDCR-03, PDCR-07, PDCR-09, PDCR-10 | Codex implementer PDCR-11; codex/pdcr-11; claimed 2026-10-09 |
-| PDCR-12 | ticket | [12: 同一候选版本的 live Dida 核验](issues/12-live-dida-acceptance.md) | ready-for-agent | open | PDCR-11 | unassigned; not-started; breakdown approved 2026-10-09 |
+| PDCR-11 | ticket | [11: 真实 Codex 与 app 内完整交互验收](issues/11-native-codex-acceptance.md) | ready-for-human | blocked | PDCR-03, PDCR-07, PDCR-09, PDCR-10 | [Native evidence](evidence/11-native-acceptance.md); legacy fix c5be634 accepted; human spoken transcript and PDCR-03 scope unmet |
+| PDCR-12 | ticket | [12: 同一候选版本的 live Dida 核验](issues/12-live-dida-acceptance.md) | ready-for-agent | open | PDCR-11 | unassigned; not-started; no authorized isolated objects (user confirmed); PDCR-11 remains blocked |
 
 Twelve approved tickets are published, each with its own body and acceptance
-criteria. PDCR-01/02/04–10 are closed with their required implementation/retro evidence. PDCR-03 is blocked on the unknown Dida effect scope decision found in independent review. Complete-candidate native acceptance PDCR-11 continues independent checks but cannot close before PDCR-03; PDCR-12 has no authorized isolated Dida objects. Ready-for-agent describes the
+criteria. PDCR-01/02/04–10 are closed with their required implementation/retro evidence. PDCR-03 is blocked on the unknown Dida effect scope decision found in independent review. Complete-candidate native evidence is recorded; PDCR-11 is blocked on human spoken transcript and PDCR-03, and cannot close before its blocker; PDCR-12 has no authorized isolated Dida objects. Ready-for-agent describes the
 triage role; it does not start implementation or establish delivery.
 
 ## Decisions so far
@@ -43,7 +43,7 @@ triage role; it does not start implementation or establish delivery.
 
 ## Next stage
 
-The user authorized implement-spec on 2026-10-09 using the specification branch as baseline. Follow [execution tracking](execution.md); **PDCR-03** awaits the native recovery policy decision. Native **PDCR-11** continues independent checks; **PDCR-12** waits for it and authorized isolated objects.
+The user authorized implement-spec on 2026-10-09 using the specification branch as baseline. Follow [execution tracking](execution.md); **PDCR-03** awaits the native recovery policy decision. Native **PDCR-11** awaits human spoken transcript and PDCR-03; **PDCR-12** waits for it and authorized isolated objects. No eligible implementation frontier remains. See [checkpoint](evidence/implementation-checkpoint.md).
 
 The graph has 12 tickets and 16 direct blocking edges. Direct blockers are shown
 above and in each ticket body; after PDCR-02 closes, PDCR-03/04/05/06/08 become
@@ -89,3 +89,10 @@ PDCR-12 validates the same complete candidate as PDCR-11.
 - 2026-10-09: PDCR-01 closed on application/file-backed evidence, integrated at `288f14f`. Native/live acceptance remains separate. PDCR-02 is now eligible.
 
 - 2026-10-09: PDCR-02 closed and integrated at `1feeb31c`; Rust 452 passed / 6 explicit native/live gates ignored, frontend 335 passed, build passed. Frontier PDCR-03/04/05/06/08; start PDCR-03, PDCR-04 and PDCR-08 with isolated worktrees.
+
+- 2026-10-09: Final local checkpoint: nine tickets closed, PDCR-03/11 blocked,
+  PDCR-12 open/unclaimed. Legacy UI source `505fdb3` integrated `c5be634`; native
+  no-auth reassessment `789f093` integrated `c1a9cb6`. Full frontend 378 passed
+  and build passed; unchanged Rust/reader sources retain prior full checks.
+  [Checkpoint](evidence/implementation-checkpoint.md) records review, unmet
+  gates, source-qualified native evidence and cleanup. Parent spec remains open.

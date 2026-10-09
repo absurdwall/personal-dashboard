@@ -1,17 +1,17 @@
 # Collaboration redesign — local execution tracking
 
 Date: 2026-10-09
-Status: implementation in progress; PDCR-01/02 closed, PDCR-03/04/08 claimed
+Status: local implementation checkpoint; nine tickets closed, PDCR-03/11 blocked, PDCR-12 open
 Canonical tracker: [map](map.md)
 Parent: [PDCR-SPEC-01](spec.md)
 Approved breakdown: [review record](ticket-breakdown-proposal.md)
 
 ## Entry and authorization
 
-The user approved the 12-ticket breakdown and local publication. This is not
-an implementation request. Wait for that request before claiming PDCR-01 or
-starting product changes. Existing release, data and main-protection boundaries
-remain applicable; no GitHub operation is required for this phase.
+The initial approval covered the 12-ticket breakdown and local publication,
+without starting implementation. The later implement-spec authorization below
+started this run. Existing release, data and main-protection boundaries remain
+applicable; no GitHub operation is required for this phase.
 
 At publication, all tickets are ready-for-agent/open/unassigned/not-started.
 The initial dependency frontier is PDCR-01 only. Ready-for-agent is a triage
@@ -120,3 +120,17 @@ role, not an assertion that every blocker has completed or that work is running.
   installed in product code. PDCR-03 remains unmet pending the explicit
   [scope decision](evidence/unknown-dida-scope-decision.md). PDCR-11 is rebuilding
   the repaired candidate and retains the real spoken-transcript requirement.
+
+- 2026-10-09: Native legacy inspection found the old-text renderer omitted the
+  missing-process marker. The single review-fix implementer repaired this in
+  `505fdb3`, integrated `c5be634`; 32 targeted and 378 full frontend tests plus
+  build passed. Independent Standards/Spec re-review found no new issue. A new
+  no-auth exact-PID native check observed English/Chinese markers, original
+  text/list and unchanged four canonical hashes, with no new execution/auth;
+  evidence `789f093` integrated `c1a9cb6`. Prior actual business/model evidence
+  keeps its original `7b3dc8` qualification, reassessed against the pure UI diff.
+  PDCR-11 is blocked on human voice and PDCR-03; PDCR-12 remains open/unclaimed
+  because the user has no isolated Dida objects. No policy answer was received,
+  so the native restriction remains and PDCR-03 is not closed.
+  [Checkpoint](evidence/implementation-checkpoint.md) retains the routing
+  incident/passive-history uncertainty and cleanup; no release is claimed.

@@ -199,7 +199,8 @@ separately qualified natural long-delay observation remain as below.
   activity and retain a total limit. Their scaled fixture timing is supporting
   regression evidence, not a long actual delay. Root final combination checks:
   491 Rust passes including selected CLI permission gate, 371 frontend passes,
-  four reader passes; [combination evidence](final-combination-checks.md).
+  four reader passes at `7b3dc8`; the pure UI supplement at `c5be634` passed
+  378 frontend checks and build. [Combination evidence](final-combination-checks.md).
 - Human spoken transcript/permission evidence is still missing. No ambient
   recording was started to substitute. Connection/permission/SDP or a fixture
   is not transcription acceptance. Future attempt needs an explicitly isolated
