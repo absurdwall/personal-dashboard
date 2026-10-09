@@ -64,7 +64,8 @@ class ReaderTests(unittest.TestCase):
     def test_damaged_and_unsupported_sources_are_errors_not_empty_history(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "history.json"
-            for value in ["{", '{"schemaVersion":2,"sessions":[]}', '{"schemaVersion":1,"sessions":[{"messages":"broken"}]}']:
+            for value in ["{", '{"schemaVersion":2,"sessions":[]}', '{"schemaVersion":1,"sessions":[{"messages":"broken"}]}',
+                          '{"schemaVersion":1,"sessions":[{"messages":[{"role":"user","executionId":"a"}],"workHistory":[{"executionId":"a","items":[{"changes":[null]}]}]}]}']:
                 path.write_text(value)
                 result = self.run_reader(path, "--session", "selected")
                 self.assertEqual(result.returncode, 2)

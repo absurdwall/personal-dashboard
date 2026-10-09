@@ -193,7 +193,11 @@ def main():
     if not any([args.session, args.execution, args.date_from, args.date_to]):
         parser.error("select --session, --execution or an inclusive --from/--to period")
     for date in [args.date_from, args.date_to]:
-        if date and dt.date.fromisoformat(date).isoformat() != date:
+        try:
+            invalid = date and dt.date.fromisoformat(date).isoformat() != date
+        except ValueError:
+            invalid = True
+        if invalid:
             parser.error("period bounds must be exact YYYY-MM-DD dates")
     if args.date_from and args.date_to and args.date_from > args.date_to:
         parser.error("period bounds are reversed")
@@ -229,7 +233,7 @@ def main():
                                  "selectedExecutions": len(exported["executions"]), "executions": [], "references": {},
                                  "omissions": ["Selected export exceeds byte bound; no failure/receipt/terminal facts silently dropped. Select a narrower scope or explicit larger bound."]}, indent=2)
         print(output)
-    except (OSError, ValueError, TypeError, KeyError) as error:
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, IndexError) as error:
         print(json.dumps({"error": "evidence-source-unavailable", "detail": str(error)}), file=sys.stderr)
         return 2
     return 0
