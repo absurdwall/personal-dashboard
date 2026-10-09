@@ -52,3 +52,31 @@ identity metadata remain. Total essential metadata/original messages can
 accumulate without automatic deletion; this must be disclosed rather than
 called a global archive cap. Fixed-working-set streaming reading independently
 handles existing large archives while preserving original SHA/pointers.
+
+## Fixed candidate and independent re-review
+
+Four repairs were integrated at `8a37b38d4e341ffc3306f27fe9d9c86c000d9fc5`,
+source slices `dfb981a`, `e8c4224`, `8a9d048`, `370f46b`. The merge tree equals
+the implementer tip `cf790b9`; tracked files are clean and the unrelated
+prototype hash is unchanged. [Repair evidence](review-fixes.md) retains the
+real application/recovery/renderer/reader red and green regressions, including
+retained-old text and immutable diff capacity accounting/provenance.
+
+Independent **Spec** re-review at this candidate reported zero new actionable
+findings and resolved the three previous Spec defects. The reviewer independently
+passed production Habit navigation (three cases), reader differential comparisons
+(100 reordered/Unicode archives), 33 MiB small-selection SHA/pointer verification,
+seven reader tests and three application recovery checks. Original PDCR-03/11/12
+gates and historical native source qualification remain.
+
+Independent **Standards** re-review resolved the original localization finding
+but found another P2: fixed native Habit producer diagnostics enter
+`hostSourceRead` and bypass the paired narrow formatter. Example:
+`Native Habit source coverage is partial, paginated, failed or unavailable`.
+The same sole implementer is repairing mechanical app-origin provenance and
+paired fixed grammar, retaining unknown external/runtime/legacy text verbatim.
+This finding remains open until fixed-source independent re-review.
+
+At `8a37b38`, full frontend386, public reader7 and build passed. Full Rust is
+still running; no final combination result or ticket closure is inferred.
+New recovery/retention Rust source has no packaged native acceptance run.
