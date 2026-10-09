@@ -41,8 +41,11 @@ three-domain personal retros, natural queue crossing 04:00, automatic initial
 plan scope, source/navigation/reopen and controlled lost-terminal readback.
 Human spoken transcript and PDCR-03 native unknown-scope decision remain unmet;
 the ticket and parent spec are not closed. A bounded injected legacy fixture
-confirmed native original-text compatibility, but the explicit missing-process
-unavailable marker was absent and remains a presentation gap. Fixture/transport support and unobserved
+confirmed native original-text compatibility. The missing-process marker was
+absent on `7b3dc8`, then corrected and accepted through a fresh no-auth exact-PID
+`c5be634` native check in English/Chinese, with unchanged messages/four canonical
+hashes and no new execution/auth. Prior actual business evidence retains its
+`7b3dc8` source qualification. Fixture/transport support and unobserved
 natural long delay remain explicitly qualified.
 
 按本地 tracker 记录 claim、工作分支、验证结果、具体 evidence 与 commit 回执。
