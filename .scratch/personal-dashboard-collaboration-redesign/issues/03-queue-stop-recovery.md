@@ -11,7 +11,7 @@
 **Parent:** [PDCR-SPEC-01](../spec.md)
 **Lifecycle:** in-progress
 **Implementation:** review-fixes
-**Assignee:** Codex implementer PDCR-03
+**Assignee:** Codex review-fix implementer; root coordinates scope decision
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
 

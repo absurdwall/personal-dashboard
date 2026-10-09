@@ -109,3 +109,14 @@ role, not an assertion that every blocker has completed or that work is running.
   and two narrow nonblocking maintainability suggestions. Native PDCR-11
   continues independent evidence collection; its final closure requires the
   reopened blocker and reassessment against the repaired candidate.
+
+- 2026-10-09: Review repairs integrated at `7b3dc8`; independent repair review
+  resolved the two frontend defects and two P3 suggestions. Final combination:
+  490 Rust checks passed / six explicit gates ignored, 371 frontend, four
+  reader checks and build passed; one selected native sandbox permission gate
+  separately passed, with no model/live-source mutation. [Verification](evidence/final-combination-checks.md).
+  Actual synthetic native hook probing demonstrated exact object/date veto but
+  permissive hook failures and broad trust-bypass scope; no probe hook was
+  installed in product code. PDCR-03 remains unmet pending the explicit
+  [scope decision](evidence/unknown-dida-scope-decision.md). PDCR-11 is rebuilding
+  the repaired candidate and retains the real spoken-transcript requirement.

@@ -36,6 +36,47 @@ Standards: 0 documented-standard violations, 2 judgment suggestions, worst P3. S
 
 ## Repair state
 
-- All findings assigned to one implementer on `codex/pdcr-review-fixes`.
+- One implementer fixed the two frontend defects and both P3 suggestions; source `8c643aa`, integrated `7b3dc8`. [Red/green evidence](review-fixes.md).
 - PDCR-03 reopened for unknown external effect scope; independent native checks continue without closing the dependency.
 - PDCR-12 has no authorized isolated Dida objects and remains unaccepted.
+
+# Repair review at 7b3dc8
+
+## Standards
+
+# Targeted Standards re-review
+
+Reviewed pinned repair diff `88315b9b85093f93bca33c4bed49e7dde76f0ee3...7b3dc8dc4fd99496c12e4338a886b2f240335bf2`, retaining the documented sources and smell baseline from the initial Standards review. This is a targeted read-only re-review; no tests rerun, GitHub operations, repository edits or personal-data changes.
+
+## Documented standards
+
+No new documented-standard violation found. The repair uses the existing frontend presentation/state and Rust evidence seams, adds no dependencies/services/deployment configuration, and does not introduce a conversational authorization judge. Vault generation guards precede applying source responses and recording refresh observations. Effect ownership remains tied to receipt/history/request identity; ownerless legacy evidence does not borrow the active execution.
+
+The new probe and decision records distinguish synthetic runtime evidence from product acceptance. They retain the existing native mutation restriction and explicitly leave PDCR-03 scope, PDCR-11 native acceptance, and PDCR-12 live-Dida acceptance unresolved. No probe-only hook or trust bypass was added to product code.
+
+## Initial baseline smells
+
+Both prior P3 suggestions are resolved:
+
+- **Duplicated Code:** `src-tauri/src/collaboration_changes.rs` now defines one `check_change_redirects` helper for source/destination checks. Both retained and new witnesses call it while preserving their different consequences: add a gap to retained evidence, reject a new unsafe witness.
+- **Data Clumps:** `NativeChangeObservationContext` replaces the positional scope/authority/time fields. The production call in `src-tauri/src/collaboration.rs` supplies named fields and keeps item/evidence identities explicit.
+
+## New baseline smells — judgment calls
+
+No additional actionable baseline smell found in the repair hunks. The generation and owner grouping changes are narrow fixes to existing projection behavior, not speculative abstractions or unrelated restructuring.
+
+## Spec
+
+Targeted Spec re-review: initial `88315b9`, repaired `7b3dc8dc4fd99496c12e4338a886b2f240335bf2`, original specification baseline `9939c23`. Reviewed repair source `8c643aa`, its tests and `evidence/review-fixes.md`; no full-review repetition.
+
+- **Resolved: late refresh crossing Vaults.** Spec114: “晚到的事件不能进入其他 session 或新 selected vault。” `frontend/main.ts:3260–3273` now captures/checks Vault generation before any cache, rendering, error or observation mutation; session polling independently rejects late responses at `4803–4817` and `4900`. Original production-function probe now returns `[]` after the Vault switch. New tests cover successful/failed delayed reads, switching before read dispatch, and late session polling. Generation-scoped deduplication also allows rereading after a cancelled picker.
+
+- **Resolved: wrong refresh execution owner.** Spec155: “每轮记录原请求及捕获目标…刷新状态及最终回复。” `frontend/main.ts:4821–4879` groups refresh dates by Task receipt, WorkHistory or originating request executionId. The original provenance probe now records `first-execution`, not the active second execution. Tests verify distinct historical/native/external owners, multiple Task owners viewing the same date, and legacy missing ownership without invented attribution. Confirmed effects first observed at terminal are refreshed too.
+
+- **Still unmet: unknown Dida effect scope.** Spec127: “未知 effect 不阻塞无关读取或其他对象，但不得盲目重试同一可能已完成的修改。” The retained `src-tauri/src/collaboration.rs:7281–7305` mask disables all Dida Task/Habit mutation families when any selected-Vault Dida write remains unresolved; unrelated local work and reads continue. Actual native hook probes establish exact object/date veto but crashes/malformed output/timeouts fail open, so no replacement enforcement guarantee is justified. This remains pending the explicit scope/policy decision; repair evidence correctly keeps the criterion unmet.
+
+No new actionable Spec regression or scope creep found in the changed source. Native observation context/refactored redirect checks preserve their previous authority, readback and original-witness semantics.
+
+Verification performed here: both isolated production probes plus 18 targeted production-handler tests passed. Root owns full-suite verification. Complete-candidate native acceptance and live Dida acceptance remain separate outstanding gates.
+
+Repair review: Standards 0 findings; Spec 1 remaining finding, worst P2 (unknown native Dida object scope).
