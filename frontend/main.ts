@@ -1,3 +1,4 @@
+import { appendCollaborationMarkdown, appendCollaborationWorkHistory, type CollaborationWorkHistory, type CollaborationLink, type WorkHistoryLabels } from "./collaboration-work-history.js";
 import { initializeCollaborationPanels } from "./collaboration-panels.js";
 import {
   DatedNoteTargetChangedError,
@@ -829,6 +830,7 @@ type CollaborationSessionView = Readonly<{
   dailyRecordToolAvailable: boolean;
   memoryToolAvailable: boolean;
   messages: readonly CollaborationMessageView[];
+  workHistory?: readonly CollaborationWorkHistory[];
   taskOperations: readonly CollaborationTaskOperationView[];
   memoryProposals: readonly CollaborationMemoryProposalView[];
   lastHabitRefresh?: HabitRefreshReport | null;
@@ -2406,8 +2408,57 @@ function renderCollaborationOutcomes(container: HTMLElement, session: Collaborat
   }
 }
 
+function collaborationWorkHistoryLabels(): WorkHistoryLabels {
+  return {
+    title: t("collaboration.workHistory"), summary: t("collaboration.reasoningSummary"),
+    commentary: t("collaboration.codexProgress"), message: t("collaboration.codexMessage"),
+    tool: t("collaboration.toolActivity"), failed: t("collaboration.workFailed"),
+    completed: t("collaboration.toolCompleted"), running: t("collaboration.workRunning"), details: t("collaboration.workDetails"),
+    diagnosticUnavailable: t("collaboration.diagnosticUnavailable"),
+    actions: {
+      createTask: t("collaboration.workAction.createTask"),
+      updateTask: t("collaboration.workAction.updateTask"),
+      completeTask: t("collaboration.workAction.completeTask"),
+      abandonTask: t("collaboration.workAction.abandonTask"),
+      reopenTask: t("collaboration.workAction.reopenTask"),
+      deleteTask: t("collaboration.workAction.deleteTask"),
+      restoreTask: t("collaboration.workAction.restoreTask"),
+      correctCompletion: t("collaboration.workAction.correctCompletion"),
+      createList: t("collaboration.workAction.createList"),
+      renameList: t("collaboration.workAction.renameList"),
+      archiveList: t("collaboration.workAction.archiveList"),
+      restoreList: t("collaboration.workAction.restoreList"),
+      saveDailyPlan: t("collaboration.workAction.saveDailyPlan"),
+      saveEveningReview: t("collaboration.workAction.saveEveningReview"),
+      createShortRecord: t("collaboration.workAction.createShortRecord"),
+      correctShortRecord: t("collaboration.workAction.correctShortRecord"),
+      setLocalHabitCompletion: t("collaboration.workAction.setLocalHabitCompletion"),
+      get_habit: t("collaboration.workAction.get_habit"),
+      list_habits: t("collaboration.workAction.list_habits"),
+      get_habit_checkins: t("collaboration.workAction.get_habit_checkins"),
+      upsert_habit_checkins: t("collaboration.workAction.upsert_habit_checkins"),
+      delete_habit_checkins: t("collaboration.workAction.delete_habit_checkins"),
+      dashboard_refresh_habits: t("collaboration.workAction.dashboard_refresh_habits"),
+      dashboard_memory_update: t("collaboration.workAction.dashboard_memory_update"),
+      commandExecution: t("collaboration.workAction.commandExecution"),
+      fileChange: t("collaboration.workAction.fileChange"),
+      webSearch: t("collaboration.workAction.webSearch"),
+      mcpToolCall: t("collaboration.workAction.mcpToolCall"),
+      dynamicToolCall: t("collaboration.workAction.dynamicToolCall"),
+      runtimeError: t("collaboration.workAction.runtimeError"),
+    },
+  };
+}
+
 function renderCollaborationMessages(session: CollaborationSessionView | null): void {
   if (!collaborationMessageList) return;
+  const previousScroll = collaborationMessageList.scrollTop;
+  const following = !collaborationMessageList.scrollHeight ||
+    collaborationMessageList.scrollHeight - collaborationMessageList.scrollTop - collaborationMessageList.clientHeight < 48;
+  const expanded = new Map<string, { open: boolean; manual: string | undefined }>();
+  for (const detail of collaborationMessageList.querySelectorAll?.<HTMLDetailsElement>("details[data-work-key]") ?? []) {
+    if (detail.dataset.manual) expanded.set(detail.dataset.workKey!, { open: detail.open, manual: detail.dataset.manual });
+  }
   collaborationMessageList.replaceChildren();
   if (!session || session.messages.length === 0) {
     const empty = document.createElement("p");
@@ -2447,8 +2498,10 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
       delivery.textContent = collaborationDeliveryStateLabel(message.deliveryState);
       heading.append(delivery);
     }
-    const body = document.createElement("p");
-    body.textContent = message.text;
+    const markdown = message.role === "assistant" && /(?:^|\n)\s*(?:[-*] |\d+\. )|\[[^\]]+\]\(|\*\*|`/.test(message.text);
+    const body = document.createElement(markdown ? "div" : "p");
+    if (markdown) appendCollaborationMarkdown(body, message.text, document, target => navigateCollaborationLink(session, target));
+    else body.textContent = message.text;
     article.append(heading, body);
     // Tool activity belongs to the assistant's work, never to the user's input.
     const request = message.role === "assistant"
@@ -2457,7 +2510,11 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
       : null;
     const laterReply = session.messages.slice(session.messages.indexOf(message) + 1).some(candidate =>
       candidate.role === "assistant" && candidate.executionId && candidate.executionId === message.executionId);
-    if (request && !laterReply) renderCollaborationOutcomes(article, session, request);
+    if (request && !laterReply) {
+      renderCollaborationOutcomes(article, session, request);
+      const history = session.workHistory?.find(entry => entry.executionId === request.executionId);
+      if (history) appendCollaborationWorkHistory(article, history, document, collaborationWorkHistoryLabels(), target => navigateCollaborationLink(session, target));
+    }
     if (message.role === "user" && message.pendingExternalApproval) {
       const panel = document.createElement("section");
       panel.className = "collaboration-external-approval";
@@ -2497,14 +2554,42 @@ function renderCollaborationMessages(session: CollaborationSessionView | null): 
     const matchingReply = session.messages.slice(session.messages.indexOf(message) + 1, nextUserIndex < 0 ? undefined : nextUserIndex)
       .some(candidate => candidate.role === "assistant" && (!message.executionId || candidate.executionId === message.executionId));
     if (message.role === "user" && !matchingReply &&
-      ((message.actionResults?.length ?? 0) > 0 || (message.externalActions?.length ?? 0) > 0)) {
+      ((message.actionResults?.length ?? 0) > 0 || (message.externalActions?.length ?? 0) > 0 ||
+        session.workHistory?.some(entry => entry.executionId === message.executionId))) {
       const progress = document.createElement("article");
       progress.className = "collaboration-message collaboration-message-assistant";
       renderCollaborationOutcomes(progress, session, message);
+      const history = session.workHistory?.find(entry => entry.executionId === message.executionId);
+      if (history) appendCollaborationWorkHistory(progress, history, document, collaborationWorkHistoryLabels(), target => navigateCollaborationLink(session, target));
       if (progress.children.length) collaborationMessageList.append(progress);
     }
   }
-  collaborationMessageList.scrollTop = collaborationMessageList.scrollHeight;
+  for (const detail of collaborationMessageList.querySelectorAll?.<HTMLDetailsElement>("details[data-work-key]") ?? []) {
+    const previous = expanded.get(detail.dataset.workKey!);
+    if (previous) { detail.open = previous.open; detail.dataset.manual = previous.manual; }
+  }
+  collaborationMessageList.scrollTop = following && ![...expanded.values()].some(entry => entry.open)
+    ? collaborationMessageList.scrollHeight : previousScroll;
+}
+
+function navigateCollaborationLink(session: CollaborationSessionView, target: CollaborationLink): void {
+  // These targets open existing app views and their canonical read/lookup paths.
+  // Missing objects remain absent; navigation never creates data or selects a Vault.
+  if (target.kind === "task" || target.kind === "list") {
+    taskReturnToCollaborationSessionId = session.id;
+    taskFocusRequestId = target.kind === "task" ? target.id : null;
+    taskScope = target.kind === "list" ? taskListScopeForId(target.id) : "all";
+    taskStateScope = "all";
+    showWorkspaceDestination("tasks", true);
+  } else if (target.kind === "record") {
+    rememberDailyPlanReturnTarget(session);
+    showWorkspaceDestination("today", true, target.date);
+    if (target.phase) showTodayPhase(target.phase);
+  } else if (target.kind === "habit") {
+    rememberDailyPlanReturnTarget(session);
+    selectedHabitCell = { habitKey: target.key, date: target.date };
+    showWorkspaceDestination("habits", true);
+  }
 }
 
 function currentCollaborationVoiceTarget(): CollaborationVoiceTarget | null {
@@ -4651,6 +4736,7 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
   }
   if (!["queued", "reading", "thinking", "stopping"].includes(session.runState)) return;
   const sessionId = session.id;
+  const refreshedEffects = new Set<string>();
   collaborationStatusTimer = window.setInterval(() => {
     if (currentWorkspaceDestination !== "collaboration" || currentCollaborationSession?.id !== sessionId) {
       return;
@@ -4663,6 +4749,36 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
       currentCollaborationSession = updated;
       refreshCollaborationRunOwner(updated);
       renderCollaborationWorkspace();
+      const changedDates = new Set<string>();
+      let tasksChanged = false;
+      let confirmedEffect = false;
+      for (const receipt of updated.taskOperations ?? []) {
+        if (receipt.status !== "applied") continue;
+        const key = `${receipt.id}:${receipt.resultRevision ?? receipt.updatedAt}`;
+        if (refreshedEffects.has(key)) continue;
+        refreshedEffects.add(key);
+        confirmedEffect = true;
+        if (receipt.taskId || receipt.listId) tasksChanged = true;
+        else changedDates.add(receipt.targetDate);
+      }
+      for (const request of updated.messages ?? []) {
+        for (const receipt of request.actionResults ?? []) {
+          if (updated.taskOperations?.some(operation => operation.id === receipt.id)) continue;
+          if (!["applied", "saved", "ready"].includes(receipt.status)) continue;
+          const key = `${receipt.id}:${receipt.status}`;
+          if (refreshedEffects.has(key)) continue;
+          refreshedEffects.add(key);
+          confirmedEffect = true;
+          if (receipt.targetDate) changedDates.add(receipt.targetDate);
+        }
+      }
+      if (confirmedEffect && ["queued", "reading", "thinking", "stopping"].includes(updated.runState)) {
+        void Promise.allSettled([
+          ...[...changedDates].map(date => refreshCanonicalDateProjections(date)),
+          ...(tasksChanged ? [refreshTasks()] : []),
+          refreshCollaborationContext(),
+        ]);
+      }
       if (!["queued", "reading", "thinking", "stopping"].includes(updated.runState)) {
         if (collaborationStatusTimer !== null) window.clearInterval(collaborationStatusTimer);
         collaborationStatusTimer = null;

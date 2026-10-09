@@ -7,6 +7,13 @@ mod habit_dual;
 #[path = "collaboration_usage.rs"]
 mod usage;
 pub use usage::CollaborationUsageBinding;
+#[path = "collaboration_history.rs"]
+mod history;
+pub use history::{CollaborationWorkHistory, CollaborationWorkItem, RuntimeWorkObserver};
+use history::RuntimeHistory;
+#[cfg(all(test, unix))]
+#[path = "collaboration_history_tests.rs"]
+mod history_tests;
 
 use crate::clock::SystemClock;
 use crate::collaboration_memory::{
@@ -191,6 +198,8 @@ pub struct CollaborationSessionView {
     pub runtime_thread_id: Option<String>,
     #[serde(default)]
     pub usage_bindings: Vec<CollaborationUsageBinding>,
+    #[serde(default)]
+    pub work_history: Vec<CollaborationWorkHistory>,
     pub task_tool_available: bool,
     pub daily_plan_tool_available: bool,
     pub daily_record_tool_available: bool,
@@ -1336,6 +1345,18 @@ pub trait AppServerTransport: Send {
     ) -> Result<RuntimeTurnResult, String> {
         self.send_turn_with_dynamic_tools(request, cancel_requested, tool_handler)
     }
+    fn send_turn_observed(
+        &mut self,
+        request: RuntimeTurnRequest,
+        cancel_requested: Arc<AtomicBool>,
+        tool_handler: Option<RuntimeDynamicToolHandler>,
+        external_action_handler: Option<RuntimeExternalActionHandler>,
+        external_approval_handler: Option<RuntimeExternalApprovalHandler>,
+        _observer: Option<RuntimeWorkObserver>,
+    ) -> Result<RuntimeTurnResult, String> {
+        self.send_turn_with_external_actions(request, cancel_requested, tool_handler, external_action_handler, external_approval_handler)
+    }
+
     fn reconcile_turn(
         &mut self,
         _thread_id: &str,
@@ -1555,6 +1576,8 @@ pub struct StoredCollaborationSession {
     pub runtime_tool_schema_fingerprint: Option<String>,
     #[serde(default)]
     pub usage_bindings: Vec<CollaborationUsageBinding>,
+    #[serde(default)]
+    pub work_history: Vec<CollaborationWorkHistory>,
     #[serde(default)]
     pub task_tool_registered: bool,
     #[serde(default)]
@@ -2356,6 +2379,7 @@ impl CollaborationApplication {
                 runtime_thread_id: None,
                 runtime_tool_schema_fingerprint: None,
             usage_bindings: Vec::new(),
+            work_history: Vec::new(),
                 task_tool_registered: false,
                 daily_plan_tool_registered: true,
                 daily_record_tool_registered: false,
@@ -2557,6 +2581,7 @@ impl CollaborationApplication {
             runtime_thread_id: None,
             runtime_tool_schema_fingerprint: None,
             usage_bindings: Vec::new(),
+            work_history: Vec::new(),
             task_tool_registered: false,
             daily_plan_tool_registered: false,
             daily_record_tool_registered: false,
@@ -7079,12 +7104,54 @@ impl CollaborationApplication {
                 action,
             );
         });
-        let result = runtime.send_turn_with_external_actions(
+        let application = self.clone();
+        let history_vault = vault_key.to_owned();
+        let history_session = session_id.to_owned();
+        let history_execution = run_id.to_owned();
+        let history_thread = thread_id.clone();
+        let observer: RuntimeWorkObserver = Arc::new(move |mut history| {
+            if history.thread_id != history_thread { return Ok(()); }
+            application.update_state(|state| {
+                let Some(session) = state.sessions.iter_mut().find(|session|
+                    session.id == history_session && session.vault_key.as_deref() == Some(&history_vault)
+                    && session.run_id.as_deref() == Some(&history_execution)
+                    && session.runtime_thread_id.as_deref() == Some(&history_thread)) else { return Ok(()); };
+                let Some(request) = session.messages.iter_mut().find(|message| message.role == "user"
+                    && message.execution_id.as_deref() == Some(&history_execution)) else { return Ok(()); };
+                if request.runtime_turn_id.as_deref().is_some_and(|turn| turn != history.turn_id) { return Ok(()); }
+                request.runtime_turn_id = Some(history.turn_id.clone());
+                history.execution_id = history_execution.clone();
+                // Typed receipt facts enrich readable activity; they do not turn
+                // transport completion into a confirmed business-save status.
+                for item in &mut history.items {
+                    let key = format!("{}:{}:{}", history.thread_id, history.turn_id, item.call_id.as_deref().unwrap_or(&item.item_id));
+                    if let Some(receipt) = session.task_operations.iter().find(|receipt| receipt.tool_call_key == key) {
+                        let snapshot = receipt.result_snapshot.as_ref().unwrap_or(&receipt.baseline);
+                        let name = match snapshot {
+                            CollaborationTaskOperationBaseline::Task { name, .. } | CollaborationTaskOperationBaseline::List { name, .. } | CollaborationTaskOperationBaseline::HabitCompletion { name, .. } => Some(name),
+                            _ => None,
+                        };
+                        if let Some(name) = name.and_then(|name| history::safe_diagnostic(name)) {
+                            item.parameters.retain(|parameter| parameter.name != "name");
+                            item.parameters.push(history::CollaborationWorkParameter { name: "name".into(), value: name.chars().take(200).collect() });
+                        }
+                        item.parameters.retain(|parameter| parameter.name != "targetDate");
+                        item.parameters.push(history::CollaborationWorkParameter { name: "targetDate".into(), value: receipt.target_date.clone() });
+                    }
+                }
+                if let Some(existing) = session.work_history.iter_mut().find(|entry| entry.execution_id == history_execution) {
+                    if history.sequence > existing.sequence { *existing = history; }
+                } else { session.work_history.push(history); }
+                Ok(())
+            }).map_err(|error| format!("Could not save Collaboration work history: {error}. Business receipts retain their own saved outcomes."))
+        });
+        let result = runtime.send_turn_observed(
             request,
             Arc::clone(&cancellation),
             tool_handler,
             Some(external_action_handler),
             None,
+            Some(observer),
         );
         drop(runtime);
 
@@ -7327,6 +7394,11 @@ impl CollaborationApplication {
                 return Ok(());
             }
             session.run_state = "error".into();
+            for history in &mut session.work_history {
+                if history.execution_id == run_id && matches!(history.status.as_str(), "inProgress" | "stopping") {
+                    history.status = if error.starts_with("Could not save Collaboration work history") { "history-save-failed" } else { "transport-failed" }.into();
+                }
+            }
             session.progress = error;
             if let Some(message) = session
                 .messages
@@ -7427,6 +7499,11 @@ impl CollaborationApplication {
                 return Ok(());
             }
             session.run_state = state_name.to_owned();
+            for history in &mut session.work_history {
+                if history.execution_id == run_id && matches!(history.status.as_str(), "inProgress" | "stopping") {
+                    history.status = if progress.contains("Could not save Collaboration work history") { "history-save-failed" } else { "interrupted-unconfirmed" }.into();
+                }
+            }
             session.progress = progress.clone();
             if let Some(message) = session
                 .messages
@@ -7528,6 +7605,9 @@ impl CollaborationApplication {
                     }
                 }
                 if was_running {
+                    for history in &mut session.work_history {
+                        if matches!(history.status.as_str(), "inProgress" | "stopping") { history.status = "interrupted-unconfirmed".into(); }
+                    }
                     session.run_state = if session.run_state == "stopping" {
                         "stop-unconfirmed".into()
                     } else {
@@ -7683,6 +7763,7 @@ fn session_view(session: &StoredCollaborationSession) -> CollaborationSessionVie
         progress: session.progress.clone(),
         runtime_thread_id: session.runtime_thread_id.clone(),
         usage_bindings: session.usage_bindings.clone(),
+        work_history: session.work_history.clone(),
         task_tool_available: session.task_tool_registered,
         daily_plan_tool_available: session.daily_plan_tool_registered,
         daily_record_tool_available: session.daily_record_tool_registered,
@@ -10140,6 +10221,7 @@ mod collaboration_memory_tests {
             runtime_thread_id: None,
             runtime_tool_schema_fingerprint: None,
             usage_bindings: Vec::new(),
+            work_history: Vec::new(),
             task_tool_registered: false,
             daily_plan_tool_registered: false,
             daily_record_tool_registered: false,
@@ -11193,6 +11275,18 @@ impl AppServerTransport for CodexAppServerRuntime {
         external_action_handler: Option<RuntimeExternalActionHandler>,
         external_approval_handler: Option<RuntimeExternalApprovalHandler>,
     ) -> Result<RuntimeTurnResult, String> {
+        self.send_turn_observed(request, cancel_requested, tool_handler, external_action_handler, external_approval_handler, None)
+    }
+
+    fn send_turn_observed(
+        &mut self,
+        request: RuntimeTurnRequest,
+        cancel_requested: Arc<AtomicBool>,
+        tool_handler: Option<RuntimeDynamicToolHandler>,
+        external_action_handler: Option<RuntimeExternalActionHandler>,
+        external_approval_handler: Option<RuntimeExternalApprovalHandler>,
+        observer: Option<RuntimeWorkObserver>,
+    ) -> Result<RuntimeTurnResult, String> {
         if self.restricted_read_permission_profile.is_none() {
             return Err(self
                 .text_turn_unavailable_reason
@@ -11253,7 +11347,7 @@ impl AppServerTransport for CodexAppServerRuntime {
             .and_then(|turn| turn.get("id"))
             .and_then(Value::as_str)
             .ok_or_else(|| "Codex App Server did not start the requested turn.".to_string())?;
-        let result = client.wait_for_turn(
+        let result = client.wait_for_turn_observed(
             &request.thread_id,
             turn_id,
             &cancel_requested,
@@ -11261,7 +11355,11 @@ impl AppServerTransport for CodexAppServerRuntime {
             &request.context.date,
             external_action_handler.as_ref(),
             external_approval_handler.as_ref(),
+            observer,
         );
+        if result.as_ref().is_err_and(|error| error.starts_with("Could not save Collaboration work history")) {
+            let _ = client.request_until("turn/interrupt", json!({"threadId":request.thread_id,"turnId":turn_id}), std::time::Instant::now() + APP_SERVER_INTERRUPT_TIMEOUT);
+        }
         if result.is_err() {
             // Do not leave a live model issuing calls after its consumer has
             // exited. Saved threads/receipts remain available for read-only
@@ -11332,15 +11430,9 @@ impl AppServerTransport for CodexAppServerRuntime {
                 .collect::<Vec<_>>();
             return match status {
                 "completed" => {
-                    let text = items
-                        .into_iter()
-                        .flatten()
-                        .filter(|item| {
-                            item.get("type").and_then(Value::as_str) == Some("agentMessage")
-                        })
-                        .filter_map(|item| item.get("text").and_then(Value::as_str))
-                        .collect::<Vec<_>>()
-                        .join("\n");
+                    let mut history = RuntimeHistory::new(thread_id, &runtime_turn_id, None);
+                    history.consume(&json!({"method":"turn/completed", "params":{"threadId":thread_id,"turn":turn}}))?;
+                    let text = history.final_text();
                                 if text.trim().is_empty() {
                         Ok(RuntimeRunReconciliation::Completed {
                             text: String::new(),
@@ -12052,6 +12144,7 @@ impl StdioJsonlClient {
         Ok(())
     }
 
+    #[cfg(test)]
     fn wait_for_turn(
         &mut self,
         thread_id: &str,
@@ -12062,10 +12155,24 @@ impl StdioJsonlClient {
         external_action_handler: Option<&RuntimeExternalActionHandler>,
         external_approval_handler: Option<&RuntimeExternalApprovalHandler>,
     ) -> Result<(String, bool, Vec<ExternalToolActionView>), String> {
+        self.wait_for_turn_observed(thread_id, turn_id, cancel_requested, tool_handler, target_scope, external_action_handler, external_approval_handler, None)
+    }
+
+    fn wait_for_turn_observed(
+        &mut self,
+        thread_id: &str,
+        turn_id: &str,
+        cancel_requested: &AtomicBool,
+        tool_handler: Option<&RuntimeDynamicToolHandler>,
+        target_scope: &str,
+        external_action_handler: Option<&RuntimeExternalActionHandler>,
+        external_approval_handler: Option<&RuntimeExternalApprovalHandler>,
+        observer: Option<RuntimeWorkObserver>,
+    ) -> Result<(String, bool, Vec<ExternalToolActionView>), String> {
         self.wait_for_turn_with_timeouts(
             thread_id, turn_id, cancel_requested, tool_handler, target_scope,
             external_action_handler, external_approval_handler,
-            APP_SERVER_TURN_INACTIVITY_TIMEOUT, APP_SERVER_TURN_TOTAL_TIMEOUT,
+            APP_SERVER_TURN_INACTIVITY_TIMEOUT, APP_SERVER_TURN_TOTAL_TIMEOUT, observer,
         )
     }
 
@@ -12080,8 +12187,10 @@ impl StdioJsonlClient {
         external_approval_handler: Option<&RuntimeExternalApprovalHandler>,
         inactivity_timeout: Duration,
         total_timeout: Duration,
+        observer: Option<RuntimeWorkObserver>,
     ) -> Result<(String, bool, Vec<ExternalToolActionView>), String> {
-        let mut text = String::new();
+        let mut history = RuntimeHistory::new(thread_id, turn_id, observer);
+        history.flush(true)?;
         let mut external_actions: Vec<ExternalToolActionView> = Vec::new();
         let mut habit_source_reads = Vec::new();
         let mut interrupt_requested = false;
@@ -12090,6 +12199,7 @@ impl StdioJsonlClient {
         loop {
             if cancel_requested.load(Ordering::SeqCst) && !interrupt_requested {
                 interrupt_requested = true;
+                history.terminal("stopping")?;
                 let _ = self.request_until(
                     "turn/interrupt",
                     json!({ "threadId": thread_id, "turnId": turn_id }),
@@ -12108,13 +12218,15 @@ impl StdioJsonlClient {
                     "turn/interrupt", json!({ "threadId": thread_id, "turnId": turn_id }),
                     std::time::Instant::now() + APP_SERVER_INTERRUPT_TIMEOUT.min(inactivity_timeout),
                 );
+                history.terminal("transport-failed")?;
                 return Err(error.into());
             }
             let message = match self.receive_value(Duration::from_millis(200).min(remaining)) {
                 Ok(message) => message,
-                Err(error) if error.contains("did not respond in time") => continue,
-                Err(error) => return Err(error),
+                Err(error) if error.contains("did not respond in time") => { history.flush(false)?; continue; },
+                Err(error) => { history.terminal("transport-failed")?; return Err(error); },
             };
+            history.consume(&message)?;
             let params = message.get("params").unwrap_or(&Value::Null);
             let message_turn = params.get("turnId").and_then(Value::as_str)
                 .or_else(|| params.get("turn").and_then(|turn| turn.get("id")).and_then(Value::as_str));
@@ -12122,14 +12234,6 @@ impl StdioJsonlClient {
                 && message_turn.is_none_or(|id| id == turn_id);
             if current_activity {
                 inactivity_deadline = std::time::Instant::now() + inactivity_timeout;
-            }
-            if message.get("method").and_then(Value::as_str) == Some("item/agentMessage/delta") {
-                let params = message.get("params").unwrap_or(&Value::Null);
-                if current_activity {
-                    if let Some(delta) = params.get("delta").and_then(Value::as_str) {
-                        text.push_str(delta);
-                    }
-                }
             }
             if matches!(
                 message.get("method").and_then(Value::as_str),
@@ -12192,10 +12296,11 @@ impl StdioJsonlClient {
                     .unwrap_or("unknown");
                 if status != "completed" {
                     if status == "interrupted" && interrupt_requested {
-                        return Ok((text, true, external_actions));
+                        return Ok((history.final_text(), true, external_actions));
                     }
                     return Err(format!("Codex turn ended with status `{status}`."));
                 }
+                let text = history.final_text();
                 if text.trim().is_empty() {
                     return Err("Codex completed the turn without a text reply.".into());
                 }
@@ -12233,6 +12338,8 @@ impl StdioJsonlClient {
                     // Never trust agent-supplied evidence, including evidence from a prior turn.
                     crate::habit_producer::supply_native_evidence(&mut call.arguments, &habit_source_reads);
                 }
+                let history_call_id = call.call_id.clone();
+                let history_call_matches = call.thread_id == thread_id && call.turn_id == turn_id;
                 let result = if call.thread_id != thread_id || call.turn_id != turn_id {
                     RuntimeDynamicToolResult {
                         text: "This Dashboard task tool call belongs to a different active turn. No task was changed.".into(),
@@ -12259,6 +12366,7 @@ impl StdioJsonlClient {
                         "success": result.success
                     }
                 }))?;
+                if history_call_matches { history.tool_result(&history_call_id, result.success, &result.text)?; }
                 if current_activity {
                     inactivity_deadline = std::time::Instant::now() + inactivity_timeout;
                 }
@@ -12624,7 +12732,7 @@ mod app_server_request_tests {
     const CHILD_MODE: &str = "PERSONAL_DASHBOARD_APP_SERVER_REQUEST_TEST_CHILD";
     const TEST_ROOT: &str = "PERSONAL_DASHBOARD_APP_SERVER_REQUEST_TEST_ROOT";
 
-    fn turn_client() -> (StdioJsonlClient, mpsc::Sender<Result<String, String>>, std::process::ChildStdout) {
+    pub(super) fn turn_client() -> (StdioJsonlClient, mpsc::Sender<Result<String, String>>, std::process::ChildStdout) {
         let mut child = Command::new("/bin/cat")
             .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
         let stdin = child.stdin.take().unwrap();
@@ -12634,6 +12742,60 @@ mod app_server_request_tests {
             child: Arc::new(Mutex::new(child)), stdin, output, next_id: 1,
             initialized: true, pending_messages: VecDeque::new(),
         }, sender, stdout)
+    }
+
+    #[test]
+    fn completed_items_are_authoritative_and_final_phase_does_not_end_the_turn() {
+        let (mut client, sender, _stdout) = turn_client();
+        for notification in [
+            json!({"method":"item/started","params":{"threadId":"history","turnId":"turn","item":{"type":"agentMessage","id":"comment","phase":"commentary","text":"Reading."}}}),
+            json!({"method":"item/agentMessage/delta","params":{"threadId":"history","turnId":"turn","itemId":"final","delta":"Saved "}}),
+            json!({"method":"item/agentMessage/delta","params":{"threadId":"history","turnId":"turn","itemId":"final","delta":"Saved "}}),
+            json!({"method":"item/completed","params":{"threadId":"history","turnId":"turn","item":{"type":"agentMessage","id":"final","phase":"final_answer","text":"Saved correctly."}}}),
+            json!({"method":"item/agentMessage/delta","params":{"threadId":"history","turnId":"turn","itemId":"final","delta":"Late duplicate"}}),
+            json!({"method":"item/tool/call","id":"late-call","params":{"threadId":"history","turnId":"turn","callId":"verify","tool":"verify","arguments":{}}}),
+            json!({"method":"turn/completed","params":{"threadId":"history","turn":{"id":"turn","status":"completed"}}}),
+        ] { sender.send(Ok(notification.to_string())).unwrap(); }
+        let verified = Arc::new(AtomicBool::new(false));
+        let flag = verified.clone();
+        let handler: RuntimeDynamicToolHandler = Arc::new(move |_| {
+            flag.store(true, Ordering::SeqCst);
+            RuntimeDynamicToolResult { text: "verified".into(), success: true }
+        });
+        let (text, stopped, _) = client.wait_for_turn("history", "turn", &AtomicBool::new(false), Some(&handler), "2026-10-09", None, None).unwrap();
+        assert_eq!(text, "Saved correctly.");
+        assert!(!stopped);
+        assert!(verified.load(Ordering::SeqCst), "final text must not suppress later actual work");
+    }
+
+    #[test]
+    fn streaming_work_is_batched_but_completed_items_and_terminal_are_flushed() {
+        let (mut client, sender, _stdout) = turn_client();
+        let snapshots = Arc::new(Mutex::new(Vec::new()));
+        let captured = snapshots.clone();
+        let observer: RuntimeWorkObserver = Arc::new(move |history| { captured.lock().unwrap().push(history); Ok(()) });
+        for _ in 0..2000 {
+            sender.send(Ok(json!({"method":"item/agentMessage/delta","params":{
+                "threadId":"history","turnId":"turn","itemId":"progress","delta":"a"
+            }}).to_string())).unwrap();
+        }
+        // A completion snapshot is authoritative, even after duplicate deltas.
+        sender.send(Ok(json!({"method":"item/completed","params":{
+            "threadId":"history","turnId":"turn","item":{"id":"progress","type":"agentMessage","phase":"commentary","text":"Actual progress."}
+        }}).to_string())).unwrap();
+        sender.send(Ok(json!({"method":"turn/completed","params":{
+            "threadId":"history","turn":{"id":"turn","status":"completed","itemsView":"full","items":[
+                {"id":"final","type":"agentMessage","phase":"final_answer","text":"Done."},
+                {"id":"absent-summary","type":"reasoning","summary":[],"content":["HIDDEN"]}
+            ]}
+        }}).to_string())).unwrap();
+        let result = client.wait_for_turn_observed("history", "turn", &AtomicBool::new(false), None, "2026-10-09", None, None, Some(observer)).unwrap();
+        assert_eq!(result.0, "Done.");
+        let snapshots = snapshots.lock().unwrap();
+        assert!(snapshots.len() < 20, "token deltas must not each rewrite saved session history");
+        assert!(snapshots.iter().any(|history| history.status == "inProgress" && history.items.iter().any(|item| item.authoritative && item.text == "Actual progress.")));
+        assert_eq!(snapshots.last().unwrap().status, "completed");
+        assert_eq!(snapshots.last().unwrap().items.iter().find(|item| item.item_id == "absent-summary").unwrap().summary, Vec::<String>::new());
     }
 
     #[test]
@@ -12665,7 +12827,7 @@ mod app_server_request_tests {
         });
         let result = client.wait_for_turn_with_timeouts("morning", "turn", &AtomicBool::new(false),
             Some(&handler), "2026-10-06", None, None,
-            Duration::from_millis(200), Duration::from_secs(2));
+            Duration::from_millis(200), Duration::from_secs(2), None);
         drop(client);
         producer.join().unwrap();
         assert!(result.is_ok(), "An active morning turn was abandoned before its save call: {result:?}");
@@ -12697,7 +12859,7 @@ mod app_server_request_tests {
         });
         let started = Instant::now();
         let result = client.wait_for_turn_with_timeouts("morning", "turn", &AtomicBool::new(false),
-            None, "2026-10-06", None, None, inactivity, total);
+            None, "2026-10-06", None, None, inactivity, total, None);
         assert!(result.unwrap_err().contains(expected));
         assert!(started.elapsed() < Duration::from_millis(250), "Timeout cleanup must remain bounded");
         drop(client);

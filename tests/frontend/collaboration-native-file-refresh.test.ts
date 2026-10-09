@@ -44,3 +44,25 @@ for (const state of ["completed", "error", "stopped"]) {
     assert.equal(draft.value, "Unsaved next message");
   });
 }
+
+test("a confirmed canonical receipt refreshes its captured date once before the turn finishes", async () => {
+  let poll: () => void = () => {}; const dates: string[] = []; let taskRefreshes = 0;
+  const initial = { id: "session", runId: "run", runState: "thinking", targetDate: "2026-10-08" };
+  const saved = { ...initial, targetDate: "2026-10-09", messages: [], taskOperations: [
+    { id: "record", status: "applied", targetDate: "2026-10-08", resultRevision: "record-v2", taskId: null, listId: null },
+    { id: "task", status: "applied", targetDate: "2026-10-09", resultRevision: "task-v2", taskId: "task-1", listId: "inbox" },
+    { id: "unknown", status: "unknown", targetDate: "2026-10-07", taskId: null, listId: null },
+  ] };
+  const context = vm.createContext({ Promise, currentWorkspaceDestination: "collaboration", currentCollaborationSession: initial,
+    collaborationStatusTimer: null, window: { setInterval(callback: () => void) { poll = callback; return 1; }, clearInterval() {},
+      __TAURI__: { core: { async invoke() { return saved; } } } },
+    refreshCollaborationRunOwner() {}, renderCollaborationWorkspace() {},
+    async refreshCanonicalDateProjections(date: string) { dates.push(date); },
+    async refreshTasks() { taskRefreshes++; }, async refreshCollaborationContext() {},
+  });
+  vm.runInContext(production + "\nwatchCollaborationSession(currentCollaborationSession)", context);
+  poll(); await tick(); poll(); await tick();
+  assert.deepEqual(dates, ["2026-10-08"]);
+  assert.equal(taskRefreshes, 1);
+  assert.equal(context.currentCollaborationSession.runState, "thinking", "saved effects are visible while the final reply is still pending");
+});

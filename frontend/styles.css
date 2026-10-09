@@ -9718,3 +9718,17 @@ button.habit-cell:focus-visible {
 .task-ended-history { margin-top: 16px; border-top: 1px solid var(--parity-border); padding-top: 12px; }
 .task-ended-history > summary { cursor: pointer; color: var(--parity-muted); font-size: 13px; }
 .task-history-date-group > h4 { font-size: 12px; color: var(--parity-muted); margin: 16px 0 8px; }
+
+.collaboration-work-history {
+  margin-block: .75rem;
+  border-inline-start: 2px solid var(--border-color, #d4d4d4);
+  padding-inline-start: .75rem;
+}
+.collaboration-work-history summary { cursor: pointer; }
+.collaboration-work-item { margin-block: .75rem; }
+.collaboration-work-item > strong { font-size: .9em; }
+.collaboration-work-item[data-status="failed"] > strong { color: var(--danger-color, #a82d2d); }
+.collaboration-work-item p { margin-block: .4rem; }
+.collaboration-work-item details { font-size: .85em; opacity: .85; }
+.collaboration-checklist-item { list-style: none; display: flex; align-items: baseline; gap: .35rem; }
+.collaboration-reply-link { display: inline; padding: 0; }
