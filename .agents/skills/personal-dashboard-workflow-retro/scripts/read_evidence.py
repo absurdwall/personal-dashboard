@@ -225,6 +225,13 @@ def main():
                 items = history.get("items", [])
                 if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
                     raise ValueError("damaged work items structure")
+                refreshes = history.get("refreshes", [])
+                if not isinstance(refreshes, list) or any(not isinstance(item, dict) for item in refreshes):
+                    raise ValueError("damaged refresh observations structure")
+                for item in items:
+                    changes = item.get("changes", [])
+                    if not isinstance(changes, list) or any(not isinstance(change, dict) for change in changes):
+                        raise ValueError("damaged change evidence structure")
         info = {"path": str(args.history), "sha256": hashlib.sha256(raw).hexdigest(), "schemaVersion": 1, "bytes": len(raw)}
         exported = selected_export(source, args, info)
         output = json.dumps(exported, ensure_ascii=False, allow_nan=False, indent=2)
