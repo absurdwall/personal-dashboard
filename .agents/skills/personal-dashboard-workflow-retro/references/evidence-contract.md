@@ -52,7 +52,9 @@ executions are excluded. Credential-like text is withheld with pointer-specific
 omissions; selected ordinary request/reply/diff content can still be personal.
 
 Native usage `total` retains the runtime thread aggregate, while `last` retains
-the runtime's last-turn aggregate. Counts can be individually unavailable. Time
+the runtime-reported-last aggregate. Neither is allocated to the complete app
+execution or individual tools unless the native source independently establishes
+that scope. Counts can be individually unavailable. Time
 and call counts are separate evidence; export has no per-tool token allocation,
 prices or reconstructed money.
 

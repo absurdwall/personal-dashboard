@@ -175,7 +175,7 @@ def selected_export(source, selectors, source_info):
             "selection": {"session": selectors.session, "execution": selectors.execution, "vault": selectors.vault,
                           "from": selectors.date_from, "to": selectors.date_to, "periodBasis": "captured request messageDate (local lived date)"},
             "coverage": "selected-snapshot", "executions": executions, "references": references, "omissions": gaps,
-            "usageScope": "runtime total is thread aggregate; last is reported last-turn aggregate; no per-tool tokens or prices"}
+            "usageScope": "runtime total is thread aggregate; last is runtime-reported-last aggregate; allocation to the complete app execution/per-tool is unavailable; no prices"}
 
 
 def main():

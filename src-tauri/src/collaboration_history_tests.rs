@@ -166,10 +166,13 @@ impl AppServerTransport for InjectedTransport {
                 observer
             };
             let original = fs::read_to_string(&path).unwrap();
-            fs::write(&path, original.replace("Old fact", "Corrected fact")).unwrap();
+            let overwrite = request.user_text.contains("with overwrite");
+            let corrected = original.replace("Old fact", "Corrected fact");
+            fs::write(&path, if overwrite {corrected.replace("Keep unrelated paragraph\n", "")} else {corrected}).unwrap();
+            let diff = if overwrite {"@@ -1,2 +1 @@\n-Old fact\n-Keep unrelated paragraph\n+Corrected fact\n"} else {"@@ -1,2 +1,2 @@\n-Old fact\n+Corrected fact\n Keep unrelated paragraph\n"};
             for event in [
-                json!({"method":"item/started","params":{"threadId":request.thread_id,"turnId":"document-turn","item":{"id":"file-change","type":"fileChange","status":"inProgress","changes":[{"path":path,"kind":{"type":"update","move_path":null},"diff":"@@ -1,2 +1,2 @@\n-Old fact\n+Corrected fact\n Keep unrelated paragraph\n"}]}}}),
-                json!({"method":"item/completed","params":{"threadId":request.thread_id,"turnId":"document-turn","item":{"id":"file-change","type":"fileChange","status":"completed","changes":[{"path":path,"kind":{"type":"update","move_path":null},"diff":"@@ -1,2 +1,2 @@\n-Old fact\n+Corrected fact\n Keep unrelated paragraph\n"}]}}}),
+                json!({"method":"item/started","params":{"threadId":request.thread_id,"turnId":"document-turn","item":{"id":"file-change","type":"fileChange","status":"inProgress","changes":[{"path":path,"kind":{"type":"update","move_path":null},"diff":diff}]}}}),
+                json!({"method":"item/completed","params":{"threadId":request.thread_id,"turnId":"document-turn","item":{"id":"file-change","type":"fileChange","status":"completed","changes":[{"path":path,"kind":{"type":"update","move_path":null},"diff":diff}]}}}),
                 json!({"method":"item/completed","params":{"threadId":request.thread_id,"turnId":"document-turn","item":{"id":"final","type":"agentMessage","phase":"final_answer","text":"Corrected the document."}}}),
                 json!({"method":"turn/completed","params":{"threadId":request.thread_id,"turn":{"id":"document-turn","status":"completed"}}}),
             ] {
@@ -192,6 +195,19 @@ impl AppServerTransport for InjectedTransport {
                 runtime_turn_id: Some("document-turn".into()),
             });
         }
+        if request.user_text.starts_with("Trace unknown synthetic external") {
+            let thread = request.thread_id;
+            for event in [
+                json!({"method":"item/started","params":{"threadId":thread,"turnId":"unknown-turn","item":{"id":"unknown-write","type":"mcpToolCall","server":"synthetic","tool":"upsert_task","arguments":{"task_id":"synthetic-owned-A","date":"2026-10-09"},"status":"inProgress"}}}),
+                json!({"method":"item/completed","params":{"threadId":thread,"turnId":"unknown-turn","item":{"id":"replay-write","type":"mcpToolCall","server":"synthetic","tool":"upsert_task","arguments":{"task_id":"synthetic-owned-A","date":"2026-10-09"},"status":"completed"}}}),
+                json!({"method":"item/completed","params":{"threadId":thread,"turnId":"unknown-turn","item":{"id":"final","type":"agentMessage","phase":"final_answer","text":"All source writes saved."}}}),
+                json!({"method":"turn/completed","params":{"threadId":thread,"turn":{"id":"unknown-turn","status":"completed"}}}),
+            ] { sender.send(Ok(event.to_string())).unwrap(); }
+            let (text,stopped,external_actions)=client.wait_for_turn_observed(&thread,"unknown-turn",&cancel,handler.as_ref(),"2026-10-09",None,None,observer)?;
+            return Ok(RuntimeTurnResult{text,stopped,external_actions,runtime_turn_id:Some("unknown-turn".into())});
+        }
+        let wrong_target=request.user_text.contains("wrong-target fixture");
+        let turn_id=format!("turn-{}",request.execution_id);
         let thread = request.thread_id;
         let events = [
             json!({"method":"item/completed","emittedAtMs":500,"params":{"threadId":"other","turnId":"turn","item":{"id":"foreign","type":"agentMessage","text":"Do not retain"}}}),
@@ -213,7 +229,12 @@ impl AppServerTransport for InjectedTransport {
             json!({"method":"thread/tokenUsage/updated","params":{"threadId":thread,"turnId":"turn","tokenUsage":{"total":{"totalTokens":100,"inputTokens":70,"cachedInputTokens":20,"cacheWriteInputTokens":0,"outputTokens":30,"reasoningOutputTokens":10},"last":{"totalTokens":50,"inputTokens":35,"cachedInputTokens":10,"cacheWriteInputTokens":0,"outputTokens":15,"reasoningOutputTokens":5},"modelContextWindow":200000}}}),
             json!({"method":"turn/completed","params":{"threadId":thread,"turn":{"id":"turn","status":"completed","startedAt":100,"completedAt":105,"itemsView":"notLoaded"}}}),
         ];
-        for event in events {
+        for mut event in events {
+            if event["params"]["turnId"] == "turn" {event["params"]["turnId"]=json!(turn_id);}
+            if event["params"]["turn"]["id"] == "turn" {event["params"]["turn"]["id"]=json!(turn_id);}
+            if wrong_target && event["id"] == "good" {
+                event["params"]["arguments"]=json!({"operation":"updateTask","executionMode":"execute","taskId":"missing-owned-B","name":"Synthetic groceries","content":null,"date":"2026-10-08","time":null,"listId":null});
+            }
             sender.send(Ok(event.to_string())).unwrap();
         }
         // Keep observing tool RPC responses even when history persistence fails.
@@ -226,7 +247,7 @@ impl AppServerTransport for InjectedTransport {
         });
         let result = client.wait_for_turn_observed(
             &thread,
-            "turn",
+            &turn_id,
             &cancel,
             handler.as_ref(),
             "2026-10-09",
@@ -243,7 +264,7 @@ impl AppServerTransport for InjectedTransport {
         );
         assert_eq!(replies[0]["result"]["success"], false);
         assert_eq!(
-            replies[1]["result"]["success"], true,
+            replies[1]["result"]["success"], !wrong_target,
             "tool reply: {}",
             replies[1]
         );
@@ -252,7 +273,7 @@ impl AppServerTransport for InjectedTransport {
             text,
             stopped,
             external_actions,
-            runtime_turn_id: Some("turn".into()),
+            runtime_turn_id: Some(turn_id),
         })
     }
 }
@@ -1015,6 +1036,72 @@ fn execution_configuration_retains_original_requested_model_after_settings_chang
     assert_eq!(configuration["requestedReasoningEffort"], "low");
     assert_eq!(configuration["threadId"], "history-thread");
     assert_eq!(reopened.work_history, saved.work_history);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn developer_reader_complete_chain_keeps_rejected_target_overwrite_unknown_replay_and_stale_render() {
+    let root = isolated_root();
+    let path = root.join("history/state.json");
+    fs::write(root.join("vault/life/Self.md"),"# Background\nUnrelated prior correction.\n").unwrap();
+    let workspace=root.join("workspace.json");
+    FileTodayWorkspacePersistence::new(workspace.clone()).save_selected_vault(&root.join("vault")).unwrap();
+    let memory_service=Arc::new(FileMemory {service:SelectedVaultCollaborationMemoryService::new(workspace),actual_key:vault_key(&root.join("vault")),saves:AtomicUsize::new(0)});
+    let app = application(&root, Arc::new(FileCollaborationStore::new(path.clone()))).with_memory_service(memory_service);
+    let session = app.create_session("2026-10-09").unwrap();
+    let run = |request: &str| {
+        app.submit_message("history-vault", &session.id, "2026-10-09", request).unwrap();
+        await_end(&app, &session.id)
+    };
+    let initial = run("Create Synthetic groceries");
+    let tasks = TaskApplication::with_file_store(Workspace(root.join("vault")), FixedClock);
+    let initial_revision = tasks.read().unwrap().revision;
+    let wrong = run("Correct Synthetic groceries on 2026-10-09 (wrong-target fixture)");
+    assert_eq!(tasks.read().unwrap().revision, initial_revision, "wrong object/date attempt must not write");
+    assert!(!wrong.task_operations.iter().any(|receipt| Some(receipt.execution_id.as_str()) == wrong.run_id.as_deref() && receipt.status == "applied"));
+    fs::write(root.join("vault/life/ordinary.md"), "Old fact\nKeep unrelated paragraph\n").unwrap();
+    let overwrite = run("Patch the ordinary document with overwrite; only correct Old fact");
+    assert_eq!(fs::read_to_string(root.join("vault/life/ordinary.md")).unwrap(), "Corrected fact\n");
+    let replay = run("Trace unknown synthetic external result followed by same-input replay");
+    let memory = run("Update durable background");
+    app.record_refresh_for_selected_vault(&session.id, initial.run_id.as_ref().unwrap(), vec![CollaborationRefreshInput {
+        target:"habits".into(), target_date:"2026-10-09".into(), status:"readCompleted".into(),
+        source_state:Some("stale".into()),page_state:"rendered".into(),trigger:"turnTerminal".into()
+    }]).unwrap();
+    let before = fs::read(&path).unwrap();
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../.agents/skills/personal-dashboard-workflow-retro/scripts/read_evidence.py");
+    let output = std::process::Command::new("python3").arg(script).arg("--history").arg(&path).arg("--session").arg(&session.id).output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let export:Value=serde_json::from_slice(&output.stdout).unwrap();
+    let executions=export["executions"].as_array().unwrap();
+    assert_eq!(executions.len(),5);
+    let find = |id:&Option<String>| executions.iter().find(|execution| execution["executionId"].as_str()==id.as_deref()).unwrap();
+    let rejected=find(&wrong.run_id);
+    assert!(rejected["history"]["items"].as_array().unwrap().iter().any(|item| item["callId"]=="attempt-2" && item["status"]=="failed"));
+    assert!(rejected["replies"][0]["text"].as_str().unwrap().contains("Created"), "intentional report/receipt mismatch fixture");
+    let changed=find(&overwrite.run_id);
+    let change=&changed["history"]["items"].as_array().unwrap().iter().find(|item|item["itemId"]=="file-change").unwrap()["changes"][0];
+    assert_eq!(change["verification"],"sourceObserved");
+    assert!(change["beforeRevision"].is_null());
+    assert!(change["diff"].as_str().unwrap().contains("-Keep unrelated paragraph"));
+    let unknown=find(&replay.run_id);
+    let attempts=unknown["history"]["items"].as_array().unwrap();
+    let one=attempts.iter().find(|item|item["itemId"]=="unknown-write").unwrap();
+    let two=attempts.iter().find(|item|item["itemId"]=="replay-write").unwrap();
+    assert_eq!(one["inputFingerprint"],two["inputFingerprint"]);
+    assert_ne!(one["status"],"completed");
+    assert!(unknown["externalActions"].as_array().unwrap().iter().all(|item|item["verification"].is_null()),"synthetic external boundary is not verified external save");
+    assert_eq!(find(&initial.run_id)["history"]["refreshes"][0]["sourceState"],"stale");
+    assert_eq!(find(&initial.run_id)["history"]["refreshes"][0]["pageState"],"rendered");
+    assert!(!find(&memory.run_id)["memoryEffects"].as_array().unwrap().is_empty());
+    let source:Value=serde_json::from_slice(&before).unwrap();
+    for reference in export["references"].as_object().unwrap().values(){assert!(source.pointer(reference["pointer"].as_str().unwrap()).is_some());}
+    assert_eq!(fs::read(&path).unwrap(),before);
+    if let Some(destination)=std::env::var_os("PDCR_RETRO_SYNTHETIC_CAPTURE"){
+        let destination=PathBuf::from(destination);fs::create_dir_all(&destination).unwrap();
+        fs::write(destination.join("complete-history.json"),before).unwrap();
+        fs::write(destination.join("complete-export.json"),output.stdout).unwrap();
+    }
     fs::remove_dir_all(root).unwrap();
 }
 
