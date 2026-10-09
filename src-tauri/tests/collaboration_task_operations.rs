@@ -467,11 +467,11 @@ impl AppServerTransport for DynamicRuntime {
                 gate.block_automatic_turn();
             }
         }
-        if matches!(request.user_text.as_str(), "read task history" | "read record history") {
+        if matches!(request.user_text.as_str(), "read task history" | "read record history" | "read habit history") {
             let result = handler(RuntimeDynamicToolCall {
                 thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
                 call_id: "history-read".into(), tool: "dashboard_read_history".into(),
-                arguments: json!({"domain":if request.user_text == "read task history" {"tasks"} else {"dailyRecords"},"fromDate":"2026-09-24","toDate":"2026-09-27"}),
+                arguments: json!({"domain":match request.user_text.as_str() { "read task history" => "tasks", "read habit history" => "habits", _ => "dailyRecords" },"fromDate":"2026-09-24","toDate":"2026-09-27"}),
             });
             self.results.lock().unwrap().push(result);
             return Ok(RuntimeTurnResult { text: "History read; missing activity remains unknown.".into(), runtime_turn_id: Some(format!("turn-{}", request.execution_id)), stopped: false, external_actions: Vec::new() });
@@ -1125,8 +1125,8 @@ fn daytime_save_records_the_loaded_usage_and_actual_capabilities_across_reopen()
     let saved = serde_json::to_value(app.session("vault-a", &chat.id).unwrap()).unwrap();
     let binding = &saved["usageBindings"][0];
     assert_eq!(binding["skillName"], "personal-dashboard-collaboration");
-    assert_eq!(binding["skillVersion"], "1.2.0");
-    assert_eq!(binding["toolSetVersion"], "1.2.0");
+    assert_eq!(binding["skillVersion"], "1.3.0");
+    assert_eq!(binding["toolSetVersion"], "1.3.0");
     assert!(binding["packageFingerprint"].as_str().is_some_and(|s| !s.is_empty()));
     let registered = tools.lock().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>();
     assert_eq!(binding["registeredTools"], json!(registered));
@@ -7196,7 +7196,7 @@ fn collaboration_period_query_reads_tasks_without_business_receipts_or_writes() 
     assert!(!path.join("life/.personal-dashboard/tasks/v1/tasks.json").exists());
     let tools = tools.lock().unwrap();
     let schema = tools.iter().find(|tool| tool["name"] == "dashboard_read_history").unwrap();
-    assert_eq!(schema["inputSchema"]["properties"]["domain"]["enum"], json!(["tasks", "dailyRecords"]));
+    assert_eq!(schema["inputSchema"]["properties"]["domain"]["enum"], json!(["tasks", "dailyRecords", "habits"]));
     assert_eq!(saved.usage_bindings[0].registered_tools.iter().filter(|name| *name == "dashboard_read_history").count(), 1);
 }
 
@@ -7311,4 +7311,148 @@ fn collaboration_daily_record_query_exposes_actual_domain_and_preserves_missing_
     let history_tool = tools.iter().find(|tool| tool["name"] == "dashboard_read_history").unwrap();
     assert!(history_tool["inputSchema"]["properties"]["domain"]["enum"].as_array().unwrap().contains(&json!("dailyRecords")));
     assert_eq!(fs::read(record).unwrap(), original);
+}
+
+#[test]
+fn habit_period_query_reads_canonical_local_fact_beyond_missing_snapshot_coverage() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("canonical-habit-period");
+    prepare_daily_review_vault(&path, false);
+    let vault = MutableVault::new(&path);
+    let (app, _, results) = new_application(&directory, &vault, MutableContext::new("vault-a"), Arc::new(AtomicBool::new(false)));
+    let session = app.create_session("2026-09-27").unwrap();
+    let operation = json!({"operation":"setLocalHabitCompletion","habitKey":"exercise","completed":true,"scope":"local","targetDate":"2026-06-02","executionMode":"execute"});
+    app.submit_message("vault-a", &session.id, "2026-09-27", &format!("single-date-fixture:{operation}")).unwrap();
+    wait_for_finish(&app, &session.id, "vault-a");
+    let saved = app.session("vault-a", &session.id).unwrap();
+    assert_eq!(saved.task_operations[0].status, "applied");
+    assert!(results.lock().unwrap()[0].success);
+    assert!(saved.messages.iter().all(|message| message.external_actions.is_empty()));
+    fs::remove_file(path.join("life/.personal-dashboard/derived/habits-v1.json")).unwrap();
+    let completion_path = path.join("life/.personal-dashboard/habit-completions/v1/completions.json");
+    let before = fs::read(&completion_path).unwrap();
+    let history = app.read_history("vault-a", personal_dashboard_lib::collaboration::CollaborationHistoryRequest { domain:"habits".into(), from_date:"2026-06-01".into(), to_date:"2026-06-03".into() }).unwrap();
+    assert_eq!(history["canonical"]["state"], "ready");
+    assert_eq!(history["canonical"]["unrecordedState"], "unknown");
+    assert_eq!(history["canonical"]["records"][0]["habitKey"], "exercise");
+    assert_eq!(history["canonical"]["records"][0]["livedDate"], "2026-06-02");
+    assert_eq!(history["canonical"]["records"][0]["state"], "completed");
+    assert_eq!(history["canonical"]["records"][0]["changes"][0]["id"], saved.task_operations[0].id);
+    assert_eq!(history["projection"]["state"], "missing");
+    assert_eq!(history["requestedDates"], json!(["2026-06-01","2026-06-02","2026-06-03"]));
+    assert_eq!(fs::read(completion_path).unwrap(), before);
+}
+
+#[test]
+fn habit_period_query_keeps_withdrawal_retry_receipts_and_other_dates_independent() {
+    use personal_dashboard_lib::today::HabitCompletionMutationInput;
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("habit-period-withdrawal");
+    prepare_daily_review_vault(&path, false);
+    let vault = MutableVault::new(&path);
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock);
+    let mut snapshot = today.habits().unwrap();
+    for (id, date, completed) in [("history-first", "2026-09-24", true), ("history-other", "2026-09-25", true),
+        ("history-noop", "2026-09-24", true), ("history-withdraw", "2026-09-24", false)] {
+        snapshot = today.set_local_habit_completion(HabitCompletionMutationInput { habit_key:"exercise".into(),
+            lived_date:date.into(),completed,change_id:id.into(),target_binding:snapshot.completion_target_binding.clone().unwrap(),
+            expected_revision:snapshot.completion_revision.clone() }).unwrap();
+    }
+    let (app, _, results) = new_application(&directory, &vault, MutableContext::new("vault-a"), Arc::new(AtomicBool::new(false)));
+    let history = app.read_history("vault-a", personal_dashboard_lib::collaboration::CollaborationHistoryRequest { domain:"habits".into(), from_date:"2026-09-24".into(), to_date:"2026-09-24".into() }).unwrap();
+    assert_eq!(history["canonical"]["records"].as_array().unwrap().len(), 1);
+    assert_eq!(history["canonical"]["records"][0]["state"], "withdrawn");
+    assert_eq!(history["canonical"]["records"][0]["changes"].as_array().unwrap().len(), 2);
+    assert_eq!(history["canonical"]["acceptedNoOpReceipts"][0]["id"], "history-noop");
+    assert_eq!(history["canonical"]["revision"], snapshot.completion_revision.unwrap());
+    let other = today.read_date("2026-09-25").unwrap();
+    assert_eq!(other.habit_corrections.habit("exercise").unwrap().cell.local_completion_state, HabitLocalCompletionState::Completed);
+    let source = path.join("life/.personal-dashboard/habit-completions/v1/completions.json");
+    let before = fs::read(&source).unwrap();
+    let session = app.create_session("2026-09-27").unwrap();
+    app.submit_message("vault-a", &session.id,"2026-09-27","read habit history").unwrap();
+    wait_for_finish(&app,&session.id,"vault-a");
+    assert!(results.lock().unwrap().last().unwrap().success);
+    let saved = app.session("vault-a",&session.id).unwrap();
+    assert!(saved.task_operations.is_empty());
+    assert!(saved.messages.iter().all(|message|message.external_actions.is_empty()));
+    assert_eq!(fs::read(source).unwrap(),before);
+}
+
+#[test]
+fn habit_period_query_retains_published_actual_time_threshold_and_unknown_damaged_local_source() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("habit-period-sources");
+    prepare_daily_review_vault(&path, false);
+    let snapshot = path.join("life/.personal-dashboard/derived/habits-v1.json");
+    fs::write(&snapshot,include_bytes!("fixtures/habits-v1-complete.json")).unwrap();
+    let vault = MutableVault::new(&path);
+    let (app, _, _) = new_application(&directory, &vault, MutableContext::new("vault-a"), Arc::new(AtomicBool::new(false)));
+    let query = || app.read_history("vault-a",personal_dashboard_lib::collaboration::CollaborationHistoryRequest { domain:"habits".into(),from_date:"2026-09-08".into(),to_date:"2026-09-08".into() }).unwrap();
+    let result = query();
+    assert_eq!(result["canonical"]["state"],"missing");
+    assert_eq!(result["projection"]["state"],"stale");
+    let habits = result["projection"]["habits"].as_array().unwrap();
+    let sleep = habits.iter().find(|habit|habit["key"]=="sleep").unwrap();
+    assert_eq!(sleep["history"][0]["status"],"thresholdOnly");
+    assert!(sleep["history"][0]["actualTimeLabel"].is_null());
+    let wake = habits.iter().find(|habit|habit["key"]=="wake").unwrap();
+    assert_eq!(wake["history"][0]["actualTimeLabel"],"07:18");
+    for habit in habits { assert_eq!(habit["history"].as_array().unwrap().len(),1); assert!(habit.get("today").is_none()); }
+    let canonical = path.join("life/.personal-dashboard/habit-completions/v1/completions.json");
+    fs::create_dir_all(canonical.parent().unwrap()).unwrap();
+    fs::write(&canonical,b"{damaged canonical").unwrap();
+    let damaged = query();
+    assert_eq!(damaged["canonical"]["state"],"error");
+    assert_eq!(damaged["canonical"]["errorKind"],"damaged");
+    assert_eq!(damaged["canonical"]["unrecordedState"],"unknown");
+    assert!(damaged["canonical"]["records"].as_array().unwrap().is_empty());
+    assert_eq!(damaged["projection"],result["projection"]);
+    assert_eq!(fs::read(&canonical).unwrap(),b"{damaged canonical");
+    assert!(app.read_history("other-vault",personal_dashboard_lib::collaboration::CollaborationHistoryRequest { domain:"habits".into(),from_date:"2026-09-08".into(),to_date:"2026-09-08".into() }).is_err());
+}
+
+struct SnapshotFaultAfterLocalSave {
+    inner: TodayApplicationCollaborationDailyDataAdapter<MutableVault, NoVaultPicker, FixedClock>,
+    saved: AtomicBool,
+}
+impl personal_dashboard_lib::collaboration::CollaborationDailyDataService for SnapshotFaultAfterLocalSave {
+    fn read_date(&self, date: &str) -> Result<personal_dashboard_lib::today::TodayView, String> { self.inner.read_date(date) }
+    fn save(&self, input: DailyPlanWriteInput) -> Result<personal_dashboard_lib::today::TodayView, String> { self.inner.save(input) }
+    fn operation_applied(&self, date: &str, binding: &str, id: &str, fingerprint: &str) -> Result<bool, String> { self.inner.operation_applied(date,binding,id,fingerprint) }
+    fn read_habit_snapshot(&self) -> Result<personal_dashboard_lib::habits::HabitSnapshotView, String> {
+        if self.saved.load(Ordering::SeqCst) { Err("Snapshot projection read interrupted after canonical save".into()) }
+        else { self.inner.read_habit_snapshot() }
+    }
+    fn set_historical_habit_completion(&self, input: personal_dashboard_lib::today::HabitCompletionMutationInput) -> Result<personal_dashboard_lib::today::TodayView, String> {
+        let result = self.inner.set_historical_habit_completion(input);
+        if result.is_ok() { self.saved.store(true,Ordering::SeqCst); }
+        result
+    }
+    fn habit_completion_operation_applied(&self, date: &str, binding: &str, id: &str, key: &str, completed: bool) -> Result<bool, String> { self.inner.habit_completion_operation_applied(date,binding,id,key,completed) }
+}
+
+#[test]
+fn local_habit_receipt_keeps_canonical_success_revision_when_snapshot_read_fails_after_save() {
+    let directory=IsolatedDirectory::new();let path=directory.vault("habit-post-save-fault");prepare_daily_review_vault(&path,false);
+    let vault=MutableVault::new(&path);
+    let (app,_,_)=new_application(&directory,&vault,MutableContext::new("vault-a"),Arc::new(AtomicBool::new(false)));
+    let app=app.with_daily_data_service(Arc::new(SnapshotFaultAfterLocalSave {
+        inner:TodayApplicationCollaborationDailyDataAdapter::new(TodayApplication::new(vault.clone(),NoVaultPicker,FixedClock)),saved:AtomicBool::new(false),
+    }));
+    let session=app.create_session("2026-09-27").unwrap();
+    let proposal=submit_for_proposal(&app,&session.id,"complete habit");
+    let result=app.approve_task_operation_for_selected_vault(&session.id,&proposal.id).unwrap();
+    let saved=&result.task_operations[0];assert_eq!(saved.status,"applied");
+    let today=TodayApplication::new(vault,NoVaultPicker,FixedClock).read_date("2026-09-27").unwrap();
+    assert_eq!(saved.result_revision,today.habit_corrections.completion_revision);
+    let receipt=serde_json::to_value(saved).unwrap();
+    assert_eq!(receipt["resultSnapshot"]["localState"],"Completed");
+    assert_eq!(receipt["resultSnapshot"]["sourceSnapshotState"],"error");
+    assert!(receipt["resultSnapshot"]["sourceSnapshotMessage"].as_str().unwrap().contains("Snapshot projection read interrupted"));
+    let completion_path=path.join("life/.personal-dashboard/habit-completions/v1/completions.json");
+    let before=fs::read(&completion_path).unwrap();
+    app.reconcile_task_operation_for_selected_vault(&session.id,&proposal.id).unwrap();
+    app.approve_task_operation_for_selected_vault(&session.id,&proposal.id).unwrap();
+    assert_eq!(fs::read(completion_path).unwrap(),before);
 }

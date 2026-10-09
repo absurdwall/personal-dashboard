@@ -888,6 +888,7 @@ const interfaceCopies = {
   "history.futureBoundary": { zh: "未来日期不能记录已发生的任务或习惯完成。", en: "Task or habit completion cannot be recorded as having happened on a future date." },
   "history.recordHabitCompletion": { zh: "更正 {date} 的“{habit}”本地完成", en: "Correct the Dashboard-local completion for {habit} on {date}" },
   "history.goal": { zh: "当周目标：{goal}", en: "Target for that week: {goal}" },
+  "habits.canonicalCoverage": { zh: "本地完成证据 · 快照未覆盖此日期，外部完成与目标保持未知。以下时间为保存时间，不代表实际活动时间。", en: "Local completion evidence · Snapshot does not cover this date; external completion and targets remain unknown. Times below record saves, not activity time." },
   "history.goalUnknown": { zh: "当周目标未知 · 不回填", en: "Target for that week unknown · Not backfilled" },
   "history.unknownHabitName": { zh: "显示名称未知 · 稳定 key：{key}", en: "Display name unknown · Stable key: {key}" },
   "history.changeHistory": { zh: "本地更正记录 · {count}", en: "Local correction history · {count}" },

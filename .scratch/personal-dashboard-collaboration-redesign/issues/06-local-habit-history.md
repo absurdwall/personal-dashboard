@@ -9,20 +9,20 @@
 
 **ID:** PDCR-06
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** in-progress
+**Lifecycle:** closed
+**Implementation:** complete
 **Assignee:** Codex implementer PDCR-06
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
 
 ## Acceptance criteria
 
-- [ ] 明确 local-only 时不调用 Dida 写入，completion 的 stable identity 和来源保留。
-- [ ] 阈值达标与真实事件时间分开；dated notes 不被当作 completion。
-- [ ] 指定历史期间读取 local completions、unknown 与可用 provenance；陈旧 projection
+- [x] 明确 local-only 时不调用 Dida 写入，completion 的 stable identity 和来源保留。
+- [x] 阈值达标与真实事件时间分开；dated notes 不被当作 completion。
+- [x] 指定历史期间读取 local completions、unknown 与可用 provenance；陈旧 projection
   与 canonical 事实分开，为个人查询和 retro 提供有范围的事实。
-- [ ] local 保存、snapshot 和页面刷新分别报告；单独修复显示不重复补记。
-- [ ] before/after 或原/结果 revision 可关联到 effect，重试/撤回不覆盖其他日期。
+- [x] local 保存、snapshot 和页面刷新分别报告；单独修复显示不重复补记。
+- [x] before/after 或原/结果 revision 可关联到 effect，重试/撤回不覆盖其他日期。
 
 ## Verification
 
@@ -37,3 +37,5 @@
 ## Execution
 
 - 2026-10-09: Claimed after required blockers closed, for authorized implement-spec. Owner: Codex implementer PDCR-06; branch: `codex/pdcr-06`; integration: `codex/collaboration-redesign-integration`. Tests use spec-confirmed seams.
+
+- 2026-10-09: Completed at the spec-confirmed real Today/Collaboration/file-backed adapters and production frontend. Implementation `76ef192`; merged integration `a87945f` in `773e7c0`; supplemental production receipt fix and exact-link tests `957a701`. See [PDCR-06 evidence](../pdcr-06-evidence.md). All five child criteria are met. Native and live Dida acceptance remain PDCR-11/12; the parent specification remains open.

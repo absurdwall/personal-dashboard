@@ -66,3 +66,12 @@ remain discussion until the user requests changes. Workflow retro and app
 development belong in the developer's Codex environment.
 
 The user-enabled automatic morning-plan round keeps its existing scope: one initial plan for the captured current date, preserving an existing plan, with source reads only and no Task/Habit/background/file mutations. A later human message is an ordinary collaboration turn.
+
+For a bounded Habit question, use the advertised `habits` domain of
+`dashboard_read_history`. Canonical local evidence is independent of snapshot
+coverage. Keep exact habitKey/livedDate, change/no-op IDs, revision and source
+binding. An unrecorded date is unknown; withdrawal retains its change trace.
+Published source facts, dated goal thresholds and actual activity time remain
+separate from local save timestamps and ordinary dated notes. Read-only history
+never refreshes a snapshot or makes external mutations. Exact Habit/date links
+can open canonical evidence even when the snapshot does not cover that date.
