@@ -127,10 +127,15 @@ fn scoped_path(path: &str, vault: &Path, cwd: &Path) -> Result<(PathBuf, String)
     // macOS may spell the selected root through /var -> /private/var. Resolve
     // only the root alias, retaining the relative spelling to reject redirects
     // inside life/ rather than hiding them by canonicalizing the final file.
-    let root_alias = candidate
-        .ancestors()
-        .find(|ancestor| ancestor.canonicalize().ok().as_deref() == Some(vault))
-        .ok_or("File-change path is outside the captured selected Vault.")?;
+    let root_alias = if candidate.starts_with(vault) {
+        vault
+    } else {
+        candidate
+            .ancestors()
+            .filter(|ancestor| ancestor.canonicalize().ok().as_deref() == Some(vault))
+            .last()
+            .ok_or("File-change path is outside the captured selected Vault.")?
+    };
     let relative = candidate
         .strip_prefix(root_alias)
         .map_err(|_| "File-change path is outside the captured selected Vault.")?;
@@ -148,6 +153,11 @@ fn scoped_path(path: &str, vault: &Path, cwd: &Path) -> Result<(PathBuf, String)
                 .into(),
         );
     }
+    let relative_text = relative_text.to_owned();
+    Ok((vault.join(&relative_text), relative_text))
+}
+
+fn check_redirects(vault: &Path, relative: &Path) -> Result<(), String> {
     let mut current = vault.to_owned();
     for component in relative.components() {
         current.push(component.as_os_str());
@@ -160,8 +170,7 @@ fn scoped_path(path: &str, vault: &Path, cwd: &Path) -> Result<(PathBuf, String)
             Err(_) => return Err("File-change path metadata could not be observed.".into()),
         }
     }
-    let relative_text = relative_text.to_owned();
-    Ok((vault.join(&relative_text), relative_text))
+    Ok(())
 }
 
 pub(super) fn observe_native(
@@ -239,7 +248,39 @@ pub(super) fn observe_native(
         // Later full snapshots/deltas retain the observation made at completion,
         // rather than auditing a newer file under an old event's identity.
         *evidence = saved.clone();
+        if let Some(vault) = vault {
+            let scope = check_redirects(vault, Path::new(&relative)).and_then(|_| {
+                evidence
+                    .move_path
+                    .as_deref()
+                    .map(|path| check_redirects(vault, Path::new(path)))
+                    .unwrap_or(Ok(()))
+            });
+            if scope.is_err() {
+                let gap = "Later path scope is redirected/unavailable; original observation retained without new readback.".to_owned();
+                if !evidence.gaps.contains(&gap) {
+                    evidence.gaps.push(gap);
+                }
+            }
+        }
         return;
+    }
+    if let Some(vault) = vault {
+        let scope = check_redirects(vault, Path::new(&relative)).and_then(|_| {
+            evidence
+                .move_path
+                .as_deref()
+                .map(|path| check_redirects(vault, Path::new(path)))
+                .unwrap_or(Ok(()))
+        });
+        if let Err(gap) = scope {
+            evidence.path = None;
+            evidence.move_path = None;
+            evidence.diff = None;
+            evidence.verification = "scopeRejected".into();
+            evidence.gaps.push(gap);
+            return;
+        }
     }
     if !authoritative || !["completed", "succeeded"].contains(&status) {
         return;
@@ -394,6 +435,50 @@ mod tests {
             2,
         );
         assert_eq!(allowed.verification, "sourceObserved");
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[cfg(unix)]
+    #[test]
+    fn retained_witness_survives_later_source_redirection_without_reading_it() {
+        let root = root();
+        let path = root.join("life/file.md");
+        fs::write(&path, "Original observed result").unwrap();
+        let mut saved = evidence(&path, "+Original observed result");
+        observe_native(
+            "file",
+            &mut saved,
+            Some(&root),
+            &root,
+            "2026-10-09",
+            true,
+            "completed",
+            false,
+            &[],
+            1,
+        );
+        fs::remove_file(&path).unwrap();
+        std::os::unix::fs::symlink(root.join("settings.json"), &path).unwrap();
+        let mut incoming = evidence(&path, "+Original observed result");
+        observe_native(
+            "file",
+            &mut incoming,
+            Some(&root),
+            &root,
+            "2026-10-09",
+            true,
+            "completed",
+            false,
+            &[saved.clone()],
+            2,
+        );
+        assert_eq!(incoming.after_revision, saved.after_revision);
+        assert_eq!(incoming.observed_at_ms, saved.observed_at_ms);
+        assert_eq!(incoming.diff, saved.diff);
+        assert_eq!(incoming.verification, "sourceObserved");
+        assert!(incoming
+            .gaps
+            .iter()
+            .any(|gap| gap.contains("original observation retained")));
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
