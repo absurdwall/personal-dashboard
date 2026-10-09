@@ -9,9 +9,9 @@
 
 **ID:** PDCR-09
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** closed
+**Lifecycle:** in-progress
 **Implementation:** complete
-**Assignee:** Codex implementer PDCR-09
+**Assignee:** Codex single review-fix implementer
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
 
@@ -57,3 +57,8 @@
 - This closes the ticket09 developer evidence/read/retro gate. Final combined
   candidate native UI/model/voice acceptance remains11; live Dida remains12.
   It does not close the parent spec or authorize installation/personal writes.
+
+- 2026-10-09: Reopened for independently reviewed work-history recovery/retention
+  and source-boundary fixes at `d180ad1`. One implementer owns review round2 on
+  `codex/pdcr-review-fixes`; [findings/claim](../evidence/review-round-2.md).
+  Existing native/live acceptance gates remain unchanged.

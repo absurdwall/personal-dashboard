@@ -9,9 +9,9 @@
 
 **ID:** PDCR-02
 **Parent:** [PDCR-SPEC-01](../spec.md)
-**Lifecycle:** closed
+**Lifecycle:** in-progress
 **Implementation:** complete
-**Assignee:** Codex implementer PDCR-02
+**Assignee:** Codex single review-fix implementer
 **Date:** 2026-10-09
 **Approval:** User approved the 12-ticket breakdown and blocking edges on 2026-10-09.
 
@@ -45,3 +45,8 @@
 - 2026-10-09: Implementation `77a1951` completed on `codex/pdcr-02` from integration `562a8b9`; all six acceptance criteria verified through actual stdio/application/file-backed source/session and production renderer seams. Evidence: [02 work history](../evidence/02-work-history.md).
 - Build passed; frontend 335 passed; full Rust suite 452 passed with 6 explicitly ignored native/live gates. Native packaged and live external acceptance stay with PDCR-11/12; no installation or personal data write was performed.
 - Work history, tool completion, canonical source receipts, projection freshness and conversation persistence remain separate outcomes. Raw-delta replay ambiguity and missing optional runtime metadata are bounded in evidence rather than invented.
+
+- 2026-10-09: Reopened for independently reviewed work-history recovery/retention
+  and source-boundary fixes at `d180ad1`. One implementer owns review round2 on
+  `codex/pdcr-review-fixes`; [findings/claim](../evidence/review-round-2.md).
+  Existing native/live acceptance gates remain unchanged.

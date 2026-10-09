@@ -1,7 +1,7 @@
 # Collaboration redesign — local execution tracking
 
 Date: 2026-10-09
-Status: local implementation checkpoint; nine tickets closed, PDCR-03/11 blocked, PDCR-12 open
+Status: review round2 repairs in progress; PDCR-02/09 reopened, original PDCR-03/11/12 gates retained
 Canonical tracker: [map](map.md)
 Parent: [PDCR-SPEC-01](spec.md)
 Approved breakdown: [review record](ticket-breakdown-proposal.md)
@@ -134,3 +134,9 @@ role, not an assertion that every blocker has completed or that work is running.
   so the native restriction remains and PDCR-03 is not closed.
   [Checkpoint](evidence/implementation-checkpoint.md) retains the routing
   incident/passive-history uncertainty and cleanup; no release is claimed.
+
+- 2026-10-09: Continued under explicit human authorization for two-chat fix/review
+  iteration. Reopened PDCR-02/09 and claimed all four P2 review findings in a
+  single isolated review-fix implementer; base `d180ad1`, branch
+  `codex/pdcr-review-fixes`. [Round2 record](evidence/review-round-2.md).
+  No other acceptance/lifecycle or release boundary changed.
