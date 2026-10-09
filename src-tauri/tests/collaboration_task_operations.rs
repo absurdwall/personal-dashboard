@@ -467,6 +467,15 @@ impl AppServerTransport for DynamicRuntime {
                 gate.block_automatic_turn();
             }
         }
+        if request.user_text == "read task history" {
+            let result = handler(RuntimeDynamicToolCall {
+                thread_id: request.thread_id.clone(), turn_id: format!("turn-{}", request.execution_id),
+                call_id: "history-read".into(), tool: "dashboard_read_history".into(),
+                arguments: json!({"domain":"tasks","fromDate":"2026-09-24","toDate":"2026-09-27"}),
+            });
+            self.results.lock().unwrap().push(result);
+            return Ok(RuntimeTurnResult { text: "History read; missing activity remains unknown.".into(), runtime_turn_id: Some(format!("turn-{}", request.execution_id)), stopped: false, external_actions: Vec::new() });
+        }
         if automatic_plan {
             // Even a transport delivering a tool outside the advertised narrow
             // schema cannot expand this automatic round's write authority.
@@ -1116,8 +1125,8 @@ fn daytime_save_records_the_loaded_usage_and_actual_capabilities_across_reopen()
     let saved = serde_json::to_value(app.session("vault-a", &chat.id).unwrap()).unwrap();
     let binding = &saved["usageBindings"][0];
     assert_eq!(binding["skillName"], "personal-dashboard-collaboration");
-    assert_eq!(binding["skillVersion"], "1.0.0");
-    assert_eq!(binding["toolSetVersion"], "1.0.0");
+    assert_eq!(binding["skillVersion"], "1.1.0");
+    assert_eq!(binding["toolSetVersion"], "1.1.0");
     assert!(binding["packageFingerprint"].as_str().is_some_and(|s| !s.is_empty()));
     let registered = tools.lock().unwrap().iter().map(|t| t["name"].as_str().unwrap().to_owned()).collect::<Vec<_>>();
     assert_eq!(binding["registeredTools"], json!(registered));
@@ -1504,7 +1513,7 @@ fn dynamic_tool_registration_duplicate_delivery_and_approval_share_canonical_tas
     wait_for_finish(&application, &session.id, "vault-a");
 
     let registered = registered_tools.lock().unwrap();
-    assert_eq!(registered.len(), 2);
+    assert_eq!(registered.len(), 3);
     assert_eq!(registered[0]["name"], "dashboard_task_operation");
     assert!(
         registered[0]["inputSchema"]["oneOf"]
@@ -1700,7 +1709,7 @@ fn daily_plan_uses_the_shared_review_tool_and_persists_only_after_approval() {
     wait_for_finish(&application, &session.id, "vault-a");
 
     let registered = registered_tools.lock().unwrap();
-    assert_eq!(registered.len(), 2, "plan actions use the existing shared operation tool beside the derived refresh tool");
+    assert_eq!(registered.len(), 3, "plan actions retain the shared operation tool beside bounded history and derived refresh");
     assert_eq!(registered[0]["name"], "dashboard_task_operation");
     assert!(registered[0]["inputSchema"]["oneOf"]
         .as_array()
@@ -4246,7 +4255,7 @@ fn automatic_session_human_continuation_saves_tasks_records_habits_and_memory_th
     );
     assert!(results.lock().unwrap().iter().all(|result| result.success));
     let tools = registered.lock().unwrap();
-    assert_eq!(tools.len(), 3);
+    assert_eq!(tools.len(), 4);
     let variants = tools[0]["inputSchema"]["oneOf"].as_array().unwrap();
     for name in [
         "completeTask",
@@ -7105,4 +7114,81 @@ fn conversational_confirmation_executes_selected_review_without_authorization_wo
             if case!="concurrent-edit" {assert!(!results.lock().unwrap().last().unwrap().success);}
         }
     }
+}
+
+#[test]
+fn bounded_task_history_retains_reported_completion_after_reopen_without_rewriting_schedule() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("bounded-history");
+    let vault = MutableVault::new(&path);
+    let adapter = TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault.clone(), FixedClock, FileTaskStore));
+    let view = adapter.read().unwrap();
+    let binding = view.target_binding.unwrap();
+    let view = adapter.apply(&CollaborationTaskOperation::CreateTask { name: "Send report".into(), content: Some("Keep my notes".into()), date: Some("2026-10-02".into()), time: Some("09:00".into()), list_id: None }, &binding, None, "history-create").unwrap();
+    let id = view.tasks[0].id.clone();
+    let view = adapter.apply_for_date(&CollaborationTaskOperation::CompleteTask { task_id: id.clone(), completed_time: Some("15:20".into()) }, &binding, view.revision.as_deref(), "history-complete", "2026-09-24").unwrap();
+    let view = adapter.apply(&CollaborationTaskOperation::ReopenTask { task_id: id.clone() }, &binding, view.revision.as_deref(), "history-reopen").unwrap();
+    let before = fs::read(path.join("life/.personal-dashboard/tasks/v1/tasks.json")).unwrap();
+    let (app, _, _) = new_application(&directory, &vault, MutableContext::new("vault-a"), Arc::new(AtomicBool::new(false)));
+    let history = app.read_history("vault-a", personal_dashboard_lib::collaboration::CollaborationHistoryRequest { domain: "tasks".into(), from_date: "2026-09-24".into(), to_date: "2026-09-24".into() }).unwrap();
+    assert_eq!(history["tasks"][0]["id"], id);
+    assert_eq!(history["tasks"][0]["date"], "2026-10-02");
+    assert_eq!(history["tasks"][0]["state"], "pending");
+    assert_eq!(history["tasks"][0]["content"], "Keep my notes");
+    assert_eq!(history["tasks"][0]["changes"][0]["newCompletion"]["completedOn"], "2026-09-24");
+    assert_eq!(history["tasks"][0]["changes"][0]["newCompletion"]["completedTime"], "15:20");
+    assert_eq!(history["revision"], view.revision.unwrap());
+    assert_eq!(fs::read(path.join("life/.personal-dashboard/tasks/v1/tasks.json")).unwrap(), before);
+    assert!(app.read_history("other-vault", personal_dashboard_lib::collaboration::CollaborationHistoryRequest { domain: "tasks".into(), from_date: "2026-09-24".into(), to_date: "2026-09-24".into() }).is_err());
+}
+
+#[test]
+fn collaboration_period_query_reads_tasks_without_business_receipts_or_writes() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("history-round");
+    let vault = MutableVault::new(&path);
+    let (app, tools, results) = new_application(&directory, &vault, MutableContext::new("vault-a"), Arc::new(AtomicBool::new(false)));
+    let session = app.create_session("2026-09-27").unwrap();
+    app.submit_message("vault-a", &session.id, "2026-09-27", "read task history").unwrap();
+    wait_for_finish(&app, &session.id, "vault-a");
+    let saved = app.session("vault-a", &session.id).unwrap();
+    assert_eq!(saved.run_state, "completed");
+    let result = &results.lock().unwrap()[0];
+    assert!(result.success);
+    let history: Value = serde_json::from_str(&result.text).unwrap();
+    assert_eq!(history["domain"], "tasks");
+    assert_eq!(history["fromDate"], "2026-09-24");
+    assert_eq!(history["toDate"], "2026-09-27");
+    assert_eq!(history["state"], "empty");
+    assert!(history["coverage"].as_str().unwrap().contains("unknown"));
+    assert!(saved.task_operations.is_empty());
+    assert!(!path.join("life/.personal-dashboard/tasks/v1/tasks.json").exists());
+    let tools = tools.lock().unwrap();
+    let schema = tools.iter().find(|tool| tool["name"] == "dashboard_read_history").unwrap();
+    assert_eq!(schema["inputSchema"]["properties"]["domain"]["enum"], json!(["tasks"]));
+    assert_eq!(saved.usage_bindings[0].registered_tools.iter().filter(|name| *name == "dashboard_read_history").count(), 1);
+}
+
+#[test]
+fn bounded_task_history_reports_missing_and_damaged_sources_and_rejects_invalid_ranges() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("history-source-gaps");
+    let vault = MutableVault::new(&path);
+    let (app, _, _) = new_application(&directory, &vault, MutableContext::new("vault-a"), Arc::new(AtomicBool::new(false)));
+    let query = |from: &str, to: &str| app.read_history("vault-a", personal_dashboard_lib::collaboration::CollaborationHistoryRequest { domain: "tasks".into(), from_date: from.into(), to_date: to.into() });
+    let empty = query("2026-01-01", "2027-01-01").unwrap();
+    assert_eq!(empty["state"], "empty");
+    assert_eq!(empty["revision"], Value::Null);
+    assert!(empty["targetBinding"].as_str().is_some());
+    for (from, to) in [("2026-01-01", "2027-01-02"), ("2026-09-25", "2026-09-24"), ("2026-02-30", "2026-03-01")] {
+        assert!(query(from, to).is_err());
+    }
+    let file = path.join("life/.personal-dashboard/tasks/v1/tasks.json");
+    assert!(!file.exists());
+    fs::create_dir_all(file.parent().unwrap()).unwrap();
+    fs::write(&file, "damaged canonical source").unwrap();
+    let result = query("2026-09-24", "2026-09-27").unwrap();
+    assert_eq!(result["state"], "error");
+    assert_eq!(result["errorKind"], "damaged");
+    assert_eq!(fs::read_to_string(file).unwrap(), "damaged canonical source");
 }
