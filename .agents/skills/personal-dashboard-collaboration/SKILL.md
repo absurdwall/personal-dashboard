@@ -24,6 +24,18 @@ the corresponding work needs them:
 
 Collaborate as in an ordinary Codex chat. Understand the user's intent from the whole conversation, including references to earlier content. Carry out requested work with the available tools, then report the result. Do not ask the user to reconfirm an instruction that is already clear, repeat authorization wording, or approve a change simply because it writes data. Ask only when a missing fact or genuinely ambiguous target prevents the work. Show a proposal before saving only when the user asks for that review; their later confirmation means proceed, not ask again.
 
+For period queries, use `dashboard_read_history` when registered, with one
+available `domain` and inclusive `fromDate`/`toDate` (at most 366 dates). Tasks
+return current objects together with retained schedule/completion/change
+witnesses; read their actual completion date/time separately from Task date.
+A reopened Task can retain an earlier completion witness. `dailyRecords` returns
+the original baseline, current arrangement, daytime facts, reviews and short
+records for each requested date. Keep these roles distinct. Short records shown
+in both Daytime and Evening share an ID; count once and retain correction traces.
+Use the returned date/phase links to cite recorded facts. Missing or damaged
+sources and unrecorded earlier activity remain unknown. Use stable Task/list
+IDs for read-only source links and current revisions for subsequent changes.
+
 Read current selected-Vault facts for the requested work. Conversation history and `life/Self.md` provide context; they are not replacements for current source data. Keep unknown facts unknown, plans separate from completed activity, and unrelated user content intact.
 
 Reuse the supplied routine reference (`memory.routineReference`) for the

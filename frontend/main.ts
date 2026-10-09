@@ -1402,6 +1402,7 @@ const todayPresentationRequests = new LatestRequest();
 const todayClockRequests = new LatestRequest();
 const vaultSelectionRequests = new LatestRequest();
 let currentTodayPhase: TodayPhase = "morning";
+let todayPhaseSelectionRevision = 0;
 let todayAxisFollowState: TodayAxisFollowState = "following";
 let programmaticTodayAxisScrollUntil = 0;
 let currentTodayView: TodayView | null = null;
@@ -2331,10 +2332,18 @@ function collaborationOutcomeSummary(result: NonNullable<CollaborationMessageVie
       correctCompletion: "collaboration.taskOpCorrectCompletion", createList: "collaboration.taskOpCreateList",
       renameList: "collaboration.taskOpRenameList", archiveList: "collaboration.taskOpArchiveList", restoreList: "collaboration.taskOpRestoreList",
     };
-    const schedule = "date" in operation && operation.date ? ` · ${operation.date}${operation.time ? ` ${operation.time}` : ""}` : "";
+    const observed = receipt.status === "applied" && receipt.resultSnapshot?.kind === "task" ? receipt.resultSnapshot : null;
+    const scheduleDate = observed?.date ?? ("date" in operation ? operation.date : null);
+    const scheduleTime = observed?.time ?? ("time" in operation ? operation.time : null);
+    const schedule = observed
+      ? ` · ${t("tasks.date")}: ${scheduleDate ?? t("tasks.noDate")}${scheduleTime ? ` ${scheduleTime}` : ""}`
+      : scheduleDate ? ` · ${scheduleDate}${scheduleTime ? ` ${scheduleTime}` : ""}` : "";
+    const completion = observed?.completion
+      ? ` · ${t("tasks.completionDate")}: ${observed.completion.completedOn}${observed.completion.completedTime ? ` ${observed.completion.completedTime}` : ""}` : "";
+    const list = observed?.listName ? ` · ${t("tasks.list")}: ${observed.listName}` : "";
     const content = "content" in operation && operation.content ? `\n${operation.content}` : "";
     return t(labels[operation.operation], { name, previous: "name" in receipt.baseline ? receipt.baseline.name : "", date: "completedOn" in operation ? operation.completedOn : receipt.targetDate,
-      time: "completedTime" in operation ? operation.completedTime ?? t("common.unknown") : t("common.unknown") }) + schedule + content;
+      time: "completedTime" in operation ? operation.completedTime ?? t("common.unknown") : t("common.unknown") }) + schedule + completion + list + content;
   }
   // Old persisted activity may contain JSON envelopes. Keep it out of the UI too.
   if (/^\s*[\[{]/.test(result.message) || result.message === "null") return t("collaboration.sourceResultRecorded");
@@ -2370,7 +2379,7 @@ function renderCollaborationOutcomes(container: HTMLElement, session: Collaborat
         const open = document.createElement("button");
         open.type = "button";
         open.className = "text-button collaboration-outcome-link";
-        open.textContent = t(receipt.taskId ? "collaboration.openSavedTask" : receipt.operation.operation === "setLocalHabitCompletion" ? "collaboration.openHabitDate" : "collaboration.openDailyRecordToday");
+        open.textContent = t(receipt.taskId || receipt.listId ? "collaboration.openSavedTask" : receipt.operation.operation === "setLocalHabitCompletion" ? "collaboration.openHabitDate" : "collaboration.openDailyRecordToday");
         open.addEventListener("click", () => {
           if (receipt.taskId || receipt.listId) {
             taskReturnToCollaborationSessionId = session.id;
@@ -2419,6 +2428,11 @@ function collaborationWorkHistoryLabels(): WorkHistoryLabels {
     tool: t("collaboration.toolActivity"), failed: t("collaboration.workFailed"),
     completed: t("collaboration.toolCompleted"), running: t("collaboration.workRunning"), details: t("collaboration.workDetails"),
     diagnosticUnavailable: t("collaboration.diagnosticUnavailable"),
+    changeStates: {
+      sourceObserved: t("collaboration.changeObserved"), verified: t("collaboration.changeVerified"),
+      unconfirmed: t("collaboration.changeUnconfirmed"), unobserved: t("collaboration.changeUnconfirmed"),
+      scopeRejected: t("collaboration.changeScopeRejected"),
+    },
     actions: {
       createTask: t("collaboration.workAction.createTask"),
       updateTask: t("collaboration.workAction.updateTask"),
@@ -3617,6 +3631,8 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
       openToday.addEventListener("click", () => {
         rememberDailyPlanReturnTarget(session);
         showWorkspaceDestination("today", true, operation.targetDate);
+        showTodayPhase(plan && ["initialPlan", "morningCalibration", "morningBaselineCorrection"].includes(plan.transition)
+          ? "morning" : operation.operation.operation === "saveEveningReview" ? "evening" : "daytime");
       });
       const openCalendar = document.createElement("button");
       openCalendar.type = "button";
@@ -4767,7 +4783,7 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
   const sessionId = session.id;
   const refreshedEffects = new Set<string>();
   collaborationStatusTimer = window.setInterval(() => {
-    if (currentWorkspaceDestination !== "collaboration" || currentCollaborationSession?.id !== sessionId) {
+    if (currentCollaborationSession?.id !== sessionId) {
       return;
     }
     void window.__TAURI__.core.invoke<CollaborationSessionView>(
@@ -4790,6 +4806,18 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
         if (receipt.taskId || receipt.listId) tasksChanged = true;
         else changedDates.add(receipt.targetDate);
       }
+      for (const history of updated.workHistory ?? []) {
+        for (const item of history.items) {
+          for (const change of item.changes ?? []) {
+            if (!change.path || !change.afterRevision || !["sourceObserved", "verified"].includes(change.verification)) continue;
+            const key = `${history.executionId}:${change.id}:${change.afterRevision}`;
+            if (refreshedEffects.has(key)) continue;
+            refreshedEffects.add(key);
+            confirmedEffect = true;
+            if (change.targetDate) changedDates.add(change.targetDate);
+          }
+        }
+      }
       for (const request of updated.messages ?? []) {
         for (const receipt of request.actionResults ?? []) {
           if (updated.taskOperations?.some(operation => operation.id === receipt.id)) continue;
@@ -4802,6 +4830,15 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
         }
       }
       if (confirmedEffect && ["queued", "reading", "thinking", "stopping"].includes(updated.runState)) {
+        // A Task's schedule/completion and list state can change any date-based
+        // view. Re-read the date being viewed; never redirect the write target.
+        if (tasksChanged) {
+          const visibleDate = currentWorkspaceDestination === "today"
+            ? selectedTodayDate ?? currentTodayView?.date
+            : currentWorkspaceDestination === "calendar"
+              ? selectedCalendarDate ?? currentCalendarSummaryView?.date : null;
+          if (visibleDate) changedDates.add(visibleDate);
+        }
         void Promise.allSettled([
           ...[...changedDates].map(date => refreshCanonicalDateProjections(date)),
           ...(tasksChanged ? [refreshTasks()] : []),
@@ -5654,6 +5691,7 @@ function renderReadingList(
 }
 
 function showTodayPhase(phase: TodayPhase, focus = false): void {
+  todayPhaseSelectionRevision += 1;
   const phaseChanged = currentTodayPhase !== phase;
   currentTodayPhase = phase;
   if (todayReady) {
@@ -6685,6 +6723,7 @@ async function refreshToday(
   if (date === null && currentTodayView && hasTodayEditingTarget(currentTodayView)) {
     date = currentTodayView.date;
   }
+  const phaseSelectionRevision = todayPhaseSelectionRevision;
   await refreshTodayPresentation({
     requests: todayPresentationRequests,
     date,
@@ -6693,7 +6732,9 @@ async function refreshToday(
     viewDate: (view) => view.date,
     defaultPhase: (view) => view.defaultPhase,
     onPhase: (phase) => {
-      currentTodayPhase = phase;
+      // Record links and user tab selection may happen after the read starts.
+      // The source's default phase must not overwrite that newer choice.
+      if (todayPhaseSelectionRevision === phaseSelectionRevision) currentTodayPhase = phase;
     },
     onPresent: renderToday,
     onError: (error) => {
@@ -10579,10 +10620,8 @@ function showWorkspaceDestination(
   if (leavingCollaboration) {
     cancelCollaborationVoiceCaptureForSelectionChange();
     stashCollaborationDraft();
-    if (collaborationStatusTimer !== null) {
-      window.clearInterval(collaborationStatusTimer);
-      collaborationStatusTimer = null;
-    }
+    // Keep the active request observer alive across app navigation; Vault
+    // reset and the actual turn terminal state still stop this shared watch.
   }
   if (leavingSettings && dailyPlanAutomationStatusTimer !== null) {
     window.clearInterval(dailyPlanAutomationStatusTimer);

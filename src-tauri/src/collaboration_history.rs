@@ -110,6 +110,10 @@ pub struct CollaborationWorkItem {
     pub diagnostic: Option<String>,
     #[serde(default)]
     pub diagnostic_gap: Option<String>,
+    #[serde(default)]
+    pub changes: Vec<super::changes::CollaborationChangeEvidence>,
+    #[serde(default)]
+    pub change_gap: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -398,6 +402,8 @@ impl RuntimeHistory {
             parameters: Vec::new(),
             diagnostic: None,
             diagnostic_gap: None,
+            changes: Vec::new(),
+            change_gap: None,
         });
         self.view.items.len() - 1
     }
@@ -442,6 +448,11 @@ impl RuntimeHistory {
             .unwrap_or(if completed { "completed" } else { "inProgress" })
             .into();
         item.authoritative = completed;
+        if kind == "fileChange" {
+            let (changes, gap) = super::changes::native_changes(id, &value["changes"]);
+            if !changes.is_empty() { item.changes = changes; }
+            item.change_gap = gap;
+        }
         if kind == "agentMessage" {
             item.phase = value["phase"]
                 .as_str()

@@ -9,6 +9,9 @@ mod usage;
 pub use usage::CollaborationUsageBinding;
 #[path = "collaboration_history.rs"]
 mod history;
+#[path = "collaboration_changes.rs"]
+mod changes;
+pub use changes::CollaborationChangeEvidence;
 pub use history::{CollaborationWorkHistory, CollaborationWorkItem, RuntimeWorkObserver};
 use history::RuntimeHistory;
 #[cfg(all(test, unix))]
@@ -63,6 +66,7 @@ const APP_SERVER_TURN_TOTAL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const APP_SERVER_INTERRUPT_TIMEOUT: Duration = Duration::from_secs(5);
 const COLLABORATION_HABIT_REFRESH_TOOL: &str = "dashboard_refresh_habits";
 const COLLABORATION_TASK_TOOL: &str = "dashboard_task_operation";
+const COLLABORATION_HISTORY_TOOL: &str = "dashboard_read_history";
 const COLLABORATION_MEMORY_TOOL: &str = "dashboard_memory_update";
 const CONTINUITY_MEMORY_MAX_AGE_DAYS: i64 = 14;
 const MAX_CONTINUITY_NOTE_CHARACTERS: usize = 4_000;
@@ -284,6 +288,8 @@ pub struct StoredCollaborationMemoryProposal {
     pub source_revision: String,
     #[serde(default)]
     pub expected_document_fingerprint: Option<String>,
+    #[serde(default)]
+    pub change_evidence: Option<CollaborationChangeEvidence>,
     pub status: String,
     pub result_message: Option<String>,
     pub created_at: String,
@@ -571,6 +577,138 @@ impl StoredCollaborationTaskOperation {
         self.result_snapshot = result_snapshot;
         self.result_revision = result_revision;
         self.updated_at = updated_at.to_owned();
+    }
+}
+
+/// One read-only history capability; only domains backed by available adapters
+/// are advertised. The selected Vault is captured by the caller, never by input.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CollaborationHistoryRequest {
+    pub domain: String,
+    pub from_date: String,
+    pub to_date: String,
+}
+
+impl CollaborationHistoryRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        let from = crate::today::CalendarDate::parse(&self.from_date)
+            .ok_or_else(|| "fromDate must be a valid YYYY-MM-DD date".to_string())?;
+        let to = crate::today::CalendarDate::parse(&self.to_date)
+            .ok_or_else(|| "toDate must be a valid YYYY-MM-DD date".to_string())?;
+        let span = to.unix_days() - from.unix_days();
+        if !(0..366).contains(&span) {
+            return Err("History requires an ordered inclusive range of at most 366 dates".into());
+        }
+        Ok(())
+    }
+    pub fn dates(&self) -> Result<Vec<String>, String> {
+        self.validate()?;
+        let from = crate::today::CalendarDate::parse(&self.from_date).expect("validated date");
+        let to = crate::today::CalendarDate::parse(&self.to_date).expect("validated date");
+        Ok((0..=to.unix_days() - from.unix_days()).map(|offset| from.plus_days(offset).to_string()).collect())
+    }
+
+    fn contains(&self, date: Option<&str>) -> bool {
+        date.is_some_and(|date| date >= self.from_date.as_str() && date <= self.to_date.as_str())
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CollaborationTaskHistoryView {
+    domain: &'static str,
+    from_date: String,
+    to_date: String,
+    state: TaskDataState,
+    error_kind: Option<crate::tasks::TaskDataErrorKind>,
+    message: String,
+    target_binding: Option<String>,
+    revision: Option<String>,
+    lists: Vec<crate::tasks::TaskListView>,
+    tasks: Vec<crate::tasks::TaskView>,
+    coverage: &'static str,
+}
+
+fn task_history(tasks: TasksView, request: &CollaborationHistoryRequest) -> CollaborationTaskHistoryView {
+    let relevant = |task: &crate::tasks::TaskView| {
+        request.contains(task.date.as_deref())
+            || timestamp_lived_date(&task.created_at).as_deref().is_some_and(|date| request.contains(Some(date)))
+            || request.contains(task.completion.as_ref().map(|c| c.completed_on.as_str()))
+            || task.changes.iter().any(|change| {
+                request.contains(change.previous_date.as_deref()) || request.contains(change.new_date.as_deref())
+                    || request.contains(change.previous_completion.as_ref().map(|c| c.completed_on.as_str()))
+                    || request.contains(change.new_completion.as_ref().map(|c| c.completed_on.as_str()))
+                    || timestamp_lived_date(&change.changed_at).as_deref().is_some_and(|date| request.contains(Some(date)))
+            })
+    };
+    CollaborationTaskHistoryView {
+        domain: "tasks", from_date: request.from_date.clone(), to_date: request.to_date.clone(),
+        state: tasks.state, error_kind: tasks.error_kind, message: tasks.message,
+        target_binding: tasks.target_binding, revision: tasks.revision, lists: tasks.lists,
+        tasks: tasks.tasks.into_iter().filter(relevant).collect(),
+        coverage: "Current canonical objects and retained change witnesses relevant by scheduled date, actual completion date, or local lived date of a change. Current state is not historical state; unrecorded earlier history and actual activity times remain unknown. Empty results do not imply failed or absent activity.",
+    }
+}
+
+// Canonical timestamps carry the original wall clock and offset. Before 04:00
+// the change belongs to the previous lived day; never infer this from UTC.
+fn timestamp_lived_date(timestamp: &str) -> Option<String> {
+    let date = crate::today::CalendarDate::parse(timestamp.get(..10)?)?;
+    let hour: u32 = timestamp.get(11..13)?.parse().ok()?;
+    (hour < 24).then(|| if hour < 4 { date.plus_days(-1) } else { date }.to_string())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CollaborationDailyRecordHistory {
+    domain: &'static str,
+    from_date: String,
+    to_date: String,
+    records: Vec<CollaborationDailyRecordHistoryEntry>,
+    coverage: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CollaborationDailyRecordHistoryEntry {
+    date: String,
+    state: TodayState,
+    daily_record_availability: crate::today::DailyRecordAvailability,
+    evidence_availability: &'static str,
+    message: String,
+    revision: Option<String>,
+    target_binding: Option<String>,
+    baseline: Option<crate::today::MorningBaselineView>,
+    current_arrangement: Option<Vec<crate::today::MorningBlockView>>,
+    current_basis: Option<Vec<crate::today::PlanningEvidenceView>>,
+    daytime: Option<crate::today::DaytimeView>,
+    evening: Option<crate::today::EveningView>,
+    time_axis: Option<crate::today::TimeAxisView>,
+    links: Value,
+}
+
+impl CollaborationDailyRecordHistoryEntry {
+    fn from_result(date: String, result: Result<TodayView, String>) -> Self {
+        let links = json!({ "morning":format!("dashboard://record/{date}?phase=morning"),
+            "daytime":format!("dashboard://record/{date}?phase=daytime"),
+            "evening":format!("dashboard://record/{date}?phase=evening") });
+        match result {
+            Ok(view) => {
+                let available = view.state == TodayState::Ready;
+                Self { date, state: view.state, daily_record_availability: view.daily_record_availability,
+                    evidence_availability: if available { "available" } else { "unknown" },
+                    message: view.message, revision: view.revision, target_binding: view.target_binding,
+                    baseline: available.then_some(view.baseline), current_arrangement: available.then_some(view.timeline),
+                    current_basis: available.then_some(view.evidence), daytime: available.then_some(view.daytime),
+                    evening: available.then_some(view.evening), time_axis: available.then_some(view.time_axis), links }
+            },
+            Err(message) => Self { date, state: TodayState::Error,
+                daily_record_availability: crate::today::DailyRecordAvailability::Error,
+                evidence_availability: "unknown", message, revision: None, target_binding: None,
+                baseline: None, current_arrangement: None, current_basis: None, daytime: None,
+                evening: None, time_axis: None, links },
+        }
     }
 }
 
@@ -1881,6 +2019,51 @@ impl CollaborationApplication {
         application
     }
 
+    pub fn read_history(&self, vault_key: &str, request: CollaborationHistoryRequest) -> Result<Value, String> {
+        request.validate()?;
+        if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+            return Err("Selected Vault changed before history read".into());
+        }
+        let selected_root = self.context_source.selected_vault_path(vault_key)?;
+        let result = match request.domain.as_str() {
+            "tasks" if self.task_service.is_available() => {
+                let tasks = self.task_service.read()?;
+                if let Some(root) = selected_root.as_ref() {
+                    if tasks.vault_path.as_deref().map(Path::new).map(|path| path.canonicalize().unwrap_or_else(|_| path.to_owned()))
+                        != Some(root.canonicalize().unwrap_or_else(|_| root.clone())) {
+                        return Err("Task history does not belong to the captured selected Vault".into());
+                    }
+                }
+                serde_json::to_value(task_history(tasks, &request)).map_err(|e| e.to_string())?
+            },
+            "dailyRecords" if self.daily_data_service.is_available() => {
+                let mut records = Vec::new();
+                for date in request.dates()? {
+                    if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+                        return Err("Selected Vault changed during history read; result discarded".into());
+                    }
+                    let result = self.daily_data_service.read_date(&date);
+                    if let (Some(root), Ok(view)) = (selected_root.as_ref(), &result) {
+                        if view.vault_path.as_deref().map(Path::new).map(|path| path.canonicalize().unwrap_or_else(|_| path.to_owned()))
+                            != Some(root.canonicalize().unwrap_or_else(|_| root.clone())) {
+                            return Err("Daily Record history does not belong to the captured selected Vault".into());
+                        }
+                    }
+                    records.push(CollaborationDailyRecordHistoryEntry::from_result(date, result));
+                }
+                serde_json::to_value(CollaborationDailyRecordHistory { domain: "dailyRecords",
+                    from_date: request.from_date.clone(), to_date: request.to_date.clone(), records,
+                    coverage: "Read existing canonical dated records only. Missing, damaged or unavailable dates remain unknown; no record or baseline is created. Morning baseline, current arrangement, dated facts and evening review retain distinct source fields and original correction traces. Short records are context, not Habit or Task completion evidence. Actual timestamps and local dates are preserved; unavailable time allocation remains unknown.",
+                }).map_err(|e| e.to_string())?
+            },
+            _ => return Err("Requested history domain is unavailable in this adapter".into()),
+        };
+        if self.context_source.current_vault_key()?.as_deref() != Some(vault_key) {
+            return Err("Selected Vault changed during history read; result discarded".into());
+        }
+        Ok(result)
+    }
+
     pub fn with_task_service(mut self, task_service: Arc<dyn CollaborationTaskService>) -> Self {
         self.task_service = task_service;
         self
@@ -2710,6 +2893,8 @@ impl CollaborationApplication {
                 && stable_effect_fingerprint(&sources.long_term.content) == expected
             {
                 let now = self.clock.current_timestamp();
+                let mut evidence = changes::memory_evidence(&proposal, Some(&sources.long_term));
+                evidence.gaps.push("Current readback reconciles the effect without another write; original save response remains unconfirmed.".into());
                 return self.update_state(|state| {
                     let session = matching_session_mut(state, &vault_key, session_id)?;
                     let stored = session.memory_proposals.iter_mut()
@@ -2718,6 +2903,9 @@ impl CollaborationApplication {
                     stored.status = "applied".into();
                     stored.result_message = Some("Current life/Self.md readback confirms the exact requested durable document. No additional write was performed; the original save response remains unconfirmed.".into());
                     stored.updated_at = now.clone();
+                    stored.change_evidence = Some(evidence);
+                    let completed = stored.clone();
+                    changes::attach_memory_evidence(session, &completed);
                     session.last_activity_at = now;
                     Ok(session_view(session))
                 });
@@ -2747,6 +2935,10 @@ impl CollaborationApplication {
         })();
         match update_result {
             Ok(_) => {
+                // The adapter save result is not substituted for this separate
+                // current-source read. A concurrent source change remains a gap.
+                let observed = self.memory_service.read(Some(&vault_key)).ok();
+                let evidence = changes::memory_evidence(&proposal, observed.as_ref().map(|sources| &sources.long_term));
                 let still_selected =
                     self.context_source.current_vault_key()?.as_deref() == Some(&vault_key);
                 let result_message = if still_selected {
@@ -2766,7 +2958,10 @@ impl CollaborationApplication {
                         stored.status = "applied".into();
                         stored.result_message = Some(result_message.clone());
                         stored.updated_at = now.clone();
+                        stored.change_evidence = Some(evidence.clone());
                     }
+                    let completed = stored.clone();
+                    changes::attach_memory_evidence(session, &completed);
                     session.last_activity_at = now.clone();
                     Ok(session_view(session))
                 })
@@ -4312,6 +4507,25 @@ impl CollaborationApplication {
                 success: false,
             };
         }
+        if call.tool == COLLABORATION_HISTORY_TOOL {
+            let result = (|| -> Result<Value, String> {
+                if automatic_plan { return Err("History tool is unavailable in automatic rounds".into()); }
+                self.read_state(|state| {
+                    let session = state.sessions.iter().find(|session| session.id == session_id && session.vault_key.as_deref() == Some(vault_key))
+                        .ok_or_else(|| "History request session is unavailable".to_string())?;
+                    if session.run_id.as_deref() != Some(execution_id) || !matches!(session.run_state.as_str(), "reading" | "thinking") {
+                        return Err("History request is no longer active".to_string());
+                    }
+                    Ok(())
+                })??;
+                let request = serde_json::from_value(call.arguments).map_err(|e| e.to_string())?;
+                self.read_history(vault_key, request)
+            })();
+            return match result {
+                Ok(value) => RuntimeDynamicToolResult { success: true, text: value.to_string() },
+                Err(error) => RuntimeDynamicToolResult { success: false, text: error },
+            };
+        }
         if call.tool == COLLABORATION_HABIT_REFRESH_TOOL {
             let call_key = format!("{}:{}:{}", call.thread_id, call.turn_id, call.call_id);
             let mut request = call.arguments.clone();
@@ -4862,6 +5076,7 @@ impl CollaborationApplication {
                 replaces: replaces.clone(),
                 source_revision: source_revision.clone(),
                 expected_document_fingerprint: Some(stable_effect_fingerprint(&expected_document)),
+                change_evidence: None,
                 execution_attempted: false,
                 status: "awaitingApproval".into(),
                 result_message: None,
@@ -7000,6 +7215,9 @@ impl CollaborationApplication {
                 true,
             ));
         }
+        if !automatic_plan && (task_operations_available || daily_plan_operations_available) {
+            dynamic_tools.push(collaboration_history_tool_spec(task_operations_available, daily_plan_operations_available));
+        }
         if !automatic_plan && daily_plan_operations_available {
             dynamic_tools.push(collaboration_habit_refresh_tool_spec());
         }
@@ -7204,6 +7422,9 @@ impl CollaborationApplication {
         let history_session = session_id.to_owned();
         let history_execution = run_id.to_owned();
         let history_thread = thread_id.clone();
+        let history_selected_vault = request.selected_vault.as_ref().and_then(|path| path.canonicalize().ok());
+        let history_cwd = request.working_directory.clone();
+        let history_target_date = request.dates.target_date.clone();
         let observer: RuntimeWorkObserver = Arc::new(move |mut history| {
             if history.thread_id != history_thread { return Ok(()); }
             application.update_state(|state| {
@@ -7216,10 +7437,33 @@ impl CollaborationApplication {
                 if request.runtime_turn_id.as_deref().is_some_and(|turn| turn != history.turn_id) { return Ok(()); }
                 request.runtime_turn_id = Some(history.turn_id.clone());
                 history.execution_id = history_execution.clone();
+                if session.work_history.iter().any(|entry| entry.execution_id == history_execution && entry.sequence >= history.sequence) { return Ok(()); }
+                let selected_vault_still_matches = application.context_source.current_vault_key().ok().flatten().as_deref() == Some(&history_vault);
                 // Typed receipt facts enrich readable activity; they do not turn
                 // transport completion into a confirmed business-save status.
                 for item in &mut history.items {
+                    let previous = session.work_history.iter().find(|entry| entry.execution_id == history_execution)
+                        .and_then(|entry| entry.items.iter().find(|stored| stored.item_id == item.item_id));
+                    for change in &mut item.changes {
+                        changes::observe_native(&item.item_id, change, history_selected_vault.as_deref(), &history_cwd,
+                            &history_target_date, item.authoritative && selected_vault_still_matches, &item.status, automatic_plan,
+                            previous.map(|item| item.changes.as_slice()).unwrap_or(&[]), history.updated_at_ms);
+                        if !selected_vault_still_matches && change.observed_at_ms.is_none() {
+                            change.gaps.push("Selected Vault changed; no source readback was attempted for this event.".into());
+                        }
+                    }
+                    if item.changes.is_empty() {
+                        if let Some(previous) = previous { item.changes = previous.changes.clone(); }
+                    }
                     let key = format!("{}:{}:{}", history.thread_id, history.turn_id, item.call_id.as_deref().unwrap_or(&item.item_id));
+                    if let Some(receipt) = session.memory_proposals.iter().find(|receipt| receipt.tool_call_key == key) {
+                        if let Some(change) = receipt.change_evidence.as_ref() {
+                            item.changes.retain(|existing| existing.id != change.id);
+                            item.changes.push(change.clone());
+                        } else if receipt.execution_attempted {
+                            item.change_gap = Some("Managed background result has no independently observed change witness; inspect its original receipt before retrying.".into());
+                        }
+                    }
                     if let Some(receipt) = session.task_operations.iter().find(|receipt| receipt.tool_call_key == key) {
                         let snapshot = receipt.result_snapshot.as_ref().unwrap_or(&receipt.baseline);
                         let name = match snapshot {
@@ -9137,10 +9381,28 @@ fn task_operation_effect_matches(
     }
 }
 
+fn collaboration_history_tool_spec(tasks_available: bool, daily_records_available: bool) -> Value {
+    let mut domains = Vec::new();
+    if tasks_available { domains.push("tasks"); }
+    if daily_records_available { domains.push("dailyRecords"); }
+    json!({
+        "name": COLLABORATION_HISTORY_TOOL,
+        "description": usage::description("tool.readHistory"),
+        "inputSchema": { "type":"object", "additionalProperties":false,
+            "required":["domain","fromDate","toDate"],
+            "properties": { "domain":{"type":"string","enum":domains},
+                "fromDate":{"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+                "toDate":{"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"} }
+        }
+    })
+}
+
 fn task_tool_saved_receipt(operation: &CollaborationTaskOperationView) -> String {
     json!({
         "status": operation.status,
         "operationId": operation.id,
+        "operation": operation.operation,
+        "baseline": operation.baseline,
         "targetDate": operation.target_date,
         "taskId": operation.task_id,
         "listId": operation.list_id,

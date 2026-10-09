@@ -1,5 +1,6 @@
 use super::app_server_request_tests::turn_client;
 use super::*;
+use std::sync::atomic::AtomicUsize;
 use std::time::Instant;
 
 #[derive(Clone)]
@@ -36,6 +37,9 @@ impl TodayClock for FixedClock {
 
 struct Context(Workspace);
 impl CollaborationContextSource for Context {
+    fn selected_vault_path(&self, _: &str) -> Result<Option<PathBuf>, String> {
+        Ok(Some(self.0 .0.clone()))
+    }
     fn current_vault_key(&self) -> Result<Option<String>, String> {
         Ok(Some("history-vault".into()))
     }
@@ -99,6 +103,86 @@ impl AppServerTransport for InjectedTransport {
         observer: Option<RuntimeWorkObserver>,
     ) -> Result<RuntimeTurnResult, String> {
         let (mut client, sender, stdout) = turn_client();
+        if request.user_text == "Update durable background" {
+            for event in [
+                json!({"method":"item/tool/call","id":"memory-rpc","params":{"threadId":request.thread_id,"turnId":"memory-turn","callId":"memory-call","tool":COLLABORATION_MEMORY_TOOL,"arguments":{"operation":"proposeLongTermUpdate","basis":"explicitUserInstruction","executionMode":"execute","change":"Prefers a quiet morning.","replaces":null}}}),
+                json!({"method":"item/completed","params":{"threadId":request.thread_id,"turnId":"memory-turn","item":{"id":"final","type":"agentMessage","phase":"final_answer","text":"Updated durable background."}}}),
+                json!({"method":"turn/completed","params":{"threadId":request.thread_id,"turn":{"id":"memory-turn","status":"completed"}}}),
+            ] {
+                sender.send(Ok(event.to_string())).unwrap();
+            }
+            let (text, stopped, external_actions) = client.wait_for_turn_observed(
+                &request.thread_id,
+                "memory-turn",
+                &cancel,
+                handler.as_ref(),
+                "2026-10-09",
+                None,
+                None,
+                observer,
+            )?;
+            return Ok(RuntimeTurnResult {
+                text,
+                stopped,
+                external_actions,
+                runtime_turn_id: Some("memory-turn".into()),
+            });
+        }
+        if request.user_text.starts_with("Patch the ordinary document") {
+            let path = request
+                .selected_vault
+                .as_ref()
+                .unwrap()
+                .join("life/ordinary.md");
+            let observer = if request.user_text.ends_with("with later edit") {
+                let original_observer = observer.unwrap();
+                let edited_path = path.clone();
+                let edited = Arc::new(AtomicBool::new(false));
+                Some(Arc::new(move |history: CollaborationWorkHistory| {
+                    let completed = history
+                        .items
+                        .iter()
+                        .any(|item| item.item_id == "file-change" && item.authoritative);
+                    original_observer(history)?;
+                    if completed && !edited.swap(true, Ordering::SeqCst) {
+                        fs::write(
+                            &edited_path,
+                            "Later independent correction\nKeep unrelated paragraph\n",
+                        )
+                        .unwrap();
+                    }
+                    Ok(())
+                }) as RuntimeWorkObserver)
+            } else {
+                observer
+            };
+            let original = fs::read_to_string(&path).unwrap();
+            fs::write(&path, original.replace("Old fact", "Corrected fact")).unwrap();
+            for event in [
+                json!({"method":"item/started","params":{"threadId":request.thread_id,"turnId":"document-turn","item":{"id":"file-change","type":"fileChange","status":"inProgress","changes":[{"path":path,"kind":{"type":"update","move_path":null},"diff":"@@ -1,2 +1,2 @@\n-Old fact\n+Corrected fact\n Keep unrelated paragraph\n"}]}}}),
+                json!({"method":"item/completed","params":{"threadId":request.thread_id,"turnId":"document-turn","item":{"id":"file-change","type":"fileChange","status":"completed","changes":[{"path":path,"kind":{"type":"update","move_path":null},"diff":"@@ -1,2 +1,2 @@\n-Old fact\n+Corrected fact\n Keep unrelated paragraph\n"}]}}}),
+                json!({"method":"item/completed","params":{"threadId":request.thread_id,"turnId":"document-turn","item":{"id":"final","type":"agentMessage","phase":"final_answer","text":"Corrected the document."}}}),
+                json!({"method":"turn/completed","params":{"threadId":request.thread_id,"turn":{"id":"document-turn","status":"completed"}}}),
+            ] {
+                sender.send(Ok(event.to_string())).unwrap();
+            }
+            let (text, stopped, external_actions) = client.wait_for_turn_observed(
+                &request.thread_id,
+                "document-turn",
+                &cancel,
+                handler.as_ref(),
+                "2026-10-09",
+                None,
+                None,
+                observer,
+            )?;
+            return Ok(RuntimeTurnResult {
+                text,
+                stopped,
+                external_actions,
+                runtime_turn_id: Some("document-turn".into()),
+            });
+        }
         let thread = request.thread_id;
         let events = [
             json!({"method":"item/completed","emittedAtMs":500,"params":{"threadId":"other","turnId":"turn","item":{"id":"foreign","type":"agentMessage","text":"Do not retain"}}}),
@@ -398,4 +482,370 @@ fn cancel_received_before_dynamic_action_keeps_canonical_tasks_unchanged() {
     assert_eq!(history.status, "interrupted");
     assert_eq!(history.items[0].status, "failed");
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn ordinary_native_patch_keeps_actual_diff_and_bound_readback_in_saved_work_history() {
+    let root = isolated_root();
+    fs::write(
+        root.join("vault/life/ordinary.md"),
+        "Old fact\nKeep unrelated paragraph\n",
+    )
+    .unwrap();
+    let path = root.join("history/state.json");
+    let app = application(&root, Arc::new(FileCollaborationStore::new(path.clone())));
+    let session = app.create_session("2026-10-09").unwrap();
+    app.submit_message(
+        "history-vault",
+        &session.id,
+        "2026-10-09",
+        "Patch the ordinary document",
+    )
+    .unwrap();
+    let finished = await_end(&app, &session.id);
+    let value = serde_json::to_value(&finished).unwrap();
+    let item = value["workHistory"][0]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["itemId"] == "file-change")
+        .unwrap();
+    let change = &item["changes"][0];
+    assert_eq!(change["path"], "life/ordinary.md");
+    assert!(change["diff"]
+        .as_str()
+        .unwrap()
+        .contains("-Old fact\n+Corrected fact"));
+    assert_eq!(change["verification"], "sourceObserved");
+    assert!(change["afterRevision"].as_str().is_some());
+    assert!(
+        change["beforeRevision"].is_null(),
+        "started notification may arrive after the write"
+    );
+    assert!(!change["gaps"].as_array().unwrap().is_empty());
+    assert_eq!(
+        fs::read_to_string(root.join("vault/life/ordinary.md")).unwrap(),
+        "Corrected fact\nKeep unrelated paragraph\n"
+    );
+    let reopened = application(&root, Arc::new(FileCollaborationStore::new(path)));
+    assert_eq!(
+        reopened
+            .session("history-vault", &session.id)
+            .unwrap()
+            .work_history,
+        finished.work_history
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+struct FileMemory {
+    service: SelectedVaultCollaborationMemoryService,
+    actual_key: String,
+    saves: AtomicUsize,
+}
+impl CollaborationMemoryService for FileMemory {
+    fn read(&self, key: Option<&str>) -> Result<CollaborationMemorySources, String> {
+        assert_eq!(key, Some("history-vault"));
+        self.service.read(Some(&self.actual_key))
+    }
+    fn save_long_term(
+        &self,
+        key: &str,
+        revision: &str,
+        content: &str,
+    ) -> Result<LongTermMemoryDocumentView, String> {
+        assert_eq!(key, "history-vault");
+        self.saves.fetch_add(1, Ordering::SeqCst);
+        self.service
+            .save_long_term(&self.actual_key, revision, content)
+    }
+}
+
+#[test]
+fn managed_background_change_uses_actual_source_revisions_and_independent_readback() {
+    let root = isolated_root();
+    let self_path = root.join("vault/life/Self.md");
+    fs::write(
+        &self_path,
+        "# Background\n\nUnrelated paragraph and prior correction.\n",
+    )
+    .unwrap();
+    let workspace = root.join("workspace.json");
+    FileTodayWorkspacePersistence::new(workspace.clone())
+        .save_selected_vault(&root.join("vault"))
+        .unwrap();
+    let memory = Arc::new(FileMemory {
+        service: SelectedVaultCollaborationMemoryService::new(workspace),
+        actual_key: vault_key(&root.join("vault")),
+        saves: AtomicUsize::new(0),
+    });
+    let before = memory
+        .read(Some("history-vault"))
+        .unwrap()
+        .long_term
+        .revision
+        .unwrap();
+    let app = application(
+        &root,
+        Arc::new(FileCollaborationStore::new(root.join("history/state.json"))),
+    )
+    .with_memory_service(memory.clone());
+    let session = app.create_session("2026-10-09").unwrap();
+    app.submit_message(
+        "history-vault",
+        &session.id,
+        "2026-10-09",
+        "Update durable background",
+    )
+    .unwrap();
+    let saved = await_end(&app, &session.id);
+    assert_eq!(saved.memory_proposals[0].status, "applied");
+    let json = serde_json::to_value(&saved).unwrap();
+    let item = json["workHistory"][0]["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["callId"] == "memory-call")
+        .unwrap();
+    let change = &item["changes"][0];
+    assert_eq!(change["source"], "managedMemory");
+    assert_eq!(change["beforeRevision"], before);
+    assert_eq!(
+        change["afterRevision"],
+        memory
+            .read(Some("history-vault"))
+            .unwrap()
+            .long_term
+            .revision
+            .unwrap()
+    );
+    assert_eq!(change["verification"], "verified");
+    assert_eq!(change["receiptId"], saved.memory_proposals[0].id);
+    let contents = fs::read_to_string(self_path).unwrap();
+    assert!(contents.contains("Unrelated paragraph and prior correction."));
+    assert!(contents.contains("Prefers a quiet morning."));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn later_full_history_snapshots_preserve_first_native_readback() {
+    let root = isolated_root();
+    let file = root.join("vault/life/ordinary.md");
+    fs::write(&file, "Old fact\nKeep unrelated paragraph\n").unwrap();
+    let app = application(
+        &root,
+        Arc::new(FileCollaborationStore::new(root.join("history/state.json"))),
+    );
+    let session = app.create_session("2026-10-09").unwrap();
+    app.submit_message(
+        "history-vault",
+        &session.id,
+        "2026-10-09",
+        "Patch the ordinary document with later edit",
+    )
+    .unwrap();
+    let finished = await_end(&app, &session.id);
+    let item = finished.work_history[0]
+        .items
+        .iter()
+        .find(|item| item.item_id == "file-change")
+        .unwrap();
+    assert_eq!(
+        item.changes[0].after_revision,
+        Some(stable_effect_fingerprint(
+            &b"Corrected fact\nKeep unrelated paragraph\n".to_vec()
+        ))
+    );
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "Later independent correction\nKeep unrelated paragraph\n"
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+struct FailMemoryResultOnce {
+    file: FileCollaborationStore,
+    fail: AtomicBool,
+}
+impl CollaborationStore for FailMemoryResultOnce {
+    fn load(&self) -> Result<CollaborationState, String> {
+        self.file.load()
+    }
+    fn save(&self, state: &CollaborationState) -> Result<(), String> {
+        if state.sessions.iter().any(|session| {
+            session
+                .memory_proposals
+                .iter()
+                .any(|proposal| proposal.status == "applied")
+        }) && self.fail.swap(false, Ordering::SeqCst)
+        {
+            return Err("Synthetic managed-result history failure".into());
+        }
+        self.file.save(state)
+    }
+}
+#[test]
+fn memory_history_failure_reconciles_actual_file_without_second_write() {
+    let root = isolated_root();
+    fs::write(
+        root.join("vault/life/Self.md"),
+        "# Background\nUnrelated history\n",
+    )
+    .unwrap();
+    let workspace = root.join("workspace.json");
+    FileTodayWorkspacePersistence::new(workspace.clone())
+        .save_selected_vault(&root.join("vault"))
+        .unwrap();
+    let memory = Arc::new(FileMemory {
+        service: SelectedVaultCollaborationMemoryService::new(workspace),
+        actual_key: vault_key(&root.join("vault")),
+        saves: AtomicUsize::new(0),
+    });
+    let path = root.join("history/state.json");
+    let app = application(
+        &root,
+        Arc::new(FailMemoryResultOnce {
+            file: FileCollaborationStore::new(path.clone()),
+            fail: AtomicBool::new(true),
+        }),
+    )
+    .with_memory_service(memory.clone());
+    let session = app.create_session("2026-10-09").unwrap();
+    app.submit_message(
+        "history-vault",
+        &session.id,
+        "2026-10-09",
+        "Update durable background",
+    )
+    .unwrap();
+    let failed = await_end(&app, &session.id);
+    assert_ne!(failed.memory_proposals[0].status, "applied");
+    assert_eq!(memory.saves.load(Ordering::SeqCst), 1);
+    let recovered = app
+        .approve_memory_proposal_for_selected_vault(&session.id, &failed.memory_proposals[0].id)
+        .unwrap();
+    assert_eq!(recovered.memory_proposals[0].status, "applied");
+    let recovered_item = recovered.work_history[0]
+        .items
+        .iter()
+        .find(|item| item.call_id.as_deref() == Some("memory-call"))
+        .unwrap();
+    assert_eq!(recovered_item.changes[0].verification, "verified");
+    assert_eq!(memory.saves.load(Ordering::SeqCst), 1);
+    let stored = FileCollaborationStore::new(path).load().unwrap();
+    let witness = stored.sessions[0].memory_proposals[0]
+        .change_evidence
+        .as_ref()
+        .unwrap();
+    assert_eq!(witness.verification, "verified");
+    assert!(witness
+        .gaps
+        .iter()
+        .any(|gap| gap.contains("without another write")));
+    assert!(fs::read_to_string(root.join("vault/life/Self.md"))
+        .unwrap()
+        .contains("Unrelated history"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+struct ConcurrentFileMemory {
+    inner: FileMemory,
+    path: PathBuf,
+    before_save: bool,
+}
+impl CollaborationMemoryService for ConcurrentFileMemory {
+    fn read(&self, key: Option<&str>) -> Result<CollaborationMemorySources, String> {
+        self.inner.read(key)
+    }
+    fn save_long_term(
+        &self,
+        key: &str,
+        revision: &str,
+        content: &str,
+    ) -> Result<LongTermMemoryDocumentView, String> {
+        if self.before_save {
+            fs::write(
+                &self.path,
+                "# Independent correction\nPreserve this content\n",
+            )
+            .unwrap();
+        }
+        let result = self.inner.save_long_term(key, revision, content)?;
+        if !self.before_save {
+            fs::write(
+                &self.path,
+                "# Independent correction\nPreserve this content\n",
+            )
+            .unwrap();
+        }
+        Ok(result)
+    }
+}
+#[test]
+fn managed_source_conflict_or_later_edit_keeps_observed_revision_and_original_outcome_separate() {
+    for before_save in [true, false] {
+        let root = isolated_root();
+        let path = root.join("vault/life/Self.md");
+        fs::write(&path, "# Background\nPrior history\n").unwrap();
+        let workspace = root.join("workspace.json");
+        FileTodayWorkspacePersistence::new(workspace.clone())
+            .save_selected_vault(&root.join("vault"))
+            .unwrap();
+        let memory = Arc::new(ConcurrentFileMemory {
+            inner: FileMemory {
+                service: SelectedVaultCollaborationMemoryService::new(workspace),
+                actual_key: vault_key(&root.join("vault")),
+                saves: AtomicUsize::new(0),
+            },
+            path: path.clone(),
+            before_save,
+        });
+        let app = application(
+            &root,
+            Arc::new(FileCollaborationStore::new(root.join("history/state.json"))),
+        )
+        .with_memory_service(memory.clone());
+        let session = app.create_session("2026-10-09").unwrap();
+        app.submit_message(
+            "history-vault",
+            &session.id,
+            "2026-10-09",
+            "Update durable background",
+        )
+        .unwrap();
+        let finished = await_end(&app, &session.id);
+        assert_eq!(
+            finished.memory_proposals[0].status,
+            if before_save { "conflict" } else { "applied" }
+        );
+        let item = finished.work_history[0]
+            .items
+            .iter()
+            .find(|item| item.call_id.as_deref() == Some("memory-call"))
+            .unwrap();
+        if before_save {
+            assert!(item.changes.is_empty());
+            assert!(item.change_gap.is_some());
+        } else {
+            let witness = &item.changes[0];
+            assert_eq!(witness.verification, "unconfirmed");
+            assert_eq!(
+                witness.after_revision,
+                memory
+                    .read(Some("history-vault"))
+                    .unwrap()
+                    .long_term
+                    .revision
+            );
+            assert!(
+                witness.target_date.is_none(),
+                "background is distinct from one day's facts"
+            );
+        }
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            "# Independent correction\nPreserve this content\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
 }

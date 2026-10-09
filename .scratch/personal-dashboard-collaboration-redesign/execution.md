@@ -67,7 +67,7 @@ role, not an assertion that every blocker has completed or that work is running.
   were published or code tests passed. Final acceptance and release/merge remain
   separate from ticket execution and follow the later authorized scope.
 
-## Current checkpoint
+## Publication checkpoint
 
 - Specification publication: 61bd09d.
 - Reviewed proposal: 71193fa; user approval: 2026-10-09.
@@ -86,3 +86,7 @@ role, not an assertion that every blocker has completed or that work is running.
 - 2026-10-09: PDCR-01 implementation `1d656cb`, closeout `05bf9ef`, integration `288f14f`; 224 passed, 0 failed, 6 explicit native/live gates ignored. Evidence: [usage package](evidence/01-usage-package.md). Frontier advanced to PDCR-02.
 
 - 2026-10-09: PDCR-02 implementation `77a1951`, closeout `819bbc6`, integration `1feeb31c`. [Work history evidence](evidence/02-work-history.md). Raw equal deltas without offsets cannot be uniquely identified; completed snapshots remain authoritative. Real isolated connection prerequisite observed CLI 0.160.0 / authenticated ChatGPT / text turns available; no model/native acceptance claimed from that probe.
+
+- 2026-10-09: PDCR-04 integrated at `d2157330`, implementation `62f10ea` / `8cf2344`. [Task evidence](pdcr-04-evidence.md): 92 Collaboration Task checks, 3 shared Task/Today checks, 342 frontend checks and build passed. One bounded domain-history capability is now available. PDCR-05 claimed next from this integrated API; PDCR-03/08 remain active.
+
+- 2026-10-09: PDCR-08 integrated `669346c4`, products `137e41c` / `1b8503a`; [document evidence](pdcr-08-evidence.md). PDCR-05 integrated `6070afa5`, product `7994d87`; [Daily Record evidence](pdcr-05-evidence.md). Combined build, 20 targeted frontend checks and 188 Rust checks passed / 6 explicit environment gates ignored. PDCR-06 and PDCR-09 now claimed; PDCR-03 remains active. PDCR-09 requires a new actual instrumented execution before closure.
