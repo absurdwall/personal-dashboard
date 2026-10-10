@@ -1,7 +1,7 @@
 # Collaboration redesign — local execution tracking
 
 Date: 2026-10-09
-Status: review repairs accepted; nine tickets closed; PDCR-03/11/12 acceptance gates retained
+Status: user-accepted iteration closed and installed; remaining PDCR-03/11/12 scope explicitly deferred; remote publication pending
 Canonical tracker: [map](map.md)
 Parent: [PDCR-SPEC-01](spec.md)
 Approved breakdown: [review record](ticket-breakdown-proposal.md)
@@ -156,3 +156,13 @@ role, not an assertion that every blocker has completed or that work is running.
   read-only. [Typography record](evidence/typography-follow-up.md) tracks actual
   computed styles, mixed-language visual checks and a reviewable fixed candidate.
   No PDCR-03/11/12 or parent gate is closed by this presentation feedback.
+
+- 2026-10-10: Subsequent direct user authorization supersedes the earlier
+  parent-open boundary: finish typography/review, update local App, commit
+  durable work and close the iteration while deferring remaining scope.
+  Source `499cdc1` passed independent Standards/Spec review, full frontend388,
+  build/signed arm64 packaging/isolated launch and installed exact-PID visual
+  review. Local installation/profile rollback verified; parent closes by human
+  acceptance and explicit scope deferral, not by checking unmet criteria.
+  [Deferred follow-ups](deferred-follow-ups.md) and [remote handoff](remote-handoff.md)
+  retain PDCR-03/11/12 and InitialPlan retry uncertainty. No GitHub/main merge/push.

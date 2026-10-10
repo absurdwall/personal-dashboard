@@ -10,6 +10,7 @@
 **ID:** PDCR-03
 **Parent:** [PDCR-SPEC-01](../spec.md)
 **Lifecycle:** blocked
+**Iteration scope:** deferred by user acceptance on 2026-10-10; [remaining scope](../deferred-follow-ups.md)
 **Implementation:** partial; native object-scope criterion unmet
 **Assignee:** Codex review-fix implementer; root coordinates scope decision
 **Date:** 2026-10-09

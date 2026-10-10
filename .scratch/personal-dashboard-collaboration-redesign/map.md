@@ -4,15 +4,15 @@ ID: PDCR-MAP
 Type: map
 Date: 2026-10-09
 Canonical: this local tracker, explicitly selected by the user
-Stage: implementation
-Implementation: review repairs accepted; native/live acceptance remains partial
+Stage: human-accepted delivery closeout
+Implementation: iteration closed and locally installed; remaining scope explicitly deferred
 Working branch: codex/collaboration-redesign-integration
 
 ## Records
 
 | ID | Type | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| PDCR-SPEC-01 | spec | [Spec](spec.md) | ready-for-agent | open | none | Test boundary confirmed; [prototype review](prototype-review.md); ADR 0005/0006 |
+| PDCR-SPEC-01 | spec | [Spec](spec.md) | ready-for-agent | closed | none | User accepted Oct10 iteration after typography/review/local update; [closeout](evidence/typography-follow-up.md); [explicit deferral](deferred-follow-ups.md) |
 | PDCR-01 | ticket | [01: 用统一 usage skill 完成并核验一条白天记录](issues/01-skill-daytime-record.md) | ready-for-agent | closed | none | [Evidence](evidence/01-usage-package.md); implementation 1d656cb; integrated 288f14f; application acceptance met |
 | PDCR-02 | ticket | [02: 显示并保存真实工作过程与最终回复](issues/02-observable-work-history.md) | ready-for-agent | closed | PDCR-01 | Repairs integrated ac65cfa; full checks and independent review accepted; [round2](evidence/review-round-2.md) |
 | PDCR-03 | ticket | [03: 排队、停止、纠正与未知结果恢复](issues/03-queue-stop-recovery.md) | ready-for-human | blocked | PDCR-02 | Unknown Dida effect scope unmet; [policy decision](evidence/unknown-dida-scope-decision.md) pending; frontend review repairs integrated 7b3dc8 |
@@ -27,7 +27,7 @@ Working branch: codex/collaboration-redesign-integration
 | PDCR-12 | ticket | [12: 同一候选版本的 live Dida 核验](issues/12-live-dida-acceptance.md) | ready-for-agent | open | PDCR-11 | unassigned; not-started; no authorized isolated objects (user confirmed); PDCR-11 remains blocked |
 
 Twelve approved tickets are published, each with its own body and acceptance
-criteria. Nine tickets (PDCR-01/02/04–10) are closed after accepted review repairs and full checks. Previous native observations retain their original source qualification; new recovery/retention source requires affected native reassessment. PDCR-03 is blocked on the unknown Dida effect scope decision found in independent review. PDCR-11 is blocked on human spoken transcript and PDCR-03, and cannot close before its blocker; PDCR-12 has no authorized isolated Dida objects. Ready-for-agent describes the
+criteria. The parent is closed by the user's explicit human acceptance and scope deferral after reviewed typography and local installation. Nine tickets (PDCR-01/02/04–10) are closed. PDCR-03/11 remain blocked and PDCR-12 open as expressly deferred follow-ups outside this accepted iteration, not hidden parent blockers or passed tests. Previous native observations retain their original source qualification; new recovery/retention source and human voice/live Dida remain unverified. [Deferred scope](deferred-follow-ups.md) also records automatic InitialPlan reliability. Ready-for-agent describes the
 triage role; it does not start implementation or establish delivery.
 
 ## Decisions so far
@@ -43,12 +43,16 @@ triage role; it does not start implementation or establish delivery.
 
 ## Next stage
 
-The user authorized implement-spec on 2026-10-09 using the specification branch as baseline. Follow [execution tracking](execution.md); **PDCR-03** awaits the native recovery policy decision. Native **PDCR-11** awaits human spoken transcript, PDCR-03 and affected candidate reassessment; **PDCR-12** waits for it and authorized isolated objects. PDCR-02/09 review repairs are accepted and closed; no new unassigned ticket is eligible. The previous [checkpoint](evidence/implementation-checkpoint.md) is historical; follow [round2](evidence/review-round-2.md).
+This iteration is closed and installed at reviewed product `499cdc1` under the user's Oct10 authorization. See [execution tracking](execution.md), [typography/install closeout](evidence/typography-follow-up.md) and [remote handoff](remote-handoff.md). No GitHub/main merge/push was performed. Later publication uses the preserved integration branch and protected-main PR flow. **PDCR-03/11/12** and InitialPlan reliability are explicit [deferred follow-ups](deferred-follow-ups.md); they do not authorize further implementation, personal writes or acceptance probes now. Earlier checkpoints and source-qualified evidence remain historical.
 
 The graph has 12 tickets and 16 direct blocking edges. Direct blockers are shown
 above and in each ticket body; after PDCR-02 closes, PDCR-03/04/05/06/08 become
 eligible if still unassigned. PDCR-10 does not wait for optional external writes.
 PDCR-12 validates the same complete candidate as PDCR-11.
+
+Those original edges remain useful for future follow-up acceptance; the user's
+explicit deferral removes them from this closed parent iteration's delivery
+scope without checking their unmet criteria.
 
 ## Local tracking conventions
 

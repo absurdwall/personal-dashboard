@@ -10,6 +10,7 @@
 **ID:** PDCR-11
 **Parent:** [PDCR-SPEC-01](../spec.md)
 **Lifecycle:** blocked
+**Iteration scope:** deferred by user acceptance on 2026-10-10; [remaining scope](../deferred-follow-ups.md)
 **Implementation:** code integrated; native acceptance partial
 **Assignee:** Codex acceptance; root coordinates human gates
 **Date:** 2026-10-09

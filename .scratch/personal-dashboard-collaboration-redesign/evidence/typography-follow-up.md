@@ -1,4 +1,4 @@
-# Collaboration typography follow-up — in progress
+# Collaboration typography follow-up — reviewed, installed and accepted
 
 2026-10-10, baseline `989580957e2718f88f7b17f6df74d52801c3fdbd`, local
 integration branch `codex/collaboration-redesign-integration`.
@@ -122,6 +122,42 @@ Rust/reader product sources and tests are unchanged from `ac65cfa`; their prior
 495 Rust passes/six explicit environment skips and7 reader passes remain
 applicable. No duplicate full Rust suite was run for this stylesheet change.
 
-Independent candidate review and local replacement are still pending in this
-record; closure requires their actual receipts. [Deferred follow-ups](../deferred-follow-ups.md)
-retain the explicitly excluded criteria and separate reliability observation.
+## Independent review and actual installation
+
+At `499cdc1`, independent Standards found0 documented breaches/0 smells and
+Spec found0 actionable findings. The reviewer inspected before/after Chinese
+and English screenshots, checked fixture CSS bytes against the candidate,48
+computed surfaces in4 language/disclosure states, overflow values and actual
+renderer/build logs. Source review remains separate from native/live gates.
+
+Root installed `/Applications/Personal Dashboard.app`, version4.0.7, source
+`499cdc1`, executable SHA256
+`4bd57de7e16c9bdeed3b92ab75e485664a0c7bbd86c30070c9c397bae766618a`.
+Old installed App was normally quit before replacement. Its signed bundle,
+the retained signed candidate and328 MiB profile backup were archived privately
+under `/Users/tingranwang/.codex/app-archives.noindex/personal-dashboard/2026-10-10-typography-wa4xnaqn/`.
+`installation-receipt.json` verifies every regular profile file in the backup,
+unchanged profile during replacement, matching installed/build bundle files,
+signature and embedded full source revision. Private hashes/contents are not
+committed here.
+
+Normal launch produced exact installed PID91673. Only
+`collaboration/collaboration-v1.json` changed byte hash; parsed JSON leaf
+comparison showed0 logical differences, consistent with reserialization.
+No profile files were added/removed; all other profile file hashes matched.
+No claim of byte-unchanged history or a new business/live acceptance is made.
+Spotlight finds only the canonical installation; Launch Services has one existing
+canonical bundle and zero existing noncanonical copies. Stale records refer to
+already absent temporary launch-check paths; no global database reset was done.
+
+The independent reviewer then read exact-PID native UI: original selected Vault,
+Oct10 session and saved baseline displayed without a load error. The same-screen
+output, Results, collapsed Work history and enabled composer show consistent
+typography. Only navigation/scrolling was performed, with no Send/model/business
+operation. This is presentation/native installation verification, not a substitute
+for [deferred follow-ups](../deferred-follow-ups.md).
+
+The user's explicit acceptance closes this iteration's parent spec with named
+scope deferral; PDCR-03/11 stay blocked and12 open as follow-ups, with unmet
+checkboxes unchanged. [Remote handoff](../remote-handoff.md) retains branches,
+revisions, prepared PR text, future publication steps and conservative rollback.

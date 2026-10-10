@@ -2,13 +2,37 @@
 
 ID: PDCR-SPEC-01
 Status: ready-for-agent
-Lifecycle: open
-Stage: specification
-Implementation: not-started
+Lifecycle: closed
+Stage: human-accepted delivery closeout
+Implementation: accepted iteration; remaining scope explicitly deferred
 Date: 2026-10-09
+Closed: 2026-10-10
 Canonical tracker: [local map](map.md)
 Test boundary: confirmed by the user on 2026-10-09
-Execution boundary: 本次只发布本地 spec 与设计记录；不创建实施票、不开始产品实现、不安装 app、不修改真实个人数据。
+Execution boundary: 原始发布阶段仅发布设计；后续用户授权本地实现、复审及更新安装。2026-10-10 用户接受本轮交付并延期剩余范围；不进行 GitHub 操作、push 或 main merge。
+
+## Accepted closeout and explicit scope deferral
+
+The user accepted the overall interaction for their current examples and
+explicitly requested closure after the typography correction, independent
+review and local App update. That work is complete at reviewed/installed
+product `499cdc1`; durable local records are committed on
+`codex/collaboration-redesign-integration`. [Typography/install evidence](evidence/typography-follow-up.md)
+and [remote handoff](remote-handoff.md) retain exact identities and receipts.
+
+Parent closure is a **human acceptance and scope-deferral decision**, not a
+claim that every original criterion passed. PDCR-03 unknown-Dida scope,
+PDCR-11 human voice/affected native acceptance and PDCR-12 live Dida remain
+unverified follow-up records outside this closed iteration. The separate
+automatic InitialPlan retries also require later work. See the explicit
+[deferred scope](deferred-follow-ups.md); unchecked criteria and historical
+native evidence retain their original meanings and source qualifications.
+
+Authorization was directly verified from review chat
+`01a1229c-6bc2-7472-9dc9-16f3daccb6d3`, user messages
+`01a126b1-9ca8-7861-90b0-2940759d2c0f` and
+`01a126b1-a45b-7562-9856-2f7741586402`. Original requirements below remain as
+published; this closeout records the later decision rather than rewriting them.
 
 ## Problem Statement
 

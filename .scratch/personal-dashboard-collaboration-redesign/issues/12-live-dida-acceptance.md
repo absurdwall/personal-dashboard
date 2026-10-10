@@ -10,6 +10,7 @@
 **ID:** PDCR-12
 **Parent:** [PDCR-SPEC-01](../spec.md)
 **Lifecycle:** open
+**Iteration scope:** deferred by user acceptance on 2026-10-10; [remaining scope](../deferred-follow-ups.md)
 **Implementation:** not-started
 **Assignee:** unassigned
 **Date:** 2026-10-09
