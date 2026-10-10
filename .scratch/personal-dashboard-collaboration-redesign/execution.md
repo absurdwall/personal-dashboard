@@ -166,3 +166,9 @@ role, not an assertion that every blocker has completed or that work is running.
   acceptance and explicit scope deferral, not by checking unmet criteria.
   [Deferred follow-ups](deferred-follow-ups.md) and [remote handoff](remote-handoff.md)
   retain PDCR-03/11/12 and InitialPlan retry uncertainty. No GitHub/main merge/push.
+
+- 2026-10-10: User added a narrow Calendar selected-date Task readability fix
+  before ending the run. [Follow-up](evidence/calendar-task-readability-follow-up.md)
+  records actual layout measurements and a fresh review/install cycle. Accepted
+  typography and parent human-acceptance/deferral remain unchanged; this is a
+  newly authorized presentation fix, not a reversal of earlier acceptance.
