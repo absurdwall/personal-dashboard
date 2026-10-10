@@ -40,3 +40,60 @@ repeat private App/profile backup, signed local replacement and verification.
 Update source/handoff and normal local commits, then clean owned resources.
 No workflow/schema/business-data change, GitHub/main merge/push, new dependency,
 or change to the accepted parent/deferred criteria is included.
+
+## Implementation and synthetic verification
+
+Product changes are limited to CSS and moving the intact Calendar task section
+one container level: `#calendar-task-panel` is now the full-width third child of
+`.calendar-frame`, after the month and selected-day summary. IDs, controls,
+forms and event/draft/date guards remain intact. No renderer/business logic,
+content or task data changed. Collaboration's accepted typography is unchanged.
+
+Shared task rows use an inline-size container. Below `34rem` (544px at the current
+16px root), controls wrap below the full-width body with a thin separator; at
+544px and above, controls sit on the right within 190px, leaving at least 342px
+for the body after the 12px gap. Old viewport-only row overrides were removed.
+Today keeps its existing always-stacked rule. Browsers without container-query
+support retain the safe default stacked layout; this fixture does not claim
+native WebKit acceptance.
+
+Actual measurements established both causes. Calendar's 900px shell provided a
+200.1px task card; actions took 188.1px and body width was 0. Shared stacking alone
+restored 200.1px but left long content confined to the summary rail. The narrow
+outer adjustment lets the task section use the frame's available width. Final
+body widths (same synthetic content/production renderer and shell):
+
+| Surface / viewport | Before body | Final body / control placement |
+| --- | --- | --- |
+| Calendar / 900px | 0px | 439.8px / right |
+| Calendar / 1400px | 77.1px | 801.2px / right |
+| Calendar / 620px | 533px | 533px / below |
+| Tasks / 900px | 269.8px | 471.8px / below |
+| Tasks / 1400px | 599.2px | 599.2px / right |
+| Tasks / 620px | 533px | 533px / below |
+
+The private fixture runs production `taskEditor`, `renderCalendarTasks`,
+`renderCalendarGrid`, label/schedule helpers, the checked-in shell DOM and real
+CSS. Chinese/English long titles/content and pending/completed/abandoned controls
+were captured separately at 1400/900/620px. Every case resets fixture-owned
+editor dialogs, so normal captures have no earlier overlay; `*-edit.png` cases
+use an actual Details-button click and retain the actual inline/modal editor.
+Calendar markers use the same production catalog keys. Inputs are entirely
+synthetic and no mutation or real application/profile access occurs.
+
+All 12 normal cases have no document/card overflow and retain visible enabled
+controls; all four 900px edit cases have readable, non-overflowing forms. The
+543/544/545px threshold was exercised at both 620px and 1400px viewports, across
+both surfaces/languages/three states: all 72 cards obey their actual width,
+with no overflow; Today at 800px remains stacked. Controls also retain focus
+access. Before/after screenshots were visually inspected.
+
+Private reproducible artifacts are under `/tmp/pdcr-calendar-readability-oct10`:
+`prepare.mjs`, `capture.js`, `threshold.js`, `before-computed.json`,
+`after-computed.json`, `threshold-computed.json`, `focus-report.log` and
+`before-/after-{calendar,tasks}-{zh,en}-{1400,900,620}.png`, plus independent
+900px edit screenshots. The existing cached browser CLI required no installation.
+Existing Task/Calendar presentation/editor suites pass 45 tests
+(`frontend-targeted.log`); existing-dependency build passes (`build.log`).
+No mirrored CSS unit tests or new dependencies were added. Root owns independent
+review, full checks and any separately authorized native build/install/acceptance.
