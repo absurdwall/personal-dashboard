@@ -149,3 +149,10 @@ role, not an assertion that every blocker has completed or that work is running.
   reader source requires affected native reassessment, so PDCR-11 criteria
  1/2/4/5 are unchecked for this candidate while historical evidence is retained.
   PDCR-03/11 remain blocked,12 open/unclaimed, parent open; no eligible frontier.
+
+- 2026-10-10: User's actual-use feedback accepts overall interaction for the
+  current examples and requests a narrow Collaboration typography follow-up.
+  The original implementation chat owns modifications; the review chat remains
+  read-only. [Typography record](evidence/typography-follow-up.md) tracks actual
+  computed styles, mixed-language visual checks and a reviewable fixed candidate.
+  No PDCR-03/11/12 or parent gate is closed by this presentation feedback.
