@@ -102,3 +102,26 @@ passes: `/tmp/pdcr-typography-oct10/build.log`. No mirrored CSS unit tests, new
 dependencies, business-state changes or installation were introduced. The fixed
 candidate returns for independent review; root owns further validation and any
 separately authorized installation/closeout.
+
+## Fixed candidate checks
+
+Source candidate `499cdc1e33763f4b8f70a466f9d9e71860f92a14` integrates
+implementer `e8b925d`; merge trees match, diff check passes and the canonical
+checkout is clean. Root inspected Chinese/English before and after screenshots.
+Full frontend388 pass,0 fail/skipped/cancelled:
+`/tmp/pdcr-typography-oct10/frontend-full.log`. Native build includes its
+successful `npm run build`: `build-mac.log`. Signed arm64 bundle passes
+`codesign --verify --deep --strict`; the binary contains the full source SHA,
+version4.0.7, binary SHA256
+`4bd57de7e16c9bdeed3b92ab75e485664a0c7bbd86c30070c9c397bae766618a`.
+
+Relocated packaged-launch check passes with isolated temporary profile, no
+baseline, no listening TCP socket or Python runtime: `packaged-launch.log`.
+This proves launch only, not the deferred business/model/voice/live gates.
+Rust/reader product sources and tests are unchanged from `ac65cfa`; their prior
+495 Rust passes/six explicit environment skips and7 reader passes remain
+applicable. No duplicate full Rust suite was run for this stylesheet change.
+
+Independent candidate review and local replacement are still pending in this
+record; closure requires their actual receipts. [Deferred follow-ups](../deferred-follow-ups.md)
+retain the explicitly excluded criteria and separate reliability observation.
