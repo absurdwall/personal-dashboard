@@ -97,3 +97,25 @@ Existing Task/Calendar presentation/editor suites pass 45 tests
 (`frontend-targeted.log`); existing-dependency build passes (`build.log`).
 No mirrored CSS unit tests or new dependencies were added. Root owns independent
 review, full checks and any separately authorized native build/install/acceptance.
+
+### Exact fixed-source visual rerun
+
+The first fixture's CSS had the same declarations but placed `padding-top: 7px`
+and `border-top` in the earlier action rule. After those declarations were moved
+to the final production rule, the fixture copy was not regenerated. Its SHA256
+was `8358cb6581be37205e7db4f1154d168a9e7ec831eedab83158f4fda93261ba83`;
+that first run is supporting diagnosis, not an exact final-source acceptance.
+
+The fixture was regenerated from fixed candidate `cb3d09f5e2a7d7ee156a81afbfc057d54cbefbc7`.
+CSS bytes now exactly equal `git show cb3d09f:frontend/styles.css`, 190099 bytes,
+SHA256 `9bd308d7742e479ade3bb26d349599adc62b4fef10b105cb3dec176db0ed42a6`.
+The page was reloaded with `styles.css?fixed=cb3d09f-9bd308d7742e`; browser-side
+response hashing matched this SHA and the active stylesheet parsed 1262 rules
+(`browser-source-hash.log`). After that verified reload, all 12 normal cases,
+four actual edit cases, 72 threshold cards and four focus cases passed again;
+after screenshots were recaptured. Corrected reports are
+`after-exact-source-computed.json`, `threshold-exact-source-computed.json` and
+`focus-exact-source-computed.json` in the same private artifact directory.
+No product source changed during this correction; existing source tests need
+no rerun for the fixture-byte repair. This remains browser supporting evidence,
+with native installation/acceptance owned separately by root.
