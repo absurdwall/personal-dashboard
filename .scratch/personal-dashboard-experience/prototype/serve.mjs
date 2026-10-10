@@ -12,4 +12,4 @@ createServer((req,res)=>{
   const stream=createReadStream(file);
   stream.on('open',()=>{res.writeHead(200,{'Content-Type':mime[extname(file)]||'text/plain','Cache-Control':'no-store'});stream.pipe(res)});
   stream.on('error',()=>res.writeHead(404).end());
-}).listen(Number(process.env.PD_EXPERIENCE_PORT||0),'127.0.0.1',function(){console.log(`Prototype: http://127.0.0.1:${this.address().port}/finalized.html?page=today&variant=F`)});
+}).listen(Number(process.env.PD_EXPERIENCE_PORT||0),'127.0.0.1',function(){console.log(`Prototype: http://127.0.0.1:${this.address().port}/revised.html?page=today&variant=R`)});
