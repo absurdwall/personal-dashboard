@@ -177,3 +177,15 @@ role, not an assertion that every blocker has completed or that work is running.
   issue. The follow-up now covers Tasks/Calendar card-width responsive actions:
   right only when the body has enough room, otherwise below; Today stays stacked.
   Actual container-width threshold and edge checks guide the narrow layout repair.
+
+- 2026-10-10: Shared Task/Calendar readability source `82859db` integrated
+  `cb3d09f`; exact-fixture qualification/correction `af791a9` retains first-run
+  limits and pinned-source replay. Independent Standards/Spec0 findings; full
+  frontend388/build/signed arm64 packaging/isolated launch pass. New local App
+  and profile rollback verified at `2026-10-10-task-layout-z981orx_`. Native
+  normal/zoomed Tasks switching, Calendar full-width/body readability and Today
+  stacked behavior are read-only accepted; native640px resize was unavailable,
+  so extreme width/threshold acceptance is browser-supported only. User issue
+  is resolved; accepted parent/deferred scope persists. Owned resources/worktree/
+  branch are cleaned; [latest evidence and handoff](remote-handoff.md) retain
+  current source, backup, exact limits and future protected-main publication.

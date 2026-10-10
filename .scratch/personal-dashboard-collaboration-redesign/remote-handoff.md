@@ -13,10 +13,12 @@ tracker, review and closeout records are committed locally.
 | Original specification baseline | `codex/collaboration-redesign-spec`, `9939c23f4f14d0b87dc9949c0ce3850e24e994a2` |
 | Most recent reviewed runtime/reader repair | `ac65cfafe2b20fa19e41b1223a521f27b875eca5` |
 | Reviewed and installed typography product | `499cdc1e33763f4b8f70a466f9d9e71860f92a14` |
+| Latest reviewed/installed Task-layout product, retaining typography | `cb3d09f5e2a7d7ee156a81afbfc057d54cbefbc7` |
 | Local main at this checkpoint | `a4594a151126465cc3d76038364dd696461778ec` (tracks `origin/main`; not fetched) |
 | Final durable closeout commit | The commit adding this handoff and final closeout records; use `git rev-parse HEAD` / Git history after checkout, since an in-commit self-hash would be invalid. |
 
-Later closeout changes are Markdown only; reviewed product trees are unchanged.
+Changes after the final Task-layout product are Markdown only; its reviewed
+product trees are unchanged. Earlier typography acceptance remains recorded.
 The standalone prototype's original SHA256 is
 `66e7b27204fcec1980fd334f3cf1456148bb255151ec91710529d0e7cf61a622`.
 Its reviewed demo-only content is committed in `6e92f98` without byte changes.
@@ -26,12 +28,12 @@ checks. Existing spec/integration/main and unrelated prototype/daytime-repair
 branches are retained. No broad branch cleanup is implied by delivery.
 
 Final retained local branch inventory (before this record's own closeout commit):
-`codex/collaboration-redesign-integration` at `9445e48`,
+`codex/collaboration-redesign-integration` at `af791a9`,
 `codex/collaboration-redesign-spec` at `9939c23`, `main` at `a4594a1`,
 `codex/collaboration-execution-prototype` at `ca05b5f`, and
 `codex/fix-daytime-write-authority` at `d9a12a3`. Only integration advances for
-this final Markdown receipt. The owned typography branch was removed after
-`e8b925d` reachability; its managed worktree is recoverably archived. Canonical
+this final Markdown receipt. Owned typography/Task-layout branches were removed
+after `e8b925d` / `af791a9` reachability; their managed worktree is recoverably archived. Canonical
 tracked/untracked status is clean. `.githooks` remains configured.
 
 ## Commands after GitHub is available
@@ -64,13 +66,20 @@ never go into GitHub.
 ## Local installation and rollback
 
 The sole searchable installation is `/Applications/Personal Dashboard.app`,
-version4.0.7, reviewed build revision `499cdc1`. Installed executable SHA256:
-`4bd57de7e16c9bdeed3b92ab75e485664a0c7bbd86c30070c9c397bae766618a`.
+version4.0.7, reviewed build revision `cb3d09f`. Installed executable SHA256:
+`33941698a758314fc9c24d8095e02c65e10a77d1d2825503ab0fcb953ae0da55`.
 Signed previous App, retained build and verified profile preimage are in the
 private `.noindex` archive:
-`/Users/tingranwang/.codex/app-archives.noindex/personal-dashboard/2026-10-10-typography-wa4xnaqn/`.
+`/Users/tingranwang/.codex/app-archives.noindex/personal-dashboard/2026-10-10-task-layout-z981orx_/`.
 Its `installation-receipt.json` contains file-level verification; it is private
 and is not copied into the repository.
+
+The earlier typography archive (`2026-10-10-typography-wa4xnaqn` under the same
+parent) is also retained as a historical rollback/evidence checkpoint. Actual
+native normal/zoomed Task/Calendar/Today presentation passes; native640px
+resizing was unavailable through CUA and remains browser-supported only.
+[Task readability evidence](evidence/calendar-task-readability-follow-up.md)
+preserves that limit and the corrected exact-fixture verification.
 
 For a later rollback, quit the App, preserve any post-update user data, and
 restore the previous App with normal Launch Services/signature verification.

@@ -16,7 +16,10 @@ Execution boundary: 原始发布阶段仅发布设计；后续用户授权本地
 The user accepted the overall interaction for their current examples and
 explicitly requested closure after the typography correction, independent
 review and local App update. That work is complete at reviewed/installed
-product `499cdc1`; durable local records are committed on
+typography product `499cdc1`. The subsequently requested shared Task/Calendar
+readability fix is reviewed and installed at `cb3d09f`; its [source, browser and
+qualified native evidence](evidence/calendar-task-readability-follow-up.md)
+retains the actual acceptance range. Durable local records are committed on
 `codex/collaboration-redesign-integration`. [Typography/install evidence](evidence/typography-follow-up.md)
 and [remote handoff](remote-handoff.md) retain exact identities and receipts.
 

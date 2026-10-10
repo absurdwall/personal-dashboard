@@ -43,7 +43,7 @@ triage role; it does not start implementation or establish delivery.
 
 ## Next stage
 
-This iteration is closed and installed at reviewed product `499cdc1` under the user's Oct10 authorization. See [execution tracking](execution.md), [typography/install closeout](evidence/typography-follow-up.md) and [remote handoff](remote-handoff.md). No GitHub/main merge/push was performed. Later publication uses the preserved integration branch and protected-main PR flow. **PDCR-03/11/12** and InitialPlan reliability are explicit [deferred follow-ups](deferred-follow-ups.md); they do not authorize further implementation, personal writes or acceptance probes now. Earlier checkpoints and source-qualified evidence remain historical.
+This iteration is closed and installed at reviewed product `cb3d09f` under the user's Oct10 authorization, retaining accepted typography `499cdc1` and the subsequent shared Task/Calendar readability repair. See [execution tracking](execution.md), [typography closeout](evidence/typography-follow-up.md), [Task-layout/install evidence](evidence/calendar-task-readability-follow-up.md) and [remote handoff](remote-handoff.md). No GitHub/main merge/push was performed. Later publication uses the preserved integration branch and protected-main PR flow. **PDCR-03/11/12** and InitialPlan reliability are explicit [deferred follow-ups](deferred-follow-ups.md); they do not authorize further implementation, personal writes or acceptance probes now. Earlier checkpoints and source-qualified evidence remain historical.
 
 The graph has 12 tickets and 16 direct blocking edges. Direct blockers are shown
 above and in each ticket body; after PDCR-02 closes, PDCR-03/04/05/06/08 become

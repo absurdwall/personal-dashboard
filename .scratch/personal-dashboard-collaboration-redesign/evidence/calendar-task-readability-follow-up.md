@@ -1,4 +1,4 @@
-# Task card responsive readability — in progress
+# Task card responsive readability — reviewed and locally installed
 
 2026-10-10, baseline `46fdaec2f3008d500274f5082a2fd5a909635ae2` on
 `codex/collaboration-redesign-integration`. The previously reviewed typography
@@ -119,3 +119,78 @@ after screenshots were recaptured. Corrected reports are
 No product source changed during this correction; existing source tests need
 no rerun for the fixture-byte repair. This remains browser supporting evidence,
 with native installation/acceptance owned separately by root.
+
+## Final source, checks and local installation
+
+Reviewed product `cb3d09f5e2a7d7ee156a81afbfc057d54cbefbc7` integrates
+implementer `82859db`; merge trees match and diff check passes. Independent
+Standards found0 documented breaches/0 smells and Spec found0 actionable
+findings. The reviewer separately verified the corrected pinned CSS hash,
+72 threshold cards,12 normal cases,4 actual editors and4 keyboard-focus cases.
+Root independently checked those corrected reports and the unchanged309 DOM
+IDs/tag attributes/all form-control attributes. Product TypeScript/business
+operations, Rust, usage package and tests are unchanged.
+
+Root's full frontend388 passed,0 failed/skipped/cancelled (`frontend-full.log`).
+`npm run build:mac`, including `npm run build`, passed (`build-mac.log`).
+Signed arm64 bundle verifies deeply/strictly, embeds the full reviewed source
+SHA and remains version4.0.7. Isolated relocated packaged launch passes
+(`packaged-launch.log`), without a baseline, listening TCP socket or Python
+runtime. Rust/reader sources remain those already checked at `ac65cfa`:
+495 Rust passes/six explicit environment gates ignored and7 reader passes.
+No full Rust/reader repetition was needed for this HTML/CSS change.
+
+Root normally quit the typography installation, backed up its App/profile and
+replaced `/Applications/Personal Dashboard.app` with reviewed `cb3d09f`.
+Installed executable SHA256:
+`33941698a758314fc9c24d8095e02c65e10a77d1d2825503ab0fcb953ae0da55`.
+Private verified rollback receipt:
+`/Users/tingranwang/.codex/app-archives.noindex/personal-dashboard/2026-10-10-task-layout-z981orx_/installation-receipt.json`.
+The previous App, retained signed build and profile preimage remain there.
+All regular backup/profile hashes match, profile is unchanged during replacement,
+and installed bundle files match the build. Normal launch changes only the
+history's byte serialization with logically identical parsed JSON;0 profile
+files added/removed and other hashes unchanged. Spotlight has only the canonical
+installation; Launch Services has zero existing noncanonical bundles.
+
+## Native verification and its actual limit
+
+The independent reviewer verified exact installed PID1629, binary hash/source/
+signature/version, then performed read-only navigation and window zooming.
+At the normal960px window, Tasks' actions sit below readable long text; at the
+zoomed1920px logical monitor window they sit right. Today remains stacked.
+Calendar's selected-date Task section spans below month/summary, preserving
+pending/completed text and controls without the former thin body column.
+The reviewer restored the original960px window and initial Today destination,
+closed the detail disclosure, and performed no model or task-state operation.
+
+Native640px minimum-width verification was **not obtained**: CUA edge/corner
+drags did not resize the window and an out-of-window attempt was rejected.
+Root's additional bounded CUA edge drag also left the original window unchanged.
+No OS UI scripting or forced dimensions were used. Therefore native acceptance
+is limited to the observed normal/zoomed ranges; extreme narrow/threshold cases
+are supported by the pinned browser reports, not relabeled native tests. This
+automation limitation is not a confirmed product defect or a reversal of the
+user's accepted parent scope. Original deferred native/live criteria remain
+unverified and deferred.
+
+## Preservation and cleanup
+
+The exact-source reports/scripts/check logs and32 synthetic before/after/edit
+screenshots are retained under the private archive's `task-layout-evidence/`.
+The fixture CLI reports its owned browser already closed; no8768 listener or
+original browser PID remains. The old exec session is no longer available, so
+no claim is made that root stopped a still-running server. No user browser or
+installed App was terminated for cleanup.
+
+The owned worktree was inventoried clean with only reproducible ignored dist.
+`af791a9` is reachable from integration; the app confirmed archival and the
+owned merged branch was removed normally. Only the canonical worktree remains;
+unrelated branches/prototype bytes are preserved. [Remote handoff](../remote-handoff.md)
+records the newest installed source and later protected-main publication steps.
+
+After actual closeout, Management helper1.0.3 discover reconfirms the canonical
+bound `product-personal-dashboard`. The local redesign tracker source remains
+unregistered/pending separately from accepted delivery; no Registry write or
+GitHub fetch occurred. Its private discovery receipt is retained alongside the
+Task-layout evidence. No installation/profile evidence is uploaded or committed.
