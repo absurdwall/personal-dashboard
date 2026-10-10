@@ -1,4 +1,4 @@
-# Calendar selected-date Task readability — in progress
+# Task card responsive readability — in progress
 
 2026-10-10, baseline `46fdaec2f3008d500274f5082a2fd5a909635ae2` on
 `codex/collaboration-redesign-integration`. The previously reviewed typography
@@ -19,7 +19,20 @@ rendering with synthetic Chinese/English long titles/content, pending/completed
 states and controls at wide/narrow windows. Personal screenshot contents are
 source feedback only and are not copied into fixtures or repository records.
 Task body needs readable width; controls must not consume the body column.
-Preserve forms/events/date targeting/drafts and other Task/Today surfaces.
+Preserve forms/events/date targeting/drafts and Today's existing robust single-column behavior.
+
+## Subsequent shared-surface clarification
+
+The user's second screenshot/message
+`01a126c0-fe1e-7123-b007-111280224fb9` confirms the same issue in Tasks, not
+only Calendar. The directly authorized rule is based on actual card width:
+use right-side actions only with enough room for readable body text, otherwise
+put all actions below it. Implement the shared Tasks/Calendar rule with a clear
+threshold derived from body and controls width budgets; preserve Today's
+deliberate stacked layout. Test both sides of the threshold (including +/-1px),
+Chinese/English long text and pending/completed/abandoned controls. First fix
+the shared card rule and remeasure Calendar's surrounding layout; do not
+restructure the whole Calendar solely on the earlier provisional suggestion.
 
 Return a fixed candidate, diff, before/after computed values/screenshots and
 appropriate existing checks/build for independent review. After acceptance,

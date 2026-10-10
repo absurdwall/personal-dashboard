@@ -172,3 +172,8 @@ role, not an assertion that every blocker has completed or that work is running.
   records actual layout measurements and a fresh review/install cycle. Accepted
   typography and parent human-acceptance/deferral remain unchanged; this is a
   newly authorized presentation fix, not a reversal of earlier acceptance.
+
+- 2026-10-10: Subsequent user screenshot confirms Tasks shares the narrow-text
+  issue. The follow-up now covers Tasks/Calendar card-width responsive actions:
+  right only when the body has enough room, otherwise below; Today stays stacked.
+  Actual container-width threshold and edge checks guide the narrow layout repair.
