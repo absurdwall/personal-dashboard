@@ -161,3 +161,26 @@ The user's explicit acceptance closes this iteration's parent spec with named
 scope deferral; PDCR-03/11 stay blocked and12 open as follow-ups, with unmet
 checkboxes unchanged. [Remote handoff](../remote-handoff.md) retains branches,
 revisions, prepared PR text, future publication steps and conservative rollback.
+
+## Final cleanup and management boundary
+
+The sole implementer's fixture browser session and HTTP service were stopped by
+their exact owner/session; no listener or owned browser remains. Eight synthetic
+before/after screenshots, computed reports, fixture scripts and check logs were
+also copied from `/tmp/pdcr-typography-oct10` into the retained private installation
+archive's `typography-evidence/` directory. Thus temporary-directory expiry does
+not remove the review evidence. The installation receipt links that archive.
+
+The managed worktree was inventoried clean (only reproducible ignored dist), its
+tip `e8b925d` verified reachable from integration, and the app confirmed it as
+`archived_worktree`. Only the canonical checkout remains; the owned merged
+typography branch was removed normally. Existing main/spec/integration and
+unrelated branches were preserved. All durable authorized project files are
+committed; no tracked or untracked dirty files remain. Prototype hash is unchanged.
+
+After actual parent closeout, installed Management helper1.0.3 discover confirms
+the bound canonical `product-personal-dashboard`. The redesign's local tracker
+source is not registered and remains an explicit pending Management connection;
+no Registry write, identity inference or GitHub fetch was performed. Private
+receipt: `management-discover-closeout.json` in the retained evidence archive.
+This pending connection is separate from the user-accepted local delivery.

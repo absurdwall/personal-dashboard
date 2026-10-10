@@ -25,6 +25,15 @@ Only owned implementation worktrees/branches are cleaned up after reachability
 checks. Existing spec/integration/main and unrelated prototype/daytime-repair
 branches are retained. No broad branch cleanup is implied by delivery.
 
+Final retained local branch inventory (before this record's own closeout commit):
+`codex/collaboration-redesign-integration` at `9445e48`,
+`codex/collaboration-redesign-spec` at `9939c23`, `main` at `a4594a1`,
+`codex/collaboration-execution-prototype` at `ca05b5f`, and
+`codex/fix-daytime-write-authority` at `d9a12a3`. Only integration advances for
+this final Markdown receipt. The owned typography branch was removed after
+`e8b925d` reachability; its managed worktree is recoverably archived. Canonical
+tracked/untracked status is clean. `.githooks` remains configured.
+
 ## Commands after GitHub is available
 
 Run from the canonical checkout. Verify local status and the expected commits
