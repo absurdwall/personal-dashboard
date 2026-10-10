@@ -30,3 +30,26 @@ values and screenshots. Build and appropriate existing renderer checks apply.
 Fixed candidate/evidence must return to the independent reviewer before any
 reuse of the user's previous local installation authorization. No GitHub,
 main merge, push, new dependencies or services. The unrelated prototype stays.
+
+## Superseding human closeout authorization
+
+The same user turn later includes explicit messages
+`01a126b1-9ca8-7861-90b0-2940759d2c0f` and
+`01a126b1-a45b-7562-9856-2f7741586402`: after typography repair/review, update
+the local Personal Dashboard, commit durable work and finish this iteration by
+closing the spec. This supersedes the earlier parent-open boundary. Closure
+will mean human acceptance with explicitly deferred remaining scope, not
+fictional native/live test passes. PDCR-03 unknown-Dida scope, PDCR-11 voice/new
+candidate acceptance, PDCR-12 live objects and the separately observed automatic
+InitialPlan retries remain recorded as follow-ups. GitHub is deferred; local
+branch/revision and future protected-main PR steps must be reproducible.
+
+The independent reviewer directly observed two Work history disclosures in the
+installed app were collapsed by default. The earlier copied failure details
+came from intentional expansion; this feedback does not establish a default
+diagnostic leakage defect or reject the accepted interaction.
+
+The previously untracked prototype was inspected before the user-authorized
+durable commit: embedded demo fixtures/pure in-memory transitions, explicit
+simulation/unknown-state labels, no credentials, account identifiers, network
+endpoints or personal profile/Vault access. Its original bytes/hash are retained.
