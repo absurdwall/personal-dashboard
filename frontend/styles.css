@@ -8828,6 +8828,8 @@ button.habit-cell:focus-visible {
 }
 
 .collaboration-message {
+  font-size: 0.7rem;
+  line-height: 1.55;
   max-width: 96%;
   padding: 0.72rem 0.8rem;
   border: 1px solid var(--parity-border);
@@ -8873,13 +8875,23 @@ button.habit-cell:focus-visible {
 }
 
 .collaboration-message p {
-  margin: 0;
+  margin: 0 0 0.4rem;
   color: #303633;
-  font-size: 0.71rem;
-  line-height: 1.65;
+  font-size: inherit;
+  line-height: inherit;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+.collaboration-message p:last-child { margin-bottom: 0; }
+.collaboration-message ul,
+.collaboration-message ol {
+  margin-block: 0.4rem;
+  padding-inline-start: 1.5em;
+  font-size: inherit;
+  line-height: inherit;
+}
+.collaboration-message li + li { margin-top: 0.2rem; }
 
 .collaboration-message-boundary,
 .collaboration-empty-conversation {
@@ -9571,6 +9583,12 @@ button.habit-cell:focus-visible {
   padding-top: 0.6rem;
   border-top: 1px solid var(--parity-border);
 }
+.collaboration-action-results > strong {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: inherit;
+  line-height: inherit;
+}
 .collaboration-action-results p {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -9724,13 +9742,13 @@ button.habit-cell:focus-visible {
   border-inline-start: 2px solid var(--border-color, #d4d4d4);
   padding-inline-start: .75rem;
 }
-.collaboration-work-history summary { cursor: pointer; }
+.collaboration-work-history summary { cursor: pointer; font-size: inherit; line-height: inherit; }
 .collaboration-work-item { margin-block: .75rem; }
-.collaboration-work-item > strong { font-size: .9em; }
+.collaboration-work-item > strong { font-size: inherit; line-height: inherit; }
 .collaboration-work-item[data-status="failed"] > strong { color: var(--danger-color, #a82d2d); }
 .collaboration-work-item p { margin-block: .4rem; }
-.collaboration-work-item details { font-size: .85em; opacity: .85; }
+.collaboration-work-item details { font-size: inherit; line-height: inherit; opacity: .85; }
 .collaboration-checklist-item { list-style: none; display: flex; align-items: baseline; gap: .35rem; }
 .collaboration-reply-link { display: inline; padding: 0; }
 
-.collaboration-change-diff { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }
+.collaboration-change-diff { font-size: inherit; line-height: inherit; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }
