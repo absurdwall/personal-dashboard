@@ -1672,6 +1672,8 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
     workspaceLanguageButton.setAttribute("aria-label", t(nextLanguageKey));
     workspaceLanguageButton.title = t(nextLanguageKey);
   }
+  updateCompactScheduleLabel("task-quick", taskQuickDate, taskQuickTime);
+  updateCompactScheduleLabel("today-task-create", todayTaskCreateDate, todayTaskCreateTime);
   if (currentCalendarMonth) renderCalendarGrid(currentCalendarMonth);
   if (currentCalendarSummaryView) renderCalendarSummary(currentCalendarSummaryView);
   if (currentHabitSnapshot) renderHabitSnapshot(currentHabitSnapshot);
@@ -12151,9 +12153,19 @@ function updateCompactScheduleLabel(prefix: string, date: HTMLInputElement | nul
   compactScheduleTransactions.get(prefix)?.validateContext();
   const button = document.querySelector<HTMLButtonElement>(`#${prefix}-schedule`);
   if (!button) return;
-  const label = t("tasks.scheduleSummary", {schedule: taskScheduleText(date?.value || null, time?.value || null)});
-  button.title = label;
-  button.setAttribute("aria-label", label);
+  const selectedDate = date?.value || null;
+  const todayDate = prefix === "today-task-create"
+    ? currentTodayView?.isToday ? currentTodayView.date : null
+    : currentTaskLivedDate;
+  const visibleDate = selectedDate === null
+    ? t("tasks.noDate")
+    : selectedDate === todayDate ? t("tasks.scheduleToday") : calendarDateLabel(selectedDate);
+  const visibleLabel = time?.value ? `${visibleDate} · ${time.value}` : visibleDate;
+  const visibleLabelElement = button.querySelector<HTMLElement>(".task-schedule-label");
+  if (visibleLabelElement) visibleLabelElement.textContent = visibleLabel;
+  const accessibleLabel = t("tasks.scheduleSummary", {schedule: taskScheduleText(selectedDate, time?.value || null)});
+  button.title = accessibleLabel;
+  button.setAttribute("aria-label", accessibleLabel);
   button.dataset.scheduled = String(Boolean(date?.value));
 }
 
@@ -12196,7 +12208,7 @@ function bindCompactSchedule(prefix: string, date: HTMLInputElement | null, time
   ["today", "tomorrow", "undated"].forEach(preset => document.querySelector(`#${prefix}-${preset}`)?.addEventListener("click", () => {
     const base = baseDate();
     date.value = preset === "undated" ? "" : base ? shiftDate(base, preset === "tomorrow" ? 1 : 0) : "";
-    normalizeTaskDateTimeFields(date, time); stash();
+    normalizeTaskDateTimeFields(date, time); stash(); updateCompactScheduleLabel(prefix, date, time);
   }));
   document.querySelector(`#${prefix}-schedule-apply`)?.addEventListener("click", () => close(true));
   document.querySelector(`#${prefix}-schedule-cancel`)?.addEventListener("click", () => close(false));
@@ -12204,8 +12216,8 @@ function bindCompactSchedule(prefix: string, date: HTMLInputElement | null, time
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(false); }
     if (event.key === "Enter" && (event.target === date || event.target === time) && !event.isComposing) { event.preventDefault(); close(true); }
   });
-  date.addEventListener("change", () => { normalizeTaskDateTimeFields(date, time); stash(); });
-  time.addEventListener("change", stash);
+  date.addEventListener("change", () => { normalizeTaskDateTimeFields(date, time); stash(); updateCompactScheduleLabel(prefix, date, time); });
+  time.addEventListener("change", () => { stash(); updateCompactScheduleLabel(prefix, date, time); });
   // Pointer dismissal is a cancel; no Task command occurs in this adapter.
   document.addEventListener("pointerdown", event => {
     if (!picker.hidden && !(event.target instanceof Node && button.parentElement?.contains(event.target))) close(false);

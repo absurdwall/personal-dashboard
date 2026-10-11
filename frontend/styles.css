@@ -10002,3 +10002,48 @@ button.task-schedule-toggle[data-scheduled="true"] { color:var(--parity-accent, 
 .task-compact-details { margin-top:.5rem; font-size:.8rem; }
 .task-compact-details > summary { cursor:pointer; color:var(--parity-muted); }
 .task-compact-details .task-form-grid { margin-top:.5rem; }
+
+/* Product identity leads the global toolbar; navigation follows a light divider. */
+.product-toolbar-divider { width:1px; height:1.65rem; flex:0 0 1px; background:var(--parity-border); }
+
+/* The Today aside control is part of the daytime heading, not the lower axis toolbar. */
+.today-daytime-heading-group { display:flex; align-items:center; gap:.65rem; min-width:0; }
+.today-daytime-heading-group h3 { min-width:0; }
+
+/* Schedule controls expose their current value without expanding the one-line form. */
+button.task-schedule-toggle { display:flex; align-items:center; justify-content:center; gap:6px; width:auto; min-width:86px; max-width:min(154px, 30vw); height:32px; padding:4px 8px; border:1px solid var(--parity-border); border-radius:6px; background:var(--parity-surface); color:var(--parity-ink); }
+.task-schedule-toggle svg { width:20px; height:20px; flex:0 0 20px; fill:none; stroke:currentColor; stroke-width:1.7; }
+.task-schedule-label { min-width:0; overflow:hidden; color:inherit; font-size:.65rem; font-weight:650; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Sessions and context use simple divisions; keep selected states and input borders. */
+.collaboration-session-pane,
+.collaboration-chat-pane,
+.collaboration-context-pane { min-width:0; border:0; border-radius:0; background:transparent; }
+.collaboration-session-pane { padding:.15rem .55rem .15rem .1rem; }
+.collaboration-chat-pane { padding:.15rem .55rem; }
+.collaboration-context-pane { padding:.15rem 0 .15rem .75rem; }
+.collaboration-pane-heading { padding-bottom:.35rem; border-bottom:0; }
+.collaboration-context-card { padding:.5rem 0; border:0; border-bottom:1px solid var(--parity-border); border-radius:0; background:transparent; }
+.collaboration-context-card:last-child { border-bottom:0; }
+.collaboration-layout[data-columns="two"] .collaboration-session-pane { padding:.15rem .55rem .15rem .1rem; }
+
+/* Keep the compact Today row usable when its docked sidebar is restored. */
+#task-quick-submit,
+#today-task-create-submit { min-height:32px; padding:.35rem .5rem; font-size:.62rem; }
+button.task-schedule-toggle { gap:4px; padding:4px 5px; }
+.task-schedule-toggle svg { width:18px; height:18px; flex-basis:18px; }
+.task-schedule-label { font-size:.58rem; }
+@media (max-width:900px) {
+  #today-ready[data-phase="daytime"] .today-layout[data-unlocated-presentation="inline"] {
+    grid-template-columns:minmax(0, 1fr) minmax(236px, 32%);
+  }
+}
+@media (min-width:901px) {
+  #today-ready[data-phase="daytime"] .today-layout[data-unlocated-presentation="inline"] {
+    grid-template-columns:minmax(0, 1fr) minmax(240px, 32%);
+  }
+}
+@media (max-width:680px) {
+  #workspace-destination-today.today-destination { padding-right:.8rem; padding-left:.8rem; }
+  .day-task-panel { padding:8px; }
+}
