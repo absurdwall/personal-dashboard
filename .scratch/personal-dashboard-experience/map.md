@@ -4,7 +4,7 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: local implementation, reviews and human acceptance complete; eleven tickets and parent resolved
+Stage: original eleven-ticket initiative resolved; PDEX-FOLLOWUP-05 implementation, review and installation complete, direct human acceptance pending
 Implementation: complete; local acceptance with documented observation qualifications and accepted Today narrow-window limitation
 Working branch: codex/dashboard-experience-integration
 Management source: source-personal-dashboard-experience
@@ -258,5 +258,9 @@ Direct user messages in review chat `01a128ff-8865-7493-9698-cc48c19d7939` autho
 
 | ID | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| PDEX-FOLLOWUP-05 | [complete addendum](followup-spec-2026-10-11-dashboard-shell-repair.md) / [index](issues/00-followup-spec-05.md) | ready-for-agent | in-progress | none | implementation and focused verification complete; independent review, protected install and human acceptance separate |
-| PDEX-18 | [visible shell controls and Collaboration recovery](issues/18-dashboard-shell-and-collaboration-repair.md) | ready-for-agent | in-progress | none | [19 docked-sidebars, 10 Collaboration, 12 Calendar WebKit tests and isolated native candidate evidence](evidence/pdex18-native-candidate-2026-10-11.md); independent review, protection/install and human acceptance pending |
+| PDEX-FOLLOWUP-05 | [complete addendum](followup-spec-2026-10-11-dashboard-shell-repair.md) / [index](issues/00-followup-spec-05.md) | ready-for-agent | in-progress | none | implementation, review and protected normal install complete; direct human acceptance remains pending |
+| PDEX-18 | [visible shell controls and Collaboration recovery](issues/18-dashboard-shell-and-collaboration-repair.md) | ready-for-agent | in-progress | none | [isolated candidate evidence](evidence/pdex18-native-candidate-2026-10-11.md), [reviewed normal install and protection](evidence/pdex18-normal-install-2026-10-11.md); direct human acceptance pending; successful native Sogou composition unverified |
+
+### PDEX-18 review and protected installation — 2026-10-11
+
+Implementation commits `37d71de` and `dc12b10` retain full history from `8960c80`. Independent Standards and Spec reviews are complete with no remaining actionable findings; the Standards suggestion to share schedule assertions is addressed in the second commit. Build and focused suites pass. After fresh App/profile/selected-Vault protection, the reviewed normal-identifier 4.0.7 bundle was installed and visually checked with Computer Use virtual input. [Installation evidence](evidence/pdex18-normal-install-2026-10-11.md) records hashes, protected-copy readback, native-input limitation and the pending direct human acceptance. The ticket and parent remain in-progress; no GitHub, main merge, or remote publication occurred.
