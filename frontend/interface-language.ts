@@ -5,11 +5,16 @@ export type InterfaceLanguagePreferences = Readonly<{
 }>;
 
 const interfaceCopies = {
+  "today.planApproximateReference": { zh: "约{time}", en: "Around {time}" },
+  "today.planPrecision": { zh: "时间表达", en: "Time expression" },
+  "today.planApproximatePoint": { zh: "约略时间点", en: "Approximate time point" },
+  "today.planExactPoint": { zh: "具体时间点", en: "Exact time point" },
+  "today.planExactRange": { zh: "具体时间区间", en: "Exact time range" },
   "today.planTimeOutsideWindow": { zh: "原安排超出当前生活日范围。请在 Daily Record 中明确编辑完整起止，界面不会截断后保存。", en: "This plan extends outside this lived day. Edit its complete endpoints in the Daily Record; clipped display times will not be saved." },
   "today.planTimeUnavailable": { zh: "这项旧安排无法安全定位。请重新读取，或在 Daily Record 中明确编辑时间。", en: "This legacy plan cannot be located safely. Reload or edit its time explicitly in the Daily Record." },
   "today.editPlanTime": { zh: "编辑计划时间", en: "Edit plan time" },
   "today.planStart": { zh: "开始", en: "Start" },
-  "today.planEnd": { zh: "结束（留空表示时点）", en: "End (leave empty for a time point)" },
+  "today.planEnd": { zh: "结束", en: "End" },
   "today.planNextDay": { zh: "次日", en: "Next day" },
   "today.planTimeHelp": { zh: "只修改当前安排。早间基准和已确认事实保持原值。", en: "Updates the current arrangement. The morning baseline and confirmed facts retain their values." },
   "today.planSave": { zh: "保存时间", en: "Save time" },
