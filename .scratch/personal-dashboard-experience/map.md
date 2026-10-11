@@ -250,4 +250,4 @@ Direct user report supersedes the earlier Collaboration visual-acceptance infere
 | ID | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- |
 | PDEX-FOLLOWUP-04 | [complete addendum](followup-spec-2026-10-11-collaboration-layout.md) / [index](issues/00-followup-spec-04.md) | ready-for-agent | in-progress | none | implementation, independent review, install and human acceptance separate |
-| PDEX-17 | [Collaboration layout recovery](issues/17-collaboration-layout-recovery.md) | ready-for-agent | in-progress | none | [synthetic production-WK red and diagnosis](evidence/pdex17-layout-red-2026-10-11.md); fix/review/native acceptance pending |
+| PDEX-17 | [Collaboration layout recovery](issues/17-collaboration-layout-recovery.md) | ready-for-agent | in-progress | none | [production-WK regression and isolated native candidate evidence](evidence/pdex17-layout-red-2026-10-11.md); source checks pass, independent review pending, normal-App source/protection provenance unverified |

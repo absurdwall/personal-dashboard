@@ -21,13 +21,13 @@ The earlier 9cafeca source review, installed read-only check and candidate scree
 
 ## Acceptance criteria
 
-- [ ] Collaboration has one clear destination heading, placed in the same normal content/scroll flow as its controls. The page title does not remain as an external band that competes with or clips the Collaboration controls during scrolling.
-- [ ] Session history, the conversation, the composer and Current work have legible, visible boundaries on a ready background. Restore comfortable padding and functional pane headings without recreating redundant nested decorative cards or duplicating page titles.
-- [ ] At logical sizes 795×720, 874×756, 1280×720 and reference 1280×756, both empty and selected-long-session states show a usable composer in the initial chat region. Long messages scroll inside the message list; scrolling them does not move the composer out of its chat panel. A retained synthetic failure status remains visible and readable.
-- [ ] Initial and scrolled states use synthetic background, context and session data in a macOS WKWebView loaded from the production page/CSS and initialized by `initializeCollaborationPanels()`. Regression output covers relevant rectangles, hit testing/clipping, scroll ownership/extents, composer reachability, and computed heading styles. Screenshots stay outside version control in a `.noindex` directory.
-- [ ] Calendar, Habits and Collaboration destination headings follow the same computed font family, size and line-height scale as Today/Tasks at each shared viewport. Calendar month rows, narrow summary expansion, and summary ordering stay unchanged.
-- [ ] The single Today daytime aside/count control is at the right side of the “Timeline + records” heading row. Zero count remains recoverable; aria/focus, expanded state, and sidebar geometry remain intact. The global brand/navigation toggle and Tasks layout stay unchanged.
-- [ ] Existing session selection, context, draft retention, composer, submission, stop, dictation, slash-command and resizer semantics remain unchanged. Existing production Collaboration interaction checks pass; no backend or personal-data writes are introduced.
+- [x] Collaboration has one clear destination heading, placed in the same normal content/scroll flow as its controls. The page title does not remain as an external band that competes with or clips the Collaboration controls during scrolling.
+- [x] Session history, the conversation, the composer and Current work have legible, visible boundaries on a ready background. Restore comfortable padding and functional pane headings without recreating redundant nested decorative cards or duplicating page titles.
+- [x] At logical sizes 795×720, 874×756, 1280×720 and reference 1280×756, both empty and selected-long-session states show a usable composer in the initial chat region. Long messages scroll inside the message list; scrolling them does not move the composer out of its chat panel. A retained synthetic failure status remains visible and readable.
+- [x] Initial and scrolled states use synthetic background, context and session data in a macOS WKWebView loaded from the production page/CSS and initialized by `initializeCollaborationPanels()`. Regression output covers relevant rectangles, clipping, scroll ownership/extents, composer reachability, and computed heading styles. Screenshots stay outside version control in a `.noindex` directory.
+- [x] Calendar, Habits and Collaboration destination headings follow the same computed font family, size and line-height scale as Today/Tasks at each shared viewport. Calendar month rows, narrow summary expansion, and summary ordering stay unchanged.
+- [x] The single Today daytime aside/count control is at the right side of the “Timeline + records” heading row. Zero count remains recoverable; aria/focus, expanded state, and sidebar geometry remain intact. The global brand/navigation toggle and Tasks layout stay unchanged.
+- [x] Existing session selection, context, draft retention, composer, submission, stop, dictation, slash-command and resizer semantics remain unchanged. Existing production Collaboration interaction checks pass; no backend or personal-data writes are introduced.
 - [ ] Candidate receives independent Standards and Spec review. Do not install until that review is satisfied and current protection backups are made. Direct human acceptance remains a separate state.
 
 ## Execution
@@ -36,5 +36,5 @@ The earlier 9cafeca source review, installed read-only check and candidate scree
 
 ## Verification
 
-Pending implementation, regression, independent review and isolated synthetic native Computer Use review.
+2026-10-11: source implementation, production WebKit geometry, focused panel/Today/Calendar checks, app build, strict candidate signature, and isolated synthetic native Computer Use passed. Full frontend run: 451/465 passed; the same 14 fixture failures as the prior baseline remain (missing harness globals such as `compactScheduleTransactions` and `todaySideRegion`, and Today raw-markup assumptions). See [follow-up regression evidence](../evidence/pdex17-layout-red-2026-10-11.md). Independent Standards/Spec review of the follow-up is pending; this ticket does not claim normal-App acceptance or direct human acceptance. A separate read-only observation found a modified, running normal installation; its source and protection provenance were not validated by this ticket.
 

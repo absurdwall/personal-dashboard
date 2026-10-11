@@ -9555,8 +9555,9 @@ button.habit-cell:focus-visible {
   }
 
   .collaboration-status-bar {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
   }
 
   .collaboration-layout {
@@ -10077,6 +10078,12 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
 .collaboration-layout[data-columns="two"] .collaboration-primary-layout,
 .collaboration-layout[data-narrow="true"] .collaboration-primary-layout {
   flex: 0 0 100%;
+}
+.collaboration-layout[data-narrow="true"] .collaboration-primary-layout {
+  flex: 0 0 auto;
+}
+.collaboration-primary-layout[data-narrow="true"] {
+  grid-template-rows: 24rem auto;
 }
 .collaboration-layout[data-columns="three"] {
   display: grid;

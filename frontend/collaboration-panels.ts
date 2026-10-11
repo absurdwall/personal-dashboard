@@ -128,7 +128,7 @@ export function initializeCollaborationPanels(): void {
       layout.style.display = "flex";
       layout.style.flexDirection = "column";
       layout.style.gridTemplateColumns = "";
-      primary.style.flex = "0 0 100%";
+      primary.style.flex = geometry.narrow ? "0 0 auto" : "0 0 100%";
       primary.style.gridColumn = "";
       primary.style.gridRow = "";
     }

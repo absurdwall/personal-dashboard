@@ -10,9 +10,9 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const sizes = [[795, 720], [874, 756], [1280, 720], [1280, 756]] as const;
 
-type Scenario = { width: number; height: number; selected: boolean; expandContext?: boolean; openComposerHelp?: boolean };
+type Scenario = { width: number; height: number; selected: boolean; expandContext?: boolean; expandHistory?: boolean; openComposerHelp?: boolean };
 
-function renderScenario({ width, height, selected, expandContext = false, openComposerHelp = false }: Scenario): any {
+function renderScenario({ width, height, selected, expandContext = false, expandHistory = false, openComposerHelp = false }: Scenario): any {
   const output = mkdtempSync(join(tmpdir(), "pdex17-collaboration-layout-"));
   try {
     const html = readFileSync(join(root, "frontend/index.html"), "utf8")
@@ -25,8 +25,8 @@ function renderScenario({ width, height, selected, expandContext = false, openCo
       document.querySelector('#collaboration-runtime-status').textContent='Synthetic connection failure';
       document.querySelector('#collaboration-runtime-status').dataset.state='error';
       document.querySelector('#collaboration-activity-date').value='2026-10-11';
-      document.querySelector('#collaboration-session-list').innerHTML='<li><button class="collaboration-session-button" aria-pressed="true"><strong>Synthetic long session</strong><small>Local fixture · retained failure status</small></button></li>';
-      document.querySelector('#collaboration-sessions-status').textContent='1 synthetic saved session';
+      document.querySelector('#collaboration-session-list').innerHTML=Array.from({length:${expandHistory ? 5 : 1}},(_,i)=>'<li><button class="collaboration-session-button" aria-pressed="'+(i===0)+'"><strong>Synthetic long session '+i+'</strong><small>Local fixture · retained failure status</small></button></li>').join('');
+      document.querySelector('#collaboration-sessions-status').textContent='${expandHistory ? 5 : 1} synthetic saved sessions';
       document.querySelector('#collaboration-chat-heading').textContent='Synthetic long session';
       runStatus.textContent='Previous response was retained after a synthetic transport failure.';
       runStatus.dataset.state='error';
@@ -59,6 +59,7 @@ function renderScenario({ width, height, selected, expandContext = false, openCo
       await new Promise(resolve=>setTimeout(resolve,80));
       const layout=document.querySelector('.collaboration-layout');
       if(${expandContext} && layout.dataset.columns==='two' && document.querySelector('#collaboration-toggle-context').getAttribute('aria-expanded')==='false') document.querySelector('#collaboration-toggle-context').click();
+      if(${expandHistory} && document.querySelector('#collaboration-toggle-history').getAttribute('aria-expanded')==='false') document.querySelector('#collaboration-toggle-history').click();
       const inputHelp=document.querySelector('.collaboration-composer .collaboration-help');
       if(${openComposerHelp}) inputHelp.open=true;
       await new Promise(resolve=>setTimeout(resolve,40));
@@ -72,6 +73,8 @@ function renderScenario({ width, height, selected, expandContext = false, openCo
       const chat=document.querySelector('.collaboration-chat-pane');
       const primary=document.querySelector('.collaboration-primary-layout');
       const currentWork=document.querySelector('#collaboration-work-panel');
+      const history=document.querySelector('#collaboration-history-panel');
+      const statusBar=document.querySelector('.collaboration-status-bar');
       const composer=document.querySelector('#collaboration-composer');
       const send=document.querySelector('#collaboration-send-message');
       const textarea=document.querySelector('#collaboration-message-draft');
@@ -83,6 +86,8 @@ function renderScenario({ width, height, selected, expandContext = false, openCo
         viewport:{width:innerWidth,height:innerHeight},mode:layout.dataset.columns,
         shell:rect(shell),regions:rect(regions),information:{...rect(information),clientHeight:information.clientHeight,scrollHeight:information.scrollHeight},
         destination:rect(destination),primary:rect(primary),chat:chatRect,
+        status:{...rect(statusBar),children:[...statusBar.children].map(rect)},
+        history:{...rect(history),hidden:history.hidden,scrollHeight:history.scrollHeight,clientHeight:history.clientHeight,overflowY:getComputedStyle(history).overflowY},
         messageList:{...messagesRect,clientHeight:messages.clientHeight,scrollHeight:messages.scrollHeight,overflowY:getComputedStyle(messages).overflowY},
         composer:composerRect,textarea:rect(textarea),send:rect(send),composerHelpOpen:inputHelp.open,currentWork:{...rect(currentWork),hidden:currentWork.hidden,scrollHeight:currentWork.scrollHeight,clientHeight:currentWork.clientHeight,overflowY:getComputedStyle(currentWork).overflowY},
         chatSurface:{background:getComputedStyle(chat).backgroundColor,borderStyle:getComputedStyle(chat).borderTopStyle,borderWidth:getComputedStyle(chat).borderTopWidth},
@@ -94,7 +99,8 @@ function renderScenario({ width, height, selected, expandContext = false, openCo
         currentWorkFollowsPrimary:layout.dataset.columns!=='two'||currentWork.hidden||rect(currentWork).top>=rect(primary).bottom,
         composerInChat:composerRect.top>=chatRect.top&&composerRect.bottom<=chatRect.bottom,
         composerInViewport:composerRect.top>=0&&composerRect.bottom<=innerHeight,
-        titleStyles:{today:style(document.querySelector('#today-page-heading')),tasks:style(document.querySelector('#tasks-heading')),calendar:style(document.querySelector('.calendar-header h2')),habits:style(document.querySelector('#habits-heading')),collaboration:style(title)}
+        titleStyles:{today:style(document.querySelector('#today-page-heading')),tasks:style(document.querySelector('#tasks-heading')),calendar:style(document.querySelector('.calendar-header h2')),habits:style(document.querySelector('#habits-heading')),collaboration:style(title)},
+        descriptionStyles:{today:style(document.querySelector('#workspace-description')),collaboration:style(document.querySelector('.collaboration-description'))}
       };
       const composerTop=composerRect.top;
       messages.scrollTop=messages.scrollHeight;
@@ -110,6 +116,12 @@ function renderScenario({ width, height, selected, expandContext = false, openCo
       } else if(layout.dataset.columns==='three'&&!currentWork.hidden){
         currentWork.scrollTop=currentWork.scrollHeight;
         result.currentWorkReachableByPaneScroll=currentWork.scrollTop>0;
+      } else if(layout.dataset.columns==='single'&&!history.hidden){
+        information.scrollTop=information.scrollHeight;
+        await new Promise(resolve=>setTimeout(resolve,30));
+        const historyRect=rect(history),infoRect=rect(information);
+        result.historyReachableByPageScroll=historyRect.bottom>infoRect.top&&historyRect.top<infoRect.bottom;
+        result.pageScrollTop=information.scrollTop;
       }
       result.composerTopAfterMessageScrollDifference=Math.abs(result.composerTopAfterMessageScroll-composerTop);
       return JSON.stringify(result);`;
@@ -134,6 +146,7 @@ function assertSharedHeadings(result: any) {
     assert.equal(title.fontSize, reference.fontSize, `${name} title size`);
     assert.equal(title.lineHeight, reference.lineHeight, `${name} title line height`);
   }
+  assert.deepEqual(result.descriptionStyles.collaboration, result.descriptionStyles.today, "Collaboration description scale");
 }
 
 for (const [width, height] of sizes) {
@@ -184,4 +197,23 @@ test("expanded input and saving details do not clip the retained composer contro
   assert.equal(result.composerInViewport, true, JSON.stringify(result));
   assert.ok(result.send.height > 0);
   assert.ok(result.send.top >= result.composer.top && result.send.bottom <= result.composer.bottom, JSON.stringify(result));
+});
+
+test("single-column Collaboration keeps the composer visible when five-session history is expanded at 640×756", { skip: process.platform !== "darwin" }, () => {
+  const result = renderScenario({ width: 640, height: 756, selected: true, expandHistory: true });
+  assert.deepEqual(result.viewport, { width: 640, height: 756 });
+  assert.equal(result.mode, "single");
+  assert.equal(result.history.hidden, false);
+  assert.ok(result.status.height < 60, JSON.stringify(result.status));
+  assert.ok(result.status.children.every((child:any)=>child.top>=result.status.top&&child.bottom<=result.status.bottom&&child.left>=result.status.left&&child.right<=result.status.right), JSON.stringify(result.status));
+  assert.equal(result.retainedStatusInChat, true, JSON.stringify(result));
+  assert.equal(result.composerInChat, true, JSON.stringify(result));
+  assert.equal(result.composerInViewport, true, JSON.stringify(result));
+  assert.ok(result.messageList.clientHeight >= 80, JSON.stringify(result.messageList));
+  assert.ok(result.messageList.scrollHeight > result.messageList.clientHeight);
+  assert.ok(result.messageScrollTop > 0);
+  assert.ok(result.composerTopAfterMessageScrollDifference < 1);
+  assert.ok(result.history.clientHeight >= 100, JSON.stringify(result.history));
+  assert.ok(result.history.top >= result.chat.bottom, JSON.stringify({ history: result.history, chat: result.chat }));
+  assert.equal(result.historyReachableByPageScroll, true, JSON.stringify(result));
 });
