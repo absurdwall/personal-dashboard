@@ -1203,11 +1203,14 @@ const calendarGrid = document.querySelector<HTMLElement>("#calendar-grid");
 const calendarSummary = document.querySelector<HTMLElement>("#calendar-summary");
 const calendarSummaryToggle = document.querySelector<HTMLButtonElement>("#calendar-summary-toggle");
 let calendarSummaryExpanded = true;
+let calendarSummaryReadingPosition: number | null = null;
 function updateCalendarSummaryPresentation(): void {
   if (!calendarSummary || !calendarSummaryToggle) return;
   if (!calendarSummaryExpanded && calendarSummary.contains(document.activeElement)) {
     calendarSummaryToggle.focus({preventScroll: true});
   }
+  const restoreReadingPosition = calendarSummaryExpanded && calendarSummary.hidden ? calendarSummaryReadingPosition : null;
+  if (!calendarSummaryExpanded && !calendarSummary.hidden) calendarSummaryReadingPosition = workspaceInformation?.scrollTop ?? null;
   calendarSummary.hidden = !calendarSummaryExpanded;
   calendarSummary.closest<HTMLElement>(".calendar-frame")?.setAttribute("data-summary-expanded", String(calendarSummaryExpanded));
   calendarSummaryToggle.setAttribute("aria-expanded", String(calendarSummaryExpanded));
@@ -1216,6 +1219,7 @@ function updateCalendarSummaryPresentation(): void {
   calendarSummaryToggle.dataset.i18nTitle = key;
   calendarSummaryToggle.setAttribute("aria-label", t(key));
   calendarSummaryToggle.title = t(key);
+  if (restoreReadingPosition !== null && workspaceInformation) workspaceInformation.scrollTop = restoreReadingPosition;
 }
 calendarSummaryToggle?.addEventListener("click", () => {
   calendarSummaryExpanded = !calendarSummaryExpanded;
@@ -1335,6 +1339,7 @@ const todayUnlocatedNarrow = () => window.innerWidth <= 1100;
 // docked in the same position. Manual intent lasts for this date/phase.
 let todayUnlocatedOverride: boolean | null = null;
 let todayUnlocatedCount = 0;
+let todaySidebarReadingPosition: number | null = null;
 function updateTodayUnlocatedPresentation(): void {
   if (!todaySideRegion || !todayUnlocatedTimeRegion || !todayUnlocatedTimeShortcut) return;
   const daytime = document.querySelector<HTMLElement>("#today-ready")?.dataset.phase === "daytime";
@@ -1342,6 +1347,8 @@ function updateTodayUnlocatedPresentation(): void {
   if (!shown && todaySideRegion.contains(document.activeElement)) {
     todayUnlocatedTimeShortcut.focus({preventScroll: true});
   }
+  const restoreReadingPosition = shown && todaySideRegion.hidden ? todaySidebarReadingPosition : null;
+  if (!shown && !todaySideRegion.hidden) todaySidebarReadingPosition = workspaceInformation?.scrollTop ?? null;
   todaySideRegion.hidden = !shown;
   todayUnlocatedTimeRegion.hidden = todayUnlocatedCount === 0;
   todayUnlocatedTimeShortcut.hidden = false;
@@ -1352,6 +1359,7 @@ function updateTodayUnlocatedPresentation(): void {
   const count = todayUnlocatedTimeShortcut.querySelector<HTMLElement>(".sidebar-toggle-count");
   if (count) count.textContent = String(todayUnlocatedCount);
   document.querySelector<HTMLElement>(".today-layout")?.setAttribute("data-unlocated-presentation", shown ? "inline" : "collapsed");
+  if (restoreReadingPosition !== null && workspaceInformation) workspaceInformation.scrollTop = restoreReadingPosition;
 }
 todayUnlocatedTimeShortcut?.addEventListener("click", () => {
   todayUnlocatedOverride = todayUnlocatedTimeShortcut.getAttribute("aria-expanded") !== "true";
@@ -6160,6 +6168,7 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
   if (todayAxisRenderedDate !== view.date) {
     todayAxisRenderedDate = view.date;
     todayUnlocatedOverride = null;
+    todaySidebarReadingPosition = null;
     const now = view.isToday && currentTime ? livedAxisMinute(currentTime) : null;
     todayAxisEarlyExpanded = earlyCount > 0 || (now !== null && now < 360);
     todayAxisLateExpanded = lateCount > 0 || (now !== null && now >= 1440);
@@ -6465,7 +6474,7 @@ function showTodayPhase(phase: TodayPhase, focus = false): void {
   if (todayEvidenceRegion) {
     todayEvidenceRegion.hidden = phase !== "morning";
   }
-  if (phaseChanged) todayUnlocatedOverride = null;
+  if (phaseChanged) {todayUnlocatedOverride = null;todaySidebarReadingPosition = null;}
   updateTodayUnlocatedPresentation();
   renderTodayEvidence();
   if (phaseChanged && workspaceInformation) {
@@ -11607,6 +11616,7 @@ function showWorkspaceDestination(
     (destinationChanged || selectedTodayDate !== dailyDate);
   if (leavingToday || changingTodaySelection) {
     todayUnlocatedOverride = null;
+    todaySidebarReadingPosition = null;
     historicalHabitArrival.clear();
     todayPresentationRequests.invalidate();
     todayClockRequests.invalidate();

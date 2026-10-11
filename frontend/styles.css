@@ -9974,7 +9974,7 @@ button.habit-cell:focus-visible {
     align-items: stretch; gap: 0; padding: 10px 8px;
     border-right: 1px solid var(--parity-border); border-bottom: 0;
   }
-  .app-shell[data-workspace-destination] .workspace-navigation { display: grid; width: auto; padding: 16px 0; }
+  .app-shell[data-workspace-destination] .workspace-navigation { display: grid; grid-template-columns: minmax(0, 1fr); width: auto; padding: 16px 0; }
   .app-shell[data-workspace-destination] .destination-button { padding: 8px; text-align: left; }
   .app-shell[data-workspace-destination] .workspace-navigation .destination-button > span:not(.destination-icon) {
     position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: normal;
