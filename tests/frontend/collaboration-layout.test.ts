@@ -10,9 +10,9 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../..", import.meta.url));
 const sizes = [[795, 720], [874, 756], [1280, 720], [1280, 756]] as const;
 
-type Scenario = { width: number; height: number; selected: boolean; expandContext?: boolean; expandHistory?: boolean; openComposerHelp?: boolean };
+type Scenario = { width: number; height: number; selected: boolean; expandContext?: boolean; expandHistory?: boolean; openComposerHelp?: boolean; resizeTextarea?: boolean; warningPressure?: boolean; language?: "en" | "zh" };
 
-function renderScenario({ width, height, selected, expandContext = false, expandHistory = false, openComposerHelp = false }: Scenario): any {
+function renderScenario({ width, height, selected, expandContext = false, expandHistory = false, openComposerHelp = false, resizeTextarea = false, warningPressure = false, language = "en" }: Scenario): any {
   const output = mkdtempSync(join(tmpdir(), "pdex17-collaboration-layout-"));
   try {
     const html = readFileSync(join(root, "frontend/index.html"), "utf8")
@@ -21,6 +21,8 @@ function renderScenario({ width, height, selected, expandContext = false, expand
     copyFileSync(join(root, "frontend/styles.css"), join(output, "styles.css"));
     const panels = stripTypeScriptTypes(readFileSync(join(root, "frontend/collaboration-panels.ts"), "utf8"), { mode: "transform" })
       .replace(/^export /gm, "");
+    const interfaceLanguage = stripTypeScriptTypes(readFileSync(join(root, "frontend/interface-language.ts"), "utf8"), { mode: "transform" })
+      .replace(/^export /gm, "");
     const fixtureSetup = selected ? `
       document.querySelector('#collaboration-runtime-status').textContent='Synthetic connection failure';
       document.querySelector('#collaboration-runtime-status').dataset.state='error';
@@ -28,11 +30,14 @@ function renderScenario({ width, height, selected, expandContext = false, expand
       document.querySelector('#collaboration-session-list').innerHTML=Array.from({length:${expandHistory ? 5 : 1}},(_,i)=>'<li><button class="collaboration-session-button" aria-pressed="'+(i===0)+'"><strong>Synthetic long session '+i+'</strong><small>Local fixture · retained failure status</small></button></li>').join('');
       document.querySelector('#collaboration-sessions-status').textContent='${expandHistory ? 5 : 1} synthetic saved sessions';
       document.querySelector('#collaboration-chat-heading').textContent='Synthetic long session';
+      document.querySelector('#collaboration-chat-date').textContent='Target date: 2026-10-11';
+      document.querySelector('#collaboration-composer-date').textContent='Target date: 2026-10-11';
       runStatus.textContent='Previous response was retained after a synthetic transport failure.';
       runStatus.dataset.state='error';
       messages.innerHTML=Array.from({length:34},(_,i)=>'<article class="collaboration-message"><p>Synthetic saved reply paragraph '+i+'. No account, Vault, or task text is present.</p><p>Additional synthetic detail remains readable and scrollable inside the message list.</p></article>').join('');
       document.querySelector('#collaboration-message-draft').disabled=false;
       document.querySelector('#collaboration-send-message').disabled=false;
+      document.querySelector('#collaboration-voice-start').disabled=false;
     ` : `
       document.querySelector('#collaboration-runtime-status').textContent='Synthetic connection ready';
       document.querySelector('#collaboration-runtime-status').dataset.state='ready';
@@ -41,12 +46,14 @@ function renderScenario({ width, height, selected, expandContext = false, expand
       document.querySelector('#collaboration-sessions-status').textContent='No synthetic sessions';
       messages.replaceChildren();
     `;
-    const script = `${panels}
+    const script = `${interfaceLanguage}
+      ${panels}
       const app=document.querySelector('.app-shell');
       app.dataset.workspaceDestination='collaboration';
       app.dataset.navigationExpanded='true';
       app.dataset.backgroundImageState='ready';
       app.style.setProperty('--background-image','linear-gradient(135deg,#e3cbb1,#729c91)');
+      applyInterfaceLanguage('${language}',document);
       document.querySelectorAll('[data-workspace-panel]').forEach(node=>node.hidden=node.dataset.workspacePanel!=='collaboration');
       document.querySelector('#workspace-title').textContent='Collaboration';
       document.querySelector('#workspace-description').textContent='Synthetic isolated layout regression';
@@ -55,6 +62,38 @@ function renderScenario({ width, height, selected, expandContext = false, expand
       const runStatus=document.querySelector('#collaboration-run-status');
       const messages=document.querySelector('#collaboration-message-list');
       ${fixtureSetup}
+      if(${warningPressure}) {
+        const copy=${JSON.stringify(language === "zh" ? {
+          account:"Codex 账户状态：已连接，但当前响应仍在核对中。连接运行时、账户会话与本地响应状态分别保留；请检查保存结果后再继续。",
+          owner:"待处理结果：上一次请求的最终状态尚未确认。检查运行历史前不会自动重放或重复提交；本地草稿仍保留。",
+          completed:"上一次会话已完成。",
+          heading:"合成已保存会话 · 长权限范围和恢复状态",
+          warnings:[
+            "当前会话使用较旧的 Task 工具能力。它不能完整报告之前运行时可用的权限边界；本条提示保留作为能力范围说明。",
+            "当前会话使用较旧的 Daily Record 工具能力。读取和写入结果必须依照现有审批和所选 Vault 规则核验。",
+            "当前会话使用较旧的 Habit 与记忆能力。未提供的能力不会由界面推断或替代；原有结果仍可查看。"
+          ]
+        } : {
+          account:"Codex account status: connected, while the previous response is still being checked. Runtime connection, account session, and local result status remain separate; inspect the saved result before continuing.",
+          owner:"Pending result: the previous request has not yet been confirmed. It will not be automatically replayed or submitted again while you review its history; the local draft remains available.",
+          completed:"The selected conversation is complete.",
+          heading:"Synthetic saved conversation with long scope and recovery notices",
+          warnings:[
+            "This session uses an older Task tool capability. It cannot fully report the permission boundary available to earlier runtime turns; this notice remains as a scope warning.",
+            "This session uses an older Daily Record tool capability. Read and write outcomes still require the existing approval and selected Vault checks.",
+            "This session uses older Habit and memory capabilities. The interface does not infer or substitute unavailable capabilities; prior results remain available for review."
+          ]
+        })};
+        document.querySelector('#collaboration-runtime-status').textContent=copy.account;
+        document.querySelector('#collaboration-work-owner').textContent=copy.owner;
+        document.querySelector('#collaboration-work-owner').dataset.state='recovery';
+        document.querySelector('#collaboration-task-tool-notice').replaceChildren(...copy.warnings.map(text=>{const span=document.createElement('span');span.textContent=text;return span;}));
+        document.querySelector('#collaboration-task-tool-notice').hidden=false;
+        document.querySelector('#collaboration-review-entry-notice').hidden=true;
+        runStatus.textContent=copy.completed;
+        runStatus.dataset.state='completed';
+        document.querySelector('#collaboration-chat-heading').textContent=copy.heading;
+      }
       initializeCollaborationPanels();
       await new Promise(resolve=>setTimeout(resolve,80));
       const layout=document.querySelector('.collaboration-layout');
@@ -62,8 +101,11 @@ function renderScenario({ width, height, selected, expandContext = false, expand
       if(${expandHistory} && document.querySelector('#collaboration-toggle-history').getAttribute('aria-expanded')==='false') document.querySelector('#collaboration-toggle-history').click();
       const inputHelp=document.querySelector('.collaboration-composer .collaboration-help');
       if(${openComposerHelp}) inputHelp.open=true;
+      if(${resizeTextarea}) document.querySelector('#collaboration-message-draft').style.height='86px';
       await new Promise(resolve=>setTimeout(resolve,40));
       const information=document.querySelector('.workspace-information');information.scrollTop=0;
+      let scrolledToChatForNarrowViewport=false;
+      if(${selected}&&${warningPressure}&&${width}<=640){const infoRect=information.getBoundingClientRect(),chatRect=document.querySelector('.collaboration-chat-pane').getBoundingClientRect();information.scrollTop=Math.max(0,chatRect.top-infoRect.top-24);scrolledToChatForNarrowViewport=true;}
       await new Promise(resolve=>setTimeout(resolve,40));
       const rect=node=>{const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height};};
       const style=node=>{const s=getComputedStyle(node);return {fontFamily:s.fontFamily,fontSize:s.fontSize,lineHeight:s.lineHeight};};
@@ -82,11 +124,17 @@ function renderScenario({ width, height, selected, expandContext = false, expand
       const activityDate=document.querySelector('#collaboration-activity-date');
       const title=document.querySelector('#collaboration-heading');
       const messagesRect=rect(messages),chatRect=rect(chat),composerRect=rect(composer);
+      const hitTarget=(node)=>{const r=node.getBoundingClientRect(),inBounds=r.top>=chatRect.top&&r.bottom<=chatRect.bottom&&r.left>=chatRect.left&&r.right<=chatRect.right&&r.top>=0&&r.bottom<=innerHeight;const hit=inBounds?document.elementFromPoint(r.left+r.width/2,r.top+r.height/2):null;return {rect:rect(node),inBounds,pointerHit:Boolean(hit&&node.contains(hit))};};
+      const helpSummary=composer.querySelector('.collaboration-help summary');
+      const hitTargets={textarea:hitTarget(textarea),microphone:hitTarget(document.querySelector('#collaboration-voice-start')),send:hitTarget(send),help:hitTarget(helpSummary)};
       const result={
         viewport:{width:innerWidth,height:innerHeight},mode:layout.dataset.columns,
-        shell:rect(shell),regions:rect(regions),information:{...rect(information),clientHeight:information.clientHeight,scrollHeight:information.scrollHeight},
-        destination:rect(destination),primary:rect(primary),chat:chatRect,
-        status:{...rect(statusBar),children:[...statusBar.children].map(rect)},
+        shell:rect(shell),regions:rect(regions),information:{...rect(information),clientHeight:information.clientHeight,scrollHeight:information.scrollHeight,scrollTop:information.scrollTop,scrolledToChatForNarrowViewport},
+        destination:rect(destination),primary:rect(primary),chat:{...chatRect,scrollHeight:chat.scrollHeight,clientHeight:chat.clientHeight,scrollTop:chat.scrollTop,overflowY:getComputedStyle(chat).overflowY},
+        warningPressure:${warningPressure},warningText:document.querySelector('#collaboration-task-tool-notice').textContent,accountStatusText:document.querySelector('#collaboration-work-owner').textContent,language:{document:document.documentElement.lang,messageLabel:document.querySelector('label[for="collaboration-message-draft"]').textContent,helpLabel:helpSummary.textContent,sendLabel:send.textContent},
+        runStatus:rect(runStatus),taskNotice:{scrollHeight:document.querySelector('#collaboration-task-tool-notice').scrollHeight,clientHeight:document.querySelector('#collaboration-task-tool-notice').clientHeight,tabIndex:document.querySelector('#collaboration-task-tool-notice').tabIndex},
+        hitTargets,
+        status:{...rect(statusBar),children:[...statusBar.children].map(node=>({...rect(node),overflowY:getComputedStyle(node).overflowY,tabIndex:node.tabIndex}))},
         history:{...rect(history),hidden:history.hidden,scrollHeight:history.scrollHeight,clientHeight:history.clientHeight,overflowY:getComputedStyle(history).overflowY},
         messageList:{...messagesRect,clientHeight:messages.clientHeight,scrollHeight:messages.scrollHeight,overflowY:getComputedStyle(messages).overflowY},
         composer:composerRect,textarea:rect(textarea),send:rect(send),composerHelpOpen:inputHelp.open,currentWork:{...rect(currentWork),hidden:currentWork.hidden,scrollHeight:currentWork.scrollHeight,clientHeight:currentWork.clientHeight,overflowY:getComputedStyle(currentWork).overflowY},
@@ -127,14 +175,19 @@ function renderScenario({ width, height, selected, expandContext = false, expand
       }
       result.composerTopAfterMessageScrollDifference=Math.abs(result.composerTopAfterMessageScroll-composerTop);
       if(${selected}) {
-        const interactionNodes=[textarea,send,document.querySelector('#collaboration-new-session'),document.querySelector('.collaboration-session-button')].filter(Boolean);
+        const interactionNodes=${warningPressure
+          ? "[textarea,document.querySelector('#collaboration-voice-start'),send,helpSummary,document.querySelector('#collaboration-new-session'),document.querySelector('.collaboration-session-button')]"
+          : "[textarea,send,document.querySelector('#collaboration-new-session'),document.querySelector('.collaboration-session-button')]"}.filter(Boolean);
         result.interactionTargets=[];
         for(const target of interactionNodes){
           let bounds=rect(target);
-          if(bounds.top<0||bounds.bottom>innerHeight||bounds.left<0||bounds.right>innerWidth){target.scrollIntoView({block:'center',inline:'nearest'});await new Promise(resolve=>setTimeout(resolve,24));bounds=rect(target);}
+          const inComposer=target===textarea||target===document.querySelector('#collaboration-voice-start')||target===send||target===helpSummary;
+          const chatBounds=rect(chat);
+          if((inComposer&&(bounds.top<chatBounds.top||bounds.bottom>chatBounds.bottom))||bounds.top<0||bounds.bottom>innerHeight||bounds.left<0||bounds.right>innerWidth){target.scrollIntoView({block:'nearest',inline:'nearest'});await new Promise(resolve=>setTimeout(resolve,24));bounds=rect(target);}
           const hit=document.elementFromPoint(bounds.left+bounds.width/2,bounds.top+bounds.height/2);
           target.focus({preventScroll:true});
-          result.interactionTargets.push({id:target.id||target.className,visible:bounds.top>=0&&bounds.bottom<=innerHeight&&bounds.left>=0&&bounds.right<=innerWidth,pointerHit:Boolean(hit&&target.contains(hit)),focused:document.activeElement===target,disabled:target.disabled===true});
+          const currentChat=rect(chat);
+          result.interactionTargets.push({id:target.id||target.className,visible:bounds.top>=0&&bounds.bottom<=innerHeight&&bounds.left>=0&&bounds.right<=innerWidth,withinChat:target===textarea||target===send||target===helpSummary||target===document.querySelector('#collaboration-voice-start')?bounds.top>=currentChat.top&&bounds.bottom<=currentChat.bottom:true,pointerHit:Boolean(hit&&target.contains(hit)),focused:document.activeElement===target,disabled:target.disabled===true});
         }
       }
       return JSON.stringify(result);`;
@@ -224,6 +277,60 @@ for (const [width, height] of sizes) {
     assertSharedHeadings(result);
   });
 }
+
+test("long retained notices keep the conversation and composer usable across Collaboration sizes", { skip: process.platform !== "darwin" }, () => {
+  const cases = [
+    { width: 960, height: 720, language: "en" as const },
+    { width: 830, height: 758, language: "zh" as const, openComposerHelp: true, resizeTextarea: true },
+    { width: 640, height: 720, language: "en" as const },
+    { width: 640, height: 520, language: "zh" as const, openComposerHelp: true, resizeTextarea: true },
+  ];
+  for (const scenario of cases) {
+    const result = renderScenario({ ...scenario, selected: true, expandHistory: true, expandContext: true, warningPressure: true });
+    const label = `${scenario.width}×${scenario.height} ${scenario.language}`;
+    assert.equal(result.warningPressure, true, label);
+    const allWarnings = scenario.language === "zh"
+      ? ["较旧的 Task", "较旧的 Daily Record", "较旧的 Habit"]
+      : ["older Task tool capability", "older Daily Record tool capability", "older Habit and memory capabilities"];
+    for (const warning of allWarnings) assert.ok(result.warningText.includes(warning), `${label}: ${warning}`);
+    assert.ok(result.accountStatusText.includes(scenario.language === "zh" ? "待处理结果" : "Pending result"), label);
+    assert.equal(result.history.hidden, false, label);
+    assert.equal(result.currentWork.hidden, false, label);
+    assert.ok(result.messageList.clientHeight >= (scenario.openComposerHelp || scenario.resizeTextarea ? 48 : 80), `${label}: ${JSON.stringify({messageList:result.messageList,chat:result.chat,composer:result.composer})}`);
+    assert.equal(result.messageList.scrollHeight > result.messageList.clientHeight, true, label);
+    if (!scenario.openComposerHelp && !scenario.resizeTextarea) {
+      assert.equal(result.composerInChat, true, `${label}: ${JSON.stringify({chat:result.chat,composer:result.composer})}`);
+      assert.equal(result.composerInViewport, true, `${label}: ${JSON.stringify({chat:result.chat,composer:result.composer})}`);
+    } else {
+      assert.equal(result.chat.overflowY, "auto", `${label}: expanded input content has an inner scroll route`);
+      assert.ok(result.chat.scrollHeight > result.chat.clientHeight, `${label}: expanded input content can scroll inside the pane`);
+    }
+    assert.ok(result.taskNotice.scrollHeight > result.taskNotice.clientHeight, `${label}: the complete capability notice remains scrollable`);
+    assert.equal(result.taskNotice.tabIndex, 0, `${label}: the capability notice is keyboard reachable`);
+    assert.equal(result.status.children[0].overflowY, "auto", `${label}: runtime status remains scrollable when needed`);
+    assert.equal(result.status.children[1].overflowY, "auto", `${label}: pending-result status remains scrollable when needed`);
+    assert.deepEqual(result.status.children.slice(0, 2).map((node:any)=>node.tabIndex), [0, 0], `${label}: status scrollers are keyboard reachable`);
+    assert.equal(result.language.document, scenario.language === "zh" ? "zh-CN" : "en", label);
+    const localizedLabels = scenario.language === "zh"
+      ? ["消息", "输入与保存说明", "发送"]
+      : ["Message", "Input and saving details", "Send"];
+    assert.deepEqual([result.language.messageLabel,result.language.helpLabel,result.language.sendLabel], localizedLabels, `${label}: production form labels are translated`);
+    if (scenario.width >= 800 && !scenario.openComposerHelp && !scenario.resizeTextarea) {
+      for (const [name, target] of Object.entries(result.hitTargets) as [string, any][]) {
+        assert.equal(target.inBounds, true, `${label} initial ${name}: ${JSON.stringify({target,chat:result.chat})}`);
+        assert.equal(target.pointerHit, true, `${label} initial ${name}`);
+      }
+    }
+    assert.equal(result.interactionTargets.length, 6, `${label}: includes the complete composer action set`);
+    for (const target of result.interactionTargets) {
+      assert.equal(target.visible, true, `${label}: ${JSON.stringify(target)}`);
+      assert.equal(target.withinChat, true, `${label}: ${JSON.stringify(target)}`);
+      assert.equal(target.pointerHit, true, `${label}: ${JSON.stringify(target)}`);
+      assert.equal(target.focused, true, `${label}: ${JSON.stringify(target)}`);
+      assert.equal(target.disabled, false, `${label}: ${JSON.stringify(target)}`);
+    }
+  }
+});
 
 test("expanded input and saving details do not clip the retained composer controls at 795×720", { skip: process.platform !== "darwin" }, () => {
   const result = renderScenario({ width: 795, height: 720, selected: true, expandContext: true, openComposerHelp: true });

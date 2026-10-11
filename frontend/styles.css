@@ -10170,6 +10170,48 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
 .collaboration-composer { gap: 0.25rem; padding-top: 0.45rem; }
 .collaboration-composer > .collaboration-help[open] { max-height: 4.5rem; overflow: auto; }
 
+/* Keep long session capability and account notices readable without consuming
+   the message viewport. Each bounded status remains keyboard-scrollable. */
+.collaboration-status-bar > p {
+  max-height: 2.15rem;
+  min-width: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+#collaboration-task-tool-notice {
+  height: 2.5rem;
+  max-height: 2.5rem;
+  flex: 0 0 2.5rem;
+  box-sizing: border-box;
+  margin-block: 0.25rem;
+  padding: 0.2rem 0.65rem;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.collaboration-run-status { margin-block: 0.25rem; }
+.collaboration-composer-date:empty,
+.collaboration-voice-preview:empty { display: none; }
+.collaboration-composer { flex: 0 0 auto; }
+.collaboration-composer textarea {
+  max-height: max(3.5rem, min(13rem, 12vh));
+}
+.collaboration-composer > .collaboration-help[open] {
+  max-height: 3.5rem;
+  overflow: auto;
+}
+.collaboration-message-list { min-height: 5rem; }
+.collaboration-primary-layout:has(#collaboration-task-tool-notice:not([hidden])) {
+  min-height: 25rem;
+  grid-template-rows: minmax(25rem, 1fr);
+}
+.collaboration-primary-layout:has(#collaboration-task-tool-notice:not([hidden])) > .collaboration-chat-pane { min-height: 25rem; }
+.collaboration-primary-layout[data-narrow="true"]:has(#collaboration-task-tool-notice:not([hidden])) {
+  grid-template-rows: 25rem auto;
+}
+.collaboration-chat-pane { overflow-x: hidden; overflow-y: auto; }
+
 @media (max-height: 740px) {
   .collaboration-chat-pane { padding: 0.4rem; }
   .collaboration-status-bar { margin-bottom: 0.1rem; }
