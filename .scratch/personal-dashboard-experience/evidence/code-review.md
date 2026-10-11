@@ -113,3 +113,10 @@ Review chat: `01a128ff-8865-7493-9698-cc48c19d7939`. Pinned range: `8960c80bc81a
 ### Repair assignment
 
 Both findings are assigned to the single PDEX-11 implementer on `codex/pdex-review-repairs`; root records integration and notifies the review chat after verification. No additional native acceptance, installation, remote publication or parent closure is inferred. PDEX-09/PDEX-11 remain blocked as previously documented.
+
+
+### Repair verification submitted for independent follow-up
+
+No-ff integration `51f728782db3b1e376e8d540ce368a98a8e8a5f6` retains worker tip `3660baa209c0e4f621c3101ddd28f67024910457`. Product source matches `4a0c272dea10f01e2ef99b16c25e1b341837d02b`. Manual updates record/compare original normalized fields and exact omitted/null/object end patch before current-state resolution, while legacy payload-free history retains compatibility. Genuine retries preserve later cleared ends and changed starts; retained daily-flow IDs cannot collide with manual updates. The selector binding is rechecked before retry readback. Dated Evening buttons and pending/ready/preserved/error paths use the shared retained copy/error metadata; actual production language switches preserve the target, user draft and diagnostic path.
+
+Build, 432 frontend, 23 browser and 523 Rust checks passed; six existing native ignores remain. The initial OS66 fixture-cleanup failure, exact rerun and bounded worker-teardown fix are preserved in [repair evidence](review-repairs-2026-10-11.md), with [log digests](review-repairs-2026-10-11-logs.json). Fixes and regressions are complete; the independent review chat’s final verdict is pending. PDEX-09/PDEX-11 native acceptance is unchanged.

@@ -61,3 +61,7 @@ stories 28, 31–37, 63–67.
 
 - 2026-10-10: Real native Task editing adjusted the end then explicitly cleared it to null; final reopen retains the point and same ID. Existing overnight Task retains 23:30–next-day 00:45 and completed state across pages/restart. All omitted/null/object adapter and legacy entry checks pass, including the repaired retry collision regression.
 - Final integrated checks: build, 431 frontend, 23 browser and 519 Rust passed (six pre-existing native ignores); independent Standards and Spec reviews have no unresolved findings. [Final packaged observations and limits](../evidence/pdex-11.md) supplement this ticket’s retained original evidence. Status resolved/lifecycle closed applies to this component only; PDEX-09/PDEX-11 and parent PDEX-SPEC-01 remain open. Earlier pending statements above record historical checkpoints.
+
+## Independent review repair — 2026-10-11
+
+Manual Task update now retains original normalized fields and the omitted/null/object end patch, rejects conflicting change-ID reuse, and returns current saved state on a genuine retry after later end/start edits. Legacy history and selected-Vault protections remain compatible. Retained commits and red/green/full verification are in [repair evidence](../evidence/review-repairs-2026-10-11.md). Component resolution is retained; independent fix review is pending, and no new packaged/OS acceptance is inferred. PDEX-09/PDEX-11 remain blocked and parent remains open.

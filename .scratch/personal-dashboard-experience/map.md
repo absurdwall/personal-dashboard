@@ -115,3 +115,8 @@ avoid duplicate open queues, and do not migrate automatically.
 - PDEX-01–08 and PDEX-10 are locally resolved with their own answers and component evidence. PDEX-09 and PDEX-11 remain blocked by documented native acceptance limits. PDEX-SPEC-01 remains open; this does not claim full user acceptance.
 - Final build, 431 frontend, 23 browser and 519 Rust tests passed; both independent reviews are clear. [Packaged checks and precise limits](evidence/pdex-11.md), [review history](evidence/code-review.md), [worker cleanup](evidence/worktree-closeout.md).
 - No main merge, remote operation, installation or real personal-data mutation. All remaining acceptance uses the retained isolated `.noindex` candidate and synthetic fixture.
+
+
+## Independent review repair checkpoint — 2026-10-11
+
+Manual Task original-payload retry and Evening date/status/error localization findings are repaired with retained commits, integrated via `51f7287`. [Repair evidence](evidence/review-repairs-2026-10-11.md) records 432 frontend, 23 browser and 523 Rust passing checks, the diagnosed fixture-only cleanup race and exact source/log identities. Independent fix review is pending. The preceding 2026-10-10 candidate checkpoint remains historical; PDEX-09/PDEX-11 acceptance blockers and the open parent are unchanged. No new package, installation, remote publication or real personal-data change occurred.

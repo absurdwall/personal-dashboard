@@ -46,3 +46,7 @@ stories 59–62.
 
 - 2026-10-10: Final native current/past entry retained the correct date and authority pointer, reused the current session, preserved an existing draft, and persisted the past-date draft through same-binary restart. Both sessions have zero messages/work and both Daily Record review states remained unchanged. All public persistence and rendered entry checks remain green.
 - Final integrated checks: build, 431 frontend, 23 browser and 519 Rust passed (six pre-existing native ignores); independent Standards and Spec reviews have no unresolved findings. [Final packaged observations and limits](../evidence/pdex-11.md) supplement this ticket’s retained original evidence. Status resolved/lifecycle closed applies to this component only; PDEX-09/PDEX-11 and parent PDEX-SPEC-01 remain open. Earlier pending statements above record historical checkpoints.
+
+## Independent review repair — 2026-10-11
+
+Past-date review label and pending/ready/preserved/error copy now use retained shared localization metadata. Actual production language-switch regression keeps the correct dated target and preserves user draft/diagnostic text. Retained commits and red/green/full verification are in [repair evidence](../evidence/review-repairs-2026-10-11.md). Component resolution is retained; independent fix review is pending, and no new packaged/OS acceptance is inferred. PDEX-09/PDEX-11 remain blocked and parent remains open.

@@ -77,3 +77,7 @@ Final saved-state SHA-256 values:
 - The candidate-only synthetic transport inspects config/account/model state and rejects submissions. It uses no real authentication or model. Deterministic edits succeeded without model execution; actual authenticated quota-exhaustion acceptance is unverified.
 
 PDEX-11 therefore remains blocked with these explicit follow-up gates. Feature implementation and the separate Standards/Spec reviews are complete; parent specification remains open. No installation, main merge, push, GitHub ticket mutation or user acceptance is claimed. Raw captures are retained outside Git because global UI can contain unrelated personal content. The isolated candidate/data remain in `.noindex` directories; use `/tmp/pdex-final-launch.py` only, not an ordinary default-profile app launch.
+
+## Later source repair boundary — 2026-10-11
+
+[Independent review repairs](review-repairs-2026-10-11.md) add manual Task original-payload retry identity and Evening language-switch metadata after the frozen native candidate above. Current verified source is `4a0c272dea10f01e2ef99b16c25e1b341837d02b`, integrated via `51f7287`; its automatic checks passed. The previous package remains historical and has not been rebuilt for these fixes. All native limitations above remain blocked; do not label the older binary as current or infer new packaged acceptance.

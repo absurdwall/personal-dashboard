@@ -58,3 +58,7 @@ Exact requested base `8960c80bc81ae35a7dcd871dd104f4b3d04497de` is retained as a
 Nine component tickets are resolved; PDEX-09/PDEX-11 have explicit native acceptance blockers. Parent PDEX-SPEC-01 stays open. Full automated checks and independent reviews passed; [candidate evidence](evidence/pdex-11.md) retains actual native results, source hashes and missing gates. Worker cleanup does not remove the isolated candidate or synthetic fixture. Reopen only with `/tmp/pdex-final-launch.py`, whose clean-tree/product-source checks and private environment avoid default-profile access. Do not install or launch it through Finder.
 
 No push, GitHub operation, protected-main merge or installation occurred. Future tracker migration or remote integration still requires the existing handoff workflow above.
+
+## Review repair handoff — 2026-10-11
+
+No-ff merge `51f728782db3b1e376e8d540ce368a98a8e8a5f6` retains all four bounded repair/test commits and worker evidence tip `3660baa`. Product source `4a0c272` passed build, 432 frontend, 23 browser and 523 native checks (six existing ignores); independent fix review is pending. The earlier `256ecd0` package is historical and does not contain these fixes; the safe launcher rejects this source difference. PDEX-09/PDEX-11 blockers and parent state remain unchanged. No remote/main/install operation occurred.
