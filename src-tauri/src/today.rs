@@ -1304,7 +1304,7 @@ fn calendar_task_summaries(view: &TasksView, date: &str) -> (Vec<CalendarTaskSum
         .filter(|task| task.date.as_deref() == Some(date) && task.deleted_at.is_none())
     {
         total += 1;
-        if summaries.len() < 2 {
+        if summaries.len() < 4 {
             summaries.push(CalendarTaskSummaryView {
                 id: task.id.clone(),
                 name: task.name.clone(),
@@ -1312,7 +1312,7 @@ fn calendar_task_summaries(view: &TasksView, date: &str) -> (Vec<CalendarTaskSum
             });
         }
     }
-    (summaries, total.saturating_sub(2))
+    (summaries, total.saturating_sub(4))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -3453,8 +3453,12 @@ where
                 "请选择 Vault，以读取 Tasks。".to_string(),
             ),
         };
-        let mut days = Vec::with_capacity(42);
-        for offset in 0..42 {
+        let last_day = (28..=31).rev().find_map(|day| CalendarDate::new(year, month, day))
+            .expect("a validated month has at least 28 days");
+        let week_count = ((first_day.weekday_from_sunday() + i64::from(last_day.day) + 6) / 7).max(5);
+        let day_count = week_count * 7;
+        let mut days = Vec::with_capacity(day_count as usize);
+        for offset in 0..day_count {
             let date = CalendarDate::from_unix_days(start + offset);
             let date_label = date.to_string();
             let availability = match vault.as_deref() {

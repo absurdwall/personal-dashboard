@@ -9803,6 +9803,74 @@ button.habit-cell:focus-visible {
 #today-phase-morning .today-timeline-item { display: block; }
 #today-phase-morning .today-period { display: block; margin-bottom: 0.35rem; }
 
+/* The month uses the same compact row height for every date in that month. */
+#workspace-destination-calendar.calendar-destination {
+  padding: 4px 16px 24px;
+}
+.calendar-destination .calendar-header {
+  align-items: center;
+  padding-bottom: 4px;
+  border-bottom: 0;
+}
+.calendar-destination .calendar-header h2 { font-size: 20px; }
+.calendar-destination .calendar-header > div:first-child > p:last-child { display: none; }
+.calendar-destination > .today-status { margin: 2px 0 5px; }
+.calendar-destination .calendar-frame {
+  grid-template-columns: minmax(0, 1fr) 230px;
+  gap: 16px;
+}
+.calendar-destination .calendar-month-heading { padding-bottom: 5px; gap: 8px; }
+.calendar-destination .calendar-month-heading h3 { font-size: 16px; }
+.calendar-destination .calendar-weekdays { padding: 6px 0 5px; }
+.calendar-destination .calendar-grid {
+  grid-auto-rows: clamp(80px, calc((100vh - 270px) / var(--calendar-week-count, 6)), 106px);
+}
+.app-shell[data-workspace-destination="calendar"] .calendar-day {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  justify-content: flex-start;
+  padding: 5px;
+}
+.calendar-destination .calendar-day-top {
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  height: 16px;
+  margin-bottom: 2px;
+}
+.calendar-destination .calendar-day-top strong { font-size: 11px; line-height: 16px; }
+.calendar-destination .calendar-day-top small { margin-left: auto; font-size: 8px; }
+.calendar-destination .calendar-day-marker {
+  width: 13px;
+  height: 13px;
+  min-height: 13px;
+  flex: 0 0 13px;
+  align-self: center;
+  font-size: 8px;
+  line-height: 13px;
+  margin: 0;
+}
+.calendar-destination .calendar-day-marker:empty { display: none; }
+.calendar-destination .calendar-day-task-summaries {
+  flex-shrink: 0;
+  gap: 1px;
+  margin-top: 0;
+}
+.calendar-destination .calendar-day-task-summary { height: 12px; font-size: 10px; line-height: 12px; }
+.calendar-destination .calendar-day-task-overflow {
+  margin: 0 0 0 auto;
+  min-height: 0;
+  font-size: 9px;
+  line-height: 16px;
+}
+@media (max-width: 1000px) {
+  .calendar-destination .calendar-frame { grid-template-columns: minmax(0, 1fr); }
+  .calendar-destination .calendar-summary { order: 0; }
+  .calendar-destination .calendar-header { flex-direction: row; flex-wrap: wrap; gap: 8px; }
+  .calendar-destination .calendar-toolbar { width: auto; }
+}
 
 #today-axis-edit-status[data-state="error"] { color: var(--parity-danger, #a7443a); }
 
