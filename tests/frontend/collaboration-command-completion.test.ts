@@ -12,6 +12,7 @@ function webKit(script: string): any {
     const html = readFileSync(new URL("../../frontend/index.html", import.meta.url), "utf8")
       .replace(/<script[^>]*src="main.js"[^>]*><\/script>/, "");
     writeFileSync(join(directory, "index.html"), html);
+    writeFileSync(join(directory, "styles.css"), readFileSync(new URL("../../frontend/styles.css", import.meta.url), "utf8"));
     const controller = stripTypeScriptTypes(readFileSync(new URL("../../frontend/collaboration-command-completion.ts", import.meta.url), "utf8")).replace(/export /g, "");
     writeFileSync(join(directory, "check.js"), `${controller}\n(() => {
       const input = document.querySelector('#collaboration-message-draft');
@@ -20,8 +21,10 @@ function webKit(script: string): any {
       const menu = document.querySelector('#collaboration-command-menu') ?? document.createElement('div'); menu.id = 'collaboration-command-menu'; menu.hidden = true;
       if (!menu.isConnected) input.after(menu);
       let submitted = 0, edited = [];
+      const composer = document.querySelector('#collaboration-composer');
+      composer.addEventListener('submit', event => { event.preventDefault(); submitted++; });
       input.addEventListener('input', () => edited.push(input.value));
-      initializeCollaborationCommandCompletion(input, menu, () => 'Personal retro', () => submitted++);
+      initializeCollaborationCommandCompletion(input, menu, () => 'Personal retro', () => composer.requestSubmit());
       const type = text => { input.value = text; input.focus(); input.setSelectionRange(text.length, text.length); input.dispatchEvent(new Event('input', { bubbles: true })); };
       const key = (key, options = {}) => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options }));
       ${script}
