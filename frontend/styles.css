@@ -9928,7 +9928,7 @@ button.habit-cell:focus-visible {
 .tasks-selected-detail .task-editor-details h3 { margin: 0 0 10px; overflow-wrap: anywhere; }
 .tasks-selected-detail .task-editor-close { margin: 16px 0 0 auto; }
 .tasks-content > #tasks-list { align-content: start; grid-auto-rows: max-content; gap: 0.15rem; }
-.task-row[data-task-surface="tasks"] { padding: 3px 4px; }
+.task-row[data-task-surface="tasks"] { padding: 4px 4px; }
 .task-row[data-task-surface="tasks"].is-selected { background: var(--parity-accent-soft); border-radius: 6px; }
 .task-row[data-task-surface="tasks"] .task-row-summary { grid-template-columns: 15px minmax(0,1fr) auto; align-items: center; gap: 9px; cursor: pointer; }
 .task-row[data-task-surface="tasks"] .task-completion-toggle { position: relative; width: 15px; height: 15px; min-height: 15px !important; padding: 0 !important; border: 0; border-radius: 0; background: transparent; }
@@ -10352,6 +10352,21 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   left: 0.35rem;
   z-index: 8;
   box-shadow: 0 4px 12px rgb(20 28 23 / 12%);
+  font-family: inherit;
+  font-size: 0.7rem;
+  line-height: 1.55;
+}
+#collaboration-command-menu button {
+  min-height: 0;
+  padding: 0.15rem 0.35rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 400;
+  line-height: inherit;
 }
 
 #collaboration-open-settings {
