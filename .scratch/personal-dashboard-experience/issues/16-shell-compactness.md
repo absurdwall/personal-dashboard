@@ -14,12 +14,12 @@ Working branch: codex/dashboard-experience-integration
 
 ## Acceptance criteria
 
-- [ ] Tasks and Today schedule buttons show a localized date summary at useful width, including Today/current default date or the selected date and optional time, while preserving accessible naming, one-line layout and existing picker/create/recovery behavior.
-- [ ] Today daytime aside toggle/count sits beside the Timeline + records heading near the top; existing docked geometry, count, zero-count access, aria/focus and no-write behavior remain intact.
-- [ ] Global toolbar places the P brand/name at the far left and sidebar toggle after a divider; all destinations remain reachable without overflow at 640px.
-- [ ] Collaboration displays one destination heading, keeps meaningful session/chat/context headings, shortens pane/card chrome and gives the session list and main conversation comfortable width; long help stays on demand.
-- [ ] Public production DOM/WebKit layout and native Computer Use smoke verify labels, geometry, focus, sidebar, toolbar destinations, and preserved Collaboration session/composer interaction using only synthetic data.
-- [ ] Build and focused checks pass; fixed-source evidence is sent for independent review. Review, normal installation and direct human acceptance are tracked separately.
+- [x] Tasks and Today schedule buttons show a localized date summary at useful width, including Today/current default date or the selected date and optional time, while preserving accessible naming, one-line layout and existing picker/create/recovery behavior. Final-candidate native Computer Use entered and committed all time segments, then verified `Today · 15:30` and a date/time accessible name after Apply.
+- [x] Today daytime aside toggle/count sits beside the Timeline + records heading near the top; existing docked geometry, count, zero-count access, aria/focus and no-write behavior remain intact.
+- [x] Global toolbar places the P brand/name at the far left and sidebar toggle after a divider; all destinations remain reachable without overflow at 640px.
+- [x] Collaboration displays one destination heading, keeps meaningful session/chat/context headings, shortens pane/card chrome and gives the session list and main conversation comfortable width; long help stays on demand.
+- [ ] Public production DOM/WebKit layout and native Computer Use smoke verify labels, geometry, focus, sidebar, toolbar destinations, and preserved Collaboration session/composer interaction using only synthetic data. Candidate layout, headings, help, and pane frames passed native Computer Use; normal-installed-app read-only verification and a bounded composer interaction check remain pending.
+- [x] Build and focused checks pass; fixed-source evidence is sent for independent review. Review, normal installation and direct human acceptance are tracked separately.
 
 ## Execution
 
@@ -27,4 +27,6 @@ Working branch: codex/dashboard-experience-integration
 
 ## Verification
 
-Pending implementation and fixed-head review package. Reuse approved production-DOM and WebKit seams; native interaction uses Computer Use virtual mouse and a synthetic profile.
+2026-10-11: source commit 9cafeca passed independent Standards 0 / Spec 0 review. `npm run build` passed; docked-sidebars 18/18 and focused Collaboration suites 69/69 passed. The isolated candidate built from this source exited 0, passed strict ad-hoc signature verification, and launched as the unique shell202610119cafeca bundle. Computer Use virtual-mouse screenshots verified the leftmost P identity/divider/sidebar-toggle order, the Today sidebar control beside Timeline + records, and the single visible Collaboration page heading with collapsed help on the earlier same-source candidate. The final rebuilt candidate showed the same toolbar/Today heading and a one-row Tasks form with Today visibly labeled. A complete native segmented time entry on the exact final candidate showed the selected date/time in the button's accessible name before Apply and `Today · 15:30` plus the date/time name after Apply. The earlier date-only observation is retained as an incomplete native-field commit; see the candidate receipt for both observations. No task was submitted. See [candidate receipt](../evidence/followup-candidate-2026-10-11.json).
+
+The date/time label behavior is verified on the exact candidate after complete native segmented entry. The normal checked-in-config bundle was independently released and installed at `/Applications/Personal Dashboard.app` from source `9cafeca`; its binary matches the released package and passes strict signature verification. The old App, app profile, and 48 `life/` Markdown/JSON authority files plus `.obsidian/` have protected readback copies; see the private install-protection manifest. Normal-installed-app read-only verification, the bounded composer check, and direct human acceptance remain pending. PDEX-16 stays in-progress.
