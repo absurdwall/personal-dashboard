@@ -59,17 +59,17 @@ export function attachTodayAxisGestures<Context>(options: Readonly<{
   const cleanup=()=>{if(frame)cancelAnimationFrame(frame);frame=0;preview?.remove();preview=null;plot.classList.remove('is-pointer-editing');};
   const down=(event:PointerEvent)=>{
     if(event.button!==0||!event.isPrimary||gesture||!(event.target instanceof Element))return;
-    if(event.target.closest('button,input,select,textarea,[data-axis-gesture-ignore]'))return;
+    if(event.target.closest('[data-axis-gesture-ignore],input,select,textarea')||
+      (event.target.closest('button')&&!event.target.closest('[data-axis-resize]')))return;
     const context=options.begin();if(context===null)return;
     const target=options.resolveTarget(event.target,context);if(target===false)return;
     const bounds=options.bounds();const minute=position(event.clientY,bounds);
     gesture={id:event.pointerId,context,target,originY:event.clientY,lastY:event.clientY,originMinute:minute,bounds,moved:false,start:minute,end:null};
-    plot.setPointerCapture(event.pointerId);
   };
   const move=(event:PointerEvent)=>{if(!gesture||gesture.id!==event.pointerId)return;
     gesture.lastY=event.clientY;
     if(!gesture.moved&&Math.abs(event.clientY-gesture.originY)>=5) {
-      gesture.moved=true;plot.classList.add('is-pointer-editing');frame=requestAnimationFrame(scroll);
+      gesture.moved=true;plot.setPointerCapture(event.pointerId);plot.classList.add('is-pointer-editing');frame=requestAnimationFrame(scroll);
     }
     if(gesture.moved){event.preventDefault();update();}
   };
@@ -77,7 +77,7 @@ export function attachTodayAxisGestures<Context>(options: Readonly<{
     current.lastY=event.clientY;update();gesture=null;cleanup();
     if(plot.hasPointerCapture(event.pointerId))plot.releasePointerCapture(event.pointerId);
     if(!current.moved)return;
-    suppressedClick=true;
+    suppressedClick=true;setTimeout(()=>{suppressedClick=false;},0);
     // Commit against the captured source. Bounds violations remain visible failures.
     if(current.start<240||current.start>=1680||(current.end!==null&&(current.end<=current.start||current.end>1680))) {options.onInvalid();return;}
     if(current.target&&current.start===current.target.startMinute&&current.end===current.target.endMinute)return;
@@ -86,10 +86,10 @@ export function attachTodayAxisGestures<Context>(options: Readonly<{
   const cancel=()=>{gesture=null;cleanup();};
   const click=(event:MouseEvent)=>{if(!suppressedClick)return;suppressedClick=false;event.preventDefault();event.stopImmediatePropagation();};
   const key=(event:KeyboardEvent)=>{if(event.key==='Escape'&&gesture){event.preventDefault();cancel();}};
-  plot.addEventListener('pointerdown',down);plot.addEventListener('pointermove',move);plot.addEventListener('pointerup',up);
+  plot.addEventListener('pointerdown',down);document.addEventListener('pointermove',move);document.addEventListener('pointerup',up);
   plot.addEventListener('pointercancel',cancel);plot.addEventListener('lostpointercapture',cancel);
   plot.addEventListener('click',click,true);document.addEventListener('keydown',key);
-  return()=>{cancel();plot.removeEventListener('pointerdown',down);plot.removeEventListener('pointermove',move);plot.removeEventListener('pointerup',up);
+  return()=>{cancel();plot.removeEventListener('pointerdown',down);document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);
     plot.removeEventListener('pointercancel',cancel);plot.removeEventListener('lostpointercapture',cancel);plot.removeEventListener('click',click,true);document.removeEventListener('keydown',key);};
 }
 

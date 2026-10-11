@@ -964,3 +964,44 @@ fn legacy_task_time_modes_never_gain_a_fabricated_execution_end() {
     assert!(app.create(orphan).is_err());
     assert_eq!(app.read().unwrap().tasks.len(), 3);
 }
+
+#[test]
+fn timeline_task_payloads_keep_natural_calendar_dates_and_never_change_the_daily_record() {
+    let vault = TempVault::new("timeline-create-move");
+    let app = task_app(vault.path());
+    let before = today_app(vault.path()).read_date("2026-09-17").unwrap();
+    let opened = app.read().unwrap();
+    let create: TaskCreateInput = serde_json::from_value(serde_json::json!({
+        "targetBinding": opened.target_binding, "expectedRevision": opened.revision, "taskId":"axis-selected-task", "name":"Synthetic selected interval",
+        "date":"2026-09-17", "time":"23:45", "executionEnd":{"date":"2026-09-18","time":"00:15"}
+    })).unwrap();
+    let created = app.create(create.clone()).unwrap();
+    assert_eq!(app.create(create).unwrap().tasks.len(), 1);
+    let movement: TaskUpdateInput = serde_json::from_value(serde_json::json!({
+        "targetBinding": created.target_binding, "expectedRevision":created.revision,
+        "taskId":"axis-selected-task","changeId":"axis-move-selected","name":"Synthetic selected interval",
+        "date":"2026-09-18","time":"01:15","executionEnd":{"date":"2026-09-18","time":"01:45"}
+    })).unwrap();
+    let moved = app.update(movement.clone()).unwrap();
+    assert_eq!(app.update(movement).unwrap().revision, moved.revision);
+    let reopened = task_app(vault.path()).read().unwrap();
+    assert_eq!(reopened.tasks[0].id, "axis-selected-task");
+    assert_eq!(reopened.tasks[0].date.as_deref(), Some("2026-09-18"));
+    assert_eq!(reopened.tasks[0].time.as_deref(), Some("01:15"));
+    assert_eq!(reopened.tasks[0].execution_end.as_ref().unwrap().time, "01:45");
+    let after = today_app(vault.path()).read_date("2026-09-17").unwrap();
+    assert_eq!(after.tasks.tasks[0], reopened.tasks[0]);
+    assert_eq!(after.baseline, before.baseline);
+    assert_eq!(after.time_axis, before.time_axis);
+    assert_eq!(after.daily_record_availability, before.daily_record_availability);
+    let calendar = today_app(vault.path()).calendar_month(2026, 9).unwrap();
+    assert!(calendar.day("2026-09-17").unwrap().task_summaries.is_empty());
+    assert_eq!(calendar.day("2026-09-18").unwrap().task_summaries[0].id, "axis-selected-task");
+    let stale: TaskUpdateInput = serde_json::from_value(serde_json::json!({
+        "targetBinding": reopened.target_binding, "expectedRevision":"stale-source-revision",
+        "taskId":"axis-selected-task","changeId":"axis-conflicted-move","name":"Synthetic selected interval",
+        "date":"2026-09-18","time":"02:00","executionEnd":{"date":"2026-09-18","time":"02:30"}
+    })).unwrap();
+    assert!(app.update(stale).is_err());
+    assert_eq!(app.read().unwrap(), reopened);
+}

@@ -5160,6 +5160,14 @@ function formatAxisMinute(minute: number): string {
 type TodayAxisLaneId = "arrangement" | "facts" | "tasks" | "arrangement-unlocated" | "facts-unlocated";
 
 function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): string {
+  if(entry.task) {
+    const task=currentTodayView?.tasks.tasks.find(task=>task.id===entry.task!.id);
+    if(task?.date&&task.time) {
+      const datePrefix=task.date===currentTodayView?.date?"":`${task.date} · `;
+      const end=task.executionEnd?`–${task.executionEnd.date===task.date?"":`${task.executionEnd.date} · `}${task.executionEnd.time}`:"";
+      return `${datePrefix}${task.time}${end}`;
+    }
+  }
   if (entry.startMinute === null) {
     if (entry.period) return `${entry.period} · ${t("today.unlocatedPlanLabel")}`;
     if (lane === "facts" || lane === "facts-unlocated") return t("today.unlocatedConfirmedFactLabel");
@@ -5265,6 +5273,10 @@ function axisEntryDetails(
     metadata.append(continuation);
   }
   details.append(metadata);
+  if(entry.task) {
+    const edit=document.createElement("button");edit.type="button";setCopy(edit,"tasks.editLabel",{task:entry.text});
+    edit.addEventListener("click",()=>{taskFocusRequestId=entry.task!.id;showWorkspaceDestination("tasks");});details.append(edit);
+  }
   if ((lane === "arrangement" || lane === "arrangement-unlocated") && entry.startMinute !== null) {
     if (!entry.planId || !entry.timeEditable || entry.continuesFromPreviousDay || entry.continuesIntoNextDay) {
       const unavailable = document.createElement("p");
@@ -5455,11 +5467,81 @@ function openTodayAxisTaskCreate(loaded: TodayView, startMinute: number, endMinu
   document.body.append(dialog);dialog.showModal();name.focus();
 }
 
-function resolveTodayAxisGestureTarget(element: Element, _loaded: TodayView): AxisGestureTarget | null | false {
-  return element.closest(".today-axis-marker") ? false : null;
+async function moveTodayAxisTask(change: AxisGestureCommit<TodayView>): Promise<boolean> {
+  const loaded=change.context,target=change.target;
+  const binding=loaded.tasks.targetBinding;
+  let savedTask=loaded.tasks.tasks.find(task=>task.id===target?.key);
+  let revision=loaded.tasks.revision;
+  if(!binding||!savedTask||!revision)return false;
+  const start=taskAxisDateTime(loaded.date,change.startMinute);
+  const executionEnd=change.endMinute===null?null:taskAxisDateTime(loaded.date,change.endMinute);
+  const sameTarget=()=>currentWorkspaceDestination==="today"&&currentTodayView?.date===loaded.date&&currentTodayView.tasks.targetBinding===binding;
+  const matches=(task:TaskView)=>task.id===target!.key&&task.date===start.date&&task.time===start.time&&
+    task.executionEnd?.date===executionEnd?.date&&task.executionEnd?.time===executionEnd?.time;
+  let recovery:HTMLDialogElement|null=null;
+  let status:HTMLElement|null=taskSurfaceStatus("today");
+  let retry:HTMLButtonElement|null=null;
+  const save=async():Promise<boolean>=>{
+    if(!sameTarget()||!savedTask||!revision){setCopy(status,"tasks.refreshFirst");return false;}
+    const source=savedTask;
+    const edit={targetBinding:binding,taskId:source.id,name:source.name,content:source.content,listId:source.listId,
+      date:start.date,time:start.time,executionEnd};
+    updateTaskOperationState(1);if(retry)retry.disabled=true;
+    try {
+      const result=await performTaskUpdateRequest(edit,{expectedRevision:revision,requests:todayTaskRequests,identities:taskOperationIds,
+        createChangeId:()=>localOperationId("axis-task-move"),invoke:input=>window.__TAURI__.core.invoke<TasksView>("update_task",{input}),
+        isCurrent:(token,view)=>taskSurfaceIsCurrent("today",token,binding,view.targetBinding,loaded.date,revision)});
+      if(!result.confirmed)throw Error(result.view.message||t("tasks.confirmationFailed"));
+      renderTaskSurface("today",result.view);setCopy(taskSurfaceStatus("today"),"tasks.saved");recovery?.close();return true;
+    }catch(error){
+      if(sameTarget()&&currentTodayView)renderTodayTimeAxis(currentTodayView);
+      if(!recovery) {
+        recovery=document.createElement("dialog");recovery.dataset.axisTaskRecovery="";recovery.className="today-axis-task-dialog";
+        const heading=document.createElement("h3");setCopy(heading,"today.axisTaskMoveRecovery");
+        const desired=document.createElement("p");desired.textContent=taskScheduleText(start.date,start.time,executionEnd);
+        status=document.createElement("p");status.setAttribute("role","status");status.dataset.axisTaskStatus="";
+        const read=document.createElement("button");read.type="button";read.dataset.axisTaskRecheck="";setCopy(read,"tasks.refresh");
+        retry=document.createElement("button");retry.type="button";retry.dataset.axisTaskRetry="";retry.disabled=true;setCopy(retry,"tasks.save");
+        const cancel=document.createElement("button");cancel.type="button";setCopy(cancel,"today.axisCancel");cancel.addEventListener("click",()=>recovery?.close());
+        read.addEventListener("click",()=>{
+          if(!sameTarget()){setCopy(status,"tasks.refreshFirst");return;}
+          read.disabled=true;
+          const operation=(async()=>{try {
+            const current=await window.__TAURI__.core.invoke<TasksView>("tasks_view");
+            if(!sameTarget()||current.targetBinding!==binding||current.state==="error"||current.state==="unconfigured")throw Error(current.message);
+            renderTaskSurface("today",current);
+            const found=current.tasks.find(task=>task.id===target!.key);
+            if(found&&matches(found)){setCopy(taskSurfaceStatus("today"),"tasks.saved");recovery?.close();return true;}
+            if(!found||found.deletedAt!==null||found.state==="abandoned"||current.lists.some(list=>list.id===found.listId&&list.archived)) {
+              setCopy(status,"today.axisTaskUnavailable");return false;
+            }
+            // Rebase only the requested timing onto current content/list/state.
+            savedTask=found;revision=current.revision;retry!.disabled=false;
+            setCopy(status,"today.axisTaskRetry");return false;
+          }catch(error){setCopyError(status,"tasks.notSaved",error);return false;}finally{read.disabled=false;}})();
+          void pendingWrites.track(operation);
+        });
+        retry.addEventListener("click",()=>{void pendingWrites.track(save());});
+        recovery.append(heading,desired,status,read,retry,cancel);recovery.addEventListener("close",()=>recovery?.remove(),{once:true});
+        document.body.append(recovery);recovery.showModal();
+      }
+      setCopyError(status,"tasks.notSaved",error);return false;
+    }finally{updateTaskOperationState(-1);}
+  };
+  return save();
+}
+
+function resolveTodayAxisGestureTarget(element: Element, loaded: TodayView): AxisGestureTarget | null | false {
+  const marker=element.closest<HTMLElement>(".today-axis-marker");if(!marker)return null;
+  const id=marker.dataset.taskId;if(!id)return false;
+  const task=loaded.tasks.tasks.find(task=>task.id===id);
+  if(!task?.date||!task.time||task.deletedAt!==null||task.state==="abandoned")return false;
+  return {key:task.id,kind:"task",startMinute:taskAxisMinute(loaded.date,{date:task.date,time:task.time}),
+    endMinute:task.executionEnd?taskAxisMinute(loaded.date,task.executionEnd):null};
 }
 function commitTodayAxisGesture(change: AxisGestureCommit<TodayView>): void {
   if(!change.target&&change.endMinute!==null)openTodayAxisTaskCreate(change.context,change.startMinute,change.endMinute);
+  else if(change.target?.kind==="task")void pendingWrites.track(moveTodayAxisTask(change));
 }
 function installTodayAxisGestures(): void {
   const plot=document.querySelector<HTMLElement>("#today-axis-plot");
@@ -5546,6 +5628,7 @@ function renderTodayTimeAxisEntries(
       const link = document.createElement("a");
       link.href = `#today-axis-${entry.lane}-entry-${index}`;
       link.className = "today-axis-marker-link";
+      link.draggable = false;
       link.dataset.axisItemTime = axisEntryTimeLabel(original, original.lane);
       link.dataset.axisItemText = entry.text;
       link.dataset.axisMetadataCopyKeys = JSON.stringify(

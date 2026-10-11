@@ -92,3 +92,78 @@ test('blank-axis pointer selection opens editable Task creation and sends exact 
     assert.equal(await page.evaluate(()=>window.__calls.some(x=>['save_daily_plan','edit_plan_time'].includes(x.command))),false);
   } finally {await fixture.close();}
 });
+
+async function dragTask(page,id,deltaMinutes) {
+  const marker=page.locator(`.today-axis-marker[data-task-id="${id}"] .today-axis-marker-link`);
+  await marker.scrollIntoViewIfNeeded();const box=await marker.boundingBox();assert.ok(box);
+  const scale=await page.evaluate(()=>{
+    const start=document.querySelector('#today-expand-early').getAttribute('aria-expanded')==='true'?240:360;
+    const end=document.querySelector('#today-expand-late').getAttribute('aria-expanded')==='true'?1680:1440;
+    return document.querySelector('#today-axis-plot').getBoundingClientRect().height/(end-start);
+  });
+  const x=box.x+box.width/2,y=box.y+box.height/2;
+  await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x,y+deltaMinutes*scale,{steps:10});await page.mouse.up();
+}
+test('production Task pointer moves preserve point/range semantics and explicit completion state',async()=>{
+  const fixture=await pageFixture();const {page}=fixture;
+  try {
+    await dragTask(page,'point',90);
+    await page.waitForFunction(()=>window.__calls.some(x=>x.command==='update_task'),null,{timeout:1500});
+    const point=await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point'));
+    assert.equal(point.time,'10:30');assert.equal(point.executionEnd,null);assert.equal(point.state,'pending');
+    await dragTask(page,'interval',120);
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='interval').time==='15:00',null,{timeout:1500});
+    const interval=await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.id==='interval'));
+    assert.equal(interval.time,'15:00');assert.deepEqual(interval.executionEnd,{date:'2026-10-10',time:'16:30'});assert.equal(interval.state,'completed');
+    assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='update_task').length),2);
+    assert.equal(await page.evaluate(()=>window.__calls.some(x=>['save_daily_plan','edit_plan_time','set_task_state'].includes(x.command))),false);
+  } finally {await fixture.close();}
+});
+
+test('revision conflict restores the saved card and an explicit retry preserves concurrent content',async()=>{
+  const fixture=await pageFixture();const {page}=fixture;
+  try {
+    await page.evaluate(()=>{const tasks=window.__fixture.tasks;tasks.revision='r2';const point=tasks.tasks.find(x=>x.id==='point');point.name='External rename';point.content='External content';});
+    await dragTask(page,'point',60);
+    const dialog=page.locator('dialog[data-axis-task-recovery]');await dialog.waitFor({state:'visible'});
+    assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').time),'09:00');
+    assert.equal(await page.locator('.today-axis-marker[data-task-id="point"] .today-axis-marker-time').textContent(),'09:00');
+    await dialog.locator('[data-axis-task-recheck]').click();
+    await dialog.locator('[data-axis-task-retry]').waitFor({state:'visible'});
+    await page.waitForFunction(()=>!document.querySelector('[data-axis-task-retry]').disabled);
+    assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='update_task').length),1,'rereading must never replay automatically');
+    await dialog.locator('[data-axis-task-retry]').click();
+    await dialog.waitFor({state:'hidden'});
+    const saved=await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point'));
+    assert.equal(saved.time,'10:00');assert.equal(saved.name,'External rename');assert.equal(saved.content,'External content');assert.equal(saved.executionEnd,null);
+  } finally {await fixture.close();}
+});
+
+test('failed selection save retains editable endpoints and reuses its stable Task identity',async()=>{
+  const fixture=await pageFixture();const {page}=fixture;
+  try {
+    const start=await pointAt(page,660),end=await pointAt(page,720);
+    await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(end.x,end.y,{steps:6});await page.mouse.up();
+    const dialog=page.locator('dialog[data-axis-task-create]');await dialog.locator('[data-task-name]').fill('Synthetic retry');
+    await page.evaluate(()=>window.__failNext='create_task');await dialog.locator('button[type=submit]').click();
+    await page.waitForFunction(()=>document.querySelector('[data-axis-task-status]').textContent.includes('Synthetic save failure'));
+    assert.equal(await dialog.locator('[data-task-time]').inputValue(),'11:00');assert.equal(await dialog.locator('[data-task-end-time]').inputValue(),'12:00');
+    assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.length),2);
+    await dialog.getByRole('button',{name:'Refresh tasks',exact:true}).click();
+    await page.waitForFunction(()=>!document.querySelector('dialog[data-axis-task-create] button[type=submit]').disabled);
+    await dialog.locator('[data-task-end-time]').fill('12:15');await dialog.locator('button[type=submit]').click();await dialog.waitFor({state:'hidden'});
+    const attempts=await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').map(x=>x.args.input));
+    assert.equal(attempts.length,2);assert.equal(attempts[0].taskId,attempts[1].taskId);
+    const saved=await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.name==='Synthetic retry'));
+    assert.deepEqual(saved.executionEnd,{date:'2026-10-10',time:'12:15'});assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.length),3);
+  } finally {await fixture.close();}
+});
+
+test('an ordinary Task card click still opens its existing details',async()=>{
+  const fixture=await pageFixture();const {page}=fixture;
+  try {
+    await page.locator('.today-axis-marker[data-task-id="point"] .today-axis-marker-link').click();
+    assert.equal(await page.locator('#today-timed-details details[open]').count(),1);
+    assert.equal(await page.evaluate(()=>window.__calls.some(x=>['update_task','create_task'].includes(x.command))),false);
+  } finally {await fixture.close();}
+});
