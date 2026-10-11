@@ -107,3 +107,27 @@ adapter is specified in [daily-flow-task-adapter-v1.md](daily-flow-task-adapter-
 and its canonical daily-loop wiring is documented in
 [daily-flow-integration-v1.md](daily-flow-integration-v1.md); packaged acceptance
 remains a separate gate.
+
+## Optional planned execution interval (PDEX-06)
+
+Task `date` and `time` continue to identify its scheduled start/calendar
+placement. `executionEnd` is an optional `{date, time}` planned execution end;
+both endpoints need complete valid dates and `HH:mm` times, and end must be
+strictly after start. An overnight end retains its actual calendar date.
+Absent or null persisted ends mean the existing point/date/undated Task, with
+no inferred duration. An interval is never completion evidence or a deadline.
+
+Create accepts an optional end. Update omitting `executionEnd` retains the
+saved end, explicit `null` clears it, and an object replaces it. A start edit
+that would invalidate a retained end is rejected atomically; callers moving
+an interval pass both the changed start and end. Change history retains both
+ends. Existing Task identity, revision checks and operation retry handling
+remain in use. The real shared Task editor exposes end date/time and an
+explicit clear action; Tasks, Today and Calendar read that same Task store.
+
+Collaboration's `createTask` and `updateTask` operations accept the same
+optional `executionEnd`. Current Task references and proposal/result baselines
+retain it. Operation readback checks both endpoints (an omitted update end is
+checked against the baseline); an unchanged end cannot be reported as a saved
+end edit. Omitted new fields stay omitted in old serialized operation records,
+so adding this capability does not change old operation fingerprints.

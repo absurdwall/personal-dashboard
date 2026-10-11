@@ -1,7 +1,8 @@
 use crate::clock::SystemClock;
 use crate::tasks::{
     normalize_content, normalize_name, normalize_schedule, DailyFlowMutation, FileTaskStore,
-    TaskApplication, TaskDataErrorKind, TaskDataState, TaskSourceView, TaskState, TasksView,
+    TaskApplication, TaskDataErrorKind, TaskDataState, TaskExecutionEnd, TaskSourceView, TaskState,
+    TasksView,
 };
 use crate::today::{CalendarDate, TodayClock, TodayWorkspacePersistence};
 use serde::{Deserialize, Serialize};
@@ -43,6 +44,8 @@ pub enum DailyFlowCandidate {
         content: Option<String>,
         date: Option<String>,
         time: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        execution_end: Option<TaskExecutionEnd>,
         list_id: Option<String>,
     },
     #[serde(rename = "suggestion", rename_all = "camelCase")]
@@ -64,6 +67,12 @@ pub enum DailyFlowCommand {
         operation_id: String,
         date: Option<String>,
         time: Option<String>,
+        #[serde(
+            default,
+            deserialize_with = "crate::tasks::deserialize_execution_end_patch",
+            skip_serializing_if = "Option::is_none"
+        )]
+        execution_end: Option<Option<TaskExecutionEnd>>,
     },
     #[serde(rename = "complete", rename_all = "camelCase")]
     Complete {
@@ -119,6 +128,7 @@ pub struct DailyFlowTaskView {
     pub content: Option<String>,
     pub date: Option<String>,
     pub time: Option<String>,
+    pub execution_end: Option<TaskExecutionEnd>,
     pub list_id: String,
     pub list_name: String,
     pub list_archived: bool,
@@ -459,6 +469,7 @@ where
                         content: task.content,
                         date: task.date,
                         time: task.time,
+                        execution_end: task.execution_end,
                         list_id: task.list_id,
                         list_name: list
                             .map(|list| list.name.clone())
@@ -578,6 +589,7 @@ fn prepare_apply_request(
                 content,
                 date,
                 time,
+                execution_end,
                 list_id,
             } => {
                 crate::today::validate_local_identifier(&task_id, "任务标识")?;
@@ -607,6 +619,7 @@ fn prepare_apply_request(
                     content,
                     date,
                     time,
+                    execution_end,
                     list_id,
                 });
             }
@@ -641,6 +654,7 @@ fn prepare_apply_request(
                 operation_id,
                 date,
                 time,
+                execution_end,
             } => {
                 validate_command_identity(&task_id, &operation_id, &mut operation_ids)?;
                 let (date, time) = normalize_schedule(date.as_deref(), time.as_deref())?;
@@ -649,6 +663,7 @@ fn prepare_apply_request(
                     change_id: operation_id.clone(),
                     date,
                     time,
+                    execution_end,
                 });
                 command_ids.push(operation_id);
             }
