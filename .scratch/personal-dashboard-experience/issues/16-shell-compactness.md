@@ -23,7 +23,7 @@ Working branch: codex/dashboard-experience-integration
 
 ## Execution
 
-2026-10-11: directly authorized by the user in the current follow-up conversation. Source archaeology was sent to reviewer `01a128ff-8865-7493-9698-cc48c19d7939`; reviewer confirmed the bounded chrome work is distinct from PDEX-09's already-completed heading/help criteria and requested computed visibility plus preservation of functional subheadings/resizer/context controls. Root implementer claimed this ticket on the existing integration branch. No subagents, GitHub, main, dependency, personal-data, or normal-installation action.
+2026-10-11: directly authorized by user message `01a129e5-6777-7d90-b3a5-faa0d4a3483c` in review chat `01a128ff-8865-7493-9698-cc48c19d7939`. Source archaeology was sent to the reviewer; the reviewer confirmed the bounded chrome work is distinct from PDEX-09's already-completed heading/help criteria and requested computed visibility plus preservation of functional subheadings/resizer/context controls. Root implementer claimed this ticket on the existing integration branch. Do not replace the normal App before independent review release; the previously authorized post-review installation path remains available with fresh protection. No subagents, GitHub, main, dependency or personal-data action.
 
 ## Verification
 

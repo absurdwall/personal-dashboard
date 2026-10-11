@@ -8,7 +8,7 @@ Triage: ready-for-agent
 Date: 2026-10-11  
 Base: a963eb4  
 Working branch: codex/dashboard-experience-integration  
-Authorization: direct user follow-up in the current implementation conversation, 2026-10-11.
+Authorization: direct user message `01a129e5-6777-7d90-b3a5-faa0d4a3483c` in review chat `01a128ff-8865-7493-9698-cc48c19d7939`, 2026-10-11.
 
 This bounded follow-up preserves all prior accepted and closed records, including PDEX-SPEC-01/PDEX-01–11 and the independent PDEX-FOLLOWUP-01/02 tickets. It creates PDEX-16 for a small visible-shell adjustment grounded in the accepted experience Spec stories 51–52 and implementation decision at line 119, plus the user's direct Task/Today/global-toolbar corrections. It does not reopen PDEX-09 or PDEX-14/15.
 
@@ -21,4 +21,4 @@ This bounded follow-up preserves all prior accepted and closed records, includin
 
 ## Verification and release boundary
 
-Use the already-approved public production-DOM and WebKit layout/interaction seams. Focus checks on build, visible schedule labels and one-row geometry, translated aria/title, Today toggle location/focus/full sidebar geometry and no-write behavior, toolbar order/640px overflow/all destinations, and Collaboration session/chat/context and composer interaction smoke. Use Computer Use virtual mouse for native packaged visual/interaction checks with synthetic data. Do not repeat the old full Rust, quota-exhaustion or IME acceptance suites. No new dependency, service, model request, personal-data mutation, GitHub operation, main merge or normal App replacement is in scope. Send the frozen source/diff/build/native evidence to the independent reviewer before any release decision; human acceptance remains separate.
+Use the already-approved public production-DOM and WebKit layout/interaction seams. Focus checks on build, visible schedule labels and one-row geometry, translated aria/title, Today toggle location/focus/full sidebar geometry and no-write behavior, toolbar order/640px overflow/all destinations, and Collaboration session/chat/context and composer interaction smoke. Use Computer Use virtual mouse for native packaged visual/interaction checks with synthetic data. Do not repeat the old full Rust, quota-exhaustion or IME acceptance suites. No new dependency, service, model request, personal-data mutation, GitHub operation or main merge. Do not replace the normal App before independent reviewer satisfaction; after that release, follow the user's existing installation authorization with fresh App/profile/Vault protection. Human acceptance remains separate.
