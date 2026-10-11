@@ -57,3 +57,8 @@ stories 51–58.
 ## Native continuation — 2026-10-11
 
 Human-authorized root CUA pass at `bc99cf2` / binary `76f12c68…` establishes exact native reference windows and genuine typed post-save reload failure with authoritative recovery/no replay. Current native Task, ordinary slash/Tab/Enter, overlap, immediate move/end-resize, conflict/write failure, dated Evening/error/draft and restart evidence is retained in [the source-bound continuation](../evidence/native-acceptance-2026-10-11.md). Real Sogou composition, sustained native edge gesture/resize cancellation and authenticated quota exhaustion remain unverified; combined criteria stay unchecked. Restart uncovered dynamic axis startup localization, now assigned to the existing single repair worker. Any repair requires a newly frozen candidate; source A does not silently become newer-source acceptance. Status/Lifecycle remain blocked and parent open.
+
+
+## Rebuilt native continuation B — 2026-10-11
+
+Fresh frozen `ffa1b85` package verifies readable dark selected-command text, Tab insertion of editable `/retro ` without sending, and ordinary embedded slash/pasted Unicode preservation. [B source-bound report](../evidence/native-acceptance-2026-10-11-b.md) separates paste from real composition. The contrast repair and corrected actual-scroll startup regression pass the current built canonical 43/43 focused checks. Real Sogou composition remains unverified; its combined criterion remains unchecked. Status/Lifecycle remain blocked, final independent review pending, parent open.
