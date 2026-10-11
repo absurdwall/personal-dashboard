@@ -3,10 +3,10 @@
 Date: 2026-10-10
 Canonical tracker: [map](map.md)
 Parent specification: PDEX-SPEC-01
-Stage: approved tickets published; implementation not started
+Stage: authorized implementation in progress
 Working branch at publication: codex/dashboard-experience-prototype
 
-## Current state
+## Publication checkpoint state (historical)
 
 PDEX-01–11 are ready-for-agent/open/unassigned, with all acceptance boxes
 unchecked. No ticket has been claimed. Eligible frontier: PDEX-01, PDEX-03,
