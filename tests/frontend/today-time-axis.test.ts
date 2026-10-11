@@ -77,7 +77,7 @@ test('keeps the now label clear of the nearest hourly tick at exact and adjacent
   assert.equal(hourTickIsClearFromNow(840, null), true);
 });
 
-test('groups overlapping time-axis cards into one readable stack instead of horizontal tracks', () => {
+test('groups colliding time-axis cards into temporary columns and reuses nonconflicting space', () => {
   assert.equal(TODAY_AXIS_LABEL_MINIMUM_MINUTES, 48);
   assert.deepEqual(
     axisOverlapPlacements([
@@ -129,7 +129,7 @@ test('groups overlapping time-axis cards into one readable stack instead of hori
   );
 });
 
-test('stacks partially overlapping real time ranges without moving their source anchors', () => {
+test('places partially overlapping real time ranges beside one another without moving source anchors', () => {
   assert.deepEqual(
     axisOverlapPlacements([
       { startMinute: 780, endMinute: 815 },
