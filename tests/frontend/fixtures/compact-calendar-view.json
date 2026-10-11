@@ -1,0 +1,599 @@
+{
+  "month": {
+    "configured": true,
+    "days": [
+      {
+        "availability": "missing",
+        "date": "2026-08-30",
+        "inMonth": false,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-08-31",
+        "inMonth": false,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-01",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-02",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-03",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-04",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-05",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-06",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-07",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-08",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "unreviewed",
+        "date": "2026-09-09",
+        "inMonth": true,
+        "isToday": true,
+        "taskOverflowCount": 3,
+        "taskSummaries": [
+          {
+            "id": "preview-0",
+            "name": "合成任务 0 完整长标题",
+            "state": "pending"
+          },
+          {
+            "id": "preview-1",
+            "name": "合成任务 1 完整长标题",
+            "state": "completed"
+          },
+          {
+            "id": "preview-2",
+            "name": "合成任务 2 完整长标题",
+            "state": "pending"
+          },
+          {
+            "id": "preview-3",
+            "name": "合成任务 3 完整长标题",
+            "state": "pending"
+          }
+        ]
+      },
+      {
+        "availability": "reviewed",
+        "date": "2026-09-10",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "error",
+        "date": "2026-09-11",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-12",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-13",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-14",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-15",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-16",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-17",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-18",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-19",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-20",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-21",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-22",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-23",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-24",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-25",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-26",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-27",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-28",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-29",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-09-30",
+        "inMonth": true,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-10-01",
+        "inMonth": false,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-10-02",
+        "inMonth": false,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      },
+      {
+        "availability": "missing",
+        "date": "2026-10-03",
+        "inMonth": false,
+        "isToday": false,
+        "taskOverflowCount": 0,
+        "taskSummaries": []
+      }
+    ],
+    "month": 9,
+    "taskMessage": "已读取任务正本。",
+    "taskState": "ready",
+    "year": 2026
+  },
+  "selected": {
+    "baseline": {
+      "availability": "missing",
+      "evidence": [],
+      "message": "这份 Daily Record 未独立保存早间基准；当前安排仍可在 Daytime 查看。",
+      "timeline": []
+    },
+    "canRecord": true,
+    "currentTime": "23:59",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-09-09",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-6263c6daf0ea6274",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": []
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-3cc5c8e60354cadf",
+      "date": "2026-09-09",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取当前安排；这份 Daily Record 未独立保存早间基准。",
+    "revision": "1fe0deb0903b51db",
+    "state": "ready",
+    "targetBinding": "synthetic-daily-binding",
+    "tasks": {
+      "currentDate": "2026-09-09",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "已读取任务正本。",
+      "revision": "78fc9818059dc840",
+      "schemaVersion": 2,
+      "state": "ready",
+      "targetBinding": "synthetic-task-binding",
+      "tasks": [
+        {
+          "changes": [],
+          "completion": null,
+          "content": "合成完整详情 0",
+          "createdAt": "2026-09-09T23:59-04:00",
+          "date": "2026-09-09",
+          "deletedAt": null,
+          "executionEnd": {
+            "date": "2026-09-10",
+            "time": "00:45"
+          },
+          "id": "preview-0",
+          "listId": "inbox",
+          "modifiedAt": "2026-09-09T23:59-04:00",
+          "name": "合成任务 0 完整长标题",
+          "overdue": false,
+          "source": {
+            "kind": "manual",
+            "reference": null
+          },
+          "state": "pending",
+          "time": "23:30",
+          "timePassed": true
+        },
+        {
+          "changes": [
+            {
+              "changedAt": "2026-09-09T23:59-04:00",
+              "id": "complete-preview-1",
+              "kind": "completed",
+              "newCompletion": {
+                "completedOn": "2026-09-09",
+                "completedTime": "23:59",
+                "recordedAt": "2026-09-09T23:59-04:00",
+                "source": "checkbox"
+              },
+              "newContent": null,
+              "newDate": null,
+              "newDeletedAt": null,
+              "newExecutionEnd": null,
+              "newListId": null,
+              "newName": null,
+              "newState": "completed",
+              "newTime": null,
+              "previousCompletion": null,
+              "previousContent": null,
+              "previousDate": null,
+              "previousDeletedAt": null,
+              "previousExecutionEnd": null,
+              "previousListId": null,
+              "previousName": null,
+              "previousState": "pending",
+              "previousTime": null,
+              "source": "user"
+            }
+          ],
+          "completion": {
+            "completedOn": "2026-09-09",
+            "completedTime": "23:59",
+            "recordedAt": "2026-09-09T23:59-04:00",
+            "source": "checkbox"
+          },
+          "content": "合成完整详情 1",
+          "createdAt": "2026-09-09T23:59-04:00",
+          "date": "2026-09-09",
+          "deletedAt": null,
+          "executionEnd": null,
+          "id": "preview-1",
+          "listId": "inbox",
+          "modifiedAt": "2026-09-09T23:59-04:00",
+          "name": "合成任务 1 完整长标题",
+          "overdue": false,
+          "source": {
+            "kind": "manual",
+            "reference": null
+          },
+          "state": "completed",
+          "time": null,
+          "timePassed": false
+        },
+        {
+          "changes": [],
+          "completion": null,
+          "content": "合成完整详情 2",
+          "createdAt": "2026-09-09T23:59-04:00",
+          "date": "2026-09-09",
+          "deletedAt": null,
+          "executionEnd": null,
+          "id": "preview-2",
+          "listId": "inbox",
+          "modifiedAt": "2026-09-09T23:59-04:00",
+          "name": "合成任务 2 完整长标题",
+          "overdue": false,
+          "source": {
+            "kind": "manual",
+            "reference": null
+          },
+          "state": "pending",
+          "time": null,
+          "timePassed": false
+        },
+        {
+          "changes": [],
+          "completion": null,
+          "content": "合成完整详情 3",
+          "createdAt": "2026-09-09T23:59-04:00",
+          "date": "2026-09-09",
+          "deletedAt": null,
+          "executionEnd": null,
+          "id": "preview-3",
+          "listId": "inbox",
+          "modifiedAt": "2026-09-09T23:59-04:00",
+          "name": "合成任务 3 完整长标题",
+          "overdue": false,
+          "source": {
+            "kind": "manual",
+            "reference": null
+          },
+          "state": "pending",
+          "time": null,
+          "timePassed": false
+        },
+        {
+          "changes": [],
+          "completion": null,
+          "content": "合成完整详情 4",
+          "createdAt": "2026-09-09T23:59-04:00",
+          "date": "2026-09-09",
+          "deletedAt": null,
+          "executionEnd": null,
+          "id": "preview-4",
+          "listId": "inbox",
+          "modifiedAt": "2026-09-09T23:59-04:00",
+          "name": "合成任务 4 完整长标题",
+          "overdue": false,
+          "source": {
+            "kind": "manual",
+            "reference": null
+          },
+          "state": "pending",
+          "time": null,
+          "timePassed": false
+        },
+        {
+          "changes": [],
+          "completion": null,
+          "content": "合成完整详情 5",
+          "createdAt": "2026-09-09T23:59-04:00",
+          "date": "2026-09-09",
+          "deletedAt": null,
+          "executionEnd": null,
+          "id": "preview-5",
+          "listId": "inbox",
+          "modifiedAt": "2026-09-09T23:59-04:00",
+          "name": "合成任务 5 完整长标题",
+          "overdue": false,
+          "source": {
+            "kind": "manual",
+            "reference": null
+          },
+          "state": "pending",
+          "time": null,
+          "timePassed": false
+        },
+        {
+          "changes": [],
+          "completion": null,
+          "content": "合成完整详情 6",
+          "createdAt": "2026-09-09T23:59-04:00",
+          "date": "2026-09-09",
+          "deletedAt": null,
+          "executionEnd": null,
+          "id": "preview-6",
+          "listId": "inbox",
+          "modifiedAt": "2026-09-09T23:59-04:00",
+          "name": "合成任务 6 完整长标题",
+          "overdue": false,
+          "source": {
+            "kind": "manual",
+            "reference": null
+          },
+          "state": "pending",
+          "time": null,
+          "timePassed": false
+        }
+      ],
+      "vaultName": "synthetic-calendar-vault",
+      "vaultPath": "/synthetic/calendar-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "下午",
+          "planId": "plan-fc6b8c9a982ded6c",
+          "planPrecision": "broad",
+          "sourceDate": "2026-09-09",
+          "startMinute": 780,
+          "text": "合成安排。",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": null,
+        "period": "下午",
+        "title": "合成安排。"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "synthetic-calendar-vault",
+    "vaultPath": "/synthetic/calendar-vault"
+  }
+}

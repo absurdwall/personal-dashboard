@@ -7238,7 +7238,7 @@ const calendarAvailabilityLabels: Record<
   missing: { label: "calendar.noRecord", marker: null },
   unreviewed: { label: "calendar.unreviewed", marker: "calendar.markerUnreviewed" },
   reviewed: { label: "calendar.reviewed", marker: "calendar.markerReviewed" },
-  error: { label: "calendar.readError", marker: null },
+  error: { label: "calendar.readError", marker: "calendar.markerError" },
 };
 
 function calendarDateLabel(date: string): string {
@@ -7282,6 +7282,7 @@ function renderCalendarGrid(month: CalendarMonthView): void {
       "aria-label",
       formatInterfaceMonth(month.year, month.month, currentInterfaceLanguage),
     );
+    calendarGrid.style.setProperty("--calendar-week-count", String(month.days.length / 7));
     calendarGrid.replaceChildren(
       ...month.days.map((day) => {
         const button = document.createElement("button");
@@ -7327,7 +7328,7 @@ function renderCalendarGrid(month: CalendarMonthView): void {
         number.textContent = String(dayNumber);
         const todayLabel = document.createElement("small");
         if (day.isToday) setCopy(todayLabel, "calendar.today");
-        top.append(number, todayLabel);
+        top.append(number);
         const marker = document.createElement("span");
         marker.className = "calendar-day-marker";
         marker.dataset.availability = day.availability;
@@ -7352,7 +7353,8 @@ function renderCalendarGrid(month: CalendarMonthView): void {
         if (day.taskOverflowCount > 0) {
           setCopy(overflow, "calendar.taskOverflow", { count: day.taskOverflowCount });
         }
-        button.append(top, taskSummaries, overflow, marker);
+        top.append(marker, todayLabel, overflow);
+        button.append(top, taskSummaries);
         return button;
       }),
     );
