@@ -1,3 +1,4 @@
+import { initializeCollaborationCommandCompletion } from "./collaboration-command-completion.js";
 import { appendCollaborationMarkdown, appendCollaborationWorkHistory, type CollaborationWorkHistory, type CollaborationLink, type WorkHistoryLabels } from "./collaboration-work-history.js";
 import { initializeCollaborationPanels } from "./collaboration-panels.js";
 import {
@@ -1072,6 +1073,8 @@ const collaborationTaskOperations = document.querySelector<HTMLElement>("#collab
 const collaborationTaskToolNotice = document.querySelector<HTMLElement>("#collaboration-task-tool-notice");
 const collaborationComposer = document.querySelector<HTMLFormElement>("#collaboration-composer");
 const collaborationMessageDraft = document.querySelector<HTMLTextAreaElement>("#collaboration-message-draft");
+const collaborationCommandMenu = document.querySelector<HTMLElement>("#collaboration-command-menu");
+let collaborationCommandCompletion: { close: () => void } | null = null;
 const collaborationComposerStatus = document.querySelector<HTMLElement>("#collaboration-composer-status");
 const collaborationVoicePreview = document.querySelector<HTMLElement>("#collaboration-voice-preview");
 const collaborationVoiceStartButton = document.querySelector<HTMLButtonElement>("#collaboration-voice-start");
@@ -4195,6 +4198,9 @@ function renderCollaborationWorkspace(): void {
   if (collaborationMessageDraft) {
     collaborationMessageDraft.disabled = !session || !connected || !vaultAvailable ||
       targetDatePending || sendingDraft || vaultSelectionInProgress;
+    if (collaborationMessageDraft.disabled || document.activeElement !== collaborationMessageDraft) {
+      collaborationCommandCompletion?.close();
+    }
     if (session && document.activeElement !== collaborationMessageDraft) {
       collaborationMessageDraft.value = collaborationDraftForDate(session, targetDate);
     }
@@ -11036,13 +11042,14 @@ collaborationVoiceCancelButton?.addEventListener("click", () => {
   collaborationMessageDraft?.focus();
 });
 
-collaborationMessageDraft?.addEventListener("keydown", (event) => {
-  if (event.isComposing || event.keyCode === 229) return;
-  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-    event.preventDefault();
-    collaborationComposer?.requestSubmit();
-  }
-});
+if (collaborationMessageDraft && collaborationCommandMenu) {
+  collaborationCommandCompletion = initializeCollaborationCommandCompletion(
+    collaborationMessageDraft,
+    collaborationCommandMenu,
+    () => t("collaboration.personalRetroCommand"),
+    () => collaborationComposer?.requestSubmit(),
+  );
+}
 
 collaborationComposer?.addEventListener("submit", (event) => {
   event.preventDefault();

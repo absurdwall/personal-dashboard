@@ -701,6 +701,42 @@ fn session_drafts_target_dates_and_activity_history_survive_reopening() {
     );
 }
 
+// Completion is draft editing; /retro follows the same persisted conversation
+// path as a typed request and remains editable until the user submits it.
+#[test]
+fn retro_draft_survives_restart_without_running_until_explicit_submission() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let application = new_application(&directory, Arc::clone(&prompts));
+    let session = application.create_session("2026-09-27").unwrap();
+    application
+        .save_draft_for_selected_vault(&session.id, "2026-09-20", "/retro ")
+        .unwrap();
+    drop(application);
+
+    let reopened = new_application(&directory, Arc::clone(&prompts));
+    let draft = reopened.session("synthetic-vault", &session.id).unwrap();
+    assert_eq!(draft.drafts_by_date.get("2026-09-20").map(String::as_str), Some("/retro "));
+    assert!(draft.messages.is_empty());
+    assert!(prompts.lock().unwrap().is_empty());
+    let edited = "/retro 请复盘 2026-09-20 的安排";
+    reopened.save_draft_for_selected_vault(&session.id, "2026-09-20", edited).unwrap();
+    reopened.submit_message("synthetic-vault", &session.id, "2026-09-20", edited).unwrap();
+    wait_until_finished(&reopened, &session.id);
+    drop(reopened);
+
+    let restarted = new_application(&directory, Arc::clone(&prompts));
+    let saved = restarted.session("synthetic-vault", &session.id).unwrap();
+    assert_eq!(saved.messages.len(), 2);
+    assert_eq!(saved.messages[0].text, edited);
+    assert_eq!(saved.messages[0].target_date, "2026-09-20");
+    assert_eq!(saved.drafts_by_date.get("2026-09-20").map(String::as_str).unwrap_or(""), "");
+    let sent = prompts.lock().unwrap();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].user_text, edited);
+    assert_eq!(sent[0].context.date, "2026-09-20");
+}
+
 #[test]
 fn same_vault_requests_from_different_sessions_run_in_fifo_order() {
     let directory = IsolatedDirectory::new();

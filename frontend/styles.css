@@ -9761,3 +9761,22 @@ button.habit-cell:focus-visible {
 .collaboration-reply-link { display: inline; padding: 0; }
 
 .collaboration-change-diff { font-size: inherit; line-height: inherit; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }
+
+/* Slash suggestions stay with the editor; choosing one edits the draft. */
+.collaboration-command-menu {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.42rem;
+  background: var(--parity-surface);
+}
+.collaboration-command-menu[hidden] { display: none; }
+.collaboration-command-menu button { text-align: left; }
+.collaboration-command-menu [aria-selected="true"] {
+  background: var(--parity-accent-soft);
+  outline: 1px solid var(--parity-accent-strong);
+}
+.collaboration-help { color: var(--parity-muted); font-size: 0.65rem; }
+.collaboration-help summary { cursor: pointer; }
+.collaboration-help p { margin: 0.35rem 0; }
