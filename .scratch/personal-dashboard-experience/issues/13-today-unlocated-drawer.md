@@ -29,3 +29,6 @@ Use the approved Q4 public seams: actual production WebKit input/geometry and ex
 ## Execution
 
 2026-10-11: Direct human authorized implementation, independent review/repair, then reviewed normal App replacement followed by human acceptance. Initial base d4f23999e6b82fcadc4533b04004da1113ee8f71 is clean. Claim is recorded locally; no GitHub operation.
+
+
+2026-10-11 implementation checkpoint: feature9850b9b, current integration0414a23 merged unsquashed in worker69dc6f1. Scoped1100px automatic collapse, count/toggle, retained-content drawer and focus return implemented; same-selection transient override/reset rules documented. Isolated build passed,42 focused Today/axis and441 full frontend regressions passed;16 public-input browser gesture regressions passed. Actual WebKit client geometry1000/960/830 retains vertical navigation and unchanged axis width on manual drawer expansion. See [PDEX-13 evidence](../evidence/pdex-13.md) and [artifact hashes](../evidence/pdex-13-artifacts.json). Native packaged review, normal replacement and human acceptance remain pending; lifecycle remainsin-progress. Historical completed tickets unchanged.

@@ -111,8 +111,9 @@ test('expanding quiet hours recomputes stacks and exposes next-day entries', () 
   assert.equal(renderTimeline(entries).todayTimedEvents.children.length, 2);
 });
 
-function html(node: Element): string {
+function html(node: Element | string): string {
   const escape = (text: string) => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
+  if (typeof node === 'string') return escape(node);
   return `<${node.tagName} class="${escape(node.className)}">${escape(node.textContent)}${node.children.map(html).join('')}</${node.tagName}>`;
 }
 
@@ -269,6 +270,7 @@ test('shipped WebKit timeline keeps endpoint placement, reading anchors, reveal 
       document.getElementById('today-phase-morning').hidden = true;
       ${pure}
       ${bindings}
+      ${main.slice(main.indexOf('const todayUnlocatedNarrow ='), main.indexOf('todayUnlocatedTimeShortcut?.addEventListener("click"'))}
       const todayAxisScrollSurface = document.getElementById('today-axis-scroll-surface');
       const workspaceInformation = todayAxisScrollSurface;
       let todayAxisFollowState = 'following';

@@ -198,7 +198,7 @@ test('confirmed facts are read-only and canceling a plan preview leaves persiste
     const box=await factLink.boundingBox();await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
     await page.mouse.down();await page.mouse.move(box.x+box.width/2,box.y+box.height/2+50);await page.mouse.up();
     assert.equal(await page.locator('[data-axis-gesture-preview]').count(),0);
-    assert.equal(await page.locator('dialog').count(),0);
+    assert.equal(await page.locator('dialog[open]').count(),0);
     const link=marker(page,'Synthetic drag range').locator('.today-axis-marker-link');await link.scrollIntoViewIfNeeded();
     const plan=await link.boundingBox();await page.mouse.move(plan.x+plan.width/2,plan.y+plan.height/2);
     await page.mouse.down();await page.mouse.move(plan.x+plan.width/2,plan.y+plan.height/2+40);
