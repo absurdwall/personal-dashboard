@@ -7,28 +7,29 @@ export function initializeEveningReviewEntry(
   status: HTMLElement,
   target: () => EveningReviewTarget | null,
   open: (date: string) => Promise<boolean>,
-  copy: (key: string, values?: Readonly<Record<string, string>>) => string,
+  copy: (element: HTMLElement, key: string, values?: Readonly<Record<string, string>>) => void,
+  errorCopy: (element: HTMLElement, key: string, error: unknown) => void,
 ): Readonly<{ render: () => void }> {
   let pending = false;
   function render(): void {
     const selected = target();
     button.disabled = pending || !selected?.available;
-    button.textContent = selected?.isToday ? copy('today.startReview')
-      : copy('today.startReviewDate', { date: selected?.date ?? '' });
+    copy(button, selected?.isToday ? 'today.startReview' : 'today.startReviewDate',
+      { date: selected?.date ?? '' });
   }
   button.addEventListener('click', async () => {
     const selected = target();
     if (pending || !selected?.available) return;
     pending = true;
     render();
-    status.textContent = copy('today.reviewOpening', { date: selected.date });
+    copy(status, 'today.reviewOpening', { date: selected.date });
     status.dataset.state = 'pending';
     try {
       const preserved = await open(selected.date);
-      status.textContent = copy(preserved ? 'today.reviewDraftPreserved' : 'today.reviewDraftReady', { date: selected.date });
+      copy(status, preserved ? 'today.reviewDraftPreserved' : 'today.reviewDraftReady', { date: selected.date });
       status.dataset.state = 'ready';
     } catch (error) {
-      status.textContent = `${copy('today.reviewOpenFailed')} ${String(error)}`;
+      errorCopy(status, 'today.reviewOpenFailed', error);
       status.dataset.state = 'error';
     } finally {
       pending = false;

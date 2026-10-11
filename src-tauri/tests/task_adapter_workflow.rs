@@ -1396,3 +1396,63 @@ fn changed_reschedule_retries_preserve_the_original_end_patch_identity() {
     assert!(!genuine.changed);
     assert!(genuine.read.tasks[0].execution_end.is_none());
 }
+
+#[test]
+fn retained_daily_flow_operation_id_cannot_be_reused_as_manual_update() {
+    let vault = TempVault::new("manual-id-collision");
+    let app = TaskApplication::new(
+        SelectedVault(vault.path().to_owned()),
+        FixedClock,
+        FileTaskStore,
+    );
+    let empty = app.read().unwrap();
+    let created = app
+        .create(TaskCreateInput {
+            target_binding: empty.target_binding.unwrap(),
+            expected_revision: empty.revision,
+            task_id: "collision-task".into(),
+            name: "Synthetic collision task".into(),
+            content: None,
+            date: Some("2026-09-17".into()),
+            time: Some("08:00".into()),
+            execution_end: None,
+            list_id: None,
+        })
+        .unwrap();
+    let request: DailyFlowTaskRequest = serde_json::from_value(serde_json::json!({
+        "operation":"apply", "schemaVersion":1, "vaultPath":vault.path(), "livedDate":"2026-09-17",
+        "targetBinding":created.target_binding, "expectedRevision":created.revision, "candidates":[],
+        "commands":[{"kind":"reschedule", "taskId":"collision-task", "operationId":"retained-flow-id", "date":"2026-09-17", "time":"09:00"}]
+    })).unwrap();
+    adapter(vault.path()).execute(request).unwrap();
+    let moved = app.read().unwrap();
+    let before = fs::read(
+        vault
+            .path()
+            .join("life/.personal-dashboard/tasks/v1/tasks.json"),
+    )
+    .unwrap();
+    assert!(app
+        .update(TaskUpdateInput {
+            target_binding: moved.target_binding.unwrap(),
+            expected_revision: moved.revision.unwrap(),
+            task_id: "collision-task".into(),
+            change_id: "retained-flow-id".into(),
+            name: "Synthetic collision task".into(),
+            content: None,
+            date: Some("2026-09-17".into()),
+            time: Some("09:00".into()),
+            execution_end: None,
+            list_id: None,
+        })
+        .is_err());
+    assert_eq!(
+        fs::read(
+            vault
+                .path()
+                .join("life/.personal-dashboard/tasks/v1/tasks.json")
+        )
+        .unwrap(),
+        before
+    );
+}

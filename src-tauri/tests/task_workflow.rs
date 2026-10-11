@@ -2203,3 +2203,219 @@ fn task_list_creation_and_cross_list_move_use_the_same_atomic_write_boundary() {
         external_document
     );
 }
+
+#[test]
+fn manual_update_retry_keeps_omitted_null_and_object_end_patches_distinct_after_later_edits() {
+    for (original, interval) in [
+        ("omitted", true),
+        ("null", false),
+        ("object", true),
+        ("omitted", false),
+    ] {
+        let vault = TempVault::new(original);
+        let application = app(vault.path());
+        let mut create = create_input(
+            &application.read().unwrap(),
+            "patch-task",
+            "Original",
+            Some("2026-09-17"),
+            Some("08:00"),
+        );
+        if interval {
+            create.execution_end = Some(personal_dashboard_lib::tasks::TaskExecutionEnd {
+                date: "2026-09-17".into(),
+                time: "10:00".into(),
+            });
+        }
+        let created = application.create(create).unwrap();
+        let request = |view: &personal_dashboard_lib::tasks::TasksView, id: &str, patch: &str| {
+            let mut value = serde_json::json!({"targetBinding":view.target_binding, "expectedRevision":view.revision,
+                "taskId":"patch-task", "changeId":id, "name":"Renamed", "content":null,
+                "date":"2026-09-17", "time":"08:00", "listId":null});
+            match patch {
+                "omitted" => {}
+                "null" => {
+                    value["executionEnd"] = serde_json::Value::Null;
+                }
+                "object" => {
+                    value["executionEnd"] =
+                        serde_json::json!({"date":"2026-09-17", "time":"10:00"});
+                }
+                "later" => {
+                    value["executionEnd"] =
+                        serde_json::json!({"date":"2026-09-17", "time":"11:00"});
+                }
+                _ => unreachable!(),
+            }
+            serde_json::from_value::<TaskUpdateInput>(value).unwrap()
+        };
+        let edited = application
+            .update(request(&created, "rename-with-patch", original))
+            .unwrap();
+        for replacement in ["omitted", "null", "object"] {
+            if replacement == original {
+                continue;
+            }
+            let before = fs::read(task_path(vault.path())).unwrap();
+            assert!(
+                application
+                    .update(request(&edited, "rename-with-patch", replacement))
+                    .is_err(),
+                "{original} cannot retry as {replacement}"
+            );
+            assert_eq!(fs::read(task_path(vault.path())).unwrap(), before);
+        }
+        let genuine = application
+            .update(request(&created, "rename-with-patch", original))
+            .unwrap();
+        assert_eq!(genuine.revision, edited.revision);
+        let later = application
+            .update(request(&edited, "later-end", "later"))
+            .unwrap();
+        let relaunched = app(vault.path());
+        let genuine = relaunched
+            .update(request(&created, "rename-with-patch", original))
+            .unwrap();
+        assert_eq!(genuine.revision, later.revision);
+        assert_eq!(
+            genuine.tasks[0].execution_end.as_ref().unwrap().time,
+            "11:00"
+        );
+        assert_eq!(genuine.tasks[0].changes.len(), 2);
+        let cleared = relaunched
+            .update(request(&later, "later-clear", "null"))
+            .unwrap();
+        let mut moved_input = request(&cleared, "later-start", "omitted");
+        moved_input.time = Some("12:00".into());
+        let moved = relaunched.update(moved_input).unwrap();
+        let genuine = app(vault.path())
+            .update(request(&created, "rename-with-patch", original))
+            .unwrap();
+        assert_eq!(genuine.revision, moved.revision);
+        assert!(genuine.tasks[0].execution_end.is_none());
+        assert_eq!(genuine.tasks[0].time.as_deref(), Some("12:00"));
+        for replacement in ["omitted", "null", "object"] {
+            if replacement == original {
+                continue;
+            }
+            assert!(relaunched
+                .update(request(&later, "rename-with-patch", replacement))
+                .is_err());
+        }
+    }
+}
+
+#[test]
+fn manual_update_patch_history_validates_metadata_and_reads_legacy_changes() {
+    let vault = TempVault::new("manual-patch-legacy");
+    let application = app(vault.path());
+    let created = application
+        .create(create_input(
+            &application.read().unwrap(),
+            "legacy-patch",
+            "Original",
+            Some("2026-09-17"),
+            Some("08:00"),
+        ))
+        .unwrap();
+    let input = TaskUpdateInput {
+        target_binding: created.target_binding.unwrap(),
+        expected_revision: created.revision.unwrap(),
+        task_id: "legacy-patch".into(),
+        change_id: "name-edit".into(),
+        name: "Renamed".into(),
+        content: None,
+        date: Some("2026-09-17".into()),
+        time: Some("08:00".into()),
+        execution_end: None,
+        list_id: None,
+    };
+    let updated = application.update(input.clone()).unwrap();
+    let payload = serde_json::to_value(&updated.tasks[0].changes[0]).unwrap();
+    assert_eq!(payload["operation"]["kind"], "manualUpdate");
+    assert!(payload["operation"].get("listId").is_some());
+    assert!(payload["operation"].get("list_id").is_none());
+    assert!(payload["operation"].get("executionEnd").is_none());
+    let path = task_path(vault.path());
+    let mut document: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    document["tasks"][0]["changes"][0]["operation"]["name"] = "Mismatched operation".into();
+    fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
+    assert_eq!(application.read().unwrap().state, TaskDataState::Error);
+    document["tasks"][0]["changes"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("operation");
+    fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
+    let legacy = application.read().unwrap();
+    assert_eq!(legacy.state, TaskDataState::Ready);
+    let before = fs::read(&path).unwrap();
+    let retry = app(vault.path()).update(input).unwrap();
+    assert_eq!(retry.revision, legacy.revision);
+    assert_eq!(fs::read(&path).unwrap(), before);
+}
+
+#[test]
+fn manual_update_retry_rechecks_selected_vault_after_loading_its_receipt() {
+    #[derive(Clone)]
+    struct SwitchAfterLoad {
+        selection: SwitchingVault,
+        next: PathBuf,
+    }
+    impl TaskStore for SwitchAfterLoad {
+        fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
+            let result = FileTaskStore.load(path)?;
+            self.selection.switch_to(&self.next);
+            Ok(result)
+        }
+        fn save_if_unchanged(
+            &self,
+            _path: &Path,
+            _expected: &[u8],
+            _updated: &[u8],
+        ) -> Result<(), String> {
+            panic!("receipt retry must not write")
+        }
+        fn create_new(&self, _path: &Path, _document: &[u8]) -> Result<(), String> {
+            panic!("receipt retry must not create")
+        }
+    }
+    let vault = TempVault::new("receipt-selected-vault");
+    let other = TempVault::new("receipt-other-vault");
+    let application = app(vault.path());
+    let created = application
+        .create(create_input(
+            &application.read().unwrap(),
+            "receipt-task",
+            "Original",
+            None,
+            None,
+        ))
+        .unwrap();
+    let input = TaskUpdateInput {
+        target_binding: created.target_binding.unwrap(),
+        expected_revision: created.revision.unwrap(),
+        task_id: "receipt-task".into(),
+        change_id: "receipt-rename".into(),
+        name: "Renamed".into(),
+        content: None,
+        date: None,
+        time: None,
+        execution_end: None,
+        list_id: None,
+    };
+    application.update(input.clone()).unwrap();
+    let before = fs::read(task_path(vault.path())).unwrap();
+    let selection = SwitchingVault::new(vault.path());
+    let racing = TaskApplication::new(
+        selection.clone(),
+        FixedClock,
+        SwitchAfterLoad {
+            selection,
+            next: other.path().to_owned(),
+        },
+    );
+    assert!(racing.update(input).is_err());
+    assert_eq!(fs::read(task_path(vault.path())).unwrap(), before);
+    assert!(!task_path(other.path()).exists());
+}

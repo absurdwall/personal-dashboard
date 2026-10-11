@@ -295,6 +295,16 @@ type TaskChangeView = Readonly<{
         kind: "reschedule";
         date: string | null;
         time: string | null;
+        executionEnd?: Readonly<{ date: string; time: string }> | null;
+      }>
+    | Readonly<{
+        kind: "manualUpdate";
+        name: string;
+        content: string | null;
+        date: string | null;
+        time: string | null;
+        listId: string | null;
+        executionEnd?: Readonly<{ date: string; time: string }> | null;
       }>
     | Readonly<{ kind: "setState"; state: "pending" | "completed" | "abandoned" }>
     | Readonly<{
@@ -4743,7 +4753,9 @@ const eveningReviewEntry = eveningReviewEntryButton && eveningReviewEntryStatus
   ? initializeEveningReviewEntry(eveningReviewEntryButton, eveningReviewEntryStatus,
     () => currentTodayView ? { date: currentTodayView.date, isToday: currentTodayView.isToday,
       available: currentTodayView.canRecord && !vaultSelectionInProgress } : null,
-    openCollaborationForEveningReview, (key, values) => t(key as Parameters<typeof t>[0], values))
+    openCollaborationForEveningReview,
+    (element, key, values) => setCopy(element, key as InterfaceCopyKey, values),
+    (element, key, error) => setCopyError(element, key as InterfaceCopyKey, error))
   : null;
 
 async function openCollaborationForTask(
