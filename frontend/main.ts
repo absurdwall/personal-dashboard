@@ -1220,30 +1220,6 @@ const calendarTaskPreviewResizeObserver = calendarGrid && typeof ResizeObserver 
   : null;
 calendarTaskPreviewResizeObserver?.observe(calendarGrid!);
 const calendarSummary = document.querySelector<HTMLElement>("#calendar-summary");
-const calendarSummaryToggle = document.querySelector<HTMLButtonElement>("#calendar-summary-toggle");
-let calendarSummaryExpanded = true;
-let calendarSummaryReadingPosition: number | null = null;
-function updateCalendarSummaryPresentation(): void {
-  if (!calendarSummary || !calendarSummaryToggle) return;
-  if (!calendarSummaryExpanded && calendarSummary.contains(document.activeElement)) {
-    calendarSummaryToggle.focus({preventScroll: true});
-  }
-  const restoreReadingPosition = calendarSummaryExpanded && calendarSummary.hidden ? calendarSummaryReadingPosition : null;
-  if (!calendarSummaryExpanded && !calendarSummary.hidden) calendarSummaryReadingPosition = workspaceInformation?.scrollTop ?? null;
-  calendarSummary.hidden = !calendarSummaryExpanded;
-  calendarSummary.closest<HTMLElement>(".calendar-frame")?.setAttribute("data-summary-expanded", String(calendarSummaryExpanded));
-  calendarSummaryToggle.setAttribute("aria-expanded", String(calendarSummaryExpanded));
-  const key = calendarSummaryExpanded ? "calendar.hideSummary" : "calendar.showSummary";
-  calendarSummaryToggle.dataset.i18nAriaLabel = key;
-  calendarSummaryToggle.dataset.i18nTitle = key;
-  calendarSummaryToggle.setAttribute("aria-label", t(key));
-  calendarSummaryToggle.title = t(key);
-  if (restoreReadingPosition !== null && workspaceInformation) workspaceInformation.scrollTop = restoreReadingPosition;
-}
-calendarSummaryToggle?.addEventListener("click", () => {
-  calendarSummaryExpanded = !calendarSummaryExpanded;
-  updateCalendarSummaryPresentation();
-});
 const calendarSummaryHeading = document.querySelector<HTMLElement>("#calendar-summary-heading");
 const calendarSummaryStatus = document.querySelector<HTMLElement>("#calendar-summary-status");
 const calendarSummaryCopy = document.querySelector<HTMLElement>("#calendar-summary-copy");
@@ -1353,7 +1329,7 @@ const todayCurrentArrangementUnlocated = document.querySelector<HTMLElement>("#t
 const todayUnlocatedTimeRegion = document.querySelector<HTMLElement>("#today-unlocated-time-region");
 const todayUnlocatedTimeShortcut = document.querySelector<HTMLButtonElement>("#today-unlocated-time-shortcut");
 const todaySideRegion = document.querySelector<HTMLElement>(".today-side-region");
-const todayUnlocatedNarrow = () => window.innerWidth <= 1100;
+const todayUnlocatedNarrow = () => window.innerWidth <= 1024;
 // Presentation state only; keep the original sidebar and every draft/detail node
 // docked in the same position. Manual intent lasts for this date/phase.
 let todayUnlocatedOverride: boolean | null = null;
@@ -1701,7 +1677,6 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
     renderHistoricalHabitCorrections(currentTodayView);
   }
   updateWorkspaceSidebarPresentation();
-  updateCalendarSummaryPresentation();
   updateTodayUnlocatedPresentation();
   renderWorkspaceNavigationLanguage();
   renderWorkspaceFeatureArea(currentWorkspaceDestination);

@@ -3786,10 +3786,6 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .calendar-summary {
-    order: -1;
-  }
-
   .calendar-legend {
     display: none;
   }
@@ -9902,8 +9898,8 @@ button.habit-cell:focus-visible {
   #workspace-destination-calendar.calendar-destination { height: auto; min-height: calc(100vh + 160px); }
 }
 @media (max-width: 1000px) {
-  .calendar-destination .calendar-frame { grid-template-columns: minmax(0, 1.55fr) minmax(10rem, 1fr); gap: clamp(.75rem, 2vw, 1rem); }
-  .calendar-destination .calendar-summary { order: 0; }
+  .calendar-destination .calendar-frame { grid-template-columns: minmax(0, 1fr); gap: clamp(.75rem, 2vw, 1rem); }
+  .calendar-destination .calendar-summary { display: none; }
   .calendar-destination .calendar-header { flex-direction: row; flex-wrap: wrap; gap: 8px; }
   .calendar-destination .calendar-toolbar { width: auto; }
 }
@@ -9933,12 +9929,13 @@ button.habit-cell:focus-visible {
 .tasks-selected-detail .task-editor-details { width: 100%; max-height: none; padding: 18px; box-shadow: none; }
 .tasks-selected-detail .task-editor-details h3 { margin: 0 0 10px; overflow-wrap: anywhere; }
 .tasks-selected-detail .task-editor-close { margin: 16px 0 0 auto; }
-.task-row[data-task-surface="tasks"] { padding: 8px 4px; }
+.tasks-content > #tasks-list { align-content: start; grid-auto-rows: max-content; }
+.task-row[data-task-surface="tasks"] { padding: 4px; }
 .task-row[data-task-surface="tasks"].is-selected { background: var(--parity-accent-soft); border-radius: 6px; }
 .task-row[data-task-surface="tasks"] .task-row-summary { grid-template-columns: 36px minmax(0,1fr) auto; align-items: center; gap: 8px; cursor: pointer; }
-.task-row[data-task-surface="tasks"] .task-completion-toggle { padding: 6px !important; min-height: 36px !important; justify-content: center; }
+.task-row[data-task-surface="tasks"] .task-completion-toggle { padding: 4px !important; min-height: 30px !important; justify-content: center; }
 .task-row[data-task-surface="tasks"] .task-completion-toggle input { width: 22px; height: 22px; margin: 0; cursor: pointer; }
-.task-row[data-task-surface="tasks"] .task-title-button { font-weight: 600; overflow-wrap: anywhere; }
+.task-row[data-task-surface="tasks"] .task-title-button { font-size: 14px; font-weight: 400; line-height: 1.35; overflow-wrap: anywhere; }
 .task-row[data-task-surface="tasks"] .task-state-label { display: none; }
 .task-row[data-task-surface="tasks"].is-abandoned .task-state-label,
 .task-row[data-task-surface="tasks"].is-deleted .task-state-label { display: inline-flex; }
@@ -10030,7 +10027,6 @@ button.habit-cell:focus-visible {
   .app-shell[data-workspace-destination] .workspace-rail-context strong { white-space: normal; }
 }
 
-.calendar-destination .calendar-frame[data-summary-expanded="false"] { grid-template-columns: minmax(0, 1fr); }
 .calendar-summary[hidden] { display: none; }
 /* Compact Task entry: optional scheduling stays out of the persistent row. */
 .task-compact-row { display:flex; align-items:center; gap:.4rem; min-width:0; }

@@ -54,7 +54,7 @@ function webKit(script:string,width=1280,height=720):any {
         if(render){const month=fixture(weeks);calendarHarness.render(month,selectedFor(month));}
         const grid=document.querySelector('#calendar-grid'),cells=[...grid.children],dense=cells[10],all=[...dense.querySelectorAll('.calendar-day-task-summary')],visible=all.filter(item=>!item.hidden&&getComputedStyle(item).display!=='none');
         const overflow=dense.querySelector('.calendar-day-task-overflow'),frame=document.querySelector('.calendar-frame'),summary=document.querySelector('.calendar-summary'),panel=document.querySelector('#calendar-task-panel'),information=document.querySelector('.workspace-information'),form=panel.querySelector('#calendar-task-create-form'),submit=panel.querySelector('#calendar-task-create-submit');
-        return {width:innerWidth,height:innerHeight,frame:rect(frame),grid:rect(grid),cells:cells.map(rect),summary:{rect:rect(summary),hidden:summary.hidden,scrollHeight:summary.scrollHeight,clientHeight:summary.clientHeight,text:summary.textContent},panel:{rect:rect(panel),hidden:panel.hidden,position:getComputedStyle(panel).position,scrollHeight:panel.scrollHeight,clientHeight:panel.clientHeight,tasks:panel.querySelectorAll('.calendar-task-list > *').length,formHidden:form.hidden,submit:rect(submit)},information:{rect:rect(information),scrollHeight:information.scrollHeight,clientHeight:information.clientHeight,scrollTop:information.scrollTop},dense:{rect:rect(dense),top:rect(dense.querySelector('.calendar-day-top')),number:rect(dense.querySelector('.calendar-day-top strong')),marker:rect(dense.querySelector('.calendar-day-marker')),overflowRect:rect(overflow),overflowText:overflow.textContent,overflowCount:overflow.dataset.calendarTaskOverflow,totalPreviews:all.length,visiblePreviews:visible.map(item=>({rect:rect(item),whiteSpace:getComputedStyle(item).whiteSpace,overflow:getComputedStyle(item).overflow,scroll:item.scrollWidth,client:item.clientWidth,state:item.dataset.taskState,hidden:item.hidden}))}};
+        return {width:innerWidth,height:innerHeight,frame:rect(frame),grid:rect(grid),cells:cells.map(rect),summary:{rect:rect(summary),hidden:summary.hidden||getComputedStyle(summary).display==='none',display:getComputedStyle(summary).display,scrollHeight:summary.scrollHeight,clientHeight:summary.clientHeight,text:summary.textContent},panel:{rect:rect(panel),hidden:panel.hidden,position:getComputedStyle(panel).position,scrollHeight:panel.scrollHeight,clientHeight:panel.clientHeight,tasks:panel.querySelectorAll('.calendar-task-list > *').length,formHidden:form.hidden,submit:rect(submit)},information:{rect:rect(information),scrollHeight:information.scrollHeight,clientHeight:information.clientHeight,scrollTop:information.scrollTop},dense:{rect:rect(dense),top:rect(dense.querySelector('.calendar-day-top')),number:rect(dense.querySelector('.calendar-day-top strong')),marker:rect(dense.querySelector('.calendar-day-marker')),overflowRect:rect(overflow),overflowText:overflow.textContent,overflowCount:overflow.dataset.calendarTaskOverflow,totalPreviews:all.length,visiblePreviews:visible.map(item=>({rect:rect(item),whiteSpace:getComputedStyle(item).whiteSpace,overflow:getComputedStyle(item).overflow,scroll:item.scrollWidth,client:item.clientWidth,state:item.dataset.taskState,hidden:item.hidden}))}};
       }
       async function waitForViewport(width,height){for(let n=0;n<100;n++){if(innerWidth===width&&innerHeight===height)return;await new Promise(r=>setTimeout(r,10));}throw Error('Viewport resize timed out '+innerWidth+'x'+innerHeight);}
       ${script}`);
@@ -79,7 +79,7 @@ test('five-week month fits the shipped 1280×720 workspace while selected-day de
 
 for(const [width,height] of [[640,720],[795,756],[874,688],[1280,720],[830,758],[640,688]]) {
   for(const weeks of [5,6]) {
-    test(`${weeks}-week month fits with selected details and a docked summary at ${width}×${height}`,{skip:process.platform!=='darwin'},()=>{
+    test(`${weeks}-week month fits with responsive summary presentation at ${width}×${height}`,{skip:process.platform!=='darwin'},()=>{
       const result=webKit(`return JSON.stringify(calendarSnapshot(${weeks}));`,width,height);
       assert.equal(result.width,width);assert.equal(result.height,height);
       assert.equal(result.cells.length,weeks*7);
@@ -87,7 +87,8 @@ for(const [width,height] of [[640,720],[795,756],[874,688],[1280,720],[830,758],
       assert.ok(result.grid.right<=width);
       assert.ok(Math.max(...result.cells.map((c:any)=>c.height))-Math.min(...result.cells.map((c:any)=>c.height))<1);
       assert.equal(result.panel.hidden,false);assert.ok(result.panel.rect.top>=result.frame.bottom,JSON.stringify(result));
-      assert.ok(result.summary.rect.left>=result.grid.right&&result.summary.rect.right<=width,JSON.stringify(result.summary));
+      if(width>1000)assert.ok(result.summary.rect.left>=result.grid.right&&result.summary.rect.right<=width,JSON.stringify(result.summary));
+      else assert.equal(result.summary.hidden,true,'narrow summary remains hidden rather than stacking below the month');
       assert.ok(result.dense.marker.left>=result.dense.number.right&&result.dense.overflowRect.right<=result.dense.rect.right,JSON.stringify(result.dense));
       assert.ok(result.dense.overflowRect.top>=result.dense.marker.bottom||result.dense.overflowRect.left>=result.dense.marker.right,JSON.stringify(result.dense));
       assert.ok(result.dense.visiblePreviews.length<=4);
@@ -143,31 +144,29 @@ test('selected-day summary and task controls remain reachable in their own scrol
   assert.ok(result.information.submit.top>=result.information.top.top&&result.information.submit.bottom<=result.information.top.bottom,JSON.stringify(result.information));
 });
 
-test('Calendar viewport resize, navigation collapse, language change, month navigation, and summary collapse refit preview capacity',{skip:process.platform!=='darwin'},async()=>{
+test('Calendar viewport resize, navigation collapse, language change, and month navigation retain responsive summary fit',{skip:process.platform!=='darwin'},async()=>{
   const result=webKit(`
     const states=[calendarSnapshot(5)];
     window.webkit.messageHandlers.resizeViewport.postMessage({width:830,height:758});await waitForViewport(830,758);await new Promise(r=>setTimeout(r,50));states.push(calendarSnapshot(5,false));
     document.querySelector('#workspace-sidebar-toggle').click();await new Promise(r=>setTimeout(r,50));states.push(calendarSnapshot(5,false));
     calendarHarness.language('en');await new Promise(r=>setTimeout(r,50));states.push(calendarSnapshot(5,false));
-    document.querySelector('#calendar-summary-toggle').click();await new Promise(r=>setTimeout(r,50));states.push(calendarSnapshot(5,false));
     const nextMonth=fixture(6);calendarHarness.render(nextMonth,selectedFor(nextMonth));await new Promise(r=>setTimeout(r,50));states.push(calendarSnapshot(6,false));
     window.webkit.messageHandlers.resizeViewport.postMessage({width:640,height:688});await waitForViewport(640,688);await new Promise(r=>setTimeout(r,50));states.push(calendarSnapshot(6,false));
-    return JSON.stringify({states,summaryHidden:document.querySelector('.calendar-summary').hidden,commands});
+    return JSON.stringify({states,commands});
   `,1280,720);
-  const weekCounts=[5,5,5,5,5,6,6];
+  const weekCounts=[5,5,5,5,6,6];
   for(const [index,state] of result.states.entries()) {
     const weeks=weekCounts[index];
     assert.equal(state.cells.length,weeks*7,JSON.stringify({index,state}));
     assert.ok(state.grid.top>=0&&state.grid.bottom<=state.height,JSON.stringify({index,state:state.grid}));
     assert.ok(Math.max(...state.cells.map((cell:any)=>cell.height))-Math.min(...state.cells.map((cell:any)=>cell.height))<1);
-    if(state.summary.hidden)assert.ok(index>=4);
+    if(state.width<=1000)assert.equal(state.summary.hidden,true,JSON.stringify({index,state:state.summary}));
     else assert.ok(state.summary.rect.left>=state.grid.right&&state.summary.rect.right<=state.width,JSON.stringify({index,state:state.summary}));
     assert.ok(state.panel.rect.top>=state.frame.bottom,JSON.stringify({index,state}));
     assert.ok(state.dense.visiblePreviews.length<=4);
     assert.equal(state.dense.overflowText,'+'+(7-state.dense.visiblePreviews.length),JSON.stringify({index,state:state.dense}));
   }
-  assert.deepEqual(result.states.map((state:any)=>[state.width,state.height]),[[1280,720],[830,758],[830,758],[830,758],[830,758],[830,758],[640,688]]);
-  assert.equal(result.summaryHidden,true);
+  assert.deepEqual(result.states.map((state:any)=>[state.width,state.height]),[[1280,720],[830,758],[830,758],[830,758],[830,758],[640,688]]);
   assert.deepEqual(result.commands.filter((item:any)=>/^(create_|edit_|update_|save_|set_)/.test(item.command)),[]);
 });
 

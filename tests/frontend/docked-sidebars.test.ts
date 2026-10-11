@@ -123,34 +123,30 @@ for(const width of [640,830,1000,1280]) {
   });
 }
 
-for(const [width,height] of [[640,720],[795,756],[874,688],[1280,720]] as const) {
-  test(`Calendar existing summary stays docked right at ${width}×${height} without altering selection, month or drafts`, {skip:process.platform!=='darwin'},()=>{
+for(const width of [640,830,1000,1088,1280]) {
+  test(`Calendar summary is right-docked above 1000px and hidden below without changing its data at ${width}px`, {skip:process.platform!=='darwin'},()=>{
     const result=probe(width,`
       document.querySelector('[data-workspace-destination="calendar"].destination-button').click();
       await until(()=>document.querySelectorAll('#calendar-grid [data-calendar-date]').length>0);
       await until(()=>document.querySelector('#calendar-open-day').disabled===false);
       const toggle=document.querySelector('#calendar-summary-toggle'),summary=document.querySelector('#calendar-summary'),grid=document.querySelector('#calendar-grid');
-      if(!toggle)throw Error('Calendar summary toggle missing');
       const cells=[...grid.children],selected=grid.querySelector('[data-selected]'),content=summary.textContent,form=document.querySelector('#calendar-task-create-name');form.value='Retained Calendar draft';
-      const toolbar=document.querySelector('.calendar-toolbar'),header=document.querySelector('.calendar-header');
-      const before={summary:rect(summary),grid:rect(grid),toolbar:rect(toolbar),header:rect(header),toggle:rect(toggle)};toggle.focus();toggle.click();const hidden=summary.hidden,collapsed={grid:rect(grid)};toggle.click();
-      return JSON.stringify({before,collapsed,after:{summary:rect(summary),grid:rect(grid)},hidden,expanded:toggle.getAttribute('aria-expanded'),focused:document.activeElement===toggle,contentKept:content===summary.textContent,cellsKept:cells.every((c,i)=>grid.children[i]===c),selectionKept:selected===grid.querySelector('[data-selected]'),draft:form.value,dialog:summary.closest('dialog')!==null,overflow:document.documentElement.scrollWidth>innerWidth,calls});
-    `,true,height);
-    assert.equal(result.hidden,true);assert.equal(result.expanded,'true');assert.equal(result.focused,true);
+      const before={summary:rect(summary),grid:rect(grid),display:getComputedStyle(summary).display};
+      return JSON.stringify({before,togglePresent:Boolean(toggle),summaryHidden:summary.hidden,contentKept:content===summary.textContent,cellsKept:cells.every((c,i)=>grid.children[i]===c),selectionKept:selected===grid.querySelector('[data-selected]'),draft:form.value,dialog:summary.closest('dialog')!==null,overflow:document.documentElement.scrollWidth>innerWidth,calls});
+    `,true,720);
+    const visible=width>1000;
+    assert.equal(result.togglePresent,false);assert.equal(result.summaryHidden,false);
+    assert.equal(result.before.display,visible?'block':'none');
     assert.equal(result.dialog,false);assert.equal(result.contentKept,true);assert.equal(result.cellsKept,true);assert.equal(result.selectionKept,true);
     assert.equal(result.draft,'Retained Calendar draft');assert.equal(result.overflow,false,JSON.stringify(result));
-    assert.ok(result.before.summary.left>=result.before.grid.right,JSON.stringify(result.before));
-    assert.ok(result.before.toggle.right<=result.before.toolbar.right&&result.before.toggle.top>=result.before.toolbar.top&&result.before.toggle.bottom<=result.before.toolbar.bottom,`summary toggle stays inside its toolbar: ${JSON.stringify(result.before)}`);
-    assert.ok(result.before.summary.right<=width && result.before.summary.width>80,JSON.stringify(result.before));
+    if(visible)assert.ok(result.before.summary.left>=result.before.grid.right&&result.before.summary.right<=width&&result.before.summary.width>80,JSON.stringify(result.before));
+    else assert.equal(result.before.summary.width,0,'narrow summary must not stack below the month');
     assert.ok(result.before.grid.width>100,JSON.stringify(result.before));
-    assert.ok(result.collapsed.grid.width>result.before.grid.width+30,JSON.stringify(result));
-    assert.deepEqual({summary:result.before.summary,grid:result.before.grid},result.after);
     assert.deepEqual(result.calls.filter((c:{command:string})=>/^(create_|edit_|update_|save_|set_)/.test(c.command)),[]);
-    console.log('Calendar geometry '+width+':',JSON.stringify(result));
   });
 }
 
-for(const width of [640,830,1000,1280]) {
+for(const width of [640,830,1000,1088,1280]) {
   test(`Today complete sidebar at ${width}px restores beside the axis without a floating surface`, {skip:process.platform!=='darwin'},()=>{
     const result=probe(width,`
       const initial=snapshot();
@@ -158,7 +154,7 @@ for(const width of [640,830,1000,1280]) {
       trigger.click();const expanded=snapshot();
       return JSON.stringify({initial,collapsed,expanded,trigger:rect(trigger),title:trigger.title,name:trigger.getAttribute('aria-label'),dialogs:[...document.querySelectorAll('dialog[open]')].length,overflow:document.documentElement.scrollWidth>innerWidth});
     `);
-    assert.equal(result.initial.sideHidden,width<=1100);
+    assert.equal(result.initial.sideHidden,width<=1024);
     assert.equal(result.collapsed.sideHidden,true);assert.equal(result.expanded.sideHidden,false);
     assert.ok(result.collapsed.axis.width>result.expanded.axis.width+150);
     assert.ok(result.expanded.side.left>=result.expanded.axis.right,'right sidebar stays docked');
