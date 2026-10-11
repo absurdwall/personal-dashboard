@@ -14,7 +14,7 @@ const main = readFileSync(join(output, "main.js"), "utf8");
 const slice = (from: string, to: string) => main.slice(main.indexOf(from), main.indexOf(to, main.indexOf(from)));
 const fn = (name: string) => { const rest = main.slice(main.search(new RegExp(`function ${name}\\(`))); return rest.slice(0, /^}\n/m.exec(rest)!.index + 2); };
 let probe: string | null = null;
-function render(check: string, width = 830): any {
+function render(check: string, width = 830, height = 758): any {
   if (!probe) { probe = join(output, "webkit"); execFileSync("swiftc", [join(root, "tests/frontend/helpers/rendered-today-layout.swift"), "-o", probe], { timeout: 60000 }); }
   writeFileSync(join(output, "index.html"), readFileSync(join(root, "frontend/index.html"), "utf8").replace(/<script[^]*?<\/script>/g, ""));
   copyFileSync(join(root, "frontend/styles.css"), join(output, "styles.css"));
@@ -43,18 +43,19 @@ function render(check: string, width = 830): any {
     ${check}
   })()`;
   writeFileSync(join(output, "check.js"), script);
-  return JSON.parse(execFileSync(probe, [join(output, "index.html"), join(output, "check.js"), String(width)], { encoding: "utf8", timeout: 60000 }));
+  return JSON.parse(execFileSync(probe, [join(output, "index.html"), join(output, "check.js"), String(width), String(height)], { encoding: "utf8", timeout: 60000 }));
 }
 
 test("plans, point Tasks and facts share a scale with separate clickable collision columns and full-width solitary cards", { skip: process.platform !== "darwin" }, () => {
-  for (const width of [1280, 830, 680]) {
+  for (const [width,height] of [[1280,720], [830,758], [680,758]]) {
     const result = render(`
       const markers=[...todayTimedEvents.querySelectorAll('li')];
       const cluster=markers.filter(m=>m.dataset.stackId===markers[0].dataset.stackId);
       const solitary=markers.find(m=>m.querySelector('a').dataset.axisItemText==='14:00 Plan alone');
       const clicks=cluster.map(m=>{const a=m.querySelector('a');a.click();return document.querySelector(a.getAttribute('href')).open;});
-      return JSON.stringify({cluster:cluster.map(rect),solo:rect(solitary),plot:rect(document.querySelector('.today-axis-plot')),clicks,sources:cluster.map(m=>m.querySelector('.today-axis-marker-source-status').textContent),scales:todayContinuousAxis.querySelectorAll('.today-hour-scale').length});
-    `, width);
+      return JSON.stringify({cluster:cluster.map(rect),solo:rect(solitary),plot:rect(document.querySelector('.today-axis-plot')),clicks,sources:cluster.map(m=>m.querySelector('.today-axis-marker-source-status').textContent),scales:todayContinuousAxis.querySelectorAll('.today-hour-scale').length,viewportHeight:window.innerHeight});
+    `, width, height);
+    assert.equal(result.viewportHeight,height);
     assert.equal(result.scales, 1);
     assert.equal(result.cluster.length, 3);
     const ordered = result.cluster.toSorted((a: any,b: any) => a.left-b.left);
