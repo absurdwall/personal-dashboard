@@ -9934,30 +9934,53 @@ button.habit-cell:focus-visible {
 .tasks-create-dialog { width: min(36rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow: auto; padding: 0; border: 1px solid var(--parity-border); border-radius: .75rem; background: var(--parity-surface); color: var(--parity-ink); }
 .tasks-create-dialog::backdrop { background: rgb(0 0 0 / .3); }
 .tasks-create-dialog > .task-create-form { margin: 0; border: 0; }
-/* Today-only transient untimed presentation; existing navigation/Calendar stay unchanged. */
-#today-ready[data-phase="daytime"] .today-layout[data-unlocated-presentation="collapsed"],
-#today-ready[data-phase="daytime"] .today-layout[data-unlocated-presentation="drawer"] {
+/* Existing Today sidebar remains docked at every supported width. */
+#today-ready[data-phase="daytime"] .today-layout[data-unlocated-presentation="collapsed"] {
   grid-template-columns: minmax(0, 1fr);
 }
-#today-unlocated-time-shortcut { flex-shrink: 0; font-size: 11px; }
-#today-unlocated-time-shortcut[hidden] { display: none; }
-
-.today-unlocated-drawer {
-  box-sizing: border-box;
-  width: min(440px, calc(100vw - 32px));
-  max-height: calc(100vh - 32px);
-  margin: 16px 16px 16px auto;
-  padding: 14px;
-  overflow: auto;
-  border: 1px solid var(--parity-border);
-  border-radius: 12px;
-  background: var(--parity-surface, #fff);
-  color: var(--parity-ink, #232724);
-  box-shadow: 0 12px 40px rgb(24 32 29 / 25%);
+#today-ready[data-phase="daytime"] .today-layout[data-unlocated-presentation="inline"] {
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 28%);
+  gap: 16px;
 }
-.today-unlocated-drawer::backdrop { background: rgb(24 32 29 / 24%); }
-.today-unlocated-drawer > button { display: block; margin: 0 0 12px auto; }
-.today-unlocated-drawer .today-axis-unlocated-region { margin: 0; }
+.today-side-region[hidden] { display: none; }
+.sidebar-toggle {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  flex: 0 0 auto; min-width: 30px; min-height: 30px; padding: 4px 6px;
+  border: 1px solid var(--parity-border); border-radius: 6px;
+  background: var(--parity-surface); color: var(--parity-ink);
+}
+.sidebar-toggle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.sidebar-toggle-count { font-size: 10px; }
+#today-unlocated-time-shortcut[hidden] { display: none; }
+@media(max-width:900px) {
+  #today-ready[data-phase="daytime"] .today-layout[data-unlocated-presentation="inline"] .task-form-grid { grid-template-columns: minmax(0, 1fr); }
+  #today-ready[data-phase="daytime"] .today-layout[data-unlocated-presentation="inline"] .task-form-wide { grid-column: auto; }
+}
 
 .tasks-content > .task-create-ended-attempts { margin: .5rem 0; overflow-wrap: anywhere; }
 .task-create-ended-attempts dd { white-space: pre-wrap; }
+
+/* Primary navigation always docks on the left; the toolbar toggle never hides. */
+.app-shell[data-workspace-destination] { grid-template-rows: auto minmax(0, 1fr); }
+.app-shell[data-navigation-expanded="false"] { grid-template-columns: 0 minmax(0, 1fr); }
+.app-shell[data-workspace-destination] > .workspace-sidebar[hidden] { display: none; }
+.app-shell[data-workspace-destination] .workspace-shell { grid-column: 2; grid-row: 2; min-width: 0; }
+.product-toolbar { gap: 10px; }
+@media(max-width:680px) {
+  .app-shell[data-workspace-destination] { grid-template-columns: 140px minmax(0, 1fr); }
+  .app-shell[data-workspace-destination][data-navigation-expanded="false"] { grid-template-columns: 0 minmax(0, 1fr); }
+  .app-shell[data-workspace-destination] > .workspace-sidebar {
+    display: flex; grid-column: 1; grid-row: 2; flex-direction: column;
+    align-items: stretch; gap: 0; padding: 10px 8px;
+    border-right: 1px solid var(--parity-border); border-bottom: 0;
+  }
+  .app-shell[data-workspace-destination] .workspace-navigation { display: grid; grid-template-columns: minmax(0, 1fr); width: auto; padding: 16px 0; }
+  .app-shell[data-workspace-destination] .destination-button { padding: 8px; text-align: left; }
+  .app-shell[data-workspace-destination] .workspace-navigation .destination-button > span:not(.destination-icon) {
+    position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: normal;
+  }
+  .app-shell[data-workspace-destination] .workspace-rail-context strong { white-space: normal; }
+}
+
+.calendar-destination .calendar-frame[data-summary-expanded="false"] { grid-template-columns: minmax(0, 1fr); }
+.calendar-summary[hidden] { display: none; }

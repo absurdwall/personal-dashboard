@@ -5,6 +5,12 @@ export type InterfaceLanguagePreferences = Readonly<{
 }>;
 
 const interfaceCopies = {
+  "calendar.hideSummary": { zh: "收起日期摘要侧栏", en: "Hide date summary sidebar" },
+  "calendar.showSummary": { zh: "展开日期摘要侧栏", en: "Show date summary sidebar" },
+  "navigation.hideSidebar": { zh: "收起主导航侧栏", en: "Hide navigation sidebar" },
+  "navigation.showSidebar": { zh: "展开主导航侧栏", en: "Show navigation sidebar" },
+  "today.hideSidebar": { zh: "收起当天侧栏（{count} 项未定位条目）", en: "Hide Today sidebar ({count} untimed items)" },
+  "today.showSidebar": { zh: "展开当天侧栏（{count} 项未定位条目）", en: "Show Today sidebar ({count} untimed items)" },
   "today.planResizeEnd": { zh: "调整计划结束（拖动，或点击编辑）", en: "Adjust plan end (drag or click to edit)" },
   "today.planApproximateReference": { zh: "约{time}", en: "Around {time}" },
   "today.planPrecision": { zh: "时间表达", en: "Time expression" },
