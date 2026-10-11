@@ -4,8 +4,8 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: implementation and reviews complete; ten tickets resolved, final packaged acceptance ticket blocked
-Implementation: code complete; automated checks passed; final native acceptance partial
+Stage: local implementation, reviews and human acceptance complete; eleven tickets and parent resolved
+Implementation: complete; local acceptance with documented observation qualifications and accepted Today narrow-window limitation
 Working branch: codex/dashboard-experience-integration
 Management source: source-personal-dashboard-experience
 
@@ -13,7 +13,7 @@ Management source: source-personal-dashboard-experience
 
 | ID | Type | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
-| PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | open | none | [Prototype R](prototype/README.md), [Q1–Q4](design-review.md), [publication](publication.md) |
+| PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | closed | none | [local human acceptance](evidence/human-acceptance-2026-10-11.md), [retained publication](publication.md) |
 | PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
 | PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | closed | PDEX-01 | [component resolution + final checks](evidence/pdex-11.md) |
 | PDEX-03 | ticket | [03: 保持早间文字与可读的统一白天时间轴](issues/03-unified-readable-today.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
@@ -24,7 +24,7 @@ Management source: source-personal-dashboard-experience
 | PDEX-08 | ticket | [08: Calendar 完整紧凑月历与记录状态](issues/08-compact-calendar.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
 | PDEX-09 | ticket | [09: Collaboration 减负与 slash 命令补全](issues/09-collaboration-command-completion.md) | ready-for-agent | closed | none | [user acceptance and retained evidence](issues/09-collaboration-command-completion.md) |
 | PDEX-10 | ticket | [10: Evening 一键进入带日期的复盘草稿](issues/10-evening-review-entry.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
-| PDEX-11 | ticket | [11: 验证同一打包版本的完整日常流程](issues/11-packaged-daily-flow-acceptance.md) | ready-for-agent | blocked | PDEX-03, PDEX-04, PDEX-05, PDEX-07, PDEX-08, PDEX-09, PDEX-10 | [native acceptance blocker](evidence/pdex-11.md) |
+| PDEX-11 | ticket | [11: 验证同一打包版本的完整日常流程](issues/11-packaged-daily-flow-acceptance.md) | ready-for-agent | closed | PDEX-03, PDEX-04, PDEX-05, PDEX-07, PDEX-08, PDEX-09, PDEX-10 | [local human acceptance and qualifications](evidence/human-acceptance-2026-10-11.md) |
 
 The spec and eleven approved tickets are published locally. Every ticket retains its complete body and separate acceptance criteria.
 Current claim and implementation states are recorded per row and ticket. The Work Item index [00-spec](issues/00-spec.md) refers to
@@ -181,3 +181,12 @@ Current tracker: ten resolved, one blocked (PDEX-11), parent open. PDEX-11's sla
 The installed helper confirmed the existing Project summary update and a fresh canonical readback: Registry `4e69892e9c986090`, summary `4981ce4399878143`, experience source `01525760c6c0e6bd`, twelve records (ten resolved, one blocked, one open), no malformed experience references. [Sanitized source/summary receipt](evidence/management-local-install-2026-10-11.json) records the actual installed production release, human quota/IME acceptances and only two remaining manual gate categories. Project lifecycle, focus, review, source configuration, working directory and repository fields are unchanged.
 
 The installed helper was invoked with a system-only child PATH that excludes GitHub CLI, honoring local-only tracker scope; unrelated available local source revisions were validated, unavailable GitHub/malformed legacy sources explicitly uncovered. This updates only the existing Project's source-backed progress summary, not its native ticket lifecycle or a new Registry. No remote query, tracker migration, main merge or artificial model request occurred. The independent review chat also confirmed the running installed executable/signature/bundle identities and recoverable backup. Product files remain identical to frozen reviewed B `ffa1b85`; closeout remains docs-only.
+
+
+## Direct human acceptance and initiative closeout — 2026-10-11
+
+The human confirms plan time-bar drag with visible plan-time revisions, timeline drag-selection to create a Task, narrowed Calendar usability and correct-looking overlap entries in the actual installed normal App. The reviewer additionally observed saved-and-readback-verified feedback and revision records through read-only UI inspection, and accepts the round on existing implementation/automated/native evidence plus these direct human results. [Final local acceptance record](evidence/human-acceptance-2026-10-11.md) retains exact message/provenance pointers and evidence qualifications.
+
+Today narrow-window time-axis compression/partial occlusion from the retained Items without a precise time side column is explicitly accepted by the human as an interface limitation; optional improvement does not block this round. Sustained held-edge auto-scroll, active-drag resize/cancel and exact final-installed 830×758 geometry were not separately observed: no claim of per-step performance or a direct human waiver is made. IME/quota retain their separate explicit acceptance/test waivers.
+
+PDEX-11 is now resolved/closed; all eleven tickets and PDEX-SPEC-01 are locally resolved/closed, with no current initiative blocker. Earlier parent holds prevented acceptance inferred solely from automatic checks; this direct human installed-App acceptance and independent reviewer overall conclusion provide the missing basis for parent closure. No product changes, live UI action, personal-data write or new model/test request were performed by implementation closeout. Product diff from reviewed `ffa1b85` is zero. Historical records remain; no main/remote publication or tracker migration is inferred.

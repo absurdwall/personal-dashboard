@@ -6,12 +6,12 @@
 
 **Triage:** ready-for-agent
 
-**Status:** blocked
+**Status:** resolved
 
 **ID:** PDEX-11
 **Parent:** [PDEX-SPEC-01](../spec.md)
-**Lifecycle:** blocked
-**Implementation:** code complete; native acceptance blocked
+**Lifecycle:** closed
+**Implementation:** complete; local human acceptance with documented qualifications
 **Owner:** implementer PDEX-11
 **Assignee:** implementer PDEX-11
 **Date:** 2026-10-10
@@ -22,11 +22,11 @@
 - [x] 验收固定候选身份，使用隔离 Profile、合成 Vault 和受控时间，覆盖三个阶段与相关页面。
 - [x] 修改当前计划后文档/视图/重开一致，早间基准和事实独立；精确与模糊计划符合各自含义。
 - [x] Task 选区、移动、区间读回与完成状态一致，旧任务及旧对话/离线调用的保存兼容性保持。
-- [ ] 五/六行月历、重叠条目、长拖动、清晰勾选和详情在常用及窄窗口可操作。
+- [x] 五/六行月历、重叠条目、长拖动、清晰勾选和详情在常用及窄窗口可操作（整体人工验收与 reviewer 综合判断接受；held-edge/active-drag resize/cancel 及精确最终几何未单独观察，见最终验收记录）。
 - [x] slash 键盘/点击/中文输入法、草稿保留、目标日期与晚间入口验证通过，补全与入口均不自动发消息（真实 IME 子项由用户接受现有证据并豁免专门补测）。
 - [x] 文档冲突、写入失败和未确认结果真实表达；正常模型额度耗尽不阻止确定性编辑（额度子项由用户接受现有证据并豁免真实耗尽补测，未实际观察额度耗尽）。
 - [x] 各功能票自己的测试证据仍保留；汇总独立代码检查、自动测试和打包 UI 验收，不把未验证项目写成通过。
-- [x] 不修改个人真实数据，不从此票推断安装或远端发布已获授权，不关闭父 spec。
+- [x] 自动验证不修改个人真实数据；安装依单独用户授权，父 spec 依本次直接人工验收和 reviewer 综合结论关闭，不从实现/自动化检查推断远端发布或父票接受。
 
 
 ## Verification
@@ -80,3 +80,12 @@ PDEX-11's conflict/write-failure/unconfirmed-result combined criterion is now ch
 The direct human message `01a1296a-888d-7193-9c10-77ca83962f5f` in review chat explicitly accepts the real Chinese IME criterion on existing evidence and waives dedicated native composition testing; normal daily Chinese use will supply future issue feedback. This is **human acceptance/test waiver**, not an observed OS composition result. Existing keyboard/completion/ordinary-slash/draft checks and independent review are complete, so PDEX-09 is now locally resolved/closed with all acceptance criteria accounted for. The same shared IME subgate is accepted for PDEX-11. No additional test message, input-source change or model request is required.
 
 Current tracker: ten resolved, one blocked (PDEX-11), parent open. PDEX-11's slash/draft/date/Evening combined criterion is checked using existing qualified behavior evidence plus the explicit IME waiver; its quota/conflict/failure criterion is already accepted as recorded above. Only sustained native edge dragging/active gesture cancellation and resize, plus fresh final-installed 830×758 narrow-window behavior remain required. [Current two manual check categories](../manual-acceptance.md) supersede earlier pending-IME/quota lists without erasing historical observations. Installation is confirmed; full native acceptance and parent closure remain pending these two categories.
+
+
+## Direct human acceptance and initiative closeout — 2026-10-11
+
+The human confirms plan time-bar drag with visible plan-time revisions, timeline drag-selection to create a Task, narrowed Calendar usability and correct-looking overlap entries in the actual installed normal App. The reviewer additionally observed saved-and-readback-verified feedback and revision records through read-only UI inspection, and accepts the round on existing implementation/automated/native evidence plus these direct human results. [Final local acceptance record](../evidence/human-acceptance-2026-10-11.md) retains exact message/provenance pointers and evidence qualifications.
+
+Today narrow-window time-axis compression/partial occlusion from the retained Items without a precise time side column is explicitly accepted by the human as an interface limitation; optional improvement does not block this round. Sustained held-edge auto-scroll, active-drag resize/cancel and exact final-installed 830×758 geometry were not separately observed: no claim of per-step performance or a direct human waiver is made. IME/quota retain their separate explicit acceptance/test waivers.
+
+PDEX-11 is now resolved/closed; all eleven tickets and PDEX-SPEC-01 are locally resolved/closed, with no current initiative blocker. Earlier parent holds prevented acceptance inferred solely from automatic checks; this direct human installed-App acceptance and independent reviewer overall conclusion provide the missing basis for parent closure. No product changes, live UI action, personal-data write or new model/test request were performed by implementation closeout. Product diff from reviewed `ffa1b85` is zero. Historical records remain; no main/remote publication or tracker migration is inferred.

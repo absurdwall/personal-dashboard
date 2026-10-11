@@ -1,0 +1,54 @@
+{
+  "acceptedOn": "2026-10-11",
+  "scope": "Local Dashboard experience acceptance, PDEX-01–11 and PDEX-SPEC-01; no remote publication",
+  "humanSource": {
+    "reviewThreadId": "01a128ff-8865-7493-9698-cc48c19d7939",
+    "turnId": "01a12978-51ef-7740-9c76-06a4e3fb9b04",
+    "userMessageId": "01a12978-524f-7190-a562-d01015b10f84"
+  },
+  "installedProduct": {
+    "sourceCommit": "6af11982193760f7f16091356884228c4ef3a448",
+    "reviewedProductSource": "ffa1b85056fe3f2bc3ab68ce652001b3b6f9537e",
+    "path": "/Applications/Personal Dashboard.app",
+    "identifier": "com.tortillaflat.personal-dashboard",
+    "binarySha256": "a6a277f68b25002f88c4958ed56a93c19b7497dc36eb49fa571a2f7b85b3d833",
+    "bundleFileTreeSha256": "929a2edec63da571c7ff1f1d4fb3b9cd2f6094bd54d35586da6decedadd51d51"
+  },
+  "humanReportedObserved": [
+    "Plan time-bar drag changes the plan and exposes plan-time revision records",
+    "Drag-selecting a timeline interval supports creating a Task",
+    "Calendar is usable in the narrowed window",
+    "Overlapping items look correct",
+    "Today retains the Items without a precise time side column and materially compresses/obscures part of the timeline; the human explicitly accepts this limitation"
+  ],
+  "reviewerObservation": [
+    "Read-only inspection of the actual normal installed App showed Plan time saved and verified by reading the record and plan-time revision records"
+  ],
+  "acceptanceBasis": "Existing code/automated regressions/qualified source-bound native evidence plus direct human use of the actual installed App and independent reviewer overall judgment",
+  "acceptedLimitation": "Today narrow-window time-axis compression/occlusion from retained unlocated-items side column; optional future optimization, no current blocker",
+  "notSeparatelyObserved": [
+    "Sustained held-edge auto-scroll sequence",
+    "Cancel/resize during an active drag",
+    "Exact final-installed 830x758 outer/client geometry"
+  ],
+  "notSeparatelyObservedTreatment": "Retained evidence qualifications; overall local acceptance is complete. No claim that these sub-actions were performed or explicitly waived by the human.",
+  "separateExplicitWaivers": {
+    "nativeIme": {
+      "userMessageId": "01a1296a-888d-7193-9c10-77ca83962f5f",
+      "accepted": true,
+      "osCompositionObserved": false
+    },
+    "actualQuotaExhaustion": {
+      "userMessageId": "01a12969-8b59-76a3-a544-d67411f4656f",
+      "accepted": true,
+      "exhaustedAccountObserved": false
+    }
+  },
+  "currentTracker": {
+    "ticketResolvedCount": 11,
+    "parentState": "resolved/closed",
+    "currentBlockers": []
+  },
+  "parentClosureBasis": "Original safeguard barred closure inferred from ticket/automatic-check success alone; direct installed-App human acceptance and reviewer overall conclusion now provide the acceptance basis for closing this initiative.",
+  "closeoutActions": "Docs-only; no live UI action, no product change, no agent write to personal data, no new tests/model calls or GitHub operation"
+}
