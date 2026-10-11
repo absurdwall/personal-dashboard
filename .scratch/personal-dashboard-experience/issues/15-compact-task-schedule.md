@@ -15,7 +15,7 @@ Base: fc4c8185a9b7e029a945662754a2131b21bfb3d8
 ## Acceptance criteria
 
 - [ ] Tasks quick add and Today Tasks entry each one row: name, compact schedule control, Add; no permanent large multi-field form.
-- [ ] Picker supports today/tomorrow/date/optional time; Today selected lived-day default, no inferred time; Tasks default subject to current human preference.
+- [ ] Picker supports today/tomorrow/date/optional time; Both default to their day per direct user reply 01a129b4-587d-7891-afd5-2bd86c98056c: Tasks current local lived day, Today selected lived day; no inferred time, explicit clear/change allowed.
 - [ ] Confirmed create clears/focuses continuous entry; composition/blank/pending no accidental submission.
 - [ ] Original payload/rawdraft/id/revision/binding retained on failure/unknown, existing readback/retry/end behavior and modal/details remain available.
 - [ ] Date/time public-command behavior plus real synthetic native persisted readback; picker keyboard/cancel/focus and actual compact geometry retained.

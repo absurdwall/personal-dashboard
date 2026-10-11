@@ -14,7 +14,7 @@ Base: fc4c8185a9b7e029a945662754a2131b21bfb3d8
 
 ## Acceptance criteria
 
-- [ ] Today icon/count toggles original docked sidebar at every supported width; no drawer/modal sidebar.
+- [ ] Today icon/count toggles whole existing .today-side-region at every supported width, reachable with zero untimed items; original Tasks/short records/details stay retained in dock; no drawer/modal sidebar.
 - [ ] Primary navigation collapse releases main width; restore stays side docked, trigger reachable across all five destinations.
 - [ ] Only existing Calendar summary receives accessible collapse/restore; narrow normal-flow summary and month business unchanged.
 - [ ] Preserve original content/details/reading position/drafts; truthful aria/tooltips/focus; no toggle/resize/navigation business write.
