@@ -280,6 +280,11 @@
       "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/picker-repair-final.log",
       "bytes": 703,
       "sha256": "6417204c095d017bf3beaac30e7567b7e74b53def4118159463f435a2dae1920"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/retained-sidebar-keyboard.log",
+      "bytes": 429,
+      "sha256": "25cab637ef30ba5a6dc2972e75e3a7c664a75c8d877200a0d257d87bdb87bae8"
     }
   ],
   "workers": [
@@ -299,7 +304,7 @@
     }
   ],
   "agentLimit": "Both implementers and merger encountered account usage limit; root continued bounded repairs and validation. No errored reviewer result treated as approval.",
-  "status": "Current checks pass; source frozen71059a3; package builds/review/native pending; daily installation unchanged",
+  "status": "Reviewed71059a3 frozen package built/native real save readback passed and normal installed; human acceptance pending; earlier worker states historical",
   "currentValidation": {
     "sourceCommit": "71059a3cb686ec9e925f2fd27eccfaee5b41b557",
     "buildPassed": true,

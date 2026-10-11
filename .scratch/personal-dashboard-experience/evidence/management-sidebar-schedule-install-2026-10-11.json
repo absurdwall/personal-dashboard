@@ -1,0 +1,187 @@
+{
+  "projectId": "product-personal-dashboard",
+  "registryRevision": "c5f2efeb94fd4f87",
+  "summaryRevision": "0ed07b148e0ca7b4",
+  "source": {
+    "portfolioRecordId": "product-personal-dashboard",
+    "sourceId": "source-personal-dashboard-experience",
+    "label": "Dashboard experience — local spec and tickets",
+    "kind": "localMarkdown",
+    "enabled": true,
+    "state": "current",
+    "revision": "6ed82172d25dd790",
+    "issueCount": 18,
+    "malformedReferences": [],
+    "error": null,
+    "lastSuccessfulRefreshAt": 1791703217971,
+    "capabilities": {
+      "create": true,
+      "creatableFields": [
+        "title",
+        "nativeState",
+        "blockers"
+      ],
+      "edit": true,
+      "claim": true,
+      "close": true,
+      "open": true
+    }
+  },
+  "records": [
+    {
+      "reference": "00-followup-spec.md",
+      "nativeState": "open",
+      "lifecycle": "unknown"
+    },
+    {
+      "reference": "00-sidebar-schedule-spec.md",
+      "nativeState": "open",
+      "lifecycle": "unknown"
+    },
+    {
+      "reference": "00-spec.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "01-current-plan-time-editor.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "02-approximate-plan-times.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "03-unified-readable-today.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "04-plan-drag-and-resize.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "05-task-list-details.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "06-task-execution-intervals.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "07-task-timeline-create-move.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "08-compact-calendar.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "09-collaboration-command-completion.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "10-evening-review-entry.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "11-packaged-daily-flow-acceptance.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "12-lightweight-task-create.md",
+      "nativeState": "in-progress",
+      "lifecycle": "unknown"
+    },
+    {
+      "reference": "13-today-unlocated-drawer.md",
+      "nativeState": "in-progress",
+      "lifecycle": "unknown"
+    },
+    {
+      "reference": "14-docked-sidebar-toggles.md",
+      "nativeState": "in-progress",
+      "lifecycle": "unknown"
+    },
+    {
+      "reference": "15-compact-task-schedule.md",
+      "nativeState": "in-progress",
+      "lifecycle": "unknown"
+    }
+  ],
+  "summary": {
+    "text": "用户修订Sidebar与日期要求的PDEX-FOLLOWUP-02/14/15已实现、独立review Standards0/Spec0并安装正常版本。最终产品source71059a3，exe97ef078177c6c31e8c25b0b8f89b1703fdd090799281d0e2e4a2da201c8d576f/严格签名及全部文件hash匹配。Today整个rightsidebar原位置dock收起恢复、所有页面leftnavtoggle、Calendar仅既有摘要normalflowtoggle；Tasks/TodayTask一行name+compact日期time+Add，两入口按明确人答默认自己的livedday，无默认time，历史Today保持selectedday，共享原提交恢复。四P2修复和独立复审通过；currentcreationbrowser24/24、focusedWKfrontend39/39、sidebarkeyboard3/3。新syntheticnative真实44→46exact2new保存读回：Tasks09-08/timeNULL，Today明天09-09/time15:30；原44Task对象不变。正常Apps启动无QAenv，当前App/profile5887files及48life业务freshbackup hash验证，启动及review后48业务files、41sessions105messages/settings等全同，仅collaboration serialization变化语义同。独立normalCUA只读toggle/compactpickerCancelFocus通过，无个人testTask/IMEquota重测。12temporarybackups注销/absent，唯一搜索安装Applications。全commit/workerhistory保留，唯一未提交workerfiles/patch/history可恢复保护后清理ownedcheckouts，无关branches保留。新14/15和parent、前12/13及前followup仍等人工验收；旧drawer记录仅历史，不算新dock通过。原01–11及parent保持accepted。无新deps/GitHub/main/个人业务测试写入。",
+    "blockers": [],
+    "nextWork": [
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "reference": "14-docked-sidebar-toggles.md",
+        "suggestion": "用户验收正常App侧栏图标的原位收起展开、跨页面导航与窄窗布局。"
+      },
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "reference": "15-compact-task-schedule.md",
+        "suggestion": "用户验收Tasks/Today一行创建、默认当天和日期时间选择。"
+      }
+    ],
+    "verifiedAt": "2026-10-11T07:20:14.928548+00:00",
+    "sourceEvidence": [
+      {
+        "sourceId": "source-personal-dashboard-3",
+        "revision": "73f67af62ff88683"
+      },
+      {
+        "sourceId": "source-personal-dashboard-timeline-a-repair",
+        "revision": "6f66259df3b780a1"
+      },
+      {
+        "sourceId": "source-personal-dashboard-3-0-2",
+        "revision": "07bf9d0b79785cbc"
+      },
+      {
+        "sourceId": "source-personal-dashboard-task-history",
+        "revision": "825ecc1788d68868"
+      },
+      {
+        "sourceId": "source-personal-dashboard-codex-dictation",
+        "revision": "32712ec896d18dce"
+      },
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "revision": "6ed82172d25dd790"
+      }
+    ],
+    "coverage": "partial",
+    "needsReconciliation": false,
+    "uncoveredSources": [
+      {
+        "sourceId": "source-personal-dashboard-codex-collaboration",
+        "reason": "既有来源不可完整读取；本轮local tracker无gh不查询remote或改legacy格式。"
+      },
+      {
+        "sourceId": "source-personal-dashboard-github",
+        "reason": "既有来源不可完整读取；本轮local tracker无gh不查询remote或改legacy格式。"
+      }
+    ]
+  },
+  "projectFieldsPreserved": {
+    "lifecycle": true,
+    "currentFocus": true,
+    "review": true,
+    "sources": true,
+    "workingDirectory": true,
+    "repository": true
+  },
+  "helperChildSystemPathExcludesGh": true,
+  "canonicalReadbackConfirmed": true
+}
