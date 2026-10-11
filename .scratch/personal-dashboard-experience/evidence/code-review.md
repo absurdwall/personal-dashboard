@@ -95,3 +95,21 @@ Spec axis summary: zero unresolved findings.
 
 
 Final independent review summary: zero unresolved Standards findings; zero unresolved Spec findings. Original findings and their follow-up remain retained separately. Actual packaged acceptance remains independently pending.
+
+
+## Independent review of final checkpoint — 2026-10-11
+
+Review chat: `01a128ff-8865-7493-9698-cc48c19d7939`. Pinned range: `8960c80bc81ae35a7dcd871dd104f4b3d04497de...c63c805c0e91971a0129d8093109e587a3d87ac3`. Earlier zero-finding conclusions above apply to their recorded ranges; this new review exposed two bounded findings.
+
+### Standards
+
+- **[P2] Retain the original execution-end patch identity for manual Task updates.** `TaskApplication::update` resolves an omitted end against the current Task before testing duplicate change ID. An interval Task renamed with an omitted end accepts an explicit same-end object under that ID; a point Task similarly accepts explicit null. The matching-payload contract and omitted/null/object semantics in `docs/tasks-v1.md` require rejecting conflicting reuse. Retain the original update payload for successful edits, compare it before resolving current values, and retain legacy history compatibility. Public persistence regressions must include all tri-state substitutions and genuine retries after subsequent end edits.
+- **[P2] Track Evening dynamic label, status and error copy.** The controller overwrites `button.textContent` while the HTML still carries `data-i18n=today.startReview`. A language refresh changes a past-date label from `复盘 2026-10-09` to `Review today`, although clicking still targets October 9. Status/error text also bypasses the shared retained localization metadata required by `docs/interface-language.md`. Use shared copy/error setters and actual language-switch checks.
+
+### Spec
+
+- **[P2] Keep current/past Evening wording aligned with the captured target after language refresh.** This is the same date-label defect above; PDEX-10 requires accurate entry wording and authority context. The target must remain unchanged while label and retained status/error wrappers switch language; user drafts and source text must remain untouched.
+
+### Repair assignment
+
+Both findings are assigned to the single PDEX-11 implementer on `codex/pdex-review-repairs`; root records integration and notifies the review chat after verification. No additional native acceptance, installation, remote publication or parent closure is inferred. PDEX-09/PDEX-11 remain blocked as previously documented.
