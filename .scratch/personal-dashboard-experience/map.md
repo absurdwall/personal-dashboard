@@ -4,9 +4,9 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: specification and eleven approved tickets published; implementation not started
-Implementation: not started
-Working branch: codex/dashboard-experience-prototype
+Stage: authorized implementation in progress
+Implementation: in progress
+Working branch: codex/dashboard-experience-integration
 Management source: source-personal-dashboard-experience
 
 ## Records
@@ -14,15 +14,15 @@ Management source: source-personal-dashboard-experience
 | ID | Type | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | open | none | [Prototype R](prototype/README.md), [Q1–Q4](design-review.md), [publication](publication.md) |
-| PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | open | none | unassigned; not started |
+| PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | in-progress | none | claimed: implementer PDEX-01; codex/pdex-01 |
 | PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | open | PDEX-01 | unassigned; not started |
 | PDEX-03 | ticket | [03: 保持早间文字与可读的统一白天时间轴](issues/03-unified-readable-today.md) | ready-for-agent | open | none | unassigned; not started |
 | PDEX-04 | ticket | [04: 拖动计划并调整结束时间](issues/04-plan-drag-and-resize.md) | ready-for-agent | open | PDEX-02 | unassigned; not started |
 | PDEX-05 | ticket | [05: Tasks 使用清晰勾选列表与所选详情](issues/05-task-list-details.md) | ready-for-agent | open | none | unassigned; not started |
-| PDEX-06 | ticket | [06: 保存 Task 计划执行时间段并兼容现有入口](issues/06-task-execution-intervals.md) | ready-for-agent | open | none | unassigned; not started |
+| PDEX-06 | ticket | [06: 保存 Task 计划执行时间段并兼容现有入口](issues/06-task-execution-intervals.md) | ready-for-agent | in-progress | none | claimed: implementer PDEX-06; codex/pdex-06 |
 | PDEX-07 | ticket | [07: 在白天时间轴选区创建与移动 Task](issues/07-task-timeline-create-move.md) | ready-for-agent | open | PDEX-06 | unassigned; not started |
 | PDEX-08 | ticket | [08: Calendar 完整紧凑月历与记录状态](issues/08-compact-calendar.md) | ready-for-agent | open | none | unassigned; not started |
-| PDEX-09 | ticket | [09: Collaboration 减负与 slash 命令补全](issues/09-collaboration-command-completion.md) | ready-for-agent | open | none | unassigned; not started |
+| PDEX-09 | ticket | [09: Collaboration 减负与 slash 命令补全](issues/09-collaboration-command-completion.md) | ready-for-agent | in-progress | none | claimed: implementer PDEX-09; codex/pdex-09 |
 | PDEX-10 | ticket | [10: Evening 一键进入带日期的复盘草稿](issues/10-evening-review-entry.md) | ready-for-agent | open | none | unassigned; not started |
 | PDEX-11 | ticket | [11: 验证同一打包版本的完整日常流程](issues/11-packaged-daily-flow-acceptance.md) | ready-for-agent | open | PDEX-03, PDEX-04, PDEX-05, PDEX-07, PDEX-08, PDEX-09, PDEX-10 | unassigned; not started |
 
@@ -104,3 +104,7 @@ avoid duplicate open queues, and do not migrate automatically.
 - 2026-10-10: Fresh Management inspect confirmed twelve local records, no
   malformed references and the seven-ticket frontier declared above. Ten
   blocking edges resolve; source revision 66ea1fd9c206de45.
+
+## Implementation authorization
+
+- 2026-10-10: User invoked implement-spec for all linked local tickets, specifying integration branch codex/dashboard-experience-integration from prototype 8960c80. Initial inventory clean; retained prototype/spec/ticket history. PDEX-01, PDEX-06 and PDEX-09 claimed on independent worktrees. Previous planning-only statements above describe the publication checkpoint.

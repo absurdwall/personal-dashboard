@@ -35,3 +35,7 @@ authorize starting implementation.
   published with ten direct blocking edges and 68 unchecked acceptance criteria.
   Parent spec and index remain unchanged. No implementation, installation,
   remote push or parent closure occurred.
+
+## Implementation run
+
+- 2026-10-10: Authorized full local implementation. Integration: codex/dashboard-experience-integration; exact base 8960c80bc81ae35a7dcd871dd104f4b3d04497de. Working tree initially clean. Individual implementers use codex/pdex-NN worktrees and merge integration before reporting. All merges preserve complete history. Parent spec closure, installation, main merge and remote publication remain separate boundaries.
