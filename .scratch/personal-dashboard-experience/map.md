@@ -258,8 +258,8 @@ Direct user messages in review chat `01a128ff-8865-7493-9698-cc48c19d7939` autho
 
 | ID | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| PDEX-FOLLOWUP-05 | [complete addendum](followup-spec-2026-10-11-dashboard-shell-repair.md) / [index](issues/00-followup-spec-05.md) | ready-for-agent | in-progress | none | latest corrected source and related checks complete; final review/native install and direct human acceptance separate |
-| PDEX-18 | [visible shell controls and Collaboration recovery](issues/18-dashboard-shell-and-collaboration-repair.md) | ready-for-agent | in-progress | none | `7cee9d8` corrects empty-session editing and reviewed failure/date/Calendar paths; prior dc12b10 installation is historical; final review/native install and human acceptance pending |
+| PDEX-FOLLOWUP-05 | [complete addendum](followup-spec-2026-10-11-dashboard-shell-repair.md) / [index](issues/00-followup-spec-05.md) | ready-for-agent | in-progress | none | `d4e2b54` reviewed and installed with protected readback; direct human acceptance pending |
+| PDEX-18 | [visible shell controls and Collaboration recovery](issues/18-dashboard-shell-and-collaboration-repair.md) | ready-for-agent | in-progress | none | `d4e2b54` corrects empty-session editing, date/Calendar recovery and actual long-session composer clipping; final review/protected normal install confirmed; human acceptance pending ([evidence](evidence/pdex18-final-review-install-2026-10-11.md)) |
 
 ### PDEX-18 review and protected installation — 2026-10-11
 
