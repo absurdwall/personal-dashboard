@@ -196,3 +196,6 @@ Direct human 01a129b1-8fa7-7033-a532-52fc86d1056b in reviewer chat corrects side
 ## Revised current installation — 2026-10-11
 
 Final reviewed71059a3 normal App installed with fresh currentuser protection. [Installed provenance/current checks](evidence/sidebar-schedule-local-install-2026-10-11.md). All source/worker merge history retained; only owned workercheckouts removed after unique files/history protection. Revised14/15 remainin-progress andnewparentopenpendingdirecthumanacceptance; olddrawer evidence does not satisfy reviseddock. Original01–11closed. NoGitHub/main/deps/personaltestwrite.
+# PDEX-FOLLOWUP-03 claim — 2026-10-11
+
+The user directly authorized one additional implementation round on the existing `codex/dashboard-experience-integration` branch. The source-backed summary was sent to the existing independent reviewer before editing. PDEX-16 is claimed by the root implementer from the current clean integration tip `a963eb4`. This follow-up does not reopen prior closed work, change project/remote/main state, or authorize replacement of the normal App. Verification is bounded to build, production DOM/WebKit geometry and visible behavior, and synthetic native Computer Use smoke.

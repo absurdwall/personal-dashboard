@@ -229,6 +229,15 @@ Direct human sidebar correction supersedes drawer-as-target interpretation; prev
 | PDEX-14 | [docked sidebars](issues/14-docked-sidebar-toggles.md) | ready-for-agent | in-progress | none | reviewed, installed; human acceptance pending |
 | PDEX-15 | [compact Task schedule](issues/15-compact-task-schedule.md) | ready-for-agent | in-progress | none | reviewed, installed; human acceptance pending |
 
+## Approved follow-up — PDEX-FOLLOWUP-03 — 2026-10-11
+
+New direct-user-authorized, bounded shell polish: [PDEX-FOLLOWUP-03](followup-spec-2026-10-11-shell-compactness.md). Existing PDEX-09 and PDEX-14/15 remain unchanged. PDEX-16 is claimed on the existing integration branch; independent review, any release action and human acceptance remain separate.
+
+| ID | Body | Triage | Lifecycle | Dependencies | Current evidence |
+| --- | --- | --- | --- | --- | --- |
+| PDEX-FOLLOWUP-03 | [complete addendum](followup-spec-2026-10-11-shell-compactness.md) / [index](issues/00-followup-spec-03.md) | ready-for-agent | in-progress | none | implementation/review/release/human acceptance separate |
+| PDEX-16 | [compact workspace shell](issues/16-shell-compactness.md) | ready-for-agent | in-progress | none | claimed; production and native evidence pending |
+
 
 ## Revised current installation — 2026-10-11
 
