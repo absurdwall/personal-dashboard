@@ -621,6 +621,7 @@ const interfaceCopies = {
   "calendar.readError": { zh: "读取错误", en: "Read error" },
   "calendar.noRecord": { zh: "无记录", en: "No record" },
   "calendar.markerUnreviewed": { zh: "记", en: "N" },
+  "calendar.markerError": { zh: "!", en: "!" },
   "calendar.markerReviewed": { zh: "复", en: "R" },
   "calendar.selectedDay": { zh: "选中日期", en: "SELECTED DAY" },
   "calendar.chooseDate": { zh: "选择一个日期", en: "Choose a date" },

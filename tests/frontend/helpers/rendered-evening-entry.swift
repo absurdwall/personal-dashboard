@@ -42,7 +42,8 @@ _ = NSApplication.shared
 let page = URL(fileURLWithPath: CommandLine.arguments[1])
 let script = try String(contentsOfFile: CommandLine.arguments[2], encoding: .utf8)
 let height = CommandLine.arguments.count > 4 ? Double(CommandLine.arguments[4])! : 900
-let probe = LayoutProbe(width: 830, height: height, script: script)
+let width = CommandLine.arguments.count > 3 ? Double(CommandLine.arguments[3])! : 830
+let probe = LayoutProbe(width: width, height: height, script: script)
 probe.webView.loadFileURL(page, allowingReadAccessTo: page.deletingLastPathComponent())
 let deadline = Date().addingTimeInterval(20)
 while !probe.finished && Date() < deadline {
