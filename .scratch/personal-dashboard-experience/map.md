@@ -236,9 +236,18 @@ New direct-user-authorized, bounded shell polish: [PDEX-FOLLOWUP-03](followup-sp
 | ID | Body | Triage | Lifecycle | Dependencies | Current evidence |
 | --- | --- | --- | --- | --- | --- |
 | PDEX-FOLLOWUP-03 | [complete addendum](followup-spec-2026-10-11-shell-compactness.md) / [index](issues/00-followup-spec-03.md) | ready-for-agent | in-progress | none | implementation/review/release/human acceptance separate |
-| PDEX-16 | [compact workspace shell](issues/16-shell-compactness.md) | ready-for-agent | in-progress | none | source reviewed; released normal package installed; candidate date/time and normal-App read-only shell review verified; existing Collaboration interaction evidence accepted for this visual-only scope; direct human acceptance pending ([readback](evidence/pdex16-normal-install-readback-2026-10-11.json)) |
+| PDEX-16 | [compact workspace shell](issues/16-shell-compactness.md) | ready-for-agent | in-progress | none | source reviewed and normal package installed; current Collaboration visual inference superseded by direct user report; PDEX-17 recovery pending; direct human acceptance pending ([readback](evidence/pdex16-normal-install-readback-2026-10-11.json)) |
 
 
 ## Revised current installation — 2026-10-11
 
 Final reviewed71059a3 normal App installed with fresh currentuser protection. [Installed provenance/current checks](evidence/sidebar-schedule-local-install-2026-10-11.md). All source/worker merge history retained; only owned workercheckouts removed after unique files/history protection. Revised14/15 remainin-progress andnewparentopenpendingdirecthumanacceptance; olddrawer evidence does not satisfy reviseddock. Original01–11closed. NoGitHub/main/deps/personaltestwrite.
+
+## Collaboration visual repair frontier — 2026-10-11
+
+Direct user report supersedes the earlier Collaboration visual-acceptance inference for installed source `9cafeca`; that release remains historical and PDEX-16 stays in-progress. New bounded repair: [PDEX-FOLLOWUP-04](followup-spec-2026-10-11-collaboration-layout.md). Red layout metrics and single-variable diagnosis are in [PDEX-17 evidence](evidence/pdex17-layout-red-2026-10-11.md). No normal-App replacement or human acceptance is claimed.
+
+| ID | Body | Triage | Lifecycle | Dependencies | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| PDEX-FOLLOWUP-04 | [complete addendum](followup-spec-2026-10-11-collaboration-layout.md) / [index](issues/00-followup-spec-04.md) | ready-for-agent | in-progress | none | implementation, independent review, install and human acceptance separate |
+| PDEX-17 | [Collaboration layout recovery](issues/17-collaboration-layout-recovery.md) | ready-for-agent | in-progress | none | [synthetic production-WK red and diagnosis](evidence/pdex17-layout-red-2026-10-11.md); fix/review/native acceptance pending |
