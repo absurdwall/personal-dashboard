@@ -114,6 +114,21 @@ pub enum TaskChangeOperation {
         )]
         execution_end: Option<Option<TaskExecutionEnd>>,
     },
+    ManualUpdate {
+        name: String,
+        content: Option<String>,
+        date: Option<String>,
+        time: Option<String>,
+        #[serde(rename = "listId")]
+        list_id: Option<String>,
+        #[serde(
+            default,
+            rename = "executionEnd",
+            deserialize_with = "deserialize_execution_end_patch",
+            skip_serializing_if = "Option::is_none"
+        )]
+        execution_end: Option<Option<TaskExecutionEnd>>,
+    },
     SetState {
         state: TaskState,
     },
@@ -729,6 +744,28 @@ where
             .map(|task| task.list_id.clone())
             .unwrap_or_else(|| "inbox".into());
         let mut desired = task_from_update(&input, &current_list_id)?;
+        let operation = TaskChangeOperation::ManualUpdate {
+            name: desired.name.clone(),
+            content: desired.content.clone(),
+            date: desired.date.clone(),
+            time: desired.time.clone(),
+            list_id: input.list_id.clone(),
+            execution_end: input.execution_end.clone(),
+        };
+        if let Some((task_index, change)) = find_task_change(&document, &input.change_id) {
+            if let Some(TaskChangeOperation::ManualUpdate { .. }) = change.operation.as_ref() {
+                if document.tasks[task_index].id == input.task_id
+                    && change.operation.as_ref() == Some(&operation)
+                {
+                    self.ensure_bound_target_current(&path, &target_binding)?;
+                    return self.read();
+                }
+                return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
+            }
+            if change.operation.is_some() {
+                return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
+            }
+        }
         desired.execution_end = input.execution_end.clone().unwrap_or_else(|| {
             document
                 .tasks
@@ -753,6 +790,7 @@ where
             if document.tasks[task_index].id == input.task_id
                 && task_matches(&document.tasks[task_index], &desired)
             {
+                self.ensure_bound_target_current(&path, &target_binding)?;
                 return self.read();
             }
             return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
@@ -773,7 +811,8 @@ where
         }
         let now = self.clock.current_timestamp_label();
         validate_timestamp_label(&now)?;
-        let change = task_change(task, &desired, input.change_id, now.clone())?;
+        let mut change = task_change(task, &desired, input.change_id, now.clone())?;
+        change.operation = Some(operation);
         task.name = desired.name;
         task.content = desired.content;
         task.date = desired.date;
@@ -2646,6 +2685,9 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
                         validate_time(time)?;
                     }
                 }
+                Some(TaskChangeOperation::ManualUpdate { .. }) => {
+                    return Err("任务无变化操作记录不能携带手动编辑内容。".into());
+                }
                 None => {
                     return Err("任务无变化操作记录缺少操作内容。".into());
                 }
@@ -2662,7 +2704,7 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
                 || change.new_deleted_at.is_some()
                 || change.previous_completion.is_some()
                 || change.new_completion.is_some()
-                || (change.operation.is_some() && !matches!(change.operation.as_ref(),
+                || (change.operation.is_some() && !manual_update_history_matches(change)? && !matches!(change.operation.as_ref(),
                     Some(TaskChangeOperation::Reschedule { date, time, execution_end })
                     if change.kind == TaskChangeKind::Rescheduled
                         && change.source == TaskChangeSourceKind::DailyFlow
@@ -2675,6 +2717,53 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn manual_update_history_matches(change: &TaskChangeView) -> Result<bool, String> {
+    let Some(TaskChangeOperation::ManualUpdate {
+        name,
+        content,
+        date,
+        time,
+        list_id,
+        execution_end,
+    }) = change.operation.as_ref()
+    else {
+        return Ok(false);
+    };
+    if change.source != TaskChangeSourceKind::User {
+        return Ok(false);
+    }
+    if normalize_name(name)? != *name || normalize_content(content.as_deref()) != *content {
+        return Ok(false);
+    }
+    if normalize_schedule(date.as_deref(), time.as_deref())? != (date.clone(), time.clone()) {
+        return Ok(false);
+    }
+    if let Some(list_id) = list_id {
+        validate_local_identifier(list_id, "任务列表标识")?;
+    }
+    validate_execution_end(
+        date.as_deref(),
+        time.as_deref(),
+        execution_end.as_ref().and_then(Option::as_ref),
+    )?;
+    let schedule_changed = change.previous_date != change.new_date
+        || change.previous_time != change.new_time
+        || change.previous_execution_end != change.new_execution_end;
+    Ok(change.new_name.as_ref().is_none_or(|value| value == name)
+        && (change.previous_content == change.new_content || &change.new_content == content)
+        && (!schedule_changed
+            || (&change.new_date == date
+                && &change.new_time == time
+                && match execution_end {
+                    Some(end) => end == &change.new_execution_end,
+                    None => change.previous_execution_end == change.new_execution_end,
+                }))
+        && change
+            .new_list_id
+            .as_ref()
+            .is_none_or(|value| list_id.as_ref() == Some(value)))
 }
 
 fn timestamp_order(left: &str, right: &str) -> Result<Ordering, String> {

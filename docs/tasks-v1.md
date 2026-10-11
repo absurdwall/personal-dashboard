@@ -144,9 +144,13 @@ Create accepts an optional end. Update omitting `executionEnd` retains the
 saved end, explicit `null` clears it, and an object replaces it. A start edit
 that would invalidate a retained end is rejected atomically; callers moving
 an interval pass both the changed start and end. Change history retains both
-ends. Existing Task identity, revision checks and operation retry handling
-remain in use. The real shared Task editor exposes end date/time and an
-explicit clear action; Tasks, Today and Calendar read that same Task store.
+ends. New changed manual updates also retain their normalized original field
+payload and the omitted/null/object end patch in history. Reusing a change id
+must match that original payload; a genuine retry remains read-only after later
+edits, rather than reapplying an older end. Legacy changes without retained
+operation payloads keep their prior result-based retry compatibility. Existing
+Task identity and selected-Vault/revision checks remain in use. The shared Task
+editor exposes end date/time and an explicit clear action; Tasks, Today and Calendar read that same Task store.
 
 Collaboration's `createTask` and `updateTask` operations accept the same
 optional `executionEnd`. Current Task references and proposal/result baselines
