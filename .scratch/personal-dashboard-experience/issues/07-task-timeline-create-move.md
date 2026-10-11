@@ -6,24 +6,24 @@
 
 **Triage:** ready-for-agent
 
-**Status:** in-progress
+**Status:** resolved
 
 **ID:** PDEX-07
 **Parent:** [PDEX-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** implemented; packaged native IPC acceptance pending
+**Lifecycle:** closed
+**Implementation:** complete; component acceptance verified
 **Owner:** implementer PDEX-07
 **Assignee:** implementer PDEX-07
-**Acceptance:** partial; actual Chrome pointer and real application persistence checks passed; packaged native IPC remains PDEX-11
+**Acceptance:** component verified; full packaged/OS gates retained in PDEX-11
 **Date:** 2026-10-10
 **Breakdown decision:** User approved the eleven-ticket breakdown and blocking edges on 2026-10-10.
 
 ## Acceptance criteria
 
-- [ ] 选取时间范围后进入可编辑 Task 创建入口并保存真实日期、起止和同一 Task 身份。
+- [x] 选取时间范围后进入可编辑 Task 创建入口并保存真实日期、起止和同一 Task 身份。
 - [x] 整体拖动区间保持时长，结束时间可以通过 Task 时间编辑调整；时间点任务保持时点。
 - [x] 边缘滚动、吸附、午夜后的日期和无效范围处理符合规格。
-- [ ] 保存后 Tasks、Today 和 Calendar 一致，重开不丢时间段；不创建 Diary 计划副本或实际活动事实。
+- [x] 保存后 Tasks、Today 和 Calendar 一致，重开不丢时间段；不创建 Diary 计划副本或实际活动事实。
 - [x] 已完成/放弃等状态继续按现有任务语义处理，不因为时间经过或卡片被移动改变状态。
 - [x] 真实指针交互和任务读回覆盖选区、移时、跨日、失败/冲突，复用已有持久化结果恢复。
 
@@ -58,3 +58,8 @@ stories 12, 24, 28–36, 65–67.
 - 2026-10-10: Last synchronization includes integration `9d4bcd7`; combined
   build, 416 frontend tests and all 8 real Chrome pointer scenarios passed.
   Packaged native IPC acceptance remains distinct and pending PDEX-11.
+
+## Answer and local resolution
+
+- 2026-10-10: Final virtual blank selection created a real 30-minute Task, movement retained its duration and ID, detail changes persisted, and the same saved object appears in Task/Today/Calendar and restart. Daily Record bytes stayed identical throughout. Public persistence and actual browser pointer scenarios retain bounds, edge-scroll, conflict/cancel and cross-day evidence.
+- Final integrated checks: build, 431 frontend, 23 browser and 519 Rust passed (six pre-existing native ignores); independent Standards and Spec reviews have no unresolved findings. [Final packaged observations and limits](../evidence/pdex-11.md) supplement this ticket’s retained original evidence. Status resolved/lifecycle closed applies to this component only; PDEX-09/PDEX-11 and parent PDEX-SPEC-01 remain open. Earlier pending statements above record historical checkpoints.

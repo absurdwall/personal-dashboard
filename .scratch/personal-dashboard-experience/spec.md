@@ -7,7 +7,7 @@ Lifecycle: open
 Stage: locally published specification
 Date: 2026-10-10
 Canonical tracker: [local map](map.md)
-Implementation: feature code implemented; integrated verification in progress
+Implementation: code complete; nine components resolved; PDEX-09/PDEX-11 native acceptance blocked
 Test boundary: Q4 confirmed by the user
 
 ## Problem Statement

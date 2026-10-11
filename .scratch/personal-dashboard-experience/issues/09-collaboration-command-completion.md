@@ -6,12 +6,12 @@
 
 **Triage:** ready-for-agent
 
-**Status:** in-progress
+**Status:** blocked
 
 **ID:** PDEX-09
 **Parent:** [PDEX-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** implemented; frontend checks passed; final native, packaged UI and real IME acceptance pending
+**Lifecycle:** blocked
+**Implementation:** code complete; native acceptance blocked
 **Owner:** implementer PDEX-09
 **Assignee:** implementer PDEX-09
 **Date:** 2026-10-10
@@ -47,3 +47,8 @@ stories 51–58.
 - Final native persistence invocation remains pending for the parent orchestrator's serialized canonical-target check after integration. The duplicate isolated dependency build was intentionally stopped on its instruction to reduce host resource use; shared-target success alone remains qualified because concurrent worktrees can replace binaries.
 
 - 2026-10-10: Root serialized native confirmation on integration passed /retro draft restart and explicit-send test (1 passed). Evidence updated; no concurrent canonical-target producer. Packaged and native IME acceptance remain pending.
+
+## Answer and acceptance blocker
+
+- 2026-10-10: Real Sogou composition cannot be established through the current bound-app keyboard path: Shift-only is rejected before input and Control+Space still yields ASCII. Unicode paste and synthetic WebKit composition checks passed but do not close the native IME criterion.
+- [Frozen candidate and complete final evidence](../evidence/pdex-11.md). Code and both reviews are complete; Status/lifecycle blocked records an environment/verification limitation, not an implementation defect or permission request. Triage remains ready-for-agent. Resume from the preserved candidate and synthetic fixture when the required native input/fault environment is available; parent specification stays open. Earlier pending statements are retained as historical checkpoints.

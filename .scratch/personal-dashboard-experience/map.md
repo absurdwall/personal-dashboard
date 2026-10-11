@@ -4,8 +4,8 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: ten feature implementations integrated; integrated verification in progress
-Implementation: feature code complete; verification in progress
+Stage: implementation and reviews complete; nine components resolved, two acceptance tickets blocked
+Implementation: code complete; automated checks passed; final native acceptance partial
 Working branch: codex/dashboard-experience-integration
 Management source: source-personal-dashboard-experience
 
@@ -14,17 +14,17 @@ Management source: source-personal-dashboard-experience
 | ID | Type | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | open | none | [Prototype R](prototype/README.md), [Q1–Q4](design-review.md), [publication](publication.md) |
-| PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | in-progress | none | code merged 32b3678; 11 native workflows; UI acceptance pending |
-| PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | in-progress | PDEX-01 | code merged a77603e; 69 native + five full-page modal checks; packaged pending |
-| PDEX-03 | ticket | [03: 保持早间文字与可读的统一白天时间轴](issues/03-unified-readable-today.md) | ready-for-agent | in-progress | none | code merged 06c0d0b; 406 frontend + nine rendered WebKit checks; packaged pending |
-| PDEX-04 | ticket | [04: 拖动计划并调整结束时间](issues/04-plan-drag-and-resize.md) | ready-for-agent | in-progress | PDEX-02 | code merged b2eae26; 424 frontend + 16 real pointer + 70 native checks; packaged pending |
-| PDEX-05 | ticket | [05: Tasks 使用清晰勾选列表与所选详情](issues/05-task-list-details.md) | ready-for-agent | in-progress | none | code merged a12e79f; 424 frontend + 23 real browser + 43 native checks; packaged pending |
-| PDEX-06 | ticket | [06: 保存 Task 计划执行时间段并兼容现有入口](issues/06-task-execution-intervals.md) | ready-for-agent | in-progress | none | code merged 61c12cd; 156 native + merged 397 frontend/121 native checks; UI pending |
-| PDEX-07 | ticket | [07: 在白天时间轴选区创建与移动 Task](issues/07-task-timeline-create-move.md) | ready-for-agent | in-progress | PDEX-06 | code merged 9618219; 416 frontend + eight real pointer + 53 native checks; packaged pending |
-| PDEX-08 | ticket | [08: Calendar 完整紧凑月历与记录状态](issues/08-compact-calendar.md) | ready-for-agent | in-progress | none | code merged a4fb8ce; 424 frontend + 127 native source/state checks; packaged pending |
-| PDEX-09 | ticket | [09: Collaboration 减负与 slash 命令补全](issues/09-collaboration-command-completion.md) | ready-for-agent | in-progress | none | code merged f400013; 396 frontend + serialized native pass; packaged/IME pending |
-| PDEX-10 | ticket | [10: Evening 一键进入带日期的复盘草稿](issues/10-evening-review-entry.md) | ready-for-agent | in-progress | none | code merged 684ac8b; 138 native + five WebKit entry checks; packaged pending |
-| PDEX-11 | ticket | [11: 验证同一打包版本的完整日常流程](issues/11-packaged-daily-flow-acceptance.md) | ready-for-agent | in-progress | PDEX-03, PDEX-04, PDEX-05, PDEX-07, PDEX-08, PDEX-09, PDEX-10 | claimed: implementer PDEX-11; codex/pdex-11 |
+| PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
+| PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | closed | PDEX-01 | [component resolution + final checks](evidence/pdex-11.md) |
+| PDEX-03 | ticket | [03: 保持早间文字与可读的统一白天时间轴](issues/03-unified-readable-today.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
+| PDEX-04 | ticket | [04: 拖动计划并调整结束时间](issues/04-plan-drag-and-resize.md) | ready-for-agent | closed | PDEX-02 | [component resolution + final checks](evidence/pdex-11.md) |
+| PDEX-05 | ticket | [05: Tasks 使用清晰勾选列表与所选详情](issues/05-task-list-details.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
+| PDEX-06 | ticket | [06: 保存 Task 计划执行时间段并兼容现有入口](issues/06-task-execution-intervals.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
+| PDEX-07 | ticket | [07: 在白天时间轴选区创建与移动 Task](issues/07-task-timeline-create-move.md) | ready-for-agent | closed | PDEX-06 | [component resolution + final checks](evidence/pdex-11.md) |
+| PDEX-08 | ticket | [08: Calendar 完整紧凑月历与记录状态](issues/08-compact-calendar.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
+| PDEX-09 | ticket | [09: Collaboration 减负与 slash 命令补全](issues/09-collaboration-command-completion.md) | ready-for-agent | blocked | none | [native acceptance blocker](evidence/pdex-11.md) |
+| PDEX-10 | ticket | [10: Evening 一键进入带日期的复盘草稿](issues/10-evening-review-entry.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
+| PDEX-11 | ticket | [11: 验证同一打包版本的完整日常流程](issues/11-packaged-daily-flow-acceptance.md) | ready-for-agent | blocked | PDEX-03, PDEX-04, PDEX-05, PDEX-07, PDEX-08, PDEX-09, PDEX-10 | [native acceptance blocker](evidence/pdex-11.md) |
 
 The spec and eleven approved tickets are published locally. Every ticket retains its complete body and separate acceptance criteria.
 Current claim and implementation states are recorded per row and ticket. The Work Item index [00-spec](issues/00-spec.md) refers to
@@ -108,3 +108,10 @@ avoid duplicate open queues, and do not migrate automatically.
 ## Implementation authorization
 
 - 2026-10-10: User invoked implement-spec for all linked local tickets, specifying integration branch codex/dashboard-experience-integration from prototype 8960c80. Initial inventory clean; retained prototype/spec/ticket history. PDEX-01, PDEX-06 and PDEX-09 claimed on independent worktrees. Previous planning-only statements above describe the publication checkpoint.
+
+## Final implementation checkpoint — 2026-10-10
+
+- Integration `codex/dashboard-experience-integration` retains exact base `8960c80bc81ae35a7dcd871dd104f4b3d04497de`, all original feature/merge/review/repair commits and unrelated branches. Product source is identical to frozen candidate `256ecd01aab9e92ef6bf139d7d83ccc2ae671aee`; subsequent changes are evidence/tracker records only.
+- PDEX-01–08 and PDEX-10 are locally resolved with their own answers and component evidence. PDEX-09 and PDEX-11 remain blocked by documented native acceptance limits. PDEX-SPEC-01 remains open; this does not claim full user acceptance.
+- Final build, 431 frontend, 23 browser and 519 Rust tests passed; both independent reviews are clear. [Packaged checks and precise limits](evidence/pdex-11.md), [review history](evidence/code-review.md), [worker cleanup](evidence/worktree-closeout.md).
+- No main merge, remote operation, installation or real personal-data mutation. All remaining acceptance uses the retained isolated `.noindex` candidate and synthetic fixture.

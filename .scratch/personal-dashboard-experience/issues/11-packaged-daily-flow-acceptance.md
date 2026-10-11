@@ -6,12 +6,12 @@
 
 **Triage:** ready-for-agent
 
-**Status:** in-progress
+**Status:** blocked
 
 **ID:** PDEX-11
 **Parent:** [PDEX-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** in progress
+**Lifecycle:** blocked
+**Implementation:** code complete; native acceptance blocked
 **Owner:** implementer PDEX-11
 **Assignee:** implementer PDEX-11
 **Date:** 2026-10-10
@@ -19,14 +19,15 @@
 
 ## Acceptance criteria
 
-- [ ] 验收固定候选身份，使用隔离 Profile、合成 Vault 和受控时间，覆盖三个阶段与相关页面。
-- [ ] 修改当前计划后文档/视图/重开一致，早间基准和事实独立；精确与模糊计划符合各自含义。
-- [ ] Task 选区、移动、区间读回与完成状态一致，旧任务及旧对话/离线调用的保存兼容性保持。
+- [x] 验收固定候选身份，使用隔离 Profile、合成 Vault 和受控时间，覆盖三个阶段与相关页面。
+- [x] 修改当前计划后文档/视图/重开一致，早间基准和事实独立；精确与模糊计划符合各自含义。
+- [x] Task 选区、移动、区间读回与完成状态一致，旧任务及旧对话/离线调用的保存兼容性保持。
 - [ ] 五/六行月历、重叠条目、长拖动、清晰勾选和详情在常用及窄窗口可操作。
 - [ ] slash 键盘/点击/中文输入法、草稿保留、目标日期与晚间入口验证通过，补全与入口均不自动发消息。
 - [ ] 文档冲突、写入失败和未确认结果真实表达；正常模型额度耗尽不阻止确定性编辑。
-- [ ] 各功能票自己的测试证据仍保留；汇总独立代码检查、自动测试和打包 UI 验收，不把未验证项目写成通过。
-- [ ] 不修改个人真实数据，不从此票推断安装或远端发布已获授权，不关闭父 spec。
+- [x] 各功能票自己的测试证据仍保留；汇总独立代码检查、自动测试和打包 UI 验收，不把未验证项目写成通过。
+- [x] 不修改个人真实数据，不从此票推断安装或远端发布已获授权，不关闭父 spec。
+
 
 ## Verification
 
@@ -43,3 +44,8 @@ story 68 and integrated regressions across stories 1–67.
 - 2026-10-10: Same original packaged candidate exercised against isolated synthetic Profile/Vault/time; actual Calendar client-height and Morning-context defects reproduced. Two independent review findings and these native defects repaired with focused public seam regressions. User steering transferred all further native UI input to Computer Use Virtual Mouse. Final rebuilt-candidate acceptance remains in progress; [evidence](../evidence/pdex-11.md) distinguishes original observations, repairs, pending checks and unsupported fault injection.
 
 - 2026-10-10: Final frozen candidate built from 256ecd01aab9e92ef6bf139d7d83ccc2ae671aee (binary SHA 32132f656be31fc6f8ecd3b1b2dc5aea20436ab3460f493d8933629321dd5845), with complete [identity manifest](../evidence/pdex-11-candidate.json). All bounded review/native-discovered repairs and automatic integrated checks passed. Final native acceptance is delegated to root Computer Use Virtual Mouse; lifecycle remains in progress and unchecked native criteria remain truthful. Installed App hash unchanged.
+
+## Answer and acceptance blocker
+
+- 2026-10-10: Final isolated candidate passed native source/view/restart, Task, Calendar, slash and Evening flows plus genuine conflict/PermissionDenied recovery. Remaining gates are real Sogou IME, exact final native reference windows/held long drag, safely established saved-but-readback-failed fault and actual authenticated quota exhaustion. No unsupported check is marked passed.
+- [Frozen candidate and complete final evidence](../evidence/pdex-11.md). Code and both reviews are complete; Status/lifecycle blocked records an environment/verification limitation, not an implementation defect or permission request. Triage remains ready-for-agent. Resume from the preserved candidate and synthetic fixture when the required native input/fault environment is available; parent specification stays open. Earlier pending statements are retained as historical checkpoints.

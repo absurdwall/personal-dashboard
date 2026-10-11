@@ -3,7 +3,7 @@
 Date: 2026-10-10
 Canonical tracker: [map](map.md)
 Parent specification: PDEX-SPEC-01
-Stage: authorized implementation in progress
+Stage: implementation/reviews complete; native acceptance partially blocked
 Working branch at publication: codex/dashboard-experience-prototype
 
 ## Publication checkpoint state (historical)
@@ -71,3 +71,12 @@ authorize starting implementation.
 - 2026-10-10: User requested Computer Use Virtual Mouse to avoid taking the physical pointer. All subsequent live native UI input uses cua_repl; the previous native-driver pointer evidence is explicitly pre-steering. No input-source change had occurred. Root owns subsequent UI input while PDEX-11 continues source fixes/builds. The isolated unauthenticated Profile uses an explicitly synthetic inspect-only transport for OS/draft tests, refusing every message submission; real authenticated execution remains outside this evidence.
 
 - 2026-10-10: Repair integration `b7b0ba0` and follow-up `3a0935d` preserve all coherent commits. Both independent review axes confirm no unresolved findings. Initial repaired frontend/browser run was invalidated because root omitted the frontend rebuild and the actual-page harness read old dist assets; no product failure conclusion was taken from that run. After an explicit build, full frontend suite passes 431/431 at `3a0935d`. Serialized native suite passes 519 tests across 26 suites, zero failures/six existing ignored tests at `b7b0ba0`; subsequent `07119c9` changes only frontend source/test, so native product source is identical. Browser final checks and final packaged acceptance remain in progress.
+
+
+## Final native readback and closeout — 2026-10-10
+
+- Root used only Computer Use Virtual Mouse for final live native input. Same frozen source `256ecd01aab9e92ef6bf139d7d83ccc2ae671aee` / binary `32132f656be31fc6f8ecd3b1b2dc5aea20436ab3460f493d8933629321dd5845` passed actual editor/conflict/PermissionDenied/retry, point movement, Task range creation/move/detail/list/clear/complete/reopen, Calendar state/overflow, slash keyboard/click/Escape and current/past Evening checks. Same-binary restart retained real source hashes and both dated drafts with zero messages/work. Installed App is unchanged; candidate was quit through Computer Use.
+- Final browser rerun passed 23/23 after explicit frontend build; 431 frontend and 519 Rust tests also passed, zero failures/six existing native ignores. Both review axes are clear. Retained original evidence and invalidated baseline runs are not rewritten.
+- Resolved PDEX-01–08 and PDEX-10 through local Answer, Status resolved and Lifecycle closed. PDEX-09/PDEX-11 Status/Lifecycle blocked retain unchecked native gates: real Sogou composition, exact final native reference windows/held long drag, safely induced saved-but-readback-failed and actual authenticated quota exhaustion. [Full final evidence](evidence/pdex-11.md) distinguishes supporting WebKit/browser/application seams from actual package observations. Parent specification remains open.
+
+- Final installed `tortilla-flat-management` helper 1.0.3 connect/discover and inspect with explicit project/source confirmed the existing binding, source `source-personal-dashboard-experience` current at revision `753aa9282bf2dd15`, twelve records and no malformed references. Native states reread: nine resolved, two blocked, one open parent. Registry-provided cached/historical states for other sources are outside this verification; no progress-summary write, new Registry or tracker migration was performed.

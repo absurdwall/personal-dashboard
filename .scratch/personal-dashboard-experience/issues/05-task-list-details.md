@@ -6,13 +6,13 @@
 
 **Triage:** ready-for-agent
 
-**Status:** in-progress
+**Status:** resolved
 
 **ID:** PDEX-05
 **Parent:** [PDEX-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** implemented
-**Acceptance:** partial — automatic checks passed; packaged acceptance remains PDEX-11
+**Lifecycle:** closed
+**Implementation:** complete; component acceptance verified
+**Acceptance:** component verified; full packaged/OS gates retained in PDEX-11
 **Owner:** implementer PDEX-05
 **Assignee:** implementer PDEX-05
 **Date:** 2026-10-10
@@ -22,11 +22,11 @@
 ## Acceptance criteria
 
 - [x] 清单侧栏与既有范围导航保留，列表行以名字和明确完成勾选为中心。
-- [ ] 点击任务选择/查看详情与勾选完成互不误触；任务完成真实保存并在相关页面反映。
+- [x] 点击任务选择/查看详情与勾选完成互不误触；任务完成真实保存并在相关页面反映。
 - [x] 内容、日期、时间和清单归属可编辑；放弃、删除、重开和历史仍可访问。
 - [x] 详情编辑未改变的业务数据保持原值；不会因新的简洁显示丢失已有字段。
 - [x] 在窄窗口使用可返回详情或下方详情，不挤成固定多列工作台。
-- [ ] 基于现有任务即可独立演示和检验，验证真实保存/读回与选择状态，而非只检查源码字符串。
+- [x] 基于现有任务即可独立演示和检验，验证真实保存/读回与选择状态，而非只检查源码字符串。
 
 ## Verification
 
@@ -45,3 +45,8 @@ stories 38–44, 63, 65–67.
 - Acceptance remains partial: external Tauri IPC is mocked only for the Chrome interactions; native application/file storage tests independently verify persistence. Packaged native checkbox/detail interactions and final Task/Today/Calendar plus Collaboration-return acceptance remain PDEX-11. This ticket is implemented, not closed, and does not close PDEX-SPEC-01.
 
 - 2026-10-10: Final integration `b2eae26` (PDEX-04) merged as `c8d8d9d`, preserving both append-only CSS changes. Production build and 424 frontend checks green; combined actual Chrome Task-detail/Task-axis/plan-axis checks all 23 green. Native 43 checks independently rerun at preceding `4093ee1`; packaged acceptance unchanged.
+
+## Answer and local resolution
+
+- 2026-10-10: Final native name selection did not complete; the checkbox and Reopen saved actual lifecycle/history. Content and Synthetic List reassignment persisted with the same ID, and Task/Today/Calendar/reopened views agree. Existing production browser detail/filter/history and narrow detail checks remain green. No business fields were discarded.
+- Final integrated checks: build, 431 frontend, 23 browser and 519 Rust passed (six pre-existing native ignores); independent Standards and Spec reviews have no unresolved findings. [Final packaged observations and limits](../evidence/pdex-11.md) supplement this ticket’s retained original evidence. Status resolved/lifecycle closed applies to this component only; PDEX-09/PDEX-11 and parent PDEX-SPEC-01 remain open. Earlier pending statements above record historical checkpoints.

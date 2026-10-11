@@ -6,12 +6,12 @@
 
 **Triage:** ready-for-agent
 
-**Status:** in-progress
+**Status:** resolved
 
 **ID:** PDEX-08
 **Parent:** [PDEX-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** implemented; automated verification passed; packaged acceptance pending
+**Lifecycle:** closed
+**Implementation:** complete; component acceptance verified
 **Owner:** implementer PDEX-08
 **Assignee:** implementer PDEX-08
 **Date:** 2026-10-10
@@ -41,3 +41,8 @@ stories 45–50.
 - 2026-10-10: Implemented `5f7f1f6` on `codex/pdex-08`, actual starting tip `22d313a`; latest integration `e7c9af1` merged as `1e20cd9`. Natural five/six-week source projection, four title previews with true overflow, compact equal-height cells, source-derived small inline record/review/error markers and full shared date details are implemented. One independent appended-CSS conflict preserved both Calendar and PDEX-07 rules.
 - 2026-10-10: Final merged build + 424/424 frontend checks + 127 native Calendar/day-planning/Collaboration/shared-Task checks passed. Eight new full-production-code WebKit cases cover real 1280×720 and 830×758 frames, five/six weeks, preview/marker/overflow geometry and native-source fixture click/readback with seven Tasks and the cross-midnight interval. Native cache lease explicitly released. See [PDEX-08 evidence](../evidence/pdex-08.md).
 - 2026-10-10: Criteria checked at confirmed public source/persistence and actual DOM/geometry seams. Packaged/OS/human acceptance remains with PDEX-11; lifecycle remains in-progress and this ticket does not close the parent specification.
+
+## Answer and local resolution
+
+- 2026-10-10: The native clipping defect is repaired; final production WebKit verifies five/six rows at both reference frames and chrome-adjusted clients. Final native default/wide windows show 35/42 equal-height cells, four previews, true +4/+5 overflow, nine full-detail Tasks and separate source-derived read/review/error states. Exact final native reference-frame sizing remains with PDEX-11, not inferred here.
+- Final integrated checks: build, 431 frontend, 23 browser and 519 Rust passed (six pre-existing native ignores); independent Standards and Spec reviews have no unresolved findings. [Final packaged observations and limits](../evidence/pdex-11.md) supplement this ticket’s retained original evidence. Status resolved/lifecycle closed applies to this component only; PDEX-09/PDEX-11 and parent PDEX-SPEC-01 remain open. Earlier pending statements above record historical checkpoints.

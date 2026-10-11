@@ -18,3 +18,9 @@ Date: 2026-10-10. All PDEX-01–10 worktrees were inventoried before cleanup: tr
 Ignored material contained only task-generated frontend dist, Tauri schemas, Cargo build caches and a node_modules symlink to the canonical dependency installation. No unique user records or evidence were found. Canonical dependencies were retained; the symlinks were removed with their worktrees. External synthetic acceptance captures/logs were retained independently. PDEX-11 remains active and is not removed at this checkpoint.
 
 The original prototype branch, main and requested integration branch remain. No remote branch cleanup, history rewrite or protected-main operation occurred.
+
+## Final worker closeout — 2026-10-10
+
+PDEX-11 was inventoried clean with no non-ignored untracked material. Its retained tip `1dd2a2c0bc0e5109a45657642a0b89e789c7d8be` is reachable from integration. Ignored files were only generated dist/Tauri schemas and the canonical node_modules symlink. The worktree was removed and its merged branch deleted with `git branch -d`. All eleven implementer worktrees are now removed.
+
+The isolated `.noindex` candidate, synthetic Profile/Vault, manifests and raw captures remain outside Git; the safe launch helper now checks the canonical checkout. The owned candidate was quit through Computer Use and only its exact temporary App path was unregistered from Launch Services. The installed App and original main/prototype/integration branches remain intact. No unrelated dirty material was present or removed. External final worker inventory: `/tmp/pdex-11-worktree-final-inventory.json`.

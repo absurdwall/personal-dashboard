@@ -6,12 +6,12 @@
 
 **Triage:** ready-for-agent
 
-**Status:** in-progress
+**Status:** resolved
 
 **ID:** PDEX-10
 **Parent:** [PDEX-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** implemented; automated verification passed; packaged acceptance pending
+**Lifecycle:** closed
+**Implementation:** complete; component acceptance verified
 **Owner:** implementer PDEX-10
 **Assignee:** implementer PDEX-10
 **Date:** 2026-10-10
@@ -41,3 +41,8 @@ stories 59–62.
 - 2026-10-10: Implemented in `a99bbd9` on `codex/pdex-10`; actual starting tip verified as `80f9ea8`, then integration `6bd91ad` merged in `8a5770c`. Evening captures selected current/past date, atomically prepares/reuses a suitable session and editable dated draft with the authoritative record pointer, preserves existing saved/unsaved drafts and exposes clear continuation/failure wording. Entry never submits or writes review/fact state.
 - 2026-10-10: Build + full integrated frontend 416/416 + five production WebKit entry cases passed. Exclusive serialized native suites: collaboration_workflow 33/33 and collaboration_task_operations 105/105, including six new real persistence/Calendar entry cases. Native cache lease explicitly released after final integrated tests. See [PDEX-10 evidence](../evidence/pdex-10.md) for source/readback/restart, concurrent idempotency, save failure/retry and boundary details.
 - 2026-10-10: Acceptance criteria checked at the confirmed application/persistence and production DOM seams. Lifecycle remains in-progress; packaged/OS/human acceptance belongs to PDEX-11 and is not claimed here. This implementation does not close the parent specification.
+
+## Answer and local resolution
+
+- 2026-10-10: Final native current/past entry retained the correct date and authority pointer, reused the current session, preserved an existing draft, and persisted the past-date draft through same-binary restart. Both sessions have zero messages/work and both Daily Record review states remained unchanged. All public persistence and rendered entry checks remain green.
+- Final integrated checks: build, 431 frontend, 23 browser and 519 Rust passed (six pre-existing native ignores); independent Standards and Spec reviews have no unresolved findings. [Final packaged observations and limits](../evidence/pdex-11.md) supplement this ticket’s retained original evidence. Status resolved/lifecycle closed applies to this component only; PDEX-09/PDEX-11 and parent PDEX-SPEC-01 remain open. Earlier pending statements above record historical checkpoints.

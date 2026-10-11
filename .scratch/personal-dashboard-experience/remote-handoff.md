@@ -3,7 +3,7 @@
 Date: 2026-10-10
 Canonical tracker: [local map](map.md)
 Specification: PDEX-SPEC-01
-Working branch: codex/dashboard-experience-prototype
+Working branch: codex/dashboard-experience-integration
 
 ## Retained identities
 
@@ -49,3 +49,12 @@ not itself production implementation.
 Git push transfers Git commits; it does not turn Markdown records into GitHub
 Issues. Remote push/PR integration, tracker migration, installation and acceptance
 are separate future outcomes. This local publication does not perform them.
+
+
+## Implementation handoff — 2026-10-10
+
+Exact requested base `8960c80bc81ae35a7dcd871dd104f4b3d04497de` is retained as an ancestor. Ten implementation merges and all bounded repairs remain unsquashed on `codex/dashboard-experience-integration`; frozen product source is `256ecd01aab9e92ef6bf139d7d83ccc2ae671aee`. Documentation merge `4fecefd7ad7cacf0b0e33b13d69f3c1f60102c3d` precedes this final local closeout commit, whose exact identity is available in branch history.
+
+Nine component tickets are resolved; PDEX-09/PDEX-11 have explicit native acceptance blockers. Parent PDEX-SPEC-01 stays open. Full automated checks and independent reviews passed; [candidate evidence](evidence/pdex-11.md) retains actual native results, source hashes and missing gates. Worker cleanup does not remove the isolated candidate or synthetic fixture. Reopen only with `/tmp/pdex-final-launch.py`, whose clean-tree/product-source checks and private environment avoid default-profile access. Do not install or launch it through Finder.
+
+No push, GitHub operation, protected-main merge or installation occurred. Future tracker migration or remote integration still requires the existing handoff workflow above.

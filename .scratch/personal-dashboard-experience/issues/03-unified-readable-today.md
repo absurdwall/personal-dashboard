@@ -6,12 +6,12 @@
 
 **Triage:** ready-for-agent
 
-**Status:** in-progress
+**Status:** resolved
 
 **ID:** PDEX-03
 **Parent:** [PDEX-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** implemented; frontend automation passed; packaged acceptance pending
+**Lifecycle:** closed
+**Implementation:** complete; component acceptance verified
 **Owner:** implementer PDEX-03
 **Assignee:** implementer PDEX-03
 **Date:** 2026-10-10
@@ -45,3 +45,8 @@ stories 1, 3, 8–13, 26–27.
 
 - Code and automated rendered-UI criteria are verified. Common packaged Tauri candidate and human usability acceptance remain pending under PDEX-11; lifecycle stays in-progress and this does not close the parent specification.
 - Fuzzy plan semantics and Task execution-interval projection retain their owning tickets and unchanged source identity; the shared renderer consumes their existing start/end and precision contracts when integrated.
+
+## Answer and local resolution
+
+- 2026-10-10: Independent Morning text and the unified source-marked axis passed final production WebKit checks at common/narrow clients; final native Today/Collaboration correctly read the immutable baseline. Overlap, lived-day bounds, folded content and independent scroll have actual rendered interaction evidence. Subsequent saved Task/plan values use this shared contract.
+- Final integrated checks: build, 431 frontend, 23 browser and 519 Rust passed (six pre-existing native ignores); independent Standards and Spec reviews have no unresolved findings. [Final packaged observations and limits](../evidence/pdex-11.md) supplement this ticket’s retained original evidence. Status resolved/lifecycle closed applies to this component only; PDEX-09/PDEX-11 and parent PDEX-SPEC-01 remain open. Earlier pending statements above record historical checkpoints.

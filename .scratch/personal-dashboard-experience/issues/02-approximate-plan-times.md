@@ -6,21 +6,21 @@
 
 **Triage:** ready-for-agent
 
-**Status:** in-progress
+**Status:** resolved
 
 **ID:** PDEX-02
 **Parent:** [PDEX-SPEC-01](../spec.md)
-**Lifecycle:** in-progress
-**Implementation:** code-ready; application and production WebKit seams verified
+**Lifecycle:** closed
+**Implementation:** complete; component acceptance verified
 **Owner:** implementer PDEX-02
 **Assignee:** implementer PDEX-02
 **Date:** 2026-10-10
-**Acceptance:** partial; packaged IPC and complete broad-card visual acceptance pending PDEX-11
+**Acceptance:** component verified; full packaged/OS gates retained in PDEX-11
 **Breakdown decision:** User approved the eleven-ticket breakdown and blocking edges on 2026-10-10.
 
 ## Acceptance criteria
 
-- [ ] 早晨/中午/午后/傍晚或晚间按已定参考规则定位，显示原词或“约”，卡片高度不成为时长。
+- [x] 早晨/中午/午后/傍晚或晚间按已定参考规则定位，显示原词或“约”，卡片高度不成为时长。
 - [x] 原始措辞、近似时点、精确时点和精确区间可区别读取；无法可靠定位的内容仍未定位。
 - [x] 相对时间只在有可靠记录上下文时定位，不随刷新时刻移动。
 - [x] 编辑近似时间仍落盘为近似时间；模糊与具体之间的转换只有在用户明确选择时发生。
@@ -41,3 +41,8 @@ stories 2, 14–18, 21–23, 26, 66.
 
 - 2026-10-10: Implemented on `codex/pdex-02`: `8400b9f` precision/source persistence and `6740e5d` production editor with five actual WebKit interaction tests. Initial branch was confirmed at claim `b547bd9` above `32b3678`; retained integration merges include `d10cad6` and `2275bf1`.
 - 2026-10-10: Build passed; 402 frontend tests passed before the latest PDEX-03 merge, then five production-modal tests passed again on that merge. Isolated public workflows passed 15 Daily Plan and 54 Today tests. See [PDEX-02 evidence](../evidence/pdex-02.md) for red-green observations and exact scope. First criterion remains unchecked for full broad-card visual/package acceptance; local lifecycle remains in-progress until that acceptance is recorded.
+
+## Answer and local resolution
+
+- 2026-10-10: All broad reference rules and distinguishable precisions passed the public source/persistence and rendered-card checks. Original native broad movement saved 约14:00 without an end, and the final frozen candidate reads the saved approximate value while preserving Morning wording. Actual editor tests cover explicit precision conversion, stable context and restart; the final candidate source/view agrees.
+- Final integrated checks: build, 431 frontend, 23 browser and 519 Rust passed (six pre-existing native ignores); independent Standards and Spec reviews have no unresolved findings. [Final packaged observations and limits](../evidence/pdex-11.md) supplement this ticket’s retained original evidence. Status resolved/lifecycle closed applies to this component only; PDEX-09/PDEX-11 and parent PDEX-SPEC-01 remain open. Earlier pending statements above record historical checkpoints.
