@@ -9769,7 +9769,7 @@ button.habit-cell:focus-visible {
 .plan-time-editor { max-width: min(30rem, calc(100vw - 2rem)); border: 1px solid var(--parity-border); border-radius: 12px; padding: 1.2rem; }
 .plan-time-editor::backdrop { background: rgb(0 0 0 / 25%); }
 .plan-time-editor form { display: grid; gap: .8rem; }
-.plan-time-editor form > div { display: flex; gap: 1rem; align-items: center; }
+.plan-time-editor form > div:not([hidden]) { display: flex; gap: 1rem; align-items: center; }
 .plan-time-editor label { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
 
 /* Slash suggestions stay with the editor; choosing one edits the draft. */
@@ -9784,6 +9784,7 @@ button.habit-cell:focus-visible {
 .collaboration-command-menu[hidden] { display: none; }
 .collaboration-command-menu button { text-align: left; }
 .collaboration-command-menu [aria-selected="true"] {
+  color: var(--parity-ink);
   background: var(--parity-accent-soft);
   outline: 1px solid var(--parity-accent-strong);
 }

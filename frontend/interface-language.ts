@@ -22,6 +22,8 @@ const interfaceCopies = {
   "today.planCancel": { zh: "关闭", en: "Close" },
   "today.planSaved": { zh: "计划时间已保存并读回确认。", en: "Plan time saved and verified by reading the record." },
   "today.planSavedNeedsReadback": { zh: "文档已保存；请重新读取核对界面。", en: "Document saved; read the record again to verify the display." },
+  "today.planReadbackDiagnostic": { zh: "{error}", en: "{error}" },
+  "today.planUnconfirmedError": { zh: "结果未确认；编辑值仍保留。请重新读取核对后再操作。 {error}", en: "Result unconfirmed; your edit is retained. Read the record again before another edit. {error}" },
   "today.planUnconfirmed": { zh: "结果未确认；编辑值仍保留。请重新读取核对后再操作。", en: "Result unconfirmed; your edit is retained. Read the record again before another edit." },
   "today.planRetryReady": { zh: "已读回未更改的来源；编辑值仍保留，可明确重试保存。", en: "The unchanged source was reread. Your edit is retained; save again to retry." },
   "today.planSourceChanged": { zh: "来源或修订已改变，无法安全重绑此编辑。值仍保留；请关闭并重新选择来源后明确编辑。", en: "The source or revision changed and this edit cannot be safely rebound. Values are retained; close and reselect the source to edit explicitly." },
@@ -2120,6 +2122,17 @@ export function localizeApplicationError(
   error: string,
   language: InterfaceLanguage,
 ): string {
+  // These stable Today result wrappers surround an opaque storage diagnostic.
+  // Translate only the wrapper, retaining paths, user text and OS error details.
+  const savedRefreshPrefix = "文档已保存，但页面刷新失败：";
+  const savedRefreshSuffix = "；请重新读取核对。";
+  if (error.startsWith(savedRefreshPrefix) && error.endsWith(savedRefreshSuffix)) {
+    const detail = error.slice(savedRefreshPrefix.length, -savedRefreshSuffix.length);
+    return language === "zh" ? error : `Document saved, but the display refresh failed: ${detail}; read the record again to verify.`;
+  }
+  if (error === "文档已保存，但读回结果已经变化；请重新读取核对。") {
+    return language === "zh" ? error : "Document saved, but the readback changed; read the record again to verify.";
+  }
   if (language === "zh") {
     const exact = chineseApplicationErrors[error];
     if (exact) return exact;

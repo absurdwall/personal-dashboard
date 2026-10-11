@@ -1558,6 +1558,8 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
   currentInterfaceLanguage = preferences.interfaceLanguage;
   applyInterfaceLanguage(currentInterfaceLanguage);
   document.querySelectorAll<HTMLAnchorElement>(".today-axis-marker-link").forEach((link) => {
+    const time = link.querySelector<HTMLElement>(".today-axis-marker-time");
+    if (time) link.dataset.axisItemTime = time.textContent ?? "";
     updateTodayAxisMarkerAccessibleName(link, currentInterfaceLanguage);
   });
   if (workspaceLanguageButton) {
@@ -5252,6 +5254,34 @@ function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): s
     ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
 }
 
+// Retain copy metadata only for derived labels; period and source text stay verbatim.
+function appendAxisEntryTimeLabel(
+  target: HTMLElement,
+  entry: TimeAxisEntryView,
+  lane: TodayAxisLaneId,
+): void {
+  let key: InterfaceCopyKey;
+  let variables: Record<string, string> = {};
+  if (!entry.task && entry.startMinute === null) {
+    if (entry.period) target.append(`${entry.period} · `);
+    key = entry.period ? "today.unlocatedPlanLabel" :
+      lane === "facts" || lane === "facts-unlocated" ? "today.unlocatedConfirmedFactLabel" : "today.unlocatedLabel";
+  } else if (!entry.task && (entry.planPrecision === "broad" || entry.planPrecision === "approximatePoint")) {
+    if (entry.planPrecision === "broad") target.append(`${entry.period} · `);
+    key = "today.planApproximateReference";
+    variables = { time: formatAxisMinute(entry.startMinute!) };
+  } else {
+    target.textContent = axisEntryTimeLabel(entry, lane);
+    return;
+  }
+  const label = document.createElement("span");
+  setCopy(label, key, variables);
+  target.append(label);
+  if (entry.planPrecision === "approximatePoint" && entry.startMinute! >= 1440) {
+    target.append(` · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}`);
+  }
+}
+
 function axisEntryMetadataCopyKeys(
   entry: TimeAxisEntryView,
   lane: TodayAxisLaneId,
@@ -5292,7 +5322,7 @@ function axisEntryDetails(
   const summary = document.createElement("summary");
   const time = document.createElement(entry.startMinute === null ? "span" : "time");
   if (entry.startMinute === null) time.className = "today-axis-entry-time-label";
-  time.textContent = axisEntryTimeLabel(entry, lane);
+  appendAxisEntryTimeLabel(time, entry, lane);
   if (entry.startMinute !== null) {
     time.setAttribute("datetime", `${entry.startMinute >= 1440 ? nextAxisDate(currentTodayView?.date ?? entry.sourceDate) : (currentTodayView?.date ?? entry.sourceDate)}T${formatAxisMinute(entry.startMinute)}`);
   }
@@ -5373,6 +5403,7 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
   if (!entry.planId || !entry.timeEditable || !loaded?.revision || !loaded.targetBinding) return;
   const dialog = document.createElement("dialog");
   dialog.className = "plan-time-editor";
+  dialog.dataset.i18nAriaLabel = "today.editPlanTime";
   dialog.setAttribute("aria-label", t("today.editPlanTime"));
   const form = document.createElement("form");
   const heading = document.createElement("h3");
@@ -5383,7 +5414,9 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
   setCopy(help, "today.planTimeHelp");
   form.append(heading, title, help);
   const precisionLabel = document.createElement("label");
-  setCopy(precisionLabel, "today.planPrecision");
+  const precisionCaption = document.createElement("span");
+  setCopy(precisionCaption, "today.planPrecision");
+  precisionLabel.append(precisionCaption);
   const precision = document.createElement("select");
   for (const [value, key] of [
     ["approximatePoint", "today.planApproximatePoint"],
@@ -5402,7 +5435,9 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
   const timeControl = (key: InterfaceCopyKey, minute: number | null) => {
     const group = document.createElement("div");
     const label = document.createElement("label");
-    setCopy(label, key);
+    const caption = document.createElement("span");
+    setCopy(caption, key);
+    label.append(caption);
     const time = document.createElement("input");
     time.type = "time";
     time.step = "60";
@@ -5484,7 +5519,7 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
         setCopy(status, "today.planRetryReady");
         recheck.hidden = true;
       } catch (error) {
-        status.textContent = `${t("today.planUnconfirmed")} ${String(error)}`;
+        setCopyError(status, "today.planUnconfirmedError", error);
       } finally {
         recheck.disabled = false;
         updateTodayOperationState(-1);
@@ -5493,7 +5528,7 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
   });
   form.append(status, save, recheck, close);
   if (recovery) {
-    status.textContent = recovery.notice;
+    setCopyError(status, recovery.savedRevision ? "today.planReadbackDiagnostic" : "today.planUnconfirmedError", recovery.notice);
     recheck.hidden = false;
     save.disabled = precision.disabled = true;
     start.time.disabled = end.time.disabled = start.nextDay.disabled = end.nextDay.disabled = true;
@@ -5536,11 +5571,12 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
           showTodayMutationCopy("today.planSaved", "ready");
           dialog.close();
         } else {
-          status.textContent = result.refreshError ?? t("today.planSaved");
+          if (result.refreshError) setCopyError(status, "today.planReadbackDiagnostic", result.refreshError);
+          else setCopy(status, "today.planSavedNeedsReadback");
           recheck.hidden = false;
         }
       } catch (error) {
-        status.textContent = `${t("today.planUnconfirmed")} ${String(error)}`;
+        setCopyError(status, "today.planUnconfirmedError", error);
         recheck.hidden = false;
       } finally {
         updateTodayOperationState(-1);
@@ -5719,7 +5755,7 @@ async function moveTodayAxisPlan(change: AxisGestureCommit<TodayView>): Promise<
     }
     recover(result.refreshError ?? t("today.planSavedNeedsReadback"), result.savedRevision);
   } catch (error) {
-    recover(`${t("today.planUnconfirmed")} ${String(error)}`);
+    recover(String(error));
   } finally {
     updateTodayOperationState(-1);
   }
@@ -5873,7 +5909,7 @@ function renderTodayTimeAxisEntries(
       updateTodayAxisMarkerAccessibleName(link, currentInterfaceLanguage);
       const timeLabel = document.createElement("span");
       timeLabel.className = "today-axis-marker-time";
-      timeLabel.textContent = axisEntryTimeLabel(original, original.lane);
+      appendAxisEntryTimeLabel(timeLabel, original, original.lane);
       const title = document.createElement("span");
       title.className = "today-axis-marker-title";
       title.textContent = entry.task
@@ -5904,6 +5940,8 @@ function renderTodayTimeAxisEntries(
         endHandle.type = "button";
         endHandle.className = "today-axis-plan-end";
         endHandle.dataset.axisResize = "";
+        endHandle.dataset.i18nAriaLabel = "today.planResizeEnd";
+        endHandle.dataset.i18nTitle = "today.planResizeEnd";
         endHandle.setAttribute("aria-label", t("today.planResizeEnd"));
         endHandle.title = t("today.planResizeEnd");
         if (markerLayout.isCenteredLabel) {
@@ -5918,6 +5956,9 @@ function renderTodayTimeAxisEntries(
         const reveal = document.createElement("button");
         reveal.type = "button";
         reveal.className = "today-axis-stack-reveal";
+        reveal.dataset.i18nAriaLabel = "today.overlapStackReveal";
+        reveal.dataset.i18nTitle = "today.overlapStackReveal";
+        reveal.dataset.i18nVariables = JSON.stringify({ count: groupCount });
         const revealLabel = t("today.overlapStackReveal", { count: groupCount });
         reveal.setAttribute("aria-label", revealLabel);
         reveal.title = revealLabel;

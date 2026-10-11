@@ -134,3 +134,16 @@ test("selection or received text cannot make a stale suggestion overwrite an ord
   assert.equal(result.hidden, true);
   assert.equal(result.submitted, 0);
 });
+
+// Measure the real selected option after the production controller and CSS cascade.
+test("selected slash candidate retains readable foreground on its soft background", { skip: process.platform !== "darwin" }, () => {
+  const result = webKit(`type('/r'); const option=menu.querySelector('[aria-selected="true"]'); const style=getComputedStyle(option); return JSON.stringify({color:style.color,background:style.backgroundColor,selected:option.textContent});`);
+  const luminance = (color: string) => {
+    const channels=color.match(/[\d.]+/g)!.slice(0,3).map(Number).map(value=>value/255).map(value=>value<=0.04045?value/12.92:((value+0.055)/1.055)**2.4);
+    return channels[0]*0.2126+channels[1]*0.7152+channels[2]*0.0722;
+  };
+  const light=luminance(result.background), dark=luminance(result.color);
+  const ratio=(Math.max(light,dark)+0.05)/(Math.min(light,dark)+0.05);
+  assert.equal(result.selected,"/retro Personal retro");
+  assert.ok(ratio>=4.5,`selected candidate ${result.color} on ${result.background}: contrast ${ratio.toFixed(2)}`);
+});
