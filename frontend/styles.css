@@ -9873,3 +9873,23 @@ button.habit-cell:focus-visible {
 }
 
 #today-axis-edit-status[data-state="error"] { color: var(--parity-danger, #a7443a); }
+
+.today-axis-marker[data-plan-id] .today-axis-marker-link { cursor: grab; touch-action: none; }
+.today-axis-plot.is-pointer-editing .today-axis-marker[data-plan-id] .today-axis-marker-link { cursor: grabbing; }
+.today-axis-plan-end {
+  position: absolute;
+  top: 100%;
+  right: 5px;
+  width: 28px;
+  height: 14px;
+  transform: translateY(-50%);
+  padding: 0;
+  border: 1px solid var(--parity-border);
+  border-radius: 5px;
+  background: var(--parity-surface, #fff);
+  cursor: ns-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+.today-axis-plan-end::after { content: ""; position: absolute; inset: 5px; border-top: 2px solid currentColor; }
+.today-axis-gesture-preview { color: var(--parity-ink, #232724); font-weight: 650; padding: 3px 8px; white-space: nowrap; }

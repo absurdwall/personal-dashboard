@@ -1,0 +1,1072 @@
+{
+  "fuzzy": {
+    "baseline": {
+      "availability": "saved",
+      "evidence": [
+        {
+          "items": [
+            "Synthetic report task"
+          ],
+          "label": "Tasks and fixed commitments"
+        }
+      ],
+      "message": "已读取独立保存的早间基准。",
+      "timeline": [
+        {
+          "detail": null,
+          "period": "08:07–10:11",
+          "title": "Synthetic drag range"
+        },
+        {
+          "detail": null,
+          "period": "早晨",
+          "title": "Synthetic fuzzy drag"
+        },
+        {
+          "detail": null,
+          "period": "11:07",
+          "title": "Synthetic point drag"
+        }
+      ]
+    },
+    "canRecord": true,
+    "currentTime": "14:10",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-08-10",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-b450f3d271fd3970",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": [
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [],
+          "observedFacts": [
+            "08:45 Synthetic confirmed event"
+          ],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "已发生事件"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：08:07–10:11 → 18:00–20:04",
+            "项目：Synthetic drag range"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：18:00–20:04 → 18:00–20:45",
+            "项目：Synthetic drag range"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：早晨 → 约21:15",
+            "项目：Synthetic fuzzy drag"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        }
+      ]
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [
+      {
+        "items": [
+          "Synthetic report task"
+        ],
+        "label": "Tasks and fixed commitments"
+      }
+    ],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-98968ff5fa780b52",
+      "date": "2026-08-10",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取独立早间基准和当前安排。",
+    "revision": "ecf8927fe9fc6e20",
+    "state": "ready",
+    "targetBinding": "target-dcce48cc93c2a3ab",
+    "tasks": {
+      "currentDate": "2026-08-10",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "revision": null,
+      "schemaVersion": 2,
+      "state": "empty",
+      "targetBinding": "task-target-d3156d276c11f36b",
+      "tasks": [],
+      "vaultName": "drag-plan-vault",
+      "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-6261-1791682623289735000-1/drag-plan-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": null,
+          "planId": null,
+          "planPrecision": null,
+          "sourceDate": "2026-08-10",
+          "startMinute": 525,
+          "text": "08:45 Synthetic confirmed event",
+          "timeEditable": false
+        }
+      ],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": 1245,
+          "period": "18:00–20:45",
+          "planId": "plan-e5ed2d89f8f43e6a",
+          "planPrecision": "exactRange",
+          "sourceDate": "2026-08-10",
+          "startMinute": 1080,
+          "text": "Synthetic drag range",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "约21:15",
+          "planId": "plan-47f73f425f8c20a1",
+          "planPrecision": "approximatePoint",
+          "sourceDate": "2026-08-10",
+          "startMinute": 1275,
+          "text": "Synthetic fuzzy drag",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "11:07",
+          "planId": "plan-ca0e5266e9d48274",
+          "planPrecision": "exactPoint",
+          "sourceDate": "2026-08-10",
+          "startMinute": 667,
+          "text": "Synthetic point drag",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": null,
+        "period": "18:00–20:45",
+        "title": "Synthetic drag range"
+      },
+      {
+        "detail": null,
+        "period": "约21:15",
+        "title": "Synthetic fuzzy drag"
+      },
+      {
+        "detail": null,
+        "period": "11:07",
+        "title": "Synthetic point drag"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "drag-plan-vault",
+    "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-6261-1791682623289735000-1/drag-plan-vault"
+  },
+  "loaded": {
+    "baseline": {
+      "availability": "saved",
+      "evidence": [
+        {
+          "items": [
+            "Synthetic report task"
+          ],
+          "label": "Tasks and fixed commitments"
+        }
+      ],
+      "message": "已读取独立保存的早间基准。",
+      "timeline": [
+        {
+          "detail": null,
+          "period": "08:07–10:11",
+          "title": "Synthetic drag range"
+        },
+        {
+          "detail": null,
+          "period": "早晨",
+          "title": "Synthetic fuzzy drag"
+        },
+        {
+          "detail": null,
+          "period": "11:07",
+          "title": "Synthetic point drag"
+        }
+      ]
+    },
+    "canRecord": true,
+    "currentTime": "14:10",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-08-10",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-b450f3d271fd3970",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": [
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [],
+          "observedFacts": [
+            "08:45 Synthetic confirmed event"
+          ],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "已发生事件"
+        }
+      ]
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [
+      {
+        "items": [
+          "Synthetic report task"
+        ],
+        "label": "Tasks and fixed commitments"
+      }
+    ],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-98968ff5fa780b52",
+      "date": "2026-08-10",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取独立早间基准和当前安排。",
+    "revision": "4c68d7eae886d337",
+    "state": "ready",
+    "targetBinding": "target-dcce48cc93c2a3ab",
+    "tasks": {
+      "currentDate": "2026-08-10",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "revision": null,
+      "schemaVersion": 2,
+      "state": "empty",
+      "targetBinding": "task-target-d3156d276c11f36b",
+      "tasks": [],
+      "vaultName": "drag-plan-vault",
+      "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-6261-1791682623289735000-1/drag-plan-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": null,
+          "planId": null,
+          "planPrecision": null,
+          "sourceDate": "2026-08-10",
+          "startMinute": 525,
+          "text": "08:45 Synthetic confirmed event",
+          "timeEditable": false
+        }
+      ],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": 611,
+          "period": "08:07–10:11",
+          "planId": "plan-981aa339055d8d3f",
+          "planPrecision": "exactRange",
+          "sourceDate": "2026-08-10",
+          "startMinute": 487,
+          "text": "Synthetic drag range",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "早晨",
+          "planId": "plan-0d81452b8493ef02",
+          "planPrecision": "broad",
+          "sourceDate": "2026-08-10",
+          "startMinute": 540,
+          "text": "Synthetic fuzzy drag",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "11:07",
+          "planId": "plan-aef8fcb61e549778",
+          "planPrecision": "exactPoint",
+          "sourceDate": "2026-08-10",
+          "startMinute": 667,
+          "text": "Synthetic point drag",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": null,
+        "period": "08:07–10:11",
+        "title": "Synthetic drag range"
+      },
+      {
+        "detail": null,
+        "period": "早晨",
+        "title": "Synthetic fuzzy drag"
+      },
+      {
+        "detail": null,
+        "period": "11:07",
+        "title": "Synthetic point drag"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "drag-plan-vault",
+    "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-6261-1791682623289735000-1/drag-plan-vault"
+  },
+  "moved": {
+    "baseline": {
+      "availability": "saved",
+      "evidence": [
+        {
+          "items": [
+            "Synthetic report task"
+          ],
+          "label": "Tasks and fixed commitments"
+        }
+      ],
+      "message": "已读取独立保存的早间基准。",
+      "timeline": [
+        {
+          "detail": null,
+          "period": "08:07–10:11",
+          "title": "Synthetic drag range"
+        },
+        {
+          "detail": null,
+          "period": "早晨",
+          "title": "Synthetic fuzzy drag"
+        },
+        {
+          "detail": null,
+          "period": "11:07",
+          "title": "Synthetic point drag"
+        }
+      ]
+    },
+    "canRecord": true,
+    "currentTime": "14:10",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-08-10",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-b450f3d271fd3970",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": [
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [],
+          "observedFacts": [
+            "08:45 Synthetic confirmed event"
+          ],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "已发生事件"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：08:07–10:11 → 18:00–20:04",
+            "项目：Synthetic drag range"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        }
+      ]
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [
+      {
+        "items": [
+          "Synthetic report task"
+        ],
+        "label": "Tasks and fixed commitments"
+      }
+    ],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-98968ff5fa780b52",
+      "date": "2026-08-10",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取独立早间基准和当前安排。",
+    "revision": "9ccc9ccb2a3d4a8e",
+    "state": "ready",
+    "targetBinding": "target-dcce48cc93c2a3ab",
+    "tasks": {
+      "currentDate": "2026-08-10",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "revision": null,
+      "schemaVersion": 2,
+      "state": "empty",
+      "targetBinding": "task-target-d3156d276c11f36b",
+      "tasks": [],
+      "vaultName": "drag-plan-vault",
+      "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-6261-1791682623289735000-1/drag-plan-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": null,
+          "planId": null,
+          "planPrecision": null,
+          "sourceDate": "2026-08-10",
+          "startMinute": 525,
+          "text": "08:45 Synthetic confirmed event",
+          "timeEditable": false
+        }
+      ],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": 1204,
+          "period": "18:00–20:04",
+          "planId": "plan-75115cd2750ae9a1",
+          "planPrecision": "exactRange",
+          "sourceDate": "2026-08-10",
+          "startMinute": 1080,
+          "text": "Synthetic drag range",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "早晨",
+          "planId": "plan-53c7ed01f4e299d1",
+          "planPrecision": "broad",
+          "sourceDate": "2026-08-10",
+          "startMinute": 540,
+          "text": "Synthetic fuzzy drag",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "11:07",
+          "planId": "plan-61cfbde629901af1",
+          "planPrecision": "exactPoint",
+          "sourceDate": "2026-08-10",
+          "startMinute": 667,
+          "text": "Synthetic point drag",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": null,
+        "period": "18:00–20:04",
+        "title": "Synthetic drag range"
+      },
+      {
+        "detail": null,
+        "period": "早晨",
+        "title": "Synthetic fuzzy drag"
+      },
+      {
+        "detail": null,
+        "period": "11:07",
+        "title": "Synthetic point drag"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "drag-plan-vault",
+    "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-6261-1791682623289735000-1/drag-plan-vault"
+  },
+  "point": {
+    "baseline": {
+      "availability": "saved",
+      "evidence": [
+        {
+          "items": [
+            "Synthetic report task"
+          ],
+          "label": "Tasks and fixed commitments"
+        }
+      ],
+      "message": "已读取独立保存的早间基准。",
+      "timeline": [
+        {
+          "detail": null,
+          "period": "08:07–10:11",
+          "title": "Synthetic drag range"
+        },
+        {
+          "detail": null,
+          "period": "早晨",
+          "title": "Synthetic fuzzy drag"
+        },
+        {
+          "detail": null,
+          "period": "11:07",
+          "title": "Synthetic point drag"
+        }
+      ]
+    },
+    "canRecord": true,
+    "currentTime": "14:10",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-08-10",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-b450f3d271fd3970",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": [
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [],
+          "observedFacts": [
+            "08:45 Synthetic confirmed event"
+          ],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "已发生事件"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：08:07–10:11 → 18:00–20:04",
+            "项目：Synthetic drag range"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：18:00–20:04 → 18:00–20:45",
+            "项目：Synthetic drag range"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：早晨 → 约21:15",
+            "项目：Synthetic fuzzy drag"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：11:07 → 22:15",
+            "项目：Synthetic point drag"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        }
+      ]
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [
+      {
+        "items": [
+          "Synthetic report task"
+        ],
+        "label": "Tasks and fixed commitments"
+      }
+    ],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-98968ff5fa780b52",
+      "date": "2026-08-10",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取独立早间基准和当前安排。",
+    "revision": "14d0bf6725f70a60",
+    "state": "ready",
+    "targetBinding": "target-dcce48cc93c2a3ab",
+    "tasks": {
+      "currentDate": "2026-08-10",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "revision": null,
+      "schemaVersion": 2,
+      "state": "empty",
+      "targetBinding": "task-target-d3156d276c11f36b",
+      "tasks": [],
+      "vaultName": "drag-plan-vault",
+      "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-6261-1791682623289735000-1/drag-plan-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": null,
+          "planId": null,
+          "planPrecision": null,
+          "sourceDate": "2026-08-10",
+          "startMinute": 525,
+          "text": "08:45 Synthetic confirmed event",
+          "timeEditable": false
+        }
+      ],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": 1245,
+          "period": "18:00–20:45",
+          "planId": "plan-e5ed2d89f8f43e6a",
+          "planPrecision": "exactRange",
+          "sourceDate": "2026-08-10",
+          "startMinute": 1080,
+          "text": "Synthetic drag range",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "约21:15",
+          "planId": "plan-47f73f425f8c20a1",
+          "planPrecision": "approximatePoint",
+          "sourceDate": "2026-08-10",
+          "startMinute": 1275,
+          "text": "Synthetic fuzzy drag",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "22:15",
+          "planId": "plan-beeb35bb2ca0470a",
+          "planPrecision": "exactPoint",
+          "sourceDate": "2026-08-10",
+          "startMinute": 1335,
+          "text": "Synthetic point drag",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": null,
+        "period": "18:00–20:45",
+        "title": "Synthetic drag range"
+      },
+      {
+        "detail": null,
+        "period": "约21:15",
+        "title": "Synthetic fuzzy drag"
+      },
+      {
+        "detail": null,
+        "period": "22:15",
+        "title": "Synthetic point drag"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "drag-plan-vault",
+    "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-6261-1791682623289735000-1/drag-plan-vault"
+  },
+  "resized": {
+    "baseline": {
+      "availability": "saved",
+      "evidence": [
+        {
+          "items": [
+            "Synthetic report task"
+          ],
+          "label": "Tasks and fixed commitments"
+        }
+      ],
+      "message": "已读取独立保存的早间基准。",
+      "timeline": [
+        {
+          "detail": null,
+          "period": "08:07–10:11",
+          "title": "Synthetic drag range"
+        },
+        {
+          "detail": null,
+          "period": "早晨",
+          "title": "Synthetic fuzzy drag"
+        },
+        {
+          "detail": null,
+          "period": "11:07",
+          "title": "Synthetic point drag"
+        }
+      ]
+    },
+    "canRecord": true,
+    "currentTime": "14:10",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-08-10",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-b450f3d271fd3970",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": [
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [],
+          "observedFacts": [
+            "08:45 Synthetic confirmed event"
+          ],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "已发生事件"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：08:07–10:11 → 18:00–20:04",
+            "项目：Synthetic drag range"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：18:00–20:04 → 18:00–20:45",
+            "项目：Synthetic drag range"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        }
+      ]
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [
+      {
+        "items": [
+          "Synthetic report task"
+        ],
+        "label": "Tasks and fixed commitments"
+      }
+    ],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-98968ff5fa780b52",
+      "date": "2026-08-10",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取独立早间基准和当前安排。",
+    "revision": "fb0ae99423882ed2",
+    "state": "ready",
+    "targetBinding": "target-dcce48cc93c2a3ab",
+    "tasks": {
+      "currentDate": "2026-08-10",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "revision": null,
+      "schemaVersion": 2,
+      "state": "empty",
+      "targetBinding": "task-target-d3156d276c11f36b",
+      "tasks": [],
+      "vaultName": "drag-plan-vault",
+      "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-6261-1791682623289735000-1/drag-plan-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": null,
+          "planId": null,
+          "planPrecision": null,
+          "sourceDate": "2026-08-10",
+          "startMinute": 525,
+          "text": "08:45 Synthetic confirmed event",
+          "timeEditable": false
+        }
+      ],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": 1245,
+          "period": "18:00–20:45",
+          "planId": "plan-e5ed2d89f8f43e6a",
+          "planPrecision": "exactRange",
+          "sourceDate": "2026-08-10",
+          "startMinute": 1080,
+          "text": "Synthetic drag range",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "早晨",
+          "planId": "plan-53c7ed01f4e299d1",
+          "planPrecision": "broad",
+          "sourceDate": "2026-08-10",
+          "startMinute": 540,
+          "text": "Synthetic fuzzy drag",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "11:07",
+          "planId": "plan-61cfbde629901af1",
+          "planPrecision": "exactPoint",
+          "sourceDate": "2026-08-10",
+          "startMinute": 667,
+          "text": "Synthetic point drag",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": null,
+        "period": "18:00–20:45",
+        "title": "Synthetic drag range"
+      },
+      {
+        "detail": null,
+        "period": "早晨",
+        "title": "Synthetic fuzzy drag"
+      },
+      {
+        "detail": null,
+        "period": "11:07",
+        "title": "Synthetic point drag"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "drag-plan-vault",
+    "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-6261-1791682623289735000-1/drag-plan-vault"
+  }
+}
