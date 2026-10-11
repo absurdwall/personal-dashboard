@@ -61,15 +61,16 @@ async function pageFixture() {
   }
   return {page,browser,server,close:async()=>{await browser.close();await new Promise(r=>server.close(r));}};
 }
-async function pointAt(page,minute) {
-  const plot=page.locator('#today-axis-plot');
-  await plot.scrollIntoViewIfNeeded();
-  return page.evaluate(minute=>{
-    const plot=document.querySelector('#today-axis-plot');const rect=plot.getBoundingClientRect();
+async function pointAt(page,minute,ensureVisible=true) {
+  const surface=page.locator('#today-axis-scroll-surface');await surface.scrollIntoViewIfNeeded();
+  return page.evaluate(({minute,ensureVisible})=>{
+    const plot=document.querySelector('#today-axis-plot'),surface=document.querySelector('#today-axis-scroll-surface');
     const start=document.querySelector('#today-expand-early').getAttribute('aria-expanded')==='true'?240:360;
     const end=document.querySelector('#today-expand-late').getAttribute('aria-expanded')==='true'?1680:1440;
-    return {x:rect.right-30,y:rect.top+(minute-start)/(end-start)*rect.height};
-  },minute);
+    const pos=()=>{const rect=plot.getBoundingClientRect();return {x:rect.right-30,y:rect.top+(minute-start)/(end-start)*rect.height};};
+    if(ensureVisible){const rect=surface.getBoundingClientRect();surface.scrollTop+=pos().y-(rect.top+rect.height/2);}
+    return pos();
+  },{minute,ensureVisible});
 }
 
 // Real Chromium mouse events on the production document and compiled main.ts.
@@ -77,7 +78,7 @@ async function pointAt(page,minute) {
 test('blank-axis pointer selection opens editable Task creation and sends exact interval',async()=>{
   const fixture=await pageFixture();const {page}=fixture;
   try {
-    const start=await pointAt(page,660),end=await pointAt(page,720);
+    const start=await pointAt(page,660),end=await pointAt(page,720,false);
     await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(end.x,end.y,{steps:8});await page.mouse.up();
     const dialog=page.locator('dialog[data-axis-task-create]');
     assert.equal(await dialog.count(),1,'blank selection must open the real Task creation editor');
@@ -142,7 +143,7 @@ test('revision conflict restores the saved card and an explicit retry preserves 
 test('failed selection save retains editable endpoints and reuses its stable Task identity',async()=>{
   const fixture=await pageFixture();const {page}=fixture;
   try {
-    const start=await pointAt(page,660),end=await pointAt(page,720);
+    const start=await pointAt(page,660),end=await pointAt(page,720,false);
     await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(end.x,end.y,{steps:6});await page.mouse.up();
     const dialog=page.locator('dialog[data-axis-task-create]');await dialog.locator('[data-task-name]').fill('Synthetic retry');
     await page.evaluate(()=>window.__failNext='create_task');await dialog.locator('button[type=submit]').click();
@@ -165,5 +166,52 @@ test('an ordinary Task card click still opens its existing details',async()=>{
     await page.locator('.today-axis-marker[data-task-id="point"] .today-axis-marker-link').click();
     assert.equal(await page.locator('#today-timed-details details[open]').count(),1);
     assert.equal(await page.evaluate(()=>window.__calls.some(x=>['update_task','create_task'].includes(x.command))),false);
+  } finally {await fixture.close();}
+});
+
+test('an overnight pointer selection retains both natural dates and fifteen-minute snapping',async()=>{
+  const fixture=await pageFixture();const {page}=fixture;
+  try {
+    await page.locator('#today-expand-late').click();
+    const start=await pointAt(page,1412),end=await pointAt(page,1472,false);
+    await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(end.x,end.y,{steps:8});await page.mouse.up();
+    const dialog=page.locator('dialog[data-axis-task-create]');await dialog.waitFor({state:'visible'});
+    assert.equal(await dialog.locator('[data-task-date]').inputValue(),'2026-10-10');
+    assert.equal(await dialog.locator('[data-task-time]').inputValue(),'23:30');
+    assert.equal(await dialog.locator('[data-task-end-date]').inputValue(),'2026-10-11');
+    assert.equal(await dialog.locator('[data-task-end-time]').inputValue(),'00:30');
+    await dialog.locator('[data-task-name]').fill('Synthetic overnight selection');await dialog.locator('button[type=submit]').click();await dialog.waitFor({state:'hidden'});
+    const saved=await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.name==='Synthetic overnight selection'));
+    assert.equal(saved.date,'2026-10-10');assert.deepEqual(saved.executionEnd,{date:'2026-10-11',time:'00:30'});
+    assert.equal(await page.locator(`.today-axis-marker[data-task-id="${saved.id}"] .today-axis-marker-time`).textContent(),'23:30–2026-10-11 · 00:30');
+  } finally {await fixture.close();}
+});
+
+test('held pointer scrolls the inner axis and Escape removes its preview without a write',async()=>{
+  const fixture=await pageFixture();const {page}=fixture;
+  try {
+    const start=await pointAt(page,660);const surface=page.locator('#today-axis-scroll-surface');
+    const rect=await surface.boundingBox();assert.ok(rect);
+    const before=await surface.evaluate(node=>node.scrollTop);
+    await page.mouse.move(start.x,start.y);await page.mouse.down();await page.mouse.move(start.x,rect.y+rect.height-5,{steps:8});
+    await page.waitForFunction(before=>document.querySelector('#today-axis-scroll-surface').scrollTop>before+40,before,{timeout:3000});
+    assert.equal(await page.locator('[data-axis-gesture-preview]').count(),1);
+    await page.keyboard.press('Escape');await page.mouse.up();
+    assert.equal(await page.locator('[data-axis-gesture-preview]').count(),0);
+    assert.equal(await page.locator('dialog[data-axis-task-create]').count(),0);
+    assert.equal(await page.evaluate(()=>window.__calls.some(x=>['create_task','update_task'].includes(x.command))),false);
+  } finally {await fixture.close();}
+});
+
+test('out-of-bounds Task movement is rejected without truncating or changing the saved point',async()=>{
+  const fixture=await pageFixture();const {page}=fixture;
+  try {
+    await dragTask(page,'point',1400);
+    assert.equal(await page.evaluate(()=>window.__calls.some(x=>x.command==='update_task')),false);
+    assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').time),'09:00');
+    assert.match(await page.locator('#today-task-status').textContent(),/outside 04:00/);
+    assert.equal(await page.locator('#today-axis-edit-status').count(),1,'invalid drag feedback belongs beside the visible axis');
+    assert.match(await page.locator('#today-axis-edit-status').textContent(),/outside 04:00/);
+    assert.equal(await page.locator('[data-axis-gesture-preview]').count(),0);
   } finally {await fixture.close();}
 });

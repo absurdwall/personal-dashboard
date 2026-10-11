@@ -9803,3 +9803,5 @@ button.habit-cell:focus-visible {
 #today-phase-morning .today-timeline-item { display: block; }
 #today-phase-morning .today-period { display: block; margin-bottom: 0.35rem; }
 
+
+#today-axis-edit-status[data-state="error"] { color: var(--parity-danger, #a7443a); }

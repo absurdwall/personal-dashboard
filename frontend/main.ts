@@ -5470,7 +5470,7 @@ function openTodayAxisTaskCreate(loaded: TodayView, startMinute: number, endMinu
       const latest=await window.__TAURI__.core.invoke<TasksView>("tasks_view");
       if(!sameTarget()||latest.targetBinding!==binding||latest.state==="error"||latest.state==="unconfigured")throw Error(latest.message);
       renderTaskSurface("today",latest);
-      if(latest.tasks.some(matches)){setCopy(taskSurfaceStatus("today"),"tasks.saved");dialog.close();return true;}
+      if(latest.tasks.some(matches)){setCopy(taskSurfaceStatus("today"),"tasks.saved");showTodayAxisEditCopy("tasks.saved");dialog.close();return true;}
       if(latest.tasks.some(task=>task.id===taskId)){setCopy(status,"today.axisTaskAlreadyExists");save.disabled=true;return false;}
       revision=latest.revision;save.disabled=false;setCopy(status,"today.axisTaskRetry");return false;
     }catch(error){setCopyError(status,"tasks.notSaved",error);return false;}finally{busy=false;recheck.disabled=false;}})();
@@ -5491,7 +5491,7 @@ function openTodayAxisTaskCreate(loaded: TodayView, startMinute: number, endMinu
       const result=await window.__TAURI__.core.invoke<TasksView>("create_task",{input:submitted});
       if(!taskSurfaceIsCurrent("today",request,binding,result.targetBinding,loaded.date,revision)||
         !["ready","empty"].includes(result.state)||!result.tasks.some(matches))throw Error(result.message||t("tasks.confirmationFailed"));
-      renderTaskSurface("today",result);setCopy(taskSurfaceStatus("today"),"tasks.saved");dialog.close();return true;
+      renderTaskSurface("today",result);setCopy(taskSurfaceStatus("today"),"tasks.saved");showTodayAxisEditCopy("tasks.saved");dialog.close();return true;
     }catch(error){setCopyError(status,"tasks.notSaved",error);recheck.hidden=false;return false;}
     finally{busy=false;updateTaskOperationState(-1);}})();
     void pendingWrites.track(operation);
@@ -5525,7 +5525,7 @@ async function moveTodayAxisTask(change: AxisGestureCommit<TodayView>): Promise<
         createChangeId:()=>localOperationId("axis-task-move"),invoke:input=>window.__TAURI__.core.invoke<TasksView>("update_task",{input}),
         isCurrent:(token,view)=>taskSurfaceIsCurrent("today",token,binding,view.targetBinding,loaded.date,revision)});
       if(!result.confirmed)throw Error(result.view.message||t("tasks.confirmationFailed"));
-      renderTaskSurface("today",result.view);setCopy(taskSurfaceStatus("today"),"tasks.saved");recovery?.close();return true;
+      renderTaskSurface("today",result.view);setCopy(taskSurfaceStatus("today"),"tasks.saved");showTodayAxisEditCopy("tasks.saved");recovery?.close();return true;
     }catch(error){
       if(sameTarget()&&currentTodayView)renderTodayTimeAxis(currentTodayView);
       if(!recovery) {
@@ -5544,7 +5544,7 @@ async function moveTodayAxisTask(change: AxisGestureCommit<TodayView>): Promise<
             if(!sameTarget()||current.targetBinding!==binding||current.state==="error"||current.state==="unconfigured")throw Error(current.message);
             renderTaskSurface("today",current);
             const found=current.tasks.find(task=>task.id===target!.key);
-            if(found&&matches(found)){setCopy(taskSurfaceStatus("today"),"tasks.saved");recovery?.close();return true;}
+            if(found&&matches(found)){setCopy(taskSurfaceStatus("today"),"tasks.saved");showTodayAxisEditCopy("tasks.saved");recovery?.close();return true;}
             if(!found||found.deletedAt!==null||found.state==="abandoned"||current.lists.some(list=>list.id===found.listId&&list.archived)) {
               setCopy(status,"today.axisTaskUnavailable");return false;
             }
@@ -5576,15 +5576,22 @@ function commitTodayAxisGesture(change: AxisGestureCommit<TodayView>): void {
   if(!change.target&&change.endMinute!==null)openTodayAxisTaskCreate(change.context,change.startMinute,change.endMinute);
   else if(change.target?.kind==="task")void pendingWrites.track(moveTodayAxisTask(change));
 }
+function showTodayAxisEditCopy(key: InterfaceCopyKey, state: "ready" | "error" = "ready"): void {
+  const status=document.querySelector<HTMLElement>("#today-axis-edit-status");
+  if(status){setCopy(status,key);status.hidden=false;status.dataset.state=state;}
+}
 function installTodayAxisGestures(): void {
   const plot=document.querySelector<HTMLElement>("#today-axis-plot");
   const scrollSurface=document.querySelector<HTMLElement>("#today-axis-scroll-surface");
   if(!plot||!scrollSurface)return;
   attachTodayAxisGestures({plot,scrollSurface,bounds:axisBounds,
-    begin:()=>currentTodayView&&canMutateTodayTasks({todayOperationCount,taskOperationCount,hasTargetBinding:Boolean(currentTodayView.tasks.targetBinding),
-      state:currentTodayView.tasks.state,isPresentationCurrent:todayPresentationFresh})?currentTodayView:null,
+    begin:()=>{
+      if(!currentTodayView||!canMutateTodayTasks({todayOperationCount,taskOperationCount,hasTargetBinding:Boolean(currentTodayView.tasks.targetBinding),
+        state:currentTodayView.tasks.state,isPresentationCurrent:todayPresentationFresh}))return null;
+      todayAxisFollowState=onManualScroll(todayAxisFollowState);return currentTodayView;
+    },
     resolveTarget:resolveTodayAxisGestureTarget,onCommit:commitTodayAxisGesture,
-    onInvalid:()=>{setCopy(taskSurfaceStatus("today"),"today.axisTaskInvalid");},
+    onInvalid:()=>{setCopy(taskSurfaceStatus("today"),"today.axisTaskInvalid");showTodayAxisEditCopy("today.axisTaskInvalid","error");},
   });
 }
 
