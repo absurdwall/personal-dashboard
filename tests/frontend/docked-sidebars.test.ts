@@ -45,6 +45,31 @@ function probe(width:number, scenario:string, withUntimed=true) {
   } finally {rmSync(directory,{recursive:true,force:true});}
 }
 
+type QuickScheduleProbe = {
+  hidden:boolean;
+  text:string;
+  labelFontSize:number;
+  labelClientWidth:number;
+  labelScrollWidth:number;
+  title:string;
+  aria:string;
+  width:number;
+  rects:{top:number;height:number;width:number}[];
+  overflow:boolean;
+  calls:{command:string}[];
+};
+
+function assertQuickSchedulePresentation(result:QuickScheduleProbe,expectedText:string|Array<string|RegExp>,expectedTitle:RegExp) {
+  assert.equal(result.hidden,false);
+  if(typeof expectedText==='string')assert.equal(result.text,expectedText);
+  else for(const pattern of expectedText)typeof pattern==='string'?assert.equal(result.text,pattern):assert.match(result.text,pattern);
+  assert.equal(result.title,result.aria);assert.match(result.title,expectedTitle);
+  assert.ok(result.width>=124,JSON.stringify(result));assert.ok(result.labelFontSize>=10,JSON.stringify(result));
+  assert.ok(result.labelClientWidth>=64&&result.labelScrollWidth<=result.labelClientWidth,JSON.stringify(result));assert.ok(result.rects[0].width>=40,JSON.stringify(result.rects));
+  assert.ok(Math.max(...result.rects.map(r=>r.top+r.height/2))-Math.min(...result.rects.map(r=>r.top+r.height/2))<=2,JSON.stringify(result.rects));
+  assert.equal(result.overflow,false);assert.deepEqual(result.calls.filter(c=>/^(create_|edit_|update_|save_|set_)/.test(c.command)),[]);
+}
+
 test('Today restores the entire existing right sidebar docked at medium width and keeps its nodes', {skip:process.platform!=='darwin'},()=>{
   const result=probe(1000,`
     const detail=region.querySelector('details');detail.open=true;
@@ -202,12 +227,7 @@ test('Today quick schedule shows its current date and time within the existing r
     const label=button.querySelector('.task-schedule-label');
     return JSON.stringify({hidden:form.hidden,text:label?.textContent?.trim(),labelFontSize:parseFloat(getComputedStyle(label).fontSize),labelClientWidth:label.clientWidth,labelScrollWidth:label.scrollWidth,title:button.title,aria:button.getAttribute('aria-label'),width:rects[1].width,rects,overflow:document.documentElement.scrollWidth>innerWidth,calls});
   `);
-  assert.equal(result.hidden,false);assert.equal(result.text,'Today · 09:30');
-  assert.equal(result.title,result.aria);assert.match(result.title,/Aug 10.*09:30/);
-  assert.ok(result.width>=124,JSON.stringify(result));assert.ok(result.labelFontSize>=10,JSON.stringify(result));
-  assert.ok(result.labelClientWidth>=64&&result.labelScrollWidth<=result.labelClientWidth,JSON.stringify(result));assert.ok(result.rects[0].width>=40,JSON.stringify(result.rects));
-  assert.ok(Math.max(...result.rects.map((r:{top:number;height:number})=>r.top+r.height/2))-Math.min(...result.rects.map((r:{top:number;height:number})=>r.top+r.height/2))<=2,JSON.stringify(result.rects));
-  assert.equal(result.overflow,false);assert.deepEqual(result.calls.filter((c:{command:string})=>/^(create_|edit_|update_|save_|set_)/.test(c.command)),[]);
+  assertQuickSchedulePresentation(result,['Today · 09:30'],/Aug 10.*09:30/);
 });
 
 test('Tasks quick schedule shows its current date and time within the existing row', {skip:process.platform!=='darwin'},()=>{
@@ -221,12 +241,7 @@ test('Tasks quick schedule shows its current date and time within the existing r
     const rects=nodes.map(node=>{const r=node.getBoundingClientRect();return {top:r.top,height:r.height,width:r.width}}),label=button.querySelector('.task-schedule-label');
     return JSON.stringify({hidden:form.hidden,text:label?.textContent?.trim(),labelFontSize:parseFloat(getComputedStyle(label).fontSize),labelClientWidth:label.clientWidth,labelScrollWidth:label.scrollWidth,title:button.title,aria:button.getAttribute('aria-label'),width:rects[1].width,rects,overflow:document.documentElement.scrollWidth>innerWidth,calls});
   `);
-  assert.equal(result.hidden,false);assert.match(result.text,/09:30/);assert.match(result.text,/Today|Aug 10/);
-  assert.equal(result.title,result.aria);assert.match(result.title,/Aug 10.*09:30/);
-  assert.ok(result.width>=124,JSON.stringify(result));assert.ok(result.labelFontSize>=10,JSON.stringify(result));
-  assert.ok(result.labelClientWidth>=64&&result.labelScrollWidth<=result.labelClientWidth,JSON.stringify(result));assert.ok(result.rects[0].width>=40,JSON.stringify(result.rects));
-  assert.ok(Math.max(...result.rects.map((r:{top:number;height:number})=>r.top+r.height/2))-Math.min(...result.rects.map((r:{top:number;height:number})=>r.top+r.height/2))<=2,JSON.stringify(result.rects));
-  assert.equal(result.overflow,false);assert.deepEqual(result.calls.filter((c:{command:string})=>/^(create_|edit_|update_|save_|set_)/.test(c.command)),[]);
+  assertQuickSchedulePresentation(result,[/09:30/,/Today|Aug 10/],/Aug 10.*09:30/);
 });
 
 test('Today zero untimed count retains a compact recoverable sidebar entry without visible count text', {skip:process.platform!=='darwin'},()=>{
