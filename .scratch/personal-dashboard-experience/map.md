@@ -18,7 +18,7 @@ Management source: source-personal-dashboard-experience
 | PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | in-progress | PDEX-01 | code merged a77603e; 69 native + five full-page modal checks; packaged pending |
 | PDEX-03 | ticket | [03: 保持早间文字与可读的统一白天时间轴](issues/03-unified-readable-today.md) | ready-for-agent | in-progress | none | code merged 06c0d0b; 406 frontend + nine rendered WebKit checks; packaged pending |
 | PDEX-04 | ticket | [04: 拖动计划并调整结束时间](issues/04-plan-drag-and-resize.md) | ready-for-agent | in-progress | PDEX-02 | claimed: implementer PDEX-04; codex/pdex-04 |
-| PDEX-05 | ticket | [05: Tasks 使用清晰勾选列表与所选详情](issues/05-task-list-details.md) | ready-for-agent | open | none | unassigned; not started |
+| PDEX-05 | ticket | [05: Tasks 使用清晰勾选列表与所选详情](issues/05-task-list-details.md) | ready-for-agent | in-progress | none | claimed: implementer PDEX-05; codex/pdex-05 |
 | PDEX-06 | ticket | [06: 保存 Task 计划执行时间段并兼容现有入口](issues/06-task-execution-intervals.md) | ready-for-agent | in-progress | none | code merged 61c12cd; 156 native + merged 397 frontend/121 native checks; UI pending |
 | PDEX-07 | ticket | [07: 在白天时间轴选区创建与移动 Task](issues/07-task-timeline-create-move.md) | ready-for-agent | in-progress | PDEX-06 | claimed: implementer PDEX-07; codex/pdex-07 |
 | PDEX-08 | ticket | [08: Calendar 完整紧凑月历与记录状态](issues/08-compact-calendar.md) | ready-for-agent | in-progress | none | claimed: implementer PDEX-08; codex/pdex-08 |
