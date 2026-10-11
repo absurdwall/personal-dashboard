@@ -337,6 +337,7 @@ export type TodayTaskTimeAxisCandidate = Readonly<{
   listId: string;
   date: string | null;
   time: string | null;
+  executionEnd?: TaskExecutionEnd | null;
   state: "pending" | "completed" | "abandoned";
   deletedAt: string | null;
   timePassed: boolean;
@@ -348,9 +349,9 @@ export type TodayTaskTimeAxisEntry = Readonly<{
   text: string;
   sourceDate: string;
   startMinute: number;
-  endMinute: null;
-  continuesFromPreviousDay: false;
-  continuesIntoNextDay: false;
+  endMinute: number | null;
+  continuesFromPreviousDay: boolean;
+  continuesIntoNextDay: boolean;
   task: Readonly<{
     id: string;
     state: "pending" | "completed";
@@ -373,21 +374,22 @@ export function todayTaskTimeAxisEntries<T extends TodayTaskTimeAxisCandidate>(
     if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(task.time)) return [];
     const hour = Number(task.time.slice(0, 2));
     const minute = Number(task.time.slice(3, 5));
-    const nextDay = new Date(`${selectedDate}T12:00:00Z`);
-    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-    const wallMinute = hour * 60 + minute;
-    const projected = task.date === selectedDate ? wallMinute :
-      task.date === nextDay.toISOString().slice(0, 10) ? wallMinute + 1440 : -1;
-    if (projected < 240 || projected >= 1680) return [];
+    const projectedMinute=(date:string,time:string)=>
+      (Date.parse(`${date}T12:00:00Z`)-Date.parse(`${selectedDate}T12:00:00Z`))/86400000*1440+
+      Number(time.slice(0,2))*60+Number(time.slice(3,5));
+    const projected=task.date?projectedMinute(task.date,task.time):Number.NaN;
+    const end=task.executionEnd?projectedMinute(task.executionEnd.date,task.executionEnd.time):null;
+    if(!Number.isFinite(projected)||(end!==null&&(!Number.isFinite(end)||end<=projected)))return [];
+    if(end===null?(projected<240||projected>=1680):(projected>=1680||end<=240))return [];
     return [{
       period: null,
       id: task.id,
       text: task.name,
       sourceDate: task.date!,
-      startMinute: projected,
-      endMinute: null,
-      continuesFromPreviousDay: false,
-      continuesIntoNextDay: false,
+      startMinute: Math.max(240,projected),
+      endMinute: end===null?null:Math.min(1680,end),
+      continuesFromPreviousDay: projected<240,
+      continuesIntoNextDay: end!==null&&end>1680,
       task: {
         id: task.id,
         state: task.state,

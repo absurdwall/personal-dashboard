@@ -9791,6 +9791,14 @@ button.habit-cell:focus-visible {
 .collaboration-help summary { cursor: pointer; }
 .collaboration-help p { margin: 0.35rem 0; }
 
+/* Direct manipulation previews never imply saved or observed activity. */
+.today-axis-plot { touch-action: pan-x; }
+.today-axis-plot.is-pointer-editing { user-select: none; cursor: grabbing; }
+.today-axis-gesture-preview { position:absolute; z-index:20; left:0; right:0; pointer-events:none;
+  border:2px solid var(--accent-color, #668ca8); background:color-mix(in srgb, #668ca8 18%, transparent); min-height:2px; }
+.today-axis-gesture-preview.is-point { height:2px!important; }
+.today-axis-task-dialog { width:min(560px, calc(100vw - 48px)); max-height:calc(100vh - 48px); overflow:auto; }
+
 /* Morning is the saved baseline document, rather than a second clock axis. */
 #today-phase-morning .today-timeline-item { display: block; }
 #today-phase-morning .today-period { display: block; margin-bottom: 0.35rem; }
@@ -9863,3 +9871,5 @@ button.habit-cell:focus-visible {
   .calendar-destination .calendar-header { flex-direction: row; flex-wrap: wrap; gap: 8px; }
   .calendar-destination .calendar-toolbar { width: auto; }
 }
+
+#today-axis-edit-status[data-state="error"] { color: var(--parity-danger, #a7443a); }

@@ -53,3 +53,7 @@ authorize starting implementation.
 - 2026-10-10: PDEX-03 integrated at 06c0d0b; nine real WebKit cases at approved widths/heights and 406 merged frontend tests passed. PDEX-10 receives an exclusive serialized lease on the canonical Cargo cache for native session/draft tests; all other native workers use their own isolated caches, and root performs no Cargo build until this lease is released. This does not re-enable concurrent shared-target verification.
 
 - 2026-10-10: PDEX-02 integrated at a77603e. Precision/source compatibility and five actual production-page modal cases verified. PDEX-04 starts against this verified editing prerequisite; PDEX-07 supplies the shared pointer controller when integrated. Delivery acceptance remains independently pending.
+
+- 2026-10-10: PDEX-10 integrated at 684ac8b, with 138 native and five real WebKit entry workflows verified. Canonical Cargo cache lease released with no owned native process remaining; subsequent root checks may run serialized. PDEX-08 is claimed for compact Calendar source/state/layout verification.
+
+- 2026-10-10: PDEX-07 integrated at 9618219, shared pointer controller available to PDEX-04. PDEX-05 claimed for compact Task list/details with existing persisted interval contract. PDEX-08 currently holds the exclusive canonical native cache lease; all other native builds remain isolated.
