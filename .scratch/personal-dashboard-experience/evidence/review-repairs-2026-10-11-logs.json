@@ -1,0 +1,49 @@
+{
+  "source": "4a0c272dea10f01e2ef99b16c25e1b341837d02b",
+  "artifacts": [
+    {
+      "path": "/tmp/pdex-review-manual-red.log",
+      "sha256": "2518c8a610fd8c1c269fb88f977f1a066e4b6af1a52625eb72894541c87835b6"
+    },
+    {
+      "path": "/tmp/pdex-review-language-red.log",
+      "sha256": "6563f3b05c669b1a31298bbd03ae4b35a97e3ed4c2f2e4ec5c8bb7933731f892"
+    },
+    {
+      "path": "/tmp/pdex-review-language-green.log",
+      "sha256": "aa79b8066612e4c9f049c688b5154e13eb26f6e092ff10c7bdc541928bdc01eb"
+    },
+    {
+      "path": "/tmp/pdex-review-final-build.log",
+      "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+    },
+    {
+      "path": "/tmp/pdex-review-full-frontend.log",
+      "sha256": "01839fd6a89e5703fe3008e638e9f7f58c891e137b0c78ee5eef9e97d94c4a34"
+    },
+    {
+      "path": "/tmp/pdex-review-type-build.log",
+      "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+    },
+    {
+      "path": "/tmp/pdex-review-full-native.log",
+      "sha256": "acd48055425b194e7051373e4b089a772dae25ec365a784914c56d9981268570"
+    },
+    {
+      "path": "/tmp/pdex-review-history-cleanup-rerun.log",
+      "sha256": "d512d9bf37a7c66361906ea0e131407f7d878184f0d6406552f66f4b619760c6"
+    },
+    {
+      "path": "/tmp/pdex-review-history-synchronized.log",
+      "sha256": "87692cf76b8481e323c360bbe1b4a9fba1f93d616da3e70fbf23f3ab78ea773f"
+    },
+    {
+      "path": "/tmp/pdex-review-full-native-synchronized.log",
+      "sha256": "b14f606e21bb8b9a78afbd042564a06b84667557f2d0ed944e45b4ce7b13bb2c"
+    },
+    {
+      "path": "/tmp/pdex-review-repair-browser.log",
+      "sha256": "1984129f556b35c09f662f57cab61becfe2b9024fc2bcd0e37bd902d4b62779f"
+    }
+  ]
+}
