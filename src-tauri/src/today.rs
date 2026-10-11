@@ -1795,9 +1795,32 @@ pub struct TimeAxisView {
     pub unlocated_confirmed_facts: Vec<TimeAxisEntryView>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PlanTimeEditInput {
+    pub date: String,
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub plan_id: String,
+    pub operation_id: String,
+    pub start_minute: u16,
+    pub end_minute: Option<u16>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanTimeEditResult {
+    pub saved_revision: String,
+    pub view: Option<TodayView>,
+    pub refresh_error: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimeAxisEntryView {
+    /// Revision-bound source identity, absent for unsafe legacy sources and facts.
+    pub plan_id: Option<String>,
+    pub time_editable: bool,
     pub period: Option<String>,
     pub text: String,
     pub source_date: String,
@@ -3656,6 +3679,136 @@ where
         self.reload_vault(&vault, date)
     }
 
+    /// Direct plan editing uses the same selected-Vault and optimistic persistence seam.
+    /// No model or conversation permission judge participates in this operation.
+    pub fn edit_plan_time(&self, input: PlanTimeEditInput) -> Result<PlanTimeEditResult, String> {
+        if input.operation_id.is_empty()
+            || input.operation_id.len() > 96
+            || !input
+                .operation_id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return Err("计划操作标识无效；未写入任何内容。".into());
+        }
+        if !(240..1680).contains(&input.start_minute)
+            || input
+                .end_minute
+                .is_some_and(|end| end <= input.start_minute || end > 1680)
+        {
+            return Err(
+                "计划时间需在当天 04:00 至次日 04:00 内，结束必须晚于开始；未写入任何内容。".into(),
+            );
+        }
+        let date = CalendarDate::parse(&input.date).ok_or("日期无效；未写入任何内容。")?;
+        let period = plan_time_period(date, input.start_minute, input.end_minute);
+        let fingerprint = document_revision(
+            serde_json::to_string(&input)
+                .map_err(|e| e.to_string())?
+                .as_bytes(),
+        );
+        let (vault, path) = self.bound_record_target(&input.date, &input.target_binding)?;
+        let bytes = self
+            .record_store
+            .load(&path)?
+            .ok_or("Daily Record 已不存在；请重新读取。")?;
+        let document =
+            String::from_utf8(bytes).map_err(|_| "Daily Record 不是有效 UTF-8；未写入。")?;
+        validate_writable_daily_record(&document, &input.date)?;
+        if let Some(saved_fingerprint) =
+            daily_plan_receipt_fingerprint(&document, &input.operation_id)?
+        {
+            if saved_fingerprint != fingerprint {
+                return Err("该操作标识已用于不同内容；未写入任何内容。".into());
+            }
+            return Ok(self.plan_time_saved_result(&vault, &input.date, &document));
+        }
+        require_revision_for_date(&document, &input.expected_revision, &input.date)?;
+        let sources = plan_time_sources(&document);
+        let source = sources
+            .iter()
+            .find(|source| source.id == input.plan_id)
+            .ok_or(
+                "无法安全定位当前安排；请重新读取或在 Daily Record 中明确编辑，未写入任何内容。",
+            )?;
+        if !matches!(
+            explicit_time_expression(&source.block.period),
+            ExplicitTimeExpression::Point { .. } | ExplicitTimeExpression::Range { .. }
+        ) {
+            return Err("这项旧安排的具体时间不在可安全修改的时间字段中；请在 Daily Record 中明确编辑，未写入任何内容。".into());
+        }
+        // Validate wall-clock dates, including gaps/ambiguities, without silently relocating time.
+        let mut offsets = Vec::new();
+        for minute in [Some(input.start_minute), input.end_minute]
+            .into_iter()
+            .flatten()
+        {
+            let wall_date = date.plus_days(i64::from(minute / 1440)).to_string();
+            match self
+                .clock
+                .resolve_local_wall_time(&wall_date, minute % 1440)
+            {
+                LocalWallTimeResolution::Unique { utc_offset_minutes } => {
+                    offsets.push(utc_offset_minutes)
+                }
+                _ => return Err("该本地时间不存在或有歧义；未写入任何内容。".into()),
+            }
+        }
+        if offsets.len() == 2 && offsets[0] != offsets[1] {
+            return Err("跨时区偏移变化的区间无法安全定位；未写入任何内容。".into());
+        }
+        let mut updated = document.clone();
+        updated.replace_range(source.period_start..source.period_end, &period);
+        let audit = format!(
+            "### {} 计划时间修订\n\n- 当前安排：{} → {}\n- 项目：{}",
+            self.clock.current_time_label(),
+            literal_line(&source.block.period),
+            period,
+            literal_line(&source.block.title)
+        );
+        updated = append_to_canonical_section(&updated, "白天更新", &audit, Some("晚间复盘"));
+        let marker = format!("<!-- personal-dashboard:plan-operation id={} fingerprint={} transition=manualPlanTime -->", input.operation_id, fingerprint);
+        updated = append_to_named_subsection(
+            &updated,
+            "白天更新",
+            "协作写入收据",
+            &marker,
+            Some("晚间复盘"),
+        )?;
+        validate_writable_daily_record(&updated, &input.date)?;
+        self.record_store
+            .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
+        Ok(self.plan_time_saved_result(&vault, &input.date, &updated))
+    }
+
+    fn plan_time_saved_result(
+        &self,
+        vault: &Path,
+        date: &str,
+        document: &str,
+    ) -> PlanTimeEditResult {
+        let saved_revision = document_revision(document.as_bytes());
+        match self.reload_vault(vault, date.to_owned()) {
+            Ok(view) if view.revision.as_deref() == Some(&saved_revision) => PlanTimeEditResult {
+                saved_revision,
+                view: Some(view),
+                refresh_error: None,
+            },
+            Ok(_) => PlanTimeEditResult {
+                saved_revision,
+                view: None,
+                refresh_error: Some("文档已保存，但读回结果已经变化；请重新读取核对。".into()),
+            },
+            Err(error) => PlanTimeEditResult {
+                saved_revision,
+                view: None,
+                refresh_error: Some(format!(
+                    "文档已保存，但页面刷新失败：{error}；请重新读取核对。"
+                )),
+            },
+        }
+    }
+
     pub fn save_daily_plan(&self, input: DailyPlanWriteInput) -> Result<TodayView, String> {
         input.validate()?;
         canonical_record_path(Path::new("."), &input.date)?;
@@ -4275,7 +4428,8 @@ where
                         BaselineAvailability::Saved => "已读取独立早间基准和当前安排。",
                     }
                 };
-                let time_axis = project_time_axis(&timeline, &daytime, &date, &self.clock);
+                let mut time_axis = project_time_axis(&timeline, &daytime, &date, &self.clock);
+                bind_plan_time_sources(&document, &mut time_axis);
                 Ok(TodayView {
                     state: TodayState::Ready,
                     date,
@@ -5911,6 +6065,120 @@ enum ExplicitTimeExpression {
     Invalid,
 }
 
+struct PlanTimeSource {
+    id: String,
+    period_start: usize,
+    period_end: usize,
+    block: MorningBlockView,
+}
+
+/// Conservative compatibility: a complete, uniquely readable list block whose
+/// period occupies its own bold prefix can be patched without rewriting prose.
+fn plan_time_sources(document: &str) -> Vec<PlanTimeSource> {
+    let Some((start, end)) = section_offsets(document, "今天的大致安排") else {
+        return Vec::new();
+    };
+    let section = &document[start..end];
+    let lines: Vec<_> = scan_markdown_lines(section).into_iter().collect();
+    let mut sources = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        if line.in_fenced_code {
+            continue;
+        }
+        let Some(item) = list_item(line.text.trim()).map(str::trim) else {
+            continue;
+        };
+        let Some((raw_period, _)) = parse_bold_prefix(item) else {
+            continue;
+        };
+        let block_end = lines[index + 1..]
+            .iter()
+            .find(|next| {
+                !next.in_fenced_code
+                    && (list_item(next.text.trim()).is_some()
+                        || markdown_heading(next.text).is_some())
+            })
+            .map(|next| next.start)
+            .unwrap_or(section.len());
+        let raw_block = &section[line.start..block_end];
+        let parsed = parse_timeline(raw_block);
+        if parsed.len() != 1 {
+            continue;
+        }
+        let block = parsed.into_iter().next().unwrap();
+        // Byte spans belong to source text and are bound to the full document revision.
+        let prefix_start = item.as_ptr() as usize - section.as_ptr() as usize + 2;
+        let period_start = start + prefix_start;
+        let period_end = period_start + raw_period.len();
+        let id = format!(
+            "plan-{}",
+            document_revision(format!("{period_start}:{raw_block}").as_bytes())
+        );
+        sources.push(PlanTimeSource {
+            id,
+            period_start,
+            period_end,
+            block,
+        });
+    }
+    let timeline = section_body(section, "今天的大致安排")
+        .map(parse_timeline)
+        .unwrap_or_default();
+    sources.retain(|source| {
+        timeline
+            .iter()
+            .filter(|block| **block == source.block)
+            .count()
+            == 1
+    });
+    sources
+}
+
+fn bind_plan_time_sources(document: &str, axis: &mut TimeAxisView) {
+    let sources = plan_time_sources(document);
+    for entry in axis
+        .current_arrangement
+        .iter_mut()
+        .chain(axis.unlocated_current_arrangement.iter_mut())
+    {
+        let matching: Vec<_> = sources
+            .iter()
+            .filter(|source| {
+                let text = match &source.block.detail {
+                    Some(detail) if !detail.is_empty() => {
+                        format!("{} {}", source.block.title, detail)
+                    }
+                    _ => source.block.title.clone(),
+                };
+                entry.period.as_deref() == Some(&source.block.period) && entry.text == text
+            })
+            .collect();
+        if matching.len() == 1 {
+            entry.plan_id = Some(matching[0].id.clone());
+            entry.time_editable = matches!(
+                explicit_time_expression(&matching[0].block.period),
+                ExplicitTimeExpression::Point { .. } | ExplicitTimeExpression::Range { .. }
+            ) && !entry.continues_from_previous_day
+                && !entry.continues_into_next_day;
+        }
+    }
+}
+
+fn plan_time_period(date: CalendarDate, start: u16, end: Option<u16>) -> String {
+    let label = |minute: u16| {
+        let time = format!("{:02}:{:02}", minute % 1440 / 60, minute % 60);
+        if minute >= 1440 {
+            format!("{} {time}", date.plus_days(i64::from(minute / 1440)))
+        } else {
+            time
+        }
+    };
+    match end {
+        Some(end) => format!("{}–{}", label(start), label(end)),
+        None => label(start),
+    }
+}
+
 fn project_time_axis<C: TodayClock>(
     timeline: &[MorningBlockView],
     daytime: &DaytimeView,
@@ -5994,6 +6262,8 @@ fn project_axis_item<C: TodayClock>(
                 return;
             }
             located.push(TimeAxisEntryView {
+                plan_id: None,
+                time_editable: false,
                 period,
                 text: text.to_owned(),
                 source_date: source_date.to_owned(),
@@ -6060,6 +6330,8 @@ fn project_axis_item<C: TodayClock>(
             let start = (start_absolute.max(window_start) - expected_day.unix_days() * 1440) as u16;
             let end = (end_absolute.min(window_end) - expected_day.unix_days() * 1440) as u16;
             located.push(TimeAxisEntryView {
+                plan_id: None,
+                time_editable: false,
                 period,
                 text: text.to_owned(),
                 source_date: source_date.to_owned(),
@@ -6078,6 +6350,8 @@ fn unlocated_axis_entry(
     source_date: &str,
 ) -> TimeAxisEntryView {
     TimeAxisEntryView {
+        plan_id: None,
+        time_editable: false,
         period,
         text: text.to_owned(),
         source_date: source_date.to_owned(),

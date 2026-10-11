@@ -182,6 +182,8 @@ type DaytimeView = Readonly<{
 }>;
 
 type TimeAxisEntryView = Readonly<{
+  planId?: string | null;
+  timeEditable?: boolean;
   period: string | null;
   text: string;
   sourceDate: string;
@@ -5255,7 +5257,127 @@ function axisEntryDetails(
     metadata.append(continuation);
   }
   details.append(metadata);
+  if ((lane === "arrangement" || lane === "arrangement-unlocated") && entry.startMinute !== null) {
+    if (!entry.planId || !entry.timeEditable || entry.continuesFromPreviousDay || entry.continuesIntoNextDay) {
+      const unavailable = document.createElement("p");
+      setCopy(unavailable, entry.continuesFromPreviousDay || entry.continuesIntoNextDay ? "today.planTimeOutsideWindow" : "today.planTimeUnavailable");
+      details.append(unavailable);
+      return details;
+    }
+    const edit = document.createElement("button");
+    edit.type = "button";
+    setCopy(edit, "today.editPlanTime");
+    edit.addEventListener("click", () => openPlanTimeEditor(entry));
+    details.append(edit);
+  }
   return details;
+}
+
+function openPlanTimeEditor(entry: TimeAxisEntryView): void {
+  const loaded = currentTodayView;
+  if (!entry.planId || !loaded?.revision || !loaded.targetBinding || entry.startMinute === null) return;
+  const dialog = document.createElement("dialog");
+  dialog.className = "plan-time-editor";
+  dialog.setAttribute("aria-label", t("today.editPlanTime"));
+  const form = document.createElement("form");
+  const heading = document.createElement("h3");
+  setCopy(heading, "today.editPlanTime");
+  const title = document.createElement("p");
+  title.textContent = entry.text;
+  const help = document.createElement("p");
+  setCopy(help, "today.planTimeHelp");
+  form.append(heading, title, help);
+  const timeControl = (key: InterfaceCopyKey, minute: number | null) => {
+    const group = document.createElement("div");
+    const label = document.createElement("label");
+    setCopy(label, key);
+    const time = document.createElement("input");
+    time.type = "time";
+    time.step = "60";
+    time.value = minute === null ? "" : formatAxisMinute(minute);
+    label.append(time);
+    const dayLabel = document.createElement("label");
+    const nextDay = document.createElement("input");
+    nextDay.type = "checkbox";
+    nextDay.checked = minute !== null && minute >= 1440;
+    const dayCopy = document.createElement("span");
+    setCopy(dayCopy, "today.planNextDay");
+    dayLabel.append(nextDay, dayCopy);
+    group.append(label, dayLabel);
+    form.append(group);
+    return { time, nextDay };
+  };
+  const start = timeControl("today.planStart", entry.startMinute);
+  const end = timeControl("today.planEnd", entry.endMinute);
+  start.time.required = true;
+  const status = document.createElement("p");
+  status.setAttribute("role", "status");
+  const save = document.createElement("button");
+  save.type = "submit";
+  setCopy(save, "today.planSave");
+  const close = document.createElement("button");
+  close.type = "button";
+  setCopy(close, "today.planCancel");
+  close.addEventListener("click", () => dialog.close());
+  const recheck = document.createElement("button");
+  recheck.type = "button";
+  setCopy(recheck, "today.planRecheck");
+  recheck.hidden = true;
+  recheck.addEventListener("click", () => { void refreshToday(loaded.date); });
+  form.append(status, save, recheck, close);
+  const operationId = `plan-time-${crypto.randomUUID()}`;
+  let submitted = false;
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (submitted || todayOperationCount > 0) return;
+    const parse = (control: typeof start) => {
+      if (!/^\d{2}:\d{2}$/.test(control.time.value)) return null;
+      const [hours, minutes] = control.time.value.split(":").map(Number);
+      return hours * 60 + minutes + (control.nextDay.checked ? 1440 : 0);
+    };
+    const startMinute = parse(start);
+    const endMinute = end.time.value ? parse(end) : null;
+    if (startMinute === null || startMinute < 240 || startMinute >= 1680 ||
+        (end.time.value && (endMinute === null || endMinute <= startMinute || endMinute > 1680))) {
+      setCopy(status, "today.planInvalidTime");
+      return;
+    }
+    // A captured source/revision stays bound even when the displayed date or Vault changes.
+    submitted = true;
+    save.disabled = true;
+    start.time.disabled = end.time.disabled = start.nextDay.disabled = end.nextDay.disabled = true;
+    const request = todayPresentationRequests.begin();
+    updateTodayOperationState(1);
+    const operation = (async () => {
+      let confirmed = false;
+      try {
+        const result = await window.__TAURI__.core.invoke<Readonly<{ savedRevision: string; view: TodayView | null; refreshError: string | null }>>("edit_plan_time", {
+          input: { date: loaded.date, targetBinding: loaded.targetBinding, expectedRevision: loaded.revision,
+            planId: entry.planId, operationId, startMinute, endMinute },
+        });
+        confirmed = result.view !== null;
+        if (result.view && todayPresentationRequests.isCurrent(request)) {
+          renderToday(result.view);
+          showTodayMutationCopy("today.planSaved", "ready");
+          dialog.close();
+        } else {
+          status.textContent = result.refreshError ?? t("today.planSaved");
+          recheck.hidden = false;
+        }
+      } catch (error) {
+        status.textContent = `${t("today.planUnconfirmed")} ${String(error)}`;
+        recheck.hidden = false;
+      } finally {
+        updateTodayOperationState(-1);
+      }
+      return confirmed;
+    })();
+    void pendingWrites.track(operation);
+  });
+  dialog.append(form);
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
 }
 
 function renderTodayTimeAxisEntries(
