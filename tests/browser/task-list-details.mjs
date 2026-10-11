@@ -27,7 +27,7 @@ async function pageFixture({width=1280,extraTasks=[]}={}) {
   const browser=await chromium.launch({channel:'chrome',headless:true});
   const page=await browser.newPage({viewport:{width,height:758}});
   const errors=[];page.on('pageerror',error=>errors.push(String(error)));
-  const fixtureView=structuredClone(view);fixtureView.tasks.tasks.push(...extraTasks);fixtureView.tasks.tasks[0].content='Full synthetic context, only visible in selected detail';fixtureView.tasks.lists.push({id:'home',name:'Home',isSystem:false,archived:false});
+  const fixtureView=structuredClone(view);fixtureView.tasks.tasks[0].changes=[{id:'synthetic-rename',kind:'renamed',changedAt:'2026-10-10T08:30-04:00',source:'user'}];fixtureView.tasks.tasks.push(...extraTasks);fixtureView.tasks.tasks[0].content='Full synthetic context, only visible in selected detail';fixtureView.tasks.lists.push({id:'home',name:'Home',isSystem:false,archived:false});
   await page.addInitScript(({view})=>{
     window.__fixture=view;window.__calls=[];window.__failNext=null;
     window.__TAURI__={core:{invoke:async(command,args)=>{
@@ -80,7 +80,9 @@ test('Tasks compact rows select one full detail while completion stays independe
     await row.locator('.task-title-button').focus();await page.keyboard.press('Enter');
     const panel=page.locator('#task-editor-dialog-root [data-task-editor-dialog=point]');await panel.waitFor({state:'visible'});
     assert.equal(await panel.locator('[data-task-content]').inputValue(),'Full synthetic context, only visible in selected detail');
+    if(process.env.PDEX_SCREENSHOT_DIR){await mkdir(process.env.PDEX_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:resolve(process.env.PDEX_SCREENSHOT_DIR,'tasks-wide.png'),fullPage:true});}
     assert.equal(await page.evaluate(()=>window.__calls.some(x=>x.command==='set_task_state')),false);
+    await panel.locator('.task-change-history summary').click();assert.equal(await panel.locator('.task-change-history li').count(),1);
     await check.check();
     await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').state==='completed');
     assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='set_task_state').length),1);
@@ -107,10 +109,11 @@ test('selected detail edits one Task and preserves unmodified endpoints and iden
       {date:'2026-10-10',time:'13:00',end:{date:'2026-10-10',time:'14:30'},state:'completed',list:'home'});
     assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='update_task').length),1,'one save submits once');
     assert.equal(await panel.locator('[data-task-name]').inputValue(),'Edited range');
-    await panel.locator('[data-task-time]').fill('13:15');await panel.locator('[data-task-end-time]').fill('15:00');
+    await panel.locator('[data-task-date]').fill('2026-10-11');await panel.locator('[data-task-time]').fill('13:15');
+    await panel.locator('[data-task-end-date]').fill('2026-10-11');await panel.locator('[data-task-end-time]').fill('15:00');
     await panel.locator('button[type=submit]').click();
     await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='interval').executionEnd.time==='15:00');
-    assert.equal(await page.locator('#tasks-list [data-task-editor-row=interval] .task-row-schedule').textContent(),'Sat, Oct 10 13:15 – 15:00');
+    assert.equal(await page.locator('#tasks-list [data-task-editor-row=interval] .task-row-schedule').textContent(),'Sun, Oct 11 13:15 – 15:00');
   }finally{await f.close();}
 });
 
@@ -125,6 +128,7 @@ test('narrow Task detail stays below the list, preserves drafts between selectio
     const [listBox,panelBox]=await Promise.all([page.locator('.tasks-content').boundingBox(),panel.boundingBox()]);
     assert.ok(panelBox.y>=listBox.y+listBox.height-1,'detail sits below list at narrow width');
     assert.ok(panelBox.x>=0&&panelBox.x+panelBox.width<=830,'detail fits the window');
+    if(process.env.PDEX_SCREENSHOT_DIR){await mkdir(process.env.PDEX_SCREENSHOT_DIR,{recursive:true});await page.screenshot({path:resolve(process.env.PDEX_SCREENSHOT_DIR,'tasks-narrow.png'),fullPage:true});}
     await panel.locator('[data-task-content]').fill('Unsaved protected draft');
     await page.locator('#task-filter').selectOption('all');
     await page.locator('#tasks-list .task-ended-history > summary').click();

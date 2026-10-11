@@ -67,6 +67,24 @@ rewrite the tasks. Restoring one deleted task clears only that task's
 tombstone; it does not restore the archived list. New tasks and cross-list
 moves cannot target an archived list until the list itself is restored.
 
+## Task list and selected details
+
+Tasks retain the list sidebar and scope/state filters. A compact row offers an
+accessible completion checkbox, the Task name and its saved schedule. Clicking
+the name or row selects one full detail panel independently of completion.
+The panel sits beside the list at wide sizes and below it in narrow windows;
+closing it returns keyboard focus to the Task name.
+
+The selected panel reuses the shared editor for name, content, list, date,
+time and optional execution end. Provenance, completion corrections, change
+history, Collaboration entry and abandon/delete/restore controls remain there.
+Completed and abandoned history stays folded and paged by thirty, with the
+selected or linked identity included even beyond the first page. Navigation
+retains drafts; a failed save preserves the selected editor and its submitted
+values for explicit refresh/retry. Writes keep the existing revision, stable
+operation identity and saved-readback checks, and freeze edit controls while
+pending. A Task link selects its actual list before revealing the details.
+
 ## Today derived view
 
 Today is a date-based presentation over this same source, not another list or
