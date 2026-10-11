@@ -39,9 +39,10 @@ export function renderer() {
     taskEditor: (task: any) => ({ tagName: "task", id: task.id }),
     taskListForId: () => undefined, renderTaskListScopeButtons: () => {},
     renderTaskListManagement: () => {}, clearTaskEditorDialogs: () => {},
+    updateTaskCreationControls: () => {},
   };
   for (const name of ["taskListScopes", "taskFilter", "tasksStatus", "tasksEmpty", "taskListsManagementPanel",
-    "taskListCreateForm", "taskCreateForm", "taskCreateSubmit", "taskReturnToCollaborationButton"]) context[name] = null;
+    "taskListCreateForm", "taskCreateForm", "taskCreateSubmit", "taskReturnToCollaborationButton", "taskQuickForm", "taskQuickName", "taskQuickSubmit"]) context[name] = null;
   for (const name of ["todayTaskStatus", "todayTaskEmpty", "todayTaskOverdueSection", "todayTaskOverdueEmpty",
     "todayTaskCreateForm", "todayTaskCreateName", "todayTaskCreateContent", "todayTaskCreateDate", "todayTaskCreateTime", "todayTaskCreateSubmit"]) context[name] = null;
   context.todayTaskScheduled = new Element();
