@@ -1,0 +1,121 @@
+{
+  "at": "2026-10-11T07:16:37.030890+00:00",
+  "sourceCommit": "71059a3cb686ec9e925f2fd27eccfaee5b41b557",
+  "oldExecutableSha256": "ade6a1c865fda1d8749b4037720087bac3104d8d7e38d1e0cdc48bdf047f5c58",
+  "installedExecutableSha256": "97ef078177c6c31e8c25b0b8f89b1703fdd090799281d0e2e4a2da201c8d576f",
+  "installedBundleFileTreeSha256": "56bd529c936e8aa02817ff99786195c84b3308923dda6fd40d47072cf4fbb239",
+  "installedPath": "/Applications/Personal Dashboard.app",
+  "archiveRoot": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011",
+  "bundleBackup": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/bundles/Personal Dashboard.app",
+  "movedOriginal": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/bundles/retired-original.app",
+  "profileBackup": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/profile",
+  "vaultAuthorityBackup": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/vault-life",
+  "profileFileCount": 5887,
+  "authorityFileCount": 48,
+  "backupHashVerified": true,
+  "profileUntouchedBySwap": true,
+  "normalAppStoppedBeforeSwap": true,
+  "status": "Installed and normal launch preservation verified; direct human acceptance pending",
+  "normalProcess": {
+    "pid": 25179,
+    "argv": "/Applications/Personal Dashboard.app/Contents/MacOS/personal-dashboard",
+    "qaEnvironmentOverridesAbsent": true,
+    "syntheticPathAbsent": true
+  },
+  "preservation": {
+    "matched": {
+      "authorityFiles": true,
+      "selectedVault": true,
+      "sessions": true,
+      "settings": true,
+      "runtimeThreadsByExecution": true,
+      "dailyPlanAutomationRuns": true
+    },
+    "authorityFileCount": 48,
+    "sessionCount": 41,
+    "messageCount": 105,
+    "changedProfileFiles": [
+      "collaboration/collaboration-v1.json"
+    ]
+  },
+  "installedAllBundleFilesMatchManifest": true,
+  "strictSignatureVerified": true,
+  "postReviewerPreservationConfirmed": true,
+  "installedReviewerSmoke": "Read-only Computer Use: leftnavhide/show, wholeTodayrightdock/count2/nooverlay, Tasks compactrow/scheduleOct10local livedday atOct11earlymorning, pickervisibility/EscapeCancelfocus; no typing/personalTaskwrites",
+  "launchServices": {
+    "unregisteredBundles": [
+      {
+        "path": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-20261011/bundles/Personal Dashboard.app",
+        "exitCode": 1,
+        "diagnostic": "failed to scan /Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-20261011/bundles/Personal Dashboard.app: -10814\n from spotlight"
+      },
+      {
+        "path": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-20261011/bundles/retired-original.app",
+        "exitCode": 1,
+        "diagnostic": "failed to scan /Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-20261011/bundles/retired-original.app: -10814\n from spotlight"
+      },
+      {
+        "path": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-followup-20261011/bundles/Personal Dashboard.app",
+        "exitCode": 1,
+        "diagnostic": "failed to scan /Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-followup-20261011/bundles/Personal Dashboard.app: -10814\n from spotlight"
+      },
+      {
+        "path": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-followup-20261011/bundles/retired-original.app",
+        "exitCode": 1,
+        "diagnostic": "failed to scan /Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-followup-20261011/bundles/retired-original.app: -10814\n from spotlight"
+      },
+      {
+        "path": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/bundles/Personal Dashboard.app",
+        "exitCode": 1,
+        "diagnostic": "failed to scan /Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/bundles/Personal Dashboard.app: -10814\n from spotlight"
+      },
+      {
+        "path": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/bundles/retired-original.app",
+        "exitCode": 1,
+        "diagnostic": "failed to scan /Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-sidebars-schedule-20261011/bundles/retired-original.app: -10814\n from spotlight"
+      },
+      {
+        "path": "/tmp/pdex-followup-20261011-final.noindex/target/release/bundle/macos/Personal Dashboard.app",
+        "exitCode": 0,
+        "diagnostic": ""
+      },
+      {
+        "path": "/tmp/pdex-followup-install-20261011-final.noindex/stage/Personal Dashboard.app",
+        "exitCode": 1,
+        "diagnostic": "failed to scan /tmp/pdex-followup-install-20261011-final.noindex/stage/Personal Dashboard.app: -10814\n from spotlight"
+      },
+      {
+        "path": "/tmp/pdex-followup-install-20261011-final.noindex/target/release/bundle/macos/Personal Dashboard.app",
+        "exitCode": 1,
+        "diagnostic": "failed to scan /tmp/pdex-followup-install-20261011-final.noindex/target/release/bundle/macos/Personal Dashboard.app: -10814\n from spotlight"
+      },
+      {
+        "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/target/release/bundle/macos/Personal Dashboard.app",
+        "exitCode": 0,
+        "diagnostic": ""
+      },
+      {
+        "path": "/tmp/pdex-sidebar-schedule-install-20261011.noindex/stage/Personal Dashboard.app",
+        "exitCode": 1,
+        "diagnostic": "failed to scan /tmp/pdex-sidebar-schedule-install-20261011.noindex/stage/Personal Dashboard.app: -10814\n from spotlight"
+      },
+      {
+        "path": "/tmp/pdex-sidebar-schedule-install-20261011.noindex/target/release/bundle/macos/Personal Dashboard.app",
+        "exitCode": 1,
+        "diagnostic": "failed to scan /tmp/pdex-sidebar-schedule-install-20261011.noindex/target/release/bundle/macos/Personal Dashboard.app: -10814\n from spotlight"
+      }
+    ],
+    "temporaryExactPathsAbsentFromLaunchServices": true,
+    "productionRegisteredExitCode": 0,
+    "spotlightSearch": [
+      "/Applications/Personal Dashboard.app"
+    ]
+  },
+  "reviewRelease": {
+    "released": true,
+    "sourceCommit": "71059a3cb686ec9e925f2fd27eccfaee5b41b557",
+    "at": "2026-10-11T07:16:32.385501+00:00",
+    "reviewThread": "01a128ff-8865-7493-9698-cc48c19d7939",
+    "basis": "Explicit source, current packages and native saved-file readback review satisfaction/install release"
+  }
+}

@@ -38,3 +38,7 @@ Use the approved Q4 public seams: actual production WebKit input/geometry and ex
 Final product source `2c6b8aa`, normal installed executable `ade6a1c…`, Standards/Spec zero unresolved and explicit installation release. Production/native evidence and fresh data protection are retained in [installation record](../evidence/followup-local-install-2026-10-11.md). Checked criteria denote implementation/verification; lifecycle remains in-progress.
 
 - [ ] Direct human acceptance of this follow-up in the installed normal App.
+
+## Later human requirement correction
+
+PDEX-FOLLOWUP-02/14/15 explicitly supersede prior drawer/sidebar target and add compact lived-day schedule creation. Prior checks/install remainhistorical and do not imply newtarget acceptance; see [current installed requirements](../sidebar-schedule-spec-2026-10-11.md). Original ticket remains humanacceptance pending.

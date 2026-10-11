@@ -31,3 +31,8 @@ Use actual selected list/current scope and stable Task create/revision/binding/i
 Reuse previously approved Q4 seams: actual production DOM/public input, WebKit actual geometry/focus, existing real synthetic Task create/revision/readback persistence. TDD red/green at those seams; no source-string or prototype-memory pass substitutes. Evidence covers640/830/1000/1280 layout, restored dock vs collapsed width, all destination main-navigation controls, no sidebar dialogs, keyboard/focus/content/detail/scroll retention, and compact-row schedule date/time public payload plus actual synthetic native saved-file readback. Historical tests/source receipts remain qualified rather than inferred current.
 
 No new dependency/service or GitHub/main operation. Independent two-axis review and explicit reviewer satisfaction precede a fresh frozen package and user-authorized normal App replacement. Fresh App/profile/life authority protection before replacement; original user data unchanged by tests. Native GUI root exclusively uses Computer Use Virtual Mouse. Final human acceptance remains separate and pending.
+
+
+## Revised current installation — 2026-10-11
+
+Final reviewed71059a3 normal App installed with fresh currentuser protection. [Installed provenance/current checks](evidence/sidebar-schedule-local-install-2026-10-11.md). All source/worker merge history retained; only owned workercheckouts removed after unique files/history protection. Revised14/15 remainin-progress andnewparentopenpendingdirecthumanacceptance; olddrawer evidence does not satisfy reviseddock. Original01–11closed. NoGitHub/main/deps/personaltestwrite.

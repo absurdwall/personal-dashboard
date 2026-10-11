@@ -226,5 +226,10 @@ Direct human sidebar correction supersedes drawer-as-target interpretation; prev
 | ID | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- |
 | PDEX-FOLLOWUP-02 | [spec index](issues/00-sidebar-schedule-spec.md) | ready-for-agent | in-progress | none | new scope, acceptance pending |
-| PDEX-14 | [docked sidebars](issues/14-docked-sidebar-toggles.md) | ready-for-agent | in-progress | none | claimed, implementation pending |
-| PDEX-15 | [compact Task schedule](issues/15-compact-task-schedule.md) | ready-for-agent | in-progress | none | claimed, implementation pending |
+| PDEX-14 | [docked sidebars](issues/14-docked-sidebar-toggles.md) | ready-for-agent | in-progress | none | reviewed, installed; human acceptance pending |
+| PDEX-15 | [compact Task schedule](issues/15-compact-task-schedule.md) | ready-for-agent | in-progress | none | reviewed, installed; human acceptance pending |
+
+
+## Revised current installation — 2026-10-11
+
+Final reviewed71059a3 normal App installed with fresh currentuser protection. [Installed provenance/current checks](evidence/sidebar-schedule-local-install-2026-10-11.md). All source/worker merge history retained; only owned workercheckouts removed after unique files/history protection. Revised14/15 remainin-progress andnewparentopenpendingdirecthumanacceptance; olddrawer evidence does not satisfy reviseddock. Original01–11closed. NoGitHub/main/deps/personaltestwrite.

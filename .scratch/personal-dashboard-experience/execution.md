@@ -191,3 +191,8 @@ Direct human 01a129b1-8fa7-7033-a532-52fc86d1056b in reviewer chat corrects side
 
 
 2026-10-11 source clarification: direct human reply01a129b4-587d-7891-afd5-2bd86c98056c selects both entries default day; Tasks local livedday/Today selected livedday, never defaulttime. Whole existing Today right .today-side-region is the sidebar toggle target, including TodayTasks/records; zero untimed count never hides restore icon. Prior pending-default note is superseded.
+
+
+## Revised current installation — 2026-10-11
+
+Final reviewed71059a3 normal App installed with fresh currentuser protection. [Installed provenance/current checks](evidence/sidebar-schedule-local-install-2026-10-11.md). All source/worker merge history retained; only owned workercheckouts removed after unique files/history protection. Revised14/15 remainin-progress andnewparentopenpendingdirecthumanacceptance; olddrawer evidence does not satisfy reviseddock. Original01–11closed. NoGitHub/main/deps/personaltestwrite.
