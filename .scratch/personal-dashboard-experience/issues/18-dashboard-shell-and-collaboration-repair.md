@@ -26,7 +26,7 @@ The compact Task schedule control remains too small to identify its date at a gl
 - [x] Collaboration shares the established page frame spacing and heading hierarchy, has a modest Sessions inset, avoids redundant frame/card chrome, and preserves meaningful pane headings and controls.
 - [x] Production WebKit measurements prove pointer hit targets, focus, and scroll ownership for enabled Collaboration session/composer controls using synthetic state; no model turn or personal data write occurs.
 - [x] Existing PDEX-14/15/16/17 semantics remain unchanged. Habits stays unchanged. Focused frontend checks and `npm run build` pass.
-- [x] Independent Standards and Spec review completed; fresh App/profile/Vault protection copies were verified before replacing the normal App for inspection.
+- [ ] Final corrected-source Standards and Spec review and fresh protected normal installation are confirmed together.
 - [ ] Direct human acceptance of the installed normal App remains pending.
 
 ## Execution
@@ -35,4 +35,6 @@ The compact Task schedule control remains too small to identify its date at a gl
 
 ## Verification
 
-Implementation, focused verification, independent review and protected normal-App installation are complete. The installed App is open on Collaboration for direct inspection; human acceptance remains pending. The isolated candidate had no ChatGPT connection, so its composer stayed disabled; in the installed normal App, no session is selected for the current date, so its composer is also disabled. Enabled composer hit/focus behavior is covered by synthetic production-WebKit tests. The Sogou native-input probe did not produce Chinese composition and is recorded as an environment/tool limitation in [installation evidence](../evidence/pdex18-normal-install-2026-10-11.md).
+The preceding installation evidence is historical for `dc12b10`: its empty/current-date composer was disabled. It does not satisfy the latest human input correction. The corrected implementation `7cee9d8`, including merged `e1cae53` and retained schedule-control polish, enables local empty-session text editing, preserves explicit creation/send and scoped drafts, binds retries to the same session identity, and obtains the default date from the application lived-day clock. Sending and starting dictation retain their connection requirements.
+
+Independent review found and repaired whole-month clipping, unknown-result duplicate creation, the pending-clock midnight fallback, and missing bilingual creation diagnostics. The corrected Calendar tests include an initially selected day with a populated task panel, long independently scrolling summary, truthful preview overflow, resize/navigation/language changes, and minimum-window reachability. Supporting checks include the merged frontend checks, four voice-controller tests, three persisted creation-identity Rust tests, and the final 90-case focused run. Final corrected-source review and native package/installation checks are pending at this checkpoint; direct human acceptance remains pending. Earlier IME/quota waivers remain accepted and are not reopened.

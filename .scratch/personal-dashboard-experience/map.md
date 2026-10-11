@@ -258,8 +258,8 @@ Direct user messages in review chat `01a128ff-8865-7493-9698-cc48c19d7939` autho
 
 | ID | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| PDEX-FOLLOWUP-05 | [complete addendum](followup-spec-2026-10-11-dashboard-shell-repair.md) / [index](issues/00-followup-spec-05.md) | ready-for-agent | in-progress | none | implementation, review and protected normal install complete; direct human acceptance remains pending |
-| PDEX-18 | [visible shell controls and Collaboration recovery](issues/18-dashboard-shell-and-collaboration-repair.md) | ready-for-agent | in-progress | none | [isolated candidate evidence](evidence/pdex18-native-candidate-2026-10-11.md), [reviewed normal install and protection](evidence/pdex18-normal-install-2026-10-11.md); direct human acceptance pending; successful native Sogou composition unverified |
+| PDEX-FOLLOWUP-05 | [complete addendum](followup-spec-2026-10-11-dashboard-shell-repair.md) / [index](issues/00-followup-spec-05.md) | ready-for-agent | in-progress | none | latest corrected source and related checks complete; final review/native install and direct human acceptance separate |
+| PDEX-18 | [visible shell controls and Collaboration recovery](issues/18-dashboard-shell-and-collaboration-repair.md) | ready-for-agent | in-progress | none | `7cee9d8` corrects empty-session editing and reviewed failure/date/Calendar paths; prior dc12b10 installation is historical; final review/native install and human acceptance pending |
 
 ### PDEX-18 review and protected installation — 2026-10-11
 
