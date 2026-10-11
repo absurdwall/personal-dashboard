@@ -13,6 +13,9 @@
   <body>
     <main class="app-shell" data-workspace-destination="today">
       <header class="product-toolbar" aria-label="工作区工具栏" data-i18n-aria-label="toolbar.label">
+        <button id="workspace-sidebar-toggle" type="button" class="sidebar-toggle" aria-controls="workspace-sidebar" aria-expanded="true" data-i18n-aria-label="navigation.hideSidebar" data-i18n-title="navigation.hideSidebar">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M7 3v14"/></svg>
+        </button>
         <div class="product-toolbar-brand">
           <div class="feature-mark" role="img" aria-label="全局主题色样本" data-i18n-aria-label="toolbar.themeSample">P</div>
           <div>
@@ -60,7 +63,7 @@
           <span class="product-toolbar-caption" data-i18n="toolbar.local">本地</span>
         </div>
       </header>
-      <aside class="workspace-sidebar" aria-label="主要导航" data-i18n-aria-label="navigation.primary">
+      <aside id="workspace-sidebar" class="workspace-sidebar" aria-label="主要导航" data-i18n-aria-label="navigation.primary">
         <div id="workspace-rail-context" class="workspace-rail-context" aria-live="polite">
           <p id="workspace-rail-context-kicker" class="section-label">TODAY · —</p>
           <strong id="workspace-rail-context-title">Today</strong>
@@ -604,6 +607,9 @@
                   </label>
                   <button id="calendar-next-month" type="button" class="calendar-step" aria-label="下个月" data-i18n-aria-label="calendar.nextMonth">→</button>
                   <button id="calendar-today" type="button" class="secondary-button" data-i18n="calendar.today">今天</button>
+                  <button id="calendar-summary-toggle" type="button" class="sidebar-toggle" aria-controls="calendar-summary" aria-expanded="true" data-i18n-aria-label="calendar.hideSummary" data-i18n-title="calendar.hideSummary">
+                    <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M12 3v14"/></svg>
+                  </button>
                 </div>
               </header>
               <p id="calendar-status" class="today-status" role="status" aria-live="polite"></p>
@@ -821,7 +827,9 @@
                       </div>
                       <div class="today-daytime-layout">
                         <div class="today-time-axis-toolbar">
-                          <button id="today-unlocated-time-shortcut" type="button" class="secondary-button" aria-controls="today-unlocated-time-region" aria-expanded="false" hidden></button>
+                          <button id="today-unlocated-time-shortcut" type="button" class="sidebar-toggle" aria-controls="today-side-region" aria-expanded="false">
+                            <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M12 3v14"/></svg><span class="sidebar-toggle-count" aria-hidden="true">0</span>
+                          </button>
                           <p id="today-axis-edit-status" role="status" aria-live="polite" hidden></p>
                           <p class="today-time-axis-boundary" data-i18n="today.axisNote">
                             时间轴只整理明确事实和当前安排；没有记录的活动继续保持未知。
@@ -958,7 +966,7 @@
                     </section>
                   </div>
 
-                  <aside class="today-side-region" aria-label="当天任务、记录与计划依据" data-i18n-aria-label="today.sideRegion">
+                  <aside id="today-side-region" class="today-side-region" aria-label="当天任务、记录与计划依据" data-i18n-aria-label="today.sideRegion">
                     <section id="today-unlocated-time-region" class="today-axis-unlocated-region" aria-labelledby="today-unlocated-time-heading" hidden>
                       <h3 id="today-unlocated-time-heading" data-i18n="today.unlocatedTimes">Items without a precise time</h3>
                       <p data-i18n="today.unlocatedIntro">保留原有精度，不硬塞到某一分钟。</p>

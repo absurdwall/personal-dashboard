@@ -1065,6 +1065,27 @@ const runtimeStatus = document.querySelector<HTMLElement>("#runtime-status");
 const workspaceDestinationButtons = document.querySelectorAll<HTMLButtonElement>(
   ".destination-button[data-workspace-destination]",
 );
+const workspaceSidebar = document.querySelector<HTMLElement>("#workspace-sidebar");
+const workspaceSidebarToggle = document.querySelector<HTMLButtonElement>("#workspace-sidebar-toggle");
+let workspaceSidebarExpanded = true;
+function updateWorkspaceSidebarPresentation(): void {
+  if (!workspaceSidebar || !workspaceSidebarToggle) return;
+  if (!workspaceSidebarExpanded && workspaceSidebar.contains(document.activeElement)) {
+    workspaceSidebarToggle.focus({preventScroll: true});
+  }
+  workspaceSidebar.hidden = !workspaceSidebarExpanded;
+  document.querySelector<HTMLElement>(".app-shell")?.setAttribute("data-navigation-expanded", String(workspaceSidebarExpanded));
+  workspaceSidebarToggle.setAttribute("aria-expanded", String(workspaceSidebarExpanded));
+  const key = workspaceSidebarExpanded ? "navigation.hideSidebar" : "navigation.showSidebar";
+  workspaceSidebarToggle.dataset.i18nAriaLabel = key;
+  workspaceSidebarToggle.dataset.i18nTitle = key;
+  workspaceSidebarToggle.setAttribute("aria-label", t(key));
+  workspaceSidebarToggle.title = t(key);
+}
+workspaceSidebarToggle?.addEventListener("click", () => {
+  workspaceSidebarExpanded = !workspaceSidebarExpanded;
+  updateWorkspaceSidebarPresentation();
+});
 const workspaceDestinationPanels = document.querySelectorAll<HTMLElement>(
   "[data-workspace-panel]",
 );
@@ -1179,6 +1200,27 @@ const calendarToday = document.querySelector<HTMLButtonElement>("#calendar-today
 const calendarStatus = document.querySelector<HTMLElement>("#calendar-status");
 const calendarMonthHeading = document.querySelector<HTMLElement>("#calendar-month-heading");
 const calendarGrid = document.querySelector<HTMLElement>("#calendar-grid");
+const calendarSummary = document.querySelector<HTMLElement>("#calendar-summary");
+const calendarSummaryToggle = document.querySelector<HTMLButtonElement>("#calendar-summary-toggle");
+let calendarSummaryExpanded = true;
+function updateCalendarSummaryPresentation(): void {
+  if (!calendarSummary || !calendarSummaryToggle) return;
+  if (!calendarSummaryExpanded && calendarSummary.contains(document.activeElement)) {
+    calendarSummaryToggle.focus({preventScroll: true});
+  }
+  calendarSummary.hidden = !calendarSummaryExpanded;
+  calendarSummary.closest<HTMLElement>(".calendar-frame")?.setAttribute("data-summary-expanded", String(calendarSummaryExpanded));
+  calendarSummaryToggle.setAttribute("aria-expanded", String(calendarSummaryExpanded));
+  const key = calendarSummaryExpanded ? "calendar.hideSummary" : "calendar.showSummary";
+  calendarSummaryToggle.dataset.i18nAriaLabel = key;
+  calendarSummaryToggle.dataset.i18nTitle = key;
+  calendarSummaryToggle.setAttribute("aria-label", t(key));
+  calendarSummaryToggle.title = t(key);
+}
+calendarSummaryToggle?.addEventListener("click", () => {
+  calendarSummaryExpanded = !calendarSummaryExpanded;
+  updateCalendarSummaryPresentation();
+});
 const calendarSummaryHeading = document.querySelector<HTMLElement>("#calendar-summary-heading");
 const calendarSummaryStatus = document.querySelector<HTMLElement>("#calendar-summary-status");
 const calendarSummaryCopy = document.querySelector<HTMLElement>("#calendar-summary-copy");
@@ -1287,55 +1329,29 @@ const todayHourTicks = document.querySelector<HTMLElement>("#today-hour-ticks");
 const todayCurrentArrangementUnlocated = document.querySelector<HTMLElement>("#today-current-arrangement-unlocated");
 const todayUnlocatedTimeRegion = document.querySelector<HTMLElement>("#today-unlocated-time-region");
 const todayUnlocatedTimeShortcut = document.querySelector<HTMLButtonElement>("#today-unlocated-time-shortcut");
+const todaySideRegion = document.querySelector<HTMLElement>(".today-side-region");
 const todayUnlocatedNarrow = () => window.innerWidth <= 1100;
-// Presentation state only: automatic wide-visible/narrow-collapsed; manual override
-// lasts for this Today selection/phase. Resize adapts inline <-> drawer without writes.
+// Presentation state only; keep the original sidebar and every draft/detail node
+// docked in the same position. Manual intent lasts for this date/phase.
 let todayUnlocatedOverride: boolean | null = null;
 let todayUnlocatedCount = 0;
-const todayUnlocatedHome = todayUnlocatedTimeRegion?.parentElement;
-const todayUnlocatedNext = todayUnlocatedTimeRegion?.nextSibling;
-let todayUnlocatedDrawer: HTMLDialogElement | null = null;
-function restoreTodayUnlocatedHome(): void {
-  if (todayUnlocatedTimeRegion && todayUnlocatedHome && todayUnlocatedTimeRegion.parentElement !== todayUnlocatedHome) {
-    todayUnlocatedHome.insertBefore(todayUnlocatedTimeRegion, todayUnlocatedNext ?? null);
-  }
-}
 function updateTodayUnlocatedPresentation(): void {
-  if (!todayUnlocatedTimeRegion || !todayUnlocatedTimeShortcut) return;
+  if (!todaySideRegion || !todayUnlocatedTimeRegion || !todayUnlocatedTimeShortcut) return;
   const daytime = document.querySelector<HTMLElement>("#today-ready")?.dataset.phase === "daytime";
-  const shown = Boolean(daytime && todayUnlocatedCount > 0 && (todayUnlocatedOverride ?? !todayUnlocatedNarrow()));
-  const drawer = shown && todayUnlocatedNarrow();
-  todayUnlocatedTimeRegion.hidden = !shown;
-  todayUnlocatedTimeShortcut.hidden = todayUnlocatedCount === 0;
-  todayUnlocatedTimeShortcut.setAttribute("aria-expanded", String(shown));
-  setCopy(todayUnlocatedTimeShortcut, shown ? "today.hideUnlocatedItems" : "today.showUnlocatedItems", {count: todayUnlocatedCount});
-  document.querySelector<HTMLElement>(".today-layout")?.setAttribute("data-unlocated-presentation", drawer ? "drawer" : shown ? "inline" : "collapsed");
-  if (drawer) {
-    if (!todayUnlocatedDrawer) {
-      const dialog = document.createElement("dialog");
-      dialog.className = "today-unlocated-drawer";
-      dialog.dataset.todayUnlocatedDrawer = "";
-      dialog.setAttribute("aria-labelledby", "today-unlocated-time-heading");
-      const close = document.createElement("button");close.type = "button";
-      close.dataset.unlocatedClose = "";setCopy(close, "today.planCancel");
-      const dismiss = () => {
-        todayUnlocatedOverride = false;
-        updateTodayUnlocatedPresentation();
-        todayUnlocatedTimeShortcut?.focus({preventScroll: true});
-      };
-      close.addEventListener("click", dismiss);
-      dialog.addEventListener("cancel", event => {event.preventDefault();dismiss();});
-      dialog.addEventListener("keydown", event => {if (event.key === "Escape") {event.preventDefault();dismiss();}});
-      dialog.append(close);document.body.append(dialog);todayUnlocatedDrawer = dialog;
-    }
-    todayUnlocatedDrawer.append(todayUnlocatedTimeRegion);
-    if (!todayUnlocatedDrawer.open) todayUnlocatedDrawer.showModal();
-  } else {
-    const containedFocus = todayUnlocatedDrawer?.contains(document.activeElement);
-    if (todayUnlocatedDrawer?.open) todayUnlocatedDrawer.close();
-    restoreTodayUnlocatedHome();
-    if (containedFocus && daytime) todayUnlocatedTimeShortcut.focus({preventScroll: true});
+  const shown = !daytime || (todayUnlocatedOverride ?? !todayUnlocatedNarrow());
+  if (!shown && todaySideRegion.contains(document.activeElement)) {
+    todayUnlocatedTimeShortcut.focus({preventScroll: true});
   }
+  todaySideRegion.hidden = !shown;
+  todayUnlocatedTimeRegion.hidden = todayUnlocatedCount === 0;
+  todayUnlocatedTimeShortcut.hidden = false;
+  todayUnlocatedTimeShortcut.setAttribute("aria-expanded", String(shown));
+  const label = t(shown ? "today.hideSidebar" : "today.showSidebar", {count: todayUnlocatedCount});
+  todayUnlocatedTimeShortcut.setAttribute("aria-label", label);
+  todayUnlocatedTimeShortcut.title = label;
+  const count = todayUnlocatedTimeShortcut.querySelector<HTMLElement>(".sidebar-toggle-count");
+  if (count) count.textContent = String(todayUnlocatedCount);
+  document.querySelector<HTMLElement>(".today-layout")?.setAttribute("data-unlocated-presentation", shown ? "inline" : "collapsed");
 }
 todayUnlocatedTimeShortcut?.addEventListener("click", () => {
   todayUnlocatedOverride = todayUnlocatedTimeShortcut.getAttribute("aria-expanded") !== "true";
@@ -1652,6 +1668,9 @@ function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): voi
     renderLegacyDayTasks(currentTodayView.dayTasks);
     renderHistoricalHabitCorrections(currentTodayView);
   }
+  updateWorkspaceSidebarPresentation();
+  updateCalendarSummaryPresentation();
+  updateTodayUnlocatedPresentation();
   renderWorkspaceNavigationLanguage();
   renderWorkspaceFeatureArea(currentWorkspaceDestination);
   renderWorkspaceRailContext(currentWorkspaceDestination);
@@ -11588,8 +11607,6 @@ function showWorkspaceDestination(
     (destinationChanged || selectedTodayDate !== dailyDate);
   if (leavingToday || changingTodaySelection) {
     todayUnlocatedOverride = null;
-    if (todayUnlocatedDrawer?.open) todayUnlocatedDrawer.close();
-    restoreTodayUnlocatedHome();
     historicalHabitArrival.clear();
     todayPresentationRequests.invalidate();
     todayClockRequests.invalidate();
