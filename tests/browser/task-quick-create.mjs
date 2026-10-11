@@ -38,6 +38,7 @@ async function pageFixture({width=1280,extraTasks=[]}={}) {
       if(command==='tasks_view')return structuredClone(t);
       if(command==='application_identity')return {productName:'Personal Dashboard'};
       if(command==='interface_language_preferences')return {interfaceLanguage:'en'};
+      if(command==='set_interface_language')return {interfaceLanguage:args.interfaceLanguage};
       if(command==='today_clock')return {date:v.date,time:v.currentTime};
       if(command==='create_task'){
         const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
@@ -328,5 +329,31 @@ test('modal verified absence can end its retained submission with readable recov
     const attempts=await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').map(x=>x.args.input));
     assert.equal(attempts.length,2);assert.notEqual(attempts[0].taskId,attempts[1].taskId);
     assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.filter(t=>t.name==='New modal operation').length),1);
+  } finally {await f.close();}
+});
+
+
+test('ended Inbox submission follows current interface language while the original custom list name is retained',async()=>{
+  const f=await pageFixture();const {page}=f;
+  try {
+    const quick=page.locator('#task-quick-name');
+    for (const [name,scope] of [['Original Inbox','inbox'],['Original user list','list:home']]) {
+      await page.locator(`#tasks-list-scopes [data-task-scope="${scope}"]`).click();
+      await quick.fill(name);await page.evaluate(()=>window.__failNext='create_task');await quick.press('Enter');
+      await page.waitForFunction(()=>!document.querySelector('#task-quick-recheck').disabled&&!document.querySelector('#task-quick-recovery').hidden);
+      await page.locator('#task-quick-recheck').click();await page.waitForFunction(()=>!document.querySelector('#task-quick-end-attempt').disabled);
+      await page.locator('#task-quick-end-attempt').click();
+    }
+    let inbox=page.locator('#task-create-ended-attempts details').filter({hasText:'Original Inbox'});
+    let custom=page.locator('#task-create-ended-attempts details').filter({hasText:'Original user list'});
+    await inbox.locator('summary').click();assert.equal(await inbox.locator('dd').filter({hasText:/^Inbox$/}).count(),1);
+    await page.locator('#workspace-language').click();await page.waitForFunction(()=>document.documentElement.lang==='zh-CN');
+    inbox=page.locator('#task-create-ended-attempts details').filter({hasText:'Original Inbox'});
+    custom=page.locator('#task-create-ended-attempts details').filter({hasText:'Original user list'});
+    await inbox.locator('summary').click();await custom.locator('summary').click();
+    assert.equal(await inbox.locator('dd').filter({hasText:/^收集箱$/}).count(),1,'reserved system Inbox uses the current catalog');
+    assert.equal(await inbox.locator('dd').filter({hasText:/^Inbox$/}).count(),0);
+    assert.equal(await custom.locator('dd').filter({hasText:/^Home$/}).count(),1,'user-owned list name stays verbatim');
+    assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').length),2,'switching language never replays ended submissions');
   } finally {await f.close();}
 });

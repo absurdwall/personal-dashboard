@@ -10446,7 +10446,7 @@ function renderEndedTaskCreations(view: TasksView): void {
     };
     field("tasks.name", attempt.draft.name);
     field("tasks.content", attempt.draft.content);
-    field("tasks.list", attempt.listName);
+    field("tasks.list", attempt.originalInput.listId === "inbox" ? t("tasks.inbox") : attempt.listName);
     field("tasks.date", taskScheduleText(attempt.originalInput.date, attempt.originalInput.time, attempt.originalInput.executionEnd));
     details.append(summary, note, fields);
     if (view.tasks.some(task => task.id === attempt.originalInput.taskId)) {
