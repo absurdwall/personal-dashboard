@@ -16,7 +16,7 @@ Management source: source-personal-dashboard-experience
 | PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | open | none | [Prototype R](prototype/README.md), [Q1–Q4](design-review.md), [publication](publication.md) |
 | PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | in-progress | none | claimed: implementer PDEX-01; codex/pdex-01 |
 | PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | open | PDEX-01 | unassigned; not started |
-| PDEX-03 | ticket | [03: 保持早间文字与可读的统一白天时间轴](issues/03-unified-readable-today.md) | ready-for-agent | open | none | unassigned; not started |
+| PDEX-03 | ticket | [03: 保持早间文字与可读的统一白天时间轴](issues/03-unified-readable-today.md) | ready-for-agent | in-progress | none | claimed: implementer PDEX-03; codex/pdex-03 |
 | PDEX-04 | ticket | [04: 拖动计划并调整结束时间](issues/04-plan-drag-and-resize.md) | ready-for-agent | open | PDEX-02 | unassigned; not started |
 | PDEX-05 | ticket | [05: Tasks 使用清晰勾选列表与所选详情](issues/05-task-list-details.md) | ready-for-agent | open | none | unassigned; not started |
 | PDEX-06 | ticket | [06: 保存 Task 计划执行时间段并兼容现有入口](issues/06-task-execution-intervals.md) | ready-for-agent | in-progress | none | claimed: implementer PDEX-06; codex/pdex-06 |

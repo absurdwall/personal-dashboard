@@ -8,9 +8,9 @@
 
 **ID:** PDEX-03
 **Parent:** [PDEX-SPEC-01](../spec.md)
-**Lifecycle:** open
-**Implementation:** not started
-**Owner:** unassigned
+**Lifecycle:** in-progress
+**Implementation:** in progress
+**Owner:** implementer PDEX-03
 **Date:** 2026-10-10
 **Breakdown decision:** User approved the eleven-ticket breakdown and blocking edges on 2026-10-10.
 **Start:** Can start immediately once implementation is requested; not claimed.
@@ -33,3 +33,5 @@ stories 1, 3, 8–13, 26–27.
 ## Execution
 
 - 2026-10-10: Published locally with the approved scope and dependencies; unassigned, not claimed, not started. Record subsequent authorized claims, commits, checks and acceptance here. Publication does not close the parent specification.
+
+- 2026-10-10: Authorized claim on codex/pdex-03, worktree /tmp/pdex-03; base integration f400013d8b27800f8397e24769ae6c153a149cfc. Dependency implementation/evidence inspected before start; packaged acceptance remains separately tracked.
