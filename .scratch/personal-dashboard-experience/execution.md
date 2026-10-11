@@ -57,3 +57,5 @@ authorize starting implementation.
 - 2026-10-10: PDEX-10 integrated at 684ac8b, with 138 native and five real WebKit entry workflows verified. Canonical Cargo cache lease released with no owned native process remaining; subsequent root checks may run serialized. PDEX-08 is claimed for compact Calendar source/state/layout verification.
 
 - 2026-10-10: PDEX-07 integrated at 9618219, shared pointer controller available to PDEX-04. PDEX-05 claimed for compact Task list/details with existing persisted interval contract. PDEX-08 currently holds the exclusive canonical native cache lease; all other native builds remain isolated.
+
+- 2026-10-10: PDEX-08 integrated at a4fb8ce, including natural five/six-week source contract, four previews/true overflow and real WebKit layout at reference windows. Native cache lease released. Remaining feature code: PDEX-04 and PDEX-05; PDEX-11 remains unclaimed until these verified implementation prerequisites are integrated.
