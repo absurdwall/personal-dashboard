@@ -227,19 +227,9 @@
       "sha256": "d59286303133182d5b574ca46dff7a072ea17631358b1c2534df51f23bcdd630"
     },
     {
-      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/final-creation-browser-current.log",
-      "bytes": 2438,
-      "sha256": "c5d7e846cb5bb63bb7216849d87b207b10b324f9fb72235b552a022237c6a0c3"
-    },
-    {
       "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/final-creation-browser.log",
       "bytes": 4157,
       "sha256": "ea6aaa1deec6e3fedc1ba665857253058bbc95ece0678fe5978b458b855a3ab5"
-    },
-    {
-      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/final-frontend.log",
-      "bytes": 54297,
-      "sha256": "d34081d4f5ade5a9ec5fba99db40b3369d502cfdae588bd46ab33370a61d2196"
     },
     {
       "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/integration-build.log",
@@ -262,11 +252,6 @@
       "sha256": "2a1d24f8ddb5d0325615ce14c7b805ecdb1e935f6aebf9dcc5e6545aa9fdec14"
     },
     {
-      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/picker-repair-final.log",
-      "bytes": 703,
-      "sha256": "6417204c095d017bf3beaac30e7567b7e74b53def4118159463f435a2dae1920"
-    },
-    {
       "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/picker-review-build.log",
       "bytes": 78,
       "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
@@ -280,6 +265,21 @@
       "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/picker-review-red.log",
       "bytes": 3418,
       "sha256": "49179d36aeb1ff005a6adcdf50e39b70f704d1e0266ccfa76ea06efe9c9b6eca"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/final-creation-browser-current.log",
+      "bytes": 2859,
+      "sha256": "8fa56a10e5b9801f4d0b8a48b69ab6d486d83b7a379d43ca3ec9e98ad8aabe1d"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/final-frontend.log",
+      "bytes": 54297,
+      "sha256": "d34081d4f5ade5a9ec5fba99db40b3369d502cfdae588bd46ab33370a61d2196"
+    },
+    {
+      "path": "/tmp/pdex-sidebar-schedule-20261011-final.noindex/private/picker-repair-final.log",
+      "bytes": 703,
+      "sha256": "6417204c095d017bf3beaac30e7567b7e74b53def4118159463f435a2dae1920"
     }
   ],
   "workers": [
@@ -299,5 +299,12 @@
     }
   ],
   "agentLimit": "Both implementers and merger encountered account usage limit; root continued bounded repairs and validation. No errored reviewer result treated as approval.",
-  "status": "Review and build in progress; current installed App unchanged"
+  "status": "Current checks pass; source frozen71059a3; package builds/review/native pending; daily installation unchanged",
+  "currentValidation": {
+    "sourceCommit": "71059a3cb686ec9e925f2fd27eccfaee5b41b557",
+    "buildPassed": true,
+    "creationBrowser": "24/24",
+    "focusedFrontendWebKit": "39/39",
+    "repairSubsetBrowser": "6/6"
+  }
 }
