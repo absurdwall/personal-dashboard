@@ -2826,6 +2826,61 @@ impl CollaborationApplication {
         Ok(session_view(&session))
     }
 
+    /// Create or recover the session for one explicit frontend creation attempt.
+    /// The identity is bound to the selected Vault and creation date so an
+    /// unknown IPC result can be retried without creating a second session.
+    pub fn create_session_with_identity(
+        &self,
+        date: Option<&str>,
+        session_id: &str,
+        initial_draft: &str,
+    ) -> Result<CollaborationSessionView, String> {
+        let date = date
+            .map(str::to_owned)
+            .unwrap_or_else(|| self.clock.current_lived_date());
+        validate_date(&date)?;
+        if session_id.is_empty()
+            || session_id.len() > 128
+            || !session_id.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
+            })
+        {
+            return Err("The collaboration session creation identity is invalid.".into());
+        }
+        if initial_draft.chars().count() > MAX_MESSAGE_CHARACTERS {
+            return Err(format!(
+                "Drafts are limited to {MAX_MESSAGE_CHARACTERS} characters."
+            ));
+        }
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before starting a collaboration session.".to_string()
+        })?;
+        let requested_id = session_id.to_owned();
+        let session = self.update_state(|state| {
+            if let Some(existing) = state.sessions.iter().find(|session| session.id == requested_id) {
+                if existing.vault_key.as_deref() != Some(vault_key.as_str())
+                    || existing.created_date != date
+                {
+                    return Err(
+                        "This collaboration session creation identity is already bound to another Vault or date."
+                            .into(),
+                    );
+                }
+                return Ok(existing.clone());
+            }
+
+            let mut session = self.empty_session(&date, vault_key.clone());
+            session.id = requested_id;
+            session.draft = initial_draft.to_owned();
+            session
+                .drafts_by_date
+                .insert(date.clone(), initial_draft.to_owned());
+            state.sessions.insert(0, session.clone());
+            Ok(session)
+        })?;
+        Ok(session_view(&session))
+    }
+
     fn empty_session(&self, date: &str, vault_key: String) -> StoredCollaborationSession {
         let now = self.clock.current_timestamp();
         StoredCollaborationSession {

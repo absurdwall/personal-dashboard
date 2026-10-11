@@ -375,7 +375,16 @@ fn collaboration_context(
 fn collaboration_create_session(
     application: State<'_, collaboration::CollaborationApplication>,
     date: Option<String>,
+    session_id: Option<String>,
+    initial_draft: Option<String>,
 ) -> Result<collaboration::CollaborationSessionView, String> {
+    if let Some(session_id) = session_id {
+        return application.create_session_with_identity(
+            date.as_deref(),
+            &session_id,
+            initial_draft.as_deref().unwrap_or_default(),
+        );
+    }
     match date {
         Some(date) => application.create_session(&date),
         None => application.create_default_session(),

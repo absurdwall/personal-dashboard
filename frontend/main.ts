@@ -979,6 +979,17 @@ let collaborationWorkspaceRequest = 0;
 let collaborationConnectionRequest = 0;
 let collaborationStatusTimer: number | null = null;
 let collaborationTargetDatePendingSession: string | null = null;
+let collaborationEmptyDraft = "";
+let collaborationEmptyComposerActive = false;
+let collaborationSessionCreationPromise: Promise<CollaborationSessionView | null> | null = null;
+let collaborationSessionCreationResult: CollaborationSessionView | null = null;
+let collaborationSessionCreationError: unknown = null;
+let collaborationSessionCreationAttempt: {
+  id: string;
+  date: string;
+  initialDraft: string;
+  latestDraft: string;
+} | null = null;
 const collaborationDrafts = new Map<string, string>();
 const collaborationUnsavedDrafts = new Set<string>();
 const collaborationDraftWrites = new Map<string, Promise<CollaborationSessionView>>();
@@ -1038,13 +1049,17 @@ function cacheCollaborationDrafts(session: CollaborationSessionView, preserveLoc
   // Only acknowledgement of the exact current snapshot releases protection.
   for (const [date, draft] of Object.entries(session.draftsByDate)) {
     const key = collaborationDraftKey(session.id, date);
-    if (collaborationSubmittedDrafts.get(key) === draft) continue;
+    const submittedDraft = collaborationSubmittedDrafts.get(key);
+    if (submittedDraft !== undefined &&
+      (submittedDraft === draft || collaborationDrafts.get(key) === "")) continue;
     if ((!preserveLocal && !collaborationUnsavedDrafts.has(key)) || !collaborationDrafts.has(key)) {
       collaborationDrafts.set(key, draft);
     }
   }
   const targetKey = collaborationDraftKey(session.id, session.targetDate);
-  if (collaborationSubmittedDrafts.get(targetKey) === session.draft) return;
+  const submittedDraft = collaborationSubmittedDrafts.get(targetKey);
+  if (submittedDraft !== undefined &&
+    (submittedDraft === session.draft || collaborationDrafts.get(targetKey) === "")) return;
   if ((!preserveLocal && !collaborationUnsavedDrafts.has(targetKey)) || !collaborationDrafts.has(targetKey)) {
     collaborationDrafts.set(targetKey, session.draft);
   }
@@ -1200,6 +1215,10 @@ const calendarToday = document.querySelector<HTMLButtonElement>("#calendar-today
 const calendarStatus = document.querySelector<HTMLElement>("#calendar-status");
 const calendarMonthHeading = document.querySelector<HTMLElement>("#calendar-month-heading");
 const calendarGrid = document.querySelector<HTMLElement>("#calendar-grid");
+const calendarTaskPreviewResizeObserver = calendarGrid && typeof ResizeObserver !== "undefined"
+  ? new ResizeObserver(() => updateCalendarTaskPreviewRows())
+  : null;
+calendarTaskPreviewResizeObserver?.observe(calendarGrid!);
 const calendarSummary = document.querySelector<HTMLElement>("#calendar-summary");
 const calendarSummaryToggle = document.querySelector<HTMLButtonElement>("#calendar-summary-toggle");
 let calendarSummaryExpanded = true;
@@ -1733,6 +1752,12 @@ function resetVaultScopedWorkspaceState(): void {
   }
   currentCollaborationWorkspace = null;
   currentCollaborationSession = null;
+  collaborationEmptyDraft = "";
+  collaborationEmptyComposerActive = false;
+  collaborationSessionCreationPromise = null;
+  collaborationSessionCreationResult = null;
+  collaborationSessionCreationError = null;
+  collaborationSessionCreationAttempt = null;
   collaborationDrafts.clear();
   collaborationUnsavedDrafts.clear();
   collaborationVoicePreviews.clear();
@@ -2841,8 +2866,14 @@ function renderCollaborationVoiceControls(): void {
   collaborationVoiceStartButton.title=label;
   collaborationVoiceStartButton.dataset.action=stop?"stop":"start";
   collaborationVoiceStartButton.setAttribute("aria-pressed",String(stop));
-  collaborationVoiceStartButton.disabled=vaultSelectionInProgress||state==="requesting"||state==="connecting"||state==="transcribing"||
-    (state==="idle"&&(!target||collaborationMessageDraft?.disabled===true||collaborationSendingDrafts.has(key)));
+  const connection = currentCollaborationConnection;
+  const voiceAvailable = connection?.authenticated === true &&
+    connection.authMode === "chatgpt" && connection.readOnlyTextTurnsAvailable &&
+    Boolean(currentCollaborationWorkspace?.context.vaultName);
+  collaborationVoiceStartButton.disabled = state === "recording"
+    ? false
+    : vaultSelectionInProgress || state !== "idle" || !voiceAvailable || !target ||
+      collaborationMessageDraft?.disabled === true || collaborationSendingDrafts.has(key);
   collaborationVoiceCancelButton?.toggleAttribute("hidden",state==="idle");
   if(collaborationVoiceCancelButton)collaborationVoiceCancelButton.disabled=state==="idle";
   if(collaborationVoiceStatus)collaborationVoiceStatus.dataset.state=state;
@@ -4337,19 +4368,22 @@ function renderCollaborationWorkspace(): void {
   const targetKey = session ? collaborationDraftKey(session.id, targetDate) : "";
   const targetDatePending = Boolean(session && collaborationTargetDatePendingSession === session.id);
   const sendingDraft = targetKey !== "" && collaborationSendingDrafts.has(targetKey);
+  const composerBusy = targetDatePending || sendingDraft || vaultSelectionInProgress ||
+    collaborationSessionCreationPromise !== null;
   if (collaborationMessageDraft) {
-    collaborationMessageDraft.disabled = !session || !connected || !vaultAvailable ||
-      targetDatePending || sendingDraft || vaultSelectionInProgress;
+    collaborationMessageDraft.disabled = composerBusy;
     if (collaborationMessageDraft.disabled || document.activeElement !== collaborationMessageDraft) {
       collaborationCommandCompletion?.close();
     }
     if (session && document.activeElement !== collaborationMessageDraft) {
       collaborationMessageDraft.value = collaborationDraftForDate(session, targetDate);
+    } else if (!session && document.activeElement !== collaborationMessageDraft) {
+      collaborationMessageDraft.value = collaborationEmptyDraft;
     }
   }
   if (collaborationSendButton) {
-    collaborationSendButton.disabled = !session || !connected || !vaultAvailable ||
-      sendingDraft || vaultSelectionInProgress || collaborationVoiceController.state !== "idle" ||
+    collaborationSendButton.disabled = !connected || !vaultAvailable || composerBusy ||
+      collaborationVoiceController.state !== "idle" ||
       !(collaborationMessageDraft?.value.trim());
   }
   let composerStatus: InterfaceCopyKey | null = null;
@@ -4357,16 +4391,23 @@ function renderCollaborationWorkspace(): void {
     composerStatus = "collaboration.composerSelectVault";
   } else if (recoveryBlocked) {
     composerStatus = "collaboration.composerRecover";
-  } else if (!session) {
-    composerStatus = "collaboration.composerNewSession";
+  } else if (collaborationSessionCreationError) {
+    if (collaborationComposerStatus) {
+      collaborationComposerStatus.hidden = false;
+      setCopyError(collaborationComposerStatus, "collaboration.sessionCreateFailed", collaborationSessionCreationError);
+    }
+  } else if (collaborationSessionCreationPromise) {
+    composerStatus = "collaboration.composerCreatingSession";
   } else if (!connected) {
     composerStatus = "collaboration.composerConnect";
+  } else if (!session) {
+    composerStatus = "collaboration.composerNewSession";
   } else if (targetDatePending) {
     composerStatus = "collaboration.composerSavingDate";
   } else if (sendingDraft) {
     composerStatus = "collaboration.composerSending";
   }
-  if (collaborationComposerStatus) {
+  if (collaborationComposerStatus && !collaborationSessionCreationError) {
     collaborationComposerStatus.hidden = composerStatus === null;
     if (composerStatus) {
       setCopy(collaborationComposerStatus, composerStatus);
@@ -4382,13 +4423,32 @@ function renderCollaborationWorkspace(): void {
     collaborationStopButton.disabled = session?.runState === "stopping";
   }
   const createButton = document.querySelector<HTMLButtonElement>("#collaboration-new-session");
-  if (createButton) createButton.disabled = !vaultAvailable || vaultSelectionInProgress;
-  if (collaborationTargetDateInput) collaborationTargetDateInput.disabled = vaultSelectionInProgress || targetDatePending;
+  if (createButton) {
+    createButton.disabled = !vaultAvailable || vaultSelectionInProgress ||
+      collaborationSessionCreationPromise !== null;
+    setCopy(createButton, collaborationSessionCreationAttempt && !collaborationSessionCreationPromise
+      ? "collaboration.retrySessionCreate"
+      : "collaboration.newSession");
+  }
+  if (collaborationDateInput) {
+    collaborationDateInput.disabled = collaborationSessionCreationAttempt !== null ||
+      collaborationSessionCreationPromise !== null || vaultSelectionInProgress;
+  }
+  if (collaborationTargetDateInput) collaborationTargetDateInput.disabled = vaultSelectionInProgress || targetDatePending ||
+    collaborationSessionCreationPromise !== null || collaborationSessionCreationAttempt !== null;
   renderCollaborationVoiceControls();
 }
 
 function stashCollaborationDraft(forVaultSwitch = false): void {
   if (vaultSelectionInProgress && !forVaultSwitch) return;
+  if (!currentCollaborationSession && collaborationMessageDraft) {
+    collaborationEmptyDraft = collaborationMessageDraft.value;
+    if (collaborationSessionCreationAttempt) {
+      collaborationSessionCreationAttempt.latestDraft = collaborationEmptyDraft;
+    }
+    collaborationEmptyComposerActive = true;
+    return;
+  }
   if (currentCollaborationSession && collaborationMessageDraft) {
     const sessionId = currentCollaborationSession.id;
     const targetDate = collaborationTargetDates.get(sessionId) ?? collaborationTargetDate;
@@ -4511,9 +4571,11 @@ async function drainCollaborationDraftsForVaultSwitch(): Promise<void> {
 }
 
 function selectCollaborationSession(session: CollaborationSessionView): void {
+  if (collaborationSessionCreationPromise) return;
   cancelCollaborationVoiceCaptureForSelectionChange();
   stashCollaborationDraft();
   currentCollaborationSession = session;
+  collaborationEmptyComposerActive = false;
   collaborationEmptyTargetDate = null;
   cacheCollaborationDrafts(session);
   collaborationTargetDate = collaborationTargetDates.get(session.id) ?? session.targetDate;
@@ -4567,7 +4629,8 @@ async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
     const previousId = currentCollaborationSession?.id;
     const previousTargetDate = collaborationTargetDate;
     let session = workspace.sessions.find((candidate) => candidate.id === previousId) ??
-      workspace.sessions[0] ?? null;
+      (collaborationSessionCreationPromise ? collaborationSessionCreationResult : null) ??
+      (collaborationEmptyComposerActive ? null : workspace.sessions[0] ?? null);
     const nextTargetDate = session
       ? collaborationTargetDates.get(session.id) ?? session.targetDate
       : collaborationEmptyTargetDate ?? date;
@@ -4599,7 +4662,7 @@ async function refreshCollaborationWorkspace(quiet = false): Promise<void> {
     if (request !== collaborationWorkspaceRequest) return;
     if (quiet) return;
     currentCollaborationWorkspace = null;
-    currentCollaborationSession = null;
+    if (!collaborationSessionCreationResult) currentCollaborationSession = null;
     if (collaborationSessionsStatus) {
       setCopyError(collaborationSessionsStatus, "collaboration.sessionLoadFailed", error);
     }
@@ -4650,7 +4713,7 @@ async function refreshCollaborationContext(): Promise<void> {
 }
 
 async function saveCollaborationTargetDate(): Promise<void> {
-  if (vaultSelectionInProgress) return;
+  if (vaultSelectionInProgress || collaborationSessionCreationPromise || collaborationSessionCreationAttempt) return;
   const session = currentCollaborationSession;
   const date = collaborationTargetDateInput?.value || collaborationTargetDate;
   if (!session) {
@@ -4789,35 +4852,84 @@ async function changeCollaborationPendingRequest(sessionId: string, executionId:
   }
 }
 
-async function createCollaborationSession(): Promise<void> {
-  if (vaultSelectionInProgress) return;
+async function createCollaborationSession(): Promise<CollaborationSessionView | null> {
+  if (vaultSelectionInProgress || collaborationSessionCreationPromise) return null;
   const vaultRevision = collaborationVaultSelectionRevision;
   const explicitDate = collaborationEmptyTargetDate ??
     (collaborationActivityDateExplicit ? collaborationActivityDate : null);
+  const hadSelectedSession = currentCollaborationSession !== null;
+  const retainedAttempt = collaborationSessionCreationAttempt;
+  const attempt = retainedAttempt ?? {
+    id: localOperationId("collaboration-session"),
+    date: explicitDate || collaborationActivityDate || localCalendarDate(),
+    initialDraft: hadSelectedSession
+      ? ""
+      : (collaborationMessageDraft?.value ?? collaborationEmptyDraft),
+    latestDraft: hadSelectedSession
+      ? ""
+      : (collaborationMessageDraft?.value ?? collaborationEmptyDraft),
+  };
+  collaborationSessionCreationAttempt = attempt;
+  collaborationSessionCreationError = null;
+  const creation = (async (): Promise<CollaborationSessionView | null> => {
+    try {
+      const session = await window.__TAURI__.core.invoke<CollaborationSessionView>(
+        "collaboration_create_session",
+        { date: attempt.date, sessionId: attempt.id, initialDraft: attempt.initialDraft },
+      );
+      if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return null;
+      if (session.id !== attempt.id || session.createdDate !== attempt.date) {
+        throw new Error("The collaboration session creation result did not match its request.");
+      }
+      collaborationSessionCreationAttempt = null;
+      cancelCollaborationVoiceCaptureForSelectionChange();
+      stashCollaborationDraft();
+      const entryDraft = retainedAttempt
+        ? attempt.latestDraft
+        : hadSelectedSession ? null : collaborationEmptyDraft;
+      collaborationSessionCreationResult = session;
+      const date = session.targetDate || session.createdDate;
+      cacheCollaborationDrafts(session);
+      currentCollaborationSession = session;
+      collaborationEmptyDraft = "";
+      collaborationEmptyComposerActive = false;
+      collaborationEmptyTargetDate = null;
+      collaborationTargetDates.set(session.id, date);
+      collaborationActivityDate = date;
+      collaborationTargetDate = date;
+      if (collaborationTargetDateInput) collaborationTargetDateInput.value = date;
+      if (entryDraft !== null) {
+        collaborationDrafts.set(collaborationDraftKey(session.id, date), entryDraft);
+        if (entryDraft) {
+          collaborationUnsavedDrafts.add(collaborationDraftKey(session.id, date));
+          if (collaborationMessageDraft) collaborationMessageDraft.value = entryDraft;
+          stashCollaborationDraft();
+        }
+      }
+      renderCollaborationWorkspace();
+      await refreshCollaborationWorkspace();
+      if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return null;
+      if (collaborationSessionsStatus) setCopy(collaborationSessionsStatus, "collaboration.sessionCreated");
+      return currentCollaborationSession?.id === session.id ? currentCollaborationSession : session;
+    } catch (error) {
+      if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return null;
+      collaborationSessionCreationError = error;
+      if (collaborationSessionsStatus) {
+        setCopyError(collaborationSessionsStatus, "collaboration.sessionCreateFailed", error);
+      }
+      renderCollaborationWorkspace();
+      return null;
+    }
+  })();
+  collaborationSessionCreationPromise = creation;
+  renderCollaborationWorkspace();
   try {
-    const session = await window.__TAURI__.core.invoke<CollaborationSessionView>(
-      "collaboration_create_session",
-      { date: explicitDate },
-    );
-    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
-    const date = session.createdDate;
-    cancelCollaborationVoiceCaptureForSelectionChange();
-    stashCollaborationDraft();
-    cacheCollaborationDrafts(session);
-    currentCollaborationSession = session;
-    collaborationEmptyTargetDate = null;
-    collaborationTargetDates.set(session.id, date);
-    collaborationActivityDate = date;
-    collaborationTargetDate = date;
-    if (collaborationTargetDateInput) collaborationTargetDateInput.value = date;
-    renderCollaborationWorkspace();
-    await refreshCollaborationWorkspace();
-    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
-    if (collaborationSessionsStatus) setCopy(collaborationSessionsStatus, "collaboration.sessionCreated");
-  } catch (error) {
-    if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return;
-    if (collaborationSessionsStatus) {
-      setCopyError(collaborationSessionsStatus, "collaboration.sessionLoadFailed", error);
+    return await creation;
+  } finally {
+    if (collaborationSessionCreationPromise === creation) {
+      collaborationSessionCreationPromise = null;
+      collaborationSessionCreationResult = null;
+      renderCollaborationWorkspace();
     }
   }
 }
@@ -5118,9 +5230,21 @@ function watchCollaborationSession(session: CollaborationSessionView): void {
 }
 
 async function sendCollaborationMessage(): Promise<void> {
-  const session = currentCollaborationSession;
+  if (vaultSelectionInProgress || collaborationVoiceController.state !== "idle" ||
+    collaborationSessionCreationPromise) return;
+  let session = currentCollaborationSession;
+  if (!session) {
+    const draft = collaborationMessageDraft?.value ?? "";
+    const connected = currentCollaborationConnection?.authenticated === true &&
+      currentCollaborationConnection.authMode === "chatgpt" &&
+      currentCollaborationConnection.readOnlyTextTurnsAvailable;
+    if (!draft.trim() || !connected || !currentCollaborationWorkspace?.context.vaultName) return;
+    const createdSession = await createCollaborationSession();
+    if (!createdSession || currentCollaborationSession?.id !== createdSession.id || vaultSelectionInProgress) return;
+    session = createdSession;
+  }
   const message = collaborationMessageDraft?.value ?? "";
-  if (!session || !message.trim() || vaultSelectionInProgress || collaborationVoiceController.state !== "idle") return;
+  if (!message.trim()) return;
   const targetDate = collaborationTargetDates.get(session.id) ??
     (collaborationTargetDateInput?.value || collaborationTargetDate);
   const target = { sessionId: session.id, targetDate };
@@ -7611,6 +7735,23 @@ async function selectTodayVault(): Promise<void> {
   if (vaultSelectionInProgress) {
     return;
   }
+  const unboundComposer = currentCollaborationSession ? null : {
+    draft: collaborationMessageDraft?.value ?? collaborationEmptyDraft,
+    active: collaborationEmptyComposerActive,
+    targetDate: collaborationEmptyTargetDate,
+    activityDate: collaborationActivityDate,
+    activityDateExplicit: collaborationActivityDateExplicit,
+  };
+  const restoreUnboundComposer = () => {
+    if (!unboundComposer || currentCollaborationSession) return;
+    collaborationEmptyDraft = unboundComposer.draft;
+    collaborationEmptyComposerActive = unboundComposer.active || Boolean(unboundComposer.draft);
+    collaborationEmptyTargetDate = unboundComposer.targetDate;
+    collaborationActivityDate = unboundComposer.activityDate;
+    collaborationActivityDateExplicit = unboundComposer.activityDateExplicit;
+    collaborationTargetDate = unboundComposer.targetDate ?? unboundComposer.activityDate;
+    if (collaborationMessageDraft) collaborationMessageDraft.value = unboundComposer.draft;
+  };
   vaultSelectionInProgress = true;
   collaborationVaultSelectionRevision += 1;
   collaborationVaultSwitchDraftWrites = [...collaborationDraftWrites.values()];
@@ -7631,7 +7772,7 @@ async function selectTodayVault(): Promise<void> {
   const presentationRequest = todayPresentationRequests.begin();
   updateTodayOperationState(1);
   try {
-    await selectVaultAndRefresh(
+    const selectionOutcome = await selectVaultAndRefresh(
       () =>
         window.__TAURI__.core.invoke<VaultSelectionResult<TodayView>>(
           "select_today_vault",
@@ -7655,6 +7796,7 @@ async function selectTodayVault(): Promise<void> {
         renderPendingWriteFailure,
         prepareForVaultSwitch: (view) => {
           resetVaultScopedWorkspaceState();
+          restoreUnboundComposer();
           selectedTodayDate = null;
           currentTodayPhase = view.defaultPhase;
         },
@@ -7666,6 +7808,7 @@ async function selectTodayVault(): Promise<void> {
         refreshTasks,
       },
     );
+    if (selectionOutcome === "changed" || selectionOutcome === "reconciled") restoreUnboundComposer();
   } catch (error) {
     if (vaultSelectionRequests.isCurrent(selectionRequest)) {
       renderVaultSelectionError(error);
@@ -7673,6 +7816,7 @@ async function selectTodayVault(): Promise<void> {
   } finally {
     collaborationVaultSwitchDraftWrites = null;
     vaultSelectionInProgress = false;
+    restoreUnboundComposer();
     renderCollaborationWorkspace();
     updateTodayOperationState(-1);
   }
@@ -7746,6 +7890,77 @@ function populateCalendarYears(centerYear: number): void {
   calendarYear.value = String(centerYear);
 }
 
+function updateCalendarTaskPreviewRows(): void {
+  if (!calendarGrid) return;
+
+  const cells = Array.from(calendarGrid.querySelectorAll<HTMLButtonElement>(".calendar-day"));
+  const firstCell = cells.find((cell) =>
+    cell.querySelector<HTMLElement>(".calendar-day-task-summary"),
+  );
+  const firstSummary = firstCell?.querySelector<HTMLElement>(".calendar-day-task-summary");
+  const firstSummaries = firstCell?.querySelector<HTMLElement>(".calendar-day-task-summaries");
+  const summaryStyle = firstSummary ? window.getComputedStyle(firstSummary) : null;
+  const summariesStyle = firstSummaries ? window.getComputedStyle(firstSummaries) : null;
+  const lineHeight = summaryStyle
+    ? Number.parseFloat(summaryStyle.lineHeight) ||
+      (Number.parseFloat(summaryStyle.fontSize) || 10) * 1.25
+    : 12;
+  const summaryGap = summariesStyle
+    ? Number.parseFloat(summariesStyle.rowGap || summariesStyle.gap) || 0
+    : 0;
+
+  for (const cell of cells) {
+    const summaries = cell.querySelector<HTMLElement>(".calendar-day-task-summaries");
+    const top = cell.querySelector<HTMLElement>(".calendar-day-top");
+    if (!summaries || !top) continue;
+
+    const items = Array.from(summaries.querySelectorAll<HTMLElement>(".calendar-day-task-summary"));
+    const cellStyle = window.getComputedStyle(cell);
+    const topStyle = window.getComputedStyle(top);
+    const summariesStyle = window.getComputedStyle(summaries);
+    const topMargin = Number.parseFloat(topStyle.marginBottom) || 0;
+    const summariesMargin = Number.parseFloat(summariesStyle.marginTop) || 0;
+    const borders =
+      (Number.parseFloat(cellStyle.borderTopWidth) || 0) +
+      (Number.parseFloat(cellStyle.borderBottomWidth) || 0);
+    const padding =
+      (Number.parseFloat(cellStyle.paddingTop) || 0) +
+      (Number.parseFloat(cellStyle.paddingBottom) || 0);
+    const available = Math.max(
+      0,
+      cell.getBoundingClientRect().height - borders - padding -
+        top.getBoundingClientRect().height - topMargin - summariesMargin,
+    );
+    const capacity = Math.min(
+      items.length,
+      Math.max(0, Math.floor((available + summaryGap + 0.001) / (lineHeight + summaryGap))),
+    );
+    items.forEach((item, index) => {
+      item.hidden = index >= capacity;
+    });
+
+    const baseOverflow = Number.parseInt(cell.dataset.calendarTaskOverflowBase ?? "0", 10) || 0;
+    const overflowCount = baseOverflow + Math.max(0, items.length - capacity);
+    const overflow = cell.querySelector<HTMLElement>(".calendar-day-task-overflow");
+    if (overflow) {
+      overflow.dataset.calendarTaskOverflow = String(overflowCount);
+      if (overflowCount > 0) {
+        setCopy(overflow, "calendar.taskOverflow", { count: overflowCount });
+      } else {
+        setRawText(overflow, "");
+      }
+    }
+    const accessibleBase = cell.dataset.calendarTaskAriaBase ?? cell.getAttribute("aria-label") ?? "";
+    cell.setAttribute(
+      "aria-label",
+      [
+        accessibleBase,
+        overflowCount > 0 ? t("calendar.taskOverflow", { count: overflowCount }) : "",
+      ].filter(Boolean).join(" · "),
+    );
+  }
+}
+
 function renderCalendarGrid(month: CalendarMonthView): void {
   if (calendarMonthHeading) {
     calendarMonthHeading.textContent = formatInterfaceMonth(
@@ -7795,18 +8010,15 @@ function renderCalendarGrid(month: CalendarMonthView): void {
           day.taskOverflowCount > 0
             ? t("calendar.taskOverflow", { count: day.taskOverflowCount })
             : "";
-        button.setAttribute(
-          "aria-label",
-          [
-            calendarDateLabel(day.date),
-            day.isToday ? t("calendar.today") : "",
-            t(status.label),
-            taskNames,
-            taskOverflowLabel,
-          ]
-            .filter(Boolean)
-            .join(" · "),
-        );
+        const accessibleBase = [
+          calendarDateLabel(day.date),
+          day.isToday ? t("calendar.today") : "",
+          t(status.label),
+          taskNames,
+        ].filter(Boolean).join(" · ");
+        button.dataset.calendarTaskAriaBase = accessibleBase;
+        button.dataset.calendarTaskOverflowBase = String(day.taskOverflowCount);
+        button.setAttribute("aria-label", [accessibleBase, taskOverflowLabel].filter(Boolean).join(" · "));
         button.setAttribute("aria-pressed", String(selected));
         const top = document.createElement("span");
         top.className = "calendar-day-top";
@@ -7844,6 +8056,7 @@ function renderCalendarGrid(month: CalendarMonthView): void {
         return button;
       }),
     );
+    updateCalendarTaskPreviewRows();
   }
   renderWorkspaceRailContext("calendar");
 }
@@ -11787,6 +12000,9 @@ renderInterfaceLanguage({ interfaceLanguage: "zh" });
 syncWorkspaceViewportMode();
 window.addEventListener("resize", () => {
   syncWorkspaceViewportMode();
+  if (currentWorkspaceDestination === "calendar") {
+    updateCalendarTaskPreviewRows();
+  }
   if (
     currentWorkspaceDestination === "today" &&
     currentTodayView?.isToday &&
@@ -11847,6 +12063,7 @@ document.querySelector<HTMLButtonElement>("#collaboration-date-today")?.addEvent
 });
 
 collaborationDateInput?.addEventListener("change", () => {
+  if (collaborationSessionCreationAttempt || collaborationSessionCreationPromise) return;
   collaborationActivityDateExplicit = Boolean(collaborationDateInput.value);
   collaborationActivityDate = collaborationDateInput.value;
   void refreshCollaborationWorkspace();
@@ -11901,12 +12118,15 @@ collaborationReasoningEffortSelect?.addEventListener("change", () => {
   void saveCollaborationReasoningEffort();
 });
 
-collaborationMessageDraft?.addEventListener("input", () => {
+function handleCollaborationDraftInput(): void {
   const target = currentCollaborationVoiceTarget();
   if (target) collaborationSubmittedDrafts.delete(collaborationDraftKey(target.sessionId, target.targetDate));
+  collaborationSessionCreationError = null;
   stashCollaborationDraft();
   renderCollaborationWorkspace();
-});
+}
+
+collaborationMessageDraft?.addEventListener("input", handleCollaborationDraftInput);
 
 collaborationLongTermContent?.addEventListener("input", () => {
   const binding = collaborationLongTermContent.dataset.vaultBinding;

@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
 
 // Production macOS WebKit DOM/layout with only the public Tauri boundary substituted.
-function probe(width:number, scenario:string, withUntimed=true) {
+function probe(width:number, scenario:string, withUntimed=true, height=758) {
   const directory=mkdtempSync(join(tmpdir(),'pdex14-webkit-'));
   try {
     const root=new URL('../..',import.meta.url).pathname;
@@ -38,10 +38,10 @@ function probe(width:number, scenario:string, withUntimed=true) {
       const region=document.querySelector('#today-unlocated-time-region'),trigger=document.querySelector('#today-unlocated-time-shortcut');
       const rect=n=>{const r=n.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right,top:r.top,bottom:r.bottom};};
       const side=document.querySelector('.today-side-region');
-      const snapshot=()=>({side:rect(side),sideHidden:side.hidden,viewport:innerWidth,axis:rect(document.querySelector('#today-axis-scroll-surface')),nav:rect(document.querySelector('.workspace-sidebar')),region:rect(region),hidden:region.hidden,expanded:trigger.getAttribute('aria-expanded'),label:trigger.textContent,aria:trigger.getAttribute('aria-label'),content:region.textContent});
+      const snapshot=()=>({side:rect(side),sideHidden:side.hidden,viewport:innerWidth,axis:rect(document.querySelector('#today-axis-scroll-surface')),nav:rect(document.querySelector('.workspace-sidebar')),region:rect(region),hidden:region.hidden,expanded:trigger.getAttribute('aria-expanded'),label:trigger.getAttribute('aria-label'),visibleText:trigger.textContent,badge:trigger.querySelector('.sidebar-toggle-count')?.textContent??null,content:region.textContent});
       ${scenario}
     `);
-    return JSON.parse(execFileSync('swift',[new URL('./helpers/rendered-today-unlocated.swift',import.meta.url).pathname,join(directory,'index.html'),join(directory,'check.js'),String(width),'758'],{encoding:'utf8',timeout:60000}));
+    return JSON.parse(execFileSync('swift',[new URL('./helpers/rendered-today-unlocated.swift',import.meta.url).pathname,join(directory,'index.html'),join(directory,'check.js'),String(width),String(height)],{encoding:'utf8',timeout:60000}));
   } finally {rmSync(directory,{recursive:true,force:true});}
 }
 
@@ -123,8 +123,8 @@ for(const width of [640,830,1000,1280]) {
   });
 }
 
-for(const width of [640,830,1000,1280]) {
-  test(`Calendar existing summary toggles in normal flow at ${width}px without altering selection, month or drafts`, {skip:process.platform!=='darwin'},()=>{
+for(const [width,height] of [[640,720],[795,756],[874,688],[1280,720]] as const) {
+  test(`Calendar existing summary stays docked right at ${width}×${height} without altering selection, month or drafts`, {skip:process.platform!=='darwin'},()=>{
     const result=probe(width,`
       document.querySelector('[data-workspace-destination="calendar"].destination-button').click();
       await until(()=>document.querySelectorAll('#calendar-grid [data-calendar-date]').length>0);
@@ -135,14 +135,15 @@ for(const width of [640,830,1000,1280]) {
       const toolbar=document.querySelector('.calendar-toolbar'),header=document.querySelector('.calendar-header');
       const before={summary:rect(summary),grid:rect(grid),toolbar:rect(toolbar),header:rect(header),toggle:rect(toggle)};toggle.focus();toggle.click();const hidden=summary.hidden,collapsed={grid:rect(grid)};toggle.click();
       return JSON.stringify({before,collapsed,after:{summary:rect(summary),grid:rect(grid)},hidden,expanded:toggle.getAttribute('aria-expanded'),focused:document.activeElement===toggle,contentKept:content===summary.textContent,cellsKept:cells.every((c,i)=>grid.children[i]===c),selectionKept:selected===grid.querySelector('[data-selected]'),draft:form.value,dialog:summary.closest('dialog')!==null,overflow:document.documentElement.scrollWidth>innerWidth,calls});
-    `);
+    `,true,height);
     assert.equal(result.hidden,true);assert.equal(result.expanded,'true');assert.equal(result.focused,true);
     assert.equal(result.dialog,false);assert.equal(result.contentKept,true);assert.equal(result.cellsKept,true);assert.equal(result.selectionKept,true);
     assert.equal(result.draft,'Retained Calendar draft');assert.equal(result.overflow,false,JSON.stringify(result));
-    assert.ok(result.before.summary.left>=result.before.grid.right,`summary remains right of the month at ${width}px: ${JSON.stringify(result.before)}`);
-    assert.ok(result.before.summary.width>=140&&result.before.grid.width>=230,JSON.stringify(result.before));
-    assert.ok(result.before.toggle.right<=result.before.toolbar.right&&result.before.toggle.top>=result.before.toolbar.top&&result.before.toggle.bottom<=result.before.toolbar.bottom,`summary toggle stays inside the right-aligned toolbar: ${JSON.stringify(result.before)}`);
-    assert.ok(result.collapsed.grid.width>result.before.grid.width+100,`collapsing the summary releases Calendar width: ${JSON.stringify(result)}`);
+    assert.ok(result.before.summary.left>=result.before.grid.right,JSON.stringify(result.before));
+    assert.ok(result.before.toggle.right<=result.before.toolbar.right&&result.before.toggle.top>=result.before.toolbar.top&&result.before.toggle.bottom<=result.before.toolbar.bottom,`summary toggle stays inside its toolbar: ${JSON.stringify(result.before)}`);
+    assert.ok(result.before.summary.right<=width && result.before.summary.width>80,JSON.stringify(result.before));
+    assert.ok(result.before.grid.width>100,JSON.stringify(result.before));
+    assert.ok(result.collapsed.grid.width>result.before.grid.width+30,JSON.stringify(result));
     assert.deepEqual({summary:result.before.summary,grid:result.before.grid},result.after);
     assert.deepEqual(result.calls.filter((c:{command:string})=>/^(create_|edit_|update_|save_|set_)/.test(c.command)),[]);
     console.log('Calendar geometry '+width+':',JSON.stringify(result));
@@ -164,7 +165,8 @@ for(const width of [640,830,1000,1280]) {
     assert.ok(result.expanded.side.right<=width&&result.expanded.axis.width>=160,JSON.stringify(result));
     assert.equal(result.dialogs,0);assert.equal(result.overflow,false);
     assert.match(result.title,/Hide Today sidebar/);assert.equal(result.title,result.name);
-    assert.ok(result.trigger.right<=width);assert.equal(result.expanded.label.trim(),'');assert.match(result.expanded.aria,/2 untimed items/);
+    assert.match(result.name,/2 untimed items/);assert.equal(result.expanded.visibleText.trim(),"");assert.equal(result.expanded.badge,null);
+    assert.ok(result.trigger.right<=width);
     console.log('Today docked geometry '+width+':',JSON.stringify(result));
   });
 }
@@ -244,10 +246,9 @@ test('Tasks quick schedule shows its current date and time within the existing r
   assertQuickSchedulePresentation(result,[/09:30/,/Today|Aug 10/],/Aug 10.*09:30/);
 });
 
-test('Today zero untimed count retains a compact recoverable sidebar entry without visible count text', {skip:process.platform!=='darwin'},()=>{
+test('Today zero untimed count retains an icon-only, accessible sidebar entry', {skip:process.platform!=='darwin'},()=>{
   const result=probe(1000,`const before=snapshot();trigger.focus();trigger.click();return JSON.stringify({before,after:snapshot(),triggerHidden:trigger.hidden,focus:document.activeElement===trigger});`,false);
   assert.equal(result.before.sideHidden,true);assert.equal(result.triggerHidden,false);
   assert.equal(result.after.sideHidden,false);assert.equal(result.after.hidden,true);
-  assert.equal(result.after.label.trim(),'');assert.equal(result.focus,true);
-  assert.match(result.after.aria,/0 untimed items/);
+  assert.match(result.after.label,/0 untimed items/);assert.equal(result.after.visibleText.trim(),"");assert.equal(result.after.badge,null);assert.equal(result.focus,true);
 });

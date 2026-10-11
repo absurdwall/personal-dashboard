@@ -47,9 +47,12 @@ test("Codex settings report experimental status and runtime capability instead o
   assert.match(copies, /"collaboration\.turnBlocked":\s*\{[^\n]*zh:[^\n]*en:/);
 });
 
-test("the composer remains gated on authenticated runtime plus verified read-only turns", () => {
+test("local composition remains editable while Send is gated on authenticated runtime plus verified read-only turns", () => {
   assert.match(main, /currentCollaborationConnection\?\.authenticated === true\s*&&\s*currentCollaborationConnection\.authMode === "chatgpt"\s*&&\s*currentCollaborationConnection\.readOnlyTextTurnsAvailable/);
-  assert.match(html, /id="collaboration-message-draft"[^>]*disabled/);
+  assert.doesNotMatch(html, /id="collaboration-message-draft"[^>]*disabled/);
+  assert.match(main, /collaborationMessageDraft\.disabled = composerBusy/);
+  assert.match(main, /collaborationEmptyDraft = collaborationMessageDraft\.value/);
+  assert.match(main, /collaborationSendButton\.disabled = !connected \|\| !vaultAvailable/);
   assert.match(html, /id="collaboration-send-message"[^>]*disabled/);
   assert.match(html, /id="collaboration-composer-status"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(html, /aria-describedby="collaboration-composer-status"/);

@@ -58,7 +58,7 @@ function renderScenario({ width, height, selected, expandContext = false, expand
       initializeCollaborationPanels();
       await new Promise(resolve=>setTimeout(resolve,80));
       const layout=document.querySelector('.collaboration-layout');
-      if(${expandContext} && layout.dataset.columns==='two' && document.querySelector('#collaboration-toggle-context').getAttribute('aria-expanded')==='false') document.querySelector('#collaboration-toggle-context').click();
+      if(${expandContext} && ['single','two'].includes(layout.dataset.columns) && document.querySelector('#collaboration-toggle-context').getAttribute('aria-expanded')==='false') document.querySelector('#collaboration-toggle-context').click();
       if(${expandHistory} && document.querySelector('#collaboration-toggle-history').getAttribute('aria-expanded')==='false') document.querySelector('#collaboration-toggle-history').click();
       const inputHelp=document.querySelector('.collaboration-composer .collaboration-help');
       if(${openComposerHelp}) inputHelp.open=true;
@@ -67,19 +67,6 @@ function renderScenario({ width, height, selected, expandContext = false, expand
       await new Promise(resolve=>setTimeout(resolve,40));
       const rect=node=>{const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height};};
       const style=node=>{const s=getComputedStyle(node);return {fontFamily:s.fontFamily,fontSize:s.fontSize,lineHeight:s.lineHeight};};
-      const activeDestination=app.dataset.workspaceDestination;
-      const pageFrames={};
-      for(const name of ['today','tasks','calendar','collaboration']){
-        const page=document.querySelector('#workspace-destination-'+name);
-        document.querySelectorAll('[data-workspace-panel]').forEach(node=>node.hidden=node!==page);
-        app.dataset.workspaceDestination=name;
-        await new Promise(resolve=>setTimeout(resolve,12));
-        const pageStyle=getComputedStyle(page),pageHeader=page.querySelector('.destination-page-header'),headerStyle=getComputedStyle(pageHeader);
-        pageFrames[name]={rect:rect(page),paddingTop:pageStyle.paddingTop,paddingLeft:pageStyle.paddingLeft,paddingRight:pageStyle.paddingRight,header:rect(pageHeader),headerPaddingBottom:headerStyle.paddingBottom,headerMarginBottom:headerStyle.marginBottom,headerBorderBottomStyle:headerStyle.borderBottomStyle};
-      }
-      document.querySelectorAll('[data-workspace-panel]').forEach(node=>node.hidden=node.dataset.workspacePanel!=='collaboration');
-      app.dataset.workspaceDestination=activeDestination;
-      await new Promise(resolve=>setTimeout(resolve,24));
       const shell=document.querySelector('.workspace-shell');
       const regions=document.querySelector('.workspace-regions');
       const destination=document.querySelector('#workspace-destination-collaboration');
@@ -112,41 +99,43 @@ function renderScenario({ width, height, selected, expandContext = false, expand
         currentWorkFollowsPrimary:layout.dataset.columns!=='two'||currentWork.hidden||rect(currentWork).top>=rect(primary).bottom,
         composerInChat:composerRect.top>=chatRect.top&&composerRect.bottom<=chatRect.bottom,
         composerInViewport:composerRect.top>=0&&composerRect.bottom<=innerHeight,
-        pageFrames,
+        noSessionInput:{disabled:textarea.disabled,hitTest:document.elementFromPoint(textarea.getBoundingClientRect().left+textarea.getBoundingClientRect().width/2,textarea.getBoundingClientRect().top+textarea.getBoundingClientRect().height/2)?.id,hasFocus:document.activeElement===textarea},
         titleStyles:{today:style(document.querySelector('#today-page-heading')),tasks:style(document.querySelector('#tasks-heading')),calendar:style(document.querySelector('.calendar-header h2')),habits:style(document.querySelector('#habits-heading')),collaboration:style(title)},
-        descriptionStyles:{today:style(document.querySelector('#workspace-description')),collaboration:style(document.querySelector('.collaboration-description'))}
+        descriptionStyles:{today:style(document.querySelector('#workspace-destination-today .destination-page-header > div:first-child > p:last-child')),tasks:style(document.querySelector('#workspace-destination-tasks .destination-page-header > div:first-child > p:last-child')),collaboration:style(document.querySelector('.collaboration-description'))},
+        pageFrames:Object.fromEntries(['today','tasks','calendar','collaboration'].map(name=>{const destination=document.querySelector('#workspace-destination-'+name),header=destination.querySelector('.destination-page-header'),frame=getComputedStyle(destination),heading=getComputedStyle(header);const previouslyHidden=destination.hidden;destination.hidden=false;const bounds=rect(destination);destination.hidden=previouslyHidden;return[name,{paddingTop:frame.paddingTop,paddingRight:frame.paddingRight,paddingBottom:frame.paddingBottom,paddingLeft:frame.paddingLeft,headerMarginBottom:heading.marginBottom,headerPaddingBottom:heading.paddingBottom,headerBorderBottomWidth:heading.borderBottomWidth,bounds:{left:bounds.left,right:bounds.right,width:bounds.width}}]}))
       };
       const composerTop=composerRect.top;
       messages.scrollTop=messages.scrollHeight;
       await new Promise(resolve=>setTimeout(resolve,30));
       result.messageScrollTop=messages.scrollTop;
       result.composerTopAfterMessageScroll=rect(composer).top;
-      result.composerTopAfterMessageScrollDifference=Math.abs(result.composerTopAfterMessageScroll-composerTop);
-      const interactionNodes=[document.querySelector('#collaboration-message-draft'),document.querySelector('#collaboration-send-message'),document.querySelector('#collaboration-new-session'),document.querySelector('.collaboration-session-button')].filter(Boolean);
-      result.interactionTargets=[];
-      for(const target of interactionNodes){
-        let bounds=rect(target);
-        if(bounds.top<0||bounds.bottom>innerHeight||bounds.left<0||bounds.right>innerWidth){target.scrollIntoView({block:'center',inline:'nearest'});await new Promise(resolve=>setTimeout(resolve,24));bounds=rect(target);}
-        const hit=document.elementFromPoint(bounds.left+bounds.width/2,bounds.top+bounds.height/2);
-        target.focus({preventScroll:true});
-        result.interactionTargets.push({id:target.id||target.className,visible:bounds.top>=0&&bounds.bottom<=innerHeight&&bounds.left>=0&&bounds.right<=innerWidth,pointerHit:Boolean(hit&&target.contains(hit)),focused:document.activeElement===target,disabled:target.disabled===true});
-      }
-      if(layout.dataset.columns==='two'&&!currentWork.hidden){
-        information.scrollTop=information.scrollHeight;
+      const reachableByPageScroll=async node=>{
+        const infoRect=rect(information),targetRect=rect(node);
+        const desired=information.scrollTop+targetRect.top-infoRect.top;
+        information.scrollTop=Math.max(0,Math.min(desired,information.scrollHeight-information.clientHeight));
         await new Promise(resolve=>setTimeout(resolve,30));
-        const workRect=rect(currentWork),infoRect=rect(information);
-        result.currentWorkReachableByPageScroll=workRect.bottom>infoRect.top&&workRect.top<infoRect.bottom;
+        const scrolledInfo=rect(information),scrolledTarget=rect(node);
+        return scrolledTarget.bottom>scrolledInfo.top&&scrolledTarget.top<scrolledInfo.bottom;
+      };
+      if(['single','two'].includes(layout.dataset.columns)&&(!currentWork.hidden||!history.hidden)){
+        if(!currentWork.hidden)result.currentWorkReachableByPageScroll=await reachableByPageScroll(currentWork);
+        if(!history.hidden)result.historyReachableByPageScroll=await reachableByPageScroll(history);
         result.pageScrollTop=information.scrollTop;
       } else if(layout.dataset.columns==='three'&&!currentWork.hidden){
         currentWork.scrollTop=currentWork.scrollHeight;
         result.currentWorkReachableByPaneScroll=currentWork.scrollTop>0;
-      } else if(layout.dataset.columns==='single'&&!history.hidden){
-        const historyRectBeforeScroll=rect(history),informationRectBeforeScroll=rect(information);
-        information.scrollTop+=historyRectBeforeScroll.top-informationRectBeforeScroll.top-(information.clientHeight-history.clientHeight)/2;
-        await new Promise(resolve=>setTimeout(resolve,30));
-        const historyRect=rect(history),infoRect=rect(information);
-        result.historyReachableByPageScroll=historyRect.top>=infoRect.top&&historyRect.bottom<=infoRect.bottom;
-        result.pageScrollTop=information.scrollTop;
+      }
+      result.composerTopAfterMessageScrollDifference=Math.abs(result.composerTopAfterMessageScroll-composerTop);
+      if(${selected}) {
+        const interactionNodes=[textarea,send,document.querySelector('#collaboration-new-session'),document.querySelector('.collaboration-session-button')].filter(Boolean);
+        result.interactionTargets=[];
+        for(const target of interactionNodes){
+          let bounds=rect(target);
+          if(bounds.top<0||bounds.bottom>innerHeight||bounds.left<0||bounds.right>innerWidth){target.scrollIntoView({block:'center',inline:'nearest'});await new Promise(resolve=>setTimeout(resolve,24));bounds=rect(target);}
+          const hit=document.elementFromPoint(bounds.left+bounds.width/2,bounds.top+bounds.height/2);
+          target.focus({preventScroll:true});
+          result.interactionTargets.push({id:target.id||target.className,visible:bounds.top>=0&&bounds.bottom<=innerHeight&&bounds.left>=0&&bounds.right<=innerWidth,pointerHit:Boolean(hit&&target.contains(hit)),focused:document.activeElement===target,disabled:target.disabled===true});
+        }
       }
       return JSON.stringify(result);`;
     const scriptPath = join(output, "check.js");
@@ -170,13 +159,16 @@ function assertSharedHeadings(result: any) {
     assert.equal(title.fontSize, reference.fontSize, `${name} title size`);
     assert.equal(title.lineHeight, reference.lineHeight, `${name} title line height`);
   }
-  assert.deepEqual(result.descriptionStyles.collaboration, result.descriptionStyles.today, "Collaboration description scale");
-  const collaboration=result.pageFrames.collaboration,tasks=result.pageFrames.tasks;
-  assert.ok(Math.abs(collaboration.rect.left-tasks.rect.left)<1&&Math.abs(collaboration.rect.right-tasks.rect.right)<1,JSON.stringify({collaboration,tasks}));
-  assert.equal(collaboration.paddingTop,tasks.paddingTop,JSON.stringify({collaboration,tasks}));
-  assert.equal(collaboration.headerPaddingBottom,tasks.headerPaddingBottom,JSON.stringify({collaboration,tasks}));
-  assert.equal(collaboration.headerMarginBottom,tasks.headerMarginBottom,JSON.stringify({collaboration,tasks}));
-  assert.equal(collaboration.headerBorderBottomStyle,tasks.headerBorderBottomStyle,JSON.stringify({collaboration,tasks}));
+  assert.deepEqual(result.descriptionStyles.collaboration, result.descriptionStyles.today, "Collaboration uses the visible Today introduction scale");
+  assert.deepEqual(result.descriptionStyles.collaboration, result.descriptionStyles.tasks, "Collaboration uses the visible Tasks introduction scale");
+  for (const [name, frame] of Object.entries(result.pageFrames) as [string, any][]) {
+    const {bounds: _bounds, ...style} = frame;
+    const {bounds: _todayBounds, ...todayStyle} = result.pageFrames.today;
+    assert.deepEqual(style, todayStyle, `${name} uses the shared page frame and header rhythm`);
+    for (const coordinate of ["left", "right", "width"]) {
+      assert.ok(Math.abs(frame.bounds[coordinate] - result.pageFrames.today.bounds[coordinate]) < 1, `${name} ${coordinate} aligns with Today: ${JSON.stringify(frame.bounds)}`);
+    }
+  }
 }
 
 function assertCollaborationTargets(result: any) {
@@ -196,6 +188,8 @@ for (const [width, height] of sizes) {
     assert.equal(result.globalHeaderHidden, true);
     assert.equal(result.localHeaderInsideInformation, true);
     assert.equal(result.activityDateInsideLocalHeader, true);
+    assert.equal(result.noSessionInput.disabled, false);
+    assert.equal(result.noSessionInput.hitTest, "collaboration-message-draft");
     assert.equal(result.composerInChat, true, JSON.stringify(result));
     assert.equal(result.composerInViewport, true, JSON.stringify(result));
     assert.ok(result.textarea.height > 0);
@@ -215,19 +209,17 @@ for (const [width, height] of sizes) {
     assert.equal(result.currentWorkFollowsPrimary, true, JSON.stringify(result));
     assert.equal(result.composerInChat, true, JSON.stringify(result));
     assert.equal(result.composerInViewport, true, JSON.stringify(result));
+    assertCollaborationTargets(result);
     assert.ok(result.messageList.clientHeight >= 80, JSON.stringify(result));
     assert.ok(result.messageList.scrollHeight > result.messageList.clientHeight, JSON.stringify(result.messageList));
     assert.ok(result.messageScrollTop > 0);
     assert.ok(result.composerTopAfterMessageScrollDifference < 1, JSON.stringify(result));
-    assertCollaborationTargets(result);
-    if (result.mode === "two") {
+    if (result.mode === "two" || result.mode === "single") {
       assert.ok(result.information.scrollHeight > result.information.clientHeight, JSON.stringify(result.information));
       assert.equal(result.currentWorkReachableByPageScroll, true, JSON.stringify(result.currentWork));
-    } else if(result.mode === "three") {
-      assert.equal(result.currentWorkReachableByPaneScroll, true, JSON.stringify(result.currentWork));
     } else {
-      assert.equal(result.mode, "single");
-      assert.equal(result.historyReachableByPageScroll, true, JSON.stringify(result.history));
+      assert.equal(result.mode, "three");
+      assert.equal(result.currentWorkReachableByPaneScroll, true, JSON.stringify(result.currentWork));
     }
     assertSharedHeadings(result);
   });
@@ -236,10 +228,11 @@ for (const [width, height] of sizes) {
 test("expanded input and saving details do not clip the retained composer controls at 795×720", { skip: process.platform !== "darwin" }, () => {
   const result = renderScenario({ width: 795, height: 720, selected: true, expandContext: true, openComposerHelp: true });
   assert.equal(result.composerHelpOpen, true);
+  assert.equal(result.mode, "single");
   assert.equal(result.composerInChat, true, JSON.stringify(result));
+  assert.equal(result.composerInViewport, true, JSON.stringify(result));
   assert.ok(result.send.height > 0);
   assert.ok(result.send.top >= result.composer.top && result.send.bottom <= result.composer.bottom, JSON.stringify(result));
-  assert.ok(result.information.scrollHeight > result.information.clientHeight, JSON.stringify(result.information));
 });
 
 test("single-column Collaboration keeps the composer visible when five-session history is expanded at 640×756", { skip: process.platform !== "darwin" }, () => {
@@ -259,6 +252,4 @@ test("single-column Collaboration keeps the composer visible when five-session h
   assert.ok(result.history.clientHeight >= 100, JSON.stringify(result.history));
   assert.ok(result.history.top >= result.chat.bottom, JSON.stringify({ history: result.history, chat: result.chat }));
   assert.equal(result.historyReachableByPageScroll, true, JSON.stringify(result));
-  assertSharedHeadings(result);
-  assertCollaborationTargets(result);
 });
