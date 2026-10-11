@@ -9958,3 +9958,6 @@ button.habit-cell:focus-visible {
 .today-unlocated-drawer::backdrop { background: rgb(24 32 29 / 24%); }
 .today-unlocated-drawer > button { display: block; margin: 0 0 12px auto; }
 .today-unlocated-drawer .today-axis-unlocated-region { margin: 0; }
+
+.tasks-content > .task-create-ended-attempts { margin: .5rem 0; overflow-wrap: anywhere; }
+.task-create-ended-attempts dd { white-space: pre-wrap; }

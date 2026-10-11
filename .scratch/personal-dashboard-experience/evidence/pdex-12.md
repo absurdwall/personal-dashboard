@@ -56,3 +56,39 @@ No real personal profile/Vault/App writes, native installation, remote query/pub
 | `/tmp/pdex12-frontend-full.log` | `a621be0af63b98da2548437470a1f091fec45f46e79dc81ec3924db0462dc4ac` |
 | `/tmp/pdex12-lived-day-isolated.log` | `b2ce28e0d47820927bc04e4dece94285bed8058a0bfdbb28fc430d9270c3e233` |
 | `/tmp/pdex12-browser-compatibility-initial.log` | `20b4f08b88cb14e7d88000baff9f11237711502e2b659e5da28b522509103dce` |
+
+
+## Independent review repair — 2026-10-11
+
+The review at `f0e4a4d90ec59fd1ca0ac0b38491f55cc25e3e81` found two P2 issues: an invalid original list or an externally changed same-id task left creation permanently locked; new creation catches also said “Task not saved” although a response could have been lost after saving. The original implementation, test failures and f0 native evidence remain historical; this section supersedes their creation recovery outcome only. PDEX-13, Calendar, left navigation, Rust storage and other Task mutation surfaces are unchanged by this repair.
+
+Repair product commit: `ee96dafa8ff9715705d0a24005666aa5791d9c3f`. Current integration through `2093bb58b50f411523d00531c27e88e166d4eac7` is merged unsquashed. The ticket remains **in-progress** pending independent review of this repair, a newly frozen packaged candidate, reviewed normal installation and installed human acceptance. No installation/acceptance completion is inferred from these automated checks.
+
+Creation-only failures now say “Save result unconfirmed. Draft retained; read back to check” plus the actual diagnostic (Chinese and English copies). Failed readback stays unconfirmed. Positive same-target readback still independently distinguishes matching saved task, currently absent original identity, and an existing identity with different values. No global `tasks.notSaved` wording, Calendar or other Task flow was changed.
+
+An explicit **End original submission** control is disabled while pending/unverified and enabled only after successful readback establishes absence or conflict. Ending makes no command call or business-data edit. It retains the full original normalized submitted input/id/revision and raw draft in a transient review entry, clears the active attempt, and lets the next explicit creation allocate a new id and use current valid list defaults. The retained original fields remain readable; an observed existing identity offers **View existing task** through the existing selected details/focus path. There is no new persistent Task store, automatic replay, payload-changing reuse of the old id, or extra approval layer.
+
+Verification uses the same production Chrome/Tauri public boundary fixture; **it is not real Rust persistence, native WebKit or OS IME observation**. Root owns subsequent serialized real synthetic storage and packaged WebKit checks.
+
+- Red → green recovery slice 1 covers both externally archived and removed original lists: old refusal initially reported “Task not saved”; new unknown wording plus guarded end/readback allows a fresh valid Inbox task under a new id. The absent old id is never created/replayed; original input remains reviewable.
+- Red → green slice 2 covers a real fixture save followed by lost response and external rename/context edit. Failed recheck retains unknown wording and disables End; a successful recheck proves same-id conflict. The initial red lacked View existing task; green permits explicit end and viewing the unchanged existing task, then one new Task with another id. No update/delete/state command or duplicate is emitted.
+- An additional modal probe was green on first execution after the shared repair: guarded End, readable action geometry at 830-wide, full original context retained, focus returned, blank new modal and new id. This probe was not a red-first slice and is not claimed as one.
+- `npm run build` — final worker build passed.
+- `PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs node --test tests/browser/task-quick-create.mjs tests/browser/task-list-details.mjs tests/browser/today-axis-task-gestures.mjs tests/browser/today-axis-plan-gestures.mjs` — **34 passed, 0 failed** (11 creation, 7 selected detail, 8 Task gesture, 8 plan gesture). Current integration's retained date-label assertion repair is included without changing that product flow.
+- `node --test tests/frontend/task-surface.test.ts tests/frontend/task-state-history.test.ts tests/frontend/task-history*.test.ts` — **21 passed, 0 failed** after final repair product commit.
+
+Repair logs below are immutable outside Git; `/tmp/pdex12-repair-validation-artifacts.json` repeats this inventory for candidate freezing. The earlier broad frontend failure remains in the original record; PDEX-13's fixture correction is now merged. This worker has not rerun/claimed a full-suite or Rust result for the repair.
+
+| Repair artifact | SHA-256 |
+|---|---|
+| `/tmp/pdex12-repair-baseline-build.log` | `02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7` |
+| `/tmp/pdex12-repair-slice1-red.log` | `a83e4ebf5fce117857b5014c735a8955b1619ca1df68993c7ffa4bba173d05a6` |
+| `/tmp/pdex12-repair-slice1-build.log` | `02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7` |
+| `/tmp/pdex12-repair-slice1-green.log` | `281f64b4c9c4c7e66394d2cc7e3b8582ab256b5b6ccc62283fe86f6cad361c86` |
+| `/tmp/pdex12-repair-slice2-red.log` | `f95df74b0dbed583968ccb63ae4af609433647eef952957852a22db88bb4f460` |
+| `/tmp/pdex12-repair-slice2-build.log` | `02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7` |
+| `/tmp/pdex12-repair-creation-final.log` | `b22d4dc163497376dd10d6bd76aa3b5c62e01e19c2481c9b11d829dea3dea45f` |
+| `/tmp/pdex12-repair-modal-confirmation.log` | `e6bb7b7f8a7443229be482a78a487bc657b3c5cf419e91becc3a124eafd15ef8` |
+| `/tmp/pdex12-repair-final-build.log` | `02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7` |
+| `/tmp/pdex12-repair-browser-final.log` | `f7b66c79b66af0795a8b29fa29d69595e35f06313e4a9425d696bdeb97755062` |
+| `/tmp/pdex12-repair-frontend-focused-final.log` | `b59fefd1d2f90e22469677ca6f9b722e717fe45779a599558e4790d05f4ce09d` |
