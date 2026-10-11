@@ -20,6 +20,7 @@ export function attachTodayAxisGestures<Context>(options: Readonly<{
   resolveTarget(element: Element, context: Context): AxisGestureTarget | null | false;
   onCommit(change: AxisGestureCommit<Context>): void;
   onInvalid(): void;
+  previewLabel?(change: AxisGestureCommit<Context>): string;
 }>): () => void {
   const {plot, scrollSurface} = options;
   let gesture: {id:number; context:Context; target:AxisGestureTarget|null; originY:number; lastY:number;
@@ -47,6 +48,7 @@ export function attachTodayAxisGestures<Context>(options: Readonly<{
     preview.style.top=`${(current.start-current.bounds[0])/(current.bounds[1]-current.bounds[0])*100}%`;
     preview.style.height=`${Math.max(0,(current.end??current.start)-current.start)/(current.bounds[1]-current.bounds[0])*100}%`;
     preview.classList.toggle('is-point',current.end===null);
+    preview.textContent = options.previewLabel?.({context:current.context,target:current.target,startMinute:current.start,endMinute:current.end}) ?? '';
   };
   const scroll = () => {
     frame=0;const current=gesture;if(!current?.moved)return;

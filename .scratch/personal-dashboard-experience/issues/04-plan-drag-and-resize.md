@@ -11,7 +11,7 @@
 **ID:** PDEX-04
 **Parent:** [PDEX-SPEC-01](../spec.md)
 **Lifecycle:** in-progress
-**Implementation:** in progress
+**Implementation:** code-ready
 **Owner:** implementer PDEX-04
 **Assignee:** implementer PDEX-04
 **Date:** 2026-10-10
@@ -19,11 +19,11 @@
 
 ## Acceptance criteria
 
-- [ ] 具体区间整体移动保留时长，结束边界单独调整时长；时点不会自动变成区间。
-- [ ] 模糊计划拖动后保存为新的近似时间，不产生精确时长。
-- [ ] 采用已定吸附规则并支持边缘滚动；现存非整刻时间不会在读取时被改写。
-- [ ] 拖动先预览，真实保存并读回后成为正式结果，沿用冲突、失败和未确认结果的恢复行为。
-- [ ] 默认只改 Current arrangement；Confirmed facts 不具有此拖动写入行为，Morning 与 Task 不被联动修改。
+- [x] 具体区间整体移动保留时长，结束边界单独调整时长；时点不会自动变成区间。
+- [x] 模糊计划拖动后保存为新的近似时间，不产生精确时长。
+- [x] 采用已定吸附规则并支持边缘滚动；现存非整刻时间不会在读取时被改写。
+- [x] 拖动先预览，真实保存并读回后成为正式结果，沿用冲突、失败和未确认结果的恢复行为。
+- [x] 默认只改 Current arrangement；Confirmed facts 不具有此拖动写入行为，Morning 与 Task 不被联动修改。
 - [ ] 同一操作具有非拖动替代编辑方式；通过实际指针操作及文件读回验证上午到晚间、重开、冲突失败的结果。
 
 ## Verification
@@ -37,3 +37,5 @@ stories 4, 19–27, 63–67.
 - 2026-10-10: Published locally with the approved scope and dependencies; unassigned, not claimed, not started. Record subsequent authorized claims, commits, checks and acceptance here. Publication does not close the parent specification.
 
 - 2026-10-10: Authorized claim on codex/pdex-04, worktree /tmp/pdex-04; base integration a77603ec3f857f8a05a747b802c632f6aa269525. Dependency implementation/evidence inspected before start; packaged acceptance remains separately tracked.
+
+- 2026-10-10: Implemented persisted move/end-edit regression and synthetic public views in `9a55b41`; production plan adapters, shared-owner preview/resize, independent source guards and retained-value recovery in `cd707ea`. History-preserving merges `8199be6` and `2503003` retain PDEX-07/PDEX-08 integration. Public application suites (16 Daily Plan + 54 Today), build, 424 frontend tests and actual Chrome pointer suites (8 plan + 8 existing Task cases) passed. See [evidence](../evidence/pdex-04.md) for seams, commands and red-green observations. Implementation is code-ready; final packaged pointer-to-file/reopen acceptance remains unchecked for PDEX-11. Lifecycle stays in-progress.

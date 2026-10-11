@@ -1080,3 +1080,148 @@ fn explicit_body_time_keeps_its_precision_and_cannot_be_replaced_via_a_broad_hea
         .contains("时间字段"));
     assert_eq!(fs::read_to_string(record_path(&vault)).unwrap(), original);
 }
+
+#[test]
+fn direct_plan_moves_and_end_edits_preserve_duration_precision_and_independent_sources() {
+    use personal_dashboard_lib::today::{PlanTimeEditInput, TodayView};
+    let directory = TempDirectory::new();
+    let vault = directory.vault("drag-plan-vault");
+    let application = app(&vault);
+    let empty = application.read_date(DATE).unwrap();
+    let mut initial = initial_plan_input(empty.target_binding.unwrap(), None);
+    initial.arrangement = vec![
+        DailyPlanBlockInput {
+            period: "08:07–10:11".into(),
+            title: "Synthetic drag range".into(),
+            detail: None,
+        },
+        DailyPlanBlockInput {
+            period: "早晨".into(),
+            title: "Synthetic fuzzy drag".into(),
+            detail: None,
+        },
+        DailyPlanBlockInput {
+            period: "11:07".into(),
+            title: "Synthetic point drag".into(),
+            detail: None,
+        },
+    ];
+    refresh_fingerprint(&mut initial);
+    application.save_daily_plan(initial).unwrap();
+    let path = record_path(&vault);
+    let document = fs::read_to_string(&path).unwrap().replace(
+        "## 白天更新",
+        "## 白天更新\n\n### 已发生事件\n\n- 事实：08:45 Synthetic confirmed event\n",
+    );
+    fs::write(&path, &document).unwrap();
+    let loaded = application.read_date(DATE).unwrap();
+    assert_eq!(
+        loaded.time_axis.current_arrangement[0].start_minute,
+        Some(487)
+    );
+    assert_eq!(
+        loaded.time_axis.current_arrangement[0].end_minute,
+        Some(611)
+    );
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        document,
+        "reading never snaps original non-quarter times"
+    );
+    let edit = |view: &TodayView,
+                name: &str,
+                operation: &str,
+                start: u16,
+                end: Option<u16>|
+     -> PlanTimeEditInput {
+        let entry = view
+            .time_axis
+            .current_arrangement
+            .iter()
+            .find(|entry| entry.text == name)
+            .unwrap();
+        serde_json::from_value(
+            serde_json::json!({"date": DATE, "targetBinding": view.target_binding,
+            "expectedRevision": view.revision, "planId": entry.plan_id, "operationId": operation,
+            "startMinute": start, "endMinute": end}),
+        )
+        .unwrap()
+    };
+    let moved = application
+        .edit_plan_time(edit(
+            &loaded,
+            "Synthetic drag range",
+            "range-drag-1",
+            1080,
+            Some(1204),
+        ))
+        .unwrap()
+        .view
+        .unwrap();
+    assert_eq!(moved.timeline[0].period, "18:00–20:04");
+    assert_eq!(
+        moved.time_axis.current_arrangement[0].end_minute.unwrap()
+            - moved.time_axis.current_arrangement[0].start_minute.unwrap(),
+        124
+    );
+    let resized = application
+        .edit_plan_time(edit(
+            &moved,
+            "Synthetic drag range",
+            "range-resize-1",
+            1080,
+            Some(1245),
+        ))
+        .unwrap()
+        .view
+        .unwrap();
+    assert_eq!(resized.timeline[0].period, "18:00–20:45");
+    let fuzzy = application
+        .edit_plan_time(edit(
+            &resized,
+            "Synthetic fuzzy drag",
+            "fuzzy-drag-1",
+            1275,
+            None,
+        ))
+        .unwrap()
+        .view
+        .unwrap();
+    assert_eq!(fuzzy.timeline[1].period, "约21:15");
+    assert_eq!(fuzzy.time_axis.current_arrangement[1].end_minute, None);
+    let point = application
+        .edit_plan_time(edit(
+            &fuzzy,
+            "Synthetic point drag",
+            "point-drag-1",
+            1335,
+            None,
+        ))
+        .unwrap()
+        .view
+        .unwrap();
+    assert_eq!(point.timeline[2].period, "22:15");
+    assert_eq!(point.time_axis.current_arrangement[2].end_minute, None);
+    assert_eq!(point.baseline, loaded.baseline);
+    assert_eq!(
+        point.time_axis.confirmed_facts,
+        loaded.time_axis.confirmed_facts
+    );
+    assert_eq!(point.tasks, loaded.tasks);
+    assert_eq!(
+        app(&vault).read_date(DATE).unwrap().time_axis,
+        point.time_axis
+    );
+    assert_eq!(
+        section_bytes(
+            &fs::read_to_string(&path).unwrap(),
+            "早间基准",
+            "今天的大致安排"
+        ),
+        section_bytes(&document, "早间基准", "今天的大致安排")
+    );
+    if let Ok(directory) = std::env::var("PDEX_UI_FIXTURE_DIRECTORY") {
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(Path::new(&directory).join("plan-drag-views.json"), serde_json::to_vec_pretty(&serde_json::json!({"loaded": loaded, "moved": moved, "resized": resized, "fuzzy": fuzzy, "point": point})).unwrap()).unwrap();
+    }
+}

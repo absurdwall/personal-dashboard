@@ -5354,8 +5354,10 @@ function axisEntryDetails(
   return details;
 }
 
-function openPlanTimeEditor(entry: TimeAxisEntryView): void {
-  const loaded = currentTodayView;
+function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
+  loaded: TodayView; startMinute: number; endMinute: number | null; notice: string;
+}>): void {
+  const loaded = recovery?.loaded ?? currentTodayView;
   if (!entry.planId || !entry.timeEditable || !loaded?.revision || !loaded.targetBinding) return;
   const dialog = document.createElement("dialog");
   dialog.className = "plan-time-editor";
@@ -5405,8 +5407,8 @@ function openPlanTimeEditor(entry: TimeAxisEntryView): void {
     form.append(group);
     return { time, nextDay, group };
   };
-  const start = timeControl("today.planStart", entry.startMinute);
-  const end = timeControl("today.planEnd", entry.endMinute);
+  const start = timeControl("today.planStart", recovery?.startMinute ?? entry.startMinute);
+  const end = timeControl("today.planEnd", recovery ? recovery.endMinute : entry.endMinute);
   start.time.required = true;
   const updatePrecision = () => {
     const range = precision.value === "exactRange";
@@ -5431,8 +5433,14 @@ function openPlanTimeEditor(entry: TimeAxisEntryView): void {
   recheck.hidden = true;
   recheck.addEventListener("click", () => { void refreshToday(loaded.date); });
   form.append(status, save, recheck, close);
+  if (recovery) {
+    status.textContent = recovery.notice;
+    recheck.hidden = false;
+    save.disabled = precision.disabled = true;
+    start.time.disabled = end.time.disabled = start.nextDay.disabled = end.nextDay.disabled = true;
+  }
   const operationId = `plan-time-${crypto.randomUUID()}`;
-  let submitted = false;
+  let submitted = Boolean(recovery);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     if (submitted || todayOperationCount > 0) return;
@@ -5618,9 +5626,71 @@ async function moveTodayAxisTask(change: AxisGestureCommit<TodayView>): Promise<
   return save();
 }
 
+async function moveTodayAxisPlan(change: AxisGestureCommit<TodayView>): Promise<boolean> {
+  const loaded = change.context;
+  const entry = loaded.timeAxis.currentArrangement.find(entry => entry.planId === change.target?.key);
+  if (!entry?.planId || !entry.timeEditable || !loaded.revision || !loaded.targetBinding) return false;
+  const sameTarget = () => currentWorkspaceDestination === "today" && currentTodayView?.date === loaded.date &&
+    currentTodayView.targetBinding === loaded.targetBinding;
+  const precision = entry.planPrecision === "broad" || entry.planPrecision === "approximatePoint"
+    ? "approximatePoint" : change.endMinute === null ? "exactPoint" : "exactRange";
+  const request = todayPresentationRequests.begin();
+  todayPresentationFresh = false;
+  updateTodayOperationState(1);
+  const recover = (notice: string, saved = false) => {
+    if (!sameTarget() || !todayPresentationRequests.isCurrent(request)) return;
+    renderTodayTimeAxis(currentTodayView!);
+    showTodayAxisEditCopy(saved ? "today.planSavedNeedsReadback" : "today.planUnconfirmed", "error");
+    openPlanTimeEditor(entry, { loaded, startMinute: change.startMinute, endMinute: change.endMinute, notice });
+  };
+  try {
+    const result = await window.__TAURI__.core.invoke<Readonly<{ savedRevision: string; view: TodayView | null; refreshError: string | null }>>("edit_plan_time", {
+      input: { date: loaded.date, targetBinding: loaded.targetBinding, expectedRevision: loaded.revision,
+        planId: entry.planId, operationId: `plan-drag-${crypto.randomUUID()}`,
+        startMinute: change.startMinute, endMinute: change.endMinute, precision },
+    });
+    if (result.view) {
+      if (sameTarget() && todayPresentationRequests.isCurrent(request)) {
+        renderToday(result.view);
+        showTodayMutationCopy("today.planSaved", "ready");
+        showTodayAxisEditCopy("today.planSaved");
+      }
+      return true;
+    }
+    recover(result.refreshError ?? t("today.planSavedNeedsReadback"), true);
+  } catch (error) {
+    recover(`${t("today.planUnconfirmed")} ${String(error)}`);
+  } finally {
+    updateTodayOperationState(-1);
+  }
+  return false;
+}
+
+function todayAxisGesturePreviewLabel(change: AxisGestureCommit<TodayView>): string {
+  const entry = change.target?.kind === "plan"
+    ? change.context.timeAxis.currentArrangement.find(entry => entry.planId === change.target?.key) : null;
+  const start = formatAxisMinute(change.startMinute);
+  const label = entry?.planPrecision === "broad" || entry?.planPrecision === "approximatePoint"
+    ? t("today.planApproximateReference", { time: start })
+    : change.endMinute === null ? start : `${start}–${formatAxisMinute(change.endMinute)}`;
+  return change.startMinute >= 1440 || (change.endMinute ?? 0) >= 1440
+    ? `${label} · ${nextAxisDate(change.context.date)}` : label;
+}
+
 function resolveTodayAxisGestureTarget(element: Element, loaded: TodayView): AxisGestureTarget | null | false {
-  const marker=element.closest<HTMLElement>(".today-axis-marker");if(!marker)return null;
-  const id=marker.dataset.taskId;if(!id)return false;
+  const tasksWritable = canMutateTodayTasks({todayOperationCount, taskOperationCount,
+    hasTargetBinding: Boolean(loaded.tasks.targetBinding), state: loaded.tasks.state, isPresentationCurrent: todayPresentationFresh});
+  const marker=element.closest<HTMLElement>(".today-axis-marker");if(!marker)return tasksWritable ? null : false;
+  const planId = marker.dataset.planId;
+  if (planId) {
+    const entry = loaded.timeAxis.currentArrangement.find(entry => entry.planId === planId);
+    if (!loaded.revision || !loaded.targetBinding || !entry?.timeEditable || entry.startMinute === null || entry.continuesFromPreviousDay || entry.continuesIntoNextDay) return false;
+    const resizing = Boolean(element.closest("[data-axis-resize]"));
+    if (resizing && (entry.planPrecision !== "exactRange" || entry.endMinute === null)) return false;
+    return { key: planId, kind: "plan", startMinute: entry.startMinute, endMinute: entry.endMinute,
+      mode: resizing ? "resize-end" : "move" };
+  }
+  const id=marker.dataset.taskId;if(!tasksWritable || !id)return false;
   const task=loaded.tasks.tasks.find(task=>task.id===id);
   if(!task?.date||!task.time||task.deletedAt!==null||task.state==="abandoned")return false;
   return {key:task.id,kind:"task",startMinute:taskAxisMinute(loaded.date,{date:task.date,time:task.time}),
@@ -5629,6 +5699,7 @@ function resolveTodayAxisGestureTarget(element: Element, loaded: TodayView): Axi
 function commitTodayAxisGesture(change: AxisGestureCommit<TodayView>): void {
   if(!change.target&&change.endMinute!==null)openTodayAxisTaskCreate(change.context,change.startMinute,change.endMinute);
   else if(change.target?.kind==="task")void pendingWrites.track(moveTodayAxisTask(change));
+  else if(change.target?.kind==="plan")void pendingWrites.track(moveTodayAxisPlan(change));
 }
 function showTodayAxisEditCopy(key: InterfaceCopyKey, state: "ready" | "error" = "ready"): void {
   const status=document.querySelector<HTMLElement>("#today-axis-edit-status");
@@ -5640,11 +5711,14 @@ function installTodayAxisGestures(): void {
   if(!plot||!scrollSurface)return;
   attachTodayAxisGestures({plot,scrollSurface,bounds:axisBounds,
     begin:()=>{
-      if(!currentTodayView||!canMutateTodayTasks({todayOperationCount,taskOperationCount,hasTargetBinding:Boolean(currentTodayView.tasks.targetBinding),
-        state:currentTodayView.tasks.state,isPresentationCurrent:todayPresentationFresh}))return null;
+      if (!currentTodayView || !todayPresentationFresh || todayOperationCount > 0 || taskOperationCount > 0) return null;
+      const planWritable = Boolean(currentTodayView.revision && currentTodayView.targetBinding);
+      const tasksWritable = canMutateTodayTasks({todayOperationCount,taskOperationCount,
+        hasTargetBinding:Boolean(currentTodayView.tasks.targetBinding),state:currentTodayView.tasks.state,isPresentationCurrent:todayPresentationFresh});
+      if (!planWritable && !tasksWritable) return null;
       todayAxisFollowState=onManualScroll(todayAxisFollowState);return currentTodayView;
     },
-    resolveTarget:resolveTodayAxisGestureTarget,onCommit:commitTodayAxisGesture,
+    resolveTarget:resolveTodayAxisGestureTarget,onCommit:commitTodayAxisGesture,previewLabel:todayAxisGesturePreviewLabel,
     onInvalid:()=>{setCopy(taskSurfaceStatus("today"),"today.axisTaskInvalid");showTodayAxisEditCopy("today.axisTaskInvalid","error");},
   });
 }
@@ -5707,6 +5781,9 @@ function renderTodayTimeAxisEntries(
       marker.classList.toggle("is-completed", entry.task?.state === "completed");
       marker.classList.toggle("is-time-passed", entry.task?.timePassed === true);
       if (entry.task) marker.dataset.taskId = entry.task.id;
+      const editablePlan = original.lane === "arrangement" && original.planId && original.timeEditable &&
+        !original.continuesFromPreviousDay && !original.continuesIntoNextDay;
+      if (editablePlan) marker.dataset.planId = original.planId!;
       marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);
       marker.style.setProperty(
         "--axis-label-center",
@@ -5762,6 +5839,19 @@ function renderTodayTimeAxisEntries(
         target.scrollIntoView({ block: "center", behavior: "smooth" });
       });
       marker.append(link);
+      if (editablePlan && original.planPrecision === "exactRange" && original.endMinute !== null) {
+        const endHandle = document.createElement("button");
+        endHandle.type = "button";
+        endHandle.className = "today-axis-plan-end";
+        endHandle.dataset.axisResize = "";
+        endHandle.setAttribute("aria-label", t("today.planResizeEnd"));
+        endHandle.title = t("today.planResizeEnd");
+        if (markerLayout.isCenteredLabel) {
+          endHandle.style.top = `calc(50% + var(--today-axis-plot-height) * ${(original.endMinute - markerLayout.centerMinute) / (visibleEnd - visibleStart)})`;
+        }
+        endHandle.addEventListener("click", () => openPlanTimeEditor(original));
+        marker.append(endHandle);
+      }
 
       if (placement.stackSize > 1) {
         const groupCount = stackPlacements.filter(candidate => candidate.stackId === placement.stackId).length;
