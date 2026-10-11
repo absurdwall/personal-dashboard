@@ -52,3 +52,8 @@ stories 51–58.
 
 - 2026-10-10: Real Sogou composition cannot be established through the current bound-app keyboard path: Shift-only is rejected before input and Control+Space still yields ASCII. Unicode paste and synthetic WebKit composition checks passed but do not close the native IME criterion.
 - [Frozen candidate and complete final evidence](../evidence/pdex-11.md). Code and both reviews are complete; Status/lifecycle blocked records an environment/verification limitation, not an implementation defect or permission request. Triage remains ready-for-agent. Resume from the preserved candidate and synthetic fixture when the required native input/fault environment is available; parent specification stays open. Earlier pending statements are retained as historical checkpoints.
+
+
+## Native continuation — 2026-10-11
+
+Human-authorized root CUA pass at `bc99cf2` / binary `76f12c68…` establishes exact native reference windows and genuine typed post-save reload failure with authoritative recovery/no replay. Current native Task, ordinary slash/Tab/Enter, overlap, immediate move/end-resize, conflict/write failure, dated Evening/error/draft and restart evidence is retained in [the source-bound continuation](../evidence/native-acceptance-2026-10-11.md). Real Sogou composition, sustained native edge gesture/resize cancellation and authenticated quota exhaustion remain unverified; combined criteria stay unchecked. Restart uncovered dynamic axis startup localization, now assigned to the existing single repair worker. Any repair requires a newly frozen candidate; source A does not silently become newer-source acceptance. Status/Lifecycle remain blocked and parent open.

@@ -108,3 +108,8 @@ At frozen `6656041b518fe979c1318a7e7f87a2c14503cd42`, the independent review cha
 Installed Management helper 1.0.3 confirmed the existing canonical workspace/project/source binding. Scoped readback of `source-personal-dashboard-experience` at revision `606b4d82a4aeebb0` confirmed twelve records: nine resolved, two blocked and one open, with no malformed references. No new Registry or summary write was performed; cached states for other sources are outside this verification.
 
 - Final Management readback after the independent verdict was appended: source revision `8b244e7ff955b103`, twelve records, nine resolved/two blocked/one open, no malformed references. Earlier scoped reads above remain historical checkpoints.
+
+
+## Native continuation checkpoint — 2026-10-11
+
+Human authorized the remaining PDEX-09/PDEX-11 native checks and independent rereview. Root CUA pass uses fresh frozen `bc99cf2` / binary `76f12c68…`, synthetic data and a unique temporary bundle. Exact native reference windows and genuine saved-but-reload-failed/no-replay recovery are now established, alongside fresh Task/Calendar/slash/Evening/conflict/write/restart checks. [Source-bound report and artifact index](evidence/native-acceptance-2026-10-11.md) preserve unsuccessful attempts and prior evidence. Real IME, sustained edge gesture/active resize, and authenticated quota exhaustion remain unverified. Native restart found dynamic axis startup language application missing retained copy metadata; bounded repair is assigned on `codex/pdex-native-followups` from `bc99cf2`, with a production startup regression. Nine component tickets remain resolved, PDEX-09/PDEX-11 blocked, parent open. No installation/main/remote/real-data change.
