@@ -39,3 +39,5 @@ authorize starting implementation.
 ## Implementation run
 
 - 2026-10-10: Authorized full local implementation. Integration: codex/dashboard-experience-integration; exact base 8960c80bc81ae35a7dcd871dd104f4b3d04497de. Working tree initially clean. Individual implementers use codex/pdex-NN worktrees and merge integration before reporting. All merges preserve complete history. Parent spec closure, installation, main merge and remote publication remain separate boundaries.
+
+- 2026-10-10: Installed tortilla-flat-management connect/discover/inspect confirmed canonical product-personal-dashboard and source-personal-dashboard-experience; 12 records, current, no malformed references, source revision a46f6fedb8e9e08b. Inspection scoped only to this local source. Frontend pre-implementation baseline: 388 tests passed. Rust baseline runs independently before changes.
