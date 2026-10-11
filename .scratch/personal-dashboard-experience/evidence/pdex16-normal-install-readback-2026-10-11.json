@@ -64,7 +64,9 @@
     "standardsUnresolvedFindings": 0,
     "specUnresolvedFindings": 0,
     "humanAcceptance": "Pending",
-    "remainingTicketCheck": "Packaged Collaboration session/composer interaction with synthetic data; do not send a real message.",
-    "ticketLifecycle": "in-progress"
+    "remainingTicketCheck": "Direct human acceptance of the installed shell experience.",
+    "ticketLifecycle": "in-progress",
+    "packagedComposerInteractionObservedInFinalReadOnlyPass": false,
+    "packagedComposerInteractionDisposition": "Not performed in the final normal-App read-only check; reviewer accepted the existing 69/69 focused production-DOM Collaboration interaction suite and source/native visual evidence for this visual-only change."
   }
 }

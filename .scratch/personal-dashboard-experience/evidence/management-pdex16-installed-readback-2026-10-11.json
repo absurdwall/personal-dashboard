@@ -3,10 +3,8 @@
   "projectId": "product-personal-dashboard",
   "operation": "submitSummary",
   "outcome": "confirmed",
-  "canonicalRegistryRevisionBefore": "c5f2efeb94fd4f87",
-  "canonicalRegistryRevisionAfter": "90a7c3ce9e418cc1",
-  "summaryRevisionBefore": "0ed07b148e0ca7b4",
-  "summaryRevisionAfter": "0d86d16563428874",
+  "canonicalRegistryRevisionAfter": "f7baa4d63cb8f0f3",
+  "summaryRevisionAfter": "bb728f6238b7e000",
   "sourceEvidence": [
     {
       "sourceId": "source-personal-dashboard-3",
@@ -42,7 +40,7 @@
     },
     {
       "sourceId": "source-personal-dashboard-experience",
-      "reason": "The local Markdown source reports 00-followup-spec-03.md malformed; the source is not treated as fully covered."
+      "reason": "The local Markdown source reports 00-followup-spec-03.md malformed; it is not treated as fully covered."
     }
   ],
   "projectLifecycle": "active",
@@ -56,5 +54,9 @@
   ],
   "remoteGitHubQueryPerformed": false,
   "helperExecution": "Installed tortilla-flat-management helper via user-local skill; child PATH excluded GitHub CLI.",
-  "localTicketState": "PDEX-16 and PDEX-FOLLOWUP-03 remain in-progress pending packaged Collaboration composer check and direct human acceptance."
+  "localTicketState": "PDEX-16 and PDEX-FOLLOWUP-03 remain in-progress pending direct human acceptance; the reviewer accepted existing production-DOM Collaboration interaction evidence for this visual-only scope, while the final normal-App pass remained read-only.",
+  "operationId": "pdex16-installed-readback-acceptance-update-2026-10-11",
+  "canonicalRegistryRevisionBeforeFinalUpdate": "90a7c3ce9e418cc1",
+  "summaryRevisionBeforeFinalUpdate": "0d86d16563428874",
+  "verifiedAt": "2026-10-11T08:34:05Z"
 }
