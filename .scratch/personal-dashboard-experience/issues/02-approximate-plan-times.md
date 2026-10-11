@@ -11,20 +11,21 @@
 **ID:** PDEX-02
 **Parent:** [PDEX-SPEC-01](../spec.md)
 **Lifecycle:** in-progress
-**Implementation:** in progress
+**Implementation:** code-ready; application and production WebKit seams verified
 **Owner:** implementer PDEX-02
 **Assignee:** implementer PDEX-02
 **Date:** 2026-10-10
+**Acceptance:** partial; packaged IPC and complete broad-card visual acceptance pending PDEX-11
 **Breakdown decision:** User approved the eleven-ticket breakdown and blocking edges on 2026-10-10.
 
 ## Acceptance criteria
 
 - [ ] 早晨/中午/午后/傍晚或晚间按已定参考规则定位，显示原词或“约”，卡片高度不成为时长。
-- [ ] 原始措辞、近似时点、精确时点和精确区间可区别读取；无法可靠定位的内容仍未定位。
-- [ ] 相对时间只在有可靠记录上下文时定位，不随刷新时刻移动。
-- [ ] 编辑近似时间仍落盘为近似时间；模糊与具体之间的转换只有在用户明确选择时发生。
-- [ ] Morning 文字保留其自身来源的措辞，白天精度编辑不修改早间部分或事实。
-- [ ] 真文档读回和重开保持精度，沿用第一票的身份、冲突与保存结果契约。
+- [x] 原始措辞、近似时点、精确时点和精确区间可区别读取；无法可靠定位的内容仍未定位。
+- [x] 相对时间只在有可靠记录上下文时定位，不随刷新时刻移动。
+- [x] 编辑近似时间仍落盘为近似时间；模糊与具体之间的转换只有在用户明确选择时发生。
+- [x] Morning 文字保留其自身来源的措辞，白天精度编辑不修改早间部分或事实。
+- [x] 真文档读回和重开保持精度，沿用第一票的身份、冲突与保存结果契约。
 
 ## Verification
 
@@ -37,3 +38,6 @@ stories 2, 14–18, 21–23, 26, 66.
 - 2026-10-10: Published locally with the approved scope and dependencies; unassigned, not claimed, not started. Record subsequent authorized claims, commits, checks and acceptance here. Publication does not close the parent specification.
 
 - 2026-10-10: Authorized claim on codex/pdex-02, worktree /tmp/pdex-02; base integration 32b3678f6a5cbe443fabd4936c416b67bf603952. Dependency implementation/evidence inspected before start; packaged acceptance remains separately tracked.
+
+- 2026-10-10: Implemented on `codex/pdex-02`: `8400b9f` precision/source persistence and `6740e5d` production editor with five actual WebKit interaction tests. Initial branch was confirmed at claim `b547bd9` above `32b3678`; retained integration merges include `d10cad6` and `2275bf1`.
+- 2026-10-10: Build passed; 402 frontend tests passed before the latest PDEX-03 merge, then five production-modal tests passed again on that merge. Isolated public workflows passed 15 Daily Plan and 54 Today tests. See [PDEX-02 evidence](../evidence/pdex-02.md) for red-green observations and exact scope. First criterion remains unchecked for full broad-card visual/package acceptance; local lifecycle remains in-progress until that acceptance is recorded.
