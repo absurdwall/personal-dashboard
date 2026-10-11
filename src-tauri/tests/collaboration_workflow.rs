@@ -2381,3 +2381,90 @@ fn failed_history_save_of_queued_stop_never_dispatches_that_request() {
     assert_eq!(completed.messages[1].delivery_state, "paused");
     assert_eq!(gate.started_len(), 1);
 }
+
+#[test]
+fn evening_entry_prepares_selected_date_draft_once_and_restores_it_after_restart() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let app = new_application(&directory, Arc::clone(&prompts));
+    for date in ["2026-09-27", "2026-09-20"] {
+        let draft = format!("/retro Review {date}: dashboard://record/{date}?phase=evening");
+        let opened = app.prepare_evening_review(date, &draft).unwrap();
+        assert_eq!(opened.session.target_date, date);
+        assert_eq!(opened.session.draft, draft);
+        assert!(!opened.preserved_draft);
+        let again = app.prepare_evening_review(date, "do not overwrite").unwrap();
+        assert_eq!(again.session.id, opened.session.id);
+        assert_eq!(again.session.draft, draft);
+        assert!(again.preserved_draft);
+        assert_eq!(app.list_sessions(date).unwrap().len(), 1);
+        assert!(again.session.messages.is_empty());
+    }
+    drop(app);
+    let restored = new_application(&directory, Arc::clone(&prompts));
+    for date in ["2026-09-27", "2026-09-20"] {
+        let saved = restored.list_sessions(date).unwrap();
+        assert_eq!(saved.len(), 1);
+        assert_eq!(saved[0].target_date, date);
+        assert!(saved[0].draft.contains(&format!("dashboard://record/{date}?phase=evening")));
+        assert!(saved[0].messages.is_empty());
+    }
+    assert!(prompts.lock().unwrap().is_empty());
+}
+
+#[test]
+fn evening_entry_reuses_date_matched_session_without_retargeting_or_losing_other_drafts() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let app = new_application(&directory, Arc::clone(&prompts));
+    let past = app.create_session("2026-09-20").unwrap();
+    app.save_draft_for_selected_vault(&past.id, "2026-09-20", "用户尚未发出的复盘草稿").unwrap();
+    app.save_draft_for_selected_vault(&past.id, "2026-09-19", "另一天的未完成草稿").unwrap();
+    let today = app.create_session("2026-09-27").unwrap();
+    app.save_draft_for_selected_vault(&today.id, "2026-09-27", "今天的其他工作").unwrap();
+    let opened = app.prepare_evening_review("2026-09-20", "new review request").unwrap();
+    assert_eq!(opened.session.id, past.id);
+    assert_eq!(opened.session.draft, "用户尚未发出的复盘草稿");
+    assert_eq!(opened.session.drafts_by_date["2026-09-19"], "另一天的未完成草稿");
+    assert!(opened.preserved_draft);
+    let unchanged = app.session("synthetic-vault", &today.id).unwrap();
+    assert_eq!(unchanged.target_date, "2026-09-27");
+    assert_eq!(unchanged.draft, "今天的其他工作");
+    assert!(prompts.lock().unwrap().is_empty());
+}
+
+#[test]
+fn concurrent_evening_entry_clicks_create_one_saved_session_without_runtime_requests() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let app = Arc::new(new_application(&directory, Arc::clone(&prompts)));
+    let workers: Vec<_> = (0..4).map(|_| {
+        let app = Arc::clone(&app);
+        thread::spawn(move || app.prepare_evening_review("2026-09-20", "/retro Review 2026-09-20").unwrap().session.id)
+    }).collect();
+    let ids: Vec<_> = workers.into_iter().map(|worker| worker.join().unwrap()).collect();
+    assert!(ids.iter().all(|id| id == &ids[0]));
+    assert_eq!(app.list_sessions("2026-09-20").unwrap().len(), 1);
+    assert!(prompts.lock().unwrap().is_empty());
+    assert!(app.prepare_evening_review("2026-09-28", "future").is_err());
+    assert!(app.list_sessions("2026-09-28").unwrap().is_empty());
+}
+
+#[test]
+fn evening_entry_leaves_active_same_date_work_running_in_its_original_session() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let gate = Arc::new(FakeTurnGate::default());
+    let app = new_application_with_controls(&directory, Arc::clone(&prompts), Arc::new(Mutex::new(Vec::new())), Some(Arc::clone(&gate)), Arc::new(Mutex::new(HashMap::new())));
+    let active = app.create_session("2026-09-20").unwrap();
+    app.submit_message("synthetic-vault", &active.id, "2026-09-20", "Existing work").unwrap();
+    gate.wait_for_started(1);
+    let review = app.prepare_evening_review("2026-09-20", "/retro Review selected date").unwrap();
+    assert_ne!(review.session.id, active.id);
+    assert!(review.session.messages.is_empty());
+    assert_eq!(app.prepare_evening_review("2026-09-20", "repeat").unwrap().session.id, review.session.id);
+    gate.release_all();
+    wait_until_finished(&app, &active.id);
+    assert_eq!(prompts.lock().unwrap().len(), 1);
+    assert!(app.session("synthetic-vault", &review.session.id).unwrap().messages.is_empty());
+}

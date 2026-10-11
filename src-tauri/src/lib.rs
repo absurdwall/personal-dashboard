@@ -383,6 +383,15 @@ fn collaboration_create_session(
 }
 
 #[tauri::command]
+fn collaboration_prepare_evening_review(
+    application: State<'_, collaboration::CollaborationApplication>,
+    date: String,
+    draft: String,
+) -> Result<collaboration::EveningReviewEntryView, String> {
+    application.prepare_evening_review(&date, &draft)
+}
+
+#[tauri::command]
 fn collaboration_list_sessions(
     application: State<'_, collaboration::CollaborationApplication>,
     date: String,
@@ -1030,6 +1039,7 @@ pub fn run() {
             collaboration_workspace,
             collaboration_context,
             collaboration_create_session,
+            collaboration_prepare_evening_review,
             collaboration_list_sessions,
             collaboration_session,
             collaboration_record_refresh,
@@ -1106,6 +1116,7 @@ pub fn run() {
         collaboration_workspace,
         collaboration_context,
         collaboration_create_session,
+        collaboration_prepare_evening_review,
         collaboration_list_sessions,
         collaboration_session,
         collaboration_record_refresh,

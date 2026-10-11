@@ -7671,3 +7671,54 @@ fn collaboration_task_service_retains_or_explicitly_clears_execution_end() {
     let cleared = service.apply(&clear, saved.target_binding.as_deref().unwrap(), saved.revision.as_deref(), "synthetic-interval-clear").unwrap();
     assert!(serde_json::to_value(&cleared.tasks[0]).unwrap()["executionEnd"].is_null());
 }
+
+#[test]
+fn evening_entry_leaves_canonical_records_tasks_and_calendar_review_states_unchanged() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("review-entry-vault");
+    let reviewed_path = prepare_daily_review_vault(&path, false);
+    let unreviewed_path = path.join("life/Journal/Daily/2026/2026-09/2026-09-20.md");
+    fs::write(&unreviewed_path, "---\ntype: daily-record\ndate: 2026-09-20\n---\n# 2026-09-20\n\n## 今天的大致安排\n\n- **下午：** Synthetic arrangement; no activity inferred.\n\n## 晚间复盘\n").unwrap();
+    let reviewed_before = fs::read(&reviewed_path).unwrap();
+    let unreviewed_before = fs::read(&unreviewed_path).unwrap();
+    let vault = MutableVault::new(&path);
+    let today = TodayApplication::new(vault.clone(), NoVaultPicker, FixedClock);
+    let before = today.calendar_month(2026, 9).unwrap();
+    let (app, _, _) = new_application(&directory, &vault, MutableContext::new("review-entry-vault"), Arc::new(AtomicBool::new(false)));
+    for date in ["2026-09-27", "2026-09-20", "2026-09-19"] {
+        let draft = format!("/retro Review {date}; dashboard://record/{date}?phase=evening");
+        let opened = app.prepare_evening_review(date, &draft).unwrap();
+        assert_eq!(opened.session.target_date, date);
+        assert!(opened.session.task_operations.is_empty());
+        assert!(opened.session.messages.is_empty());
+        let repeated = app.prepare_evening_review(date, &draft).unwrap();
+        assert_eq!(repeated.session.id, opened.session.id);
+    }
+    let after = today.calendar_month(2026, 9).unwrap();
+    for date in ["2026-09-27", "2026-09-20", "2026-09-19"] {
+        assert_eq!(after.day(date).unwrap().availability, before.day(date).unwrap().availability);
+    }
+    assert_eq!(after.day("2026-09-27").unwrap().availability, personal_dashboard_lib::today::DailyRecordAvailability::Reviewed);
+    assert_eq!(after.day("2026-09-20").unwrap().availability, personal_dashboard_lib::today::DailyRecordAvailability::Unreviewed);
+    assert_eq!(after.day("2026-09-19").unwrap().availability, personal_dashboard_lib::today::DailyRecordAvailability::Missing);
+    assert_eq!(fs::read(&reviewed_path).unwrap(), reviewed_before);
+    assert_eq!(fs::read(&unreviewed_path).unwrap(), unreviewed_before);
+    assert!(!path.join(personal_dashboard_lib::tasks::TASK_DOCUMENT_RELATIVE_PATH).exists());
+    assert!(!path.join("life/Journal/Daily/2026/2026-09/2026-09-19.md").exists());
+}
+
+#[test]
+fn evening_entry_save_failure_has_no_saved_session_and_retry_creates_one() {
+    let directory = IsolatedDirectory::new();
+    let path = directory.vault("entry-save-failure");
+    let vault = MutableVault::new(&path);
+    let fail = Arc::new(AtomicBool::new(false));
+    let (app, _, _) = new_application(&directory, &vault, MutableContext::new("entry-save-failure"), Arc::clone(&fail));
+    fail.store(true, Ordering::SeqCst);
+    assert!(app.prepare_evening_review("2026-09-20", "/retro review 2026-09-20").is_err());
+    assert!(app.list_sessions("2026-09-20").unwrap().is_empty());
+    let saved = app.prepare_evening_review("2026-09-20", "/retro review 2026-09-20").unwrap();
+    let again = app.prepare_evening_review("2026-09-20", "retry").unwrap();
+    assert_eq!(again.session.id, saved.session.id);
+    assert_eq!(app.list_sessions("2026-09-20").unwrap().len(), 1);
+}

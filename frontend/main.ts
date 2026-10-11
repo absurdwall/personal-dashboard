@@ -1,3 +1,4 @@
+import { initializeEveningReviewEntry } from "./evening-review-entry.js";
 import { initializeCollaborationCommandCompletion } from "./collaboration-command-completion.js";
 import { appendCollaborationMarkdown, appendCollaborationWorkHistory, type CollaborationWorkHistory, type CollaborationLink, type WorkHistoryLabels } from "./collaboration-work-history.js";
 import { initializeCollaborationPanels } from "./collaboration-panels.js";
@@ -4203,6 +4204,8 @@ function renderCollaborationWorkspace(): void {
   const targetDate = session
     ? collaborationTargetDates.get(session.id) ?? (collaborationTargetDateInput?.value || collaborationTargetDate)
     : "";
+  const reviewNotice = document.querySelector<HTMLElement>("#collaboration-review-entry-notice");
+  if (reviewNotice) reviewNotice.hidden = !session || reviewNotice.dataset.sessionId !== session.id || reviewNotice.dataset.targetDate !== targetDate || !collaborationDraftForDate(session, targetDate);
   const targetKey = session ? collaborationDraftKey(session.id, targetDate) : "";
   const targetDatePending = Boolean(session && collaborationTargetDatePendingSession === session.id);
   const sendingDraft = targetKey !== "" && collaborationSendingDrafts.has(targetKey);
@@ -4690,6 +4693,52 @@ async function createCollaborationSession(): Promise<void> {
     }
   }
 }
+
+async function openCollaborationForEveningReview(targetDate: string): Promise<boolean> {
+  if (vaultSelectionInProgress || collaborationTargetDatePendingSession || collaborationSendingDrafts.size) {
+    throw new Error(t("today.reviewOpenFailed"));
+  }
+  const vaultRevision = collaborationVaultSelectionRevision;
+  stashCollaborationDraft();
+  cancelCollaborationVoiceCaptureForSelectionChange();
+  await flushCollaborationDraft();
+  if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) throw new Error(t("today.reviewOpenFailed"));
+  const opened = await window.__TAURI__.core.invoke<Readonly<{ session: CollaborationSessionView; preservedDraft: boolean }>>(
+    "collaboration_prepare_evening_review", { date: targetDate, draft: t("today.reviewDraft", { date: targetDate }) },
+  );
+  if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) throw new Error(t("today.reviewOpenFailed"));
+  const session = opened.session;
+  currentCollaborationSession = session;
+  cacheCollaborationDrafts(session);
+  collaborationEmptyTargetDate = null;
+  collaborationActivityDate = targetDate;
+  collaborationActivityDateExplicit = true;
+  collaborationTargetDate = targetDate;
+  collaborationTargetDates.set(session.id, targetDate);
+  if (collaborationDateInput) collaborationDateInput.value = targetDate;
+  if (collaborationTargetDateInput) collaborationTargetDateInput.value = targetDate;
+  showWorkspaceDestination("collaboration");
+  renderCollaborationWorkspace();
+  const notice = document.querySelector<HTMLElement>("#collaboration-review-entry-notice");
+  if (notice) {
+    notice.dataset.sessionId = session.id;
+    notice.dataset.targetDate = targetDate;
+    setCopy(notice, opened.preservedDraft ? "today.reviewDraftPreserved" : "today.reviewDraftReady", { date: targetDate });
+    notice.hidden = false;
+  }
+  await refreshCollaborationWorkspace(true);
+  window.requestAnimationFrame(() => collaborationMessageDraft?.focus());
+  return opened.preservedDraft;
+}
+
+const eveningReviewEntryButton = document.querySelector<HTMLButtonElement>("#today-start-review");
+const eveningReviewEntryStatus = document.querySelector<HTMLElement>("#today-review-entry-status");
+const eveningReviewEntry = eveningReviewEntryButton && eveningReviewEntryStatus
+  ? initializeEveningReviewEntry(eveningReviewEntryButton, eveningReviewEntryStatus,
+    () => currentTodayView ? { date: currentTodayView.date, isToday: currentTodayView.isToday,
+      available: currentTodayView.canRecord && !vaultSelectionInProgress } : null,
+    openCollaborationForEveningReview, (key, values) => t(key as Parameters<typeof t>[0], values))
+  : null;
 
 async function openCollaborationForTask(
   taskId: string,
@@ -6146,6 +6195,7 @@ function renderToday(view: TodayView, preserveTaskEditors = false): void {
   if (todayDaytimeForm) {
     todayDaytimeForm.hidden = !view.canRecord;
   }
+  eveningReviewEntry?.render();
   if (todayEveningForm) {
     todayEveningForm.hidden = !view.canRecord;
   }
