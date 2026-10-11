@@ -47,8 +47,10 @@ async function pageFixture({width=1280,extraTasks=[]}={}) {
       if(command==='set_task_state'){
         const input=args.input;const item=t.tasks.find(x=>x.id===input.taskId);item.state=input.state;item.completion=input.state==='completed'?{completedOn:'2026-10-10',completedTime:'09:00',recordedAt:'2026-10-10T09:00-04:00',source:'checkbox'}:null;t.revision='r'+(Number(t.revision.slice(1))+1);return structuredClone(t);
       }
+      if(['delete_task','restore_task'].includes(command)){const item=t.tasks.find(x=>x.id===args.input.taskId);item.deletedAt=command==='delete_task'?'2026-10-10T09:00-04:00':null;t.revision='r'+(Number(t.revision.slice(1))+1);return structuredClone(t);}
       if(command==='update_task'){
         const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
+        if(window.__holdUpdate)await new Promise(resolve=>{window.__releaseUpdate=resolve;});
         Object.assign(t.tasks.find(x=>x.id===input.taskId),input);t.revision='r'+(Number(t.revision.slice(1))+1);return structuredClone(t);
       }
       throw Error('Unsupported browser fixture boundary '+command);
@@ -82,6 +84,9 @@ test('Tasks compact rows select one full detail while completion stays independe
     await check.check();
     await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').state==='completed');
     assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='set_task_state').length),1);
+    const completedCheck=page.locator('#tasks-list [data-task-editor-row=point] input[type=checkbox]');await completedCheck.focus();await page.keyboard.press('Space');
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').state==='pending');
+    assert.equal(await panel.isVisible(),true);
   }finally{await f.close();}
 });
 
@@ -106,5 +111,107 @@ test('selected detail edits one Task and preserves unmodified endpoints and iden
     await panel.locator('button[type=submit]').click();
     await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='interval').executionEnd.time==='15:00');
     assert.equal(await page.locator('#tasks-list [data-task-editor-row=interval] .task-row-schedule').textContent(),'Sat, Oct 10 13:15 – 15:00');
+  }finally{await f.close();}
+});
+
+
+test('narrow Task detail stays below the list, preserves drafts between selections and returns focus',async()=>{
+  const f=await pageFixture({width:830});const {page}=f;
+  try {
+    const row=page.locator('#tasks-list [data-task-editor-row=point]');
+    await row.locator('.task-row-schedule').click();
+    let panel=page.locator('[data-task-editor-dialog=point]');
+    assert.equal(await page.locator('#task-editor-dialog-root [data-task-editor-dialog]:visible').count(),1);
+    const [listBox,panelBox]=await Promise.all([page.locator('.tasks-content').boundingBox(),panel.boundingBox()]);
+    assert.ok(panelBox.y>=listBox.y+listBox.height-1,'detail sits below list at narrow width');
+    assert.ok(panelBox.x>=0&&panelBox.x+panelBox.width<=830,'detail fits the window');
+    await panel.locator('[data-task-content]').fill('Unsaved protected draft');
+    await page.locator('#task-filter').selectOption('all');
+    await page.locator('#tasks-list .task-ended-history > summary').click();
+    await page.locator('#tasks-list [data-task-editor-row=interval] .task-title-button').click();
+    assert.equal(await page.locator('#task-editor-dialog-root [data-task-editor-dialog]:visible').count(),1);
+    await row.locator('.task-title-button').click();
+    assert.equal(await panel.locator('[data-task-content]').inputValue(),'Unsaved protected draft');
+    await panel.locator('[data-task-editor-close]').click();
+    assert.equal(await page.locator('#task-editor-dialog-root').isVisible(),false);
+    assert.equal(await row.locator('.task-title-button').evaluate(el=>el===document.activeElement),true);
+    assert.equal(await page.evaluate(()=>window.__calls.some(x=>['set_task_state','update_task'].includes(x.command))),false);
+  }finally{await f.close();}
+});
+
+test('failed detail save retains selection and endpoints for an explicit refreshed retry',async()=>{
+  const f=await pageFixture();const {page}=f;
+  try {
+    await page.locator('#task-filter').selectOption('completed');
+    await page.locator('#tasks-list [data-task-editor-row=interval] .task-title-button').click();
+    const panel=page.locator('[data-task-editor-dialog=interval]');
+    await panel.locator('[data-task-name]').fill('Retry draft');
+    await page.evaluate(()=>window.__failNext='update_task');await panel.locator('button[type=submit]').click();
+    await page.waitForFunction(()=>document.querySelector('#tasks-status').textContent.includes('Synthetic save failure'));
+    assert.equal(await panel.locator('[data-task-name]').inputValue(),'Retry draft');
+    assert.equal(await panel.locator('[data-task-end-time]').inputValue(),'14:30');
+    assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.id==='interval').name),'Synthetic interval');
+    await page.locator('#refresh-tasks').click();await page.waitForFunction(()=>!document.querySelector('#refresh-tasks').disabled);
+    assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='update_task').length),1,'refresh does not replay');
+    await panel.locator('button[type=submit]').click();
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='interval').name==='Retry draft');
+    const attempts=await page.evaluate(()=>window.__calls.filter(x=>x.command==='update_task').map(x=>x.args.input));
+    assert.equal(attempts[0].changeId,attempts[1].changeId);assert.deepEqual(attempts[1].executionEnd,{date:'2026-10-10',time:'14:30'});
+  }finally{await f.close();}
+});
+
+test('selected detail retains abandon, restore, delete and historical pagination',async()=>{
+  const extraTasks=Array.from({length:35},(_,i)=>task('history-'+i,'Historical '+i,'13:00',null,'completed'));
+  const f=await pageFixture({extraTasks});const {page}=f;
+  try {
+    await page.locator('#tasks-list [data-task-editor-row=point] .task-title-button').click();
+    let panel=page.locator('[data-task-editor-dialog=point]');
+    await panel.locator('[data-task-state-action=abandoned]').click();
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').state==='abandoned');
+    assert.equal(await page.locator('#tasks-list [data-task-editor-row=point] input[type=checkbox]').isDisabled(),true,'abandoned Task is not a completion toggle');
+    await panel.locator('button[data-task-state-action=pending]').click();
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').state==='pending');
+    await panel.locator('[data-task-delete]').click();
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').deletedAt!==null);
+    await page.locator('#task-filter').selectOption('deleted');
+    await page.locator('#tasks-list [data-task-editor-row=point] .task-title-button').click();
+    await panel.locator('[data-task-restore]').click();
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').deletedAt===null);
+    await page.locator('#task-filter').selectOption('completed');
+    assert.equal(await page.locator('#tasks-list [data-task-editor-row]').count(),30);
+    await page.getByRole('button',{name:'Show more · 6'}).click();
+    assert.equal(await page.locator('#tasks-list [data-task-editor-row]').count(),36);
+    await page.locator('#tasks-list [data-task-editor-row=history-34] .task-title-button').click();
+    assert.equal(await page.locator('[data-task-editor-dialog=history-34]').isVisible(),true);
+  }finally{await f.close();}
+});
+
+
+test('Today Task deep link opens selected identity even after a different Task list scope',async()=>{
+  const f=await pageFixture();const {page}=f;
+  try {
+    await page.locator('#tasks-list-scopes [data-task-scope="list:home"]').click();
+    await page.locator('[data-workspace-destination=today]').click();
+    await page.locator('.today-axis-marker[data-task-id=point] .today-axis-marker-link').click();
+    await page.locator('#today-timed-details').getByRole('button',{name:'Edit task Synthetic point',exact:true}).click();
+    await page.locator('[data-task-editor-dialog=point]').waitFor({state:'visible',timeout:1500});
+    assert.equal(await page.locator('#tasks-list [data-task-editor-row=point]').isVisible(),true);
+    assert.equal(await page.evaluate(()=>window.__calls.some(x=>['set_task_state','update_task'].includes(x.command))),false);
+  }finally{await f.close();}
+});
+
+
+test('selected detail freezes all edit controls until the submitted save finishes',async()=>{
+  const f=await pageFixture();const {page}=f;
+  try {
+    await page.locator('#tasks-list [data-task-editor-row=point] .task-title-button').click();
+    const panel=page.locator('[data-task-editor-dialog=point]');
+    await panel.locator('[data-task-name]').fill('Pending save');
+    await page.evaluate(()=>window.__holdUpdate=true);await panel.locator('button[type=submit]').click();
+    await page.waitForFunction(()=>Boolean(window.__releaseUpdate));
+    assert.equal(await panel.locator('[data-task-list]').isDisabled(),true,'list edits cannot change an in-flight payload');
+    assert.equal(await panel.getByRole('button',{name:'Clear execution end'}).isDisabled(),true,'end clear cannot change an in-flight payload');
+    await page.evaluate(()=>window.__releaseUpdate());
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').name==='Pending save');
   }finally{await f.close();}
 });

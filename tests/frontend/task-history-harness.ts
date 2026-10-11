@@ -33,7 +33,7 @@ export function renderer() {
     todayPresentationFresh: true, document: { createElement: (tag: string) => new Element(tag) },
     CSS: { escape: (value: string) => value }, tasksList: new Element(), tasksCount: new Element(), taskScope: "all", taskStateScope: "all",
     taskOperationCount: 0, taskCreateOpen: false, taskListManagementOpen: false,
-    taskFocusRequestId: null, taskReturnToCollaborationSessionId: null,
+    taskFocusRequestId: null, selectedTaskDetailId: null, selectedTaskDetailBinding: null, taskEditorDialogRoot: null, taskReturnToCollaborationSessionId: null,
     taskCreateDrafts: new Map(), taskListCreateDrafts: new Map(),
     setCopy: (element: any, key: string, params: any) => { element.copyKey = key; element.params = params; },
     taskEditor: (task: any) => ({ tagName: "task", id: task.id }),

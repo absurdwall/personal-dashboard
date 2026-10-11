@@ -1635,6 +1635,9 @@ function resetVaultScopedWorkspaceState(): void {
   selectedCalendarDate = null;
   currentTodayView = null;
   currentTasksView = null;
+  selectedTaskDetailId = null;
+  selectedTaskDetailBinding = null;
+  taskEditorDialogRoot?.toggleAttribute("hidden", true);
   taskScope = "all";
   taskStateScope = "all";
   taskCreateOpen = false;
@@ -9511,6 +9514,7 @@ function taskEditor(
   clearEnd.type = "button";
   clearEnd.className = "secondary-button";
   clearEnd.disabled = !editable;
+  clearEnd.dataset.taskClearEnd = "";
   setCopy(clearEnd, "tasks.clearExecutionEnd");
   clearEnd.addEventListener("click", () => {
     endDate.value = "";
@@ -9625,8 +9629,10 @@ function taskEditor(
     check.type = "checkbox";
     check.checked = task.state === "completed";
     check.disabled = !writable || deleted || task.state === "abandoned";
-    check.dataset.taskStateAction = check.checked ? "pending" : "completed";
-    check.dataset.taskStateTask = task.id;
+    if (!deleted && task.state !== "abandoned") {
+      check.dataset.taskStateAction = check.checked ? "pending" : "completed";
+      check.dataset.taskStateTask = task.id;
+    }
     check.setAttribute("aria-label", `${t(check.checked ? "tasks.reopen" : "tasks.complete")} · ${task.name}`);
     completion.append(check);
     const scheduleText = document.createElement("small");
@@ -9786,7 +9792,10 @@ function renderTasks(view: TasksView): void {
     const focused = view.tasks.find(task => task.id === taskFocusRequestId);
     if (focused) {
       taskStateScope = focused.deletedAt ? "deleted" : focused.state;
-      if (view.lists.some(list => list.id === focused.listId && list.archived)) taskScope = "archived";
+      const focusedList = taskListForId(view, focused.listId);
+      taskScope = focusedList?.archived ? "archived"
+        : focusedList?.isSystem ? "inbox"
+        : focusedList ? taskListScopeForId(focused.listId) : "all";
     }
   }
   const scopedListId = taskListIdFromScope(taskScope);
@@ -9964,7 +9973,7 @@ function updateTaskEditorOperationState(
 ): void {
   taskEditorForms(surface).forEach((form) => {
     form.querySelectorAll(
-      "[data-task-name], [data-task-content], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
+      "[data-task-name], [data-task-content], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
     ).forEach((element) => {
       (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
         busy || !writable;
