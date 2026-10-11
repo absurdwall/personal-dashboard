@@ -6297,7 +6297,7 @@ body {
 .today-continuous-axis {
   --today-axis-gutter: 3.7rem;
   --today-axis-heading-height: 3rem;
-  --today-axis-hour-height: 3.75rem;
+  --today-axis-hour-height: 5rem;
   --today-axis-plot-height: calc(24 * var(--today-axis-hour-height));
   position: relative;
   display: grid;
@@ -6441,6 +6441,7 @@ body {
 }
 
 .today-axis-plot {
+  min-width: var(--today-axis-min-track-width, 0px);
   position: relative;
   isolation: isolate;
   height: var(--today-axis-plot-height);
@@ -6491,21 +6492,23 @@ body {
 .today-axis-marker {
   position: absolute;
   top: var(--axis-top);
-  left: calc(5px + var(--axis-stack-offset, 0px));
+  left: calc(5px + (100% - 10px) * var(--axis-stack-index, 0) / var(--axis-stack-size, 1));
   z-index: 3;
-  width: calc(100% - 10px - var(--axis-stack-offset, 0px));
+  width: calc((100% - 10px) / var(--axis-stack-size, 1) - 4px);
   min-width: 0;
-  transform: translateY(var(--axis-stack-offset, 0px));
 }
+
+.today-axis-marker:not(.is-stacked) { width: calc(100% - 10px); }
 
 .today-axis-marker.is-centered-label {
   top: var(--axis-label-center);
-  transform: translateY(calc(-50% + var(--axis-stack-offset, 0px)));
+  transform: translateY(-50%);
 }
 
 .today-axis-marker.is-stacked .today-axis-marker-link {
-  padding-right: 42px;
+  padding-right: 7px;
 }
+.today-axis-marker.is-stacked .today-axis-marker-title { -webkit-line-clamp: 1; }
 
 .today-axis-marker-link {
   box-sizing: border-box;
@@ -6560,7 +6563,7 @@ body {
 
 .today-axis-marker.is-stack-front {
   z-index: 30 !important;
-  filter: drop-shadow(0 3px 7px rgb(31 43 36 / 24%));
+  filter: none;
 }
 
 .today-axis-marker:focus-within {
@@ -6621,16 +6624,16 @@ body {
   grid-row: 1;
   display: block;
   min-width: 0;
-  font-size: 10px;
+  font-size: 9px;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   line-height: 1.2;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .today-axis-marker-title {
-  grid-column: 2;
-  grid-row: 1;
+  grid-column: 1;
+  grid-row: 2;
   display: -webkit-box;
   min-width: 0;
   overflow: hidden;
@@ -6644,7 +6647,7 @@ body {
 
 .today-axis-marker-source-status {
   grid-column: 1 / -1;
-  grid-row: 2;
+  grid-row: 3;
   display: flex;
   flex-wrap: wrap;
   gap: 2px 5px;
@@ -8263,10 +8266,11 @@ button.habit-cell:focus-visible {
 .today-axis-scroll-surface {
   min-width: 0;
   max-width: 100%;
-  overflow-x: auto;
+  max-height: clamp(240px, calc(100vh - 380px), 600px);
+  overflow: auto;
   padding-bottom: 6px;
-  overscroll-behavior-x: contain;
-  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+  scroll-behavior: auto;
 }
 
 .today-axis-scroll-surface:focus-visible {
@@ -9794,3 +9798,8 @@ button.habit-cell:focus-visible {
   border:2px solid var(--accent-color, #668ca8); background:color-mix(in srgb, #668ca8 18%, transparent); min-height:2px; }
 .today-axis-gesture-preview.is-point { height:2px!important; }
 .today-axis-task-dialog { width:min(560px, calc(100vw - 48px)); max-height:calc(100vh - 48px); overflow:auto; }
+
+/* Morning is the saved baseline document, rather than a second clock axis. */
+#today-phase-morning .today-timeline-item { display: block; }
+#today-phase-morning .today-period { display: block; margin-bottom: 0.35rem; }
+

@@ -194,8 +194,8 @@ fn time_axis_projection_separates_explicit_times_from_unlocated_content() {
             .iter()
             .filter(|entry| entry.start_minute == Some(780))
             .count(),
-        2,
-        "same-time plans must keep one shared anchor",
+        3,
+        "same-time explicit and broad plans must keep one shared anchor",
     );
     assert!(view
         .time_axis
@@ -222,16 +222,10 @@ fn time_axis_projection_separates_explicit_times_from_unlocated_content() {
         .unlocated_current_arrangement
         .iter()
         .any(|entry| entry.text.contains("before 18:00")));
-    assert!(view
-        .time_axis
-        .unlocated_current_arrangement
-        .iter()
-        .any(|entry| entry.period.as_deref() == Some("下午")));
-    assert!(view
-        .time_axis
-        .unlocated_current_arrangement
-        .iter()
-        .any(|entry| entry.text.contains("窄窗口中仍应保留完整内容")));
+    assert!(view.time_axis.current_arrangement.iter().any(|entry|
+        entry.period.as_deref() == Some("下午") && entry.start_minute == Some(780) && entry.end_minute.is_none()));
+    assert!(view.time_axis.current_arrangement.iter().any(|entry|
+        entry.text.contains("窄窗口中仍应保留完整内容") && entry.start_minute == Some(1080) && entry.end_minute.is_none()));
     assert!(view
         .time_axis
         .unlocated_confirmed_facts
@@ -536,8 +530,9 @@ date: 2026-08-10
     assert!(view.baseline.message.contains("未独立保存早间基准"));
     assert_eq!(view.timeline[0].title, "这是旧记录仍然可读的主计划。");
     assert_eq!(view.evidence[0].items, vec!["旧记录里的任务"]);
-    assert!(view.time_axis.current_arrangement.is_empty());
-    assert_eq!(view.time_axis.unlocated_current_arrangement.len(), 1);
+    assert_eq!(view.time_axis.current_arrangement[0].start_minute, Some(780));
+    assert_eq!(view.time_axis.current_arrangement[0].end_minute, None);
+    assert!(view.time_axis.unlocated_current_arrangement.is_empty());
     assert!(view.time_axis.confirmed_facts.is_empty());
     assert!(view.time_axis.unlocated_confirmed_facts.is_empty());
 }

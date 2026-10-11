@@ -1795,6 +1795,16 @@ pub struct TimeAxisView {
     pub unlocated_confirmed_facts: Vec<TimeAxisEntryView>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PlanTimePrecision {
+    Broad,
+    ApproximatePoint,
+    ExactPoint,
+    ExactRange,
+    Unlocated,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PlanTimeEditInput {
@@ -1805,6 +1815,8 @@ pub struct PlanTimeEditInput {
     pub operation_id: String,
     pub start_minute: u16,
     pub end_minute: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub precision: Option<PlanTimePrecision>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1818,6 +1830,7 @@ pub struct PlanTimeEditResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TimeAxisEntryView {
+    pub plan_precision: Option<PlanTimePrecision>,
     /// Revision-bound source identity, absent for unsafe legacy sources and facts.
     pub plan_id: Option<String>,
     pub time_editable: bool,
@@ -3701,7 +3714,6 @@ where
             );
         }
         let date = CalendarDate::parse(&input.date).ok_or("日期无效；未写入任何内容。")?;
-        let period = plan_time_period(date, input.start_minute, input.end_minute);
         let fingerprint = document_revision(
             serde_json::to_string(&input)
                 .map_err(|e| e.to_string())?
@@ -3731,12 +3743,50 @@ where
             .ok_or(
                 "无法安全定位当前安排；请重新读取或在 Daily Record 中明确编辑，未写入任何内容。",
             )?;
-        if !matches!(
-            explicit_time_expression(&source.block.period),
-            ExplicitTimeExpression::Point { .. } | ExplicitTimeExpression::Range { .. }
+        let source_precision = plan_time_expression(&source.block.period, "").0;
+        let body = format!(
+            "{} {}",
+            source.block.title,
+            source.block.detail.as_deref().unwrap_or("")
+        );
+        if matches!(
+            source_precision,
+            PlanTimePrecision::Broad | PlanTimePrecision::Unlocated
+        ) && !matches!(
+            explicit_time_expression(&body),
+            ExplicitTimeExpression::None
         ) {
             return Err("这项旧安排的具体时间不在可安全修改的时间字段中；请在 Daily Record 中明确编辑，未写入任何内容。".into());
         }
+        let precision = input.precision.unwrap_or_else(|| match source_precision {
+            PlanTimePrecision::Broad | PlanTimePrecision::ApproximatePoint => {
+                PlanTimePrecision::ApproximatePoint
+            }
+            PlanTimePrecision::ExactPoint | PlanTimePrecision::ExactRange
+                if input.end_minute.is_some() =>
+            {
+                PlanTimePrecision::ExactRange
+            }
+            PlanTimePrecision::ExactPoint | PlanTimePrecision::ExactRange => {
+                PlanTimePrecision::ExactPoint
+            }
+            other => other,
+        });
+        let period = match precision {
+            PlanTimePrecision::ApproximatePoint if input.end_minute.is_none() => {
+                format!("约{}", plan_time_period(date, input.start_minute, None))
+            }
+            PlanTimePrecision::ExactPoint if input.end_minute.is_none() => {
+                plan_time_period(date, input.start_minute, None)
+            }
+            PlanTimePrecision::ExactRange if input.end_minute.is_some() => {
+                plan_time_period(date, input.start_minute, input.end_minute)
+            }
+            _ => return Err(
+                "请选择近似时点、具体时点或完整具体区间；当前精度与起止不一致，未写入任何内容。"
+                    .into(),
+            ),
+        };
         // Validate wall-clock dates, including gaps/ambiguities, without silently relocating time.
         let mut offsets = Vec::new();
         for minute in [Some(input.start_minute), input.end_minute]
@@ -6121,6 +6171,57 @@ fn plan_time_sources(document: &str) -> Vec<PlanTimeSource> {
             block,
         });
     }
+    // A uniquely inherited time heading is a legacy time field only when its
+    // complete source group contains one plan. Shared/category headings stay read-only.
+    for (index, line) in lines.iter().enumerate() {
+        if line.in_fenced_code {
+            continue;
+        }
+        let Some(heading) = markdown_heading(line.text).filter(|heading| heading.level >= 3) else {
+            continue;
+        };
+        let block_end = lines[index + 1..]
+            .iter()
+            .find(|next| {
+                !next.in_fenced_code
+                    && markdown_heading(next.text)
+                        .is_some_and(|next_heading| next_heading.level <= heading.level)
+            })
+            .map(|next| next.start)
+            .unwrap_or(section.len());
+        let raw_block = &section[line.start..block_end];
+        let parsed = parse_timeline(raw_block);
+        if parsed.len() != 1 {
+            continue;
+        }
+        let block = parsed.into_iter().next().unwrap();
+        if block.period != clean_inline_markdown(heading.title)
+            || plan_time_expression(&block.period, "").0 == PlanTimePrecision::Unlocated
+            || lines[index + 1..]
+                .iter()
+                .take_while(|next| next.start < block_end)
+                .any(|next| {
+                    !next.in_fenced_code
+                        && list_item(next.text.trim())
+                            .and_then(|item| parse_bold_prefix(item.trim()))
+                            .is_some()
+                })
+        {
+            continue;
+        }
+        let period_start = start + (heading.title.as_ptr() as usize - section.as_ptr() as usize);
+        let period_end = period_start + heading.title.len();
+        let id = format!(
+            "plan-{}",
+            document_revision(format!("{period_start}:{raw_block}").as_bytes())
+        );
+        sources.push(PlanTimeSource {
+            id,
+            period_start,
+            period_end,
+            block,
+        });
+    }
     let timeline = section_body(section, "今天的大致安排")
         .map(parse_timeline)
         .unwrap_or_default();
@@ -6155,19 +6256,111 @@ fn bind_plan_time_sources(document: &str, axis: &mut TimeAxisView) {
             .collect();
         if matching.len() == 1 {
             entry.plan_id = Some(matching[0].id.clone());
-            entry.time_editable = matches!(
-                explicit_time_expression(&matching[0].block.period),
-                ExplicitTimeExpression::Point { .. } | ExplicitTimeExpression::Range { .. }
-            ) && !entry.continues_from_previous_day
+            let source = matching[0];
+            let source_precision = plan_time_expression(&source.block.period, "").0;
+            let body = format!(
+                "{} {}",
+                source.block.title,
+                source.block.detail.as_deref().unwrap_or("")
+            );
+            entry.time_editable = (matches!(
+                source_precision,
+                PlanTimePrecision::ApproximatePoint
+                    | PlanTimePrecision::ExactPoint
+                    | PlanTimePrecision::ExactRange
+            ) || matches!(
+                explicit_time_expression(&body),
+                ExplicitTimeExpression::None
+            )) && !entry.continues_from_previous_day
                 && !entry.continues_into_next_day;
         }
     }
 }
 
+// Broad anchors are display references only. No end or activity evidence is inferred.
+fn broad_plan_reference(period: &str) -> Option<u16> {
+    match period
+        .trim()
+        .trim_end_matches(['：', ':'])
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "早晨" | "早上" | "上午" | "morning" => Some(540),
+        "中午" | "午间" | "noon" => Some(720),
+        "午后" | "下午" | "afternoon" => Some(780),
+        "傍晚" | "晚间" | "晚上" | "evening" => Some(1080),
+        _ => None,
+    }
+}
+
+fn approximate_plan_period(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    let value = lower.trim();
+    ["约", "大约", "大概", "about ", "around ", "approximately "]
+        .iter()
+        .any(|marker| value.starts_with(marker))
+        || value.ends_with("左右")
+}
+
+fn relative_plan_period(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    [
+        "稍后",
+        "一会",
+        "随后",
+        "小时后",
+        "分钟后",
+        "明天",
+        "后天",
+        "later",
+        "after ",
+        "tomorrow",
+        "in half",
+        "in an hour",
+    ]
+    .iter()
+    .any(|marker| lower.contains(marker))
+}
+
+fn plan_time_expression(period: &str, text: &str) -> (PlanTimePrecision, ExplicitTimeExpression) {
+    if relative_plan_period(period) {
+        return (PlanTimePrecision::Unlocated, ExplicitTimeExpression::None);
+    }
+    let expression = explicit_time_expression(period);
+    let mut approximate = approximate_plan_period(period);
+    let expression = match expression {
+        ExplicitTimeExpression::None => {
+            let body_expression = explicit_time_expression(text);
+            if matches!(body_expression, ExplicitTimeExpression::None) {
+                if let Some(minute) = broad_plan_reference(period) {
+                    return (
+                        PlanTimePrecision::Broad,
+                        ExplicitTimeExpression::Point { date: None, minute },
+                    );
+                }
+            }
+            if relative_plan_period(text) {
+                return (PlanTimePrecision::Unlocated, ExplicitTimeExpression::None);
+            }
+            approximate = approximate_plan_period(text);
+            body_expression
+        }
+        other => other,
+    };
+    let precision = match &expression {
+        ExplicitTimeExpression::Point { .. } if approximate => PlanTimePrecision::ApproximatePoint,
+        ExplicitTimeExpression::Point { .. } => PlanTimePrecision::ExactPoint,
+        ExplicitTimeExpression::Range { .. } if !approximate => PlanTimePrecision::ExactRange,
+        _ => return (PlanTimePrecision::Unlocated, ExplicitTimeExpression::None),
+    };
+    (precision, expression)
+}
+
 fn plan_time_period(date: CalendarDate, start: u16, end: Option<u16>) -> String {
+    let include_dates = start >= 1440 || end.is_some_and(|minute| minute >= 1440);
     let label = |minute: u16| {
         let time = format!("{:02}:{:02}", minute % 1440 / 60, minute % 60);
-        if minute >= 1440 {
+        if include_dates {
             format!("{} {time}", date.plus_days(i64::from(minute / 1440)))
         } else {
             time
@@ -6191,6 +6384,9 @@ fn project_time_axis<C: TodayClock>(
             Some(detail) if !detail.is_empty() => format!("{} {}", block.title, detail),
             _ => block.title.clone(),
         };
+        let located_start = axis.current_arrangement.len();
+        let unlocated_start = axis.unlocated_current_arrangement.len();
+        let precision = plan_time_expression(&block.period, &text).0;
         project_axis_item(
             &mut axis.current_arrangement,
             &mut axis.unlocated_current_arrangement,
@@ -6199,6 +6395,10 @@ fn project_time_axis<C: TodayClock>(
             expected_date,
             clock,
         );
+        for entry in axis.current_arrangement[located_start..].iter_mut()
+            .chain(axis.unlocated_current_arrangement[unlocated_start..].iter_mut()) {
+            entry.plan_precision = Some(precision);
+        }
     }
     for fact in daytime
         .updates
@@ -6227,9 +6427,10 @@ fn project_axis_item<C: TodayClock>(
 ) {
     // Planned header timing is authoritative for the arrangement block. Body
     // uncertainty describes facts and must not erase or invent scheduled time.
-    let timing=period.as_deref().map(explicit_time_expression)
-        .filter(|value| !matches!(value,ExplicitTimeExpression::None|ExplicitTimeExpression::Invalid))
-        .unwrap_or_else(||explicit_time_expression(text));
+    let timing = match period.as_deref() {
+        Some(period) => plan_time_expression(period, text).1,
+        None => explicit_time_expression(text),
+    };
     match timing {
         ExplicitTimeExpression::None | ExplicitTimeExpression::Invalid => {
             unlocated.push(unlocated_axis_entry(period, text, expected_date));
@@ -6262,7 +6463,8 @@ fn project_axis_item<C: TodayClock>(
                 return;
             }
             located.push(TimeAxisEntryView {
-                plan_id: None,
+                plan_precision: None,
+        plan_id: None,
                 time_editable: false,
                 period,
                 text: text.to_owned(),
@@ -6330,7 +6532,8 @@ fn project_axis_item<C: TodayClock>(
             let start = (start_absolute.max(window_start) - expected_day.unix_days() * 1440) as u16;
             let end = (end_absolute.min(window_end) - expected_day.unix_days() * 1440) as u16;
             located.push(TimeAxisEntryView {
-                plan_id: None,
+                plan_precision: None,
+        plan_id: None,
                 time_editable: false,
                 period,
                 text: text.to_owned(),
@@ -6350,6 +6553,7 @@ fn unlocated_axis_entry(
     source_date: &str,
 ) -> TimeAxisEntryView {
     TimeAxisEntryView {
+        plan_precision: None,
         plan_id: None,
         time_editable: false,
         period,

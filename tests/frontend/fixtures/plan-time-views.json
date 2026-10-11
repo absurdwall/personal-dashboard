@@ -1,0 +1,1045 @@
+{
+  "approximate": {
+    "baseline": {
+      "availability": "saved",
+      "evidence": [
+        {
+          "items": [
+            "Synthetic report task"
+          ],
+          "label": "Tasks and fixed commitments"
+        }
+      ],
+      "message": "已读取独立保存的早间基准。",
+      "timeline": [
+        {
+          "detail": "Start with the outline",
+          "period": "午后",
+          "title": "Prepare the project brief"
+        },
+        {
+          "detail": null,
+          "period": "下午",
+          "title": "Review the draft"
+        }
+      ]
+    },
+    "canRecord": true,
+    "currentTime": "14:10",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-08-10",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-b0d3c272da2d81ad",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": [
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：午后 → 约14:00",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：约14:00 → 15:00–16:00",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：15:00–16:00 → 约16:45",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        }
+      ]
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [
+      {
+        "items": [
+          "Synthetic report task"
+        ],
+        "label": "Tasks and fixed commitments"
+      }
+    ],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-b1ebe5b80c77e21b",
+      "date": "2026-08-10",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取独立早间基准和当前安排。",
+    "revision": "4cb780052d26db5f",
+    "state": "ready",
+    "targetBinding": "target-66b3124c8c83d798",
+    "tasks": {
+      "currentDate": "2026-08-10",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "revision": null,
+      "schemaVersion": 2,
+      "state": "empty",
+      "targetBinding": "task-target-f6f20a5068854c62",
+      "tasks": [],
+      "vaultName": "precision-edit-vault",
+      "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-2103-1791682264198960000-11/precision-edit-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "约16:45",
+          "planId": "plan-30887c46388cce45",
+          "planPrecision": "approximatePoint",
+          "sourceDate": "2026-08-10",
+          "startMinute": 1005,
+          "text": "Prepare the project brief Start with the outline",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "下午",
+          "planId": "plan-f4b6e0a46604c7ab",
+          "planPrecision": "broad",
+          "sourceDate": "2026-08-10",
+          "startMinute": 780,
+          "text": "Review the draft",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": "Start with the outline",
+        "period": "约16:45",
+        "title": "Prepare the project brief"
+      },
+      {
+        "detail": null,
+        "period": "下午",
+        "title": "Review the draft"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "precision-edit-vault",
+    "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-2103-1791682264198960000-11/precision-edit-vault"
+  },
+  "exact": {
+    "baseline": {
+      "availability": "saved",
+      "evidence": [
+        {
+          "items": [
+            "Synthetic report task"
+          ],
+          "label": "Tasks and fixed commitments"
+        }
+      ],
+      "message": "已读取独立保存的早间基准。",
+      "timeline": [
+        {
+          "detail": "Start with the outline",
+          "period": "午后",
+          "title": "Prepare the project brief"
+        },
+        {
+          "detail": null,
+          "period": "下午",
+          "title": "Review the draft"
+        }
+      ]
+    },
+    "canRecord": true,
+    "currentTime": "14:10",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-08-10",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-b0d3c272da2d81ad",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": [
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：午后 → 约14:00",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：约14:00 → 15:00–16:00",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        }
+      ]
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [
+      {
+        "items": [
+          "Synthetic report task"
+        ],
+        "label": "Tasks and fixed commitments"
+      }
+    ],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-b1ebe5b80c77e21b",
+      "date": "2026-08-10",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取独立早间基准和当前安排。",
+    "revision": "5e7b5a055fe9580c",
+    "state": "ready",
+    "targetBinding": "target-66b3124c8c83d798",
+    "tasks": {
+      "currentDate": "2026-08-10",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "revision": null,
+      "schemaVersion": 2,
+      "state": "empty",
+      "targetBinding": "task-target-f6f20a5068854c62",
+      "tasks": [],
+      "vaultName": "precision-edit-vault",
+      "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-2103-1791682264198960000-11/precision-edit-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": 960,
+          "period": "15:00–16:00",
+          "planId": "plan-f87be0d88f6fb0f0",
+          "planPrecision": "exactRange",
+          "sourceDate": "2026-08-10",
+          "startMinute": 900,
+          "text": "Prepare the project brief Start with the outline",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "下午",
+          "planId": "plan-6d9eb77a3edbd4a4",
+          "planPrecision": "broad",
+          "sourceDate": "2026-08-10",
+          "startMinute": 780,
+          "text": "Review the draft",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": "Start with the outline",
+        "period": "15:00–16:00",
+        "title": "Prepare the project brief"
+      },
+      {
+        "detail": null,
+        "period": "下午",
+        "title": "Review the draft"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "precision-edit-vault",
+    "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-2103-1791682264198960000-11/precision-edit-vault"
+  },
+  "fuzzy": {
+    "baseline": {
+      "availability": "saved",
+      "evidence": [
+        {
+          "items": [
+            "Synthetic report task"
+          ],
+          "label": "Tasks and fixed commitments"
+        }
+      ],
+      "message": "已读取独立保存的早间基准。",
+      "timeline": [
+        {
+          "detail": "Start with the outline",
+          "period": "午后",
+          "title": "Prepare the project brief"
+        },
+        {
+          "detail": null,
+          "period": "下午",
+          "title": "Review the draft"
+        }
+      ]
+    },
+    "canRecord": true,
+    "currentTime": "14:10",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-08-10",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-b0d3c272da2d81ad",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": [
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：午后 → 约14:00",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        }
+      ]
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [
+      {
+        "items": [
+          "Synthetic report task"
+        ],
+        "label": "Tasks and fixed commitments"
+      }
+    ],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-b1ebe5b80c77e21b",
+      "date": "2026-08-10",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取独立早间基准和当前安排。",
+    "revision": "e99f17dd8c5d3f58",
+    "state": "ready",
+    "targetBinding": "target-66b3124c8c83d798",
+    "tasks": {
+      "currentDate": "2026-08-10",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "revision": null,
+      "schemaVersion": 2,
+      "state": "empty",
+      "targetBinding": "task-target-f6f20a5068854c62",
+      "tasks": [],
+      "vaultName": "precision-edit-vault",
+      "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-2103-1791682264198960000-11/precision-edit-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "约14:00",
+          "planId": "plan-f284978ff1fd400c",
+          "planPrecision": "approximatePoint",
+          "sourceDate": "2026-08-10",
+          "startMinute": 840,
+          "text": "Prepare the project brief Start with the outline",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "下午",
+          "planId": "plan-f4b6e0a46604c7ab",
+          "planPrecision": "broad",
+          "sourceDate": "2026-08-10",
+          "startMinute": 780,
+          "text": "Review the draft",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": "Start with the outline",
+        "period": "约14:00",
+        "title": "Prepare the project brief"
+      },
+      {
+        "detail": null,
+        "period": "下午",
+        "title": "Review the draft"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "precision-edit-vault",
+    "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-2103-1791682264198960000-11/precision-edit-vault"
+  },
+  "loaded": {
+    "baseline": {
+      "availability": "saved",
+      "evidence": [
+        {
+          "items": [
+            "Synthetic report task"
+          ],
+          "label": "Tasks and fixed commitments"
+        }
+      ],
+      "message": "已读取独立保存的早间基准。",
+      "timeline": [
+        {
+          "detail": "Start with the outline",
+          "period": "午后",
+          "title": "Prepare the project brief"
+        },
+        {
+          "detail": null,
+          "period": "下午",
+          "title": "Review the draft"
+        }
+      ]
+    },
+    "canRecord": true,
+    "currentTime": "14:10",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-08-10",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-b0d3c272da2d81ad",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": []
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [
+      {
+        "items": [
+          "Synthetic report task"
+        ],
+        "label": "Tasks and fixed commitments"
+      }
+    ],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-b1ebe5b80c77e21b",
+      "date": "2026-08-10",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取独立早间基准和当前安排。",
+    "revision": "d944e898b852b7cd",
+    "state": "ready",
+    "targetBinding": "target-66b3124c8c83d798",
+    "tasks": {
+      "currentDate": "2026-08-10",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "revision": null,
+      "schemaVersion": 2,
+      "state": "empty",
+      "targetBinding": "task-target-f6f20a5068854c62",
+      "tasks": [],
+      "vaultName": "precision-edit-vault",
+      "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-2103-1791682264198960000-11/precision-edit-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "午后",
+          "planId": "plan-80ce17cf570f1b38",
+          "planPrecision": "broad",
+          "sourceDate": "2026-08-10",
+          "startMinute": 780,
+          "text": "Prepare the project brief Start with the outline",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "下午",
+          "planId": "plan-eb1ef5ead45aeaa0",
+          "planPrecision": "broad",
+          "sourceDate": "2026-08-10",
+          "startMinute": 780,
+          "text": "Review the draft",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": "Start with the outline",
+        "period": "午后",
+        "title": "Prepare the project brief"
+      },
+      {
+        "detail": null,
+        "period": "下午",
+        "title": "Review the draft"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "precision-edit-vault",
+    "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-2103-1791682264198960000-11/precision-edit-vault"
+  },
+  "overnight": {
+    "baseline": {
+      "availability": "saved",
+      "evidence": [
+        {
+          "items": [
+            "Synthetic report task"
+          ],
+          "label": "Tasks and fixed commitments"
+        }
+      ],
+      "message": "已读取独立保存的早间基准。",
+      "timeline": [
+        {
+          "detail": "Start with the outline",
+          "period": "午后",
+          "title": "Prepare the project brief"
+        },
+        {
+          "detail": null,
+          "period": "下午",
+          "title": "Review the draft"
+        }
+      ]
+    },
+    "canRecord": true,
+    "currentTime": "14:10",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-08-10",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-b0d3c272da2d81ad",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": [
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：午后 → 约14:00",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：约14:00 → 15:00–16:00",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：15:00–16:00 → 约16:45",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：约16:45 → 2026-08-10 23:00–2026-08-11 01:00",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        }
+      ]
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [
+      {
+        "items": [
+          "Synthetic report task"
+        ],
+        "label": "Tasks and fixed commitments"
+      }
+    ],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-b1ebe5b80c77e21b",
+      "date": "2026-08-10",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取独立早间基准和当前安排。",
+    "revision": "984726596f904290",
+    "state": "ready",
+    "targetBinding": "target-66b3124c8c83d798",
+    "tasks": {
+      "currentDate": "2026-08-10",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "revision": null,
+      "schemaVersion": 2,
+      "state": "empty",
+      "targetBinding": "task-target-f6f20a5068854c62",
+      "tasks": [],
+      "vaultName": "precision-edit-vault",
+      "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-2103-1791682264198960000-11/precision-edit-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": 1500,
+          "period": "2026-08-10 23:00–2026-08-11 01:00",
+          "planId": "plan-6167517053fd2852",
+          "planPrecision": "exactRange",
+          "sourceDate": "2026-08-10",
+          "startMinute": 1380,
+          "text": "Prepare the project brief Start with the outline",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "下午",
+          "planId": "plan-1d952566d407bd52",
+          "planPrecision": "broad",
+          "sourceDate": "2026-08-10",
+          "startMinute": 780,
+          "text": "Review the draft",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": "Start with the outline",
+        "period": "2026-08-10 23:00–2026-08-11 01:00",
+        "title": "Prepare the project brief"
+      },
+      {
+        "detail": null,
+        "period": "下午",
+        "title": "Review the draft"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "precision-edit-vault",
+    "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-2103-1791682264198960000-11/precision-edit-vault"
+  },
+  "point": {
+    "baseline": {
+      "availability": "saved",
+      "evidence": [
+        {
+          "items": [
+            "Synthetic report task"
+          ],
+          "label": "Tasks and fixed commitments"
+        }
+      ],
+      "message": "已读取独立保存的早间基准。",
+      "timeline": [
+        {
+          "detail": "Start with the outline",
+          "period": "午后",
+          "title": "Prepare the project brief"
+        },
+        {
+          "detail": null,
+          "period": "下午",
+          "title": "Review the draft"
+        }
+      ]
+    },
+    "canRecord": true,
+    "currentTime": "14:10",
+    "dailyRecordAvailability": "unreviewed",
+    "date": "2026-08-10",
+    "dayTasks": {
+      "message": "这一天没有任务；未勾选事项不会自动顺延。",
+      "planError": null,
+      "revision": null,
+      "state": "empty",
+      "targetBinding": "day-task-target-b0d3c272da2d81ad",
+      "tasks": []
+    },
+    "daytime": {
+      "shortRecords": [],
+      "updates": [
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：午后 → 约14:00",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：约14:00 → 15:00–16:00",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：15:00–16:00 → 约16:45",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：约16:45 → 2026-08-10 23:00–2026-08-11 01:00",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        },
+        {
+          "changeReasons": [],
+          "context": [],
+          "neutral": [
+            "当前安排：2026-08-10 23:00–2026-08-11 01:00 → 16:30",
+            "项目：Prepare the project brief"
+          ],
+          "observedFacts": [],
+          "originalIntent": [],
+          "revisedDirection": [],
+          "title": "14:10 计划时间修订"
+        }
+      ]
+    },
+    "defaultPhase": "daytime",
+    "evening": {
+      "account": [],
+      "additions": [],
+      "comparison": [],
+      "corrections": [],
+      "hasLaterRecordRevision": false,
+      "other": [],
+      "questions": [],
+      "recordSupplements": [],
+      "summary": []
+    },
+    "evidence": [
+      {
+        "items": [
+          "Synthetic report task"
+        ],
+        "label": "Tasks and fixed commitments"
+      }
+    ],
+    "habitCorrections": {
+      "canRecord": true,
+      "completionRevision": null,
+      "completionTargetBinding": "habit-completion-target-b1ebe5b80c77e21b",
+      "date": "2026-08-10",
+      "habits": [],
+      "message": "没有可验证的 Habits catalog；所选日期的外部状态与历史目标未知。",
+      "namesConfigurationState": "missing",
+      "state": "missing"
+    },
+    "isToday": true,
+    "message": "已读取独立早间基准和当前安排。",
+    "revision": "9be6af190234e4d2",
+    "state": "ready",
+    "targetBinding": "target-66b3124c8c83d798",
+    "tasks": {
+      "currentDate": "2026-08-10",
+      "errorKind": null,
+      "lists": [
+        {
+          "archived": false,
+          "id": "inbox",
+          "isSystem": true,
+          "name": "Inbox"
+        }
+      ],
+      "message": "Inbox 目前没有任务；新任务会先保存在 Inbox。",
+      "revision": null,
+      "schemaVersion": 2,
+      "state": "empty",
+      "targetBinding": "task-target-f6f20a5068854c62",
+      "tasks": [],
+      "vaultName": "precision-edit-vault",
+      "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-2103-1791682264198960000-11/precision-edit-vault"
+    },
+    "timeAxis": {
+      "confirmedFacts": [],
+      "currentArrangement": [
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "16:30",
+          "planId": "plan-fe78c29439b15cb2",
+          "planPrecision": "exactPoint",
+          "sourceDate": "2026-08-10",
+          "startMinute": 990,
+          "text": "Prepare the project brief Start with the outline",
+          "timeEditable": true
+        },
+        {
+          "continuesFromPreviousDay": false,
+          "continuesIntoNextDay": false,
+          "endMinute": null,
+          "period": "下午",
+          "planId": "plan-96652fd046462a7c",
+          "planPrecision": "broad",
+          "sourceDate": "2026-08-10",
+          "startMinute": 780,
+          "text": "Review the draft",
+          "timeEditable": true
+        }
+      ],
+      "unlocatedConfirmedFacts": [],
+      "unlocatedCurrentArrangement": []
+    },
+    "timeline": [
+      {
+        "detail": "Start with the outline",
+        "period": "16:30",
+        "title": "Prepare the project brief"
+      },
+      {
+        "detail": null,
+        "period": "下午",
+        "title": "Review the draft"
+      }
+    ],
+    "vaultAvailability": "available",
+    "vaultName": "precision-edit-vault",
+    "vaultPath": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/personal-dashboard-daily-plan-2103-1791682264198960000-11/precision-edit-vault"
+  }
+}

@@ -9,8 +9,8 @@ final class LayoutProbe: NSObject, WKNavigationDelegate {
     var finished = false
     var failed = false
 
-    init(width: Double, script: String) {
-        self.webView = WKWebView(frame: CGRect(x: 0, y: 0, width: width, height: 900))
+    init(width: Double, height: Double = 900, script: String) {
+        self.webView = WKWebView(frame: CGRect(x: 0, y: 0, width: width, height: height))
         self.script = script
         super.init()
         webView.navigationDelegate = self
@@ -41,7 +41,8 @@ final class LayoutProbe: NSObject, WKNavigationDelegate {
 _ = NSApplication.shared
 let page = URL(fileURLWithPath: CommandLine.arguments[1])
 let script = try String(contentsOfFile: CommandLine.arguments[2], encoding: .utf8)
-let probe = LayoutProbe(width: Double(CommandLine.arguments[3])!, script: script)
+let height = CommandLine.arguments.count > 4 ? Double(CommandLine.arguments[4])! : 900
+let probe = LayoutProbe(width: Double(CommandLine.arguments[3])!, height: height, script: script)
 probe.webView.loadFileURL(page, allowingReadAccessTo: page.deletingLastPathComponent())
 let deadline = Date().addingTimeInterval(20)
 while !probe.finished && Date() < deadline {
