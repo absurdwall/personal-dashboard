@@ -4294,8 +4294,8 @@ function renderCollaborationWorkspace(): void {
     }
     renderCollaborationSessionList(sessions);
     if (workspace.recoveryRequired && !workspace.activeRun) {
-      setCopy(collaborationWorkOwner, "collaboration.recoveryRequired");
-      if (collaborationWorkOwner) collaborationWorkOwner.dataset.state = "recovery";
+      setRawText(collaborationWorkOwner, "");
+      collaborationWorkOwner?.removeAttribute("data-state");
     } else if (workspace.activeRun) {
       setRawText(
         collaborationWorkOwner,
@@ -6099,7 +6099,9 @@ function renderTodayTimeAxisEntries(
   ordered.forEach(({ entry, index }) => {
     detailElements.set(index, axisEntryDetails(entry, entry.lane, index));
   });
-  todayTimedDetails.replaceChildren(...ordered.map(({ index }) => detailElements.get(index)!));
+  const lowerDetailEntries = ordered.filter(({ entry }) => entry.lane !== "arrangement");
+  todayTimedDetails.replaceChildren(...lowerDetailEntries.map(({ index }) => detailElements.get(index)!));
+  todayTimedDetails.toggleAttribute("hidden", lowerDetailEntries.length === 0);
   const [visibleStart, visibleEnd] = axisBounds();
   const timedEntries = ordered.filter(({ entry }) => entry.startMinute !== null &&
     entry.startMinute < visibleEnd && (entry.endMinute ?? entry.startMinute) >= visibleStart);
@@ -6157,9 +6159,13 @@ function renderTodayTimeAxisEntries(
       marker.classList.toggle("is-centered-label", markerLayout.isCenteredLabel);
       markersByStack.set(placement.stackId, [...(markersByStack.get(placement.stackId) ?? []), marker]);
 
-      const link = document.createElement("a");
-      link.href = `#today-axis-${entry.lane}-entry-${index}`;
+      const readOnlyArrangement = original.lane === "arrangement" && !editablePlan;
+      const link = document.createElement(readOnlyArrangement ? "span" : "a");
+      if (link instanceof HTMLAnchorElement) {
+        link.href = `#today-axis-${entry.lane}-entry-${index}`;
+      }
       link.className = "today-axis-marker-link";
+      if (readOnlyArrangement) link.classList.add("is-read-only");
       link.draggable = false;
       link.dataset.axisItemTime = axisEntryTimeLabel(original, original.lane);
       link.dataset.axisItemText = entry.text;
@@ -6184,20 +6190,22 @@ function renderTodayTimeAxisEntries(
       appendAxisEntryMetadata(metadata, entry, entry.lane);
       link.append(timeLabel, title, metadata);
       link.classList.toggle("is-short-range", durationMinutes !== null && markerLayout.isCenteredLabel);
-      link.addEventListener("click", (event) => {
-        event.preventDefault();
-        const members = markersByStack.get(placement.stackId) ?? [];
-        members.forEach((member) => member.classList.toggle("is-stack-front", member === marker));
-        if (editablePlan) {
-          openPlanTimeEditor(original);
-          return;
-        }
-        const target = detailElements.get(index);
-        if (!target) return;
-        target.open = true;
-        todayAxisFollowState = onManualScroll(todayAxisFollowState);
-        target.scrollIntoView({ block: "center", behavior: "smooth" });
-      });
+      if (!readOnlyArrangement) {
+        link.addEventListener("click", (event) => {
+          event.preventDefault();
+          const members = markersByStack.get(placement.stackId) ?? [];
+          members.forEach((member) => member.classList.toggle("is-stack-front", member === marker));
+          if (editablePlan) {
+            openPlanTimeEditor(original);
+            return;
+          }
+          const target = detailElements.get(index);
+          if (!target) return;
+          target.open = true;
+          todayAxisFollowState = onManualScroll(todayAxisFollowState);
+          target.scrollIntoView({ block: "center", behavior: "smooth" });
+        });
+      }
       marker.append(link);
       if (editablePlan && original.planPrecision === "exactRange" && original.endMinute !== null) {
         const endHandle = document.createElement("button");
