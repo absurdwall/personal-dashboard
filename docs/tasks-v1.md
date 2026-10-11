@@ -87,15 +87,20 @@ those files during normal 4.0 reads.
 ## Calendar derived view
 
 Calendar keeps its existing Daily Record availability and Review semantics. Its
-month response adds up to two dated, non-deleted task title previews per cell
+month response adds up to four dated, non-deleted task title previews per cell
 plus an overflow count. The previews retain the task state so completed and
 abandoned work can be distinguished; archived-list tasks remain eligible for
 historical Calendar lookup. Undated tasks have no month-cell placement, and
 late completion does not move a task away from its scheduled date.
+The month includes complete Sunday-to-Saturday weeks, using five rows for
+compact months and six when needed. Record/Review markers and the true overflow
+count sit beside the date; missing records remain unmarked and read errors
+retain their separate state. Task completion never implies Review.
 
 Selecting a date, including its `+N` overflow label, reads that date through
 the existing `TodayApplication::read_date` boundary and presents the complete
-dated task set in the existing right-side panel. The panel uses the shared
+dated task set in the existing detail panel (beside the month at wide widths,
+below it at narrow widths). The panel uses the shared
 task id, binding, revision and mutation commands for editing, state changes,
 completion correction and rescheduling. New tasks default to the selected date
 and Inbox. Reading Calendar or saving a task only reads or writes the task
