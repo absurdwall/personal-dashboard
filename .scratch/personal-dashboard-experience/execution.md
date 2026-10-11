@@ -3,10 +3,10 @@
 Date: 2026-10-10
 Canonical tracker: [map](map.md)
 Parent specification: PDEX-SPEC-01
-Stage: approved tickets published; implementation not started
+Stage: authorized implementation in progress
 Working branch at publication: codex/dashboard-experience-prototype
 
-## Current state
+## Publication checkpoint state (historical)
 
 PDEX-01–11 are ready-for-agent/open/unassigned, with all acceptance boxes
 unchecked. No ticket has been claimed. Eligible frontier: PDEX-01, PDEX-03,
@@ -39,3 +39,9 @@ authorize starting implementation.
 ## Implementation run
 
 - 2026-10-10: Authorized full local implementation. Integration: codex/dashboard-experience-integration; exact base 8960c80bc81ae35a7dcd871dd104f4b3d04497de. Working tree initially clean. Individual implementers use codex/pdex-NN worktrees and merge integration before reporting. All merges preserve complete history. Parent spec closure, installation, main merge and remote publication remain separate boundaries.
+
+- 2026-10-10: Installed tortilla-flat-management connect/discover/inspect confirmed canonical product-personal-dashboard and source-personal-dashboard-experience; 12 records, current, no malformed references, source revision a46f6fedb8e9e08b. Inspection scoped only to this local source. Frontend pre-implementation baseline: 388 tests passed. Rust baseline runs independently before changes.
+
+- 2026-10-10: Initial Rust baseline invalidated by concurrent shared-target binary replacement: canonical suite executed PDEX-06 new test absent from canonical sources. This is orchestration evidence contamination, not an established baseline product failure. Workers moved to isolated Cargo targets; final integrated suite will be run serially after merges. Frontend baseline remains valid.
+
+- 2026-10-10: Claimed ticket metadata now exposes Triage separately from native Status and Assignee so the installed local source reader can observe work-in-progress instead of treating claimed records as unassigned ready work. Lifecycle/acceptance remain independent; stable IDs, bodies and map triage are retained.

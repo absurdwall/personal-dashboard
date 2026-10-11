@@ -16,7 +16,7 @@ Management source: source-personal-dashboard-experience
 | PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | open | none | [Prototype R](prototype/README.md), [Q1–Q4](design-review.md), [publication](publication.md) |
 | PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | in-progress | none | claimed: implementer PDEX-01; codex/pdex-01 |
 | PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | open | PDEX-01 | unassigned; not started |
-| PDEX-03 | ticket | [03: 保持早间文字与可读的统一白天时间轴](issues/03-unified-readable-today.md) | ready-for-agent | open | none | unassigned; not started |
+| PDEX-03 | ticket | [03: 保持早间文字与可读的统一白天时间轴](issues/03-unified-readable-today.md) | ready-for-agent | in-progress | none | claimed: implementer PDEX-03; codex/pdex-03 |
 | PDEX-04 | ticket | [04: 拖动计划并调整结束时间](issues/04-plan-drag-and-resize.md) | ready-for-agent | open | PDEX-02 | unassigned; not started |
 | PDEX-05 | ticket | [05: Tasks 使用清晰勾选列表与所选详情](issues/05-task-list-details.md) | ready-for-agent | open | none | unassigned; not started |
 | PDEX-06 | ticket | [06: 保存 Task 计划执行时间段并兼容现有入口](issues/06-task-execution-intervals.md) | ready-for-agent | in-progress | none | claimed: implementer PDEX-06; codex/pdex-06 |
@@ -26,9 +26,8 @@ Management source: source-personal-dashboard-experience
 | PDEX-10 | ticket | [10: Evening 一键进入带日期的复盘草稿](issues/10-evening-review-entry.md) | ready-for-agent | open | none | unassigned; not started |
 | PDEX-11 | ticket | [11: 验证同一打包版本的完整日常流程](issues/11-packaged-daily-flow-acceptance.md) | ready-for-agent | open | PDEX-03, PDEX-04, PDEX-05, PDEX-07, PDEX-08, PDEX-09, PDEX-10 | unassigned; not started |
 
-The spec and eleven approved tickets are published locally. Every ticket has
-its own complete body and unchecked acceptance criteria. No ticket is claimed
-or started. The Work Item index [00-spec](issues/00-spec.md) refers to
+The spec and eleven approved tickets are published locally. Every ticket retains its complete body and separate acceptance criteria.
+Current claim and implementation states are recorded per row and ticket. The Work Item index [00-spec](issues/00-spec.md) refers to
 this full body and the same PDEX-SPEC-01 identity; it is not an implementation
 ticket or a second specification. Do not renumber existing PDEX records.
 
@@ -40,8 +39,9 @@ dependencies. There are ten direct blocking edges with no cycles or redundant
 transitive edges. Read each full ticket before a later authorized claim.
 
 [Execution record](execution.md) retains claim/branch/commit/verification
-conventions. Breakdown approval authorizes this publication, not implementation,
-installation or closing the parent specification; its body/state stay unchanged.
+conventions. Breakdown approval authorized publication. The subsequent implement-spec
+request authorizes ticket implementation; installation and parent-spec closure
+remain separate boundaries.
 
 ## Decisions so far
 
