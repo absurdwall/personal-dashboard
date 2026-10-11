@@ -9761,3 +9761,28 @@ button.habit-cell:focus-visible {
 .collaboration-reply-link { display: inline; padding: 0; }
 
 .collaboration-change-diff { font-size: inherit; line-height: inherit; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }
+
+.plan-time-editor { max-width: min(30rem, calc(100vw - 2rem)); border: 1px solid var(--parity-border); border-radius: 12px; padding: 1.2rem; }
+.plan-time-editor::backdrop { background: rgb(0 0 0 / 25%); }
+.plan-time-editor form { display: grid; gap: .8rem; }
+.plan-time-editor form > div { display: flex; gap: 1rem; align-items: center; }
+.plan-time-editor label { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+
+/* Slash suggestions stay with the editor; choosing one edits the draft. */
+.collaboration-command-menu {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.42rem;
+  background: var(--parity-surface);
+}
+.collaboration-command-menu[hidden] { display: none; }
+.collaboration-command-menu button { text-align: left; }
+.collaboration-command-menu [aria-selected="true"] {
+  background: var(--parity-accent-soft);
+  outline: 1px solid var(--parity-accent-strong);
+}
+.collaboration-help { color: var(--parity-muted); font-size: 0.65rem; }
+.collaboration-help summary { cursor: pointer; }
+.collaboration-help p { margin: 0.35rem 0; }
