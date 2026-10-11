@@ -45,6 +45,30 @@ by this publication. The specification stays canonical regardless of display ref
 
 ## Boundary
 
-No implementation tickets have been created or claimed. No production
-implementation, main merge, remote push or App installation is implied by this
-specification publication.
+The user subsequently approved the to-tickets breakdown. Eleven implementation
+tickets are published locally but none is claimed or started. No production
+implementation, main merge, remote push or App installation is implied by the
+specification or ticket publication.
+
+## Ticket publication
+
+- Approval: the user's “可以” confirmed the eleven slices and their granularity
+  and dependencies on 2026-10-10.
+- Published: PDEX-01–11, one complete file per ticket under the local issues
+  directory, in dependency order; ready-for-agent/open/unassigned.
+- Graph: ten direct blocking edges; initial frontier PDEX-01/03/05/06/08/09/10.
+- Content: each approved What to build, explicit Blocked by and acceptance
+  criteria retained; 68 unchecked acceptance criteria across eleven tickets.
+- Parent: the complete PDEX-SPEC-01 body and its Work Item index remain byte-for-byte
+  unchanged. Publishing children does not change or close that parent.
+- Evidence: [approved proposal](ticket-breakdown-proposal.md), [tracker](map.md)
+  and [execution boundary](execution.md). The commit containing this batch is
+  the durable local publication receipt; no GitHub operation was performed.
+- Management readback: source-personal-dashboard-experience is current at
+  revision 66ea1fd9c206de45, with twelve records (one spec index and eleven
+  tickets), no malformed references, seven ready tickets and four gated by
+  their declared dependencies. All ten blocking references resolve to actual
+  local ticket records; none is an unresolved or fabricated review gate.
+- File verification: eleven complete bodies, 68 unchecked acceptance criteria,
+  links and dependency graph validated; parent spec/body index byte hashes
+  match the pre-publication values.

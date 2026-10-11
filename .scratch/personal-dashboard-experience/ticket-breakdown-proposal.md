@@ -2,9 +2,9 @@
 
 Date: 2026-10-10
 Parent: PDEX-SPEC-01, [complete specification](spec.md)
-Status: proposal awaiting the user's breakdown decision
-Publication: no implementation tickets published or claimed
-Scope: eleven candidate slices; candidate numbers are not allocated ticket IDs
+Status: approved by the user on 2026-10-10
+Publication: eleven tickets published locally; unclaimed and not started
+Scope: approved slices retained below; allocated PDEX-01–11 bodies are in the local map
 
 ## Slicing and prerequisites
 
@@ -232,3 +232,11 @@ Review the eleven slices, their size and the genuine blocking prerequisites.
 Suggest merges/splits if useful. After the user approves, publish one full body
 per ticket with the approved numbering, parent, triage, lifecycle and acceptance
 criteria in the local tracker. Do not modify or close the parent specification.
+
+## Approval and publication
+
+2026-10-10: The user replied “可以” to the proposed eleven tickets, granularity
+and blocking graph. Published one complete file per ticket as PDEX-01–11 with
+ten direct blocking edges. The candidate wording above preserves the reviewed
+proposal; the [map](map.md) and individual ticket bodies are current canonical
+records. No implementation or parent-spec change was performed.

@@ -4,7 +4,7 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: specification published; awaiting the next requested stage
+Stage: specification and eleven approved tickets published; implementation not started
 Implementation: not started
 Working branch: codex/dashboard-experience-prototype
 Management source: source-personal-dashboard-experience
@@ -14,11 +14,34 @@ Management source: source-personal-dashboard-experience
 | ID | Type | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | open | none | [Prototype R](prototype/README.md), [Q1–Q4](design-review.md), [publication](publication.md) |
+| PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | open | none | unassigned; not started |
+| PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | open | PDEX-01 | unassigned; not started |
+| PDEX-03 | ticket | [03: 保持早间文字与可读的统一白天时间轴](issues/03-unified-readable-today.md) | ready-for-agent | open | none | unassigned; not started |
+| PDEX-04 | ticket | [04: 拖动计划并调整结束时间](issues/04-plan-drag-and-resize.md) | ready-for-agent | open | PDEX-02 | unassigned; not started |
+| PDEX-05 | ticket | [05: Tasks 使用清晰勾选列表与所选详情](issues/05-task-list-details.md) | ready-for-agent | open | none | unassigned; not started |
+| PDEX-06 | ticket | [06: 保存 Task 计划执行时间段并兼容现有入口](issues/06-task-execution-intervals.md) | ready-for-agent | open | none | unassigned; not started |
+| PDEX-07 | ticket | [07: 在白天时间轴选区创建与移动 Task](issues/07-task-timeline-create-move.md) | ready-for-agent | open | PDEX-06 | unassigned; not started |
+| PDEX-08 | ticket | [08: Calendar 完整紧凑月历与记录状态](issues/08-compact-calendar.md) | ready-for-agent | open | none | unassigned; not started |
+| PDEX-09 | ticket | [09: Collaboration 减负与 slash 命令补全](issues/09-collaboration-command-completion.md) | ready-for-agent | open | none | unassigned; not started |
+| PDEX-10 | ticket | [10: Evening 一键进入带日期的复盘草稿](issues/10-evening-review-entry.md) | ready-for-agent | open | none | unassigned; not started |
+| PDEX-11 | ticket | [11: 验证同一打包版本的完整日常流程](issues/11-packaged-daily-flow-acceptance.md) | ready-for-agent | open | PDEX-03, PDEX-04, PDEX-05, PDEX-07, PDEX-08, PDEX-09, PDEX-10 | unassigned; not started |
 
-The spec is published locally. Implementation tickets are not yet created,
-claimed or started. The Work Item index [00-spec](issues/00-spec.md) refers to
+The spec and eleven approved tickets are published locally. Every ticket has
+its own complete body and unchecked acceptance criteria. No ticket is claimed
+or started. The Work Item index [00-spec](issues/00-spec.md) refers to
 this full body and the same PDEX-SPEC-01 identity; it is not an implementation
 ticket or a second specification. Do not renumber existing PDEX records.
+
+## Frontier and execution boundary
+
+The initial eligible frontier is PDEX-01, PDEX-03, PDEX-05, PDEX-06,
+PDEX-08, PDEX-09 and PDEX-10. PDEX-02/04/07/11 are gated by the declared
+dependencies. There are ten direct blocking edges with no cycles or redundant
+transitive edges. Read each full ticket before a later authorized claim.
+
+[Execution record](execution.md) retains claim/branch/commit/verification
+conventions. Breakdown approval authorizes this publication, not implementation,
+installation or closing the parent specification; its body/state stay unchanged.
 
 ## Decisions so far
 
@@ -74,3 +97,10 @@ avoid duplicate open queues, and do not migrate automatically.
 - 2026-10-10: Installed Management helper confirmed local source registration
   and a fresh readback: source-personal-dashboard-experience is current and exposes
   exactly one spec index, no implementation tickets. Source revision 4210d09f1153d1bf.
+- 2026-10-10: User approved the eleven-slice breakdown and ten direct blocking
+  edges. Published PDEX-01–11, each ready-for-agent/open/unassigned with its own
+  full body and acceptance criteria. The parent spec and spec index are unchanged.
+  The commit containing this batch is the ticket-publication receipt.
+- 2026-10-10: Fresh Management inspect confirmed twelve local records, no
+  malformed references and the seven-ticket frontier declared above. Ten
+  blocking edges resolve; source revision 66ea1fd9c206de45.

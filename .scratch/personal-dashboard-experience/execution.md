@@ -1,0 +1,37 @@
+# Dashboard experience — local execution record
+
+Date: 2026-10-10
+Canonical tracker: [map](map.md)
+Parent specification: PDEX-SPEC-01
+Stage: approved tickets published; implementation not started
+Working branch at publication: codex/dashboard-experience-prototype
+
+## Current state
+
+PDEX-01–11 are ready-for-agent/open/unassigned, with all acceptance boxes
+unchecked. No ticket has been claimed. Eligible frontier: PDEX-01, PDEX-03,
+PDEX-05, PDEX-06, PDEX-08, PDEX-09 and PDEX-10. Eligibility does not itself
+authorize starting implementation.
+
+## Later authorized execution
+
+1. Read the current full ticket, parent domain decisions and direct blockers.
+2. Record the claim's owner, date, branch/worktree and base in the ticket and map
+   before implementation; preserve unrelated dirty work.
+3. Keep the vertical slice usable, and commit coherent code and record increments.
+   Preserve complete local history, including fixes and reviews.
+4. Verify its external behavior through Q4's existing application/persistence
+   and actual UI boundary. Retain synthetic-data identities, commit/candidate,
+   checks, readback, failure/recovery and packaged acceptance evidence.
+5. Record unmet criteria as incomplete or blocked. Close only with the ticket's
+   required evidence, and reconcile map/body together. Do not infer installation,
+   remote integration or closure of the parent from ticket completion.
+6. Use [remote handoff](remote-handoff.md) to preserve identities for later
+   branch push and any separately requested tracker migration.
+
+## Publication checkpoint
+
+- 2026-10-10: User approved the eleven-ticket graph. Full PDEX-01–11 bodies are
+  published with ten direct blocking edges and 68 unchecked acceptance criteria.
+  Parent spec and index remain unchanged. No implementation, installation,
+  remote push or parent closure occurred.

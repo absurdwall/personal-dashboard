@@ -15,6 +15,10 @@ Working branch: codex/dashboard-experience-prototype
   preserving the user's correction and Q4 rather than rewriting commit history.
 - The commit containing the local tracker publication is the next durable checkpoint.
   Its hash is obtained from Git history; future implementation adds coherent commits.
+- Local specification publication was committed at 430b486; the reviewed
+  ticket-breakdown proposal at 11440a5. The subsequent approved PDEX-01–11
+  publication commit adds full bodies, dependencies and execution conventions
+  while preserving the parent specification unchanged.
 
 ## Local execution convention
 
