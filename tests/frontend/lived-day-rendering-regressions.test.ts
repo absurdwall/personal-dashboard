@@ -208,7 +208,7 @@ function expansionHarness() {
     scrollTo({ top }: { top: number }) { this.scrollTop = top; } };
   const plot = { getBoundingClientRect: () => ({ top: -viewport.scrollTop, bottom: 1080 - viewport.scrollTop, height: 1080 }) };
   const context = createContext({ ...axis, document: { getElementById: (id: string) => controls.get(id) },
-    currentTodayView: { date: '2026-10-01' }, workspaceInformation: viewport,
+    currentTodayView: { date: '2026-10-01' }, workspaceInformation: viewport, todayAxisScrollSurface: viewport,
     todayAxisEarlyExpanded: false, todayAxisLateExpanded: false, todayAxisFollowState: 'following',
     todayContinuousAxis: { querySelector: () => plot },
     todayTimedDetails: new Element(), todayTimedEvents: new Element(),
@@ -269,7 +269,8 @@ test('shipped WebKit timeline keeps endpoint placement, reading anchors, reveal 
       document.getElementById('today-phase-morning').hidden = true;
       ${pure}
       ${bindings}
-      const workspaceInformation = document.querySelector('.workspace-information');
+      const todayAxisScrollSurface = document.getElementById('today-axis-scroll-surface');
+      const workspaceInformation = todayAxisScrollSurface;
       let todayAxisFollowState = 'following';
       let currentInterfaceLanguage = 'en';
       let currentWorkspaceDestination = 'today';
@@ -279,7 +280,7 @@ test('shipped WebKit timeline keeps endpoint placement, reading anchors, reveal 
       const updateTodayAxisMarkerAccessibleName = () => {};
       const todayTaskTimeAxisEntries = () => [];
       let currentTodayView = { date: '2026-10-01', isToday: true, currentTime: '12:00', tasks: { tasks: [], lists: [] },
-        timeAxis: { currentArrangement: [360, 410, 720, 1390, 1439, 1500].map((startMinute, i) => ({
+        timeAxis: { currentArrangement: [360, 410, 720, 1390, 1439].map((startMinute, i) => ({
           startMinute, endMinute: null, text: 'Rendered item ' + i, sourceDate: '2026-10-01'
         })), confirmedFacts: [], unlocatedCurrentArrangement: [], unlocatedConfirmedFacts: [] } };
       ${handler('let todayAxisEarlyExpanded', 'function todayEvidenceGroup(')}
