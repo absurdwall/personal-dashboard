@@ -9992,7 +9992,7 @@ button.habit-cell:focus-visible {
 button.task-schedule-toggle { display:flex; align-items:center; justify-content:center; width:32px; height:32px; padding:5px; border:1px solid var(--parity-border); border-radius:6px; background:var(--parity-surface); color:var(--parity-ink); }
 .task-schedule-toggle svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.7; }
 button.task-schedule-toggle[data-scheduled="true"] { color:var(--parity-accent, #386f60); }
-.task-schedule-picker { position:absolute; z-index:30; right:0; top:calc(100% + 6px); width:250px; max-width:calc(100vw - 2rem); padding:12px; border:1px solid var(--parity-border); border-radius:10px; background:var(--parity-surface); color:var(--parity-ink); box-shadow:0 8px 28px rgb(0 0 0 / .2); display:grid; gap:10px; }
+.task-schedule-picker { position:fixed; z-index:30; right:auto; top:auto; width:250px; max-height:calc(100dvh - 32px); overflow:auto; max-width:calc(100vw - 2rem); padding:12px; border:1px solid var(--parity-border); border-radius:10px; background:var(--parity-surface); color:var(--parity-ink); box-shadow:0 8px 28px rgb(0 0 0 / .2); display:grid; gap:10px; }
 .task-schedule-picker[hidden] { display:none; }
 .task-schedule-picker label { display:grid; gap:4px; }
 .task-schedule-picker input { width:100%; min-width:0; }

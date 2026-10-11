@@ -1547,6 +1547,7 @@ const taskCreateAttempts = new Map<string, TaskCreateAttempt>();
 const taskEndedCreateAttempts = new Map<string, TaskCreateAttempt[]>();
 const taskQuickDrafts = new Map<string, string>();
 const taskQuickScheduleDrafts = new Map<string, {date: string; time: string}>();
+const compactScheduleTransactions = new Map<string, {invalidate: () => void; validateContext: () => void}>();
 let currentTaskLivedDate: string | null = null;
 const taskQuickDate = document.querySelector<HTMLInputElement>("#task-quick-date");
 const taskQuickTime = document.querySelector<HTMLInputElement>("#task-quick-time");
@@ -1765,6 +1766,7 @@ function resetVaultScopedWorkspaceState(): void {
   datedNoteDrafts.clear();
   taskCreateDrafts.clear();
   taskQuickDrafts.clear();
+  compactScheduleTransactions.forEach(transaction => transaction.invalidate());
   taskQuickScheduleDrafts.clear();
   currentTaskLivedDate = null;
   taskCreateAttempts.clear();
@@ -6925,7 +6927,8 @@ function stashTodayTaskCreateDraft(): void {
   if (!view || !binding || !todayTaskCreateForm) return;
   const draft = readTaskDraft(todayTaskCreateForm);
   const key = todayTaskCreateDraftKey(binding, view.date);
-  if (isBlankTaskDraft(draft)) {
+  const untouchedDefault = !draft.name && !draft.content && draft.date === view.date && !draft.time && draft.listId === "inbox";
+  if (untouchedDefault) {
     todayTaskCreateDrafts.delete(key);
   } else {
     todayTaskCreateDrafts.set(key, draft);
@@ -10672,6 +10675,7 @@ async function createTask(quick = false, retry = false): Promise<boolean> {
 
 async function submitTaskCreation(attempt: TaskCreateAttempt, loaded: TasksView, binding: string): Promise<boolean> {
   const today = attempt.origin === "today";
+  compactScheduleTransactions.get(today ? "today-task-create" : "task-quick")?.invalidate();
   const surface: TaskSurface = today ? "today" : "tasks";
   const date = today ? attempt.surfaceDate ?? null : null;
   const key = today ? todayTaskCreateDraftKey(binding, date!) : binding;
@@ -11588,6 +11592,9 @@ function showWorkspaceDestination(
   dailyDate: string | null = null,
 ): void {
   const destinationChanged = currentWorkspaceDestination !== destination;
+  if (destinationChanged || (destination === "today" && selectedTodayDate !== dailyDate)) {
+    compactScheduleTransactions.forEach(transaction => transaction.invalidate());
+  }
   const leavingSettings = currentWorkspaceDestination === "settings" && destination !== "settings";
   const leavingToday = currentWorkspaceDestination === "today" && destination !== "today";
   const leavingTasks = currentWorkspaceDestination === "tasks" && destination !== "tasks";
@@ -12141,6 +12148,7 @@ refreshTasksButton?.addEventListener("click", () => {
 });
 
 function updateCompactScheduleLabel(prefix: string, date: HTMLInputElement | null, time: HTMLInputElement | null): void {
+  compactScheduleTransactions.get(prefix)?.validateContext();
   const button = document.querySelector<HTMLButtonElement>(`#${prefix}-schedule`);
   if (!button) return;
   const label = t("tasks.scheduleSummary", {schedule: taskScheduleText(date?.value || null, time?.value || null)});
@@ -12154,15 +12162,36 @@ function bindCompactSchedule(prefix: string, date: HTMLInputElement | null, time
   const picker = document.querySelector<HTMLElement>(`#${prefix}-schedule-picker`);
   if (!button || !picker || !date || !time) return;
   let original: {date: string; time: string} | null = null;
+  const context = () => prefix === "task-quick"
+    ? `${currentWorkspaceDestination}:${currentTasksView?.targetBinding ?? ""}:${taskScope}:${currentTaskLivedDate ?? ""}`
+    : `${currentWorkspaceDestination}:${currentTodayView?.tasks.targetBinding ?? ""}:${currentTodayView?.date ?? ""}`;
+  let originalContext: string | null = null;
+  const positionPicker = () => {
+    if (picker.hidden) return;
+    const anchor = button.getBoundingClientRect();
+    const bounds = picker.getBoundingClientRect();
+    picker.style.left = `${Math.max(16, Math.min(anchor.right - bounds.width, window.innerWidth - bounds.width - 16))}px`;
+    picker.style.top = `${Math.max(16, Math.min(anchor.bottom + 6 + bounds.height <= window.innerHeight - 16 ? anchor.bottom + 6 : anchor.top - bounds.height - 6, window.innerHeight - bounds.height - 16))}px`;
+  };
+  window.addEventListener("resize", positionPicker);
+  document.addEventListener("scroll", positionPicker, {capture: true, passive: true});
+  const invalidate = () => {
+    original = null; originalContext = null;
+    picker.hidden = true; button.setAttribute("aria-expanded", "false");
+  };
+  compactScheduleTransactions.set(prefix, {invalidate, validateContext: () => {
+    if (originalContext !== null && originalContext !== context()) invalidate();
+  }});
+  button.closest("form")?.addEventListener("reset", invalidate);
   const close = (apply: boolean) => {
     if (!apply && original) { date.value = original.date; time.value = original.time; }
-    original = null; picker.hidden = true; button.setAttribute("aria-expanded", "false");
+    invalidate();
     normalizeTaskDateTimeFields(date, time); stash(); updateCompactScheduleLabel(prefix, date, time); button.focus();
   };
   button.addEventListener("click", () => {
     if (!picker.hidden) { close(false); return; }
-    original = {date: date.value, time: time.value};
-    picker.hidden = false; button.setAttribute("aria-expanded", "true"); date.focus();
+    original = {date: date.value, time: time.value}; originalContext = context();
+    picker.hidden = false; button.setAttribute("aria-expanded", "true"); positionPicker(); date.focus();
   });
   ["today", "tomorrow", "undated"].forEach(preset => document.querySelector(`#${prefix}-${preset}`)?.addEventListener("click", () => {
     const base = baseDate();
@@ -12173,7 +12202,7 @@ function bindCompactSchedule(prefix: string, date: HTMLInputElement | null, time
   document.querySelector(`#${prefix}-schedule-cancel`)?.addEventListener("click", () => close(false));
   picker.addEventListener("keydown", event => {
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(false); }
-    if (event.key === "Enter") { event.preventDefault(); close(true); }
+    if (event.key === "Enter" && (event.target === date || event.target === time) && !event.isComposing) { event.preventDefault(); close(true); }
   });
   date.addEventListener("change", () => { normalizeTaskDateTimeFields(date, time); stash(); });
   time.addEventListener("change", stash);

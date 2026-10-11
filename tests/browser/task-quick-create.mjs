@@ -405,7 +405,7 @@ test('ended Inbox submission follows current interface language while the origin
  try {
  for (const [prefix,destination] of [['task-quick','tasks'],['today-task-create','today']]) {
  await page.locator(`button[data-workspace-destination=${destination}]`).click();
- if(destination==='today' && await page.locator('#today-unlocated-toggle').isVisible()) {if(await page.locator('#today-unlocated-toggle').getAttribute('aria-expanded')==='false')await page.locator('#today-unlocated-toggle').click();}
+ if(destination==='today' && await page.locator('#today-unlocated-time-shortcut').isVisible()) {if(await page.locator('#today-unlocated-time-shortcut').getAttribute('aria-expanded')==='false')await page.locator('#today-unlocated-time-shortcut').click();}
  const name=page.locator(`#${prefix}-name`),schedule=page.locator(`#${prefix}-schedule`),add=page.locator(`#${prefix}-submit`);
  await name.scrollIntoViewIfNeeded(); const boxes=await Promise.all([name,schedule,add].map(x=>x.boundingBox()));
  assert.ok(boxes.every(x=>Math.abs((x.y+x.height/2)-(boxes[0].y+boxes[0].height/2))<2),'name/schedule/Add remain one row '+width+' '+prefix);
@@ -431,4 +431,103 @@ test('ended Inbox submission follows current interface language while the origin
  assert.equal(saved.date,'2026-09-08');assert.equal(saved.time,null);assert.equal(saved.content,'Retained optional context');assert.equal(saved.listId,'home');
  assert.equal(await name.evaluate(el=>el===document.activeElement),true);assert.equal(await page.locator('#today-task-create-date').inputValue(),'2026-09-08');
  } finally {await f.close();}
+ });
+
+ test('Today explicit no-date choice survives read-only refresh before naming and continuous create resets selected-day default',async()=>{
+ const f=await pageFixture();const {page}=f;
+ try {
+ await page.locator('[data-workspace-destination=today]').click();await page.locator('#today-task-create-schedule').click();await page.locator('#today-task-create-undated').click();await page.locator('#today-task-create-schedule-apply').click();
+ await page.locator('#refresh-today').click();await page.waitForFunction(()=>!document.querySelector('#refresh-today').disabled);
+ assert.equal(await page.locator('#today-task-create-date').inputValue(),'','explicit undated schedule cannot revert on read-only refresh');
+ const name=page.locator('#today-task-create-name');await name.fill('Explicit undated Today task');await name.press('Enter');
+ await page.waitForFunction(()=>window.__fixture.tasks.tasks.some(t=>t.name==='Explicit undated Today task'));
+ const saved=await page.evaluate(()=>window.__fixture.tasks.tasks.find(t=>t.name==='Explicit undated Today task'));assert.equal(saved.date,null);assert.equal(saved.time,null);
+ assert.equal(await page.locator('#today-task-create-date').inputValue(),'2026-10-10');assert.equal(await name.evaluate(el=>el===document.activeElement),true);
+ } finally {await f.close();}
+ });
+
+ test('Today saved response loss is resolved by readback without replay; confirmed conflict can explicitly end with original draft retained',async()=>{
+ const f=await pageFixture();const {page}=f;
+ try {
+ await page.locator('[data-workspace-destination=today]').click();const name=page.locator('#today-task-create-name');
+ await name.fill('Today saved once');await page.evaluate(()=>window.__saveButThrow=true);await name.press('Enter');
+ await page.waitForFunction(()=>document.querySelector('#today-task-status').textContent.includes('Synthetic lost response'));
+ assert.equal(await name.isDisabled(),true);await page.locator('#today-task-create-recheck').click();await page.waitForFunction(()=>document.querySelector('#today-task-create-name').value==='');
+ assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').length),1);
+ await name.fill('Today conflict original');await page.evaluate(()=>window.__saveButThrow=true);await name.press('Enter');await page.waitForFunction(()=>document.querySelector('#today-task-status').textContent.includes('Synthetic lost response'));
+ await page.evaluate(()=>window.__failNext='tasks_view');await page.locator('#today-task-create-recheck').click();await page.waitForFunction(()=>!document.querySelector('#today-task-create-recheck').disabled);
+ assert.equal(await page.locator('#today-task-create-end-attempt').isDisabled(),true);assert.match(await page.locator('#today-task-status').textContent(),/unconfirmed/i);
+ const original=await page.evaluate(()=>{const x=window.__fixture.tasks.tasks.find(t=>t.name==='Today conflict original');x.name='Externally renamed Today';x.content='Retained external content';window.__fixture.tasks.revision='r4';return structuredClone(x);});
+ await page.locator('#today-task-create-recheck').click();await page.waitForFunction(()=>!document.querySelector('#today-task-create-end-attempt').disabled);
+ assert.equal(await page.locator('#today-task-create-retry').isDisabled(),true);await page.locator('#today-task-create-end-attempt').click();
+ await page.locator('#today-task-create-ended-attempts summary').click();assert.match(await page.locator('#today-task-create-ended-attempts').textContent(),/Today conflict original/);
+ await name.fill('Today fresh identity');await name.press('Enter');await page.waitForFunction(()=>document.querySelector('#today-task-create-name').value==='');
+ const attempts=await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').map(x=>x.args.input));assert.equal(attempts.length,3);assert.notEqual(attempts[1].taskId,attempts[2].taskId);
+ assert.deepEqual(await page.evaluate(id=>window.__fixture.tasks.tasks.find(t=>t.id===id),original.id),original);
+ } finally {await f.close();}
+ });
+ test('Today blank/composition/pending safeguards protect one create and retain the compact entry draft',async()=>{
+ const f=await pageFixture();const {page}=f;
+ try {
+ await page.locator('[data-workspace-destination=today]').click();const name=page.locator('#today-task-create-name');
+ await name.fill('  ');await name.press('Enter');assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').length),0);
+ await name.fill('中文输入草稿');await name.evaluate(el=>{el.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));el.form.requestSubmit();});
+ assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').length),0);
+ await name.evaluate(el=>el.dispatchEvent(new CompositionEvent('compositionend',{bubbles:true})));
+ await page.evaluate(()=>window.__holdCreate=true);await name.press('Enter');await page.waitForFunction(()=>Boolean(window.__releaseCreate));
+ assert.equal(await name.isDisabled(),true);assert.equal(await page.locator('#today-task-create-schedule').isDisabled(),true);assert.equal(await page.locator('#today-task-create-submit').isDisabled(),true);
+ await page.locator('#today-task-create-form').evaluate(form=>form.requestSubmit());assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').length),1);
+ await page.evaluate(()=>{window.__holdCreate=false;window.__releaseCreate();});await page.waitForFunction(()=>document.querySelector('#today-task-create-name').value==='');
+ assert.equal(await name.evaluate(el=>el===document.activeElement),true);
+ } finally {await f.close();}
+ });
+
+for (const [prefix,destination] of [['task-quick','tasks'],['today-task-create','today']]) {
+ test(prefix+' picker buttons honor keyboard activation and cancel',async()=>{
+ const f=await pageFixture();const {page}=f;
+ try {
+ await page.locator(`button[data-workspace-destination=${destination}]`).click();
+ if(destination==='today'&&await page.locator('#today-unlocated-time-shortcut').getAttribute('aria-expanded')==='false')await page.locator('#today-unlocated-time-shortcut').click();
+ await page.locator(`#${prefix}-schedule`).click();await page.locator(`#${prefix}-tomorrow`).focus();await page.keyboard.press('Enter');
+ assert.equal(await page.locator(`#${prefix}-date`).inputValue(),'2026-10-11');
+ assert.equal(await page.locator(`#${prefix}-schedule-picker`).isVisible(),true);
+ await page.locator(`#${prefix}-schedule-cancel`).focus();await page.keyboard.press('Enter');
+ assert.equal(await page.locator(`#${prefix}-date`).inputValue(),'2026-10-10');
+ assert.equal(await page.locator(`#${prefix}-schedule-picker`).isVisible(),false);
+ }finally{await f.close();}
+ });
+ test(prefix+' confirmed keyboard save invalidates an open picker transaction',async()=>{
+ const f=await pageFixture();const {page}=f;
+ try {
+ await page.locator(`button[data-workspace-destination=${destination}]`).click();
+ if(destination==='today'&&await page.locator('#today-unlocated-time-shortcut').getAttribute('aria-expanded')==='false')await page.locator('#today-unlocated-time-shortcut').click();
+ const name=page.locator(`#${prefix}-name`);
+ await page.locator(`#${prefix}-schedule`).click();await page.locator(`#${prefix}-tomorrow`).click();await page.locator(`#${prefix}-schedule-apply`).click();
+ await name.fill('Keyboard open picker '+prefix);await page.locator(`#${prefix}-schedule`).click();await page.locator(`#${prefix}-date`).fill('2026-10-12');
+ await name.focus();await name.press('Enter');await page.waitForFunction(({prefix})=>document.querySelector(`#${prefix}-name`).value==='',{prefix});
+ assert.equal(await page.locator(`#${prefix}-schedule-picker`).isVisible(),false);
+ assert.equal(await page.locator(`#${prefix}-date`).inputValue(),'2026-10-10');
+ await name.fill('Next default '+prefix);await name.press('Enter');await page.waitForFunction(({prefix})=>window.__fixture.tasks.tasks.some(t=>t.name==='Next default '+prefix),{prefix});
+ assert.equal(await page.evaluate(prefix=>window.__fixture.tasks.tasks.find(t=>t.name==='Next default '+prefix).date,prefix),'2026-10-10');
+ }finally{await f.close();}
+ });
+}
+
+ test('schedule transactions close across destination and Vault changes without restoring old values',async()=>{
+ const f=await pageFixture();const {page}=f;
+ try {
+ await page.locator('#task-quick-schedule').click();await page.locator('#task-quick-tomorrow').click();
+ await page.locator('button[data-workspace-destination=today]').click();
+ assert.equal(await page.locator('#task-quick-schedule-picker').isVisible(),false);
+ await page.locator('#today-task-create-schedule').click();await page.locator('#today-task-create-tomorrow').click();
+ await page.locator('button[data-workspace-destination=tasks]').click();
+ assert.equal(await page.locator('#today-task-create-schedule-picker').isVisible(),false);
+ await page.locator('#task-quick-schedule').click();await page.locator('#task-quick-date').fill('2026-10-12');
+ await page.evaluate(()=>window.__fixture.tasks.targetBinding='synthetic-new-vault');await page.locator('#refresh-tasks').click();
+ await page.waitForFunction(()=>document.querySelector('#task-quick-date').value==='2026-10-10');
+ assert.equal(await page.locator('#task-quick-schedule-picker').isVisible(),false);
+ await page.locator('#task-quick-name').fill('New binding default');await page.locator('#task-quick-name').press('Enter');
+ await page.waitForFunction(()=>window.__fixture.tasks.tasks.some(t=>t.name==='New binding default'));
+ assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.find(t=>t.name==='New binding default').date),'2026-10-10');
+ }finally{await f.close();}
  });
