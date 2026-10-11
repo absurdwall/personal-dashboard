@@ -59,3 +59,5 @@ authorize starting implementation.
 - 2026-10-10: PDEX-07 integrated at 9618219, shared pointer controller available to PDEX-04. PDEX-05 claimed for compact Task list/details with existing persisted interval contract. PDEX-08 currently holds the exclusive canonical native cache lease; all other native builds remain isolated.
 
 - 2026-10-10: PDEX-08 integrated at a4fb8ce, including natural five/six-week source contract, four previews/true overflow and real WebKit layout at reference windows. Native cache lease released. Remaining feature code: PDEX-04 and PDEX-05; PDEX-11 remains unclaimed until these verified implementation prerequisites are integrated.
+
+- 2026-10-10: All ten feature implementations are integrated with complete retained commits (PDEX-04 b2eae26; PDEX-05 a12e79f). PDEX-11 is now claimed against code-complete, individually verified implementation prerequisites. Acceptance/lifecycle closure remains open until the integrated evidence gate. Packaging uses only isolated synthetic Profile/Vault/time; original installed App and private data remain outside this run. Parent specification is not closed.

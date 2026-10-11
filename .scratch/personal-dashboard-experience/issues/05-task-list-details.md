@@ -17,7 +17,7 @@
 **Assignee:** implementer PDEX-05
 **Date:** 2026-10-10
 **Breakdown decision:** User approved the eleven-ticket breakdown and blocking edges on 2026-10-10.
-**Start:** Can start immediately once implementation is requested; not claimed.
+**Start:** Authorized and claimed in this implement-spec run; see Execution below.
 
 ## Acceptance criteria
 

@@ -7,7 +7,7 @@ Lifecycle: open
 Stage: locally published specification
 Date: 2026-10-10
 Canonical tracker: [local map](map.md)
-Implementation: in progress
+Implementation: feature code implemented; integrated verification in progress
 Test boundary: Q4 confirmed by the user
 
 ## Problem Statement
