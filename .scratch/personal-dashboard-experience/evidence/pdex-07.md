@@ -104,3 +104,10 @@ Final checks before the last integration synchronization:
   adapter 12, Task workflow 28, Today shared Tasks 7).
 - Cargo runs completed sequentially in the isolated reused target; no process
   remains running against it.
+
+Last synchronization incorporates integration `9d4bcd7` (dated Evening entry).
+Its only conflict was additive top-level imports; both initializers remain.
+Combined frontend build passed, all 416 frontend tests passed, and all 8 real
+Chrome pointer cases passed again. The 53 Rust-test record above remains the
+pre-Evening-sync native application evidence; native packaged final acceptance
+is still not claimed. Final source worktree is clean after this record commit.

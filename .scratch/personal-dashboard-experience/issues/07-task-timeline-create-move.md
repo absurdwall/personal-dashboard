@@ -55,3 +55,6 @@ stories 12, 24, 28–36, 65–67.
   and explicit retry have actual pointer checks; no uncertain write replays
   automatically. Native packaged IPC and final cross-page human acceptance
   remain explicitly pending PDEX-11 rather than inferred from these checks.
+- 2026-10-10: Last synchronization includes integration `9d4bcd7`; combined
+  build, 416 frontend tests and all 8 real Chrome pointer scenarios passed.
+  Packaged native IPC acceptance remains distinct and pending PDEX-11.
