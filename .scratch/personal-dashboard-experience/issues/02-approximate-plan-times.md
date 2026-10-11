@@ -4,13 +4,16 @@
 
 **Blocked by:** 01 — 在白天手动编辑具体计划并可靠保存
 
-**Status:** ready-for-agent
+**Triage:** ready-for-agent
+
+**Status:** in-progress
 
 **ID:** PDEX-02
 **Parent:** [PDEX-SPEC-01](../spec.md)
-**Lifecycle:** open
-**Implementation:** not started
-**Owner:** unassigned
+**Lifecycle:** in-progress
+**Implementation:** in progress
+**Owner:** implementer PDEX-02
+**Assignee:** implementer PDEX-02
 **Date:** 2026-10-10
 **Breakdown decision:** User approved the eleven-ticket breakdown and blocking edges on 2026-10-10.
 
@@ -32,3 +35,5 @@ stories 2, 14–18, 21–23, 26, 66.
 ## Execution
 
 - 2026-10-10: Published locally with the approved scope and dependencies; unassigned, not claimed, not started. Record subsequent authorized claims, commits, checks and acceptance here. Publication does not close the parent specification.
+
+- 2026-10-10: Authorized claim on codex/pdex-02, worktree /tmp/pdex-02; base integration 32b3678f6a5cbe443fabd4936c416b67bf603952. Dependency implementation/evidence inspected before start; packaged acceptance remains separately tracked.
