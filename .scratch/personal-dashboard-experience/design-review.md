@@ -17,10 +17,11 @@
 - **Q1 — source consistency**: answered. The user requires the display and the corresponding Markdown section to agree. Morning edits update Morning; daytime plan updates or factual corrections update the corresponding daytime record. The original suggested matching-plan synchronization was not accepted as a universal double-write rule.
 - **Q2 — Task interval meaning**: answered yes to the recommendation. Persist a planned execution interval, distinct from deadlines and observed activity.
 - **Q3 — default edit ownership**: answered yes to the recommendation. Normal daytime dragging changes Current arrangement; explicit Morning planning/correction changes Morning. The user noted that the previous question omitted its number; Q3 restores the sequence.
+- **Q4 — testing boundary**: answered yes during the explicitly invoked to-spec workflow. Reuse existing application operations and real persistence with synthetic Vault/Profile data, then exercise the packaged App's UI. Prototype memory and source-string checks are not acceptance.
 
 ## Open frontier
 
-None. The accepted prototype and these three decisions provide the shared understanding for writing the [specification draft](spec.md). Remaining implementation details are delegated to the Agent.
+None. The accepted prototype and Q1–Q4 provide the shared understanding recorded in the [to-spec specification](spec.md). The previous non-template draft was explicitly deleted and replaced. Remaining implementation details are delegated to the Agent; [publication](publication.md) is pending because GitHub is unavailable.
 
 ## Current source evidence
 
