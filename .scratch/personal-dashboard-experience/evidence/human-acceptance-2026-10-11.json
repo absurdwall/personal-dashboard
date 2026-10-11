@@ -50,5 +50,17 @@
     "currentBlockers": []
   },
   "parentClosureBasis": "Original safeguard barred closure inferred from ticket/automatic-check success alone; direct installed-App human acceptance and reviewer overall conclusion now provide the acceptance basis for closing this initiative.",
-  "closeoutActions": "Docs-only; no live UI action, no product change, no agent write to personal data, no new tests/model calls or GitHub operation"
+  "closeoutActions": "Docs-only; no live UI action, no product change, no agent write to personal data, no new tests/model calls or GitHub operation",
+  "managementConfirmation": {
+    "operationId": "management-pdex-human-acceptance-6ed941aa-15c8-477b-abbe-c19485bda9d7",
+    "outcome": "confirmed",
+    "registryRevision": "b69ca519f2f43084",
+    "summaryRevision": "747bdb6a386c2741",
+    "sourceId": "source-personal-dashboard-experience",
+    "sourceRevision": "df799cdc1855fe0b",
+    "counts": {
+      "resolved": 12
+    },
+    "userOwnedProjectFieldsUnchanged": true
+  }
 }
