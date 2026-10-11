@@ -1,0 +1,97 @@
+{
+  "date": "2026-10-11",
+  "projectId": "product-personal-dashboard",
+  "sourceId": "source-personal-dashboard-experience",
+  "source": {
+    "portfolioRecordId": "product-personal-dashboard",
+    "sourceId": "source-personal-dashboard-experience",
+    "label": "Dashboard experience — local spec and tickets",
+    "kind": "localMarkdown",
+    "enabled": true,
+    "state": "current",
+    "revision": "ec18b3fd47697573",
+    "issueCount": 15,
+    "malformedReferences": [],
+    "error": null,
+    "lastSuccessfulRefreshAt": 1791698476908,
+    "capabilities": {
+      "create": true,
+      "creatableFields": [
+        "title",
+        "nativeState",
+        "blockers"
+      ],
+      "edit": true,
+      "claim": true,
+      "close": true,
+      "open": true
+    }
+  },
+  "requestOperationId": "management-pdex-followup-3dcb752c-e221-4ea7-bbda-f161cb8ee73b",
+  "outcome": "confirmed",
+  "summaryRevision": "430c9fcfd34ca9b9",
+  "summary": {
+    "text": "Dashboard experience 原 PDEX-01–11 与 PDEX-SPEC-01 已完成人工验收并保持 closed/resolved。用户另外批准 PDEX-FOLLOWUP-01：PDEX-12 Tasks 顶部快速添加与当前视口 New Task 弹窗；PDEX-13 Today 未精确定位项目的显式显示/隐藏与中等窄窗抽屉。完整 follow-up spec 与两张本地票据已提交0f7820e；两票均 in-progress 并分别由独立 worktree implementer 领取。Calendar 和左侧导航本轮不变。先合并实现与回归，冻结合成 Vault 原生候选，独立 review 满意后才替换正常安装版；替换后人工验收另行确认。本轮尚未完成代码/review/替换/人工验收；现有安装与用户最新数据保持。无 GitHub 查询、发布或 main 合并。",
+    "blockers": [],
+    "nextWork": [
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "reference": "12-lightweight-task-create.md",
+        "suggestion": "实现 Tasks quick add/modal 与确认后清空、失败读回/retry，提交行为测试证据。"
+      },
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "reference": "13-today-unlocated-drawer.md",
+        "suggestion": "实现 Today 显式 toggle 与 medium collapse/drawer，验证实际几何、源内容和无业务写入。"
+      }
+    ],
+    "verifiedAt": "2026-10-11T06:01:17.469828+00:00",
+    "sourceEvidence": [
+      {
+        "sourceId": "source-personal-dashboard-3",
+        "revision": "73f67af62ff88683"
+      },
+      {
+        "sourceId": "source-personal-dashboard-timeline-a-repair",
+        "revision": "6f66259df3b780a1"
+      },
+      {
+        "sourceId": "source-personal-dashboard-3-0-2",
+        "revision": "07bf9d0b79785cbc"
+      },
+      {
+        "sourceId": "source-personal-dashboard-task-history",
+        "revision": "825ecc1788d68868"
+      },
+      {
+        "sourceId": "source-personal-dashboard-codex-dictation",
+        "revision": "32712ec896d18dce"
+      },
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "revision": "ec18b3fd47697573"
+      }
+    ],
+    "coverage": "partial",
+    "needsReconciliation": false,
+    "uncoveredSources": [
+      {
+        "sourceId": "source-personal-dashboard-codex-collaboration",
+        "reason": "既有历史来源格式无法完整读取，本轮不修订或推断其完成。"
+      },
+      {
+        "sourceId": "source-personal-dashboard-github",
+        "reason": "保持既有来源状态；本地 scoped tracker 不查询 GitHub，helper 子环境无 gh。"
+      }
+    ]
+  },
+  "preservedFields": [
+    "lifecycle",
+    "currentFocus",
+    "review",
+    "sources",
+    "workingDirectory",
+    "repository"
+  ],
+  "localOnlyHelperEnvironment": "PATH excludes gh; no GitHub tracker operation"
+}
