@@ -99,3 +99,12 @@ authorize starting implementation.
 ## Evening guard follow-up — 2026-10-11
 
 Independent review confirmed the two P2 repairs and zero remaining Spec findings, then identified a P3 duplicate-wrapper/literal-placeholder error in three Evening guard paths. Retained product `ff913083` and worker/evidence `e7da264` are integrated without squashing through `a6f948736ff1d6274bf1c6c8f5eeb7689779b7a4`. Typed guard catalog copy fixes concrete zh/en causes and refresh while preserving draft, date and Vault protections. Build and 21 focused checks passed; all four retained log hashes verified. Rust remains byte-identical to the 523-pass checkpoint. Earlier 432 frontend/23 browser totals are historical before this frontend-only follow-up. Final independent verification is pending; no package/install/native acceptance is added.
+
+
+### Independent repair closeout — 2026-10-11
+
+At frozen `6656041b518fe979c1318a7e7f87a2c14503cd42`, the independent review chat confirmed zero unresolved Standards and Spec findings and explicit satisfaction with the repair scope. All original P2 and introduced P3 findings are resolved; [full independent evidence](evidence/code-review.md) retains the exact checks and range. Build/21 focused final checks passed; 523 native checks remain an identical-Rust checkpoint, while 432 frontend/23 browser remain earlier full-suite results. PDEX-09/PDEX-11 remain blocked and parent remains open.
+
+Installed Management helper 1.0.3 confirmed the existing canonical workspace/project/source binding. Scoped readback of `source-personal-dashboard-experience` at revision `606b4d82a4aeebb0` confirmed twelve records: nine resolved, two blocked and one open, with no malformed references. No new Registry or summary write was performed; cached states for other sources are outside this verification.
+
+- Final Management readback after the independent verdict was appended: source revision `8b244e7ff955b103`, twelve records, nine resolved/two blocked/one open, no malformed references. Earlier scoped reads above remain historical checkpoints.

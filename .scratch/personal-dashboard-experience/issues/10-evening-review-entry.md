@@ -55,3 +55,6 @@ Past-date review label and pending/ready/preserved/error copy now use retained s
 ### Guard-copy follow-up — 2026-10-11
 
 Independent review confirmed the dated-entry P2 resolved, then exposed nested failure wrappers and a literal `{error}` from three protection checks. `ff913083` retains localized busy/Vault-change guard causes through the shared copy setter. Actual production language-switch checks cover each guard, preserved draft/date, no forbidden preparation/adoption and no submission. Build and 21 focused checks passed; integrated via `a6f9487`. Final independent verification is pending. Component resolution and previously documented native acceptance limits are unchanged.
+
+
+- 2026-10-11: Independent review at `6656041` confirmed dated-entry and guard-copy fixes resolved, zero remaining Standards/Spec findings. Seven Evening tests passed independently. Component resolution is retained; PDEX-09/PDEX-11 acceptance and the open parent are unchanged. [Review verdict](../evidence/code-review.md).

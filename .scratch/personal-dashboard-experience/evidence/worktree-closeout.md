@@ -24,3 +24,10 @@ The original prototype branch, main and requested integration branch remain. No 
 PDEX-11 was inventoried clean with no non-ignored untracked material. Its retained tip `1dd2a2c0bc0e5109a45657642a0b89e789c7d8be` is reachable from integration. Ignored files were only generated dist/Tauri schemas and the canonical node_modules symlink. The worktree was removed and its merged branch deleted with `git branch -d`. All eleven implementer worktrees are now removed.
 
 The isolated `.noindex` candidate, synthetic Profile/Vault, manifests and raw captures remain outside Git; the safe launch helper now checks the canonical checkout. The owned candidate was quit through Computer Use and only its exact temporary App path was unregistered from Launch Services. The installed App and original main/prototype/integration branches remain intact. No unrelated dirty material was present or removed. External final worker inventory: `/tmp/pdex-11-worktree-final-inventory.json`.
+
+
+## Review-repair worker closeout — 2026-10-11
+
+After independent satisfaction at `6656041`, owned `/tmp/pdex-review-repairs` was confirmed clean with no non-ignored untracked material. Tip `e7da2646d0f640ed87b8e6f0b0f0e847bd0eedaa` is reachable from the integration branch; all product and evidence commits remain retained through no-ff merge `a6f9487`. Inventory `/tmp/pdex-review-worker-final-inventory.json` contains only ignored generated dist, four Tauri schema files and a node_modules symlink to canonical dependencies. No unique user material was found; external raw evidence, synthetic fixture and historical candidate remain preserved.
+
+The owned worktree was removed and its merged branch `codex/pdex-review-repairs` deleted with `git branch -d`. Canonical dependencies and every unrelated original branch were retained. No history rewrite, remote cleanup, main operation, installation or personal-data change occurred. Only the canonical integration worktree remains registered.
