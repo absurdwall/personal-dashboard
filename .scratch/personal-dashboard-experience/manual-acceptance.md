@@ -1,6 +1,6 @@
 # 人工验收完成 — Dashboard experience
 
-2026-10-11：**PDEX-01–11 和父 PDEX-SPEC-01 均已本地 resolved/closed，没有本轮 blocker。** 正常安装版已替换，继续使用原有 Vault、profile 与登录。当前不再要求补做下面的历史检查清单。
+2026-10-11：**PDEX-SPEC-01、PDEX-01–11，以及本轮 PDEX-FOLLOWUP-01–05 / PDEX-12–18 均已本地 resolved/closed。** 用户接受了安装 checkpoint `d518332`。这表示接受当前交付，不表示隐藏的历史清单逐项通过；未验证项仍按原样保留。当前残余反馈和资格边界见[集中收尾记录](evidence/human-closeout-followups-2026-10-11.md)。
 
 你已经确认：拖动计划时间条并看到计划时间修订；在时间轴拖选范围创建 Task；Calendar 在窄窗口可用；重叠条目正常。reviewer 在实际 App 里只读确认了“计划时间已保存并读回验证”和修订记录，结合既有自动回归与原生证据，认可本轮整体验收。
 

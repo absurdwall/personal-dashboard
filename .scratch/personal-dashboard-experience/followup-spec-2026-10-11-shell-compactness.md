@@ -2,8 +2,8 @@
 
 ID: PDEX-FOLLOWUP-03  
 Type: spec  
-Status: open  
-Lifecycle: in-progress  
+Status: resolved
+Lifecycle: closed
 Triage: ready-for-agent  
 Date: 2026-10-11  
 Base: a963eb4  
@@ -22,3 +22,8 @@ This bounded follow-up preserves all prior accepted and closed records, includin
 ## Verification and release boundary
 
 Use the already-approved public production-DOM and WebKit layout/interaction seams. Focus checks on build, visible schedule labels and one-row geometry, translated aria/title, Today toggle location/focus/full sidebar geometry and no-write behavior, toolbar order/640px overflow/all destinations, and Collaboration session/chat/context and composer interaction smoke. Use Computer Use virtual mouse for native packaged visual/interaction checks with synthetic data. Do not repeat the old full Rust, quota-exhaustion or IME acceptance suites. No new dependency, service, model request, personal-data mutation, GitHub operation or main merge. Do not replace the normal App before independent reviewer satisfaction; after that release, follow the user's existing installation authorization with fresh App/profile/Vault protection. Human acceptance remains separate.
+
+
+## Human acceptance closeout — 2026-10-11
+
+The installed experience checkpoint `d518332` was accepted by the user on 2026-10-11. This closes the current follow-up delivery with the qualifications in [the human closeout record](evidence/human-closeout-followups-2026-10-11.md). Unchecked historical criteria and earlier failure/evidence records remain unchanged; no unverified checklist item is represented as passed.

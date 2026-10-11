@@ -6,8 +6,8 @@ Parent: [PDEX-FOLLOWUP-04](../followup-spec-2026-10-11-collaboration-layout.md)
 Related: PDEX-16 remains in progress; this ticket repairs its reported visual gaps but does not close it.  
 Blocked by: None  
 Triage: ready-for-agent  
-Status: in-progress  
-Lifecycle: in-progress  
+Status: resolved
+Lifecycle: closed
 Owner: primary implementer (current Codex task)  
 Assignee: primary implementer (current Codex task)  
 Base: 9cafeca  
@@ -38,3 +38,8 @@ The earlier 9cafeca source review, installed read-only check and candidate scree
 
 2026-10-11: source implementation, production WebKit geometry, focused panel/Today/Calendar checks, app build, strict candidate signature, and isolated synthetic native Computer Use passed. Full frontend run: 451/465 passed; the same 14 fixture failures as the prior baseline remain (missing harness globals such as `compactScheduleTransactions` and `todaySideRegion`, and Today raw-markup assumptions). See [follow-up regression evidence](../evidence/pdex17-layout-red-2026-10-11.md). Independent Standards/Spec review of the follow-up is pending; this ticket does not claim normal-App acceptance or direct human acceptance. A separate read-only observation found a modified, running normal installation; its source and protection provenance were not validated by this ticket.
 
+
+
+## Human acceptance closeout — 2026-10-11
+
+The user accepted the installed experience checkpoint `d518332`. This closes the ticket for the accepted round, with residual feedback recorded in [the closeout record](../evidence/human-closeout-followups-2026-10-11.md). Existing unchecked checklist items and prior failure/evidence history are preserved as written and are not claimed as verified.

@@ -5,8 +5,8 @@ Type: ticket
 Parent: [PDEX-FOLLOWUP-03](../followup-spec-2026-10-11-shell-compactness.md)  
 Blocked by: None  
 Triage: ready-for-agent  
-Status: in-progress  
-Lifecycle: in-progress  
+Status: resolved
+Lifecycle: closed
 Owner: primary implementer (current Codex task)  
 Assignee: primary implementer (current Codex task)  
 Base: a963eb4  
@@ -33,3 +33,8 @@ Working branch: codex/dashboard-experience-integration
 The date/time label behavior is verified on the exact candidate after complete native segmented entry. The normal checked-in-config bundle was independently released and installed at `/Applications/Personal Dashboard.app` from source `9cafeca`; its binary matches the released package and passes strict signature verification. The independent reviewer used read-only Computer Use on the normal App to confirm the brand/toggle order, Today toggle placement, visible Today date summary, and reduced Collaboration chrome. Post-startup readback found the Collaboration JSON semantically identical (41 sessions and settings), and `life/` plus `.obsidian/` exactly match their protected copies. The App launch added only runtime logs/cache metadata and temporary process files in the private profile. The final normal-App pass did not type into the composer; the reviewer accepted the existing 69/69 production-DOM Collaboration interaction suite plus source/native visual evidence for this visual-only change. Direct human acceptance remains pending, so PDEX-16 and its parent stay in-progress. See [normal installed readback](../evidence/pdex16-normal-install-readback-2026-10-11.json) and the private install-protection manifest.
 
 2026-10-11 user-provided screenshot and direct correction supersede the earlier Collaboration/Today-toggle visual inference above. The installed `9cafeca` state remains a historical release checkpoint, not accepted current UI. PDEX-16 remains in-progress and its reopened visual portions are covered by [PDEX-17](17-collaboration-layout-recovery.md); no installation or direct human acceptance follows from the earlier read-only check.
+
+
+## Human acceptance closeout — 2026-10-11
+
+The user accepted the installed experience checkpoint `d518332`. This closes the ticket for the accepted round, with residual feedback recorded in [the closeout record](../evidence/human-closeout-followups-2026-10-11.md). Existing unchecked checklist items and prior failure/evidence history are preserved as written and are not claimed as verified.

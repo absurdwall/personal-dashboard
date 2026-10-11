@@ -2,8 +2,8 @@
 
 ID: PDEX-FOLLOWUP-02
 Type: spec
-Status: open
-Lifecycle: in-progress
+Status: resolved
+Lifecycle: closed
 Triage: ready-for-agent
 Date: 2026-10-11
 Base: fc4c8185a9b7e029a945662754a2131b21bfb3d8
@@ -36,3 +36,8 @@ No new dependency/service or GitHub/main operation. Independent two-axis review 
 ## Revised current installation — 2026-10-11
 
 Final reviewed71059a3 normal App installed with fresh currentuser protection. [Installed provenance/current checks](evidence/sidebar-schedule-local-install-2026-10-11.md). All source/worker merge history retained; only owned workercheckouts removed after unique files/history protection. Revised14/15 remainin-progress andnewparentopenpendingdirecthumanacceptance; olddrawer evidence does not satisfy reviseddock. Original01–11closed. NoGitHub/main/deps/personaltestwrite.
+
+
+## Human acceptance closeout — 2026-10-11
+
+The installed experience checkpoint `d518332` was accepted by the user on 2026-10-11. This closes the current follow-up delivery with the qualifications in [sidebar-schedule-spec-2026-10-11.md closeout record](evidence/human-closeout-followups-2026-10-11.md). Unchecked historical criteria and earlier failure/evidence records remain unchanged; no unverified checklist item is represented as passed.

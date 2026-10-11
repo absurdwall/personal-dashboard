@@ -5,11 +5,11 @@
 **Parent:** [PDEX-FOLLOWUP-01](../followup-spec-2026-10-11.md)
 **Blocked by:** None
 **Triage:** ready-for-agent
-**Status:** in-progress
-**Lifecycle:** in-progress
+**Status:** resolved
+**Lifecycle:** closed
 **Owner:** implementer PDEX-12
 **Assignee:** implementer PDEX-12
-**Implementation:** implemented, independently reviewed, installed; human acceptance pending
+**Implementation:** implemented; installed checkpoint `d518332` accepted by the user on 2026-10-11 with qualifications in the human closeout record
 **What to build:** Restore R's name-only quick input and viewport-local creation modal through the existing real Task creation boundary.
 
 ## Acceptance criteria
@@ -39,3 +39,8 @@ Final product source `2c6b8aa`, normal installed executable `ade6a1c…`, Standa
 ## Later human requirement correction
 
 PDEX-FOLLOWUP-02/14/15 explicitly supersede prior drawer/sidebar target and add compact lived-day schedule creation. Prior checks/install remainhistorical and do not imply newtarget acceptance; see [current installed requirements](../sidebar-schedule-spec-2026-10-11.md). Original ticket remains humanacceptance pending.
+
+
+## Human acceptance closeout — 2026-10-11
+
+The user accepted the installed experience checkpoint `d518332`. This closes the ticket for the accepted round, with residual feedback recorded in [the closeout record](../evidence/human-closeout-followups-2026-10-11.md). Existing unchecked checklist items and prior failure/evidence history are preserved as written and are not claimed as verified.

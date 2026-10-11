@@ -2,8 +2,8 @@
 
 ID: PDEX-FOLLOWUP-04  
 Type: spec  
-Status: open  
-Lifecycle: in-progress  
+Status: resolved
+Lifecycle: closed
 Triage: ready-for-agent  
 Date: 2026-10-11  
 Product baseline: 9cafeca  
@@ -35,3 +35,8 @@ WK computed typography at 874×756 is 34.96px Georgia for Today, Tasks and Habit
 - [PDEX-17 ticket](issues/17-collaboration-layout-recovery.md)
 - [Synthetic red evidence](evidence/pdex17-layout-red-2026-10-11.md)
 
+
+
+## Human acceptance closeout — 2026-10-11
+
+The installed experience checkpoint `d518332` was accepted by the user on 2026-10-11. This closes the current follow-up delivery with the qualifications in [the human closeout record](evidence/human-closeout-followups-2026-10-11.md). Unchecked historical criteria and earlier failure/evidence records remain unchanged; no unverified checklist item is represented as passed.

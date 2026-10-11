@@ -3,8 +3,8 @@
 ID: PDEX-FOLLOWUP-01
 Type: spec
 Triage: ready-for-agent
-Status: open
-Lifecycle: in-progress
+Status: resolved
+Lifecycle: closed
 Date: 2026-10-11
 Base: d4f23999e6b82fcadc4533b04004da1113ee8f71
 Working branch: codex/dashboard-experience-integration
@@ -35,3 +35,8 @@ Create an isolated .noindex packaged candidate with frozen source/archive/execut
 ## Current follow-up installation checkpoint — 2026-10-11
 
 PDEX-12/13 final product `2c6b8aa` is independently reviewed with zero unresolved Standards/Spec findings, expressly released and installed with normal production config. [Installation and preservation](evidence/followup-local-install-2026-10-11.md) and [final isolated native receipt](evidence/followup-native-final-2026-10-11.json) retain source/package identity, qualified checks and fresh recovery backups. Full history and unrelated changes are preserved. Follow-up spec remains open and PDEX-12/13 in-progress pending direct human acceptance; original eleven tickets and original parent remain resolved. No GitHub/main operation.
+
+
+## Human acceptance closeout — 2026-10-11
+
+The installed experience checkpoint `d518332` was accepted by the user on 2026-10-11. This closes the current follow-up delivery with the qualifications in [followup-spec-2026-10-11.md closeout record](evidence/human-closeout-followups-2026-10-11.md). Unchecked historical criteria and earlier failure/evidence records remain unchanged; no unverified checklist item is represented as passed.

@@ -111,3 +111,8 @@ PDEX-11 is now resolved/closed; all eleven tickets and PDEX-SPEC-01 are locally 
 Installed Management helper updated the existing Project summary and confirmed a fresh canonical readback: Registry `b69ca519f2f43084`, summary `747bdb6a386c2741`, experience source `df799cdc1855fe0b`; all twelve local records are resolved (eleven tickets plus parent spec), no malformed references and no initiative blocker/next-work entry. [Scoped receipt](evidence/management-human-acceptance-2026-10-11.json) retains all record states, source-backed acceptance summary and observation qualifications.
 
 Project lifecycle, focus, review, registered sources, working directory and repository fields remain unchanged. A system-only helper child PATH excludes GitHub CLI; unavailable remote/malformed legacy sources remain explicitly uncovered, rather than being claimed as accepted. No new Registry, remote tracker query or migration was performed. This closes only the local Dashboard experience initiative. The normal installed App/product is unchanged; all history and unrelated changes remain retained.
+
+
+## Human-accepted local closeout — 2026-10-11
+
+Installed source `d518332` was accepted by the user. The local records for PDEX-FOLLOWUP-01–05 and PDEX-12–18 are closed with qualifications; prior unchecked criteria and evidence remain unchanged. [Current closeout record](evidence/human-closeout-followups-2026-10-11.md) contains the three retained feedback items and cleanup provenance. The local work remains on `codex/dashboard-experience-integration`; `main` and remote refs were not changed, no GitHub operation or native claim was performed, and this record does not imply any future tracker migration.

@@ -5,11 +5,11 @@ Type: ticket
 Parent: [PDEX-FOLLOWUP-02](../sidebar-schedule-spec-2026-10-11.md)
 Blocked by: None
 Triage: ready-for-agent
-Status: in-progress
-Lifecycle: in-progress
+Status: resolved
+Lifecycle: closed
 Owner: schedule implementer
 Assignee: schedule implementer
-Implementation: implemented, independently reviewed and installed; direct human acceptance pending
+Implementation: implemented; installed checkpoint `d518332` accepted by the user on 2026-10-11 with qualifications in the human closeout record
 Base: fc4c8185a9b7e029a945662754a2131b21bfb3d8
 
 ## Acceptance criteria
@@ -34,3 +34,8 @@ Base: fc4c8185a9b7e029a945662754a2131b21bfb3d8
 Reviewed71059a3 normal installed, fresh currentdata preserved; [final package/verification/protection](../evidence/sidebar-schedule-local-install-2026-10-11.md). Checked criteria represent implementation/verification only.
 
 - [ ] Direct human acceptance in installed normal App.
+
+
+## Human acceptance closeout — 2026-10-11
+
+The user accepted the installed experience checkpoint `d518332`. This closes the ticket for the accepted round, with residual feedback recorded in [the closeout record](../evidence/human-closeout-followups-2026-10-11.md). Existing unchecked checklist items and prior failure/evidence history are preserved as written and are not claimed as verified.

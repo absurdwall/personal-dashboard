@@ -4,8 +4,8 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: original eleven-ticket initiative resolved; PDEX-FOLLOWUP-05 implementation, review and installation complete, direct human acceptance pending
-Implementation: complete; local acceptance with documented observation qualifications and accepted Today narrow-window limitation
+Stage: PDEX-SPEC-01 and PDEX-01–11 remain closed; PDEX-FOLLOWUP-01–05 and PDEX-12–18 closed after human acceptance of installed d518332
+Implementation: installed checkpoint d518332 accepted by the user with qualifications; residual feedback is recorded separately and is not a current blocker
 Working branch: codex/dashboard-experience-integration
 Management source: source-personal-dashboard-experience
 
@@ -28,13 +28,13 @@ Management source: source-personal-dashboard-experience
 
 ## Approved follow-up frontier — 2026-10-11
 
-Previous PDEX-SPEC-01/PDEX-01–11 remain accepted and closed. New bounded follow-up: [PDEX-FOLLOWUP-01](followup-spec-2026-10-11.md), current open/in-progress; both independent tickets eligible and claimed.
+Previous PDEX-SPEC-01/PDEX-01–11 remain accepted and closed. New bounded follow-up: [PDEX-FOLLOWUP-01](followup-spec-2026-10-11.md), closed after human acceptance of installed d518332; see [final closeout](evidence/human-closeout-followups-2026-10-11.md).
 
 | ID | Body | Triage | Lifecycle | Dependencies | Current evidence |
 | --- | --- | --- | --- | --- | --- |
-| PDEX-FOLLOWUP-01 | [complete addendum](followup-spec-2026-10-11.md) / [index](issues/00-followup-spec.md) | ready-for-agent | in-progress | none | implementation/review/install/human acceptance separate |
-| PDEX-12 | [Tasks quick create/modal](issues/12-lightweight-task-create.md) | ready-for-agent | in-progress | none | reviewed, installed; human acceptance pending |
-| PDEX-13 | [Today unlocated toggle/drawer](issues/13-today-unlocated-drawer.md) | ready-for-agent | in-progress | none | reviewed, installed; human acceptance pending |
+| PDEX-FOLLOWUP-01 | [complete addendum](followup-spec-2026-10-11.md) / [index](issues/00-followup-spec.md) | ready-for-agent | closed | none | user accepted installed d518332; qualified closeout recorded |
+| PDEX-12 | [Tasks quick create/modal](issues/12-lightweight-task-create.md) | ready-for-agent | closed | none | user accepted installed d518332; historical unchecked criteria preserved |
+| PDEX-13 | [Today unlocated toggle/drawer](issues/13-today-unlocated-drawer.md) | ready-for-agent | closed | none | user accepted installed d518332; historical unchecked criteria preserved |
 
 The spec and eleven approved tickets are published locally. Every ticket retains its complete body and separate acceptance criteria.
 Current claim and implementation states are recorded per row and ticket. The Work Item index [00-spec](issues/00-spec.md) refers to
@@ -225,9 +225,9 @@ Direct human sidebar correction supersedes drawer-as-target interpretation; prev
 
 | ID | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| PDEX-FOLLOWUP-02 | [spec index](issues/00-sidebar-schedule-spec.md) | ready-for-agent | in-progress | none | new scope, acceptance pending |
-| PDEX-14 | [docked sidebars](issues/14-docked-sidebar-toggles.md) | ready-for-agent | in-progress | none | reviewed, installed; human acceptance pending |
-| PDEX-15 | [compact Task schedule](issues/15-compact-task-schedule.md) | ready-for-agent | in-progress | none | reviewed, installed; human acceptance pending |
+| PDEX-FOLLOWUP-02 | [spec index](issues/00-sidebar-schedule-spec.md) | ready-for-agent | closed | none | user accepted installed d518332; qualified closeout recorded |
+| PDEX-14 | [docked sidebars](issues/14-docked-sidebar-toggles.md) | ready-for-agent | closed | none | user accepted installed d518332; historical unchecked criteria preserved |
+| PDEX-15 | [compact Task schedule](issues/15-compact-task-schedule.md) | ready-for-agent | closed | none | user accepted installed d518332; historical unchecked criteria preserved |
 
 ## Approved follow-up — PDEX-FOLLOWUP-03 — 2026-10-11
 
@@ -235,8 +235,8 @@ New direct-user-authorized, bounded shell polish: [PDEX-FOLLOWUP-03](followup-sp
 
 | ID | Body | Triage | Lifecycle | Dependencies | Current evidence |
 | --- | --- | --- | --- | --- | --- |
-| PDEX-FOLLOWUP-03 | [complete addendum](followup-spec-2026-10-11-shell-compactness.md) / [index](issues/00-followup-spec-03.md) | ready-for-agent | in-progress | none | implementation/review/release/human acceptance separate |
-| PDEX-16 | [compact workspace shell](issues/16-shell-compactness.md) | ready-for-agent | in-progress | none | source reviewed and normal package installed; current Collaboration visual inference superseded by direct user report; PDEX-17 recovery pending; direct human acceptance pending ([readback](evidence/pdex16-normal-install-readback-2026-10-11.json)) |
+| PDEX-FOLLOWUP-03 | [complete addendum](followup-spec-2026-10-11-shell-compactness.md) / [index](issues/00-followup-spec-03.md) | ready-for-agent | closed | none | user accepted installed d518332; qualified closeout recorded |
+| PDEX-16 | [compact workspace shell](issues/16-shell-compactness.md) | ready-for-agent | closed | none | user accepted installed d518332; unchecked criteria remain unverified ([readback](evidence/pdex16-normal-install-readback-2026-10-11.json)) |
 
 
 ## Revised current installation — 2026-10-11
@@ -249,8 +249,8 @@ Direct user report supersedes the earlier Collaboration visual-acceptance infere
 
 | ID | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| PDEX-FOLLOWUP-04 | [complete addendum](followup-spec-2026-10-11-collaboration-layout.md) / [index](issues/00-followup-spec-04.md) | ready-for-agent | in-progress | none | implementation, independent review, install and human acceptance separate |
-| PDEX-17 | [Collaboration layout recovery](issues/17-collaboration-layout-recovery.md) | ready-for-agent | in-progress | none | [production-WK regression and isolated native candidate evidence](evidence/pdex17-layout-red-2026-10-11.md); source checks pass, independent review pending, normal-App source/protection provenance unverified |
+| PDEX-FOLLOWUP-04 | [complete addendum](followup-spec-2026-10-11-collaboration-layout.md) / [index](issues/00-followup-spec-04.md) | ready-for-agent | closed | none | user accepted installed d518332; qualified closeout recorded |
+| PDEX-17 | [Collaboration layout recovery](issues/17-collaboration-layout-recovery.md) | ready-for-agent | closed | none | user accepted installed d518332; historical evidence retained and unchecked criteria unverified ([prior evidence](evidence/pdex17-layout-red-2026-10-11.md)) |
 
 ## New direct human corrections — 2026-10-11
 
@@ -258,8 +258,8 @@ Direct user messages in review chat `01a128ff-8865-7493-9698-cc48c19d7939` autho
 
 | ID | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| PDEX-FOLLOWUP-05 | [complete addendum](followup-spec-2026-10-11-dashboard-shell-repair.md) / [index](issues/00-followup-spec-05.md) | ready-for-agent | in-progress | none | `d4e2b54` reviewed and installed with protected readback; direct human acceptance pending |
-| PDEX-18 | [visible shell controls and Collaboration recovery](issues/18-dashboard-shell-and-collaboration-repair.md) | ready-for-agent | in-progress | none | `d4e2b54` corrects empty-session editing, date/Calendar recovery and actual long-session composer clipping; final review/protected normal install confirmed; human acceptance pending ([evidence](evidence/pdex18-final-review-install-2026-10-11.md)) |
+| PDEX-FOLLOWUP-05 | [complete addendum](followup-spec-2026-10-11-dashboard-shell-repair.md) / [index](issues/00-followup-spec-05.md) | ready-for-agent | closed | none | `d518332` installed and accepted by the user; qualified closeout recorded |
+| PDEX-18 | [visible shell controls and Collaboration recovery](issues/18-dashboard-shell-and-collaboration-repair.md) | ready-for-agent | closed | none | `d518332` installed and accepted by the user; prior evidence retained, checklist qualifications preserved ([prior evidence](evidence/pdex18-final-review-install-2026-10-11.md)) |
 
 ### PDEX-18 review and protected installation — 2026-10-11
 
@@ -269,3 +269,12 @@ Implementation commits `37d71de` and `dc12b10` retain full history from `8960c80
 ## Latest protected normal App checkpoint — 2026-10-11
 
 Current production source `d4e2b54` is independently reviewed and installed at `/Applications/Personal Dashboard.app` with the normal configuration and fresh protection. [Final qualified evidence](evidence/pdex18-final-review-install-2026-10-11.md) includes the actual existing-session composer defect found after `eb0f497`, its repair, native input/control observations and verified data preservation. Standards and Spec have zero unresolved findings. PDEX-FOLLOWUP-05/PDEX-18 remain in-progress pending direct human acceptance; PDEX-14 through PDEX-17 retain their own histories, and original PDEX-01–11 remain closed. Earlier release checkpoints are historical. No GitHub/main operation is inferred.
+
+
+## Follow-up initiative closeout — 2026-10-11
+
+The user accepted the current installed experience checkpoint `d518332` and closed PDEX-FOLLOWUP-01–05 plus PDEX-12–18 for this round. This is human acceptance of the installed round, not a claim that every historical checklist line was individually observed or passed. Unchecked items, failures and evidence remain intact. [Qualified closeout and residual feedback](evidence/human-closeout-followups-2026-10-11.md) is the current pointer; earlier dated in-progress entries above remain historical snapshots.
+
+There is no active follow-up blocker. Three items are retained for future user-directed work: Up/Down keyboard selection in the `/retro` completion menu; unclear Today Daytime arrangement/task move and delete affordances (not yet diagnosed); and a possible TickTick-like large right-side Task detail pane, explicitly future design only. They are not represented as implemented or as reopened tickets.
+
+Root cleanup completed without touching the installed App, profile, Vault or rollback copies. Only `main` and `codex/dashboard-experience-integration` remain as branches; unique prototype history is protected by tag `archive/collaboration-execution-prototype-20261011` and private bundle `~/Library/Application Support/Personal Dashboard Backups.noindex/closeout-20261011-173514/personal-dashboard-before-cleanup.bundle`. No main merge, remote push or PR occurred. The 3.7 GB `src-tauri/target` and obsolete private test bundle were removed; the sole `/Applications/Personal Dashboard.app` and all personal data/rollback backups were left unchanged. See the private cleanup receipt at `~/Library/Application Support/Personal Dashboard Backups.noindex/closeout-20261011-173514/cleanup-receipt.json`.

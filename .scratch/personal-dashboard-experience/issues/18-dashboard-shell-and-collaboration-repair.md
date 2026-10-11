@@ -6,8 +6,8 @@ Parent: [PDEX-FOLLOWUP-05](../followup-spec-2026-10-11-dashboard-shell-repair.md
 Related: PDEX-14, PDEX-15, PDEX-16 and PDEX-17 retain their own source, review and installation checkpoints. This ticket records the latest direct human corrections without rewriting them.  
 Blocked by: None  
 Triage: ready-for-agent  
-Status: in-progress  
-Lifecycle: in-progress  
+Status: resolved
+Lifecycle: closed
 Owner: primary implementer (current Codex task)  
 Assignee: primary implementer (current Codex task)  
 Base: 3c19010  
@@ -43,3 +43,8 @@ Independent review found and repaired whole-month clipping, unknown-result dupli
 ## Current final installation checkpoint — 2026-10-11
 
 The latest production source `d4e2b54` is independently reviewed with zero remaining Standards/Spec findings and freshly protected/installed with normal configuration. Actual populated-session inspection additionally found and repaired the `eb0f497` composer clipping, then verified the corrected synthetic and normal App surfaces. [Final source/package/native/preservation evidence](../evidence/pdex18-final-review-install-2026-10-11.md) retains all qualifications. Existing content and authority readback pass; no model turn or microphone was requested. This supersedes earlier pending-final-review/install statements, without discarding historical evidence. Direct human acceptance remains pending; ticket and parent stay in-progress.
+
+
+## Human acceptance closeout — 2026-10-11
+
+The user accepted the installed experience checkpoint `d518332`. This closes the ticket for the accepted round, with residual feedback recorded in [the closeout record](../evidence/human-closeout-followups-2026-10-11.md). Existing unchecked checklist items and prior failure/evidence history are preserved as written and are not claimed as verified.
