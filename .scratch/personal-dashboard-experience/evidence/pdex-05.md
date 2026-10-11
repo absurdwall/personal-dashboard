@@ -40,3 +40,9 @@ Visual inspection: synthetic production screenshots `/tmp/pdex-05-synthetic.noin
 ## Acceptance boundary
 
 Implementation is complete; lifecycle remains in-progress and acceptance partial. Browser IPC responses do not prove native packaged writes. Independent public Rust workflows prove real Task persistence but do not replace packaged interaction acceptance. PDEX-11 must verify the native checkbox/detail flow, restart and related Today/Calendar pages, existing Collaboration-return context, and user acceptance on the combined candidate. No packaged UI, installation or user acceptance is claimed here.
+
+## Final plan-gesture integration sync
+
+Latest integration `b2eae26` (PDEX-04) merged as `c8d8d9d`. The sole conflict was appended CSS; retained both selected Task details and plan end-handle/preview styles. Production build and all 424 frontend checks passed again. Combined production Chrome execution of `task-list-details.mjs`, `today-axis-task-gestures.mjs`, and `today-axis-plan-gestures.mjs` with `--test-concurrency=1` passed all 23 cases (7 selected Task details, 8 Task-axis, 8 plan-axis), confirming the shared gesture controller and this Task page coexist.
+
+The 43 native Task/Today/Calendar checks were rerun successfully at `4093ee1` immediately before this final PDEX-04 sync; PDEX-04 introduced native test changes in its independent plan suite, not Task/Today/Calendar production source changes. Native combined packaged acceptance remains PDEX-11. All retained source commits and both integration merges remain in history; worktree source is clean at handoff.
