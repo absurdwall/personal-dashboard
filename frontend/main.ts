@@ -5456,7 +5456,8 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
           dialog.close();
           return;
         }
-        const unchanged = fresh.timeAxis.currentArrangement.find(candidate => candidate.planId === entry.planId);
+        const unchanged = [...fresh.timeAxis.currentArrangement, ...fresh.timeAxis.unlocatedCurrentArrangement]
+          .find(candidate => candidate.planId === entry.planId);
         if (savedRevision || !unchanged?.timeEditable) {
           setCopy(status, "today.planSourceChanged");
           return;
