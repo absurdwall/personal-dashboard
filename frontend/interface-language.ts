@@ -5,6 +5,7 @@ export type InterfaceLanguagePreferences = Readonly<{
 }>;
 
 const interfaceCopies = {
+  "today.planResizeEnd": { zh: "调整计划结束（拖动，或点击编辑）", en: "Adjust plan end (drag or click to edit)" },
   "today.planApproximateReference": { zh: "约{time}", en: "Around {time}" },
   "today.planPrecision": { zh: "时间表达", en: "Time expression" },
   "today.planApproximatePoint": { zh: "约略时间点", en: "Approximate time point" },
@@ -20,6 +21,7 @@ const interfaceCopies = {
   "today.planSave": { zh: "保存时间", en: "Save time" },
   "today.planCancel": { zh: "关闭", en: "Close" },
   "today.planSaved": { zh: "计划时间已保存并读回确认。", en: "Plan time saved and verified by reading the record." },
+  "today.planSavedNeedsReadback": { zh: "文档已保存；请重新读取核对界面。", en: "Document saved; read the record again to verify the display." },
   "today.planUnconfirmed": { zh: "结果未确认；编辑值仍保留。请重新读取核对后再操作。", en: "Result unconfirmed; your edit is retained. Read the record again before another edit." },
   "today.planRecheck": { zh: "重新读取核对", en: "Read record again" },
   "today.planInvalidTime": { zh: "请输入有效的开始时间；结束必须晚于开始，范围为当天 04:00 至次日 04:00。", en: "Enter a valid start; end must follow start within 04:00 today to 04:00 the next day." },
