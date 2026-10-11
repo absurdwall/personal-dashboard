@@ -24,7 +24,7 @@ Management source: source-personal-dashboard-experience
 | PDEX-08 | ticket | [08: Calendar 完整紧凑月历与记录状态](issues/08-compact-calendar.md) | ready-for-agent | in-progress | none | code merged a4fb8ce; 424 frontend + 127 native source/state checks; packaged pending |
 | PDEX-09 | ticket | [09: Collaboration 减负与 slash 命令补全](issues/09-collaboration-command-completion.md) | ready-for-agent | in-progress | none | code merged f400013; 396 frontend + serialized native pass; packaged/IME pending |
 | PDEX-10 | ticket | [10: Evening 一键进入带日期的复盘草稿](issues/10-evening-review-entry.md) | ready-for-agent | in-progress | none | code merged 684ac8b; 138 native + five WebKit entry checks; packaged pending |
-| PDEX-11 | ticket | [11: 验证同一打包版本的完整日常流程](issues/11-packaged-daily-flow-acceptance.md) | ready-for-agent | open | PDEX-03, PDEX-04, PDEX-05, PDEX-07, PDEX-08, PDEX-09, PDEX-10 | unassigned; not started |
+| PDEX-11 | ticket | [11: 验证同一打包版本的完整日常流程](issues/11-packaged-daily-flow-acceptance.md) | ready-for-agent | in-progress | PDEX-03, PDEX-04, PDEX-05, PDEX-07, PDEX-08, PDEX-09, PDEX-10 | claimed: implementer PDEX-11; codex/pdex-11 |
 
 The spec and eleven approved tickets are published locally. Every ticket retains its complete body and separate acceptance criteria.
 Current claim and implementation states are recorded per row and ticket. The Work Item index [00-spec](issues/00-spec.md) refers to

@@ -4,13 +4,16 @@
 
 **Blocked by:** 03 — 保持早间文字与可读的统一白天时间轴; 04 — 拖动计划并调整结束时间; 05 — Tasks 使用清晰勾选列表与所选详情; 07 — 在白天时间轴选区创建与移动 Task; 08 — Calendar 完整紧凑月历与记录状态; 09 — Collaboration 减负与 slash 命令补全; 10 — Evening 一键进入带日期的复盘草稿
 
-**Status:** ready-for-agent
+**Triage:** ready-for-agent
+
+**Status:** in-progress
 
 **ID:** PDEX-11
 **Parent:** [PDEX-SPEC-01](../spec.md)
-**Lifecycle:** open
-**Implementation:** not started
-**Owner:** unassigned
+**Lifecycle:** in-progress
+**Implementation:** in progress
+**Owner:** implementer PDEX-11
+**Assignee:** implementer PDEX-11
 **Date:** 2026-10-10
 **Breakdown decision:** User approved the eleven-ticket breakdown and blocking edges on 2026-10-10.
 
@@ -34,3 +37,5 @@ story 68 and integrated regressions across stories 1–67.
 ## Execution
 
 - 2026-10-10: Published locally with the approved scope and dependencies; unassigned, not claimed, not started. Record subsequent authorized claims, commits, checks and acceptance here. Publication does not close the parent specification.
+
+- 2026-10-10: Authorized claim on codex/pdex-11, worktree /tmp/pdex-11; base integration a12e79f9b18771600d8008041cf59dcc4e0d8dd0. Dependency implementation/evidence inspected before start; packaged acceptance remains separately tracked.
