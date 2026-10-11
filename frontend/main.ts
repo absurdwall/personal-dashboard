@@ -274,6 +274,8 @@ type TaskChangeView = Readonly<{
   newDate: string | null;
   previousTime: string | null;
   newTime: string | null;
+  previousExecutionEnd?: Readonly<{date: string; time: string}> | null;
+  newExecutionEnd?: Readonly<{date: string; time: string}> | null;
   previousListId: string | null;
   newListId: string | null;
   previousState: "pending" | "completed" | "abandoned" | null;
@@ -8524,8 +8526,8 @@ function taskChangeDescription(change: TaskChangeView): string {
   if (change.kind === "rescheduled") {
     return t("tasks.rescheduled", {
       changedAt: change.changedAt,
-      previous: taskScheduleText(change.previousDate, change.previousTime),
-      next: taskScheduleText(change.newDate, change.newTime),
+      previous: taskScheduleText(change.previousDate, change.previousTime, change.previousExecutionEnd),
+      next: taskScheduleText(change.newDate, change.newTime, change.newExecutionEnd),
       changeSource: taskChangeSourceText(change.source),
     });
   }

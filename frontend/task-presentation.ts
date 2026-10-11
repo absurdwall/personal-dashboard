@@ -71,7 +71,7 @@ export function taskEditOperationKey(
     edit.date,
     edit.time,
     edit.listId,
-    edit.executionEnd,
+    edit.executionEnd === undefined ? "preserve" : edit.executionEnd,
   ]);
 }
 

@@ -609,6 +609,7 @@ test("interval edits retain distinct retry identities and require confirmed end 
     date: "2026-10-10", time: "23:30", listId: "inbox",
     executionEnd: { date: "2026-10-11", time: "00:30" } };
   assert.notEqual(taskEditOperationKey(edit), taskEditOperationKey({ ...edit, executionEnd: null }));
+  assert.notEqual(taskEditOperationKey({ ...edit, executionEnd: undefined }), taskEditOperationKey({ ...edit, executionEnd: null }), "omission and clear are different operations");
   const result = await performTaskUpdateRequest(edit, {
     expectedRevision: "r1", requests, identities, createChangeId: () => "interval-edit",
     isCurrent: () => true,
