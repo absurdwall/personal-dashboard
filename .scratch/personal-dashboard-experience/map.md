@@ -26,9 +26,8 @@ Management source: source-personal-dashboard-experience
 | PDEX-10 | ticket | [10: Evening 一键进入带日期的复盘草稿](issues/10-evening-review-entry.md) | ready-for-agent | open | none | unassigned; not started |
 | PDEX-11 | ticket | [11: 验证同一打包版本的完整日常流程](issues/11-packaged-daily-flow-acceptance.md) | ready-for-agent | open | PDEX-03, PDEX-04, PDEX-05, PDEX-07, PDEX-08, PDEX-09, PDEX-10 | unassigned; not started |
 
-The spec and eleven approved tickets are published locally. Every ticket has
-its own complete body and unchecked acceptance criteria. No ticket is claimed
-or started. The Work Item index [00-spec](issues/00-spec.md) refers to
+The spec and eleven approved tickets are published locally. Every ticket retains its complete body and separate acceptance criteria.
+Current claim and implementation states are recorded per row and ticket. The Work Item index [00-spec](issues/00-spec.md) refers to
 this full body and the same PDEX-SPEC-01 identity; it is not an implementation
 ticket or a second specification. Do not renumber existing PDEX records.
 
@@ -40,8 +39,9 @@ dependencies. There are ten direct blocking edges with no cycles or redundant
 transitive edges. Read each full ticket before a later authorized claim.
 
 [Execution record](execution.md) retains claim/branch/commit/verification
-conventions. Breakdown approval authorizes this publication, not implementation,
-installation or closing the parent specification; its body/state stay unchanged.
+conventions. Breakdown approval authorized publication. The subsequent implement-spec
+request authorizes ticket implementation; installation and parent-spec closure
+remain separate boundaries.
 
 ## Decisions so far
 
