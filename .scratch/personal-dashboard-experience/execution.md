@@ -43,3 +43,9 @@ authorize starting implementation.
 - 2026-10-10: Installed tortilla-flat-management connect/discover/inspect confirmed canonical product-personal-dashboard and source-personal-dashboard-experience; 12 records, current, no malformed references, source revision a46f6fedb8e9e08b. Inspection scoped only to this local source. Frontend pre-implementation baseline: 388 tests passed. Rust baseline runs independently before changes.
 
 - 2026-10-10: Initial Rust baseline invalidated by concurrent shared-target binary replacement: canonical suite executed PDEX-06 new test absent from canonical sources. This is orchestration evidence contamination, not an established baseline product failure. Workers moved to isolated Cargo targets; final integrated suite will be run serially after merges. Frontend baseline remains valid.
+
+- 2026-10-10: Claimed ticket metadata now exposes Triage separately from native Status and Assignee so the installed local source reader can observe work-in-progress instead of treating claimed records as unassigned ready work. Lifecycle/acceptance remain independent; stable IDs, bodies and map triage are retained.
+
+- 2026-10-10: PDEX-01 code integrated at 32b3678, with 11 isolated business workflows and frontend build green. PDEX-02 starts against this verified implementation prerequisite; acceptance/closure of PDEX-01 remains open until actual UI and packaged evidence. Implementation dependency readiness and delivery acceptance are recorded separately; no blocker has been falsely closed.
+
+- 2026-10-10: PDEX-06 code integrated at 61c12cd with isolated persistence/adapter/Collaboration evidence. PDEX-07 now starts against the verified Task interval prerequisite; PDEX-06 UI/delivery acceptance remains open and is not inferred from code integration.

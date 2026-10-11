@@ -27,7 +27,7 @@ use crate::collaboration_memory::{
 use crate::habits::{HabitSnapshotState, HabitSnapshotView};
 use crate::platform::FileTodayWorkspacePersistence;
 use crate::tasks::{
-    FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput, TaskDataState,
+    FileTaskStore, TaskExecutionEnd, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput, TaskDataState,
     TaskDeleteInput, TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput,
     TaskListRestoreInput, TaskRestoreInput, TaskState, TaskStateInput, TaskUpdateInput, TasksView,
 };
@@ -103,6 +103,8 @@ pub struct CollaborationTaskReferenceView {
     pub content: Option<String>,
     pub date: Option<String>,
     pub time: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_end: Option<TaskExecutionEnd>,
     pub list_id: String,
     pub state: TaskState,
     pub deleted_at: Option<String>,
@@ -362,6 +364,8 @@ pub enum CollaborationTaskOperation {
         content: Option<String>,
         date: Option<String>,
         time: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        execution_end: Option<TaskExecutionEnd>,
         list_id: Option<String>,
     },
     UpdateTask {
@@ -370,6 +374,8 @@ pub enum CollaborationTaskOperation {
         content: Option<String>,
         date: Option<String>,
         time: Option<String>,
+        #[serde(default, deserialize_with = "crate::tasks::deserialize_execution_end_patch", skip_serializing_if = "Option::is_none")]
+        execution_end: Option<Option<TaskExecutionEnd>>,
         list_id: Option<String>,
     },
     CompleteTask {
@@ -452,6 +458,8 @@ pub enum CollaborationTaskOperationBaseline {
         content: Option<String>,
         date: Option<String>,
         time: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        execution_end: Option<TaskExecutionEnd>,
         list_id: String,
         list_name: String,
         state: TaskState,
@@ -827,8 +835,10 @@ where
                 content,
                 date,
                 time,
+                execution_end,
                 list_id,
             } => self.application.create(TaskCreateInput {
+                execution_end: execution_end.clone(),
                 target_binding: target_binding.to_owned(),
                 expected_revision,
                 task_id: stable_child_identifier("task", operation_id),
@@ -844,8 +854,10 @@ where
                 content,
                 date,
                 time,
+                execution_end,
                 list_id,
             } => self.application.update(TaskUpdateInput {
+                execution_end: execution_end.clone(),
                 target_binding: target_binding.to_owned(),
                 expected_revision: required_revision()?,
                 task_id: task_id.clone(),
@@ -9183,6 +9195,7 @@ fn task_operation_baseline(
             content: task.content.clone(),
             date: task.date.clone(),
             time: task.time.clone(),
+            execution_end: task.execution_end.clone(),
             list_id: task.list_id.clone(),
             list_name: list.name.clone(),
             state: task.state,
@@ -9371,6 +9384,7 @@ fn task_operation_result_snapshot(
             content: task.content.clone(),
             date: task.date.clone(),
             time: task.time.clone(),
+            execution_end: task.execution_end.clone(),
             list_id: task.list_id.clone(),
             list_name: list.name.clone(),
             state: task.state,
@@ -9414,6 +9428,7 @@ fn task_operation_effect_matches(
             content,
             date,
             time,
+            execution_end,
             list_id,
         } => task.is_some_and(|task| {
             task.deleted_at.is_none()
@@ -9421,6 +9436,7 @@ fn task_operation_effect_matches(
                 && task.content == normalized_optional_text(content.as_deref())
                 && task.date == normalized_optional_text(date.as_deref())
                 && task.time == normalized_optional_text(time.as_deref())
+                && task.execution_end == *execution_end
                 && task.list_id == list_id.as_deref().unwrap_or("inbox")
         }),
         CollaborationTaskOperation::UpdateTask {
@@ -9428,11 +9444,12 @@ fn task_operation_effect_matches(
             content,
             date,
             time,
+            execution_end,
             list_id,
             ..
         } => {
-            let previous_list_id = match &operation.baseline {
-                CollaborationTaskOperationBaseline::Task { list_id, .. } => list_id.as_str(),
+            let (previous_list_id, previous_end) = match &operation.baseline {
+                CollaborationTaskOperationBaseline::Task { list_id, execution_end, .. } => (list_id.as_str(), execution_end),
                 _ => return false,
             };
             task.is_some_and(|task| {
@@ -9441,6 +9458,7 @@ fn task_operation_effect_matches(
                     && task.content == normalized_optional_text(content.as_deref())
                     && task.date == normalized_optional_text(date.as_deref())
                     && task.time == normalized_optional_text(time.as_deref())
+                    && &task.execution_end == execution_end.as_ref().unwrap_or(previous_end)
                     && task.list_id == list_id.as_deref().unwrap_or(previous_list_id)
             })
         }
@@ -9731,17 +9749,22 @@ fn collaboration_task_tool_spec(
     };
     let string = json!({ "type": "string" });
     let nullable_string = json!({ "type": ["string", "null"] });
+    let execution_end = json!({
+        "type": ["object", "null"], "properties": {"date": {"type":"string"}, "time": {"type":"string"}},
+        "required": ["date", "time"], "additionalProperties": false,
+        "description": "Optional planned execution end, with its actual calendar date. Start remains Task date/time. In updateTask omission retains the end, null explicitly clears it. An interval is planned allocation, not actual activity or a deadline."
+    });
     let mut defs = Vec::new();
     if task_operations_available {
         defs.extend([
         operation(
             "createTask",
-            json!({"name": string, "content": nullable_string, "date": nullable_string, "time": nullable_string, "listId": nullable_string}),
+            json!({"name": string, "content": nullable_string, "date": nullable_string, "time": nullable_string, "executionEnd": execution_end, "listId": nullable_string}),
             &["name", "content", "date", "time", "listId"],
         ),
         operation(
             "updateTask",
-            json!({"taskId": string, "name": string, "content": nullable_string, "date": nullable_string, "time": nullable_string, "listId": nullable_string}),
+            json!({"taskId": string, "name": string, "content": nullable_string, "date": nullable_string, "time": nullable_string, "executionEnd": execution_end, "listId": nullable_string}),
             &["taskId", "name", "content", "date", "time", "listId"],
         ),
         operation("completeTask", json!({"taskId": string, "completedTime": {"type":["string","null"], "description":usage::description("task.completedTime")}}), &["taskId"]),
@@ -10103,6 +10126,7 @@ impl CollaborationContextSource for DashboardContextReader {
                                     content: task.content.clone(),
                                     date: task.date.clone(),
                                     time: task.time.clone(),
+                                    execution_end: task.execution_end.clone(),
                                     list_id: task.list_id.clone(),
                                     state: task.state,
                                     deleted_at: task.deleted_at.clone(),

@@ -182,6 +182,8 @@ type DaytimeView = Readonly<{
 }>;
 
 type TimeAxisEntryView = Readonly<{
+  planId?: string | null;
+  timeEditable?: boolean;
   period: string | null;
   text: string;
   sourceDate: string;
@@ -275,6 +277,8 @@ type TaskChangeView = Readonly<{
   newDate: string | null;
   previousTime: string | null;
   newTime: string | null;
+  previousExecutionEnd?: Readonly<{date: string; time: string}> | null;
+  newExecutionEnd?: Readonly<{date: string; time: string}> | null;
   previousListId: string | null;
   newListId: string | null;
   previousState: "pending" | "completed" | "abandoned" | null;
@@ -306,6 +310,7 @@ type TaskCompletionView = Readonly<{
 }>;
 
 type TaskView = Readonly<{
+  executionEnd: Readonly<{ date: string; time: string }> | null;
   id: string;
   name: string;
   content: string | null;
@@ -649,6 +654,7 @@ type CollaborationTaskReferenceView = Readonly<{
   content: string | null;
   date: string | null;
   time: string | null;
+  executionEnd?: Readonly<{date: string; time: string}> | null;
   listId: string;
   state: "pending" | "completed" | "abandoned";
   deletedAt: string | null;
@@ -716,8 +722,8 @@ type CollaborationExternalApprovalRequest = Readonly<{
 }>;
 
 type CollaborationTaskOperation =
-  | Readonly<{ operation: "createTask"; name: string; content: string | null; date: string | null; time: string | null; listId: string | null }>
-  | Readonly<{ operation: "updateTask"; taskId: string; name: string; content: string | null; date: string | null; time: string | null; listId: string | null }>
+  | Readonly<{ operation: "createTask"; name: string; content: string | null; date: string | null; time: string | null; executionEnd?: Readonly<{date: string; time: string}> | null; listId: string | null }>
+  | Readonly<{ operation: "updateTask"; taskId: string; name: string; content: string | null; date: string | null; time: string | null; executionEnd?: Readonly<{date: string; time: string}> | null; listId: string | null }>
   | Readonly<{ operation: "completeTask"; taskId: string; completedTime?: string | null }>
   | Readonly<{ operation: "abandonTask" | "reopenTask" | "deleteTask" | "restoreTask"; taskId: string }>
   | Readonly<{ operation: "correctCompletion"; taskId: string; completedOn: string; completedTime: string | null }>
@@ -746,7 +752,7 @@ type DailyPlanBlockInput = Readonly<{ period: string; title: string; detail: str
 type DailyPlanEvidenceInput = Readonly<{ label: string; items: readonly string[] }>;
 
 type CollaborationTaskOperationBaseline =
-  | Readonly<{ kind: "task"; id: string; name: string; content: string | null; date: string | null; time: string | null; listId: string; listName: string; state: "pending" | "completed" | "abandoned"; deletedAt: string | null; completion: TaskCompletionView | null }>
+  | Readonly<{ kind: "task"; id: string; name: string; content: string | null; date: string | null; time: string | null; executionEnd?: Readonly<{date: string; time: string}> | null; listId: string; listName: string; state: "pending" | "completed" | "abandoned"; deletedAt: string | null; completion: TaskCompletionView | null }>
   | Readonly<{ kind: "list"; id: string; name: string; archived: boolean }>
   | Readonly<{
       kind: "dailyRecord";
@@ -1422,6 +1428,8 @@ const taskRequests = new LatestRequest();
 const todayTaskRequests = new LatestRequest();
 const calendarTaskRequests = new LatestRequest();
 type TaskDraft = Readonly<{
+  endDate: string;
+  endTime: string;
   name: string;
   content: string;
   date: string;
@@ -2769,7 +2777,8 @@ async function startOrStopCollaborationVoice(): Promise<void> {
   void collaborationVoiceController.start(target);
 }
 
-function collaborationTaskSchedule(date: string | null, time: string | null): string {
+function collaborationTaskSchedule(date: string | null, time: string | null, end?: Readonly<{date: string; time: string}> | null): string {
+  if (date && time && end) return `${collaborationDateLabel(date)} · ${time} – ${end.date === date ? "" : `${collaborationDateLabel(end.date)} `}${end.time}`;
   const day = date ? collaborationDateLabel(date) : t("collaboration.taskUndated");
   return time ? `${day} · ${time}` : day;
 }
@@ -2781,7 +2790,7 @@ function collaborationTaskBaselineText(
     return t("collaboration.taskBaselineTask", {
       name: baseline.name,
       id: baseline.id,
-      schedule: collaborationTaskSchedule(baseline.date, baseline.time),
+      schedule: collaborationTaskSchedule(baseline.date, baseline.time, baseline.executionEnd),
       list: baseline.listName,
       state: t(taskStateCopyKey(baseline.state)),
       content: baseline.content ?? t("collaboration.taskNoNote"),
@@ -3133,7 +3142,7 @@ function collaborationTaskOperationText(
     case "createTask":
       return t("collaboration.taskOpCreate", {
         name: operation.name,
-        schedule: collaborationTaskSchedule(operation.date, operation.time),
+        schedule: collaborationTaskSchedule(operation.date, operation.time, operation.executionEnd),
         list: listLabel(operation.listId),
         content: operation.content ?? t("collaboration.taskNoNote"),
       });
@@ -3141,7 +3150,7 @@ function collaborationTaskOperationText(
       return t("collaboration.taskOpUpdate", {
         name: operation.name,
         id: operation.taskId,
-        schedule: collaborationTaskSchedule(operation.date, operation.time),
+        schedule: collaborationTaskSchedule(operation.date, operation.time, operation.executionEnd),
         list: listLabel(operation.listId),
         content: operation.content ?? t("collaboration.taskNoNote"),
       });
@@ -5256,7 +5265,127 @@ function axisEntryDetails(
     metadata.append(continuation);
   }
   details.append(metadata);
+  if ((lane === "arrangement" || lane === "arrangement-unlocated") && entry.startMinute !== null) {
+    if (!entry.planId || !entry.timeEditable || entry.continuesFromPreviousDay || entry.continuesIntoNextDay) {
+      const unavailable = document.createElement("p");
+      setCopy(unavailable, entry.continuesFromPreviousDay || entry.continuesIntoNextDay ? "today.planTimeOutsideWindow" : "today.planTimeUnavailable");
+      details.append(unavailable);
+      return details;
+    }
+    const edit = document.createElement("button");
+    edit.type = "button";
+    setCopy(edit, "today.editPlanTime");
+    edit.addEventListener("click", () => openPlanTimeEditor(entry));
+    details.append(edit);
+  }
   return details;
+}
+
+function openPlanTimeEditor(entry: TimeAxisEntryView): void {
+  const loaded = currentTodayView;
+  if (!entry.planId || !loaded?.revision || !loaded.targetBinding || entry.startMinute === null) return;
+  const dialog = document.createElement("dialog");
+  dialog.className = "plan-time-editor";
+  dialog.setAttribute("aria-label", t("today.editPlanTime"));
+  const form = document.createElement("form");
+  const heading = document.createElement("h3");
+  setCopy(heading, "today.editPlanTime");
+  const title = document.createElement("p");
+  title.textContent = entry.text;
+  const help = document.createElement("p");
+  setCopy(help, "today.planTimeHelp");
+  form.append(heading, title, help);
+  const timeControl = (key: InterfaceCopyKey, minute: number | null) => {
+    const group = document.createElement("div");
+    const label = document.createElement("label");
+    setCopy(label, key);
+    const time = document.createElement("input");
+    time.type = "time";
+    time.step = "60";
+    time.value = minute === null ? "" : formatAxisMinute(minute);
+    label.append(time);
+    const dayLabel = document.createElement("label");
+    const nextDay = document.createElement("input");
+    nextDay.type = "checkbox";
+    nextDay.checked = minute !== null && minute >= 1440;
+    const dayCopy = document.createElement("span");
+    setCopy(dayCopy, "today.planNextDay");
+    dayLabel.append(nextDay, dayCopy);
+    group.append(label, dayLabel);
+    form.append(group);
+    return { time, nextDay };
+  };
+  const start = timeControl("today.planStart", entry.startMinute);
+  const end = timeControl("today.planEnd", entry.endMinute);
+  start.time.required = true;
+  const status = document.createElement("p");
+  status.setAttribute("role", "status");
+  const save = document.createElement("button");
+  save.type = "submit";
+  setCopy(save, "today.planSave");
+  const close = document.createElement("button");
+  close.type = "button";
+  setCopy(close, "today.planCancel");
+  close.addEventListener("click", () => dialog.close());
+  const recheck = document.createElement("button");
+  recheck.type = "button";
+  setCopy(recheck, "today.planRecheck");
+  recheck.hidden = true;
+  recheck.addEventListener("click", () => { void refreshToday(loaded.date); });
+  form.append(status, save, recheck, close);
+  const operationId = `plan-time-${crypto.randomUUID()}`;
+  let submitted = false;
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (submitted || todayOperationCount > 0) return;
+    const parse = (control: typeof start) => {
+      if (!/^\d{2}:\d{2}$/.test(control.time.value)) return null;
+      const [hours, minutes] = control.time.value.split(":").map(Number);
+      return hours * 60 + minutes + (control.nextDay.checked ? 1440 : 0);
+    };
+    const startMinute = parse(start);
+    const endMinute = end.time.value ? parse(end) : null;
+    if (startMinute === null || startMinute < 240 || startMinute >= 1680 ||
+        (end.time.value && (endMinute === null || endMinute <= startMinute || endMinute > 1680))) {
+      setCopy(status, "today.planInvalidTime");
+      return;
+    }
+    // A captured source/revision stays bound even when the displayed date or Vault changes.
+    submitted = true;
+    save.disabled = true;
+    start.time.disabled = end.time.disabled = start.nextDay.disabled = end.nextDay.disabled = true;
+    const request = todayPresentationRequests.begin();
+    updateTodayOperationState(1);
+    const operation = (async () => {
+      let confirmed = false;
+      try {
+        const result = await window.__TAURI__.core.invoke<Readonly<{ savedRevision: string; view: TodayView | null; refreshError: string | null }>>("edit_plan_time", {
+          input: { date: loaded.date, targetBinding: loaded.targetBinding, expectedRevision: loaded.revision,
+            planId: entry.planId, operationId, startMinute, endMinute },
+        });
+        confirmed = result.view !== null;
+        if (result.view && todayPresentationRequests.isCurrent(request)) {
+          renderToday(result.view);
+          showTodayMutationCopy("today.planSaved", "ready");
+          dialog.close();
+        } else {
+          status.textContent = result.refreshError ?? t("today.planSaved");
+          recheck.hidden = false;
+        }
+      } catch (error) {
+        status.textContent = `${t("today.planUnconfirmed")} ${String(error)}`;
+        recheck.hidden = false;
+      } finally {
+        updateTodayOperationState(-1);
+      }
+      return confirmed;
+    })();
+    void pendingWrites.track(operation);
+  });
+  dialog.append(form);
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
 }
 
 function renderTodayTimeAxisEntries(
@@ -5897,6 +6026,7 @@ function captureTodayTaskEditors(view: TodayView): Set<string> {
     if (
       draft.name !== task.name || draft.content !== (task.content ?? "") ||
       draft.date !== (task.date ?? "") || draft.time !== (task.time ?? "") ||
+      draft.endDate !== (task.executionEnd?.date ?? "") || draft.endTime !== (task.executionEnd?.time ?? "") ||
       draft.listId !== task.listId || draft.completionDate !== (task.completion?.completedOn ?? "") ||
       draft.completionTime !== (task.completion?.completedTime ?? "")
     ) {
@@ -8407,7 +8537,9 @@ function readTaskDraft(form: HTMLFormElement): TaskDraft {
     form.querySelector<HTMLInputElement>("[data-task-completion-date]")?.value ?? "";
   const completionTime =
     form.querySelector<HTMLInputElement>("[data-task-completion-time]")?.value ?? "";
-  return { name, content, date, time, listId, completionDate, completionTime };
+  const endDate = form.querySelector<HTMLInputElement>("[data-task-end-date]")?.value ?? "";
+  const endTime = form.querySelector<HTMLInputElement>("[data-task-end-time]")?.value ?? "";
+  return { name, content, date, time, endDate, endTime, listId, completionDate, completionTime };
 }
 
 function isBlankTaskDraft(draft: TaskDraft): boolean {
@@ -8416,6 +8548,8 @@ function isBlankTaskDraft(draft: TaskDraft): boolean {
     !draft.content &&
     !draft.date &&
     !draft.time &&
+    !draft.endDate &&
+    !draft.endTime &&
     !draft.completionDate &&
     !draft.completionTime
   );
@@ -8493,7 +8627,8 @@ function reconcileTaskCompletionDraft(
   }
 }
 
-function taskScheduleText(date: string | null, time: string | null): string {
+function taskScheduleText(date: string | null, time: string | null, end?: Readonly<{date: string; time: string}> | null): string {
+  if (date && time && end) return `${calendarDateLabel(date)} ${time} – ${end.date === date ? "" : `${calendarDateLabel(end.date)} `}${end.time}`;
   if (!date) return t("tasks.noDate");
   return time
     ? t("tasks.dateAt", { date: calendarDateLabel(date), time })
@@ -8540,8 +8675,8 @@ function taskChangeDescription(change: TaskChangeView): string {
   if (change.kind === "rescheduled") {
     return t("tasks.rescheduled", {
       changedAt: change.changedAt,
-      previous: taskScheduleText(change.previousDate, change.previousTime),
-      next: taskScheduleText(change.newDate, change.newTime),
+      previous: taskScheduleText(change.previousDate, change.previousTime, change.previousExecutionEnd),
+      next: taskScheduleText(change.newDate, change.newTime, change.newExecutionEnd),
       changeSource: taskChangeSourceText(change.source),
     });
   }
@@ -8992,7 +9127,7 @@ function taskEditor(
   const meta = document.createElement("p");
   meta.className = "task-row-meta";
   meta.append(source, document.createTextNode(" · "), document.createTextNode(listName));
-  meta.append(document.createTextNode(" · "), document.createTextNode(taskScheduleText(task.date, task.time)));
+  meta.append(document.createTextNode(" · "), document.createTextNode(taskScheduleText(task.date, task.time, task.executionEnd)));
   if (task.timePassed) {
     meta.append(document.createTextNode(" · "), document.createTextNode(t("tasks.timePassed")));
   } else if (task.overdue) {
@@ -9079,12 +9214,42 @@ function taskEditor(
   listCaption.append(list);
   listLabel.append(listCaption);
 
-  grid.append(nameLabel, contentLabel, listLabel, dateLabel, timeLabel);
+  const endDateLabel = document.createElement("label");
+  const endDateCaption = document.createElement("span");
+  setCopy(endDateCaption, "tasks.executionEndDate");
+  const endDate = document.createElement("input");
+  endDate.type = "date";
+  endDate.disabled = !editable;
+  endDate.value = draft?.endDate ?? task.executionEnd?.date ?? "";
+  endDate.dataset.taskEndDate = "";
+  endDateCaption.append(endDate);
+  endDateLabel.append(endDateCaption);
+  const endTimeLabel = document.createElement("label");
+  const endTimeCaption = document.createElement("span");
+  setCopy(endTimeCaption, "tasks.executionEndTime");
+  const endTime = document.createElement("input");
+  endTime.type = "time";
+  endTime.disabled = !editable;
+  endTime.value = draft?.endTime ?? task.executionEnd?.time ?? "";
+  endTime.dataset.taskEndTime = "";
+  endTimeCaption.append(endTime);
+  endTimeLabel.append(endTimeCaption);
+  const clearEnd = document.createElement("button");
+  clearEnd.type = "button";
+  clearEnd.className = "secondary-button";
+  clearEnd.disabled = !editable;
+  setCopy(clearEnd, "tasks.clearExecutionEnd");
+  clearEnd.addEventListener("click", () => {
+    endDate.value = "";
+    endTime.value = "";
+    stashTaskSurfaceDraft(surface, editorForm);
+  });
+  grid.append(nameLabel, contentLabel, listLabel, dateLabel, timeLabel, endDateLabel, endTimeLabel, clearEnd);
   const footer = document.createElement("div");
   footer.className = "task-editor-footer";
   const schedule = document.createElement("small");
   schedule.className = "task-meta";
-  schedule.textContent = taskScheduleText(task.date, task.time);
+  schedule.textContent = taskScheduleText(task.date, task.time, task.executionEnd);
   const save = document.createElement("button");
   save.type = "submit";
   save.disabled = !editable;
@@ -9099,7 +9264,7 @@ function taskEditor(
     const taskDate = document.createElement("p");
     taskDate.className = "task-meta";
     setCopy(taskDate, "tasks.taskDateDetails", {
-      schedule: taskScheduleText(task.date, task.time),
+      schedule: taskScheduleText(task.date, task.time, task.executionEnd),
     });
     const actual = document.createElement("p");
     actual.className = "task-meta";
@@ -9480,7 +9645,7 @@ function updateTaskEditorOperationState(
 ): void {
   taskEditorForms(surface).forEach((form) => {
     form.querySelectorAll(
-      "[data-task-name], [data-task-content], [data-task-date], [data-task-time], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
+      "[data-task-name], [data-task-content], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
     ).forEach((element) => {
       (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
         busy || !writable;
@@ -10231,6 +10396,13 @@ async function updateTask(
     return false;
   }
   const normalized = normalizeTaskSchedule(draft.date, draft.time);
+  if ((draft.endDate || draft.endTime) && (!normalized.date || !normalized.time || !draft.endDate || !draft.endTime ||
+      `${draft.endDate}T${draft.endTime}` <= `${normalized.date}T${normalized.time}`)) {
+    setCopyError(status, "tasks.notSaved", t("tasks.invalidExecutionInterval"));
+    if (status) status.dataset.state = "error";
+    return false;
+  }
+  const executionEnd = draft.endDate && draft.endTime ? {date: draft.endDate, time: draft.endTime} : null;
   const listId = draft.listId ?? task.listId;
   const edit = {
     targetBinding: binding,
@@ -10239,6 +10411,7 @@ async function updateTask(
     content: draft.content.trim() || null,
     date: normalized.date,
     time: normalized.time,
+    executionEnd,
     listId,
   };
   const expectedDate =
