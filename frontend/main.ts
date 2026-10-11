@@ -1252,6 +1252,7 @@ const todayTimeline = document.querySelector<HTMLOListElement>("#today-baseline-
 const todayBlockCount = document.querySelector<HTMLElement>("#today-block-count");
 const todayPlanEmpty = document.querySelector<HTMLElement>("#today-plan-empty");
 const todayContinuousAxis = document.querySelector<HTMLElement>("#today-continuous-axis");
+const todayAxisScrollSurface = document.querySelector<HTMLElement>("#today-axis-scroll-surface");
 const todayHourTicks = document.querySelector<HTMLElement>("#today-hour-ticks");
 const todayCurrentArrangementUnlocated = document.querySelector<HTMLElement>("#today-current-arrangement-unlocated");
 const todayUnlocatedTimeRegion = document.querySelector<HTMLElement>("#today-unlocated-time-region");
@@ -5423,6 +5424,11 @@ function renderTodayTimeAxisEntries(
     })),
     [visibleStart, visibleEnd],
   );
+  // Dense collisions retain readable targets; the same axis can scroll
+  // horizontally in a narrow window rather than clipping every card.
+  todayTimedEvents.closest<HTMLElement>(".today-axis-plot")?.style.setProperty(
+    "--today-axis-min-track-width", `${Math.max(0, ...stackPlacements.map((placement) => placement.stackSize)) * 144}px`,
+  );
   const placementByIndex = new Map(
     visibleEntries.map(({ index }, placementIndex) => [index, stackPlacements[placementIndex]]),
   );
@@ -5496,13 +5502,14 @@ function renderTodayTimeAxisEntries(
       marker.append(link);
 
       if (placement.stackSize > 1) {
+        const groupCount = stackPlacements.filter(candidate => candidate.stackId === placement.stackId).length;
         const reveal = document.createElement("button");
         reveal.type = "button";
         reveal.className = "today-axis-stack-reveal";
-        const revealLabel = t("today.overlapStackReveal", { count: placement.stackSize });
+        const revealLabel = t("today.overlapStackReveal", { count: groupCount });
         reveal.setAttribute("aria-label", revealLabel);
         reveal.title = revealLabel;
-        reveal.textContent = `∨ ${placement.stackSize}`;
+        reveal.textContent = `∨ ${groupCount}`;
         reveal.addEventListener("click", (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -5593,11 +5600,21 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
 
 function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): void {
   if (!todayContinuousAxis) return;
+  const entries: readonly TimedTodayAxisEntry[] = [
+    ...view.timeAxis.currentArrangement.map((entry) => ({ ...entry, lane: "arrangement" as const })),
+    ...view.timeAxis.confirmedFacts.map((entry) => ({ ...entry, lane: "facts" as const })),
+    ...todayTaskTimeAxisEntries(view.tasks.tasks, view.date,
+      new Set(view.tasks.lists.filter((list) => list.archived).map((list) => list.id)),
+    ).map((entry) => ({ ...entry, lane: "tasks" as const })),
+  ];
+  const earlyCount = entries.filter((entry) => entry.startMinute !== null && entry.startMinute < 360).length;
+  const lateCount = entries.filter((entry) => entry.startMinute !== null &&
+    (entry.endMinute ?? entry.startMinute) >= 1440).length;
   if (todayAxisRenderedDate !== view.date) {
     todayAxisRenderedDate = view.date;
     const now = view.isToday && currentTime ? livedAxisMinute(currentTime) : null;
-    todayAxisEarlyExpanded = now !== null && now < 360;
-    todayAxisLateExpanded = now !== null && now >= 1440;
+    todayAxisEarlyExpanded = earlyCount > 0 || (now !== null && now < 360);
+    todayAxisLateExpanded = lateCount > 0 || (now !== null && now >= 1440);
   }
   todayContinuousAxis.style.setProperty("--today-axis-plot-height", `calc(${(axisBounds()[1] - axisBounds()[0]) / 60} * var(--today-axis-hour-height))`);
   for (const [id, expanded] of [["today-expand-early", todayAxisEarlyExpanded], ["today-expand-late", todayAxisLateExpanded]] as const) {
@@ -5607,6 +5624,8 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
       setCopy(button, id === "today-expand-early"
         ? (expanded ? "today.expandEarlyExpanded" : "today.expandEarlyCollapsed")
         : (expanded ? "today.expandLateExpanded" : "today.expandLateCollapsed"));
+      const count = id === "today-expand-early" ? earlyCount : lateCount;
+      if (count) button.textContent += ` · ${t("today.axisPeriodItemCount", { count })}`;
     }
   }
   todayHourTicks?.replaceChildren(
@@ -5627,15 +5646,7 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
   );
   if (todayHourTicks && todayCurrentTime) todayHourTicks.append(todayCurrentTime);
   renderTodayTimeAxisEntries(
-    [
-      ...view.timeAxis.currentArrangement.map((entry) => ({ ...entry, lane: "arrangement" as const })),
-      ...view.timeAxis.confirmedFacts.map((entry) => ({ ...entry, lane: "facts" as const })),
-      ...todayTaskTimeAxisEntries(
-        view.tasks.tasks,
-        view.date,
-        new Set(view.tasks.lists.filter((list) => list.archived).map((list) => list.id)),
-      ).map((entry) => ({ ...entry, lane: "tasks" as const })),
-    ],
+    entries,
     view.timeAxis.unlocatedCurrentArrangement,
     view.timeAxis.unlocatedConfirmedFacts,
   );
@@ -5651,7 +5662,8 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
 function toggleTodayAxisSegment(id: string): void {
   if (!currentTodayView) return;
   const plot = todayContinuousAxis?.querySelector<HTMLElement>(".today-axis-plot");
-  const viewport = workspaceInformation?.getBoundingClientRect();
+  const scrollSurface = todayAxisScrollSurface ?? workspaceInformation;
+  const viewport = scrollSurface?.getBoundingClientRect();
   const oldPlot = plot?.getBoundingClientRect();
   const [start, end] = axisBounds();
   const anchorY = viewport && oldPlot ? Math.max(viewport.top, oldPlot.top) : null;
@@ -5688,7 +5700,7 @@ function toggleTodayAxisSegment(id: string): void {
       });
     }
   });
-  if (!workspaceInformation) return;
+  if (!scrollSurface) return;
   let delta = 0;
   if (anchorMinute !== null && anchorY !== null && plot) {
     const next = plot.getBoundingClientRect();
@@ -5700,7 +5712,7 @@ function toggleTodayAxisSegment(id: string): void {
     if (next) delta = next.getBoundingClientRect().top - detailY;
   }
   if (delta !== 0) {
-    workspaceInformation.scrollTo({ top: workspaceInformation.scrollTop + delta, behavior: "instant" });
+    scrollSurface.scrollTo({ top: scrollSurface.scrollTop + delta, behavior: "instant" });
   }
 }
 
@@ -6957,7 +6969,14 @@ function scrollTodayAxisToNow(): void {
   }
   todayAxisFollowState = locateNow(todayAxisFollowState);
   programmaticTodayAxisScrollUntil = Date.now() + 1200;
-  todayCurrentTime.scrollIntoView({ block: "center", behavior: "smooth" });
+  if (todayAxisScrollSurface) {
+    const viewport = todayAxisScrollSurface.getBoundingClientRect();
+    const marker = todayCurrentTime.getBoundingClientRect();
+    todayAxisScrollSurface.scrollTo({
+      top: todayAxisScrollSurface.scrollTop + marker.top - viewport.top - viewport.height / 2,
+      behavior: "instant",
+    });
+  }
   window.setTimeout(() => {
     programmaticTodayAxisScrollUntil = 0;
   }, 1300);
@@ -12019,7 +12038,7 @@ todayPhaseButtons.forEach((button, index) => {
 
 todayLocateNowButton?.addEventListener("click", () => scrollTodayAxisToNow());
 
-workspaceInformation?.addEventListener("scroll", () => {
+[workspaceInformation, todayAxisScrollSurface].forEach((surface) => surface?.addEventListener("scroll", () => {
   if (
     currentWorkspaceDestination === "today" &&
     currentTodayView?.isToday &&
@@ -12027,7 +12046,7 @@ workspaceInformation?.addEventListener("scroll", () => {
   ) {
     todayAxisFollowState = onManualScroll(todayAxisFollowState);
   }
-}, { passive: true });
+}, { passive: true }));
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
