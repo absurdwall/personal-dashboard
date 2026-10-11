@@ -30,5 +30,15 @@
   "specFindings": 0,
   "humanAcceptance": "pending",
   "privateReceiptsRoot": "/var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-layout-composer-tbg5q4a7.noindex",
-  "qualification": "Short native windows and expanded input details may use existing pane or outer workspace scrolling. No claim that all expanded content is initially visible."
+  "qualification": "Short native windows and expanded input details may use existing pane or outer workspace scrolling. No claim that all expanded content is initially visible.",
+  "managementConfirmation": {
+    "projectId": "product-personal-dashboard",
+    "registryRevision": "b32d5adf2a69787f",
+    "summaryRevision": "6199eb5763b06fb2",
+    "summaryTextConfirmed": true,
+    "userOwnedFieldsUnchanged": true,
+    "coverage": "partial",
+    "currentSourceCount": 5,
+    "uncoveredSourceCount": 3
+  }
 }
