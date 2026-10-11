@@ -1,5 +1,5 @@
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
-import { initializeEveningReviewEntry } from "./evening-review-entry.js";
+import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
 import { initializeCollaborationCommandCompletion } from "./collaboration-command-completion.js";
 import { appendCollaborationMarkdown, appendCollaborationWorkHistory, type CollaborationWorkHistory, type CollaborationLink, type WorkHistoryLabels } from "./collaboration-work-history.js";
 import { initializeCollaborationPanels } from "./collaboration-panels.js";
@@ -4712,17 +4712,17 @@ async function createCollaborationSession(): Promise<void> {
 
 async function openCollaborationForEveningReview(targetDate: string): Promise<boolean> {
   if (vaultSelectionInProgress || collaborationTargetDatePendingSession || collaborationSendingDrafts.size) {
-    throw new Error(t("today.reviewOpenFailed"));
+    throw new EveningReviewGuardError("today.reviewBusy");
   }
   const vaultRevision = collaborationVaultSelectionRevision;
   stashCollaborationDraft();
   cancelCollaborationVoiceCaptureForSelectionChange();
   await flushCollaborationDraft();
-  if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) throw new Error(t("today.reviewOpenFailed"));
+  if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) throw new EveningReviewGuardError("today.reviewTargetChanged");
   const opened = await window.__TAURI__.core.invoke<Readonly<{ session: CollaborationSessionView; preservedDraft: boolean }>>(
     "collaboration_prepare_evening_review", { date: targetDate, draft: t("today.reviewDraft", { date: targetDate }) },
   );
-  if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) throw new Error(t("today.reviewOpenFailed"));
+  if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) throw new EveningReviewGuardError("today.reviewTargetChanged");
   const session = opened.session;
   currentCollaborationSession = session;
   cacheCollaborationDrafts(session);

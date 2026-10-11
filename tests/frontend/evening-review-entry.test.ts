@@ -63,6 +63,8 @@ function productionWebKit(script: string): any {
           if(session) { cacheCollaborationDrafts(session); collaborationTargetDates.set(session.id,session.targetDate); }
           renderCollaborationWorkspace(); eveningReviewEntry.render();
         },
+        busy: () => { collaborationTargetDatePendingSession=currentCollaborationSession.id; },
+        changeVault: () => { collaborationVaultSelectionRevision += 1; },
         current: () => ({session:currentCollaborationSession,target:collaborationTargetDate,destination:currentWorkspaceDestination}),
         language: language => renderInterfaceLanguage({interfaceLanguage:language}),
       };`);
@@ -75,11 +77,13 @@ function productionWebKit(script: string): any {
       const pane={state:'ready',message:'Synthetic context',items:[]};
       const context=date=>({date,vaultName:'synthetic',dailyRecord:pane,tasks:pane,habits:pane});
       const workspace=date=>({date,vaultName:'synthetic',context:context(date),memory:null,sessions:sessions.filter(s=>s.activityDates.includes(date)),activeRun:null,recoveryRequired:false});
-      let failSave=false, holdPrepare=false, prepareStarted=false, releasePrepare;
+      let failSave=false, holdSave=false, saveStarted=false, releaseSave, holdPrepare=false, prepareStarted=false, releasePrepare;
+      const saveGate=new Promise(resolve=>releaseSave=resolve);
       const prepareGate=new Promise(resolve=>releasePrepare=resolve);
       window.__TAURI__={core:{invoke:async (command,args) => {
         invocations.push({command,args});
         if(command==='collaboration_save_draft') {
+          saveStarted=true;if(holdSave) await saveGate;
           if(failSave) throw Error('Synthetic disk full at /tmp/合成路径');
           const session=sessions.find(s=>s.id===args.sessionId);session.draft=args.draft;session.draftsByDate[args.targetDate]=args.draft;return structuredClone(session);
         }
@@ -206,4 +210,52 @@ test('production language refresh preserves the past-date review target and loca
   assert.ok(result.errorZh.includes('Synthetic disk full at /tmp/合成路径')); assert.ok(result.errorEn.includes('Synthetic disk full at /tmp/合成路径'));
   assert.equal(result.draft,'用户草稿 / untouched'); assert.equal(result.target,'2026-09-20');
   assert.deepEqual(result.opened,['2026-09-20','2026-09-20']); assert.equal(result.submits,0);
+});
+
+
+test('production Evening guards retain localized causes across language refresh without placeholders or duplicate wrappers', {skip:process.platform!=='darwin'},()=>{
+  for (const guard of ['busy','after-save','after-prepare']) {
+    const result=productionWebKit(`
+      const current=fixture('2026-09-27');current.draft='已有草稿 / /tmp/合成路径';current.draftsByDate[current.targetDate]=current.draft;sessions.push(current);
+      window.eveningHarness.seed('2026-09-20',structuredClone(current),workspace('2026-09-27'));
+      input.value=current.draft;
+      if('${guard}'==='busy') window.eveningHarness.busy();
+      if('${guard}'==='after-save') holdSave=true;
+      if('${guard}'==='after-prepare') holdPrepare=true;
+      button.click();
+      if('${guard}'==='after-save') {
+        while(!saveStarted) await new Promise(r=>setTimeout(r,5));
+        window.eveningHarness.changeVault();releaseSave();
+      }
+      if('${guard}'==='after-prepare') {
+        while(!prepareStarted) await new Promise(r=>setTimeout(r,5));
+        window.eveningHarness.changeVault();releasePrepare();
+      }
+      while(button.disabled) await new Promise(r=>setTimeout(r,5));
+      const initialZh=status.textContent;
+      window.eveningHarness.language('en');const errorEn=status.textContent;
+      window.eveningHarness.language('zh');const errorZh=status.textContent;
+      return JSON.stringify({initialZh,errorEn,errorZh,state:status.dataset.state,draft:input.value,saved:current.draft,target:window.eveningHarness.current().target,label:button.textContent,commands:invocations.map(i=>i.command)});
+    `);
+    assert.equal(result.state,'error');
+    assert.equal(result.initialZh,result.errorZh);
+    for (const message of [result.errorEn,result.errorZh]) assert.doesNotMatch(message,/\{error\}|Error:/);
+    assert.equal(result.errorEn.split('Could not open the review.').length-1,1);
+    assert.equal(result.errorZh.split('未能进入复盘。').length-1,1);
+    if (guard==='busy') {
+      assert.match(result.errorEn,/Another Collaboration or Vault operation is in progress/);
+      assert.match(result.errorZh,/协作或 Vault 操作尚未完成/);
+      assert.deepEqual(result.commands.filter((c:string)=>c.startsWith('collaboration_')),[]);
+    } else {
+      assert.match(result.errorEn,/The selected Vault changed while opening the review/);
+      assert.match(result.errorZh,/进入复盘期间所选 Vault 已更改/);
+      assert.equal(result.commands.filter((c:string)=>c==='collaboration_prepare_evening_review').length,guard==='after-save'?0:1);
+      assert.ok(!result.commands.includes('collaboration_workspace'));
+    }
+    assert.equal(result.draft,'已有草稿 / /tmp/合成路径');
+    assert.equal(result.saved,'已有草稿 / /tmp/合成路径');
+    assert.equal(result.target,'2026-09-27');
+    assert.equal(result.label,'复盘 2026-09-20');
+    assert.ok(!result.commands.some((c:string)=>c.includes('submit')));
+  }
 });
