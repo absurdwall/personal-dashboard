@@ -1,0 +1,20 @@
+{
+  "sourceCommit": "f0e4a4d90ec59fd1ca0ac0b38491f55cc25e3e81",
+  "binarySha256": "da8ee2d9ad1cc62dbf885816c46aff4121bcc0e3d5b39b88ed8352f42387e11c",
+  "bundleFileTreeSha256": "9ee3afdd8b31c6e62877ec3c6e13d42446ed2d7d23883c673ba2919979f33a8b",
+  "launchPid": 88675,
+  "nativeTool": "Computer Use Virtual Mouse/bound app keyboard",
+  "observations": [
+    "Initial missing synthetic .obsidian marker rejected Vault without write; empty marker added then Refresh loaded real synthetic data.",
+    "Medium1000x758 Today auto collapsed untimed panel; buttoncount2.",
+    "Show opens drawer with original untimed plan and confirmed fact/source text visually readable, axis remains behindoverlay.",
+    "CUA AX tree becomesemptyduring nativeHTMLdialog; screenshot provesvisiblecontent. This observation retained for independent reviewer judgement.",
+    "Escape closesdrawer andfocus returnsShowbutton.",
+    "Two name-only quickcreates Native follow-up first/second savedthrough realTauri, empty/focuscontinuous, diskreadbackuniqueid Inbox optionalfieldsnull count46."
+  ],
+  "unverified": [
+    "NewTaskmodal cancel nottestedonthisoldsource.",
+    "No OSIME/realuserprofile interaction."
+  ],
+  "next": "ReviewP2 recoverylifecycle+unknownresultwordingrepair;freeze newsource/newpackage; thisoldcandidate isnotrepairverification"
+}
