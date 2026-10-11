@@ -120,3 +120,8 @@ avoid duplicate open queues, and do not migrate automatically.
 ## Independent review repair checkpoint — 2026-10-11
 
 Manual Task original-payload retry and Evening date/status/error localization findings are repaired with retained commits, integrated via `51f7287`. [Repair evidence](evidence/review-repairs-2026-10-11.md) records 432 frontend, 23 browser and 523 Rust passing checks, the diagnosed fixture-only cleanup race and exact source/log identities. Independent fix review is pending. The preceding 2026-10-10 candidate checkpoint remains historical; PDEX-09/PDEX-11 acceptance blockers and the open parent are unchanged. No new package, installation, remote publication or real personal-data change occurred.
+
+
+## Evening guard review checkpoint — 2026-10-11
+
+Both original P2 findings are independently confirmed resolved; supplemental Spec findings are zero. An introduced Standards P3 in Evening guard error copy is repaired through no-ff integration `a6f9487`, with build and 21 focused tests passing. [Retained repair evidence](evidence/review-repairs-2026-10-11.md) covers real production guard failures and language refresh. Final independent confirmation is pending. PDEX-09/PDEX-11 remain blocked and parent remains open; no new packaged acceptance.

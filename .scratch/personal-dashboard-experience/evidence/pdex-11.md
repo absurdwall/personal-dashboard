@@ -81,3 +81,8 @@ PDEX-11 therefore remains blocked with these explicit follow-up gates. Feature i
 ## Later source repair boundary — 2026-10-11
 
 [Independent review repairs](review-repairs-2026-10-11.md) add manual Task original-payload retry identity and Evening language-switch metadata after the frozen native candidate above. Current verified source is `4a0c272dea10f01e2ef99b16c25e1b341837d02b`, integrated via `51f7287`; its automatic checks passed. The previous package remains historical and has not been rebuilt for these fixes. All native limitations above remain blocked; do not label the older binary as current or infer new packaged acceptance.
+
+
+### Evening guard follow-up — 2026-10-11
+
+Frontend source `ff913083` fixes three Evening protection errors using concrete retained zh/en guard copy. Integration `a6f9487` preserves the repair and evidence history. Build and 21 focused production/language checks pass; native source is unchanged from the 523-pass checkpoint. This adds no packaged/OS acceptance, and the previous candidate remains historical. All acceptance limitations and blocked states above remain.

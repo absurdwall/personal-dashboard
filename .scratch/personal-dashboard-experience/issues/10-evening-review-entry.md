@@ -50,3 +50,8 @@ stories 59–62.
 ## Independent review repair — 2026-10-11
 
 Past-date review label and pending/ready/preserved/error copy now use retained shared localization metadata. Actual production language-switch regression keeps the correct dated target and preserves user draft/diagnostic text. Retained commits and red/green/full verification are in [repair evidence](../evidence/review-repairs-2026-10-11.md). Component resolution is retained; independent fix review is pending, and no new packaged/OS acceptance is inferred. PDEX-09/PDEX-11 remain blocked and parent remains open.
+
+
+### Guard-copy follow-up — 2026-10-11
+
+Independent review confirmed the dated-entry P2 resolved, then exposed nested failure wrappers and a literal `{error}` from three protection checks. `ff913083` retains localized busy/Vault-change guard causes through the shared copy setter. Actual production language-switch checks cover each guard, preserved draft/date, no forbidden preparation/adoption and no submission. Build and 21 focused checks passed; integrated via `a6f9487`. Final independent verification is pending. Component resolution and previously documented native acceptance limits are unchanged.
