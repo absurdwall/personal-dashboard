@@ -9809,10 +9809,11 @@ button.habit-cell:focus-visible {
 }
 .calendar-destination .calendar-header {
   align-items: center;
+  margin-bottom: 4px;
   padding-bottom: 4px;
   border-bottom: 0;
 }
-.calendar-destination .calendar-header h2 { font-size: 20px; }
+.app-shell[data-workspace-destination="calendar"] .calendar-header h2 { font-size: 20px; }
 .calendar-destination .calendar-header > div:first-child > p:last-child { display: none; }
 .calendar-destination > .today-status { margin: 2px 0 5px; }
 .calendar-destination .calendar-frame {

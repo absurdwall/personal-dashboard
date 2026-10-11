@@ -39,3 +39,5 @@ story 68 and integrated regressions across stories 1–67.
 - 2026-10-10: Published locally with the approved scope and dependencies; unassigned, not claimed, not started. Record subsequent authorized claims, commits, checks and acceptance here. Publication does not close the parent specification.
 
 - 2026-10-10: Authorized claim on codex/pdex-11, worktree /tmp/pdex-11; base integration a12e79f9b18771600d8008041cf59dcc4e0d8dd0. Dependency implementation/evidence inspected before start; packaged acceptance remains separately tracked.
+
+- 2026-10-10: Same original packaged candidate exercised against isolated synthetic Profile/Vault/time; actual Calendar client-height and Morning-context defects reproduced. Two independent review findings and these native defects repaired with focused public seam regressions. User steering transferred all further native UI input to Computer Use Virtual Mouse. Final rebuilt-candidate acceptance remains in progress; [evidence](../evidence/pdex-11.md) distinguishes original observations, repairs, pending checks and unsupported fault injection.

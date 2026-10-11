@@ -1712,13 +1712,18 @@ fn apply_daily_flow_mutation(
                 modified_at: now.to_owned(),
                 ..previous.clone()
             };
-            let change = task_change_with_source(
+            let mut change = task_change_with_source(
                 &previous,
                 &updated,
                 change_id.clone(),
                 now.to_owned(),
                 TaskChangeSourceKind::DailyFlow,
             )?;
+            change.operation = Some(TaskChangeOperation::Reschedule {
+                date: updated.date.clone(),
+                time: updated.time.clone(),
+                execution_end: execution_end.clone(),
+            });
             document.tasks[task_index] = updated;
             document.tasks[task_index].changes.push(change);
             outcome.applied_operation_ids.push(change_id.clone());
@@ -2019,6 +2024,18 @@ fn reschedule_operation_matches(
     if change.source != TaskChangeSourceKind::DailyFlow {
         return false;
     }
+    if let Some(TaskChangeOperation::Reschedule {
+        date: recorded_date,
+        time: recorded_time,
+        execution_end: recorded_end,
+    }) = change.operation.as_ref() {
+        return matches!(change.kind, TaskChangeKind::Rescheduled | TaskChangeKind::Noop)
+            && recorded_date == date
+            && recorded_time == time
+            && recorded_end == execution_end;
+    }
+    // Older histories did not retain patch optionality. Keep their existing
+    // result-based compatibility; all new operations retain the exact patch.
     match change.kind {
         TaskChangeKind::Rescheduled => {
             change.new_date == *date
@@ -2645,7 +2662,13 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
                 || change.new_deleted_at.is_some()
                 || change.previous_completion.is_some()
                 || change.new_completion.is_some()
-                || change.operation.is_some()
+                || (change.operation.is_some() && !matches!(change.operation.as_ref(),
+                    Some(TaskChangeOperation::Reschedule { date, time, execution_end })
+                    if change.kind == TaskChangeKind::Rescheduled
+                        && change.source == TaskChangeSourceKind::DailyFlow
+                        && date == &change.new_date && time == &change.new_time
+                        && execution_end.as_ref().is_none_or(|end| end == &change.new_execution_end)
+                ))
             {
                 return Err("任务字段变更记录不能携带状态或完成生命周期字段。".into());
             }

@@ -10280,7 +10280,7 @@ fn daily_record_pane(view: &TodayView) -> ContextPaneView {
         format!("Morning baseline: {}", view.baseline.message),
     ];
     items.extend(
-        view.timeline
+        view.baseline.timeline
             .iter()
             .map(|block| match block.detail.as_deref() {
                 Some(detail) if !detail.is_empty() => {

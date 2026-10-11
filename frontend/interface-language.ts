@@ -23,6 +23,8 @@ const interfaceCopies = {
   "today.planSaved": { zh: "计划时间已保存并读回确认。", en: "Plan time saved and verified by reading the record." },
   "today.planSavedNeedsReadback": { zh: "文档已保存；请重新读取核对界面。", en: "Document saved; read the record again to verify the display." },
   "today.planUnconfirmed": { zh: "结果未确认；编辑值仍保留。请重新读取核对后再操作。", en: "Result unconfirmed; your edit is retained. Read the record again before another edit." },
+  "today.planRetryReady": { zh: "已读回未更改的来源；编辑值仍保留，可明确重试保存。", en: "The unchanged source was reread. Your edit is retained; save again to retry." },
+  "today.planSourceChanged": { zh: "来源或修订已改变，无法安全重绑此编辑。值仍保留；请关闭并重新选择来源后明确编辑。", en: "The source or revision changed and this edit cannot be safely rebound. Values are retained; close and reselect the source to edit explicitly." },
   "today.planRecheck": { zh: "重新读取核对", en: "Read record again" },
   "today.planInvalidTime": { zh: "请输入有效的开始时间；结束必须晚于开始，范围为当天 04:00 至次日 04:00。", en: "Enter a valid start; end must follow start within 04:00 today to 04:00 the next day." },
   "collaboration.toggleHistory": { zh: "会话历史", en: "Session history" },

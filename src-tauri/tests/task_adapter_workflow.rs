@@ -1317,3 +1317,82 @@ fn adapter_creates_moves_and_clears_planned_intervals_with_repeat_delivery() {
     let cleared = match adapter.execute(cleared).unwrap() { DailyFlowTaskResponse::Apply(view) => view, _ => panic!("apply result") };
     assert!(serde_json::to_value(&cleared.read.tasks[0]).unwrap()["executionEnd"].is_null());
 }
+
+#[test]
+fn changed_reschedule_retries_preserve_the_original_end_patch_identity() {
+    let vault = TempVault::new("changed-reschedule-patch-identity");
+    let app = adapter(vault.path());
+    let read = match app
+        .execute(read_request(vault.path(), "2026-09-17"))
+        .unwrap()
+    {
+        DailyFlowTaskResponse::Read(view) => view,
+        _ => panic!("read result"),
+    };
+    let mut revision = read.revision;
+    let binding = read.target_binding;
+    let mut apply = |commands: serde_json::Value, candidates: serde_json::Value| {
+        let request: DailyFlowTaskRequest = serde_json::from_value(serde_json::json!({
+            "operation":"apply", "schemaVersion":1, "vaultPath":vault.path(),
+            "livedDate":"2026-09-17", "targetBinding":binding,
+            "expectedRevision":revision, "commands":commands, "candidates":candidates
+        }))
+        .unwrap();
+        let result = app.execute(request);
+        if let Ok(DailyFlowTaskResponse::Apply(view)) = &result {
+            revision = view.revision.clone();
+        }
+        result
+    };
+    apply(
+        serde_json::json!([]),
+        serde_json::json!([{
+            "kind":"action", "taskId":"patch-task", "sourceReference":"synthetic-patch",
+            "name":"Synthetic patch identity", "content":null, "date":"2026-09-17",
+            "time":"10:00", "listId":"inbox"
+        }]),
+    )
+    .unwrap();
+    let omitted = serde_json::json!({"kind":"reschedule", "taskId":"patch-task",
+        "operationId":"preserve-end", "date":"2026-09-17", "time":"11:00"});
+    apply(serde_json::json!([omitted.clone()]), serde_json::json!([])).unwrap();
+    let object = serde_json::json!({"kind":"reschedule", "taskId":"patch-task",
+        "operationId":"set-end", "date":"2026-09-17", "time":"11:00",
+        "executionEnd":{"date":"2026-09-17", "time":"12:00"}});
+    apply(serde_json::json!([object.clone()]), serde_json::json!([])).unwrap();
+    let mut collision = omitted.clone();
+    collision["executionEnd"] = serde_json::Value::Null;
+    assert!(
+        apply(serde_json::json!([collision]), serde_json::json!([])).is_err(),
+        "an omitted-end operation cannot be reused as an explicit clear"
+    );
+    let genuine = match apply(serde_json::json!([omitted.clone()]), serde_json::json!([])).unwrap()
+    {
+        DailyFlowTaskResponse::Apply(view) => view,
+        _ => panic!("apply result"),
+    };
+    assert!(!genuine.changed);
+    assert_eq!(
+        genuine.read.tasks[0].execution_end.as_ref().unwrap().time,
+        "12:00"
+    );
+    let mut collision = omitted;
+    collision["executionEnd"] = object["executionEnd"].clone();
+    assert!(apply(serde_json::json!([collision]), serde_json::json!([])).is_err());
+    let mut collision = object.clone();
+    collision.as_object_mut().unwrap().remove("executionEnd");
+    assert!(apply(serde_json::json!([collision]), serde_json::json!([])).is_err());
+    let mut clear = object.clone();
+    clear["operationId"] = "clear-end".into();
+    clear["executionEnd"] = serde_json::Value::Null;
+    apply(serde_json::json!([clear.clone()]), serde_json::json!([])).unwrap();
+    let mut collision = clear;
+    collision.as_object_mut().unwrap().remove("executionEnd");
+    assert!(apply(serde_json::json!([collision]), serde_json::json!([])).is_err());
+    let genuine = match apply(serde_json::json!([object]), serde_json::json!([])).unwrap() {
+        DailyFlowTaskResponse::Apply(view) => view,
+        _ => panic!("apply result"),
+    };
+    assert!(!genuine.changed);
+    assert!(genuine.read.tasks[0].execution_end.is_none());
+}
