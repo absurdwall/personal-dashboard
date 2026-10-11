@@ -259,7 +259,7 @@ test('shipped WebKit timeline keeps endpoint placement, reading anchors, reveal 
       'todayTimedEmpty:today-timed-empty', 'todayCurrentArrangementUnlocated:today-current-arrangement-unlocated',
       'todayConfirmedFactsUnlocated:today-confirmed-facts-unlocated', 'todayCurrentTime:today-current-time',
       'todayLocateNowButton:today-locate-now', 'todayUnlocatedTimeRegion:today-unlocated-time-region',
-      'todayUnlocatedTimeShortcut:today-unlocated-time-shortcut'].map(binding => {
+      'todayUnlocatedTimeShortcut:today-unlocated-time-shortcut', 'todaySideRegion:today-side-region'].map(binding => {
         const [name, id] = binding.split(':'); return `const ${name} = document.getElementById('${id}');`;
       }).join('\n');
     const script = `(() => {

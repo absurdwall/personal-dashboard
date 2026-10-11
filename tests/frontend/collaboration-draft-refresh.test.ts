@@ -416,11 +416,13 @@ test("unconfirmed prior result leaves the production correction composer and dic
   r.currentCollaborationWorkspace.recoveryRequired=true;
   r.collaborationSendButton=element();
   r.collaborationComposerStatus=element();
+  r.collaborationRecoveryDetails=element();
   r.renderCollaborationWorkspace();
   assert.equal(r.collaborationMessageDraft.disabled,false);
   assert.equal(r.collaborationSendButton.disabled,false);
   assert.equal(r.collaborationVoiceStartButton.disabled,false);
-  assert.equal(r.collaborationComposerStatus.textContent,"collaboration.composerRecover");
+  assert.equal(r.collaborationComposerStatus.hidden,true);
+  assert.equal(r.collaborationRecoveryDetails.hidden,false);
 });
 
 test("a disconnected new chat keeps local text editable but gates dictation start and preserves stop/cancel",async()=>{

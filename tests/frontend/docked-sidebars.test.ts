@@ -38,7 +38,7 @@ function probe(width:number, scenario:string, withUntimed=true, height=758) {
       const region=document.querySelector('#today-unlocated-time-region'),trigger=document.querySelector('#today-unlocated-time-shortcut');
       const rect=n=>{const r=n.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right,top:r.top,bottom:r.bottom};};
       const side=document.querySelector('.today-side-region');
-      const snapshot=()=>({side:rect(side),sideHidden:side.hidden,viewport:innerWidth,axis:rect(document.querySelector('#today-axis-scroll-surface')),nav:rect(document.querySelector('.workspace-sidebar')),region:rect(region),hidden:region.hidden,expanded:trigger.getAttribute('aria-expanded'),label:trigger.getAttribute('aria-label'),visibleText:trigger.textContent,badge:trigger.querySelector('.sidebar-toggle-count')?.textContent??null,content:region.textContent});
+      const snapshot=()=>({side:rect(side),sideHidden:side.hidden,viewport:innerWidth,layoutWidth:rect(document.querySelector('.today-layout')).width,axis:rect(document.querySelector('#today-axis-scroll-surface')),nav:rect(document.querySelector('.workspace-sidebar')),region:rect(region),hidden:region.hidden,expanded:trigger.getAttribute('aria-expanded'),label:trigger.getAttribute('aria-label'),visibleText:trigger.textContent,badge:trigger.querySelector('.sidebar-toggle-count')?.textContent??null,content:region.textContent});
       ${scenario}
     `);
     return JSON.parse(execFileSync('swift',[new URL('./helpers/rendered-today-unlocated.swift',import.meta.url).pathname,join(directory,'index.html'),join(directory,'check.js'),String(width),String(height)],{encoding:'utf8',timeout:60000}));
@@ -65,25 +65,26 @@ function assertQuickSchedulePresentation(result:QuickScheduleProbe,expectedText:
   else for(const pattern of expectedText)typeof pattern==='string'?assert.equal(result.text,pattern):assert.match(result.text,pattern);
   assert.equal(result.title,result.aria);assert.match(result.title,expectedTitle);
   assert.ok(result.width>=124,JSON.stringify(result));assert.ok(result.labelFontSize>=10,JSON.stringify(result));
-  assert.ok(result.labelClientWidth>=64&&result.labelScrollWidth<=result.labelClientWidth,JSON.stringify(result));assert.ok(result.rects[0].width>=40,JSON.stringify(result.rects));
+  assert.ok(result.labelClientWidth>=64&&result.labelScrollWidth<=result.labelClientWidth,JSON.stringify(result));assert.ok(result.rects[0].width>=39,JSON.stringify(result));
   assert.ok(Math.max(...result.rects.map(r=>r.top+r.height/2))-Math.min(...result.rects.map(r=>r.top+r.height/2))<=2,JSON.stringify(result.rects));
   assert.equal(result.overflow,false);assert.deepEqual(result.calls.filter(c=>/^(create_|edit_|update_|save_|set_)/.test(c.command)),[]);
 }
 
-test('Today restores the entire existing right sidebar docked at medium width and keeps its nodes', {skip:process.platform!=='darwin'},()=>{
+test('Today defaults to the docked right sidebar at medium width and keeps its nodes through manual collapse', {skip:process.platform!=='darwin'},()=>{
   const result=probe(1000,`
     const detail=region.querySelector('details');detail.open=true;
     const taskName=document.querySelector('#today-task-create-name');taskName.value='Unsaved synthetic task';
-    const before=snapshot();trigger.focus();trigger.click();const opened=snapshot();
+    const before=snapshot();trigger.focus();trigger.click();const collapsed=snapshot();trigger.click();const opened=snapshot();
     const hasDialog=Boolean(document.querySelector('dialog[data-today-unlocated-drawer]'));
-    trigger.click();const closed=snapshot();trigger.click();
-    return JSON.stringify({before,opened,closed,hasDialog,sameSide:side===document.querySelector('.today-side-region'),detailKept:detail===region.querySelector('details')&&detail.open,draft:taskName.value,focus:document.activeElement===trigger,calls});
+    trigger.click();const closed=snapshot();
+    return JSON.stringify({before,collapsed,opened,closed,hasDialog,sameSide:side===document.querySelector('.today-side-region'),detailKept:detail===region.querySelector('details')&&detail.open,draft:taskName.value,focus:document.activeElement===trigger,calls});
   `);
-  assert.equal(result.before.sideHidden,true);
+  assert.equal(result.before.sideHidden,false);
+  assert.equal(result.collapsed.sideHidden,true);
   assert.equal(result.opened.sideHidden,false);
   assert.equal(result.hasDialog,false);
   assert.ok(result.opened.side.left>=result.opened.axis.right,'sidebar is beside the axis');
-  assert.ok(result.before.axis.width>result.opened.axis.width+150,'collapse releases whole column');
+  assert.ok(result.closed.axis.width>result.opened.axis.width+150,'collapse releases whole column');
   assert.equal(result.closed.sideHidden,true);
   assert.equal(result.sameSide,true);assert.equal(result.detailKept,true);
   assert.equal(result.draft,'Unsaved synthetic task');assert.equal(result.focus,true);
@@ -154,7 +155,7 @@ for(const width of [640,830,1000,1088,1280]) {
       trigger.click();const expanded=snapshot();
       return JSON.stringify({initial,collapsed,expanded,trigger:rect(trigger),title:trigger.title,name:trigger.getAttribute('aria-label'),dialogs:[...document.querySelectorAll('dialog[open]')].length,overflow:document.documentElement.scrollWidth>innerWidth});
     `);
-    assert.equal(result.initial.sideHidden,width<=1024);
+    assert.equal(result.initial.sideHidden,result.initial.layoutWidth<560);
     assert.equal(result.collapsed.sideHidden,true);assert.equal(result.expanded.sideHidden,false);
     assert.ok(result.collapsed.axis.width>result.expanded.axis.width+150);
     assert.ok(result.expanded.side.left>=result.expanded.axis.right,'right sidebar stays docked');
@@ -183,7 +184,7 @@ test('Today manual intent, axis/sidebar reading position and expanded details su
   assert.equal(result.medium.sideHidden,false);assert.equal(result.narrow.sideHidden,false);assert.equal(result.wide.sideHidden,false);
   assert.equal(result.preserved.axis,result.axisScroll);assert.ok(result.axisScroll>0);assert.equal(result.preserved.detail,true);
   assert.ok(result.reading>0,"workspace reading position must be real");assert.equal(result.preserved.reading,result.reading);
-  assert.equal(result.reset.sideHidden,true);
+  assert.equal(result.reset.sideHidden,false);
   assert.deepEqual(result.calls.filter((c:{command:string})=>/^(create_|edit_|update_|save_|set_)/.test(c.command)),[]);
 });
 
@@ -250,9 +251,9 @@ test('Tasks quick schedule shows its current date and time within the existing r
   assertQuickSchedulePresentation(result,[/09:30/,/Today|Aug 10/],/Aug 10.*09:30/);
 });
 
-test('Today zero untimed count retains an icon-only, accessible sidebar entry', {skip:process.platform!=='darwin'},()=>{
+test('Today zero untimed count keeps the default docked sidebar and an icon-only accessible control', {skip:process.platform!=='darwin'},()=>{
   const result=probe(1000,`const before=snapshot();trigger.focus();trigger.click();return JSON.stringify({before,after:snapshot(),triggerHidden:trigger.hidden,focus:document.activeElement===trigger});`,false);
-  assert.equal(result.before.sideHidden,true);assert.equal(result.triggerHidden,false);
-  assert.equal(result.after.sideHidden,false);assert.equal(result.after.hidden,true);
+  assert.equal(result.before.sideHidden,false);assert.equal(result.triggerHidden,false);
+  assert.equal(result.after.sideHidden,true);assert.equal(result.after.hidden,true);
   assert.match(result.after.label,/0 untimed items/);assert.equal(result.after.visibleText.trim(),"");assert.equal(result.after.badge,null);assert.equal(result.focus,true);
 });

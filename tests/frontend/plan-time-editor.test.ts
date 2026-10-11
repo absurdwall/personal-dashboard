@@ -54,6 +54,22 @@ async function webKit(view: any, responses: any[], script: string, language = "z
   } finally { server.close(); rmSync(directory,{recursive:true,force:true}); }
 }
 
+test('clicking an editable Today marker opens the time editor without scrolling to the detail form', {skip:process.platform!=='darwin'},async()=>{
+  const result=await webKit(views.loaded,[],`
+    const info=document.querySelector('.workspace-information');
+    info.scrollTop=0;
+    const before=info.scrollTop;
+    const marker=document.querySelector('.today-axis-marker[data-plan-id] .today-axis-marker-link');
+    if(!marker)throw Error('Editable Today marker missing');
+    marker.click();
+    await wait(()=>document.querySelector('dialog.plan-time-editor[open]'));
+    return JSON.stringify({opened:Boolean(document.querySelector('dialog.plan-time-editor[open]')),before,after:info.scrollTop,errors:window.probeErrors});
+  `);
+  assert.equal(result.opened,true);
+  assert.equal(result.after,result.before,'editing opens as a viewport dialog rather than scrolling to the details row');
+  assert.deepEqual(result.errors,[]);
+});
+
 test('production fuzzy editor retains approximation and renders the saved readback', {skip:process.platform!=='darwin'},async()=>{
   const result=await webKit(views.loaded,[views.fuzzy],`
     const label=planRow().querySelector('summary').textContent;

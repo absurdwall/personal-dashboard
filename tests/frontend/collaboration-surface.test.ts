@@ -53,6 +53,21 @@ test("Codex settings report experimental status and runtime capability instead o
   assert.match(copies, /"collaboration\.turnBlocked":\s*\{[^\n]*zh:[^\n]*en:/);
 });
 
+test("Collaboration keeps its header compact, displays the configured model, and hides account-plan details", () => {
+  assert.doesNotMatch(html, /data-i18n="collaboration\.(about|introduction)"/);
+  assert.match(html, /id="collaboration-model-summary"/);
+  assert.match(main, /const activeModel = connection\.models\.find/);
+  assert.match(main, /connection\.selectedReasoningEffort \?\? activeModel\?\.defaultReasoningEffort/);
+  assert.doesNotMatch(main, /connection\.accountEmail|connection\.planType/);
+  assert.doesNotMatch(main, /Luna Max/);
+  assert.match(html, /id="collaboration-open-settings"[^>]*data-i18n="collaboration\.openSettings"/);
+  assert.match(html, /id="collaboration-toggle-history"[^>]*class="sidebar-toggle collaboration-sidebar-toggle"/);
+  assert.match(html, /id="collaboration-toggle-context"[^>]*class="sidebar-toggle collaboration-sidebar-toggle"/);
+  assert.match(html, /id="collaboration-recovery-details"[^>]*hidden/);
+  assert.match(main, /collaborationRecoveryDetails\.hidden = !recoveryBlocked/);
+  assert.match(copies, /"collaboration\.recoveryRequired": \{ zh: "结果待确认", en: "Result needs confirmation" \}/);
+});
+
 test("local composition remains editable while Send is gated on authenticated runtime plus verified read-only turns", () => {
   assert.match(main, /currentCollaborationConnection\?\.authenticated === true\s*&&\s*currentCollaborationConnection\.authMode === "chatgpt"\s*&&\s*currentCollaborationConnection\.readOnlyTextTurnsAvailable/);
   assert.doesNotMatch(html, /id="collaboration-message-draft"[^>]*disabled/);

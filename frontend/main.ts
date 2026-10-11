@@ -1135,6 +1135,7 @@ const collaborationMessageDraft = document.querySelector<HTMLTextAreaElement>("#
 const collaborationCommandMenu = document.querySelector<HTMLElement>("#collaboration-command-menu");
 let collaborationCommandCompletion: { close: () => void } | null = null;
 const collaborationComposerStatus = document.querySelector<HTMLElement>("#collaboration-composer-status");
+const collaborationRecoveryDetails = document.querySelector<HTMLDetailsElement>("#collaboration-recovery-details");
 const collaborationVoicePreview = document.querySelector<HTMLElement>("#collaboration-voice-preview");
 const collaborationVoiceStartButton = document.querySelector<HTMLButtonElement>("#collaboration-voice-start");
 const collaborationVoiceCancelButton = document.querySelector<HTMLButtonElement>("#collaboration-voice-cancel");
@@ -1162,6 +1163,7 @@ const collaborationContinuitySaveButton = document.querySelector<HTMLButtonEleme
 const collaborationContinuityExpiry = document.querySelector<HTMLElement>("#collaboration-continuity-expiry");
 const collaborationMemoryProposals = document.querySelector<HTMLElement>("#collaboration-memory-proposals");
 const collaborationRuntimeStatus = document.querySelector<HTMLElement>("#collaboration-runtime-status");
+const collaborationModelSummary = document.querySelector<HTMLElement>("#collaboration-model-summary");
 const collaborationConnectionStatus = document.querySelector<HTMLElement>("#collaboration-connection-status");
 const collaborationTurnCapability = document.querySelector<HTMLElement>("#collaboration-turn-capability");
 const collaborationRuntimeDetails = document.querySelector<HTMLElement>("#collaboration-runtime-details");
@@ -1331,7 +1333,10 @@ const todayCurrentArrangementUnlocated = document.querySelector<HTMLElement>("#t
 const todayUnlocatedTimeRegion = document.querySelector<HTMLElement>("#today-unlocated-time-region");
 const todayUnlocatedTimeShortcut = document.querySelector<HTMLButtonElement>("#today-unlocated-time-shortcut");
 const todaySideRegion = document.querySelector<HTMLElement>(".today-side-region");
-const todayUnlocatedNarrow = () => window.innerWidth <= 1024;
+const todayUnlocatedNarrow = () => {
+  const availableWidth = document.querySelector<HTMLElement>(".today-layout")?.getBoundingClientRect().width ?? 0;
+  return availableWidth > 0 ? availableWidth < 560 : window.innerWidth <= 790;
+};
 // Presentation state only; keep the original sidebar and every draft/detail node
 // docked in the same position. Manual intent lasts for this date/phase.
 let todayUnlocatedOverride: boolean | null = null;
@@ -1646,6 +1651,8 @@ function setRawText(element: HTMLElement | null, value: string): void {
 }
 
 initializeCollaborationPanels();
+const todayLayoutForResize = document.querySelector<HTMLElement>(".today-layout");
+if (todayLayoutForResize) new ResizeObserver(() => updateTodayUnlocatedPresentation()).observe(todayLayoutForResize);
 
 function renderInterfaceLanguage(preferences: InterfaceLanguagePreferences): void {
   currentInterfaceLanguage = preferences.interfaceLanguage;
@@ -2123,6 +2130,7 @@ function renderCollaborationConnection(): void {
     if (collaborationModelSelect) collaborationModelSelect.disabled = true;
     if (collaborationReasoningEffortSelect) collaborationReasoningEffortSelect.disabled = true;
     if (collaborationConnectButton) collaborationConnectButton.disabled = true;
+    if (collaborationModelSummary) setRawText(collaborationModelSummary, "");
     return;
   }
 
@@ -2139,12 +2147,6 @@ function renderCollaborationConnection(): void {
     state = "signed-out";
   } else {
     summary = t("collaboration.connectionReady");
-    if (connection.accountEmail || connection.planType) {
-      summary += ` · ${t("collaboration.accountDetails", {
-        email: connection.accountEmail ?? "ChatGPT",
-        plan: connection.planType ?? "",
-      })}`;
-    }
     state = "ready";
   }
   if (!connection.error && !connection.readOnlyTextTurnsAvailable) {
@@ -2154,6 +2156,16 @@ function renderCollaborationConnection(): void {
   if (collaborationConnectionStatus) collaborationConnectionStatus.dataset.state = state;
   setRawText(collaborationRuntimeStatus, summary);
   if (collaborationRuntimeStatus) collaborationRuntimeStatus.dataset.state = state;
+
+  const activeModel = connection.models.find((model) => model.id === connection.selectedModel) ??
+    (connection.selectedModel ? undefined : connection.models.find((model) => model.isDefault));
+  const modelName = activeModel?.displayName ?? connection.selectedModel ?? t("collaboration.modelDefault");
+  const effort = connection.selectedReasoningEffort ?? activeModel?.defaultReasoningEffort ??
+    t("collaboration.reasoningEffortDefault");
+  if (collaborationModelSummary) {
+    setRawText(collaborationModelSummary, t("collaboration.modelSummary", { model: modelName, effort }));
+    collaborationModelSummary.dataset.state = state;
+  }
 
   if (collaborationRuntimeDetails) {
     const details = [connection.version, connection.executablePath].filter(Boolean).join(" · ");
@@ -4339,6 +4351,7 @@ function renderCollaborationWorkspace(): void {
     currentCollaborationConnection.readOnlyTextTurnsAvailable;
   const vaultAvailable = Boolean(workspace?.context.vaultName);
   const recoveryBlocked = Boolean(workspace?.recoveryRequired);
+  if (collaborationRecoveryDetails) collaborationRecoveryDetails.hidden = !recoveryBlocked;
   const targetDate = session
     ? collaborationTargetDates.get(session.id) ?? (collaborationTargetDateInput?.value || collaborationTargetDate)
     : "";
@@ -4369,7 +4382,7 @@ function renderCollaborationWorkspace(): void {
   if (!vaultAvailable) {
     composerStatus = "collaboration.composerSelectVault";
   } else if (recoveryBlocked) {
-    composerStatus = "collaboration.composerRecover";
+    composerStatus = null;
   } else if (collaborationSessionCreationError) {
     if (collaborationComposerStatus) {
       collaborationComposerStatus.hidden = false;
@@ -6168,6 +6181,10 @@ function renderTodayTimeAxisEntries(
         event.preventDefault();
         const members = markersByStack.get(placement.stackId) ?? [];
         members.forEach((member) => member.classList.toggle("is-stack-front", member === marker));
+        if (editablePlan) {
+          openPlanTimeEditor(original);
+          return;
+        }
         const target = detailElements.get(index);
         if (!target) return;
         target.open = true;
@@ -9828,6 +9845,7 @@ function taskEditor(
   setCopy(state, deleted ? "tasks.stateDeleted" : taskStateCopyKey(task.state));
   const stateActions = document.createElement("div");
   stateActions.className = "task-state-actions";
+  let taskCompletionToggle: HTMLLabelElement | null = null;
   const detailsButton = document.createElement("button");
   detailsButton.type = "button";
   detailsButton.className = "task-row-action task-editor-toggle";
@@ -9880,7 +9898,8 @@ function taskEditor(
         task.state === "completed" ? "tasks.reopen" : "tasks.complete",
       );
       completionLabel.append(completion, completionText);
-      stateActions.append(completionLabel);
+      taskCompletionToggle = completionLabel;
+      if (surface !== "tasks") stateActions.append(completionLabel);
     } else {
       const restore = document.createElement("button");
       restore.type = "button";
@@ -9944,6 +9963,7 @@ function taskEditor(
   } else {
     rowMain.append(titleLine, meta);
   }
+  if (surface === "tasks" && taskCompletionToggle) heading.append(taskCompletionToggle);
   heading.append(rowMain, stateActions);
 
   const editorForm = document.createElement("form");

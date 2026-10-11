@@ -18,7 +18,7 @@ function render(check: string, width = 830, height = 758): any {
   if (!probe) { probe = join(output, "webkit"); execFileSync("swiftc", [join(root, "tests/frontend/helpers/rendered-today-layout.swift"), "-o", probe], { timeout: 60000 }); }
   writeFileSync(join(output, "index.html"), readFileSync(join(root, "frontend/index.html"), "utf8").replace(/<script[^]*?<\/script>/g, ""));
   copyFileSync(join(root, "frontend/styles.css"), join(output, "styles.css"));
-  const bindings = ["todayContinuousAxis:today-continuous-axis", "todayHourTicks:today-hour-ticks", "todayTimedEvents:today-timed-events", "todayTimedDurations:today-timed-duration", "todayTimedDetails:today-timed-details", "todayTimedEmpty:today-timed-empty", "todayCurrentArrangementUnlocated:today-current-arrangement-unlocated", "todayConfirmedFactsUnlocated:today-confirmed-facts-unlocated", "todayCurrentTime:today-current-time", "todayLocateNowButton:today-locate-now", "todayUnlocatedTimeRegion:today-unlocated-time-region", "todayUnlocatedTimeShortcut:today-unlocated-time-shortcut", "todayAxisScrollSurface:today-axis-scroll-surface"].map(binding => { const [name,id] = binding.split(":"); return `const ${name} = document.getElementById('${id}');`; }).join("\n");
+  const bindings = ["todayContinuousAxis:today-continuous-axis", "todayHourTicks:today-hour-ticks", "todayTimedEvents:today-timed-events", "todayTimedDurations:today-timed-duration", "todayTimedDetails:today-timed-details", "todayTimedEmpty:today-timed-empty", "todayCurrentArrangementUnlocated:today-current-arrangement-unlocated", "todayConfirmedFactsUnlocated:today-confirmed-facts-unlocated", "todayCurrentTime:today-current-time", "todayLocateNowButton:today-locate-now", "todayUnlocatedTimeRegion:today-unlocated-time-region", "todayUnlocatedTimeShortcut:today-unlocated-time-shortcut", "todaySideRegion:today-side-region", "todayAxisScrollSurface:today-axis-scroll-surface"].map(binding => { const [name,id] = binding.split(":"); return `const ${name} = document.getElementById('${id}');`; }).join("\n");
   const pure = ["today-time-axis", "task-presentation", "interface-language"].map(name => readFileSync(join(output, `${name}.js`), "utf8").replaceAll("export ", "")).join("\n");
   const script = `(() => {
     document.getElementById('workspace-destination-today').hidden = false;
@@ -53,7 +53,14 @@ test("plans, point Tasks and facts share a scale with separate clickable collisi
       const markers=[...todayTimedEvents.querySelectorAll('li')];
       const cluster=markers.filter(m=>m.dataset.stackId===markers[0].dataset.stackId);
       const solitary=markers.find(m=>m.querySelector('a').dataset.axisItemText==='14:00 Plan alone');
-      const clicks=cluster.map(m=>{const a=m.querySelector('a');a.click();return document.querySelector(a.getAttribute('href')).open;});
+      const clicks=cluster.map(m=>{
+        const a=m.querySelector('a'),target=document.querySelector(a.getAttribute('href'));
+        a.click();
+        const editor=document.querySelector('dialog.plan-time-editor[open]');
+        const outcome={editable:Boolean(m.dataset.planId),detail:target.open,editor:Boolean(editor)};
+        editor?.close();
+        return outcome;
+      });
       return JSON.stringify({cluster:cluster.map(rect),solo:rect(solitary),plot:rect(document.querySelector('.today-axis-plot')),clicks,sources:cluster.map(m=>m.querySelector('.today-axis-marker-source-status').textContent),scales:todayContinuousAxis.querySelectorAll('.today-hour-scale').length,viewportHeight:window.innerHeight});
     `, width, height);
     assert.equal(result.viewportHeight,height);
@@ -62,7 +69,11 @@ test("plans, point Tasks and facts share a scale with separate clickable collisi
     const ordered = result.cluster.toSorted((a: any,b: any) => a.left-b.left);
     ordered.slice(1).forEach((r: any,i: number) => assert.ok(r.left >= ordered[i].right - 0.5, `viewport ${width}: collision targets cannot cover one another: ${JSON.stringify(result)}`));
     assert.ok(result.solo.width >= result.plot.width - 12, "unconflicted card uses the row");
-    assert.deepEqual(result.clicks, [true,true,true]);
+    assert.equal(result.clicks.length,3);
+    for(const click of result.clicks) {
+      assert.equal(click.editor,click.editable);
+      assert.equal(click.detail,!click.editable);
+    }
     assert.ok(result.sources.some((s:string)=>s.includes('arrangement')));
     assert.ok(result.sources.some((s:string)=>s.includes('fact')));
     assert.ok(result.sources.some((s:string)=>s.includes('Task')));
