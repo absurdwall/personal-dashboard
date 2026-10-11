@@ -47,3 +47,51 @@ Existing evidence confirms the frozen behavior: `tests/frontend/plan-time-editor
 No additional concrete missing requirements, unrequested behavior, or wrong behavior found in the reviewed production changes. Plan source/revision binding, precision, Morning/fact separation, Task optional-end preservation/clear/retry identity, shared axis movement, Calendar source statuses, slash draft-only behavior and dated Evening session entry were traced across their main seams. PDEX-11 packaged/OS/IME acceptance is still active and explicitly pending; this is not reported as falsely delivered or as a code defect. Parent spec remains open.
 
 Review summary: Standards one P2; Spec one P2. Additional actual native QA found Calendar last-row clipping at a 1280x720 outer window / 1280x688 client viewport. This separate packaged finding is also assigned to PDEX-11. Original reports remain retained here; later fix verification will be appended.
+
+## Fix verification
+
+Four bounded repair commits: Calendar `88d9225`, original Task Reschedule patch `7d8dcdc`, immutable Morning context `5874ddb`, and plan reread/explicit retry `9cbd96e`. A follow-up Spec review found that unlocated plans needed the same opaque-ID recovery lookup; `07119c9` adds that path and an actual rendered-WebKit regression. Every repair remains in retained history, merged via `b7b0ba0` and `3a0935d`.
+
+### Standards follow-up
+
+# Standards follow-up review
+
+Frozen head: `b7b0ba05576fc2d873c9828b8921390abac0b0eb`.
+Supplemental range: `7672698...b7b0ba0`; original base remains `8960c80bc81ae35a7dcd871dd104f4b3d04497de`.
+
+**Original P2 resolved.** Changed daily-flow reschedules now retain `TaskChangeOperation::Reschedule` with the original tri-state `execution_end` patch. Retry matching compares recorded date, time and patch exactly before using the legacy result-based fallback. Consequently omitted/null/object collisions are rejected, while an authentic omitted retry cannot erase a subsequently added end and an authentic object retry cannot reapply an end after later clearing. The validator admits this retained payload only for a daily-flow `Rescheduled` change whose recorded values agree with the saved result. Existing history without the new operation remains readable with its former compatibility behavior. The added adapter regression exercises the originally reproduced collision, omitted/object/null substitutions, genuine retries and intervening end changes.
+
+**Supplemental source changes inspected:** Morning context now reads `view.baseline.timeline`, aligning ADR/domain distinctions with the existing separate Current arrangement projection; its regression uses visibly different morning/current endpoints. Calendar adjustments reduce native-client vertical overhead and strengthen selector specificity; geometry coverage now includes 688/726 client heights. Plan recovery rereads the original date/binding, preserves proposed values, unlocks retry only when the opaque source ID still identifies unchanged editable bytes, and requires a deliberate submit with a fresh revision and operation ID. Confirmed saved revisions close after readback without replay; changed sources remain blocked rather than being matched by title or position.
+
+**Remaining actionable Standards findings: none.** No additional material Fowler-smell findings in the bounded fixes. Legacy tri-state history cannot retroactively gain missing original-payload information; the explicit compatibility fallback is appropriate to preserving retained records.
+
+Read-only source/test inspection only: no Cargo, GitHub, UI, personal data, or source edits. Test pass claims and final packaged acceptance are independently recorded by the implementer/root and are not inferred from this review.
+
+
+### Spec follow-up and final
+
+# Spec follow-up review
+
+Frozen head: `b7b0ba05576fc2d873c9828b8921390abac0b0eb`; supplemental diff `7672698...b7b0ba0` (original base `8960c80` retained). Read only: no builds, source edits, UI actions, GitHub access or subagents.
+
+The original P2 recovery issue is resolved for located plans. Reread validates date/Vault/current-request identity, confirms a known saved whole-document revision without replay, or rebinds an unchanged opaque source ID to the fresh revision and enables deliberate retry while retaining precision/times. Changed source IDs remain blocked rather than matched by title/position. Tests now cover actual WebKit failed-save/reread/explicit-retry, unsafe rebinding refusal, Chrome drag retry, and saved/readback-failure confirmation without a second mutation.
+
+**Remaining [P2] Include safely editable unlocated plans in the recovery identity lookup — `frontend/main.ts:5459`.** Spec `spec.md:111`: “失败恢复已保存状态并保留可重试的编辑值”. The native binding explicitly assigns safe IDs/editability to both located and unlocated current arrangements (`today.rs:6243–6279`), and the editor is exposed for `arrangement-unlocated` (`main.ts:5341–5351`). However reread searches only `fresh.timeAxis.currentArrangement`. A safe no-time/relative entry (for example `- **稍后：** Synthetic plan`) can be explicitly timed; after a transient failed save, unchanged authoritative reread finds no candidate, falsely reports source changed, and leaves its retained values permanently disabled. Search both current-arrangement arrays by the same opaque ID, preserving every existing safety gate, and cover that production editor failure/retry path. No automatic replay is needed.
+
+Supplemental changes introduce no other concrete Spec findings: immutable baseline now supplies Morning context, Calendar tightening addresses the observed native client height without changing source semantics, and new Task reschedule histories retain/compare the original omitted/null/object patch while preserving old-history compatibility. Final packaged/OS acceptance remains pending and is not inferred from automated checks.
+
+Summary: original P2 resolved for located entries; one remaining P2 recovery edge for safe unlocated entries.
+
+
+# Final Spec fix verification
+
+Reviewed frozen worker tip `256ecd01aab9e92ef6bf139d7d83ccc2ae671aee`, supplemental diff `b7b0ba0...256ecd0`; original review base `8960c80` retained. Read-only source/test inspection, without builds, UI actions, GitHub access, native data mutations or subagents.
+
+**Remaining P2 resolved.** `openPlanTimeEditor` now searches both `currentArrangement` and `unlocatedCurrentArrangement` for the captured opaque source ID. It retains the previously verified same-Vault/date/request/revision gates, refuses changed or unsafe identities, enables only deliberate retries with retained precision/times, and confirms known saved revisions without replay. The new production WebKit scenario exercises a safe untimed entry through failed save → authoritative reread → preserved 14:00 approximate-point values → explicit retry using the same source ID. It asserts one mutation before retry and two only after explicit submission.
+
+No remaining concrete Spec findings in the reviewed fix ranges. Both recovery findings are resolved; the reviewed Calendar, immutable Morning-context and Task retry-identity fixes retain their documented contracts. The earlier combined UI run with stale built assets is excluded from verification; rebuilt-assets checks and final packaged/OS acceptance remain independently owned by the root/QA workflow. This review does not infer packaged acceptance, installation, publication or parent-spec closure.
+
+Spec axis summary: zero unresolved findings.
+
+
+Final independent review summary: zero unresolved Standards findings; zero unresolved Spec findings. Original findings and their follow-up remain retained separately. Actual packaged acceptance remains independently pending.
