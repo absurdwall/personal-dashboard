@@ -1222,6 +1222,9 @@ const taskQuickSubmit = document.querySelector<HTMLButtonElement>("#task-quick-s
 const taskQuickRecovery = document.querySelector<HTMLElement>("#task-quick-recovery");
 const taskQuickRecheck = document.querySelector<HTMLButtonElement>("#task-quick-recheck");
 const taskQuickRetry = document.querySelector<HTMLButtonElement>("#task-quick-retry");
+const taskQuickEndAttempt = document.querySelector<HTMLButtonElement>("#task-quick-end-attempt");
+const taskCreateEndAttempt = document.querySelector<HTMLButtonElement>("#task-create-end-attempt");
+const taskEndedCreateRegion = document.querySelector<HTMLElement>("#task-create-ended-attempts");
 const taskCreateRecheck = document.querySelector<HTMLButtonElement>("#task-create-recheck");
 const taskCreateRetry = document.querySelector<HTMLButtonElement>("#task-create-retry");
 const taskCreateStatus = document.querySelector<HTMLElement>("#task-create-status");
@@ -1512,9 +1515,12 @@ type TaskCreateInput = Readonly<{
 }>;
 type TaskCreateAttempt = {
   origin: "quick" | "modal"; draft: TaskDraft; input: TaskCreateInput;
+  originalInput: TaskCreateInput; listName: string;
   phase: "unverified" | "retry-ready" | "conflict";
 };
 const taskCreateAttempts = new Map<string, TaskCreateAttempt>();
+// Transient review of explicitly ended submissions; never another Task storage source.
+const taskEndedCreateAttempts = new Map<string, TaskCreateAttempt[]>();
 const taskQuickDrafts = new Map<string, string>();
 const taskCreateDrafts = new Map<string, TaskDraft>();
 const todayTaskCreateDrafts = new Map<string, TaskDraft>();
@@ -1729,6 +1735,8 @@ function resetVaultScopedWorkspaceState(): void {
   taskCreateDrafts.clear();
   taskQuickDrafts.clear();
   taskCreateAttempts.clear();
+  taskEndedCreateAttempts.clear();
+  taskEndedCreateRegion?.replaceChildren();
   taskQuickForm?.reset();
   taskCreateDialog?.close();
   todayTaskCreateDrafts.clear();
@@ -10404,6 +10412,7 @@ function updateTaskCreationControls(view: TasksView, busy: boolean): void {
   taskQuickRecovery?.toggleAttribute("hidden", attempt?.origin !== "quick");
   taskQuickRecheck?.toggleAttribute("disabled", busy || !binding);
   taskQuickRetry?.toggleAttribute("disabled", busy || !writable || attempt?.phase !== "retry-ready");
+  taskQuickEndAttempt?.toggleAttribute("disabled", busy || !attempt || attempt.phase === "unverified");
   taskCreateForm?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select").forEach(field => {
     field.disabled = busy || !writable || Boolean(attempt);
   });
@@ -10412,8 +10421,66 @@ function updateTaskCreationControls(view: TasksView, busy: boolean): void {
   taskCreateCancel?.toggleAttribute("disabled", busy);
   taskCreateRecheck?.toggleAttribute("hidden", attempt?.origin !== "modal");
   taskCreateRetry?.toggleAttribute("hidden", attempt?.origin !== "modal");
+  taskCreateEndAttempt?.toggleAttribute("hidden", attempt?.origin !== "modal");
   taskCreateRecheck?.toggleAttribute("disabled", busy || !binding);
   taskCreateRetry?.toggleAttribute("disabled", busy || !writable || attempt?.phase !== "retry-ready");
+  taskCreateEndAttempt?.toggleAttribute("disabled", busy || !attempt || attempt.phase === "unverified");
+  renderEndedTaskCreations(view);
+}
+
+function renderEndedTaskCreations(view: TasksView): void {
+  if (!taskEndedCreateRegion) return;
+  const ended = view.targetBinding ? taskEndedCreateAttempts.get(view.targetBinding) ?? [] : [];
+  taskEndedCreateRegion.hidden = ended.length === 0;
+  taskEndedCreateRegion.replaceChildren(...ended.map(attempt => {
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    setCopy(summary, "tasks.endedSubmission", {name: attempt.draft.name});
+    const note = document.createElement("p");
+    setCopy(note, attempt.phase === "conflict" ? "tasks.endedConflict" : "tasks.endedAbsent");
+    const fields = document.createElement("dl");
+    const field = (key: InterfaceCopyKey, value: string) => {
+      const label = document.createElement("dt"); setCopy(label, key);
+      const content = document.createElement("dd"); content.textContent = value;
+      fields.append(label, content);
+    };
+    field("tasks.name", attempt.draft.name);
+    field("tasks.content", attempt.draft.content);
+    field("tasks.list", attempt.listName);
+    field("tasks.date", taskScheduleText(attempt.originalInput.date, attempt.originalInput.time, attempt.originalInput.executionEnd));
+    details.append(summary, note, fields);
+    if (view.tasks.some(task => task.id === attempt.originalInput.taskId)) {
+      const existing = document.createElement("button");
+      existing.type = "button"; existing.className = "secondary-button";
+      existing.disabled = taskOperationCount > 0;
+      setCopy(existing, "tasks.viewExisting");
+      existing.addEventListener("click", () => {
+        if (taskOperationCount > 0) return;
+        taskFocusRequestId = attempt.originalInput.taskId;
+        if (currentTasksView) renderTasks(currentTasksView);
+      });
+      details.append(existing);
+    }
+    return details;
+  }));
+}
+
+function endTaskCreationAttempt(): void {
+  const loaded = currentTasksView;
+  const binding = loaded?.targetBinding;
+  const attempt = binding ? taskCreateAttempts.get(binding) : undefined;
+  if (!loaded || !binding || !attempt || taskOperationCount > 0 || attempt.phase === "unverified") return;
+  taskEndedCreateAttempts.set(binding, [...taskEndedCreateAttempts.get(binding) ?? [], attempt]);
+  taskCreateAttempts.delete(binding);
+  taskQuickDrafts.delete(binding);
+  taskCreateDrafts.delete(binding);
+  taskQuickForm?.reset();
+  taskCreateForm?.reset();
+  taskCreateOpen = false;
+  taskCreateDialog?.close();
+  renderTaskSurface("tasks", loaded);
+  setCopy(tasksStatus, attempt.phase === "conflict" ? "tasks.endedConflict" : "tasks.endedAbsent");
+  (attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus();
 }
 
 function taskCreateAttemptMatches(task: TaskView, attempt: TaskCreateAttempt): boolean {
@@ -10464,7 +10531,7 @@ async function recheckTaskCreation(): Promise<boolean> {
     return false;
   } catch (error) {
     attempt.phase = "unverified";
-    setCopyError(status, "tasks.notSaved", error);
+    setCopyError(status, "tasks.createUnconfirmed", error);
     if (status) status.dataset.state = "error";
     return false;
   } finally {
@@ -10500,11 +10567,12 @@ async function createTask(quick = false, retry = false): Promise<boolean> {
       setCopy(status, "tasks.invalidExecutionInterval");
       return false;
     }
+    const input: TaskCreateInput = {targetBinding: binding, expectedRevision: loaded.revision, taskId: localOperationId("manual-task"),
+      name: draft.name.trim(), content: draft.content.trim() || null, date: normalized.date, time: normalized.time,
+      listId: draft.listId || "inbox", executionEnd: draft.endDate && draft.endTime ? {date: draft.endDate, time: draft.endTime} : null};
     attempt = {
-      origin: quick ? "quick" : "modal", draft, phase: "unverified",
-      input: {targetBinding: binding, expectedRevision: loaded.revision, taskId: localOperationId("manual-task"),
-        name: draft.name.trim(), content: draft.content.trim() || null, date: normalized.date, time: normalized.time,
-        listId: draft.listId || "inbox", executionEnd: draft.endDate && draft.endTime ? {date: draft.endDate, time: draft.endTime} : null},
+      origin: quick ? "quick" : "modal", draft, phase: "unverified", input, originalInput: input,
+      listName: taskListDisplayName(taskListForId(loaded, input.listId) ?? {id: input.listId, name: input.listId, isSystem: false, archived: false}, t("tasks.inbox")),
     };
     taskCreateAttempts.set(binding, attempt);
     if (quick) taskQuickDrafts.set(binding, draft.name);
@@ -10524,7 +10592,7 @@ async function createTask(quick = false, retry = false): Promise<boolean> {
   } catch (error) {
     if (taskSurfaceIsCurrent("tasks", request, binding, binding, null, loaded.revision)) {
       renderTaskSurface("tasks", loaded);
-      setCopyError(status, "tasks.notSaved", error);
+      setCopyError(status, "tasks.createUnconfirmed", error);
       if (status) status.dataset.state = "error";
     }
     return false;
@@ -12093,6 +12161,7 @@ taskQuickName?.addEventListener("input", () => {
   const binding = currentTasksView?.targetBinding;
   if (binding && taskQuickName) taskQuickDrafts.set(binding, taskQuickName.value);
 });
+[taskQuickEndAttempt, taskCreateEndAttempt].forEach(button => button?.addEventListener("click", endTaskCreationAttempt));
 [taskQuickRecheck, taskCreateRecheck].forEach(button => button?.addEventListener("click", () => void pendingWrites.track(recheckTaskCreation())));
 taskQuickRetry?.addEventListener("click", () => void pendingWrites.track(createTask(true, true)));
 taskCreateRetry?.addEventListener("click", () => void pendingWrites.track(createTask(false, true)));

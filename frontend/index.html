@@ -509,7 +509,9 @@
                   <div id="task-quick-recovery" class="task-create-recovery" hidden>
                     <button id="task-quick-recheck" type="button" class="secondary-button" data-i18n="tasks.refresh">刷新 Tasks</button>
                     <button id="task-quick-retry" type="button" data-i18n="tasks.retryOriginal" disabled>重试原任务</button>
+                    <button id="task-quick-end-attempt" type="button" class="secondary-button" data-i18n="tasks.endSubmission" disabled>结束原提交</button>
                   </div>
+                  <div id="task-create-ended-attempts" class="task-create-ended-attempts" hidden></div>
                   <div id="tasks-list" class="tasks-list" aria-live="polite"></div>
                   <p id="tasks-empty" class="tasks-empty" hidden data-i18n="tasks.emptyAll">还没有任务；可以从收集箱开始。</p>
                   <p class="tasks-boundary" data-i18n="tasks.savedToVault">任务保存在当前 Vault 的独立正本中；不会写入 Daily Record。</p>
@@ -554,6 +556,7 @@
                     <div class="task-form-actions">
                       <button id="task-create-recheck" type="button" class="secondary-button" data-i18n="tasks.refresh" hidden>刷新 Tasks</button>
                       <button id="task-create-retry" type="button" data-i18n="tasks.retryOriginal" hidden disabled>重试原任务</button>
+                      <button id="task-create-end-attempt" type="button" class="secondary-button" data-i18n="tasks.endSubmission" hidden disabled>结束原提交</button>
                       <button id="task-create-cancel" type="button" class="secondary-button" data-i18n="tasks.cancel">取消</button>
                       <button id="task-create-submit" type="submit" data-i18n="tasks.add">加入收集箱</button>
                     </div>

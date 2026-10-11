@@ -41,6 +41,7 @@ async function pageFixture({width=1280,extraTasks=[]}={}) {
       if(command==='today_clock')return {date:v.date,time:v.currentTime};
       if(command==='create_task'){
         const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
+        if(!t.lists.some(list=>list.id===input.listId&&!list.archived))throw Error('Synthetic list unavailable');
         if(window.__holdCreate)await new Promise(resolve=>window.__releaseCreate=resolve);
         if(!t.tasks.some(x=>x.id===input.taskId))t.tasks.push({id:input.taskId,...input,source:{kind:'manual',reference:null},state:'pending',deletedAt:null,completion:null,overdue:false,timePassed:false,createdAt:'2026-10-10T09:00-04:00',modifiedAt:'2026-10-10T09:00-04:00',changes:[]});
         t.revision='r'+(Number(t.revision.slice(1))+1);
@@ -240,5 +241,92 @@ test('failed verification and conflicting saved identity keep the original draft
     await page.locator('#task-quick-recheck').click();await page.waitForFunction(()=>document.querySelector('#tasks-status').textContent.includes('different values'));
     assert.equal(await quick.isDisabled(),true);assert.equal(await page.locator('#task-quick-retry').isDisabled(),true);
     assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').length),1);
+  } finally {await f.close();}
+});
+
+
+test('authoritative absence permits explicit ending of the old invalid-list submission and a fresh Inbox task',async()=>{
+  for (const kind of ['archived','deleted']) {
+    const f=await pageFixture();const {page}=f;
+    try {
+      await page.locator('#tasks-list-scopes [data-task-scope="list:home"]').click();
+      const quick=page.locator('#task-quick-name');await quick.fill('Original unavailable list');
+      await page.evaluate(kind=>{const t=window.__fixture.tasks;if(kind==='archived')t.lists.find(l=>l.id==='home').archived=true;else t.lists=t.lists.filter(l=>l.id!=='home');},kind);
+      await quick.press('Enter');await page.waitForFunction(()=>document.querySelector('#tasks-status').textContent.includes('Synthetic list unavailable'));
+      assert.match(await page.locator('#tasks-status').textContent(),/Save result unconfirmed/);
+      assert.doesNotMatch(await page.locator('#tasks-status').textContent(),/Task not saved/);
+      await page.locator('#task-quick-end-attempt').waitFor({state:'visible',timeout:1200});
+      assert.equal(await page.locator('#task-quick-end-attempt').isDisabled(),true,'uncertain attempt cannot be ended before readback');
+      await page.locator('#task-quick-recheck').click();await page.waitForFunction(()=>!document.querySelector('#task-quick-end-attempt').disabled);
+      assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').length),1);
+      await page.locator('#task-quick-end-attempt').click();
+      await page.locator('#tasks-list-scopes [data-task-scope=inbox]').click();
+      const record=page.locator('#task-create-ended-attempts details').last();await record.locator('summary').click();
+      assert.match(await record.textContent(),/Original unavailable list/,'original submission remains reviewable');
+      await quick.fill('Fresh valid Inbox task');await quick.press('Enter');await page.waitForFunction(()=>window.__fixture.tasks.tasks.some(t=>t.name==='Fresh valid Inbox task'));
+      await page.waitForFunction(()=>document.querySelector('#task-quick-name').value==='');
+      const attempts=await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').map(x=>x.args.input));
+      assert.equal(attempts.length,2);assert.notEqual(attempts[0].taskId,attempts[1].taskId);assert.equal(attempts[1].listId,'inbox');
+      assert.equal(await page.locator('#task-new').isDisabled(),false);
+      assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.some(t=>t.id===window.__calls.find(x=>x.command==='create_task').args.input.taskId)),false);
+    } finally {await f.close();}
+  }
+});
+
+test('lost response plus external rename can end the confirmed conflict, view unchanged existing task and create another',async()=>{
+  const f=await pageFixture();const {page}=f;
+  try {
+    const quick=page.locator('#task-quick-name');await quick.fill('Original saved request');
+    await page.evaluate(()=>window.__saveButThrow=true);await quick.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('#tasks-status').textContent.includes('Synthetic lost response'));
+    assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.filter(t=>t.name==='Original saved request').length),1);
+    assert.match(await page.locator('#tasks-status').textContent(),/Save result unconfirmed/);
+    assert.doesNotMatch(await page.locator('#tasks-status').textContent(),/Task not saved/);
+    await page.evaluate(()=>window.__failNext='tasks_view');await page.locator('#task-quick-recheck').click();
+    await page.waitForFunction(()=>!document.querySelector('#task-quick-recheck').disabled);
+    assert.match(await page.locator('#tasks-status').textContent(),/Save result unconfirmed/,'failed readback cannot claim the already saved task was not saved');
+    assert.equal(await page.locator('#task-quick-end-attempt').isDisabled(),true);
+    const existing=await page.evaluate(()=>{const id=window.__calls.find(x=>x.command==='create_task').args.input.taskId;const task=window.__fixture.tasks.tasks.find(t=>t.id===id);task.name='Externally renamed saved task';task.content='Concurrent retained context';window.__fixture.tasks.revision='r3';return structuredClone(task);});
+    await page.locator('#task-quick-recheck').click();await page.waitForFunction(()=>document.querySelector('#tasks-status').textContent.includes('different values'));
+    assert.equal(await page.locator('#task-quick-retry').isDisabled(),true);
+    await page.locator('#task-quick-end-attempt').click();
+    assert.equal(await page.locator('#task-new').isDisabled(),false);
+    const record=page.locator('#task-create-ended-attempts details').last();await record.locator('summary').click();
+    assert.match(await record.textContent(),/Original saved request/);
+    await record.getByRole('button',{name:'View existing task',exact:true}).waitFor({state:'visible',timeout:1200});
+    await record.getByRole('button',{name:'View existing task',exact:true}).click();
+    const panel=page.locator(`[data-task-editor-dialog="${existing.id}"]`);await panel.waitFor({state:'visible'});
+    assert.equal(await panel.locator('[data-task-name]').inputValue(),'Externally renamed saved task');
+    assert.equal(await panel.locator('[data-task-content]').inputValue(),'Concurrent retained context');
+    assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').length),1,'ending or viewing does not replay');
+    await quick.fill('Another task after conflict');await quick.press('Enter');
+    await page.waitForFunction(()=>document.querySelector('#task-quick-name').value==='');
+    const attempts=await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').map(x=>x.args.input));
+    assert.equal(attempts.length,2);assert.notEqual(attempts[0].taskId,attempts[1].taskId);
+    assert.deepEqual(await page.evaluate(id=>window.__fixture.tasks.tasks.find(t=>t.id===id),existing.id),existing,'original saved task remains exactly unchanged');
+    assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.filter(t=>t.name==='Another task after conflict').length),1);
+    assert.equal(await page.evaluate(()=>window.__calls.some(x=>['update_task','delete_task','set_task_state'].includes(x.command))),false);
+  } finally {await f.close();}
+});
+
+test('modal verified absence can end its retained submission with readable recovery actions and return to new creation',async()=>{
+  const f=await pageFixture({width:830});const {page}=f;
+  try {
+    await page.locator('#task-new').click();await page.locator('#task-create-name').fill('Ended modal draft');await page.locator('#task-create-content').fill('Retained exact context');
+    await page.evaluate(()=>window.__failNext='create_task');await page.locator('#task-create-submit').click();
+    await page.waitForFunction(()=>document.querySelector('#task-create-status').textContent.includes('Save result unconfirmed'));
+    assert.equal(await page.locator('#task-create-end-attempt').isDisabled(),true);
+    const geometry=await page.locator('#task-create-form .task-form-actions').evaluate(el=>({scroll:el.scrollWidth,client:el.clientWidth}));
+    assert.ok(geometry.scroll<=geometry.client+1,'all recovery controls fit the modal width');
+    await page.locator('#task-create-recheck').click();await page.waitForFunction(()=>!document.querySelector('#task-create-end-attempt').disabled);
+    await page.locator('#task-create-end-attempt').click();assert.equal(await page.locator('#task-create-dialog').isVisible(),false);
+    assert.equal(await page.locator('#task-new').evaluate(el=>document.activeElement===el),true);
+    const record=page.locator('#task-create-ended-attempts details').last();await record.locator('summary').click();
+    assert.match(await record.textContent(),/Retained exact context/);
+    await page.locator('#task-new').click();assert.equal(await page.locator('#task-create-name').inputValue(),'');assert.equal(await page.locator('#task-create-content').inputValue(),'');
+    await page.locator('#task-create-name').fill('New modal operation');await page.locator('#task-create-submit').click();await page.waitForFunction(()=>!document.querySelector('#task-create-dialog').open);
+    const attempts=await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').map(x=>x.args.input));
+    assert.equal(attempts.length,2);assert.notEqual(attempts[0].taskId,attempts[1].taskId);
+    assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.filter(t=>t.name==='New modal operation').length),1);
   } finally {await f.close();}
 });
