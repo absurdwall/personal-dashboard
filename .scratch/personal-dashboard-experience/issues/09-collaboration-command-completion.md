@@ -4,13 +4,16 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Triage:** ready-for-agent
+
+**Status:** in-progress
 
 **ID:** PDEX-09
 **Parent:** [PDEX-SPEC-01](../spec.md)
 **Lifecycle:** in-progress
 **Implementation:** implemented; frontend checks passed; final native, packaged UI and real IME acceptance pending
 **Owner:** implementer PDEX-09
+**Assignee:** implementer PDEX-09
 **Date:** 2026-10-10
 **Breakdown decision:** User approved the eleven-ticket breakdown and blocking edges on 2026-10-10.
 **Start:** Authorized and claimed on 2026-10-10; no direct blockers.
