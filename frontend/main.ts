@@ -184,6 +184,7 @@ type DaytimeView = Readonly<{
 type TimeAxisEntryView = Readonly<{
   planId?: string | null;
   timeEditable?: boolean;
+  planPrecision?: "broad" | "approximatePoint" | "exactPoint" | "exactRange" | "unlocated" | null;
   period: string | null;
   text: string;
   sourceDate: string;
@@ -5158,6 +5159,11 @@ function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): s
     return t("today.unlocatedLabel");
   }
   const start = formatAxisMinute(entry.startMinute);
+  if (entry.planPrecision === "broad") return `${entry.period} · ${t("today.planApproximateReference", { time: start })}`;
+  if (entry.planPrecision === "approximatePoint") {
+    const label = t("today.planApproximateReference", { time: start });
+    return entry.startMinute >= 1440 ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
+  }
   const label = entry.endMinute === null ? start : `${start}–${formatAxisMinute(entry.endMinute)}`;
   return entry.startMinute >= 1440 || (entry.endMinute ?? 0) > 1440
     ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
@@ -5257,7 +5263,7 @@ function axisEntryDetails(
     metadata.append(continuation);
   }
   details.append(metadata);
-  if ((lane === "arrangement" || lane === "arrangement-unlocated") && entry.startMinute !== null) {
+  if (lane === "arrangement" || lane === "arrangement-unlocated") {
     if (!entry.planId || !entry.timeEditable || entry.continuesFromPreviousDay || entry.continuesIntoNextDay) {
       const unavailable = document.createElement("p");
       setCopy(unavailable, entry.continuesFromPreviousDay || entry.continuesIntoNextDay ? "today.planTimeOutsideWindow" : "today.planTimeUnavailable");
@@ -5275,7 +5281,7 @@ function axisEntryDetails(
 
 function openPlanTimeEditor(entry: TimeAxisEntryView): void {
   const loaded = currentTodayView;
-  if (!entry.planId || !loaded?.revision || !loaded.targetBinding || entry.startMinute === null) return;
+  if (!entry.planId || !entry.timeEditable || !loaded?.revision || !loaded.targetBinding) return;
   const dialog = document.createElement("dialog");
   dialog.className = "plan-time-editor";
   dialog.setAttribute("aria-label", t("today.editPlanTime"));
@@ -5287,6 +5293,23 @@ function openPlanTimeEditor(entry: TimeAxisEntryView): void {
   const help = document.createElement("p");
   setCopy(help, "today.planTimeHelp");
   form.append(heading, title, help);
+  const precisionLabel = document.createElement("label");
+  setCopy(precisionLabel, "today.planPrecision");
+  const precision = document.createElement("select");
+  for (const [value, key] of [
+    ["approximatePoint", "today.planApproximatePoint"],
+    ["exactPoint", "today.planExactPoint"],
+    ["exactRange", "today.planExactRange"],
+  ] as const) {
+    const option = document.createElement("option");
+    option.value = value;
+    setCopy(option, key);
+    precision.append(option);
+  }
+  precision.value = entry.planPrecision === "exactRange" || entry.planPrecision === "exactPoint"
+    ? entry.planPrecision : "approximatePoint";
+  precisionLabel.append(precision);
+  form.append(precisionLabel);
   const timeControl = (key: InterfaceCopyKey, minute: number | null) => {
     const group = document.createElement("div");
     const label = document.createElement("label");
@@ -5305,11 +5328,19 @@ function openPlanTimeEditor(entry: TimeAxisEntryView): void {
     dayLabel.append(nextDay, dayCopy);
     group.append(label, dayLabel);
     form.append(group);
-    return { time, nextDay };
+    return { time, nextDay, group };
   };
   const start = timeControl("today.planStart", entry.startMinute);
   const end = timeControl("today.planEnd", entry.endMinute);
   start.time.required = true;
+  const updatePrecision = () => {
+    const range = precision.value === "exactRange";
+    end.group.hidden = !range;
+    end.time.required = range;
+    end.time.disabled = end.nextDay.disabled = !range;
+  };
+  precision.addEventListener("change", updatePrecision);
+  updatePrecision();
   const status = document.createElement("p");
   status.setAttribute("role", "status");
   const save = document.createElement("button");
@@ -5336,15 +5367,16 @@ function openPlanTimeEditor(entry: TimeAxisEntryView): void {
       return hours * 60 + minutes + (control.nextDay.checked ? 1440 : 0);
     };
     const startMinute = parse(start);
-    const endMinute = end.time.value ? parse(end) : null;
+    const range = precision.value === "exactRange";
+    const endMinute = range ? parse(end) : null;
     if (startMinute === null || startMinute < 240 || startMinute >= 1680 ||
-        (end.time.value && (endMinute === null || endMinute <= startMinute || endMinute > 1680))) {
+        (range && (endMinute === null || endMinute <= startMinute || endMinute > 1680))) {
       setCopy(status, "today.planInvalidTime");
       return;
     }
     // A captured source/revision stays bound even when the displayed date or Vault changes.
     submitted = true;
-    save.disabled = true;
+    save.disabled = precision.disabled = true;
     start.time.disabled = end.time.disabled = start.nextDay.disabled = end.nextDay.disabled = true;
     const request = todayPresentationRequests.begin();
     updateTodayOperationState(1);
@@ -5353,7 +5385,7 @@ function openPlanTimeEditor(entry: TimeAxisEntryView): void {
       try {
         const result = await window.__TAURI__.core.invoke<Readonly<{ savedRevision: string; view: TodayView | null; refreshError: string | null }>>("edit_plan_time", {
           input: { date: loaded.date, targetBinding: loaded.targetBinding, expectedRevision: loaded.revision,
-            planId: entry.planId, operationId, startMinute, endMinute },
+            planId: entry.planId, operationId, startMinute, endMinute, precision: precision.value },
         });
         confirmed = result.view !== null;
         if (result.view && todayPresentationRequests.isCurrent(request)) {
