@@ -9,7 +9,7 @@ Status: in-progress
 Lifecycle: in-progress
 Owner: sidebar implementer
 Assignee: sidebar implementer
-Implementation: authorized and locally claimed; acceptance pending
+Implementation: implemented and source-reviewed; frozen package/native/install/human acceptance pending
 Base: fc4c8185a9b7e029a945662754a2131b21bfb3d8
 
 ## Acceptance criteria
@@ -24,3 +24,7 @@ Base: fc4c8185a9b7e029a945662754a2131b21bfb3d8
 ## Execution
 
 2026-10-11: direct human 01a129b1-8fa7-7033-a532-52fc86d1056b corrects/extends requirements. Use complete addendum and previously approved Q4 TDD seams. Claim local; no remote operation.
+
+## Current source checkpoint
+
+2026-10-11: product71059a3 independently reviewed Standards0/Spec0. [Review and source-qualified evidence](../evidence/sidebar-schedule-review-2026-10-11.md). Lifecycle remainsin-progress; new frozen package/native/normal install and direct human acceptance separate.
