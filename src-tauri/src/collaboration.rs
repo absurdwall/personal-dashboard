@@ -829,6 +829,7 @@ where
                 time,
                 list_id,
             } => self.application.create(TaskCreateInput {
+                execution_end: None,
                 target_binding: target_binding.to_owned(),
                 expected_revision,
                 task_id: stable_child_identifier("task", operation_id),
@@ -846,6 +847,7 @@ where
                 time,
                 list_id,
             } => self.application.update(TaskUpdateInput {
+                execution_end: None,
                 target_binding: target_binding.to_owned(),
                 expected_revision: required_revision()?,
                 task_id: task_id.clone(),

@@ -178,7 +178,9 @@ fn create_input(
     date: Option<&str>,
     time: Option<&str>,
 ) -> TaskCreateInput {
+        execution_end: None,
     TaskCreateInput {
+        execution_end: None,
         target_binding: opened.target_binding.clone().unwrap(),
         expected_revision: opened.revision.clone(),
         task_id: task_id.into(),
@@ -208,6 +210,7 @@ fn empty_read_is_non_destructive_and_a_manual_inbox_task_survives_relaunch() {
 
     let added = application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
             task_id: "manual-laundry-1".into(),
@@ -289,6 +292,7 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
     let opened = application.read().unwrap();
     let created = application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
             task_id: "stable-study-1".into(),
@@ -301,6 +305,7 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
         .unwrap();
     let edited = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: created.target_binding.clone().unwrap(),
             expected_revision: created.revision.clone().unwrap(),
             task_id: "stable-study-1".into(),
@@ -343,6 +348,7 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
 
     let retried = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: edited.target_binding.clone().unwrap(),
             expected_revision: "stale-revision-is-ignored-for-idempotent-retry".into(),
             task_id: "stable-study-1".into(),
@@ -358,6 +364,7 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
 
     let cleared = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: edited.target_binding.clone().unwrap(),
             expected_revision: edited.revision.clone().unwrap(),
             task_id: "stable-study-1".into(),
@@ -400,6 +407,7 @@ fn a_new_edit_can_revert_an_earlier_payload_after_a_late_operation() {
 
     let first_edit = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: created.target_binding.clone().unwrap(),
             expected_revision: created.revision.clone().unwrap(),
             task_id: "late-edit-task".into(),
@@ -413,6 +421,7 @@ fn a_new_edit_can_revert_an_earlier_payload_after_a_late_operation() {
         .unwrap();
     let second_edit = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: first_edit.target_binding.clone().unwrap(),
             expected_revision: first_edit.revision.clone().unwrap(),
             task_id: "late-edit-task".into(),
@@ -426,6 +435,7 @@ fn a_new_edit_can_revert_an_earlier_payload_after_a_late_operation() {
         .unwrap();
     let reverted = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: second_edit.target_binding.clone().unwrap(),
             expected_revision: second_edit.revision.clone().unwrap(),
             task_id: "late-edit-task".into(),
@@ -548,6 +558,7 @@ fn task_update_conditional_save_preserves_a_concurrent_external_document() {
 
     let error = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: current.target_binding.clone().unwrap(),
             expected_revision: current.revision.clone().unwrap(),
             task_id: created.tasks[0].id.clone(),
@@ -638,6 +649,7 @@ fn task_update_store_failure_preserves_the_existing_document() {
 
     let error = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: current.target_binding.clone().unwrap(),
             expected_revision: current.revision.clone().unwrap(),
             task_id: created.tasks[0].id.clone(),
@@ -705,6 +717,7 @@ fn task_target_binding_conflict_and_corruption_never_overwrite_another_vault_or_
     fs::write(task_path(first_vault.path()), externally_changed).unwrap();
     let stale_error = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: stale.target_binding.clone().unwrap(),
             expected_revision: stale.revision.clone().unwrap(),
             task_id: "conflict-task-1".into(),
@@ -728,6 +741,7 @@ fn task_target_binding_conflict_and_corruption_never_overwrite_another_vault_or_
     let damaged_bytes = fs::read(task_path(first_vault.path())).unwrap();
     let damage_error = application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: damaged.target_binding.clone().unwrap(),
             expected_revision: damaged.revision.clone(),
             task_id: "must-not-replace-damaged".into(),
@@ -755,6 +769,7 @@ fn task_target_binding_conflict_and_corruption_never_overwrite_another_vault_or_
     let unknown_bytes = fs::read(task_path(first_vault.path())).unwrap();
     let unknown_error = application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: unknown.target_binding.clone().unwrap(),
             expected_revision: unknown.revision.clone(),
             task_id: "must-not-replace-unknown".into(),
@@ -965,6 +980,7 @@ fn task_deletion_keeps_a_tombstone_and_restore_keeps_identity_and_state() {
 
     let old_plan_retry = application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: deleted.target_binding.clone().unwrap(),
             expected_revision: deleted.revision.clone(),
             task_id: "recoverable-task-1".into(),
@@ -1662,6 +1678,7 @@ fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
 
     let created = application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: created_list.target_binding.clone().unwrap(),
             expected_revision: created_list.revision.clone(),
             task_id: "planning-task".into(),
@@ -1677,6 +1694,7 @@ fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
 
     let edited_in_place = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: created.target_binding.clone().unwrap(),
             expected_revision: created.revision.clone().unwrap(),
             task_id: "planning-task".into(),
@@ -1722,6 +1740,7 @@ fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
 
     let moved = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: renamed_retry.target_binding.clone().unwrap(),
             expected_revision: renamed_retry.revision.clone().unwrap(),
             task_id: "planning-task".into(),
@@ -1788,6 +1807,7 @@ fn archived_task_lists_preserve_states_history_and_single_task_restore_boundary(
         .unwrap();
     let pending = application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: list.target_binding.clone().unwrap(),
             expected_revision: list.revision.clone(),
             task_id: "side-pending".into(),
@@ -1800,6 +1820,7 @@ fn archived_task_lists_preserve_states_history_and_single_task_restore_boundary(
         .unwrap();
     let completed = application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: pending.target_binding.clone().unwrap(),
             expected_revision: pending.revision.clone(),
             task_id: "side-completed".into(),
@@ -1821,6 +1842,7 @@ fn archived_task_lists_preserve_states_history_and_single_task_restore_boundary(
         .unwrap();
     let abandoned = application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: completed.target_binding.clone().unwrap(),
             expected_revision: completed.revision.clone(),
             task_id: "side-abandoned".into(),
@@ -2005,6 +2027,7 @@ fn task_lists_reject_inbox_and_archived_destinations_without_partial_writes() {
     let before_move = fs::read(task_path(vault.path())).unwrap();
     let move_error = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: archived.target_binding.clone().unwrap(),
             expected_revision: archived.revision.clone().unwrap(),
             task_id: "boundary-task".into(),
@@ -2141,6 +2164,7 @@ fn task_list_creation_and_cross_list_move_use_the_same_atomic_write_boundary() {
         .unwrap();
     let task = initial
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: list.target_binding.clone().unwrap(),
             expected_revision: list.revision.clone(),
             task_id: "move-conflict-task".into(),
@@ -2162,6 +2186,7 @@ fn task_list_creation_and_cross_list_move_use_the_same_atomic_write_boundary() {
     let current = racing.read().unwrap();
     let move_error = racing
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: current.target_binding.clone().unwrap(),
             expected_revision: current.revision.clone().unwrap(),
             task_id: task.tasks[0].id.clone(),

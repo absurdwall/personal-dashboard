@@ -208,6 +208,7 @@ fn create_manual_task(
 ) -> personal_dashboard_lib::tasks::TasksView {
     application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: current.target_binding.clone().unwrap(),
             expected_revision: current.revision.clone(),
             task_id: task_id.into(),
@@ -393,6 +394,7 @@ fn external_read_reports_lived_date_context_and_excludes_archived_pending_obliga
         .unwrap();
     let archived_task = application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: list.target_binding.clone().unwrap(),
             expected_revision: list.revision.clone(),
             task_id: "archived-pending".into(),
@@ -545,6 +547,7 @@ fn external_actions_are_idempotent_preserve_user_edits_and_never_revive_deleted_
     );
     let edited = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: repeated.read.target_binding.clone().unwrap(),
             expected_revision: repeated.read.revision.clone().unwrap(),
             task_id: "flow-task".into(),
@@ -904,6 +907,7 @@ fn no_op_daily_flow_commands_persist_identity_before_user_edits() {
     );
     let edited = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: no_op_reschedule.read.target_binding.clone().unwrap(),
             expected_revision: no_op_reschedule.read.revision.clone().unwrap(),
             task_id: "noop-task".into(),
@@ -1112,6 +1116,7 @@ fn adapter_rejects_stale_and_concurrent_writes_without_overwriting_external_byte
     );
     let user_edit = application
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: created.read.target_binding.clone().unwrap(),
             expected_revision: created.read.revision.clone().unwrap(),
             task_id: "race-task".into(),

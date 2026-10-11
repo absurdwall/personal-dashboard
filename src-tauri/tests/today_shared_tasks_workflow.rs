@@ -141,6 +141,7 @@ fn create_task<C: TodayClock>(
 ) -> TasksView {
     application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
             task_id: task_id.into(),
@@ -484,6 +485,7 @@ fn today_reads_shared_tasks_with_date_and_archive_semantics_without_legacy_plan_
 
     let rescheduled = tasks
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: reopened.target_binding.clone().unwrap(),
             expected_revision: reopened.revision.clone().unwrap(),
             task_id: "completed-task".into(),
@@ -631,6 +633,7 @@ fn today_reloads_one_shared_task_after_schedule_lifecycle_and_midnight_changes()
     clock.set("2026-09-17", "17:06");
     let moved = tasks
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone().unwrap(),
             task_id: "shared-task".into(),
@@ -661,6 +664,7 @@ fn today_reloads_one_shared_task_after_schedule_lifecycle_and_midnight_changes()
     clock.set("2026-09-17", "17:07");
     opened = tasks
         .update(TaskUpdateInput {
+            execution_end: None,
             target_binding: moved.target_binding.clone().unwrap(),
             expected_revision: moved.revision.clone().unwrap(),
             task_id: "shared-task".into(),
@@ -855,4 +859,34 @@ fn today_reloads_one_shared_task_after_schedule_lifecycle_and_midnight_changes()
             .exists(),
         "cross-midnight Task reads must not create a Daily Record"
     );
+}
+
+#[test]
+fn planned_task_interval_survives_restart_shared_views_and_legacy_update() {
+    let vault = TempVault::new("planned-interval");
+    let app = task_app(vault.path());
+    let opened = app.read().unwrap();
+    let create: TaskCreateInput = serde_json::from_value(serde_json::json!({
+        "targetBinding": opened.target_binding, "expectedRevision": opened.revision,
+        "taskId": "interval-task", "name": "Synthetic overnight task", "content": null,
+        "date": "2026-09-17", "time": "23:30", "listId": "inbox",
+        "executionEnd": {"date": "2026-09-18", "time": "00:30"}
+    })).unwrap();
+    let saved = app.create(create.clone()).unwrap();
+    let duplicate = app.create(create).unwrap();
+    assert_eq!(duplicate.tasks.len(), 1);
+    assert_eq!(duplicate.revision, saved.revision);
+    let end = serde_json::json!({"date": "2026-09-18", "time": "00:30"});
+    assert_eq!(serde_json::to_value(&saved.tasks[0]).unwrap()["executionEnd"], end);
+    let legacy: TaskUpdateInput = serde_json::from_value(serde_json::json!({
+        "targetBinding": saved.target_binding, "expectedRevision": saved.revision,
+        "taskId": "interval-task", "changeId": "legacy-content-edit", "name": "Updated synthetic task",
+        "content": "Old caller still works", "date": "2026-09-17", "time": "23:30", "listId": "inbox"
+    })).unwrap();
+    app.update(legacy).unwrap();
+    let reopened = task_app(vault.path()).read().unwrap();
+    assert_eq!(serde_json::to_value(&reopened.tasks[0]).unwrap()["executionEnd"], end);
+    let today = today_app(vault.path()).read_date("2026-09-17").unwrap();
+    assert_eq!(today.tasks.tasks[0].id, "interval-task");
+    assert_eq!(serde_json::to_value(&today.tasks.tasks[0]).unwrap()["executionEnd"], end);
 }
