@@ -548,6 +548,35 @@ fn history_failure_after_canonical_save_keeps_receipt_and_returns_tool_reply() {
         .unwrap();
     assert_eq!(tasks.tasks.len(), 1);
     assert_eq!(tasks.tasks[0].name, "Synthetic groceries");
+    // A visible interrupted receipt precedes worker teardown. The worker may
+    // still replace history files; removing its root at that point races those
+    // writes even though every business-result assertion above has passed.
+    let task_path = root.join("vault/life/.personal-dashboard/tasks/v1/tasks.json");
+    let task_bytes = fs::read(&task_path).unwrap();
+    let history_path = root.join("history/state.json");
+    let before_history = fs::read(&history_path).unwrap();
+    let active_before = app
+        .active_vault_workers
+        .lock()
+        .unwrap()
+        .contains("history-vault");
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while app
+        .active_vault_workers
+        .lock()
+        .unwrap()
+        .contains("history-vault")
+    {
+        assert!(
+            Instant::now() < deadline,
+            "synthetic history worker did not finish before cleanup"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+    let after_history = fs::read(&history_path).unwrap();
+    assert_eq!(fs::read(&task_path).unwrap(), task_bytes);
+    eprintln!("Synthetic history cleanup: active before={active_before}, history before={}, history after={}, canonical Task bytes unchanged",
+        crate::today::document_revision(&before_history), crate::today::document_revision(&after_history));
     fs::remove_dir_all(root).unwrap();
 }
 
