@@ -15,7 +15,7 @@ Management source: source-personal-dashboard-experience
 | --- | --- | --- | --- | --- | --- | --- |
 | PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | open | none | [Prototype R](prototype/README.md), [Q1–Q4](design-review.md), [publication](publication.md) |
 | PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | in-progress | none | code merged 32b3678; 11 native workflows; UI acceptance pending |
-| PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | in-progress | PDEX-01 | claimed: implementer PDEX-02; codex/pdex-02 |
+| PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | in-progress | PDEX-01 | code merged a77603e; 69 native + five full-page modal checks; packaged pending |
 | PDEX-03 | ticket | [03: 保持早间文字与可读的统一白天时间轴](issues/03-unified-readable-today.md) | ready-for-agent | in-progress | none | code merged 06c0d0b; 406 frontend + nine rendered WebKit checks; packaged pending |
 | PDEX-04 | ticket | [04: 拖动计划并调整结束时间](issues/04-plan-drag-and-resize.md) | ready-for-agent | in-progress | PDEX-02 | claimed: implementer PDEX-04; codex/pdex-04 |
 | PDEX-05 | ticket | [05: Tasks 使用清晰勾选列表与所选详情](issues/05-task-list-details.md) | ready-for-agent | open | none | unassigned; not started |
