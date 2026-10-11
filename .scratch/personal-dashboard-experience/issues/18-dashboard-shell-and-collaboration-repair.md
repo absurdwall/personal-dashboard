@@ -26,7 +26,7 @@ The compact Task schedule control remains too small to identify its date at a gl
 - [x] Collaboration shares the established page frame spacing and heading hierarchy, has a modest Sessions inset, avoids redundant frame/card chrome, and preserves meaningful pane headings and controls.
 - [x] Production WebKit measurements prove pointer hit targets, focus, and scroll ownership for enabled Collaboration session/composer controls using synthetic state; no model turn or personal data write occurs.
 - [x] Existing PDEX-14/15/16/17 semantics remain unchanged. Habits stays unchanged. Focused frontend checks and `npm run build` pass.
-- [ ] Final corrected-source Standards and Spec review and fresh protected normal installation are confirmed together.
+- [x] Final corrected-source Standards and Spec review and fresh protected normal installation are confirmed together.
 - [ ] Direct human acceptance of the installed normal App remains pending.
 
 ## Execution
@@ -38,3 +38,8 @@ The compact Task schedule control remains too small to identify its date at a gl
 The preceding installation evidence is historical for `dc12b10`: its empty/current-date composer was disabled. It does not satisfy the latest human input correction. The corrected implementation `7cee9d8`, including merged `e1cae53` and retained schedule-control polish, enables local empty-session text editing, preserves explicit creation/send and scoped drafts, binds retries to the same session identity, and obtains the default date from the application lived-day clock. Sending and starting dictation retain their connection requirements.
 
 Independent review found and repaired whole-month clipping, unknown-result duplicate creation, the pending-clock midnight fallback, and missing bilingual creation diagnostics. The corrected Calendar tests include an initially selected day with a populated task panel, long independently scrolling summary, truthful preview overflow, resize/navigation/language changes, and minimum-window reachability. Supporting checks include the merged frontend checks, four voice-controller tests, three persisted creation-identity Rust tests, and the final 90-case focused run. Final corrected-source review and native package/installation checks are pending at this checkpoint; direct human acceptance remains pending. Earlier IME/quota waivers remain accepted and are not reopened.
+
+
+## Current final installation checkpoint — 2026-10-11
+
+The latest production source `d4e2b54` is independently reviewed with zero remaining Standards/Spec findings and freshly protected/installed with normal configuration. Actual populated-session inspection additionally found and repaired the `eb0f497` composer clipping, then verified the corrected synthetic and normal App surfaces. [Final source/package/native/preservation evidence](../evidence/pdex18-final-review-install-2026-10-11.md) retains all qualifications. Existing content and authority readback pass; no model turn or microphone was requested. This supersedes earlier pending-final-review/install statements, without discarding historical evidence. Direct human acceptance remains pending; ticket and parent stay in-progress.

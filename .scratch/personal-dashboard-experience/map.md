@@ -264,3 +264,8 @@ Direct user messages in review chat `01a128ff-8865-7493-9698-cc48c19d7939` autho
 ### PDEX-18 review and protected installation — 2026-10-11
 
 Implementation commits `37d71de` and `dc12b10` retain full history from `8960c80`. Independent Standards and Spec reviews are complete with no remaining actionable findings; the Standards suggestion to share schedule assertions is addressed in the second commit. Build and focused suites pass. After fresh App/profile/selected-Vault protection, the reviewed normal-identifier 4.0.7 bundle was installed and visually checked with Computer Use virtual input. [Installation evidence](evidence/pdex18-normal-install-2026-10-11.md) records hashes, protected-copy readback, native-input limitation and the pending direct human acceptance. The ticket and parent remain in-progress; no GitHub, main merge, or remote publication occurred.
+
+
+## Latest protected normal App checkpoint — 2026-10-11
+
+Current production source `d4e2b54` is independently reviewed and installed at `/Applications/Personal Dashboard.app` with the normal configuration and fresh protection. [Final qualified evidence](evidence/pdex18-final-review-install-2026-10-11.md) includes the actual existing-session composer defect found after `eb0f497`, its repair, native input/control observations and verified data preservation. Standards and Spec have zero unresolved findings. PDEX-FOLLOWUP-05/PDEX-18 remain in-progress pending direct human acceptance; PDEX-14 through PDEX-17 retain their own histories, and original PDEX-01–11 remain closed. Earlier release checkpoints are historical. No GitHub/main operation is inferred.
