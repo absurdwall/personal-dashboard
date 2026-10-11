@@ -217,3 +217,14 @@ Direct human message 01a12986-5de8-7f91-a3b5-a9bca292f4fe approves only Tasks cr
 ## Current follow-up installation checkpoint — 2026-10-11
 
 PDEX-12/13 final product `2c6b8aa` is independently reviewed with zero unresolved Standards/Spec findings, expressly released and installed with normal production config. [Installation and preservation](evidence/followup-local-install-2026-10-11.md) and [final isolated native receipt](evidence/followup-native-final-2026-10-11.json) retain source/package identity, qualified checks and fresh recovery backups. Full history and unrelated changes are preserved. Follow-up spec remains open and PDEX-12/13 in-progress pending direct human acceptance; original eleven tickets and original parent remain resolved. No GitHub/main operation.
+
+
+## Revised sidebar/schedule frontier — 2026-10-11
+
+Direct human sidebar correction supersedes drawer-as-target interpretation; previous source/test/install receipts stay historical. [Full PDEX-FOLLOWUP-02](sidebar-schedule-spec-2026-10-11.md). Both independent tickets claimed on clean fc4c818; human Task default choice pending but sidebar work proceeds. Original accepted tickets remain closed; followup12/13 are not inferred newly accepted.
+
+| ID | Body | Triage | Lifecycle | Dependencies | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| PDEX-FOLLOWUP-02 | [spec index](issues/00-sidebar-schedule-spec.md) | ready-for-agent | in-progress | none | new scope, acceptance pending |
+| PDEX-14 | [docked sidebars](issues/14-docked-sidebar-toggles.md) | ready-for-agent | in-progress | none | claimed, implementation pending |
+| PDEX-15 | [compact Task schedule](issues/15-compact-task-schedule.md) | ready-for-agent | in-progress | none | claimed, implementation pending |

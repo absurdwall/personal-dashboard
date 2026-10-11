@@ -183,3 +183,8 @@ New [PDEX-FOLLOWUP-01 addendum](followup-spec-2026-10-11.md) and PDEX-12/13 reta
 ## Current follow-up installation checkpoint — 2026-10-11
 
 PDEX-12/13 final product `2c6b8aa` is independently reviewed with zero unresolved Standards/Spec findings, expressly released and installed with normal production config. [Installation and preservation](evidence/followup-local-install-2026-10-11.md) and [final isolated native receipt](evidence/followup-native-final-2026-10-11.json) retain source/package identity, qualified checks and fresh recovery backups. Full history and unrelated changes are preserved. Follow-up spec remains open and PDEX-12/13 in-progress pending direct human acceptance; original eleven tickets and original parent remain resolved. No GitHub/main operation.
+
+
+## Revised sidebar/schedule authorized claim — 2026-10-11
+
+Direct human 01a129b1-8fa7-7033-a532-52fc86d1056b in reviewer chat corrects sidebar semantics and authorizes global navigation/Calendar existing-summary toggles and compact Task schedule rows. Clean base fc4c8185a9b7e029a945662754a2131b21bfb3d8. PDEX-14/15 independently locally claimed; all prior history retained. Calendar narrow sidebar was a normal-flow summary moved below, not hidden; modify only that existing summary. Reviewer date-default preference pending; sidebar proceeds. Two implementer worktrees and unsquashed merger; new reviews/native package before normal replacement/human acceptance.
