@@ -302,6 +302,10 @@
               <div class="collaboration-status-bar">
                 <p id="collaboration-runtime-status" role="status" aria-live="polite" tabindex="0" data-i18n="collaboration.connectionNotChecked">Connection status has not been checked.</p>
                 <p id="collaboration-model-summary" role="status" aria-live="polite"></p>
+                <details id="collaboration-recovery-details" class="collaboration-recovery-details" hidden>
+                  <summary data-i18n="collaboration.recoveryDetails">Result needs confirmation</summary>
+                  <p data-i18n="collaboration.composerRecover">The earlier result is unconfirmed. Send a correction or unrelated request; check the saved effect before retrying it.</p>
+                </details>
                 <button id="collaboration-open-settings" type="button" class="text-button" data-i18n="collaboration.openSettings">Codex Settings</button>
               </div>
               <p id="collaboration-work-owner" class="collaboration-work-owner-status" role="status" aria-live="polite" tabindex="0"></p>
@@ -358,10 +362,6 @@
                     </div>
                     </div>
                     <p id="collaboration-composer-status" class="collaboration-composer-status" role="status" aria-live="polite" hidden></p>
-                    <details id="collaboration-recovery-details" class="collaboration-recovery-details" hidden>
-                      <summary data-i18n="collaboration.recoveryDetails">Recovery details</summary>
-                      <p data-i18n="collaboration.composerRecover">The earlier result is unconfirmed. Send a correction or unrelated request; check the saved effect before retrying it.</p>
-                    </details>
                     <details class="collaboration-help">
                     <summary data-i18n="collaboration.inputHelp">Input and saving details</summary>
                     <p id="collaboration-voice-privacy" class="collaboration-voice-privacy" data-i18n="collaboration.voicePrivacy">Audio is processed online through Codex after you start dictation. Review the editable transcript before sending.</p>

@@ -5482,6 +5482,10 @@ function formatAxisMinute(minute: number): string {
 
 type TodayAxisLaneId = "arrangement" | "facts" | "tasks" | "arrangement-unlocated" | "facts-unlocated";
 
+function hasExactPlanTime(entry: TimeAxisEntryView): boolean {
+  return entry.planPrecision === "exactPoint" || entry.planPrecision === "exactRange";
+}
+
 function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): string {
   if(entry.task) {
     const task=currentTodayView?.tasks.tasks.find(task=>task.id===entry.task!.id);
@@ -5629,11 +5633,14 @@ function axisEntryDetails(
     metadata.append(continuation);
   }
   details.append(metadata);
+  // Broad or unlocated plans are readable summaries; only precise timeline
+  // markers expose the plan-time editor.
+  if (lane !== "arrangement" || !hasExactPlanTime(entry)) return details;
   if(entry.task) {
     const edit=document.createElement("button");edit.type="button";setCopy(edit,"tasks.editLabel",{task:entry.text});
     edit.addEventListener("click",()=>{taskFocusRequestId=entry.task!.id;showWorkspaceDestination("tasks");});details.append(edit);
   }
-  if (lane === "arrangement" || lane === "arrangement-unlocated") {
+  if (lane === "arrangement") {
     if (!entry.planId || !entry.timeEditable || entry.continuesFromPreviousDay || entry.continuesIntoNextDay) {
       const unavailable = document.createElement("p");
       setCopy(unavailable, entry.continuesFromPreviousDay || entry.continuesIntoNextDay ? "today.planTimeOutsideWindow" : "today.planTimeUnavailable");
@@ -6130,7 +6137,7 @@ function renderTodayTimeAxisEntries(
       marker.classList.toggle("is-completed", entry.task?.state === "completed");
       marker.classList.toggle("is-time-passed", entry.task?.timePassed === true);
       if (entry.task) marker.dataset.taskId = entry.task.id;
-      const editablePlan = original.lane === "arrangement" && original.planId && original.timeEditable &&
+      const editablePlan = original.lane === "arrangement" && hasExactPlanTime(original) && original.planId && original.timeEditable &&
         !original.continuesFromPreviousDay && !original.continuesIntoNextDay;
       if (editablePlan) marker.dataset.planId = original.planId!;
       marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);

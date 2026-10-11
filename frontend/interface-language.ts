@@ -256,7 +256,7 @@ const interfaceCopies = {
   "collaboration.activityDatesShort": { zh: "活动：{dates}", en: "Active: {dates}" },
   "collaboration.workOwner": { zh: "当前工作：{session} · {vault} · {state}", en: "Current work: {session} · {vault} · {state}" },
   "collaboration.recoveryRequired": { zh: "结果待确认", en: "Result needs confirmation" },
-  "collaboration.recoveryDetails": { zh: "恢复详情", en: "Recovery details" },
+  "collaboration.recoveryDetails": { zh: "结果待确认", en: "Result needs confirmation" },
   "collaboration.dailyRecord": { zh: "Daily Record", en: "Daily Record" },
   "collaboration.tasks": { zh: "Tasks", en: "Tasks" },
   "collaboration.habits": { zh: "习惯", en: "Habits" },

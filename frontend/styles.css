@@ -9930,7 +9930,7 @@ button.habit-cell:focus-visible {
 .tasks-content > #tasks-list { align-content: start; grid-auto-rows: max-content; gap: 0.15rem; }
 .task-row[data-task-surface="tasks"] { padding: 2px 4px; }
 .task-row[data-task-surface="tasks"].is-selected { background: var(--parity-accent-soft); border-radius: 6px; }
-.task-row[data-task-surface="tasks"] .task-row-summary { grid-template-columns: 15px minmax(0,1fr) auto; align-items: center; gap: 7px; cursor: pointer; }
+.task-row[data-task-surface="tasks"] .task-row-summary { grid-template-columns: 15px minmax(0,1fr) auto; align-items: center; gap: 9px; cursor: pointer; }
 .task-row[data-task-surface="tasks"] .task-completion-toggle { position: relative; width: 15px; height: 15px; min-height: 15px !important; padding: 0 !important; border: 0; border-radius: 0; background: transparent; }
 .task-row[data-task-surface="tasks"] .task-completion-toggle::before { position: absolute; inset: -4px; content: ""; }
 .task-row[data-task-surface="tasks"] .task-completion-toggle > span { display: none; }
@@ -10273,4 +10273,124 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 @media (max-width:680px) {
   #workspace-destination-today.today-destination { padding-right:.8rem; padding-left:.8rem; }
   .day-task-panel { padding:8px; }
+}
+
+/* Follow-up: keep Collaboration input comfortably editable and its status row compact. */
+#collaboration-composer textarea {
+  height: clamp(8rem, 25vh, 10rem);
+  min-height: 8rem;
+  max-height: min(20rem, 35vh);
+  resize: vertical;
+}
+
+.collaboration-header + .collaboration-status-bar {
+  gap: 0.4rem;
+  min-height: 1.5rem;
+  margin: -0.15rem 0 0.1rem;
+  padding: 0;
+  flex-wrap: nowrap;
+  overflow: visible;
+}
+
+.collaboration-header + .collaboration-status-bar > p {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.6rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#collaboration-runtime-status { flex: 0 1 12rem; max-width: 15rem; }
+#collaboration-model-summary { flex: 0 1 14rem; max-width: 18rem; }
+#collaboration-recovery-details {
+  flex: 0 1 11rem;
+  min-width: 0;
+  max-width: 14rem;
+  margin: 0;
+  overflow: hidden;
+  color: var(--parity-muted);
+  font-size: 0.6rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#collaboration-recovery-details > summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+#collaboration-recovery-details[open] {
+  flex: 1 0 100%;
+  order: 1;
+  max-width: none;
+  overflow: visible;
+  white-space: normal;
+}
+
+#collaboration-open-settings {
+  flex: 0 0 auto;
+  min-height: 1.5rem;
+  margin-left: auto;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.6rem;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .collaboration-header + .collaboration-status-bar { gap: 0.25rem; }
+  #collaboration-runtime-status { flex-basis: 23%; max-width: 28%; }
+  #collaboration-model-summary { flex-basis: 25%; max-width: 30%; }
+  #collaboration-recovery-details { flex-basis: 18%; max-width: 22%; }
+  #collaboration-open-settings { margin-left: auto; }
+}
+
+/* The axis keeps the clock scale and exposes an actual scroll handle when dense markers need width. */
+#today-axis-scroll-surface {
+  max-height: clamp(20rem, calc(100dvh - 15rem), 45rem);
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--parity-border) color-mix(in srgb, var(--parity-surface) 82%, var(--parity-border));
+}
+
+#today-axis-scroll-surface::-webkit-scrollbar { width: 10px; height: 12px; }
+#today-axis-scroll-surface::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--parity-surface) 82%, var(--parity-border));
+}
+#today-axis-scroll-surface::-webkit-scrollbar-thumb {
+  min-width: 28px;
+  border: 2px solid color-mix(in srgb, var(--parity-surface) 82%, var(--parity-border));
+  border-radius: 999px;
+  background: var(--parity-border);
+}
+
+@media (max-width: 900px) {
+  #today-ready[data-phase="daytime"] .today-layout[data-unlocated-presentation="inline"] {
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 25%);
+    gap: 10px;
+  }
+}
+
+@media (max-width: 680px) {
+  #today-ready[data-phase="daytime"] .today-layout[data-unlocated-presentation="inline"] {
+    grid-template-columns: minmax(0, 1fr) minmax(185px, 34%);
+    gap: 8px;
+  }
+
+  .today-continuous-axis {
+    --today-axis-gutter: 3rem;
+    gap: 6px;
+    padding-inline: 5px;
+  }
+
+  .today-axis-lane-heading { padding-inline: 3px; font-size: 10px; }
+  .today-axis-lane-legend { gap: 5px 9px; padding: 5px 6px; }
+  .today-axis-lane-legend-item { gap: 4px; font-size: 10px; }
+  .today-axis-marker-link { padding-inline: 4px; }
 }
