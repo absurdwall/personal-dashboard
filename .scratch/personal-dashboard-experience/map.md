@@ -251,3 +251,12 @@ Direct user report supersedes the earlier Collaboration visual-acceptance infere
 | --- | --- | --- | --- | --- | --- |
 | PDEX-FOLLOWUP-04 | [complete addendum](followup-spec-2026-10-11-collaboration-layout.md) / [index](issues/00-followup-spec-04.md) | ready-for-agent | in-progress | none | implementation, independent review, install and human acceptance separate |
 | PDEX-17 | [Collaboration layout recovery](issues/17-collaboration-layout-recovery.md) | ready-for-agent | in-progress | none | [production-WK regression and isolated native candidate evidence](evidence/pdex17-layout-red-2026-10-11.md); source checks pass, independent review pending, normal-App source/protection provenance unverified |
+
+## New direct human corrections — 2026-10-11
+
+Direct user messages in review chat `01a128ff-8865-7493-9698-cc48c19d7939` authorize a new bounded repair at base `3c19010`. [PDEX-FOLLOWUP-05](followup-spec-2026-10-11-dashboard-shell-repair.md) records the exact corrections: improve the Task date label, remove Today’s visible zero while preserving accessible recovery, keep the Calendar summary on the right at narrow widths, and align Collaboration spacing and clickable controls. The user explicitly keeps Habits unchanged. PDEX-14 through PDEX-17 retain their prior histories and remain separate from PDEX-18 review and direct acceptance.
+
+| ID | Body | Triage | Lifecycle | Dependencies | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| PDEX-FOLLOWUP-05 | [complete addendum](followup-spec-2026-10-11-dashboard-shell-repair.md) / [index](issues/00-followup-spec-05.md) | ready-for-agent | in-progress | none | implementation and focused verification complete; independent review, protected install and human acceptance separate |
+| PDEX-18 | [visible shell controls and Collaboration recovery](issues/18-dashboard-shell-and-collaboration-repair.md) | ready-for-agent | in-progress | none | [19 docked-sidebars, 10 Collaboration, 12 Calendar WebKit tests and isolated native candidate evidence](evidence/pdex18-native-candidate-2026-10-11.md); independent review, protection/install and human acceptance pending |

@@ -1356,8 +1356,6 @@ function updateTodayUnlocatedPresentation(): void {
   const label = t(shown ? "today.hideSidebar" : "today.showSidebar", {count: todayUnlocatedCount});
   todayUnlocatedTimeShortcut.setAttribute("aria-label", label);
   todayUnlocatedTimeShortcut.title = label;
-  const count = todayUnlocatedTimeShortcut.querySelector<HTMLElement>(".sidebar-toggle-count");
-  if (count) count.textContent = String(todayUnlocatedCount);
   document.querySelector<HTMLElement>(".today-layout")?.setAttribute("data-unlocated-presentation", shown ? "inline" : "collapsed");
   if (restoreReadingPosition !== null && workspaceInformation) workspaceInformation.scrollTop = restoreReadingPosition;
 }
