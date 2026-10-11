@@ -8,6 +8,6 @@ Triage: ready-for-agent
 Blocked by: none
 Created: 2026-10-11
 Updated: 2026-10-11
-Implementation: authorized; implementation/review before installation; human acceptance pending
+Implementation: implemented, independently reviewed and installed; human acceptance pending
 
 [Complete canonical addendum](../followup-spec-2026-10-11.md), [local map](../map.md). This is the new follow-up spec index; accepted PDEX-SPEC-01 remains closed.

@@ -178,3 +178,8 @@ Project lifecycle, focus, review, registered sources, working directory and repo
 ## Approved follow-up — 2026-10-11
 
 New [PDEX-FOLLOWUP-01 addendum](followup-spec-2026-10-11.md) and PDEX-12/13 retain direct user authorization and local claims from clean d4f2399. Implementation/TDD follows previously approved production WebKit/public Task persistence seams. Independent review and explicit review release precede already-authorized normal installation; human acceptance remains separate. Previous initiative closure is retained. Separate implementer worktrees/branches and unsquashed merger history will be recorded; Calendar/navigation/real data are outside edits.
+
+
+## Current follow-up installation checkpoint — 2026-10-11
+
+PDEX-12/13 final product `2c6b8aa` is independently reviewed with zero unresolved Standards/Spec findings, expressly released and installed with normal production config. [Installation and preservation](evidence/followup-local-install-2026-10-11.md) and [final isolated native receipt](evidence/followup-native-final-2026-10-11.json) retain source/package identity, qualified checks and fresh recovery backups. Full history and unrelated changes are preserved. Follow-up spec remains open and PDEX-12/13 in-progress pending direct human acceptance; original eleven tickets and original parent remain resolved. No GitHub/main operation.

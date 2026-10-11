@@ -33,8 +33,8 @@ Previous PDEX-SPEC-01/PDEX-01–11 remain accepted and closed. New bounded follo
 | ID | Body | Triage | Lifecycle | Dependencies | Current evidence |
 | --- | --- | --- | --- | --- | --- |
 | PDEX-FOLLOWUP-01 | [complete addendum](followup-spec-2026-10-11.md) / [index](issues/00-followup-spec.md) | ready-for-agent | in-progress | none | implementation/review/install/human acceptance separate |
-| PDEX-12 | [Tasks quick create/modal](issues/12-lightweight-task-create.md) | ready-for-agent | in-progress | none | implementation pending |
-| PDEX-13 | [Today unlocated toggle/drawer](issues/13-today-unlocated-drawer.md) | ready-for-agent | in-progress | none | implementation pending |
+| PDEX-12 | [Tasks quick create/modal](issues/12-lightweight-task-create.md) | ready-for-agent | in-progress | none | reviewed, installed; human acceptance pending |
+| PDEX-13 | [Today unlocated toggle/drawer](issues/13-today-unlocated-drawer.md) | ready-for-agent | in-progress | none | reviewed, installed; human acceptance pending |
 
 The spec and eleven approved tickets are published locally. Every ticket retains its complete body and separate acceptance criteria.
 Current claim and implementation states are recorded per row and ticket. The Work Item index [00-spec](issues/00-spec.md) refers to
@@ -212,3 +212,8 @@ Project lifecycle, focus, review, registered sources, working directory and repo
 ## Follow-up authorization and local claims — 2026-10-11
 
 Direct human message 01a12986-5de8-7f91-a3b5-a9bca292f4fe approves only Tasks creation and Today right-panel improvements, independent review until satisfied, then normal local App replacement and subsequent human acceptance. Base d4f2399 is clean. PDEX-12/PDEX-13 are locally claimed; prior closed tickets/spec remain intact. Calendar and left navigation excluded. Installed App stays unchanged until explicit reviewer release; no GitHub/main operation.
+
+
+## Current follow-up installation checkpoint — 2026-10-11
+
+PDEX-12/13 final product `2c6b8aa` is independently reviewed with zero unresolved Standards/Spec findings, expressly released and installed with normal production config. [Installation and preservation](evidence/followup-local-install-2026-10-11.md) and [final isolated native receipt](evidence/followup-native-final-2026-10-11.json) retain source/package identity, qualified checks and fresh recovery backups. Full history and unrelated changes are preserved. Follow-up spec remains open and PDEX-12/13 in-progress pending direct human acceptance; original eleven tickets and original parent remain resolved. No GitHub/main operation.
