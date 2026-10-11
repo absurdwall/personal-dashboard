@@ -959,6 +959,8 @@ const collaborationMemoryProposalErrors = new Map<string, string>();
 const collaborationLongTermDrafts = new Map<string, Readonly<{ text: string; revision: string }>>();
 const collaborationContinuityDrafts = new Map<string, Readonly<{ text: string; revision: number }>>();
 let taskFocusRequestId: string | null = null;
+let selectedTaskDetailId: string | null = null;
+let selectedTaskDetailBinding: string | null = null;
 let taskReturnToCollaborationSessionId: string | null = null;
 let dailyPlanReturnToCollaborationSessionId: string | null = null;
 let dailyPlanReturnToCollaborationDate: string | null = null;
@@ -1633,6 +1635,9 @@ function resetVaultScopedWorkspaceState(): void {
   selectedCalendarDate = null;
   currentTodayView = null;
   currentTasksView = null;
+  selectedTaskDetailId = null;
+  selectedTaskDetailBinding = null;
+  taskEditorDialogRoot?.toggleAttribute("hidden", true);
   taskScope = "all";
   taskStateScope = "all";
   taskCreateOpen = false;
@@ -9326,7 +9331,20 @@ function toggleTaskEditorDetails(target: HTMLElement): boolean {
     : undefined;
   const editor = dialog ?? inlineEditor;
   if (!row || !editor) return false;
-  const open = dialog ? dialog.hidden : editor.hidden;
+  const open = dialog ? true : editor.hidden;
+  if (dialog) {
+    selectedTaskDetailId = taskId ?? null;
+    selectedTaskDetailBinding = currentTasksView?.targetBinding ?? null;
+    taskEditorDialogRoot?.querySelectorAll<HTMLElement>("[data-task-editor-dialog]").forEach(candidate => {
+      candidate.hidden = candidate !== dialog;
+    });
+    taskEditorDialogRoot?.toggleAttribute("hidden", false);
+    tasksList?.querySelectorAll<HTMLElement>("[data-task-editor-row]").forEach(candidate => {
+      const selected = candidate.dataset.taskEditorRow === taskId;
+      candidate.classList.toggle("is-selected", selected);
+      candidate.querySelectorAll("[data-task-editor-open]").forEach(button => button.setAttribute("aria-expanded", String(selected)));
+    });
+  }
   if (dialog) {
     dialog.hidden = !open;
   } else {
@@ -9484,7 +9502,7 @@ function taskEditor(
     meta.append(document.createTextNode(" · "), document.createTextNode(t("tasks.overdue")));
   }
   titleLine.append(title, state);
-  if (task.content) {
+  if (task.content && surface !== "tasks") {
     const contentPreview = document.createElement("p");
     contentPreview.className = "task-row-content";
     contentPreview.textContent = task.content;
@@ -9588,6 +9606,7 @@ function taskEditor(
   clearEnd.type = "button";
   clearEnd.className = "secondary-button";
   clearEnd.disabled = !editable;
+  clearEnd.dataset.taskClearEnd = "";
   setCopy(clearEnd, "tasks.clearExecutionEnd");
   clearEnd.addEventListener("click", () => {
     endDate.value = "";
@@ -9681,15 +9700,52 @@ function taskEditor(
     dialog.className = "task-editor-dialog";
     dialog.dataset.taskEditorDialog = task.id;
     dialog.dataset.taskEditorSurface = surface;
-    dialog.hidden = true;
+    dialog.hidden = selectedTaskDetailId !== task.id;
+    dialog.setAttribute("role", "region");
+    dialog.setAttribute("aria-label", t("tasks.editLabel", { task: task.name }));
+    const detailTitle = document.createElement("h3");
+    detailTitle.textContent = task.name;
+    // Keep the existing management actions and provenance in selected details.
+    stateActions.querySelector(".task-completion-toggle")?.remove();
+    detailsButton.remove();
+    editorForm.prepend(detailTitle, meta, stateActions);
     dialog.append(editorForm);
     (taskEditorDialogRoot ?? document.body).append(dialog);
+  }
+  if (surface === "tasks") {
+    row.classList.toggle("is-selected", selectedTaskDetailId === task.id);
+    title.setAttribute("aria-expanded", String(selectedTaskDetailId === task.id));
+    const completion = document.createElement("label");
+    completion.className = "task-completion-toggle";
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.checked = task.state === "completed";
+    check.disabled = !writable || deleted || task.state === "abandoned";
+    if (!deleted && task.state !== "abandoned") {
+      check.dataset.taskStateAction = check.checked ? "pending" : "completed";
+      check.dataset.taskStateTask = task.id;
+    }
+    check.setAttribute("aria-label", `${t(check.checked ? "tasks.reopen" : "tasks.complete")} · ${task.name}`);
+    completion.append(check);
+    const scheduleText = document.createElement("small");
+    scheduleText.className = "task-row-schedule";
+    scheduleText.textContent = taskScheduleText(task.date, task.time, task.executionEnd);
+    heading.replaceChildren(completion, rowMain, scheduleText);
+    rowMain.replaceChildren(titleLine);
+    heading.addEventListener("click", event => {
+      if ((event.target as HTMLElement).closest("button,input,label")) return;
+      toggleTaskEditorDetails(title);
+    });
   }
   row.append(heading);
   if (!dialog) row.append(editorForm);
   const closeEditorDialog = (): void => {
     if (dialog) {
       dialog.hidden = true;
+      selectedTaskDetailId = null;
+      taskEditorDialogRoot?.toggleAttribute("hidden", true);
+      row.classList.remove("is-selected");
+      title.focus();
     } else {
       editorForm.hidden = true;
     }
@@ -9734,12 +9790,14 @@ function taskEditor(
     });
     editorForm.addEventListener("submit", (event) => {
       event.preventDefault();
+      event.stopPropagation();
       stashTaskEditDraft(editorForm);
       void pendingWrites.track(updateTask(task.id, editorForm, surface));
     });
     editorForm.querySelector<HTMLButtonElement>("[data-task-correct-completion]")?.addEventListener(
       "click",
-      () => {
+      (event) => {
+        event.stopPropagation();
         void pendingWrites.track(correctTaskCompletion(task.id, editorForm, surface));
       },
     );
@@ -9781,6 +9839,7 @@ function taskHistorySection(
       : Boolean(view.targetBinding) && view.state !== "error" && view.state !== "unconfigured" && taskOperationCount === 0;
     const includedTaskIds = new Set(openEditors);
     if (surface === "tasks" && taskFocusRequestId) includedTaskIds.add(taskFocusRequestId);
+    if (surface === "tasks" && selectedTaskDetailId) includedTaskIds.add(selectedTaskDetailId);
     const visibleGroups = taskHistoryGroups(tasks, limit, includedTaskIds);
     const visibleCount = visibleGroups.reduce((count, group) => count + group.tasks.length, 0);
     const groups = visibleGroups.map(group => {
@@ -9817,12 +9876,18 @@ function taskHistorySection(
 }
 
 function renderTasks(view: TasksView): void {
+  if (selectedTaskDetailBinding !== view.targetBinding) selectedTaskDetailId = null;
   currentTasksView = view;
+  selectedTaskDetailBinding = view.targetBinding;
+  if (taskFocusRequestId) selectedTaskDetailId = taskFocusRequestId;
   if (taskFocusRequestId) {
     const focused = view.tasks.find(task => task.id === taskFocusRequestId);
     if (focused) {
       taskStateScope = focused.deletedAt ? "deleted" : focused.state;
-      if (view.lists.some(list => list.id === focused.listId && list.archived)) taskScope = "archived";
+      const focusedList = taskListForId(view, focused.listId);
+      taskScope = focusedList?.archived ? "archived"
+        : focusedList?.isSystem ? "inbox"
+        : focusedList ? taskListScopeForId(focused.listId) : "all";
     }
   }
   const scopedListId = taskListIdFromScope(taskScope);
@@ -9953,11 +10018,16 @@ function renderTasks(view: TasksView): void {
   const historyFilter = taskStateScope === "completed" || taskStateScope === "abandoned";
   const history = taskHistorySection(
     historyFilter ? visibleTasks : historyTasks, view, "tasks", !historyFilter,
+    new Set(selectedTaskDetailId ? [selectedTaskDetailId] : []),
   );
   tasksList?.replaceChildren(
     ...(historyFilter ? [] : visibleTasks.map((task) => taskEditor(task, canOperate, view, "tasks"))),
     ...(history ? [history] : []),
   );
+  const selectedPanel = taskEditorDialogRoot?.querySelector<HTMLElement>(
+    `[data-task-editor-dialog="${CSS.escape(selectedTaskDetailId ?? "")}"]`,
+  );
+  taskEditorDialogRoot?.toggleAttribute("hidden", !selectedPanel);
   if (taskReturnToCollaborationButton) {
     taskReturnToCollaborationButton.hidden = !taskReturnToCollaborationSessionId;
   }
@@ -9995,7 +10065,7 @@ function updateTaskEditorOperationState(
 ): void {
   taskEditorForms(surface).forEach((form) => {
     form.querySelectorAll(
-      "[data-task-name], [data-task-content], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
+      "[data-task-name], [data-task-content], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
     ).forEach((element) => {
       (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
         busy || !writable;
@@ -10090,6 +10160,7 @@ function updateTaskOperationState(delta: number): void {
     (element as HTMLInputElement | HTMLButtonElement).disabled = busy || !canOperate;
   });
   updateTaskMutationControls(tasksList, canOperate, busy);
+  updateTaskMutationControls(taskEditorDialogRoot, canOperate, busy);
   updateTaskEditorOperationState("tasks", writable, busy);
   if (!busy && taskRefreshQueued) {
     taskRefreshQueued = false;

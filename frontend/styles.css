@@ -9874,6 +9874,36 @@ button.habit-cell:focus-visible {
 
 #today-axis-edit-status[data-state="error"] { color: var(--parity-danger, #a7443a); }
 
+/* Tasks keep a compact selection list and one full detail panel. */
+.tasks-layout:has(.tasks-selected-detail:not([hidden])) { grid-template-columns: 150px minmax(220px, 1fr) minmax(280px, 360px); gap: 20px; }
+.tasks-selected-detail { min-width: 0; }
+.tasks-selected-detail[hidden] { display: none; }
+.tasks-selected-detail .task-editor-dialog { position: static; display: block; padding: 0; background: transparent; overflow: visible; }
+.tasks-selected-detail .task-editor-dialog[hidden] { display: none; }
+.tasks-selected-detail .task-editor-details { width: 100%; max-height: none; padding: 18px; box-shadow: none; }
+.tasks-selected-detail .task-editor-details h3 { margin: 0 0 10px; overflow-wrap: anywhere; }
+.tasks-selected-detail .task-editor-close { margin: 16px 0 0 auto; }
+.task-row[data-task-surface="tasks"] { padding: 8px 4px; }
+.task-row[data-task-surface="tasks"].is-selected { background: var(--parity-accent-soft); border-radius: 6px; }
+.task-row[data-task-surface="tasks"] .task-row-summary { grid-template-columns: 36px minmax(0,1fr) auto; align-items: center; gap: 8px; cursor: pointer; }
+.task-row[data-task-surface="tasks"] .task-completion-toggle { padding: 6px !important; min-height: 36px !important; justify-content: center; }
+.task-row[data-task-surface="tasks"] .task-completion-toggle input { width: 22px; height: 22px; margin: 0; cursor: pointer; }
+.task-row[data-task-surface="tasks"] .task-title-button { font-weight: 600; overflow-wrap: anywhere; }
+.task-row[data-task-surface="tasks"] .task-state-label { display: none; }
+.task-row[data-task-surface="tasks"].is-abandoned .task-state-label,
+.task-row[data-task-surface="tasks"].is-deleted .task-state-label { display: inline-flex; }
+.task-row-schedule { max-width: 125px; color: var(--parity-muted); font-size: 10px; text-align: right; }
+@media(max-width:1100px) {
+  .tasks-layout:has(.tasks-selected-detail:not([hidden])) { grid-template-columns: 140px minmax(0,1fr); }
+  .tasks-selected-detail { grid-column: 2; }
+}
+@media(max-width:620px) {
+  .tasks-layout:has(.tasks-selected-detail:not([hidden])) { grid-template-columns: minmax(0,1fr); }
+  .tasks-selected-detail { grid-column: 1; }
+  .task-row[data-task-surface="tasks"] .task-row-summary { grid-template-columns: 36px minmax(0,1fr); }
+  .task-row-schedule { grid-column: 2; text-align: left; max-width: none; }
+}
+
 .today-axis-marker[data-plan-id] .today-axis-marker-link { cursor: grab; touch-action: none; }
 .today-axis-plot.is-pointer-editing .today-axis-marker[data-plan-id] .today-axis-marker-link { cursor: grabbing; }
 .today-axis-plan-end {
