@@ -11,20 +11,20 @@
 **ID:** PDEX-10
 **Parent:** [PDEX-SPEC-01](../spec.md)
 **Lifecycle:** in-progress
-**Implementation:** in progress
+**Implementation:** implemented; automated verification passed; packaged acceptance pending
 **Owner:** implementer PDEX-10
 **Assignee:** implementer PDEX-10
 **Date:** 2026-10-10
 **Breakdown decision:** User approved the eleven-ticket breakdown and blocking edges on 2026-10-10.
-**Start:** Can start immediately once implementation is requested; not claimed.
+**Start:** User-authorized local claim on 2026-10-10; production implementation and evidence below.
 
 ## Acceptance criteria
 
-- [ ] 当前日与过去日期都有准确的入口措辞、session 目标日期与权威记录上下文。
-- [ ] 适合会话可复用，重复点击不创建重复消息，不自动发送或标记已复盘。
-- [ ] 已有草稿保留且继续方式清楚，不静默覆盖；草稿和目标日期遵循现有会话保存行为。
-- [ ] 复盘沿用现有 skill 与业务操作，不复制 Daily Record，不推导实际活动。
-- [ ] 用真实 session/draft 和 Calendar 状态读回验证进入前后及重复进入的外部行为。
+- [x] 当前日与过去日期都有准确的入口措辞、session 目标日期与权威记录上下文。
+- [x] 适合会话可复用，重复点击不创建重复消息，不自动发送或标记已复盘。
+- [x] 已有草稿保留且继续方式清楚，不静默覆盖；草稿和目标日期遵循现有会话保存行为。
+- [x] 复盘沿用现有 skill 与业务操作，不复制 Daily Record，不推导实际活动。
+- [x] 用真实 session/draft 和 Calendar 状态读回验证进入前后及重复进入的外部行为。
 
 ## Verification
 
@@ -37,3 +37,7 @@ stories 59–62.
 - 2026-10-10: Published locally with the approved scope and dependencies; unassigned, not claimed, not started. Record subsequent authorized claims, commits, checks and acceptance here. Publication does not close the parent specification.
 
 - 2026-10-10: Authorized claim on codex/pdex-10, worktree /tmp/pdex-10; base integration 06c0d0b54440766c222da063a330dd53364e3e84. Dependency implementation/evidence inspected before start; packaged acceptance remains separately tracked.
+
+- 2026-10-10: Implemented in `a99bbd9` on `codex/pdex-10`; actual starting tip verified as `80f9ea8`, then integration `6bd91ad` merged in `8a5770c`. Evening captures selected current/past date, atomically prepares/reuses a suitable session and editable dated draft with the authoritative record pointer, preserves existing saved/unsaved drafts and exposes clear continuation/failure wording. Entry never submits or writes review/fact state.
+- 2026-10-10: Build + full integrated frontend 416/416 + five production WebKit entry cases passed. Exclusive serialized native suites: collaboration_workflow 33/33 and collaboration_task_operations 105/105, including six new real persistence/Calendar entry cases. Native cache lease explicitly released after final integrated tests. See [PDEX-10 evidence](../evidence/pdex-10.md) for source/readback/restart, concurrent idempotency, save failure/retry and boundary details.
+- 2026-10-10: Acceptance criteria checked at the confirmed application/persistence and production DOM seams. Lifecycle remains in-progress; packaged/OS/human acceptance belongs to PDEX-11 and is not claimed here. This implementation does not close the parent specification.

@@ -131,3 +131,26 @@ retain it. Operation readback checks both endpoints (an omitted update end is
 checked against the baseline); an unchanged end cannot be reported as a saved
 end edit. Omitted new fields stay omitted in old serialized operation records,
 so adding this capability does not change old operation fingerprints.
+
+## Today timeline direct manipulation (PDEX-07)
+
+Blank-axis pointer selection opens an editable Task creation dialog. The start
+and end become natural calendar dates and local times (including a next-day
+end across midnight) before the existing `create_task` boundary is invoked.
+Moving a Task uses its saved start and optional execution end, with 15-minute
+snapping of the new start. The saved duration remains unchanged; a point Task
+keeps `executionEnd: null`. Minimum card height never supplies a duration.
+
+The gesture controller owns the plot once, uses its existing inner scroll
+surface during a held edge drag, and cancels its unsaved preview on Escape.
+Facts stay outside its editable targets. Task detail/time editing opens the
+same stable Task identity. These operations do not call Daily Record writes
+or change completion/abandonment state.
+
+A rejected/unconfirmed move keeps the saved card and the desired timing in a
+recovery dialog. Rereading checks the existing Task before an explicit retry;
+if retry is needed, only the requested timing is applied to current content,
+list and state. A failed creation retains its form and stable Task identity.
+No uncertain write is replayed automatically. `today-axis-gestures.ts` is the
+single pointer owner; plan gestures may extend its resolver/commit callbacks
+rather than installing a second controller.

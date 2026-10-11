@@ -220,6 +220,13 @@ pub struct CollaborationSessionView {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct EveningReviewEntryView {
+    pub session: CollaborationSessionView,
+    pub preserved_draft: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CollaborationMemoryProposalView {
     pub id: String,
     pub status: String,
@@ -2810,8 +2817,18 @@ impl CollaborationApplication {
         let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
             "Choose a Vault in Settings before starting a collaboration session.".to_string()
         })?;
+        let session = self.empty_session(date, vault_key);
+        let saved = session.clone();
+        self.update_state(|state| {
+            state.sessions.insert(0, saved.clone());
+            Ok(())
+        })?;
+        Ok(session_view(&session))
+    }
+
+    fn empty_session(&self, date: &str, vault_key: String) -> StoredCollaborationSession {
         let now = self.clock.current_timestamp();
-        let session = StoredCollaborationSession {
+        StoredCollaborationSession {
             id: next_identifier("session"),
             vault_key: Some(vault_key),
             title: String::new(),
@@ -2837,13 +2854,41 @@ impl CollaborationApplication {
             habit_refresh_receipts: Vec::new(),
             draft: String::new(),
             drafts_by_date: HashMap::new(),
-        };
-        let saved = session.clone();
-        self.update_state(|state| {
-            state.sessions.insert(0, saved.clone());
-            Ok(())
+        }
+    }
+
+    /// Prepare only a persisted, editable draft. No message/runtime/business write.
+    pub fn prepare_evening_review(&self, date: &str, draft: &str) -> Result<EveningReviewEntryView, String> {
+        validate_date(date)?;
+        if date > self.clock.current_lived_date().as_str() {
+            return Err("Evening review is available for today and past lived dates.".into());
+        }
+        if draft.trim().is_empty() || draft.chars().count() > MAX_MESSAGE_CHARACTERS {
+            return Err(format!("Review drafts must contain 1–{MAX_MESSAGE_CHARACTERS} characters."));
+        }
+        let vault_key = self.context_source.current_vault_key()?.ok_or_else(|| {
+            "Choose a Vault in Settings before starting an evening review.".to_string()
         })?;
-        Ok(session_view(&session))
+        self.update_state(|state| {
+            let index = state.sessions.iter().position(|session| {
+                session.vault_key.as_deref() == Some(vault_key.as_str()) && session.target_date == date
+                    && matches!(session.run_state.as_str(), "waiting" | "completed" | "stopped")
+            });
+            let index = match index {
+                Some(index) => index,
+                None => { state.sessions.insert(0, self.empty_session(date, vault_key)); 0 }
+            };
+            let session = &mut state.sessions[index];
+            let existing = session.drafts_by_date.get(date).cloned().unwrap_or_else(|| session.draft.clone());
+            let preserved_draft = !existing.is_empty();
+            let text = if preserved_draft { existing } else { draft.to_owned() };
+            session.draft = text.clone();
+            session.drafts_by_date.insert(date.to_owned(), text);
+            if !session.activity_dates.iter().any(|activity| activity == date) {
+                session.activity_dates.push(date.to_owned());
+            }
+            Ok(EveningReviewEntryView { session: session_view(session), preserved_draft })
+        })
     }
 
     pub fn list_sessions(&self, date: &str) -> Result<Vec<CollaborationSessionView>, String> {
