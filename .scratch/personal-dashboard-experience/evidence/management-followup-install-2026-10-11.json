@@ -1,0 +1,173 @@
+{
+  "projectId": "product-personal-dashboard",
+  "registryRevision": "ee2b3175ab053e66",
+  "summaryRevision": "af824b2b30e87915",
+  "source": {
+    "portfolioRecordId": "product-personal-dashboard",
+    "sourceId": "source-personal-dashboard-experience",
+    "label": "Dashboard experience — local spec and tickets",
+    "kind": "localMarkdown",
+    "enabled": true,
+    "state": "current",
+    "revision": "ec0567d1c5f3c6d3",
+    "issueCount": 15,
+    "malformedReferences": [],
+    "error": null,
+    "lastSuccessfulRefreshAt": 1791700491298,
+    "capabilities": {
+      "create": true,
+      "creatableFields": [
+        "title",
+        "nativeState",
+        "blockers"
+      ],
+      "edit": true,
+      "claim": true,
+      "close": true,
+      "open": true
+    }
+  },
+  "records": [
+    {
+      "reference": "00-followup-spec.md",
+      "nativeState": "open",
+      "lifecycle": "unknown"
+    },
+    {
+      "reference": "00-spec.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "01-current-plan-time-editor.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "02-approximate-plan-times.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "03-unified-readable-today.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "04-plan-drag-and-resize.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "05-task-list-details.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "06-task-execution-intervals.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "07-task-timeline-create-move.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "08-compact-calendar.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "09-collaboration-command-completion.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "10-evening-review-entry.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "11-packaged-daily-flow-acceptance.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved"
+    },
+    {
+      "reference": "12-lightweight-task-create.md",
+      "nativeState": "in-progress",
+      "lifecycle": "unknown"
+    },
+    {
+      "reference": "13-today-unlocated-drawer.md",
+      "nativeState": "in-progress",
+      "lifecycle": "unknown"
+    }
+  ],
+  "summary": {
+    "text": "PDEX-12 Tasks 顶部仅名称快速添加、就地 New Task 浮窗和保留原提交/读回恢复，以及 PDEX-13 Today 未定位栏计数切换、1100px 自动收起和窄窗抽屉已完成。最终产品2c6b8aa保留全部合并历史；独立 Standards/Spec review 均0未解决，reviewer核对冻结包与最终真实原生保存读回后明确放行。正常配置 /Applications/Personal Dashboard.app 已替换并启动，exe ade6a1c865fda1d8749b4037720087bac3104d8d7e38d1e0cdc48bdf047f5c58，全部bundle文件/严格签名匹配。当前App/profile/life业务文件已备份并哈希核对；正常启动后48业务文件、41会话105消息、设置等保留，只有collaboration JSON序列化变化而语义相同。临时副本已注销，唯一可搜索安装为Applications。最终build、12创建browser/25前端检查通过；f127核心native和f0 Rust31检查保留来源限定。reviewer正常安装只读CUA检查快速输入、modal焦点和Today抽屉通过；drawer首次AX瞬时空需screenshot，未宣称AX全程稳定。PDEX-12/13仍in-progress、新parent open等待用户人工验收；原11票及原parent保持resolved。Calendar/导航未改，无真实Vault测试写入或GitHub/main操作。",
+    "blockers": [],
+    "nextWork": [
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "reference": "12-lightweight-task-create.md",
+        "suggestion": "用户在正常安装版人工验收 Tasks 快速添加与 New Task 就地浮窗。"
+      },
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "reference": "13-today-unlocated-drawer.md",
+        "suggestion": "用户人工验收 Today 中窄窗口自动收起及未定位内容抽屉可读性。"
+      }
+    ],
+    "verifiedAt": "2026-10-11T06:34:48.915699+00:00",
+    "sourceEvidence": [
+      {
+        "sourceId": "source-personal-dashboard-3",
+        "revision": "73f67af62ff88683"
+      },
+      {
+        "sourceId": "source-personal-dashboard-timeline-a-repair",
+        "revision": "6f66259df3b780a1"
+      },
+      {
+        "sourceId": "source-personal-dashboard-3-0-2",
+        "revision": "07bf9d0b79785cbc"
+      },
+      {
+        "sourceId": "source-personal-dashboard-task-history",
+        "revision": "825ecc1788d68868"
+      },
+      {
+        "sourceId": "source-personal-dashboard-codex-dictation",
+        "revision": "32712ec896d18dce"
+      },
+      {
+        "sourceId": "source-personal-dashboard-experience",
+        "revision": "ec0567d1c5f3c6d3"
+      }
+    ],
+    "coverage": "partial",
+    "needsReconciliation": false,
+    "uncoveredSources": [
+      {
+        "sourceId": "source-personal-dashboard-codex-collaboration",
+        "reason": "既有来源不可完整读取；本轮local scope，不查询GitHub或修订历史格式。"
+      },
+      {
+        "sourceId": "source-personal-dashboard-github",
+        "reason": "既有来源不可完整读取；本轮local scope，不查询GitHub或修订历史格式。"
+      }
+    ]
+  },
+  "projectFieldsPreserved": {
+    "lifecycle": true,
+    "currentFocus": true,
+    "review": true,
+    "sources": true,
+    "workItemSource": true,
+    "workingDirectory": true,
+    "repository": true
+  },
+  "helperChildSystemPathExcludesGh": true,
+  "canonicalReadbackConfirmed": true
+}
