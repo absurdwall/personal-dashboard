@@ -8375,7 +8375,8 @@ button.habit-cell:focus-visible {
   [data-workspace-destination="today"],
   [data-workspace-destination="tasks"],
   [data-workspace-destination="calendar"],
-  [data-workspace-destination="habits"]
+  [data-workspace-destination="habits"],
+  [data-workspace-destination="collaboration"]
 ) .workspace-header {
   display: none;
 }
@@ -9684,10 +9685,9 @@ button.habit-cell:focus-visible {
 .collaboration-panel-resizer::after { content: ""; position: absolute; width: 2px; top: 0.6rem; bottom: 0.6rem; left: 7px; background: var(--parity-border); }
 .collaboration-panel-resizer:hover::after, .collaboration-panel-resizer:focus-visible::after { background: var(--parity-accent); }
 .collaboration-panel-resizer:focus-visible { outline: 2px solid var(--parity-accent); outline-offset: -2px; }
-.collaboration-layout[data-narrow="true"] { grid-template-columns: minmax(0, 1fr); gap: 0.65rem; }
-.collaboration-layout[data-narrow="true"] .collaboration-chat-pane { grid-row: 1; }
-.collaboration-layout[data-narrow="true"] .collaboration-session-pane { grid-row: 2; }
-.collaboration-layout[data-narrow="true"] .collaboration-context-pane { grid-row: 3; }
+.collaboration-primary-layout[data-narrow="true"] { grid-template-rows: minmax(0, 1fr) auto; gap: 0.65rem; }
+.collaboration-primary-layout[data-narrow="true"] .collaboration-chat-pane { grid-row: 1; }
+.collaboration-primary-layout[data-narrow="true"] .collaboration-session-pane { grid-row: 2; }
 .collaboration-layout input, .collaboration-layout select, .collaboration-layout textarea { min-width: 0; max-width: 100%; box-sizing: border-box; }
 .collaboration-layout .collaboration-pane-heading { flex-wrap: wrap; }
 .collaboration-layout .collaboration-composer-footer { flex-wrap: wrap; }
@@ -9701,7 +9701,6 @@ button.habit-cell:focus-visible {
 .today-time-axis-actions { flex-wrap: wrap; }
 
 /* In the middle layout Sessions stays beside chat; context is disclosed below. */
-.collaboration-layout[data-columns="two"] .collaboration-context-pane { grid-column: 1 / -1; grid-row: 2; margin-top: 0.65rem; }
 .collaboration-layout[data-columns="two"] .collaboration-session-pane { padding: 0.65rem; }
 .collaboration-layout[data-columns="two"] .collaboration-session-button { overflow-wrap: anywhere; }
 /* Lived-day quiet hours open at the endpoint being browsed. */
@@ -9806,15 +9805,15 @@ button.habit-cell:focus-visible {
 
 /* The month uses the same compact row height for every date in that month. */
 #workspace-destination-calendar.calendar-destination {
-  padding: 4px 16px 24px;
+  padding: 0 16px 24px;
 }
 .calendar-destination .calendar-header {
   align-items: center;
-  margin-bottom: 4px;
-  padding-bottom: 4px;
+  margin-bottom: 0;
+  padding-bottom: 0;
   border-bottom: 0;
 }
-.app-shell[data-workspace-destination="calendar"] .calendar-header h2 { font-size: 20px; }
+.app-shell[data-workspace-destination="calendar"] .calendar-header h2 { font-size: clamp(2rem, 4vw, 3rem); }
 .calendar-destination .calendar-header > div:first-child > p:last-child { display: none; }
 .calendar-destination > .today-status { margin: 2px 0 5px; }
 .calendar-destination .calendar-frame {
@@ -10027,6 +10026,98 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
 .collaboration-context-card:last-child { border-bottom:0; }
 .collaboration-layout[data-columns="two"] .collaboration-session-pane { padding:.15rem .55rem .15rem .1rem; }
 
+/* Collaboration uses the shared destination title and fits the conversation to the workspace. */
+#workspace-destination-collaboration.collaboration-destination {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  padding: 0.75rem clamp(1rem, 3vw, 2.25rem) 0.65rem;
+}
+.app-shell[data-workspace-destination="collaboration"] .workspace-regions { grid-row: 2; }
+
+.collaboration-header {
+  flex: 0 0 auto;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+.collaboration-header .destination-heading {
+  font-size: clamp(2rem, 4vw, 3rem);
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+}
+.collaboration-description { max-width: 36rem; }
+.collaboration-status-bar,
+.collaboration-panel-toolbar { flex: 0 0 auto; }
+.collaboration-status-bar { margin-bottom: 0.4rem; }
+.collaboration-panel-toolbar { margin-bottom: 0.35rem; }
+.collaboration-layout {
+  flex: 1 1 0;
+  min-height: 0;
+  padding-bottom: 0;
+}
+.collaboration-primary-layout {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+}
+.collaboration-primary-layout > .collaboration-session-pane,
+.collaboration-primary-layout > .collaboration-chat-pane { min-height: 0; }
+.collaboration-primary-layout[data-columns="two"],
+.collaboration-primary-layout[data-columns="three"] {
+  grid-template-rows: minmax(0, 1fr);
+}
+.collaboration-layout[data-columns="two"],
+.collaboration-layout[data-narrow="true"] {
+  display: flex;
+  flex-direction: column;
+}
+.collaboration-layout[data-columns="two"] .collaboration-primary-layout,
+.collaboration-layout[data-narrow="true"] .collaboration-primary-layout {
+  flex: 0 0 100%;
+}
+.collaboration-layout[data-columns="three"] {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+}
+.collaboration-layout[data-columns="three"] .collaboration-primary-layout {
+  grid-column: 1;
+  grid-row: 1;
+}
+.collaboration-layout[data-columns="three"] .collaboration-context-pane {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+.collaboration-layout[data-columns="two"] .collaboration-context-pane {
+  flex: 0 0 auto;
+  margin-top: 0.65rem;
+}
+.collaboration-session-pane,
+.collaboration-chat-pane,
+.collaboration-context-pane {
+  border: 1px solid var(--parity-border);
+  border-radius: 0.62rem;
+  background: var(--parity-surface);
+}
+.collaboration-chat-pane {
+  overflow: hidden;
+  padding: 0.4rem;
+}
+.collaboration-message-list {
+  min-height: 0;
+  max-height: none;
+  padding-block: 0.35rem;
+}
+.collaboration-composer-date { margin: 0; }
+.collaboration-composer textarea { min-height: 4.25rem; }
+.collaboration-composer { gap: 0.25rem; padding-top: 0.45rem; }
+.collaboration-pane-heading {
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid var(--parity-border);
+}
 /* Keep the compact Today row usable when its docked sidebar is restored. */
 #task-quick-submit,
 #today-task-create-submit { min-height:32px; padding:.35rem .5rem; font-size:.62rem; }

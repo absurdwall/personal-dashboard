@@ -164,11 +164,13 @@ test('Today manual intent, axis/sidebar reading position and expanded details su
 test('Today aside control is beside its heading and keeps the existing docked control behavior', {skip:process.platform!=='darwin'},()=>{
   const result=probe(1280,`
     const movedTrigger=document.querySelector('#today-unlocated-time-shortcut'),heading=document.querySelector('#today-daytime-heading');
-    const before={trigger:rect(movedTrigger),heading:rect(heading),inHeading:Boolean(movedTrigger.closest('.today-region-heading')),expanded:movedTrigger.getAttribute('aria-expanded')};
+    const before={trigger:rect(movedTrigger),heading:rect(heading),row:rect(movedTrigger.closest('.today-region-heading')),inHeading:Boolean(movedTrigger.closest('.today-region-heading')),expanded:movedTrigger.getAttribute('aria-expanded')};
     movedTrigger.focus();movedTrigger.click();
     return JSON.stringify({before,expanded:movedTrigger.getAttribute('aria-expanded'),focused:document.activeElement===movedTrigger,sideHidden:document.querySelector('.today-side-region').hidden,calls});
   `);
   assert.equal(result.before.inHeading,true);
+  assert.ok(result.before.trigger.left>=result.before.heading.right,JSON.stringify(result.before));
+  assert.ok(result.before.trigger.right<=result.before.row.right,JSON.stringify(result.before));
   assert.ok(result.before.trigger.top<=result.before.heading.top+result.before.heading.height+8,JSON.stringify(result.before));
   assert.notEqual(result.expanded,result.before.expanded);assert.equal(result.focused,true);
   assert.equal(result.sideHidden,result.expanded==='false');

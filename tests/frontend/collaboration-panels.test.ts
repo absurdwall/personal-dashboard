@@ -92,6 +92,8 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
     click() { this.listeners.get("click")?.({}); }
   }
   const layout = new Node();
+  const primary = new Node();
+  layout.querySelector = (selector: string) => selector === ".collaboration-primary-layout" ? primary : null;
   const nodes = Object.fromEntries(["history-panel", "work-panel", "toggle-history", "toggle-context", "history-resizer", "context-resizer"].map(id => [`collaboration-${id}`, new Node()]));
   const history = nodes["collaboration-history-panel"];
   const context = nodes["collaboration-work-panel"];
@@ -105,6 +107,8 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
     for (const [key, value] of Object.entries({ document, localStorage, ResizeObserver })) Object.defineProperty(globalThis, key, { value, configurable: true });
     initializeCollaborationPanels();
     assert.equal(layout.dataset.columns, "three");
+    assert.equal(primary.dataset.columns, "three");
+    assert.equal(layout.style.display, "grid");
     const contextResizer = nodes["collaboration-context-resizer"];
     contextResizer.focus();
     resize(750);
@@ -121,6 +125,8 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
     active = context.child;
     resize(750);
     assert.equal(layout.dataset.columns, "two");
+    assert.equal(layout.style.display, "flex");
+    assert.equal(primary.style.flex, "0 0 100%");
     assert.equal(history.hidden, false);
     assert.equal(context.hidden, true);
     assert.equal(active, contextToggle, "auto-hidden focused content returns focus to its disclosure");
@@ -132,6 +138,7 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
     assert.equal(resizer.attributes.get("aria-valuenow"), "260");
     resizer.focus();
     resize(500);
+    assert.equal(primary.dataset.columns, "single");
     assert.equal(resizer.hidden, true);
     assert.equal(active, historyToggle, "two-to-single must move focus off the hidden history separator");
     historyToggle.click();

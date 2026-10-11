@@ -8,8 +8,11 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
+const sizes = [[795, 720], [874, 756], [1280, 720], [1280, 756]] as const;
 
-function selectedLongSession(): any {
+type Scenario = { width: number; height: number; selected: boolean; expandContext?: boolean; openComposerHelp?: boolean };
+
+function renderScenario({ width, height, selected, expandContext = false, openComposerHelp = false }: Scenario): any {
   const output = mkdtempSync(join(tmpdir(), "pdex17-collaboration-layout-"));
   try {
     const html = readFileSync(join(root, "frontend/index.html"), "utf8")
@@ -18,6 +21,26 @@ function selectedLongSession(): any {
     copyFileSync(join(root, "frontend/styles.css"), join(output, "styles.css"));
     const panels = stripTypeScriptTypes(readFileSync(join(root, "frontend/collaboration-panels.ts"), "utf8"), { mode: "transform" })
       .replace(/^export /gm, "");
+    const fixtureSetup = selected ? `
+      document.querySelector('#collaboration-runtime-status').textContent='Synthetic connection failure';
+      document.querySelector('#collaboration-runtime-status').dataset.state='error';
+      document.querySelector('#collaboration-activity-date').value='2026-10-11';
+      document.querySelector('#collaboration-session-list').innerHTML='<li><button class="collaboration-session-button" aria-pressed="true"><strong>Synthetic long session</strong><small>Local fixture · retained failure status</small></button></li>';
+      document.querySelector('#collaboration-sessions-status').textContent='1 synthetic saved session';
+      document.querySelector('#collaboration-chat-heading').textContent='Synthetic long session';
+      runStatus.textContent='Previous response was retained after a synthetic transport failure.';
+      runStatus.dataset.state='error';
+      messages.innerHTML=Array.from({length:34},(_,i)=>'<article class="collaboration-message"><p>Synthetic saved reply paragraph '+i+'. No account, Vault, or task text is present.</p><p>Additional synthetic detail remains readable and scrollable inside the message list.</p></article>').join('');
+      document.querySelector('#collaboration-message-draft').disabled=false;
+      document.querySelector('#collaboration-send-message').disabled=false;
+    ` : `
+      document.querySelector('#collaboration-runtime-status').textContent='Synthetic connection ready';
+      document.querySelector('#collaboration-runtime-status').dataset.state='ready';
+      document.querySelector('#collaboration-activity-date').value='2026-10-11';
+      document.querySelector('#collaboration-session-list').replaceChildren();
+      document.querySelector('#collaboration-sessions-status').textContent='No synthetic sessions';
+      messages.replaceChildren();
+    `;
     const script = `${panels}
       const app=document.querySelector('.app-shell');
       app.dataset.workspaceDestination='collaboration';
@@ -27,37 +50,73 @@ function selectedLongSession(): any {
       document.querySelectorAll('[data-workspace-panel]').forEach(node=>node.hidden=node.dataset.workspacePanel!=='collaboration');
       document.querySelector('#workspace-title').textContent='Collaboration';
       document.querySelector('#workspace-description').textContent='Synthetic isolated layout regression';
-      document.querySelector('#collaboration-runtime-status').textContent='Synthetic connection failure';
-      document.querySelector('#collaboration-runtime-status').dataset.state='error';
-      document.querySelector('#collaboration-activity-date').value='2026-10-11';
-      document.querySelector('#collaboration-session-list').innerHTML='<li><button class="collaboration-session-button" aria-pressed="true"><strong>Synthetic long session</strong><small>Local fixture · retained failure status</small></button></li>';
-      document.querySelector('#collaboration-sessions-status').textContent='1 synthetic saved session';
-      document.querySelector('#collaboration-chat-heading').textContent='Synthetic long session';
-      const runStatus=document.querySelector('#collaboration-run-status');
-      runStatus.textContent='Previous response was retained after a synthetic transport failure.';
-      runStatus.dataset.state='error';
-      document.querySelector('#collaboration-message-list').innerHTML=Array.from({length:34},(_,i)=>'<article class="collaboration-message"><p>Synthetic saved reply paragraph '+i+'. No account, Vault, or task text is present.</p><p>Additional synthetic detail remains readable and scrollable inside the message list.</p></article>').join('');
-      document.querySelector('#collaboration-message-draft').disabled=false;
-      document.querySelector('#collaboration-send-message').disabled=false;
       document.querySelector('#collaboration-context-vault').textContent='Synthetic local fixture · no Vault access';
       document.querySelector('#collaboration-context-panes').innerHTML=Array.from({length:6},(_,i)=>'<section class="collaboration-context-card"><h4>Synthetic context group '+i+'</h4><p>Short synthetic context; no source was read.</p><ul><li>Fixture item '+i+' A</li><li>Fixture item '+i+' B</li></ul></section>').join('');
+      const runStatus=document.querySelector('#collaboration-run-status');
+      const messages=document.querySelector('#collaboration-message-list');
+      ${fixtureSetup}
       initializeCollaborationPanels();
       await new Promise(resolve=>setTimeout(resolve,80));
       const layout=document.querySelector('.collaboration-layout');
-      if(layout.dataset.columns==='two' && document.querySelector('#collaboration-toggle-context').getAttribute('aria-expanded')==='false') document.querySelector('#collaboration-toggle-context').click();
+      if(${expandContext} && layout.dataset.columns==='two' && document.querySelector('#collaboration-toggle-context').getAttribute('aria-expanded')==='false') document.querySelector('#collaboration-toggle-context').click();
+      const inputHelp=document.querySelector('.collaboration-composer .collaboration-help');
+      if(${openComposerHelp}) inputHelp.open=true;
       await new Promise(resolve=>setTimeout(resolve,40));
       const information=document.querySelector('.workspace-information');information.scrollTop=0;
       await new Promise(resolve=>setTimeout(resolve,40));
       const rect=node=>{const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width,height:r.height};};
+      const style=node=>{const s=getComputedStyle(node);return {fontFamily:s.fontFamily,fontSize:s.fontSize,lineHeight:s.lineHeight};};
+      const shell=document.querySelector('.workspace-shell');
+      const regions=document.querySelector('.workspace-regions');
+      const destination=document.querySelector('#workspace-destination-collaboration');
       const chat=document.querySelector('.collaboration-chat-pane');
-      const messages=document.querySelector('#collaboration-message-list');
+      const primary=document.querySelector('.collaboration-primary-layout');
+      const currentWork=document.querySelector('#collaboration-work-panel');
       const composer=document.querySelector('#collaboration-composer');
-      const infoRect=rect(information),chatRect=rect(chat),messageRect=rect(messages),composerRect=rect(composer);
-      return JSON.stringify({viewport:{width:innerWidth,height:innerHeight},mode:layout.dataset.columns,information:{...infoRect,clientHeight:information.clientHeight,scrollHeight:information.scrollHeight},chat:chatRect,messageList:{...messageRect,clientHeight:messages.clientHeight,scrollHeight:messages.scrollHeight},composer:composerRect,retainedFailure:runStatus.dataset.state==='error'&&runStatus.textContent.includes('retained'),composerInChat:composerRect.top>=chatRect.top&&composerRect.bottom<=chatRect.bottom,composerInViewport:composerRect.top>=0&&composerRect.bottom<=innerHeight});`;
+      const send=document.querySelector('#collaboration-send-message');
+      const textarea=document.querySelector('#collaboration-message-draft');
+      const localHeader=document.querySelector('.collaboration-header');
+      const activityDate=document.querySelector('#collaboration-activity-date');
+      const title=document.querySelector('#collaboration-heading');
+      const messagesRect=rect(messages),chatRect=rect(chat),composerRect=rect(composer);
+      const result={
+        viewport:{width:innerWidth,height:innerHeight},mode:layout.dataset.columns,
+        shell:rect(shell),regions:rect(regions),information:{...rect(information),clientHeight:information.clientHeight,scrollHeight:information.scrollHeight},
+        destination:rect(destination),primary:rect(primary),chat:chatRect,
+        messageList:{...messagesRect,clientHeight:messages.clientHeight,scrollHeight:messages.scrollHeight,overflowY:getComputedStyle(messages).overflowY},
+        composer:composerRect,textarea:rect(textarea),send:rect(send),composerHelpOpen:inputHelp.open,currentWork:{...rect(currentWork),hidden:currentWork.hidden,scrollHeight:currentWork.scrollHeight,clientHeight:currentWork.clientHeight,overflowY:getComputedStyle(currentWork).overflowY},
+        chatSurface:{background:getComputedStyle(chat).backgroundColor,borderStyle:getComputedStyle(chat).borderTopStyle,borderWidth:getComputedStyle(chat).borderTopWidth},
+        retainedFailure:runStatus.dataset.state==='error'&&runStatus.textContent.includes('retained'),
+        globalHeaderHidden:getComputedStyle(document.querySelector('.workspace-header')).display==='none',
+        localHeaderInsideInformation:information.contains(localHeader),
+        activityDateInsideLocalHeader:localHeader.contains(activityDate),
+        retainedStatusInChat:!(${selected})||rect(runStatus).top>=chatRect.top&&rect(runStatus).bottom<=chatRect.bottom,
+        currentWorkFollowsPrimary:layout.dataset.columns!=='two'||currentWork.hidden||rect(currentWork).top>=rect(primary).bottom,
+        composerInChat:composerRect.top>=chatRect.top&&composerRect.bottom<=chatRect.bottom,
+        composerInViewport:composerRect.top>=0&&composerRect.bottom<=innerHeight,
+        titleStyles:{today:style(document.querySelector('#today-page-heading')),tasks:style(document.querySelector('#tasks-heading')),calendar:style(document.querySelector('.calendar-header h2')),habits:style(document.querySelector('#habits-heading')),collaboration:style(title)}
+      };
+      const composerTop=composerRect.top;
+      messages.scrollTop=messages.scrollHeight;
+      await new Promise(resolve=>setTimeout(resolve,30));
+      result.messageScrollTop=messages.scrollTop;
+      result.composerTopAfterMessageScroll=rect(composer).top;
+      if(layout.dataset.columns==='two'&&!currentWork.hidden){
+        information.scrollTop=information.scrollHeight;
+        await new Promise(resolve=>setTimeout(resolve,30));
+        const workRect=rect(currentWork),infoRect=rect(information);
+        result.currentWorkReachableByPageScroll=workRect.bottom>infoRect.top&&workRect.top<infoRect.bottom;
+        result.pageScrollTop=information.scrollTop;
+      } else if(layout.dataset.columns==='three'&&!currentWork.hidden){
+        currentWork.scrollTop=currentWork.scrollHeight;
+        result.currentWorkReachableByPaneScroll=currentWork.scrollTop>0;
+      }
+      result.composerTopAfterMessageScrollDifference=Math.abs(result.composerTopAfterMessageScroll-composerTop);
+      return JSON.stringify(result);`;
     const scriptPath = join(output, "check.js");
     writeFileSync(scriptPath, script);
     const swiftProbe = join(root, "tests/frontend/helpers/rendered-today-unlocated.swift");
-    const raw = execFileSync("swift", [swiftProbe, join(output, "index.html"), scriptPath, "874", "756"], {
+    const raw = execFileSync("swift", [swiftProbe, join(output, "index.html"), scriptPath, String(width), String(height)], {
       cwd: root, encoding: "utf8", timeout: 60_000,
     });
     const encoded = raw.match(/\{[\s\S]*\}/)?.[0];
@@ -68,14 +127,61 @@ function selectedLongSession(): any {
   }
 }
 
-test("a selected long conversation keeps the composer reachable while messages scroll independently", { skip: process.platform !== "darwin" }, () => {
-  const result = selectedLongSession();
-  assert.deepEqual(result.viewport, { width: 874, height: 756 });
-  assert.equal(result.mode, "two");
-  assert.equal(result.retainedFailure, true);
-  assert.ok(result.messageList.scrollHeight > result.messageList.clientHeight, JSON.stringify(result.messageList));
-  assert.ok(result.information.scrollHeight > result.information.clientHeight, JSON.stringify(result.information));
+function assertSharedHeadings(result: any) {
+  const reference = result.titleStyles.today;
+  for (const [name, title] of Object.entries(result.titleStyles) as [string, any][]) {
+    assert.equal(title.fontFamily, reference.fontFamily, `${name} title family`);
+    assert.equal(title.fontSize, reference.fontSize, `${name} title size`);
+    assert.equal(title.lineHeight, reference.lineHeight, `${name} title line height`);
+  }
+}
+
+for (const [width, height] of sizes) {
+  test(`empty Collaboration keeps its composer visible with shared headings at ${width}×${height}`, { skip: process.platform !== "darwin" }, () => {
+    const result = renderScenario({ width, height, selected: false });
+    assert.deepEqual(result.viewport, { width, height });
+    assert.equal(result.globalHeaderHidden, true);
+    assert.equal(result.localHeaderInsideInformation, true);
+    assert.equal(result.activityDateInsideLocalHeader, true);
+    assert.equal(result.composerInChat, true, JSON.stringify(result));
+    assert.equal(result.composerInViewport, true, JSON.stringify(result));
+    assert.ok(result.textarea.height > 0);
+    assert.ok(result.chatSurface.background !== "rgba(0, 0, 0, 0)", JSON.stringify(result.chatSurface));
+    assert.equal(result.chatSurface.borderStyle, "solid");
+    assertSharedHeadings(result);
+  });
+
+  test(`selected long Collaboration keeps a readable scrolling history and reachable composer at ${width}×${height}`, { skip: process.platform !== "darwin" }, () => {
+    const result = renderScenario({ width, height, selected: true, expandContext: true });
+    assert.deepEqual(result.viewport, { width, height });
+    assert.equal(result.globalHeaderHidden, true);
+    assert.equal(result.retainedFailure, true);
+    assert.equal(result.localHeaderInsideInformation, true);
+    assert.equal(result.activityDateInsideLocalHeader, true);
+    assert.equal(result.retainedStatusInChat, true, JSON.stringify(result));
+    assert.equal(result.currentWorkFollowsPrimary, true, JSON.stringify(result));
+    assert.equal(result.composerInChat, true, JSON.stringify(result));
+    assert.equal(result.composerInViewport, true, JSON.stringify(result));
+    assert.ok(result.messageList.clientHeight >= 80, JSON.stringify(result));
+    assert.ok(result.messageList.scrollHeight > result.messageList.clientHeight, JSON.stringify(result.messageList));
+    assert.ok(result.messageScrollTop > 0);
+    assert.ok(result.composerTopAfterMessageScrollDifference < 1, JSON.stringify(result));
+    if (result.mode === "two") {
+      assert.ok(result.information.scrollHeight > result.information.clientHeight, JSON.stringify(result.information));
+      assert.equal(result.currentWorkReachableByPageScroll, true, JSON.stringify(result.currentWork));
+    } else {
+      assert.equal(result.mode, "three");
+      assert.equal(result.currentWorkReachableByPaneScroll, true, JSON.stringify(result.currentWork));
+    }
+    assertSharedHeadings(result);
+  });
+}
+
+test("expanded input and saving details do not clip the retained composer controls at 795×720", { skip: process.platform !== "darwin" }, () => {
+  const result = renderScenario({ width: 795, height: 720, selected: true, expandContext: true, openComposerHelp: true });
+  assert.equal(result.composerHelpOpen, true);
   assert.equal(result.composerInChat, true, JSON.stringify(result));
   assert.equal(result.composerInViewport, true, JSON.stringify(result));
+  assert.ok(result.send.height > 0);
+  assert.ok(result.send.top >= result.composer.top && result.send.bottom <= result.composer.bottom, JSON.stringify(result));
 });
-
