@@ -295,6 +295,16 @@ type TaskChangeView = Readonly<{
         kind: "reschedule";
         date: string | null;
         time: string | null;
+        executionEnd?: Readonly<{ date: string; time: string }> | null;
+      }>
+    | Readonly<{
+        kind: "manualUpdate";
+        name: string;
+        content: string | null;
+        date: string | null;
+        time: string | null;
+        listId: string | null;
+        executionEnd?: Readonly<{ date: string; time: string }> | null;
       }>
     | Readonly<{ kind: "setState"; state: "pending" | "completed" | "abandoned" }>
     | Readonly<{
