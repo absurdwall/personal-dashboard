@@ -159,3 +159,10 @@ Tasks 保留清单侧栏，用简洁勾选列表和所选任务详情分开阅�
 - 用户在 2026-10-10 明确指定本轮 Spec、后续 tickets 与执行全部 local。本文件是 PDEX-SPEC-01 的完整 canonical 正文，local map 记录 ready-for-agent triage 与 open lifecycle；无需额外 triage，GitHub 故障不再阻塞本轮规格发布。
 - 规划、票据与后续获授权的实施均保留完整本地 commit history；状态、依赖、认领和证据随操作记录，不通过改写历史伪装成远端已发布。远端恢复后的 branch push/PR 与 Issues 迁移分别处理，保留稳定 ID 和映射，不自动迁移或合入 main。
 - 规格发布本身不代表代码已实现或 App 已安装，也不开始执行旧工作队列。
+
+
+## Human quota acceptance decision — 2026-10-11
+
+The human explicitly accepted the quota-exhaustion criterion and waived further actual exhaustion testing in review chat `01a128ff-8865-7493-9698-cc48c19d7939` (direct user reply `01a12969-8b59-76a3-a544-d67411f4656f`). The quota subgate is **accepted by human waiver on existing evidence**, not an observed exhaustion result. No controlled injection, new model request or artificial quota spending is required or performed. Historical statements that actual exhaustion was not established remain true observations; their pending-test/blocker status is superseded by this explicit decision.
+
+PDEX-11's conflict/write-failure/unconfirmed-result combined criterion is now checked: existing qualified source/persistence/production native evidence supports those constituents, and the quota constituent is explicitly accepted by the human. Remaining required gates are real Sogou composition, sustained native edge/active resize cancellation and fresh final-installed 830×758 narrow-window behavior. PDEX-09/PDEX-11 remain blocked, parent open, and nine other tickets resolved. [Current manual checks](manual-acceptance.md) no longer asks for quota exhaustion. Installation remains confirmed and does not by itself close the remaining gates.

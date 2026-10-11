@@ -24,7 +24,7 @@
 - [x] Task 选区、移动、区间读回与完成状态一致，旧任务及旧对话/离线调用的保存兼容性保持。
 - [ ] 五/六行月历、重叠条目、长拖动、清晰勾选和详情在常用及窄窗口可操作。
 - [ ] slash 键盘/点击/中文输入法、草稿保留、目标日期与晚间入口验证通过，补全与入口均不自动发消息。
-- [ ] 文档冲突、写入失败和未确认结果真实表达；正常模型额度耗尽不阻止确定性编辑。
+- [x] 文档冲突、写入失败和未确认结果真实表达；正常模型额度耗尽不阻止确定性编辑（额度子项由用户接受现有证据并豁免真实耗尽补测，未实际观察额度耗尽）。
 - [x] 各功能票自己的测试证据仍保留；汇总独立代码检查、自动测试和打包 UI 验收，不把未验证项目写成通过。
 - [x] 不修改个人真实数据，不从此票推断安装或远端发布已获授权，不关闭父 spec。
 
@@ -66,3 +66,10 @@ B did not establish fresh narrow-window acceptance; real Sogou composition, sust
 ## Normal installed continuation — 2026-10-11
 
 Human-authorized daily App replacement is complete on reviewed product source `6af1198` / installed executable `a6a277f68b25002f88c4958ed56a93c19b7497dc36eb49fa571a2f7b85b3d833`, normal production identifier/configuration with real profile/clock/connection. [Installation and recovery evidence](../evidence/local-install-2026-10-11.md) confirms existing data/drafts retained and no test submission. [Current unblock steps](../manual-acceptance.md) distinguish human native input/gesture/window checks from naturally exhausted account environment. Status/Lifecycle remain blocked, combined criteria unchecked, parent open. Installation does not convert missing acceptance into a pass.
+
+
+## Human quota acceptance decision — 2026-10-11
+
+The human explicitly accepted the quota-exhaustion criterion and waived further actual exhaustion testing in review chat `01a128ff-8865-7493-9698-cc48c19d7939` (direct user reply `01a12969-8b59-76a3-a544-d67411f4656f`). The quota subgate is **accepted by human waiver on existing evidence**, not an observed exhaustion result. No controlled injection, new model request or artificial quota spending is required or performed. Historical statements that actual exhaustion was not established remain true observations; their pending-test/blocker status is superseded by this explicit decision.
+
+PDEX-11's conflict/write-failure/unconfirmed-result combined criterion is now checked: existing qualified source/persistence/production native evidence supports those constituents, and the quota constituent is explicitly accepted by the human. Remaining required gates are real Sogou composition, sustained native edge/active resize cancellation and fresh final-installed 830×758 narrow-window behavior. PDEX-09/PDEX-11 remain blocked, parent open, and nine other tickets resolved. [Current manual checks](../manual-acceptance.md) no longer asks for quota exhaustion. Installation remains confirmed and does not by itself close the remaining gates.
