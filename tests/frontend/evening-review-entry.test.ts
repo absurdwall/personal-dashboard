@@ -51,7 +51,9 @@ function productionWebKit(script: string): any {
       window.eveningHarness = {
         seed(date, session, workspace) {
           currentInterfaceLanguage='zh';
-          currentTodayView={date,isToday:date==='2026-09-27',canRecord:true};
+          currentTodayView={date,isToday:date==='2026-09-27',canRecord:true,baseline:{timeline:[],evidence:[]}};
+          document.querySelector('#today-ready').hidden=false;
+          showTodayPhase('evening');
           currentCollaborationSession=session;
           currentCollaborationWorkspace=workspace;
           currentCollaborationConnection={authenticated:true,authMode:'chatgpt',readOnlyTextTurnsAvailable:true};
@@ -103,12 +105,13 @@ function productionWebKit(script: string): any {
 test('production Evening entry navigates with selected date and authoritative pointer, then preserves unsaved edits on repeat', {skip:process.platform!=='darwin'},()=>{
   const result=productionWebKit(`
     window.eveningHarness.seed('2026-09-20',null,workspace('2026-09-20'));
-    const label=button.textContent;await clickEntry();const initial=input.value;
+    const label=button.textContent;const visible=button.getBoundingClientRect().height>0;await clickEntry();const initial=input.value;
     input.value='用户正在编辑的草稿';input.dispatchEvent(new Event('input',{bubbles:true}));
     await clickEntry();await new Promise(r=>setTimeout(r,20));
-    return JSON.stringify({label,initial,draft:input.value,state:window.eveningHarness.current(),notice:document.querySelector('#collaboration-review-entry-notice').textContent,sessions:sessions.length,commands:invocations.map(i=>i.command),saved:sessions[0].draft});
+    return JSON.stringify({label,visible,initial,draft:input.value,state:window.eveningHarness.current(),notice:document.querySelector('#collaboration-review-entry-notice').textContent,sessions:sessions.length,commands:invocations.map(i=>i.command),saved:sessions[0].draft});
   `);
   assert.equal(result.label,'复盘 2026-09-20');
+  assert.equal(result.visible,true);
   assert.ok(result.initial.startsWith('/retro '));
   assert.ok(result.initial.includes('dashboard://record/2026-09-20?phase=evening'));
   assert.equal(result.draft,'用户正在编辑的草稿');

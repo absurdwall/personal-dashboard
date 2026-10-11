@@ -1,8 +1,8 @@
 import AppKit
 import WebKit
 
-// Geometry companion to the compiled-handler regressions. No IPC or user Vault:
-// load the shipped page/CSS with synthetic handler output in macOS WebKit.
+// Runs async production DOM event scenarios in macOS WebKit.
+// Native IPC remains a test boundary; no user Vault or installed App is used.
 final class LayoutProbe: NSObject, WKNavigationDelegate {
     let webView: WKWebView
     let script: String
