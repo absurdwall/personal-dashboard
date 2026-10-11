@@ -152,21 +152,24 @@ test('production broad-plan and exact-point drags remain points and use distinct
 
 
 test('a rejected plan drag restores the saved card and retains the attempted values without replay',async()=>{
-  const fixture=await pageFixture();const {page}=fixture;
+  const fixture=await pageFixture(views.loaded,[views.moved]);const {page}=fixture;
   try{
     await page.evaluate(()=>{window.__failNext=true;});
-    await dragTo(page,'Synthetic drag range',600);
+    await dragTo(page,'Synthetic drag range',1080,{long:true});
     const dialog=page.locator('dialog.plan-time-editor');await dialog.waitFor({state:'visible'});
     assert.match(await dialog.locator('[role=status]').textContent(),/Synthetic external revision conflict/);
     assert.equal(await marker(page,'Synthetic drag range').locator('.today-axis-marker-time').textContent(),'08:07–10:11');
-    assert.deepEqual(await dialog.locator('input[type=time]').evaluateAll(inputs=>inputs.map(input=>input.value)),['10:00','12:04']);
+    assert.deepEqual(await dialog.locator('input[type=time]').evaluateAll(inputs=>inputs.map(input=>input.value)),['18:00','20:04']);
     assert.equal(await dialog.locator('button[type=submit]').isDisabled(),true);
     assert.equal(await dialog.locator('select').isDisabled(),true);
     assert.equal(await dialog.locator('input[type=time]').evaluateAll(inputs=>inputs.every(input=>input.disabled)),true);
     await dialog.getByRole('button',{name:'Read record again'}).click();
     await page.waitForFunction(()=>window.__calls.filter(x=>['today_view','daily_view','read_daily_view'].includes(x.command)).length>=2);
     assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='edit_plan_time').length),1);
-    assert.deepEqual(await dialog.locator('input[type=time]').evaluateAll(inputs=>inputs.map(input=>input.value)),['10:00','12:04']);
+    assert.deepEqual(await dialog.locator('input[type=time]').evaluateAll(inputs=>inputs.map(input=>input.value)),['18:00','20:04']);
+    await dialog.getByRole('button',{name:'Save time'}).click();
+    await dialog.waitFor({state:'hidden'});
+    assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='edit_plan_time').length),2);
   }finally{await fixture.close();}
 });
 
@@ -182,7 +185,7 @@ test('a saved plan with failed readback reports the saved state and refreshes wi
     await dialog.getByRole('button',{name:'Read record again'}).click();
     await page.waitForFunction(()=>[...document.querySelectorAll('.today-axis-marker')].some(marker=>marker.textContent.includes('Synthetic drag range')&&marker.querySelector('.today-axis-marker-time')?.textContent==='18:00–20:04'));
     assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='edit_plan_time').length),1);
-    assert.equal(await dialog.locator('button[type=submit]').isDisabled(),true);
+    await dialog.waitFor({state:'hidden'});
   }finally{await fixture.close();}
 });
 

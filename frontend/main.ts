@@ -5355,7 +5355,7 @@ function axisEntryDetails(
 }
 
 function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
-  loaded: TodayView; startMinute: number; endMinute: number | null; notice: string;
+  loaded: TodayView; startMinute: number; endMinute: number | null; notice: string; savedRevision?: string;
 }>): void {
   const loaded = recovery?.loaded ?? currentTodayView;
   if (!entry.planId || !entry.timeEditable || !loaded?.revision || !loaded.targetBinding) return;
@@ -5431,7 +5431,53 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
   recheck.type = "button";
   setCopy(recheck, "today.planRecheck");
   recheck.hidden = true;
-  recheck.addEventListener("click", () => { void refreshToday(loaded.date); });
+  let expectedRevision = loaded.revision;
+  let savedRevision = recovery?.savedRevision;
+  recheck.addEventListener("click", () => {
+    if (todayOperationCount > 0) return;
+    recheck.disabled = true;
+    updateTodayOperationState(1);
+    const request = todayPresentationRequests.begin();
+    void (async () => {
+      try {
+        const fresh = await window.__TAURI__.core.invoke<TodayView>("read_daily_view", { date: loaded.date });
+        if (!dialog.open || fresh.date !== loaded.date || fresh.targetBinding !== loaded.targetBinding ||
+            !fresh.revision || !todayPresentationRequests.isCurrent(request) ||
+            currentTodayView?.date !== loaded.date || currentTodayView.targetBinding !== loaded.targetBinding) {
+          setCopy(status, "today.planSourceChanged");
+          return;
+        }
+        renderToday(fresh);
+        // A successful command's whole-document revision confirms its readback
+        // without guessing an updated source ID from its title or position.
+        if (savedRevision && fresh.revision === savedRevision) {
+          showTodayMutationCopy("today.planSaved", "ready");
+          showTodayAxisEditCopy("today.planSaved");
+          dialog.close();
+          return;
+        }
+        const unchanged = fresh.timeAxis.currentArrangement.find(candidate => candidate.planId === entry.planId);
+        if (savedRevision || !unchanged?.timeEditable) {
+          setCopy(status, "today.planSourceChanged");
+          return;
+        }
+        // The opaque raw-source/span ID still identifies unchanged bytes.
+        // Keep the proposed values and require a deliberate subsequent submit.
+        expectedRevision = fresh.revision;
+        submitted = false;
+        save.disabled = precision.disabled = start.time.disabled = start.nextDay.disabled = false;
+        end.nextDay.disabled = false;
+        updatePrecision();
+        setCopy(status, "today.planRetryReady");
+        recheck.hidden = true;
+      } catch (error) {
+        status.textContent = `${t("today.planUnconfirmed")} ${String(error)}`;
+      } finally {
+        recheck.disabled = false;
+        updateTodayOperationState(-1);
+      }
+    })();
+  });
   form.append(status, save, recheck, close);
   if (recovery) {
     status.textContent = recovery.notice;
@@ -5439,7 +5485,6 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
     save.disabled = precision.disabled = true;
     start.time.disabled = end.time.disabled = start.nextDay.disabled = end.nextDay.disabled = true;
   }
-  const operationId = `plan-time-${crypto.randomUUID()}`;
   let submitted = Boolean(recovery);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -5457,6 +5502,7 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
       setCopy(status, "today.planInvalidTime");
       return;
     }
+    const operationId = `plan-time-${crypto.randomUUID()}`;
     // A captured source/revision stays bound even when the displayed date or Vault changes.
     submitted = true;
     save.disabled = precision.disabled = true;
@@ -5467,9 +5513,10 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
       let confirmed = false;
       try {
         const result = await window.__TAURI__.core.invoke<Readonly<{ savedRevision: string; view: TodayView | null; refreshError: string | null }>>("edit_plan_time", {
-          input: { date: loaded.date, targetBinding: loaded.targetBinding, expectedRevision: loaded.revision,
+          input: { date: loaded.date, targetBinding: loaded.targetBinding, expectedRevision,
             planId: entry.planId, operationId, startMinute, endMinute, precision: precision.value },
         });
+        savedRevision = result.savedRevision;
         confirmed = result.view !== null;
         if (result.view && todayPresentationRequests.isCurrent(request)) {
           renderToday(result.view);
@@ -5637,11 +5684,11 @@ async function moveTodayAxisPlan(change: AxisGestureCommit<TodayView>): Promise<
   const request = todayPresentationRequests.begin();
   todayPresentationFresh = false;
   updateTodayOperationState(1);
-  const recover = (notice: string, saved = false) => {
+  const recover = (notice: string, savedRevision?: string) => {
     if (!sameTarget() || !todayPresentationRequests.isCurrent(request)) return;
     renderTodayTimeAxis(currentTodayView!);
-    showTodayAxisEditCopy(saved ? "today.planSavedNeedsReadback" : "today.planUnconfirmed", "error");
-    openPlanTimeEditor(entry, { loaded, startMinute: change.startMinute, endMinute: change.endMinute, notice });
+    showTodayAxisEditCopy(savedRevision ? "today.planSavedNeedsReadback" : "today.planUnconfirmed", "error");
+    openPlanTimeEditor(entry, { loaded, startMinute: change.startMinute, endMinute: change.endMinute, notice, savedRevision });
   };
   try {
     const result = await window.__TAURI__.core.invoke<Readonly<{ savedRevision: string; view: TodayView | null; refreshError: string | null }>>("edit_plan_time", {
@@ -5657,7 +5704,7 @@ async function moveTodayAxisPlan(change: AxisGestureCommit<TodayView>): Promise<
       }
       return true;
     }
-    recover(result.refreshError ?? t("today.planSavedNeedsReadback"), true);
+    recover(result.refreshError ?? t("today.planSavedNeedsReadback"), result.savedRevision);
   } catch (error) {
     recover(`${t("today.planUnconfirmed")} ${String(error)}`);
   } finally {

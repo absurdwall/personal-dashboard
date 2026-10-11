@@ -33,7 +33,7 @@ async function webKit(view: any, responses: any[], script: string): Promise<any>
         if(command==='appearance_preferences') return {accentColor:'forest',backgroundImageState:'none',backgroundImageUrl:null,cleanupWarning:null};
         if(['today_view','daily_view','read_daily_view'].includes(command)) return window.probeView;
         if(command==='today_clock') return {livedDate:window.probeView.date,currentTime:window.probeView.currentTime};
-        if(command==='edit_plan_time') { const next=window.probeResponses.shift(); if(!next) throw Error('synthetic uncertain write'); window.probeView=next; return {savedRevision:next.revision,view:next,refreshError:null}; }
+        if(command==='edit_plan_time') { const next=window.probeResponses.shift(); if(!next) throw Error('synthetic uncertain write'); if(next.error) throw Error(next.error); window.probeView=next; return {savedRevision:next.revision,view:next,refreshError:null}; }
         throw Error('Unexpected IPC: '+command);
       }}};
     </script>`;
@@ -129,4 +129,39 @@ test('production exact-point conversion sends no former range end and survives a
     const dialog=await open(); return JSON.stringify({precision:dialog.querySelector('select').value,start:dialog.querySelector('input[type=time]').value,endDisabled:dialog.querySelectorAll('input[type=time]')[1].disabled});
   `);
   assert.deepEqual(reopened,{precision:'exactPoint',start:'16:30',endDisabled:true});
+});
+
+
+test('production failed manual save rereads unchanged source and requires explicit retry with retained values and fresh revision', {skip:process.platform!=='darwin'},async()=>{
+  const result=await webKit(views.loaded,[{error:'synthetic write failure'},views.fuzzy],`
+    const dialog=await open(); const times=dialog.querySelectorAll('input[type=time]'); times[0].value='14:00';
+    dialog.querySelector('form').requestSubmit(); await wait(()=>dialog.querySelector('[role=status]').textContent.includes('未确认'));
+    window.probeView={...window.probeView,revision:'synthetic-authoritative-new-revision'};
+    [...dialog.querySelectorAll('button')].find(b=>b.textContent==='重新读取核对').click();
+    await wait(()=>!times[0].disabled);
+    const afterRead={calls:edits().length,start:times[0].value,precision:dialog.querySelector('select').value};
+    dialog.querySelector('form').requestSubmit(); await wait(()=>edits().length===2&&!document.querySelector('dialog.plan-time-editor'));
+    return JSON.stringify({afterRead,inputs:edits(),label:planRow().querySelector('summary').textContent,errors:window.probeErrors});
+  `);
+  assert.deepEqual(result.afterRead,{calls:1,start:'14:00',precision:'approximatePoint'});
+  assert.equal(result.inputs[1].expectedRevision,'synthetic-authoritative-new-revision');
+  assert.equal(result.inputs[1].planId,result.inputs[0].planId);
+  assert.deepEqual(result.inputs.map((input:any)=>[input.precision,input.startMinute,input.endMinute]),[['approximatePoint',840,null],['approximatePoint',840,null]]);
+  assert.notEqual(result.inputs[1].operationId,result.inputs[0].operationId);
+  assert.match(result.label,/约14:00/); assert.deepEqual(result.errors,[]);
+});
+
+test('production failed manual save cannot rebind changed source by matching title or position', {skip:process.platform!=='darwin'},async()=>{
+  const result=await webKit(views.loaded,[{error:'synthetic write failure'}],`
+    const dialog=await open(); const times=dialog.querySelectorAll('input[type=time]'); times[0].value='14:00';
+    dialog.querySelector('form').requestSubmit(); await wait(()=>dialog.querySelector('[role=status]').textContent.includes('未确认'));
+    window.probeView=structuredClone(window.probeView); window.probeView.revision='synthetic-changed-source';
+    const oldId=edits()[0].planId; window.probeView.timeAxis.currentArrangement.find(entry=>entry.planId===oldId).planId='synthetic-different-raw-source-span';
+    [...dialog.querySelectorAll('button')].find(b=>b.textContent==='重新读取核对').click();
+    await wait(()=>dialog.querySelector('[role=status]').textContent.includes('来源或修订已改变'));
+    dialog.querySelector('form').dispatchEvent(new Event('submit',{cancelable:true}));
+    return JSON.stringify({calls:edits().length,start:times[0].value,disabled:times[0].disabled,precisionDisabled:dialog.querySelector('select').disabled,notice:dialog.querySelector('[role=status]').textContent,errors:window.probeErrors});
+  `);
+  assert.equal(result.calls,1); assert.equal(result.start,'14:00'); assert.equal(result.disabled,true); assert.equal(result.precisionDisabled,true);
+  assert.match(result.notice,/重新选择/); assert.deepEqual(result.errors,[]);
 });
