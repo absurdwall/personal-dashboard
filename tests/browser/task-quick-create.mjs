@@ -19,7 +19,7 @@ const view = {state:'missing',date:'2026-10-10',isToday:true,currentTime:'09:00'
   dayTasks:{state:'empty',message:'',planError:null,revision:null,targetBinding:null,tasks:[]},habitCorrections:{state:'missing',message:'',date:'2026-10-10',canRecord:false,completionRevision:null,completionTargetBinding:null,namesConfigurationState:'missing',habits:[]},
   timeAxis:{currentArrangement:[],confirmedFacts:[],unlocatedCurrentArrangement:[],unlocatedConfirmedFacts:[]}};
 
-async function pageFixture({width=1280,extraTasks=[]}={}) {
+async function pageFixture({width=1280,extraTasks=[],clock=null,selectedDate=null}={}) {
   const server=createServer(async(req,res)=>{try {const url=new URL(req.url,'http://localhost');const file=resolve(root,'dist',url.pathname==='/'?'index.html':url.pathname.slice(1));
     if(!file.startsWith(resolve(root,'dist')+'/'))throw Error('invalid path');
     res.setHeader('content-type',file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html');res.end(await readFile(file));}catch {res.statusCode=404;res.end('not found');}});
@@ -27,8 +27,8 @@ async function pageFixture({width=1280,extraTasks=[]}={}) {
   const browser=await chromium.launch({channel:'chrome',headless:true});
   const page=await browser.newPage({viewport:{width,height:758}});
   const errors=[];page.on('pageerror',error=>errors.push(String(error)));
-  const fixtureView=structuredClone(view);fixtureView.tasks.tasks[0].changes=[{id:'synthetic-rename',kind:'renamed',changedAt:'2026-10-10T08:30-04:00',source:'user'}];fixtureView.tasks.tasks.push(...extraTasks);fixtureView.tasks.tasks[0].content='Full synthetic context, only visible in selected detail';fixtureView.tasks.lists.push({id:'home',name:'Home',isSystem:false,archived:false});
-  await page.addInitScript(({view})=>{
+  const fixtureView=structuredClone(view);if(clock)fixtureView.tasks.currentDate=clock.date;if(selectedDate){fixtureView.date=selectedDate;fixtureView.isToday=false;}fixtureView.tasks.tasks[0].changes=[{id:'synthetic-rename',kind:'renamed',changedAt:'2026-10-10T08:30-04:00',source:'user'}];fixtureView.tasks.tasks.push(...extraTasks);fixtureView.tasks.tasks[0].content='Full synthetic context, only visible in selected detail';fixtureView.tasks.lists.push({id:'home',name:'Home',isSystem:false,archived:false});
+  await page.addInitScript(({view,clock})=>{
     window.__fixture=view;window.__calls=[];window.__failNext=null;
     window.__TAURI__={core:{invoke:async(command,args)=>{
       window.__calls.push({command,args});
@@ -39,7 +39,7 @@ async function pageFixture({width=1280,extraTasks=[]}={}) {
       if(command==='application_identity')return {productName:'Personal Dashboard'};
       if(command==='interface_language_preferences')return {interfaceLanguage:'en'};
       if(command==='set_interface_language')return {interfaceLanguage:args.interfaceLanguage};
-      if(command==='today_clock')return {date:v.date,time:v.currentTime};
+      if(command==='today_clock')return clock ?? {date:v.date,time:v.currentTime,livedDate:v.date};
       if(command==='create_task'){
         const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
         if(!t.lists.some(list=>list.id===input.listId&&!list.archived))throw Error('Synthetic list unavailable');
@@ -60,7 +60,7 @@ async function pageFixture({width=1280,extraTasks=[]}={}) {
       }
       throw Error('Unsupported browser fixture boundary '+command);
     }}};
-  },{view:fixtureView});
+  },{view:fixtureView,clock});
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   try {
     await page.locator('[data-workspace-destination=tasks]').click();
@@ -85,7 +85,7 @@ test('name-only top quick create confirms, clears and keeps focus for the next t
     await page.waitForFunction(()=>document.querySelector('#task-quick-name').value==='');
     assert.equal(await quick.evaluate(el=>el===document.activeElement),true);
     const saved=await page.evaluate(()=>window.__fixture.tasks.tasks.find(t=>t.name==='Quick first'));
-    assert.equal(saved.content,null);assert.equal(saved.date,null);assert.equal(saved.time,null);assert.equal(saved.listId,'inbox');
+    assert.equal(saved.content,null);assert.equal(saved.date,'2026-10-10');assert.equal(saved.time,null);assert.equal(saved.listId,'inbox');
     await quick.fill('Quick second');await page.locator('#task-quick-submit').click();
     await page.waitForFunction(()=>window.__fixture.tasks.tasks.some(t=>t.name==='Quick second'));
     assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.filter(t=>t.name.startsWith('Quick')).length),2);
@@ -357,3 +357,78 @@ test('ended Inbox submission follows current interface language while the origin
     assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').length),2,'switching language never replays ended submissions');
   } finally {await f.close();}
 });
+
+ test('compact quick schedule defaults to the application lived day and saves tomorrow plus time',async()=>{
+ const f=await pageFixture({clock:{date:'2026-10-11',time:'01:45',livedDate:'2026-10-10'}}); const {page}=f;
+ try {
+ const quick=page.locator('#task-quick-name'); await quick.fill('Local lived default');await quick.press('Enter');
+ await page.waitForFunction(()=>window.__fixture.tasks.tasks.some(t=>t.name==='Local lived default'));
+ assert.equal(await page.evaluate(()=>window.__fixture.tasks.tasks.find(t=>t.name==='Local lived default').date),'2026-10-10');
+ await page.locator('#tasks-list-scopes [data-task-scope=today]').click();
+ await page.locator('#tasks-list .task-title-button').filter({hasText:'Local lived default'}).waitFor({state:'visible',timeout:1500});
+ await page.locator('#task-quick-schedule').click();
+ await page.locator('#task-quick-tomorrow').click();await page.locator('#task-quick-time').fill('15:30');await page.locator('#task-quick-schedule-apply').click();
+ await quick.fill('Scheduled quick');await quick.press('Enter');
+ await page.waitForFunction(()=>window.__fixture.tasks.tasks.some(t=>t.name==='Scheduled quick'));
+ const saved=await page.evaluate(()=>window.__fixture.tasks.tasks.find(t=>t.name==='Scheduled quick'));
+ assert.equal(saved.date,'2026-10-11');assert.equal(saved.time,'15:30');
+ assert.equal(await quick.evaluate(el=>el===document.activeElement),true);
+ } finally {await f.close();}
+ });
+
+ test('Today compact entry freezes unknown original schedule and rereads before one guarded retry',async()=>{
+ const f=await pageFixture();const {page}=f;
+ try {
+ await page.locator('[data-workspace-destination=today]').click();
+ const name=page.locator('#today-task-create-name');await name.waitFor({state:'visible'});
+ await name.fill('Today original 中文');await page.locator('#today-task-create-schedule').click();
+ await page.locator('#today-task-create-tomorrow').click();await page.locator('#today-task-create-time').fill('16:45');await page.locator('#today-task-create-schedule-apply').click();
+ await page.evaluate(()=>window.__failNext='create_task');await name.press('Enter');
+ await page.waitForFunction(()=>document.querySelector('#today-task-status').textContent.includes('Synthetic save failure'));
+ assert.equal(await name.isDisabled(),true,'unknown result must freeze original input');
+ assert.equal(await page.locator('#today-task-create-schedule').isDisabled(),true);
+ assert.match(await page.locator('#today-task-status').textContent(),/unconfirmed/i);
+ await page.evaluate(()=>window.__fixture.tasks.revision='r2');await page.locator('#today-task-create-recheck').click();
+ await page.waitForFunction(()=>!document.querySelector('#today-task-create-retry').disabled);
+ await page.locator('#today-task-create-retry').click();await page.waitForFunction(()=>document.querySelector('#today-task-create-name').value==='');
+ const attempts=await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').map(x=>x.args.input));
+ assert.equal(attempts.length,2);assert.deepEqual({...attempts[0],expectedRevision:'r2'},attempts[1]);
+ assert.equal(attempts[1].date,'2026-10-11');assert.equal(attempts[1].time,'16:45');
+ assert.equal(await name.evaluate(el=>el===document.activeElement),true);
+ assert.equal(await page.locator('#today-task-create-date').inputValue(),'2026-10-10');
+ } finally {await f.close();}
+ });
+
+ test('both compact rows fit supported widths and picker Escape cancels without a Task write',async()=>{
+ for (const width of [640,830,1000,1280]) {
+ const f=await pageFixture({width});const {page}=f;
+ try {
+ for (const [prefix,destination] of [['task-quick','tasks'],['today-task-create','today']]) {
+ await page.locator(`button[data-workspace-destination=${destination}]`).click();
+ if(destination==='today' && await page.locator('#today-unlocated-toggle').isVisible()) {if(await page.locator('#today-unlocated-toggle').getAttribute('aria-expanded')==='false')await page.locator('#today-unlocated-toggle').click();}
+ const name=page.locator(`#${prefix}-name`),schedule=page.locator(`#${prefix}-schedule`),add=page.locator(`#${prefix}-submit`);
+ await name.scrollIntoViewIfNeeded(); const boxes=await Promise.all([name,schedule,add].map(x=>x.boundingBox()));
+ assert.ok(boxes.every(x=>Math.abs((x.y+x.height/2)-(boxes[0].y+boxes[0].height/2))<2),'name/schedule/Add remain one row '+width+' '+prefix);
+ assert.ok(boxes[2].x+boxes[2].width<=width,'row does not overflow '+width);
+ await name.fill('Preserved compact draft');await schedule.click();await page.locator(`#${prefix}-tomorrow`).click();
+ const picker=await page.locator(`#${prefix}-schedule-picker`).boundingBox();
+ assert.ok(picker.x>=0&&picker.x+picker.width<=width&&picker.y>=0&&picker.y+picker.height<=758,'picker stays inside current viewport '+width+' '+prefix+' '+JSON.stringify(picker));
+ await page.locator(`#${prefix}-time`).press('Escape');
+ assert.equal(await page.locator(`#${prefix}-schedule-picker`).isVisible(),false);assert.equal(await schedule.evaluate(el=>el===document.activeElement),true);
+ assert.equal(await name.inputValue(),'Preserved compact draft');
+ }
+ assert.equal(await page.evaluate(()=>window.__calls.filter(x=>x.command==='create_task').length),0);
+ } finally {await f.close();}
+ }
+ });
+ test('historical Today compact create keeps selected lived date and optional content/list without assuming a time',async()=>{
+ const f=await pageFixture({selectedDate:'2026-09-08',clock:{date:'2026-10-11',time:'10:00',livedDate:'2026-10-11'}});const {page}=f;
+ try {
+ await page.locator('[data-workspace-destination=today]').click();const name=page.locator('#today-task-create-name');await name.fill('Historical selected day');
+ await page.locator('.task-compact-details summary').click();await page.locator('#today-task-create-content').fill('Retained optional context');await page.locator('#today-task-create-list').selectOption('home');
+ await name.press('Enter');await page.waitForFunction(()=>window.__fixture.tasks.tasks.some(t=>t.name==='Historical selected day'));
+ const saved=await page.evaluate(()=>window.__fixture.tasks.tasks.find(t=>t.name==='Historical selected day'));
+ assert.equal(saved.date,'2026-09-08');assert.equal(saved.time,null);assert.equal(saved.content,'Retained optional context');assert.equal(saved.listId,'home');
+ assert.equal(await name.evaluate(el=>el===document.activeElement),true);assert.equal(await page.locator('#today-task-create-date').inputValue(),'2026-09-08');
+ } finally {await f.close();}
+ });
