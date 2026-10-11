@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { stripTypeScriptTypes } from 'node:module';
 
+const loadedTodayView=JSON.parse(readFileSync(new URL('./fixtures/plan-time-views.json',import.meta.url),'utf8')).loaded;
+
 function webKit(script: string): any {
   const directory = mkdtempSync(join(tmpdir(), 'pdex-evening-dom-'));
   try {
@@ -26,7 +28,7 @@ test('Evening button captures selected past date and preserves an editable draft
     let target, submissions = 0, resolve;
     const opened = new Promise(r => resolve=r);
     document.querySelector('#collaboration-composer').addEventListener('submit', e => {e.preventDefault();submissions++;});
-    const entry = initializeEveningReviewEntry(button, status, () => selected, async date => { target=date; input.value='Saved unfinished draft'; resolve(); return true; }, (key, values) => key + ':' + (values?.date ?? ''));
+    const entry = initializeEveningReviewEntry(button, status, () => selected, async date => { target=date; input.value='Saved unfinished draft'; resolve(); return true; }, (element, key, values) => {element.textContent=key + ':' + (values?.date ?? '');}, (element, key, error) => {element.textContent=key+':'+String(error);});
     entry.render(); const label=button.textContent; button.click(); button.click(); selected={date:'2026-09-27',isToday:true,available:true}; await opened; await new Promise(r => setTimeout(r,10));
     return JSON.stringify({label,target,draft:input.value,submissions,status:status.textContent,disabled:button.disabled});
   `);
@@ -51,17 +53,18 @@ function productionWebKit(script: string): any {
       window.eveningHarness = {
         seed(date, session, workspace) {
           currentInterfaceLanguage='zh';
-          currentTodayView={date,isToday:date==='2026-09-27',canRecord:true,baseline:{timeline:[],evidence:[]}};
+          currentTodayView={...${JSON.stringify(loadedTodayView)},date,isToday:date==='2026-09-27',canRecord:true};
           document.querySelector('#today-ready').hidden=false;
           showTodayPhase('evening');
           currentCollaborationSession=session;
           currentCollaborationWorkspace=workspace;
-          currentCollaborationConnection={authenticated:true,authMode:'chatgpt',readOnlyTextTurnsAvailable:true};
+          currentCollaborationConnection={authenticated:true,authMode:'chatgpt',readOnlyTextTurnsAvailable:true,models:[],selectedModel:null,selectedReasoningEffort:null};
           collaborationTargetDate=session?.targetDate ?? date;
           if(session) { cacheCollaborationDrafts(session); collaborationTargetDates.set(session.id,session.targetDate); }
           renderCollaborationWorkspace(); eveningReviewEntry.render();
         },
         current: () => ({session:currentCollaborationSession,target:collaborationTargetDate,destination:currentWorkspaceDestination}),
+        language: language => renderInterfaceLanguage({interfaceLanguage:language}),
       };`);
     writeFileSync(join(directory, 'index.html'), readFileSync(new URL('../../frontend/index.html', import.meta.url), 'utf8').replace(/<script[^>]*src="main.js"[^>]*><\/script>/, ''));
     const modules = Object.fromEntries(readdirSync(directory).filter(name=>name.endsWith('.js')).map(name=>['./'+name,readFileSync(join(directory,name),'utf8')]));
@@ -72,14 +75,16 @@ function productionWebKit(script: string): any {
       const pane={state:'ready',message:'Synthetic context',items:[]};
       const context=date=>({date,vaultName:'synthetic',dailyRecord:pane,tasks:pane,habits:pane});
       const workspace=date=>({date,vaultName:'synthetic',context:context(date),memory:null,sessions:sessions.filter(s=>s.activityDates.includes(date)),activeRun:null,recoveryRequired:false});
-      let failSave=false;
+      let failSave=false, holdPrepare=false, prepareStarted=false, releasePrepare;
+      const prepareGate=new Promise(resolve=>releasePrepare=resolve);
       window.__TAURI__={core:{invoke:async (command,args) => {
         invocations.push({command,args});
         if(command==='collaboration_save_draft') {
-          if(failSave) throw Error('Synthetic disk full');
+          if(failSave) throw Error('Synthetic disk full at /tmp/合成路径');
           const session=sessions.find(s=>s.id===args.sessionId);session.draft=args.draft;session.draftsByDate[args.targetDate]=args.draft;return structuredClone(session);
         }
         if(command==='collaboration_prepare_evening_review') {
+          prepareStarted=true;if(holdPrepare) await prepareGate;
           let session=sessions.find(s=>s.targetDate===args.date);
           if(!session) {session=fixture(args.date);sessions.push(session);}
           const preservedDraft=!!session.draft;
@@ -175,4 +180,30 @@ test('production current-day entry creates an editable review draft, double clic
   assert.equal(result.sessions,1);
   assert.deepEqual(result.messages,[]);
   assert.ok(!result.commands.some(c=>c.includes('submit')));
+});
+
+
+test('production language refresh preserves the past-date review target and localized pending, ready, preserved and error statuses', {skip:process.platform!=='darwin'},()=>{
+  const result=productionWebKit(`
+    window.eveningHarness.seed('2026-09-20',null,workspace('2026-09-20'));
+    window.eveningHarness.language('en'); const label=button.textContent;
+    holdPrepare=true;button.click();while(!prepareStarted) await new Promise(r=>setTimeout(r,5));
+    window.eveningHarness.language('zh'); const pendingZh=status.textContent;
+    window.eveningHarness.language('en'); const pendingEn=status.textContent;
+    releasePrepare();while(button.disabled) await new Promise(r=>setTimeout(r,5));const readyEn=status.textContent;
+    window.eveningHarness.language('zh');const readyZh=status.textContent;
+    await clickEntry();window.eveningHarness.language('en');const preserved=status.textContent;
+    input.value='用户草稿 / untouched';input.dispatchEvent(new Event('input',{bubbles:true}));failSave=true;
+    await clickEntry();window.eveningHarness.language('zh');const errorZh=status.textContent;
+    window.eveningHarness.language('en');const errorEn=status.textContent;
+    return JSON.stringify({label,pendingZh,pendingEn,readyEn,readyZh,preserved,errorZh,errorEn,draft:input.value,target:window.eveningHarness.current().target,opened:invocations.filter(i=>i.command==='collaboration_prepare_evening_review').map(i=>i.args.date),submits:invocations.filter(i=>i.command.includes('submit')).length});
+  `);
+  assert.equal(result.label,'Review 2026-09-20');
+  assert.match(result.pendingZh,/正在准备 2026-09-20/); assert.match(result.pendingEn,/Preparing a review draft for 2026-09-20/);
+  assert.match(result.readyEn,/Review session for 2026-09-20 is open/); assert.match(result.readyZh,/已进入 2026-09-20/);
+  assert.match(result.preserved,/Continued the session for 2026-09-20 and kept its existing draft/);
+  assert.match(result.errorZh,/未能进入复盘/); assert.match(result.errorEn,/Could not open the review/);
+  assert.ok(result.errorZh.includes('Synthetic disk full at /tmp/合成路径')); assert.ok(result.errorEn.includes('Synthetic disk full at /tmp/合成路径'));
+  assert.equal(result.draft,'用户草稿 / untouched'); assert.equal(result.target,'2026-09-20');
+  assert.deepEqual(result.opened,['2026-09-20','2026-09-20']); assert.equal(result.submits,0);
 });

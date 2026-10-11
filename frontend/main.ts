@@ -4743,7 +4743,9 @@ const eveningReviewEntry = eveningReviewEntryButton && eveningReviewEntryStatus
   ? initializeEveningReviewEntry(eveningReviewEntryButton, eveningReviewEntryStatus,
     () => currentTodayView ? { date: currentTodayView.date, isToday: currentTodayView.isToday,
       available: currentTodayView.canRecord && !vaultSelectionInProgress } : null,
-    openCollaborationForEveningReview, (key, values) => t(key as Parameters<typeof t>[0], values))
+    openCollaborationForEveningReview,
+    (element, key, values) => setCopy(element, key as InterfaceCopyKey, values),
+    (element, key, error) => setCopyError(element, key as InterfaceCopyKey, error))
   : null;
 
 async function openCollaborationForTask(

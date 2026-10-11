@@ -969,7 +969,7 @@ const interfaceCopies = {
   "today.reviewOpening": { zh: "正在准备 {date} 的复盘草稿…", en: "Preparing a review draft for {date}…" },
   "today.reviewDraftReady": { zh: "已进入 {date} 的复盘会话。草稿可编辑，请检查后自行发送。", en: "Review session for {date} is open. Edit the draft and send it when ready." },
   "today.reviewDraftPreserved": { zh: "已继续 {date} 的会话，保留了已有草稿。请在草稿中补充复盘要求，再自行发送。", en: "Continued the session for {date} and kept its existing draft. Add your review request to the draft, then send it when ready." },
-  "today.reviewOpenFailed": { zh: "未能进入复盘。已有草稿保留，请重试。", en: "Could not open the review. Your draft is retained; please retry." },
+  "today.reviewOpenFailed": { zh: "未能进入复盘。已有草稿保留，请重试。{error}", en: "Could not open the review. Your draft is retained; please retry. {error}" },
   "today.reviewDraft": { zh: "/retro 请和我一起复盘 {date} 的一天。请先读取所选 Vault 中该日期的权威 Daily Record（dashboard://record/{date}?phase=evening），区分安排、已记录事实、Task 和 Habit 证据；缺少证据的部分保持未知。先帮助我回顾并询问需要补充的内容。", en: "/retro Help me review {date}. First read that date’s authoritative Daily Record in the selected Vault (dashboard://record/{date}?phase=evening). Distinguish arrangements, recorded facts, Tasks and Habit evidence; leave missing evidence unknown. Start by reviewing with me and asking what I want to add." },
   "today.eveningIntro": { zh: "先读一个保守的 first pass；不要求完整重建整天。", en: "Start with a conservative first pass; a complete reconstruction of the day is not required." },
   "today.whatHappened": { zh: "今天发生了什么", en: "What happened today" },
