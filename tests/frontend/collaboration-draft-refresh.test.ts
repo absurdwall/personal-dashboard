@@ -35,7 +35,7 @@ function composer(actualVoice=false, pendingStart=false, empty=false) {
     "handleCollaborationVoiceTranscript","cancelCollaborationVoiceCaptureForSelectionChange",
     "renderCollaborationWorkspace","stashCollaborationDraft","flushCollaborationDraft",
     "saveCollaborationDraft","selectCollaborationSession","refreshCollaborationWorkspace","saveCollaborationTargetDate",
-    "collaborationVoiceFailureStatus","startOrStopCollaborationVoice","selectTodayVault","sendCollaborationMessage","handleCollaborationDraftInput","resetVaultScopedWorkspaceState","renderPendingWriteFailure","openCollaborationForTask","createCollaborationSession",
+    "collaborationVoiceFailureStatus","startOrStopCollaborationVoice","selectTodayVault","sendCollaborationMessage","handleCollaborationDraftInput","resetVaultScopedWorkspaceState","renderPendingWriteFailure","openCollaborationForTask","createCollaborationSession","localOperationId",
     ...(main.includes("function prepareCollaborationForVaultSwitch(")?["prepareCollaborationForVaultSwitch"]:[]),
     ...(main.includes("function drainCollaborationDraftsForVaultSwitch(")?["drainCollaborationDraftsForVaultSwitch"]:[])];
   const functions=names.map(sourceFunction).join("\n");
@@ -423,6 +423,37 @@ test("unconfirmed prior result leaves the production correction composer and dic
   assert.equal(r.collaborationComposerStatus.textContent,"collaboration.composerRecover");
 });
 
+test("a disconnected new chat keeps local text editable but gates dictation start and preserves stop/cancel",async()=>{
+  const {r,workspace}=composer(false,false,true);
+  const created={id:"",createdDate:"2026-10-03",targetDate:"2026-10-03",draft:"",draftsByDate:{"2026-10-03":""},runState:"idle"};
+  r.currentCollaborationConnection={authenticated:false,authMode:"chatgpt",readOnlyTextTurnsAvailable:false};
+  r.collaborationMessageDraft.value="Editable while disconnected";
+  r.handleCollaborationDraftInput();
+  r.create=async(args:any)=>{
+    created.id=args.sessionId;created.createdDate=args.date;created.targetDate=args.date;
+    created.draft=args.initialDraft;created.draftsByDate[args.date]=args.initialDraft;
+    workspace.sessions.push(structuredClone(created));
+    return structuredClone(created);
+  };
+  r.readWorkspace=async()=>structuredClone(workspace);
+  await r.createCollaborationSession();
+  r.collaborationSendButton=element();r.collaborationComposerStatus=element();
+  r.renderCollaborationWorkspace();
+  assert.equal(r.currentCollaborationSession.id,created.id);
+  assert.equal(r.collaborationMessageDraft.value,"Editable while disconnected");
+  assert.equal(r.collaborationMessageDraft.disabled,false);
+  assert.equal(r.collaborationSendButton.disabled,true);
+  assert.equal(r.collaborationVoiceStartButton.disabled,true);
+
+  r.collaborationVoiceController.state="recording";
+  r.collaborationVoiceCancelButton=element();
+  r.vaultSelectionInProgress=true;
+  r.renderCollaborationVoiceControls();
+  assert.equal(r.collaborationVoiceStartButton.dataset.action,"stop");
+  assert.equal(r.collaborationVoiceStartButton.disabled,false);
+  assert.equal(r.collaborationVoiceCancelButton.disabled,false);
+});
+
 test("current execution owner stays visible while an older result still needs recovery",()=>{
   const {r}=composer();
   r.currentCollaborationWorkspace.recoveryRequired=true;
@@ -490,7 +521,7 @@ test("empty-state session creation freezes its chosen target date until creation
   r.collaborationEmptyTargetDate=chosenDate;r.collaborationTargetDate=chosenDate;
   r.collaborationActivityDate=chosenDate;r.collaborationActivityDateExplicit=true;
   r.collaborationTargetDateInput.value=chosenDate;
-  r.create=()=>new Promise(resolve=>{finish=resolve;});
+  r.create=(args:any)=>{created.id=args.sessionId;created.createdDate=args.date;created.targetDate=args.date;return new Promise(resolve=>{finish=resolve;});};
   r.readWorkspace=async()=>structuredClone(workspace);
   const creation=r.createCollaborationSession();
   assert.equal(r.collaborationTargetDateInput.disabled,true);
@@ -500,34 +531,94 @@ test("empty-state session creation freezes its chosen target date until creation
   assert.equal(r.collaborationTargetDate,chosenDate);
   finish(structuredClone(created));
   await creation;
-  assert.equal(r.currentCollaborationSession.id,"created");
+  assert.equal(r.currentCollaborationSession.id,created.id);
   assert.equal(r.collaborationTargetDateInput.value,chosenDate);
 });
 
-test("explicit Send retries failed empty-state creation with the same draft and creates only one selected session",async()=>{
+test("explicit Send retries an uncertain empty-state creation without replacing a newer editable draft",async()=>{
   const f=composer(false,false,true);const {r,workspace}=f;
-  const created={id:"created",createdDate:"2026-10-03",targetDate:"2026-10-03",draft:"",draftsByDate:{"2026-10-03":""},runState:"idle"};
-  let createCalls=0;const submitted:any[]=[];
+  const created={id:"",createdDate:"2026-10-03",targetDate:"2026-10-03",draft:"",draftsByDate:{"2026-10-03":""},runState:"idle"};
+  let createCalls=0;const createArgs:any[]=[];const submitted:any[]=[];
   r.collaborationSessionsStatus=element();r.collaborationComposerStatus=element();r.collaborationSendButton=element();
   r.collaborationMessageDraft.value="Synthetic question retained after create failure";
   r.handleCollaborationDraftInput();
-  r.create=async()=>{if(++createCalls===1)throw new Error("synthetic create failure");workspace.sessions.push(created);return structuredClone(created);};
+  r.create=async(args:any)=>{createArgs.push(structuredClone(args));if(++createCalls===1){created.id=args.sessionId;created.draft=args.initialDraft;created.draftsByDate[args.date]=args.initialDraft;workspace.sessions.push(structuredClone(created));throw new Error("synthetic response lost after session save");}return structuredClone(workspace.sessions[0]);};
   r.readWorkspace=async()=>structuredClone(workspace);
   r.write=async(args:any)=>{created.draft=args.draft;created.draftsByDate[args.targetDate]=args.draft;return structuredClone(created);};
   r.submit=async(args:any)=>{submitted.push(args);created.draft="";created.draftsByDate[args.targetDate]="";return structuredClone(created);};
 
   await r.sendCollaborationMessage();
   assert.equal(createCalls,1);assert.equal(submitted.length,0);
+  assert.equal(workspace.sessions.length,1,"the simulated first call saved before its response was lost");
   assert.equal(r.currentCollaborationSession,null);
   assert.equal(r.collaborationMessageDraft.value,"Synthetic question retained after create failure");
   assert.equal(r.collaborationComposerStatus.textContent,"collaboration.sessionCreateFailed");
   assert.equal(r.collaborationMessageDraft.disabled,false);
 
+  const latestDraft="Newer edit kept after the session save response was lost";
+  r.collaborationMessageDraft.value=latestDraft;
+  r.handleCollaborationDraftInput();
+
   await r.sendCollaborationMessage();await tick();await tick();
   assert.equal(createCalls,2);assert.equal(workspace.sessions.length,1);
-  assert.equal(r.currentCollaborationSession.id,"created");
-  assert.equal(submitted.length,1);assert.equal(submitted[0].sessionId,"created");
-  assert.equal(submitted[0].text,"Synthetic question retained after create failure");
+  assert.equal(createArgs[0].sessionId,createArgs[1].sessionId,"explicit retry reuses the creation identity");
+  assert.equal(createArgs[0].date,"2026-10-03");
+  assert.equal(createArgs[0].initialDraft,"Synthetic question retained after create failure");
+  assert.equal(createArgs[1].initialDraft,createArgs[0].initialDraft);
+  assert.equal(r.currentCollaborationSession.id,createArgs[0].sessionId);
+  assert.equal(submitted.length,1);assert.equal(submitted[0].sessionId,createArgs[0].sessionId);
+  assert.equal(submitted[0].text,latestDraft);
+  assert.equal(r.collaborationMessageDraft.value,"");
+});
+
+test("an unresolved empty-state creation does not block other sessions and its own draft stays scoped",async()=>{
+  const f=composer(false,false,true);const {r,second,workspace}=f;
+  const originalDraft="Draft for the new chat";
+  const latestDraft="Latest new-chat edit after an uncertain create";
+  const created={id:"",createdDate:"2026-10-03",targetDate:"2026-10-03",draft:"",draftsByDate:{"2026-10-03":""},runState:"idle"};
+  let createCalls=0;const submitted:any[]=[];
+  r.collaborationMessageDraft.value=originalDraft;r.handleCollaborationDraftInput();
+  r.create=async(args:any)=>{
+    createCalls++;
+    if(createCalls===1){
+      created.id=args.sessionId;created.createdDate=args.date;created.targetDate=args.date;
+      created.draft=args.initialDraft;created.draftsByDate[args.date]=args.initialDraft;
+      workspace.sessions.push(structuredClone(created));
+      throw new Error("synthetic response lost after session save");
+    }
+    return structuredClone(workspace.sessions.find((session:any)=>session.id===args.sessionId));
+  };
+  r.readWorkspace=async()=>structuredClone(workspace);
+  r.write=async(args:any)=>{created.draft=args.draft;created.draftsByDate[args.targetDate]=args.draft;return structuredClone(created);};
+  r.submit=async(args:any)=>{submitted.push(args);created.draft="";created.draftsByDate[args.targetDate]="";return structuredClone(created);};
+  await r.createCollaborationSession();
+  assert.equal(r.currentCollaborationSession,null);
+  assert.ok(r.collaborationSessionCreationAttempt);
+  const attemptId=r.collaborationSessionCreationAttempt.id;
+
+  r.collaborationMessageDraft.value=latestDraft;r.handleCollaborationDraftInput();
+  second.targetDate="2026-10-02";second.draft="Independent older-session draft";
+  second.draftsByDate={"2026-10-02":"Independent older-session draft"};
+  workspace.sessions.unshift(structuredClone(second));
+  r.selectCollaborationSession(second);await tick();await tick();
+  assert.equal(r.currentCollaborationSession.id,second.id,"an unresolved create does not trap history selection");
+  assert.equal(r.collaborationDraftForDate(second,second.targetDate),second.draft);
+  assert.equal(r.collaborationSessionCreationAttempt.id,attemptId);
+
+  await r.createCollaborationSession();await tick();
+  assert.equal(createCalls,2);
+  assert.equal(workspace.sessions.filter((session:any)=>session.id===attemptId).length,1);
+  assert.equal(r.currentCollaborationSession.id,attemptId,"explicit New Chat recovers the same identity");
+  assert.equal(r.collaborationMessageDraft.value,latestDraft);
+  assert.equal(r.collaborationTargetDate,"2026-10-03","recovering the attempt restores its frozen date, not the older session date");
+  assert.equal(r.collaborationTargetDateInput.value,"2026-10-03");
+  assert.equal(r.collaborationDraftForDate(second,second.targetDate),second.draft,"the older session draft stays separate");
+  assert.equal(submitted.length,0,"session recovery never sends the draft");
+  await r.sendCollaborationMessage();await tick();await tick();
+  assert.equal(submitted.length,1,"only the later explicit Send submits the recovered draft");
+  assert.equal(submitted[0].text,latestDraft);
+  assert.equal(submitted[0].sessionId,attemptId);
+  assert.equal(r.collaborationTargetDate,"2026-10-03");
   assert.equal(r.collaborationMessageDraft.value,"");
 });
 
@@ -537,19 +628,19 @@ test("a confirmed empty-state session is reused after Send fails, with its draft
   let createCalls=0,submitCalls=0;
   r.collaborationSessionsStatus=element();r.collaborationComposerStatus=element();r.collaborationSendButton=element();
   r.collaborationMessageDraft.value="Synthetic question retained after Send failure";r.handleCollaborationDraftInput();
-  r.create=async()=>{createCalls++;workspace.sessions.push(created);return structuredClone(created);};
+  r.create=async(args:any)=>{createCalls++;created.id=args.sessionId;created.createdDate=args.date;created.targetDate=args.date;workspace.sessions.push(created);return structuredClone(created);};
   r.readWorkspace=async()=>structuredClone(workspace);
   r.write=async(args:any)=>{created.draft=args.draft;created.draftsByDate[args.targetDate]=args.draft;return structuredClone(created);};
   r.submit=async(args:any)=>{submitCalls++;if(submitCalls===1)throw new Error("synthetic Send failure");created.draft="";created.draftsByDate[args.targetDate]="";return structuredClone(created);};
 
   await r.sendCollaborationMessage();
   assert.equal(createCalls,1);assert.equal(submitCalls,1);assert.equal(workspace.sessions.length,1);
-  assert.equal(r.currentCollaborationSession.id,"created");
+  assert.equal(r.currentCollaborationSession.id,created.id);
   assert.equal(r.collaborationMessageDraft.value,"Synthetic question retained after Send failure");
-  assert.equal(r.collaborationDrafts.get(r.collaborationDraftKey("created","2026-10-03")),"Synthetic question retained after Send failure");
+  assert.equal(r.collaborationDrafts.get(r.collaborationDraftKey(created.id,"2026-10-03")),"Synthetic question retained after Send failure");
   await r.sendCollaborationMessage();await tick();
   assert.equal(createCalls,1);assert.equal(submitCalls,2);assert.equal(workspace.sessions.length,1);
-  assert.equal(r.currentCollaborationSession.id,"created");
+  assert.equal(r.currentCollaborationSession.id,created.id);
   assert.equal(r.collaborationMessageDraft.value,"");
 });
 
@@ -558,10 +649,10 @@ test("New chat preserves the previous session draft without copying it into the 
   const created={id:"created",createdDate:"2026-10-03",targetDate:"2026-10-03",draft:"",draftsByDate:{"2026-10-03":""},runState:"idle"};
   r.collaborationSessionsStatus=element();r.document.activeElement=r.collaborationMessageDraft;r.collaborationMessageDraft.value="Old session unsaved edit";
   r.handleCollaborationDraftInput();
-  r.create=async()=>{workspace.sessions.push(created);return structuredClone(created);};
+  r.create=async(args:any)=>{created.id=args.sessionId;created.createdDate=args.date;created.targetDate=args.date;workspace.sessions.push(created);return structuredClone(created);};
   r.readWorkspace=async()=>structuredClone(workspace);
   await r.createCollaborationSession();await tick();
-  assert.equal(r.currentCollaborationSession.id,"created");
+  assert.equal(r.currentCollaborationSession.id,created.id);
   assert.equal(r.collaborationDrafts.get(r.collaborationDraftKey(first.id,first.targetDate)),"Old session unsaved edit");
   assert.equal(r.collaborationDraftForDate(created,created.targetDate),"");
   assert.equal(workspace.sessions.length,3);

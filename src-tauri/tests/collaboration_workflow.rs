@@ -170,6 +170,22 @@ impl CollaborationContextSource for FixtureContext {
     }
 }
 
+struct OtherVaultContext;
+
+impl CollaborationContextSource for OtherVaultContext {
+    fn current_vault_key(&self) -> Result<Option<String>, String> {
+        Ok(Some("other-synthetic-vault".into()))
+    }
+
+    fn read_context(
+        &self,
+        _expected_vault_key: Option<&str>,
+        _date: &str,
+    ) -> Result<CollaborationContextView, String> {
+        Err("This identity-binding test does not read context.".into())
+    }
+}
+
 #[derive(Clone)]
 struct FakeAppServer {
     prompts: Arc<Mutex<Vec<RuntimeTurnRequest>>>,
@@ -635,6 +651,93 @@ fn user_and_assistant_messages_survive_reopening_the_application_service() {
     );
     assert_eq!(reopened.list_sessions("2026-09-20").unwrap().len(), 1);
     assert_eq!(reopened.list_sessions("2026-09-27").unwrap().len(), 1);
+}
+
+#[test]
+fn retrying_a_saved_creation_identity_after_a_lost_response_recovers_the_same_session_and_draft() {
+    let directory = IsolatedDirectory::new();
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let identity = "collaboration-session-request-123";
+    let draft = "Synthetic draft saved with the session before the response was lost.";
+    let application = new_application(&directory, Arc::clone(&prompts));
+
+    // The service call persisted successfully, but the caller discards its
+    // response to model an IPC result that was saved and then lost.
+    application
+        .create_session_with_identity(Some("2026-09-27"), identity, draft)
+        .unwrap();
+    drop(application);
+
+    let reopened = new_application(&directory, prompts);
+    let recovered = reopened
+        .create_session_with_identity(Some("2026-09-27"), identity, draft)
+        .unwrap();
+    assert_eq!(recovered.id, identity);
+    assert_eq!(recovered.created_date, "2026-09-27");
+    assert_eq!(recovered.target_date, "2026-09-27");
+    assert_eq!(recovered.draft, draft);
+    assert_eq!(recovered.drafts_by_date.get("2026-09-27").map(String::as_str), Some(draft));
+    assert!(recovered.messages.is_empty(), "recovering a draft never submits it");
+    assert_eq!(reopened.list_sessions("2026-09-27").unwrap().len(), 1);
+}
+
+#[test]
+fn creation_identity_cannot_be_reused_for_a_different_date_binding() {
+    let directory = IsolatedDirectory::new();
+    let application = new_application(&directory, Arc::new(Mutex::new(Vec::new())));
+    let original = application
+        .create_session_with_identity(Some("2026-09-27"), "collaboration-request-binding", "Original draft")
+        .unwrap();
+
+    let mismatch = application
+        .create_session_with_identity(Some("2026-09-26"), "collaboration-request-binding", "Other draft")
+        .unwrap_err();
+    assert!(mismatch.contains("another Vault or date"));
+    let sessions = application.list_sessions("2026-09-27").unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].id, original.id);
+    assert_eq!(sessions[0].draft, "Original draft");
+    assert!(application.list_sessions("2026-09-26").unwrap().is_empty());
+}
+
+#[test]
+fn creation_identity_cannot_be_reused_after_the_selected_vault_changes() {
+    let directory = IsolatedDirectory::new();
+    let application = new_application(&directory, Arc::new(Mutex::new(Vec::new())));
+    let original = application
+        .create_session_with_identity(Some("2026-09-27"), "collaboration-request-vault", "Original draft")
+        .unwrap();
+
+    let switched_vault = CollaborationApplication::with_adapters(
+        Arc::new(FileCollaborationStore::new(
+            directory
+                .path()
+                .join("collaboration")
+                .join("collaboration.json"),
+        )),
+        Box::new(FakeAppServer {
+            prompts: Arc::new(Mutex::new(Vec::new())),
+            calls: Arc::new(Mutex::new(Vec::new())),
+            read_only_text_turns_available: true,
+            switch_vault_on_inspect: None,
+            turn_gate: None,
+            reconciliations: Arc::new(Mutex::new(HashMap::new())),
+            memory_call: None,
+            memory_tool_results: Arc::new(Mutex::new(Vec::new())),
+        }),
+        Arc::new(OtherVaultContext),
+        Arc::new(FixedClock),
+        directory.path().to_path_buf(),
+        "Only use supplied read-only Dashboard context.".into(),
+    );
+    let mismatch = switched_vault
+        .create_session_with_identity(Some("2026-09-27"), "collaboration-request-vault", "Other draft")
+        .unwrap_err();
+
+    assert!(mismatch.contains("another Vault or date"));
+    assert_eq!(application.list_sessions("2026-09-27").unwrap().len(), 1);
+    assert_eq!(application.session("synthetic-vault", &original.id).unwrap().draft, "Original draft");
+    assert!(switched_vault.list_sessions("2026-09-27").unwrap().is_empty());
 }
 
 #[test]
