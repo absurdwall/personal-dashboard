@@ -1,3 +1,4 @@
+import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { initializeCollaborationCommandCompletion } from "./collaboration-command-completion.js";
 import { appendCollaborationMarkdown, appendCollaborationWorkHistory, type CollaborationWorkHistory, type CollaborationLink, type WorkHistoryLabels } from "./collaboration-work-history.js";
 import { initializeCollaborationPanels } from "./collaboration-panels.js";
@@ -5385,6 +5386,91 @@ function openPlanTimeEditor(entry: TimeAxisEntryView): void {
   dialog.addEventListener("close", () => dialog.remove(), { once: true });
   document.body.append(dialog);
   dialog.showModal();
+}
+
+function openTodayAxisTaskCreate(loaded: TodayView, startMinute: number, endMinute: number): void {
+  const binding=loaded.tasks.targetBinding;
+  if(!binding)return;
+  const dialog=document.createElement("dialog");dialog.dataset.axisTaskCreate="";dialog.className="today-axis-task-dialog";
+  const heading=document.createElement("h3");setCopy(heading,"tasks.addHeading");
+  const form=document.createElement("form");form.className="task-form";
+  const grid=document.createElement("div");grid.className="task-form-grid";
+  const start=taskAxisDateTime(loaded.date,startMinute),end=taskAxisDateTime(loaded.date,endMinute);
+  const input=(key:InterfaceCopyKey,type:string,data:string,value:string)=>{
+    const label=document.createElement("label");const caption=document.createElement("span");setCopy(caption,key);
+    const field=document.createElement("input");field.type=type;field.dataset[data]="";field.value=value;
+    label.append(caption,field);grid.append(label);return field;
+  };
+  const name=input("tasks.name","text","taskName","");name.required=true;name.maxLength=160;
+  const noteLabel=document.createElement("label");const noteCaption=document.createElement("span");setCopy(noteCaption,"tasks.content");
+  const note=document.createElement("textarea");note.rows=2;note.dataset.taskContent="";noteLabel.append(noteCaption,note);grid.append(noteLabel);
+  input("tasks.date","date","taskDate",start.date);input("tasks.time","time","taskTime",start.time);
+  input("tasks.executionEndDate","date","taskEndDate",end.date);input("tasks.executionEndTime","time","taskEndTime",end.time);
+  const listLabel=document.createElement("label");const listCaption=document.createElement("span");setCopy(listCaption,"tasks.list");
+  const list=document.createElement("select");list.dataset.taskList="";renderTaskListSelect(list,loaded.tasks,"inbox",false);
+  listLabel.append(listCaption,list);grid.append(listLabel);
+  const status=document.createElement("p");status.setAttribute("role","status");status.dataset.axisTaskStatus="";
+  const save=document.createElement("button");save.type="submit";setCopy(save,"tasks.save");
+  const cancel=document.createElement("button");cancel.type="button";setCopy(cancel,"today.axisCancel");cancel.addEventListener("click",()=>dialog.close());
+  const recheck=document.createElement("button");recheck.type="button";recheck.hidden=true;setCopy(recheck,"tasks.refresh");
+  const taskId=localOperationId("axis-task");let revision=loaded.tasks.revision;let submitted: Record<string,unknown>|null=null;let busy=false;
+  const sameTarget=()=>currentWorkspaceDestination==="today"&&currentTodayView?.date===loaded.date&&currentTodayView.tasks.targetBinding===binding;
+  const matches=(task:TaskView)=>submitted!==null&&task.id===taskId&&task.name===submitted.name&&task.content===submitted.content&&
+    task.date===submitted.date&&task.time===submitted.time&&task.listId===submitted.listId&&
+    task.executionEnd?.date===(submitted.executionEnd as {date:string}|null)?.date&&task.executionEnd?.time===(submitted.executionEnd as {time:string}|null)?.time;
+  recheck.addEventListener("click",()=>{
+    if(busy||!sameTarget()) {setCopy(status,"tasks.refreshFirst");return;}
+    busy=true;recheck.disabled=true;
+    const operation=(async()=>{try {
+      const latest=await window.__TAURI__.core.invoke<TasksView>("tasks_view");
+      if(!sameTarget()||latest.targetBinding!==binding||latest.state==="error"||latest.state==="unconfigured")throw Error(latest.message);
+      renderTaskSurface("today",latest);
+      if(latest.tasks.some(matches)){setCopy(taskSurfaceStatus("today"),"tasks.saved");dialog.close();return true;}
+      if(latest.tasks.some(task=>task.id===taskId)){setCopy(status,"today.axisTaskAlreadyExists");save.disabled=true;return false;}
+      revision=latest.revision;save.disabled=false;setCopy(status,"today.axisTaskRetry");return false;
+    }catch(error){setCopyError(status,"tasks.notSaved",error);return false;}finally{busy=false;recheck.disabled=false;}})();
+    void pendingWrites.track(operation);
+  });
+  form.addEventListener("submit",event=>{
+    event.preventDefault();if(busy||!sameTarget()){setCopy(status,"tasks.refreshFirst");return;}
+    const draft=readTaskDraft(form);
+    if(!draft.name.trim()){name.focus();return;}
+    if(!draft.date||!draft.time||!draft.endDate||!draft.endTime||`${draft.endDate}T${draft.endTime}`<=`${draft.date}T${draft.time}`||
+      taskAxisMinute(loaded.date,{date:draft.date,time:draft.time})<240||taskAxisMinute(loaded.date,{date:draft.endDate,time:draft.endTime})>1680){
+      setCopy(status,"tasks.invalidExecutionInterval");return;
+    }
+    submitted={targetBinding:binding,expectedRevision:revision,taskId,name:draft.name.trim(),content:draft.content.trim()||null,
+      date:draft.date,time:draft.time,executionEnd:{date:draft.endDate,time:draft.endTime},listId:draft.listId||"inbox"};
+    busy=true;save.disabled=true;const request=todayTaskRequests.begin();updateTaskOperationState(1);
+    const operation=(async()=>{try {
+      const result=await window.__TAURI__.core.invoke<TasksView>("create_task",{input:submitted});
+      if(!taskSurfaceIsCurrent("today",request,binding,result.targetBinding,loaded.date,revision)||
+        !["ready","empty"].includes(result.state)||!result.tasks.some(matches))throw Error(result.message||t("tasks.confirmationFailed"));
+      renderTaskSurface("today",result);setCopy(taskSurfaceStatus("today"),"tasks.saved");dialog.close();return true;
+    }catch(error){setCopyError(status,"tasks.notSaved",error);recheck.hidden=false;return false;}
+    finally{busy=false;updateTaskOperationState(-1);}})();
+    void pendingWrites.track(operation);
+  });
+  form.append(grid,status,save,cancel,recheck);dialog.append(heading,form);dialog.addEventListener("close",()=>dialog.remove(),{once:true});
+  document.body.append(dialog);dialog.showModal();name.focus();
+}
+
+function resolveTodayAxisGestureTarget(element: Element, _loaded: TodayView): AxisGestureTarget | null | false {
+  return element.closest(".today-axis-marker") ? false : null;
+}
+function commitTodayAxisGesture(change: AxisGestureCommit<TodayView>): void {
+  if(!change.target&&change.endMinute!==null)openTodayAxisTaskCreate(change.context,change.startMinute,change.endMinute);
+}
+function installTodayAxisGestures(): void {
+  const plot=document.querySelector<HTMLElement>("#today-axis-plot");
+  const scrollSurface=document.querySelector<HTMLElement>("#today-axis-scroll-surface");
+  if(!plot||!scrollSurface)return;
+  attachTodayAxisGestures({plot,scrollSurface,bounds:axisBounds,
+    begin:()=>currentTodayView&&canMutateTodayTasks({todayOperationCount,taskOperationCount,hasTargetBinding:Boolean(currentTodayView.tasks.targetBinding),
+      state:currentTodayView.tasks.state,isPresentationCurrent:todayPresentationFresh})?currentTodayView:null,
+    resolveTarget:resolveTodayAxisGestureTarget,onCommit:commitTodayAxisGesture,
+    onInvalid:()=>{setCopy(taskSurfaceStatus("today"),"today.axisTaskInvalid");},
+  });
 }
 
 function renderTodayTimeAxisEntries(
@@ -12071,6 +12157,7 @@ window.addEventListener("focus", () => {
   }
 });
 
+installTodayAxisGestures();
 void connectToApplication();
 
 export {};
