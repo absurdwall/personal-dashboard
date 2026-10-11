@@ -92,7 +92,7 @@ test("task writes serialize refresh reconciliation and retain retry identity", (
   );
   assert.match(refresh, /if \(taskOperationCount > 0\)/);
   assert.match(main, /taskRefreshQueued/);
-  assert.match(main, /const operationKey = JSON\.stringify\(\[binding, "create"\]\)/);
+  // Create retry payload/id behavior is exercised through the production page in task-quick-create.mjs.
   assert.match(main, /taskMutationConfirmed\(/);
   assert.match(main, /Boolean\(savedTask\)/);
   assert.match(main, /tasks\.confirmationFailed/);

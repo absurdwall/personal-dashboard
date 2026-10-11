@@ -502,12 +502,21 @@
                       </label>
                     </div>
                   </div>
+                  <form id="task-quick-form" class="task-quick-form" hidden>
+                    <input id="task-quick-name" type="text" maxlength="160" aria-label="新建任务名称" data-i18n-aria-label="tasks.createLabel" placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" />
+                    <button id="task-quick-submit" type="submit" data-i18n="tasks.quickAdd">添加</button>
+                  </form>
+                  <div id="task-quick-recovery" class="task-create-recovery" hidden>
+                    <button id="task-quick-recheck" type="button" class="secondary-button" data-i18n="tasks.refresh">刷新 Tasks</button>
+                    <button id="task-quick-retry" type="button" data-i18n="tasks.retryOriginal" disabled>重试原任务</button>
+                  </div>
                   <div id="tasks-list" class="tasks-list" aria-live="polite"></div>
                   <p id="tasks-empty" class="tasks-empty" hidden data-i18n="tasks.emptyAll">还没有任务；可以从收集箱开始。</p>
                   <p class="tasks-boundary" data-i18n="tasks.savedToVault">任务保存在当前 Vault 的独立正本中；不会写入 Daily Record。</p>
+                  <dialog id="task-create-dialog" class="tasks-create-dialog" aria-labelledby="task-create-heading">
                   <form id="task-create-form" class="task-form task-create-form" hidden>
                     <div class="task-form-heading">
-                      <h3 data-i18n="tasks.addHeading">新建任务</h3>
+                      <h3 id="task-create-heading" data-i18n="tasks.addHeading">新建任务</h3>
                       <small id="task-create-list-label" data-i18n="tasks.inbox">收集箱</small>
                     </div>
                     <div class="task-form-grid">
@@ -531,13 +540,25 @@
                         <span data-i18n="tasks.time">时刻（需要日期）</span>
                         <input id="task-create-time" type="time" disabled data-task-time />
                       </label>
+                      <label>
+                        <span data-i18n="tasks.executionEndDate">结束日期（可选）</span>
+                        <input id="task-create-end-date" type="date" data-task-end-date />
+                      </label>
+                      <label>
+                        <span data-i18n="tasks.executionEndTime">结束时刻（可选）</span>
+                        <input id="task-create-end-time" type="time" data-task-end-time />
+                      </label>
                     </div>
                     <p class="task-form-boundary" data-i18n="tasks.savedToVault">任务保存在当前 Vault 的独立正本中；不会写入 Daily Record。</p>
+                    <p id="task-create-status" role="status" aria-live="polite"></p>
                     <div class="task-form-actions">
+                      <button id="task-create-recheck" type="button" class="secondary-button" data-i18n="tasks.refresh" hidden>刷新 Tasks</button>
+                      <button id="task-create-retry" type="button" data-i18n="tasks.retryOriginal" hidden disabled>重试原任务</button>
                       <button id="task-create-cancel" type="button" class="secondary-button" data-i18n="tasks.cancel">取消</button>
                       <button id="task-create-submit" type="submit" data-i18n="tasks.add">加入收集箱</button>
                     </div>
                   </form>
+                  </dialog>
                 </section>
                 <aside id="task-editor-dialog-root" class="tasks-selected-detail" aria-label="Task details" data-i18n-aria-label="tasks.details" hidden></aside>
               </div>
