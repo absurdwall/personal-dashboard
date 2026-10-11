@@ -106,7 +106,12 @@ pub enum TaskChangeOperation {
     Reschedule {
         date: Option<String>,
         time: Option<String>,
-        #[serde(default, rename = "executionEnd", deserialize_with = "deserialize_execution_end_patch", skip_serializing_if = "Option::is_none")]
+        #[serde(
+            default,
+            rename = "executionEnd",
+            deserialize_with = "deserialize_execution_end_patch",
+            skip_serializing_if = "Option::is_none"
+        )]
         execution_end: Option<Option<TaskExecutionEnd>>,
     },
     SetState {
@@ -174,8 +179,12 @@ pub struct TaskExecutionEnd {
 }
 
 /// Preserve omitted fields while accepting explicit null as a clear operation.
-pub(crate) fn deserialize_execution_end_patch<'de, D>(deserializer: D) -> Result<Option<Option<TaskExecutionEnd>>, D::Error>
-where D: serde::Deserializer<'de> {
+pub(crate) fn deserialize_execution_end_patch<'de, D>(
+    deserializer: D,
+) -> Result<Option<Option<TaskExecutionEnd>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
     Option::<TaskExecutionEnd>::deserialize(deserializer).map(Some)
 }
 
@@ -720,9 +729,18 @@ where
             .map(|task| task.list_id.clone())
             .unwrap_or_else(|| "inbox".into());
         let mut desired = task_from_update(&input, &current_list_id)?;
-        desired.execution_end = input.execution_end.clone().unwrap_or_else(|| document.tasks.iter()
-            .find(|task| task.id == input.task_id).and_then(|task| task.execution_end.clone()));
-        validate_execution_end(desired.date.as_deref(), desired.time.as_deref(), desired.execution_end.as_ref())?;
+        desired.execution_end = input.execution_end.clone().unwrap_or_else(|| {
+            document
+                .tasks
+                .iter()
+                .find(|task| task.id == input.task_id)
+                .and_then(|task| task.execution_end.clone())
+        });
+        validate_execution_end(
+            desired.date.as_deref(),
+            desired.time.as_deref(),
+            desired.execution_end.as_ref(),
+        )?;
         ensure_task_list_exists(&document, &desired.list_id)?;
         if input
             .list_id
@@ -1490,12 +1508,21 @@ pub(crate) fn validate_time(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn validate_execution_end(date: Option<&str>, time: Option<&str>, end: Option<&TaskExecutionEnd>) -> Result<(), String> {
-    let Some(end) = end else { return Ok(()); };
-    let start_date = date.and_then(CalendarDate::parse).ok_or_else(|| "计划执行区间需要开始日期。".to_string())?;
+pub(crate) fn validate_execution_end(
+    date: Option<&str>,
+    time: Option<&str>,
+    end: Option<&TaskExecutionEnd>,
+) -> Result<(), String> {
+    let Some(end) = end else {
+        return Ok(());
+    };
+    let start_date = date
+        .and_then(CalendarDate::parse)
+        .ok_or_else(|| "计划执行区间需要开始日期。".to_string())?;
     let start_time = time.ok_or_else(|| "计划执行区间需要开始时刻。".to_string())?;
     validate_time(start_time)?;
-    let end_date = CalendarDate::parse(&end.date).ok_or_else(|| "计划执行结束日期无效。".to_string())?;
+    let end_date =
+        CalendarDate::parse(&end.date).ok_or_else(|| "计划执行结束日期无效。".to_string())?;
     validate_time(&end.time)?;
     if end_date < start_date || (end_date == start_date && end.time.as_str() <= start_time) {
         return Err("计划执行结束必须晚于开始；跨午夜请填写实际结束日期。未写入任何内容。".into());
@@ -1516,7 +1543,11 @@ fn task_from_create(input: &TaskCreateInput, now: &str) -> Result<TaskRecord, St
         now,
     })?;
     task.execution_end = input.execution_end.clone();
-    validate_execution_end(task.date.as_deref(), task.time.as_deref(), task.execution_end.as_ref())?;
+    validate_execution_end(
+        task.date.as_deref(),
+        task.time.as_deref(),
+        task.execution_end.as_ref(),
+    )?;
     Ok(task)
 }
 
@@ -1591,7 +1622,11 @@ fn apply_daily_flow_mutation(
                 now,
             })?;
             desired.execution_end = execution_end.clone();
-            validate_execution_end(desired.date.as_deref(), desired.time.as_deref(), desired.execution_end.as_ref())?;
+            validate_execution_end(
+                desired.date.as_deref(),
+                desired.time.as_deref(),
+                desired.execution_end.as_ref(),
+            )?;
             if let Some(existing) = document.tasks.iter().find(|task| task.id == desired.id) {
                 if existing.source.kind == TaskSourceKind::DailyFlow
                     && existing.source.reference.as_deref() == Some(source_reference.as_str())
@@ -1646,9 +1681,14 @@ fn apply_daily_flow_mutation(
                     "已删除任务不会被旧操作重新激活；请先恢复任务。未写入任何内容。".into(),
                 );
             }
-            let desired_end = execution_end.clone().unwrap_or_else(|| document.tasks[task_index].execution_end.clone());
+            let desired_end = execution_end
+                .clone()
+                .unwrap_or_else(|| document.tasks[task_index].execution_end.clone());
             validate_execution_end(date.as_deref(), time.as_deref(), desired_end.as_ref())?;
-            if document.tasks[task_index].date == date && document.tasks[task_index].time == time && document.tasks[task_index].execution_end == desired_end {
+            if document.tasks[task_index].date == date
+                && document.tasks[task_index].time == time
+                && document.tasks[task_index].execution_end == desired_end
+            {
                 let task = &mut document.tasks[task_index];
                 task.modified_at = now.to_owned();
                 task.changes.push(task_noop_change(
@@ -1980,7 +2020,13 @@ fn reschedule_operation_matches(
         return false;
     }
     match change.kind {
-        TaskChangeKind::Rescheduled => change.new_date == *date && change.new_time == *time && execution_end.as_ref().is_none_or(|end| &change.new_execution_end == end),
+        TaskChangeKind::Rescheduled => {
+            change.new_date == *date
+                && change.new_time == *time
+                && execution_end
+                    .as_ref()
+                    .is_none_or(|end| &change.new_execution_end == end)
+        }
         TaskChangeKind::Noop => matches!(
             change.operation.as_ref(),
             Some(TaskChangeOperation::Reschedule {
@@ -2165,7 +2211,9 @@ fn task_change_with_source(
 ) -> Result<TaskChangeView, String> {
     let name_changed = previous.name != updated.name;
     let content_changed = previous.content != updated.content;
-    let schedule_changed = previous.date != updated.date || previous.time != updated.time || previous.execution_end != updated.execution_end;
+    let schedule_changed = previous.date != updated.date
+        || previous.time != updated.time
+        || previous.execution_end != updated.execution_end;
     let list_changed = previous.list_id != updated.list_id;
     let changed_fields = [
         name_changed,
@@ -2202,8 +2250,12 @@ fn task_change_with_source(
         new_date: schedule_changed.then(|| updated.date.clone()).flatten(),
         previous_time: schedule_changed.then(|| previous.time.clone()).flatten(),
         new_time: schedule_changed.then(|| updated.time.clone()).flatten(),
-        previous_execution_end: schedule_changed.then(|| previous.execution_end.clone()).flatten(),
-        new_execution_end: schedule_changed.then(|| updated.execution_end.clone()).flatten(),
+        previous_execution_end: schedule_changed
+            .then(|| previous.execution_end.clone())
+            .flatten(),
+        new_execution_end: schedule_changed
+            .then(|| updated.execution_end.clone())
+            .flatten(),
         previous_list_id: list_changed.then(|| previous.list_id.clone()),
         new_list_id: list_changed.then(|| updated.list_id.clone()),
         previous_state: None,
@@ -2333,7 +2385,11 @@ fn validate_task_record(
         return Err("任务时间必须先绑定日期。".into());
     }
     let _ = normalize_schedule(task.date.as_deref(), task.time.as_deref())?;
-    validate_execution_end(task.date.as_deref(), task.time.as_deref(), task.execution_end.as_ref())?;
+    validate_execution_end(
+        task.date.as_deref(),
+        task.time.as_deref(),
+        task.execution_end.as_ref(),
+    )?;
     validate_timestamp_label(&task.created_at)?;
     validate_timestamp_label(&task.modified_at)?;
     let mut previous_time = None;
@@ -2378,8 +2434,16 @@ fn validate_change(change: &TaskChangeView) -> Result<(), String> {
         change.previous_time.as_deref(),
     )?;
     normalize_schedule(change.new_date.as_deref(), change.new_time.as_deref())?;
-    validate_execution_end(change.previous_date.as_deref(), change.previous_time.as_deref(), change.previous_execution_end.as_ref())?;
-    validate_execution_end(change.new_date.as_deref(), change.new_time.as_deref(), change.new_execution_end.as_ref())?;
+    validate_execution_end(
+        change.previous_date.as_deref(),
+        change.previous_time.as_deref(),
+        change.previous_execution_end.as_ref(),
+    )?;
+    validate_execution_end(
+        change.new_date.as_deref(),
+        change.new_time.as_deref(),
+        change.new_execution_end.as_ref(),
+    )?;
     if let Some(deleted_at) = &change.previous_deleted_at {
         validate_timestamp_label(deleted_at)?;
     }
@@ -2543,9 +2607,17 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
                 return Err("任务无变化操作记录不能携带字段前后值。".into());
             }
             match change.operation.as_ref() {
-                Some(TaskChangeOperation::Reschedule { date, time, execution_end }) => {
+                Some(TaskChangeOperation::Reschedule {
+                    date,
+                    time,
+                    execution_end,
+                }) => {
                     normalize_schedule(date.as_deref(), time.as_deref())?;
-                    validate_execution_end(date.as_deref(), time.as_deref(), execution_end.as_ref().and_then(Option::as_ref))?;
+                    validate_execution_end(
+                        date.as_deref(),
+                        time.as_deref(),
+                        execution_end.as_ref().and_then(Option::as_ref),
+                    )?;
                 }
                 Some(TaskChangeOperation::SetState { .. }) => {}
                 Some(TaskChangeOperation::CorrectCompletion {

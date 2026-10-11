@@ -1,7 +1,8 @@
 use crate::clock::SystemClock;
 use crate::tasks::{
     normalize_content, normalize_name, normalize_schedule, DailyFlowMutation, FileTaskStore,
-    TaskExecutionEnd, TaskApplication, TaskDataErrorKind, TaskDataState, TaskSourceView, TaskState, TasksView,
+    TaskApplication, TaskDataErrorKind, TaskDataState, TaskExecutionEnd, TaskSourceView, TaskState,
+    TasksView,
 };
 use crate::today::{CalendarDate, TodayClock, TodayWorkspacePersistence};
 use serde::{Deserialize, Serialize};
@@ -66,7 +67,11 @@ pub enum DailyFlowCommand {
         operation_id: String,
         date: Option<String>,
         time: Option<String>,
-        #[serde(default, deserialize_with = "crate::tasks::deserialize_execution_end_patch", skip_serializing_if = "Option::is_none")]
+        #[serde(
+            default,
+            deserialize_with = "crate::tasks::deserialize_execution_end_patch",
+            skip_serializing_if = "Option::is_none"
+        )]
         execution_end: Option<Option<TaskExecutionEnd>>,
     },
     #[serde(rename = "complete", rename_all = "camelCase")]

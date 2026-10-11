@@ -3431,6 +3431,7 @@ fn task_application_adapter_preserves_date_completion_and_list_lifecycle_semanti
     view = adapter
         .apply(
             &CollaborationTaskOperation::CreateTask {
+                execution_end: None,
                 name: "Draft report".into(),
                 content: Some("Collect notes".into()),
                 date: Some("2026-09-20".into()),
@@ -3446,6 +3447,7 @@ fn task_application_adapter_preserves_date_completion_and_list_lifecycle_semanti
     view = adapter
         .apply(
             &CollaborationTaskOperation::UpdateTask {
+                execution_end: None,
                 task_id: task_id.clone(),
                 name: "Prepare report".into(),
                 content: Some("Collect final notes".into()),
@@ -7206,7 +7208,8 @@ fn bounded_task_history_retains_reported_completion_after_reopen_without_rewriti
     let adapter = TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault.clone(), FixedClock, FileTaskStore));
     let view = adapter.read().unwrap();
     let binding = view.target_binding.unwrap();
-    let view = adapter.apply(&CollaborationTaskOperation::CreateTask { name: "Send report".into(), content: Some("Keep my notes".into()), date: Some("2026-10-02".into()), time: Some("09:00".into()), list_id: None }, &binding, None, "history-create").unwrap();
+    let view = adapter.apply(&CollaborationTaskOperation::CreateTask {
+        execution_end: None, name: "Send report".into(), content: Some("Keep my notes".into()), date: Some("2026-10-02".into()), time: Some("09:00".into()), list_id: None }, &binding, None, "history-create").unwrap();
     let id = view.tasks[0].id.clone();
     let view = adapter.apply_for_date(&CollaborationTaskOperation::CompleteTask { task_id: id.clone(), completed_time: Some("15:20".into()) }, &binding, view.revision.as_deref(), "history-complete", "2026-09-24").unwrap();
     let view = adapter.apply(&CollaborationTaskOperation::ReopenTask { task_id: id.clone() }, &binding, view.revision.as_deref(), "history-reopen").unwrap();
@@ -7519,7 +7522,8 @@ fn personal_retro_reads_three_real_histories_for_complete_lived_days_without_bus
     let clock = ManualClock::new("2026-09-28", "10:00");
     let tasks = TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault.clone(), clock.clone(), FileTaskStore));
     let opened = tasks.read().unwrap(); let binding = opened.target_binding.unwrap();
-    let created = tasks.apply(&CollaborationTaskOperation::CreateTask {name:"Synthetic report".into(),content:None,date:Some("2026-10-02".into()),time:Some("09:00".into()),list_id:None},&binding,None,"retro-create").unwrap();
+    let created = tasks.apply(&CollaborationTaskOperation::CreateTask {
+        execution_end: None,name:"Synthetic report".into(),content:None,date:Some("2026-10-02".into()),time:Some("09:00".into()),list_id:None},&binding,None,"retro-create").unwrap();
     let id = created.tasks[0].id.clone();
     tasks.apply_for_date(&CollaborationTaskOperation::CompleteTask {task_id:id.clone(),completed_time:None},&binding,created.revision.as_deref(),"retro-complete","2026-09-26").unwrap();
     let today = TodayApplication::new(vault.clone(), NoVaultPicker, clock.clone());
@@ -7644,4 +7648,26 @@ fn queued_retro_period_keeps_submission_lived_day_across_four_am_and_browsed_dat
     let after=serde_json::to_value(&requests.lock().unwrap()[2].dates).unwrap();
     assert_eq!(after["defaultPersonalRetroPeriod"],json!({"fromDate":"2026-09-21","toDate":"2026-09-27"}));
     assert!(!path.join("life/.personal-dashboard/tasks/v1/tasks.json").exists());
+}
+
+#[test]
+fn collaboration_task_service_retains_or_explicitly_clears_execution_end() {
+    let directory = IsolatedDirectory::new();
+    let vault = MutableVault::new(&directory.vault("synthetic-interval"));
+    let service = TaskApplicationCollaborationAdapter::new(TaskApplication::new(vault, FixedClock, FileTaskStore));
+    let opened = service.read().unwrap();
+    let create: CollaborationTaskOperation = serde_json::from_value(json!({"operation":"createTask", "name":"Synthetic overnight",
+        "content":null, "date":"2026-09-27", "time":"23:30", "listId":"inbox", "executionEnd":{"date":"2026-09-28","time":"00:30"}})).unwrap();
+    let saved = service.apply(&create, opened.target_binding.as_deref().unwrap(), None, "synthetic-interval-create").unwrap();
+    let task = &saved.tasks[0];
+    let end = json!({"date":"2026-09-28","time":"00:30"});
+    assert_eq!(serde_json::to_value(task).unwrap()["executionEnd"], end);
+    let legacy: CollaborationTaskOperation = serde_json::from_value(json!({"operation":"updateTask", "taskId":task.id,
+        "name":"Edited via old conversation contract", "content":null, "date":"2026-09-27", "time":"23:30", "listId":"inbox"})).unwrap();
+    let saved = service.apply(&legacy, saved.target_binding.as_deref().unwrap(), saved.revision.as_deref(), "synthetic-interval-legacy").unwrap();
+    assert_eq!(serde_json::to_value(&saved.tasks[0]).unwrap()["executionEnd"], end);
+    let clear: CollaborationTaskOperation = serde_json::from_value(json!({"operation":"updateTask", "taskId":saved.tasks[0].id,
+        "name":"Edited via old conversation contract", "content":null, "date":"2026-09-27", "time":"23:30", "listId":"inbox", "executionEnd":null})).unwrap();
+    let cleared = service.apply(&clear, saved.target_binding.as_deref().unwrap(), saved.revision.as_deref(), "synthetic-interval-clear").unwrap();
+    assert!(serde_json::to_value(&cleared.tasks[0]).unwrap()["executionEnd"].is_null());
 }

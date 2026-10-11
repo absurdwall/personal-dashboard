@@ -124,3 +124,10 @@ an interval pass both the changed start and end. Change history retains both
 ends. Existing Task identity, revision checks and operation retry handling
 remain in use. The real shared Task editor exposes end date/time and an
 explicit clear action; Tasks, Today and Calendar read that same Task store.
+
+Collaboration's `createTask` and `updateTask` operations accept the same
+optional `executionEnd`. Current Task references and proposal/result baselines
+retain it. Operation readback checks both endpoints (an omitted update end is
+checked against the baseline); an unchanged end cannot be reported as a saved
+end edit. Omitted new fields stay omitted in old serialized operation records,
+so adding this capability does not change old operation fingerprints.

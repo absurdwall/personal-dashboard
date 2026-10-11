@@ -651,6 +651,7 @@ type CollaborationTaskReferenceView = Readonly<{
   content: string | null;
   date: string | null;
   time: string | null;
+  executionEnd?: Readonly<{date: string; time: string}> | null;
   listId: string;
   state: "pending" | "completed" | "abandoned";
   deletedAt: string | null;
@@ -718,8 +719,8 @@ type CollaborationExternalApprovalRequest = Readonly<{
 }>;
 
 type CollaborationTaskOperation =
-  | Readonly<{ operation: "createTask"; name: string; content: string | null; date: string | null; time: string | null; listId: string | null }>
-  | Readonly<{ operation: "updateTask"; taskId: string; name: string; content: string | null; date: string | null; time: string | null; listId: string | null }>
+  | Readonly<{ operation: "createTask"; name: string; content: string | null; date: string | null; time: string | null; executionEnd?: Readonly<{date: string; time: string}> | null; listId: string | null }>
+  | Readonly<{ operation: "updateTask"; taskId: string; name: string; content: string | null; date: string | null; time: string | null; executionEnd?: Readonly<{date: string; time: string}> | null; listId: string | null }>
   | Readonly<{ operation: "completeTask"; taskId: string; completedTime?: string | null }>
   | Readonly<{ operation: "abandonTask" | "reopenTask" | "deleteTask" | "restoreTask"; taskId: string }>
   | Readonly<{ operation: "correctCompletion"; taskId: string; completedOn: string; completedTime: string | null }>
@@ -748,7 +749,7 @@ type DailyPlanBlockInput = Readonly<{ period: string; title: string; detail: str
 type DailyPlanEvidenceInput = Readonly<{ label: string; items: readonly string[] }>;
 
 type CollaborationTaskOperationBaseline =
-  | Readonly<{ kind: "task"; id: string; name: string; content: string | null; date: string | null; time: string | null; listId: string; listName: string; state: "pending" | "completed" | "abandoned"; deletedAt: string | null; completion: TaskCompletionView | null }>
+  | Readonly<{ kind: "task"; id: string; name: string; content: string | null; date: string | null; time: string | null; executionEnd?: Readonly<{date: string; time: string}> | null; listId: string; listName: string; state: "pending" | "completed" | "abandoned"; deletedAt: string | null; completion: TaskCompletionView | null }>
   | Readonly<{ kind: "list"; id: string; name: string; archived: boolean }>
   | Readonly<{
       kind: "dailyRecord";
@@ -2770,7 +2771,8 @@ async function startOrStopCollaborationVoice(): Promise<void> {
   void collaborationVoiceController.start(target);
 }
 
-function collaborationTaskSchedule(date: string | null, time: string | null): string {
+function collaborationTaskSchedule(date: string | null, time: string | null, end?: Readonly<{date: string; time: string}> | null): string {
+  if (date && time && end) return `${collaborationDateLabel(date)} · ${time} – ${end.date === date ? "" : `${collaborationDateLabel(end.date)} `}${end.time}`;
   const day = date ? collaborationDateLabel(date) : t("collaboration.taskUndated");
   return time ? `${day} · ${time}` : day;
 }
@@ -2782,7 +2784,7 @@ function collaborationTaskBaselineText(
     return t("collaboration.taskBaselineTask", {
       name: baseline.name,
       id: baseline.id,
-      schedule: collaborationTaskSchedule(baseline.date, baseline.time),
+      schedule: collaborationTaskSchedule(baseline.date, baseline.time, baseline.executionEnd),
       list: baseline.listName,
       state: t(taskStateCopyKey(baseline.state)),
       content: baseline.content ?? t("collaboration.taskNoNote"),
@@ -3134,7 +3136,7 @@ function collaborationTaskOperationText(
     case "createTask":
       return t("collaboration.taskOpCreate", {
         name: operation.name,
-        schedule: collaborationTaskSchedule(operation.date, operation.time),
+        schedule: collaborationTaskSchedule(operation.date, operation.time, operation.executionEnd),
         list: listLabel(operation.listId),
         content: operation.content ?? t("collaboration.taskNoNote"),
       });
@@ -3142,7 +3144,7 @@ function collaborationTaskOperationText(
       return t("collaboration.taskOpUpdate", {
         name: operation.name,
         id: operation.taskId,
-        schedule: collaborationTaskSchedule(operation.date, operation.time),
+        schedule: collaborationTaskSchedule(operation.date, operation.time, operation.executionEnd),
         list: listLabel(operation.listId),
         content: operation.content ?? t("collaboration.taskNoNote"),
       });
