@@ -1,0 +1,108 @@
+{
+  "outcome": "confirmed",
+  "registryRevision": "217ddca76efaf292",
+  "source": {
+    "portfolioRecordId": "product-personal-dashboard",
+    "sourceId": "source-personal-dashboard-experience",
+    "label": "Dashboard experience \u2014 local spec and tickets",
+    "kind": "localMarkdown",
+    "enabled": true,
+    "state": "current",
+    "revision": "d2cba8285153e830",
+    "issueCount": 12,
+    "malformedReferences": [],
+    "error": null,
+    "lastSuccessfulRefreshAt": 1791695189703,
+    "capabilities": {
+      "create": true,
+      "creatableFields": [
+        "title",
+        "nativeState",
+        "blockers"
+      ],
+      "edit": true,
+      "claim": true,
+      "close": true,
+      "open": true
+    }
+  },
+  "counts": {
+    "open": 1,
+    "resolved": 9,
+    "blocked": 2
+  },
+  "items": [
+    {
+      "sourceReference": "00-spec.md",
+      "nativeState": "open",
+      "lifecycle": "unknown",
+      "revision": "e9ee95368ff1ab00"
+    },
+    {
+      "sourceReference": "01-current-plan-time-editor.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "b382dadf59cc1d32"
+    },
+    {
+      "sourceReference": "02-approximate-plan-times.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "2bbe51d29e2ae169"
+    },
+    {
+      "sourceReference": "03-unified-readable-today.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "041c20bc94b5d019"
+    },
+    {
+      "sourceReference": "04-plan-drag-and-resize.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "9a5f8411b7d4417b"
+    },
+    {
+      "sourceReference": "05-task-list-details.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "9e6dde73ab405ac3"
+    },
+    {
+      "sourceReference": "06-task-execution-intervals.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "392d8d2417e60740"
+    },
+    {
+      "sourceReference": "07-task-timeline-create-move.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "0a25354bb1c168e3"
+    },
+    {
+      "sourceReference": "08-compact-calendar.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "f56c375843530816"
+    },
+    {
+      "sourceReference": "09-collaboration-command-completion.md",
+      "nativeState": "blocked",
+      "lifecycle": "unknown",
+      "revision": "a4d0b4eb9958b3eb"
+    },
+    {
+      "sourceReference": "10-evening-review-entry.md",
+      "nativeState": "resolved",
+      "lifecycle": "resolved",
+      "revision": "79c070d0457304b0"
+    },
+    {
+      "sourceReference": "11-packaged-daily-flow-acceptance.md",
+      "nativeState": "blocked",
+      "lifecycle": "unknown",
+      "revision": "226b751c674ce7f7"
+    }
+  ]
+}

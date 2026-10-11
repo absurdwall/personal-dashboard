@@ -67,3 +67,10 @@ No-ff merge `51f728782db3b1e376e8d540ce368a98a8e8a5f6` retains all four bounded 
 ## Repair closeout — 2026-10-11
 
 Frozen product checkpoint `6656041b518fe979c1318a7e7f87a2c14503cd42` independently cleared both review axes. Manual Task retry identity and Evening localized date/guard copy repairs retain full history. Build plus 21 focused final tests passed; native source matches the 523-pass checkpoint, earlier 432 frontend/23 browser totals are historical. [Exact independent verdict and artifacts](evidence/code-review.md). PDEX-09/PDEX-11 remain blocked and parent remains open. Previous package is historical; no main merge, remote publication, installation or real-data change. Only the owned repair worker is eligible for cleanup after clean inventory/reachability checks; unrelated branches remain intact.
+
+
+## Rebuilt B repair handoff — 2026-10-11
+
+Final reviewed checkpoint `f82ef664961b4f01066bd05c4b4fd8a0bea92350` retains all original implementation, repair, evidence and no-ff merge history from requested `8960c80`. Frozen B product source `ffa1b85056fe3f2bc3ab68ce652001b3b6f9537e` is identical to final code/test `20515dd`; subsequent closeout is docs-only. Both independent axes and review root are satisfied with the bounded repair scope. Current build/focused checks pass 43/43; earlier full-suite results retain their exact historical ranges.
+
+[Source-bound B native report](evidence/native-acceptance-2026-10-11-b.md) and immutable A/B indices distinguish actual native results, seeded history and missing gates. Both temporary candidates are stopped/unregistered, retained under `.noindex`; do not launch via Finder or a default profile. Candidate B's guarded `/tmp/pdex-acceptance-20261011-b.noindex/launch.py` binds the exact executable, synthetic profile/Vault/clock and root source checks. A's older source remains historical. Fresh B narrow-window, real IME, held-edge/active resize and authenticated quota checks are still unverified; PDEX-09/11 remain blocked, parent open. Installed App and unrelated branches are retained. Main/remote/install operations remain separate authorized outcomes.
