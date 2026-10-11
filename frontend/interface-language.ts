@@ -722,6 +722,8 @@ const interfaceCopies = {
     zh: "当天任务、日记安排和已确认事实共用的时间轴。",
     en: "Shared timeline of today's tasks, Diary arrangements, and confirmed facts.",
   },
+  "today.showUnlocatedItems": { zh: "展开未定时间内容（{count}）", en: "Show untimed items ({count})" },
+  "today.hideUnlocatedItems": { zh: "收起未定时间内容（{count}）", en: "Hide untimed items ({count})" },
   "today.unlocatedTimes": { zh: "时间未明确的内容", en: "Items without a precise time" },
   "today.unlocatedLabel": { zh: "未按明确时刻定位", en: "No precise time" },
   "today.unlocatedPlanLabel": { zh: "计划", en: "Plan" },

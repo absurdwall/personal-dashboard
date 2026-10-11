@@ -9925,3 +9925,28 @@ button.habit-cell:focus-visible {
 }
 .today-axis-plan-end::after { content: ""; position: absolute; inset: 5px; border-top: 2px solid currentColor; }
 .today-axis-gesture-preview { color: var(--parity-ink, #232724); font-weight: 650; padding: 3px 8px; white-space: nowrap; }
+
+/* Today-only transient untimed presentation; existing navigation/Calendar stay unchanged. */
+#today-ready[data-phase="daytime"] .today-layout[data-unlocated-presentation="collapsed"],
+#today-ready[data-phase="daytime"] .today-layout[data-unlocated-presentation="drawer"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+#today-unlocated-time-shortcut { flex-shrink: 0; font-size: 11px; }
+#today-unlocated-time-shortcut[hidden] { display: none; }
+
+.today-unlocated-drawer {
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  margin: 16px 16px 16px auto;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid var(--parity-border);
+  border-radius: 12px;
+  background: var(--parity-surface, #fff);
+  color: var(--parity-ink, #232724);
+  box-shadow: 0 12px 40px rgb(24 32 29 / 25%);
+}
+.today-unlocated-drawer::backdrop { background: rgb(24 32 29 / 24%); }
+.today-unlocated-drawer > button { display: block; margin: 0 0 12px auto; }
+.today-unlocated-drawer .today-axis-unlocated-region { margin: 0; }

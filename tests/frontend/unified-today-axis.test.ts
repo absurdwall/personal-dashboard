@@ -28,6 +28,7 @@ function render(check: string, width = 830, height = 758): any {
     document.getElementById('today-handoff').hidden = true;
     ${pure}
     ${bindings}
+      ${main.slice(main.indexOf('const todayUnlocatedNarrow ='), main.indexOf('todayUnlocatedTimeShortcut?.addEventListener("click"'))}
     const workspaceInformation = document.querySelector('.workspace-information');
     let todayAxisFollowState = 'following', currentInterfaceLanguage = 'en', currentWorkspaceDestination = 'today', programmaticTodayAxisScrollUntil = 0;
     const t = (key, values) => interfaceCopy(key, 'en', values);

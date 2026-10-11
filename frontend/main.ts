@@ -1271,23 +1271,62 @@ const todayAxisScrollSurface = document.querySelector<HTMLElement>("#today-axis-
 const todayHourTicks = document.querySelector<HTMLElement>("#today-hour-ticks");
 const todayCurrentArrangementUnlocated = document.querySelector<HTMLElement>("#today-current-arrangement-unlocated");
 const todayUnlocatedTimeRegion = document.querySelector<HTMLElement>("#today-unlocated-time-region");
-const todayUnlocatedTimeShortcut = document.querySelector<HTMLAnchorElement>("#today-unlocated-time-shortcut");
-todayUnlocatedTimeShortcut?.addEventListener("click", (event) => {
-  if (!todayUnlocatedTimeRegion || todayUnlocatedTimeRegion.hidden) return;
-  event.preventDefault();
-  const scrollSurface = todayUnlocatedTimeRegion.closest<HTMLElement>(".workspace-information");
-  if (!scrollSurface) {
-    todayUnlocatedTimeRegion.scrollIntoView({ behavior: "auto", block: "start" });
-    return;
+const todayUnlocatedTimeShortcut = document.querySelector<HTMLButtonElement>("#today-unlocated-time-shortcut");
+const todayUnlocatedNarrow = () => window.innerWidth <= 1100;
+// Presentation state only: automatic wide-visible/narrow-collapsed; manual override
+// lasts for this Today selection/phase. Resize adapts inline <-> drawer without writes.
+let todayUnlocatedOverride: boolean | null = null;
+let todayUnlocatedCount = 0;
+const todayUnlocatedHome = todayUnlocatedTimeRegion?.parentElement;
+const todayUnlocatedNext = todayUnlocatedTimeRegion?.nextSibling;
+let todayUnlocatedDrawer: HTMLDialogElement | null = null;
+function restoreTodayUnlocatedHome(): void {
+  if (todayUnlocatedTimeRegion && todayUnlocatedHome && todayUnlocatedTimeRegion.parentElement !== todayUnlocatedHome) {
+    todayUnlocatedHome.insertBefore(todayUnlocatedTimeRegion, todayUnlocatedNext ?? null);
   }
-  const toolbar = todayUnlocatedTimeShortcut.closest<HTMLElement>(".today-time-axis-toolbar");
-  const stickyOffset = toolbar && getComputedStyle(toolbar).position === "sticky"
-    ? toolbar.offsetHeight + 12
-    : 0;
-  const regionTop = todayUnlocatedTimeRegion.getBoundingClientRect().top -
-    scrollSurface.getBoundingClientRect().top + scrollSurface.scrollTop;
-  scrollSurface.scrollTo({ top: Math.max(0, regionTop - stickyOffset), behavior: "auto" });
+}
+function updateTodayUnlocatedPresentation(): void {
+  if (!todayUnlocatedTimeRegion || !todayUnlocatedTimeShortcut) return;
+  const daytime = document.querySelector<HTMLElement>("#today-ready")?.dataset.phase === "daytime";
+  const shown = Boolean(daytime && todayUnlocatedCount > 0 && (todayUnlocatedOverride ?? !todayUnlocatedNarrow()));
+  const drawer = shown && todayUnlocatedNarrow();
+  todayUnlocatedTimeRegion.hidden = !shown;
+  todayUnlocatedTimeShortcut.hidden = todayUnlocatedCount === 0;
+  todayUnlocatedTimeShortcut.setAttribute("aria-expanded", String(shown));
+  setCopy(todayUnlocatedTimeShortcut, shown ? "today.hideUnlocatedItems" : "today.showUnlocatedItems", {count: todayUnlocatedCount});
+  document.querySelector<HTMLElement>(".today-layout")?.setAttribute("data-unlocated-presentation", drawer ? "drawer" : shown ? "inline" : "collapsed");
+  if (drawer) {
+    if (!todayUnlocatedDrawer) {
+      const dialog = document.createElement("dialog");
+      dialog.className = "today-unlocated-drawer";
+      dialog.dataset.todayUnlocatedDrawer = "";
+      dialog.setAttribute("aria-labelledby", "today-unlocated-time-heading");
+      const close = document.createElement("button");close.type = "button";
+      close.dataset.unlocatedClose = "";setCopy(close, "today.planCancel");
+      const dismiss = () => {
+        todayUnlocatedOverride = false;
+        updateTodayUnlocatedPresentation();
+        todayUnlocatedTimeShortcut?.focus({preventScroll: true});
+      };
+      close.addEventListener("click", dismiss);
+      dialog.addEventListener("cancel", event => {event.preventDefault();dismiss();});
+      dialog.addEventListener("keydown", event => {if (event.key === "Escape") {event.preventDefault();dismiss();}});
+      dialog.append(close);document.body.append(dialog);todayUnlocatedDrawer = dialog;
+    }
+    todayUnlocatedDrawer.append(todayUnlocatedTimeRegion);
+    if (!todayUnlocatedDrawer.open) todayUnlocatedDrawer.showModal();
+  } else {
+    const containedFocus = todayUnlocatedDrawer?.contains(document.activeElement);
+    if (todayUnlocatedDrawer?.open) todayUnlocatedDrawer.close();
+    restoreTodayUnlocatedHome();
+    if (containedFocus && daytime) todayUnlocatedTimeShortcut.focus({preventScroll: true});
+  }
+}
+todayUnlocatedTimeShortcut?.addEventListener("click", () => {
+  todayUnlocatedOverride = todayUnlocatedTimeShortcut.getAttribute("aria-expanded") !== "true";
+  updateTodayUnlocatedPresentation();
 });
+window.addEventListener("resize", () => updateTodayUnlocatedPresentation());
 const todayTimedEvents = document.querySelector<HTMLOListElement>("#today-timed-events");
 const todayTimedDurations = document.querySelector<HTMLElement>("#today-timed-duration");
 const todayTimedEmpty = document.querySelector<HTMLElement>("#today-timed-empty");
@@ -6065,6 +6104,7 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
     (entry.endMinute ?? entry.startMinute) >= 1440).length;
   if (todayAxisRenderedDate !== view.date) {
     todayAxisRenderedDate = view.date;
+    todayUnlocatedOverride = null;
     const now = view.isToday && currentTime ? livedAxisMinute(currentTime) : null;
     todayAxisEarlyExpanded = earlyCount > 0 || (now !== null && now < 360);
     todayAxisLateExpanded = lateCount > 0 || (now !== null && now >= 1440);
@@ -6103,10 +6143,8 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
     view.timeAxis.unlocatedCurrentArrangement,
     view.timeAxis.unlocatedConfirmedFacts,
   );
-  const hasUnlocatedEntries = view.timeAxis.unlocatedCurrentArrangement.length > 0 ||
-    view.timeAxis.unlocatedConfirmedFacts.length > 0;
-  if (todayUnlocatedTimeRegion) todayUnlocatedTimeRegion.hidden = !hasUnlocatedEntries;
-  todayUnlocatedTimeShortcut?.classList.toggle("is-available", hasUnlocatedEntries);
+  todayUnlocatedCount = view.timeAxis.unlocatedCurrentArrangement.length + view.timeAxis.unlocatedConfirmedFacts.length;
+  updateTodayUnlocatedPresentation();
   updateTodayTimeAxisClock(view, currentTime);
 }
 
@@ -6372,6 +6410,8 @@ function showTodayPhase(phase: TodayPhase, focus = false): void {
   if (todayEvidenceRegion) {
     todayEvidenceRegion.hidden = phase !== "morning";
   }
+  if (phaseChanged) todayUnlocatedOverride = null;
+  updateTodayUnlocatedPresentation();
   renderTodayEvidence();
   if (phaseChanged && workspaceInformation) {
     workspaceInformation.scrollTop = 0;
@@ -11401,6 +11441,9 @@ function showWorkspaceDestination(
     destination === "today" &&
     (destinationChanged || selectedTodayDate !== dailyDate);
   if (leavingToday || changingTodaySelection) {
+    todayUnlocatedOverride = null;
+    if (todayUnlocatedDrawer?.open) todayUnlocatedDrawer.close();
+    restoreTodayUnlocatedHome();
     historicalHabitArrival.clear();
     todayPresentationRequests.invalidate();
     todayClockRequests.invalidate();
