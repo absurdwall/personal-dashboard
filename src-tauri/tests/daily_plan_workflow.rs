@@ -612,6 +612,7 @@ fn manual_plan_time_edit_preserves_other_sources_and_survives_restart() {
         operation_id: "manual-time-1".into(),
         start_minute: 600,
         end_minute: Some(720),
+        precision: None,
     };
     let saved = application
         .edit_plan_time(edit.clone())
@@ -670,6 +671,7 @@ fn manual_time_edit_rejects_stale_revision_wrong_vault_and_unsafe_sources() {
         operation_id: "manual-stale-1".into(),
         start_minute: 601,
         end_minute: None,
+        precision: None,
     };
     let path = record_path(&vault);
     let changed = format!(
@@ -696,6 +698,7 @@ fn manual_time_edit_rejects_stale_revision_wrong_vault_and_unsafe_sources() {
         operation_id: "manual-invalid-1".into(),
         start_minute: 601,
         end_minute: None,
+        precision: None,
     };
     assert!(application.edit_plan_time(edit.clone()).is_err());
     edit.plan_id = loaded.time_axis.current_arrangement[0]
@@ -757,6 +760,7 @@ fn saved_manual_time_edit_reports_readback_failure_separately_from_write() {
         operation_id: "manual-readback-1".into(),
         start_minute: 600,
         end_minute: Some(720),
+        precision: None,
     };
     let flaky = TodayApplication::with_record_store(
         SelectedVault(vault.clone()),
@@ -773,4 +777,306 @@ fn saved_manual_time_edit_reports_readback_failure_separately_from_write() {
         Some(result.saved_revision.as_str())
     );
     assert_eq!(reopened.timeline[0].period, "10:00–12:00");
+}
+
+#[test]
+fn broad_approximate_and_exact_plans_keep_their_precision_and_unknown_relative_time() {
+    let directory = TempDirectory::new();
+    let vault = directory.vault("precision-vault");
+    let application = app(&vault);
+    let empty = application.read_date(DATE).unwrap();
+    let mut initial = initial_plan_input(empty.target_binding.unwrap(), None);
+    initial.arrangement = [
+        "早晨",
+        "中午",
+        "午后",
+        "傍晚",
+        "晚间",
+        "约 15:20",
+        "16:10",
+        "17:00–18:00",
+        "半小时后",
+        "择机",
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, period)| DailyPlanBlockInput {
+        period: period.into(),
+        title: format!("Synthetic plan {index}"),
+        detail: None,
+    })
+    .collect();
+    refresh_fingerprint(&mut initial);
+    let loaded = application.save_daily_plan(initial).unwrap();
+    let starts: Vec<_> = loaded
+        .time_axis
+        .current_arrangement
+        .iter()
+        .map(|entry| entry.start_minute)
+        .collect();
+    assert_eq!(
+        starts,
+        vec![
+            Some(540),
+            Some(720),
+            Some(780),
+            Some(1080),
+            Some(1080),
+            Some(920),
+            Some(970),
+            Some(1020)
+        ]
+    );
+    let observed = serde_json::to_value(&loaded).unwrap();
+    let modes: Vec<_> = observed["timeAxis"]["currentArrangement"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["planPrecision"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        modes,
+        vec![
+            "broad",
+            "broad",
+            "broad",
+            "broad",
+            "broad",
+            "approximatePoint",
+            "exactPoint",
+            "exactRange"
+        ]
+    );
+    assert!(loaded.time_axis.current_arrangement[..7]
+        .iter()
+        .all(|entry| entry.end_minute.is_none()));
+    assert_eq!(loaded.time_axis.unlocated_current_arrangement.len(), 2);
+    assert_eq!(
+        app(&vault).read_date(DATE).unwrap().time_axis,
+        loaded.time_axis
+    );
+    struct LaterClock;
+    impl TodayClock for LaterClock {
+        fn current_date(&self) -> String {
+            DATE.into()
+        }
+        fn current_time_label(&self) -> String {
+            "18:30".into()
+        }
+        fn current_timestamp_label(&self) -> String {
+            "2026-08-10T18:30-04:00".into()
+        }
+    }
+    let later = TodayApplication::new(SelectedVault(vault.clone()), NoVaultPicker, LaterClock)
+        .read_date(DATE)
+        .unwrap();
+    assert_eq!(
+        later.time_axis, loaded.time_axis,
+        "relative plans must not drift with the refresh clock"
+    );
+    assert_eq!(loaded.baseline.timeline[0].period, "早晨");
+    assert!(loaded.time_axis.confirmed_facts.is_empty());
+}
+
+#[test]
+fn precision_edits_remain_fuzzy_until_an_explicit_conversion_and_survive_restart() {
+    use personal_dashboard_lib::today::PlanTimeEditInput;
+    let directory = TempDirectory::new();
+    let vault = directory.vault("precision-edit-vault");
+    let application = app(&vault);
+    let empty = application.read_date(DATE).unwrap();
+    let mut initial = initial_plan_input(empty.target_binding.unwrap(), None);
+    initial.arrangement[0].period = "午后".into();
+    refresh_fingerprint(&mut initial);
+    let loaded = application.save_daily_plan(initial).unwrap();
+    let input = |view: &personal_dashboard_lib::today::TodayView,
+                 op: &str,
+                 start: u16,
+                 end: Option<u16>,
+                 precision: Option<&str>|
+     -> PlanTimeEditInput {
+        let mut value = serde_json::json!({"date": DATE, "targetBinding": view.target_binding, "expectedRevision": view.revision,
+            "planId": view.time_axis.current_arrangement[0].plan_id, "operationId": op, "startMinute": start, "endMinute": end});
+        if let Some(precision) = precision {
+            value["precision"] = precision.into();
+        }
+        serde_json::from_value(value).unwrap()
+    };
+    let fuzzy = application
+        .edit_plan_time(input(&loaded, "fuzzy-edit-1", 840, None, None))
+        .unwrap()
+        .view
+        .unwrap();
+    assert_eq!(fuzzy.timeline[0].period, "约14:00");
+    assert_eq!(fuzzy.baseline, loaded.baseline);
+    assert_eq!(
+        serde_json::to_value(&fuzzy).unwrap()["timeAxis"]["currentArrangement"][0]["planPrecision"],
+        "approximatePoint"
+    );
+    let exact = application
+        .edit_plan_time(input(
+            &fuzzy,
+            "exact-conversion-1",
+            900,
+            Some(960),
+            Some("exactRange"),
+        ))
+        .unwrap()
+        .view
+        .unwrap();
+    assert_eq!(exact.timeline[0].period, "15:00–16:00");
+    assert_eq!(exact.baseline, loaded.baseline);
+    let approximate = application
+        .edit_plan_time(input(
+            &exact,
+            "fuzzy-conversion-1",
+            1005,
+            None,
+            Some("approximatePoint"),
+        ))
+        .unwrap()
+        .view
+        .unwrap();
+    assert_eq!(approximate.timeline[0].period, "约16:45");
+    let overnight = application
+        .edit_plan_time(input(
+            &approximate,
+            "overnight-exact-1",
+            1380,
+            Some(1500),
+            Some("exactRange"),
+        ))
+        .unwrap()
+        .view
+        .unwrap();
+    assert_eq!(
+        overnight.timeline[0].period,
+        "2026-08-10 23:00–2026-08-11 01:00"
+    );
+    assert_eq!(
+        overnight.time_axis.current_arrangement[0].start_minute,
+        Some(1380)
+    );
+    assert_eq!(
+        overnight.time_axis.current_arrangement[0].end_minute,
+        Some(1500)
+    );
+    assert_eq!(
+        app(&vault).read_date(DATE).unwrap().time_axis,
+        overnight.time_axis
+    );
+    let point = application
+        .edit_plan_time(input(
+            &overnight,
+            "exact-point-conversion-1",
+            990,
+            None,
+            Some("exactPoint"),
+        ))
+        .unwrap()
+        .view
+        .unwrap();
+    assert_eq!(point.timeline[0].period, "16:30");
+    assert_eq!(point.time_axis.current_arrangement[0].end_minute, None);
+    assert_eq!(
+        app(&vault).read_date(DATE).unwrap().time_axis,
+        point.time_axis
+    );
+
+    assert_eq!(approximate.baseline.timeline[0].period, "午后");
+    assert!(approximate.time_axis.confirmed_facts.is_empty());
+    assert!(fs::read_to_string(record_path(&vault))
+        .unwrap()
+        .contains("约14:00 → 15:00–16:00"));
+    if let Ok(directory) = std::env::var("PDEX_UI_FIXTURE_DIRECTORY") {
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(Path::new(&directory).join("plan-time-views.json"), serde_json::to_vec_pretty(&serde_json::json!({"loaded": loaded, "fuzzy": fuzzy, "exact": exact, "approximate": approximate, "overnight": overnight, "point": point})).unwrap()).unwrap();
+    }
+}
+
+#[test]
+fn unique_inherited_plan_heading_is_editable_without_touching_other_headings_or_facts() {
+    use personal_dashboard_lib::today::PlanTimeEditInput;
+    let directory = TempDirectory::new();
+    let vault = directory.vault("inherited-plan-vault");
+    let path = record_path(&vault);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let original = format!("---\ntype: daily-record\ndate: {DATE}\n---\n# {DATE}\n\n## 早间基准\n\n### 初始安排\n\n- **早晨**：Morning stays unchanged\n\n## 今天的大致安排\n\n### 08:00–10:00\n\n- Inherited synthetic plan\n\n## 计划依据\n\nKeep original basis\n\n## 白天更新\n\n### 已发生事件\n\n- 事实：08:45 已经阅读\n\n## 晚间复盘\n\n<!-- unrelated 08:00–10:00 -->\n");
+    fs::write(&path, &original).unwrap();
+    let application = app(&vault);
+    let loaded = application.read_date(DATE).unwrap();
+    let entry = &loaded.time_axis.current_arrangement[0];
+    assert!(entry.time_editable);
+    let edit: PlanTimeEditInput = serde_json::from_value(serde_json::json!({"date": DATE,
+        "targetBinding": loaded.target_binding, "expectedRevision": loaded.revision,
+        "planId": entry.plan_id, "operationId": "inherited-edit-1", "startMinute": 600, "endMinute": 720, "precision": "exactRange"})).unwrap();
+    let saved = application.edit_plan_time(edit).unwrap().view.unwrap();
+    assert_eq!(saved.timeline[0].period, "10:00–12:00");
+    assert_eq!(
+        saved.time_axis.confirmed_facts,
+        loaded.time_axis.confirmed_facts
+    );
+    let document = fs::read_to_string(&path).unwrap();
+    assert!(document.contains("### 10:00–12:00\n"));
+    assert!(document.contains("<!-- unrelated 08:00–10:00 -->"));
+    assert_eq!(
+        section_bytes(&document, "早间基准", "今天的大致安排"),
+        section_bytes(&original, "早间基准", "今天的大致安排")
+    );
+    assert_eq!(
+        app(&vault).read_date(DATE).unwrap().timeline,
+        saved.timeline
+    );
+    if let Ok(directory) = std::env::var("PDEX_UI_FIXTURE_DIRECTORY") {
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(
+            Path::new(&directory).join("inherited-plan-views.json"),
+            serde_json::to_vec_pretty(&serde_json::json!({"loaded": loaded, "saved": saved}))
+                .unwrap(),
+        )
+        .unwrap();
+    }
+    // A shared heading cannot identify which of several plans should change.
+    let ambiguous = original.replace(
+        "- Inherited synthetic plan",
+        "- Inherited synthetic plan\n- Another synthetic plan",
+    );
+    fs::write(&path, ambiguous).unwrap();
+    let ambiguous_view = application.read_date(DATE).unwrap();
+    assert!(ambiguous_view
+        .time_axis
+        .current_arrangement
+        .iter()
+        .all(|entry| entry.plan_id.is_none() && !entry.time_editable));
+}
+
+#[test]
+fn explicit_body_time_keeps_its_precision_and_cannot_be_replaced_via_a_broad_heading() {
+    use personal_dashboard_lib::today::PlanTimeEditInput;
+    let directory = TempDirectory::new();
+    let vault = directory.vault("body-time-vault");
+    let application = app(&vault);
+    let empty = application.read_date(DATE).unwrap();
+    let mut initial = initial_plan_input(empty.target_binding.unwrap(), None);
+    initial.arrangement[0].period = "上午".into();
+    initial.arrangement[0].title = "09:30–10:45 Synthetic source time".into();
+    refresh_fingerprint(&mut initial);
+    let loaded = application.save_daily_plan(initial).unwrap();
+    let entry = &loaded.time_axis.current_arrangement[0];
+    assert_eq!(entry.start_minute, Some(570));
+    assert_eq!(entry.end_minute, Some(645));
+    assert_eq!(
+        serde_json::to_value(entry).unwrap()["planPrecision"],
+        "exactRange"
+    );
+    assert!(!entry.time_editable);
+    let original = fs::read_to_string(record_path(&vault)).unwrap();
+    let edit: PlanTimeEditInput = serde_json::from_value(serde_json::json!({"date": DATE,
+        "targetBinding": loaded.target_binding, "expectedRevision": loaded.revision,
+        "planId": entry.plan_id, "operationId": "unsafe-body-edit", "startMinute": 600, "endMinute": 720, "precision": "exactRange"})).unwrap();
+    assert!(application
+        .edit_plan_time(edit)
+        .unwrap_err()
+        .contains("时间字段"));
+    assert_eq!(fs::read_to_string(record_path(&vault)).unwrap(), original);
 }
