@@ -1,3 +1,5 @@
+export type TaskExecutionEnd = Readonly<{ date: string; time: string }>;
+
 export type TaskSchedulePresentation = Readonly<{
   date: string | null;
   time: string | null;
@@ -57,6 +59,7 @@ export function taskEditOperationKey(
     date: string | null;
     time: string | null;
     listId: string;
+    executionEnd?: TaskExecutionEnd | null;
   }>,
 ): string {
   return JSON.stringify([
@@ -68,6 +71,7 @@ export function taskEditOperationKey(
     edit.date,
     edit.time,
     edit.listId,
+    edit.executionEnd === undefined ? "preserve" : edit.executionEnd,
   ]);
 }
 
@@ -155,6 +159,7 @@ export type TaskUpdateEdit = Readonly<{
   date: string | null;
   time: string | null;
   listId: string;
+  executionEnd?: TaskExecutionEnd | null;
 }>;
 
 export type TaskUpdateInput = TaskUpdateEdit &
@@ -173,6 +178,7 @@ export type TaskUpdateView = Readonly<{
     date: string | null;
     time: string | null;
     listId: string;
+    executionEnd?: TaskExecutionEnd | null;
   }>[];
 }>;
 
@@ -216,7 +222,10 @@ export async function performTaskUpdateRequest<View extends TaskUpdateView>(
       candidate.content === edit.content &&
       candidate.date === edit.date &&
       candidate.time === edit.time &&
-      candidate.listId === edit.listId,
+      candidate.listId === edit.listId &&
+      (edit.executionEnd === undefined ||
+        (candidate.executionEnd?.date === edit.executionEnd?.date &&
+         candidate.executionEnd?.time === edit.executionEnd?.time)),
   );
   const confirmed = taskMutationConfirmed(
     responseIsCurrent,

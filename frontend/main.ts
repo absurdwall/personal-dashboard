@@ -277,6 +277,8 @@ type TaskChangeView = Readonly<{
   newDate: string | null;
   previousTime: string | null;
   newTime: string | null;
+  previousExecutionEnd?: Readonly<{date: string; time: string}> | null;
+  newExecutionEnd?: Readonly<{date: string; time: string}> | null;
   previousListId: string | null;
   newListId: string | null;
   previousState: "pending" | "completed" | "abandoned" | null;
@@ -308,6 +310,7 @@ type TaskCompletionView = Readonly<{
 }>;
 
 type TaskView = Readonly<{
+  executionEnd: Readonly<{ date: string; time: string }> | null;
   id: string;
   name: string;
   content: string | null;
@@ -651,6 +654,7 @@ type CollaborationTaskReferenceView = Readonly<{
   content: string | null;
   date: string | null;
   time: string | null;
+  executionEnd?: Readonly<{date: string; time: string}> | null;
   listId: string;
   state: "pending" | "completed" | "abandoned";
   deletedAt: string | null;
@@ -718,8 +722,8 @@ type CollaborationExternalApprovalRequest = Readonly<{
 }>;
 
 type CollaborationTaskOperation =
-  | Readonly<{ operation: "createTask"; name: string; content: string | null; date: string | null; time: string | null; listId: string | null }>
-  | Readonly<{ operation: "updateTask"; taskId: string; name: string; content: string | null; date: string | null; time: string | null; listId: string | null }>
+  | Readonly<{ operation: "createTask"; name: string; content: string | null; date: string | null; time: string | null; executionEnd?: Readonly<{date: string; time: string}> | null; listId: string | null }>
+  | Readonly<{ operation: "updateTask"; taskId: string; name: string; content: string | null; date: string | null; time: string | null; executionEnd?: Readonly<{date: string; time: string}> | null; listId: string | null }>
   | Readonly<{ operation: "completeTask"; taskId: string; completedTime?: string | null }>
   | Readonly<{ operation: "abandonTask" | "reopenTask" | "deleteTask" | "restoreTask"; taskId: string }>
   | Readonly<{ operation: "correctCompletion"; taskId: string; completedOn: string; completedTime: string | null }>
@@ -748,7 +752,7 @@ type DailyPlanBlockInput = Readonly<{ period: string; title: string; detail: str
 type DailyPlanEvidenceInput = Readonly<{ label: string; items: readonly string[] }>;
 
 type CollaborationTaskOperationBaseline =
-  | Readonly<{ kind: "task"; id: string; name: string; content: string | null; date: string | null; time: string | null; listId: string; listName: string; state: "pending" | "completed" | "abandoned"; deletedAt: string | null; completion: TaskCompletionView | null }>
+  | Readonly<{ kind: "task"; id: string; name: string; content: string | null; date: string | null; time: string | null; executionEnd?: Readonly<{date: string; time: string}> | null; listId: string; listName: string; state: "pending" | "completed" | "abandoned"; deletedAt: string | null; completion: TaskCompletionView | null }>
   | Readonly<{ kind: "list"; id: string; name: string; archived: boolean }>
   | Readonly<{
       kind: "dailyRecord";
@@ -1423,6 +1427,8 @@ const taskRequests = new LatestRequest();
 const todayTaskRequests = new LatestRequest();
 const calendarTaskRequests = new LatestRequest();
 type TaskDraft = Readonly<{
+  endDate: string;
+  endTime: string;
   name: string;
   content: string;
   date: string;
@@ -2770,7 +2776,8 @@ async function startOrStopCollaborationVoice(): Promise<void> {
   void collaborationVoiceController.start(target);
 }
 
-function collaborationTaskSchedule(date: string | null, time: string | null): string {
+function collaborationTaskSchedule(date: string | null, time: string | null, end?: Readonly<{date: string; time: string}> | null): string {
+  if (date && time && end) return `${collaborationDateLabel(date)} · ${time} – ${end.date === date ? "" : `${collaborationDateLabel(end.date)} `}${end.time}`;
   const day = date ? collaborationDateLabel(date) : t("collaboration.taskUndated");
   return time ? `${day} · ${time}` : day;
 }
@@ -2782,7 +2789,7 @@ function collaborationTaskBaselineText(
     return t("collaboration.taskBaselineTask", {
       name: baseline.name,
       id: baseline.id,
-      schedule: collaborationTaskSchedule(baseline.date, baseline.time),
+      schedule: collaborationTaskSchedule(baseline.date, baseline.time, baseline.executionEnd),
       list: baseline.listName,
       state: t(taskStateCopyKey(baseline.state)),
       content: baseline.content ?? t("collaboration.taskNoNote"),
@@ -3134,7 +3141,7 @@ function collaborationTaskOperationText(
     case "createTask":
       return t("collaboration.taskOpCreate", {
         name: operation.name,
-        schedule: collaborationTaskSchedule(operation.date, operation.time),
+        schedule: collaborationTaskSchedule(operation.date, operation.time, operation.executionEnd),
         list: listLabel(operation.listId),
         content: operation.content ?? t("collaboration.taskNoNote"),
       });
@@ -3142,7 +3149,7 @@ function collaborationTaskOperationText(
       return t("collaboration.taskOpUpdate", {
         name: operation.name,
         id: operation.taskId,
-        schedule: collaborationTaskSchedule(operation.date, operation.time),
+        schedule: collaborationTaskSchedule(operation.date, operation.time, operation.executionEnd),
         list: listLabel(operation.listId),
         content: operation.content ?? t("collaboration.taskNoNote"),
       });
@@ -6007,6 +6014,7 @@ function captureTodayTaskEditors(view: TodayView): Set<string> {
     if (
       draft.name !== task.name || draft.content !== (task.content ?? "") ||
       draft.date !== (task.date ?? "") || draft.time !== (task.time ?? "") ||
+      draft.endDate !== (task.executionEnd?.date ?? "") || draft.endTime !== (task.executionEnd?.time ?? "") ||
       draft.listId !== task.listId || draft.completionDate !== (task.completion?.completedOn ?? "") ||
       draft.completionTime !== (task.completion?.completedTime ?? "")
     ) {
@@ -8510,7 +8518,9 @@ function readTaskDraft(form: HTMLFormElement): TaskDraft {
     form.querySelector<HTMLInputElement>("[data-task-completion-date]")?.value ?? "";
   const completionTime =
     form.querySelector<HTMLInputElement>("[data-task-completion-time]")?.value ?? "";
-  return { name, content, date, time, listId, completionDate, completionTime };
+  const endDate = form.querySelector<HTMLInputElement>("[data-task-end-date]")?.value ?? "";
+  const endTime = form.querySelector<HTMLInputElement>("[data-task-end-time]")?.value ?? "";
+  return { name, content, date, time, endDate, endTime, listId, completionDate, completionTime };
 }
 
 function isBlankTaskDraft(draft: TaskDraft): boolean {
@@ -8519,6 +8529,8 @@ function isBlankTaskDraft(draft: TaskDraft): boolean {
     !draft.content &&
     !draft.date &&
     !draft.time &&
+    !draft.endDate &&
+    !draft.endTime &&
     !draft.completionDate &&
     !draft.completionTime
   );
@@ -8596,7 +8608,8 @@ function reconcileTaskCompletionDraft(
   }
 }
 
-function taskScheduleText(date: string | null, time: string | null): string {
+function taskScheduleText(date: string | null, time: string | null, end?: Readonly<{date: string; time: string}> | null): string {
+  if (date && time && end) return `${calendarDateLabel(date)} ${time} – ${end.date === date ? "" : `${calendarDateLabel(end.date)} `}${end.time}`;
   if (!date) return t("tasks.noDate");
   return time
     ? t("tasks.dateAt", { date: calendarDateLabel(date), time })
@@ -8643,8 +8656,8 @@ function taskChangeDescription(change: TaskChangeView): string {
   if (change.kind === "rescheduled") {
     return t("tasks.rescheduled", {
       changedAt: change.changedAt,
-      previous: taskScheduleText(change.previousDate, change.previousTime),
-      next: taskScheduleText(change.newDate, change.newTime),
+      previous: taskScheduleText(change.previousDate, change.previousTime, change.previousExecutionEnd),
+      next: taskScheduleText(change.newDate, change.newTime, change.newExecutionEnd),
       changeSource: taskChangeSourceText(change.source),
     });
   }
@@ -9095,7 +9108,7 @@ function taskEditor(
   const meta = document.createElement("p");
   meta.className = "task-row-meta";
   meta.append(source, document.createTextNode(" · "), document.createTextNode(listName));
-  meta.append(document.createTextNode(" · "), document.createTextNode(taskScheduleText(task.date, task.time)));
+  meta.append(document.createTextNode(" · "), document.createTextNode(taskScheduleText(task.date, task.time, task.executionEnd)));
   if (task.timePassed) {
     meta.append(document.createTextNode(" · "), document.createTextNode(t("tasks.timePassed")));
   } else if (task.overdue) {
@@ -9182,12 +9195,42 @@ function taskEditor(
   listCaption.append(list);
   listLabel.append(listCaption);
 
-  grid.append(nameLabel, contentLabel, listLabel, dateLabel, timeLabel);
+  const endDateLabel = document.createElement("label");
+  const endDateCaption = document.createElement("span");
+  setCopy(endDateCaption, "tasks.executionEndDate");
+  const endDate = document.createElement("input");
+  endDate.type = "date";
+  endDate.disabled = !editable;
+  endDate.value = draft?.endDate ?? task.executionEnd?.date ?? "";
+  endDate.dataset.taskEndDate = "";
+  endDateCaption.append(endDate);
+  endDateLabel.append(endDateCaption);
+  const endTimeLabel = document.createElement("label");
+  const endTimeCaption = document.createElement("span");
+  setCopy(endTimeCaption, "tasks.executionEndTime");
+  const endTime = document.createElement("input");
+  endTime.type = "time";
+  endTime.disabled = !editable;
+  endTime.value = draft?.endTime ?? task.executionEnd?.time ?? "";
+  endTime.dataset.taskEndTime = "";
+  endTimeCaption.append(endTime);
+  endTimeLabel.append(endTimeCaption);
+  const clearEnd = document.createElement("button");
+  clearEnd.type = "button";
+  clearEnd.className = "secondary-button";
+  clearEnd.disabled = !editable;
+  setCopy(clearEnd, "tasks.clearExecutionEnd");
+  clearEnd.addEventListener("click", () => {
+    endDate.value = "";
+    endTime.value = "";
+    stashTaskSurfaceDraft(surface, editorForm);
+  });
+  grid.append(nameLabel, contentLabel, listLabel, dateLabel, timeLabel, endDateLabel, endTimeLabel, clearEnd);
   const footer = document.createElement("div");
   footer.className = "task-editor-footer";
   const schedule = document.createElement("small");
   schedule.className = "task-meta";
-  schedule.textContent = taskScheduleText(task.date, task.time);
+  schedule.textContent = taskScheduleText(task.date, task.time, task.executionEnd);
   const save = document.createElement("button");
   save.type = "submit";
   save.disabled = !editable;
@@ -9202,7 +9245,7 @@ function taskEditor(
     const taskDate = document.createElement("p");
     taskDate.className = "task-meta";
     setCopy(taskDate, "tasks.taskDateDetails", {
-      schedule: taskScheduleText(task.date, task.time),
+      schedule: taskScheduleText(task.date, task.time, task.executionEnd),
     });
     const actual = document.createElement("p");
     actual.className = "task-meta";
@@ -9583,7 +9626,7 @@ function updateTaskEditorOperationState(
 ): void {
   taskEditorForms(surface).forEach((form) => {
     form.querySelectorAll(
-      "[data-task-name], [data-task-content], [data-task-date], [data-task-time], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
+      "[data-task-name], [data-task-content], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
     ).forEach((element) => {
       (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
         busy || !writable;
@@ -10334,6 +10377,13 @@ async function updateTask(
     return false;
   }
   const normalized = normalizeTaskSchedule(draft.date, draft.time);
+  if ((draft.endDate || draft.endTime) && (!normalized.date || !normalized.time || !draft.endDate || !draft.endTime ||
+      `${draft.endDate}T${draft.endTime}` <= `${normalized.date}T${normalized.time}`)) {
+    setCopyError(status, "tasks.notSaved", t("tasks.invalidExecutionInterval"));
+    if (status) status.dataset.state = "error";
+    return false;
+  }
+  const executionEnd = draft.endDate && draft.endTime ? {date: draft.endDate, time: draft.endTime} : null;
   const listId = draft.listId ?? task.listId;
   const edit = {
     targetBinding: binding,
@@ -10342,6 +10392,7 @@ async function updateTask(
     content: draft.content.trim() || null,
     date: normalized.date,
     time: normalized.time,
+    executionEnd,
     listId,
   };
   const expectedDate =

@@ -256,6 +256,7 @@ fn create_task(
 ) -> TasksView {
     application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: view.target_binding.expect("task target should be bound"),
             expected_revision: view.revision,
             task_id: id.into(),

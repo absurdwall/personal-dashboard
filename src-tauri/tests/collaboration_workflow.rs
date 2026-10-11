@@ -1730,6 +1730,7 @@ fn dashboard_context_reader_uses_canonical_read_services_without_mutating_source
     let opened_tasks = task_application.read().unwrap();
     let task_context = task_application
         .create(TaskCreateInput {
+            execution_end: None,
             target_binding: opened_tasks.target_binding.unwrap(),
             expected_revision: opened_tasks.revision,
             task_id: "collaboration-context-task".into(),
