@@ -16,7 +16,7 @@
 **Assignee:** implementer PDEX-06
 **Date:** 2026-10-10
 **Breakdown decision:** User approved the eleven-ticket breakdown and blocking edges on 2026-10-10.
-**Start:** Can start immediately once implementation is requested; not claimed.
+**Start:** Claimed on 2026-10-10 under the authorized integration run; implementation committed and awaiting packaged UI acceptance.
 
 ## Acceptance criteria
 
@@ -52,3 +52,7 @@ stories 28, 31–37, 63–67.
   old content/list/state updates, history and current-revision replay without
   new Task identities. The actual packaged UI criteria remain unchecked for
   PDEX-11; this record does not claim installation or full user acceptance.
+
+- 2026-10-10: Merged integration `1f8c907` at `3bc83c4`. Combined build,
+  397 frontend tests and 121 shared Rust tests passed. Full source history and
+  the acceptance boundary are retained in [evidence](../evidence/pdex-06.md).

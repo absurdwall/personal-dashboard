@@ -63,3 +63,16 @@ both dates displayed for overnight intervals. Edited history retains ends.
 Packaged UI input/reopen, cross-page and narrow-window acceptance remain
 unverified here; PDEX-11 owns overall acceptance evidence. Implementation
 checks do not assert installation, release acceptance or user acceptance.
+
+## Integration checkpoint
+
+- Implementation commit `62746b6` merged integration tip `1f8c907` with full
+  history at `3bc83c4`; no merge conflicts.
+- On the merged code: frontend build passed, full frontend suite 397 passed,
+  and the three directly shared Rust suites passed (Collaboration operations
+  103, adapter 12, Today shared Tasks 6; 121 total).
+- Additional scoped suites above remain the pre-merge 156-test evidence;
+  the merged checks are recorded separately rather than conflated.
+- Worktree source clean after evidence commit; ignored `dist`, `node_modules`
+  symlink and isolated cloned Cargo target are generated build material.
+  No unique personal state lives in this worktree.
