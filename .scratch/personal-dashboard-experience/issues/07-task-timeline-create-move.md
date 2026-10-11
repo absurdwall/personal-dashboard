@@ -4,13 +4,16 @@
 
 **Blocked by:** 06 — 保存 Task 计划执行时间段并兼容现有入口
 
-**Status:** ready-for-agent
+**Triage:** ready-for-agent
+
+**Status:** in-progress
 
 **ID:** PDEX-07
 **Parent:** [PDEX-SPEC-01](../spec.md)
-**Lifecycle:** open
-**Implementation:** not started
-**Owner:** unassigned
+**Lifecycle:** in-progress
+**Implementation:** in progress
+**Owner:** implementer PDEX-07
+**Assignee:** implementer PDEX-07
 **Date:** 2026-10-10
 **Breakdown decision:** User approved the eleven-ticket breakdown and blocking edges on 2026-10-10.
 
@@ -32,3 +35,5 @@ stories 12, 24, 28–36, 65–67.
 ## Execution
 
 - 2026-10-10: Published locally with the approved scope and dependencies; unassigned, not claimed, not started. Record subsequent authorized claims, commits, checks and acceptance here. Publication does not close the parent specification.
+
+- 2026-10-10: Authorized claim on codex/pdex-07, worktree /tmp/pdex-07; base integration 61c12cdedfcd4f2728ccb10c8b5ce3d24f40685f. Dependency implementation/evidence inspected before start; packaged acceptance remains separately tracked.
