@@ -37,3 +37,13 @@ Source frozen for behavior checks: `4a0c272dea10f01e2ef99b16c25e1b341837d02b` (l
 - Whitespace check passed. No new dependencies, remote operations, App installation, OS input changes or real-data writes. Canonical debug Cargo lease was exclusive for these checks and released after Cargo exited successfully; no package build or native UI acceptance was attempted.
 
 The adjacent log manifest records local artifact paths and SHA-256 digests. Raw logs remain outside Git; the manifest contains no user data.
+
+## Evening guard-copy follow-up
+
+Independent follow-up range `c63c805...720a28f` found one P3: the three Evening protection checks rendered `today.reviewOpenFailed` without its required error variable, then the controller wrapped the resulting text again. The actual production guard regression failed with `Could not open the review. Your draft is retained; please retry. Error: 未能进入复盘。已有草稿保留，请重试。{error}` (`/tmp/pdex-review-evening-guard-red.log`).
+
+Source `ff913083940ad27314373dc20ea376cb9c79e7c0` replaces these three throws with a typed guard carrying a catalog key. The controller retains guard copy through the existing shared copy callback; arbitrary backend errors still use the retained diagnostic setter. Busy and Vault-change causes each have concrete zh/en copy. Protection conditions, source dates, draft saving and navigation remain unchanged.
+
+Actual production WebKit regression exercises busy entry, a Vault revision change after draft flush and a Vault revision change after preparation, with zh → en → zh refresh. Each shows the localized cause and one failure wrapper, without a placeholder or `Error:` prefix. The existing CJK draft/path and original session date remain intact. Busy entry performs no Collaboration call; the post-flush guard performs no review preparation; the post-preparation guard does not adopt or refresh the returned session. All paths perform no submit. The single regression passed (`/tmp/pdex-review-evening-guard-green.log`); build exited 0 (`/tmp/pdex-review-evening-guard-build.log`); the focused Evening/interface-language command exited 0 with **21 passed, 0 failed** (`/tmp/pdex-review-evening-guard-focused.log`).
+
+This follow-up changes frontend copy/controller code only. The 523 native passes above remain an unchanged Rust-source checkpoint. The earlier 432 frontend / 23 browser totals remain historical results before this follow-up, not new full-suite claims. No Cargo, full-suite repeat, package build or native acceptance was attempted. Integration `720a28ffe7e5b4c589c5439ceaea9b7b245f26b5` was merged before edits; PDEX-09/PDEX-11 acceptance and historical packaged evidence keep their prior status.
