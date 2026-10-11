@@ -21,7 +21,7 @@
 
 ## Open frontier
 
-None. The accepted prototype and Q1–Q4 provide the shared understanding recorded in the [to-spec specification](spec.md). The previous non-template draft was explicitly deleted and replaced. Remaining implementation details are delegated to the Agent; [publication](publication.md) is pending because GitHub is unavailable.
+None. The accepted prototype and Q1–Q4 provide the shared understanding recorded in the [to-spec specification](spec.md). The previous non-template draft was explicitly deleted and replaced. The user then selected the [local tracker](map.md); the spec is [published locally](publication.md). Remaining implementation details are delegated to the Agent.
 
 ## Current source evidence
 

@@ -1,5 +1,40 @@
 # Issue tracker: GitHub
 
+## Scoped local tracker: dashboard experience improvements
+
+On 2026-10-10 the user explicitly chose local-only publication, tickets and
+subsequent implementation tracking for the accepted Dashboard experience
+prototype while GitHub is unavailable. For this initiative,
+`.scratch/personal-dashboard-experience/map.md` is the canonical tracker and
+its linked `spec.md` is the canonical specification. This scoped exception
+takes precedence over the default GitHub operations below.
+
+- Publish and read the complete spec locally; use stable PDEX IDs, preserve
+  complete ticket bodies, parent/dependency links and the five-role triage
+  vocabulary. Record lifecycle, implementation and acceptance separately.
+- A `ready-for-agent` specification is a planning record, not a ticket claim.
+  Ticket creation and implementation follow the user's subsequent request.
+- Subsequent approved tickets, claims, blockers, reviews, evidence and
+  closeout remain local. Do not query or mutate GitHub as part of this scope
+  while this mode is active. Existing historical queues stay historical.
+- Preserve complete local Git history on `codex/` branches: commit durable
+  spec/ticket/state/evidence changes and coherent implementation increments.
+  Local Git is available; unavailable remote access does not prevent commits.
+  Keep unrelated dirty work, and record base, working branch and integration
+  identities rather than relying on chat summaries.
+- Do not amend away or squash this initiative's retained evidence/history.
+  Main remains protected; local tracking is not authorization to merge main,
+  push now or install an App.
+- When remote access returns, preserve commits for ordinary branch push and
+  protected-main PR integration. Git push does not publish Markdown tickets
+  as GitHub Issues: any tracker migration must preserve stable local IDs,
+  full bodies, dependencies, state, comments, acceptance and evidence, with
+  an explicit local-ID-to-Issue mapping and one canonical destination.
+  Do not automatically migrate, renumber or close local records.
+- See the initiative's `remote-handoff.md` for the commit chain and handoff
+  convention. This exception changes the current initiative only; GitHub
+  remains the default for other initiatives.
+
 ## Scoped local tracker: Collaboration redesign
 
 On 2026-10-09 the user explicitly chose a fully local tracker for the
@@ -23,7 +58,7 @@ claim, dependency and closeout instructions below for this initiative only.
   A later authorized migration must preserve IDs, dependencies and evidence
   and leave a clear pointer to the new canonical location.
 
-All other initiatives retain the GitHub conventions below. Historical local
+Initiatives outside the scoped local exceptions retain the GitHub conventions below. Historical local
 records remain historical; this exception does not reactivate old queues.
 
 ## Default tracker

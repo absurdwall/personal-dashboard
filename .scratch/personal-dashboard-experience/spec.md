@@ -1,5 +1,15 @@
 # Personal Dashboard — 日常规划、任务与复盘入口体验改进
 
+ID: PDEX-SPEC-01
+Type: spec
+Status: ready-for-agent
+Lifecycle: open
+Stage: locally published specification
+Date: 2026-10-10
+Canonical tracker: [local map](map.md)
+Implementation: not started
+Test boundary: Q4 confirmed by the user
+
 ## Problem Statement
 
 用户已经完成新版 Personal Dashboard 的使用评估，希望把确认过的原型落实为正式产品。当前 Today 中没有精确时间的安排集中在未定位区域，导致明明有“午后做什么”的计划，白天时间轴却经常空白。用户需要像调整日程一样直接移动计划或 Task，同时保证界面和真实文档一致，而不是每次改时间都需要通过语言模型。
@@ -136,7 +146,7 @@ Tasks 保留清单侧栏，用简洁勾选列表和所选任务详情分开阅�
 - Settings 扩展、Task 时间轴工作台、固定来源三列、第二条 Today 时间轴或重新设计整个 Dashboard。
 - 新的 Task deadline 系统、推断实际活动时长、时间过去自动完成、日历同步或同名计划与 Task 的自动联动。
 - 新外部服务、依赖、部署配置、独立业务数据副本或新的 Dashboard MCP。
-- 重开已关闭的 Collaboration redesign 队列，以及自动把其本地 tracker 例外扩展或迁移到本 initiative。
+- 重开已关闭的 Collaboration redesign 队列或自动迁移任何旧 tracker；本轮采用独立且已获用户明确授权的本地 tracker。
 - 实现票拆分、代码实现、main merge、App 安装、发布上线及交付 closeout；本次 to-spec 仅产生并发布规格。
 
 ## Further Notes
@@ -144,8 +154,8 @@ Tasks 保留清单侧栏，用简洁勾选列表和所选任务详情分开阅�
 - 原型 R 与 Tasks 的 B 列表结构已经由用户确认。冲突卡片采用临时并排是用户委托 Agent 作出的选择；没有固定三类来源列。
 - Q1 确认显示与对应文档一致；Q2 确认 Task 保存计划执行区间；Q3 确认普通白天拖动默认更新 Current arrangement；Q4 确认上述测试边界。没有待用户决定的重要设计问题，具体字段、兼容与组件实现由 Agent 根据契约选择。
 - 原型曾以共享 id 同时修改早间和当前安排的 Markdown 预览；该演示被 Q1/Q3 的来源归属澄清覆盖，不是正式双写要求。原型没有真实 Vault 写入，内存 Task duration 也不代表现有持久化能力。
-- 原型定稿位于当前 codex/dashboard-experience-prototype 分支，视觉确认记录为提交 e0e339b，问答记录为其后的本地文档。当前原型入口为 revised.html?page=today&variant=R。原型和问答 supporting records 应随之后的 canonical issue 留存引用；个人数据不进入规格或版本控制。
+- 原型定稿位于当前 codex/dashboard-experience-prototype 分支，视觉确认记录为提交 e0e339b，问答记录为其后的本地文档。当前原型入口为 revised.html?page=today&variant=R。原型、问答和证据由本地 tracker 留存引用；个人数据不进入规格或版本控制。
 - 本文件按 to-spec 的七章节模板全新编写；此前本轮旧草稿已按用户要求删除，不沿用旧稿格式或旧的发布状态。
-- 本轮默认 canonical tracker 是 absurdwall/personal-dashboard 的 GitHub Issues，发布规格应带 ready-for-agent 标签，不额外 triage。当前 GitHub 查询返回 403 与 Your account was suspended，因此此文件目前仅为待发布的完整本地规格，不能声称已创建 Issue或已应用远端标签。
-- 本地文件、Git 提交、已确认原型与远端规格发布是不同状态。之后恢复或改用 tracker 时需要保持完整正文和身份引用；不能把本地 supporting file 自动当成新的 canonical queue。
+- 用户在 2026-10-10 明确指定本轮 Spec、后续 tickets 与执行全部 local。本文件是 PDEX-SPEC-01 的完整 canonical 正文，local map 记录 ready-for-agent triage 与 open lifecycle；无需额外 triage，GitHub 故障不再阻塞本轮规格发布。
+- 规划、票据与后续获授权的实施均保留完整本地 commit history；状态、依赖、认领和证据随操作记录，不通过改写历史伪装成远端已发布。远端恢复后的 branch push/PR 与 Issues 迁移分别处理，保留稳定 ID 和映射，不自动迁移或合入 main。
 - 规格发布本身不代表代码已实现或 App 已安装，也不开始执行旧工作队列。
