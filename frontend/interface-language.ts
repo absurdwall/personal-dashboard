@@ -5,6 +5,19 @@ export type InterfaceLanguagePreferences = Readonly<{
 }>;
 
 const interfaceCopies = {
+  "today.planTimeOutsideWindow": { zh: "原安排超出当前生活日范围。请在 Daily Record 中明确编辑完整起止，界面不会截断后保存。", en: "This plan extends outside this lived day. Edit its complete endpoints in the Daily Record; clipped display times will not be saved." },
+  "today.planTimeUnavailable": { zh: "这项旧安排无法安全定位。请重新读取，或在 Daily Record 中明确编辑时间。", en: "This legacy plan cannot be located safely. Reload or edit its time explicitly in the Daily Record." },
+  "today.editPlanTime": { zh: "编辑计划时间", en: "Edit plan time" },
+  "today.planStart": { zh: "开始", en: "Start" },
+  "today.planEnd": { zh: "结束（留空表示时点）", en: "End (leave empty for a time point)" },
+  "today.planNextDay": { zh: "次日", en: "Next day" },
+  "today.planTimeHelp": { zh: "只修改当前安排。早间基准和已确认事实保持原值。", en: "Updates the current arrangement. The morning baseline and confirmed facts retain their values." },
+  "today.planSave": { zh: "保存时间", en: "Save time" },
+  "today.planCancel": { zh: "关闭", en: "Close" },
+  "today.planSaved": { zh: "计划时间已保存并读回确认。", en: "Plan time saved and verified by reading the record." },
+  "today.planUnconfirmed": { zh: "结果未确认；编辑值仍保留。请重新读取核对后再操作。", en: "Result unconfirmed; your edit is retained. Read the record again before another edit." },
+  "today.planRecheck": { zh: "重新读取核对", en: "Read record again" },
+  "today.planInvalidTime": { zh: "请输入有效的开始时间；结束必须晚于开始，范围为当天 04:00 至次日 04:00。", en: "Enter a valid start; end must follow start within 04:00 today to 04:00 the next day." },
   "collaboration.toggleHistory": { zh: "会话历史", en: "Session history" },
   "collaboration.toggleContext": { zh: "当前工作", en: "Current work" },
   "collaboration.resizeHistory": { zh: "调整会话历史宽度（方向键调整，Home 最窄，End 最宽）", en: "Resize session history (arrow keys adjust, Home minimum, End maximum)" },

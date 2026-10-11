@@ -264,7 +264,8 @@ use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
     DayTaskCompletionInput, DayTaskDeleteInput, DayTaskRenameInput, DaytimeUpdateInput,
     EveningUpdateInput, HabitCompletionMutationInput, HabitSnapshotView,
-    PlanningDayTaskContextView, TodayApplication, TodayClockView, TodayView, VaultSelectionResult,
+    PlanTimeEditInput, PlanTimeEditResult, PlanningDayTaskContextView, TodayApplication,
+    TodayClockView, TodayView, VaultSelectionResult,
 };
 
 type DesktopTodayApplication = TodayApplication<
@@ -826,6 +827,14 @@ async fn select_today_vault(
 }
 
 #[tauri::command]
+fn edit_plan_time(
+    application: State<'_, DesktopTodayApplication>,
+    input: PlanTimeEditInput,
+) -> Result<PlanTimeEditResult, String> {
+    application.edit_plan_time(input)
+}
+
+#[tauri::command]
 fn append_daytime_update(
     application: State<'_, DesktopTodayApplication>,
     input: DaytimeUpdateInput,
@@ -1073,6 +1082,7 @@ pub fn run() {
             set_local_habit_completion,
             set_historical_habit_completion,
             select_today_vault,
+            edit_plan_time,
             append_daytime_update,
             add_dated_note,
             correct_dated_note,
@@ -1148,6 +1158,7 @@ pub fn run() {
         set_local_habit_completion,
         set_historical_habit_completion,
         select_today_vault,
+        edit_plan_time,
         append_daytime_update,
         add_dated_note,
         correct_dated_note,
