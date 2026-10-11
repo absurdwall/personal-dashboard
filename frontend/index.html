@@ -332,6 +332,7 @@
                   <p id="collaboration-run-status" class="collaboration-run-status" role="status" aria-live="polite"></p>
                   <p id="collaboration-task-tool-notice" class="collaboration-task-tool-notice" role="status" aria-live="polite" hidden></p>
                   <div id="collaboration-message-list" class="collaboration-message-list" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation messages" data-i18n-aria-label="collaboration.conversationLabel"></div>
+                  <p id="collaboration-review-entry-notice" class="helper-text" role="status" aria-live="polite" hidden></p>
                   <form id="collaboration-composer" class="collaboration-composer">
                     <p id="collaboration-composer-date" class="collaboration-target-date"></p>
                     <label for="collaboration-message-draft" data-i18n="collaboration.messageLabel">Message</label>
@@ -868,6 +869,10 @@
                           <p class="section-label" data-i18n="today.evening">晚间复盘</p>
                           <h3 id="today-evening-heading" data-i18n="today.agentRecord">Agent 整理的今日记录</h3>
                         </div>
+                      </div>
+                      <div class="today-review-entry">
+                        <button id="today-start-review" type="button" disabled data-i18n="today.startReview">开始复盘今天</button>
+                        <p id="today-review-entry-status" class="helper-text" role="status" aria-live="polite"></p>
                       </div>
                       <p class="today-reading-introduction" data-i18n="today.eveningIntro">
                         先读一个保守的 first pass；不要求完整重建整天。

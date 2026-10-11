@@ -74,6 +74,7 @@ function sourceFunction(name: string): string {
 /** Real note-save -> Today render -> history render -> clock guard, with synthetic IPC and UI nodes. */
 export function editingRenderer() {
   const r = renderer();
+  r.eveningReviewEntry = null;
   const functions = ["selectedShortRecordCategory", "stashEveningReviewDraft", "stashDatedNoteDraft",
     "stashTodayTaskCreateDraft", "renderDatedNoteComposer", "taskDraftKey", "readTaskDraft",
     "captureTodayTaskEditors", "hasTodayEditingTarget", "eveningViewHasContent", "renderToday",
