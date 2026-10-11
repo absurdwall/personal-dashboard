@@ -889,4 +889,46 @@ fn planned_task_interval_survives_restart_shared_views_and_legacy_update() {
     let today = today_app(vault.path()).read_date("2026-09-17").unwrap();
     assert_eq!(today.tasks.tasks[0].id, "interval-task");
     assert_eq!(serde_json::to_value(&today.tasks.tasks[0]).unwrap()["executionEnd"], end);
+    let completed = app.set_state(TaskStateInput {
+        target_binding: reopened.target_binding.unwrap(), expected_revision: reopened.revision.unwrap(),
+        task_id: "interval-task".into(), change_id: "interval-complete".into(), state: TaskState::Completed,
+    }).unwrap();
+    let pending = app.set_state(TaskStateInput {
+        target_binding: completed.target_binding.unwrap(), expected_revision: completed.revision.unwrap(),
+        task_id: "interval-task".into(), change_id: "interval-reopen".into(), state: TaskState::Pending,
+    }).unwrap();
+    assert_eq!(serde_json::to_value(&pending.tasks[0]).unwrap()["executionEnd"], end);
+    assert_eq!(pending.tasks[0].date.as_deref(), Some("2026-09-17"));
+}
+
+#[test]
+fn task_interval_changes_reject_invalid_ranges_and_clear_only_on_explicit_null() {
+    let vault = TempVault::new("interval-edit");
+    let app = task_app(vault.path());
+    let opened = app.read().unwrap();
+    let saved = app.create(serde_json::from_value(serde_json::json!({
+        "targetBinding": opened.target_binding, "taskId": "interval-edit", "name": "Synthetic", "date": "2026-09-17", "time": "08:00",
+        "executionEnd": {"date": "2026-09-17", "time": "10:00"}
+    })).unwrap()).unwrap();
+    let update = serde_json::json!({"targetBinding":saved.target_binding, "expectedRevision":saved.revision,
+        "taskId":"interval-edit", "changeId":"invalid-range", "name":"Synthetic", "date":"2026-09-17", "time":"11:00",
+        "executionEnd":{"date":"2026-09-17","time":"10:00"}});
+    assert!(app.update(serde_json::from_value(update).unwrap()).is_err());
+    assert_eq!(app.read().unwrap(), saved, "invalid input never writes a truncated or flipped interval");
+    let moved = serde_json::json!({"targetBinding":saved.target_binding, "expectedRevision":saved.revision,
+        "taskId":"interval-edit", "changeId":"move-range", "name":"Synthetic", "date":"2026-09-17", "time":"10:00",
+        "executionEnd":{"date":"2026-09-17","time":"12:00"}});
+    let moved_input: TaskUpdateInput = serde_json::from_value(moved).unwrap();
+    let moved = app.update(moved_input.clone()).unwrap();
+    assert_eq!(app.update(moved_input).unwrap().revision, moved.revision);
+    assert_eq!(serde_json::to_value(&moved.tasks[0].changes[0]).unwrap()["previousExecutionEnd"], serde_json::json!({"date":"2026-09-17","time":"10:00"}));
+    let edited = app.update(serde_json::from_value(serde_json::json!({"targetBinding":moved.target_binding, "expectedRevision":moved.revision,
+        "taskId":"interval-edit", "changeId":"edit-end", "name":"Synthetic", "date":"2026-09-17", "time":"10:00",
+        "executionEnd":{"date":"2026-09-17","time":"12:45"}})).unwrap()).unwrap();
+    assert_eq!(serde_json::to_value(&edited.tasks[0]).unwrap()["executionEnd"]["time"], "12:45");
+    let cleared = app.update(serde_json::from_value(serde_json::json!({"targetBinding":edited.target_binding, "expectedRevision":edited.revision,
+        "taskId":"interval-edit", "changeId":"clear-range", "name":"Synthetic", "date":"2026-09-17", "time":"10:00", "executionEnd":null})).unwrap()).unwrap();
+    assert!(serde_json::to_value(&task_app(vault.path()).read().unwrap().tasks[0]).unwrap()["executionEnd"].is_null());
+    assert_eq!(cleared.tasks[0].time.as_deref(), Some("10:00"));
+    assert_eq!(cleared.tasks[0].state, TaskState::Pending);
 }

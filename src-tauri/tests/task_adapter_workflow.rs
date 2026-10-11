@@ -129,6 +129,7 @@ fn apply_request(
 
 fn action(task_id: &str, source_reference: &str, name: &str) -> DailyFlowCandidate {
     DailyFlowCandidate::Action {
+        execution_end: None,
         task_id: task_id.into(),
         source_reference: source_reference.into(),
         name: name.into(),
@@ -302,6 +303,7 @@ fn real_cli_entry_reads_and_writes_a_synthetic_vault_across_processes() {
         target_binding,
         None,
         vec![DailyFlowCandidate::Action {
+            execution_end: None,
             task_id: "cli-task".into(),
             source_reference: "cli-source".into(),
             name: "跨进程保存".into(),
@@ -322,6 +324,7 @@ fn real_cli_entry_reads_and_writes_a_synthetic_vault_across_processes() {
         target_binding,
         Some("stale-revision".into()),
         vec![DailyFlowCandidate::Action {
+            execution_end: None,
             task_id: "cli-stale-task".into(),
             source_reference: "cli-stale-source".into(),
             name: "不应覆盖".into(),
@@ -658,6 +661,7 @@ fn explicit_daily_flow_commands_preserve_history_source_and_completion_precision
                 created.read.revision.clone(),
                 vec![],
                 vec![DailyFlowCommand::Reschedule {
+                    execution_end: None,
                     task_id: "command-task".into(),
                     operation_id: "flow-reschedule-1".into(),
                     date: Some("2026-09-17".into()),
@@ -690,6 +694,7 @@ fn explicit_daily_flow_commands_preserve_history_source_and_completion_precision
                 rescheduled.read.revision.clone(),
                 vec![],
                 vec![DailyFlowCommand::Reschedule {
+                    execution_end: None,
                     task_id: "command-task".into(),
                     operation_id: "flow-reschedule-1".into(),
                     date: Some("2026-09-17".into()),
@@ -881,6 +886,7 @@ fn no_op_daily_flow_commands_persist_identity_before_user_edits() {
                 created.read.revision.clone(),
                 vec![],
                 vec![DailyFlowCommand::Reschedule {
+                    execution_end: None,
                     task_id: "noop-task".into(),
                     operation_id: "noop-reschedule-1".into(),
                     date: Some("2026-09-17".into()),
@@ -927,6 +933,7 @@ fn no_op_daily_flow_commands_persist_identity_before_user_edits() {
                 edited.revision.clone(),
                 vec![],
                 vec![DailyFlowCommand::Reschedule {
+                    execution_end: None,
                     task_id: "noop-task".into(),
                     operation_id: "noop-reschedule-1".into(),
                     date: Some("2026-09-17".into()),
@@ -1265,4 +1272,48 @@ impl TaskStore for FailingTaskStore {
     fn create_new(&self, _path: &Path, _document: &[u8]) -> Result<(), String> {
         Err("injected task create failure".into())
     }
+}
+
+#[test]
+fn adapter_creates_moves_and_clears_planned_intervals_with_repeat_delivery() {
+    let vault = TempVault::new("execution-interval");
+    let adapter = adapter(vault.path());
+    let opened = match adapter.execute(read_request(vault.path(), "2026-09-17")).unwrap() {
+        DailyFlowTaskResponse::Read(view) => view, _ => panic!("read result"),
+    };
+    let request: DailyFlowTaskRequest = serde_json::from_value(serde_json::json!({
+        "operation": "apply", "schemaVersion": 1, "vaultPath": vault.path(), "livedDate": "2026-09-17",
+        "targetBinding": opened.target_binding, "expectedRevision": opened.revision,
+        "candidates": [{"kind": "action", "taskId": "interval-adapter", "sourceReference": "synthetic-interval",
+            "name": "Synthetic overnight action", "content": null, "date": "2026-09-17", "time": "23:00", "listId": "inbox",
+            "executionEnd": {"date": "2026-09-18", "time": "01:00"}}], "commands": []
+    })).unwrap();
+    let saved = match adapter.execute(request.clone()).unwrap() { DailyFlowTaskResponse::Apply(view) => view, _ => panic!("apply result") };
+    let mut request = request;
+    if let DailyFlowTaskRequest::Apply { expected_revision, .. } = &mut request { *expected_revision = saved.revision.clone(); }
+    let duplicate = match adapter.execute(request).unwrap() { DailyFlowTaskResponse::Apply(view) => view, _ => panic!("apply result") };
+    assert_eq!(duplicate.read.tasks.len(), 1);
+    assert_eq!(serde_json::to_value(&saved.read.tasks[0]).unwrap()["executionEnd"], serde_json::json!({"date":"2026-09-18", "time":"01:00"}));
+    let cli_read = run_cli(&read_request(vault.path(), "2026-09-17"));
+    assert_eq!(cli_read["result"]["tasks"][0]["executionEnd"], serde_json::json!({"date":"2026-09-18", "time":"01:00"}));
+    let moved: DailyFlowTaskRequest = serde_json::from_value(serde_json::json!({
+        "operation": "apply", "schemaVersion": 1, "vaultPath": vault.path(), "livedDate": "2026-09-17",
+        "targetBinding": saved.target_binding, "expectedRevision": saved.revision, "candidates": [],
+        "commands": [{"kind": "reschedule", "taskId": "interval-adapter", "operationId": "interval-adapter-move",
+            "date": "2026-09-17", "time": "22:00", "executionEnd": {"date":"2026-09-18", "time":"00:00"}}]
+    })).unwrap();
+    let saved = match adapter.execute(moved.clone()).unwrap() { DailyFlowTaskResponse::Apply(view) => view, _ => panic!("apply result") };
+    let mut moved = moved;
+    if let DailyFlowTaskRequest::Apply { expected_revision, .. } = &mut moved { *expected_revision = saved.revision.clone(); }
+    let duplicate = match adapter.execute(moved).unwrap() { DailyFlowTaskResponse::Apply(view) => view, _ => panic!("apply result") };
+    assert!(!duplicate.changed);
+    assert_eq!(serde_json::to_value(&duplicate.read.tasks[0]).unwrap()["executionEnd"], serde_json::json!({"date":"2026-09-18", "time":"00:00"}));
+    let cleared: DailyFlowTaskRequest = serde_json::from_value(serde_json::json!({
+        "operation": "apply", "schemaVersion": 1, "vaultPath": vault.path(), "livedDate": "2026-09-17",
+        "targetBinding": saved.target_binding, "expectedRevision": saved.revision, "candidates": [],
+        "commands": [{"kind": "reschedule", "taskId": "interval-adapter", "operationId": "interval-adapter-clear",
+            "date": "2026-09-17", "time": "22:00", "executionEnd": null}]
+    })).unwrap();
+    let cleared = match adapter.execute(cleared).unwrap() { DailyFlowTaskResponse::Apply(view) => view, _ => panic!("apply result") };
+    assert!(serde_json::to_value(&cleared.read.tasks[0]).unwrap()["executionEnd"].is_null());
 }

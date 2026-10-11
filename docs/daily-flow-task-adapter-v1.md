@@ -149,3 +149,18 @@ in this bridge; no Dida read or write was performed during implementation.
 The implementation does not run an Agent in the Dashboard, change automation,
 write real personal data, or claim packaged macOS or real personal-flow
 acceptance. Those remain separate evidence gates.
+
+## Optional planned execution ends (PDEX-06)
+
+Read returns each Task's optional `executionEnd: {date, time} | null` from the
+same canonical Task store. An `action` candidate may set this planned end.
+A `reschedule` command may replace it with an object or clear it explicitly
+with null; omission retains the saved value. `date` and `time` remain the
+scheduled start/calendar placement. End dates are explicit across midnight.
+An incomplete or reversed interval fails the whole batch without writing.
+
+The existing revision prerequisite remains: read the current revision before
+submitting a batch, including a retry. Retrying a previously applied operation
+identity with the current revision preserves identity/history and does not
+reapply the change. No second time store, inferred duration or completion
+fact is created.

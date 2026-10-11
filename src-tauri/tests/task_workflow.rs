@@ -178,7 +178,6 @@ fn create_input(
     date: Option<&str>,
     time: Option<&str>,
 ) -> TaskCreateInput {
-        execution_end: None,
     TaskCreateInput {
         execution_end: None,
         target_binding: opened.target_binding.clone().unwrap(),
