@@ -1,8 +1,11 @@
 # PDEX-18 reviewed normal installation — 2026-10-11
 
-Branch: `codex/dashboard-experience-integration`  
-Reviewed implementation: `37d71ded966027581abf8cfda32c5bc81960996f`  
-Final source/build commit: `dc12b10eaec844201aa9c13a62ba85dea39a5651`  
+Branch: `codex/dashboard-experience-integration`
+
+Reviewed implementation: `37d71ded966027581abf8cfda32c5bc81960996f`
+
+Final source/build commit: `dc12b10eaec844201aa9c13a62ba85dea39a5651`
+
 Base `3c19010` is in the requested `8960c80` prototype ancestry; all commits remain unsquashed.
 
 ## Independent review and verification
