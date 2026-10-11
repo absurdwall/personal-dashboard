@@ -1,0 +1,70 @@
+{
+  "date": "2026-10-11",
+  "source": {
+    "branch": "codex/dashboard-experience-integration",
+    "productCommit": "9cafecad03deeb3b4b6f98b41a844e0a39d1cad7",
+    "recordCommitBeforeThisReceipt": "db9da49"
+  },
+  "installedApp": {
+    "path": "/Applications/Personal Dashboard.app",
+    "bundleIdentifier": "com.tortillaflat.personal-dashboard",
+    "version": "4.0.7",
+    "executableSha256": "0c9eecf85b9531243d07e7b4cff81924b7b02cd666f6df5be89c7f1982eb78e0",
+    "matchesReviewerApprovedNormalBundle": true,
+    "strictCodeSignatureVerified": true,
+    "launchServicesSearchResult": [
+      "/Applications/Personal Dashboard.app"
+    ],
+    "runningProcessId": 53618,
+    "qaEnvironmentOverridesPresent": false
+  },
+  "independentNormalAppComputerUse": {
+    "method": "Read-only Computer Use with virtual mouse",
+    "observed": [
+      "The P brand and product name appear at the far left, followed by a divider and the global navigation toggle.",
+      "The Today sidebar toggle is beside the Timeline + records heading; the sidebar remains in page layout.",
+      "Tasks shows Today in the one-row schedule control.",
+      "Collaboration has one visible page heading, retains useful section headings and on-demand help, and uses reduced pane chrome."
+    ],
+    "noTaskCreated": true,
+    "noCollaborationMessageSent": true,
+    "normalAppLeftOn": "Tasks"
+  },
+  "candidateNativeTimeVerification": {
+    "candidateExecutableSha256": "da62999e6649336dd276d29a6f897c693d306af82c7f99beeea05a2e4002f5c5",
+    "computerUseInput": "Committed the native hour, minute, and PM segments, then blurred the field before applying.",
+    "observed": [
+      "Before Apply, the selected date and 15:30 were present in the schedule button accessible name.",
+      "After Apply, the closed button visibly read Today · 15:30 and its accessible name included date and time."
+    ],
+    "noTaskSubmitted": true
+  },
+  "protectedReadback": {
+    "privateManifest": "/Users/tingranwang/Documents/Codex/personal-dashboard-release-2026-10-11.noindex/install-protection.json",
+    "profileBackupMatchesBeforeLaunch": true,
+    "collaborationJsonSemanticMatch": true,
+    "collaborationProfileCounts": {
+      "sessions": 41,
+      "dailyPlanAutomationRuns": 37,
+      "settingsGroups": 3
+    },
+    "lifeFilesCurrentAndBackup": 267,
+    "lifeMismatches": 0,
+    "obsidianFilesCurrentAndBackup": 6,
+    "obsidianMismatches": 0,
+    "profileRuntimeChanges": {
+      "addedFiles": 12,
+      "removedFiles": 0,
+      "newCodexDiagnosticLogRows": 52,
+      "newLogRowsWithThreadId": 0,
+      "modelCacheChangedField": "fetched_at"
+    }
+  },
+  "review": {
+    "standardsUnresolvedFindings": 0,
+    "specUnresolvedFindings": 0,
+    "humanAcceptance": "Pending",
+    "remainingTicketCheck": "Packaged Collaboration session/composer interaction with synthetic data; do not send a real message.",
+    "ticketLifecycle": "in-progress"
+  }
+}

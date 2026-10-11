@@ -236,7 +236,7 @@ New direct-user-authorized, bounded shell polish: [PDEX-FOLLOWUP-03](followup-sp
 | ID | Body | Triage | Lifecycle | Dependencies | Current evidence |
 | --- | --- | --- | --- | --- | --- |
 | PDEX-FOLLOWUP-03 | [complete addendum](followup-spec-2026-10-11-shell-compactness.md) / [index](issues/00-followup-spec-03.md) | ready-for-agent | in-progress | none | implementation/review/release/human acceptance separate |
-| PDEX-16 | [compact workspace shell](issues/16-shell-compactness.md) | ready-for-agent | in-progress | none | source reviewed; released normal package installed; candidate date/time and Collaboration layout verified; normal-installed-app read-only check, composer smoke and human acceptance pending |
+| PDEX-16 | [compact workspace shell](issues/16-shell-compactness.md) | ready-for-agent | in-progress | none | source reviewed; released normal package installed; candidate date/time and normal-App read-only shell review verified; packaged composer interaction and human acceptance pending ([readback](evidence/pdex16-normal-install-readback-2026-10-11.json)) |
 
 
 ## Revised current installation — 2026-10-11
