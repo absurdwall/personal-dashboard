@@ -45,3 +45,5 @@ stories 51–58.
 
 - Synthetic composition-event/keycode-229 and ordinary-slash checks passed. Real Chinese operating-system IME and packaged Tauri UI acceptance remain unverified, so that combined criterion stays unchecked.
 - Final native persistence invocation remains pending for the parent orchestrator's serialized canonical-target check after integration. The duplicate isolated dependency build was intentionally stopped on its instruction to reduce host resource use; shared-target success alone remains qualified because concurrent worktrees can replace binaries.
+
+- 2026-10-10: Root serialized native confirmation on integration passed /retro draft restart and explicit-send test (1 passed). Evidence updated; no concurrent canonical-target producer. Packaged and native IME acceptance remain pending.

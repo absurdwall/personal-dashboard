@@ -7,7 +7,7 @@ Triage: ready-for-agent
 Blocked by: none
 Created: 2026-10-10
 Updated: 2026-10-10
-Implementation: not started
+Implementation: in progress
 
 ## Specification
 

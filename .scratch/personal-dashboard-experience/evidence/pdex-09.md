@@ -87,3 +87,7 @@ physical keyboard/IME or microphone behavior in a packaged Tauri application.
 The common packaged candidate and real IME checks remain pending under PDEX-11.
 No user Vault, real Task/Daily Record, App installation, remote publication or
 protected-main state was modified.
+
+## Serialized integration-native confirmation
+
+On integration after f400013 (canonical target with no concurrent writers), `CARGO_BUILD_JOBS=2 cargo test --manifest-path src-tauri/Cargo.toml --test collaboration_workflow retro_draft_survives_restart_without_running_until_explicit_submission -- --exact` passed: 1 passed, 28 filtered, 0 failed. Synthetic saved /retro draft survived a new Application instance without execution until explicit submission. This supersedes the shared-target native result. Packaged/native IME checks remain separate.
