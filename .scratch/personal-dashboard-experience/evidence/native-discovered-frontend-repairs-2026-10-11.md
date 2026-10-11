@@ -35,3 +35,14 @@ External logs (outside the immutable candidate A artifact index):
 | `/tmp/pdex-native-followups-modal-red.log` | `01f8f8980c7c2025ff2845032f2c6954ed673c2e7ff2569c937964d377f3c97c` |
 | `/tmp/pdex-native-followups-build.log` | `02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7` |
 | `/tmp/pdex-native-followups-focused.log` | `850a00ce46f6af5591b5441e2123b948d0a358f7eb60af2bdc4a31e70f0f0e74` |
+
+## Reviewer follow-up: actual scroll viewport assertion
+
+The initial startup regression queried nonexistent `.today-axis-scroll`; optional chaining made its scroll equality assertion vacuous. Its other label/node/focus assertions remain valid, but the initial run did not prove scroll retention. The corrected regression queries production `#today-axis-scroll-surface`, explicitly rejects a missing viewport, sets and requires a nonzero `scrollTop` before releasing persisted English, and compares that real viewport position after localization. Integration `ffa1b85` was merged before this test-only correction. No product code changed, so candidate B's frozen product tree is retained.
+
+`npm run build` exited 0, then the same five-file focused command listed above exited 0: **43 passed, 0 failed, 0 skipped**. This run includes the nonvacuous actual scroll assertion. No native/package acceptance is inferred.
+
+| Follow-up log | SHA-256 |
+| --- | --- |
+| `/tmp/pdex-native-followups-scroll-build.log` | `02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7` |
+| `/tmp/pdex-native-followups-scroll-focused.log` | `fd285c9c227c94a6e5baaa6e1480bd4a3ee45eedb5f427a77fce112a8077b7bc` |
