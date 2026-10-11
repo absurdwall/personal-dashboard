@@ -4430,9 +4430,18 @@ function renderCollaborationWorkspace(): void {
       ? "collaboration.retrySessionCreate"
       : "collaboration.newSession");
   }
+  const activityDateBusy = collaborationSessionCreationAttempt !== null ||
+    collaborationSessionCreationPromise !== null || vaultSelectionInProgress;
   if (collaborationDateInput) {
-    collaborationDateInput.disabled = collaborationSessionCreationAttempt !== null ||
-      collaborationSessionCreationPromise !== null || vaultSelectionInProgress;
+    collaborationDateInput.disabled = activityDateBusy;
+  }
+  for (const selector of [
+    "#collaboration-date-previous",
+    "#collaboration-date-next",
+    "#collaboration-date-today",
+  ]) {
+    const button = document.querySelector<HTMLButtonElement>(selector);
+    if (button) button.disabled = activityDateBusy;
   }
   if (collaborationTargetDateInput) collaborationTargetDateInput.disabled = vaultSelectionInProgress || targetDatePending ||
     collaborationSessionCreationPromise !== null || collaborationSessionCreationAttempt !== null;
@@ -4859,33 +4868,42 @@ async function createCollaborationSession(): Promise<CollaborationSessionView | 
     (collaborationActivityDateExplicit ? collaborationActivityDate : null);
   const hadSelectedSession = currentCollaborationSession !== null;
   const retainedAttempt = collaborationSessionCreationAttempt;
-  const attempt = retainedAttempt ?? {
-    id: localOperationId("collaboration-session"),
-    date: explicitDate || collaborationActivityDate || localCalendarDate(),
-    initialDraft: hadSelectedSession
-      ? ""
-      : (collaborationMessageDraft?.value ?? collaborationEmptyDraft),
-    latestDraft: hadSelectedSession
-      ? ""
-      : (collaborationMessageDraft?.value ?? collaborationEmptyDraft),
-  };
-  collaborationSessionCreationAttempt = attempt;
+  const initialDraft = hadSelectedSession
+    ? ""
+    : (collaborationMessageDraft?.value ?? collaborationEmptyDraft);
+  let attempt = retainedAttempt;
   collaborationSessionCreationError = null;
   const creation = (async (): Promise<CollaborationSessionView | null> => {
     try {
+      if (!attempt) {
+        let date = explicitDate || collaborationActivityDate;
+        if (!date) {
+          const clock = await window.__TAURI__.core.invoke<TodayClockView>("today_clock");
+          if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return null;
+          date = clock.livedDate;
+        }
+        attempt = {
+          id: localOperationId("collaboration-session"),
+          date,
+          initialDraft,
+          latestDraft: initialDraft,
+        };
+        collaborationSessionCreationAttempt = attempt;
+      }
+      const creationAttempt = attempt;
       const session = await window.__TAURI__.core.invoke<CollaborationSessionView>(
         "collaboration_create_session",
-        { date: attempt.date, sessionId: attempt.id, initialDraft: attempt.initialDraft },
+        { date: creationAttempt.date, sessionId: creationAttempt.id, initialDraft: creationAttempt.initialDraft },
       );
       if (vaultSelectionInProgress || vaultRevision !== collaborationVaultSelectionRevision) return null;
-      if (session.id !== attempt.id || session.createdDate !== attempt.date) {
+      if (session.id !== creationAttempt.id || session.createdDate !== creationAttempt.date) {
         throw new Error("The collaboration session creation result did not match its request.");
       }
       collaborationSessionCreationAttempt = null;
       cancelCollaborationVoiceCaptureForSelectionChange();
       stashCollaborationDraft();
       const entryDraft = retainedAttempt
-        ? attempt.latestDraft
+        ? creationAttempt.latestDraft
         : hadSelectedSession ? null : collaborationEmptyDraft;
       collaborationSessionCreationResult = session;
       const date = session.targetDate || session.createdDate;
@@ -12043,6 +12061,7 @@ function shiftDate(date: string, days: number): string {
 }
 
 document.querySelector<HTMLButtonElement>("#collaboration-date-previous")?.addEventListener("click", () => {
+  if (collaborationSessionCreationPromise || collaborationSessionCreationAttempt || vaultSelectionInProgress) return;
   collaborationActivityDateExplicit = true;
   collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, -1);
   if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
@@ -12050,6 +12069,7 @@ document.querySelector<HTMLButtonElement>("#collaboration-date-previous")?.addEv
 });
 
 document.querySelector<HTMLButtonElement>("#collaboration-date-next")?.addEventListener("click", () => {
+  if (collaborationSessionCreationPromise || collaborationSessionCreationAttempt || vaultSelectionInProgress) return;
   collaborationActivityDateExplicit = true;
   collaborationActivityDate = shiftDate(collaborationDateInput?.value || collaborationActivityDate, 1);
   if (collaborationDateInput) collaborationDateInput.value = collaborationActivityDate;
@@ -12057,6 +12077,7 @@ document.querySelector<HTMLButtonElement>("#collaboration-date-next")?.addEventL
 });
 
 document.querySelector<HTMLButtonElement>("#collaboration-date-today")?.addEventListener("click", () => {
+  if (collaborationSessionCreationPromise || collaborationSessionCreationAttempt || vaultSelectionInProgress) return;
   collaborationActivityDateExplicit = false;
   collaborationActivityDate = "";
   void refreshCollaborationWorkspace();

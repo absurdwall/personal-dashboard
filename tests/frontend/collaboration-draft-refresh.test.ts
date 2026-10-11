@@ -35,7 +35,7 @@ function composer(actualVoice=false, pendingStart=false, empty=false) {
     "handleCollaborationVoiceTranscript","cancelCollaborationVoiceCaptureForSelectionChange",
     "renderCollaborationWorkspace","stashCollaborationDraft","flushCollaborationDraft",
     "saveCollaborationDraft","selectCollaborationSession","refreshCollaborationWorkspace","saveCollaborationTargetDate",
-    "collaborationVoiceFailureStatus","startOrStopCollaborationVoice","selectTodayVault","sendCollaborationMessage","handleCollaborationDraftInput","resetVaultScopedWorkspaceState","renderPendingWriteFailure","openCollaborationForTask","createCollaborationSession","localOperationId",
+    "collaborationVoiceFailureStatus","startOrStopCollaborationVoice","selectTodayVault","sendCollaborationMessage","handleCollaborationDraftInput","resetVaultScopedWorkspaceState","renderPendingWriteFailure","openCollaborationForTask","createCollaborationSession","localOperationId","localCalendarDate",
     ...(main.includes("function prepareCollaborationForVaultSwitch(")?["prepareCollaborationForVaultSwitch"]:[]),
     ...(main.includes("function drainCollaborationDraftsForVaultSwitch(")?["drainCollaborationDraftsForVaultSwitch"]:[])];
   const functions=names.map(sourceFunction).join("\n");
@@ -77,10 +77,10 @@ function composer(actualVoice=false, pendingStart=false, empty=false) {
     collaborationMessageDraft:element(empty?"":"persisted first"),collaborationTargetDateInput:element("2026-10-03"),
     collaborationComposerStatus:element(),collaborationSendButton:element(),collaborationRunStatus:element(),
     collaborationVoiceStartButton:element(),collaborationVoiceStatus:element(),
-    collaborationVoiceController:{state:"idle",navigate(){}},
+    collaborationVoiceController:{state:"idle",navigate(){}},todayClock:async()=>({livedDate:"2026-10-03"}),
     document:{activeElement:null,querySelector:()=>null},
     window:{setTimeout:()=>1,clearTimeout(){},clearInterval(){},requestAnimationFrame(){},__TAURI__:{core:{invoke:async(command:string,args:any)=>{
-      if(command==="today_clock")return {livedDate:"2026-10-03"};
+      if(command==="today_clock")return r.todayClock();
       if(command==="collaboration_workspace")return r.readWorkspace();
       if(command==="collaboration_context")return workspace.context;
       if(command==="collaboration_save_draft"){writes.push({vault,args});return r.write(args);}
@@ -533,6 +533,53 @@ test("empty-state session creation freezes its chosen target date until creation
   await creation;
   assert.equal(r.currentCollaborationSession.id,created.id);
   assert.equal(r.collaborationTargetDateInput.value,chosenDate);
+});
+
+test("New chat waits for the authoritative lived date after Today clears the activity date",async()=>{
+  const f=composer(false,false,true);const {r,workspace}=f;
+  const createArgs:any[]=[];
+  const created={id:"",createdDate:"",targetDate:"",draft:"",draftsByDate:{} as Record<string,string>,runState:"idle"};
+  let finishClock:(clock:any)=>void=()=>{};
+  let clockCalls=0;
+  r.collaborationActivityDate="";r.collaborationActivityDateExplicit=false;
+  r.collaborationEmptyTargetDate=null;r.collaborationTargetDate="";
+  r.collaborationTargetDateInput.value="";r.collaborationDateInput=element("");
+  r.collaborationMessageDraft.value="Draft before the lived date is known";
+  r.handleCollaborationDraftInput();
+  r.localCalendarDate=()=>"2026-10-03";
+  r.todayClock=()=>{clockCalls++;return new Promise(resolve=>{finishClock=resolve;});};
+  r.create=async(args:any)=>{
+    createArgs.push(structuredClone(args));
+    created.id=args.sessionId;created.createdDate=args.date;created.targetDate=args.date;
+    created.draft=args.initialDraft;created.draftsByDate[args.date]=args.initialDraft;
+    workspace.sessions.push(structuredClone(created));
+    return structuredClone(created);
+  };
+  r.readWorkspace=async()=>structuredClone(workspace);
+  const controls=new Map<string,any>([
+    ["#collaboration-new-session",element()],
+    ["#collaboration-date-previous",element()],
+    ["#collaboration-date-next",element()],
+    ["#collaboration-date-today",element()],
+  ]);
+  r.document.querySelector=(selector:string)=>controls.get(selector)??null;
+
+  const creation=r.createCollaborationSession();
+  await tick();
+  assert.equal(clockCalls,1);
+  assert.equal(createArgs.length,0,"session creation waits for the backend's lived date");
+  assert.equal(r.collaborationSessionCreationPromise!==null,true,"the new-chat entry stays pending during clock lookup");
+  assert.equal(controls.get("#collaboration-new-session").disabled,true);
+  assert.equal(r.collaborationDateInput.disabled,true);
+  assert.equal(controls.get("#collaboration-date-today").disabled,true);
+  assert.equal(r.collaborationSessionCreationAttempt,null,"the stable retry identity is created only after its date is known");
+
+  finishClock({livedDate:"2026-10-02"});
+  await creation;
+  assert.equal(createArgs.length,1);
+  assert.equal(createArgs[0].date,"2026-10-02","backend lived date wins over the local calendar day");
+  assert.equal(createArgs[0].initialDraft,"Draft before the lived date is known");
+  assert.equal(r.currentCollaborationSession.id,createArgs[0].sessionId);
 });
 
 test("explicit Send retries an uncertain empty-state creation without replacing a newer editable draft",async()=>{

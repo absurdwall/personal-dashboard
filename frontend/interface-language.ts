@@ -2041,6 +2041,12 @@ const chineseErrorPrefixes: readonly Readonly<[string, string]>[] = [
 ];
 
 const chineseApplicationErrors: Readonly<Record<string, string>> = {
+  "The collaboration session creation result did not match its request.":
+    "协作会话创建结果与请求不匹配。",
+  "The collaboration session creation identity is invalid.":
+    "协作会话创建标识无效。",
+  "This collaboration session creation identity is already bound to another Vault or date.":
+    "此协作会话创建标识已绑定到另一个 Vault 或日期。",
   "Background image selection is unavailable.": "背景图片选择目前不可用。",
   "Background image storage is unavailable.": "背景图片存储目前不可用。",
   "The selected background image is unavailable.": "所选背景图片不可用。",
@@ -2160,6 +2166,17 @@ export function localizeApplicationError(
   }
   if (error === "文档已保存，但读回结果已经变化；请重新读取核对。") {
     return language === "zh" ? error : "Document saved, but the readback changed; read the record again to verify.";
+  }
+  const applicationDiagnostic = error.startsWith("Error: ") ? error.slice("Error: ".length) : error;
+  const knownCollaborationDiagnostic = chineseApplicationErrors[applicationDiagnostic];
+  if (knownCollaborationDiagnostic) {
+    return language === "zh" ? knownCollaborationDiagnostic : applicationDiagnostic;
+  }
+  const collaborationDraftLimit = /^Drafts are limited to (\d+) characters\.$/.exec(applicationDiagnostic);
+  if (collaborationDraftLimit) {
+    return language === "zh"
+      ? `草稿最多可包含 ${collaborationDraftLimit[1]} 个字符。`
+      : applicationDiagnostic;
   }
   if (language === "zh") {
     const exact = chineseApplicationErrors[error];
