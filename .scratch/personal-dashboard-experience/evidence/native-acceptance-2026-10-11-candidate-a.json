@@ -1,0 +1,64 @@
+{
+  "sourceCommit": "bc99cf2f45d288ca5abcd5de4fbf52ec831a12e6",
+  "sourceTree": "8b7945c945f55a80f41d5c2dd3e96f5aa41ede86",
+  "sourceArchiveSha256": "a793a33faf54658391791465c886eb98ef57e709c984ee7d662eedb5cb664945",
+  "productTreeSha256": "5296d1f1efa79eeac417bac16f954968883a8f8c5fb58a927cd37b071ed6d16c",
+  "productTreePaths": [
+    "frontend",
+    "src-tauri",
+    "scripts",
+    "package.json",
+    "package-lock.json",
+    "tsconfig.json"
+  ],
+  "candidateConfigSha256": "f013817cccb19cd4fc04e4f7478240f9d1d8fab96e00e34a0725c2879a8f7e32",
+  "configProvenance": "External standard Tauri --config merge; bundle identifier, main-window title and initial geometry only; no product hooks or additional windows.",
+  "candidateBundle": "/tmp/pdex-acceptance-20261011.noindex/target/release/bundle/macos/Personal Dashboard.app",
+  "bundleIdentifier": "com.tortillaflat.personal-dashboard.acceptance20261011bc99cf2",
+  "bundleVersion": "4.0.7",
+  "binarySha256": "76f12c689a21d463d15f61935d15b52fe457732cc4c86d336827641f6a6c7b2d",
+  "bundleFiles": {
+    "Contents/Info.plist": "8c7b71929439c47bdbf9ae95747a7f001842227b90c5113cda0e913086b40293",
+    "Contents/MacOS/personal-dashboard": "76f12c689a21d463d15f61935d15b52fe457732cc4c86d336827641f6a6c7b2d",
+    "Contents/Resources/icon.icns": "8c9e518ddaeb5d795b7195a72a0b051b6299e6a7b5277eb37b9a2dfd7bf1ce00",
+    "Contents/_CodeSignature/CodeResources": "11dc3645b684a4d8f93055c68d88e8622513786e96c4244c717ecb17be0633be"
+  },
+  "bundleFileTreeSha256": "b87aef0f41c78866028b73453e4f2611d785a77db32bab5438d14e205d916669",
+  "candidateConfig": "/tmp/pdex-acceptance-20261011.noindex/candidate-config.json",
+  "candidateConfigOverride": {
+    "identifier": "com.tortillaflat.personal-dashboard.acceptance20261011bc99cf2",
+    "app": {
+      "windows": [
+        {
+          "label": "main",
+          "title": "Personal Dashboard Acceptance bc99cf2",
+          "width": 1280,
+          "height": 720,
+          "minWidth": 640,
+          "minHeight": 520,
+          "resizable": true
+        }
+      ]
+    }
+  },
+  "argv": [
+    "/tmp/pdex-acceptance-20261011.noindex/target/release/bundle/macos/Personal Dashboard.app/Contents/MacOS/personal-dashboard"
+  ],
+  "syntheticProfile": "/tmp/pdex-acceptance-20261011.noindex/profile",
+  "syntheticVault": "/tmp/pdex-acceptance-20261011.noindex/vault",
+  "clockNY": "2026-09-08 17:05 -0400",
+  "environmentOverrides": {
+    "PERSONAL_DASHBOARD_DATA_DIR": "/tmp/pdex-acceptance-20261011.noindex/profile",
+    "PERSONAL_DASHBOARD_BASELINE_FILE": "/tmp/pdex-acceptance-20261011.noindex/none/state.json",
+    "PERSONAL_DASHBOARD_NOW_EPOCH_MILLIS": "1788901500000",
+    "PERSONAL_DASHBOARD_UTC_OFFSET_MINUTES": "-240",
+    "PATHPrefix": "/tmp/pdex-acceptance-20261011.noindex/runtime/bin"
+  },
+  "runtime": "Explicit synthetic inspect-only transport; real installed CLI version/schema probes only; no authentication, no model submissions. Fresh method-only log. No old Codex profile/database/auth copied.",
+  "runtimeFixtureSha256": "9e829cdf0072a7f9d0be17a2bda3501f16f4ce476db9d45a6d2c643305c53fc9",
+  "installedExecutableSha256": "33941698a758314fc9c24d8095e02c65e10a77d1d2825503ab0fcb953ae0da55",
+  "buildLog": "/tmp/pdex-acceptance-20261011.noindex/build.log",
+  "buildLogSha256": "259eaf0f8f50af7815b163e1382fdd4d885e577ed0fece1e37dfa41d7c107d76",
+  "buildExitCode": 0,
+  "status": "Prepared, not launched; root owns all live UI via CUA Virtual Mouse."
+}
