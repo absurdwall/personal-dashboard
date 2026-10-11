@@ -26,6 +26,16 @@ Management source: source-personal-dashboard-experience
 | PDEX-10 | ticket | [10: Evening 一键进入带日期的复盘草稿](issues/10-evening-review-entry.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
 | PDEX-11 | ticket | [11: 验证同一打包版本的完整日常流程](issues/11-packaged-daily-flow-acceptance.md) | ready-for-agent | closed | PDEX-03, PDEX-04, PDEX-05, PDEX-07, PDEX-08, PDEX-09, PDEX-10 | [local human acceptance and qualifications](evidence/human-acceptance-2026-10-11.md) |
 
+## Approved follow-up frontier — 2026-10-11
+
+Previous PDEX-SPEC-01/PDEX-01–11 remain accepted and closed. New bounded follow-up: [PDEX-FOLLOWUP-01](followup-spec-2026-10-11.md), current open/in-progress; both independent tickets eligible and claimed.
+
+| ID | Body | Triage | Lifecycle | Dependencies | Current evidence |
+| --- | --- | --- | --- | --- | --- |
+| PDEX-FOLLOWUP-01 | [complete addendum](followup-spec-2026-10-11.md) / [index](issues/00-followup-spec.md) | ready-for-agent | in-progress | none | implementation/review/install/human acceptance separate |
+| PDEX-12 | [Tasks quick create/modal](issues/12-lightweight-task-create.md) | ready-for-agent | in-progress | none | implementation pending |
+| PDEX-13 | [Today unlocated toggle/drawer](issues/13-today-unlocated-drawer.md) | ready-for-agent | in-progress | none | implementation pending |
+
 The spec and eleven approved tickets are published locally. Every ticket retains its complete body and separate acceptance criteria.
 Current claim and implementation states are recorded per row and ticket. The Work Item index [00-spec](issues/00-spec.md) refers to
 this full body and the same PDEX-SPEC-01 identity; it is not an implementation
@@ -197,3 +207,8 @@ PDEX-11 is now resolved/closed; all eleven tickets and PDEX-SPEC-01 are locally 
 Installed Management helper updated the existing Project summary and confirmed a fresh canonical readback: Registry `b69ca519f2f43084`, summary `747bdb6a386c2741`, experience source `df799cdc1855fe0b`; all twelve local records are resolved (eleven tickets plus parent spec), no malformed references and no initiative blocker/next-work entry. [Scoped receipt](evidence/management-human-acceptance-2026-10-11.json) retains all record states, source-backed acceptance summary and observation qualifications.
 
 Project lifecycle, focus, review, registered sources, working directory and repository fields remain unchanged. A system-only helper child PATH excludes GitHub CLI; unavailable remote/malformed legacy sources remain explicitly uncovered, rather than being claimed as accepted. No new Registry, remote tracker query or migration was performed. This closes only the local Dashboard experience initiative. The normal installed App/product is unchanged; all history and unrelated changes remain retained.
+
+
+## Follow-up authorization and local claims — 2026-10-11
+
+Direct human message 01a12986-5de8-7f91-a3b5-a9bca292f4fe approves only Tasks creation and Today right-panel improvements, independent review until satisfied, then normal local App replacement and subsequent human acceptance. Base d4f2399 is clean. PDEX-12/PDEX-13 are locally claimed; prior closed tickets/spec remain intact. Calendar and left navigation excluded. Installed App stays unchanged until explicit reviewer release; no GitHub/main operation.
