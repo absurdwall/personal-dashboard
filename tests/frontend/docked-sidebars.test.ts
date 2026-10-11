@@ -207,18 +207,26 @@ test('Today aside control is beside its heading and keeps the existing docked co
   assert.deepEqual(result.calls.filter((c:{command:string})=>/^(create_|edit_|update_|save_|set_)/.test(c.command)),[]);
 });
 
-test('toolbar keeps the product identity at the far left and fits with the toggle at 640px', {skip:process.platform!=='darwin'},()=>{
-  const result=probe(640,`
-    const toolbar=document.querySelector('.product-toolbar'),brand=toolbar.querySelector('.product-toolbar-brand'),divider=toolbar.querySelector('.product-toolbar-divider'),toggle=toolbar.querySelector('#workspace-sidebar-toggle'),actions=toolbar.querySelector('.product-toolbar-actions');
-    const bounds=node=>{if(!node)return null;const r=node.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width}};
-    return JSON.stringify({brand:bounds(brand),divider:bounds(divider),toggle:bounds(toggle),actions:bounds(actions),hasDivider:Boolean(divider),overflow:document.documentElement.scrollWidth>innerWidth,order:[...toolbar.children].map(node=>node.className||node.id)});
-  `);
-  assert.equal(result.hasDivider,true,JSON.stringify(result));
-  assert.ok(result.brand.left<=20,JSON.stringify(result));
-  assert.ok(result.brand.left<=result.divider.left&&result.divider.left<result.toggle.left&&result.toggle.left<result.actions.left,JSON.stringify(result));
-  assert.ok(result.brand.right<=result.divider.left&&result.divider.right<=result.toggle.left&&result.toggle.right<=result.actions.left,JSON.stringify(result));
-  assert.ok(result.toggle.width>=30);assert.equal(result.overflow,false,JSON.stringify(result));
-});
+for (const width of [640, 681, 700]) {
+  test(`toolbar keeps its brand, navigation toggle and trailing controls in one row at ${width}px`, {skip:process.platform!=='darwin'},()=>{
+    const result=probe(width,`
+      const toolbar=document.querySelector('.product-toolbar'),brand=toolbar.querySelector('.product-toolbar-brand'),divider=toolbar.querySelector('.product-toolbar-divider'),toggle=toolbar.querySelector('#workspace-sidebar-toggle'),actions=toolbar.querySelector('.product-toolbar-actions');
+      const bounds=node=>{if(!node)return null;const r=node.getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,top:r.top,bottom:r.bottom,height:r.height}};
+      const controls=['workspace-settings','workspace-language','workspace-more'].map(id=>({id,rect:bounds(document.getElementById(id))}));
+      return JSON.stringify({viewport:innerWidth,toolbar:bounds(toolbar),brand:bounds(brand),brandName:bounds(brand.querySelector('.product-toolbar-name')),divider:bounds(divider),toggle:bounds(toggle),actions:bounds(actions),controls,hasDivider:Boolean(divider),overflow:document.documentElement.scrollWidth>innerWidth,order:[...toolbar.children].map(node=>node.className||node.id)});
+    `);
+    assert.equal(result.hasDivider,true,JSON.stringify(result));
+    assert.equal(result.toolbar.width,result.viewport,JSON.stringify(result));
+    assert.ok(result.brand.left>=0&&result.brand.left<=20,JSON.stringify(result));
+    assert.ok(result.brand.right<=result.divider.left&&result.divider.right<=result.toggle.left&&result.toggle.right<=result.actions.left,JSON.stringify(result));
+    assert.ok(result.toggle.width>=30,JSON.stringify(result));
+    assert.ok(result.actions.left<=result.controls[0].rect.left&&result.controls[0].rect.right<=result.controls[1].rect.left,JSON.stringify(result));
+    assert.ok(result.controls[1].rect.right<=result.controls[2].rect.left&&result.controls[2].rect.right<=result.actions.right,JSON.stringify(result));
+    assert.ok(result.brandName.height<=result.brand.height&&result.brandName.right<=result.divider.left,JSON.stringify(result));
+    assert.ok(result.toolbar.left>=0&&result.toolbar.right<=result.viewport,JSON.stringify(result));
+    assert.equal(result.overflow,false,JSON.stringify(result));
+  });
+}
 
 test('Today quick schedule shows its current date and time within the existing row', {skip:process.platform!=='darwin'},()=>{
   const result=probe(640,`

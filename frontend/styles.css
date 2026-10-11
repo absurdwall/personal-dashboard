@@ -10015,6 +10015,7 @@ button.habit-cell:focus-visible {
 .product-toolbar { gap: 10px; }
 @media(max-width:680px) {
   .app-shell[data-workspace-destination] { grid-template-columns: 140px minmax(0, 1fr); }
+  .app-shell[data-workspace-destination] > .product-toolbar { grid-column: 1 / -1; }
   .app-shell[data-workspace-destination][data-navigation-expanded="false"] { grid-template-columns: 0 minmax(0, 1fr); }
   .app-shell[data-workspace-destination] > .workspace-sidebar {
     display: flex; grid-column: 1; grid-row: 2; flex-direction: column;
