@@ -828,7 +828,7 @@ h1 {
 
 .schedule-controls select {
   width: 100%;
-  padding: 0.6rem;
+  padding: 0.55rem;
   border: 1px solid rgb(24 51 41 / 20%);
   border-radius: 0.55rem;
   background: #fff;
@@ -6235,6 +6235,7 @@ body {
 .app-shell[data-background-image-state="ready"] #workspace-destination-calendar,
 .app-shell[data-background-image-state="ready"] #workspace-destination-tasks,
 .app-shell[data-background-image-state="ready"] #workspace-destination-habits,
+.app-shell[data-background-image-state="ready"] #workspace-destination-collaboration,
 .app-shell[data-background-image-state="ready"] .settings-layout {
   border: 1px solid rgb(255 255 255 / 54%);
   border-radius: 0.75rem;
@@ -6263,7 +6264,8 @@ body {
 @media (max-width: 680px) {
   .app-shell[data-background-image-state="ready"] #workspace-destination-today,
   .app-shell[data-background-image-state="ready"] #workspace-destination-calendar,
-  .app-shell[data-background-image-state="ready"] #workspace-destination-tasks {
+  .app-shell[data-background-image-state="ready"] #workspace-destination-tasks,
+  .app-shell[data-background-image-state="ready"] #workspace-destination-collaboration {
     border-right: 0;
     border-left: 0;
     border-radius: 0;
@@ -8384,7 +8386,8 @@ button.habit-cell:focus-visible {
 #workspace-destination-today.today-destination,
 #workspace-destination-tasks.tasks-destination,
 #workspace-destination-calendar.calendar-destination,
-#workspace-destination-habits.habits-destination {
+#workspace-destination-habits.habits-destination,
+#workspace-destination-collaboration.collaboration-destination {
   width: min(calc(100% - 3rem), 66rem);
   margin-inline: auto;
   padding: 2.1rem 1.65rem 3.7rem;
@@ -8426,7 +8429,8 @@ button.habit-cell:focus-visible {
   line-height: 0.98;
 }
 
-.destination-page-header > div:first-child > p:last-child {
+.destination-page-header > div:first-child > p:last-child,
+.destination-page-header > div:first-child > .collaboration-description {
   max-width: 36rem;
   margin: 0.7rem 0 0;
   color: #4f5a55;
@@ -8489,7 +8493,8 @@ button.habit-cell:focus-visible {
   #workspace-destination-today.today-destination,
   #workspace-destination-tasks.tasks-destination,
   #workspace-destination-calendar.calendar-destination,
-  #workspace-destination-habits.habits-destination {
+  #workspace-destination-habits.habits-destination,
+  #workspace-destination-collaboration.collaboration-destination {
     width: min(calc(100% - 2rem), 66rem);
     padding: 1.8rem 1.6rem 3rem;
   }
@@ -8499,7 +8504,8 @@ button.habit-cell:focus-visible {
   #workspace-destination-today.today-destination,
   #workspace-destination-tasks.tasks-destination,
   #workspace-destination-calendar.calendar-destination,
-  #workspace-destination-habits.habits-destination {
+  #workspace-destination-habits.habits-destination,
+  #workspace-destination-collaboration.collaboration-destination {
     width: calc(100% - 1.5rem);
     padding: 1.55rem 1.5rem 3rem;
   }
@@ -8572,17 +8578,9 @@ button.habit-cell:focus-visible {
   }
 }
 
-/* Codex collaboration keeps the approved A layout inside the current app shell. */
-#workspace-destination-collaboration.collaboration-destination {
-  width: 100%;
-  margin: 0 auto;
-  padding: 1.45rem clamp(1rem, 3vw, 2.25rem) 2.5rem;
-}
-
 .collaboration-header {
   align-items: end;
   gap: 1.5rem;
-  padding-bottom: 1.15rem;
 }
 
 .collaboration-header .section-label,
@@ -8596,7 +8594,7 @@ button.habit-cell:focus-visible {
 }
 
 .collaboration-header .destination-heading {
-  margin: 0 0 0.3rem;
+  margin: 0;
   color: #252a28;
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(1.55rem, 3vw, 2.25rem);
@@ -9805,17 +9803,10 @@ button.habit-cell:focus-visible {
 #today-phase-morning .today-period { display: block; margin-bottom: 0.35rem; }
 
 /* The month uses the same compact row height for every date in that month. */
-#workspace-destination-calendar.calendar-destination {
-  padding: 0 16px 24px;
-}
-.calendar-destination .calendar-header {
-  align-items: center;
-  margin-bottom: 0;
-  padding-bottom: 0;
-  border-bottom: 0;
-}
+#workspace-destination-calendar.calendar-destination { min-width: 0; }
+.calendar-destination .calendar-header { align-items: flex-end; }
 .app-shell[data-workspace-destination="calendar"] .calendar-header h2 { font-size: clamp(2rem, 4vw, 3rem); }
-.calendar-destination .calendar-header > div:first-child > p:last-child { display: none; }
+.calendar-destination .calendar-header > div:first-child > p:last-child { display: block; }
 .calendar-destination > .today-status { margin: 2px 0 5px; }
 .calendar-destination .calendar-frame {
   grid-template-columns: minmax(0, 1fr) 230px;
@@ -9868,10 +9859,24 @@ button.habit-cell:focus-visible {
   line-height: 16px;
 }
 @media (max-width: 1000px) {
-  .calendar-destination .calendar-frame { grid-template-columns: minmax(0, 1fr); }
+  .calendar-destination .calendar-frame { grid-template-columns: minmax(0, 1.55fr) minmax(10rem, 1fr); gap: clamp(.75rem, 2vw, 1rem); }
   .calendar-destination .calendar-summary { order: 0; }
   .calendar-destination .calendar-header { flex-direction: row; flex-wrap: wrap; gap: 8px; }
   .calendar-destination .calendar-toolbar { width: auto; }
+}
+@media (max-width: 680px) {
+  .calendar-destination .calendar-header { align-items: flex-start; flex-direction: column; flex-wrap: nowrap; }
+  .calendar-destination .calendar-toolbar { width: 100%; flex-wrap: wrap; }
+}
+
+/* The selected-day pane remains docked beside the month at every supported width. */
+.app-shell[data-workspace-destination="calendar"] .calendar-summary {
+  order: 0;
+  padding: 0 0 0 1rem;
+  border: 0;
+  border-left: 1px solid var(--parity-border);
+  border-radius: 0;
+  background: transparent;
 }
 
 #today-axis-edit-status[data-state="error"] { color: var(--parity-danger, #a7443a); }
@@ -9950,7 +9955,7 @@ button.habit-cell:focus-visible {
   background: var(--parity-surface); color: var(--parity-ink);
 }
 .sidebar-toggle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; }
-.sidebar-toggle-count { font-size: 10px; }
+.sidebar-toggle-count { display: none; }
 #today-unlocated-time-shortcut[hidden] { display: none; }
 @media(max-width:900px) {
   #today-ready[data-phase="daytime"] .today-layout[data-unlocated-presentation="inline"] .task-form-grid { grid-template-columns: minmax(0, 1fr); }
@@ -10018,14 +10023,14 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
 /* Sessions and context use simple divisions; keep selected states and input borders. */
 .collaboration-session-pane,
 .collaboration-chat-pane,
-.collaboration-context-pane { min-width:0; border:0; border-radius:0; background:transparent; }
-.collaboration-session-pane { padding:.15rem .55rem .15rem .1rem; }
-.collaboration-chat-pane { padding:.15rem .55rem; }
-.collaboration-context-pane { padding:.15rem 0 .15rem .75rem; }
-.collaboration-pane-heading { padding-bottom:.35rem; border-bottom:0; }
+.collaboration-context-pane { min-width:0; border:1px solid var(--parity-border); border-radius:.62rem; background:var(--parity-surface); }
+.collaboration-session-pane { padding:.85rem; }
+.collaboration-chat-pane { padding:.85rem; }
+.collaboration-context-pane { padding:.85rem; }
+.collaboration-pane-heading { padding-bottom:.55rem; border-bottom:1px solid var(--parity-border); }
 .collaboration-context-card { padding:.5rem 0; border:0; border-bottom:1px solid var(--parity-border); border-radius:0; background:transparent; }
 .collaboration-context-card:last-child { border-bottom:0; }
-.collaboration-layout[data-columns="two"] .collaboration-session-pane { padding:.15rem .55rem .15rem .1rem; }
+.collaboration-layout[data-columns="two"] .collaboration-session-pane { padding:.85rem; }
 
 /* Collaboration uses the shared destination title and fits the conversation to the workspace. */
 #workspace-destination-collaboration.collaboration-destination {
@@ -10033,15 +10038,12 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
   height: 100%;
   min-height: 0;
   flex-direction: column;
-  padding: 0.75rem clamp(1rem, 3vw, 2.25rem) 0.65rem;
 }
 .app-shell[data-workspace-destination="collaboration"] .workspace-regions { grid-row: 2; }
 
 .collaboration-header {
   flex: 0 0 auto;
   gap: 0.75rem;
-  margin-bottom: 0.5rem;
-  padding-bottom: 0.5rem;
 }
 .collaboration-header .destination-heading {
   font-size: clamp(2rem, 4vw, 3rem);
@@ -10051,8 +10053,10 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
 .collaboration-description { max-width: 36rem; }
 .collaboration-status-bar,
 .collaboration-panel-toolbar { flex: 0 0 auto; }
-.collaboration-status-bar { margin-bottom: 0.4rem; }
-.collaboration-panel-toolbar { margin-bottom: 0.35rem; }
+.collaboration-status-bar { margin-bottom: 0.25rem; }
+.collaboration-status-bar { padding: 0.3rem 0.65rem; }
+.collaboration-panel-toolbar { margin-bottom: 0.15rem; }
+.collaboration-panel-toolbar button { min-height: 2rem; padding: 0.4rem 0.65rem; font-size: 0.72rem; }
 .collaboration-layout {
   flex: 1 1 0;
   min-height: 0;
@@ -10111,7 +10115,7 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
 }
 .collaboration-chat-pane {
   overflow: hidden;
-  padding: 0.4rem;
+  padding: 0.55rem;
 }
 .collaboration-message-list {
   min-height: 0;
@@ -10121,6 +10125,16 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
 .collaboration-composer-date { margin: 0; }
 .collaboration-composer textarea { min-height: 4.25rem; }
 .collaboration-composer { gap: 0.25rem; padding-top: 0.45rem; }
+.collaboration-composer > .collaboration-help[open] { max-height: 4.5rem; overflow: auto; }
+
+@media (max-height: 740px) {
+  .collaboration-chat-pane { padding: 0.4rem; }
+  .collaboration-status-bar { margin-bottom: 0.1rem; }
+  .collaboration-panel-toolbar { margin-bottom: 0.05rem; }
+  .collaboration-pane-heading { padding-bottom: 0.25rem; }
+  .collaboration-composer { gap: 0.15rem; padding-top: 0.25rem; }
+  .collaboration-composer textarea { height: 3.5rem; min-height: 3.5rem; }
+}
 .collaboration-pane-heading {
   padding-bottom: 0.55rem;
   border-bottom: 1px solid var(--parity-border);

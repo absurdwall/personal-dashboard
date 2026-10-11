@@ -54,7 +54,7 @@ test('five-week month fits the shipped 1280×720 workspace with equal date heigh
   assert.equal(result.preview,4);
 });
 
-for(const [width,height] of [[1280,720],[830,758],[1280,688],[830,726]]) {
+for(const [width,height] of [[640,720],[795,756],[874,688],[1280,720],[640,688]]) {
   for(const weeks of [5,6]) {
     test(`${weeks}-week month is fully visible with four unclipped single-line previews at ${width}×${height}`,{skip:process.platform!=='darwin'},()=>{
       const result=webKit(`calendarHarness.render(fixture(${weeks}));const grid=document.querySelector('#calendar-grid');const cells=[...grid.children];const dense=cells[10];return JSON.stringify({width:innerWidth,height:innerHeight,grid:rect(grid),cells:cells.map(rect),previews:[...dense.querySelectorAll('.calendar-day-task-summary')].map(p=>({rect:rect(p),whiteSpace:getComputedStyle(p).whiteSpace,overflow:getComputedStyle(p).overflow,scroll:p.scrollWidth,client:p.clientWidth})),dense:rect(dense)});`,width,height);

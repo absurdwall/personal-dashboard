@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
 
 // Production macOS WebKit DOM/layout with only the public Tauri boundary substituted.
-function probe(width:number, scenario:string, withUntimed=true) {
+function probe(width:number, scenario:string, withUntimed=true, height=758) {
   const directory=mkdtempSync(join(tmpdir(),'pdex14-webkit-'));
   try {
     const root=new URL('../..',import.meta.url).pathname;
@@ -38,10 +38,10 @@ function probe(width:number, scenario:string, withUntimed=true) {
       const region=document.querySelector('#today-unlocated-time-region'),trigger=document.querySelector('#today-unlocated-time-shortcut');
       const rect=n=>{const r=n.getBoundingClientRect();return {width:r.width,height:r.height,left:r.left,right:r.right,top:r.top};};
       const side=document.querySelector('.today-side-region');
-      const snapshot=()=>({side:rect(side),sideHidden:side.hidden,viewport:innerWidth,axis:rect(document.querySelector('#today-axis-scroll-surface')),nav:rect(document.querySelector('.workspace-sidebar')),region:rect(region),hidden:region.hidden,expanded:trigger.getAttribute('aria-expanded'),label:trigger.textContent,content:region.textContent});
+      const snapshot=()=>({side:rect(side),sideHidden:side.hidden,viewport:innerWidth,axis:rect(document.querySelector('#today-axis-scroll-surface')),nav:rect(document.querySelector('.workspace-sidebar')),region:rect(region),hidden:region.hidden,expanded:trigger.getAttribute('aria-expanded'),label:trigger.getAttribute('aria-label'),visibleText:trigger.textContent,badge:trigger.querySelector('.sidebar-toggle-count')?.textContent??null,content:region.textContent});
       ${scenario}
     `);
-    return JSON.parse(execFileSync('swift',[new URL('./helpers/rendered-today-unlocated.swift',import.meta.url).pathname,join(directory,'index.html'),join(directory,'check.js'),String(width),'758'],{encoding:'utf8',timeout:60000}));
+    return JSON.parse(execFileSync('swift',[new URL('./helpers/rendered-today-unlocated.swift',import.meta.url).pathname,join(directory,'index.html'),join(directory,'check.js'),String(width),String(height)],{encoding:'utf8',timeout:60000}));
   } finally {rmSync(directory,{recursive:true,force:true});}
 }
 
@@ -98,8 +98,8 @@ for(const width of [640,830,1000,1280]) {
   });
 }
 
-for(const width of [640,830,1000,1280]) {
-  test(`Calendar existing summary toggles in normal flow at ${width}px without altering selection, month or drafts`, {skip:process.platform!=='darwin'},()=>{
+for(const [width,height] of [[640,720],[795,756],[874,688],[1280,720]] as const) {
+  test(`Calendar existing summary stays docked right at ${width}×${height} without altering selection, month or drafts`, {skip:process.platform!=='darwin'},()=>{
     const result=probe(width,`
       document.querySelector('[data-workspace-destination="calendar"].destination-button').click();
       await until(()=>document.querySelectorAll('#calendar-grid [data-calendar-date]').length>0);
@@ -109,12 +109,14 @@ for(const width of [640,830,1000,1280]) {
       const cells=[...grid.children],selected=grid.querySelector('[data-selected]'),content=summary.textContent,form=document.querySelector('#calendar-task-create-name');form.value='Retained Calendar draft';
       const before={summary:rect(summary),grid:rect(grid)};toggle.focus();toggle.click();const hidden=summary.hidden,collapsed={grid:rect(grid)};toggle.click();
       return JSON.stringify({before,collapsed,after:{summary:rect(summary),grid:rect(grid)},hidden,expanded:toggle.getAttribute('aria-expanded'),focused:document.activeElement===toggle,contentKept:content===summary.textContent,cellsKept:cells.every((c,i)=>grid.children[i]===c),selectionKept:selected===grid.querySelector('[data-selected]'),draft:form.value,dialog:summary.closest('dialog')!==null,overflow:document.documentElement.scrollWidth>innerWidth,calls});
-    `);
+    `,true,height);
     assert.equal(result.hidden,true);assert.equal(result.expanded,'true');assert.equal(result.focused,true);
     assert.equal(result.dialog,false);assert.equal(result.contentKept,true);assert.equal(result.cellsKept,true);assert.equal(result.selectionKept,true);
     assert.equal(result.draft,'Retained Calendar draft');assert.equal(result.overflow,false,JSON.stringify(result));
-    if(width>1000) {assert.ok(result.before.summary.left>=result.before.grid.right);assert.ok(result.collapsed.grid.width>result.before.grid.width+180);}
-    else assert.ok(result.before.summary.top>=result.before.grid.top+result.before.grid.height,'narrow summary remains below month');
+    assert.ok(result.before.summary.left>=result.before.grid.right,JSON.stringify(result.before));
+    assert.ok(result.before.summary.right<=width && result.before.summary.width>80,JSON.stringify(result.before));
+    assert.ok(result.before.grid.width>100,JSON.stringify(result.before));
+    assert.ok(result.collapsed.grid.width>result.before.grid.width+30,JSON.stringify(result));
     assert.deepEqual(result.before,result.after);
     assert.deepEqual(result.calls.filter((c:{command:string})=>/^(create_|edit_|update_|save_|set_)/.test(c.command)),[]);
     console.log('Calendar geometry '+width+':',JSON.stringify(result));
@@ -136,7 +138,8 @@ for(const width of [640,830,1000,1280]) {
     assert.ok(result.expanded.side.right<=width&&result.expanded.axis.width>=160,JSON.stringify(result));
     assert.equal(result.dialogs,0);assert.equal(result.overflow,false);
     assert.match(result.title,/Hide Today sidebar/);assert.equal(result.title,result.name);
-    assert.ok(result.trigger.right<=width);assert.equal(result.expanded.label.trim(),'2');
+    assert.match(result.name,/2 untimed items/);assert.equal(result.expanded.visibleText.trim(),"");assert.equal(result.expanded.badge,null);
+    assert.ok(result.trigger.right<=width);
     console.log('Today docked geometry '+width+':',JSON.stringify(result));
   });
 }
@@ -203,9 +206,9 @@ test('Today quick schedule shows its current date and time within the existing r
   assert.equal(result.overflow,false);assert.deepEqual(result.calls.filter((c:{command:string})=>/^(create_|edit_|update_|save_|set_)/.test(c.command)),[]);
 });
 
-test('Today zero untimed count retains a compact recoverable sidebar entry', {skip:process.platform!=='darwin'},()=>{
+test('Today zero untimed count retains an icon-only, accessible sidebar entry', {skip:process.platform!=='darwin'},()=>{
   const result=probe(1000,`const before=snapshot();trigger.focus();trigger.click();return JSON.stringify({before,after:snapshot(),triggerHidden:trigger.hidden,focus:document.activeElement===trigger});`,false);
   assert.equal(result.before.sideHidden,true);assert.equal(result.triggerHidden,false);
   assert.equal(result.after.sideHidden,false);assert.equal(result.after.hidden,true);
-  assert.equal(result.after.label.trim(),'0');assert.equal(result.focus,true);
+  assert.match(result.after.label,/0 untimed items/);assert.equal(result.after.visibleText.trim(),"");assert.equal(result.after.badge,null);assert.equal(result.focus,true);
 });
