@@ -62,3 +62,8 @@ Human-authorized root CUA pass at `bc99cf2` / binary `76f12c68…` establishes e
 ## Rebuilt native continuation B — 2026-10-11
 
 Fresh frozen `ffa1b85` package verifies readable dark selected-command text, Tab insertion of editable `/retro ` without sending, and ordinary embedded slash/pasted Unicode preservation. [B source-bound report](../evidence/native-acceptance-2026-10-11-b.md) separates paste from real composition. The contrast repair and corrected actual-scroll startup regression pass the current built canonical 43/43 focused checks. Real Sogou composition remains unverified; its combined criterion remains unchecked. Status/Lifecycle remain blocked, final independent review pending, parent open.
+
+
+## Normal installed continuation — 2026-10-11
+
+Human-authorized daily App replacement is complete on reviewed product source `6af1198` / installed executable `a6a277f68b25002f88c4958ed56a93c19b7497dc36eb49fa571a2f7b85b3d833`, normal production identifier/configuration with real profile/clock/connection. [Installation and recovery evidence](../evidence/local-install-2026-10-11.md) confirms existing data/drafts retained and no test submission. [Current unblock steps](../manual-acceptance.md) distinguish human native input/gesture/window checks from naturally exhausted account environment. Status/Lifecycle remain blocked, combined criteria unchecked, parent open. Installation does not convert missing acceptance into a pass.

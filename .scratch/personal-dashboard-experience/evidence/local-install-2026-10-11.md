@@ -1,0 +1,30 @@
+# Normal local installation — 2026-10-11
+
+The human authorized replacing the daily installation in the review chat. `/Applications/Personal Dashboard.app` now contains the reviewed experience implementation, built fresh from `6af11982193760f7f16091356884228c4ef3a448` under normal checked-in production configuration. This supersedes earlier “installed App unchanged / no installation” checkpoints for current local release status; those statements remain true for their historical checkpoints. Installation does not close PDEX-09/PDEX-11 or the parent.
+
+## Frozen production provenance
+
+- Source remains product-identical to reviewed/frozen B `ffa1b85056fe3f2bc3ab68ce652001b3b6f9537e`; full requested `8960c80` ancestry and unsquashed repairs remain retained.
+- Build: `npm run build:mac`, isolated source Git archive/private APFS-cloned Cargo target under `/tmp/pdex-local-install-20261011.noindex`, existing dependencies reused. Exit 0; strict deep codesign verification passed. No external Tauri config or frontend route override.
+- Identifier `com.tortillaflat.personal-dashboard`, title `Personal Dashboard`, version `4.0.7`, arm64. Version metadata is unchanged; installed identity is distinguished by source and hashes.
+- Installed executable SHA-256 `a6a277f68b25002f88c4958ed56a93c19b7497dc36eb49fa571a2f7b85b3d833`; complete bundle file-tree SHA-256 `929a2edec63da571c7ff1f1d4fb3b9cd2f6094bd54d35586da6decedadd51d51`. Stage, final installation and candidate files matched exactly. [Exact provenance and sanitized verification](local-install-2026-10-11.json).
+
+## Replacement and normal launch
+
+Old installed executable was `33941698a758314fc9c24d8095e02c65e10a77d1d2825503ab0fcb953ae0da55`. Root first copied and verified a recoverable old bundle, then staged/verified the new production bundle. Bound-app CUA showed no unsaved current input, dictation or active work; persisted state had no queued/in-progress requests. Normal Cmd+Q was used. The first post-quit observation automatically relaunched the old app (old PID 1629 ended, new old-build PID 57607); it is retained as an unsuccessful lifecycle observation. Root quit again through CUA and used read-only process checks, avoiding further auto-launch observations before swapping.
+
+Once stopped, root made and verified a complete app-data backup in the mode-0700 private directory. The original bundle was moved recoverably into `.noindex` only after backup and staged hashes passed. The replacement was copied to the exact Applications path and verified before CUA normal launch. No QA data/clock/baseline/runtime override was supplied. Normal installed PID 57687 has zero PERSONAL_DASHBOARD override environment keys and no synthetic runtime path. Existing real ChatGPT connection became visible; no model turn, microphone capture, test message, Task edit or Daily Record edit was requested.
+
+The actual normal Today view displayed retained selected-Vault data, English `Around 13:00`, new overlap reveal control and approximate placement; Collaboration loaded the existing reply/history with an empty current composer and Send disabled. Normal local clock/lived-day behavior applies, rather than candidate B's September fixed clock.
+
+All 48 inspected canonical life Markdown/JSON files remained byte-identical. Selected Vault, language/appearance preference bytes and authentication file hashes remain unchanged. All 41 stored sessions, 105 messages, drafts-by-date, settings, runtime thread bindings and automation entries remain semantically exact. The Collaboration store changed only JSON serialization bytes: complete decoded old/new documents are equal. Eleven normal runtime/profile files changed during startup; this is not a claim of full profile-byte identity. Real content, account identifiers and raw screenshots/AX are retained privately outside Git.
+
+Temporary build/stage/backup paths are outside Spotlight indexing. Their unregister requests returned the known `.noindex` Spotlight scan diagnostic -10814; the subsequent exact Launch Services dump contains no temporary installation paths. Production registration succeeded, and Spotlight's identifier query returns only `/Applications/Personal Dashboard.app`. No existing personal data, unrelated branches, main or remote was changed.
+
+## Recovery and remaining acceptance
+
+The verified old bundle and stopped profile were also preserved in durable, mode-0700 `.noindex` storage outside `/tmp`: `/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-20261011`. Recoverable App: `bundles/Personal Dashboard.app`; moved-original copy: `bundles/retired-original.app`; complete private profile: `profile/`. All copied bundle/profile file hashes match the verified pre-swap backups; signature still verifies. This archive contains private account data and must not be committed/shared. Temporary copies remain historical raw evidence. Keep the durable archive until human acceptance.
+
+Rollback if needed: gracefully quit the installed process through CUA, verify it has stopped, preserve the replacement bundle separately under `.noindex`, copy the verified old backup to the exact Applications path, verify old executable/bundle hashes/signature, register that path and launch normally. App rollback does not require replacing the profile. Do not restore an old profile over newer user drafts or personal work; reconcile any real data issue separately against the preserved backup. The swap helper had a guarded immediate restoration path if copying/signature/hash checks failed; it was not needed.
+
+[Current manual acceptance guide](../manual-acceptance.md) explains the exact blocked gates and how human/environment evidence closes them. Native IME, held edge/active resize, final installed narrow-window and natural authenticated quota exhaustion remain unverified. Earlier Q4/candidate checks remain supporting evidence with their exact source qualifications. Installation is confirmed; full user/native acceptance remains partial.

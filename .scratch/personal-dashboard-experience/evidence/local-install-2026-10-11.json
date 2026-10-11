@@ -1,0 +1,196 @@
+{
+  "manifest": {
+    "sourceCommit": "6af11982193760f7f16091356884228c4ef3a448",
+    "sourceArchiveSha256": "b4db89c2678377842fb15b1349a0e176411526981d4cc346f41f64dcbc041171",
+    "productTreeSha256": "c9f515bdc9cad2a7b08290e8a73153650ba9a72e49d8d2ed0cd60ee8aa950ab8",
+    "buildCommand": [
+      "npm",
+      "run",
+      "build:mac"
+    ],
+    "configPath": "src-tauri/tauri.conf.json",
+    "configSha256": "f4fc38beb7de04b90b6126313427732816a0f399cff950c37a4a60f91c7b6e0d",
+    "configOverrides": null,
+    "candidateBundle": "/tmp/pdex-local-install-20261011.noindex/target/release/bundle/macos/Personal Dashboard.app",
+    "identifier": "com.tortillaflat.personal-dashboard",
+    "title": "Personal Dashboard",
+    "version": "4.0.7",
+    "binarySha256": "a6a277f68b25002f88c4958ed56a93c19b7497dc36eb49fa571a2f7b85b3d833",
+    "bundleFiles": {
+      "Contents/Info.plist": "8c4bb396a4c0e9ff4c81c55ded4395f3e4f13ee3244e402bb3554a53c9fb54d1",
+      "Contents/MacOS/personal-dashboard": "a6a277f68b25002f88c4958ed56a93c19b7497dc36eb49fa571a2f7b85b3d833",
+      "Contents/Resources/icon.icns": "8c9e518ddaeb5d795b7195a72a0b051b6299e6a7b5277eb37b9a2dfd7bf1ce00",
+      "Contents/_CodeSignature/CodeResources": "11dc3645b684a4d8f93055c68d88e8622513786e96c4244c717ecb17be0633be"
+    },
+    "bundleFileTreeSha256": "929a2edec63da571c7ff1f1d4fb3b9cd2f6094bd54d35586da6decedadd51d51",
+    "buildLogSha256": "141cf09d38883a182486c488f87ef686c803b694c31e67f0077b3807b85ef707",
+    "buildExitCode": 0,
+    "architecture": "arm64",
+    "signature": "codesign --verify --deep --strict passed",
+    "preparedAt": "2026-10-11T05:17:20.380566+00:00",
+    "status": "Prepared, normal production configuration; not yet installed or launched"
+  },
+  "oldInstallation": {
+    "installedBundle": "/Applications/Personal Dashboard.app",
+    "identifier": "com.tortillaflat.personal-dashboard",
+    "version": "4.0.7",
+    "files": {
+      "Contents/Info.plist": "8c4bb396a4c0e9ff4c81c55ded4395f3e4f13ee3244e402bb3554a53c9fb54d1",
+      "Contents/MacOS/personal-dashboard": "33941698a758314fc9c24d8095e02c65e10a77d1d2825503ab0fcb953ae0da55",
+      "Contents/Resources/icon.icns": "8c9e518ddaeb5d795b7195a72a0b051b6299e6a7b5277eb37b9a2dfd7bf1ce00",
+      "Contents/_CodeSignature/CodeResources": "11dc3645b684a4d8f93055c68d88e8622513786e96c4244c717ecb17be0633be"
+    },
+    "binarySha256": "33941698a758314fc9c24d8095e02c65e10a77d1d2825503ab0fcb953ae0da55",
+    "bundleFileTreeSha256": "53668c1e5a3addbcec3c3721a5f13984c4620382a64f97fabb01c1d9bc8df57c",
+    "oldPid": 1629
+  },
+  "swap": {
+    "at": "2026-10-11T05:18:46.512022+00:00",
+    "oldBinarySha256": "33941698a758314fc9c24d8095e02c65e10a77d1d2825503ab0fcb953ae0da55",
+    "newBinarySha256": "a6a277f68b25002f88c4958ed56a93c19b7497dc36eb49fa571a2f7b85b3d833",
+    "oldArchivedBundle": "/tmp/pdex-local-install-20261011.noindex/backup/Personal Dashboard.app",
+    "oldProcessStopped": true,
+    "backupFilesVerified": true,
+    "stageFilesVerified": true,
+    "installedBundle": "/Applications/Personal Dashboard.app",
+    "status": "installed-normal-launch-and-preservation-verified",
+    "verifiedAt": "2026-10-11T05:20:28.645531+00:00"
+  },
+  "normalLaunch": {
+    "sourceCommit": "6af11982193760f7f16091356884228c4ef3a448",
+    "installedPath": "/Applications/Personal Dashboard.app",
+    "pid": 57687,
+    "installedBinarySha256": "a6a277f68b25002f88c4958ed56a93c19b7497dc36eb49fa571a2f7b85b3d833",
+    "installedBundleFileTreeSha256": "929a2edec63da571c7ff1f1d4fb3b9cd2f6094bd54d35586da6decedadd51d51",
+    "signatureVerified": true,
+    "normalIdentifier": "com.tortillaflat.personal-dashboard",
+    "normalTitle": "Personal Dashboard",
+    "configurationOverrides": null,
+    "qaEnvironmentKeys": [],
+    "qaRuntimePathAbsent": true,
+    "personalAuthorityFileCount": 48,
+    "unchanged": {
+      "selectedVault": true,
+      "authorityFiles": true,
+      "sessions": true,
+      "settings": true,
+      "runtimeThreadsByExecution": true,
+      "dailyPlanAutomationRuns": true,
+      "appFiles": false
+    },
+    "profileRuntimeFilesChangedCount": 11,
+    "authFileUnchanged": true,
+    "messagesBefore": 105,
+    "messagesAfter": 105,
+    "activeRuns": 0,
+    "queuedRequests": 0,
+    "collaborationSemanticUnchanged": true,
+    "collaborationByteChange": "JSON serialization only; all decoded fields exactly equal",
+    "workspacePreferencesBytesUnchanged": true,
+    "normalConnectionVisible": true,
+    "existingReplyVisible": true,
+    "currentComposerEmpty": true,
+    "dictationOff": true,
+    "newTodayAxisAndOverlapVisible": true,
+    "temporaryBundlePathsAbsentFromLaunchServices": true,
+    "unregisterRequests": "Noindex scans returned -10814; subsequent exact Launch Services dump contains no temporary paths",
+    "soleSpotlightProductionInstallation": true,
+    "verifiedAt": "2026-10-11T05:20:28.645531+00:00"
+  },
+  "launchServices": {
+    "operations": [
+      {
+        "path": "/tmp/pdex-local-install-20261011.noindex/backup/Personal Dashboard.app",
+        "action": "unregister",
+        "exit": 1,
+        "diagnostic": "failed to scan /tmp/pdex-local-install-20261011.noindex/backup/Personal Dashboard.app: -10814\n from spotlight"
+      },
+      {
+        "path": "/tmp/pdex-local-install-20261011.noindex/backup/retired-original.app",
+        "action": "unregister",
+        "exit": 1,
+        "diagnostic": "failed to scan /tmp/pdex-local-install-20261011.noindex/backup/retired-original.app: -10814\n from spotlight"
+      },
+      {
+        "path": "/tmp/pdex-local-install-20261011.noindex/stage/Personal Dashboard.app",
+        "action": "unregister",
+        "exit": 1,
+        "diagnostic": "failed to scan /tmp/pdex-local-install-20261011.noindex/stage/Personal Dashboard.app: -10814\n from spotlight"
+      },
+      {
+        "path": "/tmp/pdex-local-install-20261011.noindex/target/release/bundle/macos/Personal Dashboard.app",
+        "action": "unregister",
+        "exit": 1,
+        "diagnostic": "failed to scan /tmp/pdex-local-install-20261011.noindex/target/release/bundle/macos/Personal Dashboard.app: -10814\n from spotlight"
+      },
+      {
+        "path": "/Applications/Personal Dashboard.app",
+        "action": "register",
+        "exit": 0,
+        "diagnostic": ""
+      }
+    ],
+    "temporaryPathsAbsent": true,
+    "spotlightMatches": [
+      "/Applications/Personal Dashboard.app"
+    ]
+  },
+  "privateEvidence": "Real AX/screenshots/profile copies and filename/content hashes remain in mode-0700 private/ outside Git; no personal bodies or credentials are published.",
+  "artifacts": {
+    "manifest.json": {
+      "sha256": "354b4eac58d6c872fd5ac0f2de452c87ce29398ded9d1c29f352e2eae38296f9",
+      "bytes": 1656
+    },
+    "old-install.json": {
+      "sha256": "d415ea855091ff3822a468bcb568abcf60da862af0f219ea0c9d77320e0280be",
+      "bytes": 777
+    },
+    "swap.json": {
+      "sha256": "6f94e69c7004935878a62d3a8dd5a08e0a14a52665d1a081c8c0cd159872c62c",
+      "bytes": 676
+    },
+    "normal-launch-verification.json": {
+      "sha256": "6df724589d1f8717d7fe42aa1fd6dd6f1fa3d618391fdcdb9530e300660b1ab0",
+      "bytes": 1596
+    },
+    "launch-services-verification.json": {
+      "sha256": "a5a6dca6adbfd3ece2a76ad3289692b6e7df81ca895fff155ab288f13246ec94",
+      "bytes": 1424
+    },
+    "prepare-build.py": {
+      "sha256": "94eac719b1b4c6aed85e576cb712e5b7fef06a4808e11bebf37c9cf2656a8824",
+      "bytes": 3260
+    },
+    "state-snapshot.py": {
+      "sha256": "9ce7c286ec17385c7cd6e17171195610489966b9266cc5cd7a9780fbe6a7b9b4",
+      "bytes": 1762
+    },
+    "build.log": {
+      "sha256": "141cf09d38883a182486c488f87ef686c803b694c31e67f0077b3807b85ef707",
+      "bytes": 1570
+    },
+    "source.tar": {
+      "sha256": "b4db89c2678377842fb15b1349a0e176411526981d4cc346f41f64dcbc041171",
+      "bytes": 9216000
+    },
+    "product-tree.txt": {
+      "sha256": "c9f515bdc9cad2a7b08290e8a73153650ba9a72e49d8d2ed0cd60ee8aa950ab8",
+      "bytes": 9502
+    },
+    "persistent-archive.json": {
+      "sha256": "66b619638843a8286ec65099d94ad86b7a0be047930e2d465e7ce0e48b3d86dd",
+      "bytes": 821
+    }
+  },
+  "persistentArchive": {
+    "archiveRoot": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-20261011",
+    "bundleBackup": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-20261011/bundles/Personal Dashboard.app",
+    "movedOriginalCopy": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-20261011/bundles/retired-original.app",
+    "profileBackup": "/Users/tingranwang/Library/Application Support/Personal Dashboard Backups.noindex/dashboard-experience-20261011/profile",
+    "rootMode": "0o700",
+    "archiveMode": "0o700",
+    "bundleAndProfileFilesVerified": true,
+    "source": "Verified stopped pre-swap backup; existing live profile remains in place",
+    "temporaryCopiesRetained": true
+  }
+}
