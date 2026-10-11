@@ -222,7 +222,8 @@ test('time axis markup uses one full-width lane for arrangement and fact cards',
   assert.equal(unlocatedRegion.parent, unlocatedAside, 'untimed entries stay beside the Today timeline');
   assert.equal(arrangementUnlocated?.parent?.parent, unlocatedRegion);
   assert.equal(factsUnlocated?.parent?.parent, unlocatedRegion);
-  assert.ok(unlocatedShortcut.attrs.includes('href="#today-unlocated-time-region"'));
+  assert.ok(unlocatedShortcut.attrs.includes('aria-controls="today-unlocated-time-region"'));
+  assert.ok(unlocatedShortcut.attrs.includes('aria-expanded="false"'));
   assert.equal(lane.parent, axis);
   assert.equal(markers.parent?.parent?.parent, lane);
   assert.ok(lane.attrs.includes('aria-labelledby="today-timeline-lane-heading"'));

@@ -1,0 +1,116 @@
+{
+  "productCommit": "9850b9b",
+  "testedWorkerHead": "69dc6f189cfabb6e21821b15a00ed4cf553b4d82",
+  "base": "0f7820eecb11c3eedcc33b2c69a216e1e69523ba",
+  "integrationMerged": "0414a23",
+  "artifacts": [
+    {
+      "path": "/tmp/pdex13-evidence-20261011.noindex/pdex13-red-medium.log",
+      "bytes": 1086,
+      "sha256": "dbecfbd6b637b976c44aaf3170abe91fa17bb58adcffbdc3a5fc46e4cab3801b"
+    },
+    {
+      "path": "/tmp/pdex13-evidence-20261011.noindex/pdex13-red-drawer.log",
+      "bytes": 1325,
+      "sha256": "c1bf5e68cad69a167761049a036152f3a9cb00222e563ea1e3d666587a14a901"
+    },
+    {
+      "path": "/tmp/pdex13-evidence-20261011.noindex/pdex13-window-resize.log",
+      "bytes": 3195,
+      "sha256": "310fa8ab52a2d1af5949cfb7173b6b1d06ebaba99f210815a8794966e75f2f73"
+    },
+    {
+      "path": "/tmp/pdex13-evidence-20261011.noindex/pdex13-green-resize.log",
+      "bytes": 1125,
+      "sha256": "541678c65402cd78df69c9b2c0a90bf4489c09bcb5ab61e7773546d6b07877ea"
+    },
+    {
+      "path": "/tmp/pdex13-evidence-20261011.noindex/pdex13-focused.log",
+      "bytes": 16571,
+      "sha256": "63eb85446993d0dd735a2d08c08e3bfac364268d21f542acb0d8738add967db5"
+    },
+    {
+      "path": "/tmp/pdex13-evidence-20261011.noindex/pdex13-build.log",
+      "bytes": 78,
+      "sha256": "02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7"
+    },
+    {
+      "path": "/tmp/pdex13-evidence-20261011.noindex/pdex13-full-frontend.log",
+      "bytes": 58916,
+      "sha256": "2011fcd7348bad2a9439818e577319231b97c5b6c2d4c3b5abc301e49ad2780d"
+    },
+    {
+      "path": "/tmp/pdex13-evidence-20261011.noindex/pdex13-collaboration-phase.log",
+      "bytes": 1047,
+      "sha256": "3b21c8e49461e56901f47157e61e20f95e42c46e0c477d4823dc418071140084"
+    },
+    {
+      "path": "/tmp/pdex13-evidence-20261011.noindex/pdex13-browser-axis.log",
+      "bytes": 1823,
+      "sha256": "84af58a1646de9746ec9f11196cb87b133d3c5fc0d1efab0e5a69ca4c42a5e16"
+    },
+    {
+      "path": "/tmp/pdex13-evidence-20261011.noindex/pdex13-geometry.json",
+      "bytes": 1284,
+      "sha256": "863e240e563a58d5034003a963e8b03e9a9776673c45396544f8c53c27cfe67f"
+    }
+  ],
+  "geometry": [
+    {
+      "clientWidth": 1280,
+      "clientHeight": 758,
+      "axisAuto": 674.6875,
+      "axisAfterToggle": 978.21875,
+      "navWidth": 184,
+      "navHeight": 690.8125,
+      "panelAutoHidden": false,
+      "drawerAfterToggle": false,
+      "panelWidthAfterToggle": 0
+    },
+    {
+      "clientWidth": 1000,
+      "clientHeight": 758,
+      "axisAuto": 698.21875,
+      "axisAfterToggle": 698.21875,
+      "navWidth": 184,
+      "navHeight": 690.8125,
+      "panelAutoHidden": true,
+      "drawerAfterToggle": true,
+      "panelWidthAfterToggle": 410
+    },
+    {
+      "clientWidth": 960,
+      "clientHeight": 758,
+      "axisAuto": 658.21875,
+      "axisAfterToggle": 658.21875,
+      "navWidth": 184,
+      "navHeight": 690.8125,
+      "panelAutoHidden": true,
+      "drawerAfterToggle": true,
+      "panelWidthAfterToggle": 410
+    },
+    {
+      "clientWidth": 830,
+      "clientHeight": 758,
+      "axisAuto": 569.8125,
+      "axisAfterToggle": 569.8125,
+      "navWidth": 160,
+      "navHeight": 690.8125,
+      "panelAutoHidden": true,
+      "drawerAfterToggle": true,
+      "panelWidthAfterToggle": 410
+    },
+    {
+      "clientWidth": 640,
+      "clientHeight": 758,
+      "axisAuto": 551,
+      "axisAfterToggle": 551,
+      "navWidth": 640,
+      "navHeight": 72,
+      "panelAutoHidden": true,
+      "drawerAfterToggle": true,
+      "panelWidthAfterToggle": 410
+    }
+  ],
+  "qualification": "macOS WebKit production bootstrap/CSS; synthetic public Tauri IPC. Resize uses real native frame sizing plus explicit public resize event because offscreen WKWebView suppresses native notifications. Browser gesture regression uses production dist in headless Chromium; no native App or persistence claim."
+}
