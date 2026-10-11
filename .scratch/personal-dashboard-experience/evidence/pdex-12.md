@@ -92,3 +92,27 @@ Repair logs below are immutable outside Git; `/tmp/pdex12-repair-validation-arti
 | `/tmp/pdex12-repair-final-build.log` | `02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7` |
 | `/tmp/pdex12-repair-browser-final.log` | `f7b66c79b66af0795a8b29fa29d69595e35f06313e4a9425d696bdeb97755062` |
 | `/tmp/pdex12-repair-frontend-focused-final.log` | `b59fefd1d2f90e22469677ca6f9b722e717fe45779a599558e4790d05f4ce09d` |
+
+
+## Independent Standards P3 language repair — 2026-10-11
+
+Review at `f127cc910bf78e94ce10d849c2f43e548edabc0c` accepted the core P2 recovery behavior and found that ended-submission review cached the translated system Inbox label at submission. This violated `docs/interface-language.md` when the interface changed later. Historical f127 native P2 acceptance remains bound to that prior package; this language-only product increment requires a new package identity before installation.
+
+Product commit: `cec0b0a0c7c7fa6c97bb744fc1e9d6a8d5e5f7be`. f127 was merged before the fix; the current docs-only integration record `75eda22` was merged unsquashed before handoff. One production render line now derives the reserved `inbox` identity's display from the **current** language catalog. The original submitted input/id/revision remain intact, and original user-created list names remain verbatim. No new state/store, mutation boundary, PDEX-13/Calendar/navigation change or installation was made. Ticket remains in-progress pending new candidate/review/normal installation/human acceptance.
+
+The production Chrome browser test creates a failed English Inbox submission and a failed custom Home submission, explicitly rereads and ends both, then switches the real toolbar to Chinese. It verifies the ended system label is `收集箱`, the source-owned custom name is still `Home`, and switching never replays the two submissions.
+
+The first probe incorrectly awaited document language `zh` rather than the app's `zh-CN` and timed out; it is retained as a test-probe error, **not** product evidence. With that guard corrected, the red reproduced the actual cached Inbox defect (no `收集箱`); the one-line production fix then passed. Browser evidence remains Chrome/synthetic public Tauri responses, not native WebKit, OS IME or new real-storage evidence.
+
+- `npm run build` — passed.
+- `PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs node --test tests/browser/task-quick-create.mjs` — **12 passed, 0 failed**, including both reviewed recovery flows and language switching.
+- `node --test tests/frontend/task-surface.test.ts tests/frontend/interface-language.test.ts` — **25 passed, 0 failed**.
+
+| P3 artifact | SHA-256 |
+|---|---|
+| `/tmp/pdex12-inbox-language-baseline-build.log` | `02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7` |
+| `/tmp/pdex12-inbox-language-red.log` | `6233353a4fc6710e71f39ddffa2d9aa3f0692dadafeb072fb471d229aae2997c` |
+| `/tmp/pdex12-inbox-language-red-corrected.log` | `135aec4db06cd67c0414e2eb05a6c8c52b41596b92288a759e059d95eee6a22d` |
+| `/tmp/pdex12-inbox-language-final-build.log` | `02597e17085915d315b2cdc1503bd623f85bbea205b4cae594c1a372a6e091f7` |
+| `/tmp/pdex12-inbox-language-creation-green.log` | `c803be3d0e97abce96bf169d9502a4c5744014eceb4d744b1c0e6fffa3eae53c` |
+| `/tmp/pdex12-inbox-language-frontend-green.log` | `7aac60d41057249b8d792bffb0c161fe3831e771d7709284157c3df7b4e1a4ea` |
