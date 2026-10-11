@@ -24,6 +24,12 @@ test("Collaboration is a latest-shell destination with the adjacent approved A w
   // Width policy is covered by collaboration-panels behavior tests.
   assert.match(html, /aria-controls="collaboration-history-panel"/);
   assert.match(html, /aria-controls="collaboration-work-panel"/);
+  assert.match(html, /id="collaboration-toggle-context"[^>]*aria-expanded="false"/);
+  assert.match(html, /id="collaboration-work-panel"[^>]*hidden/);
+  assert.match(html, /<details id="collaboration-task-tool-disclosure"[^>]*hidden>/);
+  assert.match(html, /id="collaboration-task-tool-notice"[^>]*role="status"/);
+  assert.match(copies, /"collaboration\.legacyCapabilityDetails":\s*\{[^\n]*zh:[^\n]*en:/);
+  assert.match(copies, /"today\.reviewDraftReady":\s*\{[^\n]*Draft ready\. Edit and send when ready\./);
 });
 
 test("external apps stay disabled in Dashboard collaboration", () => {

@@ -6,15 +6,16 @@ test("layout selections survive restart and corrupt storage cannot remove access
   const choices = { history: { expanded: false, width: 260 }, context: { expanded: true, width: 480 } };
   assert.deepEqual(readPanelPreferences(JSON.stringify(choices)), choices);
   assert.deepEqual(readPanelPreferences("broken"), readPanelPreferences(null));
+  assert.equal(readPanelPreferences(null).context.expanded, false, "Current Work starts collapsed");
   assert.deepEqual(readPanelPreferences(JSON.stringify({ ...choices, narrow: { history: true, context: false } })).narrow,
     { history: true, context: false });
   assert.deepEqual(readPanelPreferences('{"history":{"width":-200},"context":{"width":99999}}'), {
-    history: { expanded: true, width: 180 }, context: { expanded: true, width: 640 },
+    history: { expanded: true, width: 180 }, context: { expanded: false, width: 640 },
   });
 });
 
 test("restored oversized panels reserve conversation space as the window shrinks", () => {
-  const choices = readPanelPreferences('{"history":{"width":640},"context":{"width":640}}');
+  const choices = readPanelPreferences('{"history":{"width":640},"context":{"width":640,"expanded":true}}');
   for (const width of [900, 960, 1024, 1200, 1800]) {
     const layout = panelGeometry(width, choices);
     assert.equal(layout.narrow, false);
@@ -27,6 +28,7 @@ test("restored oversized panels reserve conversation space as the window shrinks
 
 test("independently collapsing either panel returns its space to the conversation", () => {
   const choices = readPanelPreferences(null);
+  choices.context.expanded = true;
   choices.history.expanded = false;
   const one = panelGeometry(1000, choices);
   assert.equal(one.history, 0);
@@ -55,6 +57,7 @@ test("automatic width sequence restores roomy choices and separates compact cont
   const preferences = readPanelPreferences(null);
   assert.deepEqual([1100, 750, 500, 1100].map(width => panelGeometry(width, preferences).mode),
     ["three", "two", "single", "three"]);
+  preferences.context.expanded = true;
   preferences.compact = { context: true };
   const compact = panelGeometry(750, preferences);
   assert.equal(compact.contextExpanded, true);
@@ -71,7 +74,8 @@ test("automatic width sequence restores roomy choices and separates compact cont
 
 test("shipped panel controls preserve session nodes and focus across resize, disclosure and restart", () => {
   const originals = Object.fromEntries(["document", "localStorage", "ResizeObserver"].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
-  let stored = '{"history":{"width":640},"context":{"width":640},"narrow":{"history":false,"context":false}}';
+  const oldRoomyChoice = '{"history":{"width":640},"context":{"width":640,"expanded":true},"narrow":{"history":false,"context":false}}';
+  const stored = new Map([["personal-dashboard.collaboration-panels.v1", oldRoomyChoice]]);
   let available = 1100;
   let observer!: (entries: { contentRect: { width: number } }[]) => void;
   let active: any;
@@ -100,7 +104,10 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
   const historyToggle = nodes["collaboration-toggle-history"];
   const contextToggle = nodes["collaboration-toggle-context"];
   const document = { querySelector: () => layout, getElementById: (id: string) => nodes[id], get activeElement() { return active; } };
-  const localStorage = { getItem: () => stored, setItem: (_key: string, value: string) => { stored = value; } };
+  const localStorage = {
+    getItem: (key: string) => stored.get(key) ?? null,
+    setItem: (key: string, value: string) => { stored.set(key, value); },
+  };
   const ResizeObserver = class { constructor(callback: typeof observer) { observer = callback; } observe() {} };
   const resize = (width: number) => { available = width; observer([{ contentRect: { width } }]); };
   try {
@@ -109,6 +116,11 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
     assert.equal(layout.dataset.columns, "three");
     assert.equal(primary.dataset.columns, "three");
     assert.equal(layout.style.display, "grid");
+    assert.equal(context.hidden, true, "the new default keeps Current Work out of the initial conversation view");
+    assert.equal(contextToggle.attributes.get("aria-expanded"), "false");
+    assert.equal(stored.get("personal-dashboard.collaboration-panels.v1"), oldRoomyChoice, "the previous preference is preserved but no longer expands Current Work by default");
+    contextToggle.click();
+    assert.equal(context.hidden, false, "Current Work remains available by explicit disclosure");
     const contextResizer = nodes["collaboration-context-resizer"];
     contextResizer.focus();
     resize(750);
@@ -126,7 +138,7 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
     resize(750);
     assert.equal(layout.dataset.columns, "two");
     assert.equal(layout.style.display, "flex");
-    assert.equal(primary.style.flex, "0 0 100%");
+    assert.equal(primary.style.flex, "0 0 auto");
     assert.equal(history.hidden, false);
     assert.equal(context.hidden, true);
     assert.equal(active, contextToggle, "auto-hidden focused content returns focus to its disclosure");
@@ -158,7 +170,7 @@ test("shipped panel controls preserve session nodes and focus across resize, dis
     initializeCollaborationPanels();
     assert.equal(history.hidden, false);
     assert.equal(context.hidden, false, "compact disclosure survives restart separately");
-    assert.equal(readPanelPreferences(stored).context.expanded, true);
+    assert.equal(readPanelPreferences(stored.get("personal-dashboard.collaboration-panels.v2") ?? null).context.expanded, true);
   } finally {
     for (const [key, descriptor] of Object.entries(originals)) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor);

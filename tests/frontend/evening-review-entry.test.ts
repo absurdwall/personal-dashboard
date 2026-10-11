@@ -129,7 +129,7 @@ test('production Evening entry navigates with selected date and authoritative po
   assert.equal(result.state.destination,'collaboration');
   assert.equal(result.state.session.messages.length,0);
   assert.equal(result.sessions,1);
-  assert.ok(result.notice.includes('保留了已有草稿'));
+  assert.ok(result.notice.includes('已有草稿已保留'));
   assert.ok(!result.commands.some(c=>c.includes('submit') || c.includes('evening_review_update')));
 });
 
@@ -146,7 +146,7 @@ test('production entry retains current unsaved draft when opening another date a
   assert.equal(result.todaySaved,'今天尚未保存的编辑');
   assert.equal(result.todayTarget,'2026-09-27');
   assert.equal(result.target,'2026-09-20');
-  assert.ok(result.notice.includes('保留了已有草稿'));
+  assert.ok(result.notice.includes('已有草稿已保留'));
   assert.equal(result.sessions,2);
   assert.deepEqual(result.messages,[]);
 });
@@ -204,8 +204,8 @@ test('production language refresh preserves the past-date review target and loca
   `);
   assert.equal(result.label,'Review 2026-09-20');
   assert.match(result.pendingZh,/正在准备 2026-09-20/); assert.match(result.pendingEn,/Preparing a review draft for 2026-09-20/);
-  assert.match(result.readyEn,/Review session for 2026-09-20 is open/); assert.match(result.readyZh,/已进入 2026-09-20/);
-  assert.match(result.preserved,/Continued the session for 2026-09-20 and kept its existing draft/);
+  assert.match(result.readyEn,/Draft ready\. Edit and send when ready/); assert.match(result.readyZh,/草稿已就绪/);
+  assert.match(result.preserved,/Existing draft kept\. Review and send when ready/);
   assert.match(result.errorZh,/未能进入复盘/); assert.match(result.errorEn,/Could not open the review/);
   assert.ok(result.errorZh.includes('Synthetic disk full at /tmp/合成路径')); assert.ok(result.errorEn.includes('Synthetic disk full at /tmp/合成路径'));
   assert.equal(result.draft,'用户草稿 / untouched'); assert.equal(result.target,'2026-09-20');

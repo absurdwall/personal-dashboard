@@ -6,11 +6,14 @@ export type PanelPreferences = {
   compact?: { context: boolean };
 };
 type Side = "history" | "context";
-const preferenceKey = "personal-dashboard.collaboration-panels.v1";
+// The v2 layout starts Current Work collapsed. A previous wide-window choice
+// should not make the first conversation view feel crowded after this update.
+const preferenceKey = "personal-dashboard.collaboration-panels.v2";
+const legacyPreferenceKey = "personal-dashboard.collaboration-panels.v1";
 const minimum = { history: 180, context: 240 };
 const defaults = (): PanelPreferences => ({
   history: { expanded: true, width: 216 },
-  context: { expanded: true, width: 304 },
+  context: { expanded: false, width: 304 },
 });
 
 export function readPanelPreferences(value: string | null): PanelPreferences {
@@ -66,7 +69,25 @@ export function initializeCollaborationPanels(): void {
   const primary = layout?.querySelector<HTMLElement>(".collaboration-primary-layout");
   if (!layout || !primary) return;
   let preferences = defaults();
-  try { preferences = readPanelPreferences(localStorage.getItem(preferenceKey)); } catch { /* Storage disabled. */ }
+  let migratePreferences = false;
+  try {
+    const saved = localStorage.getItem(preferenceKey);
+    if (saved !== null) {
+      preferences = readPanelPreferences(saved);
+    } else {
+      const legacy = localStorage.getItem(legacyPreferenceKey);
+      if (legacy !== null) {
+        const previous = readPanelPreferences(legacy);
+        preferences = {
+          history: previous.history,
+          context: { ...previous.context, expanded: false },
+          narrow: { history: previous.narrow?.history ?? false, context: false },
+          compact: { context: false },
+        };
+        migratePreferences = true;
+      }
+    }
+  } catch { /* Storage disabled. */ }
   const sides = ["history", "context"] as const;
   const panels = {
     history: document.getElementById("collaboration-history-panel")!,
@@ -89,6 +110,7 @@ export function initializeCollaborationPanels(): void {
   const save = () => {
     try { localStorage.setItem(preferenceKey, JSON.stringify(preferences)); } catch { /* Layout remains usable. */ }
   };
+  if (migratePreferences) save();
   const render = () => {
     geometry = panelGeometry(available, preferences);
     layout.dataset.narrow = String(geometry.narrow);
@@ -128,7 +150,7 @@ export function initializeCollaborationPanels(): void {
       layout.style.display = "flex";
       layout.style.flexDirection = "column";
       layout.style.gridTemplateColumns = "";
-      primary.style.flex = geometry.narrow ? "0 0 auto" : "0 0 100%";
+      primary.style.flex = "0 0 auto";
       primary.style.gridColumn = "";
       primary.style.gridRow = "";
     }

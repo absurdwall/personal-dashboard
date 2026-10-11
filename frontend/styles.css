@@ -9929,13 +9929,13 @@ button.habit-cell:focus-visible {
 .tasks-selected-detail .task-editor-details { width: 100%; max-height: none; padding: 18px; box-shadow: none; }
 .tasks-selected-detail .task-editor-details h3 { margin: 0 0 10px; overflow-wrap: anywhere; }
 .tasks-selected-detail .task-editor-close { margin: 16px 0 0 auto; }
-.tasks-content > #tasks-list { align-content: start; grid-auto-rows: max-content; }
-.task-row[data-task-surface="tasks"] { padding: 4px; }
+.tasks-content > #tasks-list { align-content: start; grid-auto-rows: max-content; gap: 0.15rem; }
+.task-row[data-task-surface="tasks"] { padding: 2px 4px; }
 .task-row[data-task-surface="tasks"].is-selected { background: var(--parity-accent-soft); border-radius: 6px; }
 .task-row[data-task-surface="tasks"] .task-row-summary { grid-template-columns: 36px minmax(0,1fr) auto; align-items: center; gap: 8px; cursor: pointer; }
 .task-row[data-task-surface="tasks"] .task-completion-toggle { padding: 4px !important; min-height: 30px !important; justify-content: center; }
 .task-row[data-task-surface="tasks"] .task-completion-toggle input { width: 22px; height: 22px; margin: 0; cursor: pointer; }
-.task-row[data-task-surface="tasks"] .task-title-button { font-size: 14px; font-weight: 400; line-height: 1.35; overflow-wrap: anywhere; }
+.task-row[data-task-surface="tasks"] .task-title-button { font-family: inherit; font-size: 12px; font-weight: 400; line-height: 1.4; overflow-wrap: anywhere; }
 .task-row[data-task-surface="tasks"] .task-state-label { display: none; }
 .task-row[data-task-surface="tasks"].is-abandoned .task-state-label,
 .task-row[data-task-surface="tasks"].is-deleted .task-state-label { display: inline-flex; }
@@ -10074,9 +10074,10 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
 /* Collaboration uses the shared destination title and fits the conversation to the workspace. */
 #workspace-destination-collaboration.collaboration-destination {
   display: flex;
-  height: 100%;
-  min-height: 0;
+  height: auto;
+  min-height: 100%;
   flex-direction: column;
+  overflow: visible;
 }
 .app-shell[data-workspace-destination="collaboration"] .workspace-regions { grid-row: 2; }
 
@@ -10097,21 +10098,21 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
 .collaboration-panel-toolbar { margin-bottom: 0.15rem; }
 .collaboration-panel-toolbar button { min-height: 2rem; padding: 0.4rem 0.65rem; font-size: 0.72rem; }
 .collaboration-layout {
-  flex: 1 1 0;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-height: 42rem;
   padding-bottom: 0;
 }
 .collaboration-primary-layout {
   display: grid;
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: minmax(42rem, auto);
   min-width: 0;
-  min-height: 0;
+  min-height: 42rem;
 }
 .collaboration-primary-layout > .collaboration-session-pane,
-.collaboration-primary-layout > .collaboration-chat-pane { min-height: 0; }
+.collaboration-primary-layout > .collaboration-chat-pane { min-height: 42rem; }
 .collaboration-primary-layout[data-columns="two"],
 .collaboration-primary-layout[data-columns="three"] {
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: minmax(42rem, auto);
 }
 .collaboration-layout[data-columns="two"],
 .collaboration-layout[data-narrow="true"] {
@@ -10120,17 +10121,17 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
 }
 .collaboration-layout[data-columns="two"] .collaboration-primary-layout,
 .collaboration-layout[data-narrow="true"] .collaboration-primary-layout {
-  flex: 0 0 100%;
+  flex: 0 0 auto;
 }
 .collaboration-layout[data-narrow="true"] .collaboration-primary-layout {
   flex: 0 0 auto;
 }
 .collaboration-primary-layout[data-narrow="true"] {
-  grid-template-rows: 24rem auto;
+  grid-template-rows: minmax(42rem, auto) auto;
 }
 .collaboration-layout[data-columns="three"] {
   display: grid;
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: minmax(42rem, auto);
 }
 .collaboration-layout[data-columns="three"] .collaboration-primary-layout {
   grid-column: 1;
@@ -10153,21 +10154,24 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
   background: var(--parity-surface);
 }
 .collaboration-chat-pane {
-  overflow: hidden;
+  display: flex;
+  min-height: 42rem;
+  flex-direction: column;
+  overflow: visible;
   padding: 0.55rem;
 }
 .collaboration-message-list {
-  min-height: 0;
-  max-height: none;
+  min-height: 14rem;
+  max-height: min(56vh, 39rem);
   padding-block: 0.35rem;
+  overflow: auto;
 }
 .collaboration-composer-date { margin: 0; }
 .collaboration-composer textarea { min-height: 4.25rem; }
 .collaboration-composer { gap: 0.25rem; padding-top: 0.45rem; }
-.collaboration-composer > .collaboration-help[open] { max-height: 4.5rem; overflow: auto; }
+.collaboration-composer > .collaboration-help[open] { max-height: none; overflow: visible; }
 
-/* Keep long session capability and account notices readable without consuming
-   the message viewport. Each bounded status remains keyboard-scrollable. */
+/* Keep account and runtime notices from displacing the saved conversation. */
 .collaboration-status-bar > p {
   max-height: 2.15rem;
   min-width: 0;
@@ -10193,20 +10197,11 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
 .collaboration-composer textarea {
   max-height: max(3.5rem, min(13rem, 12vh));
 }
-.collaboration-composer > .collaboration-help[open] {
-  max-height: 3.5rem;
-  overflow: auto;
-}
-.collaboration-message-list { min-height: 5rem; }
-.collaboration-primary-layout:has(#collaboration-task-tool-notice:not([hidden])) {
-  min-height: 25rem;
-  grid-template-rows: minmax(25rem, 1fr);
-}
-.collaboration-primary-layout:has(#collaboration-task-tool-notice:not([hidden])) > .collaboration-chat-pane { min-height: 25rem; }
-.collaboration-primary-layout[data-narrow="true"]:has(#collaboration-task-tool-notice:not([hidden])) {
-  grid-template-rows: 25rem auto;
-}
-.collaboration-chat-pane { overflow-x: hidden; overflow-y: auto; }
+.collaboration-composer > .collaboration-help[open] { max-height: none; overflow: visible; }
+.collaboration-message-list { min-height: 14rem; }
+.collaboration-capability-disclosure { flex: 0 0 auto; margin: 0.2rem 0; color: #674d27; font-size: 0.62rem; }
+.collaboration-capability-disclosure > summary { cursor: pointer; color: var(--parity-muted); }
+#collaboration-task-tool-notice { height: auto; max-height: none; flex: 0 0 auto; margin: 0.3rem 0 0; padding: 0.35rem 0.5rem; overflow: visible; }
 
 @media (max-height: 740px) {
   .collaboration-chat-pane { padding: 0.4rem; }

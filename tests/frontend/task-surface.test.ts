@@ -52,6 +52,8 @@ test("Tasks keeps the accepted prototype hierarchy and defers heavy controls", (
   assert.match(css, /\.tasks-layout\s*\{/);
   assert.match(css, /\.task-row\.task-editor\s*\{/);
   assert.match(css, /\.task-editor-inline\s*\{/);
+  assert.match(css, /\.tasks-content\s*>\s*#tasks-list\s*\{[^}]*gap:\s*0\.15rem/);
+  assert.match(css, /\.task-row\[data-task-surface="tasks"\]\s*\.task-title-button\s*\{[^}]*font-family:\s*inherit;[^}]*font-size:\s*12px;[^}]*font-weight:\s*400;[^}]*line-height:\s*1\.4/);
 });
 
 test("Tasks fixed copy has Chinese and English counterparts", () => {

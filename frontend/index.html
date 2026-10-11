@@ -310,7 +310,7 @@
               </div>
               <div class="collaboration-panel-toolbar">
                 <button id="collaboration-toggle-history" type="button" class="secondary-button" aria-controls="collaboration-history-panel" aria-expanded="true" data-i18n="collaboration.toggleHistory">Session history</button>
-                <button id="collaboration-toggle-context" type="button" class="secondary-button" aria-controls="collaboration-work-panel" aria-expanded="true" data-i18n="collaboration.toggleContext">Current work</button>
+                <button id="collaboration-toggle-context" type="button" class="secondary-button" aria-controls="collaboration-work-panel" aria-expanded="false" data-i18n="collaboration.toggleContext">Current work</button>
               </div>
               <div class="collaboration-layout">
                 <div class="collaboration-primary-layout">
@@ -336,7 +336,10 @@
                     </div>
                   </header>
                   <p id="collaboration-run-status" class="collaboration-run-status" role="status" aria-live="polite"></p>
-                  <p id="collaboration-task-tool-notice" class="collaboration-task-tool-notice" role="status" aria-live="polite" tabindex="0" hidden></p>
+                  <details id="collaboration-task-tool-disclosure" class="collaboration-capability-disclosure" hidden>
+                    <summary data-i18n="collaboration.legacyCapabilityDetails">Older session capability notes</summary>
+                    <p id="collaboration-task-tool-notice" class="collaboration-task-tool-notice" role="status" aria-live="polite" tabindex="0" hidden></p>
+                  </details>
                   <div id="collaboration-message-list" class="collaboration-message-list" role="log" aria-live="polite" aria-relevant="additions text" aria-label="Conversation messages" data-i18n-aria-label="collaboration.conversationLabel"></div>
                   <p id="collaboration-review-entry-notice" class="helper-text" role="status" aria-live="polite" hidden></p>
                   <form id="collaboration-composer" class="collaboration-composer">
@@ -368,7 +371,7 @@
                 </section>
                 </div>
                 <div id="collaboration-context-resizer" class="collaboration-panel-resizer" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="collaboration-work-panel" aria-label="Resize current work" data-i18n-aria-label="collaboration.resizeContext"></div>
-                <aside class="collaboration-context-pane" id="collaboration-work-panel" aria-labelledby="collaboration-context-heading">
+                <aside class="collaboration-context-pane" id="collaboration-work-panel" aria-labelledby="collaboration-context-heading" hidden>
                   <header class="collaboration-pane-heading">
                     <div>
                       <p class="section-label" data-i18n="collaboration.currentWorkLabel">CURRENT WORK</p>

@@ -995,6 +995,7 @@ const collaborationUnsavedDrafts = new Set<string>();
 const collaborationDraftWrites = new Map<string, Promise<CollaborationSessionView>>();
 let collaborationVaultSwitchDraftWrites: Promise<unknown>[] | null = null;
 let collaborationVaultSelectionRevision = 0;
+let collaborationReviewEntryNoticeTimer: number | null = null;
 const collaborationDraftSaveTimers = new Map<string, number>();
 const collaborationTargetDates = new Map<string, string>();
 let activeCollaborationVoiceTarget: CollaborationVoiceTarget | null = null;
@@ -1128,6 +1129,7 @@ const collaborationWorkOwner = document.querySelector<HTMLElement>("#collaborati
 const collaborationMessageList = document.querySelector<HTMLElement>("#collaboration-message-list");
 const collaborationTaskOperations = document.querySelector<HTMLElement>("#collaboration-task-operations");
 const collaborationTaskToolNotice = document.querySelector<HTMLElement>("#collaboration-task-tool-notice");
+const collaborationTaskToolDisclosure = document.querySelector<HTMLDetailsElement>("#collaboration-task-tool-disclosure");
 const collaborationComposer = document.querySelector<HTMLFormElement>("#collaboration-composer");
 const collaborationMessageDraft = document.querySelector<HTMLTextAreaElement>("#collaboration-message-draft");
 const collaborationCommandMenu = document.querySelector<HTMLElement>("#collaboration-command-menu");
@@ -3608,7 +3610,9 @@ function renderCollaborationTaskOperations(session: CollaborationSessionView | n
     const legacyDailyPlan = Boolean(session?.runtimeThreadId && session.dailyPlanToolAvailable !== true);
     const legacyDailyRecord = Boolean(session?.runtimeThreadId && session.dailyRecordToolAvailable !== true);
     const legacyMemory = Boolean(session?.runtimeThreadId && session.memoryToolAvailable !== true);
-    collaborationTaskToolNotice.hidden = !(legacyTasks || legacyDailyPlan || legacyDailyRecord || legacyMemory);
+    const hasLegacyCapability = legacyTasks || legacyDailyPlan || legacyDailyRecord || legacyMemory;
+    collaborationTaskToolNotice.hidden = !hasLegacyCapability;
+    if (collaborationTaskToolDisclosure) collaborationTaskToolDisclosure.hidden = !hasLegacyCapability;
     if (legacyTasks || legacyDailyPlan || legacyDailyRecord || legacyMemory) {
       if (legacyTasks) {
         const message = document.createElement("span");
@@ -4339,7 +4343,7 @@ function renderCollaborationWorkspace(): void {
     ? collaborationTargetDates.get(session.id) ?? (collaborationTargetDateInput?.value || collaborationTargetDate)
     : "";
   const reviewNotice = document.querySelector<HTMLElement>("#collaboration-review-entry-notice");
-  if (reviewNotice) reviewNotice.hidden = !session || reviewNotice.dataset.sessionId !== session.id || reviewNotice.dataset.targetDate !== targetDate || !collaborationDraftForDate(session, targetDate);
+  if (reviewNotice) reviewNotice.hidden = reviewNotice.dataset.dismissed === "true" || !session || reviewNotice.dataset.sessionId !== session.id || reviewNotice.dataset.targetDate !== targetDate || !collaborationDraftForDate(session, targetDate);
   const targetKey = session ? collaborationDraftKey(session.id, targetDate) : "";
   const targetDatePending = Boolean(session && collaborationTargetDatePendingSession === session.id);
   const sendingDraft = targetKey !== "" && collaborationSendingDrafts.has(targetKey);
@@ -4954,10 +4958,19 @@ async function openCollaborationForEveningReview(targetDate: string): Promise<bo
   renderCollaborationWorkspace();
   const notice = document.querySelector<HTMLElement>("#collaboration-review-entry-notice");
   if (notice) {
+    if (collaborationReviewEntryNoticeTimer !== null) window.clearTimeout(collaborationReviewEntryNoticeTimer);
     notice.dataset.sessionId = session.id;
     notice.dataset.targetDate = targetDate;
+    notice.dataset.dismissed = "false";
     setCopy(notice, opened.preservedDraft ? "today.reviewDraftPreserved" : "today.reviewDraftReady", { date: targetDate });
     notice.hidden = false;
+    collaborationReviewEntryNoticeTimer = window.setTimeout(() => {
+      if (notice.dataset.sessionId === session.id && notice.dataset.targetDate === targetDate) {
+        notice.dataset.dismissed = "true";
+        notice.hidden = true;
+      }
+      collaborationReviewEntryNoticeTimer = null;
+    }, 5000);
   }
   await refreshCollaborationWorkspace(true);
   window.requestAnimationFrame(() => collaborationMessageDraft?.focus());
