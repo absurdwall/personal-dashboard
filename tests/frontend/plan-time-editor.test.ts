@@ -165,3 +165,27 @@ test('production failed manual save cannot rebind changed source by matching tit
   assert.equal(result.calls,1); assert.equal(result.start,'14:00'); assert.equal(result.disabled,true); assert.equal(result.precisionDisabled,true);
   assert.match(result.notice,/重新选择/); assert.deepEqual(result.errors,[]);
 });
+
+
+test('production unchanged untimed plan reread enables explicit timing retry after a failed save', {skip:process.platform!=='darwin'},async()=>{
+  const untimed=structuredClone(views.loaded);
+  const entry=untimed.timeAxis.currentArrangement.shift();
+  entry.startMinute=null; entry.endMinute=null; entry.period='择机'; entry.planPrecision='unlocated';
+  untimed.timeAxis.unlocatedCurrentArrangement.push(entry);
+  const result=await webKit(untimed,[{error:'synthetic untimed write failure'},views.fuzzy],`
+    const dialog=await open(); const times=dialog.querySelectorAll('input[type=time]');
+    const original=times[0].value; times[0].value='14:00';
+    dialog.querySelector('form').requestSubmit(); await wait(()=>dialog.querySelector('[role=status]').textContent.includes('未确认'));
+    [...dialog.querySelectorAll('button')].find(b=>b.textContent==='重新读取核对').click();
+    await wait(()=>dialog.querySelector('[role=status]').textContent.includes('明确重试')||dialog.querySelector('[role=status]').textContent.includes('来源或修订已改变'));
+    const afterRead={calls:edits().length,start:times[0].value,precision:dialog.querySelector('select').value,disabled:times[0].disabled};
+    if(times[0].disabled) return JSON.stringify({original,afterRead,inputs:edits(),errors:window.probeErrors});
+    dialog.querySelector('form').requestSubmit(); await wait(()=>edits().length===2&&!document.querySelector('dialog.plan-time-editor'));
+    return JSON.stringify({original,afterRead,inputs:edits(),label:planRow().querySelector('summary').textContent,errors:window.probeErrors});
+  `);
+  assert.equal(result.original,'');
+  assert.deepEqual(result.afterRead,{calls:1,start:'14:00',precision:'approximatePoint',disabled:false});
+  assert.equal(result.inputs[1].planId,entry.planId); assert.equal(result.inputs[1].expectedRevision,untimed.revision);
+  assert.deepEqual([result.inputs[1].startMinute,result.inputs[1].endMinute],[840,null]);
+  assert.match(result.label,/约14:00/); assert.deepEqual(result.errors,[]);
+});
