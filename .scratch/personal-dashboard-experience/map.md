@@ -4,8 +4,8 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: PDEX-SPEC-02 ready-for-agent/open, published locally; earlier PDEX-SPEC-01, PDEX-FOLLOWUP-01–05 and PDEX-01–18 remain closed
-Implementation: new refinement tickets and implementation not started; prior installed d518332 acceptance and its qualifications remain historical
+Stage: PDEX-SPEC-02 and approved PDEX-19–26 published locally, ready-for-agent/open; earlier PDEX-SPEC-01, PDEX-FOLLOWUP-01–05 and PDEX-01–18 remain closed
+Implementation: PDEX-19–26 unassigned and not claimed or started; prior installed d518332 acceptance and its qualifications remain historical
 Working branch: codex/dashboard-experience-refinement-spec (new spec); codex/dashboard-experience-integration (retained previous round)
 Management source: source-personal-dashboard-experience
 
@@ -14,6 +14,14 @@ Management source: source-personal-dashboard-experience
 | ID | Type | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | PDEX-SPEC-02 | spec | [Complete refinement specification](refinement-spec-2026-10-11.md) / [same-identity index](issues/00-spec-02.md) | ready-for-agent | open | none | [four confirmed clarifications](requirements-clarifications-2026-10-11.md), [prototype review and preservation boundary](prototype-review-and-scope-2026-10-11.md), [local publication](refinement-publication-2026-10-11.md) |
+| PDEX-19 | ticket | [Task 编辑、属性与操作入口](issues/19-task-editing-properties-actions.md) | ready-for-agent | open | none | [approved 8-ticket publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
+| PDEX-20 | ticket | [Task 父子关系与清单文件夹](issues/20-task-parents-list-folders.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
+| PDEX-21 | ticket | [Today 时间轴与安排交互](issues/21-today-axis-arrangement-interaction.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
+| PDEX-22 | ticket | [Calendar 新增、详情与节日](issues/22-calendar-create-details-holidays.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
+| PDEX-23 | ticket | [Collaboration 空间与输入体验](issues/23-collaboration-context-input.md) | ready-for-agent | open | none | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
+| PDEX-24 | ticket | [Habit 新增、编辑与目标设置](issues/24-habit-create-edit-goal-cycles.md) | ready-for-agent | open | none | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
+| PDEX-25 | ticket | [Habit 详情、历史统计与停用恢复](issues/25-habit-details-history-lifecycle.md) | ready-for-agent | open | PDEX-24 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
+| PDEX-26 | ticket | [整合与真实 App 验收](issues/26-refinement-integration-packaged-acceptance.md) | ready-for-agent | open | PDEX-20, PDEX-21, PDEX-22, PDEX-23, PDEX-25 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
 | PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | closed | none | [local human acceptance](evidence/human-acceptance-2026-10-11.md), [retained publication](publication.md) |
 | PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
 | PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | closed | PDEX-01 | [component resolution + final checks](evidence/pdex-11.md) |
@@ -53,11 +61,21 @@ the preferred A/C chat space; this spec chooses a bounded context overlay to
 avoid the observed context-plus-voice clipping, recording it as an implementation
 decision rather than a separate human C selection.
 
-There are no new tickets or claims. Ticket breakdown/publication and execution
-require the user's subsequent requests. Reserve new ticket numbering after
-PDEX-18, without creating placeholder Work Items. Earlier accepted rounds remain
-closed. [Publication and handoff](refinement-publication-2026-10-11.md) records
-the new branch, exact base/prototype lineage and local Git receipt convention.
+The user approved the revised eight-ticket breakdown with “同意” after asking
+to consolidate the earlier seventeen-ticket proposal. PDEX-19–26 now have one
+complete local body each, with 109 unchecked acceptance criteria and nine direct
+blocking edges. Initial eligible ticket frontier: PDEX-19, PDEX-23 and PDEX-24;
+five later tickets are dependency-gated. There are no cycles or redundant
+transitive edges. Eligibility is not a claim or implementation authorization.
+
+All eight remain unassigned/not started. [Approved proposal](refinement-ticket-breakdown-proposal-2026-10-11.md),
+[ticket publication/commit receipt](refinement-ticket-publication-2026-10-11.md)
+and [new execution record](refinement-execution-2026-10-11.md) retain the complete
+scope, graph and branch/commit convention. The parent full spec and its index
+remain unchanged; their original publication-stage text is a historical snapshot,
+and this map owns the current child-ticket state. Earlier accepted rounds remain
+closed. [Spec publication and handoff](refinement-publication-2026-10-11.md) retains
+the base/prototype lineage.
 
 No unrequested App restyling is authorized. Only changes with an explicit
 requirement in PDEX-SPEC-02 may be implemented; the scope record identifies
@@ -90,9 +108,10 @@ remain separate boundaries.
 ## Local tracking conventions
 
 - PDEX-SPEC-01 retains the closed first-round body; PDEX-SPEC-02 is the active
-  refinement specification. Allocate new ticket IDs after PDEX-18 only when
-  actual implementation tickets are requested and created. Never reuse or
-  renumber existing IDs.
+  refinement specification, with approved PDEX-19–26 published. Allocate future
+  IDs after PDEX-26 only when additional tickets are requested and created.
+  Never reuse or renumber published IDs. The original seventeen IDs were only
+  a draft and did not create Work Items.
 - Each ticket retains its full body, parent spec, direct blockers, triage,
   lifecycle, owner, working branch, acceptance criteria and evidence links.
 - Use the five-role triage vocabulary. Track open/in-progress/blocked/closed

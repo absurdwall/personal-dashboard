@@ -1,13 +1,18 @@
 # PDEX-SPEC-02 — 本地 ticket 拆分草案（合并修订）
 
 Date: 2026-10-11
-Stage: revised proposal awaiting breakdown approval; not ticket publication
+Stage: approved eight-ticket breakdown; complete bodies published separately
 Parent: PDEX-SPEC-02
 Canonical specification: [完整正文](refinement-spec-2026-10-11.md)
 Frozen spec snapshot: `0b0d727b23166ba1ccf9708656ab2bf00f6188ed`
 Working branch: `codex/dashboard-experience-refinement-spec`
-Proposed IDs: PDEX-19–26; not yet allocated as tracker Work Items
+Approved IDs: PDEX-19–26; allocated by the separate ticket publication
 Implementation: not started
+
+Approval: 用户在8张合并版提案后明确回复“同意”。以下保留批准时的方案说明；
+文中的“拟议/确认后”等表述属于原提案阶段，不覆盖已确认的发布状态。
+完整票体、状态和来源以[发布记录](refinement-ticket-publication-2026-10-11.md)
+和本地map为准，17张旧草案不再作为实施队列。
 
 ## 修订依据与原则
 
