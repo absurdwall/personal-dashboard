@@ -1,15 +1,15 @@
 # Personal Dashboard — 本轮体验改善与任务、习惯能力补齐
 
-ID: PDEX-SPEC-02  
-Type: spec  
-Triage: ready-for-agent  
-Status: ready-for-agent  
-Lifecycle: open  
-Stage: specification published locally; tickets and implementation not started  
-Date: 2026-10-11  
-Canonical tracker: [local map](map.md)  
-Working branch: codex/dashboard-experience-refinement-spec  
-Test boundary: 用户确认复用业务操作测试，并用打包 App 验证保存、重开、拖动和保留区域  
+ID: PDEX-SPEC-02
+Type: spec
+Triage: ready-for-agent
+Status: ready-for-agent
+Lifecycle: open
+Stage: specification published locally; tickets and implementation not started
+Date: 2026-10-11
+Canonical tracker: [local map](map.md)
+Working branch: codex/dashboard-experience-refinement-spec
+Test boundary: 用户确认复用业务操作测试，并用打包 App 验证保存、重开、拖动和保留区域
 Publication: local Git; no GitHub publication
 
 ## Problem Statement

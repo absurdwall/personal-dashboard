@@ -32,7 +32,7 @@ PDEX-SPEC-02。没有创建实施票、执行实现、打包安装或进行 GitH
 | 上轮已接受产品语义 | codex/dashboard-experience-integration | `d5183327fcf66d8c1aa44f6b14f9c4272e4c931c` |
 | 本轮规格起点 | codex/dashboard-experience-integration docs-only HEAD | `8a0dba083c4cbcb2707e97661a0a23ff82c4f920` |
 | 本轮原型及用户反馈修订 | codex/dashboard-experience-refinement | `e6bdb514c6733a98949012e1d42a9cda3b0e3eec` |
-| 本轮规格发布 | codex/dashboard-experience-refinement-spec | use Git receipt below; exact hash recorded after commit |
+| 本轮规格首次发布 | codex/dashboard-experience-refinement-spec | `10cbdb72504aa277137e5417d03bba8d28eb2e4b` |
 
 当前基线保留完整旧实现 lineage；不从远程 main 重建。原型分支仍独立保留，
 不要为整合规格而复制整个 throwaway 实现到生产或删除其设计证据。
@@ -45,8 +45,16 @@ PDEX-SPEC-02。没有创建实施票、执行实现、打包安装或进行 GitH
 git log --diff-filter=A --format='%H %s' -- .scratch/personal-dashboard-experience/refinement-spec-2026-10-11.md
 ```
 
-发布 commit 完成后，在本记录补齐完整哈希；后续 receipt/Management 更新使用
-第二个明确的 docs commit，避免在尚未生成的 commit 内写入自身哈希。
+首次发布 commit 为 `10cbdb72504aa277137e5417d03bba8d28eb2e4b`，记录正文、
+索引、map、完整讨论依据、领域词汇和本地 tracker 规则。发布后的回执与
+Management 读回使用第二个 docs commit；同时去除正文标题信息的 Markdown
+尾随空白，规格含义未变，不 amend 原提交。最终规格快照可从本文件与正文的
+最后更新 commit 解析，下次 tickets / implementation 以该快照作为明确基线。
+
+```sh
+git log -1 --format='%H %s' -- .scratch/personal-dashboard-experience/refinement-spec-2026-10-11.md .scratch/personal-dashboard-experience/refinement-publication-2026-10-11.md
+```
+
 下次 tickets 和 implementation 各自保留基线、分支、完整哈希及证据链接。
 
 ## 后续远程交接
@@ -59,6 +67,20 @@ Markdown tracker 如需迁移成 GitHub Issues，另行保留 local ID→Issue �
 ## Management
 
 复用已注册的 `product-personal-dashboard` /
-`source-personal-dashboard-experience`。本地文件发布与 Management 读回分别
-确认；最终来源 revision、PDEX-SPEC-02 状态及未覆盖来源在发布后的 receipt
-中记录。不新建 Registry，不改用户 focus 或项目 lifecycle。
+`source-personal-dashboard-experience`，本地文件发布与 Management 读回均已
+确认。[读回回执](evidence/management-spec-02-publication-2026-10-11.json)记录：
+
+- 本来源 `current`，revision `9e0e6c1931add7a6`，无 malformed references。
+- PDEX-SPEC-02 为 `ready-for-agent`，无 assignee 或 blocker；旧24条记录仍
+  resolved。helper 的通用 lifecycle 分类为 active，不代表规格已开始实现，
+  实际阶段仍是本地 ready spec / 无 tickets / 无 claim。
+- Registry `11411e94710a79eb`、Project summary `72cf4708d3302d1e` 已读回。
+  没有新 Registry，用户 focus/lifecycle 等字段未改变。
+- 第一次 summary 请求把可用本地来源声明为未覆盖，遭 evidence 校验拒绝，
+  Registry 没有变化。重新读取来源并提交其 revisions 后 v2 成功；原失败
+  receipt 仍在 helper 的 pending-recovery 审计列表，保留该事实，不删除历史。
+  当前 canonical summary 已确认，规格发布没有遗留业务 blocker。
+- 既有 Collaboration Markdown 格式缺口和不可用 GitHub 来源继续明确未覆盖。
+  helper 子进程 PATH 排除 GitHub CLI，未进行远程 tracker 查询。
+- Registry 更新属于父 vault 仓库，未纳入此独立项目的 commit；不提交父仓库
+  的其他变更。本项目只提交规格、记录和读回 receipt。

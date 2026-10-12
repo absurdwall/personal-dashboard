@@ -16,8 +16,10 @@ Prototype evidence remains on `codex/dashboard-experience-refinement` at
 `e6bdb514c6733a98949012e1d42a9cda3b0e3eec`; it is not a production merge.
 The complete specification is [refinement-spec](refinement-spec-2026-10-11.md),
 with [publication/commit receipt](refinement-publication-2026-10-11.md) and
-[same-identity index](issues/00-spec-02.md). The initial full commit is resolved
-from that receipt and the spec file's first-add Git history.
+[same-identity index](issues/00-spec-02.md). The initial publication commit is
+`10cbdb72504aa277137e5417d03bba8d28eb2e4b`; a subsequent docs commit preserves
+its exact receipt, Management readback and a Markdown-only formatting correction.
+Resolve the final spec snapshot from the receipt file's last Git commit.
 
 The user reaffirmed local spec, later tickets and implementation tracking while
 GitHub is unavailable. No new tickets, claim or implementation are part of this
