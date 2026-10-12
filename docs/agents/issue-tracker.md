@@ -5,8 +5,13 @@
 On 2026-10-10 the user explicitly chose local-only publication, tickets and
 subsequent implementation tracking for the accepted Dashboard experience
 prototype while GitHub is unavailable. For this initiative,
-`.scratch/personal-dashboard-experience/map.md` is the canonical tracker and
-its linked `spec.md` is the canonical specification. This scoped exception
+`.scratch/personal-dashboard-experience/map.md` is the canonical tracker.
+Its linked `spec.md` retains the closed PDEX-SPEC-01; the new PDEX-SPEC-02
+full body is `refinement-spec-2026-10-11.md`. On 2026-10-11 the user explicitly
+reaffirmed local Git publication, subsequent tickets and implementation for
+the new refinement round, with branch and commit lineage retained for later
+push. Each stable spec ID has one full body and a linked Work Item index;
+new rounds do not overwrite or reopen closed records. This scoped exception
 takes precedence over the default GitHub operations below.
 
 - Publish and read the complete spec locally; use stable PDEX IDs, preserve

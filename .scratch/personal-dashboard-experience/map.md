@@ -4,15 +4,16 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: PDEX-SPEC-01 and PDEX-01–11 remain closed; PDEX-FOLLOWUP-01–05 and PDEX-12–18 closed after human acceptance of installed d518332
-Implementation: installed checkpoint d518332 accepted by the user with qualifications; residual feedback is recorded separately and is not a current blocker
-Working branch: codex/dashboard-experience-integration
+Stage: PDEX-SPEC-02 ready-for-agent/open, published locally; earlier PDEX-SPEC-01, PDEX-FOLLOWUP-01–05 and PDEX-01–18 remain closed
+Implementation: new refinement tickets and implementation not started; prior installed d518332 acceptance and its qualifications remain historical
+Working branch: codex/dashboard-experience-refinement-spec (new spec); codex/dashboard-experience-integration (retained previous round)
 Management source: source-personal-dashboard-experience
 
 ## Records
 
 | ID | Type | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
+| PDEX-SPEC-02 | spec | [Complete refinement specification](refinement-spec-2026-10-11.md) / [same-identity index](issues/00-spec-02.md) | ready-for-agent | open | none | [four confirmed clarifications](requirements-clarifications-2026-10-11.md), [prototype review and preservation boundary](prototype-review-and-scope-2026-10-11.md), [local publication](refinement-publication-2026-10-11.md) |
 | PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | closed | none | [local human acceptance](evidence/human-acceptance-2026-10-11.md), [retained publication](publication.md) |
 | PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
 | PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | closed | PDEX-01 | [component resolution + final checks](evidence/pdex-11.md) |
@@ -41,7 +42,28 @@ Current claim and implementation states are recorded per row and ticket. The Wor
 this full body and the same PDEX-SPEC-01 identity; it is not an implementation
 ticket or a second specification. Do not renumber existing PDEX records.
 
-## Frontier and execution boundary
+## New refinement frontier — 2026-10-11
+
+PDEX-SPEC-02 is published as a complete seven-section specification with 91
+user stories. The user confirmed the testing boundary: reuse application
+workflow tests and verify persistence, dragging and preservation in the packaged
+App; the prototype is design evidence only. Today A and Tasks B are selected;
+Habits and Calendar retain the actual App host structure. Collaboration retains
+the preferred A/C chat space; this spec chooses a bounded context overlay to
+avoid the observed context-plus-voice clipping, recording it as an implementation
+decision rather than a separate human C selection.
+
+There are no new tickets or claims. Ticket breakdown/publication and execution
+require the user's subsequent requests. Reserve new ticket numbering after
+PDEX-18, without creating placeholder Work Items. Earlier accepted rounds remain
+closed. [Publication and handoff](refinement-publication-2026-10-11.md) records
+the new branch, exact base/prototype lineage and local Git receipt convention.
+
+No unrequested App restyling is authorized. Only changes with an explicit
+requirement in PDEX-SPEC-02 may be implemented; the scope record identifies
+prototype details which must not be copied into production.
+
+## Historical first-round frontier and execution boundary
 
 The initial eligible frontier is PDEX-01, PDEX-03, PDEX-05, PDEX-06,
 PDEX-08, PDEX-09 and PDEX-10. PDEX-02/04/07/11 are gated by the declared
@@ -67,8 +89,10 @@ remain separate boundaries.
 
 ## Local tracking conventions
 
-- The spec ID is PDEX-SPEC-01. Allocate PDEX-01, PDEX-02, etc. only when actual
-  implementation tickets are requested and created. Never reuse or renumber IDs.
+- PDEX-SPEC-01 retains the closed first-round body; PDEX-SPEC-02 is the active
+  refinement specification. Allocate new ticket IDs after PDEX-18 only when
+  actual implementation tickets are requested and created. Never reuse or
+  renumber existing IDs.
 - Each ticket retains its full body, parent spec, direct blockers, triage,
   lifecycle, owner, working branch, acceptance criteria and evidence links.
 - Use the five-role triage vocabulary. Track open/in-progress/blocked/closed

@@ -5,6 +5,29 @@ Canonical tracker: [local map](map.md)
 Specification: PDEX-SPEC-01
 Working branch: codex/dashboard-experience-integration
 
+## New refinement specification — 2026-10-11
+
+PDEX-SPEC-02 is the new, locally published refinement round, on
+`codex/dashboard-experience-refinement-spec`, starting from exact docs-only
+base `8a0dba083c4cbcb2707e97661a0a23ff82c4f920`. The earlier product lineage,
+closed spec/tickets and installed `d518332` acceptance remain retained.
+
+Prototype evidence remains on `codex/dashboard-experience-refinement` at
+`e6bdb514c6733a98949012e1d42a9cda3b0e3eec`; it is not a production merge.
+The complete specification is [refinement-spec](refinement-spec-2026-10-11.md),
+with [publication/commit receipt](refinement-publication-2026-10-11.md) and
+[same-identity index](issues/00-spec-02.md). The initial full commit is resolved
+from that receipt and the spec file's first-add Git history.
+
+The user reaffirmed local spec, later tickets and implementation tracking while
+GitHub is unavailable. No new tickets, claim or implementation are part of this
+publication. Preserve separate spec/ticket/implementation/review/acceptance
+commits and branch identities for later authorized push and protected-main PR.
+Do not automatically copy web prototype styling or reopen closed records.
+
+The sections below retain the first round's dated history; their then-current
+states do not override the new specification's current local index.
+
 ## Retained identities
 
 - Product/source base before prototype work: 45dceaef.
