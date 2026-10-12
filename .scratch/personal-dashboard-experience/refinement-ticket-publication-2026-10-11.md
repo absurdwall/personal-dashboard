@@ -41,9 +41,10 @@ frontier不表示本次已claim或开始实现。
 
 ## Local Git receipt
 
-本批发布在上述base之后产生新的独立commit，包含八份完整票、map、批准
-记录、执行边界及本记录。提交后补齐完整哈希，并用第二个docs commit记录
-Management读回回执，保留历史而非amend。
+本批发布commit为 `52f30a24282b5acf8b8411ba3b0d797d14a10d19`，在上述base
+之后保存八份完整票、map、批准记录、执行边界及本记录。第二个docs commit
+补齐完整哈希和Management读回回执，保留历史而非amend；其完整identity可从
+本记录的最后更新commit取得。
 
 ```sh
 git log --diff-filter=A --format='%H %s' -- .scratch/personal-dashboard-experience/issues/19-task-editing-properties-actions.md
@@ -60,7 +61,18 @@ d91d636b395d8c42c0c516827db37ca2565260a4保留为独立来源。后续实现按
 实施、正常App安装、main merge、remote push或父spec关闭。不会查询GitHub。
 
 复用已注册product-personal-dashboard/source-personal-dashboard-experience，
-发布后用installed helper刷新和读回，确认八条记录、3个初始ready/5个gated及
-旧24条resolved。summary中的本轮阶段应是tickets已发布、未claim/未实现，
-与旧spec最初发布阶段的冻结正文区分。Management回执独立保存；不新建Registry，
-不改变用户focus/lifecycle，不提交父vault的其他变更。
+installed helper刷新和canonical读回均已confirmed，见
+[回执](evidence/management-tickets-19-26-publication-2026-10-11.json)：
+
+- 来源current，revision `ebb8d649803b131a`，共33条记录，无malformed references。
+- 八张新票均ready-for-agent、assignee为空；3个初始ready/5个依赖gated，旧24条
+  仍resolved，父spec仍ready且未关闭。没有不明依赖或新增claim。
+- Registry `d47446b2e60e0f84`、summary `e40c3d838c9f72bf`已读回，准确反映
+  tickets已发布但未实现；用户focus/lifecycle等字段未变。
+- 原有Collaboration Markdown格式缺口及不可用GitHub仍明确未覆盖；helper
+  子进程PATH排除GitHub CLI，没有远程tracker查询。前轮失败summary receipt
+  的历史audit仍保留，本批summary写入没有新增失败。
+- 规格正文/父索引和旧票逐字未改，产品源码差异为零；Registry属于父vault
+  仓库，不纳入本项目commit，也不提交父仓库的其他变更。
+
+该结果只确认本地发布和Management显示，不代表任何实现、安装或产品接受。

@@ -1,0 +1,134 @@
+{
+  "date": "2026-10-11",
+  "projectId": "product-personal-dashboard",
+  "sourceId": "source-personal-dashboard-experience",
+  "operationId": "pdex-approved-eight-tickets-publication-summary-20261011",
+  "outcome": "confirmed",
+  "publicationCommit": "52f30a24282b5acf8b8411ba3b0d797d14a10d19",
+  "publicationBranch": "codex/dashboard-experience-refinement-spec",
+  "publicationBase": "d91d636b395d8c42c0c516827db37ca2565260a4",
+  "specSnapshot": "0b0d727b23166ba1ccf9708656ab2bf00f6188ed",
+  "sourceRevision": "ebb8d649803b131a",
+  "sourceState": "current",
+  "malformedReferences": [],
+  "sourceIssueCount": 33,
+  "newTicketCount": 8,
+  "directBlockingEdges": 9,
+  "uncheckedAcceptanceCriteria": 109,
+  "initialReadyTickets": [
+    "PDEX-19",
+    "PDEX-23",
+    "PDEX-24"
+  ],
+  "dependencyGatedTickets": [
+    "PDEX-20",
+    "PDEX-21",
+    "PDEX-22",
+    "PDEX-25",
+    "PDEX-26"
+  ],
+  "workItems": [
+    {
+      "sourceReference": "19-task-editing-properties-actions.md",
+      "nativeState": "ready-for-agent",
+      "queueState": "ready",
+      "blockers": [],
+      "assignee": null,
+      "revision": "630f0e3d38674476"
+    },
+    {
+      "sourceReference": "20-task-parents-list-folders.md",
+      "nativeState": "ready-for-agent",
+      "queueState": "blocked",
+      "blockers": [
+        "19 — Task 编辑、属性与操作入口"
+      ],
+      "assignee": null,
+      "revision": "4fdf7607e6f05cbf"
+    },
+    {
+      "sourceReference": "21-today-axis-arrangement-interaction.md",
+      "nativeState": "ready-for-agent",
+      "queueState": "blocked",
+      "blockers": [
+        "19 — Task 编辑、属性与操作入口"
+      ],
+      "assignee": null,
+      "revision": "1c9e2604bf5d8bd1"
+    },
+    {
+      "sourceReference": "22-calendar-create-details-holidays.md",
+      "nativeState": "ready-for-agent",
+      "queueState": "blocked",
+      "blockers": [
+        "19 — Task 编辑、属性与操作入口"
+      ],
+      "assignee": null,
+      "revision": "96d971aa26e00992"
+    },
+    {
+      "sourceReference": "23-collaboration-context-input.md",
+      "nativeState": "ready-for-agent",
+      "queueState": "ready",
+      "blockers": [],
+      "assignee": null,
+      "revision": "5fbf503b75a05d63"
+    },
+    {
+      "sourceReference": "24-habit-create-edit-goal-cycles.md",
+      "nativeState": "ready-for-agent",
+      "queueState": "ready",
+      "blockers": [],
+      "assignee": null,
+      "revision": "aec2568ce7a58aa9"
+    },
+    {
+      "sourceReference": "25-habit-details-history-lifecycle.md",
+      "nativeState": "ready-for-agent",
+      "queueState": "blocked",
+      "blockers": [
+        "24 — Habit 新增、编辑与目标设置"
+      ],
+      "assignee": null,
+      "revision": "4fa7054c43fdfa35"
+    },
+    {
+      "sourceReference": "26-refinement-integration-packaged-acceptance.md",
+      "nativeState": "ready-for-agent",
+      "queueState": "blocked",
+      "blockers": [
+        "20 — Task 父子关系与清单文件夹",
+        "21 — Today 时间轴与安排交互",
+        "22 — Calendar 新增、详情与节日",
+        "23 — Collaboration 空间与输入体验",
+        "25 — Habit 详情、历史统计与停用恢复"
+      ],
+      "assignee": null,
+      "revision": "419168687e0ab503"
+    }
+  ],
+  "priorResolvedCount": 24,
+  "registryRevisionBefore": "11411e94710a79eb",
+  "registryRevisionAfter": "d47446b2e60e0f84",
+  "summaryRevisionBefore": "72cf4708d3302d1e",
+  "summaryRevisionAfter": "e40c3d838c9f72bf",
+  "summaryVerifiedAt": "2026-10-12T03:29:56.074926+00:00",
+  "uncoveredSources": [
+    {
+      "sourceId": "source-personal-dashboard-codex-collaboration",
+      "reason": "既有Markdown来源格式缺口保留，未在本轮修复或声称完整覆盖。"
+    },
+    {
+      "sourceId": "source-personal-dashboard-github",
+      "reason": "本轮本地tracker；helper PATH排除GitHub CLI，没有远程查询。"
+    }
+  ],
+  "userOwnedProjectFieldsUnchanged": true,
+  "parentSpecAndIndexUnchanged": true,
+  "claimOrImplementationStarted": false,
+  "githubOperations": false,
+  "productCodeChanged": false,
+  "pendingRecoveryAuditIds": [
+    "pdex-spec-02-local-publication-summary-20261011"
+  ]
+}

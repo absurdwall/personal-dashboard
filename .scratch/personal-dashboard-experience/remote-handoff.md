@@ -14,7 +14,8 @@ complete local records with nine direct dependencies; initial frontier is
 PDEX-19/23/24. Publication is on `codex/dashboard-experience-refinement-spec`
 from exact base `d91d636b395d8c42c0c516827db37ca2565260a4`.
 [Ticket publication receipt](refinement-ticket-publication-2026-10-11.md) records
-the publication commit and Management readback; [execution boundary](refinement-execution-2026-10-11.md)
+publication commit `52f30a24282b5acf8b8411ba3b0d797d14a10d19` and confirmed
+Management readback; [execution boundary](refinement-execution-2026-10-11.md)
 defines how future authorized claims, branches and coherent commits are retained.
 The parent specification and its Work Item index remain unchanged, not closed.
 No ticket is assigned, claimed or implemented by this publication.
