@@ -181,3 +181,42 @@ _Avoid_: Observed activity interval, completion record
 **Task execution interval**:
 An optional planned start and end for executing a Task, retained across rescheduling. It describes intended time allocation, not a deadline, actual activity duration or completion evidence; a Task with only a time point remains valid.
 _Avoid_: Deadline, actual work interval, completed activity
+
+## Experience refinement vocabulary · 2026-10-11
+
+These terms record user-confirmed requirements for the next refinement. They do
+not assert that the corresponding behavior has shipped.
+
+**Cancel Task time arrangement**:
+Remove a Task's assigned time and execution interval while retaining its date,
+identity and completion state. The Task remains dated work without a timed
+position on the timeline.
+_Avoid_: Delete Task, clear Task date, abandon Task
+
+**Broad plan period**:
+A stated period such as afternoon or evening. A default timeline position helps
+display it without replacing the stated period with an approximate clock time.
+_Avoid_: Exact start, user-selected approximate clock time
+
+**Approximate plan point**:
+A stated approximate clock time, such as about 16:00. Explicitly dragging a broad
+plan period to a clock position chooses an approximate plan point; it does not
+establish an exact interval or observed activity.
+_Avoid_: Default display position, exact time range, activity evidence
+
+**Habit attained day**:
+A lived day on which a Habit meets its applicable goal. Multiple completion
+actions for the same Habit and lived day count as one attained day; local and
+mapped external evidence do not create additional attained days.
+_Avoid_: Completion action count, exercise-session count
+
+**Weekly Habit day target**:
+The number of distinct attained days required within a week, such as three days
+per week. Multiple completions on one lived day do not satisfy multiple days.
+_Avoid_: Three exercise sessions, unrestricted weekly occurrence count
+
+**Habit goal cycle**:
+The period evaluated against a Habit goal: one lived day for a daily goal or one
+week for a weekly goal. A changed goal takes effect at the next cycle; the current
+cycle and earlier attainment retain the goals applicable to those periods.
+_Avoid_: Immediate retroactive goal change, rewritten historical attainment
