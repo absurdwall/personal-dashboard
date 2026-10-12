@@ -1,0 +1,22 @@
+<!doctype html>
+<!-- THROWAWAY refinement: three structural variations on the existing R shell.
+     Question: overview vs precision, anchored dialog vs detail rail, context/voice space.
+     ?variant=A|B|C. All state synthetic and memory-only. Baseline R retained.
+     Original R provenance: Final candidate grounded in the existing Dashboard shell.
+     Question: Do mixed-precision plans and focused improvements fit the current Dashboard?
+     Final route ?page=today|tasks|calendar|collaboration&variant=R. Synthetic state only. Unified timeline; linked document-edit proposal. -->
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Personal Dashboard · 初稿对照</title><link rel="stylesheet" href="/__app/styles.css"><link rel="stylesheet" href="prototype.css"><link rel="stylesheet" href="finalized.css"><link rel="stylesheet" href="revised.css"><link rel="stylesheet" href="refinement-prototype.css"></head>
+<body class="experience-prototype"><main class="app-shell" data-workspace-destination="today">
+  <header class="product-toolbar"><div class="product-toolbar-brand"><div class="feature-mark">P</div><div><p class="product-toolbar-name">Personal Dashboard</p><p class="product-toolbar-area">每日生活</p></div></div><span class="product-toolbar-space"></span><span class="demo-badge">可丢弃原型 · 合成数据 · 内存</span></header>
+  <aside class="workspace-sidebar"><div class="workspace-rail-context"><p class="section-label">SAT · OCT 10</p><strong>周六，10 月 10 日</strong><small>早晨 · 白天 · 晚间</small></div><nav class="workspace-navigation">
+    <button class="destination-button" data-page="today"><span class="destination-icon">☀</span><span>今天</span></button>
+    <button class="destination-button" data-page="tasks"><span class="destination-icon">□</span><span>任务</span></button>
+    <button class="destination-button" data-page="calendar"><span class="destination-icon">▦</span><span>日历</span></button>
+    <button class="destination-button" id="unchanged-habits" data-page="habits"><span class="destination-icon">◉</span><span>习惯</span></button>
+    <button class="destination-button" data-page="collaboration"><span class="destination-icon">↗</span><span>协作</span></button>
+  </nav><div class="sidebar-status"><p>所有演示只在内存中。</p><small>可切换页面；刷新还原示例。</small></div></aside>
+  <section class="prototype-workspace"><div id="page"></div></section>
+</main>
+<div class="prototype-switcher" aria-label="原型比较"><button id="previous" aria-label="上一个方案" >←</button><div><b id="variant-name"></b><small id="variant-description"></small></div><button id="next" aria-label="下一个方案" >→</button><button id="inspect">状态</button><a href="revised.html?page=today&variant=R" target="_blank">旧 R ↗</a><button id="reset">还原</button></div>
+<dialog id="detail-dialog"></dialog><dialog id="state-dialog"></dialog><div id="toast" role="status" aria-live="polite"></div>
+<script src="prototype.js"></script><script src="finalized.js"></script><script src="revised.js"></script><script src="refinement-prototype.js"></script></body></html>
