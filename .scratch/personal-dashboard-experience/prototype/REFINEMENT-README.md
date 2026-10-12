@@ -1,6 +1,6 @@
 # Personal Dashboard 体验比较原型 · 2026-10-11
 
-状态：**三套待选候选，等待用户比较。没有设计决策、Lenspec、ticket、PR、产品实现或安装结果。**
+状态：**用户反馈“A好”，A 为本轮首选设计方向。** 选择记录见 [refinement-design-choice](../refinement-design-choice-2026-10-11.md)。其他候选保留对照；本记录不代表每项细节的逐项验收。Lenspec、tickets 与正式实现尚未开展。
 
 本轮从 R 的 `revised.html/js/css` 继续，保留原导航、外壳、合成任务/计划/事实、临时重叠分列与既有服务入口。新增 `refinement-prototype.html/js/css` 是独立的可丢弃入口；旧 R 文件保持原样。当前分支 `codex/dashboard-experience-refinement` 从讨论工作目录的本地 HEAD 建立，不从远程 main 重建。
 
