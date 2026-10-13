@@ -4,13 +4,13 @@
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口
 
-**Status:** in-progress
+**Status:** implementation-complete/acceptance-pending
 
 **Triage:** ready-for-agent
 **ID:** PDEX-21
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** in progress
+**Implementation:** complete locally; integration review and packaged acceptance pending
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -53,3 +53,8 @@ PDEX-SPEC-02 stories 35–47、50；共同承担 1–3、88–91 的保存与保
 ## Authorized claim — 2026-10-13
 
 Owner: Codex implementer `/root/pdex23` (new PDEX-21 worktree). Working branch `codex/pdex-21-refinement`; starting integration tip `0230a35b0933a0e092fa9175e70932c3c27a6054`, authorized base `918e7e0d9c4b2c524c429bfd309482e328bc4c91`. PDEX-19 editor/application interface and scoped submit repairs are integrated and verified. Root observed real packaged cancellation Save and fresh-process readback; full ticket acceptance/review remains separate. Full spec/ticket unchanged; local Git only and full history.
+
+
+## Implementation handoff — 2026-10-13
+
+Owner `/root/pdex23`; branch `codex/pdex-21-refinement`. Implementation `c7390d810874456fcf86e65881498cd901670442`; full-history integration merge `f65c8df7dfe4b91fa7dec089c49df5d760414e38` includes integration `ca266b390cadf47a021ff3e743a2113a5abaff7b`; bounded retry follow-up `d2ef2a209b8307a212e4fe2b26c7fb5178445a6b`. Detailed red/green,29 UI and79 real application checks, preserved regions and source conditions: [PDEX-21 evidence](../evidence/pdex-21-refinement.md). Actual packaged/native acceptance and separate review remain pending; no acceptance checkbox or parent spec is closed.
