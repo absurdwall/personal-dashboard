@@ -1,0 +1,74 @@
+{
+  "operation": "implementation handoff source readback, acceptance delegated by user",
+  "project": "product-personal-dashboard",
+  "workspacePath": "/Users/tingranwang/Documents/Codex/projects/tortilla-flat",
+  "registryRevision": "d47446b2e60e0f84",
+  "source": {
+    "portfolioRecordId": "product-personal-dashboard",
+    "sourceId": "source-personal-dashboard-experience",
+    "label": "Dashboard experience — local spec and tickets",
+    "kind": "localMarkdown",
+    "enabled": true,
+    "state": "current",
+    "revision": "72b1ae26ebc5af7f",
+    "issueCount": 33,
+    "malformedReferences": [],
+    "error": null,
+    "lastSuccessfulRefreshAt": 1791899002067,
+    "capabilities": {
+      "create": true,
+      "creatableFields": [
+        "title",
+        "nativeState",
+        "blockers"
+      ],
+      "edit": true,
+      "claim": true,
+      "close": true,
+      "open": true
+    }
+  },
+  "tickets": [
+    {
+      "reference": "19-task-editing-properties-actions.md",
+      "nativeState": "implementation-complete/acceptance-pending",
+      "parsedLifecycle": "unknown"
+    },
+    {
+      "reference": "20-task-parents-list-folders.md",
+      "nativeState": "implementation-complete/acceptance-pending",
+      "parsedLifecycle": "unknown"
+    },
+    {
+      "reference": "21-today-axis-arrangement-interaction.md",
+      "nativeState": "implementation-complete/acceptance-pending",
+      "parsedLifecycle": "unknown"
+    },
+    {
+      "reference": "22-calendar-create-details-holidays.md",
+      "nativeState": "implementation-complete/acceptance-pending",
+      "parsedLifecycle": "unknown"
+    },
+    {
+      "reference": "23-collaboration-context-input.md",
+      "nativeState": "implementation-complete/acceptance-pending",
+      "parsedLifecycle": "unknown"
+    },
+    {
+      "reference": "24-habit-create-edit-goal-cycles.md",
+      "nativeState": "implementation-complete/acceptance-pending",
+      "parsedLifecycle": "unknown"
+    },
+    {
+      "reference": "25-habit-details-history-lifecycle.md",
+      "nativeState": "implementation-complete/acceptance-pending",
+      "parsedLifecycle": "unknown"
+    },
+    {
+      "reference": "26-refinement-integration-packaged-acceptance.md",
+      "nativeState": "implementation-complete/acceptance-pending",
+      "parsedLifecycle": "unknown"
+    }
+  ],
+  "qualification": "Existing source refreshed/read; summary/focus/lifecycle fields not rewritten; unknown generic lifecycle classification does not erase explicit native implementation-complete/acceptance-pending state; no GitHub CLI on child PATH"
+}

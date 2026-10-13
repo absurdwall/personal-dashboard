@@ -1,0 +1,146 @@
+{
+  "kind": "implementation handoff cleanup, not acceptance",
+  "workers": [
+    {
+      "ticket": "PDEX-19",
+      "worktree": "/private/tmp/pdex19-refinement.noindex",
+      "branch": "codex/pdex-19-refinement",
+      "tip": "162067f1169bfc6bfcf2a537eacc850f8ced275a",
+      "trackedAndUntrackedStatus": "clean",
+      "tipReachableFromIntegration": true,
+      "ignoredInventory": [
+        "dist/",
+        "node_modules",
+        "src-tauri/gen/"
+      ],
+      "retainedNonRegenerableIgnored": [
+        "src-tauri/gen"
+      ],
+      "checkoutRemoved": true
+    },
+    {
+      "ticket": "PDEX-20",
+      "worktree": "/private/tmp/pdex20-refinement.noindex",
+      "branch": "codex/pdex-20-refinement",
+      "tip": "51ba75ff3d0640cc7fa2036b6aaffa777caddcf8",
+      "trackedAndUntrackedStatus": "clean",
+      "tipReachableFromIntegration": true,
+      "ignoredInventory": [
+        "dist/",
+        "node_modules",
+        "src-tauri/gen/"
+      ],
+      "retainedNonRegenerableIgnored": [
+        "src-tauri/gen"
+      ],
+      "checkoutRemoved": true
+    },
+    {
+      "ticket": "PDEX-21",
+      "worktree": "/private/tmp/pdex21-refinement.noindex",
+      "branch": "codex/pdex-21-refinement",
+      "tip": "6b6814dd7f1702ca276db7f17f6f09cc3abcc1a1",
+      "trackedAndUntrackedStatus": "clean",
+      "tipReachableFromIntegration": true,
+      "ignoredInventory": [
+        "dist/",
+        "node_modules",
+        "src-tauri/gen/"
+      ],
+      "retainedNonRegenerableIgnored": [
+        "src-tauri/gen"
+      ],
+      "checkoutRemoved": true
+    },
+    {
+      "ticket": "PDEX-22",
+      "worktree": "/private/tmp/pdex22-refinement.noindex",
+      "branch": "codex/pdex-22-refinement",
+      "tip": "380d160a6cb6d80e5afd5294e318f53edb10636d",
+      "trackedAndUntrackedStatus": "clean",
+      "tipReachableFromIntegration": true,
+      "ignoredInventory": [
+        "dist/",
+        "node_modules",
+        "src-tauri/gen/"
+      ],
+      "retainedNonRegenerableIgnored": [
+        "src-tauri/gen"
+      ],
+      "checkoutRemoved": true
+    },
+    {
+      "ticket": "PDEX-23",
+      "worktree": "/private/tmp/pdex23-refinement.noindex",
+      "branch": "codex/pdex-23-refinement",
+      "tip": "2aa96b4d3ea1ce6f7847a44a978ba8d53eee254b",
+      "trackedAndUntrackedStatus": "clean",
+      "tipReachableFromIntegration": true,
+      "ignoredInventory": [
+        "dist/",
+        "node_modules"
+      ],
+      "retainedNonRegenerableIgnored": [],
+      "checkoutRemoved": true
+    },
+    {
+      "ticket": "PDEX-24",
+      "worktree": "/private/tmp/pdex24-refinement.noindex",
+      "branch": "codex/pdex-24-refinement",
+      "tip": "d5632592765a189dc69f02b607b9a05b6b5e2131",
+      "trackedAndUntrackedStatus": "clean",
+      "tipReachableFromIntegration": true,
+      "ignoredInventory": [
+        "dist/",
+        "node_modules",
+        "src-tauri/gen/"
+      ],
+      "retainedNonRegenerableIgnored": [
+        "src-tauri/gen"
+      ],
+      "checkoutRemoved": true
+    },
+    {
+      "ticket": "PDEX-25",
+      "worktree": "/private/tmp/pdex25-refinement.noindex",
+      "branch": "codex/pdex-25-refinement",
+      "tip": "f645827632044c9df1dab64cce8d4c0905eef417",
+      "trackedAndUntrackedStatus": "clean",
+      "tipReachableFromIntegration": true,
+      "ignoredInventory": [
+        "dist/",
+        "node_modules",
+        "src-tauri/gen/"
+      ],
+      "retainedNonRegenerableIgnored": [
+        "src-tauri/gen"
+      ],
+      "checkoutRemoved": true
+    },
+    {
+      "ticket": "PDEX-26",
+      "worktree": "/private/tmp/pdex26-refinement.noindex",
+      "branch": "codex/pdex-26-refinement",
+      "tip": "8c03b9c2dad735c3273d881d45e4e04ab13da43b",
+      "trackedAndUntrackedStatus": "clean",
+      "tipReachableFromIntegration": true,
+      "ignoredInventory": [
+        "dist/",
+        "node_modules",
+        "src-tauri/gen/"
+      ],
+      "retainedNonRegenerableIgnored": [
+        "src-tauri/gen"
+      ],
+      "checkoutRemoved": true
+    }
+  ],
+  "retained": [
+    "all eight per-ticket branches and full history",
+    "canonical integration branch",
+    "pre-existing prototype worktree",
+    "private baseline/synthetic Vault/profile/native fixtures/candidate bundles/manifests/logs",
+    "canonical build cache for next agent"
+  ],
+  "privateReceipt": "/private/tmp/pdex-refinement-20261013.noindex/worker-cleanup-receipt.json"
+}
