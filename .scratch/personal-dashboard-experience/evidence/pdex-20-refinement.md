@@ -106,3 +106,21 @@ Independent standards/spec review, combined packaged synthetic-Vault controls,
 restart readback and same-window baseline comparisons remain with integration
 PDEX-26. No normal installation, native completion or user acceptance is claimed.
 The issue Lifecycle remains in progress and all acceptance checkboxes stay open.
+
+
+## Final local integration lineage and rerun
+
+Implementation UI/tests/docs: `3540cfa`. Original PDEX-19 branch merged at
+`387c92f`, retaining `162067f` plus PDEX-20 parent applicability/actions.
+Integration `490eddb` merged at `127d920`; the only remaining conflict was
+append-only Task/Calendar CSS and both scoped additions were retained.
+The latest `92b9652` integration receipt is also an ancestor (documentation only).
+
+Post-source-merge checks passed: build, 70 behavioral frontend tests including
+Calendar, all three production WebKit scripts at 1280/680 and real application
+Task 40, Today 8, Calendar 9, adapter 14, Collaboration Task 105. The geometry
+tracer also confirms nested rows remain within their compact list bounds without
+horizontal content clipping. [Machine-readable result](pdex-20-focused-checks-2026-10-13.json)
+binds these results to the source commit and full lineage. The final documentation
+merge changes no tested product source. Worktree is clean after evidence commit;
+independent review/native acceptance remain pending.

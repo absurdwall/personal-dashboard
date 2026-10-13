@@ -79,3 +79,10 @@ and 680 widths. [Evidence](../evidence/pdex-20-refinement.md) records red/green
 tracers, command results, preserved baseline failure and pending native checks.
 Checkboxes remain open until integration review and packaged restart acceptance;
 implementation-complete does not close this ticket or its parent specification.
+
+
+Local retained history: application `4537ee2`, UI `3540cfa`, PDEX-19 repair
+merge `387c92f`, integration source merge `127d920`; latest integration
+`92b9652` is retained. Post-merge build, 70 frontend behavior checks, 176
+application checks and three wide/narrow WebKit scenarios pass. Native acceptance
+and independent review remain pending; no remote or main operation was performed.
