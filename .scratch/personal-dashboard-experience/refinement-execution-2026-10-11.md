@@ -2,6 +2,7 @@
 
 Date: 2026-10-11
 Stage: authorized implementation; all PDEX-19–25 implementations integrated; PDEX-26 not claimed; remaining review/native acceptance pending
+Current user scope: implementation handoff only; evaluation, native acceptance and independent review deferred to another agent (supersedes earlier evaluation work instructions and stage snapshots below).
 Canonical tracker: [map](map.md)
 Specification: [PDEX-SPEC-02](refinement-spec-2026-10-11.md)
 Published ticket range: PDEX-19–26
@@ -216,6 +217,12 @@ Shared Task relation/editor/history and Calendar frontend passed 67/67 sequentia
 ## Final PDEX-25 documentation handoff — 2026-10-13
 
 Clean integration `e046726007fa28ed47bf9078481cf1b7b82b70fb` retained source branch `codex/pdex-25-refinement` documentation commit `f645827632044c9df1dab64cce8d4c0905eef417` via `git merge --no-ff` as `83d14cd721ef5ea498e1e6c06e6c8449713b6202`. The diff contains only the ticket/evidence handoff, with zero product changes; no test rerun is warranted. Final feature validation remains bound to the same product source above. The native normal-profile reopen limitation is preserved rather than claiming byte identity.
+
+## User-scoped implementation handoff — PDEX-26 source repair — 2026-10-13
+
+The user revised the requested result to implementation handoff only. Stop evaluation, native acceptance and independent review; another agent will perform acceptance. Earlier check results remain historical supporting evidence, not final acceptance. PDEX-26 and PDEX-SPEC-02 remain open/in-progress without acceptance closure.
+
+Clean integration `e7a947abb0bb4c3ad9f2904524ae2a652d6b762d` retained confirmed PDEX-26 source compatibility repair `159741b5e28bf7e025e2fc44f5ca01250ee1884f` from `codex/pdex-26-refinement` via `git merge --no-ff` as `dee139e031b5c3dbc60531116a430c6ae6cc9e4a`. Parent synchronization `a923800a271c4705248ad63bc86248554262e471` remains in full ancestry. Merge completed without conflicts. Source/ticket/evidence history and all other branches/fixtures remain preserved. No new tests, native acceptance or independent review were run by this handoff merge; no build was needed to resolve this conflict-free source merge. Additional committed worker handoffs remain for root's later authorized integration. No main/remote/install operation or personal-data write occurred.
 
 ## PDEX-26 claim — 2026-10-13
 
