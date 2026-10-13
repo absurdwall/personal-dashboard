@@ -132,3 +132,14 @@ production debug logging remains.
 The root must rerun the original packaged workflow against this repair before
 native acceptance is claimed. No normal installation or personal Vault was
 changed by this repair.
+
+### Follow-up More availability after Save
+
+The submit regression was extended to actually inspect Schedule and Move from
+More after each successful Save. It reproduced disabled controls: the editor
+had been reconstructed while busy and the release pass covered inputs/Save
+but not these menu actions. Explicit editable-action markers now release those
+controls while retaining applicability-based disabling for cancel-time without
+a time. The five-case WebKit matrix and original conflict DOM checks pass at
+both widths; 33 focused frontend tests pass. This additional PDEX-19 repair
+is kept on the original worker branch, separate from the PDEX-20 increment.
