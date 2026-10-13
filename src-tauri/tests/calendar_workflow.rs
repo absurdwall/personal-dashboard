@@ -256,6 +256,7 @@ fn create_task(
 ) -> TasksView {
     application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -289,6 +290,7 @@ fn calendar_month_includes_bounded_task_summaries_and_archived_history() {
         .expect("task target should exist");
     tasks = task_application
         .create_list(TaskListCreateInput {
+            folder_id: None,
             target_binding: binding,
             expected_revision: tasks.revision.clone(),
             list_id: "archive".into(),
@@ -550,6 +552,7 @@ fn compact_calendar_keeps_true_record_state_and_shared_task_interval_after_reope
     let mut view = tasks.read().unwrap();
     for index in 0..7 {
         view = tasks.create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             target_binding: view.target_binding.clone().unwrap(), expected_revision: view.revision.clone(),
@@ -590,4 +593,36 @@ fn compact_calendar_keeps_true_record_state_and_shared_task_interval_after_reope
         fixture["selected"]["tasks"]["targetBinding"] = serde_json::json!("synthetic-task-binding");
         fs::write(destination, serde_json::to_vec_pretty(&fixture).unwrap()).unwrap();
     }
+}
+
+#[test]
+fn calendar_creation_and_date_edit_reopen_the_same_task_without_creating_daily_records() {
+    use personal_dashboard_lib::tasks::TaskUpdateInput;
+    let vault = TempDirectory::new("pdex22-calendar-create-reopen");
+    fs::create_dir_all(vault.path().join(".obsidian")).unwrap();
+    fs::create_dir_all(vault.path().join("life/Journal/Daily")).unwrap();
+    let persistence = SelectedVault(vault.path().to_path_buf());
+    let clock = MutableClock(Rc::new(RefCell::new("2026-10-13".into())));
+    let app = TaskApplication::new(persistence.clone(),clock.clone(),FileTaskStore);
+    let saved = create_task(&app,app.read().unwrap(),"calendar-created","Calendar created Task",Some("2026-10-14"),None);
+    let reopened = TaskApplication::new(persistence.clone(),clock.clone(),FileTaskStore);
+    let readback = reopened.read().unwrap();
+    assert_eq!(readback.revision,saved.revision);
+    assert_eq!(readback.tasks.iter().find(|t|t.id=="calendar-created").unwrap().date.as_deref(),Some("2026-10-14"));
+    let daily = TodayApplication::new(persistence.clone(),NoSelection,clock.clone());
+    assert_eq!(daily.calendar_month(2026,10).unwrap().day("2026-10-14").unwrap().task_summaries[0].id,"calendar-created");
+    assert!(daily.read_date("2026-10-14").unwrap().tasks.tasks.iter().any(|t|t.id=="calendar-created"));
+    let input: TaskUpdateInput = serde_json::from_value(serde_json::json!({
+      "targetBinding":readback.target_binding,"expectedRevision":readback.revision,"taskId":"calendar-created","changeId":"calendar-date-edit",
+      "name":"Calendar created Task","content":"Edited from Calendar","date":"2026-10-15","time":null,"listId":null
+    })).unwrap();
+    reopened.update(input).unwrap();
+    let fresh = TodayApplication::new(persistence,NoSelection,clock);
+    let task=fresh.read_date("2026-10-15").unwrap().tasks.tasks.into_iter().find(|t|t.id=="calendar-created").unwrap();
+    assert_eq!(task.content.as_deref(),Some("Edited from Calendar"));
+    assert_eq!(task.date.as_deref(),Some("2026-10-15"));
+    let month=fresh.calendar_month(2026,10).unwrap();
+    assert!(month.day("2026-10-14").unwrap().task_summaries.is_empty());
+    assert_eq!(month.day("2026-10-15").unwrap().task_summaries[0].id,"calendar-created");
+    for date in ["2026-10-13","2026-10-14","2026-10-15"] {assert!(!record_path(vault.path(),date).exists());}
 }

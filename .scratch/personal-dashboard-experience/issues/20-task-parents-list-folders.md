@@ -4,13 +4,13 @@
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口
 
-**Status:** in-progress
+**Status:** implementation-complete/acceptance-pending
 
 **Triage:** ready-for-agent
 **ID:** PDEX-20
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** claimed; implementation in progress
+**Implementation:** implemented; focused application/DOM checks passed; independent review and native acceptance pending
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -57,3 +57,32 @@ Integration: codex/dashboard-experience-refinement-integration
 Implementation base: dc5b09cd5a8ce6d4c45664bc3d610f6b614492e7
 Spec/ticket snapshot: 918e7e0d9c4b2c524c429bfd309482e328bc4c91
 Direct dependency PDEX-19 application and production-DOM prerequisites are verified at integration dc5b09cd5a8ce6d4c45664bc3d610f6b614492e7; its independent review/native acceptance remain separate. This claim authorizes dependent implementation, not closure of PDEX-19 or final acceptance. Same confirmed application and DOM seams apply.
+
+## Application increment — 2026-10-13
+
+Ordinary parent identities and one-level folder/list relationships are implemented
+at the existing application/storage seam with exact patch/retry history. Real
+Task application suite passes 38 tests; two public controller tracers pass.
+UI and complete integration verification continue. [Evidence](../evidence/pdex-20-refinement.md).
+
+
+## UI and bounded verification — 2026-10-13
+
+Parent selection/clear, direct-child opening and ordinary child creation now use
+stable Task identities and the existing save boundary. The row/More menu uses
+these same actions. Active hierarchy, one-level folder management and aggregation,
+explicit folder quick-add targets and empty-folder refusal are implemented.
+Application tests prove delete/restore independence, exact retries, failure and
+conflict refusal, and preservation of list/priority/tags/execution-end fields.
+Actual WebKit controls prove the production rendering/command chains at 1280
+and 680 widths. [Evidence](../evidence/pdex-20-refinement.md) records red/green
+tracers, command results, preserved baseline failure and pending native checks.
+Checkboxes remain open until integration review and packaged restart acceptance;
+implementation-complete does not close this ticket or its parent specification.
+
+
+Local retained history: application `4537ee2`, UI `3540cfa`, PDEX-19 repair
+merge `387c92f`, integration source merge `127d920`; latest integration
+`92b9652` is retained. Post-merge build, 70 frontend behavior checks, 176
+application checks and three wide/narrow WebKit scenarios pass. Native acceptance
+and independent review remain pending; no remote or main operation was performed.

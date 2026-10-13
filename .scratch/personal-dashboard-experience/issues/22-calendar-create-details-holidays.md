@@ -4,13 +4,13 @@
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口
 
-**Status:** in-progress
+**Status:** implementation-complete/acceptance-pending
 
 **Triage:** ready-for-agent
 **ID:** PDEX-22
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** claimed; implementation in progress
+**Implementation:** complete locally; integration review and packaged acceptance pending
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -56,3 +56,16 @@ Integration: codex/dashboard-experience-refinement-integration
 Implementation base: dc5b09cd5a8ce6d4c45664bc3d610f6b614492e7
 Spec/ticket snapshot: 918e7e0d9c4b2c524c429bfd309482e328bc4c91
 Direct dependency PDEX-19 application and production-DOM prerequisites are verified at integration dc5b09cd5a8ce6d4c45664bc3d610f6b614492e7; its independent review/native acceptance remain separate. This claim authorizes dependent implementation, not closure of PDEX-19 or final acceptance. Same confirmed application and DOM seams apply.
+
+## Local implementation result — 2026-10-13
+
+Actual worker base: `b96b77d74a84309615ab57fdc28055c9ef54b9a3`.
+Implementation: `c65106d9439d02383eefdca9149f5e02d6500315`.
+Integration synchronization: `943151a72656187021313dd3814f19a763095c71` (includes the shared Task schedule submission repair).
+Evidence: [PDEX-22 implementation and checks](../evidence/pdex-22-refinement.md).
+
+Frontend build passed. Production WebKit/controller and holiday/appearance checks passed 40/40, plus one additional uncovered-year DOM check. Calendar/Appearance application tests passed 20/20 with actual file save/fresh readback, retained identity across date edit, and no Daily Record creation.
+
+The top plus defaults to the selected date and opens creation; month/lower Tasks open the reused compact editable form without changing selection/background position. Uncertain creation follows the shared frozen original-request/readback/retry path. Holiday display choices persist in existing local appearance settings; officially sourced Gregorian 2026–2027 annotations remain read-only, with named US observed dates and explicit unavailable years.
+
+Acceptance checkboxes remain open until combined review and source-bound packaged acceptance. This does not close PDEX-22 or PDEX-SPEC-02, install the normal App, merge main or operate on remote Git.

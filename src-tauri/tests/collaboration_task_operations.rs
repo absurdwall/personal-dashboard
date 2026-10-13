@@ -1987,6 +1987,7 @@ fn revision_conflict_requires_refresh_and_a_second_explicit_approval() {
     let before_external_change = tasks.read().unwrap();
     tasks
         .create(personal_dashboard_lib::tasks::TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -3619,6 +3620,7 @@ fn automatic_plan_triggers_at_configured_local_time_and_restart_does_not_duplica
     let empty_tasks = tasks.read().unwrap();
     tasks
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -4196,6 +4198,7 @@ fn automatic_session_human_continuation_saves_tasks_records_habits_and_memory_th
     let empty = tasks.read().unwrap();
     tasks
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -5009,6 +5012,7 @@ fn queued_natural_completion_keeps_original_lived_day_across_four_am() {
     let empty = tasks.read().unwrap();
     tasks
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -5087,6 +5091,7 @@ impl CollaborationTaskService for InterleavedTaskNoteEdit {
             let task = &view.tasks[0];
             TaskApplication::new(self.vault.clone(), FixedClock, FileTaskStore).update(
                 personal_dashboard_lib::tasks::TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
                     execution_end: None,
@@ -5124,6 +5129,7 @@ fn interleaved_task_note_edit_is_rechecked_against_the_actual_proposal_baseline(
     let empty = tasks.read().unwrap();
     tasks
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -6382,6 +6388,7 @@ fn repeated_attempted_task_reads_original_id_after_history_failure_and_preserves
         let operation=app.session("vault-a",&session.id).unwrap().task_operations[0].clone();assert_eq!(operation.status,"awaitingApproval");
         let tasks=TaskApplication::new(vault.clone(),clock.clone(),FileTaskStore);let view=tasks.read().unwrap();let task=&view.tasks[0];
         if concurrent_note {tasks.update(personal_dashboard_lib::tasks::TaskUpdateInput{
+            parent_id: None,
             tag_ids: None,
             priority: None,
                 execution_end: None,target_binding:view.target_binding.clone().unwrap(),expected_revision:view.revision.clone().unwrap(),task_id:task.id.clone(),change_id:"later-user-note".into(),name:task.name.clone(),content:Some("Concurrent user note stays intact".into()),date:task.date.clone(),time:task.time.clone(),list_id:None}).unwrap();}

@@ -79,3 +79,11 @@ passes actual Save-click sequences with/without tag creation and clear-end-only.
 Tag management busy-state release and Cancel compact-caption consistency were
 also repaired. See the appended diagnosis in [evidence](../evidence/pdex-19-refinement.md).
 Packaged rerun remains pending; this record does not claim native closure.
+
+The actual submit regression also identified and now verifies Schedule/Move
+availability from More after a Save. Their busy-release repair is retained on
+the original PDEX-19 worker branch; native combined acceptance remains pending.
+
+### Root source-bound native checkpoint — 2026-10-13
+
+[Packaged PDEX-19/24 partial receipt](../evidence/pdex-19-24-native-partial-2026-10-13.json) binds source `2e1c56c10e6b75bb2daaf1a5dbbd94411a549854`, binary SHA-256 `5806c58cef9c046482eb4e858fa8942509e07a7149456c4ef5bf8b80f16045ec`, private synthetic selected Vault/profile and 1280×720 native geometry. Content/High priority/new tag plus explicit time cancellation saved to the real file and survived fresh-process readback; date retained, start/end cleared, tag controls enabled after their own write. The preceding red binary and recovery are retained separately. More release repair is later and still needs combined native verification. This is partial native evidence, not complete ticket/PDEX-26 acceptance or installation. Final review and remaining combinations/widths stay pending.

@@ -14,9 +14,22 @@ pub enum AccentColor {
     Lilac,
 }
 
+/// Local Calendar annotations; never Task, Daily Record, or workday state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarHolidayPreferences {
+    pub enabled: bool,
+    pub china: bool,
+    pub united_states: bool,
+}
+impl Default for CalendarHolidayPreferences {
+    fn default() -> Self { Self { enabled: true, china: true, united_states: true } }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppearancePreferences {
+    pub calendar_holidays: CalendarHolidayPreferences,
     pub accent_color: AccentColor,
     pub background_image_state: BackgroundImageState,
     pub background_image_url: Option<String>,
@@ -26,6 +39,7 @@ pub struct AppearancePreferences {
 impl Default for AppearancePreferences {
     fn default() -> Self {
         Self {
+            calendar_holidays: CalendarHolidayPreferences::default(),
             accent_color: AccentColor::Forest,
             background_image_state: BackgroundImageState::None,
             background_image_url: None,
@@ -64,6 +78,8 @@ struct OwnedBackgroundImage {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AppearanceDocument {
+    #[serde(default)]
+    calendar_holidays: CalendarHolidayPreferences,
     schema_version: u32,
     accent_color: AccentColor,
     #[serde(default)]
@@ -159,6 +175,12 @@ where
         self.commit_with_cleanup(&mut document)
     }
 
+    pub fn set_calendar_holidays(&self, preferences: CalendarHolidayPreferences) -> Result<AppearancePreferences, String> {
+        let mut document = self.load_document()?;
+        document.calendar_holidays = preferences;
+        self.commit_with_cleanup(&mut document)
+    }
+
     pub fn restore_defaults(&self) -> Result<AppearancePreferences, String> {
         let mut document = self.load_document()?;
         let previous = document.background_image.take();
@@ -235,6 +257,7 @@ where
     ) -> Result<AppearancePreferences, String> {
         let Some(background) = &document.background_image else {
             return Ok(AppearancePreferences {
+                calendar_holidays: document.calendar_holidays,
                 accent_color: document.accent_color,
                 background_image_state: BackgroundImageState::None,
                 background_image_url: None,
@@ -243,6 +266,7 @@ where
         };
         if !owned_background_file_name_is_safe(&background.file_name) {
             return Ok(AppearancePreferences {
+                calendar_holidays: document.calendar_holidays,
                 accent_color: document.accent_color,
                 background_image_state: BackgroundImageState::Unavailable,
                 background_image_url: None,
@@ -253,7 +277,8 @@ where
             Ok(Some(bytes)) => bytes,
             Ok(None) | Err(_) => {
                 return Ok(AppearancePreferences {
-                    accent_color: document.accent_color,
+                    calendar_holidays: document.calendar_holidays,
+                accent_color: document.accent_color,
                     background_image_state: BackgroundImageState::Unavailable,
                     background_image_url: None,
                     cleanup_warning,
@@ -262,6 +287,7 @@ where
         };
         let Ok(image) = validated_image(&bytes) else {
             return Ok(AppearancePreferences {
+                calendar_holidays: document.calendar_holidays,
                 accent_color: document.accent_color,
                 background_image_state: BackgroundImageState::Unavailable,
                 background_image_url: None,
@@ -270,6 +296,7 @@ where
         };
         if image.media_type != background.media_type {
             return Ok(AppearancePreferences {
+                calendar_holidays: document.calendar_holidays,
                 accent_color: document.accent_color,
                 background_image_state: BackgroundImageState::Unavailable,
                 background_image_url: None,
@@ -278,6 +305,7 @@ where
         }
         if !self.image_library.image_is_decodable(&bytes) {
             return Ok(AppearancePreferences {
+                calendar_holidays: document.calendar_holidays,
                 accent_color: document.accent_color,
                 background_image_state: BackgroundImageState::Unavailable,
                 background_image_url: None,
@@ -285,6 +313,7 @@ where
             });
         }
         Ok(AppearancePreferences {
+            calendar_holidays: document.calendar_holidays,
             accent_color: document.accent_color,
             background_image_state: BackgroundImageState::Ready,
             background_image_url: Some(format!(
@@ -366,6 +395,7 @@ impl Default for AppearanceDocument {
     fn default() -> Self {
         Self {
             schema_version: APPEARANCE_SCHEMA_VERSION,
+            calendar_holidays: CalendarHolidayPreferences::default(),
             accent_color: AccentColor::Forest,
             background_image: None,
             pending_background_cleanup: Vec::new(),

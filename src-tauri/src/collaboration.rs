@@ -845,6 +845,7 @@ where
                 execution_end,
                 list_id,
             } => self.application.create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: crate::tasks::TaskPriority::None,
                 execution_end: execution_end.clone(),
@@ -866,6 +867,7 @@ where
                 execution_end,
                 list_id,
             } => self.application.update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
                 execution_end: execution_end.clone(),
@@ -938,6 +940,7 @@ where
                 }),
             CollaborationTaskOperation::CreateList { name } => {
                 self.application.create_list(TaskListCreateInput {
+            folder_id: None,
                     target_binding: target_binding.to_owned(),
                     expected_revision,
                     list_id: stable_child_identifier("list", operation_id),

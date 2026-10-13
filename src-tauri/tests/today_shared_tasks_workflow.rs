@@ -141,6 +141,7 @@ fn create_task<C: TodayClock>(
 ) -> TasksView {
     application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -173,6 +174,7 @@ fn today_reads_shared_tasks_with_date_and_archive_semantics_without_legacy_plan_
 
     opened = tasks
         .create_list(TaskListCreateInput {
+            folder_id: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
             list_id: "work".into(),
@@ -271,6 +273,7 @@ fn today_reads_shared_tasks_with_date_and_archive_semantics_without_legacy_plan_
         .unwrap();
     opened = tasks
         .create_list(TaskListCreateInput {
+            folder_id: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
             list_id: "dormant".into(),
@@ -487,6 +490,7 @@ fn today_reads_shared_tasks_with_date_and_archive_semantics_without_legacy_plan_
 
     let rescheduled = tasks
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -599,6 +603,7 @@ fn today_reloads_one_shared_task_after_schedule_lifecycle_and_midnight_changes()
     let mut opened = tasks.read().unwrap();
     opened = tasks
         .create_list(TaskListCreateInput {
+            folder_id: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
             list_id: "work".into(),
@@ -637,6 +642,7 @@ fn today_reloads_one_shared_task_after_schedule_lifecycle_and_midnight_changes()
     clock.set("2026-09-17", "17:06");
     let moved = tasks
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -670,6 +676,7 @@ fn today_reloads_one_shared_task_after_schedule_lifecycle_and_midnight_changes()
     clock.set("2026-09-17", "17:07");
     opened = tasks
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -893,6 +900,7 @@ fn planned_task_interval_survives_restart_shared_views_and_legacy_update() {
     })).unwrap();
     let edited = app.update(legacy).unwrap();
     let listed = app.create_list(TaskListCreateInput {
+            folder_id: None,
         target_binding: edited.target_binding.unwrap(), expected_revision: edited.revision,
         list_id: "interval-list".into(), name: "Synthetic interval list".into(),
     }).unwrap();
