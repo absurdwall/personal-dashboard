@@ -1,5 +1,5 @@
 import {habitSettingsGoalLabel, type HabitGoal, type HabitSettings} from './habit-settings.js';
-import {localizeHabitDetail, type HabitDetail} from './interface-language.js';
+import {localizeHabitDetail, localizeApplicationError, type HabitDetail} from './interface-language.js';
 import type {HabitLocalCompletionState} from './habit-completion.js';
 import type {HabitLocalizedNames} from './habit-presentation.js';
 
@@ -10,7 +10,7 @@ export type DetailHabit=Readonly<{key:string;name:string;localizedNames:HabitLoc
 type Snapshot=Readonly<{catalogTargetBinding:string|null;catalogRevision:string|null;habits:readonly DetailHabit[]}>;
 type Streak=Readonly<{unit:string;current:number;currentConfirmed:boolean;highestKnown:number;highestConfirmed:boolean}>;
 export type HabitDetailsView=Readonly<{
- habit:DetailHabit;catalogRevision:string|null;catalogTargetBinding:string|null;completionRevision:string|null;completionTargetBinding:string|null;
+ habit:DetailHabit;startDateKnown:boolean;catalogRevision:string|null;catalogTargetBinding:string|null;completionRevision:string|null;completionTargetBinding:string|null;
  statistics:Readonly<{totalAttainedDays:number;monthAttainedDays:number;totalExact:boolean;monthExact:boolean;currentStreak:number;currentConfirmed:boolean;highestKnownStreak:number;highestConfirmed:boolean;unit:string;streaks:readonly Streak[];coverageFrom:string;coverageTo:string;unknownDays:number}>;
  sourceState:string;sourceGeneratedAt:string|null;sourceMessage:string;
  sources:readonly Readonly<{generatedAt:string;rangeFrom:string;rangeTo:string;producerLabel:string}>[];sourceWarnings:readonly string[];
@@ -105,7 +105,7 @@ export class HabitDetailsController {
   if(this.message)elements.push(this.button(this.copy('重新读取','Read again'),()=>{this.message='';void this.load();}));
   const detail=this.detail;if(!detail){pane.replaceChildren(...elements);return;}
   const habit=detail.habit,language=this.ports.language();const heading=this.line(`${habit.settings?.emoji?habit.settings.emoji+' ':''}${this.ports.name(habit)}`,'h3');
-  const identity=document.createElement('header');identity.className='habit-detail-identity';identity.append(heading,this.line(`${this.copy('开始日期','Start date')}: ${habit.settings?.startDate??this.copy('来源未提供','Not supplied by source')}`),this.line(`${this.copy('当前目标','Current goal')}: ${habitSettingsGoalLabel(habit.currentGoal??{kind:'unconfigured'},language)}`));
+  const identity=document.createElement('header');identity.className='habit-detail-identity';identity.append(heading,this.line(`${this.copy('开始日期','Start date')}: ${detail.startDateKnown?habit.settings?.startDate??this.copy('未知','unknown'):this.copy('来源未提供原始开始日期','Original start date not supplied by source')}`),this.line(`${this.copy('当前目标','Current goal')}: ${habitSettingsGoalLabel(habit.currentGoal??{kind:'unconfigured'},language)}`));
   if(habit.pendingGoal)identity.append(this.line(`${this.copy('待生效','Pending')} ${habit.pendingGoal.effectiveDate}: ${habitSettingsGoalLabel(habit.pendingGoal.goal,language)}`));
   if(habit.partialCycle)identity.append(this.line(this.copy('部分周期，不计完整连续。','Partial cycle, excluded from full-cycle streaks.')));
   if(!habit.active)identity.append(this.line(this.copy('已停用；停用期间不要求打卡。恢复从新活动段开始。','Inactive. No check-in is required during the pause. Restore starts a new activity segment.')));
@@ -123,7 +123,9 @@ export class HabitDetailsController {
   for(const revision of detail.goalRevisions)provenance.append(this.line(`${revision.effectiveDate} — ${revision.validThrough??this.copy('持续 / 至下一目标','ongoing / until next goal')}: ${habitSettingsGoalLabel(revision.goal,language)}`));
   for(const change of detail.activityChanges)provenance.append(this.line(`${change.livedDate}: ${change.active?this.copy('恢复','Restored'):this.copy('停用','Deactivated')} · ${change.changedAt}`));
   const sourceStates:Record<string,string>={ready:this.copy('已读取','Read'),stale:this.copy('来源较旧','Source stale'),retained:this.copy('保留原读数','Previous reading retained'),missing:this.copy('来源缺失','Source missing'),error:this.copy('来源错误','Source error'),unconfigured:this.copy('未配置来源','Source unconfigured')};
+  if(habit.settings&&!detail.startDateKnown)provenance.append(this.line(`${this.copy('本地设置的起始区间','Configured start range')}: ${habit.settings.startDate}`));
   provenance.append(this.line(`${this.copy('来源状态','Source state')}: ${sourceStates[detail.sourceState]??detail.sourceState} · ${detail.sourceGeneratedAt??this.copy('未知','unknown')}`));
+  if(detail.sourceMessage)provenance.append(this.line(localizeApplicationError(detail.sourceMessage,language)));
   for(const source of detail.sources)provenance.append(this.line(`${source.producerLabel} · ${source.rangeFrom} — ${source.rangeTo} · ${source.generatedAt}`));
   for(const warning of detail.sourceWarnings)provenance.append(this.line(warning));elements.push(provenance);
   const history=document.createElement('section');history.className='habit-detail-records';history.append(this.line(this.copy('历史记录','History records'),'h4'),this.line(this.copy(`已显示 ${detail.records.length} / ${detail.recordCount} 个有记录或覆盖的日期；未读取缺口保持未知。`,`Showing ${detail.records.length} / ${detail.recordCount} dates with evidence or coverage. Unread gaps remain unknown.`),'small'));

@@ -77,6 +77,7 @@ pub(crate) fn retain_source<S: crate::today::HabitCompletionStore>(
 #[serde(rename_all = "camelCase")]
 pub struct HabitDetailsView {
     pub habit: HabitView,
+    pub start_date_known: bool,
     pub statistics: HabitStatisticsView,
     pub catalog_revision: Option<String>,
     pub catalog_target_binding: Option<String>,
@@ -447,6 +448,7 @@ pub(crate) fn details_view(
             .map(|definition| definition.activity_changes.clone())
             .unwrap_or_default(),
         goal_revisions: habit.goal_revisions.clone(),
+        start_date_known: !sourced,
         habit,
         statistics,
         catalog_revision: snapshot.catalog_revision.clone(),

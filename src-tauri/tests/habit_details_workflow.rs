@@ -551,6 +551,7 @@ fn source_actual_times_without_historical_target_are_unknown_and_current_goal_is
         include_str!("fixtures/habits-v1-complete.json"),
     );
     let detail = app(vault.path()).habit_details("wake", 0, 20).unwrap();
+    assert!(!detail.start_date_known);
     assert_eq!(detail.statistics.total_attained_days, 1);
     assert!(!detail.statistics.total_exact);
     assert!(!detail.statistics.month_exact);
@@ -568,5 +569,189 @@ fn source_actual_times_without_historical_target_are_unknown_and_current_goal_is
             .cell
             .counts_as_completion,
         false
+    );
+}
+
+#[test]
+fn frequency_changes_keep_daily_and_weekly_peaks_separate_and_exclude_partial_first_week() {
+    let vault = TempVault::new("frequency-stats");
+    let moment = std::rc::Rc::new(std::cell::RefCell::new("2026-08-03".into()));
+    let clock = DetailClock(moment.clone());
+    let application = TodayApplication::new(SelectedVault(vault.path().into()), NoSelection, clock);
+    let opened = application.habits().unwrap();
+    application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            habit_key: "local-move".into(),
+            change_id: "frequency-create".into(),
+            target_binding: opened.catalog_target_binding.unwrap(),
+            expected_revision: opened.catalog_revision,
+            settings: HabitSettings {
+                name: "Move".into(),
+                emoji: None,
+                group: None,
+                start_date: "2026-08-03".into(),
+                goal: HabitGoal::DailyCompletion,
+            },
+        })
+        .unwrap();
+    for date in ["2026-08-03", "2026-08-04", "2026-08-05"] {
+        *moment.borrow_mut() = date.into();
+        let view = application.habits().unwrap();
+        application
+            .set_local_habit_completion(HabitCompletionMutationInput {
+                habit_key: "local-move".into(),
+                lived_date: date.into(),
+                completed: true,
+                change_id: format!("switch-{date}"),
+                target_binding: view.completion_target_binding.unwrap(),
+                expected_revision: view.completion_revision,
+            })
+            .unwrap();
+    }
+    let view = application.habits().unwrap();
+    let mut settings = view.habit("local-move").unwrap().settings.clone().unwrap();
+    settings.goal = HabitGoal::WeeklyDays { days: 3 };
+    application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            habit_key: "local-move".into(),
+            change_id: "weekly-plan".into(),
+            target_binding: view.catalog_target_binding.unwrap(),
+            expected_revision: view.catalog_revision,
+            settings,
+        })
+        .unwrap();
+    for date in [
+        "2026-08-06",
+        "2026-08-07",
+        "2026-08-08",
+        "2026-08-10",
+        "2026-08-11",
+        "2026-08-12",
+    ] {
+        *moment.borrow_mut() = date.into();
+        let view = application.habits().unwrap();
+        application
+            .set_local_habit_completion(HabitCompletionMutationInput {
+                habit_key: "local-move".into(),
+                lived_date: date.into(),
+                completed: true,
+                change_id: format!("switch-{date}"),
+                target_binding: view.completion_target_binding.unwrap(),
+                expected_revision: view.completion_revision,
+            })
+            .unwrap();
+    }
+    let detail = application.habit_details("local-move", 0, 30).unwrap();
+    assert_eq!(detail.statistics.total_attained_days, 9);
+    assert_eq!(detail.statistics.unit, "weeks");
+    assert_eq!(detail.statistics.current_streak, 1);
+    assert_eq!(detail.statistics.highest_known_streak, 1);
+    assert_eq!(
+        detail
+            .statistics
+            .streaks
+            .iter()
+            .find(|streak| streak.unit == "days")
+            .unwrap()
+            .highest_known,
+        3
+    );
+}
+
+#[derive(Clone)]
+struct InterruptedLifecycle(std::rc::Rc<std::cell::Cell<bool>>);
+impl personal_dashboard_lib::today::HabitCompletionStore for InterruptedLifecycle {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
+        personal_dashboard_lib::today::FileHabitCompletionStore.load(path)
+    }
+    fn create_new(&self, path: &Path, bytes: &[u8]) -> Result<(), String> {
+        personal_dashboard_lib::today::FileHabitCompletionStore.create_new(path, bytes)
+    }
+    fn save_if_unchanged(&self, path: &Path, expected: &[u8], bytes: &[u8]) -> Result<(), String> {
+        personal_dashboard_lib::today::FileHabitCompletionStore
+            .save_if_unchanged(path, expected, bytes)?;
+        if self.0.replace(false) {
+            Err("Synthetic interruption after durable lifecycle save".into())
+        } else {
+            Ok(())
+        }
+    }
+}
+#[test]
+fn interrupted_lifecycle_write_retries_one_receipt_and_conflicts_preserve_saved_activity() {
+    use personal_dashboard_lib::today::{FileDayTaskStore, FileTodayRecordStore};
+    let vault = TempVault::new("lifecycle-retry");
+    let application = app(vault.path());
+    let view = application.habits().unwrap();
+    application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            habit_key: "local-safe".into(),
+            change_id: "safe-create".into(),
+            target_binding: view.catalog_target_binding.unwrap(),
+            expected_revision: view.catalog_revision,
+            settings: HabitSettings {
+                name: "Safe".into(),
+                emoji: None,
+                group: None,
+                start_date: "2026-09-08".into(),
+                goal: HabitGoal::DailyCompletion,
+            },
+        })
+        .unwrap();
+    let view = application.habits().unwrap();
+    let input = HabitLifecycleMutationInput {
+        habit_key: "local-safe".into(),
+        change_id: "pause-safe".into(),
+        target_binding: view.catalog_target_binding.unwrap(),
+        expected_revision: view.catalog_revision,
+        active: false,
+    };
+    let interrupted = TodayApplication::with_every_store(
+        SelectedVault(vault.path().into()),
+        NoSelection,
+        FixedClock,
+        FileTodayRecordStore,
+        personal_dashboard_lib::habits::FileHabitSnapshotStore,
+        FileDayTaskStore,
+        InterruptedLifecycle(std::rc::Rc::new(std::cell::Cell::new(true))),
+    );
+    assert!(interrupted.set_habit_active(input.clone()).is_err());
+    let reopened = app(vault.path());
+    assert!(
+        !reopened
+            .habits()
+            .unwrap()
+            .habit("local-safe")
+            .unwrap()
+            .active
+    );
+    reopened.set_habit_active(input.clone()).unwrap();
+    assert_eq!(
+        reopened
+            .habit_details("local-safe", 0, 20)
+            .unwrap()
+            .activity_changes
+            .len(),
+        1
+    );
+    let mut stale = input;
+    stale.change_id = "stale-restore".into();
+    stale.active = true;
+    assert!(reopened.set_habit_active(stale).is_err());
+    assert!(
+        !app(vault.path())
+            .habits()
+            .unwrap()
+            .habit("local-safe")
+            .unwrap()
+            .active
+    );
+    assert_eq!(
+        app(vault.path())
+            .habit_details("local-safe", 0, 20)
+            .unwrap()
+            .activity_changes
+            .len(),
+        1
     );
 }
