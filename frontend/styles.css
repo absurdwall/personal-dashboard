@@ -10600,3 +10600,13 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   color: var(--parity-muted); font-size: 8px; line-height: 12px; pointer-events: none;
 }
 .calendar-day-holidays[hidden],.calendar-day-holidays:empty { display: none; }
+
+/* PDEX-21 overview consumes the available reading height; fine mode retains the hour scale. */
+.today-continuous-axis.is-overview { --today-axis-heading-height: 0px; padding-block: 4px; }
+.today-continuous-axis.is-overview .today-axis-lane-heading { visibility: hidden; overflow: hidden; }
+.today-continuous-axis.is-overview .today-axis-disclosure { min-height: 22px; padding-block: 2px; margin-block: 2px; }
+.today-axis-marker-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-continuous-axis.is-overview .today-axis-marker-source-status { display: none; }
+.today-axis-task-dialog { width: min(28rem, calc(100vw - 1rem)); max-height: calc(100dvh - 1rem); overflow: auto; border: 1px solid var(--parity-border); border-radius: 12px; background: var(--parity-surface); color: var(--parity-ink); }
+.today-axis-task-dialog::backdrop { background: rgb(0 0 0 / .2); }
+.plan-time-editor { max-height: calc(100dvh - 1rem); overflow: auto; background: var(--parity-surface); color: var(--parity-ink); }

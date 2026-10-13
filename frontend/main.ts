@@ -5527,6 +5527,31 @@ function todayTimelineItem(block: MorningBlockView): HTMLLIElement {
   return item;
 }
 
+let todayAxisZoomed = false;
+let todayAxisAvailableHeight = 400;
+document.querySelector<HTMLButtonElement>("#today-axis-zoom")?.addEventListener("click", event => {
+  todayAxisZoomed = !todayAxisZoomed;
+  const button = event.currentTarget as HTMLButtonElement;
+  button.setAttribute("aria-pressed", String(todayAxisZoomed));
+  setCopy(button, todayAxisZoomed ? "today.axisZoomOut" : "today.axisZoomIn");
+  todayAxisFollowState = onManualScroll(todayAxisFollowState);
+  if(currentTodayView)renderTodayTimeAxis(currentTodayView);
+});
+function fitTodayAxis(): void {
+  if (!todayAxisScrollSurface || !todayContinuousAxis || currentTodayPhase !== "daytime") return;
+  const surface = todayAxisScrollSurface.getBoundingClientRect();
+  if (!surface.width) return;
+  const bottom = Math.min(window.innerHeight, workspaceInformation?.getBoundingClientRect().bottom ?? window.innerHeight);
+  todayAxisAvailableHeight = Math.max(180, bottom - surface.top - 16);
+  const hours = (axisBounds()[1] - axisBounds()[0]) / 60;
+  todayContinuousAxis.classList.toggle("is-overview", !todayAxisZoomed && window.innerWidth >= 1000);
+  const chrome = 64; // heading, both lived-day disclosures and axis padding
+  const plotHeight = todayAxisZoomed || window.innerWidth < 1000 ? hours * 80 : Math.max(80, todayAxisAvailableHeight - chrome);
+  todayAxisScrollSurface.style.maxHeight = `${todayAxisAvailableHeight}px`;
+  todayContinuousAxis.style.setProperty("--today-axis-hour-height", `${plotHeight / hours}px`);
+  todayContinuousAxis.style.setProperty("--today-axis-plot-height", `${plotHeight}px`);
+}
+window.addEventListener("resize", () => { fitTodayAxis(); if(currentTodayView)renderTodayTimeAxis(currentTodayView); });
 let todayAxisEarlyExpanded = false;
 let todayAxisLateExpanded = false;
 let todayAxisRenderedDate: string | null = null;
@@ -5549,10 +5574,6 @@ function formatAxisMinute(minute: number): string {
 
 type TodayAxisLaneId = "arrangement" | "facts" | "tasks" | "arrangement-unlocated" | "facts-unlocated";
 
-function hasExactPlanTime(entry: TimeAxisEntryView): boolean {
-  return entry.planPrecision === "exactPoint" || entry.planPrecision === "exactRange";
-}
-
 function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): string {
   if(entry.task) {
     const task=currentTodayView?.tasks.tasks.find(task=>task.id===entry.task!.id);
@@ -5568,7 +5589,7 @@ function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): s
     return t("today.unlocatedLabel");
   }
   const start = formatAxisMinute(entry.startMinute);
-  if (entry.planPrecision === "broad") return `${entry.period} · ${t("today.planApproximateReference", { time: start })}`;
+  if (entry.planPrecision === "broad") return entry.period ?? "";
   if (entry.planPrecision === "approximatePoint") {
     const label = t("today.planApproximateReference", { time: start });
     return entry.startMinute >= 1440 ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
@@ -5584,14 +5605,14 @@ function appendAxisEntryTimeLabel(
   entry: TimeAxisEntryView,
   lane: TodayAxisLaneId,
 ): void {
+  if (entry.planPrecision === "broad") { target.textContent = entry.period ?? ""; return; }
   let key: InterfaceCopyKey;
   let variables: Record<string, string> = {};
   if (!entry.task && entry.startMinute === null) {
     if (entry.period) target.append(`${entry.period} · `);
     key = entry.period ? "today.unlocatedPlanLabel" :
       lane === "facts" || lane === "facts-unlocated" ? "today.unlocatedConfirmedFactLabel" : "today.unlocatedLabel";
-  } else if (!entry.task && (entry.planPrecision === "broad" || entry.planPrecision === "approximatePoint")) {
-    if (entry.planPrecision === "broad") target.append(`${entry.period} · `);
+  } else if (!entry.task && entry.planPrecision === "approximatePoint") {
     key = "today.planApproximateReference";
     variables = { time: formatAxisMinute(entry.startMinute!) };
   } else {
@@ -5700,14 +5721,13 @@ function axisEntryDetails(
     metadata.append(continuation);
   }
   details.append(metadata);
-  // Broad or unlocated plans are readable summaries; only precise timeline
-  // markers expose the plan-time editor.
-  if (lane !== "arrangement" || !hasExactPlanTime(entry)) return details;
+  // Editable plans use the same revision-bound time editor, including broad periods.
+  if (lane !== "arrangement" && lane !== "arrangement-unlocated") return details;
   if(entry.task) {
     const edit=document.createElement("button");edit.type="button";setCopy(edit,"tasks.editLabel",{task:entry.text});
     edit.addEventListener("click",()=>{taskFocusRequestId=entry.task!.id;showWorkspaceDestination("tasks");});details.append(edit);
   }
-  if (lane === "arrangement") {
+  if (lane === "arrangement" || lane === "arrangement-unlocated") {
     if (!entry.planId || !entry.timeEditable || entry.continuesFromPreviousDay || entry.continuesIntoNextDay) {
       const unavailable = document.createElement("p");
       setCopy(unavailable, entry.continuesFromPreviousDay || entry.continuesIntoNextDay ? "today.planTimeOutsideWindow" : "today.planTimeUnavailable");
@@ -5721,6 +5741,52 @@ function axisEntryDetails(
     details.append(edit);
   }
   return details;
+}
+
+function showTodayAxisDialog(dialog: HTMLDialogElement, origin: HTMLElement | null): void {
+  const outer = workspaceInformation?.scrollTop ?? 0;
+  const axis = todayAxisScrollSurface?.scrollTop ?? 0;
+  const horizontal = todayAxisScrollSurface?.scrollLeft ?? 0;
+  const restore = () => {
+    if(workspaceInformation)workspaceInformation.scrollTop = outer;
+    if(todayAxisScrollSurface){todayAxisScrollSurface.scrollTop=axis;todayAxisScrollSurface.scrollLeft=horizontal;}
+  };
+  dialog.addEventListener("close", () => {restore();dialog.remove();}, {once:true});
+  document.body.append(dialog);
+  dialog.showModal();
+  const marker = origin?.getBoundingClientRect();
+  if(marker) {
+    const box = dialog.getBoundingClientRect();
+    dialog.style.margin="0";
+    dialog.style.left=`${Math.max(8, Math.min(window.innerWidth-box.width-8, marker.right+8))}px`;
+    dialog.style.top=`${Math.max(8, Math.min(window.innerHeight-box.height-8, marker.top))}px`;
+  }
+  restore();
+}
+
+function openTodayAxisTaskDetails(taskId: string, origin: HTMLElement | null): void {
+  const view=taskSurfaceView("today"),task=view?.tasks.find(task=>task.id===taskId);
+  if(!view || !task){setCopy(todayTaskStatus,"tasks.refreshFirst");return;}
+  const binding=view.targetBinding;
+  const dialog=document.querySelector<HTMLDialogElement>("dialog[data-today-task-details]") ?? document.createElement("dialog");
+  dialog.dataset.todayTaskDetails="";dialog.dataset.taskId=taskId;dialog.className="today-axis-task-dialog";
+  const writable=Boolean(binding&&view.revision)&&!["error","unconfigured"].includes(view.state)&&taskOperationCount===0;
+  const form=taskEditor(task,writable,view,"today",true,true).querySelector<HTMLFormElement>("form[data-task-editor]")!;
+  form.classList.remove("task-editor-inline");
+  const status=document.createElement("p");status.dataset.todayTaskDetailsStatus="";status.setAttribute("role","status");form.append(status);
+  dialog.replaceChildren(form);
+  form.addEventListener("input",()=>stashTaskEditDraft(form));form.addEventListener("change",()=>stashTaskEditDraft(form));
+  form.addEventListener("submit",event=>{
+    event.preventDefault();
+    if(taskSurfaceBinding("today")!==binding){setCopy(status,"tasks.refreshFirst");return;}
+    stashTaskEditDraft(form);
+    void pendingWrites.track((async()=>{const saved=await updateTask(taskId,form,"today");if(saved)dialog.close();return saved;})());
+  });
+  form.querySelector<HTMLButtonElement>("[data-task-editor-close]")?.addEventListener("click",()=>dialog.close());
+  dialog.addEventListener("cancel",event=>{if(taskOperationCount>0)event.preventDefault();});
+  if(binding&&!taskEditDrafts.has(taskDraftKey(binding,taskId)))stashTaskEditDraft(form);
+  if(!dialog.open)showTodayAxisDialog(dialog,origin);
+  form.querySelector<HTMLTextAreaElement>("[data-task-content]")?.focus({preventScroll:true});
 }
 
 function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
@@ -5739,7 +5805,8 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
   title.textContent = entry.text;
   const help = document.createElement("p");
   setCopy(help, "today.planTimeHelp");
-  form.append(heading, title, help);
+  const expression=document.createElement("p");setCopy(expression,"today.planOriginalPeriod",{period:entry.period ?? ""});
+  form.append(heading, title, expression, help);
   const precisionLabel = document.createElement("label");
   const precisionCaption = document.createElement("span");
   setCopy(precisionCaption, "today.planPrecision");
@@ -5807,6 +5874,29 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
   recheck.hidden = true;
   let expectedRevision = loaded.revision;
   let savedRevision = recovery?.savedRevision;
+  let cancellation = false;
+  const remove=document.createElement("button");remove.type="button";setCopy(remove,"today.planRemove");
+  remove.disabled=Boolean(recovery);
+  remove.addEventListener("click",()=>{
+    if(submitted || todayOperationCount>0)return;
+    submitted=true;cancellation=true;
+    remove.disabled=save.disabled=precision.disabled=true;
+    start.time.disabled=end.time.disabled=start.nextDay.disabled=end.nextDay.disabled=true;
+    updateTodayOperationState(1);
+    const request=todayPresentationRequests.begin();
+    void pendingWrites.track((async()=>{
+      try {
+        const result=await window.__TAURI__.core.invoke<Readonly<{savedRevision:string;view:TodayView|null;refreshError:string|null}>>("cancel_plan_entry",{input:{date:loaded.date,targetBinding:loaded.targetBinding,expectedRevision,planId:entry.planId,operationId:`plan-cancel-${crypto.randomUUID()}`}});
+        savedRevision=result.savedRevision;
+        if(result.view&&todayPresentationRequests.isCurrent(request)&&currentTodayView?.date===loaded.date&&currentTodayView.targetBinding===loaded.targetBinding){
+          renderToday(result.view);showTodayMutationCopy("today.planRemoved","ready");showTodayAxisEditCopy("today.planRemoved");dialog.close();return true;
+        }
+        setCopyError(status,"today.planReadbackDiagnostic",result.refreshError??t("today.planSavedNeedsReadback"));
+      } catch(error){setCopyError(status,"today.planUnconfirmedError",error);}
+      finally{updateTodayOperationState(-1);}
+      recheck.hidden=false;return false;
+    })());
+  });
   recheck.addEventListener("click", () => {
     if (todayOperationCount > 0) return;
     recheck.disabled = true;
@@ -5825,8 +5915,8 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
         // A successful command's whole-document revision confirms its readback
         // without guessing an updated source ID from its title or position.
         if (savedRevision && fresh.revision === savedRevision) {
-          showTodayMutationCopy("today.planSaved", "ready");
-          showTodayAxisEditCopy("today.planSaved");
+          showTodayMutationCopy(cancellation ? "today.planRemoved" : "today.planSaved", "ready");
+          showTodayAxisEditCopy(cancellation ? "today.planRemoved" : "today.planSaved");
           dialog.close();
           return;
         }
@@ -5840,6 +5930,7 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
         // Keep the proposed values and require a deliberate subsequent submit.
         expectedRevision = fresh.revision;
         submitted = false;
+        remove.disabled=false;
         save.disabled = precision.disabled = start.time.disabled = start.nextDay.disabled = false;
         end.nextDay.disabled = false;
         updatePrecision();
@@ -5853,7 +5944,7 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
       }
     })();
   });
-  form.append(status, save, recheck, close);
+  form.append(status, save, recheck, remove, close);
   if (recovery) {
     setCopyError(status, recovery.savedRevision ? "today.planReadbackDiagnostic" : "today.planUnconfirmedError", recovery.notice);
     recheck.hidden = false;
@@ -5877,10 +5968,11 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
       setCopy(status, "today.planInvalidTime");
       return;
     }
+    cancellation=false;
     const operationId = `plan-time-${crypto.randomUUID()}`;
     // A captured source/revision stays bound even when the displayed date or Vault changes.
     submitted = true;
-    save.disabled = precision.disabled = true;
+    remove.disabled = save.disabled = precision.disabled = true;
     start.time.disabled = end.time.disabled = start.nextDay.disabled = end.nextDay.disabled = true;
     const request = todayPresentationRequests.begin();
     updateTodayOperationState(1);
@@ -5913,9 +6005,7 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
     void pendingWrites.track(operation);
   });
   dialog.append(form);
-  dialog.addEventListener("close", () => dialog.remove(), { once: true });
-  document.body.append(dialog);
-  dialog.showModal();
+  showTodayAxisDialog(dialog, [...(todayTimedEvents?.querySelectorAll<HTMLElement>("[data-plan-id]") ?? [])].find(marker=>marker.dataset.planId===entry.planId) ?? null);
 }
 
 function openTodayAxisTaskCreate(loaded: TodayView, startMinute: number, endMinute: number): void {
@@ -6166,16 +6256,18 @@ function renderTodayTimeAxisEntries(
   ordered.forEach(({ entry, index }) => {
     detailElements.set(index, axisEntryDetails(entry, entry.lane, index));
   });
-  const lowerDetailEntries = ordered.filter(({ entry }) => entry.lane !== "arrangement");
+  const lowerDetailEntries = ordered.filter(({ entry }) => entry.lane === "facts");
   todayTimedDetails.replaceChildren(...lowerDetailEntries.map(({ index }) => detailElements.get(index)!));
   todayTimedDetails.toggleAttribute("hidden", lowerDetailEntries.length === 0);
   const [visibleStart, visibleEnd] = axisBounds();
+  const plotHeight = todayContinuousAxis?.querySelector<HTMLElement>(".today-axis-plot")?.getBoundingClientRect().height ?? 0;
+  const labelMinutes = plotHeight > 0 ? Math.max(48, 32 * (visibleEnd-visibleStart) / plotHeight) : 48;
   const timedEntries = ordered.filter(({ entry }) => entry.startMinute !== null &&
     entry.startMinute < visibleEnd && (entry.endMinute ?? entry.startMinute) >= visibleStart);
   const visibleEntries = timedEntries.map(({ entry: original, index }) => {
     const entry = { ...original, startMinute: Math.max(original.startMinute!, visibleStart),
       endMinute: original.endMinute === null ? null : Math.min(original.endMinute, visibleEnd) };
-    return { original, entry, index, markerLayout: axisMarkerLayout(entry, [visibleStart, visibleEnd]) };
+    return { original, entry, index, markerLayout: axisMarkerLayout(entry, [visibleStart, visibleEnd], labelMinutes) };
   });
   const stackPlacements = axisOverlapPlacements(
     visibleEntries.map(({ entry }) => ({
@@ -6183,6 +6275,7 @@ function renderTodayTimeAxisEntries(
       endMinute: entry.endMinute,
     })),
     [visibleStart, visibleEnd],
+    labelMinutes,
   );
   // Dense collisions retain readable targets; the same axis can scroll
   // horizontally in a narrow window rather than clipping every card.
@@ -6206,7 +6299,7 @@ function renderTodayTimeAxisEntries(
       marker.classList.toggle("is-completed", entry.task?.state === "completed");
       marker.classList.toggle("is-time-passed", entry.task?.timePassed === true);
       if (entry.task) marker.dataset.taskId = entry.task.id;
-      const editablePlan = original.lane === "arrangement" && hasExactPlanTime(original) && original.planId && original.timeEditable &&
+      const editablePlan = original.lane === "arrangement" && original.planId && original.timeEditable &&
         !original.continuesFromPreviousDay && !original.continuesIntoNextDay;
       if (editablePlan) marker.dataset.planId = original.planId!;
       marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);
@@ -6227,7 +6320,8 @@ function renderTodayTimeAxisEntries(
       markersByStack.set(placement.stackId, [...(markersByStack.get(placement.stackId) ?? []), marker]);
 
       const readOnlyArrangement = original.lane === "arrangement" && !editablePlan;
-      const link = document.createElement(readOnlyArrangement ? "span" : "a");
+      const link = document.createElement(readOnlyArrangement ? "button" : "a");
+      if(link instanceof HTMLButtonElement)link.type="button";
       if (link instanceof HTMLAnchorElement) {
         link.href = `#today-axis-${entry.lane}-entry-${index}`;
       }
@@ -6257,7 +6351,14 @@ function renderTodayTimeAxisEntries(
       appendAxisEntryMetadata(metadata, entry, entry.lane);
       link.append(timeLabel, title, metadata);
       link.classList.toggle("is-short-range", durationMinutes !== null && markerLayout.isCenteredLabel);
-      if (!readOnlyArrangement) {
+      if (readOnlyArrangement) {
+        link.addEventListener("click",()=>{
+          const dialog=document.createElement("dialog");dialog.className="plan-time-editor";
+          const details=detailElements.get(index)!;details.open=true;
+          const close=document.createElement("button");close.type="button";setCopy(close,"today.planCancel");close.addEventListener("click",()=>dialog.close());
+          dialog.append(details,close);showTodayAxisDialog(dialog,marker);
+        });
+      } else {
         link.addEventListener("click", (event) => {
           event.preventDefault();
           const members = markersByStack.get(placement.stackId) ?? [];
@@ -6266,6 +6367,7 @@ function renderTodayTimeAxisEntries(
             openPlanTimeEditor(original);
             return;
           }
+          if(original.task){openTodayAxisTaskDetails(original.task.id,marker);return;}
           const target = detailElements.get(index);
           if (!target) return;
           target.open = true;
@@ -6372,7 +6474,7 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
   });
   todayHourTicks?.querySelectorAll<HTMLElement>(".today-hour-tick").forEach((tick) => {
     const tickMinute = Number(tick.dataset.minute);
-    tick.hidden = tickMinute < axisBounds()[0] || tickMinute > axisBounds()[1] || !Number.isInteger(tickMinute) || !hourTickIsClearFromNow(tickMinute, showNow ? currentMinute : null);
+    tick.hidden = tickMinute < axisBounds()[0] || tickMinute > axisBounds()[1] || !Number.isInteger(tickMinute) || (!todayAxisZoomed && window.innerWidth >= 1000 && tickMinute % 120 !== 0) || !hourTickIsClearFromNow(tickMinute, showNow ? currentMinute : null);
   });
   if (todayLocateNowButton) todayLocateNowButton.hidden = !showNow;
   if (showNow && currentMinute !== null && todayCurrentTime) {
@@ -6407,10 +6509,14 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
     todayUnlocatedOverride = null;
     todaySidebarReadingPosition = null;
     const now = view.isToday && currentTime ? livedAxisMinute(currentTime) : null;
-    todayAxisEarlyExpanded = earlyCount > 0 || (now !== null && now < 360);
-    todayAxisLateExpanded = lateCount > 0 || (now !== null && now >= 1440);
+    todayAxisEarlyExpanded = false;
+    todayAxisLateExpanded = false;
   }
-  todayContinuousAxis.style.setProperty("--today-axis-plot-height", `calc(${(axisBounds()[1] - axisBounds()[0]) / 60} * var(--today-axis-hour-height))`);
+  fitTodayAxis();
+  window.requestAnimationFrame(() => {
+    const previous=todayContinuousAxis.style.getPropertyValue("--today-axis-plot-height");fitTodayAxis();
+    if(previous!==todayContinuousAxis.style.getPropertyValue("--today-axis-plot-height"))renderTodayTimeAxisEntries(entries,view.timeAxis.unlocatedCurrentArrangement,view.timeAxis.unlocatedConfirmedFacts);
+  });
   for (const [id, expanded] of [["today-expand-early", todayAxisEarlyExpanded], ["today-expand-late", todayAxisLateExpanded]] as const) {
     const button = document.getElementById(id);
     if (button) {
@@ -6756,6 +6862,7 @@ function hasTodayEditingTarget(view: TodayView): boolean {
     taskEditorForms("today").some((form) => !form.hidden ||
       (view.tasks.targetBinding && form.dataset.taskEditor &&
         taskEditDrafts.has(taskDraftKey(view.tasks.targetBinding, form.dataset.taskEditor)))) ||
+    Boolean(document.querySelector("dialog.plan-time-editor[open],dialog[data-axis-task-create][open]")) ||
     todayOperationCount > 0 || taskOperationCount > 0
   );
 }
@@ -7784,7 +7891,8 @@ function scrollTodayAxisToNow(): void {
 function scheduleTodayAxisFollowScroll(): void {
   window.requestAnimationFrame(() => {
     window.requestAnimationFrame(() => {
-      if (todayAxisFollowState === "following") scrollTodayAxisToNow();
+      fitTodayAxis();
+      if (todayAxisZoomed && todayAxisFollowState === "following") scrollTodayAxisToNow();
     });
   });
 }
@@ -11465,7 +11573,7 @@ type TaskSurface = "tasks" | "today" | "calendar";
 
 function taskSurfaceStatus(surface: TaskSurface): HTMLElement | null {
   if (surface === "tasks") return tasksStatus;
-  if (surface === "today") return todayTaskStatus;
+  if (surface === "today") return document.querySelector<HTMLElement>("dialog[data-today-task-details][open] [data-today-task-details-status]") ?? todayTaskStatus;
   return calendarTaskDetailsDialog?.open ? calendarTaskDetailsDialog.querySelector<HTMLElement>("#calendar-task-details-status") : calendarTaskCreateDialog?.open ? calendarTaskCreateStatus : calendarTaskStatus;
 }
 
@@ -11531,6 +11639,12 @@ function renderTaskSurface(surface: TaskSurface, view: TasksView): void {
   } else if (surface === "today" && currentTodayView) {
     renderTodayTasks(currentTodayView);
     renderTodayTimeAxis(currentTodayView);
+    const dialog=document.querySelector<HTMLDialogElement>("dialog[data-today-task-details][open]");
+    if(dialog?.dataset.taskId) {
+      const task=view.tasks.find(task=>task.id===dialog.dataset.taskId);
+      if(task&&!task.deletedAt)openTodayAxisTaskDetails(task.id,null);
+      else {setCopy(taskSurfaceStatus("today"),"tasks.refreshFirst");dialog.querySelectorAll<HTMLInputElement>("input,textarea,select,button[type=submit]").forEach(control=>control.disabled=true);}
+    }
   } else if (surface === "calendar" && currentCalendarSummaryView) {
     renderCalendarTasks(currentCalendarSummaryView);
   }
