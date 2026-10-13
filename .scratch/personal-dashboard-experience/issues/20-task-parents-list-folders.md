@@ -57,3 +57,10 @@ Integration: codex/dashboard-experience-refinement-integration
 Implementation base: dc5b09cd5a8ce6d4c45664bc3d610f6b614492e7
 Spec/ticket snapshot: 918e7e0d9c4b2c524c429bfd309482e328bc4c91
 Direct dependency PDEX-19 application and production-DOM prerequisites are verified at integration dc5b09cd5a8ce6d4c45664bc3d610f6b614492e7; its independent review/native acceptance remain separate. This claim authorizes dependent implementation, not closure of PDEX-19 or final acceptance. Same confirmed application and DOM seams apply.
+
+## Application increment — 2026-10-13
+
+Ordinary parent identities and one-level folder/list relationships are implemented
+at the existing application/storage seam with exact patch/retry history. Real
+Task application suite passes 38 tests; two public controller tracers pass.
+UI and complete integration verification continue. [Evidence](../evidence/pdex-20-refinement.md).

@@ -749,6 +749,11 @@ fn create_task(
 }
 
 #[tauri::command]
+fn manage_task_folder(application:State<'_,DesktopTaskApplication>,input:tasks::TaskFolderInput)->Result<TasksView,String>{application.manage_folder(input)}
+#[tauri::command]
+fn move_task_list_to_folder(application:State<'_,DesktopTaskApplication>,input:tasks::TaskListFolderInput)->Result<TasksView,String>{application.move_list_to_folder(input)}
+
+#[tauri::command]
 fn manage_task_tag(application: State<'_, DesktopTaskApplication>, input: tasks::TaskTagInput) -> Result<TasksView, String> { application.manage_tag(input) }
 
 #[tauri::command]
@@ -1093,6 +1098,8 @@ pub fn run() {
             tasks_view,
             create_task,
             create_task_list,
+            manage_task_folder,
+            move_task_list_to_folder,
             manage_task_tag,
             rename_task_list,
             archive_task_list,
@@ -1171,6 +1178,8 @@ pub fn run() {
         tasks_view,
         create_task,
         create_task_list,
+        manage_task_folder,
+        move_task_list_to_folder,
         manage_task_tag,
         rename_task_list,
         archive_task_list,

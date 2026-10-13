@@ -179,6 +179,7 @@ fn create_input(
     time: Option<&str>,
 ) -> TaskCreateInput {
     TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
         execution_end: None,
@@ -211,6 +212,7 @@ fn empty_read_is_non_destructive_and_a_manual_inbox_task_survives_relaunch() {
 
     let added = application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -295,6 +297,7 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
     let opened = application.read().unwrap();
     let created = application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -310,6 +313,7 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
         .unwrap();
     let edited = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -355,6 +359,7 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
 
     let retried = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -373,6 +378,7 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
 
     let cleared = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -418,6 +424,7 @@ fn a_new_edit_can_revert_an_earlier_payload_after_a_late_operation() {
 
     let first_edit = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -434,6 +441,7 @@ fn a_new_edit_can_revert_an_earlier_payload_after_a_late_operation() {
         .unwrap();
     let second_edit = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -450,6 +458,7 @@ fn a_new_edit_can_revert_an_earlier_payload_after_a_late_operation() {
         .unwrap();
     let reverted = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -575,6 +584,7 @@ fn task_update_conditional_save_preserves_a_concurrent_external_document() {
 
     let error = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -668,6 +678,7 @@ fn task_update_store_failure_preserves_the_existing_document() {
 
     let error = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -738,6 +749,7 @@ fn task_target_binding_conflict_and_corruption_never_overwrite_another_vault_or_
     fs::write(task_path(first_vault.path()), externally_changed).unwrap();
     let stale_error = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -764,6 +776,7 @@ fn task_target_binding_conflict_and_corruption_never_overwrite_another_vault_or_
     let damaged_bytes = fs::read(task_path(first_vault.path())).unwrap();
     let damage_error = application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -794,6 +807,7 @@ fn task_target_binding_conflict_and_corruption_never_overwrite_another_vault_or_
     let unknown_bytes = fs::read(task_path(first_vault.path())).unwrap();
     let unknown_error = application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -1007,6 +1021,7 @@ fn task_deletion_keeps_a_tombstone_and_restore_keeps_identity_and_state() {
 
     let old_plan_retry = application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -1688,6 +1703,7 @@ fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
 
     let created_list = application
         .create_list(TaskListCreateInput {
+            folder_id: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
             list_id: "planning".into(),
@@ -1707,6 +1723,7 @@ fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
 
     let created = application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -1725,6 +1742,7 @@ fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
 
     let edited_in_place = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -1773,6 +1791,7 @@ fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
 
     let moved = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -1803,6 +1822,7 @@ fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
 
     let retried = application
         .create_list(TaskListCreateInput {
+            folder_id: None,
             target_binding: moved.target_binding.clone().unwrap(),
             expected_revision: Some("stale-after-list-create".into()),
             list_id: "planning".into(),
@@ -1834,6 +1854,7 @@ fn archived_task_lists_preserve_states_history_and_single_task_restore_boundary(
     let opened = application.read().unwrap();
     let list = application
         .create_list(TaskListCreateInput {
+            folder_id: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
             list_id: "side-project".into(),
@@ -1842,6 +1863,7 @@ fn archived_task_lists_preserve_states_history_and_single_task_restore_boundary(
         .unwrap();
     let pending = application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -1857,6 +1879,7 @@ fn archived_task_lists_preserve_states_history_and_single_task_restore_boundary(
         .unwrap();
     let completed = application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -1881,6 +1904,7 @@ fn archived_task_lists_preserve_states_history_and_single_task_restore_boundary(
         .unwrap();
     let abandoned = application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -2031,6 +2055,7 @@ fn task_lists_reject_inbox_and_archived_destinations_without_partial_writes() {
     let opened = application.read().unwrap();
     let list = application
         .create_list(TaskListCreateInput {
+            folder_id: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
             list_id: "archive-destination".into(),
@@ -2068,6 +2093,7 @@ fn task_lists_reject_inbox_and_archived_destinations_without_partial_writes() {
     let before_move = fs::read(task_path(vault.path())).unwrap();
     let move_error = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -2093,6 +2119,7 @@ fn task_list_writes_preserve_atomic_failure_and_vault_binding_boundaries() {
     let opened = initial.read().unwrap();
     let _created = initial
         .create_list(TaskListCreateInput {
+            folder_id: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
             list_id: "failure-list".into(),
@@ -2146,6 +2173,7 @@ fn task_list_writes_preserve_atomic_failure_and_vault_binding_boundaries() {
     let first_opened = isolated.read().unwrap();
     let first_list = isolated
         .create_list(TaskListCreateInput {
+            folder_id: None,
             target_binding: first_opened.target_binding.clone().unwrap(),
             expected_revision: first_opened.revision.clone(),
             list_id: "first-only-list".into(),
@@ -2185,6 +2213,7 @@ fn task_list_creation_and_cross_list_move_use_the_same_atomic_write_boundary() {
     let opened = failing.read().unwrap();
     let create_error = failing
         .create_list(TaskListCreateInput {
+            folder_id: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
             list_id: "never-created".into(),
@@ -2199,6 +2228,7 @@ fn task_list_creation_and_cross_list_move_use_the_same_atomic_write_boundary() {
     let opened = initial.read().unwrap();
     let list = initial
         .create_list(TaskListCreateInput {
+            folder_id: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
             list_id: "move-source".into(),
@@ -2207,6 +2237,7 @@ fn task_list_creation_and_cross_list_move_use_the_same_atomic_write_boundary() {
         .unwrap();
     let task = initial
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -2231,6 +2262,7 @@ fn task_list_creation_and_cross_list_move_use_the_same_atomic_write_boundary() {
     let current = racing.read().unwrap();
     let move_error = racing
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -2367,6 +2399,7 @@ fn manual_update_patch_history_validates_metadata_and_reads_legacy_changes() {
         ))
         .unwrap();
     let input = TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
         target_binding: created.target_binding.unwrap(),
@@ -2443,6 +2476,7 @@ fn manual_update_retry_rechecks_selected_vault_after_loading_its_receipt() {
         ))
         .unwrap();
     let input = TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
         target_binding: created.target_binding.unwrap(),
@@ -2560,4 +2594,72 @@ fn tag_patch_omission_clear_conflict_and_failed_write_keep_one_task() {
     let mut stale=patch;stale["changeId"]=serde_json::json!("stale-property");stale["tagIds"]=serde_json::json!(["shared"]);
     assert!(application.update(serde_json::from_value(stale).unwrap()).is_err());
     assert_eq!(app(vault.path()).read().unwrap().revision,cleared.revision);
+}
+
+#[test]
+fn parents_keep_independent_task_attributes_and_reject_cycles_atomically() {
+    let vault=TempVault::new("parents");let application=app(vault.path());
+    let mut view=application.read().unwrap();
+    for (id,parent,date,priority) in [("parent",None,"2026-09-17","high"),("child",Some("parent"),"2026-09-18","low"),("grandchild",Some("child"),"2026-09-19","none")] {
+        view=application.create(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"taskId":id,"name":id,"date":date,"time":null,"parentId":parent,"priority":priority})).unwrap()).unwrap();
+    }
+    let reopened=app(vault.path()).read().unwrap();
+    assert_eq!(reopened.tasks[1].parent_id.as_deref(),Some("parent"));
+    assert_eq!(reopened.tasks[2].parent_id.as_deref(),Some("child"));
+    let cycle=serde_json::json!({"targetBinding":reopened.target_binding,"expectedRevision":reopened.revision,"taskId":"parent","changeId":"cycle-parent","name":"parent","date":"2026-09-17","time":null,"parentId":"grandchild"});
+    assert!(application.update(serde_json::from_value(cycle).unwrap()).is_err());
+    assert_eq!(application.read().unwrap(),reopened);
+    let completed=application.set_state(TaskStateInput{target_binding:reopened.target_binding.unwrap(),expected_revision:reopened.revision.unwrap(),task_id:"parent".into(),change_id:"complete-parent-only".into(),state:TaskState::Completed}).unwrap();
+    assert_eq!(completed.tasks[1].state,TaskState::Pending);
+    assert_eq!(completed.tasks[1].date.as_deref(),Some("2026-09-18"));
+    let clear=serde_json::json!({"targetBinding":completed.target_binding,"expectedRevision":completed.revision,"taskId":"child","changeId":"detach-child","name":"child","date":"2026-09-18","time":null,"parentId":null});
+    application.update(serde_json::from_value(clear).unwrap()).unwrap();
+    let final_view=app(vault.path()).read().unwrap();
+    assert_eq!(final_view.tasks[1].parent_id,None);
+    assert_eq!(serde_json::to_value(&final_view.tasks[1]).unwrap()["priority"],"low");
+    assert_eq!(final_view.tasks.len(),3);
+}
+
+#[test]
+fn folders_group_lists_without_owning_tasks_and_delete_restores_top_level() {
+    let vault=TempVault::new("folders");let application=app(vault.path());let opened=application.read().unwrap();
+    let folder=application.manage_folder(serde_json::from_value(serde_json::json!({"targetBinding":opened.target_binding,"expectedRevision":opened.revision,"folderId":"projects","changeId":"create-folder","action":"create","name":"Projects"})).unwrap()).unwrap();
+    let list=application.create_list(serde_json::from_value(serde_json::json!({"targetBinding":folder.target_binding,"expectedRevision":folder.revision,"listId":"work","name":"Work","folderId":"projects"})).unwrap()).unwrap();
+    assert_eq!(app(vault.path()).read().unwrap().lists[1].folder_id.as_deref(),Some("projects"));
+    assert_eq!(list.lists[0].folder_id,None);
+    let mut input=create_input(&list,"folder-task","Work task",Some("2026-09-17"),None);input.list_id=Some("work".into());let added=application.create(input).unwrap();
+    let inbox_move=serde_json::json!({"targetBinding":added.target_binding,"expectedRevision":added.revision,"listId":"inbox","folderId":"projects","changeId":"group-inbox"});
+    assert!(application.move_list_to_folder(serde_json::from_value(inbox_move).unwrap()).is_err());assert_eq!(application.read().unwrap(),added);
+    let archived=application.archive_list(TaskListArchiveInput{target_binding:added.target_binding.unwrap(),expected_revision:added.revision.unwrap(),list_id:"work".into()}).unwrap();
+    let rename=application.manage_folder(serde_json::from_value(serde_json::json!({"targetBinding":archived.target_binding,"expectedRevision":archived.revision,"folderId":"projects","changeId":"rename-folder","action":"rename","name":"Research"})).unwrap()).unwrap();
+    assert_eq!(rename.folders[0].name,"Research");assert_eq!(rename.lists[1].folder_id.as_deref(),Some("projects"));
+    let deletion=serde_json::json!({"targetBinding":rename.target_binding,"expectedRevision":rename.revision,"folderId":"projects","changeId":"delete-folder","action":"delete","name":null});
+    let deleted=application.manage_folder(serde_json::from_value(deletion.clone()).unwrap()).unwrap();
+    assert!(deleted.folders.is_empty());assert_eq!(deleted.lists[1].folder_id,None);assert!(deleted.lists[1].archived);assert_eq!(deleted.tasks[0].id,"folder-task");
+    let restored=application.restore_list(TaskListRestoreInput{target_binding:deleted.target_binding.unwrap(),expected_revision:deleted.revision.unwrap(),list_id:"work".into()}).unwrap();
+    assert_eq!(restored.lists[1].folder_id,None);assert_eq!(app(vault.path()).read().unwrap().tasks[0].list_id,"work");
+    assert_eq!(application.manage_folder(serde_json::from_value(deletion).unwrap()).unwrap().revision,restored.revision);
+}
+
+#[test]
+fn deleted_parent_restoration_keeps_child_reparenting_and_legacy_metadata() {
+ let vault=TempVault::new("parent-restore");let other_vault=TempVault::new("foreign-parent");let application=app(vault.path());let mut view=application.read().unwrap();
+ for (id,parent,time) in [("parent-a",None,None),("parent-b",None,None),("child-a",Some("parent-a"),Some("18:00")),("child-b",Some("parent-a"),None)] {
+  view=application.create(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"taskId":id,"name":id,"date":"2026-09-17","time":time,"parentId":parent,"priority":"high","executionEnd":time.map(|_|serde_json::json!({"date":"2026-09-17","time":"18:45"}))})).unwrap()).unwrap();
+ }
+ let deleted=application.delete(TaskDeleteInput{target_binding:view.target_binding.unwrap(),expected_revision:view.revision.unwrap(),task_id:"parent-a".into(),change_id:"delete-parent-a".into()}).unwrap();
+ assert_eq!(deleted.tasks.len(),4);assert_eq!(deleted.tasks[2].parent_id.as_deref(),Some("parent-a"));assert_eq!(deleted.tasks[2].deleted_at,None);
+ let title=serde_json::json!({"targetBinding":deleted.target_binding,"expectedRevision":deleted.revision,"taskId":"child-a","changeId":"legacy-child-title","name":"Edited child","date":"2026-09-17","time":"18:00"});
+ let renamed=application.update(serde_json::from_value(title).unwrap()).unwrap();assert_eq!(renamed.tasks[2].parent_id.as_deref(),Some("parent-a"));assert_eq!(renamed.tasks[2].execution_end.as_ref().unwrap().time,"18:45");
+ let reparent=serde_json::json!({"targetBinding":renamed.target_binding,"expectedRevision":renamed.revision,"taskId":"child-a","changeId":"reparent-child-a","name":"Edited child","date":"2026-09-17","time":"18:00","parentId":"parent-b"});
+ let moved=application.update(serde_json::from_value(reparent.clone()).unwrap()).unwrap();
+ let detach=serde_json::json!({"targetBinding":moved.target_binding,"expectedRevision":moved.revision,"taskId":"child-b","changeId":"detach-child-b","name":"child-b","date":"2026-09-17","time":null,"parentId":null});
+ let detached=application.update(serde_json::from_value(detach).unwrap()).unwrap();
+ let restored=application.restore(TaskRestoreInput{target_binding:detached.target_binding.unwrap(),expected_revision:detached.revision.unwrap(),task_id:"parent-a".into(),change_id:"restore-parent-a".into()}).unwrap();
+ let reopened=app(vault.path()).read().unwrap();assert_eq!(reopened,restored);assert_eq!(reopened.tasks[2].parent_id.as_deref(),Some("parent-b"));assert_eq!(reopened.tasks[3].parent_id,None);assert_eq!(serde_json::to_value(&reopened.tasks[2]).unwrap()["priority"],"high");
+ assert_eq!(application.update(serde_json::from_value(reparent).unwrap()).unwrap().revision,reopened.revision);
+ for bad in ["child-a","missing-parent"] {
+  let input=serde_json::json!({"targetBinding":reopened.target_binding,"expectedRevision":reopened.revision,"taskId":"child-a","changeId":format!("bad-{bad}"),"name":"Edited child","date":"2026-09-17","time":"18:00","parentId":bad});assert!(application.update(serde_json::from_value(input).unwrap()).is_err());assert_eq!(application.read().unwrap(),reopened);
+ }
+ let input=serde_json::json!({"targetBinding":app(other_vault.path()).read().unwrap().target_binding,"expectedRevision":reopened.revision,"taskId":"child-a","changeId":"foreign-relation","name":"Edited child","date":"2026-09-17","time":"18:00","parentId":"parent-b"});assert!(application.update(serde_json::from_value(input).unwrap()).is_err());assert_eq!(application.read().unwrap(),reopened);
 }

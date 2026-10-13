@@ -16,7 +16,7 @@ type TodayTaskCandidate = Readonly<{
   overdue: boolean;
 }>;
 
-export type TaskListScope = "all" | "today" | "inbox" | "archived" | `list:${string}`;
+export type TaskListScope = "all" | "today" | "inbox" | "archived" | `list:${string}` | `folder:${string}`;
 
 export function taskListScopeForId(listId: string): TaskListScope {
   return `list:${listId}`;
@@ -60,6 +60,7 @@ export function taskEditOperationKey(
     time: string | null;
     listId: string;
     executionEnd?: TaskExecutionEnd | null;
+    parentId?: string | null;
     priority?: string;
     tagIds?: readonly string[];
   }>,
@@ -76,6 +77,7 @@ export function taskEditOperationKey(
     edit.executionEnd === undefined ? "preserve" : edit.executionEnd,
     edit.priority ?? "preserve",
     edit.tagIds ?? "preserve",
+    edit.parentId === undefined ? "preserve" : edit.parentId,
   ]);
 }
 
@@ -164,6 +166,7 @@ export type TaskUpdateEdit = Readonly<{
   time: string | null;
   listId: string;
   executionEnd?: TaskExecutionEnd | null;
+    parentId?: string | null;
   priority?: string;
   tagIds?: readonly string[];
 }>;
@@ -185,6 +188,7 @@ export type TaskUpdateView = Readonly<{
     time: string | null;
     listId: string;
     executionEnd?: TaskExecutionEnd | null;
+    parentId?: string | null;
     priority?: string;
     tagIds?: readonly string[];
   }>[];
@@ -231,6 +235,7 @@ export async function performTaskUpdateRequest<View extends TaskUpdateView>(
       candidate.date === edit.date &&
       candidate.time === edit.time &&
       candidate.listId === edit.listId &&
+      (edit.parentId === undefined || (candidate.parentId ?? null) === edit.parentId) &&
       (edit.priority === undefined || candidate.priority === edit.priority) &&
       (edit.tagIds === undefined || JSON.stringify(candidate.tagIds) === JSON.stringify(edit.tagIds)) &&
       (edit.executionEnd === undefined ||
@@ -348,6 +353,7 @@ export type TodayTaskTimeAxisCandidate = Readonly<{
   date: string | null;
   time: string | null;
   executionEnd?: TaskExecutionEnd | null;
+    parentId?: string | null;
   priority?: string;
   tagIds?: readonly string[];
   state: "pending" | "completed" | "abandoned";
@@ -523,4 +529,23 @@ export function taskPropertyProjection<T extends Readonly<{ priority?: string; t
   const rank: Record<string, number> = {high: 0, medium: 1, low: 2, none: 3};
   return filtered.sort((a, b) => (rank[a.priority ?? "none"] - rank[b.priority ?? "none"]) ||
     (a.date ?? "9999-12-31").localeCompare(b.date ?? "9999-12-31"));
+}
+
+/** Iterative traversal keeps deeply nested Tasks independent without a depth limit. */
+export function taskHierarchyRows<T extends Readonly<{id:string;parentId?:string|null;priority?:string}>>(
+ tasks:readonly T[],preservePriorityBands=false,
+): Readonly<{task:T;depth:number}>[] {
+ const visible=new Map(tasks.map(task=>[task.id,task]));
+ const children=new Map<string,T[]>();const roots:T[]=[];
+ for(const task of tasks) {
+  const parent=task.parentId?visible.get(task.parentId):undefined;
+  if(parent&&(!preservePriorityBands||(parent.priority??'none')===(task.priority??'none'))) {
+   const siblings=children.get(parent.id)??[];siblings.push(task);children.set(parent.id,siblings);
+  } else roots.push(task);
+ }
+ const stack=roots.map(task=>({task,depth:0})).reverse();const rows:{task:T;depth:number}[]=[];const seen=new Set<string>();
+ while(stack.length) {const row=stack.pop()!;if(seen.has(row.task.id))continue;seen.add(row.task.id);rows.push(row);
+  const descendants=children.get(row.task.id)??[];for(let index=descendants.length-1;index>=0;index--)stack.push({task:descendants[index],depth:row.depth+1});
+ }
+ return rows;
 }
