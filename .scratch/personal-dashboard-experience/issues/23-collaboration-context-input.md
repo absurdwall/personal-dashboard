@@ -66,3 +66,7 @@ Evidence: [PDEX-23 implementation and validation](../evidence/pdex-23-refinement
 Production DOM/WebKit layout checks: 16/16 passed; command/panel/dictation/draft/queue/history/outcome regression checks: 188/188 passed; frontend build passed. Context now overlays and scrolls above the composer; real voice/persistence controllers remain in use; production slash supply remains only `/retro` while injected test candidates validate selection. Short windows retain the large input and allow page scrolling to the action row.
 
 Acceptance checkboxes remain open for integration review and actual source-bound packaged acceptance. Real microphone, OS IME, Tauri save/readback and installed-region baseline checks remain pending. Lifecycle remains in progress; this record does not close the ticket or parent specification.
+
+### Packaged partial acceptance — 2026-10-13
+
+Root verified real IPC draft save/readback and same-binary restart on isolated source `c3de40d86940113729416655d6b1b8e9b9c45597`, native 1280×720 long-context independent scrolling/collapse and real `/retro` completion without send. [Bound identity and precise limits](../evidence/pdex-23-native-partial-2026-10-13.json). Fresh profile is unauthenticated; native microphone/IME and context+voice combination remain unverified. No prior waiver reused, no ticket/spec closure or installation.
