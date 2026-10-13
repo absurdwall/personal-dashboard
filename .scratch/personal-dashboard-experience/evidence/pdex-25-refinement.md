@@ -7,3 +7,7 @@ Branch `codex/pdex-25-refinement`, base `8bcf66f`; claim/prerequisite tip `2e1c5
 Red: the application had no Habit detail/history boundary. Green: a local Habit with January, May and September completions reads all four distinct attained lived days in September, despite repeat same-day completion and the main panel retaining exactly84 cells. Detail reopens through a new application. Missing dates keep total/maximum qualified; known current streak2 remains distinct from an exact all-history result. Paging is over observed records; the entire card history is not rendered.
 
 Native packaged acceptance remains pending and is owned by the integration task.
+
+## Slice 2 — canonical lifecycle
+
+Red: lifecycle mutations and retained activity intervals were absent. Green: deactivate/restore writes through the same catalog CAS/readback boundary, retains initial activity plus dated transitions and idempotent receipts, reopens the same key, and preserves previous known maxima and completion facts. Inactive dates are exempt from demand; restore starts a new continuous segment. A January-to-September missing-history case and a complete local active/paused/reactivated case pass.

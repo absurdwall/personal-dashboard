@@ -3222,6 +3222,39 @@ where
             coverage:"Only explicit local completed/withdrawn changes establish local state. Unrecorded dates remain unknown. Change timestamps record saves, not activity time. Published snapshot goal thresholds, actual event times and source observations remain distinct; its freshness and coverage do not limit canonical local facts. Dated notes are context, not completion evidence. This read makes no writes or external calls." })
     }
 
+    pub fn set_habit_active(&self, input: crate::habit_catalog::HabitLifecycleMutationInput) -> Result<HabitSnapshotView,String> {
+        use crate::habit_catalog::{catalog_binding,HabitCatalogDocument,HabitDefinitionMutationInput,HabitActivityChange,HabitLifecycleReceipt,HABIT_CATALOG_RELATIVE_PATH};
+        validate_habit_key(&input.habit_key)?;validate_local_identifier(&input.change_id,"Habit lifecycle operation")?;
+        let vault=self.persistence.load_selected_vault()?.ok_or("请先选择 Vault。")?;validate_compatible_vault(&vault)?;
+        let path=vault.join(HABIT_CATALOG_RELATIVE_PATH);
+        if catalog_binding(&path)!=input.target_binding {return Err("Selected Vault / catalog 已变化；活动操作未写入。".into());}
+        let current=self.habit_completion_store.load(&path)?;
+        let mut catalog=current.as_deref().map(HabitCatalogDocument::parse).transpose()?.unwrap_or_default();
+        if let Some(receipt)=catalog.lifecycle_receipts.iter().find(|receipt|receipt.input.change_id==input.change_id) {
+            if receipt.input.habit_key==input.habit_key && receipt.input.target_binding==input.target_binding && receipt.input.active==input.active {return self.habits();}
+            return Err("Habit 活动操作身份已用于另一修改。".into());
+        }
+        if catalog.receipts.iter().any(|receipt|receipt.input.change_id==input.change_id) {return Err("Habit 操作身份已使用。".into());}
+        if current.as_deref().map(document_revision)!=input.expected_revision {return Err("Habit catalog 已变化；请重新读取后重试活动操作。".into());}
+        let snapshot=self.habits()?;
+        if snapshot.catalog_target_binding.as_ref()!=Some(&input.target_binding) {return Err("Selected Vault 在读取时变化。".into());}
+        let habit=snapshot.habit(&input.habit_key).ok_or("Habit 身份不可用。")?;
+        let today=self.clock.current_lived_date();let now=self.clock.current_timestamp_label();validate_timestamp_label(&now)?;
+        if !catalog.habits.iter().any(|definition|definition.key==input.habit_key) {
+            catalog.apply(HabitDefinitionMutationInput {habit_key:input.habit_key.clone(),change_id:format!("lifecycle-baseline-{}",document_revision(input.change_id.as_bytes())),target_binding:input.target_binding.clone(),expected_revision:input.expected_revision.clone(),settings:habit.settings.clone().ok_or("Habit 设置不可用。")?},Some(habit),&today,&now)?;
+        }
+        let definition=catalog.habits.iter_mut().find(|definition|definition.key==input.habit_key).unwrap();
+        if definition.activity_changes.iter().any(|change|change.lived_date>today) {return Err("Habit 活动记录包含未来日期；原文件保留。".into());}
+        if definition.initial_active.is_none() {definition.initial_active=Some(definition.active);}
+        if definition.active!=input.active {definition.activity_changes.push(HabitActivityChange {change_id:input.change_id.clone(),active:input.active,lived_date:today.clone(),changed_at:now.clone()});definition.active=input.active;}
+        catalog.lifecycle_receipts.push(HabitLifecycleReceipt {input,saved_at:now,lived_date:today});
+        let updated=serde_json::to_vec_pretty(&catalog).map_err(|error|error.to_string())?;HabitCatalogDocument::parse(&updated)?;
+        if self.persistence.load_selected_vault()?.as_ref()!=Some(&vault) {return Err("Selected Vault 已变化；未写入活动状态。".into());}
+        match current {Some(bytes)=>self.habit_completion_store.save_if_unchanged(&path,&bytes,&updated)?,None=>self.habit_completion_store.create_new(&path,&updated)?}
+        if self.habit_completion_store.load(&path)?.as_deref()!=Some(updated.as_slice()) {return Err("Habit 活动状态保存读回未确认；可安全重试。".into());}
+        self.habits()
+    }
+
     pub fn habit_details(&self, key: &str, offset: usize, limit: usize) -> Result<crate::habit_details::HabitDetailsView, String> {
         use crate::habit_catalog::{catalog_binding,HabitCatalogDocument,HABIT_CATALOG_RELATIVE_PATH};
         validate_habit_key(key)?;
@@ -3254,7 +3287,7 @@ where
         if let Some(receipt)=catalog.receipts.iter().find(|receipt|receipt.input.habit_key==key){from=from.min(receipt.input.settings.start_date.clone());}
         if from>today {from=today.clone();}
         habit.history.clear(); // full cells are read on demand; detail does not render all cards.
-        Ok(crate::habit_details::details_view(&view,habit,cells,&changes,&from,&today,sourced,offset,limit))
+        Ok(crate::habit_details::details_view(&view,habit,cells,&changes,&from,&today,sourced,definition,offset,limit))
     }
 
     pub fn save_habit_definition(&self, input: crate::habit_catalog::HabitDefinitionMutationInput) -> Result<HabitSnapshotView, String> {

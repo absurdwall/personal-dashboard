@@ -126,3 +126,22 @@ fn full_local_history_beyond_twelve_weeks_counts_distinct_days_and_reopens_witho
     let reopened=app(vault.path()).habit_details("local-reading",0,20).unwrap();assert_eq!(reopened.statistics.total_attained_days,4);
     assert_eq!(application.habits().unwrap().habit("local-reading").unwrap().history.len(),84);
 }
+
+use personal_dashboard_lib::habit_catalog::HabitLifecycleMutationInput;
+#[derive(Clone)]
+struct DetailClock(std::rc::Rc<std::cell::RefCell<String>>);
+impl TodayClock for DetailClock {fn current_date(&self)->String {self.0.borrow().clone()} fn current_time_label(&self)->String {"14:10".into()} fn current_timestamp_label(&self)->String {format!("{}T14:10-04:00",self.current_date())}}
+#[test]
+fn deactivate_restore_reopens_same_identity_breaks_streaks_and_keeps_old_completion_and_pending_goals() {
+    let vault=TempVault::new("lifecycle");let moment=std::rc::Rc::new(std::cell::RefCell::new("2026-09-01".into()));let clock=DetailClock(moment.clone());
+    let application=TodayApplication::new(SelectedVault(vault.path().into()),NoSelection,clock.clone());
+    let opened=application.habits().unwrap();application.save_habit_definition(HabitDefinitionMutationInput {habit_key:"local-reading".into(),change_id:"create-life".into(),target_binding:opened.catalog_target_binding.unwrap(),expected_revision:opened.catalog_revision,settings:HabitSettings {name:"Reading".into(),emoji:None,group:None,start_date:"2026-09-01".into(),goal:HabitGoal::DailyCompletion}}).unwrap();
+    for date in ["2026-09-01","2026-09-02"] { *moment.borrow_mut()=date.into();let view=application.habits().unwrap();application.set_local_habit_completion(HabitCompletionMutationInput {habit_key:"local-reading".into(),lived_date:date.into(),completed:true,change_id:format!("life-{date}"),target_binding:view.completion_target_binding.unwrap(),expected_revision:view.completion_revision}).unwrap(); }
+    *moment.borrow_mut()="2026-09-03".into();let view=application.habits().unwrap();let input=HabitLifecycleMutationInput {habit_key:"local-reading".into(),change_id:"deactivate-life".into(),target_binding:view.catalog_target_binding.unwrap(),expected_revision:view.catalog_revision,active:false};
+    let inactive=application.set_habit_active(input.clone()).unwrap();assert!(!inactive.habit("local-reading").unwrap().active);application.set_habit_active(input).unwrap();
+    *moment.borrow_mut()="2026-09-08".into();let reopened=TodayApplication::new(SelectedVault(vault.path().into()),NoSelection,clock.clone());let inactive_detail=reopened.habit_details("local-reading",0,20).unwrap();assert_eq!(inactive_detail.statistics.total_attained_days,2);assert_eq!(inactive_detail.statistics.highest_known_streak,2);
+    let view=reopened.habits().unwrap();reopened.set_habit_active(HabitLifecycleMutationInput {habit_key:"local-reading".into(),change_id:"restore-life".into(),target_binding:view.catalog_target_binding.unwrap(),expected_revision:view.catalog_revision,active:true}).unwrap();
+    let view=reopened.habits().unwrap();reopened.set_local_habit_completion(HabitCompletionMutationInput {habit_key:"local-reading".into(),lived_date:"2026-09-08".into(),completed:true,change_id:"after-restore".into(),target_binding:view.completion_target_binding.unwrap(),expected_revision:view.completion_revision}).unwrap();
+    let detail=reopened.habit_details("local-reading",0,20).unwrap();assert_eq!(detail.statistics.total_attained_days,3);assert_eq!(detail.statistics.current_streak,1);assert_eq!(detail.statistics.highest_known_streak,2);assert!(detail.statistics.total_exact);assert_eq!(detail.activity_changes.len(),2);
+    let final_read=TodayApplication::new(SelectedVault(vault.path().into()),NoSelection,clock).habit_details("local-reading",0,20).unwrap();assert!(final_read.habit.active);assert_eq!(final_read.activity_changes.len(),2);
+}
