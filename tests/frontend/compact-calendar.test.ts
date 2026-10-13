@@ -228,24 +228,24 @@ test('Calendar create saves the changed date through shared Task IPC and closes 
     const view=structuredClone(sourceFixture.selected);view.date='2026-09-12';view.tasks.tasks=view.tasks.tasks.map(t=>({...t,date:view.date}));
     calendarHarness.render(structuredClone(sourceFixture.month),structuredClone(view));const info=document.querySelector('.workspace-information');info.scrollTop=18;
     window.__TAURI__.core.invoke=async(command,args)=>{commands.push({command,args});if(command==='create_task'){
-      const input=args.input,task={...view.tasks.tasks[0],id:input.taskId,name:input.name,content:input.content,date:input.date,time:input.time,listId:input.listId,executionEnd:input.executionEnd??null,priority:input.priority??'none',tagIds:input.tagIds??[]};
+      const input=args.input,task={...view.tasks.tasks[0],id:input.taskId,name:input.name,content:input.content,date:input.date,time:input.time,listId:input.listId,executionEnd:input.executionEnd??null,priority:input.priority??'none',tagIds:input.tagIds??[],parentId:input.parentId??null};
       view.tasks={...view.tasks,revision:'created-revision',tasks:[...view.tasks.tasks,task]};return view.tasks;
     }if(command==='read_daily_view'||command==='today_view')return structuredClone(view);if(command==='calendar_month')return sourceFixture.month;throw Error('Unexpected command '+command);};
     document.querySelector('#calendar-new-task').click();const form=document.querySelector('#calendar-task-create-form');
-    document.querySelector('#calendar-task-create-name').value='Calendar created Task';document.querySelector('#calendar-task-create-date').value='2026-09-13';form.dispatchEvent(new Event('input',{bubbles:true}));form.requestSubmit();
+    document.querySelector('#calendar-task-create-name').value='Calendar created Task';document.querySelector('#calendar-task-create-date').value='2026-09-13';form.querySelector('[data-task-parent]').value='preview-0';form.dispatchEvent(new Event('input',{bubbles:true}));form.requestSubmit();
     await new Promise(r=>setTimeout(r,40));
-    return JSON.stringify({open:document.querySelector('#calendar-task-create-dialog').open,date:calendarHarness.selected().date,scroll:info.scrollTop,commands});
+    return JSON.stringify({open:document.querySelector('#calendar-task-create-dialog').open,date:calendarHarness.selected().date,scroll:info.scrollTop,savedParent:view.tasks.tasks.at(-1).parentId,commands});
   `);
   assert.equal(result.open,false,JSON.stringify(result));assert.equal(result.date,'2026-09-12');assert.equal(result.scroll,18);
   assert.equal(result.commands.filter((c:any)=>c.command.startsWith('create')).length,1);assert.equal(result.commands[0].command,'create_task');
-  assert.equal(result.commands[0].args.input.date,'2026-09-13');assert.equal(result.commands[0].args.input.name,'Calendar created Task');
+  assert.equal(result.commands[0].args.input.date,'2026-09-13');assert.equal(result.commands[0].args.input.name,'Calendar created Task');assert.equal(result.commands[0].args.input.parentId,'preview-0');assert.equal(result.savedParent,'preview-0');
 });
 
 test('uncertain Calendar creation retains a frozen original draft until readback enables an exact retry',{skip:process.platform!=='darwin'},()=>{
   const result=webKit(`
     const view=structuredClone(sourceFixture.selected);view.date='2026-09-12';calendarHarness.render(sourceFixture.month,view);
     window.__TAURI__.core.invoke=async(command,args)=>{commands.push({command,args});if(command==='create_task')throw Error('synthetic write result unknown');if(command==='tasks_view')return {...view.tasks,revision:'new-read-revision'};if(command==='read_daily_view'||command==='today_view')return structuredClone(view);if(command==='calendar_month')return sourceFixture.month;throw Error('Unexpected command '+command);};
-    document.querySelector('#calendar-new-task').click();const form=document.querySelector('#calendar-task-create-form'),name=document.querySelector('#calendar-task-create-name');name.value='Retain original';form.dispatchEvent(new Event('input',{bubbles:true}));form.requestSubmit();await new Promise(r=>setTimeout(r,40));
+    document.querySelector('#calendar-new-task').click();const form=document.querySelector('#calendar-task-create-form'),name=document.querySelector('#calendar-task-create-name');name.value='Retain original';form.querySelector('[data-task-parent]').value='preview-0';form.dispatchEvent(new Event('input',{bubbles:true}));form.requestSubmit();await new Promise(r=>setTimeout(r,40));
     const frozen={value:name.value,disabled:name.disabled,open:document.querySelector('#calendar-task-create-dialog').open};
     const recheck=document.querySelector('#calendar-task-create-recheck');if(recheck)recheck.click();await new Promise(r=>setTimeout(r,40));
     const retry=document.querySelector('#calendar-task-create-retry');const ready=retry && !retry.disabled;if(ready)retry.click();await new Promise(r=>setTimeout(r,40));
@@ -255,7 +255,7 @@ test('uncertain Calendar creation retains a frozen original draft until readback
   const writes=result.commands.filter((c:any)=>c.command==='create_task');assert.equal(writes.length,2);
   assert.equal(writes[0].args.input.taskId,writes[1].args.input.taskId);
   assert.equal(writes[1].args.input.expectedRevision,'new-read-revision');
-  assert.equal(writes[1].args.input.name,'Retain original');
+  assert.equal(writes[1].args.input.name,'Retain original');assert.equal(writes[0].args.input.parentId,'preview-0');assert.equal(writes[1].args.input.parentId,'preview-0');
 });
 
 test('a month Task opens a compact editable overlay while selected day and background position stay unchanged',{skip:process.platform!=='darwin'},()=>{
@@ -357,4 +357,16 @@ test('Calendar exposes unavailable holiday-year coverage without changing Task o
   `);
   assert.ok(result.coverage.includes('2028')&&result.coverage.includes('未提供'));assert.equal(result.holidays,0);
   assert.equal(result.tasks,7);assert.equal(result.openTodayDisabled,false);assert.equal(result.sources.length,4);
+});
+
+
+test('Calendar creation readback refuses the same identity with a different parent',{skip:process.platform!=='darwin'},()=>{
+ const result=webKit(`
+  const view=structuredClone(sourceFixture.selected);view.date='2026-09-12';calendarHarness.render(sourceFixture.month,view);
+  window.__TAURI__.core.invoke=async(command,args)=>{commands.push({command,args});if(command==='create_task') {const input=args.input;view.tasks={...view.tasks,revision:'wrong-parent',tasks:[...view.tasks.tasks,{...view.tasks.tasks[0],...input,id:input.taskId,parentId:null}]};return structuredClone(view.tasks);}if(command==='tasks_view')return structuredClone(view.tasks);if(command==='read_daily_view'||command==='today_view')return structuredClone(view);if(command==='calendar_month')return sourceFixture.month;throw Error('Unexpected command '+command);};
+  document.querySelector('#calendar-new-task').click();const form=document.querySelector('#calendar-task-create-form');document.querySelector('#calendar-task-create-name').value='Wrong parent readback';form.querySelector('[data-task-parent]').value='preview-0';form.dispatchEvent(new Event('input',{bubbles:true}));form.requestSubmit();await new Promise(r=>setTimeout(r,80));
+  document.querySelector('#calendar-task-create-recheck').click();await new Promise(r=>setTimeout(r,80));
+  return JSON.stringify({open:document.querySelector('#calendar-task-create-dialog').open,retryDisabled:document.querySelector('#calendar-task-create-retry').disabled,status:document.querySelector('#calendar-task-create-status').textContent,writes:commands.filter(c=>c.command==='create_task').length});
+ `);
+ assert.equal(result.open,true);assert.equal(result.retryDisabled,true);assert.equal(result.writes,1);assert.ok(result.status.length>0,'Relation conflict remains visible');
 });

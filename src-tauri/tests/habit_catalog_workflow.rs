@@ -956,3 +956,24 @@ fn editing_an_unconfigured_sourced_weekly_habit_retains_tracking_then_activates_
     assert_eq!(following.habit("reset").unwrap().weekly_target, Some(5));
     assert_eq!(following.summary.excluded_no_goal, 0);
 }
+
+#[test]
+fn eighty_chinese_name_characters_exceed_byte_limit_without_writing_catalog() {
+    let vault = TempVault::new("catalog-name-byte-limit");
+    let application = app(vault.path());
+    let opened = application.habits().unwrap();
+    let error = application.save_habit_definition(HabitDefinitionMutationInput {
+        habit_key: "local-byte-limit".into(),
+        change_id: "byte-limit-attempt".into(),
+        target_binding: opened.catalog_target_binding.unwrap(),
+        expected_revision: opened.catalog_revision.clone(),
+        settings: HabitSettings {
+            name: "习".repeat(80), emoji: None, group: None,
+            start_date: "2026-09-08".into(), goal: HabitGoal::DailyCompletion,
+        },
+    }).unwrap_err();
+    assert_eq!(error, "习惯名称缺失或过长。");
+    let fresh = app(vault.path()).habits().unwrap();
+    assert_eq!(fresh.catalog_revision, opened.catalog_revision);
+    assert!(fresh.habit("local-byte-limit").is_none());
+}

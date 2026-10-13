@@ -1084,3 +1084,16 @@ fn refined_task_relations_groups_properties_and_date_views_survive_combined_writ
     assert_eq!(calendar.day("2026-09-17").unwrap().task_summaries[0].id,"child");
     assert_eq!(calendar.day("2026-09-18").unwrap().task_summaries[0].id,"parent");
 }
+
+
+#[test]
+fn calendar_context_creation_preserves_parent_and_refuses_conflicting_identity_retry() {
+ let vault=TempVault::new("calendar-parent-create");let application=task_app(vault.path());let opened=application.read().unwrap();
+ let parent=application.create(serde_json::from_value(serde_json::json!({"targetBinding":opened.target_binding,"expectedRevision":opened.revision,"taskId":"calendar-parent","name":"Parent","date":"2026-09-17"})).unwrap()).unwrap();
+ let input=serde_json::json!({"targetBinding":parent.target_binding,"expectedRevision":parent.revision,"taskId":"calendar-child","name":"Child from selected Calendar date","date":"2026-09-18","parentId":"calendar-parent"});
+ let saved=application.create(serde_json::from_value(input.clone()).unwrap()).unwrap();
+ let reopened=task_app(vault.path()).read().unwrap();assert_eq!(reopened,saved);assert_eq!(reopened.tasks[1].parent_id.as_deref(),Some("calendar-parent"));
+ let calendar=today_app(vault.path()).calendar_month(2026,9).unwrap();assert_eq!(calendar.day("2026-09-18").unwrap().task_summaries[0].id,"calendar-child");
+ assert_eq!(application.create(serde_json::from_value(input.clone()).unwrap()).unwrap().revision,saved.revision);
+ let mut wrong=input;wrong["parentId"]=serde_json::Value::Null;assert!(application.create(serde_json::from_value(wrong).unwrap()).is_err());assert_eq!(task_app(vault.path()).read().unwrap(),saved);
+}

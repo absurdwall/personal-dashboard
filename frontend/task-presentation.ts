@@ -76,7 +76,7 @@ export function taskEditOperationKey(
     edit.listId,
     edit.executionEnd === undefined ? "preserve" : edit.executionEnd,
     edit.priority ?? "preserve",
-    edit.tagIds ?? "preserve",
+    edit.tagIds === undefined ? "preserve" : [...edit.tagIds].sort(),
     edit.parentId === undefined ? "preserve" : edit.parentId,
   ]);
 }
@@ -213,6 +213,7 @@ export async function performTaskUpdateRequest<View extends TaskUpdateView>(
     onBegin?: (operation: TaskOperationRequest) => void;
   }>,
 ): Promise<TaskUpdateOperationResult<View>> {
+  edit = {...edit, tagIds: edit.tagIds === undefined ? undefined : [...edit.tagIds].sort()};
   const operationKey = taskEditOperationKey(edit);
   const operation = options.identities.begin(
     operationKey,
@@ -237,7 +238,7 @@ export async function performTaskUpdateRequest<View extends TaskUpdateView>(
       candidate.listId === edit.listId &&
       (edit.parentId === undefined || (candidate.parentId ?? null) === edit.parentId) &&
       (edit.priority === undefined || candidate.priority === edit.priority) &&
-      (edit.tagIds === undefined || JSON.stringify(candidate.tagIds) === JSON.stringify(edit.tagIds)) &&
+      (edit.tagIds === undefined || JSON.stringify([...(candidate.tagIds ?? [])].sort()) === JSON.stringify(edit.tagIds)) &&
       (edit.executionEnd === undefined ||
         (candidate.executionEnd?.date === edit.executionEnd?.date &&
          candidate.executionEnd?.time === edit.executionEnd?.time)),
