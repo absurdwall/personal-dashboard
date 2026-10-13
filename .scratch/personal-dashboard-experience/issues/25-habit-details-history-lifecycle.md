@@ -4,13 +4,13 @@
 
 **Blocked by:** 24 — Habit 新增、编辑与目标设置
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 **Triage:** ready-for-agent
 **ID:** PDEX-25
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** open
-**Implementation:** not started
+**Lifecycle:** in-progress
+**Implementation:** in progress
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -50,3 +50,7 @@ PDEX-SPEC-02 stories 73–74、80–82、86–87；共同承担 1–3、88–91 
 - 后续授权claim时记录实际owner、working branch、base commit、增量实现/评审/
   验收commits、结果和限制。每票可多次commit，完整验收前不关闭。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
+
+## Authorized claim — 2026-10-13
+
+Owner: Codex implementer `/root/pdex24` (new PDEX-25 worktree). Working branch `codex/pdex-25-refinement`; starting integration tip `8bcf66f96ba021e5c7a5c5eac39ac3c8cb9557d0`, authorized base `918e7e0d9c4b2c524c429bfd309482e328bc4c91`. PDEX-24 implementation is integrated and its real catalog/completion/snapshot interface tests pass 39/39; native acceptance remains separately pending. Reuse the verified PDEX-24 boundary; no inferred ticket closure. Full spec/ticket unchanged. Local Git only, full history, no installation/main/remote operations.

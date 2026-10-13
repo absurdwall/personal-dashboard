@@ -20,7 +20,7 @@ Management source: source-personal-dashboard-experience
 | PDEX-22 | ticket | [Calendar 新增、详情与节日](issues/22-calendar-create-details-holidays.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
 | PDEX-23 | ticket | [Collaboration 空间与输入体验](issues/23-collaboration-context-input.md) | ready-for-agent | in-progress | none | implementation integrated at 3cb070737e919c2d9495556a19541bdf3b93c553; review/native acceptance pending; [evidence](evidence/pdex-23-refinement.md), [history](refinement-execution-2026-10-11.md) |
 | PDEX-24 | ticket | [Habit 新增、编辑与目标设置](issues/24-habit-create-edit-goal-cycles.md) | ready-for-agent | in-progress | none | implementation integrated at 71ebf5d2a8e59aa623115b1c15abae0da890e826; application/DOM verified, review/native acceptance pending; [evidence](evidence/pdex-24-refinement.md), [history](refinement-execution-2026-10-11.md) |
-| PDEX-25 | ticket | [Habit 详情、历史统计与停用恢复](issues/25-habit-details-history-lifecycle.md) | ready-for-agent | open | PDEX-24 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
+| PDEX-25 | ticket | [Habit 详情、历史统计与停用恢复](issues/25-habit-details-history-lifecycle.md) | ready-for-agent | in-progress | PDEX-24 | claimed on codex/pdex-25-refinement from 8bcf66f; real prerequisite interface verified, native acceptance separate |
 | PDEX-26 | ticket | [整合与真实 App 验收](issues/26-refinement-integration-packaged-acceptance.md) | ready-for-agent | open | PDEX-20, PDEX-21, PDEX-22, PDEX-23, PDEX-25 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
 | PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | closed | none | [local human acceptance](evidence/human-acceptance-2026-10-11.md), [retained publication](publication.md) |
 | PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
@@ -331,3 +331,7 @@ The user invoked implement-spec for PDEX-SPEC-02 with integration branch `codex/
 ### Dependent implementation frontier — 2026-10-13
 
 PDEX-19 integrated at `dc5b09cd5a8ce6d4c45664bc3d610f6b614492e7` with real application/readback and production-DOM prerequisites verified. PDEX-20 and PDEX-22 now claimed on their own branches/worktrees. PDEX-21 remains ready for a free implementer slot; PDEX-24 remains in progress, PDEX-25 waits for its verified interface, and PDEX-26 remains final combined acceptance. Dependency links are retained; downstream code work does not close upstream native/review gates.
+
+### PDEX-25 implementation frontier — 2026-10-13
+
+PDEX-24 is integrated with 39 real application tests and scoped frontend/DOM checks passing. PDEX-25 claimed from `8bcf66f96ba021e5c7a5c5eac39ac3c8cb9557d0`; work starts in its own worktree. Upstream acceptance remains open; claim permits dependent implementation only.
