@@ -1,7 +1,7 @@
 # PDEX-SPEC-02 — 本地执行与交接边界
 
 Date: 2026-10-11
-Stage: authorized implementation; PDEX-19 repair and PDEX-24 integrated; remaining review/native acceptance pending
+Stage: authorized implementation; PDEX-19 repairs and PDEX-22/23/24 integrated; remaining review/native acceptance pending
 Canonical tracker: [map](map.md)
 Specification: [PDEX-SPEC-02](refinement-spec-2026-10-11.md)
 Published ticket range: PDEX-19–26
@@ -45,7 +45,7 @@ User request: implement PDEX-SPEC-02 from `918e7e0` on `codex/dashboard-experien
 
 ## Current frontier — 2026-10-13
 
-PDEX-19, PDEX-23 and PDEX-24 implementations are integrated; review and remaining native acceptance are recorded separately, so their tickets remain in-progress. PDEX-20/22 have root-recorded claims in their full ticket bodies; PDEX-21/25/26 are not started. Root may claim PDEX-25 after the integrated PDEX-24 interface/application/DOM prerequisite verification, without inferring PDEX-24 acceptance or closure. The publication-only frontier above is historical.
+PDEX-19, PDEX-22, PDEX-23 and PDEX-24 implementations are integrated; review and remaining native acceptance are recorded separately, so their tickets remain in-progress. PDEX-20/25 have root-recorded claims in their full ticket bodies; PDEX-21/26 are not started. Verified implementation prerequisites authorize dependent implementation without inferring ticket acceptance or closure. The publication-only frontier above is historical.
 
 ## PDEX-23 integration — 2026-10-13
 
@@ -117,6 +117,23 @@ Combined integration validation at `71ebf5d2a8e59aa623115b1c15abae0da890e826`:
 - `git diff --check` passed; no broad baseline fixes were attempted.
 
 PDEX-24's implementation prerequisite is verified for root to claim PDEX-25; PDEX-24 remains in-progress pending review/native save/reopen acceptance. Root reruns repaired PDEX-19's original packaged case separately. No installation, remote Git, main merge, dependency addition, normal profile/Vault write or ticket closure occurred.
+
+## PDEX-19 More release and PDEX-22 integration — 2026-10-13
+
+Clean tracked/untracked inventory on integration `2e1c56c10e6b75bb2daaf1a5dbbd94411a549854` preceded both merges. Full history is retained without conflicts:
+
+- PDEX-19 source branch `codex/pdex-19-refinement`, additional repair/evidence `162067f1169bfc6bfcf2a537eacc850f8ced275a`.
+- PDEX-19 merge `0548e6eb4b6d1bb3dd204b74b9c328677d27c9ec` via `git merge --no-ff`; Schedule/Move controls become available again after Save without clearing applicability-based disabling.
+- PDEX-22 source branch `codex/pdex-22-refinement`, actual worker start `b96b77d74a84309615ab57fdc28055c9ef54b9a3`; authorized snapshot `918e7e0d9c4b2c524c429bfd309482e328bc4c91`.
+- PDEX-22 implementation `c65106d9439d02383eefdca9149f5e02d6500315`.
+- PDEX-22 synchronization `943151a72656187021313dd3814f19a763095c71`, merging integration `2e1c56c10e6b75bb2daaf1a5dbbd94411a549854` and retaining Task/Habit imports and boundaries.
+- PDEX-22 additional uncovered-year DOM check `6dfafa6d18fdb4a4992cc038cc35f4b894a0a287`.
+- PDEX-22 retained evidence `380d160a6cb6d80e5afd5294e318f53edb10636d`.
+- PDEX-22 merge `dc4480eea91c699aaa2df2547becf160f7d4fcaa` via `git merge --no-ff`, following the More release merge.
+
+[PDEX-22 implementation evidence](evidence/pdex-22-refinement.md) records the reused Task create/edit/recovery route and existing appearance preference storage. Officially sourced holiday data covers Gregorian 2026–2027 with actual/observed distinctions and explicit unavailable years. The shared Calendar changes preserve PDEX-19 repairs and PDEX-24 settings imports; all scoped style blocks remain. Root's repaired PDEX-19 native cancellation Save/disk readback on the earlier fixed source is separately observed, with restart still pending; this merger makes no additional native claim. PDEX-22 remains in-progress pending combined review and source-bound packaged acceptance. Validation is recorded below.
+
+Validation at combined merge `dc4480eea91c699aaa2df2547becf160f7d4fcaa`: `npm run build` passed; Calendar/holidays/appearance frontend suites passed 41/41 including the uncovered-year production DOM check; `task-tag-save-dom.mjs` passed all five actual WebKit submission cases at widths 1280/680 with post-Save More availability; Calendar/Appearance real application workflow tests passed 20/20 (9 + 11); `git diff --check` passed. Branch tip reachability was verified. Fixtures used isolated data and no model calls. No broad baseline fixes, App installation, remote/main operation or ticket closure occurred.
 
 ## PDEX-25 claim — 2026-10-13
 
