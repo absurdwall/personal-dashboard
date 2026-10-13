@@ -68,3 +68,11 @@ native pointer checks, screenshots against the fixed installed baseline, wider
 integration/review and the user's required preserved-surface acceptance belong
 to PDEX-26 and remain pending. This record does not close PDEX-19 or the spec and
 does not claim installed-build acceptance. No normal App/Vault/profile was changed.
+
+## Local Git lineage and post-integration verification
+
+- Implementation commit: `cfd5a77` (`Implement PDEX-19 Task editor priority tags and action menus`).
+- Worker merge `c1ae182` retained integration `c3de40d` and both appended CSS blocks from PDEX-19/PDEX-23. The only conflict was append-only; both scoped intents were preserved.
+- Worker merge `741c54f` retained latest integration `71471a3` (documentation/native acceptance lineage only).
+- After the source merge: `npm run build`, the 33 focused frontend tests and production WebKit checks at both widths pass again. The later merge changes evidence/ticket documents only.
+- No squash, amend or rebase was used. Branch commits remain available for the integration merger; no worker worktree cleanup was attempted by the implementer.

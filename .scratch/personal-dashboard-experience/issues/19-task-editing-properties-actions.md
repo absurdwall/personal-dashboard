@@ -66,3 +66,7 @@ Task priority/tag application contracts, compact editor, creation choices,
 combined filters and shared menus are implemented with real application
 readback and production WebKit DOM checks. Packaged/native acceptance and
 integration review remain pending; lifecycle stays in-progress.
+
+Implementation commit: `cfd5a77`; worker integration merges: `c1ae182`, `741c54f`.
+Latest integrated ancestor: `71471a3`. Both implementation and integration
+histories are retained locally. No packaged acceptance claim or ticket closure.
