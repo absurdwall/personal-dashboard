@@ -1,0 +1,108 @@
+{
+  "sourceCommit": "2e1c56c10e6b75bb2daaf1a5dbbd94411a549854",
+  "sourceArchiveSha256": "7707957fb0f9fd940f92c7a25a406ad7f7195abd00af1594925c7eea0786d116",
+  "bundle": "/private/tmp/pdex-refinement-20261013.noindex/candidate-19-fixed/Dashboard Refinement 19 Fixed.app",
+  "bundleIdentifier": "com.tortillaflat.personal-dashboard.refinement19b20261013",
+  "binarySha256": "5806c58cef9c046482eb4e858fa8942509e07a7149456c4ef5bf8b80f16045ec",
+  "buildLogSha256": "78f463036f8d8592dc8c57bdf0d524abb83c2265ee0215c3ed723ae25c82e1e3",
+  "profile": "/private/tmp/pdex-refinement-20261013.noindex/candidate-19-fixed/profile",
+  "vault": "/private/tmp/pdex-refinement-20261013.noindex/candidate-19-fixed/vault",
+  "pid": 18618,
+  "fixtureQualification": "Copy of failed synthetic19fixture/profile; selectedVault rebound to this copied syntheticVault; exact old failure preserved",
+  "relaunchPid": 24008,
+  "subsequentLaunches": [
+    {
+      "pid": 25806,
+      "epochMillis": "1788901500000"
+    },
+    {
+      "pid": 25950,
+      "epochMillis": "1789419900000"
+    }
+  ],
+  "kind": "source-bound isolated packaged native partial acceptance",
+  "nativeWindowPoints": [
+    1280,
+    720
+  ],
+  "syntheticClockSequence": [
+    "2026-09-08T17:05:00-04:00",
+    "2026-09-14T17:05:00-04:00"
+  ],
+  "task": {
+    "id": "synthetic-cancel-18",
+    "persistedDate": "2026-09-08",
+    "time": null,
+    "executionEnd": null,
+    "priority": "high",
+    "content": "Native recovered cancellation saved content. 合成任务读回。",
+    "tagIds": [
+      "task-tag-919df3c4-4532-488c-8fc1-7783f22ffdf4",
+      "task-tag-c7e5bcb0-78dd-4ef8-be79-b78aaa5aec6e"
+    ],
+    "changeCount": 4,
+    "freshProcessUiReadback": true,
+    "tagManagementEnabledAfterOwnWrite": true,
+    "interactionQualification": "First offscreen AX cancellation click reached the disclosure instead; scroll and observed pointer coordinate reached the visible cancel control, then collapsed Save persisted. Both intentional UI and disk/restart result are recorded."
+  },
+  "habit": {
+    "key": "local-b4af8ed6-2eb6-40a5-85e3-ead29b72dd36",
+    "name": "Synthetic Native Habit Revised",
+    "group": "Synthetic Verification",
+    "goalRevisions": [
+      {
+        "effectiveDate": "2026-09-08",
+        "validThrough": null,
+        "goal": {
+          "kind": "weekly-days",
+          "days": 3
+        }
+      },
+      {
+        "effectiveDate": "2026-09-14",
+        "validThrough": null,
+        "goal": {
+          "kind": "weekly-days",
+          "days": 5
+        }
+      }
+    ],
+    "receiptCount": 4,
+    "createdOnce": true,
+    "nativeCases": [
+      "create weekly3 at liveddate default",
+      "real local check-in and 1/3 display",
+      "rename immediate and pending5 nextMonday",
+      "edit loads pending5",
+      "savecurrent3 cancels pending without erasing receipts",
+      "save5 again and sameclock freshprocess reads current3/pending5/attainedday",
+      "nextMonday freshprocess reads current5/no pending with prior attainedday retained"
+    ],
+    "noInferredFullHistory": true
+  },
+  "files": {
+    "tasksSha256": "4852b1f823a752f045dc0b66b2348b4d7cb390a0488c1ab0e66a75d24cef7236",
+    "catalogSha256": "fdb08841951d88438e687c1cb3253d8847166a3194ddc6d8ca4ad1ba6ee0cc2d",
+    "completionSha256": "6f087def64497e03c9a9598a990c40d008da70a2c699c19171487fdc53f26308"
+  },
+  "preservation": {
+    "dailyRecordFilesByteIdenticalToRedFixture": true,
+    "sourceSnapshotByteIdentical": true,
+    "normalInstalledBinarySha256": "4865fc2c4aad16ee82dd30a23a5bc82720b0f8250264e564c7403d996eb33682",
+    "normalProfileByteIdentity": "not claimed; no preceding byte snapshot"
+  },
+  "captures": {
+    "habit-next-week-green.png": "14f457dafb20b7d7b4e5554107ec5ddc2f4894d214dc747a1bde84cbdb422fbd",
+    "habit-current-pending-green.png": "2e305f56c5ad835f13449da5c71d5ae8d085aea1239f5f4331c34aaa5069283f",
+    "cancel-restarted-green.png": "3a834af9c7df56f4da58cc4553c4431f97a3c640e8ce47e2fa0420979bdfab2e",
+    "habit-restarted-green.png": "446162d7fc67e634591c91b990154abf73875a3a5408805cffc88b44f0295b05",
+    "cancel-saved-green.png": "abe924b7cba1f14fef3a15fab1a1be91df51221c65a1ee15e86cf4d5fe1d1ae8"
+  },
+  "limits": [
+    "not final combined PDEX26 candidate",
+    "More fix162067f is later than this candidate and separately DOM verified",
+    "only1280x720 native geometry here",
+    "no actual microphone or OS IME test; Unicode paste only",
+    "no installation, remote or main operation"
+  ]
+}
