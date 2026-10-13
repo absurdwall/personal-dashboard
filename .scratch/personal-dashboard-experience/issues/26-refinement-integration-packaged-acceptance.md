@@ -52,3 +52,15 @@ PDEX-SPEC-02 stories 1–3、88–91，以及全部功能票的组合验收。
 ## Authorized claim — 2026-10-13
 
 Owner: Codex implementer `/root/pdex19` for combined source/application verification, root for source-bound native Computer Use. Working branch `codex/pdex-26-refinement`; starting integration tip `115a912b76c823b36aeef6ad03a3145a8eceac94`, authorized base `918e7e0d9c4b2c524c429bfd309482e328bc4c91`. All direct implementation prerequisites are integrated with their own evidence; full native acceptance/review is still tracked separately. No missing feature is delegated to this ticket. Full scope and separate parent/installation boundary unchanged. Local Git only and complete history.
+
+
+## Combined source verification increment — 2026-10-13
+
+Real application regression found and repaired the PDEX-25 historical completion
+guard: unchanged sourced completion-type Habits can save an explicit local fact
+outside bounded snapshot coverage, without inventing historic targets/statistics.
+New regression ran red through the real application, then green with fresh-instance
+readback, source-byte preservation and clock-kind refusal. Focused Collaboration
+105, Habit details 12 and shared Task 9 checks pass. Combined verification remains
+in progress; [evidence](../evidence/pdex-26-refinement.md) retains initial failures.
+Root-owned source-bound native matrix must use the repaired source candidate.

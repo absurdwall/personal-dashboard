@@ -989,3 +989,29 @@ fn lifecycle_refuses_replaced_source_evidence_without_saving_stale_attainment_an
     assert_eq!(detail.activity_changes.len(), 1);
     assert!(!detail.activity_changes[0].attained_on_transition);
 }
+
+#[test]
+fn explicit_sourced_completion_after_snapshot_coverage_preserves_unknown_history() {
+    let vault = TempVault::new("source-completion-gap");
+    write_snapshot(vault.path(), include_str!("fixtures/habits-v1-complete.json"));
+    let source_bytes = fs::read(snapshot_path(vault.path())).unwrap();
+    let moment = std::rc::Rc::new(std::cell::RefCell::new("2026-09-27".into()));
+    let application = TodayApplication::new(SelectedVault(vault.path().into()), NoSelection, DetailClock(moment.clone()));
+    let opened = application.habits().unwrap();
+    assert!(opened.habit("exercise").unwrap().can_record_completion);
+    let before = application.habit_details("exercise",0,20).unwrap();
+    assert!(!before.goal_revisions.iter().any(|revision|revision.applies_on("2026-09-27")));
+    let input = HabitCompletionMutationInput {habit_key:"exercise".into(),lived_date:"2026-09-27".into(),change_id:"explicit-after-coverage".into(),target_binding:opened.completion_target_binding.clone().unwrap(),expected_revision:opened.completion_revision,completed:true};
+    application.set_historical_habit_completion(input.clone()).unwrap();
+    let fresh = TodayApplication::new(SelectedVault(vault.path().into()), NoSelection, DetailClock(moment));
+    let reopened = fresh.habit_details("exercise",0,20).unwrap();
+    assert_eq!(reopened.records.iter().find(|record|record.cell.date=="2026-09-27").unwrap().cell.local_completion_state,personal_dashboard_lib::today::HabitLocalCompletionState::Completed);
+    assert!(!reopened.statistics.highest_confirmed);
+    assert!(!reopened.statistics.total_exact);
+    assert_eq!(fs::read(snapshot_path(vault.path())).unwrap(),source_bytes);
+    fresh.set_historical_habit_completion(input).unwrap();
+    let habits = fresh.habits().unwrap();
+    // A gap in sourced clock/threshold targets does not make that Habit completion-based.
+    assert!(fresh.set_historical_habit_completion(HabitCompletionMutationInput {habit_key:"wake".into(),lived_date:"2026-09-27".into(),change_id:"reject-clock-gap".into(),target_binding:habits.completion_target_binding.unwrap(),expected_revision:habits.completion_revision,completed:true}).is_err());
+    assert_eq!(serde_json::to_value(fresh.habit_details("exercise",0,20).unwrap()).unwrap(),serde_json::to_value(reopened).unwrap());
+}
