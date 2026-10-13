@@ -1,0 +1,34 @@
+{
+  "baseCommit": "918e7e0d9c4b2c524c429bfd309482e328bc4c91",
+  "productBaseline": "Historical accepted source d518332; current installed executable hash captured, current source not independently confirmed",
+  "installedBinarySha256": "4865fc2c4aad16ee82dd30a23a5bc82720b0f8250264e564c7403d996eb33682",
+  "baselineBinarySha256": "f8e8c4992044874af8596b76e8eb6d4fba0aff9d6b07109329debc4e0deb325a",
+  "bundle": "/private/tmp/pdex-refinement-20261013.noindex/baseline/Dashboard Refinement Baseline.app",
+  "profile": "/private/tmp/pdex-refinement-20261013.noindex/baseline/profile",
+  "vault": "/private/tmp/pdex-refinement-20261013.noindex/baseline/vault",
+  "pid": 95600,
+  "isolated": true,
+  "fixtureSource": "retained explicitly synthetic B fixture plus checked-in habit fixture",
+  "normalInstalledTouched": false,
+  "firstLaunchOutcome": "Initial process ended with tool session; CUA relaunched copy without overrides. AX read observed normal data; no business action performed, owned copy quit. Not acceptance evidence.",
+  "captures": {
+    "task-editor-960x720.png": "e6a8802f309b43cf36e65b72be9271a4482956590aa3de9b117951a73ab89c7a",
+    "habits-960x720.png": "4fc1e144637456ba8f7bb4d9c5022afbf4fbcd0a097835ddd4125ec8f8fb49de",
+    "today-960x720.png": "32d3173139b1c4fd24ff463134af21bd762d4881489bb42b12d2ee7c764b03c7",
+    "calendar-960x720.png": "dc330c830bb5942651b0df03aa7816bc8c1e0c10532e679fa6cb8846a784d681",
+    "collaboration-empty-960x720.png": "089d02e9afdd4a6f8727a9306105bd11723b5099d78f429e9844ab46530a0a70",
+    "collaboration-context-960x720.png": "cf8d002aac867b8b63efe3a738338c1a7c1370051743d80d0b1f29b596ea89ac",
+    "tasks-960x720.png": "a5c004c959bb5cd2ed8cfef310a1a70ccf727ec5b50b91728cc0331ce1eb17fc"
+  },
+  "verifiedIsolatedPid": 95600,
+  "clock": "2026-09-08 17:05 -0400",
+  "geometry": "960x720 native points, 2x captures",
+  "observations": [
+    "Task right pane duplicate heading/name, Content below name, permanent schedule/end fields, separate Cancel; list compact and quick add one line.",
+    "Calendar compact month and date review/day Tasks; large bottom create form exists.",
+    "Habits left weekly summary and right daily anchors/today list; inline history expansion retained.",
+    "Collaboration context below chat/long locally sourced context; real runtime unavailable in PATH-isolated baseline.",
+    "Today original timeline, Morning/Evening, untimed sidebar and ordinary Task area captured."
+  ],
+  "sourceQualification": "Current installed hash captured directly. Historical d518332 acceptance retained; current installed binary source binding unverified (hash differs from older recorded package). Use 918e7e0 code baseline for source comparisons."
+}
