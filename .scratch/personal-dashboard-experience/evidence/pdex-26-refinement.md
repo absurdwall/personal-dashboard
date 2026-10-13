@@ -60,3 +60,41 @@ Full Rust/Frontend, four-size actual production DOM/pointer preservation and
 source-qualified failure comparison continue. Root owns all private packaged
 native pointer/profile/restart artifacts and hardware/service acceptance.
 No complete PDEX-26/native acceptance is claimed by this increment.
+
+
+## Confirmed Today reading-state preservation repair
+
+The initial full frontend sweep completed 509/537 passing, 28 failing. A new
+actual production `docked-sidebars` failure reported scroll80→29 after resize.
+A diagnostic rerun found initial plot1920/maxscroll1578 before fitting, versus
+final overview plot211.8/maxscroll29, so the pixel assertion reflects the newly
+specified adaptive overview. It also revealed a real independent issue: expanded
+untimed arrangement/fact reading details were replaced and folded on resize.
+
+Minimization used the full production browser/main renderer, allowed its fit to
+settle, opened both untimed reading details, and dispatched resize at the same
+viewport. Both identities/open states disappeared (writes0) in about1s. This
+separates the product bug from scale/clamp assumptions and old extraction probes.
+The narrowly scoped renderer now retains unchanged immutable unlocated source
+arrays' DOM nodes across layout/clock redraws, and resets them on day/Vault target
+change or changed source arrays. A fresh authoritative source replaces the old
+reading content. Timed card geometry/recalculation and write paths are untouched.
+
+The regression ran red then green. Post-repair build plus production Today,
+plan-time-editor and Calendar suites passed62/62. The new test runs zoom/resize
+at1280×800,1280×720,830×758,680×560 without writes, then proves a refreshed source
+replaces the preserved content. Logs: `/private/tmp/pdex26-untimed-reading-red.log`,
+`/private/tmp/pdex26-untimed-reading-green.log`,
+`/private/tmp/pdex26-followup-source-dom.log`.
+
+Before this second source repair, the repaired full Rust suite passed564 tests,
+0 failed, 6 existing native gates ignored (28 result suites). The three existing
+production Task WebKit scripts passed at all four requested dimensions with an
+explicit `TASK_DOM_VIEWPORTS` matrix; their default two-width behavior remains.
+A full exploratory browser run passed44/55, failed11. Its failed old selectors
+expect permanently exposed properties/actions, a removed pre-round Calendar
+control, lower Today detail panels and fixed old axis geometry; exact results and
+source qualification are retained in the final comparison record. These failures
+are not silently counted as passes. Root-owned native matrix must use both
+confirmed source repairs. Full current frontend comparison and final handoff
+remain in progress.

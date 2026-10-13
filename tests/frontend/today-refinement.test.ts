@@ -54,16 +54,16 @@ for(const [width,height] of [[1280,800],[1280,720],[830,758],[680,560 ]])browser
 }));
 browserTest('Today Task marker opens Content-first nearby editor and saves without background movement or bottom duplicate',async()=>browser(1280,720,async page=>{
   await page.evaluate(()=>{
-    const task={id:'today-task',name:'Synthetic timed Task',content:'Complete synthetic content',date:probeView.date,time:'16:00',executionEnd:null,listId:'inbox',state:'pending',priority:'none',tagIds:[],parentId:null,createdAt:'2026-08-10T08:00-04:00',modifiedAt:'2026-08-10T08:00-04:00',deletedAt:null,completion:null,changes:[],source:{kind:'manual',reference:null},overdue:false,timePassed:false};
-    probeView.tasks={...probeView.tasks,state:'ready',revision:'task-revision',tasks:[task],tags:[]};todayHarness.render(probeView);
+    const task={id:'today-task',name:'Synthetic timed Task',content:'Complete synthetic content',date:probeView.date,time:'16:00',executionEnd:{date:probeView.date,time:'16:45'},listId:'work',state:'pending',priority:'high',tagIds:['review'],parentId:'parent',createdAt:'2026-08-10T08:00-04:00',modifiedAt:'2026-08-10T08:00-04:00',deletedAt:null,completion:null,changes:[],source:{kind:'manual',reference:null},overdue:false,timePassed:false};
+    probeView.tasks={...probeView.tasks,state:'ready',revision:'task-revision',tasks:[{...task,id:'parent',name:'Undated parent',date:null,time:null,executionEnd:null,parentId:null,listId:'inbox',tagIds:[]},task],tags:[{id:'review',name:'Review'}],folders:[{id:'projects',name:'Projects'}],lists:[{id:'inbox',name:'Inbox',isSystem:true,archived:false,folderId:null},{id:'work',name:'Work',isSystem:false,archived:false,folderId:'projects'}]};todayHarness.render(probeView);
     const previous=window.__TAURI__.core.invoke;window.__TAURI__.core.invoke=async(command,args)=>{if(command!=='update_task')return previous(command,args);probeCalls.push({command,args});probeView={...probeView,tasks:{...probeView.tasks,revision:'saved-task-revision',tasks:probeView.tasks.tasks.map(t=>t.id===args.input.taskId?{...t,...args.input}:t)}};return structuredClone(probeView.tasks);};
   });
   const marker=page.locator('[data-task-id="today-task"] .today-axis-marker-link');const before=await page.evaluate(()=>({outer:document.querySelector('.workspace-information')!.scrollTop,axis:document.querySelector('#today-axis-scroll-surface')!.scrollTop}));
   await marker.click();await page.locator('dialog[data-today-task-details][open]').waitFor();
   const content=page.locator('dialog[data-today-task-details] [data-task-content]');assert.equal(await content.inputValue(),'Complete synthetic content');
   await content.fill('Updated complete content');await page.locator('dialog[data-today-task-details] button[type=submit]').click();await page.waitForTimeout(250);assert.equal(await page.locator('dialog[data-today-task-details]').count(),0,JSON.stringify(await page.evaluate(()=>({status:document.querySelector('[data-today-task-details-status]')?.textContent,calls:probeCalls,valid:document.querySelector('dialog form')?.checkValidity()}))));
-  const after=await page.evaluate(()=>({outer:document.querySelector('.workspace-information')!.scrollTop,axis:document.querySelector('#today-axis-scroll-surface')!.scrollTop,bottom:document.querySelector('#today-timed-details')!.querySelectorAll('[data-task-id]').length,task:probeView.tasks.tasks[0],input:probeCalls.find(c=>c.command==='update_task')?.args.input}));
-  assert.equal(after.outer,before.outer);assert.equal(after.axis,before.axis);assert.equal(after.bottom,0);assert.equal(after.task.content,'Updated complete content');assert.equal(after.input.expectedRevision,'task-revision');
+  const after=await page.evaluate(()=>({outer:document.querySelector('.workspace-information')!.scrollTop,axis:document.querySelector('#today-axis-scroll-surface')!.scrollTop,bottom:document.querySelector('#today-timed-details')!.querySelectorAll('[data-task-id]').length,task:probeView.tasks.tasks.find(t=>t.id==='today-task'),input:probeCalls.find(c=>c.command==='update_task')?.args.input}));
+  assert.equal(after.outer,before.outer);assert.equal(after.axis,before.axis);assert.equal(after.bottom,0);assert.equal(after.task.content,'Updated complete content');assert.equal(after.input.expectedRevision,'task-revision');assert.equal(after.task.parentId,'parent');assert.equal(after.task.listId,'work');assert.equal(after.task.priority,'high');assert.deepEqual(after.task.tagIds,['review']);assert.deepEqual(after.task.executionEnd,{date:after.task.date,time:'16:45'});assert.equal(after.input.parentId,'parent');assert.equal(after.input.listId,'work');assert.equal(after.input.priority,'high');assert.deepEqual(after.input.tagIds,['review']);
 }));
 for(const [width,height] of [[1280,800],[1280,720],[830,758],[680,560]])test(`native WebKit production cards remain selectable and bounded at ${width}×${height}`,{skip:process.platform!=='darwin'},()=>{
   const script=join(directory,`wk-${width}-${height}.js`);writeFileSync(script,`await new Promise(r=>setTimeout(r,40));const plot=document.querySelector('#today-axis-plot'),surface=document.querySelector('#today-axis-scroll-surface'),rect=e=>{const r=e.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,height:r.height,width:r.width};};return JSON.stringify({plot:rect(plot),surface:rect(surface),cards:[...plot.querySelectorAll('.today-axis-marker')].map(e=>({rect:rect(e),text:e.textContent,hit:e.querySelector('.today-axis-marker-link').getBoundingClientRect().height,overflow:getComputedStyle(e.querySelector('.today-axis-marker-title')).textOverflow})),writes:probeCalls.filter(c=>c.command==='edit_plan_time').length});`);
@@ -123,4 +123,34 @@ browserTest('real pointer Task range preserves length and edits only Task storag
   const marker=page.locator('[data-task-id="drag-task"] .today-axis-marker-link'),box=await marker.boundingBox(),plot=await page.locator('#today-axis-plot').boundingBox(),x=box!.x+box!.width/2,y=box!.y+box!.height/2;
   await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x,y+plot!.height*60/1080,{steps:4});await page.mouse.up();await page.waitForFunction(()=>probeCalls.some(c=>c.command==='update_task'));
   const result=await page.evaluate(()=>({input:probeCalls.find(c=>c.command==='update_task').args.input,task:probeView.tasks.tasks[0],planWrites:probeCalls.filter(c=>['edit_plan_time','cancel_plan_entry'].includes(c.command)).length}));assert.equal(result.input.time,'17:00');assert.deepEqual(result.input.executionEnd,{date:'2026-08-10',time:'17:45'});assert.equal(result.planWrites,0);assert.equal(result.task.priority,'high');assert.deepEqual(result.task.tagIds,['tag-keep']);assert.equal(await page.locator('dialog[open]').count(),0);
+}));
+
+browserTest('presentation resize and zoom retain expanded untimed reading nodes without writes',async()=>browser(1280,720,async page=>{
+  await page.evaluate(()=>{
+    probeView=structuredClone(probeView);
+    const entry=probeView.timeAxis.currentArrangement.shift();
+    probeView.timeAxis.unlocatedCurrentArrangement=[{...entry,startMinute:null,endMinute:null,period:'择机',planPrecision:'unlocated'}];
+    probeView.timeAxis.unlocatedConfirmedFacts=[{...entry,startMinute:null,endMinute:null,planId:null,timeEditable:false,text:'Independent untimed fact'}];
+    todayHarness.render(probeView);
+  });
+  await page.waitForTimeout(100);
+  await page.evaluate(()=>{
+    window.retainedArrangement=document.querySelector('#today-current-arrangement-unlocated details');
+    window.retainedFact=document.querySelector('#today-confirmed-facts-unlocated details');
+    retainedArrangement.open=true;retainedFact.open=true;
+    window.dispatchEvent(new Event('resize'));
+  });
+  await page.waitForTimeout(80);
+  const preserved=()=>page.evaluate(()=>({arrangement:retainedArrangement===document.querySelector('#today-current-arrangement-unlocated details')&&retainedArrangement.open,fact:retainedFact===document.querySelector('#today-confirmed-facts-unlocated details')&&retainedFact.open,writes:probeCalls.filter(call=>/^(create_|edit_|update_|save_|set_|cancel_)/.test(call.command)).length}));
+  assert.deepEqual(await preserved(),{arrangement:true,fact:true,writes:0});
+  await page.locator('#today-axis-zoom').click();
+  for(const [width,height] of [[830,758],[680,560],[1280,800],[1280,720]]) {
+    await page.setViewportSize({width,height});await page.waitForTimeout(80);
+    assert.deepEqual(await preserved(),{arrangement:true,fact:true,writes:0});
+  }
+  const refreshed=await page.evaluate(()=>{
+    probeView=structuredClone(probeView);probeView.timeAxis.unlocatedCurrentArrangement[0].text='Authoritative refreshed reading';todayHarness.render(probeView);
+    const current=document.querySelector('#today-current-arrangement-unlocated details');return {replaced:current!==retainedArrangement,text:current.textContent};
+  });
+  assert.equal(refreshed.replaced,true);assert.match(refreshed.text,/Authoritative refreshed reading/);
 }));

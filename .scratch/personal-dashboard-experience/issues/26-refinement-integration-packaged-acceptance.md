@@ -64,3 +64,11 @@ readback, source-byte preservation and clock-kind refusal. Focused Collaboration
 105, Habit details 12 and shared Task 9 checks pass. Combined verification remains
 in progress; [evidence](../evidence/pdex-26-refinement.md) retains initial failures.
 Root-owned source-bound native matrix must use the repaired source candidate.
+
+
+A second actual DOM regression confirmed resize/zoom replaced unchanged untimed
+reading details. The bounded renderer fix retains those nodes within the same
+source/date context and refreshes changed sources. Actual four-size regression
+and62 Today/plan/Calendar checks pass; initial broad failures stay documented.
+Both source repairs require the root-owned rebuilt native candidate; this remains
+an implementation/verification increment, not whole-ticket native acceptance.

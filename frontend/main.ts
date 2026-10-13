@@ -6236,6 +6236,10 @@ function installTodayAxisGestures(): void {
   });
 }
 
+let todayRenderedUnlocatedArrangement: readonly TimeAxisEntryView[] | null = null;
+let todayRenderedUnlocatedFacts: readonly TimeAxisEntryView[] | null = null;
+let todayAxisRenderedSourceBinding: string | null = null;
+
 function renderTodayTimeAxisEntries(
   entries: readonly TimedTodayAxisEntry[],
   unlocatedArrangement: readonly TimeAxisEntryView[],
@@ -6436,12 +6440,19 @@ function renderTodayTimeAxisEntries(
       return [duration];
     }),
   );
-  todayCurrentArrangementUnlocated.replaceChildren(
-    ...unlocatedArrangement.map((entry, index) => axisEntryDetails(entry, "arrangement-unlocated", index)),
-  );
-  todayConfirmedFactsUnlocated.replaceChildren(
-    ...unlocatedFacts.map((entry, index) => axisEntryDetails(entry, "facts-unlocated", index)),
-  );
+  // Layout/clock redraws retain the same immutable source arrays and reading nodes.
+  if (todayRenderedUnlocatedArrangement !== unlocatedArrangement) {
+    todayCurrentArrangementUnlocated.replaceChildren(
+      ...unlocatedArrangement.map((entry, index) => axisEntryDetails(entry, "arrangement-unlocated", index)),
+    );
+    todayRenderedUnlocatedArrangement = unlocatedArrangement;
+  }
+  if (todayRenderedUnlocatedFacts !== unlocatedFacts) {
+    todayConfirmedFactsUnlocated.replaceChildren(
+      ...unlocatedFacts.map((entry, index) => axisEntryDetails(entry, "facts-unlocated", index)),
+    );
+    todayRenderedUnlocatedFacts = unlocatedFacts;
+  }
   todayCurrentArrangementUnlocated.closest<HTMLElement>(".today-axis-unlocated-lane")?.toggleAttribute(
     "hidden",
     unlocatedArrangement.length === 0,
@@ -6494,6 +6505,11 @@ function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTim
 
 function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): void {
   if (!todayContinuousAxis) return;
+  if (todayAxisRenderedDate !== view.date || todayAxisRenderedSourceBinding !== view.targetBinding) {
+    todayRenderedUnlocatedArrangement = null;
+    todayRenderedUnlocatedFacts = null;
+    todayAxisRenderedSourceBinding = view.targetBinding;
+  }
   const entries: readonly TimedTodayAxisEntry[] = [
     ...view.timeAxis.currentArrangement.map((entry) => ({ ...entry, lane: "arrangement" as const })),
     ...view.timeAxis.confirmedFacts.map((entry) => ({ ...entry, lane: "facts" as const })),
