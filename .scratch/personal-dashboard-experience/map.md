@@ -21,7 +21,7 @@ Management source: source-personal-dashboard-experience
 | PDEX-23 | ticket | [Collaboration 空间与输入体验](issues/23-collaboration-context-input.md) | ready-for-agent | in-progress | none | implementation integrated at 3cb070737e919c2d9495556a19541bdf3b93c553; review/native acceptance pending; [evidence](evidence/pdex-23-refinement.md), [history](refinement-execution-2026-10-11.md) |
 | PDEX-24 | ticket | [Habit 新增、编辑与目标设置](issues/24-habit-create-edit-goal-cycles.md) | ready-for-agent | in-progress | none | implementation integrated at 71ebf5d2a8e59aa623115b1c15abae0da890e826; application/DOM and scoped native creation/goal cycles verified; combined acceptance/review pending; [native](evidence/pdex-19-24-native-partial-2026-10-13.json), [evidence](evidence/pdex-24-refinement.md), [history](refinement-execution-2026-10-11.md) |
 | PDEX-25 | ticket | [Habit 详情、历史统计与停用恢复](issues/25-habit-details-history-lifecycle.md) | ready-for-agent | in-progress | PDEX-24 | lifecycle guards integrated at ccffecb45de940e1c1ea140200c3930676e02e63; application/DOM verified, review/native acceptance pending; [evidence](evidence/pdex-25-refinement.md), [history](refinement-execution-2026-10-11.md) |
-| PDEX-26 | ticket | [整合与真实 App 验收](issues/26-refinement-integration-packaged-acceptance.md) | ready-for-agent | open | PDEX-20, PDEX-21, PDEX-22, PDEX-23, PDEX-25 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
+| PDEX-26 | ticket | [整合与真实 App 验收](issues/26-refinement-integration-packaged-acceptance.md) | ready-for-agent | in-progress | PDEX-20, PDEX-21, PDEX-22, PDEX-23, PDEX-25 | claimed from 115a912; all feature prerequisites integrated/verified; combined tests, source-bound native matrix and review underway |
 | PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | closed | none | [local human acceptance](evidence/human-acceptance-2026-10-11.md), [retained publication](publication.md) |
 | PDEX-01 | ticket | [01: 在白天手动编辑具体计划并可靠保存](issues/01-current-plan-time-editor.md) | ready-for-agent | closed | none | [component resolution + final checks](evidence/pdex-11.md) |
 | PDEX-02 | ticket | [02: 将模糊计划定位并编辑时间精度](issues/02-approximate-plan-times.md) | ready-for-agent | closed | PDEX-01 | [component resolution + final checks](evidence/pdex-11.md) |
@@ -339,3 +339,7 @@ PDEX-24 is integrated with 39 real application tests and scoped frontend/DOM che
 ### PDEX-21 implementation frontier — 2026-10-13
 
 PDEX-21 claimed from `0230a35b0933a0e092fa9175e70932c3c27a6054`, using verified PDEX-19 Task contracts and retained PDEX-22 floating-dialog work. PDEX-20/25 remain in progress, PDEX-26 waits for combined prerequisites. No upstream ticket closure is inferred.
+
+### Combined acceptance frontier — 2026-10-13
+
+PDEX-19–25 implementation is integrated and its scoped application/DOM results are recorded. PDEX-26 claimed from `115a912b76c823b36aeef6ad03a3145a8eceac94`, with a separate verification worker and root-owned native matrix. Parent acceptance, normal installation and remote/main operations remain separate.
