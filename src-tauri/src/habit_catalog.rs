@@ -148,10 +148,32 @@ impl HabitGoalRevision {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HabitLifecycleMutationInput {
+    pub habit_key: String, pub change_id: String, pub target_binding: String, pub expected_revision: Option<String>, pub active: bool,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HabitActivityChange {
+    pub change_id: String, pub active: bool, pub lived_date: String, pub changed_at: String,
+    #[serde(default)] pub attained_on_transition: bool,
+    #[serde(default)] pub local_change_count: Option<usize>,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HabitLifecycleReceipt { pub input: HabitLifecycleMutationInput, pub saved_at: String, pub lived_date: String }
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HabitDefinition {
     pub key: String,
     pub settings: HabitSettings,
     pub active: bool,
+    #[serde(default)]
+    pub initial_active: Option<bool>,
+    #[serde(default)]
+    pub activity_baseline_date: Option<String>,
+    #[serde(default)]
+    pub activity_changes: Vec<HabitActivityChange>,
     pub sourced: bool,
     #[serde(default)]
     pub source_tracking_kind: Option<String>,
@@ -162,6 +184,13 @@ pub struct HabitDefinition {
     pub source_labels: Vec<String>,
     pub source_goal_history: Vec<HabitGoalContextView>,
     pub goal_revisions: Vec<HabitGoalRevision>,
+}
+
+impl HabitDefinition {
+    pub fn active_on(&self, date: &str) -> bool {
+        self.activity_changes.iter().rev().find(|change| change.lived_date.as_str() <= date).map(|change| change.active).unwrap_or_else(|| if self.activity_baseline_date.as_deref().is_some_and(|baseline|date<baseline) { self.sourced } else { self.initial_active.unwrap_or(self.active) })
+    }
+    pub fn activity_boundary_in(&self, from: &str, to: &str) -> bool { self.activity_changes.iter().any(|change| change.lived_date.as_str() >= from && change.lived_date.as_str() <= to) }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -178,6 +207,8 @@ pub struct HabitCatalogDocument {
     pub schema_version: u32,
     pub habits: Vec<HabitDefinition>,
     pub receipts: Vec<HabitCatalogReceipt>,
+    #[serde(default)]
+    pub lifecycle_receipts: Vec<HabitLifecycleReceipt>,
 }
 
 impl Default for HabitCatalogDocument {
@@ -186,6 +217,7 @@ impl Default for HabitCatalogDocument {
             schema_version: 1,
             habits: vec![],
             receipts: vec![],
+            lifecycle_receipts: vec![],
         }
     }
 }
@@ -204,6 +236,15 @@ impl HabitCatalogDocument {
                 return Err("Habit catalog 重复身份；原文件保留。".into());
             }
             habit.settings.validate()?;
+            if habit.activity_baseline_date.as_deref().is_some_and(|date|CalendarDate::parse(date).is_none()) {return Err("Habit 活动基准日期无效。".into());}
+            let mut previous_activity: Option<&str> = None;
+            for change in &habit.activity_changes {
+                validate_local_identifier(&change.change_id,"Habit lifecycle operation")?;
+                validate_timestamp_label(&change.changed_at)?;
+                if CalendarDate::parse(&change.lived_date).is_none() || previous_activity.is_some_and(|previous| previous > change.lived_date.as_str()) { return Err("Habit 活动间隔日期无效；原文件保留。".into()); }
+                previous_activity=Some(&change.lived_date);
+            }
+            if habit.activity_changes.last().is_some_and(|change| change.active!=habit.active) { return Err("Habit 活动状态与保留间隔不一致。".into()); }
             if habit.source_tracking_kind.as_deref().is_some_and(|kind| {
                 !["weekly-count", "daily-time", "daily-completion"].contains(&kind)
             }) {
@@ -240,6 +281,10 @@ impl HabitCatalogDocument {
             if !operations.insert(&receipt.input.change_id) {
                 return Err("Habit catalog 重复操作身份。".into());
             }
+        }
+        for receipt in &catalog.lifecycle_receipts {
+            validate_habit_key(&receipt.input.habit_key)?;validate_local_identifier(&receipt.input.change_id,"Habit lifecycle operation")?;validate_timestamp_label(&receipt.saved_at)?;
+            if CalendarDate::parse(&receipt.lived_date).is_none() || !operations.insert(&receipt.input.change_id) { return Err("Habit 活动操作身份或日期无效。".into()); }
         }
         Ok(catalog)
     }
@@ -338,6 +383,9 @@ impl HabitCatalogDocument {
                 key: input.habit_key.clone(),
                 settings: input.settings.clone(),
                 active: source.is_none_or(|s| s.active),
+                initial_active: Some(source.is_none_or(|s| s.active)),
+                activity_baseline_date: Some(if source.is_some() {today.into()} else {input.settings.start_date.clone()}),
+                activity_changes: vec![],
                 source_name: source.map(|s| s.name.clone()),
                 source_localized_names: source
                     .map(|s| s.localized_names.clone())
@@ -447,7 +495,7 @@ pub fn overlay_catalog(
             } else {
                 Default::default()
             };
-        habit.active = definition.active;
+        habit.active = definition.active_on(today);
         habit.locally_configured = true;
         for label in &definition.source_labels {
             if !habit.source_labels.contains(label) {
@@ -487,7 +535,7 @@ pub fn overlay_catalog(
                 _ => today.into(),
             };
             habit.partial_cycle = applicable.effective_date > cycle_start
-                || definition.settings.start_date > cycle_start;
+                || definition.settings.start_date > cycle_start || definition.activity_boundary_in(&cycle_start,today);
             habit.goal_label = goal.label();
             habit.goal_kind = match goal {
                 HabitGoal::WeeklyDays { .. } => "weekly-count",
@@ -520,7 +568,7 @@ pub fn overlay_catalog(
                     })
                     .count() as u32
             });
-            habit.can_record_completion = definition.active
+            habit.can_record_completion = definition.active_on(today)
                 && (!matches!(goal, HabitGoal::Unconfigured) || habit.goal_kind == "weekly-count")
                 && definition.settings.start_date.as_str() <= today
                 && !matches!(

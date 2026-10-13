@@ -4,13 +4,13 @@
 
 **Blocked by:** 24 — Habit 新增、编辑与目标设置
 
-**Status:** in-progress
+**Status:** implementation-complete/acceptance-pending
 
 **Triage:** ready-for-agent
 **ID:** PDEX-25
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** in progress
+**Implementation:** implemented; native acceptance pending
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -54,3 +54,23 @@ PDEX-SPEC-02 stories 73–74、80–82、86–87；共同承担 1–3、88–91 
 ## Authorized claim — 2026-10-13
 
 Owner: Codex implementer `/root/pdex24` (new PDEX-25 worktree). Working branch `codex/pdex-25-refinement`; starting integration tip `8bcf66f96ba021e5c7a5c5eac39ac3c8cb9557d0`, authorized base `918e7e0d9c4b2c524c429bfd309482e328bc4c91`. PDEX-24 implementation is integrated and its real catalog/completion/snapshot interface tests pass 39/39; native acceptance remains separately pending. Reuse the verified PDEX-24 boundary; no inferred ticket closure. Full spec/ticket unchanged. Local Git only, full history, no installation/main/remote operations.
+
+## Implementation handoff — 2026-10-13
+
+Full PDEX-25 implementation is on `codex/pdex-25-refinement`, local Git only. Full canonical and retained sourced history uses the existing application/store/projection boundary; lifecycle persists dated transitions and readback receipts under the same catalog, without external lifecycle writes. Default Habits keeps its summary/today list; explicit left selection shows right detail, preserves the mounted row history on return, and exposes shared editing, current check-in, provenance, paged historical corrections and inactive same-key restoration. Complete/partial/unknown coverage and historical goal/frequency/activity boundaries are qualified in statistics.
+
+Implementation commits (full history retained):
+
+- `f49b2ce4914489285f9a56af85db309279c86262` — full canonical detail history and qualified statistics.
+- `1bd63278cfd4e875102543efa8b6d13fb5093ee4` — canonical inactive/restored activity intervals.
+- `eeb68d9d78999a56c5e5fd37a4cb353ae1a41470` — achieved open-week peaks and historical correction.
+- `dc6feb6d8dd20870ee22543bbf773b33c4e35c5c` — immutable source retention, goal knowledge and coverage qualification.
+- `96fab30ae58d5785a809e21ab1010d40b773d1bb` — selected-detail/inactive finder UI and native commands.
+- `c4a7f7c4fabbc053e14d3615d0b6636d37f9ef07` — revision-bound retries, separate day/week peaks and delayed-response guards.
+- `b9ae1948a88583fc8fd72b3b6a50945655bfe88f` — merge latest integration `86980149b4478a685e03a58dbf213cd6a8bf5fc9`, preserving Calendar/Task/Habit imports and scoped CSS.
+
+- `0bfc4d837ead4dd1f0ffe027d7bdebc1184d9685` — same-lived-day transition evidence preserves old attained peak without automatic restoration check-in.
+
+Verification: build and cargo check pass;9 real detail/lifecycle application cases plus39 prior Habit catalog/completion/snapshot cases pass48/48;33 focused frontend language/presentation/historical cases pass;5 actual DOM create/edit/detail cases pass at1200/560, including failed-save same-operation retry and delayed old-Vault rejection. A broad frontend sweep completed473/500 with27 inherited Today/Collaboration/Task probe failures, so it is not a clean full-suite result. Evidence: [PDEX-25 refinement](../evidence/pdex-25-refinement.md).
+
+Native packaged acceptance is separately pending and remains with the integration task. This handoff does not close the ticket, merge main, install the normal App, push remote history or claim end-to-end native acceptance.

@@ -619,11 +619,19 @@ pub fn project_snapshot_with_names_at_local_date(
     local_records: Vec<LocalHabitRecord>, local_completions: Vec<LocalHabitCompletion>,
     names_configuration: &HabitNamesConfiguration,
 ) -> Result<HabitSnapshotView, String> {
+    project_snapshot_window(document,today,local_date,local_records,local_completions,names_configuration,false)
+}
+
+pub(crate) fn project_source_history(document: &[u8], today: &str, local_date: &str, names: &HabitNamesConfiguration) -> Result<HabitSnapshotView,String> {
+    project_snapshot_window(document,today,local_date,vec![],vec![],names,true)
+}
+
+fn project_snapshot_window(document: &[u8], today: &str, local_date: &str, local_records: Vec<LocalHabitRecord>, local_completions: Vec<LocalHabitCompletion>, names_configuration: &HabitNamesConfiguration, source_window: bool) -> Result<HabitSnapshotView,String> {
     let snapshot = parse_and_validate_at_local_date(document, today, local_date)?;
     let today_date = CalendarDate::parse(today).expect("validated current date");
     let week_start = today_date.monday();
-    let history_start = week_start.plus_days(-7 * (HISTORY_WEEKS - 1));
-    let history_end = week_start.plus_days(6);
+    let history_start = if source_window {CalendarDate::parse(&snapshot.range.from).unwrap()} else {week_start.plus_days(-7 * (HISTORY_WEEKS - 1))};
+    let history_end = if source_window {CalendarDate::parse(&snapshot.range.to).unwrap()} else {week_start.plus_days(6)};
     let source_by_key: HashMap<&str, &Source> = snapshot
         .sources
         .iter()
@@ -749,7 +757,7 @@ pub fn project_snapshot_with_names_at_local_date(
             .iter()
             .find(|cell| cell.date == today)
             .cloned()
-            .expect("history includes current date");
+            .unwrap_or_else(||project_cell(today,None,&source_by_key,&[],local_completion_by_key_date.get(&(habit.key.as_str(),today)).copied(),today_date));
         let recent_start = today_date.plus_days(-6);
         let recent = history
             .iter()
@@ -762,8 +770,11 @@ pub fn project_snapshot_with_names_at_local_date(
         let source_goal = habit.goal.as_ref().map(catalog_goal);
         let mut source_revisions: Vec<_> = habit.goal_history.iter().map(|context| crate::habit_catalog::HabitGoalRevision { effective_date: context.week_of.clone(), valid_through: Some(CalendarDate::parse(&context.week_of).expect("validated source week").plus_days(6).to_string()), goal: catalog_goal(&context.goal) }).collect();
         if let Some(goal) = &source_goal {
-            source_revisions.retain(|r| r.effective_date != week_start.to_string());
-            source_revisions.push(crate::habit_catalog::HabitGoalRevision { effective_date: week_start.to_string(), valid_through: None, goal: goal.clone() });
+            let source_date=CalendarDate::parse(&snapshot.range.to).unwrap();
+            let goal_start=if source_window {match goal {crate::habit_catalog::HabitGoal::WeeklyDays {..}=>source_date.monday(),_=>source_date}} else {match goal {crate::habit_catalog::HabitGoal::WeeklyDays {..}=>week_start,_=>today_date}};
+            let goal_end=if source_window {Some(match goal {crate::habit_catalog::HabitGoal::WeeklyDays {..}=>source_date.monday().plus_days(6).to_string(),_=>source_date.to_string()})} else {None};
+            source_revisions.retain(|r| r.effective_date != goal_start.to_string());
+            source_revisions.push(crate::habit_catalog::HabitGoalRevision { effective_date: goal_start.to_string(), valid_through: goal_end, goal: goal.clone() });
         }
         source_revisions.sort_by(|a,b| a.effective_date.cmp(&b.effective_date));
         projected.push(HabitView {
@@ -1591,4 +1602,8 @@ fn catalog_goal(goal: &Goal) -> crate::habit_catalog::HabitGoal {
         Goal::WeeklyCount { standard } => crate::habit_catalog::HabitGoal::WeeklyDays { days: *standard },
         Goal::DailyTime { standard, day_relation } => crate::habit_catalog::HabitGoal::DailyTime { time: standard.clone(), day_relation: *day_relation },
     }
+}
+
+pub(crate) fn project_canonical_cell(date: &str, today: &str, completion: Option<&LocalHabitCompletion>) -> HabitCellView {
+    project_cell(date, None, &HashMap::new(), &[], completion, CalendarDate::parse(today).expect("validated lived date"))
 }
