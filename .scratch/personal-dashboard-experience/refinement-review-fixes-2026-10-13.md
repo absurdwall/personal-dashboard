@@ -49,3 +49,19 @@ Both additional findings are implemented. Worker checks and one root post-merge 
 No known implementation finding from either review return remains reported. Independent final recheck and delegated native acceptance remain pending; the parent and PDEX-26 stay open. PDEX-19/25 return to implementation-complete/acceptance-pending. No normal installation, main/remote action, full evaluation or native acceptance occurred.
 
 The recreated worker was clean and reachable before removal; all nine ticket/review branch tips and base `918e7e0` were checked reachable from this merge. Branches/history, prior generated-schema archive, canonical dependencies, unrelated prototype checkout and private fixtures remain. [Second cleanup receipt](evidence/refinement-review-second-return-cleanup-2026-10-13.json). [Installed Management helper source readback](evidence/management-review-repair-implementation-handoff-2026-10-13.json) confirms the existing local source; no summary/focus/lifecycle change or acceptance assertion is made.
+
+## Independent review closure — 2026-10-13
+
+Review workflow `01a13776-4d52-7961-bd34-bf9e6a73271a` confirms final product `4ec21fc4457841e87ebd4ab986db17c3f02b6588` passed two independent source reviews: **Standards 0 remaining findings; Spec 0 remaining findings**. Handoff HEAD `fc7386530da7964eb459b980c60ac8c1f0d1633f` differs from that product only in local tracking records. All reported findings are closed, including renewed acknowledgement of newly introduced conflicts and the unavailable coverage translation. This closure supersedes the earlier pending-independent-recheck statements; their history is retained.
+
+The independent reviewer ran `npm run build` successfully in the canonical integration directory and reported the following targeted results. The implementation agent read the four existing logs below to confirm their recorded counts; no checks were rerun for this documentation closeout.
+
+| Independent check | Result | Existing local log |
+| --- | --- | --- |
+| Production recovery DOM, 13 scenarios at 2 widths | 26/26 passed | `/private/tmp/pdex-root-review-recovery.log` |
+| Production locale DOM | 2/2 passed | `/private/tmp/pdex-root-review-locale.log` |
+| Habit browser behavior | 7/7 passed | `/private/tmp/pdex-root-review-habit-browser.log` |
+| HabitSettingsDraft and Task presentation units | 24/24 passed | `/private/tmp/pdex-root-review-units.log` |
+| Total targeted checks | **59/59 passed** | logs above |
+
+The three Calendar WebKit relationship/retry/readback scenarios also passed independent checks in the preceding review round. These results close the reported implementation/review findings. Formal native/PDEX-26 combined acceptance and the parent acceptance gate remain pending; this does not assert full-suite success, native acceptance or installation. The earlier full-frontend baseline and all qualified implementation evidence remain unchanged. Product code, ticket acceptance states, user focus/lifecycle and unrelated summary recovery are unchanged by this append-only record.
