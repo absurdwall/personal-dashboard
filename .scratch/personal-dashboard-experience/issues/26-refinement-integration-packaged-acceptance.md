@@ -4,13 +4,13 @@
 
 **Blocked by:** 20 — Task 父子关系与清单文件夹; 21 — Today 时间轴与安排交互; 22 — Calendar 新增、详情与节日; 23 — Collaboration 空间与输入体验; 25 — Habit 详情、历史统计与停用恢复
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 **Triage:** ready-for-agent
 **ID:** PDEX-26
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** open
-**Implementation:** not started
+**Lifecycle:** in-progress
+**Implementation:** in progress
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -48,3 +48,7 @@ PDEX-SPEC-02 stories 1–3、88–91，以及全部功能票的组合验收。
 - 后续授权claim时记录实际owner、working branch、base commit、增量实现/评审/
   验收commits、结果和限制。每票可多次commit，完整验收前不关闭。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
+
+## Authorized claim — 2026-10-13
+
+Owner: Codex implementer `/root/pdex19` for combined source/application verification, root for source-bound native Computer Use. Working branch `codex/pdex-26-refinement`; starting integration tip `115a912b76c823b36aeef6ad03a3145a8eceac94`, authorized base `918e7e0d9c4b2c524c429bfd309482e328bc4c91`. All direct implementation prerequisites are integrated with their own evidence; full native acceptance/review is still tracked separately. No missing feature is delegated to this ticket. Full scope and separate parent/installation boundary unchanged. Local Git only and complete history.

@@ -216,3 +216,7 @@ Shared Task relation/editor/history and Calendar frontend passed 67/67 sequentia
 ## Final PDEX-25 documentation handoff — 2026-10-13
 
 Clean integration `e046726007fa28ed47bf9078481cf1b7b82b70fb` retained source branch `codex/pdex-25-refinement` documentation commit `f645827632044c9df1dab64cce8d4c0905eef417` via `git merge --no-ff` as `83d14cd721ef5ea498e1e6c06e6c8449713b6202`. The diff contains only the ticket/evidence handoff, with zero product changes; no test rerun is warranted. Final feature validation remains bound to the same product source above. The native normal-profile reopen limitation is preserved rather than claiming byte identity.
+
+## PDEX-26 claim — 2026-10-13
+
+Branch `codex/pdex-26-refinement`, separate `/private/tmp/pdex26-refinement.noindex` checkout from integration `115a912b76c823b36aeef6ad03a3145a8eceac94`. All implementation prerequisites are integrated/verified; root owns the private synthetic source-bound packaged native matrix. Complete checks, failures and remaining hardware/service limitations must remain distinct. No normal install, main/remote operation or parent closure is inferred.
