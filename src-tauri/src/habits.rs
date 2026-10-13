@@ -1592,3 +1592,7 @@ fn catalog_goal(goal: &Goal) -> crate::habit_catalog::HabitGoal {
         Goal::DailyTime { standard, day_relation } => crate::habit_catalog::HabitGoal::DailyTime { time: standard.clone(), day_relation: *day_relation },
     }
 }
+
+pub(crate) fn project_canonical_cell(date: &str, today: &str, completion: Option<&LocalHabitCompletion>) -> HabitCellView {
+    project_cell(date, None, &HashMap::new(), &[], completion, CalendarDate::parse(today).expect("validated lived date"))
+}

@@ -3222,6 +3222,41 @@ where
             coverage:"Only explicit local completed/withdrawn changes establish local state. Unrecorded dates remain unknown. Change timestamps record saves, not activity time. Published snapshot goal thresholds, actual event times and source observations remain distinct; its freshness and coverage do not limit canonical local facts. Dated notes are context, not completion evidence. This read makes no writes or external calls." })
     }
 
+    pub fn habit_details(&self, key: &str, offset: usize, limit: usize) -> Result<crate::habit_details::HabitDetailsView, String> {
+        use crate::habit_catalog::{catalog_binding,HabitCatalogDocument,HABIT_CATALOG_RELATIVE_PATH};
+        validate_habit_key(key)?;
+        if !(1..=60).contains(&limit) { return Err("Habit 历史分页需为 1–60 条。".into()); }
+        let vault=self.persistence.load_selected_vault()?.ok_or("请先选择 Vault。")?;
+        validate_compatible_vault(&vault)?;
+        let today=self.clock.current_lived_date();
+        let view=self.habits()?;
+        if view.catalog_target_binding.as_deref()!=Some(catalog_binding(&vault.join(HABIT_CATALOG_RELATIVE_PATH)).as_str()) {return Err("Selected Vault / catalog 已变化，请重新读取详情。".into());}
+        let mut habit=view.habit(key).ok_or("Habit 身份不可用，请重新读取。")?.clone();
+        let catalog=self.habit_completion_store.load(&vault.join(HABIT_CATALOG_RELATIVE_PATH))?.as_deref().map(HabitCatalogDocument::parse).transpose()?.unwrap_or_default();
+        let definition=catalog.habits.iter().find(|definition| definition.key==key);
+        let sourced=definition.map(|definition| definition.sourced).unwrap_or(true);
+        let completion_path=canonical_habit_completion_path(&vault);
+        let completion_bytes=self.habit_completion_store.load(&completion_path)?;
+        let canonical=completion_bytes.as_deref().map(|bytes| parse_habit_completion_document(bytes,&self.clock.current_timestamp_label())).transpose()?;
+        if completion_bytes.as_deref().map(document_revision)!=view.completion_revision {return Err("完成记录已变化，请重新读取详情。".into());}
+        let mut cells:std::collections::BTreeMap<_,_>=habit.history.iter().filter(|cell| cell.has_record || cell.coverage!="unknown").map(|cell| (cell.date.clone(),cell.clone())).collect();
+        let mut changes=std::collections::BTreeMap::new();
+        for record in canonical.map(|document|document.completions).unwrap_or_default().into_iter().filter(|record|record.habit_key==key) {
+            changes.insert(record.lived_date.clone(),record.changes.iter().map(|change|HabitLocalCompletionChangeView {state:match change.kind {HabitCompletionChangeKind::Completed=>HabitLocalCompletionState::Completed,HabitCompletionChangeKind::Withdrawn=>HabitLocalCompletionState::Withdrawn},changed_at:change.changed_at.clone()}).collect());
+            let completion=local_habit_completion(record);
+            let cell=cells.entry(completion.date.clone()).or_insert_with(|| crate::habits::project_canonical_cell(&completion.date,&today,None));
+            crate::habits::reconcile_local_completion(cell,Some(&completion));
+        }
+        for cell in cells.values_mut() { if let Some(revision)=habit.goal_revisions.iter().rev().find(|revision|revision.applies_on(&cell.date)) {crate::habit_catalog::apply_goal_to_cell(cell,&revision.goal,Some(&revision.goal));} }
+        let mut from=habit.settings.as_ref().map(|settings|settings.start_date.clone()).unwrap_or_else(||today.clone());
+        for revision in &habit.goal_revisions {from=from.min(revision.effective_date.clone());}
+        if let Some(date)=cells.keys().next(){from=from.min(date.clone());}
+        if let Some(receipt)=catalog.receipts.iter().find(|receipt|receipt.input.habit_key==key){from=from.min(receipt.input.settings.start_date.clone());}
+        if from>today {from=today.clone();}
+        habit.history.clear(); // full cells are read on demand; detail does not render all cards.
+        Ok(crate::habit_details::details_view(&view,habit,cells,&changes,&from,&today,sourced,offset,limit))
+    }
+
     pub fn save_habit_definition(&self, input: crate::habit_catalog::HabitDefinitionMutationInput) -> Result<HabitSnapshotView, String> {
         use crate::habit_catalog::{catalog_binding, HabitCatalogDocument, HABIT_CATALOG_RELATIVE_PATH};
         input.settings.validate()?;
