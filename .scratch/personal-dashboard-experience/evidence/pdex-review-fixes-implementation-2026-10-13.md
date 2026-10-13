@@ -91,3 +91,14 @@ The production DOM boundary supplies synthetic IPC results and proves the actual
 Recovery scenarios: A draft/B save/Refresh/A save; nonconflicting remote merge; divergent same-field current-only resolution; external parent/tag acknowledgement; atomic schedule conflict; saved-but-unread stable-ID retry with one history item and opposite catalog/persisted tag orders; CAS change after read; external deletion; Vault change; explicit clears; legacy omitted fields; opening base retained across own tag-definition write.
 
 Local logs: `/private/tmp/pdex-review-recovery-red.log`, `/private/tmp/pdex-review-recovery-green.log`, `/private/tmp/pdex-review-recovery-tags-red.log`, `/private/tmp/pdex-review-recovery-tags-green.log`, `/private/tmp/pdex-review-recovery-app-receipt.log`, `/private/tmp/pdex-review-recovery-app-cas.log`, `/private/tmp/pdex-review-recovery-app-vault-receipt.log`, `/private/tmp/pdex-review-locale-node-red.log`, `/private/tmp/pdex-review-locale-node-green.log`, `/private/tmp/pdex-review-locale-final-browser.log`, `/private/tmp/pdex-review-locale-final-dom.log`, `/private/tmp/pdex-review-final-frontend-focused.log`.
+
+## Local history handoff
+
+Worker: `/private/tmp/pdex-review-fixes.noindex`, branch `codex/dashboard-experience-refinement-review-fixes`, based on `16f5e2d256fddc1a773486051ae255035d0b9edd`.
+
+- `e77b79e8da9066713814ca5855cb88c698fbf3f7`: Calendar parent relationship / uncertain exact retry.
+- `a37e41308b2f923cce7dc8080c5c99a8a45a85d1`: shared refinement locale and draft/status preservation.
+- `5d98e035d608a2f3ae9f48c0e498de83c89cae9e`: explicit Task three-way recovery, stable tag request order, and review-reported locale/count/Node test follow-ups.
+- `7ce8918c66b621301b297d61bdc7d933d36dce65`: ordinary merge of integration claim `858ca37e5feab3a8364a4a309b8d4c691474aa9a`; no squash/rebase/amend. Only root-owned tracking records arrived in this merge.
+
+After the merge, `npm run build` passed again (`/private/tmp/pdex-review-post-merge-build.log`), the integration claim is an ancestor, and the worker was clean before this handoff note. All work stayed in local Git. No native acceptance, full frontend/Rust suite, remote operation, installation, dependency addition, or unrelated worktree cleanup was performed. Parent owns final ticket state and its single bounded integration readback; packaged acceptance remains with the separate accepting agent.
