@@ -45,7 +45,7 @@ export function panelGeometry(available: number, preferences: PanelPreferences) 
   const contextExpanded = narrow ? preferences.narrow?.context ?? false
     : mode === "two" ? preferences.compact?.context ?? false : preferences.context.expanded;
   const visible = (["history", "context"] as const).filter(side =>
-    side === "history" ? historyExpanded && !narrow : contextExpanded && mode === "three");
+    side === "history" && historyExpanded && !narrow);
   const separators = visible.length * 16;
   const budget = Math.max(0, available - 360 - separators);
   // Keep Sessions compact in the middle mode, even for oversized saved widths.
@@ -111,6 +111,27 @@ export function initializeCollaborationPanels(): void {
     try { localStorage.setItem(preferenceKey, JSON.stringify(preferences)); } catch { /* Layout remains usable. */ }
   };
   if (migratePreferences) save();
+  const chat = primary.querySelector<HTMLElement>(".collaboration-chat-pane");
+  const composer = chat?.querySelector<HTMLElement>(".collaboration-composer");
+  const positionContext = () => {
+    if (!chat || !composer || available <= 0) return;
+    const frame = layout.getBoundingClientRect();
+    const information = layout.closest<HTMLElement>(".workspace-information");
+    // Page scroll does not resize the chat. The content-relative top is stable.
+    const top = frame.top + (information?.scrollTop ?? 0);
+    const bottom = Math.min(window.innerHeight, information?.getBoundingClientRect().bottom ?? window.innerHeight);
+    const messages = chat.querySelector<HTMLElement>(".collaboration-message-list");
+    const inputAndNotices = composer.offsetHeight + composer.offsetTop - chat.offsetTop - (messages?.offsetHeight ?? 0);
+    // Retain the large input; short windows can scroll rather than clip actions.
+    const minimumHeight = Math.max(320, inputAndNotices + 64);
+    layout.style.setProperty("--collaboration-chat-height", `${Math.max(minimumHeight, bottom - top - 16)}px`);
+    const chatFrame = chat.getBoundingClientRect();
+    const composerFrame = composer.getBoundingClientRect();
+    panels.context.style.left = `${chatFrame.left - frame.left + 8}px`;
+    panels.context.style.top = `${chatFrame.top - frame.top + 8}px`;
+    panels.context.style.width = `${Math.max(0, chatFrame.width - 16)}px`;
+    panels.context.style.maxHeight = `${Math.max(0, composerFrame.top - chatFrame.top - 16)}px`;
+  };
   const render = () => {
     geometry = panelGeometry(available, preferences);
     layout.dataset.narrow = String(geometry.narrow);
@@ -119,7 +140,7 @@ export function initializeCollaborationPanels(): void {
     primary.dataset.columns = geometry.mode;
     for (const side of sides) {
       const expanded = side === "history" ? geometry.historyExpanded : geometry.contextExpanded;
-      const resizerHidden = !expanded || geometry.narrow || (side === "context" && geometry.mode === "two");
+      const resizerHidden = side === "context" || !expanded || geometry.narrow;
       const active = document.activeElement;
       if ((!expanded && panels[side].contains(active)) || (resizerHidden && active === resizers[side])) {
         focusTargets[side] = document.activeElement as HTMLElement;
@@ -140,9 +161,7 @@ export function initializeCollaborationPanels(): void {
     if (geometry.mode === "three") {
       layout.style.display = "grid";
       layout.style.flexDirection = "";
-      layout.style.gridTemplateColumns = geometry.context > 0
-        ? `minmax(0, 1fr) 16px ${geometry.context}px`
-        : "minmax(0, 1fr)";
+      layout.style.gridTemplateColumns = "minmax(0, 1fr)";
       primary.style.flex = "";
       primary.style.gridColumn = "1";
       primary.style.gridRow = "1";
@@ -154,6 +173,7 @@ export function initializeCollaborationPanels(): void {
       primary.style.gridColumn = "";
       primary.style.gridRow = "";
     }
+    positionContext();
   };
   for (const side of sides) {
     toggles[side].addEventListener("click", () => {
@@ -165,7 +185,7 @@ export function initializeCollaborationPanels(): void {
         const saved = focusTargets[side];
         const target = saved?.isConnected && !saved.hidden ? saved
           : panels[side].querySelector<HTMLElement>("button, input, [tabindex]");
-        if (target?.isConnected) target.focus();
+        if (target?.isConnected) target.focus({ preventScroll: true });
       }
     });
     const resize = (width: number) => {
@@ -201,6 +221,15 @@ export function initializeCollaborationPanels(): void {
       resizers[side].addEventListener("pointermove", move);
       resizers[side].addEventListener("lostpointercapture", finish);
     });
+  }
+  document.getElementById("collaboration-close-context")?.addEventListener("click", () => {
+    if (!panels.context.hidden) toggles.context.click();
+  });
+  if (chat && composer) {
+    const observer = new ResizeObserver(positionContext);
+    observer.observe(chat);
+    observer.observe(composer);
+    window.addEventListener("resize", positionContext);
   }
   new ResizeObserver(entries => {
     const width = entries[0]?.contentRect.width ?? 0;

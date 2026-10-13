@@ -209,6 +209,8 @@ fn create_manual_task(
 ) -> personal_dashboard_lib::tasks::TasksView {
     application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: current.target_binding.clone().unwrap(),
             expected_revision: current.revision.clone(),
@@ -397,6 +399,8 @@ fn external_read_reports_lived_date_context_and_excludes_archived_pending_obliga
         .unwrap();
     let archived_task = application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: list.target_binding.clone().unwrap(),
             expected_revision: list.revision.clone(),
@@ -550,6 +554,8 @@ fn external_actions_are_idempotent_preserve_user_edits_and_never_revive_deleted_
     );
     let edited = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: repeated.read.target_binding.clone().unwrap(),
             expected_revision: repeated.read.revision.clone().unwrap(),
@@ -913,6 +919,8 @@ fn no_op_daily_flow_commands_persist_identity_before_user_edits() {
     );
     let edited = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: no_op_reschedule.read.target_binding.clone().unwrap(),
             expected_revision: no_op_reschedule.read.revision.clone().unwrap(),
@@ -1123,6 +1131,8 @@ fn adapter_rejects_stale_and_concurrent_writes_without_overwriting_external_byte
     );
     let user_edit = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: created.read.target_binding.clone().unwrap(),
             expected_revision: created.read.revision.clone().unwrap(),
@@ -1408,6 +1418,8 @@ fn retained_daily_flow_operation_id_cannot_be_reused_as_manual_update() {
     let empty = app.read().unwrap();
     let created = app
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             target_binding: empty.target_binding.unwrap(),
             expected_revision: empty.revision,
             task_id: "collision-task".into(),
@@ -1434,6 +1446,8 @@ fn retained_daily_flow_operation_id_cannot_be_reused_as_manual_update() {
     .unwrap();
     assert!(app
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             target_binding: moved.target_binding.unwrap(),
             expected_revision: moved.revision.unwrap(),
             task_id: "collision-task".into(),

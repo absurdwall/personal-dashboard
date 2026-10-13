@@ -72,3 +72,14 @@ Additional producer regression: `TodayApplication::refresh_habit_snapshot` perfo
 - Broad pre-integration frontend run: 452/492 passed, 40 failed. The one Habit localized-name source assertion was corrected by retaining the existing display-name seam; current focused Habit suite passes. Other failures concern pre-existing Today/Collaboration/Tasks probes. Representative failures reproduce at exact base `1906b87` in `/private/tmp/pdex24-regression-base.noindex`: `compactScheduleTransactions`/`todaySideRegion` VM fixture references, Daytime rail parser assertion, selected slash contrast, empty795 composer assertion, and native plan-editor timeout. Baseline comparison logs are `/private/tmp/pdex24-baseline-regressions.log`, `/private/tmp/pdex24-baseline-layout-regressions.log`, `/private/tmp/pdex24-baseline-plan-regression.log`. The full frontend run is not reported green.
 
 Native packaged save/reopen acceptance and PDEX-25 detail/statistics/lifecycle remain separately pending. No normal App install, remote Git, external write, main merge or dependency change occurred.
+
+
+## Integration synchronization and final checks
+
+- Merged integration tip `b96b77d` (PDEX-19 + PDEX-23 and verified claims) into the worker branch, preserving both histories. The sole conflict was disjoint appended CSS; all scoped Task/Collaboration/Habit rules were retained.
+- Post-merge `npm run build`: passed.
+- Post-merge focused frontend checks (Habit/controller/localized-name/canonical navigation + Task refinement + Collaboration context): 29 passed.
+- Post-merge actual DOM Habit form: 3 passed at wide/narrow widths and pending-threshold editing.
+- Post-merge integration workflow binaries: 440 passed, 0 failed (24 binaries).
+- Parallel unit run: 101 passed, 6 ignored, one `DirectoryNotEmpty` cleanup failure in the unchanged `collaboration::history_tests::later_full_history_snapshots_preserve_first_native_readback`. That exact test passed on isolated rerun (1 passed); its function is unchanged from `1906b87`. The whole parallel unit run is not claimed green. Logs: `/private/tmp/pdex24-postmerge-rust.log`, `/private/tmp/pdex24-postmerge-workflows.log`.
+- No unresolved merge markers or whitespace errors. Native packaged acceptance remains pending.

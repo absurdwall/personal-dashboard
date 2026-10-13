@@ -91,6 +91,7 @@ import {
   taskHistoryGroups,
   taskMutationConfirmed,
   taskVisibleInScope,
+  taskPropertyProjection,
   todayTaskGroups,
   todayTaskTimeAxisEntries,
   type TaskListScope,
@@ -324,6 +325,8 @@ type TaskCompletionView = Readonly<{
 }>;
 
 type TaskView = Readonly<{
+  priority?: "high" | "medium" | "low" | "none";
+  tagIds?: readonly string[];
   executionEnd: Readonly<{ date: string; time: string }> | null;
   id: string;
   name: string;
@@ -343,6 +346,7 @@ type TaskView = Readonly<{
 }>;
 
 type TasksView = Readonly<{
+  tags?: readonly Readonly<{id: string; name: string}>[];
   state: "unconfigured" | "empty" | "ready" | "error";
   message: string;
   schemaVersion: number;
@@ -1531,6 +1535,9 @@ const taskRequests = new LatestRequest();
 const todayTaskRequests = new LatestRequest();
 const calendarTaskRequests = new LatestRequest();
 type TaskDraft = Readonly<{
+  expectedRevision?: string;
+  priority?: string;
+  tagIds?: readonly string[];
   endDate: string;
   endTime: string;
   name: string;
@@ -1542,6 +1549,8 @@ type TaskDraft = Readonly<{
   completionTime: string;
 }>;
 type TaskCreateInput = Readonly<{
+  priority?: string;
+  tagIds?: readonly string[];
   targetBinding: string; expectedRevision: string | null; taskId: string; name: string;
   content: string | null; date: string | null; time: string | null; listId: string;
   executionEnd: Readonly<{date: string; time: string}> | null;
@@ -9411,7 +9420,10 @@ function readTaskDraft(form: HTMLFormElement): TaskDraft {
     form.querySelector<HTMLInputElement>("[data-task-completion-time]")?.value ?? "";
   const endDate = form.querySelector<HTMLInputElement>("[data-task-end-date]")?.value ?? "";
   const endTime = form.querySelector<HTMLInputElement>("[data-task-end-time]")?.value ?? "";
-  return { name, content, date, time, endDate, endTime, listId, completionDate, completionTime };
+  const priorityField=form.querySelector<HTMLSelectElement>("[data-task-priority]");
+  const priority=priorityField?.dataset?.taskPriority !== undefined ? priorityField.value : undefined;
+  const tagIds = form.querySelector<HTMLElement>("[data-task-tags]")?.dataset?.taskTags !== undefined ? Array.from(form.querySelectorAll<HTMLInputElement>("[data-task-tag-id]:checked"), input => input.dataset.taskTagId!) : undefined;
+  return { name, content, date, time, endDate, endTime, listId, completionDate, completionTime, priority, tagIds };
 }
 
 function isBlankTaskDraft(draft: TaskDraft): boolean {
@@ -9475,7 +9487,7 @@ function stashTaskEditDraft(form: HTMLFormElement): void {
   if (isBlankTaskDraft(draft)) {
     taskEditDrafts.delete(key);
   } else {
-    taskEditDrafts.set(key, draft);
+    taskEditDrafts.set(key, {...draft,expectedRevision:taskEditDrafts.get(key)?.expectedRevision??taskSurfaceView(surface)?.revision??undefined});
   }
 }
 
@@ -9868,7 +9880,7 @@ function toggleTaskEditorDetails(target: HTMLElement): boolean {
     editor.hidden = !open;
   }
   if (open) {
-    editor.querySelector<HTMLInputElement>("[data-task-name]")?.focus();
+    editor.querySelector<HTMLTextAreaElement>("[data-task-content]")?.focus();
   }
   row.querySelectorAll<HTMLButtonElement>("button[data-task-editor-open]").forEach((button) => {
     button.setAttribute("aria-expanded", String(open));
@@ -9882,6 +9894,7 @@ function taskEditor(
   view: TasksView | null = currentTasksView,
   surface: TaskSurface = "tasks",
   expanded = false,
+  refined = surface === "tasks",
 ): HTMLElement {
   const binding = view?.targetBinding;
   const draft = binding
@@ -10035,6 +10048,7 @@ function taskEditor(
   const editorForm = document.createElement("form");
   editorForm.className =
     surface === "tasks" ? "task-editor-details" : "task-editor-details task-editor-inline";
+  if(refined)editorForm.classList.add("task-refined-editor");
   editorForm.dataset.taskEditor = task.id;
   editorForm.dataset.taskSurface = surface;
   editorForm.hidden = surface !== "tasks" && !expanded;
@@ -10052,15 +10066,15 @@ function taskEditor(
   name.disabled = !editable;
   name.value = draft?.name ?? task.name;
   name.dataset.taskName = "";
-  nameCaption.append(name);
-  nameLabel.append(nameCaption);
+  if(refined) {name.setAttribute("aria-label", t("tasks.name"));name.className="task-editable-title";nameLabel.append(name);}
+  else {nameCaption.append(name);nameLabel.append(nameCaption);}
 
   const contentLabel = document.createElement("label");
   contentLabel.className = "task-form-wide";
   const contentCaption = document.createElement("span");
   setCopy(contentCaption, "tasks.content");
   const content = document.createElement("textarea");
-  content.rows = 2;
+  content.rows = refined ? 7 : 2;
   content.disabled = !editable;
   content.value = draft?.content ?? task.content ?? "";
   content.dataset.taskContent = "";
@@ -10126,6 +10140,7 @@ function taskEditor(
   clearEnd.type = "button";
   clearEnd.className = "secondary-button";
   clearEnd.disabled = !editable;
+  clearEnd.hidden = refined && !endDate.value && !endTime.value;
   clearEnd.dataset.taskClearEnd = "";
   setCopy(clearEnd, "tasks.clearExecutionEnd");
   clearEnd.addEventListener("click", () => {
@@ -10133,7 +10148,71 @@ function taskEditor(
     endTime.value = "";
     stashTaskSurfaceDraft(surface, editorForm);
   });
-  grid.append(nameLabel, contentLabel, listLabel, dateLabel, timeLabel, endDateLabel, endTimeLabel, clearEnd);
+  let openSchedule = (): void => { date.focus(); };
+  let openList = (): void => { list.focus(); };
+  let cancelTimeDraft = (): void => { time.value="";endDate.value="";endTime.value="";stashTaskSurfaceDraft(surface,editorForm); };
+  let resetRefinedProperties = (): void => {};
+  if(refined) {
+  const properties = document.createElement("div"); properties.className = "task-compact-properties task-form-wide";
+  const compact = (label: string, controls: HTMLElement[]): HTMLDetailsElement => {
+    const panel = document.createElement("details"); panel.className = "task-property-panel";
+    const summary = document.createElement("summary"); summary.textContent = label;
+    const fields = document.createElement("div"); fields.className = "task-property-fields"; fields.append(...controls);
+    panel.append(summary, fields); properties.append(panel); return panel;
+  };
+  const listPanel = compact(taskListDisplayName(taskListForId(view!, draft?.listId ?? task.listId) ?? {name:task.listId,isSystem:false}, t("tasks.inbox")), [listLabel]);
+  listPanel.dataset.taskListPanel = "";
+  list.addEventListener("change",()=> {listPanel.querySelector("summary")!.textContent=list.selectedOptions[0]?.textContent ?? "";});
+  const schedulePanel = compact(taskScheduleText(draft?.date ?? task.date, draft?.time ?? task.time,
+    draft ? (draft.endDate && draft.endTime ? {date:draft.endDate,time:draft.endTime} : null) : task.executionEnd),
+    [dateLabel, timeLabel, endDateLabel, endTimeLabel, clearEnd]);
+  schedulePanel.dataset.taskSchedulePanel = "";
+  const cancelTime = document.createElement("button"); cancelTime.type="button";cancelTime.className="secondary-button";
+  cancelTime.textContent=currentInterfaceLanguage==="zh"?"取消时间安排":"Cancel time arrangement";cancelTime.disabled=!editable;
+  cancelTime.dataset.taskCancelTime="";
+  cancelTime.addEventListener("click",()=> {time.value="";endDate.value="";endTime.value="";clearEnd.hidden=true;stashTaskSurfaceDraft(surface,editorForm);updateScheduleSummary();});
+  schedulePanel.querySelector(".task-property-fields")!.append(cancelTime);
+  const updateScheduleSummary=()=> {clearEnd.hidden=!endDate.value&&!endTime.value;schedulePanel.querySelector("summary")!.textContent=taskScheduleText(date.value||null,time.value||null,endDate.value&&endTime.value?{date:endDate.value,time:endTime.value}:null);};
+  [date,time,endDate,endTime].forEach(field=>field.addEventListener("change",updateScheduleSummary));
+  clearEnd.addEventListener("click",updateScheduleSummary);
+  const priorityLabel=document.createElement("label");priorityLabel.textContent=currentInterfaceLanguage==="zh"?"优先级":"Priority";
+  const priority=document.createElement("select");priority.dataset.taskPriority="";priority.disabled=!editable;
+  for(const [value,zh,en] of [["none","无","None"],["high","高","High"],["medium","中","Medium"],["low","低","Low"]]) {
+    const option=document.createElement("option");option.value=value;option.textContent=currentInterfaceLanguage==="zh"?zh:en;priority.append(option);
+  }
+  priority.value=draft?.priority??task.priority??"none";priorityLabel.append(priority);
+  const priorityPanel=compact(priority.selectedOptions[0]?.textContent??"",[priorityLabel]);
+  priority.addEventListener("change",()=>{priorityPanel.querySelector("summary")!.textContent=priority.selectedOptions[0]?.textContent??"";});
+  const tags=document.createElement("div");tags.dataset.taskTags="";tags.className="task-tags-picker";
+  const selectedTags=new Set(draft?.tagIds??task.tagIds??[]);
+  for(const tag of view?.tags??[]) {
+    const label=document.createElement("label");const checkbox=document.createElement("input");checkbox.type="checkbox";
+    checkbox.dataset.taskTagId=tag.id;checkbox.checked=selectedTags.has(tag.id);checkbox.disabled=!editable;
+    label.append(checkbox,document.createTextNode(tag.name));tags.append(label);
+    const rename=document.createElement("button");rename.type="button";rename.className="secondary-button";rename.disabled=!editable;
+    rename.textContent=currentInterfaceLanguage==="zh"?"改名":"Rename";
+    const renameName=document.createElement("input");renameName.type="text";renameName.value=tag.name;renameName.maxLength=80;renameName.disabled=!editable;
+    renameName.setAttribute("aria-label",(currentInterfaceLanguage==="zh"?"改名标签":"Rename tag")+" · "+tag.name);
+    rename.addEventListener("click",()=>void pendingWrites.track(manageTaskTag("rename",tag.id,renameName.value,surface,editorForm)));
+    const remove=document.createElement("button");remove.type="button";remove.className="secondary-button";remove.disabled=!editable;
+    remove.textContent=currentInterfaceLanguage==="zh"?"删除标签":"Delete tag";
+    remove.addEventListener("click",()=>void pendingWrites.track(manageTaskTag("delete",tag.id,null,surface,editorForm)));
+    tags.append(renameName,rename,remove);
+  }
+  const tagName=document.createElement("input");tagName.type="text";tagName.maxLength=80;tagName.disabled=!editable;
+  tagName.setAttribute("aria-label",currentInterfaceLanguage==="zh"?"新标签名称":"New tag name");
+  const createTag=document.createElement("button");createTag.type="button";createTag.disabled=!editable;
+  createTag.textContent=currentInterfaceLanguage==="zh"?"创建标签":"Create tag";
+  createTag.addEventListener("click",()=>void pendingWrites.track(manageTaskTag("create",null,tagName.value,surface,editorForm)));
+  tags.append(tagName,createTag);
+  const tagPanel=compact((view?.tags??[]).filter(tag=>selectedTags.has(tag.id)).map(tag=>tag.name).join(", ")||(currentInterfaceLanguage==="zh"?"标签":"Tags"),[tags]);
+  tags.addEventListener("change",()=>{tagPanel.querySelector("summary")!.textContent=Array.from(tags.querySelectorAll<HTMLInputElement>("[data-task-tag-id]:checked"),input=>(view?.tags??[]).find(tag=>tag.id===input.dataset.taskTagId)?.name??"").join(", ")||(currentInterfaceLanguage==="zh"?"标签":"Tags");});
+  grid.append(nameLabel, contentLabel, properties);
+  openSchedule=()=>{schedulePanel.open=true;date.focus();};openList=()=>{listPanel.open=true;list.focus();};
+  cancelTimeDraft=()=>{cancelTime.click();schedulePanel.open=true;};
+  resetRefinedProperties=()=>{priority.value=task.priority??"none";tags.querySelectorAll<HTMLInputElement>("[data-task-tag-id]").forEach(input=>{input.checked=(task.tagIds??[]).includes(input.dataset.taskTagId!);});updateScheduleSummary();};
+  } else {grid.append(nameLabel, contentLabel, listLabel, dateLabel, timeLabel, endDateLabel, endTimeLabel, clearEnd);}
+
   const footer = document.createElement("div");
   footer.className = "task-editor-footer";
   const schedule = document.createElement("small");
@@ -10143,7 +10222,7 @@ function taskEditor(
   save.type = "submit";
   save.disabled = !editable;
   setCopy(save, "tasks.save");
-  footer.append(schedule, save);
+  if(refined)footer.append(save);else footer.append(schedule,save);
   editorForm.append(grid);
   if (task.completion) {
     const completionDetails = document.createElement("section");
@@ -10214,7 +10293,7 @@ function taskEditor(
   close.className = "secondary-button task-editor-close";
   close.dataset.taskEditorClose = "";
   setCopy(close, "tasks.cancel");
-  editorForm.append(close);
+  if(refined)footer.append(close);else editorForm.append(close);
   const dialog = surface === "tasks" ? document.createElement("div") : null;
   if (dialog) {
     dialog.className = "task-editor-dialog";
@@ -10223,12 +10302,31 @@ function taskEditor(
     dialog.hidden = selectedTaskDetailId !== task.id;
     dialog.setAttribute("role", "region");
     dialog.setAttribute("aria-label", t("tasks.editLabel", { task: task.name }));
-    const detailTitle = document.createElement("h3");
-    detailTitle.textContent = task.name;
+
     // Keep the existing management actions and provenance in selected details.
     stateActions.querySelector(".task-completion-toggle")?.remove();
     detailsButton.remove();
-    editorForm.prepend(detailTitle, meta, stateActions);
+    const more = document.createElement("details");more.className="task-more-menu";more.dataset.taskMore="";
+    const moreSummary=document.createElement("summary");moreSummary.textContent=currentInterfaceLanguage==="zh"?"更多":"More";
+    const scheduleAction=document.createElement("button");scheduleAction.type="button";scheduleAction.disabled=!editable;
+    scheduleAction.textContent=t("tasks.schedule");scheduleAction.addEventListener("click",()=>{openSchedule();more.open=false;});
+    const moveAction=document.createElement("button");moveAction.type="button";moveAction.disabled=!editable;
+    moveAction.textContent=currentInterfaceLanguage==="zh"?"移动到清单":"Move to list";moveAction.addEventListener("click",()=>{openList();more.open=false;});
+    if(!deleted&&task.state!=="abandoned") {
+      const completionAction=document.createElement("button");completionAction.type="button";completionAction.disabled=!writable;
+      completionAction.dataset.taskStateAction=task.state==="completed"?"pending":"completed";completionAction.dataset.taskStateTask=task.id;
+      completionAction.textContent=t(task.state==="completed"?"tasks.reopen":"tasks.complete");stateActions.prepend(completionAction);
+    }
+    const cancelArrangement=document.createElement("button");cancelArrangement.type="button";cancelArrangement.disabled=!editable||!(draft?.time??task.time);
+    cancelArrangement.textContent=currentInterfaceLanguage==="zh"?"取消时间安排":"Cancel time arrangement";
+    cancelArrangement.addEventListener("click",()=>{cancelTimeDraft();more.open=false;});
+    stateActions.prepend(scheduleAction,moveAction,cancelArrangement);
+    more.append(moreSummary,stateActions);editorForm.prepend(more);
+    row.addEventListener("contextmenu",event=>{event.preventDefault();toggleTaskEditorDetails(title);more.open=true;
+      stateActions.style.position="fixed";stateActions.style.zIndex="80";stateActions.style.left=`${Math.min(event.clientX,window.innerWidth-220)}px`;stateActions.style.top=`${Math.min(event.clientY,window.innerHeight-260)}px`;
+    });
+    more.addEventListener("toggle",()=>{if(!more.open)stateActions.removeAttribute("style");});
+
     dialog.append(editorForm);
     (taskEditorDialogRoot ?? document.body).append(dialog);
   }
@@ -10283,6 +10381,10 @@ function taskEditor(
   close.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
+    if(binding)taskEditDrafts.delete(taskDraftKey(binding,task.id));
+    name.value=task.name;content.value=task.content??"";date.value=task.date??"";time.value=task.time??"";
+    endDate.value=task.executionEnd?.date??"";endTime.value=task.executionEnd?.time??"";list.value=task.listId;
+    resetRefinedProperties();
     closeEditorDialog();
   });
   dialog?.addEventListener("click", (event) => {
@@ -10423,6 +10525,13 @@ function renderTasks(view: TasksView): void {
   } else if (scopedList?.archived) {
     taskScope = "archived";
   }
+  for(const [id,zh,en] of [["task-priority-filter","优先级筛选","Priority filter"],["task-tag-filter","标签筛选","Tag filter"],["task-priority-sort","任务排序","Task order"]])document.getElementById(id)?.setAttribute("aria-label",currentInterfaceLanguage==="zh"?zh:en);
+  const priorityFilter=document.querySelector<HTMLSelectElement>("#task-priority-filter");
+  if(priorityFilter)Array.from(priorityFilter.options).forEach((option,index)=>{option.textContent=(currentInterfaceLanguage==="zh"?["所有优先级","高","中","低","无"]:["All priorities","High","Medium","Low","None"])[index];});
+  const prioritySort=document.querySelector<HTMLSelectElement>("#task-priority-sort");
+  if(prioritySort)Array.from(prioritySort.options).forEach((option,index)=>{option.textContent=(currentInterfaceLanguage==="zh"?["默认排序","优先级排序"]:["Default order","Priority order"])[index];});
+  const tagFilter=document.querySelector<HTMLSelectElement>("#task-tag-filter");
+  if(tagFilter) {const selected=tagFilter.value;tagFilter.replaceChildren(new Option(currentInterfaceLanguage==="zh"?"所有标签":"All tags",""),...(view.tags??[]).map(tag=>new Option(tag.name,tag.id)));tagFilter.value=(view.tags??[]).some(tag=>tag.id===selected)?selected:"";}
   renderTaskListScopeButtons(view);
   const archivedListIds = new Set(
     view.lists.filter((list) => list.archived).map((list) => list.id),
@@ -10442,7 +10551,7 @@ function renderTasks(view: TasksView): void {
           taskStateScope,
         ),
       );
-  const { main: visibleTasks, history: historyTasks } = taskDisplaySections(scopedTasks, taskStateScope);
+  const { main: visibleTasks, history: historyTasks } = taskDisplaySections(taskPropertyProjection(scopedTasks, document.querySelector<HTMLSelectElement>("#task-priority-filter")?.value ?? "all", document.querySelector<HTMLSelectElement>("#task-tag-filter")?.value || null, document.querySelector<HTMLSelectElement>("#task-priority-sort")?.value === "priority"), taskStateScope);
   taskListScopes?.querySelectorAll<HTMLButtonElement>("[data-task-scope]").forEach((button) => {
     const selected = button.dataset.taskScope === taskScope;
     button.setAttribute("aria-selected", String(selected));
@@ -10531,6 +10640,7 @@ function renderTasks(view: TasksView): void {
     if (taskCreateEndDate) taskCreateEndDate.value = draft?.endDate ?? "";
     if (taskCreateEndTime) taskCreateEndTime.value = draft?.endTime ?? "";
     normalizeTaskDateTimeFields(taskCreateDate, taskCreateTime);
+    renderTaskCreateProperties(taskCreateForm,view,draft);
   }
   taskCreateSubmit?.toggleAttribute(
     "disabled",
@@ -10588,7 +10698,7 @@ function updateTaskEditorOperationState(
 ): void {
   taskEditorForms(surface).forEach((form) => {
     form.querySelectorAll(
-      "[data-task-name], [data-task-content], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
+      "[data-task-name], [data-task-content], [data-task-priority], [data-task-tag-id], [data-task-cancel-time], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
     ).forEach((element) => {
       (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
         busy || !writable;
@@ -10768,6 +10878,10 @@ function updateTaskCreationControls(view: TasksView, busy: boolean): void {
     taskQuickName.disabled = busy || !writable || Boolean(attempt);
     taskQuickName.value = binding ? taskQuickDrafts.get(binding) ?? "" : "";
   }
+  const quickList=document.querySelector<HTMLSelectElement>("#task-quick-list");
+  renderTaskListSelect(quickList,view,quickList?.value || taskCreateListDefault(view));
+  quickList?.setAttribute("aria-label",t("tasks.list"));
+  if(quickList)quickList.disabled=busy||!writable||Boolean(attempt);
   const schedule = attempt?.origin === "quick" ? attempt.draft : binding ? taskQuickScheduleDrafts.get(binding) : undefined;
   if (taskQuickDate) taskQuickDate.value = schedule?.date ?? currentTaskLivedDate ?? "";
   if (taskQuickTime) taskQuickTime.value = schedule?.time ?? "";
@@ -10879,6 +10993,8 @@ function taskCreateAttemptMatches(task: TaskView, attempt: TaskCreateAttempt): b
   const input = attempt.input;
   return task.id === input.taskId && task.name === input.name && task.content === input.content &&
     task.date === input.date && task.time === input.time && task.listId === input.listId &&
+    (input.priority === undefined || task.priority === input.priority) &&
+    (input.tagIds === undefined || JSON.stringify(task.tagIds) === JSON.stringify(input.tagIds)) &&
     (task.executionEnd?.date ?? null) === (input.executionEnd?.date ?? null) &&
     (task.executionEnd?.time ?? null) === (input.executionEnd?.time ?? null);
 }
@@ -10950,7 +11066,7 @@ async function createTask(quick = false, retry = false): Promise<boolean> {
     if (retry) return false;
     const draft = quick ? {
       name: taskQuickName?.value ?? "", content: "", date: taskQuickDate?.value ?? "",
-      time: taskQuickTime?.value ?? "", endDate: "", endTime: "", listId: taskCreateListDefault(loaded), completionDate: "", completionTime: "",
+      time: taskQuickTime?.value ?? "", endDate: "", endTime: "", listId: document.querySelector<HTMLSelectElement>("#task-quick-list")?.value || taskCreateListDefault(loaded), completionDate: "", completionTime: "",
     } : readTaskDraft(taskCreateForm!);
     if (!draft.name.trim()) {
       setCopy(status, "tasks.enterName");
@@ -10966,7 +11082,7 @@ async function createTask(quick = false, retry = false): Promise<boolean> {
     }
     const input: TaskCreateInput = {targetBinding: binding, expectedRevision: loaded.revision, taskId: localOperationId("manual-task"),
       name: draft.name.trim(), content: draft.content.trim() || null, date: normalized.date, time: normalized.time,
-      listId: draft.listId || "inbox", executionEnd: draft.endDate && draft.endTime ? {date: draft.endDate, time: draft.endTime} : null};
+      listId: draft.listId || "inbox", executionEnd: draft.endDate && draft.endTime ? {date: draft.endDate, time: draft.endTime} : null, priority: draft.priority, tagIds: draft.tagIds};
     attempt = {
       origin: quick ? "quick" : "modal", draft, phase: "unverified", input, originalInput: input,
       listName: taskListDisplayName(taskListForId(loaded, input.listId) ?? {id: input.listId, name: input.listId, isSystem: false, archived: false}, t("tasks.inbox")),
@@ -11442,6 +11558,8 @@ async function updateTask(
     time: normalized.time,
     executionEnd,
     listId,
+    priority: draft.priority,
+    tagIds: draft.tagIds,
   };
   const expectedDate =
     surface === "today"
@@ -11459,7 +11577,7 @@ async function updateTask(
   updateTaskOperationState(1);
   try {
     const result = await performTaskUpdateRequest(edit, {
-      expectedRevision: revision,
+      expectedRevision: taskEditDrafts.get(taskDraftKey(binding,taskId))?.expectedRevision ?? revision,
       requests,
       identities: taskOperationIds,
       createChangeId: () => localOperationId("edit-task"),
@@ -11494,7 +11612,7 @@ async function updateTask(
       );
       if (status) status.dataset.state = "error";
     }
-    return view.state !== "error";
+    return confirmed;
   } catch (error) {
     if (
       request !== null &&
@@ -12659,6 +12777,7 @@ tasksDestination?.addEventListener("click", (event) => {
       (scope.startsWith("list:") && Boolean(taskListIdFromScope(scope as TaskListScope))))
   ) {
     taskScope = scope as TaskListScope;
+    const quickList=document.querySelector<HTMLSelectElement>("#task-quick-list");if(quickList)quickList.value="";
     if (currentTasksView) renderTasks(currentTasksView);
     return;
   }
@@ -13292,4 +13411,47 @@ for (const id of ["today-expand-early", "today-expand-late"]) {
   document.getElementById(id)?.addEventListener("click", () => {
     toggleTodayAxisSegment(id);
   });
+}
+
+for(const id of ["task-priority-filter","task-tag-filter","task-priority-sort"]) {
+  document.getElementById(id)?.addEventListener("change",()=>{taskEditorForms("tasks").forEach(stashTaskEditDraft);if(currentTasksView)renderTasks(currentTasksView);});
+}
+
+async function manageTaskTag(action: "create"|"rename"|"delete", tagId: string|null, name: string|null, surface: TaskSurface, form: HTMLFormElement): Promise<boolean> {
+  const loaded=taskSurfaceView(surface);if(!loaded?.targetBinding||["error","unconfigured"].includes(loaded.state)||taskOperationCount>0)return false;
+  const binding=loaded.targetBinding;const normalized=name?.trim()??null;
+  if(action!=="delete"&&!normalized) {setRawText(taskSurfaceStatus(surface),currentInterfaceLanguage==="zh"?"标签名称不能为空。":"Tag name cannot be empty.");return false;}
+  stashTaskSurfaceDraft(surface,form);
+  const signature=JSON.stringify([binding,"tag",action,tagId,normalized]);
+  const changeId=stableTaskOperationId(signature,"tag-change");
+  const id=tagId??stableTaskOperationId(signature+":identity","task-tag");
+  const request=(surface==="tasks"?taskRequests:surface==="today"?todayTaskRequests:calendarTaskRequests).begin();
+  const revision=loaded.revision;
+  updateTaskOperationState(1);
+  try {
+    const view=await window.__TAURI__.core.invoke<TasksView>("manage_task_tag",{input:{targetBinding:binding,expectedRevision:revision,tagId:id,changeId,action,name:normalized}});
+    if(!taskSurfaceIsCurrent(surface,request,binding,view.targetBinding,surface==="today"?currentTodayView?.date??null:surface==="calendar"?currentCalendarSummaryView?.date??null:null,revision))return false;
+    const tag=(view.tags??[]).find(tag=>action==="create"?tag.name===normalized:tag.id===id);
+    if(view.state==="error"||(action==="delete"?Boolean(tag):!tag||tag.name!==normalized))throw new Error(view.message||t("tasks.confirmationFailed"));
+    const taskId=form.dataset.taskEditor;
+    if(taskId&&action==="create"&&tag) {const key=taskDraftKey(binding,taskId);const draft=taskEditDrafts.get(key);if(draft)taskEditDrafts.set(key,{...draft,tagIds:[...new Set([...(draft.tagIds??[]),tag.id])]});}
+    if(action==="delete") {for(const [key,draft] of taskEditDrafts)if(key.startsWith(binding+":"))taskEditDrafts.set(key,{...draft,tagIds:draft.tagIds?.filter(value=>value!==id)});}
+    for(const [key,draft] of taskEditDrafts)if(key.startsWith(binding+":")&&draft.expectedRevision===revision)taskEditDrafts.set(key,{...draft,expectedRevision:view.revision??undefined});
+    taskOperationIds.delete(signature);renderTaskSurface(surface,view);return true;
+  } catch(error) {setCopyError(taskSurfaceStatus(surface),"tasks.notSaved",String(error));return false;}
+  finally {updateTaskOperationState(-1);}
+}
+
+document.addEventListener("click",event=>{document.querySelectorAll<HTMLDetailsElement>(".task-more-menu[open]").forEach(menu=>{if(!menu.contains(event.target as Node))menu.open=false;});});
+
+function renderTaskCreateProperties(form: HTMLFormElement, view: TasksView, draft?: TaskDraft): void {
+  let properties=form.querySelector<HTMLElement>("[data-task-create-properties]");
+  if(!properties) {properties=document.createElement("div");properties.dataset.taskCreateProperties="";properties.className="task-compact-properties task-form-wide";form.querySelector(".task-form-grid")?.append(properties);}
+  const priority=document.createElement("select");priority.dataset.taskPriority="";priority.setAttribute("aria-label",currentInterfaceLanguage==="zh"?"优先级":"Priority");
+  for(const [value,zh,en] of [["none","无","None"],["high","高","High"],["medium","中","Medium"],["low","低","Low"]])priority.append(new Option(currentInterfaceLanguage==="zh"?zh:en,value));
+  priority.value=draft?.priority??"none";
+  const tags=document.createElement("details");tags.dataset.taskTags="";tags.className="task-property-panel";
+  const summary=document.createElement("summary");summary.textContent=currentInterfaceLanguage==="zh"?"标签":"Tags";tags.append(summary);
+  for(const tag of view.tags??[]) {const label=document.createElement("label");const checkbox=document.createElement("input");checkbox.type="checkbox";checkbox.dataset.taskTagId=tag.id;checkbox.checked=draft?.tagIds?.includes(tag.id)??false;label.append(checkbox,document.createTextNode(tag.name));tags.append(label);}
+  properties.replaceChildren(priority,tags);
 }

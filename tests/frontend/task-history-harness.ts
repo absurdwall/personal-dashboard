@@ -30,7 +30,7 @@ export class Element {
 }
 export function renderer() {
   const context: any = { ...presentation, canMutateTodayTasks: () => true, todayOperationCount: 0,
-    todayPresentationFresh: true, document: { createElement: (tag: string) => new Element(tag) },
+    todayPresentationFresh: true, document: { getElementById: () => null, querySelector: () => null, createElement: (tag: string) => new Element(tag) },
     CSS: { escape: (value: string) => value }, tasksList: new Element(), tasksCount: new Element(), taskScope: "all", taskStateScope: "all",
     taskOperationCount: 0, currentTaskLivedDate: null, taskCreateOpen: false, taskListManagementOpen: false,
     taskFocusRequestId: null, selectedTaskDetailId: null, selectedTaskDetailBinding: null, taskEditorDialogRoot: null, taskReturnToCollaborationSessionId: null,

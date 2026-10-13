@@ -13,9 +13,10 @@ life/.personal-dashboard/tasks/v1/tasks.json
 ```
 
 Ticket 01 first wrote schema version `1`; the current document is schema
-version `2` and still contains `lists` and `tasks` at the same stable path.
-The reader accepts a legacy schema-1 document, supplies the new optional
-fields in memory, and the next successful write upgrades it to schema 2.
+version `3` and retains `lists` and `tasks` at the same stable path, adding
+shared `tags` and tag-operation receipts.
+The reader accepts legacy schema-1 and schema-2 documents, supplies the new optional
+fields in memory, and the next successful write upgrades it to schema 3.
 Every document has a permanent, unarchived system list with id `inbox`. Ticket
 03 adds user-owned, single-level lists in the same document. A list has a
 stable id, a display name, and an `archived` flag; renaming never changes the
@@ -181,3 +182,27 @@ list and state. A failed creation retains its form and stable Task identity.
 No uncertain write is replayed automatically. `today-axis-gestures.ts` is the
 single pointer owner; plan gestures may extend its resolver/commit callbacks
 rather than installing a second controller.
+
+## Refinement priority, tags and drafts (PDEX-19)
+
+Tasks retain `priority` (`high`, `medium`, `low`, `none`) and `tagIds` pointing to
+stable tag identities in the same document. Old Tasks default to `none` and no
+tags. Creation accepts these values; an omitted update preserves them, while
+`priority: "none"` or `tagIds: []` explicitly clears them. Task update receipts
+retain the exact property patch alongside the existing execution-end patch.
+Legacy Collaboration/daily-flow updates preserve these properties.
+
+`manage_task_tag` creates, renames and deletes tag definitions using the selected
+Vault binding, expected revision and stable change identity. Empty names and
+colliding renames are rejected; same-name creation reuses the existing identity.
+Deletion removes associations from Tasks while retaining Tasks and their history.
+Tag receipts make an uncertain retry idempotent after later writes. Reads validate
+the entire source before any write; unknown priorities, invalid tag references and
+unknown structures remain explicit errors.
+
+The selected Task editor stages properties until Save. Cancel discards the Task
+draft; collapsing a property does not save. Tag-definition changes are separately
+explicit writes; adding a tag to the open Task remains staged until its Save.
+Cancel time arrangement clears the draft time/end while keeping its date; the
+final Save uses the existing Task update boundary. Priority/tag filters are views
+and combine with lifecycle/list scopes without changing any Task membership.
