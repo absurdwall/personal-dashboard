@@ -117,3 +117,7 @@ Combined integration validation at `71ebf5d2a8e59aa623115b1c15abae0da890e826`:
 - `git diff --check` passed; no broad baseline fixes were attempted.
 
 PDEX-24's implementation prerequisite is verified for root to claim PDEX-25; PDEX-24 remains in-progress pending review/native save/reopen acceptance. Root reruns repaired PDEX-19's original packaged case separately. No installation, remote Git, main merge, dependency addition, normal profile/Vault write or ticket closure occurred.
+
+## PDEX-25 claim — 2026-10-13
+
+Branch `codex/pdex-25-refinement`, separate `/private/tmp/pdex25-refinement.noindex` checkout from integration `8bcf66f96ba021e5c7a5c5eac39ac3c8cb9557d0`. PDEX-24 shared application interface is verified; full upstream native acceptance is not inferred. Goal/lifecycle/history implementation follows the existing spec and retains every increment.
