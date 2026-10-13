@@ -6521,11 +6521,13 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
     const button = document.getElementById(id);
     if (button) {
       button.setAttribute("aria-expanded", String(expanded));
-      setCopy(button, id === "today-expand-early"
-        ? (expanded ? "today.expandEarlyExpanded" : "today.expandEarlyCollapsed")
-        : (expanded ? "today.expandLateExpanded" : "today.expandLateCollapsed"));
       const count = id === "today-expand-early" ? earlyCount : lateCount;
-      if (count) button.textContent += ` · ${t("today.axisPeriodItemCount", { count })}`;
+      const key = id === "today-expand-early"
+        ? (expanded ? "today.expandEarlyExpanded" : "today.expandEarlyCollapsed")
+        : (expanded ? "today.expandLateExpanded" : "today.expandLateCollapsed");
+      // Keep disclosure and live count in one localizable value so startup or
+      // language changes cannot replace only the base text and erase the count.
+      setCopy(button, count ? `${key}Count` : key, { count });
     }
   }
   todayHourTicks?.replaceChildren(

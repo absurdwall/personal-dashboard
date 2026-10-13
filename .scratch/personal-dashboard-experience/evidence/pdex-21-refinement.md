@@ -52,3 +52,11 @@ One untouched baseline source-string assertion in `today-time-axis.test.ts` stil
 ## Remaining integration acceptance
 
 Root owns real packaged Tauri pointer/resize/drag/save/document/readback/relaunch acceptance and the separate standards/spec review. The four-size WK/Chrome results above do not substitute for that acceptance or imply normal installed-App acceptance. Ticket stays acceptance-pending, with unchecked acceptance boxes available for final packaged evidence. This worktree/branch and complete commit ancestry must be retained through integration.
+
+## Confirmed packaged follow-up: localized boundary counts — 2026-10-13
+
+Root observed source `e7a947abb0bb4c3ad9f2904524ae2a652d6b762d` in the actual packaged App: early/late disclosure text lost existing-item counts after startup. The Today renderer appended counts to buttons that retained a base-only `data-i18n` key; later startup/local language rendering replaced that whole text with the base disclosure label.
+
+Worker merged that exact integration source in full history (`a62a37121c8d265de94e6189b5ae80f95ebcd174`). The bounded repair stores disclosure state and count together in four localized count-aware copy keys and the existing `data-i18n-variables` count. Zero-count disclosure retains its original copy. No storage, axis geometry, gesture, backend, theme, or dependencies changed. `npm run build` passed.
+
+Before receiving the user's stop-evaluation instruction, a full-boot/language regression was written and an initial run attempted. It did **not** establish a product red/green result: the Chrome probe had an async evaluation wrapper error, and the hidden native WK probe timed out. The Chrome wrapper was corrected without rerunning. Both new full-boot regressions are explicitly skipped pending harness verification by the delegated acceptance agent. No further evaluation, native interaction, test matrix, or review was performed after the stop instruction. The actual packaged red belongs to root's separate receipt; corrected-code acceptance remains pending.
