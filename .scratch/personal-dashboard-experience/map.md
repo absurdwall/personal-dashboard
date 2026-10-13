@@ -4,8 +4,8 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: PDEX-SPEC-02 second review return: new conflict acknowledgement and unavailable coverage copy in progress; native acceptance delegated/open
-Implementation: prior repairs integrated at 50b9ebd and confirmed by recheck; two bounded follow-ups in progress on retained review-fixes branch; no normal install/main/remote operation
+Stage: PDEX-SPEC-02 review repairs implemented; independent final recheck and native acceptance delegated/open
+Implementation: both review returns integrated at 4ec21fc with full history; targeted post-merge build/DOM checks pass; no normal install/main/remote operation
 Working branch: codex/dashboard-experience-refinement-integration from 918e7e0; per-ticket branches and full commits in refinement-execution-2026-10-11.md; spec/prior-round branches retained
 Management source: source-personal-dashboard-experience
 
@@ -359,3 +359,7 @@ Three confirmed P2 repairs plus related review follow-ups are implemented and in
 ## Second review return — 2026-10-13
 
 The independent accepting workflow confirms earlier fixes and returns only the additional-field conflict acknowledgement and Habit `unavailable` coverage label. [Repair record](refinement-review-fixes-2026-10-13.md) owns this next bounded iteration; PDEX-19/25 are in progress again. Earlier merge/check/cleanup records remain historical. The retained branch/history will be reused; no native acceptance or installation is implied.
+
+## Final review repair implementation handoff — 2026-10-13
+
+Both second-return findings are implemented at product merge `4ec21fc4457841e87ebd4ab986db17c3f02b6588`. [Final repair record](refinement-review-fixes-2026-10-13.md) retains exact source/branch history, green targeted root/worker results, original failing full-suite baseline qualification, and clean owned-worker cleanup. PDEX-19/25 return to implementation-complete/acceptance-pending. Final independent recheck, native acceptance, PDEX-26 and parent closure remain delegated/open. The installed helper reads the existing experience source; no Project summary/lifecycle/focus or external operation is inferred.

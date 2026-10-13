@@ -31,7 +31,7 @@ The five affected ticket statuses return to `implementation-complete/acceptance-
 
 The owned review worker was clean and its tip reachable before removal. Generated schema files were preserved privately, reproducible dist discarded, canonical node_modules retained; the review branch and all commits remain. [Cleanup receipt](evidence/refinement-review-fixes-cleanup-2026-10-13.json). The unrelated prototype worktree and all earlier private fixtures remain untouched.
 
-## Second independent recheck return — in progress
+## Second independent recheck return — implemented; recheck pending
 
 Rechecked worker `1466b18` / integrated product `50b9ebd`. The accepting workflow confirms all earlier fixes, and returns exactly two findings:
 
@@ -39,3 +39,13 @@ Rechecked worker `1466b18` / integrated product `50b9ebd`. The accepting workflo
 - Standards P3: Habit detail coverage supports backend `unavailable` but lacks its fixed bilingual label. Add the paired shared catalog entry and mapping; source labels stay raw.
 
 PDEX-19/25 are in progress for this return; other ticket handoff results remain. One implementer continues on the retained review-fixes branch from the latest integration claim. No full/native evaluation, installation, main or remote action is authorized by this return.
+
+## Final bounded implementation handoff
+
+Second product merge: `4ec21fc4457841e87ebd4ab986db17c3f02b6588`, ordinary `--no-ff` merge on the same integration branch. Retained worker tip `485c9c8e97cd1ec5aaf08c390ad0c346283f2678`; source commits `e8ec4bfebe9b38e551036a3ea51034976a32a56b` (renewed confirmation for newly introduced conflicts) and `bf2a0dbe886f2de6f4cc692dbaf7cdabd9e585d7` (unavailable coverage copy). Worker merge `1ab5f5d26e52d260cc34fef1647588ad4bbf7491` retains integration claim `9494f1a`; no squash/rebase/amend occurred.
+
+Both additional findings are implemented. Worker checks and one root post-merge check passed: build, additional-conflict DOM 2/2, unavailable coverage browser 1/1, diff check. Editing Name and then Priority between successive comparison actions each redisplays the added conflict and requires a subsequent explicit confirmation; retained local tag and exact observed CAS remain. Coverage switches zh/en/zh while user/source labels remain raw. The earlier matrix/application results are retained, not rerun for this bounded return.
+
+No known implementation finding from either review return remains reported. Independent final recheck and delegated native acceptance remain pending; the parent and PDEX-26 stay open. PDEX-19/25 return to implementation-complete/acceptance-pending. No normal installation, main/remote action, full evaluation or native acceptance occurred.
+
+The recreated worker was clean and reachable before removal; all nine ticket/review branch tips and base `918e7e0` were checked reachable from this merge. Branches/history, prior generated-schema archive, canonical dependencies, unrelated prototype checkout and private fixtures remain. [Second cleanup receipt](evidence/refinement-review-second-return-cleanup-2026-10-13.json). [Installed Management helper source readback](evidence/management-review-repair-implementation-handoff-2026-10-13.json) confirms the existing local source; no summary/focus/lifecycle change or acceptance assertion is made.

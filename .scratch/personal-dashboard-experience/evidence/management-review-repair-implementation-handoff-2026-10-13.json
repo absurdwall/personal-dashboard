@@ -1,0 +1,23 @@
+{
+  "projectId": "product-personal-dashboard",
+  "source": {
+    "sourceId": "source-personal-dashboard-experience",
+    "state": "current",
+    "revision": "d8a21e10b60df6cb",
+    "issueCount": 33,
+    "malformedReferences": [],
+    "error": null
+  },
+  "canonicalFileStates": {
+    "PDEX-19": "implementation-complete/acceptance-pending",
+    "PDEX-20": "implementation-complete/acceptance-pending",
+    "PDEX-21": "implementation-complete/acceptance-pending",
+    "PDEX-22": "implementation-complete/acceptance-pending",
+    "PDEX-23": "implementation-complete/acceptance-pending",
+    "PDEX-24": "implementation-complete/acceptance-pending",
+    "PDEX-25": "implementation-complete/acceptance-pending",
+    "PDEX-26": "implementation-complete/acceptance-pending"
+  },
+  "productMerge": "4ec21fc4457841e87ebd4ab986db17c3f02b6588",
+  "qualification": "Installed helper inspected the existing bound local source using system-only child PATH without GitHub CLI. Canonical file states reread separately. No Registry, Project summary/focus/lifecycle write, remote Git, native acceptance or parent closure."
+}

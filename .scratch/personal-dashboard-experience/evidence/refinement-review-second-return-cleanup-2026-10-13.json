@@ -1,0 +1,23 @@
+{
+  "worker": "/private/tmp/pdex-review-fixes.noindex",
+  "tip": "485c9c8e97cd1ec5aaf08c390ad0c346283f2678",
+  "cleanBeforeRemoval": true,
+  "ignoredInventory": [
+    "!! dist/",
+    "!! node_modules"
+  ],
+  "preserved": [],
+  "removed": true,
+  "retainedReachableBranches": {
+    "codex/pdex-19-refinement": "162067f1169bfc6bfcf2a537eacc850f8ced275a",
+    "codex/pdex-20-refinement": "51ba75ff3d0640cc7fa2036b6aaffa777caddcf8",
+    "codex/pdex-21-refinement": "6b6814dd7f1702ca276db7f17f6f09cc3abcc1a1",
+    "codex/pdex-22-refinement": "380d160a6cb6d80e5afd5294e318f53edb10636d",
+    "codex/pdex-23-refinement": "2aa96b4d3ea1ce6f7847a44a978ba8d53eee254b",
+    "codex/pdex-24-refinement": "d5632592765a189dc69f02b607b9a05b6b5e2131",
+    "codex/pdex-25-refinement": "f645827632044c9df1dab64cce8d4c0905eef417",
+    "codex/pdex-26-refinement": "8c03b9c2dad735c3273d881d45e4e04ab13da43b",
+    "codex/dashboard-experience-refinement-review-fixes": "485c9c8e97cd1ec5aaf08c390ad0c346283f2678"
+  },
+  "qualification": "Only owned second-return worker removed. Canonical dependency symlink target, all branches/history, first-return schema archive and unrelated prototype worktree remain. Dist is reproducible."
+}

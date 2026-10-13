@@ -4,7 +4,7 @@
 
 **Blocked by:** None
 
-**Status:** in-progress
+**Status:** implementation-complete/acceptance-pending
 
 **Triage:** ready-for-agent
 **ID:** PDEX-19
@@ -99,3 +99,7 @@ Relevant corrections from the three-finding review return and its follow-ups are
 ### Second independent review return — 2026-10-13
 
 A bounded follow-up is in progress after recheck: newly edited conflict acknowledgement (PDEX-19) or unavailable coverage copy (PDEX-25). [Current repair record](../refinement-review-fixes-2026-10-13.md). Earlier repairs were independently confirmed; parent/native acceptance remain open.
+
+### Final bounded review repair handoff — 2026-10-13
+
+Second-return correction is integrated at `4ec21fc`: renewed explicit acknowledgement for newly introduced Task conflicts, and unavailable Habit coverage copy respectively. [Final repair record](../refinement-review-fixes-2026-10-13.md) retains source commits, targeted root/worker results and cleanup. Implementation is complete; final independent recheck and native acceptance remain pending.
