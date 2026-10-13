@@ -2691,7 +2691,7 @@ where
         let has_verifiable_catalog = matches!(
             catalog.state,
             HabitSnapshotState::Ready | HabitSnapshotState::Stale
-        );
+        ) || (catalog.catalog_target_binding.is_some() && catalog.habit(&input.habit_key).is_some_and(|habit| habit.locally_configured));
         if has_verifiable_catalog {
             let habit = catalog.habit(&input.habit_key).ok_or_else(|| {
                 "Habits catalog 中没有这个稳定习惯 key；未写入任何内容。".to_string()
@@ -3234,7 +3234,7 @@ where
         let current = self.habit_completion_store.load(&path)?;
         let mut catalog = current.as_deref().map(HabitCatalogDocument::parse).transpose()?.unwrap_or_default();
         if let Some(receipt) = catalog.receipts.iter().find(|receipt| receipt.input.change_id == input.change_id) {
-            if receipt.input == input { return self.habits(); }
+            if receipt.input.habit_key == input.habit_key && receipt.input.change_id == input.change_id && receipt.input.target_binding == input.target_binding && receipt.input.settings == input.settings { return self.habits(); }
             return Err("Habit 操作身份已用于另一修改；未写入。".into());
         }
         if current.as_deref().map(document_revision) != input.expected_revision { return Err("Habit catalog 已变化；草稿保留，请重新读取后重试。".into()); }
@@ -3255,7 +3255,7 @@ where
         use crate::habit_catalog::{catalog_binding, overlay_catalog, HabitCatalogDocument, HABIT_CATALOG_RELATIVE_PATH};
         let mut view = self.sourced_habits()?;
         let Some(vault) = self.persistence.load_selected_vault()? else { return Ok(view); };
-        validate_compatible_vault(&vault)?;
+        if validate_compatible_vault(&vault).is_err() { return Ok(view); }
         let path = vault.join(HABIT_CATALOG_RELATIVE_PATH);
         let bytes = self.habit_completion_store.load(&path)?;
         let catalog = match bytes.as_deref().map(HabitCatalogDocument::parse).transpose() {
@@ -3265,8 +3265,24 @@ where
         view.catalog_revision = bytes.as_deref().map(document_revision);
         view.catalog_target_binding = Some(catalog_binding(&path));
         let completion_path = canonical_habit_completion_path(&vault);
-        let completion_bytes = self.habit_completion_store.load(&completion_path)?;
-        let completions: Vec<_> = completion_bytes.as_deref().map(|bytes| parse_habit_completion_document(bytes, &self.clock.current_timestamp_label())).transpose()?.map(|document| document.completions.into_iter().map(local_habit_completion).collect()).unwrap_or_default();
+        let completion_bytes = match self.habit_completion_store.load(&completion_path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                view.message = format!("{} · {error}", view.message);
+                overlay_catalog(&mut view, &catalog, &self.clock.current_lived_date(), &[]);
+                view.completion_target_binding = None;
+                return Ok(view);
+            }
+        };
+        let completions: Vec<_> = match completion_bytes.as_deref().map(|bytes| parse_habit_completion_document(bytes, &self.clock.current_timestamp_label())).transpose() {
+            Ok(document) => document.map(|document| document.completions.into_iter().map(local_habit_completion).collect()).unwrap_or_default(),
+            Err(error) => {
+                view.message = format!("{} · {error}", view.message);
+                overlay_catalog(&mut view, &catalog, &self.clock.current_lived_date(), &[]);
+                view.completion_target_binding = None;
+                return Ok(view);
+            }
+        };
         view.completion_target_binding = Some(habit_completion_target_binding(&completion_path));
         view.completion_revision = completion_bytes.as_deref().map(document_revision);
         overlay_catalog(&mut view, &catalog, &self.clock.current_lived_date(), &completions);
@@ -4757,7 +4773,7 @@ fn habit_completion_target_binding(path: &Path) -> String {
     )
 }
 
-fn validate_habit_key(value: &str) -> Result<(), String> {
+pub(crate) fn validate_habit_key(value: &str) -> Result<(), String> {
     if value.is_empty()
         || value.len() > 64
         || !value

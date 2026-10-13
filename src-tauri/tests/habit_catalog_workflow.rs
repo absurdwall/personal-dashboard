@@ -1,7 +1,7 @@
 use personal_dashboard_lib::habits::FileHabitSnapshotStore;
 use personal_dashboard_lib::today::{
     FileDayTaskStore, FileHabitCompletionStore, FileTodayRecordStore, HabitCompletionMutationInput,
-    HabitCompletionStore, HabitLocalCompletionState, HabitSnapshotState, TodayApplication,
+    HabitCompletionStore, HabitLocalCompletionState, TodayApplication,
     TodayClock, TodayWorkspaceExchange, TodayWorkspacePersistence,
 };
 use std::cell::Cell;
@@ -100,9 +100,6 @@ fn snapshot_path(vault: &Path) -> PathBuf {
     vault.join("life/.personal-dashboard/derived/habits-v1.json")
 }
 
-fn completion_path(vault: &Path) -> PathBuf {
-    vault.join("life/.personal-dashboard/habit-completions/v1/completions.json")
-}
 
 fn write_snapshot(vault: &Path, document: &str) {
     let path = snapshot_path(vault);
@@ -278,4 +275,59 @@ fn sourced_sleep_threshold_keeps_next_day_evidence_and_local_withdrawal_never_er
     save_settings(&application,"sleep","unknown-relation",unknown);
     let next = TodayApplication::new(SelectedVault(vault.path().into()), NoSelection, FollowingMondayClock).habits().unwrap();
     assert!(!next.habit("sleep").unwrap().can_record_completion);
+}
+
+#[test]
+fn local_habit_remains_recordable_when_source_refresh_is_invalid() {
+    let vault = TempVault::new("invalid-source");
+    let application = app(vault.path());
+    save_settings(&application,"local-independent","independent-create",HabitSettings { name:"Independent".into(),emoji:None,group:None,start_date:"2026-09-08".into(),goal:HabitGoal::DailyCompletion });
+    write_snapshot(vault.path(),"not-json");
+    let reopened = app(vault.path());
+    let view = reopened.habits().unwrap();
+    let saved = reopened.set_local_habit_completion(HabitCompletionMutationInput {
+        habit_key:"local-independent".into(),lived_date:"2026-09-08".into(),completed:true,change_id:"independent-complete".into(),
+        target_binding:view.completion_target_binding.unwrap(),expected_revision:view.completion_revision,
+    }).unwrap();
+    assert!(saved.habit("local-independent").unwrap().today.counts_as_completion);
+    assert_eq!(fs::read_to_string(snapshot_path(vault.path())).unwrap(),"not-json");
+}
+
+#[derive(Clone)]
+struct AmbiguousSave(std::rc::Rc<Cell<bool>>);
+impl HabitCompletionStore for AmbiguousSave {
+    fn load(&self,path:&Path)->Result<Option<Vec<u8>>,String> { FileHabitCompletionStore.load(path) }
+    fn create_new(&self,path:&Path,bytes:&[u8])->Result<(),String> {
+        FileHabitCompletionStore.create_new(path,bytes)?;
+        if self.0.replace(false) { Err("Synthetic readback interruption after actual durable write".into()) } else { Ok(()) }
+    }
+    fn save_if_unchanged(&self,path:&Path,expected:&[u8],bytes:&[u8])->Result<(),String> { FileHabitCompletionStore.save_if_unchanged(path,expected,bytes) }
+}
+#[test]
+fn failed_save_retry_keeps_identity_after_reread_and_stale_or_corrupt_catalog_is_never_overwritten() {
+    let vault = TempVault::new("retry-conflict");
+    let application = TodayApplication::with_every_store(SelectedVault(vault.path().into()),NoSelection,FixedClock,FileTodayRecordStore,FileHabitSnapshotStore,FileDayTaskStore,AmbiguousSave(std::rc::Rc::new(Cell::new(true))));
+    let opened = application.habits().unwrap();
+    let mut input = HabitDefinitionMutationInput { habit_key:"local-safe".into(),change_id:"create-safe".into(),target_binding:opened.catalog_target_binding.unwrap(),expected_revision:opened.catalog_revision,
+        settings:HabitSettings { name:"Safe".into(),emoji:None,group:None,start_date:"2026-09-08".into(),goal:HabitGoal::DailyCompletion } };
+    assert!(application.save_habit_definition(input.clone()).is_err());
+    let reread = app(vault.path()).habits().unwrap();
+    assert_eq!(reread.habits.len(),1);
+    input.expected_revision = reread.catalog_revision;
+    let retried = application.save_habit_definition(input.clone()).unwrap();
+    assert_eq!(retried.habits.len(),1);
+    let mut collision=input.clone();collision.settings.name="Wrong".into();
+    assert!(application.save_habit_definition(collision).is_err());
+    let path = vault.path().join(personal_dashboard_lib::habit_catalog::HABIT_CATALOG_RELATIVE_PATH);
+    let before=fs::read(&path).unwrap();
+    let mut stale=input.clone();stale.change_id="stale-edit".into();stale.expected_revision=None;stale.settings.name="Lost".into();
+    assert!(application.save_habit_definition(stale).is_err());
+    assert_eq!(fs::read(&path).unwrap(),before);
+    let other=TempVault::new("other-target");
+    assert!(app(other.path()).save_habit_definition(input.clone()).is_err());
+    assert!(!other.path().join(personal_dashboard_lib::habit_catalog::HABIT_CATALOG_RELATIVE_PATH).exists());
+    fs::write(&path,b"corrupt personal file").unwrap();
+    input.change_id="do-not-repair-corruption".into();
+    assert!(application.save_habit_definition(input).is_err());
+    assert_eq!(fs::read(&path).unwrap(),b"corrupt personal file");
 }

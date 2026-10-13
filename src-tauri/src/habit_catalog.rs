@@ -1,6 +1,6 @@
 //! Canonical local Habit settings. Source snapshots remain read-only evidence.
 use crate::habits::{DayRelation, HabitGoalContextView, HabitSnapshotView, HabitView, LocalHabitCompletion};
-use crate::today::{CalendarDate, document_revision, validate_local_identifier};
+use crate::today::{CalendarDate, document_revision, validate_local_identifier, validate_habit_key, validate_timestamp_label};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -33,8 +33,9 @@ impl HabitGoal {
         match self {
             Self::WeeklyDays { days } if !(1..=7).contains(days) => Err("每周目标须为 1–7 个不同达标天。".into()),
             Self::DailyTime { time, .. } if time.len() != 5 || time.as_bytes()[2] != b':' ||
-                time[..2].parse::<u32>().ok().is_none_or(|hour| hour > 23) ||
-                time[3..].parse::<u32>().ok().is_none_or(|minute| minute > 59) => Err("请输入有效目标时刻 HH:mm。".into()),
+                !time.as_bytes().iter().enumerate().all(|(index,byte)| index == 2 || byte.is_ascii_digit()) ||
+                time.get(..2).and_then(|hour| hour.parse::<u32>().ok()).is_none_or(|hour| hour > 23) ||
+                time.get(3..).and_then(|minute| minute.parse::<u32>().ok()).is_none_or(|minute| minute > 59) => Err("请输入有效目标时刻 HH:mm。".into()),
             _ => Ok(()),
         }
     }
@@ -85,7 +86,9 @@ pub struct HabitDefinition {
     pub settings: HabitSettings,
     pub active: bool,
     pub sourced: bool,
+    #[serde(default)]
     pub source_name: Option<String>,
+    #[serde(default)]
     pub source_localized_names: crate::habits::HabitLocalizedNames,
     pub source_labels: Vec<String>,
     pub source_goal_history: Vec<HabitGoalContextView>,
@@ -118,7 +121,7 @@ impl HabitCatalogDocument {
         if catalog.schema_version != 1 { return Err("Habit catalog 版本不支持；原文件保留。".into()); }
         let mut keys = HashSet::new();
         for habit in &catalog.habits {
-            validate_local_identifier(&habit.key, "Habit key")?;
+            validate_habit_key(&habit.key)?;
             if !keys.insert(&habit.key) { return Err("Habit catalog 重复身份；原文件保留。".into()); }
             habit.settings.validate()?;
             if habit.goal_revisions.is_empty() { return Err("Habit catalog 缺少目标历史。".into()); }
@@ -134,6 +137,10 @@ impl HabitCatalogDocument {
         let mut operations = HashSet::new();
         for receipt in &catalog.receipts {
             receipt.input.settings.validate()?;
+            validate_habit_key(&receipt.input.habit_key)?;
+            validate_local_identifier(&receipt.input.change_id, "Habit operation")?;
+            validate_timestamp_label(&receipt.saved_at)?;
+            if CalendarDate::parse(&receipt.lived_date).is_none() { return Err("Habit 操作 lived date 无效。".into()); }
             if !operations.insert(&receipt.input.change_id) { return Err("Habit catalog 重复操作身份。".into()); }
         }
         Ok(catalog)
@@ -201,6 +208,10 @@ pub fn overlay_catalog(view: &mut HabitSnapshotView, catalog: &HabitCatalogDocum
         habit.name = definition.settings.name.clone();
         habit.localized_names = if definition.source_name.as_ref() == Some(&definition.settings.name) { definition.source_localized_names.clone() } else { Default::default() };
         habit.active = definition.active;
+        habit.locally_configured = true;
+        for label in &definition.source_labels {
+            if !habit.source_labels.contains(label) { habit.source_labels.push(label.clone()); }
+        }
         habit.settings = Some(definition.settings.clone());
         habit.goal_revisions = definition.goal_revisions.clone();
         habit.current_goal = definition.goal_revisions.iter().rev().find(|r| r.effective_date.as_str() <= today).map(|r| r.goal.clone());
@@ -217,7 +228,7 @@ pub fn overlay_catalog(view: &mut HabitSnapshotView, catalog: &HabitCatalogDocum
             habit.can_record_completion = definition.active && definition.settings.start_date.as_str() <= today && !matches!(goal, HabitGoal::Unconfigured | HabitGoal::DailyTime { day_relation: DayRelation::Unresolved, .. });
         }
     }
-    view.summary.known_completions = view.habits.iter().filter(|h| h.active).filter_map(|h| h.completed_count).sum();
+    view.summary.known_completions = view.habits.iter().filter(|h| h.active && h.weekly_target.is_some()).filter_map(|h| h.completed_count).sum();
     view.summary.target_completions = view.habits.iter().filter(|h| h.active).filter_map(|h| h.weekly_target).sum();
 }
 

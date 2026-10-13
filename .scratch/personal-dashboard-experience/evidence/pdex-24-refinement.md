@@ -28,3 +28,10 @@ Green: next-day sleep threshold retains its day relation and changes only after 
 
 Red: existing explicit sleep threshold was not represented as an attained day after local configuration.
 Green: source threshold retains next-day semantics and unknown actual time; local check-in then withdrawal leaves external attainment intact. Unresolved date relations disable local threshold confirmation. Threshold evidence is evaluated against its known source goal and the applicable local goal; actual times are compared as day-relation minutes without creating an activity timestamp. Application suite: 5 passed.
+
+## Slices 6–7 — local independence and failure safety
+
+Red: an invalid source refresh blocked an otherwise valid local Habit. Red: an interrupted successful durable create followed by reread/retry rejected the same operation because its revision guard changed.
+Green: configured local Habits retain check-in availability independently of invalid source evidence. A real file create that then reports interruption is read back by a fresh application; retry uses the same stable key and semantic operation, yielding one object. Changed payload under the same operation identity, stale revision, another selected Vault and corrupt original catalog are rejected without overwriting their bytes. Malformed/future canonical completion files preserve retained/error behavior and disable new writes.
+
+Regression verification: 7 catalog + 12 canonical completion + 15 source snapshot workflow tests passed. The inherited read-only snapshot fallback and weekly no-goal exclusion remain intact.

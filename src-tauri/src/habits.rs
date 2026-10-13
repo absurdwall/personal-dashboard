@@ -238,6 +238,7 @@ pub struct HabitGoalContextView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HabitView {
+    pub locally_configured: bool,
     pub partial_cycle: bool,
     pub settings: Option<crate::habit_catalog::HabitSettings>,
     pub current_goal: Option<crate::habit_catalog::HabitGoal>,
@@ -766,6 +767,7 @@ pub fn project_snapshot_with_names_at_local_date(
         }
         source_revisions.sort_by(|a,b| a.effective_date.cmp(&b.effective_date));
         projected.push(HabitView {
+            locally_configured: false,
             partial_cycle: false,
             settings: Some(crate::habit_catalog::HabitSettings { name: habit.name.clone(), emoji: None, group: None, start_date: snapshot.range.from.clone(), goal: source_goal.clone().unwrap_or(crate::habit_catalog::HabitGoal::Unconfigured) }),
             current_goal: source_goal, pending_goal: None, goal_revisions: source_revisions,
@@ -1544,6 +1546,7 @@ pub(crate) fn project_local_definition(definition: &crate::habit_catalog::HabitD
         project_cell(&cell_date, None, &HashMap::new(), &[], completions.iter().find(|c| c.key == definition.key && c.date == cell_date), date)
     }).collect();
     HabitView {
+        locally_configured: true,
         partial_cycle: false,
         key: definition.key.clone(), name: definition.settings.name.clone(), localized_names: Default::default(), active: definition.active,
         settings: Some(definition.settings.clone()), current_goal: None, pending_goal: None, goal_revisions: vec![],
