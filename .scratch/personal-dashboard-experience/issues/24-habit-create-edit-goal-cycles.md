@@ -4,7 +4,7 @@
 
 **Blocked by:** None
 
-**Status:** in-progress
+**Status:** implementation-complete/acceptance-pending
 
 **Triage:** ready-for-agent
 **ID:** PDEX-24
@@ -85,3 +85,7 @@ The user invoked implement-spec for PDEX-SPEC-02. Tests use the already confirme
 ### Confirmed P2 review repair — 2026-10-13
 
 [Three-finding repair record](../refinement-review-fixes-2026-10-13.md) records the bounded review return. Existing feature/acceptance evidence remains retained; the relevant fixed-copy, Calendar relation or Task draft recovery correction is now in progress. Native acceptance stays delegated/open.
+
+### Review repair implementation handoff — 2026-10-13
+
+Relevant corrections from the three-finding review return and its follow-ups are integrated at `50b9ebd`; [repair record](../refinement-review-fixes-2026-10-13.md) and [exact implementation evidence](../evidence/pdex-review-fixes-implementation-2026-10-13.md) retain branches, commits and targeted checks. Implementation is complete locally; independent recheck and delegated native acceptance remain pending. Earlier evidence and lifecycle are unchanged.

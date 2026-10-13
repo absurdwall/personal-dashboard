@@ -1,0 +1,15 @@
+{
+  "worker": "/private/tmp/pdex-review-fixes.noindex",
+  "branch": "codex/dashboard-experience-refinement-review-fixes",
+  "tip": "1466b18d043349b412ea5026de83def52d7f47d0",
+  "reachableFromIntegration": true,
+  "trackedUntrackedClean": true,
+  "ignored": [
+    "dist/",
+    "node_modules symlink to canonical dependency directory",
+    "src-tauri/gen/"
+  ],
+  "preserved": "/private/tmp/pdex-refinement-20261013.noindex/review-worker-ignored-preserved/gen",
+  "qualification": "Generated dist is reproducible; canonical dependencies and all branches/history are retained. Only this owned review worker is removed.",
+  "removed": true
+}
