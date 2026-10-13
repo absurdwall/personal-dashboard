@@ -138,3 +138,7 @@ Validation at combined merge `dc4480eea91c699aaa2df2547becf160f7d4fcaa`: `npm ru
 ## PDEX-25 claim — 2026-10-13
 
 Branch `codex/pdex-25-refinement`, separate `/private/tmp/pdex25-refinement.noindex` checkout from integration `8bcf66f96ba021e5c7a5c5eac39ac3c8cb9557d0`. PDEX-24 shared application interface is verified; full upstream native acceptance is not inferred. Goal/lifecycle/history implementation follows the existing spec and retains every increment.
+
+## PDEX-21 claim — 2026-10-13
+
+Branch `codex/pdex-21-refinement`, separate `/private/tmp/pdex21-refinement.noindex` checkout from integration `0230a35b0933a0e092fa9175e70932c3c27a6054`. Verified shared Task editor/application and PDEX-22 nearby-dialog seams retained. Full source-bound native acceptance remains separate.
