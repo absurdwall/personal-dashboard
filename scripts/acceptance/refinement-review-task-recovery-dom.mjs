@@ -40,8 +40,14 @@ try {
   }
   throw Error('Unexpected command '+command);
  }}};
+ const scenarios=[];
+ const reset=()=>{storage=structuredClone(base);serial=1;loseReadback=false;trace.length=0;receipts.clear();taskEditDrafts.clear();taskOperationIds.clear();selectedTaskDetailId=null;currentTodayView=null;taskScope='all';taskStateScope='all';renderTasks(structuredClone(storage));};
+ const reread=async form=>{const n=trace.filter(item=>item.command==='tasks_view').length;const button=form.querySelector('[data-task-reread]');assert(!button.disabled,'Read-again enabled '+JSON.stringify({scenarios,taskOperationCount,todayOperationCount,binding:form.dataset.taskTargetBinding,current:currentTasksView.targetBinding,connected:form.isConnected}));button.click();await waitFor(()=>trace.filter(item=>item.command==='tasks_view').length>n&&taskOperationCount===0);return document.querySelector('form[data-task-editor="task-a"]');};
+ const external=fields=>{Object.assign(storage.tasks[0],fields);storage.revision='r'+(++serial);};
+ let form;
+ if(!__FOLLOWUP_ONLY__) {
  renderTasks(structuredClone(storage));taskScope='all';taskStateScope='all';
- let form=open('task-a');edit(form,'[data-task-content]','Retained A draft');
+ form=open('task-a');edit(form,'[data-task-content]','Retained A draft');
  form=open('task-b');edit(form,'[data-task-content]','Saved B');await save(form);
  form=open('task-a');assert(form.querySelector('[data-task-content]').value==='Retained A draft','Saving B retains A draft');
  assert(!document.querySelector('#refresh-tasks').disabled,'Refresh enabled '+JSON.stringify({todayOperationCount,currentWorkspaceDestination,button:document.querySelector('#refresh-tasks').outerHTML}));document.querySelector('#refresh-tasks').click();await waitFor(()=>trace.some(item=>item.command==='tasks_view')&&taskOperationCount===0&&tasksStatus.dataset.state!=='loading');
@@ -50,10 +56,7 @@ try {
  assert(storage.tasks[1].content==='Saved B','A recovery does not overwrite B');
  assert(trace.filter(item=>item.command==='update_task').at(-1).input.expectedRevision==='r2','Recovered A uses exact observed revision');
 
- const scenarios=['A draft / B save / explicit Refresh / A save'];
- const reset=()=>{storage=structuredClone(base);serial=1;loseReadback=false;trace.length=0;receipts.clear();taskEditDrafts.clear();taskOperationIds.clear();selectedTaskDetailId=null;currentTodayView=null;taskScope='all';taskStateScope='all';renderTasks(structuredClone(storage));};
- const reread=async form=>{const n=trace.filter(item=>item.command==='tasks_view').length;const button=form.querySelector('[data-task-reread]');assert(!button.disabled,'Read-again enabled '+JSON.stringify({scenarios,taskOperationCount,todayOperationCount,binding:form.dataset.taskTargetBinding,current:currentTasksView.targetBinding,connected:form.isConnected}));button.click();await waitFor(()=>trace.filter(item=>item.command==='tasks_view').length>n&&taskOperationCount===0);return document.querySelector('form[data-task-editor="task-a"]');};
- const external=fields=>{Object.assign(storage.tasks[0],fields);storage.revision='r'+(++serial);};
+ scenarios.push('A draft / B save / explicit Refresh / A save');
  reset();form=open('task-a');edit(form,'[data-task-content]','Local content');external({name:'Remote name',priority:'medium'});form=await reread(form);
  assert(form.querySelector('[data-task-name]').value==='Remote name'&&form.querySelector('[data-task-priority]').value==='medium'&&form.querySelector('[data-task-content]').value==='Local content','Read merges untouched remote fields with retained edits');
  await save(form);assert(storage.tasks[0].name==='Remote name'&&storage.tasks[0].content==='Local content','Merged Save protects remote fields');scenarios.push('nonconflicting three-way merge');
@@ -72,11 +75,30 @@ try {
  reset();taskEditorDialogRoot.replaceChildren();tasksList.replaceChildren(taskEditor(structuredClone(storage.tasks[0]),true,currentTasksView,'tasks',true,false));form=open('task-a');edit(form,'[data-task-content]','Legacy local edit');external({priority:'high',parentId:'task-b',tagIds:['tag']});form=await reread(form);assert(!form.querySelector('[data-task-use-current]'),'Omitted legacy fields are preserve operations');await save(form);assert(storage.tasks[0].priority==='high'&&storage.tasks[0].parentId==='task-b'&&storage.tasks[0].tagIds[0]==='tag'&&storage.tasks[0].content==='Legacy local edit','Legacy omission retains remote attributes through read/save');scenarios.push('legacy omitted fields preserve');
 
  reset();form=open('task-a');edit(form,'[data-task-content]','Local after own tag');form.querySelector('[data-i18n-aria-label="tasks.refinementNewTagName"]').value='Own new tag';Array.from(form.querySelectorAll('button')).find(button=>button.dataset.i18n==='tasks.refinementCreateTag').click();await waitFor(()=>storage.tags.length===2&&taskOperationCount===0);const ownDraft=taskEditDrafts.get(taskDraftKey(base.targetBinding,'task-a'));assert(ownDraft.baseTask.content==='Base A'&&ownDraft.expectedRevision==='r2','Own tag write advances observed base without replacing opening Task content with draft');external({content:'Remote after own tag'});form=document.querySelector('form[data-task-editor="task-a"]');form=await reread(form);assert(form.querySelector('button[type=submit]').disabled,'Own catalog revision does not hide concurrent Task content change');form.querySelector('[data-task-use-current]').click();form=document.querySelector('form[data-task-editor="task-a"]');await save(form);assert(storage.tasks[0].content==='Remote after own tag'&&storage.tasks[0].tagIds.includes(storage.tags[1].id),'Explicit content resolution retains locally selected newly created tag');scenarios.push('opening base survives own tag-definition write');
+
+ }
+ reset();form=open('task-a');edit(form,'[data-task-content]','Local content');external({name:'Remote name',content:'Remote content',priority:'medium'});form=await reread(form);
+ assert(form.querySelector('[data-task-draft-recovery]').querySelectorAll('h4').length===1,'Initial comparison exposes only Content conflict');
+ edit(form,'[data-task-name]','Local name after comparison');
+ const writesBefore=trace.filter(item=>item.command==='update_task').length;
+ form.querySelector('[data-task-use-current]').click();form=document.querySelector('form[data-task-editor="task-a"]');
+ assert(form.querySelector('button[type=submit]').disabled&&form.querySelector('[data-task-draft-recovery]')?.textContent.includes('Local name after comparison')&&form.querySelector('[data-task-draft-recovery]')?.textContent.includes('Remote name'),'A newly edited Name conflict is redisplayed and requires another explicit confirmation');
+ assert(form.querySelector('[data-task-draft-recovery]').querySelectorAll('h4').length===2,'Updated comparison exposes Name and Content');
+ edit(form,'[data-task-priority]','high');
+ const tag=form.querySelector('[data-task-tag-id]');tag.checked=true;tag.dispatchEvent(new Event('change',{bubbles:true}));
+ form.querySelector('[data-task-use-current]').click();form=document.querySelector('form[data-task-editor="task-a"]');
+ assert(form.querySelector('button[type=submit]').disabled&&form.querySelector('[data-task-draft-recovery]').querySelectorAll('h4').length===3,'Editing a third conflicting field before the next action requires a fresh comparison again');
+ assert(trace.filter(item=>item.command==='update_task').length===writesBefore,'Conflict comparison never writes');
+ form.querySelector('[data-task-use-current]').click();form=document.querySelector('form[data-task-editor="task-a"]');
+ assert(!form.querySelector('button[type=submit]').disabled&&form.querySelector('[data-task-name]').value==='Remote name'&&form.querySelector('[data-task-content]').value==='Remote content'&&form.querySelector('[data-task-priority]').value==='medium'&&form.querySelector('[data-task-tag-id]').checked,'Stable explicit confirmation adopts all displayed conflicts and retains the nonconflicting tag draft');
+ await save(form);assert(storage.tasks[0].name==='Remote name'&&storage.tasks[0].content==='Remote content'&&storage.tasks[0].priority==='medium'&&storage.tasks[0].tagIds[0]==='tag','Save preserves external fields after conflict-list updates');
+ assert(trace.filter(item=>item.command==='update_task').at(-1).input.expectedRevision==='r2','Resolved save retains exact observed CAS revision');
+ scenarios.push('new conflicts introduced after comparison require renewed explicit confirmation');
  window.webkit.messageHandlers.result.postMessage({ok:true,width:innerWidth,height:innerHeight,scenarios});
 
 }catch(error){window.webkit.messageHandlers.result.postMessage({ok:false,error:String(error),stack:error.stack});}
 `;
-writeFileSync(join(fixture,'main.js'),readFileSync(join(fixture,'main.js'),'utf8').replace('void connectToApplication();','')+'\n'+check);
+writeFileSync(join(fixture,'main.js'),readFileSync(join(fixture,'main.js'),'utf8').replace('void connectToApplication();','')+'\n'+check.replaceAll('__FOLLOWUP_ONLY__',process.env.TASK_RECOVERY_FOLLOWUP_ONLY==='1'?'true':'false'));
 const {createServer}=await import('node:http');
 const {pathToFileURL}=await import('node:url');
 const {chromium}=await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE_PATH).href);
