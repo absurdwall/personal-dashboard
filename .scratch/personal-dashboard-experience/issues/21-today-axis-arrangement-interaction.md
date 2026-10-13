@@ -58,3 +58,7 @@ Owner: Codex implementer `/root/pdex23` (new PDEX-21 worktree). Working branch `
 ## Implementation handoff — 2026-10-13
 
 Owner `/root/pdex23`; branch `codex/pdex-21-refinement`. Implementation `c7390d810874456fcf86e65881498cd901670442`; full-history integration merge `f65c8df7dfe4b91fa7dec089c49df5d760414e38` includes integration `ca266b390cadf47a021ff3e743a2113a5abaff7b`; bounded retry follow-up `d2ef2a209b8307a212e4fe2b26c7fb5178445a6b`. Detailed red/green,29 UI and79 real application checks, preserved regions and source conditions: [PDEX-21 evidence](../evidence/pdex-21-refinement.md). Actual packaged/native acceptance and separate review remain pending; no acceptance checkbox or parent spec is closed.
+
+### Localized boundary-count implementation repair — 2026-10-13
+
+Root's actual packaged source `e7a947abb0bb4c3ad9f2904524ae2a652d6b762d` lost early/late counts after localization. The worker merged that source (`a62a37121c8d265de94e6189b5ae80f95ebcd174`) and replaced append-only counts with count-aware localized disclosure copy. Build passed. At the user's instruction, further evaluation/acceptance stopped; written full-boot regressions are explicitly pending harness verification, and another agent owns acceptance. Status remains acceptance-pending; see the appended [evidence](../evidence/pdex-21-refinement.md).

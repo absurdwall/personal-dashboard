@@ -744,6 +744,10 @@ const interfaceCopies = {
   "today.expandEarlyExpanded": { zh: "04:00–06:00 · 收起", en: "04:00–06:00 · Collapse" },
   "today.expandLateCollapsed": { zh: "次日 00:00–04:00 · 展开", en: "Next day 00:00–04:00 · Expand" },
   "today.expandLateExpanded": { zh: "次日 00:00–04:00 · 收起", en: "Next day 00:00–04:00 · Collapse" },
+  "today.expandEarlyCollapsedCount": { zh: "04:00–06:00 · 展开 · {count} 项", en: "04:00–06:00 · Expand · {count} item(s)" },
+  "today.expandEarlyExpandedCount": { zh: "04:00–06:00 · 收起 · {count} 项", en: "04:00–06:00 · Collapse · {count} item(s)" },
+  "today.expandLateCollapsedCount": { zh: "次日 00:00–04:00 · 展开 · {count} 项", en: "Next day 00:00–04:00 · Expand · {count} item(s)" },
+  "today.expandLateExpandedCount": { zh: "次日 00:00–04:00 · 收起 · {count} 项", en: "Next day 00:00–04:00 · Collapse · {count} item(s)" },
   "today.axisPeriodItemCount": { zh: "{count} 项", en: "{count} item(s)" },
   "today.axisScrollRegion": {
     zh: "当天任务、日记安排和已确认事实共用的时间轴。",
