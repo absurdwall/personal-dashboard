@@ -527,7 +527,7 @@ pub fn overlay_catalog(
                 _ => today.into(),
             };
             habit.partial_cycle = applicable.effective_date > cycle_start
-                || definition.settings.start_date > cycle_start;
+                || definition.settings.start_date > cycle_start || definition.activity_boundary_in(&cycle_start,today);
             habit.goal_label = goal.label();
             habit.goal_kind = match goal {
                 HabitGoal::WeeklyDays { .. } => "weekly-count",
