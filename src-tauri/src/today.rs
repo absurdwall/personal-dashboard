@@ -2706,9 +2706,24 @@ where
             let habit = catalog.habit(&input.habit_key).ok_or_else(|| {
                 "Habits catalog 中没有这个稳定习惯 key；未写入任何内容。".to_string()
             })?;
-            let can_record=if allow_existing_without_catalog {
-                !input.completed || self.habit_details(&input.habit_key,0,1)?.goal_revisions.iter().rev().find(|revision|revision.applies_on(&input.lived_date)).is_some_and(|revision|matches!(revision.goal,crate::habit_catalog::HabitGoal::DailyCompletion | crate::habit_catalog::HabitGoal::WeeklyDays {..} | crate::habit_catalog::HabitGoal::DailyTime {day_relation:crate::habits::DayRelation::SameDay | crate::habits::DayRelation::NextDay,..})) || (habit.goal_kind=="weekly-count" && habit.current_goal.as_ref().is_none_or(|goal| matches!(goal,crate::habit_catalog::HabitGoal::Unconfigured)))
-            } else {habit.can_record_completion};
+            let can_record = if allow_existing_without_catalog && input.completed {
+                let detail = self.habit_details(&input.habit_key, 0, 1)?;
+                let historical_goal = detail.goal_revisions.iter().rev()
+                    .find(|revision| revision.applies_on(&input.lived_date));
+                // Bounded source coverage limits statistics, not an explicit canonical
+                // completion for an unchanged sourced completion-type Habit.
+                historical_goal.map_or_else(
+                    || (!habit.locally_configured && habit.can_record_completion)
+                        || (habit.goal_kind == "weekly-count" && habit.current_goal.as_ref()
+                            .is_none_or(|goal| matches!(goal, crate::habit_catalog::HabitGoal::Unconfigured))),
+                    |revision| matches!(revision.goal,
+                        crate::habit_catalog::HabitGoal::DailyCompletion
+                        | crate::habit_catalog::HabitGoal::WeeklyDays { .. }
+                        | crate::habit_catalog::HabitGoal::DailyTime {
+                            day_relation: crate::habits::DayRelation::SameDay | crate::habits::DayRelation::NextDay, ..
+                        }),
+                )
+            } else if allow_existing_without_catalog { true } else { habit.can_record_completion };
             if !can_record {
                 return Err(
                     "该习惯不是 completion 型；时刻和阈值证据不能用本地完成框记录。".into(),
