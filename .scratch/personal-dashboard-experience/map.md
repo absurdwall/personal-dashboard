@@ -4,8 +4,8 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: PDEX-SPEC-02 targeted repair of three confirmed P2 review findings; native acceptance remains delegated/open
-Implementation: existing complete feature history retained; three confirmed review repairs in progress on codex/dashboard-experience-refinement-review-fixes; no normal install/main/remote operation
+Stage: PDEX-SPEC-02 second review return: new conflict acknowledgement and unavailable coverage copy in progress; native acceptance delegated/open
+Implementation: prior repairs integrated at 50b9ebd and confirmed by recheck; two bounded follow-ups in progress on retained review-fixes branch; no normal install/main/remote operation
 Working branch: codex/dashboard-experience-refinement-integration from 918e7e0; per-ticket branches and full commits in refinement-execution-2026-10-11.md; spec/prior-round branches retained
 Management source: source-personal-dashboard-experience
 
@@ -351,3 +351,11 @@ The user explicitly requested stopping evaluation and handing completed implemen
 ## Confirmed review return — 2026-10-13
 
 Three confirmed P2 findings are authorized for repair: shared localization contract in Habit/Task refinement surfaces, Calendar parent relation omission, and retained Task draft conflict recovery. [Repair record](refinement-review-fixes-2026-10-13.md) owns the scope and working history. Earlier handoff remains retained; these findings require implementation repair and targeted checks before review recheck. No native acceptance or installation is inferred.
+
+## Review repair implementation handoff — 2026-10-13
+
+Three confirmed P2 repairs plus related review follow-ups are implemented and integrated at `50b9ebda202134fd03ee1174e0116920865d00ed`. [Repair handoff](refinement-review-fixes-2026-10-13.md) records full worker/source commits, bounded root checks, retained original failing baseline, and owned-worktree cleanup. Affected tickets return to implementation-complete/acceptance-pending. Independent recheck, PDEX-26/native acceptance and parent closure remain with the accepting workflow; no installation or external Git action is inferred.
+
+## Second review return — 2026-10-13
+
+The independent accepting workflow confirms earlier fixes and returns only the additional-field conflict acknowledgement and Habit `unavailable` coverage label. [Repair record](refinement-review-fixes-2026-10-13.md) owns this next bounded iteration; PDEX-19/25 are in progress again. Earlier merge/check/cleanup records remain historical. The retained branch/history will be reused; no native acceptance or installation is implied.

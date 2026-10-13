@@ -52,3 +52,7 @@ PDEX-19–25 实现覆盖 Task 紧凑编辑/优先级/标签/菜单、父子关�
 临时 worker checkout 清理只移除干净且全部分支 tip 可达的本轮工作树；所有分支、commit、旧原型 checkout、私有数据和诊断/候选材料保留。
 
 Cleanup is complete: all eight clean owned worker checkouts removed, branches/history retained. [Cleanup](evidence/refinement-implementation-cleanup-2026-10-13.json) and [Management source readback](evidence/management-implementation-handoff-2026-10-13.json) confirm implementation-complete/acceptance-pending handoff. The final integration checkout is the working source for the next agent.
+
+## Review repair implementation handoff — 2026-10-13
+
+The subsequent authorized three-finding review return is implemented on the same local integration branch. Current product merge `50b9ebda202134fd03ee1174e0116920865d00ed` retains worker `codex/dashboard-experience-refinement-review-fixes` tip `1466b18d043349b412ea5026de83def52d7f47d0` and all original ticket history. [Current repair handoff](refinement-review-fixes-2026-10-13.md) records each correction, related review regressions, exact commits, targeted results, the unchanged qualification of the earlier full-suite baseline, and worker cleanup. Root's single post-merge build/recovery DOM 24/24/locale DOM 2/2/diff check passed. No further full or native evaluation is claimed. The review worker was clean/reachable before removal; its branch and generated schema archive remain, while unrelated worktrees and earlier private assets are retained. Acceptance and parent/PDEX-26 closure remain delegated/open.

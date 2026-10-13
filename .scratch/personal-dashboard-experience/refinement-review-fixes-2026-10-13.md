@@ -9,10 +9,33 @@ Worker starting tip: `16f5e2d256fddc1a773486051ae255035d0b9edd`.
 
 | Finding | Required correction | Current state |
 | --- | --- | --- |
-| Standards P2 | Route new Habit settings/details and Task tag/folder fixed labels/messages/diagnostics through docs/interface-language.md; preserve user text/raw diagnostics. | in progress |
-| Spec P2 | Include Calendar draft parentId in create/save/readback/exact retry. | in progress |
-| Spec P2 | Explicit read/rebase path for retained Task drafts after document revision changes; retain draft and protect simultaneous same-Task changes. | in progress |
+| Standards P2 | Route new Habit settings/details and Task tag/folder fixed labels/messages/diagnostics through docs/interface-language.md; preserve user text/raw diagnostics. | implemented; review recheck pending |
+| Spec P2 | Include Calendar draft parentId in create/save/readback/exact retry. | implemented; review recheck pending |
+| Spec P2 | Explicit read/rebase path for retained Task drafts after document revision changes; retain draft and protect simultaneous same-Task changes. | implemented; review recheck pending |
 
 Existing full frontend baseline remains 540 tests: 510 pass, 28 fail, 2 skip. This work uses the authorized real application/public production-DOM seams for the three repros, not source-string checks. No full native evaluation, new dependency, normal App installation or external operation is requested. Completion returns exact commits, targeted checks and unresolved findings to the review workflow; it does not close native acceptance or the parent spec.
 
 Earlier implementation handoff/evidence remain historical. This record supersedes their no-active-code-repair state only for these confirmed findings. Detailed repair results will be recorded in `evidence/pdex-review-fixes-implementation-2026-10-13.md`.
+
+## Completed implementation handoff
+
+Implementation merge: `50b9ebda202134fd03ee1174e0116920865d00ed` on `codex/dashboard-experience-refinement-integration`, using `git merge --no-ff`. Worker tip `1466b18d043349b412ea5026de83def52d7f47d0`; source commits `e77b79e8da9066713814ca5855cb88c698fbf3f7` (Calendar parent), `a37e41308b2f923cce7dc8080c5c99a8a45a85d1` (shared copy), and `5d98e035d608a2f3ae9f48c0e498de83c89cae9e` (explicit draft recovery and review follow-ups). The worker merged claim `858ca37` with ordinary merge `7ce8918`; all history and every earlier ticket branch remain retained.
+
+All three P2 fixes are implemented. Related review follow-ups are repaired: localized captions no longer destroy controls; Habit weekly progress renders the real count; the two existing Node draft tests load and execute the real implementation; this round's pending-goal, partial-cycle and completion status copy uses the shared catalog. The first return was handed off for independent recheck; the two confirmed follow-ups below now require another bounded implementation iteration. Native acceptance remains pending.
+
+Worker results: Calendar WebKit 3/3 and application 1/1; Habit browser 6/6 and byte-limit application 1/1; recovery DOM 12 scenarios at each of two widths; locale DOM 2/2; Node focused 8/8; real Task application receipt/CAS/Vault 3/3. Exact commands, fixture limitations and initial failures are retained in [implementation evidence](evidence/pdex-review-fixes-implementation-2026-10-13.md).
+
+Root performed one bounded post-merge check on `50b9ebd`: `npm run build`, both production DOM scripts (recovery 24/24 and locale 2/2), and `git diff --check` all passed. DOM checks use synthetic IPC boundaries; real filesystem/application results are separately identified above. The reviewed full frontend baseline (540 total: 510 pass, 28 fail, 2 skip) was not rerun, and is not claimed green.
+
+The five affected ticket statuses return to `implementation-complete/acceptance-pending`. PDEX-26 and the parent remain open; this is an implementation handoff, not review acceptance or installation. No full evaluation, native acceptance, main, remote, dependency or normal App operation occurred.
+
+The owned review worker was clean and its tip reachable before removal. Generated schema files were preserved privately, reproducible dist discarded, canonical node_modules retained; the review branch and all commits remain. [Cleanup receipt](evidence/refinement-review-fixes-cleanup-2026-10-13.json). The unrelated prototype worktree and all earlier private fixtures remain untouched.
+
+## Second independent recheck return — in progress
+
+Rechecked worker `1466b18` / integrated product `50b9ebd`. The accepting workflow confirms all earlier fixes, and returns exactly two findings:
+
+- Spec P2: if the user edits an additional field after conflict presentation, the old current-value action can replace the recomputed conflict set with the old one. Recompute and display any new conflicts before an explicit resolution; preserve the draft and CAS guard. Add actual DOM coverage for edits made after conflict presentation, including another edit between the next two actions.
+- Standards P3: Habit detail coverage supports backend `unavailable` but lacks its fixed bilingual label. Add the paired shared catalog entry and mapping; source labels stay raw.
+
+PDEX-19/25 are in progress for this return; other ticket handoff results remain. One implementer continues on the retained review-fixes branch from the latest integration claim. No full/native evaluation, installation, main or remote action is authorized by this return.
