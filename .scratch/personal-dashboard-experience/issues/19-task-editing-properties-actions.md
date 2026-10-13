@@ -70,3 +70,12 @@ integration review remain pending; lifecycle stays in-progress.
 Implementation commit: `cfd5a77`; worker integration merges: `c1ae182`, `741c54f`.
 Latest integrated ancestor: `71471a3`. Both implementation and integration
 histories are retained locally. No packaged acceptance claim or ticket closure.
+
+## Native submit-chain repair — 2026-10-13
+
+Packaged acceptance exposed a time-cancellation Save failure. Production WebKit
+submit-event regression reproduced it and the scoped native-control reset now
+passes actual Save-click sequences with/without tag creation and clear-end-only.
+Tag management busy-state release and Cancel compact-caption consistency were
+also repaired. See the appended diagnosis in [evidence](../evidence/pdex-19-refinement.md).
+Packaged rerun remains pending; this record does not claim native closure.
