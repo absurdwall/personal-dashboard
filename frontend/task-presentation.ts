@@ -60,6 +60,8 @@ export function taskEditOperationKey(
     time: string | null;
     listId: string;
     executionEnd?: TaskExecutionEnd | null;
+    priority?: string;
+    tagIds?: readonly string[];
   }>,
 ): string {
   return JSON.stringify([
@@ -72,6 +74,8 @@ export function taskEditOperationKey(
     edit.time,
     edit.listId,
     edit.executionEnd === undefined ? "preserve" : edit.executionEnd,
+    edit.priority ?? "preserve",
+    edit.tagIds ?? "preserve",
   ]);
 }
 
@@ -160,6 +164,8 @@ export type TaskUpdateEdit = Readonly<{
   time: string | null;
   listId: string;
   executionEnd?: TaskExecutionEnd | null;
+  priority?: string;
+  tagIds?: readonly string[];
 }>;
 
 export type TaskUpdateInput = TaskUpdateEdit &
@@ -179,6 +185,8 @@ export type TaskUpdateView = Readonly<{
     time: string | null;
     listId: string;
     executionEnd?: TaskExecutionEnd | null;
+    priority?: string;
+    tagIds?: readonly string[];
   }>[];
 }>;
 
@@ -223,6 +231,8 @@ export async function performTaskUpdateRequest<View extends TaskUpdateView>(
       candidate.date === edit.date &&
       candidate.time === edit.time &&
       candidate.listId === edit.listId &&
+      (edit.priority === undefined || candidate.priority === edit.priority) &&
+      (edit.tagIds === undefined || JSON.stringify(candidate.tagIds) === JSON.stringify(edit.tagIds)) &&
       (edit.executionEnd === undefined ||
         (candidate.executionEnd?.date === edit.executionEnd?.date &&
          candidate.executionEnd?.time === edit.executionEnd?.time)),
@@ -338,6 +348,8 @@ export type TodayTaskTimeAxisCandidate = Readonly<{
   date: string | null;
   time: string | null;
   executionEnd?: TaskExecutionEnd | null;
+  priority?: string;
+  tagIds?: readonly string[];
   state: "pending" | "completed" | "abandoned";
   deletedAt: string | null;
   timePassed: boolean;
@@ -497,4 +509,18 @@ export function taskHistoryGroups<T extends Parameters<typeof taskHistoryDate>[0
     else groups.push({ date: entry.date, tasks: [entry.task] });
   }
   return groups;
+}
+
+export type TaskPriority = "high" | "medium" | "low" | "none";
+
+/** View-only organization. Default order remains the application's existing order. */
+export function taskPropertyProjection<T extends Readonly<{ priority?: string; tagIds?: readonly string[]; date?: string | null }>>(
+  tasks: readonly T[], priority: string, tagId: string | null, sortPriority: boolean,
+): T[] {
+  const filtered = tasks.filter(task => (priority === "all" || (task.priority ?? "none") === priority) &&
+    (tagId === null || (task.tagIds ?? []).includes(tagId)));
+  if (!sortPriority) return filtered;
+  const rank: Record<string, number> = {high: 0, medium: 1, low: 2, none: 3};
+  return filtered.sort((a, b) => (rank[a.priority ?? "none"] - rank[b.priority ?? "none"]) ||
+    (a.date ?? "9999-12-31").localeCompare(b.date ?? "9999-12-31"));
 }

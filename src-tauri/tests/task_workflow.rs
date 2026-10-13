@@ -179,6 +179,8 @@ fn create_input(
     time: Option<&str>,
 ) -> TaskCreateInput {
     TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
         execution_end: None,
         target_binding: opened.target_binding.clone().unwrap(),
         expected_revision: opened.revision.clone(),
@@ -209,6 +211,8 @@ fn empty_read_is_non_destructive_and_a_manual_inbox_task_survives_relaunch() {
 
     let added = application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
@@ -291,6 +295,8 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
     let opened = application.read().unwrap();
     let created = application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
@@ -304,6 +310,8 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
         .unwrap();
     let edited = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: created.target_binding.clone().unwrap(),
             expected_revision: created.revision.clone().unwrap(),
@@ -347,6 +355,8 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
 
     let retried = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: edited.target_binding.clone().unwrap(),
             expected_revision: "stale-revision-is-ignored-for-idempotent-retry".into(),
@@ -363,6 +373,8 @@ fn task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent() {
 
     let cleared = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: edited.target_binding.clone().unwrap(),
             expected_revision: edited.revision.clone().unwrap(),
@@ -406,6 +418,8 @@ fn a_new_edit_can_revert_an_earlier_payload_after_a_late_operation() {
 
     let first_edit = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: created.target_binding.clone().unwrap(),
             expected_revision: created.revision.clone().unwrap(),
@@ -420,6 +434,8 @@ fn a_new_edit_can_revert_an_earlier_payload_after_a_late_operation() {
         .unwrap();
     let second_edit = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: first_edit.target_binding.clone().unwrap(),
             expected_revision: first_edit.revision.clone().unwrap(),
@@ -434,6 +450,8 @@ fn a_new_edit_can_revert_an_earlier_payload_after_a_late_operation() {
         .unwrap();
     let reverted = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: second_edit.target_binding.clone().unwrap(),
             expected_revision: second_edit.revision.clone().unwrap(),
@@ -557,6 +575,8 @@ fn task_update_conditional_save_preserves_a_concurrent_external_document() {
 
     let error = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: current.target_binding.clone().unwrap(),
             expected_revision: current.revision.clone().unwrap(),
@@ -648,6 +668,8 @@ fn task_update_store_failure_preserves_the_existing_document() {
 
     let error = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: current.target_binding.clone().unwrap(),
             expected_revision: current.revision.clone().unwrap(),
@@ -716,6 +738,8 @@ fn task_target_binding_conflict_and_corruption_never_overwrite_another_vault_or_
     fs::write(task_path(first_vault.path()), externally_changed).unwrap();
     let stale_error = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: stale.target_binding.clone().unwrap(),
             expected_revision: stale.revision.clone().unwrap(),
@@ -740,6 +764,8 @@ fn task_target_binding_conflict_and_corruption_never_overwrite_another_vault_or_
     let damaged_bytes = fs::read(task_path(first_vault.path())).unwrap();
     let damage_error = application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: damaged.target_binding.clone().unwrap(),
             expected_revision: damaged.revision.clone(),
@@ -768,6 +794,8 @@ fn task_target_binding_conflict_and_corruption_never_overwrite_another_vault_or_
     let unknown_bytes = fs::read(task_path(first_vault.path())).unwrap();
     let unknown_error = application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: unknown.target_binding.clone().unwrap(),
             expected_revision: unknown.revision.clone(),
@@ -979,6 +1007,8 @@ fn task_deletion_keeps_a_tombstone_and_restore_keeps_identity_and_state() {
 
     let old_plan_retry = application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: deleted.target_binding.clone().unwrap(),
             expected_revision: deleted.revision.clone(),
@@ -1369,7 +1399,7 @@ fn legacy_task_schema_is_read_and_upgraded_on_the_next_write() {
 
     let application = app(vault.path());
     let legacy = application.read().unwrap();
-    assert_eq!(legacy.schema_version, 2);
+    assert_eq!(legacy.schema_version, 3);
     assert_eq!(legacy.tasks[0].state, TaskState::Pending);
     assert_eq!(legacy.tasks[0].deleted_at, None);
     assert_eq!(legacy.tasks[0].completion, None);
@@ -1383,9 +1413,9 @@ fn legacy_task_schema_is_read_and_upgraded_on_the_next_write() {
             state: TaskState::Completed,
         })
         .unwrap();
-    assert_eq!(upgraded.schema_version, 2);
+    assert_eq!(upgraded.schema_version, 3);
     let document: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-    assert_eq!(document["schemaVersion"], serde_json::json!(2));
+    assert_eq!(document["schemaVersion"], serde_json::json!(3));
     assert!(document["tasks"][0].get("deletedAt").is_some());
     assert!(document["tasks"][0].get("completion").is_some());
 }
@@ -1677,6 +1707,8 @@ fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
 
     let created = application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: created_list.target_binding.clone().unwrap(),
             expected_revision: created_list.revision.clone(),
@@ -1693,6 +1725,8 @@ fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
 
     let edited_in_place = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: created.target_binding.clone().unwrap(),
             expected_revision: created.revision.clone().unwrap(),
@@ -1739,6 +1773,8 @@ fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
 
     let moved = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: renamed_retry.target_binding.clone().unwrap(),
             expected_revision: renamed_retry.revision.clone().unwrap(),
@@ -1806,6 +1842,8 @@ fn archived_task_lists_preserve_states_history_and_single_task_restore_boundary(
         .unwrap();
     let pending = application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: list.target_binding.clone().unwrap(),
             expected_revision: list.revision.clone(),
@@ -1819,6 +1857,8 @@ fn archived_task_lists_preserve_states_history_and_single_task_restore_boundary(
         .unwrap();
     let completed = application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: pending.target_binding.clone().unwrap(),
             expected_revision: pending.revision.clone(),
@@ -1841,6 +1881,8 @@ fn archived_task_lists_preserve_states_history_and_single_task_restore_boundary(
         .unwrap();
     let abandoned = application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: completed.target_binding.clone().unwrap(),
             expected_revision: completed.revision.clone(),
@@ -2026,6 +2068,8 @@ fn task_lists_reject_inbox_and_archived_destinations_without_partial_writes() {
     let before_move = fs::read(task_path(vault.path())).unwrap();
     let move_error = application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: archived.target_binding.clone().unwrap(),
             expected_revision: archived.revision.clone().unwrap(),
@@ -2163,6 +2207,8 @@ fn task_list_creation_and_cross_list_move_use_the_same_atomic_write_boundary() {
         .unwrap();
     let task = initial
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: list.target_binding.clone().unwrap(),
             expected_revision: list.revision.clone(),
@@ -2185,6 +2231,8 @@ fn task_list_creation_and_cross_list_move_use_the_same_atomic_write_boundary() {
     let current = racing.read().unwrap();
     let move_error = racing
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: current.target_binding.clone().unwrap(),
             expected_revision: current.revision.clone().unwrap(),
@@ -2319,6 +2367,8 @@ fn manual_update_patch_history_validates_metadata_and_reads_legacy_changes() {
         ))
         .unwrap();
     let input = TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
         target_binding: created.target_binding.unwrap(),
         expected_revision: created.revision.unwrap(),
         task_id: "legacy-patch".into(),
@@ -2393,6 +2443,8 @@ fn manual_update_retry_rechecks_selected_vault_after_loading_its_receipt() {
         ))
         .unwrap();
     let input = TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
         target_binding: created.target_binding.unwrap(),
         expected_revision: created.revision.unwrap(),
         task_id: "receipt-task".into(),
@@ -2418,4 +2470,94 @@ fn manual_update_retry_rechecks_selected_vault_after_loading_its_receipt() {
     assert!(racing.update(input).is_err());
     assert_eq!(fs::read(task_path(vault.path())).unwrap(), before);
     assert!(!task_path(other.path()).exists());
+}
+
+#[test]
+fn priority_survives_title_only_legacy_patch_and_explicit_clear() {
+    let vault = TempVault::new("priority");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let mut input = serde_json::to_value(serde_json::json!({"targetBinding":opened.target_binding,"expectedRevision":opened.revision,"taskId":"priority-task","name":"Prioritized","content":null,"date":"2026-09-17","time":"18:00","executionEnd":{"date":"2026-09-17","time":"18:45"},"listId":null,"priority":"high"})).unwrap();
+    let added = application.create(serde_json::from_value(input.take()).unwrap()).unwrap();
+    assert_eq!(serde_json::to_value(&added.tasks[0]).unwrap()["priority"], "high");
+    let patch = serde_json::json!({"targetBinding":added.target_binding,"expectedRevision":added.revision,"taskId":"priority-task","changeId":"rename-priority","name":"Renamed","content":null,"date":"2026-09-17","time":"18:00","listId":null});
+    application.update(serde_json::from_value(patch).unwrap()).unwrap();
+    let reopened = app(vault.path()).read().unwrap();
+    assert_eq!(serde_json::to_value(&reopened.tasks[0]).unwrap()["priority"], "high");
+    assert_eq!(reopened.tasks[0].execution_end.as_ref().unwrap().time, "18:45");
+    let clear = serde_json::json!({"targetBinding":reopened.target_binding,"expectedRevision":reopened.revision,"taskId":"priority-task","changeId":"clear-priority-time","name":"Renamed","content":null,"date":"2026-09-17","time":null,"executionEnd":null,"priority":"none","listId":null});
+    application.update(serde_json::from_value(clear).unwrap()).unwrap();
+    let final_view = app(vault.path()).read().unwrap();
+    assert_eq!(serde_json::to_value(&final_view.tasks[0]).unwrap()["priority"], "none");
+    assert_eq!(final_view.tasks[0].date.as_deref(), Some("2026-09-17"));
+    assert_eq!(final_view.tasks[0].time, None);
+    assert_eq!(final_view.tasks[0].execution_end, None);
+}
+
+#[test]
+fn tags_are_shared_identities_and_rename_delete_preserve_tasks() {
+    let vault = TempVault::new("tags");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let tag_input = |view: &personal_dashboard_lib::tasks::TasksView, action: &str, id: &str, name: Option<&str>, change: &str| serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"tagId":id,"name":name,"action":action,"changeId":change})).unwrap();
+    let created = application.manage_tag(tag_input(&opened, "create", "work-tag", Some(" Work "), "tag-create")).unwrap();
+    let reused = application.manage_tag(tag_input(&created, "create", "another-id", Some("Work"), "tag-reuse")).unwrap();
+    assert_eq!(reused.tags.len(), 1);
+    assert_eq!(reused.tags[0].id, "work-tag");
+    let added = application.create(serde_json::from_value(serde_json::json!({"targetBinding":reused.target_binding,"expectedRevision":reused.revision,"taskId":"tagged-task","name":"Tagged","content":null,"date":null,"time":null,"listId":null,"tagIds":["work-tag"]})).unwrap()).unwrap();
+    let renamed = application.manage_tag(tag_input(&added, "rename", "work-tag", Some("Project"), "tag-rename")).unwrap();
+    assert_eq!(app(vault.path()).read().unwrap().tasks[0].tag_ids, vec!["work-tag"]);
+    assert_eq!(renamed.tags[0].name, "Project");
+    let deleted = application.manage_tag(tag_input(&renamed, "delete", "work-tag", None, "tag-delete")).unwrap();
+    let reopened = app(vault.path()).read().unwrap();
+    assert_eq!(reopened.tasks.len(), 1);
+    assert_eq!(reopened.tasks[0].id, "tagged-task");
+    assert!(reopened.tasks[0].tag_ids.is_empty());
+    assert!(reopened.tags.is_empty());
+    let replay = application.manage_tag(tag_input(&renamed, "delete", "work-tag", None, "tag-delete")).unwrap();
+    assert_eq!(replay.revision, deleted.revision);
+    assert!(application.manage_tag(tag_input(&reopened, "create", "blank-tag", Some("  "), "tag-blank")).is_err());
+}
+
+#[test]
+fn legacy_task_migrates_only_on_safe_write_and_unknown_priority_is_not_overwritten() {
+    let vault = TempVault::new("metadata-migration");
+    fs::create_dir_all(task_path(vault.path()).parent().unwrap()).unwrap();
+    fs::write(task_path(vault.path()), empty_task_document()).unwrap();
+    let opened = app(vault.path()).read().unwrap();
+    assert_eq!(opened.schema_version, 3);
+    assert_eq!(fs::read(task_path(vault.path())).unwrap(), empty_task_document());
+    let added = app(vault.path()).create(create_input(&opened, "legacy", "Legacy", None, None)).unwrap();
+    assert_eq!(serde_json::to_value(&added.tasks[0]).unwrap()["priority"], "none");
+    let saved = fs::read(task_path(vault.path())).unwrap();
+    let mut malformed: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+    malformed["tasks"][0]["priority"] = serde_json::json!("urgent");
+    let bytes = serde_json::to_vec(&malformed).unwrap();
+    fs::write(task_path(vault.path()), &bytes).unwrap();
+    assert_eq!(app(vault.path()).read().unwrap().state, TaskDataState::Error);
+    assert!(app(vault.path()).create(create_input(&added,"second","Second",None,None)).is_err());
+    assert_eq!(fs::read(task_path(vault.path())).unwrap(), bytes);
+}
+
+#[test]
+fn tag_patch_omission_clear_conflict_and_failed_write_keep_one_task() {
+    let vault = TempVault::new("tag-patches");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let tagged = application.manage_tag(serde_json::from_value(serde_json::json!({"targetBinding":opened.target_binding,"expectedRevision":opened.revision,"tagId":"shared","changeId":"create-shared","action":"create","name":"Shared"})).unwrap()).unwrap();
+    let added=application.create(serde_json::from_value(serde_json::json!({"targetBinding":tagged.target_binding,"expectedRevision":tagged.revision,"taskId":"tag-task","name":"Tagged","content":null,"date":null,"time":null,"tagIds":["shared"]})).unwrap()).unwrap();
+    let patch=serde_json::json!({"targetBinding":added.target_binding,"expectedRevision":added.revision,"taskId":"tag-task","changeId":"tag-title","name":"Renamed","content":null,"date":null,"time":null});
+    let renamed=application.update(serde_json::from_value(patch.clone()).unwrap()).unwrap();
+    assert_eq!(app(vault.path()).read().unwrap().tasks[0].tag_ids,vec!["shared"]);
+    let clear=serde_json::json!({"targetBinding":renamed.target_binding,"expectedRevision":renamed.revision,"taskId":"tag-task","changeId":"tags-clear","name":"Renamed","content":null,"date":null,"time":null,"tagIds":[]});
+    let failing=TaskApplication::new(SelectedVault(vault.path().to_owned()),FixedClock,FailingTaskStore);
+    assert!(failing.update(serde_json::from_value(clear.clone()).unwrap()).is_err());
+    assert_eq!(app(vault.path()).read().unwrap().tasks[0].tag_ids,vec!["shared"]);
+    let cleared=application.update(serde_json::from_value(clear.clone()).unwrap()).unwrap();
+    assert!(app(vault.path()).read().unwrap().tasks[0].tag_ids.is_empty());
+    assert_eq!(cleared.tasks.len(),1);
+    assert_eq!(application.update(serde_json::from_value(clear).unwrap()).unwrap().revision,cleared.revision);
+    let mut stale=patch;stale["changeId"]=serde_json::json!("stale-property");stale["tagIds"]=serde_json::json!(["shared"]);
+    assert!(application.update(serde_json::from_value(stale).unwrap()).is_err());
+    assert_eq!(app(vault.path()).read().unwrap().revision,cleared.revision);
 }

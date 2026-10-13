@@ -9,7 +9,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub const TASK_SCHEMA_VERSION: u32 = 2;
+pub const TASK_SCHEMA_VERSION: u32 = 3;
 const LEGACY_TASK_SCHEMA_VERSION: u32 = 1;
 pub const TASK_DOCUMENT_RELATIVE_PATH: &str = "life/.personal-dashboard/tasks/v1/tasks.json";
 
@@ -115,6 +115,10 @@ pub enum TaskChangeOperation {
         execution_end: Option<Option<TaskExecutionEnd>>,
     },
     ManualUpdate {
+        #[serde(default, rename = "tagIds", skip_serializing_if = "Option::is_none")]
+        tag_ids: Option<Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        priority: Option<TaskPriority>,
         name: String,
         content: Option<String>,
         date: Option<String>,
@@ -203,9 +207,56 @@ where
     Option::<TaskExecutionEnd>::deserialize(deserializer).map(Some)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskTagView {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TaskTagAction {
+    Create,
+    Rename,
+    Delete,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskTagInput {
+    pub target_binding: String,
+    pub expected_revision: Option<String>,
+    pub tag_id: String,
+    pub change_id: String,
+    pub action: TaskTagAction,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct TagReceipt {
+    change_id: String,
+    tag_id: String,
+    action: TaskTagAction,
+    name: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TaskPriority {
+    High,
+    Medium,
+    Low,
+    #[default]
+    None,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskView {
+    pub tag_ids: Vec<String>,
+    pub priority: TaskPriority,
     pub id: String,
     pub name: String,
     pub content: Option<String>,
@@ -227,6 +278,7 @@ pub struct TaskView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TasksView {
+    pub tags: Vec<TaskTagView>,
     pub state: TaskDataState,
     pub error_kind: Option<TaskDataErrorKind>,
     pub message: String,
@@ -243,6 +295,10 @@ pub struct TasksView {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskCreateInput {
+    #[serde(default)]
+    pub tag_ids: Vec<String>,
+    #[serde(default)]
+    pub priority: TaskPriority,
     pub target_binding: String,
     pub expected_revision: Option<String>,
     pub task_id: String,
@@ -292,6 +348,10 @@ pub struct TaskListRestoreInput {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskUpdateInput {
+    #[serde(default)]
+    pub tag_ids: Option<Vec<String>>,
+    #[serde(default)]
+    pub priority: Option<TaskPriority>,
     pub target_binding: String,
     pub expected_revision: String,
     pub task_id: String,
@@ -566,6 +626,7 @@ where
                         "该任务标识已用于其他任务；请使用新的稳定身份。未写入任何内容。".into(),
                     );
                 }
+                ensure_task_tags_exist(&document, &desired.tag_ids)?;
                 ensure_active_task_list_exists(&document, &desired.list_id)?;
                 require_task_revision(&bytes, input_expected_revision(&input)?, &target_binding)?;
                 document.tasks.push(desired);
@@ -578,10 +639,13 @@ where
                     return Err("任务正本已不存在。请刷新 Tasks 后重试；未创建替代数据。".into());
                 }
                 let document = TaskDocument {
+                    tags: Vec::new(),
+                    tag_receipts: Vec::new(),
                     schema_version: TASK_SCHEMA_VERSION,
                     lists: vec![inbox_record()],
                     tasks: vec![desired],
                 };
+                ensure_task_tags_exist(&document, &document.tasks[0].tag_ids)?;
                 ensure_active_task_list_exists(&document, &document.tasks[0].list_id)?;
                 let encoded = encode_task_document(&document)?;
                 self.ensure_bound_target_current(&path, &target_binding)?;
@@ -589,6 +653,104 @@ where
             }
         }
         self.ensure_bound_target_current(&path, &target_binding)?;
+        self.read()
+    }
+
+    pub fn manage_tag(&self, input: TaskTagInput) -> Result<TasksView, String> {
+        validate_local_identifier(&input.tag_id, "标签标识")?;
+        validate_local_identifier(&input.change_id, "标签修改标识")?;
+        let name = match input.action {
+            TaskTagAction::Delete => None,
+            _ => Some(normalize_list_name(input.name.as_deref().unwrap_or(""))?),
+        };
+        let receipt = TagReceipt {
+            change_id: input.change_id.clone(),
+            tag_id: input.tag_id.clone(),
+            action: input.action.clone(),
+            name: name.clone(),
+        };
+        let (_vault, path, binding) = self.bound_target(&input.target_binding)?;
+        let bytes = self.store.load(&path)?;
+        let mut document = match &bytes {
+            Some(bytes) => parse_task_document(bytes)?,
+            None => TaskDocument {
+                schema_version: TASK_SCHEMA_VERSION,
+                lists: vec![inbox_record()],
+                tasks: Vec::new(),
+                tags: Vec::new(),
+                tag_receipts: Vec::new(),
+            },
+        };
+        if let Some(existing) = document
+            .tag_receipts
+            .iter()
+            .find(|r| r.change_id == input.change_id)
+        {
+            if existing != &receipt {
+                return Err("标签修改标识已用于其他操作；未写入。".into());
+            }
+            self.ensure_bound_target_current(&path, &binding)?;
+            return self.read();
+        }
+        match &bytes {
+            Some(bytes) => require_task_revision(
+                bytes,
+                input
+                    .expected_revision
+                    .as_deref()
+                    .ok_or("请刷新 Tasks 后重试。")?,
+                &binding,
+            )?,
+            None if input.expected_revision.is_some() => {
+                return Err("任务正本已不存在；未写入。".into())
+            }
+            None => {}
+        }
+        let index = document.tags.iter().position(|tag| tag.id == input.tag_id);
+        match input.action {
+            TaskTagAction::Create => {
+                if let Some(index) = index {
+                    if document.tags[index].name != name.as_ref().unwrap().as_str() {
+                        return Err("标签身份已使用；未写入。".into());
+                    }
+                } else if !document
+                    .tags
+                    .iter()
+                    .any(|tag| Some(&tag.name) == name.as_ref())
+                {
+                    document.tags.push(TaskTagView {
+                        id: input.tag_id,
+                        name: name.unwrap(),
+                    });
+                }
+            }
+            TaskTagAction::Rename => {
+                let index = index.ok_or("找不到标签；未写入。")?;
+                if document
+                    .tags
+                    .iter()
+                    .any(|tag| tag.id != input.tag_id && Some(&tag.name) == name.as_ref())
+                {
+                    return Err("同名标签已存在；未写入。".into());
+                }
+                document.tags[index].name = name.unwrap();
+            }
+            TaskTagAction::Delete => {
+                let index = index.ok_or("找不到标签；未写入。")?;
+                document.tags.remove(index);
+                for task in &mut document.tasks {
+                    task.tag_ids.retain(|id| id != &input.tag_id);
+                }
+            }
+        }
+        document.tag_receipts.push(receipt);
+        let updated = encode_task_document(&document)?;
+        self.ensure_bound_target_current(&path, &binding)?;
+        match bytes {
+            Some(bytes) => self.store.save_if_unchanged(&path, &bytes, &updated)?,
+            None => self.store.create_new(&path, &updated)?,
+        }
+        self.ensure_bound_target_current(&path, &binding)?;
         self.read()
     }
 
@@ -632,6 +794,8 @@ where
                     return Err("任务正本已不存在。请刷新 Tasks 后重试；未创建替代数据。".into());
                 }
                 let document = TaskDocument {
+                    tags: Vec::new(),
+                    tag_receipts: Vec::new(),
                     schema_version: TASK_SCHEMA_VERSION,
                     lists: vec![
                         inbox_record(),
@@ -745,6 +909,8 @@ where
             .unwrap_or_else(|| "inbox".into());
         let mut desired = task_from_update(&input, &current_list_id)?;
         let operation = TaskChangeOperation::ManualUpdate {
+            tag_ids: input.tag_ids.clone(),
+            priority: input.priority,
             name: desired.name.clone(),
             content: desired.content.clone(),
             date: desired.date.clone(),
@@ -766,6 +932,23 @@ where
                 return Err("该任务修改标识已用于其他操作；未写入任何内容。".into());
             }
         }
+        desired.tag_ids = input.tag_ids.clone().unwrap_or_else(|| {
+            document
+                .tasks
+                .iter()
+                .find(|task| task.id == input.task_id)
+                .map(|task| task.tag_ids.clone())
+                .unwrap_or_default()
+        });
+        ensure_task_tags_exist(&document, &desired.tag_ids)?;
+        desired.priority = input.priority.unwrap_or_else(|| {
+            document
+                .tasks
+                .iter()
+                .find(|task| task.id == input.task_id)
+                .map(|task| task.priority)
+                .unwrap_or_default()
+        });
         desired.execution_end = input.execution_end.clone().unwrap_or_else(|| {
             document
                 .tasks
@@ -818,6 +1001,8 @@ where
         task.date = desired.date;
         task.time = desired.time;
         task.execution_end = desired.execution_end;
+        task.priority = desired.priority;
+        task.tag_ids = desired.tag_ids;
         task.list_id = desired.list_id;
         task.modified_at = now;
         task.changes.push(change);
@@ -1151,6 +1336,8 @@ where
                 }
                 (
                     TaskDocument {
+                        tags: Vec::new(),
+                        tag_receipts: Vec::new(),
                         schema_version: TASK_SCHEMA_VERSION,
                         lists: vec![inbox_record()],
                         tasks: Vec::new(),
@@ -1248,6 +1435,10 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct TaskDocument {
+    #[serde(default)]
+    tags: Vec<TaskTagView>,
+    #[serde(default)]
+    tag_receipts: Vec<TagReceipt>,
     schema_version: u32,
     lists: Vec<TaskListRecord>,
     tasks: Vec<TaskRecord>,
@@ -1265,6 +1456,10 @@ struct TaskListRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct TaskRecord {
+    #[serde(default)]
+    tag_ids: Vec<String>,
+    #[serde(default)]
+    priority: TaskPriority,
     id: String,
     name: String,
     content: Option<String>,
@@ -1287,6 +1482,7 @@ struct TaskRecord {
 impl TasksView {
     pub(crate) fn unconfigured() -> Self {
         Self {
+            tags: Vec::new(),
             state: TaskDataState::Unconfigured,
             error_kind: None,
             message: "请选择 Vault，以读取 Tasks。".into(),
@@ -1303,6 +1499,7 @@ impl TasksView {
 
     pub(crate) fn empty(target_binding: Option<String>, vault: Option<PathBuf>) -> Self {
         Self {
+            tags: Vec::new(),
             state: TaskDataState::Empty,
             error_kind: None,
             message: "Inbox 目前没有任务；新任务会先保存在 Inbox。".into(),
@@ -1324,6 +1521,7 @@ impl TasksView {
         vault: Option<PathBuf>,
     ) -> Self {
         Self {
+            tags: Vec::new(),
             state: TaskDataState::Error,
             error_kind: None,
             message: message.into(),
@@ -1388,6 +1586,8 @@ fn task_list_view(list: TaskListRecord) -> TaskListView {
 
 fn task_view_at(task: &TaskRecord, current_date: &str, current_time: &str) -> TaskView {
     TaskView {
+        tag_ids: task.tag_ids.clone(),
+        priority: task.priority,
         id: task.id.clone(),
         name: task.name.clone(),
         content: task.content.clone(),
@@ -1418,6 +1618,7 @@ fn tasks_view(
     current_time: &str,
 ) -> TasksView {
     TasksView {
+        tags: document.tags,
         state,
         error_kind: None,
         message,
@@ -1582,6 +1783,8 @@ fn task_from_create(input: &TaskCreateInput, now: &str) -> Result<TaskRecord, St
         now,
     })?;
     task.execution_end = input.execution_end.clone();
+    task.priority = input.priority;
+    task.tag_ids = input.tag_ids.clone();
     validate_execution_end(
         task.date.as_deref(),
         task.time.as_deref(),
@@ -1612,6 +1815,8 @@ fn task_from_draft(draft: TaskRecordDraft<'_>) -> Result<TaskRecord, String> {
     let list_id = draft.list_id.unwrap_or("inbox").to_owned();
     validate_local_identifier(&list_id, "任务列表标识")?;
     Ok(TaskRecord {
+        tag_ids: Vec::new(),
+        priority: TaskPriority::None,
         id: draft.task_id.to_owned(),
         name,
         content: normalize_content(draft.content),
@@ -1935,6 +2140,8 @@ fn task_from_update(input: &TaskUpdateInput, current_list_id: &str) -> Result<Ta
         .unwrap_or_else(|| current_list_id.to_owned());
     validate_local_identifier(&list_id, "任务列表标识")?;
     Ok(TaskRecord {
+        tag_ids: Vec::new(),
+        priority: TaskPriority::None,
         id: input.task_id.clone(),
         name,
         content: normalize_content(input.content.as_deref()),
@@ -1962,6 +2169,8 @@ fn task_matches(left: &TaskRecord, right: &TaskRecord) -> bool {
         && left.date == right.date
         && left.time == right.time
         && left.execution_end == right.execution_end
+        && left.tag_ids == right.tag_ids
+        && left.priority == right.priority
         && left.list_id == right.list_id
 }
 
@@ -2067,9 +2276,12 @@ fn reschedule_operation_matches(
         date: recorded_date,
         time: recorded_time,
         execution_end: recorded_end,
-    }) = change.operation.as_ref() {
-        return matches!(change.kind, TaskChangeKind::Rescheduled | TaskChangeKind::Noop)
-            && recorded_date == date
+    }) = change.operation.as_ref()
+    {
+        return matches!(
+            change.kind,
+            TaskChangeKind::Rescheduled | TaskChangeKind::Noop
+        ) && recorded_date == date
             && recorded_time == time
             && recorded_end == execution_end;
     }
@@ -2276,6 +2488,8 @@ fn task_change_with_source(
         content_changed,
         schedule_changed,
         list_changed,
+        previous.priority != updated.priority,
+        previous.tag_ids != updated.tag_ids,
     ]
     .into_iter()
     .filter(|changed| *changed)
@@ -2347,7 +2561,7 @@ fn parse_task_document(bytes: &[u8]) -> Result<TaskDocument, String> {
     let mut document: TaskDocument =
         serde_json::from_slice(bytes).map_err(|error| format!("任务正本不是有效 JSON：{error}"))?;
     match document.schema_version {
-        LEGACY_TASK_SCHEMA_VERSION => {
+        LEGACY_TASK_SCHEMA_VERSION | 2 => {
             document.schema_version = TASK_SCHEMA_VERSION;
         }
         TASK_SCHEMA_VERSION => {}
@@ -2377,6 +2591,31 @@ fn parse_task_document(bytes: &[u8]) -> Result<TaskDocument, String> {
     }
     if !inbox {
         return Err("任务正本缺少 Inbox 列表。".into());
+    }
+    let mut tag_ids = HashSet::new();
+    let mut tag_names = HashSet::new();
+    for tag in &document.tags {
+        validate_local_identifier(&tag.id, "标签标识")?;
+        if normalize_list_name(&tag.name)? != tag.name
+            || !tag_ids.insert(&tag.id)
+            || !tag_names.insert(&tag.name)
+        {
+            return Err("任务正本包含无效或重复标签。".into());
+        }
+    }
+    for task in &document.tasks {
+        ensure_task_tags_exist(&document, &task.tag_ids)?;
+    }
+    let mut receipt_ids = HashSet::new();
+    for receipt in &document.tag_receipts {
+        validate_local_identifier(&receipt.change_id, "标签修改标识")?;
+        validate_local_identifier(&receipt.tag_id, "标签标识")?;
+        if !receipt_ids.insert(&receipt.change_id) {
+            return Err("重复标签修改标识。".into());
+        }
+        if receipt.action != TaskTagAction::Delete {
+            normalize_list_name(receipt.name.as_deref().unwrap_or(""))?;
+        }
     }
     let mut task_ids = HashSet::new();
     let mut change_ids = HashSet::new();
@@ -2704,13 +2943,15 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
                 || change.new_deleted_at.is_some()
                 || change.previous_completion.is_some()
                 || change.new_completion.is_some()
-                || (change.operation.is_some() && !manual_update_history_matches(change)? && !matches!(change.operation.as_ref(),
-                    Some(TaskChangeOperation::Reschedule { date, time, execution_end })
-                    if change.kind == TaskChangeKind::Rescheduled
-                        && change.source == TaskChangeSourceKind::DailyFlow
-                        && date == &change.new_date && time == &change.new_time
-                        && execution_end.as_ref().is_none_or(|end| end == &change.new_execution_end)
-                ))
+                || (change.operation.is_some()
+                    && !manual_update_history_matches(change)?
+                    && !matches!(change.operation.as_ref(),
+                        Some(TaskChangeOperation::Reschedule { date, time, execution_end })
+                        if change.kind == TaskChangeKind::Rescheduled
+                            && change.source == TaskChangeSourceKind::DailyFlow
+                            && date == &change.new_date && time == &change.new_time
+                            && execution_end.as_ref().is_none_or(|end| end == &change.new_execution_end)
+                    ))
             {
                 return Err("任务字段变更记录不能携带状态或完成生命周期字段。".into());
             }
@@ -2721,6 +2962,8 @@ fn validate_lifecycle_change(change: &TaskChangeView) -> Result<(), String> {
 
 fn manual_update_history_matches(change: &TaskChangeView) -> Result<bool, String> {
     let Some(TaskChangeOperation::ManualUpdate {
+        tag_ids: _,
+        priority: _,
         name,
         content,
         date,
@@ -2791,4 +3034,14 @@ fn encode_task_document(document: &TaskDocument) -> Result<Vec<u8>, String> {
         .map_err(|error| format!("无法编码任务正本：{error}"))?;
     encoded.push(b'\n');
     Ok(encoded)
+}
+
+fn ensure_task_tags_exist(document: &TaskDocument, ids: &[String]) -> Result<(), String> {
+    let mut seen = HashSet::new();
+    for id in ids {
+        if !seen.insert(id) || !document.tags.iter().any(|tag| tag.id == *id) {
+            return Err("任务标签重复或不存在；未写入。".into());
+        }
+    }
+    Ok(())
 }

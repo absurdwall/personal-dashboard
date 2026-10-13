@@ -845,6 +845,8 @@ where
                 execution_end,
                 list_id,
             } => self.application.create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: crate::tasks::TaskPriority::None,
                 execution_end: execution_end.clone(),
                 target_binding: target_binding.to_owned(),
                 expected_revision,
@@ -864,6 +866,8 @@ where
                 execution_end,
                 list_id,
             } => self.application.update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
                 execution_end: execution_end.clone(),
                 target_binding: target_binding.to_owned(),
                 expected_revision: required_revision()?,

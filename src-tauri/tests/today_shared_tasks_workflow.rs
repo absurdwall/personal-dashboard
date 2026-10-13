@@ -141,6 +141,8 @@ fn create_task<C: TodayClock>(
 ) -> TasksView {
     application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone(),
@@ -485,6 +487,8 @@ fn today_reads_shared_tasks_with_date_and_archive_semantics_without_legacy_plan_
 
     let rescheduled = tasks
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: reopened.target_binding.clone().unwrap(),
             expected_revision: reopened.revision.clone().unwrap(),
@@ -633,6 +637,8 @@ fn today_reloads_one_shared_task_after_schedule_lifecycle_and_midnight_changes()
     clock.set("2026-09-17", "17:06");
     let moved = tasks
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: opened.target_binding.clone().unwrap(),
             expected_revision: opened.revision.clone().unwrap(),
@@ -664,6 +670,8 @@ fn today_reloads_one_shared_task_after_schedule_lifecycle_and_midnight_changes()
     clock.set("2026-09-17", "17:07");
     opened = tasks
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: moved.target_binding.clone().unwrap(),
             expected_revision: moved.revision.clone().unwrap(),
@@ -1004,4 +1012,26 @@ fn timeline_task_payloads_keep_natural_calendar_dates_and_never_change_the_daily
     })).unwrap();
     assert!(app.update(stale).is_err());
     assert_eq!(app.read().unwrap(), reopened);
+}
+
+#[test]
+fn cancelling_time_arrangement_keeps_same_dated_task_in_today_and_calendar() {
+    let vault=TempVault::new("cancel-time");
+    let application=task_app(vault.path());
+    let opened=application.read().unwrap();
+    let saved=application.create(serde_json::from_value(serde_json::json!({"targetBinding":opened.target_binding,"expectedRevision":opened.revision,"taskId":"cancel-timed","name":"Synthetic dated task","date":"2026-09-17","time":"18:00","executionEnd":{"date":"2026-09-17","time":"18:45"},"priority":"medium"})).unwrap()).unwrap();
+    let before=today_app(vault.path()).read_date("2026-09-17").unwrap();
+    application.update(serde_json::from_value(serde_json::json!({"targetBinding":saved.target_binding,"expectedRevision":saved.revision,"taskId":"cancel-timed","changeId":"cancel-time-arrangement","name":"Synthetic dated task","date":"2026-09-17","time":null,"executionEnd":null})).unwrap()).unwrap();
+    let reopened=task_app(vault.path()).read().unwrap();
+    assert_eq!(reopened.tasks[0].id,"cancel-timed");
+    assert_eq!(reopened.tasks[0].date.as_deref(),Some("2026-09-17"));
+    assert_eq!(reopened.tasks[0].time,None);
+    assert_eq!(reopened.tasks[0].execution_end,None);
+    assert_eq!(serde_json::to_value(&reopened.tasks[0]).unwrap()["priority"],"medium");
+    let today=today_app(vault.path()).read_date("2026-09-17").unwrap();
+    assert_eq!(today.tasks.tasks[0],reopened.tasks[0]);
+    assert_eq!(today.baseline,before.baseline);
+    assert_eq!(today.daily_record_availability,before.daily_record_availability);
+    let calendar=today_app(vault.path()).calendar_month(2026,9).unwrap();
+    assert_eq!(calendar.day("2026-09-17").unwrap().task_summaries[0].id,"cancel-timed");
 }

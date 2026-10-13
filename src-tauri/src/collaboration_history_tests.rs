@@ -592,6 +592,8 @@ fn cancel_received_before_dynamic_action_keeps_canonical_tasks_unchanged() {
         let current = action_tasks.read().unwrap();
         action_tasks
             .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: crate::tasks::TaskPriority::None,
                 execution_end: None,
                 target_binding: current.target_binding.unwrap(),
                 expected_revision: current.revision,
