@@ -79,3 +79,7 @@ passes actual Save-click sequences with/without tag creation and clear-end-only.
 Tag management busy-state release and Cancel compact-caption consistency were
 also repaired. See the appended diagnosis in [evidence](../evidence/pdex-19-refinement.md).
 Packaged rerun remains pending; this record does not claim native closure.
+
+The actual submit regression also identified and now verifies Schedule/Move
+availability from More after a Save. Their busy-release repair is retained on
+the original PDEX-19 worker branch; native combined acceptance remains pending.
