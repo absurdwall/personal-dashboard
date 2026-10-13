@@ -41,3 +41,26 @@ for(const width of [1200,560])test(`detail navigation, qualified history and ret
 
  }finally{await f.close();}
 });
+
+
+test('unavailable Habit coverage switches through shared copy while source labels remain raw',async()=>{
+ const f=await fixture(1200);
+ try {
+  await f.page.evaluate(()=>{
+   const habit={key:'coverage',name:'用户 Habit 名称',localizedNames:{zh:null,en:null},active:true,canRecordCompletion:false,goalKind:'daily-completion',settings:null,currentGoal:{kind:'daily-completion'},pendingGoal:null,partialCycle:false,today:{date:'2026-10-13',localCompletionState:'none'},sourceLabels:['用户来源标签']};
+   const snapshot={catalogTargetBinding:'synthetic-coverage',catalogRevision:'r1',habits:[habit]};
+   const view={habit,startDateKnown:false,catalogTargetBinding:snapshot.catalogTargetBinding,catalogRevision:'r1',completionTargetBinding:null,completionRevision:null,statistics:{totalAttainedDays:0,monthAttainedDays:0,totalExact:false,monthExact:false,streaks:[],coverageFrom:'2026-10-13',coverageTo:'2026-10-13',unknownDays:1},sourceState:'missing',sourceGeneratedAt:null,sourceMessage:'',sources:[{generatedAt:'2026-10-13',rangeFrom:'2026-10-13',rangeTo:'2026-10-13',producerLabel:'用户来源标签'}],sourceWarnings:[],records:[{cell:{date:'2026-10-13',coverage:'unavailable',countsAsCompletion:false,localCompletionState:'none',hasExternalCompletion:false,details:[]},canCorrect:false,localChanges:[]}],recordCount:1,offset:0,nextOffset:null,goalRevisions:[],activityChanges:[]};
+   window.coverageLanguage='zh';
+   window.coverageController=new window.Controller({selection:document.querySelector('#selection'),defaultPane:document.querySelector('#default'),detailPane:document.querySelector('#detail'),language:()=>window.coverageLanguage,name:habit=>habit.name,invoke:async()=>view,edit:()=>{},completeToday:async()=>false,onChanged:async()=>{},track:operation=>operation});
+   window.coverageController.update(snapshot);window.coverageController.select(habit.key);
+  });
+  await f.page.locator('.habit-detail-record').waitFor();
+  assert.match(await f.page.locator('.habit-detail-record').textContent(),/覆盖：不可用/);
+  for(const language of ['en','zh']){
+   await f.page.evaluate(async language=>{window.coverageLanguage=language;const {applyInterfaceLanguage}=await import('/interface-language.js');applyInterfaceLanguage(language);},language);
+   assert.match(await f.page.locator('.habit-detail-record').textContent(),language==='en'?/Coverage: unavailable/:/覆盖：不可用/);
+   assert.equal(await f.page.getByRole('heading',{name:'用户 Habit 名称',exact:true}).count(),1);
+   assert.match(await f.page.locator('.habit-detail-provenance').textContent(),/用户来源标签/);
+  }
+ }finally{await f.close();}
+});
