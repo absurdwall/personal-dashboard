@@ -217,3 +217,31 @@ fn editing_sourced_habit_preserves_goal_segments_languages_mapping_and_refresh_e
     assert!(habit.source_labels.iter().any(|s| s.contains("external-exercise")));
     assert_eq!(fs::read_to_string(names).unwrap(), r#"{"schemaVersion":1,"habits":{"exercise":{"zh":"运动","en":"Exercise"}}}"#);
 }
+
+#[test]
+fn daily_threshold_revisions_advance_at_four_am_and_frequency_switch_marks_partial_week() {
+    use personal_dashboard_lib::habits::DayRelation;
+    let vault = TempVault::new("daily-frequency");
+    let moment = std::rc::Rc::new(std::cell::RefCell::new(("2026-09-08".into(), "23:00".into())));
+    let clock = MutableClock(moment.clone());
+    let application = TodayApplication::new(SelectedVault(vault.path().into()), NoSelection, clock.clone());
+    let initial = HabitSettings { name: "Sleep".into(), emoji: None, group: None, start_date: "2026-09-08".into(), goal: HabitGoal::DailyTime { time: "00:30".into(), day_relation: DayRelation::NextDay } };
+    save_settings(&application, "local-sleep", "create-sleep", initial.clone());
+    let mut settings = initial; settings.goal = HabitGoal::DailyTime { time: "01:00".into(), day_relation: DayRelation::NextDay };
+    let edited = save_settings(&application, "local-sleep", "change-sleep-threshold", settings.clone());
+    assert_eq!(edited.habit("local-sleep").unwrap().goal_label, "每日 次日 00:30");
+    *moment.borrow_mut() = ("2026-09-09".into(), "03:59".into());
+    assert_eq!(application.habits().unwrap().habit("local-sleep").unwrap().goal_label, "每日 次日 00:30");
+    moment.borrow_mut().1 = "04:00".into();
+    let reopened = TodayApplication::new(SelectedVault(vault.path().into()), NoSelection, clock.clone());
+    assert_eq!(reopened.habits().unwrap().habit("local-sleep").unwrap().goal_label, "每日 次日 01:00");
+    settings.goal = HabitGoal::WeeklyDays { days: 5 };
+    let switching = save_settings(&reopened, "local-sleep", "switch-to-weekly", settings);
+    assert_eq!(switching.habit("local-sleep").unwrap().pending_goal.as_ref().unwrap().effective_date, "2026-09-10");
+    *moment.borrow_mut() = ("2026-09-10".into(), "04:00".into());
+    let partial = reopened.habits().unwrap();
+    assert_eq!(partial.habit("local-sleep").unwrap().weekly_target, Some(5));
+    assert!(partial.habit("local-sleep").unwrap().partial_cycle);
+    *moment.borrow_mut() = ("2026-09-14".into(), "04:00".into());
+    assert!(!reopened.habits().unwrap().habit("local-sleep").unwrap().partial_cycle);
+}

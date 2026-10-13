@@ -18,3 +18,8 @@ Green: Wednesday edit keeps this week at 3, editable settings carry 5, replacing
 
 Red: first edit of an existing sourced Habit immediately changed its current target (3→5).
 Green: sourced baseline and typed source goal-history segments are retained before scheduling the pending target. Goal-only edits keep localized display names; explicit renames override display fallback without writing the language configuration. A replacement source snapshot updates external evidence while stable local name/icon/group/current and pending goals survive; explicit external mapping provenance remains. Application suite: 3 passed.
+
+## Slice 4 — daily boundary and frequency changes
+
+Red: no partial-cycle contract existed.
+Green: next-day sleep threshold retains its day relation and changes only after 04:00. Daily→weekly uses the old daily-cycle boundary; the first weekly cycle is visibly partial with the full target of 5, and the following Monday is complete. Current-week counts exclude dates before the applicable frequency segment. Application suite: 4 passed.

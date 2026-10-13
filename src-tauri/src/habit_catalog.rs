@@ -197,12 +197,16 @@ pub fn overlay_catalog(view: &mut HabitSnapshotView, catalog: &HabitCatalogDocum
         habit.goal_revisions = definition.goal_revisions.clone();
         habit.current_goal = definition.goal_revisions.iter().rev().find(|r| r.effective_date.as_str() <= today).map(|r| r.goal.clone());
         habit.pending_goal = definition.goal_revisions.iter().find(|r| r.effective_date.as_str() > today).cloned();
+        habit.can_record_completion = false;
         if let Some(goal) = &habit.current_goal {
+            let applicable = definition.goal_revisions.iter().rev().find(|r| r.effective_date.as_str() <= today).unwrap();
+            let cycle_start = match goal { HabitGoal::WeeklyDays { .. } => CalendarDate::parse(today).unwrap().monday().to_string(), _ => today.into() };
+            habit.partial_cycle = applicable.effective_date > cycle_start || definition.settings.start_date > cycle_start;
             habit.goal_label = goal.label();
             habit.goal_kind = match goal { HabitGoal::WeeklyDays { .. } => "weekly-count", HabitGoal::DailyTime { .. } => "daily-time", _ => "daily-completion" }.into();
             habit.weekly_target = match goal { HabitGoal::WeeklyDays { days } => Some(*days), _ => None };
-            habit.completed_count = habit.weekly_target.map(|_| habit.history.iter().filter(|c| c.date.as_str() >= CalendarDate::parse(today).unwrap().monday().to_string().as_str() && c.date.as_str() <= today && c.counts_as_completion).count() as u32);
-            habit.can_record_completion = !matches!(goal, HabitGoal::Unconfigured);
+            habit.completed_count = habit.weekly_target.map(|_| habit.history.iter().filter(|c| c.date.as_str() >= CalendarDate::parse(today).unwrap().monday().to_string().as_str() && c.date.as_str() >= applicable.effective_date.as_str() && c.date.as_str() <= today && c.counts_as_completion).count() as u32);
+            habit.can_record_completion = definition.active && definition.settings.start_date.as_str() <= today && !matches!(goal, HabitGoal::Unconfigured);
         }
     }
     view.summary.known_completions = view.habits.iter().filter(|h| h.active).filter_map(|h| h.completed_count).sum();
