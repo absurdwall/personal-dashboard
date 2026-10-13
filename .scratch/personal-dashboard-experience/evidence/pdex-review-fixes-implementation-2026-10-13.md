@@ -102,3 +102,31 @@ Worker: `/private/tmp/pdex-review-fixes.noindex`, branch `codex/dashboard-experi
 - `7ce8918c66b621301b297d61bdc7d933d36dce65`: ordinary merge of integration claim `858ca37e5feab3a8364a4a309b8d4c691474aa9a`; no squash/rebase/amend. Only root-owned tracking records arrived in this merge.
 
 After the merge, `npm run build` passed again (`/private/tmp/pdex-review-post-merge-build.log`), the integration claim is an ancestor, and the worker was clean before this handoff note. All work stayed in local Git. No native acceptance, full frontend/Rust suite, remote operation, installation, dependency addition, or unrelated worktree cleanup was performed. Parent owns final ticket state and its single bounded integration readback; packaged acceptance remains with the separate accepting agent.
+
+## Independent review return: two bounded follow-ups
+
+Recreated worker retained `1466b18d043349b412ea5026de83def52d7f47d0`. Before edits, ordinary merge `1ab5f5d26e52d260cc34fef1647588ad4bbf7491` incorporated the renewed integration claim `9494f1ac54f366c7196b1c0c2f961a24af13fa04`; hooks and the existing dependency symlink were restored. No dependencies were installed.
+
+### Spec P2: conflict fields edited after comparison
+
+Exact production DOM red: opening Name/Content, local Content edit, external Name/Content changes, then explicit reread initially shows only Content as conflicting. Editing Name before “Use current values only for conflicting fields” previously cleared recovery using the old conflict set; the new Name draft could overwrite the external Name. The new regression failed at “A newly edited Name conflict is redisplayed and requires another explicit confirmation” at both widths.
+
+The adoption handler now recomputes conflicts, retains previously displayed/association-validation conflicts, and redisplays the enlarged comparison when an additional conflicting field is found. It preserves the draft, opening base, exact observed revision and operation identities, and requires another explicit adoption. The regression additionally edits Priority before the next attempt, verifies another comparison/confirmation is required, and finally confirms only the displayed current Name/Content/Priority while retaining the nonconflicting local tag. No write occurs during comparison; Save submits the exact observed `r2` CAS guard.
+
+Source commit: `e8ec4bfebe9b38e551036a3ea51034976a32a56b`.
+
+Command: `TASK_RECOVERY_FOLLOWUP_ONLY=1 PLAYWRIGHT_MODULE_PATH=<existing bundled module> node scripts/acceptance/refinement-review-task-recovery-dom.mjs`.
+
+Result: red 2/2; green 2/2 (1280×560 and 680×560). The focused switch runs only this follow-up scenario; the earlier matrix was not repeated. Logs: `/private/tmp/pdex-review-followup-conflict-red.log`, `/private/tmp/pdex-review-followup-conflict-green.log`.
+
+### Standards P3: unavailable Habit coverage
+
+The backend coverage enum includes `unavailable`. Its Chinese detail text previously displayed `覆盖：unavailable`; the targeted browser test failed against `覆盖：不可用`. Added paired shared catalog copy and the missing mapping. The actual Habit detail controller test switches zh→en→zh and checks `覆盖：不可用` / `Coverage: unavailable`, retaining the raw Habit name and source producer label.
+
+Source commit: `bf2a0dbe886f2de6f4cc692dbaf7cdabd9e585d7`.
+
+Command: `PLAYWRIGHT_MODULE_PATH=<existing bundled module> node --test --test-name-pattern='unavailable Habit coverage' tests/browser/habit-details.mjs`.
+
+Result: red 1 failed; green 1 passed, 0 failed. Logs: `/private/tmp/pdex-review-followup-coverage-red.log`, `/private/tmp/pdex-review-followup-coverage-green.log`.
+
+`npm run build` passed before the red checks and after the implementation (`/private/tmp/pdex-review-followup-red-build.log`, `/private/tmp/pdex-review-followup-green-build.log`); `git diff --check` passed. A final integration merge check reported “Already up to date”; `9494f1a` remains an ancestor. This return did not rerun earlier full/focused matrices, Rust tests, native/packaged acceptance, or external/remote operations. Boundary tests prove the production DOM/controller behavior with synthetic IPC and retain the earlier separate real-application evidence unchanged. Root owns final tracker state and independent handoff.
