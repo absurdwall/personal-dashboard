@@ -153,7 +153,11 @@ pub struct HabitLifecycleMutationInput {
 }
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct HabitActivityChange { pub change_id: String, pub active: bool, pub lived_date: String, pub changed_at: String }
+pub struct HabitActivityChange {
+    pub change_id: String, pub active: bool, pub lived_date: String, pub changed_at: String,
+    #[serde(default)] pub attained_on_transition: bool,
+    #[serde(default)] pub local_change_count: Option<usize>,
+}
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HabitLifecycleReceipt { pub input: HabitLifecycleMutationInput, pub saved_at: String, pub lived_date: String }

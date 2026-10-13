@@ -755,3 +755,69 @@ fn interrupted_lifecycle_write_retries_one_receipt_and_conflicts_preserve_saved_
         1
     );
 }
+
+#[test]
+fn same_day_pause_keeps_attained_peak_and_restoration_does_not_count_the_existing_checkin_as_new() {
+    let vault = TempVault::new("same-day-lifecycle");
+    let moment = std::rc::Rc::new(std::cell::RefCell::new("2026-09-01".into()));
+    let application = TodayApplication::new(
+        SelectedVault(vault.path().into()),
+        NoSelection,
+        DetailClock(moment.clone()),
+    );
+    let view = application.habits().unwrap();
+    application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            habit_key: "local-same-day".into(),
+            change_id: "same-day-create".into(),
+            target_binding: view.catalog_target_binding.unwrap(),
+            expected_revision: view.catalog_revision,
+            settings: HabitSettings {
+                name: "Read".into(),
+                emoji: None,
+                group: None,
+                start_date: "2026-09-01".into(),
+                goal: HabitGoal::DailyCompletion,
+            },
+        })
+        .unwrap();
+    for date in ["2026-09-01", "2026-09-02"] {
+        *moment.borrow_mut() = date.into();
+        let view = application.habits().unwrap();
+        application
+            .set_local_habit_completion(HabitCompletionMutationInput {
+                habit_key: "local-same-day".into(),
+                lived_date: date.into(),
+                completed: true,
+                change_id: format!("same-day-{date}"),
+                target_binding: view.completion_target_binding.unwrap(),
+                expected_revision: view.completion_revision,
+            })
+            .unwrap();
+    }
+    for (id, active) in [("same-day-pause", false), ("same-day-restore", true)] {
+        let view = application.habits().unwrap();
+        application
+            .set_habit_active(HabitLifecycleMutationInput {
+                habit_key: "local-same-day".into(),
+                change_id: id.into(),
+                target_binding: view.catalog_target_binding.unwrap(),
+                expected_revision: view.catalog_revision,
+                active,
+            })
+            .unwrap();
+        let detail = TodayApplication::new(
+            SelectedVault(vault.path().into()),
+            NoSelection,
+            DetailClock(moment.clone()),
+        )
+        .habit_details("local-same-day", 0, 20)
+        .unwrap();
+        assert_eq!(detail.statistics.total_attained_days, 2);
+        assert_eq!(detail.statistics.highest_known_streak, 2);
+        assert_eq!(detail.statistics.current_streak, 0);
+    }
+    let detail = application.habit_details("local-same-day", 0, 20).unwrap();
+    assert!(detail.habit.today.counts_as_completion);
+    assert_eq!(detail.activity_changes.len(), 2);
+}

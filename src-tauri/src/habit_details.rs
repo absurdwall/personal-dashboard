@@ -118,6 +118,7 @@ pub(crate) fn statistics(
     today: &str,
     sourced: bool,
     definition: Option<&crate::habit_catalog::HabitDefinition>,
+    changes: &BTreeMap<String, Vec<HabitLocalCompletionChangeView>>,
 ) -> HabitStatisticsView {
     let first = CalendarDate::parse(from).expect("validated history origin");
     let last = CalendarDate::parse(today).expect("validated today");
@@ -235,8 +236,22 @@ pub(crate) fn statistics(
                     })
                 })
                 .and_then(|change| CalendarDate::parse(&change.lived_date));
+            let pause_attained = definition.is_some_and(|definition| {
+                definition.activity_changes.iter().any(|change| {
+                    !change.active
+                        && change.lived_date >= start_label
+                        && change.lived_date <= end_label
+                        && change.attained_on_transition
+                })
+            });
             let evaluation_end = pause
-                .map(|pause| pause.plus_days(-1))
+                .map(|pause| {
+                    if pause_attained {
+                        pause
+                    } else {
+                        pause.plus_days(-1)
+                    }
+                })
                 .unwrap_or(end.min(last))
                 .min(end.min(last));
             let attained = (day.unix_days()..=evaluation_end.unix_days())
@@ -290,10 +305,50 @@ pub(crate) fn statistics(
                         }
                 )
             });
+            let same_day_changes: Vec<_> = definition
+                .map(|definition| {
+                    definition
+                        .activity_changes
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, change)| change.lived_date == label)
+                        .collect()
+                })
+                .unwrap_or_default();
+            if configured && cell.is_some_and(|cell| cell.counts_as_completion) {
+                if let Some((index, _)) = same_day_changes
+                    .iter()
+                    .find(|(_, change)| !change.active && change.attained_on_transition)
+                {
+                    cycles.push(Cycle {
+                        unit: "days",
+                        activity_segment: *index,
+                        pending_unknown: false,
+                        outcome: Outcome::Attained,
+                    });
+                }
+            }
+            let inherited_attainment = same_day_changes.last().is_some_and(|(_, change)| {
+                change.active
+                    && change.attained_on_transition
+                    && change.local_change_count.is_some_and(|count| {
+                        changes
+                            .get(&label)
+                            .map(|changes| changes.len())
+                            .unwrap_or(0)
+                            <= count
+                    })
+            });
             let outcome = if !active_on(&label) {
                 Outcome::Excluded
             } else if !configured {
                 Outcome::Unknown
+            } else if inherited_attainment {
+                if day == last {
+                    Outcome::Open
+                } else {
+                    Outcome::Excluded
+                }
             } else if cell.is_some_and(|cell| cell.counts_as_completion) {
                 Outcome::Attained
             } else if day == last {
@@ -406,7 +461,7 @@ pub(crate) fn details_view(
     offset: usize,
     limit: usize,
 ) -> HabitDetailsView {
-    let statistics = statistics(&habit, &cells, from, today, sourced, definition);
+    let statistics = statistics(&habit, &cells, from, today, sourced, definition, changes);
     let records: Vec<_> = cells
         .into_values()
         .rev()

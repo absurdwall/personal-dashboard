@@ -3252,10 +3252,20 @@ where
         if definition.activity_changes.iter().any(|change|change.lived_date>today) {return Err("Habit 活动记录包含未来日期；原文件保留。".into());}
         if definition.initial_active.is_none() {definition.initial_active=Some(definition.active);}
         if definition.activity_baseline_date.is_none() {definition.activity_baseline_date=Some(if definition.sourced {today.clone()} else {definition.goal_revisions.first().map(|revision|revision.effective_date.clone()).unwrap_or_else(||today.clone())});}
-        if definition.active!=input.active {definition.activity_changes.push(HabitActivityChange {change_id:input.change_id.clone(),active:input.active,lived_date:today.clone(),changed_at:now.clone()});definition.active=input.active;}
+        let mut lifecycle_completion_expected=None;
+        if definition.active!=input.active {
+            let completion_path=canonical_habit_completion_path(&vault);
+            let completion_bytes=self.habit_completion_store.load(&completion_path)?;
+            if completion_bytes.as_deref().map(document_revision)!=snapshot.completion_revision {return Err("完成记录已变化，请重新读取后修改活动状态。".into());}
+            let completion=parse_habit_completion_document(completion_bytes.as_deref().unwrap_or(b"{\"schemaVersion\":1,\"completions\":[]}"),&now)?;
+            let local_change_count=completion.completions.iter().find(|record|record.habit_key==input.habit_key && record.lived_date==today).map(|record|record.changes.len()).unwrap_or(0);
+            lifecycle_completion_expected=Some((completion_path,completion_bytes));
+            definition.activity_changes.push(HabitActivityChange {change_id:input.change_id.clone(),active:input.active,lived_date:today.clone(),changed_at:now.clone(),attained_on_transition:habit.today.counts_as_completion,local_change_count:Some(local_change_count)});definition.active=input.active;
+        }
         catalog.lifecycle_receipts.push(HabitLifecycleReceipt {input,saved_at:now,lived_date:today});
         let updated=serde_json::to_vec_pretty(&catalog).map_err(|error|error.to_string())?;HabitCatalogDocument::parse(&updated)?;
         if self.persistence.load_selected_vault()?.as_ref()!=Some(&vault) {return Err("Selected Vault 已变化；未写入活动状态。".into());}
+        if let Some((completion_path,expected))=lifecycle_completion_expected {if self.habit_completion_store.load(&completion_path)?!=expected {return Err("完成记录在保存活动状态前已变化；请重新读取后重试。".into());}}
         match current {Some(bytes)=>self.habit_completion_store.save_if_unchanged(&path,&bytes,&updated)?,None=>self.habit_completion_store.create_new(&path,&updated)?}
         if self.habit_completion_store.load(&path)?.as_deref()!=Some(updated.as_slice()) {return Err("Habit 活动状态保存读回未确认；可安全重试。".into());}
         self.habits()
@@ -3300,7 +3310,8 @@ where
             Err(error) if error.kind()==std::io::ErrorKind::NotFound=>{},
             Err(_)=>source_warnings.push("保留的来源历史暂不可读取；全历史覆盖未知。".into()),
         }
-        match load_habit_snapshot_from_vault(&self.habit_snapshot_store,&vault) {Ok(Some(bytes))=>documents.push(bytes),Ok(None)=>{},Err(error)=>source_warnings.push(error)}
+        let source_bytes=load_habit_snapshot_from_vault(&self.habit_snapshot_store,&vault);
+        match &source_bytes {Ok(Some(bytes))=>documents.push(bytes.clone()),Ok(None)=>{},Err(error)=>source_warnings.push(error.clone())}
         let names=load_habit_names(&vault);let mut projections=vec![];
         for bytes in documents {
             match crate::habits::project_source_history(&bytes,&today,&local_date,&names) {
@@ -3343,6 +3354,7 @@ where
         if let Some(receipt)=catalog.receipts.iter().find(|receipt|receipt.input.habit_key==key){from=from.min(receipt.input.settings.start_date.clone());}
         if from>today {from=today.clone();}
         if self.clock.current_lived_date()!=today || self.persistence.load_selected_vault()?.as_ref()!=Some(&vault) || self.habit_completion_store.load(&vault.join(HABIT_CATALOG_RELATIVE_PATH))?!=catalog_bytes || self.habit_completion_store.load(&completion_path)?!=completion_bytes {return Err("Habit 详情读取期间日期、Vault 或记录已变化，请重新读取。".into());}
+        if source_bytes.is_ok() && load_habit_snapshot_from_vault(&self.habit_snapshot_store,&vault)!=source_bytes {return Err("来源快照在详情读取期间已变化，请重新读取。".into());}
         habit.history.clear(); // full cells are read on demand; detail does not render all cards.
         Ok(crate::habit_details::details_view(&view,habit,cells,&changes,&from,&today,sourced,definition,sources,source_warnings,offset,limit))
     }
