@@ -4,8 +4,8 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: PDEX-SPEC-02 authorized implementation; all PDEX-19–25 implementations integrated with remaining acceptance pending; PDEX-26 not claimed; earlier PDEX-SPEC-01, PDEX-FOLLOWUP-01–05 and PDEX-01–18 remain closed
-Implementation: PDEX-19–25 integrated, focused application/DOM verified, scoped native results recorded separately, combined acceptance/review pending; PDEX-26 not started/claimed; prior installed d518332 acceptance and its qualifications remain historical
+Stage: PDEX-SPEC-02 implementation handoff complete; acceptance delegated by user on 2026-10-13; earlier accepted rounds remain historical/closed
+Implementation: PDEX-19–25 features and PDEX-26 compatibility/reading-state repairs integrated; final boundary-count repair integrated; further evaluation/native/independent acceptance delegated to another agent; all branch/commit history retained
 Working branch: codex/dashboard-experience-refinement-integration from 918e7e0; per-ticket branches and full commits in refinement-execution-2026-10-11.md; spec/prior-round branches retained
 Management source: source-personal-dashboard-experience
 
@@ -343,3 +343,7 @@ PDEX-21 claimed from `0230a35b0933a0e092fa9175e70932c3c27a6054`, using verified 
 ### Combined acceptance frontier — 2026-10-13
 
 PDEX-19–25 implementation is integrated and its scoped application/DOM results are recorded. PDEX-26 claimed from `115a912b76c823b36aeef6ad03a3145a8eceac94`, with a separate verification worker and root-owned native matrix. Parent acceptance, normal installation and remote/main operations remain separate.
+
+## Implementation handoff — user acceptance delegation, 2026-10-13
+
+The user explicitly requested stopping evaluation and handing completed implementation to another agent for acceptance. [Implementation handoff](refinement-implementation-handoff-2026-10-13.md) records final product integration, each retained branch/tip, previous results, source-specific gaps and the stale candidate warning. All features are implemented locally; ticket acceptance and PDEX-SPEC-02 remain open. No continued native/evaluation/review is implied.
