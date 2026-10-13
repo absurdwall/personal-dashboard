@@ -10335,6 +10335,8 @@ function taskEditor(
     const cancelArrangement=document.createElement("button");cancelArrangement.type="button";cancelArrangement.disabled=!editable||!(draft?.time??task.time);
     cancelArrangement.textContent=currentInterfaceLanguage==="zh"?"取消时间安排":"Cancel time arrangement";
     cancelArrangement.addEventListener("click",()=>{cancelTimeDraft();more.open=false;});
+    [scheduleAction,moveAction].forEach(action=>action.dataset.taskEditorAction="");
+    cancelArrangement.dataset.taskEditorAction="";cancelArrangement.dataset.taskActionApplicable=String(Boolean(draft?.time??task.time));
     stateActions.prepend(scheduleAction,moveAction,cancelArrangement);
     more.append(moreSummary,stateActions);editorForm.prepend(more);
     row.addEventListener("contextmenu",event=>{event.preventDefault();toggleTaskEditorDetails(title);more.open=true;
@@ -10714,10 +10716,10 @@ function updateTaskEditorOperationState(
 ): void {
   taskEditorForms(surface).forEach((form) => {
     form.querySelectorAll(
-      "[data-task-name], [data-task-content], [data-task-priority], [data-task-tag-id], [data-task-tag-management], [data-task-cancel-time], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
+      "[data-task-name], [data-task-content], [data-task-editor-action], [data-task-priority], [data-task-tag-id], [data-task-tag-management], [data-task-cancel-time], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
     ).forEach((element) => {
       (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
-        busy || !writable;
+        busy || !writable || (element as HTMLElement).dataset.taskActionApplicable === "false";
     });
     if (!busy) {
       normalizeTaskDateTimeFields(
