@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { stripTypeScriptTypes } from "node:module";
 
-function webKit(script: string): any {
+function webKit(script: string, commands?: readonly string[]): any {
   const directory = mkdtempSync(join(tmpdir(), "pdex-command-dom-"));
   try {
     const html = readFileSync(new URL("../../frontend/index.html", import.meta.url), "utf8")
@@ -24,7 +24,7 @@ function webKit(script: string): any {
       const composer = document.querySelector('#collaboration-composer');
       composer.addEventListener('submit', event => { event.preventDefault(); submitted++; });
       input.addEventListener('input', () => edited.push(input.value));
-      initializeCollaborationCommandCompletion(input, menu, () => 'Personal retro', () => composer.requestSubmit());
+      initializeCollaborationCommandCompletion(input, menu, () => 'Personal retro', () => composer.requestSubmit(), ${JSON.stringify(commands)});
       const type = text => { input.value = text; input.focus(); input.setSelectionRange(text.length, text.length); input.dispatchEvent(new Event('input', { bubbles: true })); };
       const key = (key, options = {}) => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options }));
       ${script}
@@ -103,11 +103,11 @@ test("long help opens on demand while draft, dictation preview and real status s
     const help = document.querySelector('.collaboration-help'); const collapsed = !help.open; help.querySelector('summary').click();
     const inputHelp = document.querySelector('#collaboration-voice-privacy').closest('details');
     const preview = document.querySelector('#collaboration-voice-preview'); const status = document.querySelector('#collaboration-voice-status');
-    type('/r'); input.dispatchEvent(new FocusEvent('blur')); return JSON.stringify({collapsed, opened: help.open, inputHelpClosed: !inputHelp.open, previewFolded: !!preview.closest('details'), statusFolded: !!status.closest('details'), menuClosed: menu.hidden, draft: input.value, submitted});
+    type('/r'); input.dispatchEvent(new FocusEvent('blur')); return JSON.stringify({collapsed, opened: help.open, inputHelpIsHelp: inputHelp === help, previewFolded: !!preview.closest('details'), statusFolded: !!status.closest('details'), menuClosed: menu.hidden, draft: input.value, submitted});
   `);
   assert.equal(result.collapsed, true);
   assert.equal(result.opened, true);
-  assert.equal(result.inputHelpClosed, true);
+  assert.equal(result.inputHelpIsHelp, true);
   assert.equal(result.previewFolded, false);
   assert.equal(result.statusFolded, false);
   assert.equal(result.menuClosed, true);
@@ -146,4 +146,25 @@ test("selected slash candidate retains readable foreground on its soft backgroun
   const ratio=(Math.max(light,dark)+0.05)/(Math.min(light,dark)+0.05);
   assert.equal(result.selected,"/retro Personal retro");
   assert.ok(ratio>=4.5,`selected candidate ${result.color} on ${result.background}: contrast ${ratio.toFixed(2)}`);
+});
+
+
+test("multiple legitimate command candidates cycle and complete only the selected command", { skip: process.platform !== "darwin" }, () => {
+  const result = webKit(`
+    type('/'); const selection=()=>menu.querySelector('[aria-selected="true"]').textContent.split(' ')[0];
+    const sequence=[selection()]; key('ArrowUp'); sequence.push(selection()); key('ArrowDown'); sequence.push(selection());
+    key('ArrowDown'); sequence.push(selection()); key('ArrowDown'); sequence.push(selection()); key('ArrowDown'); sequence.push(selection());
+    type('/r 昨天'); input.setSelectionRange(2,2); input.dispatchEvent(new MouseEvent('click')); key('ArrowDown'); key('Tab');
+    const tab={draft:input.value,caret:input.selectionStart};
+    type('/'); key('ArrowDown'); key('Enter',{metaKey:true}); const enter=input.value;
+    type('/'); input.dispatchEvent(new CompositionEvent('compositionstart')); const handled=key('ArrowDown',{isComposing:true});
+    input.dispatchEvent(new CompositionEvent('compositionend')); key('Escape'); const ordinary=key('ArrowUp');
+    return JSON.stringify({sequence,tab,enter,handled,ordinary,submitted});
+  `, ['/retro','/review','/record']);
+  assert.deepEqual(result.sequence, ['/retro','/record','/retro','/review','/record','/retro']);
+  assert.deepEqual(result.tab, {draft:'/review 昨天',caret:7});
+  assert.equal(result.enter,'/review ');
+  assert.equal(result.handled,true);
+  assert.equal(result.ordinary,true);
+  assert.equal(result.submitted,0);
 });

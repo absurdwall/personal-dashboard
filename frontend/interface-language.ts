@@ -189,6 +189,7 @@ const interfaceCopies = {
   "collaboration.noSession": { zh: "输入消息开始对话", en: "Type a message to start" },
   "collaboration.conversationLabel": { zh: "对话", en: "CONVERSATION" },
   "collaboration.currentWorkLabel": { zh: "当前工作内容", en: "CURRENT WORK" },
+  "collaboration.closeContext": { zh: "收起", en: "Collapse" },
   "collaboration.contextHeading": { zh: "当前 context", en: "Current context" },
   "collaboration.legacyCapabilityDetails": { zh: "旧会话能力说明", en: "Older session capability notes" },
   "collaboration.memoryHeading": { zh: "记忆与衔接", en: "Memory and continuity" },
