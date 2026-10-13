@@ -190,6 +190,14 @@ pub fn overlay_catalog(view: &mut HabitSnapshotView, catalog: &HabitCatalogDocum
             view.habits.push(crate::habits::project_local_definition(definition, today, completions));
         }
         let habit = view.habits.iter_mut().find(|habit| habit.key == definition.key).unwrap();
+        let source_revisions = habit.goal_revisions.clone();
+        for cell in &mut habit.history {
+            let applicable = definition.goal_revisions.iter().rev().find(|r| r.effective_date.as_str() <= cell.date.as_str());
+            let source_goal = source_revisions.iter().rev().find(|r| r.effective_date.as_str() <= cell.date.as_str()).map(|r| &r.goal);
+            if let Some(revision) = applicable { apply_goal_to_cell(cell, &revision.goal, source_goal); }
+        }
+        habit.today = habit.history.iter().find(|c| c.date == today).unwrap().clone();
+        habit.recent = habit.recent.iter().filter_map(|c| habit.history.iter().find(|h| h.date == c.date).cloned()).collect();
         habit.name = definition.settings.name.clone();
         habit.localized_names = if definition.source_name.as_ref() == Some(&definition.settings.name) { definition.source_localized_names.clone() } else { Default::default() };
         habit.active = definition.active;
@@ -206,9 +214,40 @@ pub fn overlay_catalog(view: &mut HabitSnapshotView, catalog: &HabitCatalogDocum
             habit.goal_kind = match goal { HabitGoal::WeeklyDays { .. } => "weekly-count", HabitGoal::DailyTime { .. } => "daily-time", _ => "daily-completion" }.into();
             habit.weekly_target = match goal { HabitGoal::WeeklyDays { days } => Some(*days), _ => None };
             habit.completed_count = habit.weekly_target.map(|_| habit.history.iter().filter(|c| c.date.as_str() >= CalendarDate::parse(today).unwrap().monday().to_string().as_str() && c.date.as_str() >= applicable.effective_date.as_str() && c.date.as_str() <= today && c.counts_as_completion).count() as u32);
-            habit.can_record_completion = definition.active && definition.settings.start_date.as_str() <= today && !matches!(goal, HabitGoal::Unconfigured);
+            habit.can_record_completion = definition.active && definition.settings.start_date.as_str() <= today && !matches!(goal, HabitGoal::Unconfigured | HabitGoal::DailyTime { day_relation: DayRelation::Unresolved, .. });
         }
     }
     view.summary.known_completions = view.habits.iter().filter(|h| h.active).filter_map(|h| h.completed_count).sum();
     view.summary.target_completions = view.habits.iter().filter(|h| h.active).filter_map(|h| h.weekly_target).sum();
+}
+
+/// Evaluate threshold evidence without turning a save timestamp into activity time.
+/// Unknown date relations and conflicting source observations remain unknown.
+pub(crate) fn apply_goal_to_cell(cell: &mut crate::habits::HabitCellView, goal: &HabitGoal, source_goal: Option<&HabitGoal>) {
+    use crate::habits::{HabitCellStatus, HabitDetailView, HabitLocalCompletionState};
+    let HabitGoal::DailyTime { time, day_relation } = goal else { return; };
+    if *day_relation == DayRelation::Unresolved || cell.status == HabitCellStatus::Conflict { cell.counts_as_completion = false; return; }
+    let minutes = |time: &str, relation: DayRelation| -> Option<u32> {
+        if relation == DayRelation::Unresolved { return None; }
+        let (hour,minute) = time.split_once(':')?;
+        Some(hour.parse::<u32>().ok()? * 60 + minute.parse::<u32>().ok()? + if relation == DayRelation::NextDay { 1440 } else { 0 })
+    };
+    let target = minutes(time, *day_relation).unwrap();
+    let actual_met = cell.details.iter().any(|detail| match detail {
+        HabitDetailView::ActualTime { day_relation, local_time, .. } => minutes(local_time, *day_relation).is_some_and(|actual| actual <= target), _ => false,
+    });
+    let threshold_met = cell.status == HabitCellStatus::ThresholdOnly && match source_goal {
+        Some(HabitGoal::DailyTime { time, day_relation }) => minutes(time, *day_relation).is_some_and(|source_target| source_target <= target), _ => false,
+    };
+    let external_met = cell.has_external_completion || actual_met || threshold_met;
+    cell.has_external_completion = external_met;
+    cell.counts_as_completion = external_met || cell.local_completion_state == HabitLocalCompletionState::Completed;
+    if actual_met || threshold_met {
+        for detail in &cell.details {
+            if let HabitDetailView::Observation { source_label, .. } = detail {
+                if !cell.completion_source_labels.contains(source_label) { cell.completion_source_labels.push(source_label.clone()); }
+            }
+        }
+    }
+    if cell.local_completion_state == HabitLocalCompletionState::Completed && cell.actual_time_label.is_none() { cell.status = HabitCellStatus::ThresholdOnly; }
 }

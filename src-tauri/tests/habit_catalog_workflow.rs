@@ -245,3 +245,37 @@ fn daily_threshold_revisions_advance_at_four_am_and_frequency_switch_marks_parti
     *moment.borrow_mut() = ("2026-09-14".into(), "04:00".into());
     assert!(!reopened.habits().unwrap().habit("local-sleep").unwrap().partial_cycle);
 }
+
+#[test]
+fn sourced_sleep_threshold_keeps_next_day_evidence_and_local_withdrawal_never_erases_external_attainment() {
+    use personal_dashboard_lib::habits::DayRelation;
+    let vault = TempVault::new("threshold-evidence");
+    let mut snapshot: serde_json::Value = serde_json::from_str(include_str!("fixtures/habits-v1-complete.json")).unwrap();
+    snapshot["habits"][4]["goal"] = serde_json::json!({"kind":"daily-time", "standard":"00:30", "dayRelation":"next-day"});
+    write_snapshot(vault.path(), &snapshot.to_string());
+    let application = app(vault.path());
+    let opened = application.habits().unwrap();
+    let settings = opened.habit("sleep").unwrap().settings.clone().unwrap();
+    assert_eq!(settings.goal, HabitGoal::DailyTime { time:"00:30".into(), day_relation: DayRelation::NextDay });
+    let configured = save_settings(&application, "sleep", "configure-sourced-sleep", settings);
+    assert!(configured.habit("sleep").unwrap().today.counts_as_completion);
+    assert!(configured.habit("sleep").unwrap().today.actual_time_label.is_none());
+    let saved = application.set_local_habit_completion(HabitCompletionMutationInput {
+        habit_key:"sleep".into(), lived_date:"2026-09-08".into(), completed:true, change_id:"sleep-local".into(),
+        target_binding:configured.completion_target_binding.unwrap(), expected_revision:configured.completion_revision,
+    }).unwrap();
+    let withdrawn = application.set_local_habit_completion(HabitCompletionMutationInput {
+        habit_key:"sleep".into(), lived_date:"2026-09-08".into(), completed:false, change_id:"sleep-withdraw".into(),
+        target_binding:saved.completion_target_binding.unwrap(), expected_revision:saved.completion_revision,
+    }).unwrap();
+    let cell = &withdrawn.habit("sleep").unwrap().today;
+    assert!(cell.counts_as_completion);
+    assert!(cell.has_external_completion);
+    assert!(cell.actual_time_label.is_none());
+    assert_eq!(cell.local_completion_state, HabitLocalCompletionState::Withdrawn);
+    let mut unknown = withdrawn.habit("sleep").unwrap().settings.clone().unwrap();
+    unknown.goal = HabitGoal::DailyTime { time:"00:30".into(), day_relation:DayRelation::Unresolved };
+    save_settings(&application,"sleep","unknown-relation",unknown);
+    let next = TodayApplication::new(SelectedVault(vault.path().into()), NoSelection, FollowingMondayClock).habits().unwrap();
+    assert!(!next.habit("sleep").unwrap().can_record_completion);
+}

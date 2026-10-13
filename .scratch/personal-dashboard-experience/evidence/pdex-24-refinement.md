@@ -23,3 +23,8 @@ Green: sourced baseline and typed source goal-history segments are retained befo
 
 Red: no partial-cycle contract existed.
 Green: next-day sleep threshold retains its day relation and changes only after 04:00. Daily→weekly uses the old daily-cycle boundary; the first weekly cycle is visibly partial with the full target of 5, and the following Monday is complete. Current-week counts exclude dates before the applicable frequency segment. Application suite: 4 passed.
+
+## Slice 5 — threshold attainment with separate source evidence
+
+Red: existing explicit sleep threshold was not represented as an attained day after local configuration.
+Green: source threshold retains next-day semantics and unknown actual time; local check-in then withdrawal leaves external attainment intact. Unresolved date relations disable local threshold confirmation. Threshold evidence is evaluated against its known source goal and the applicable local goal; actual times are compared as day-relation minutes without creating an activity timestamp. Application suite: 5 passed.
