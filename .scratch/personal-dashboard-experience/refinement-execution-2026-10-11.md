@@ -1,7 +1,7 @@
 # PDEX-SPEC-02 — 本地执行与交接边界
 
 Date: 2026-10-11
-Stage: authorized implementation; PDEX-23 integrated, native acceptance pending; PDEX-19/24 in progress
+Stage: authorized implementation; PDEX-19/23 integrated, acceptance pending; PDEX-24 in progress
 Canonical tracker: [map](map.md)
 Specification: [PDEX-SPEC-02](refinement-spec-2026-10-11.md)
 Published ticket range: PDEX-19–26
@@ -45,7 +45,7 @@ User request: implement PDEX-SPEC-02 from `918e7e0` on `codex/dashboard-experien
 
 ## Current frontier — 2026-10-13
 
-PDEX-19 and PDEX-24 are in progress on their ticket branches. PDEX-23 implementation is integrated; independent integration review and native acceptance remain pending, so its ticket remains in-progress. PDEX-20/21/22/25/26 are not started and retain their recorded dependencies. The publication-only frontier above is historical.
+PDEX-19 and PDEX-23 implementations are integrated; review and remaining native acceptance are recorded separately, so their tickets remain in-progress. PDEX-24 is in progress on its ticket branch. PDEX-20/21/22 are not started; root may claim them after the integrated PDEX-19 application/DOM prerequisite verification, without inferring PDEX-19 acceptance or closure. PDEX-25/26 are not started and retain their recorded dependencies. The publication-only frontier above is historical.
 
 ## PDEX-23 integration — 2026-10-13
 
@@ -60,3 +60,17 @@ PDEX-19 and PDEX-24 are in progress on their ticket branches. PDEX-23 implementa
 The tracked/untracked inventory was clean before merge; ignored build assets remain local. The merge retains the later baseline evidence docs already on integration. [Ticket validation and DOM geometry](evidence/pdex-23-refinement.md) records scoped behavior, earlier red/green checks and remaining native acceptance.
 
 Integration validation at the merge source: `npm run build` passed; `node --test tests/frontend/collaboration-layout.test.ts tests/frontend/collaboration-context-overlay.test.ts tests/frontend/collaboration-command-completion.test.ts tests/frontend/collaboration-panels.test.ts` passed 32/32; `git diff --check` passed. These actual DOM/controller checks use synthetic fixtures without model requests; they do not establish packaged persistence, microphone or OS IME acceptance. The pre-change full frontend baseline remains 451/490 passing, 39 failures, retained in [baseline receipt](evidence/refinement-baseline-tests-2026-10-13.json). Native acceptance and integration-wide review remain pending. No ticket closure, App installation, personal-data write, main merge or remote operation occurred.
+
+## PDEX-19 integration — 2026-10-13
+
+- Integration branch: `codex/dashboard-experience-refinement-integration`; authorized base `918e7e0d9c4b2c524c429bfd309482e328bc4c91`.
+- Source branch: `codex/pdex-19-refinement`; actual worker starting tip `1906b875ccded5a77deeff8fcbecc10454733677`.
+- Implementation: `cfd5a77388e14f0240ad2e47715a05d7a479ebf0`.
+- Worker integration synchronization: `c1ae1829cddbedf3f4ffea976039c7e985b7d2f5` (retains `c3de40d` and both PDEX-19/PDEX-23 scoped CSS appends), then `741c54f0796afbf421ca2119a8ecaaada56726e5` (retains `71471a3`).
+- Retained evidence: `7255dcace203d7bdc8df1c14d7f76c2b31e74fa4`.
+- Integration tip before merge: `71471a341cbfd09d023c7855effac374fa5c6c0b`.
+- Integration merge: `f8d33e0a4fa8df8db244e85c0bdf645592e979c9`; `git merge --no-ff` retained complete history without conflicts.
+
+The tracked/untracked inventory was clean before merge. Both ticket-scoped CSS blocks remain. [Application/DOM evidence](evidence/pdex-19-refinement.md) and [WebKit results](evidence/pdex-19-webkit-dom.jsonl) retain implementation verification and limits.
+
+Integration validation at the merge source: `npm run build` passed, including the changed frontend/IPC TypeScript contracts; `node --test tests/frontend/task-refinement.test.ts tests/frontend/task-presentation.test.ts tests/frontend/task-history-render.test.ts tests/frontend/task-history-editing.test.ts` passed 33/33; `node scripts/acceptance/task-refinement-dom.mjs` passed actual production WebKit checks at widths 1280 and 680; `git diff --check` passed. The worker evidence retains the independent real application readback tests. No broad baseline fixture fixes were made. PDEX-19 remains in-progress; root performs the source-bound native checks separately. No ticket/spec closure, normal App installation, personal-data write, main merge or remote operation occurred.

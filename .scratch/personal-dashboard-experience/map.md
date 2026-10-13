@@ -4,8 +4,8 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: PDEX-SPEC-02 authorized implementation; PDEX-23 integrated with native acceptance pending; earlier PDEX-SPEC-01, PDEX-FOLLOWUP-01–05 and PDEX-01–18 remain closed
-Implementation: PDEX-19/24 in progress; PDEX-23 implementation integrated, review/native acceptance pending; PDEX-20/21/22/25/26 not started and dependency-gated; prior installed d518332 acceptance and its qualifications remain historical
+Stage: PDEX-SPEC-02 authorized implementation; PDEX-19/23 integrated with remaining acceptance pending; earlier PDEX-SPEC-01, PDEX-FOLLOWUP-01–05 and PDEX-01–18 remain closed
+Implementation: PDEX-24 in progress; PDEX-19 implementation integrated, application/DOM verified, review/native acceptance pending; PDEX-23 implementation integrated, review/remaining native acceptance pending; PDEX-20/21/22/25/26 not started; prior installed d518332 acceptance and its qualifications remain historical
 Working branch: codex/dashboard-experience-refinement-integration from 918e7e0; per-ticket branches and full commits in refinement-execution-2026-10-11.md; spec/prior-round branches retained
 Management source: source-personal-dashboard-experience
 
@@ -14,7 +14,7 @@ Management source: source-personal-dashboard-experience
 | ID | Type | Body | Triage | Lifecycle | Dependencies | Evidence |
 | --- | --- | --- | --- | --- | --- | --- |
 | PDEX-SPEC-02 | spec | [Complete refinement specification](refinement-spec-2026-10-11.md) / [same-identity index](issues/00-spec-02.md) | ready-for-agent | open | none | [four confirmed clarifications](requirements-clarifications-2026-10-11.md), [prototype review and preservation boundary](prototype-review-and-scope-2026-10-11.md), [local publication](refinement-publication-2026-10-11.md) |
-| PDEX-19 | ticket | [Task 编辑、属性与操作入口](issues/19-task-editing-properties-actions.md) | ready-for-agent | in-progress | none | claimed on codex/pdex-19-refinement; implementation in progress; [execution](refinement-execution-2026-10-11.md) |
+| PDEX-19 | ticket | [Task 编辑、属性与操作入口](issues/19-task-editing-properties-actions.md) | ready-for-agent | in-progress | none | implementation integrated at f8d33e0a4fa8df8db244e85c0bdf645592e979c9; application/DOM verified, review/native acceptance pending; [evidence](evidence/pdex-19-refinement.md), [history](refinement-execution-2026-10-11.md) |
 | PDEX-20 | ticket | [Task 父子关系与清单文件夹](issues/20-task-parents-list-folders.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
 | PDEX-21 | ticket | [Today 时间轴与安排交互](issues/21-today-axis-arrangement-interaction.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
 | PDEX-22 | ticket | [Calendar 新增、详情与节日](issues/22-calendar-create-details-holidays.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
@@ -327,3 +327,7 @@ Management readback confirmed all five parent indexes plus PDEX-12–18 as `reso
 ## Authorized refinement execution — 2026-10-13
 
 The user invoked implement-spec for PDEX-SPEC-02 with integration branch `codex/dashboard-experience-refinement-integration` from `918e7e0d9c4b2c524c429bfd309482e328bc4c91`. Initial checkout clean; prototype/spec branches and earlier history retained. PDEX-19, PDEX-23 and PDEX-24 are claimed by Codex on separate `codex/pdex-{ID}-refinement` branches/worktrees. The current claim state supersedes the historical publication checkpoint above. Local Git only; no main merge, remote operation or App installation. Remaining tickets stay dependency-gated.
+
+### Dependent implementation frontier — 2026-10-13
+
+PDEX-19 integrated at `dc5b09cd5a8ce6d4c45664bc3d610f6b614492e7` with real application/readback and production-DOM prerequisites verified. PDEX-20 and PDEX-22 now claimed on their own branches/worktrees. PDEX-21 remains ready for a free implementer slot; PDEX-24 remains in progress, PDEX-25 waits for its verified interface, and PDEX-26 remains final combined acceptance. Dependency links are retained; downstream code work does not close upstream native/review gates.
