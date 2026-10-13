@@ -256,6 +256,8 @@ fn create_task(
 ) -> TasksView {
     application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: view.target_binding.expect("task target should be bound"),
             expected_revision: view.revision,
@@ -548,6 +550,8 @@ fn compact_calendar_keeps_true_record_state_and_shared_task_interval_after_reope
     let mut view = tasks.read().unwrap();
     for index in 0..7 {
         view = tasks.create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             target_binding: view.target_binding.clone().unwrap(), expected_revision: view.revision.clone(),
             task_id: format!("preview-{index}"), name: format!("合成任务 {index} 完整长标题"), content: Some(format!("合成完整详情 {index}")),
             date: Some("2026-09-09".into()), time: (index == 0).then(|| "23:30".into()),

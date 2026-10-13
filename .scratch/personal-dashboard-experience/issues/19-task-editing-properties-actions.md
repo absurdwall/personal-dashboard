@@ -4,13 +4,13 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** implementation-complete/acceptance-pending
 
 **Triage:** ready-for-agent
 **ID:** PDEX-19
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** claimed; implementation in progress
+**Implementation:** implemented; focused application/DOM checks passed; packaged acceptance pending
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -58,3 +58,15 @@ Integration: codex/dashboard-experience-refinement-integration
 Implementation base: 918e7e0d9c4b2c524c429bfd309482e328bc4c91
 Spec/ticket snapshot: 918e7e0d9c4b2c524c429bfd309482e328bc4c91
 The user invoked implement-spec for PDEX-SPEC-02. Tests use the already confirmed application and DOM/WebKit seams in the specification. Native acceptance remains separately pending.
+
+## Implementation verification — 2026-10-13
+
+Branch: `codex/pdex-19-refinement`. [Evidence](../evidence/pdex-19-refinement.md).
+Task priority/tag application contracts, compact editor, creation choices,
+combined filters and shared menus are implemented with real application
+readback and production WebKit DOM checks. Packaged/native acceptance and
+integration review remain pending; lifecycle stays in-progress.
+
+Implementation commit: `cfd5a77`; worker integration merges: `c1ae182`, `741c54f`.
+Latest integrated ancestor: `71471a3`. Both implementation and integration
+histories are retained locally. No packaged acceptance claim or ticket closure.

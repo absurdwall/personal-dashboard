@@ -378,6 +378,8 @@ fn real_daily_loop_rehearsal_uses_dashboard_for_local_actions_and_keeps_dida_ref
     );
     let undated_seed = local_application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: first_morning["result"]["read"]["targetBinding"]
                 .as_str()
@@ -422,6 +424,8 @@ fn real_daily_loop_rehearsal_uses_dashboard_for_local_actions_and_keeps_dida_ref
         .unwrap();
     let archived_task = local_application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: archive_list.target_binding.clone().unwrap(),
             expected_revision: archive_list.revision.clone(),
@@ -480,6 +484,8 @@ fn real_daily_loop_rehearsal_uses_dashboard_for_local_actions_and_keeps_dida_ref
     );
     let after_user_edit = user_application
         .update(TaskUpdateInput {
+            tag_ids: None,
+            priority: None,
             execution_end: None,
             target_binding: before_user_edit["result"]["targetBinding"]
                 .as_str()

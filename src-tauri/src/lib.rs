@@ -749,6 +749,9 @@ fn create_task(
 }
 
 #[tauri::command]
+fn manage_task_tag(application: State<'_, DesktopTaskApplication>, input: tasks::TaskTagInput) -> Result<TasksView, String> { application.manage_tag(input) }
+
+#[tauri::command]
 fn create_task_list(
     application: State<'_, DesktopTaskApplication>,
     input: TaskListCreateInput,
@@ -1090,6 +1093,7 @@ pub fn run() {
             tasks_view,
             create_task,
             create_task_list,
+            manage_task_tag,
             rename_task_list,
             archive_task_list,
             restore_task_list,
@@ -1167,6 +1171,7 @@ pub fn run() {
         tasks_view,
         create_task,
         create_task_list,
+        manage_task_tag,
         rename_task_list,
         archive_task_list,
         restore_task_list,

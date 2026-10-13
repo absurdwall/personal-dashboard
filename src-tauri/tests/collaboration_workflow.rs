@@ -1833,6 +1833,8 @@ fn dashboard_context_reader_uses_canonical_read_services_without_mutating_source
     let opened_tasks = task_application.read().unwrap();
     let task_context = task_application
         .create(TaskCreateInput {
+            tag_ids: Vec::new(),
+            priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
             target_binding: opened_tasks.target_binding.unwrap(),
             expected_revision: opened_tasks.revision,
