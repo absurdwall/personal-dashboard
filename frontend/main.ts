@@ -1,4 +1,5 @@
 import { calendarHolidaysForDate, defaultCalendarHolidays, isHolidayYearCovered, type CalendarHolidayPreferences } from "./calendar-holidays.js";
+import { showHabitSettingsDialog, habitSettingsGoalLabel, type HabitGoal, type HabitSettings } from "./habit-settings.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
 import { initializeCollaborationCommandCompletion } from "./collaboration-command-completion.js";
@@ -456,12 +457,18 @@ type HabitCellView = Readonly<{
 }>;
 
 type HabitView = Readonly<{
+  locallyConfigured: boolean;
+  partialCycle: boolean;
+  settings: HabitSettings | null;
+  currentGoal: HabitGoal | null;
+  pendingGoal: Readonly<{effectiveDate: string; goal: HabitGoal}> | null;
+  goalRevisions: readonly Readonly<{effectiveDate: string; validThrough: string | null; goal: HabitGoal}>[];
   key: string;
   name: string;
   localizedNames: HabitLocalizedNames;
   active: boolean;
   canRecordCompletion: boolean;
-  goalKind: "weekly-count" | "daily-time";
+  goalKind: "weekly-count" | "daily-time" | "daily-completion";
   goalLabel: string;
   weeklyTarget: number | null;
   completedCount: number | null;
@@ -478,6 +485,8 @@ type HabitView = Readonly<{
 }>;
 
 type HabitSnapshotView = Readonly<{
+  catalogRevision: string | null;
+  catalogTargetBinding: string | null;
   state: HabitSnapshotState;
   message: string;
   readError?: string;
@@ -3568,6 +3577,7 @@ async function refreshCanonicalDateProjections(targetDate: string, evidence?: Co
     unavailable.push(t("destination.habits"));
     habitSnapshotRequests.invalidate();
     renderHabitSnapshot({
+      catalogRevision: null, catalogTargetBinding: null,
       state: "error",
       message: String(habits.error),
       readError: String(habits.error),
@@ -8619,6 +8629,7 @@ const habitCompletionExplanationLabels: Record<
 };
 
 function habitProgressLabel(habit: HabitView): string {
+  if (habit.goalKind === "daily-completion") return habit.today.countsAsCompletion ? (currentInterfaceLanguage === "zh" ? "已完成" : "Completed") : (currentInterfaceLanguage === "zh" ? "待打卡" : "Not confirmed");
   if (habit.completedCount === null) {
     return habit.today.actualTimeLabel
       ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage)
@@ -8689,7 +8700,7 @@ function habitCompletionControl(habit: HabitView): HTMLElement {
   input.disabled =
     habitCompletionOperationCount > 0 ||
     !currentHabitSnapshot?.completionTargetBinding ||
-    !["ready", "stale"].includes(currentHabitSnapshot.state);
+    (!["ready", "stale"].includes(currentHabitSnapshot.state) && !habit.locallyConfigured);
   input.dataset.habitCompletionKey = habit.key;
   input.dataset.habitCompletionDate = habit.today.date;
   input.setAttribute("aria-label", t("habits.recordCompletion", { habit: displayHabitName(habit) }));
@@ -8726,13 +8737,24 @@ function habitRow(habit: HabitView): HTMLElement {
   const metadata = document.createElement("p");
   const sources = document.createElement("small");
   name.textContent = displayHabitName(habit);
-  metadata.textContent = `${localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage)} · ${
+  if (habit.settings?.emoji) name.prepend(`${habit.settings.emoji} `);
+  metadata.textContent = `${(habit.currentGoal ? habitSettingsGoalLabel(habit.currentGoal, currentInterfaceLanguage) : localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage))} · ${
     localizeHabitCoverageLabel(habit.coverageLabel, currentInterfaceLanguage)
   }`;
   setCopy(sources, "habits.sources", {
     sources: habit.sourceLabels.join(currentInterfaceLanguage === "zh" ? "、" : ", ") || t("habits.notDeclared"),
   });
+  if (habit.settings?.group) metadata.textContent += ` · ${habit.settings.group}`;
+  if (habit.pendingGoal) metadata.textContent += ` · ${currentInterfaceLanguage === "zh" ? "待生效" : "Pending"} ${habit.pendingGoal.effectiveDate}: ${habitSettingsGoalLabel(habit.pendingGoal.goal, currentInterfaceLanguage)}`;
+  if (habit.partialCycle) metadata.textContent += ` · ${currentInterfaceLanguage === "zh" ? "部分周期（不计完整连续）" : "Partial cycle (excluded from full-cycle streaks)"}`;
   identity.append(name, metadata, sources);
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "habit-settings-edit";
+  edit.dataset.habitEdit = habit.key;
+  setCopy(edit, "habits.edit");
+  edit.disabled = !currentHabitSnapshot?.catalogTargetBinding;
+  identity.append(edit);
 
   const value = document.createElement("div");
   value.className = "habit-snapshot-value";
@@ -9290,8 +9312,36 @@ async function setLocalHabitCompletion(
   }
 }
 
+let habitSettingsOpening = false;
+async function openHabitSettings(habitKey?: string): Promise<void> {
+  if (habitSettingsOpening || document.querySelector("dialog[data-habit-settings-dialog]")) return;
+  habitSettingsOpening = true;
+  try {
+    const view = await window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot");
+    const clock = await window.__TAURI__.core.invoke<TodayClockView>("today_clock");
+    showHabitSettingsDialog({snapshot: view, livedDate: clock.livedDate, language: currentInterfaceLanguage, habitKey,
+      save: input => {
+        const operation = window.__TAURI__.core.invoke<HabitSnapshotView>("save_habit_definition", {input});
+        void pendingWrites.track(operation.then(() => true, () => false));
+        return operation;
+      },
+      reread: () => window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot"),
+      onSaved: snapshot => {
+        habitCompletionStatus = null;
+        habitSnapshotRequests.invalidate();
+        if (currentHabitSnapshot?.catalogTargetBinding !== snapshot.catalogTargetBinding) { void refreshHabits(); return; }
+        renderHabitSnapshot(snapshot);
+      },
+    });
+  } catch (error) {
+    if (habitsStatus) { habitsStatus.textContent = String(error); habitsStatus.dataset.state = "error"; }
+  } finally { habitSettingsOpening = false; }
+}
+
 function renderHabitSnapshot(view: HabitSnapshotView): void {
   currentHabitSnapshot = view;
+  const create = document.querySelector<HTMLButtonElement>("#create-habit");
+  if (create) create.disabled = !view.catalogTargetBinding;
   renderWorkspaceRailContext("habits");
   renderWorkspaceContextStatus(currentWorkspaceDestination);
   if (habitsStatus) {
@@ -9363,7 +9413,7 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
           row.className = "habits-summary-row";
           label.textContent = displayHabitName(habit);
           value.textContent = habitProgressLabel(habit);
-          kind.textContent = localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage);
+          kind.textContent = habit.currentGoal ? habitSettingsGoalLabel(habit.currentGoal, currentInterfaceLanguage) : localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage);
           row.append(label, value, kind);
           return row;
         }),
@@ -9399,6 +9449,7 @@ async function refreshHabits(): Promise<void> {
   } catch (error) {
     if (!habitSnapshotRequests.isCurrent(request)) return;
     renderHabitSnapshot({
+      catalogRevision: null, catalogTargetBinding: null,
       state: "error",
       message: String(error),
       readError: String(error),
@@ -9453,6 +9504,14 @@ function isBlankTaskDraft(draft: TaskDraft): boolean {
     !draft.completionDate &&
     !draft.completionTime
   );
+}
+
+function clearTaskScheduleField(field: HTMLInputElement): void {
+  field.value="";
+  // Reinitialize WebKit date/time controls after explicit clearing. Otherwise a
+  // collapsed control can keep stale native validity and suppress form submit.
+  const type=field.type;
+  if(type==="date"||type==="time") {field.type="text";field.type=type;}
 }
 
 function normalizeTaskDateTimeFields(
@@ -10160,13 +10219,13 @@ function taskEditor(
   clearEnd.dataset.taskClearEnd = "";
   setCopy(clearEnd, "tasks.clearExecutionEnd");
   clearEnd.addEventListener("click", () => {
-    endDate.value = "";
-    endTime.value = "";
+    clearTaskScheduleField(endDate);
+    clearTaskScheduleField(endTime);
     stashTaskSurfaceDraft(surface, editorForm);
   });
   let openSchedule = (): void => { date.focus(); };
   let openList = (): void => { list.focus(); };
-  let cancelTimeDraft = (): void => { time.value="";endDate.value="";endTime.value="";stashTaskSurfaceDraft(surface,editorForm); };
+  let cancelTimeDraft = (): void => { clearTaskScheduleField(time);clearTaskScheduleField(endDate);clearTaskScheduleField(endTime);stashTaskSurfaceDraft(surface,editorForm); };
   let resetRefinedProperties = (): void => {};
   if(refined) {
   const properties = document.createElement("div"); properties.className = "task-compact-properties task-form-wide";
@@ -10186,7 +10245,7 @@ function taskEditor(
   const cancelTime = document.createElement("button"); cancelTime.type="button";cancelTime.className="secondary-button";
   cancelTime.textContent=currentInterfaceLanguage==="zh"?"取消时间安排":"Cancel time arrangement";cancelTime.disabled=!editable;
   cancelTime.dataset.taskCancelTime="";
-  cancelTime.addEventListener("click",()=> {time.value="";endDate.value="";endTime.value="";clearEnd.hidden=true;stashTaskSurfaceDraft(surface,editorForm);updateScheduleSummary();});
+  cancelTime.addEventListener("click",()=> {clearTaskScheduleField(time);clearTaskScheduleField(endDate);clearTaskScheduleField(endTime);clearEnd.hidden=true;stashTaskSurfaceDraft(surface,editorForm);updateScheduleSummary();});
   schedulePanel.querySelector(".task-property-fields")!.append(cancelTime);
   const updateScheduleSummary=()=> {clearEnd.hidden=!endDate.value&&!endTime.value;schedulePanel.querySelector("summary")!.textContent=taskScheduleText(date.value||null,time.value||null,endDate.value&&endTime.value?{date:endDate.value,time:endTime.value}:null);};
   [date,time,endDate,endTime].forEach(field=>field.addEventListener("change",updateScheduleSummary));
@@ -10213,6 +10272,7 @@ function taskEditor(
     const remove=document.createElement("button");remove.type="button";remove.className="secondary-button";remove.disabled=!editable;
     remove.textContent=currentInterfaceLanguage==="zh"?"删除标签":"Delete tag";
     remove.addEventListener("click",()=>void pendingWrites.track(manageTaskTag("delete",tag.id,null,surface,editorForm)));
+    [renameName,rename,remove].forEach(control=>control.dataset.taskTagManagement="");
     tags.append(renameName,rename,remove);
   }
   const tagName=document.createElement("input");tagName.type="text";tagName.maxLength=80;tagName.disabled=!editable;
@@ -10220,13 +10280,19 @@ function taskEditor(
   const createTag=document.createElement("button");createTag.type="button";createTag.disabled=!editable;
   createTag.textContent=currentInterfaceLanguage==="zh"?"创建标签":"Create tag";
   createTag.addEventListener("click",()=>void pendingWrites.track(manageTaskTag("create",null,tagName.value,surface,editorForm)));
+  [tagName,createTag].forEach(control=>control.dataset.taskTagManagement="");
   tags.append(tagName,createTag);
   const tagPanel=compact((view?.tags??[]).filter(tag=>selectedTags.has(tag.id)).map(tag=>tag.name).join(", ")||(currentInterfaceLanguage==="zh"?"标签":"Tags"),[tags]);
   tags.addEventListener("change",()=>{tagPanel.querySelector("summary")!.textContent=Array.from(tags.querySelectorAll<HTMLInputElement>("[data-task-tag-id]:checked"),input=>(view?.tags??[]).find(tag=>tag.id===input.dataset.taskTagId)?.name??"").join(", ")||(currentInterfaceLanguage==="zh"?"标签":"Tags");});
   grid.append(nameLabel, contentLabel, properties);
   openSchedule=()=>{schedulePanel.open=true;date.focus();};openList=()=>{listPanel.open=true;list.focus();};
   cancelTimeDraft=()=>{cancelTime.click();schedulePanel.open=true;};
-  resetRefinedProperties=()=>{priority.value=task.priority??"none";tags.querySelectorAll<HTMLInputElement>("[data-task-tag-id]").forEach(input=>{input.checked=(task.tagIds??[]).includes(input.dataset.taskTagId!);});updateScheduleSummary();};
+  resetRefinedProperties=()=>{
+    priority.value=task.priority??"none";priorityPanel.querySelector("summary")!.textContent=priority.selectedOptions[0]?.textContent??"";
+    tags.querySelectorAll<HTMLInputElement>("[data-task-tag-id]").forEach(input=>{input.checked=(task.tagIds??[]).includes(input.dataset.taskTagId!);});
+    tagPanel.querySelector("summary")!.textContent=(view?.tags??[]).filter(tag=>(task.tagIds??[]).includes(tag.id)).map(tag=>tag.name).join(", ")||(currentInterfaceLanguage==="zh"?"标签":"Tags");
+    listPanel.querySelector("summary")!.textContent=list.selectedOptions[0]?.textContent??"";updateScheduleSummary();
+  };
   } else {grid.append(nameLabel, contentLabel, listLabel, dateLabel, timeLabel, endDateLabel, endTimeLabel, clearEnd);}
 
   const footer = document.createElement("div");
@@ -10398,8 +10464,9 @@ function taskEditor(
     event.preventDefault();
     event.stopPropagation();
     if(binding)taskEditDrafts.delete(taskDraftKey(binding,task.id));
-    name.value=task.name;content.value=task.content??"";date.value=task.date??"";time.value=task.time??"";
-    endDate.value=task.executionEnd?.date??"";endTime.value=task.executionEnd?.time??"";list.value=task.listId;
+    name.value=task.name;content.value=task.content??"";
+    for(const [field,value] of [[date,task.date],[time,task.time],[endDate,task.executionEnd?.date],[endTime,task.executionEnd?.time]] as const) {if(value)field.value=value;else clearTaskScheduleField(field);}
+    list.value=task.listId;
     resetRefinedProperties();
     closeEditorDialog();
   });
@@ -10714,7 +10781,7 @@ function updateTaskEditorOperationState(
 ): void {
   taskEditorForms(surface).forEach((form) => {
     form.querySelectorAll(
-      "[data-task-name], [data-task-content], [data-task-priority], [data-task-tag-id], [data-task-cancel-time], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
+      "[data-task-name], [data-task-content], [data-task-priority], [data-task-tag-id], [data-task-tag-management], [data-task-cancel-time], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
     ).forEach((element) => {
       (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
         busy || !writable;
@@ -12877,7 +12944,36 @@ habitsDestination?.addEventListener("change", (event) => {
   void pendingWrites.track(operation);
 });
 
+document.querySelector("#create-habit")?.addEventListener("click", () => { void openHabitSettings(); });
+habitsDestination?.addEventListener("contextmenu", event => {
+  const row = (event.target as HTMLElement).closest<HTMLElement>(".habit-snapshot-row[data-habit-key]");
+  const key = row?.dataset.habitKey;
+  if (!key || !currentHabitSnapshot?.catalogTargetBinding) return;
+  event.preventDefault();
+  document.querySelector(".habit-settings-context-menu")?.remove();
+  const menu = document.createElement("div");
+  menu.className = "habit-settings-context-menu";
+  menu.setAttribute("role", "menu");
+  menu.style.left = `${Math.min(event.clientX, window.innerWidth - 150)}px`;
+  menu.style.top = `${Math.min(event.clientY, window.innerHeight - 60)}px`;
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.setAttribute("role", "menuitem");
+  setCopy(edit, "habits.edit");
+  const close = () => { menu.remove(); document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  const outside = (pointer: Event) => { if (!menu.contains(pointer.target as Node)) close(); };
+  const escape = (keyEvent: KeyboardEvent) => { if (keyEvent.key === "Escape") close(); };
+  edit.addEventListener("click", () => { close(); void openHabitSettings(key); });
+  menu.append(edit);
+  document.body.append(menu);
+  edit.focus();
+  document.addEventListener("pointerdown", outside);
+  document.addEventListener("keydown", escape);
+});
+
 habitsDestination?.addEventListener("click", (event) => {
+  const edit = (event.target as HTMLElement).closest<HTMLElement>("[data-habit-edit]");
+  if (edit?.dataset.habitEdit) { void openHabitSettings(edit.dataset.habitEdit); return; }
   const historicalCorrection = (event.target as HTMLElement).closest<HTMLButtonElement>(
     "button[data-habit-correction-date]",
   );

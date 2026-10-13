@@ -13,6 +13,7 @@ pub mod collaboration_memory;
 pub mod cutover;
 pub mod exercise;
 pub mod habits;
+pub mod habit_catalog;
 pub mod habit_producer;
 pub mod interface_language;
 pub mod migration;
@@ -744,6 +745,11 @@ fn habit_snapshot(
 }
 
 #[tauri::command]
+fn save_habit_definition(application: State<'_, DesktopTodayApplication>, input: habit_catalog::HabitDefinitionMutationInput) -> Result<HabitSnapshotView, String> {
+    application.save_habit_definition(input)
+}
+
+#[tauri::command]
 fn tasks_view(application: State<'_, DesktopTaskApplication>) -> Result<TasksView, String> {
     application.read()
 }
@@ -1112,6 +1118,7 @@ pub fn run() {
             restore_task,
             correct_task_completion,
             set_local_habit_completion,
+            save_habit_definition,
             set_historical_habit_completion,
             select_today_vault,
             edit_plan_time,
@@ -1191,6 +1198,7 @@ pub fn run() {
         restore_task,
         correct_task_completion,
         set_local_habit_completion,
+        save_habit_definition,
         set_historical_habit_completion,
         select_today_vault,
         edit_plan_time,
