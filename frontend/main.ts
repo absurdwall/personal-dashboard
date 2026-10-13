@@ -1,3 +1,4 @@
+import {HabitDetailsController} from "./habit-details.js";
 import { showHabitSettingsDialog, habitSettingsGoalLabel, type HabitGoal, type HabitSettings } from "./habit-settings.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
@@ -1595,6 +1596,18 @@ const habitSnapshotRequests = new LatestRequest();
 const habitDateRequests = new LatestRequest();
 const habitCompletionRequests = new LatestRequest();
 let currentHabitSnapshot: HabitSnapshotView | null = null;
+const habitDetailsController = new HabitDetailsController({
+  selection: document.querySelector<HTMLElement>("#habits-summary-rows")!,
+  defaultPane: document.querySelector<HTMLElement>("#habits-default-pane")!,
+  detailPane: document.querySelector<HTMLElement>("#habits-detail-pane")!,
+  language: () => currentInterfaceLanguage,
+  name: habit => localizedHabitName(habit.name, habit.localizedNames, currentInterfaceLanguage),
+  invoke: (command, args) => window.__TAURI__.core.invoke(command, args),
+  edit: key => { void openHabitSettings(key); },
+  completeToday: setLocalHabitCompletion,
+  onChanged: refreshHabits,
+  track: operation => pendingWrites.track(operation),
+});
 type HabitCellSelection = Readonly<{ habitKey: string; date: string }>;
 type HabitNoteDraft = Readonly<{ content: string; correctionId: string | null }>;
 let selectedHabitCell: HabitCellSelection | null = null;
@@ -1784,6 +1797,7 @@ function resetVaultScopedWorkspaceState(): void {
   taskListManagementOpen = false;
   taskRefreshQueued = false;
   currentHabitSnapshot = null;
+  habitDetailsController.clear();
   selectedHabitCell = null;
   currentHabitDateView = null;
   habitsDestination?.querySelector(".habit-canonical-detail")?.remove();
@@ -9334,35 +9348,18 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
   if (habitsGeneratedAt) habitsGeneratedAt.textContent = view.generatedAt ?? t("common.unknown");
   if (habitsProducer) habitsProducer.textContent = view.producerLabel ?? t("common.unknown");
   if (habitsTodayDate) habitsTodayDate.textContent = view.habits[0]?.today.date ?? "—";
-  if (habitsSummaryRows) {
-    habitsSummaryRows.replaceChildren(
-      ...view.habits
-        .filter((habit) => habit.goalKind === "weekly-count")
-        .map((habit) => {
-          const row = document.createElement("div");
-          const label = document.createElement("span");
-          const value = document.createElement("strong");
-          const kind = document.createElement("small");
-          row.className = "habits-summary-row";
-          label.textContent = displayHabitName(habit);
-          value.textContent = habitProgressLabel(habit);
-          kind.textContent = habit.currentGoal ? habitSettingsGoalLabel(habit.currentGoal, currentInterfaceLanguage) : localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage);
-          row.append(label, value, kind);
-          return row;
-        }),
-    );
-  }
+  habitDetailsController.update(view);
   if (habitsDailyList) {
     habitsDailyList.replaceChildren(
       ...view.habits
-        .filter((habit) => habit.goalKind !== "weekly-count")
+        .filter((habit) => habit.active && habit.goalKind !== "weekly-count")
         .map(habitRow),
     );
   }
   if (habitsWeeklyList) {
     habitsWeeklyList.replaceChildren(
       ...view.habits
-        .filter((habit) => habit.goalKind === "weekly-count")
+        .filter((habit) => habit.active && habit.goalKind === "weekly-count")
         .map(habitRow),
     );
   }
@@ -12897,7 +12894,7 @@ habitsDestination?.addEventListener("change", (event) => {
 
 document.querySelector("#create-habit")?.addEventListener("click", () => { void openHabitSettings(); });
 habitsDestination?.addEventListener("contextmenu", event => {
-  const row = (event.target as HTMLElement).closest<HTMLElement>(".habit-snapshot-row[data-habit-key]");
+  const row = (event.target as HTMLElement).closest<HTMLElement>(".habit-snapshot-row[data-habit-key], #habits-detail-pane[data-habit-key], .habit-detail-selector[data-habit-key]");
   const key = row?.dataset.habitKey;
   if (!key || !currentHabitSnapshot?.catalogTargetBinding) return;
   event.preventDefault();

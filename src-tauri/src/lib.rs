@@ -743,6 +743,16 @@ fn save_habit_definition(application: State<'_, DesktopTodayApplication>, input:
 }
 
 #[tauri::command]
+fn habit_details(application: State<'_, DesktopTodayApplication>, habit_key: String, offset: usize, limit: usize) -> Result<habit_details::HabitDetailsView, String> {
+    application.habit_details(&habit_key, offset, limit)
+}
+
+#[tauri::command]
+fn set_habit_active(application: State<'_, DesktopTodayApplication>, input: habit_catalog::HabitLifecycleMutationInput) -> Result<HabitSnapshotView, String> {
+    application.set_habit_active(input)
+}
+
+#[tauri::command]
 fn tasks_view(application: State<'_, DesktopTaskApplication>) -> Result<TasksView, String> {
     application.read()
 }
@@ -1111,6 +1121,8 @@ pub fn run() {
             correct_task_completion,
             set_local_habit_completion,
             save_habit_definition,
+            habit_details,
+            set_habit_active,
             set_historical_habit_completion,
             select_today_vault,
             edit_plan_time,
@@ -1190,6 +1202,8 @@ pub fn run() {
         correct_task_completion,
         set_local_habit_completion,
         save_habit_definition,
+            habit_details,
+            set_habit_active,
         set_historical_habit_completion,
         select_today_vault,
         edit_plan_time,
