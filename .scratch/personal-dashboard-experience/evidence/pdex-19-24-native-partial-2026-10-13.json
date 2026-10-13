@@ -43,7 +43,7 @@
     "changeCount": 4,
     "freshProcessUiReadback": true,
     "tagManagementEnabledAfterOwnWrite": true,
-    "interactionQualification": "First offscreen AX cancellation click reached the disclosure instead; scroll and observed pointer coordinate reached the visible cancel control, then collapsed Save persisted. Both intentional UI and disk/restart result are recorded."
+    "interactionQualification": "First offscreen AX cancellation click reached the disclosure instead; Save at that point persisted only content/priority/tags. After scrolling and an observed pointer click reached the visible cancel control, a second Save persisted date-only scheduling. The retained changes prove both writes; this native checkpoint does not claim one atomic combined tag-create/cancel submit. DOM submit matrix separately covers that case, and final combined native acceptance must repeat it."
   },
   "habit": {
     "key": "local-b4af8ed6-2eb6-40a5-85e3-ead29b72dd36",
