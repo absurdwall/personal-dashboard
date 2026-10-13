@@ -1,0 +1,96 @@
+{
+  "baseline": {
+    "chat": {
+      "top": 241.046875,
+      "bottom": 708.046875,
+      "left": 466.390625,
+      "right": 1212.609375,
+      "width": 746.21875,
+      "height": 467
+    },
+    "composer": {
+      "top": 354.84375,
+      "bottom": 700.65625,
+      "left": 473.78125,
+      "right": 1205.21875,
+      "width": 731.4375,
+      "height": 345.8125
+    },
+    "scrollHeight": 700
+  },
+  "chat": {
+    "top": 241.046875,
+    "bottom": 708.046875,
+    "left": 466.390625,
+    "right": 1212.609375,
+    "width": 746.21875,
+    "height": 467
+  },
+  "context": {
+    "top": 249.046875,
+    "bottom": 346.84375,
+    "left": 474.390625,
+    "right": 1204.609375,
+    "width": 730.21875,
+    "height": 97.796875,
+    "hidden": false,
+    "position": "absolute",
+    "css": "left: 240px; top: 8px; width: 730.21875px; max-height: 97.796875px;",
+    "margin": "0px",
+    "layout": {
+      "top": 241.046875,
+      "bottom": 708.046875,
+      "left": 234.390625,
+      "right": 1212.609375,
+      "width": 978.21875,
+      "height": 467
+    },
+    "clientHeight": 96,
+    "scrollHeight": 714
+  },
+  "composer": {
+    "top": 354.84375,
+    "bottom": 700.65625,
+    "left": 473.78125,
+    "right": 1205.21875,
+    "width": 731.4375,
+    "height": 345.8125
+  },
+  "scrollHeight": 700,
+  "input": {
+    "top": 392.734375,
+    "bottom": 552.734375,
+    "left": 474.78125,
+    "right": 1204.21875,
+    "width": 729.4375,
+    "height": 160
+  },
+  "preview": {
+    "top": 620.65625,
+    "bottom": 700.65625,
+    "left": 473.78125,
+    "right": 1205.21875,
+    "width": 731.4375,
+    "height": 80,
+    "clientHeight": 80,
+    "scrollHeight": 1440
+  },
+  "stopHit": true,
+  "sendHit": true,
+  "inputHit": true,
+  "closeHit": true,
+  "messageHeight": 57,
+  "contextScrolled": true,
+  "messageScrolled": true,
+  "closeAfterScroll": true,
+  "closed": true,
+  "composerAfterScroll": {
+    "top": 354.84375,
+    "bottom": 700.65625,
+    "left": 473.78125,
+    "right": 1205.21875,
+    "width": 731.4375,
+    "height": 345.8125
+  },
+  "draftLength": 1260
+}

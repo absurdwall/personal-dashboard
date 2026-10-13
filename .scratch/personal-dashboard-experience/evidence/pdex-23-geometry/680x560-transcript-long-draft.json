@@ -1,0 +1,96 @@
+{
+  "baseline": {
+    "chat": {
+      "top": 207.203125,
+      "bottom": 642.203125,
+      "left": 176,
+      "right": 627,
+      "width": 451,
+      "height": 435
+    },
+    "composer": {
+      "top": 321.8125,
+      "bottom": 634.8125,
+      "left": 183.390625,
+      "right": 619.609375,
+      "width": 436.21875,
+      "height": 313
+    },
+    "scrollHeight": 705
+  },
+  "chat": {
+    "top": 207.203125,
+    "bottom": 642.203125,
+    "left": 176,
+    "right": 627,
+    "width": 451,
+    "height": 435
+  },
+  "context": {
+    "top": 215.203125,
+    "bottom": 313.8125,
+    "left": 184,
+    "right": 619,
+    "width": 435,
+    "height": 98.609375,
+    "hidden": false,
+    "position": "absolute",
+    "css": "left: 8px; top: 8px; width: 435px; max-height: 98.609375px;",
+    "margin": "0px",
+    "layout": {
+      "top": 207.203125,
+      "bottom": 652.59375,
+      "left": 176,
+      "right": 627,
+      "width": 451,
+      "height": 445.390625
+    },
+    "clientHeight": 97,
+    "scrollHeight": 768
+  },
+  "composer": {
+    "top": 321.8125,
+    "bottom": 634.8125,
+    "left": 183.390625,
+    "right": 619.609375,
+    "width": 436.21875,
+    "height": 313
+  },
+  "scrollHeight": 705,
+  "input": {
+    "top": 359.703125,
+    "bottom": 499.703125,
+    "left": 184.390625,
+    "right": 618.609375,
+    "width": 434.21875,
+    "height": 140
+  },
+  "preview": {
+    "top": 567.625,
+    "bottom": 634.8125,
+    "left": 183.390625,
+    "right": 619.609375,
+    "width": 436.21875,
+    "height": 67.1875,
+    "clientHeight": 67,
+    "scrollHeight": 1440
+  },
+  "stopHit": true,
+  "sendHit": true,
+  "inputHit": true,
+  "closeHit": true,
+  "messageHeight": 57,
+  "contextScrolled": true,
+  "messageScrolled": true,
+  "closeAfterScroll": true,
+  "closed": true,
+  "composerAfterScroll": {
+    "top": 321.8125,
+    "bottom": 634.8125,
+    "left": 183.390625,
+    "right": 619.609375,
+    "width": 436.21875,
+    "height": 313
+  },
+  "draftLength": 1260
+}

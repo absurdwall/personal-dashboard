@@ -4,13 +4,13 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** implementation-complete/acceptance-pending
 
-**Triage:** ready-for-agent
+**Triage:** in-progress
 **ID:** PDEX-23
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** claimed; implementation in progress
+**Implementation:** complete locally; integration review and native acceptance pending
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -56,3 +56,13 @@ Integration: codex/dashboard-experience-refinement-integration
 Implementation base: 918e7e0d9c4b2c524c429bfd309482e328bc4c91
 Spec/ticket snapshot: 918e7e0d9c4b2c524c429bfd309482e328bc4c91
 The user invoked implement-spec for PDEX-SPEC-02. Tests use the already confirmed application and DOM/WebKit seams in the specification. Native acceptance remains separately pending.
+
+## Local implementation result — 2026-10-13
+
+Actual worker base: `1906b875ccded5a77deeff8fcbecc10454733677`.
+Implementation commit: `fef0bdd5f80944028334a30634f03d94906e006b`.
+Evidence: [PDEX-23 implementation and validation](../evidence/pdex-23-refinement.md).
+
+Production DOM/WebKit layout checks: 16/16 passed; command/panel/dictation/draft/queue/history/outcome regression checks: 188/188 passed; frontend build passed. Context now overlays and scrolls above the composer; real voice/persistence controllers remain in use; production slash supply remains only `/retro` while injected test candidates validate selection. Short windows retain the large input and allow page scrolling to the action row.
+
+Acceptance checkboxes remain open for integration review and actual source-bound packaged acceptance. Real microphone, OS IME, Tauri save/readback and installed-region baseline checks remain pending. Lifecycle remains in progress; this record does not close the ticket or parent specification.
