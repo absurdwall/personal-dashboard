@@ -349,3 +349,12 @@ for(const [width,height] of [[1280,720],[830,758],[680,560]]) {
     assert.equal(result.creation.date,'2026-09-12');assert.equal(result.date,'2026-09-12');assert.equal(result.scroll,18);
   });
 }
+
+test('Calendar exposes unavailable holiday-year coverage without changing Task or date review controls',{skip:process.platform!=='darwin'},()=>{
+  const result=webKit(`
+    const month=fixture(5);month.year=2028;month.month=6;month.days=month.days.map((d,i)=>{const at=new Date('2028-05-28T12:00:00Z');at.setUTCDate(at.getUTCDate()+i);return {...d,date:at.toISOString().slice(0,10),inMonth:at.getUTCMonth()===5};});const view=selectedFor(month);calendarHarness.render(month,view);
+    return JSON.stringify({coverage:document.querySelector('#calendar-holiday-coverage').textContent,holidays:[...document.querySelectorAll('.calendar-day-holidays')].filter(n=>n.textContent).length,tasks:document.querySelector('#calendar-task-list').children.length,openTodayDisabled:document.querySelector('#calendar-open-day').disabled,sources:[...document.querySelectorAll('.calendar-holiday-options a')].map(a=>a.href)});
+  `);
+  assert.ok(result.coverage.includes('2028')&&result.coverage.includes('未提供'));assert.equal(result.holidays,0);
+  assert.equal(result.tasks,7);assert.equal(result.openTodayDisabled,false);assert.equal(result.sources.length,4);
+});
