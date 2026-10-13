@@ -1,7 +1,7 @@
 # PDEX-SPEC-02 — 本地执行与交接边界
 
 Date: 2026-10-11
-Stage: authorized implementation; PDEX-19 repairs and PDEX-22/23/24 integrated; remaining review/native acceptance pending
+Stage: authorized implementation; PDEX-19/20/22/23/24/25 integrated; PDEX-21 active; remaining review/native acceptance pending
 Canonical tracker: [map](map.md)
 Specification: [PDEX-SPEC-02](refinement-spec-2026-10-11.md)
 Published ticket range: PDEX-19–26
@@ -45,7 +45,7 @@ User request: implement PDEX-SPEC-02 from `918e7e0` on `codex/dashboard-experien
 
 ## Current frontier — 2026-10-13
 
-PDEX-19, PDEX-22, PDEX-23 and PDEX-24 implementations are integrated; review and remaining native acceptance are recorded separately, so their tickets remain in-progress. PDEX-20/25 have root-recorded claims in their full ticket bodies; PDEX-21/26 are not started. Verified implementation prerequisites authorize dependent implementation without inferring ticket acceptance or closure. The publication-only frontier above is historical.
+PDEX-19, PDEX-20, PDEX-22, PDEX-23, PDEX-24 and PDEX-25 implementations are integrated; review and remaining native acceptance are recorded separately, so their tickets remain in-progress. PDEX-21 remains active after capacity resume; PDEX-26 is not started or claimed. Verified implementation prerequisites authorize dependent implementation without inferring ticket acceptance or closure. The publication-only frontier above is historical.
 
 ## PDEX-23 integration — 2026-10-13
 
@@ -142,3 +142,50 @@ Branch `codex/pdex-25-refinement`, separate `/private/tmp/pdex25-refinement.noin
 ## PDEX-21 claim — 2026-10-13
 
 Branch `codex/pdex-21-refinement`, separate `/private/tmp/pdex21-refinement.noindex` checkout from integration `0230a35b0933a0e092fa9175e70932c3c27a6054`. Verified shared Task editor/application and PDEX-22 nearby-dialog seams retained. Full source-bound native acceptance remains separate.
+
+## PDEX-19/24 source-bound native partial checkpoint — 2026-10-13
+
+Frozen source `2e1c56c10e6b75bb2daaf1a5dbbd94411a549854`; binary `5806c58cef9c046482eb4e858fa8942509e07a7149456c4ef5bf8b80f16045ec`. Real packaged Task cancellation recovery and Habit creation/check-in/current/pending goal-cycle writes and fresh-process UI readback pass in an isolated synthetic Vault/profile. [Receipt](evidence/pdex-19-24-native-partial-2026-10-13.json) retains exact inputs, disk results, launch sequence, source/data hashes and limitations. Owned candidate quit/unregistered; normal installation remains unchanged. Full acceptance remains pending.
+
+## PDEX-20 integration — 2026-10-13
+
+Clean tracked/untracked inventory on `67fb436f9f30c85ca424380ce2ab4b155b79fed6` preceded `git merge --no-ff codex/pdex-20-refinement`. No conflicts; root's latest claim reconciliations and source-bound native PDEX-19/24 receipt remain retained.
+
+- Source branch: `codex/pdex-20-refinement`; actual starting ancestor `b96b77d74a84309615ab57fdc28055c9ef54b9a3`; authorized snapshot `918e7e0d9c4b2c524c429bfd309482e328bc4c91`.
+- Application increment: `4537ee27b0ee2038f91434624ca5f2c7b1f03846`.
+- PDEX-19 submit-repair merge: `89ab14fb6f7e94b185ad53547b92c73d6ff82cea`, retaining `7e96b0832fa65884dbf67665e81d4123081930bf`.
+- UI/tests/docs increment: `3540cfaf5c71f56c4c56c120d6d9c436ea3fabb6`.
+- PDEX-19 More-repair merge: `387c92fb9bfcb2c94b21e30da02c76c148664cf6`, retaining `162067f1169bfc6bfcf2a537eacc850f8ced275a`.
+- Integration synchronization: `127d92080c15821a994e8c541992ab003034a4c4`, retaining integration `490eddb91e14aa6ebc69b455ddbf1db931bac83d` and both appended scoped Task/Calendar CSS blocks.
+- Latest lifecycle/native-receipt synchronization: `5388e354e776ac3e2c616806293c22ddc448918d`, retaining integration `92b9652c8a132cc56c1733710dcb300af48e5227`.
+- Retained evidence: `51ba75ff3d0640cc7fa2036b6aaffa777caddcf8`.
+- Integration merge: `267647bc1cf44e25a80341350720dd3687e8afcc`.
+
+[PDEX-20 application/DOM evidence](evidence/pdex-20-refinement.md) and [worker source-bound checks](evidence/pdex-20-focused-checks-2026-10-13.json) preserve full behavior and limitations. Parent updates retain independent Task fields and lifecycle; one-level folder deletion unassigns lists without deleting Tasks. Shared schema 3 remains compatible with old fields and PDEX-19 properties. Integration validation is recorded below; native organization/combined Calendar acceptance and independent review remain pending. No installation, remote/main operation, dependency change, personal UI/data write or ticket/spec closure occurred.
+
+Integration checks at `267647bc1cf44e25a80341350720dd3687e8afcc`: build passed; real application Task/Today/Calendar/adapter/Collaboration Task tests passed 176/176 (40 + 8 + 9 + 14 + 105), covering independent parent fields/state, cycles/foreign binding, folder scope/archive/delete/restore and safe legacy schema updates. Production WebKit organization and tag-save scripts passed at 1280/680; synthetic IPC boundaries are retained as UI evidence only.
+
+The initial six-suite frontend run passed 66/67: `uncertain Calendar creation retains a frozen original draft until readback enables an exact retry` observed the correct original value/open dialog/retry identity but sampled disabled=false during its 40ms fixed wait. Immediate isolated rerun passed 1/1 without any source or test edit; the freeze implementation is unchanged by PDEX-20. This is recorded as an intermittent test result, not a confirmed product regression or an erased failure. A sequential focused rerun is recorded below. `git diff --check` and worker/root tip reachability checks passed; the full native/independent review remains pending.
+
+Sequential rerun (`node --test --test-concurrency=1` on task-presentation/task-refinement/task-history-editing/task-history-render/task-organization/compact-calendar) passed 67/67 without edits. Log: `/private/tmp/pdex20-merger-frontend.log`. The earlier concurrent failure remains above; no full frontend baseline-green claim is made.
+
+## PDEX-25 integration — 2026-10-13
+
+Clean tracked/untracked inventory on `86980149b4478a685e03a58dbf213cd6a8bf5fc9` preceded `git merge --no-ff codex/pdex-25-refinement`. Integration merge `a9bbc53f8498d0ed0021fc23591a8782d1656be7` completed without conflicts and retains Task/Calendar contracts, PDEX-24 catalog boundaries and the root-owned native PDEX-19/24 receipt.
+
+Source branch `codex/pdex-25-refinement`; starting tip `8bcf66f96ba021e5c7a5c5eac39ac3c8cb9557d0`; authorized snapshot `918e7e0d9c4b2c524c429bfd309482e328bc4c91`. Full retained lineage:
+
+1. `fa1e13e2b12f57ed1c848234418ba09b0e1aa0d1` — synchronization with claim/prerequisites `2e1c56c10e6b75bb2daaf1a5dbbd94411a549854`.
+2. `f49b2ce4914489285f9a56af85db309279c86262` — full canonical detail/history and qualified statistics.
+3. `1bd63278cfd4e875102543efa8b6d13fb5093ee4` — inactive intervals and same-identity restoration.
+4. `eeb68d9d78999a56c5e5fd37a4cb353ae1a41470` — achieved open-week peaks and scoped historical corrections.
+5. `dc6feb6d8dd20870ee22543bbf773b33c4e35c5c` — retained validated source history and unknown target coverage.
+6. `96fab30ae58d5785a809e21ab1010d40b773d1bb` — selected detail, history and inactive finder UI.
+7. `c4a7f7c4fabbc053e14d3615d0b6636d37f9ef07` — qualified day/week units and revision-bound lifecycle retry.
+8. `b9ae1948a88583fc8fd72b3b6a50945655bfe88f` — synchronization with integration `86980149b4478a685e03a58dbf213cd6a8bf5fc9`.
+9. `0bfc4d837ead4dd1f0ffe027d7bdebc1184d9685` — same-lived-day activity transition evidence.
+10. `58750c35d368aec93dbc1c13d48455026e49b8ad` — implementation evidence and pending acceptance.
+
+[PDEX-25 implementation evidence](evidence/pdex-25-refinement.md) retains real application writes/fresh readback, qualified source/goal coverage and UI seams. Main Habit history remains bounded while detail pages authoritative retained history; inactive periods preserve old attainment without bridging current streaks or writing an external lifecycle. Shared settings reuse PDEX-24. Native packaged acceptance and independent integration review remain pending; no PDEX-26 claim or ticket/spec closure is inferred. Integration checks are recorded below. No normal App install, personal UI/data write, remote/main operation or dependency change occurred.
+
+Validation at combined merge `a9bbc53f8498d0ed0021fc23591a8782d1656be7`: build passed; seven focused Habit/historical/interface-language frontend suites passed 33/33; actual Chrome create/settings/detail DOM tests passed 5/5 at 1200/560 using the bundled Playwright runtime without dependency changes. Real application catalog/completion/details/snapshot workflows passed 48/48 (12 + 12 + 9 + 15), including same-day pause/restore, unknown gaps, old-goal correction, qualified day/week peaks, retained source-history publication, uncertain retry and fresh-instance readback. `git diff --check` and branch-tip ancestry checks passed. Browser save/IPC fixtures remain UI evidence; native packaged write/restart verification is pending and is not inferred from these results.

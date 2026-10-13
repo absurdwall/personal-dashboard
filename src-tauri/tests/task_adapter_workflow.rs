@@ -209,6 +209,7 @@ fn create_manual_task(
 ) -> personal_dashboard_lib::tasks::TasksView {
     application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -391,6 +392,7 @@ fn external_read_reports_lived_date_context_and_excludes_archived_pending_obliga
         .unwrap();
     let list = application
         .create_list(personal_dashboard_lib::tasks::TaskListCreateInput {
+            folder_id: None,
             target_binding: completed.target_binding.clone().unwrap(),
             expected_revision: completed.revision.clone(),
             list_id: "archive-list".into(),
@@ -399,6 +401,7 @@ fn external_read_reports_lived_date_context_and_excludes_archived_pending_obliga
         .unwrap();
     let archived_task = application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -554,6 +557,7 @@ fn external_actions_are_idempotent_preserve_user_edits_and_never_revive_deleted_
     );
     let edited = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -919,6 +923,7 @@ fn no_op_daily_flow_commands_persist_identity_before_user_edits() {
     );
     let edited = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -1131,6 +1136,7 @@ fn adapter_rejects_stale_and_concurrent_writes_without_overwriting_external_byte
     );
     let user_edit = application
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             execution_end: None,
@@ -1418,6 +1424,7 @@ fn retained_daily_flow_operation_id_cannot_be_reused_as_manual_update() {
     let empty = app.read().unwrap();
     let created = app
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             target_binding: empty.target_binding.unwrap(),
@@ -1446,6 +1453,7 @@ fn retained_daily_flow_operation_id_cannot_be_reused_as_manual_update() {
     .unwrap();
     assert!(app
         .update(TaskUpdateInput {
+            parent_id: None,
             tag_ids: None,
             priority: None,
             target_binding: moved.target_binding.unwrap(),

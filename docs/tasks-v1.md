@@ -14,15 +14,15 @@ life/.personal-dashboard/tasks/v1/tasks.json
 
 Ticket 01 first wrote schema version `1`; the current document is schema
 version `3` and retains `lists` and `tasks` at the same stable path, adding
-shared `tags` and tag-operation receipts.
+shared `tags`, one-level `folders`, relationship fields and operation receipts.
 The reader accepts legacy schema-1 and schema-2 documents, supplies the new optional
 fields in memory, and the next successful write upgrades it to schema 3.
 Every document has a permanent, unarchived system list with id `inbox`. Ticket
 03 adds user-owned, single-level lists in the same document. A list has a
-stable id, a display name, and an `archived` flag; renaming never changes the
+stable id, a display name, an optional `folderId`, and an `archived` flag; renaming never changes the
 id stored on its tasks. Inbox accepts dated and undated tasks. A new task in a
 user list defaults to that list without a date, while global and Inbox entry
-points default to Inbox. There is no nested folder or list-delete operation.
+points default to Inbox. Folders contain lists at one level; there is no nested folder or list-delete operation.
 
 Each Task has a stable `id`, required `name`, optional `content`, optional
 `date` and `time`, `listId`, `source`, `state`, creation and modification
@@ -206,3 +206,41 @@ explicit writes; adding a tag to the open Task remains staged until its Save.
 Cancel time arrangement clears the draft time/end while keeping its date; the
 final Save uses the existing Task update boundary. Priority/tag filters are views
 and combine with lifecycle/list scopes without changing any Task membership.
+
+
+## Parent relationships and list folders (PDEX-20)
+
+An ordinary Task can have one optional `parentId`, referring to another Task in
+its selected Vault. Parents and descendants retain independent identities,
+content, schedules, lists, priorities, tags and lifecycle states. Completing,
+reopening, abandoning, deleting or restoring a parent does not alter descendants.
+Reads and writes reject missing parents, self-reference and cycles. Update omission
+retains the parent; explicit `parentId: null` detaches it. Relationship changes
+retain before/after identities and their exact operation patch in Task history.
+A deleted parent may remain as an explained historical relationship; it cannot be
+newly associated. Restoring it does not overwrite a child's later detach or move.
+
+Tasks renders the visible hierarchy, treating a hidden or deleted parent as an
+independent root. Details show direct children, their state and same-identity
+open actions. Parent selection, unlink and new-child creation are shared by the
+details and row/More menu. A new child is an ordinary Task with an editable list
+and the creation entry's date context; its parent's timing and properties are
+not copied. Priority sorting preserves its existing date and stable tie order.
+Indentation is visually bounded at narrow widths without limiting graph depth.
+
+`manage_task_folder` creates, renames or removes stable folder definitions;
+`move_task_list_to_folder` assigns or unassigns a list. Both use Vault binding,
+expected revision and exact change receipts. Deleting a folder unassigns all its
+lists, including archived lists, while retaining their Tasks. Inbox cannot be
+grouped. Restoring an archived list retains an available folder; after its folder
+was removed it is top level. Existing list creation can explicitly target a folder
+and rejects conflicting reuse of its stable identity.
+
+The folder arrow only expands the sidebar; its name opens an aggregate grouped
+by original list. All, Today and Inbox remain separate entries. Archived lists
+stay outside everyday folder results. The folder's quick-add target selector is
+restricted to its active lists; an empty folder requests a list first and cannot
+silently add into Inbox. Folder/list writes preserve staged Task edits and only
+rebase drafts from the exact source revision that the successful write replaced.
+Packaged-app restart and combined native acceptance remain separate from the
+application and browser control-chain tests.

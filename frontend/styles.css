@@ -10532,6 +10532,38 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   background: var(--parity-accent-soft);
 }
 
+/* PDEX-25: selected Habit detail retains the existing Habits shell and default list. */
+#habits-detail-pane[hidden], #habits-default-pane[hidden] { display: none; }
+.habit-detail-selector { width: 100%; text-align: left; border: 0; border-radius: 0; background: transparent; color: inherit; cursor: pointer; }
+.habit-detail-selector[aria-pressed="true"] { color: var(--parity-accent-strong); background: var(--parity-surface-soft); }
+.habit-inactive-toggle, .habit-detail-actions button, .habit-detail-record button, .habit-detail-back, .habit-selected-detail > button, .habit-detail-records > button { font-size: .7rem; padding: .4rem .6rem; }
+.habit-selected-detail { min-width: 0; }
+.habit-selected-detail h3 { margin: .8rem 0; font-size: 1rem; }
+.habit-selected-detail h4 { margin: .9rem 0 .5rem; font-size: .8rem; }
+.habit-selected-detail p, .habit-selected-detail small, .habit-selected-detail summary { font-size: .72rem; line-height: 1.55; overflow-wrap: anywhere; }
+.habit-selected-detail small { display: block; color: var(--parity-muted); }
+.habit-detail-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin: .8rem 0; }
+.habit-detail-statistics, .habit-detail-record, .habit-detail-provenance { border-top: 1px solid var(--parity-border); padding: .8rem 0; }
+.habit-detail-statistics p { margin: .4rem 0; }
+.habit-detail-record > strong { font-size: .75rem; }
+.habit-detail-record > button { margin-top: .6rem; }
+.habit-detail-status:empty { display: none; }
+@media (max-width: 680px) { .habit-selected-detail { grid-column: 1 / -1; } }
+/* PDEX-20: one-level list groups and bounded Task indentation. */
+.task-folder-heading { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.task-folder-heading .task-list-button { min-width: 0; flex: 1; }
+.task-folder-toggle { flex: 0 0 20px; padding: 2px; border: 0; background: transparent; color: inherit; }
+.task-folder-lists { padding-inline-start: 15px; }
+.task-folder-lists[hidden] { display: none; }
+.task-row[data-task-depth] { margin-inline-start: var(--task-depth-inset,0px); min-width: 0; }
+.task-folder-task-group { min-width: 0; margin-block: 8px; }
+.task-folder-task-group > h3 { margin-block: 8px; }
+.task-direct-children { display: flex; flex-wrap: wrap; gap: 6px; margin-block: 10px; min-width: 0; }
+.task-direct-children h4 { flex-basis: 100%; margin: 0; }
+.task-direct-children button { max-width: 100%; overflow-wrap: anywhere; text-align: start; }
+.task-folder-management > div, .task-folder-definition { display: flex; flex-wrap: wrap; gap: 6px; margin-block: 6px; }
+.task-folder-management input { min-width: 0; flex: 1; }
+.task-folder-management { min-width: 0; }
 /* PDEX-22 dialogs reuse Task fields while leaving month/date panels in place. */
 .calendar-task-dialog {
   width: min(34rem, calc(100vw - 2rem));

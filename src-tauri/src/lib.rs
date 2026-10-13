@@ -14,6 +14,7 @@ pub mod cutover;
 pub mod exercise;
 pub mod habits;
 pub mod habit_catalog;
+pub mod habit_details;
 pub mod habit_producer;
 pub mod interface_language;
 pub mod migration;
@@ -750,6 +751,16 @@ fn save_habit_definition(application: State<'_, DesktopTodayApplication>, input:
 }
 
 #[tauri::command]
+fn habit_details(application: State<'_, DesktopTodayApplication>, habit_key: String, offset: usize, limit: usize) -> Result<habit_details::HabitDetailsView, String> {
+    application.habit_details(&habit_key, offset, limit)
+}
+
+#[tauri::command]
+fn set_habit_active(application: State<'_, DesktopTodayApplication>, input: habit_catalog::HabitLifecycleMutationInput) -> Result<HabitSnapshotView, String> {
+    application.set_habit_active(input)
+}
+
+#[tauri::command]
 fn tasks_view(application: State<'_, DesktopTaskApplication>) -> Result<TasksView, String> {
     application.read()
 }
@@ -761,6 +772,11 @@ fn create_task(
 ) -> Result<TasksView, String> {
     application.create(input)
 }
+
+#[tauri::command]
+fn manage_task_folder(application:State<'_,DesktopTaskApplication>,input:tasks::TaskFolderInput)->Result<TasksView,String>{application.manage_folder(input)}
+#[tauri::command]
+fn move_task_list_to_folder(application:State<'_,DesktopTaskApplication>,input:tasks::TaskListFolderInput)->Result<TasksView,String>{application.move_list_to_folder(input)}
 
 #[tauri::command]
 fn manage_task_tag(application: State<'_, DesktopTaskApplication>, input: tasks::TaskTagInput) -> Result<TasksView, String> { application.manage_tag(input) }
@@ -1116,6 +1132,8 @@ pub fn run() {
             tasks_view,
             create_task,
             create_task_list,
+            manage_task_folder,
+            move_task_list_to_folder,
             manage_task_tag,
             rename_task_list,
             archive_task_list,
@@ -1127,6 +1145,8 @@ pub fn run() {
             correct_task_completion,
             set_local_habit_completion,
             save_habit_definition,
+            habit_details,
+            set_habit_active,
             set_historical_habit_completion,
             select_today_vault,
             edit_plan_time,
@@ -1197,6 +1217,8 @@ pub fn run() {
         tasks_view,
         create_task,
         create_task_list,
+        manage_task_folder,
+        move_task_list_to_folder,
         manage_task_tag,
         rename_task_list,
         archive_task_list,
@@ -1208,6 +1230,8 @@ pub fn run() {
         correct_task_completion,
         set_local_habit_completion,
         save_habit_definition,
+            habit_details,
+            set_habit_active,
         set_historical_habit_completion,
         select_today_vault,
         edit_plan_time,
