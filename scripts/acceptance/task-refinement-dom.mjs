@@ -37,7 +37,6 @@ try {
  const row=document.querySelector('[data-task-editor-row]');row.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:80,clientY:100}));
  assert(form.querySelector('[data-task-more]').open,'Row right-click opens shared More action collection');
  assert(form.querySelector('[data-task-state-action][data-task-state-task]'),'More exposes the same Task state operation');
- assert(!form.querySelector('[data-task-parent]'),'PDEX-19 has no fake parent entry');
  const quick=document.querySelector('#task-quick-form');assert(quick.querySelector('#task-quick-list'),'Quick add chooses target list before creation');
  const contentBox=content.getBoundingClientRect();assert(contentBox.width>0&&contentBox.right<=innerWidth+1,'Narrow editor fits actual viewport');
 

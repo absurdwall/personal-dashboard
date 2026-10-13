@@ -36,7 +36,7 @@ export function renderer() {
     taskFocusRequestId: null, selectedTaskDetailId: null, selectedTaskDetailBinding: null, taskEditorDialogRoot: null, taskReturnToCollaborationSessionId: null,
     taskCreateDrafts: new Map(), taskCreateAttempts: new Map(), taskListCreateDrafts: new Map(),
     setCopy: (element: any, key: string, params: any) => { element.copyKey = key; element.params = params; },
-    taskEditor: (task: any) => ({ tagName: "task", id: task.id }),
+    taskEditor: (task: any) => ({ tagName: "task", id: task.id, dataset: {}, style: { setProperty() {} } }),
     taskListForId: () => undefined, renderTaskListScopeButtons: () => {},
     renderTaskListManagement: () => {}, clearTaskEditorDialogs: () => {},
     updateTaskCreationControls: () => {},

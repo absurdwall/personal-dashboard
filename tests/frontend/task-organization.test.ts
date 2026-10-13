@@ -20,3 +20,11 @@ test('parent patches have distinct preserve/clear identities and need observed p
  assert.notEqual(taskEditOperationKey({...edit,parentId:undefined}),taskEditOperationKey({...edit,parentId:null}));
  assert.equal((await performTaskUpdateRequest({...edit,parentId:null},options)).confirmed,true);
 });
+
+test('priority/date ordering remains stable even when relatives are not adjacent',()=>{
+ const child={id:'child',parentId:'parent',priority:'high'};
+ const middle={id:'middle',parentId:null,priority:'high'};
+ const parent={id:'parent',parentId:null,priority:'high'};
+ assert.deepEqual(taskHierarchyRows([child,middle,parent],true).map(row=>row.task.id),['child','middle','parent']);
+ assert.deepEqual(taskHierarchyRows([parent,middle,child],true).map(row=>row.task.id),['parent','middle','child']);
+});

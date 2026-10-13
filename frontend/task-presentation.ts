@@ -536,6 +536,13 @@ export function taskHierarchyRows<T extends Readonly<{id:string;parentId?:string
  tasks:readonly T[],preservePriorityBands=false,
 ): Readonly<{task:T;depth:number}>[] {
  const visible=new Map(tasks.map(task=>[task.id,task]));
+ if(preservePriorityBands) {
+  const indices=new Map(tasks.map((task,index)=>[task.id,index]));
+  return tasks.map(task=>{let depth=0;let child=task;const seen=new Set<string>();
+   while(child.parentId) {const parent=visible.get(child.parentId);if(!parent||seen.has(parent.id)||(parent.priority??'none')!==(task.priority??'none')||indices.get(parent.id)!>=indices.get(child.id)!)break;seen.add(parent.id);depth++;child=parent;}
+   return {task,depth};
+  });
+ }
  const children=new Map<string,T[]>();const roots:T[]=[];
  for(const task of tasks) {
   const parent=task.parentId?visible.get(task.parentId):undefined;

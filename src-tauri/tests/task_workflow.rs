@@ -2644,8 +2644,10 @@ fn folders_group_lists_without_owning_tasks_and_delete_restores_top_level() {
 #[test]
 fn deleted_parent_restoration_keeps_child_reparenting_and_legacy_metadata() {
  let vault=TempVault::new("parent-restore");let other_vault=TempVault::new("foreign-parent");let application=app(vault.path());let mut view=application.read().unwrap();
+ view=application.manage_tag(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"tagId":"shared-parent-tag","changeId":"create-parent-tag","action":"create","name":"Shared"})).unwrap()).unwrap();
+ view=application.create_list(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"listId":"child-list","name":"Independent child list"})).unwrap()).unwrap();
  for (id,parent,time) in [("parent-a",None,None),("parent-b",None,None),("child-a",Some("parent-a"),Some("18:00")),("child-b",Some("parent-a"),None)] {
-  view=application.create(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"taskId":id,"name":id,"date":"2026-09-17","time":time,"parentId":parent,"priority":"high","executionEnd":time.map(|_|serde_json::json!({"date":"2026-09-17","time":"18:45"}))})).unwrap()).unwrap();
+  view=application.create(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"taskId":id,"name":id,"date":"2026-09-17","time":time,"parentId":parent,"priority":"high","tagIds":["shared-parent-tag"],"listId":if id.starts_with("child"){"child-list"}else{"inbox"},"executionEnd":time.map(|_|serde_json::json!({"date":"2026-09-17","time":"18:45"}))})).unwrap()).unwrap();
  }
  let deleted=application.delete(TaskDeleteInput{target_binding:view.target_binding.unwrap(),expected_revision:view.revision.unwrap(),task_id:"parent-a".into(),change_id:"delete-parent-a".into()}).unwrap();
  assert_eq!(deleted.tasks.len(),4);assert_eq!(deleted.tasks[2].parent_id.as_deref(),Some("parent-a"));assert_eq!(deleted.tasks[2].deleted_at,None);
@@ -2656,10 +2658,35 @@ fn deleted_parent_restoration_keeps_child_reparenting_and_legacy_metadata() {
  let detach=serde_json::json!({"targetBinding":moved.target_binding,"expectedRevision":moved.revision,"taskId":"child-b","changeId":"detach-child-b","name":"child-b","date":"2026-09-17","time":null,"parentId":null});
  let detached=application.update(serde_json::from_value(detach).unwrap()).unwrap();
  let restored=application.restore(TaskRestoreInput{target_binding:detached.target_binding.unwrap(),expected_revision:detached.revision.unwrap(),task_id:"parent-a".into(),change_id:"restore-parent-a".into()}).unwrap();
- let reopened=app(vault.path()).read().unwrap();assert_eq!(reopened,restored);assert_eq!(reopened.tasks[2].parent_id.as_deref(),Some("parent-b"));assert_eq!(reopened.tasks[3].parent_id,None);assert_eq!(serde_json::to_value(&reopened.tasks[2]).unwrap()["priority"],"high");
+ let reopened=app(vault.path()).read().unwrap();assert_eq!(reopened,restored);assert_eq!(reopened.tasks[2].parent_id.as_deref(),Some("parent-b"));assert_eq!(reopened.tasks[3].parent_id,None);assert_eq!(serde_json::to_value(&reopened.tasks[2]).unwrap()["priority"],"high");assert_eq!(reopened.tasks[2].tag_ids,vec!["shared-parent-tag"]);assert_eq!(reopened.tasks[2].list_id,"child-list");assert_eq!(reopened.tasks[0].list_id,"inbox");
  assert_eq!(application.update(serde_json::from_value(reparent).unwrap()).unwrap().revision,reopened.revision);
  for bad in ["child-a","missing-parent"] {
   let input=serde_json::json!({"targetBinding":reopened.target_binding,"expectedRevision":reopened.revision,"taskId":"child-a","changeId":format!("bad-{bad}"),"name":"Edited child","date":"2026-09-17","time":"18:00","parentId":bad});assert!(application.update(serde_json::from_value(input).unwrap()).is_err());assert_eq!(application.read().unwrap(),reopened);
  }
  let input=serde_json::json!({"targetBinding":app(other_vault.path()).read().unwrap().target_binding,"expectedRevision":reopened.revision,"taskId":"child-a","changeId":"foreign-relation","name":"Edited child","date":"2026-09-17","time":"18:00","parentId":"parent-b"});assert!(application.update(serde_json::from_value(input).unwrap()).is_err());assert_eq!(application.read().unwrap(),reopened);
+}
+
+#[test]
+fn list_creation_cannot_confirm_a_different_folder_with_the_same_identity() {
+ let vault=TempVault::new("folder-create-retry");let application=app(vault.path());let mut view=application.read().unwrap();
+ for folder in ["a","b"] {view=application.manage_folder(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"folderId":folder,"changeId":format!("create-{folder}"),"action":"create","name":folder})).unwrap()).unwrap();}
+ let input=serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"listId":"same-list","name":"Stable list","folderId":"a"});let added=application.create_list(serde_json::from_value(input.clone()).unwrap()).unwrap();
+ assert_eq!(application.create_list(serde_json::from_value(input.clone()).unwrap()).unwrap().revision,added.revision);
+ let mut changed=input;changed["folderId"]=serde_json::json!("b");assert!(application.create_list(serde_json::from_value(changed).unwrap()).is_err());assert_eq!(app(vault.path()).read().unwrap(),added);
+}
+
+#[test]
+fn folder_failures_conflicts_and_moves_never_duplicate_or_orphan_lists() {
+ let vault=TempVault::new("folder-failure");let foreign=TempVault::new("folder-foreign");let application=app(vault.path());let opened=application.read().unwrap();
+ let folder=application.manage_folder(serde_json::from_value(serde_json::json!({"targetBinding":opened.target_binding,"expectedRevision":opened.revision,"folderId":"group","changeId":"folder-group","action":"create","name":"Group"})).unwrap()).unwrap();
+ let listed=application.create_list(serde_json::from_value(serde_json::json!({"targetBinding":folder.target_binding,"expectedRevision":folder.revision,"listId":"work","name":"Work"})).unwrap()).unwrap();
+ let movement=serde_json::json!({"targetBinding":listed.target_binding,"expectedRevision":listed.revision,"listId":"work","folderId":"group","changeId":"move-work"});
+ let failing=TaskApplication::new(SelectedVault(vault.path().to_owned()),FixedClock,FailingTaskStore);
+ assert!(failing.move_list_to_folder(serde_json::from_value(movement.clone()).unwrap()).is_err());assert_eq!(application.read().unwrap(),listed);
+ let moved=application.move_list_to_folder(serde_json::from_value(movement.clone()).unwrap()).unwrap();assert_eq!(moved.lists[1].folder_id.as_deref(),Some("group"));
+ let away=serde_json::json!({"targetBinding":moved.target_binding,"expectedRevision":moved.revision,"listId":"work","folderId":null,"changeId":"ungroup-work"});let top=application.move_list_to_folder(serde_json::from_value(away).unwrap()).unwrap();
+ assert_eq!(application.move_list_to_folder(serde_json::from_value(movement).unwrap()).unwrap().revision,top.revision);assert_eq!(application.read().unwrap().lists[1].folder_id,None);
+ let stale=serde_json::json!({"targetBinding":top.target_binding,"expectedRevision":"stale","folderId":"group","changeId":"stale-folder-delete","action":"delete","name":null});assert!(application.manage_folder(serde_json::from_value(stale).unwrap()).is_err());assert_eq!(application.read().unwrap(),top);
+ let different=serde_json::json!({"targetBinding":top.target_binding,"expectedRevision":top.revision,"listId":"work","folderId":"missing","changeId":"invalid-group"});assert!(application.move_list_to_folder(serde_json::from_value(different).unwrap()).is_err());
+ let foreign_input=serde_json::json!({"targetBinding":app(foreign.path()).read().unwrap().target_binding,"expectedRevision":top.revision,"listId":"work","folderId":"group","changeId":"foreign-folder"});assert!(application.move_list_to_folder(serde_json::from_value(foreign_input).unwrap()).is_err());assert_eq!(app(vault.path()).read().unwrap(),top);
 }

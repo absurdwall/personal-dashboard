@@ -1016,7 +1016,7 @@ where
                 let mut document = parse_task_document(&bytes)?;
                 if let Some(existing) = document.lists.iter().find(|list| list.id == input.list_id)
                 {
-                    if !existing.system && existing.name == name && !existing.archived {
+                    if !existing.system && existing.name == name && !existing.archived && existing.folder_id == input.folder_id {
                         self.ensure_bound_target_current(&path, &target_binding)?;
                         return self.read();
                     }

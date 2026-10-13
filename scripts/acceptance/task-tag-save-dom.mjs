@@ -46,6 +46,7 @@ try {
    if(createTag)assert(update.tagIds.length===1&&update.expectedRevision==='r2','Tag-created draft must save association with its rebased revision');
    await waitFor(()=>taskOperationCount===0);
    const savedForm=document.querySelector('form[data-task-editor]');
+   for(const label of [t("tasks.schedule"),"移动到清单","添加子任务","关联父任务"]){const action=Array.from(savedForm.querySelectorAll('[data-task-more] button')).find(button=>button.textContent===label);assert(action&&!action.disabled,'More action remains available after Save: '+label);}
    outcomes.at(-1).tagControlsDisabled=Array.from(savedForm.querySelectorAll('.task-tags-picker input[type=text],.task-tags-picker button')).filter(element=>element.disabled).length;
  }
  assert(outcomes.every(outcome=>outcome.commands.includes('update_task')),'Task Save invocation matrix '+JSON.stringify(outcomes));
