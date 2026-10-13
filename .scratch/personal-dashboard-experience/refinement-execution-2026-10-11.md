@@ -142,3 +142,7 @@ Branch `codex/pdex-25-refinement`, separate `/private/tmp/pdex25-refinement.noin
 ## PDEX-21 claim — 2026-10-13
 
 Branch `codex/pdex-21-refinement`, separate `/private/tmp/pdex21-refinement.noindex` checkout from integration `0230a35b0933a0e092fa9175e70932c3c27a6054`. Verified shared Task editor/application and PDEX-22 nearby-dialog seams retained. Full source-bound native acceptance remains separate.
+
+## PDEX-19/24 source-bound native partial checkpoint — 2026-10-13
+
+Frozen source `2e1c56c10e6b75bb2daaf1a5dbbd94411a549854`; binary `5806c58cef9c046482eb4e858fa8942509e07a7149456c4ef5bf8b80f16045ec`. Real packaged Task cancellation recovery and Habit creation/check-in/current/pending goal-cycle writes and fresh-process UI readback pass in an isolated synthetic Vault/profile. [Receipt](evidence/pdex-19-24-native-partial-2026-10-13.json) retains exact inputs, disk results, launch sequence, source/data hashes and limitations. Owned candidate quit/unregistered; normal installation remains unchanged. Full acceptance remains pending.
