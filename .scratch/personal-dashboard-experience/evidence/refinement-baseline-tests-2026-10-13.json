@@ -51,8 +51,7 @@
     "plans, point Tasks and facts share a scale with separate clickable collision columns and full-width solitary cards",
     "the Daytime axis scrolls independently and quiet-hour expansion preserves its reading position",
     "existing quiet-hour entries are initially visible and a deliberate fold advertises their count and next-day date",
-    "after-midnight cards keep their date, title and source readable within their own collision target",
-    "failing tests:"
+    "after-midnight cards keep their date, title and source readable within their own collision target"
   ],
   "qualification": "Fullsuite is pre-change baseline; these failures are retained, not treated as passes. Classify current failures against this list during integration; new behavior still requires functioning application/UI evidence."
 }

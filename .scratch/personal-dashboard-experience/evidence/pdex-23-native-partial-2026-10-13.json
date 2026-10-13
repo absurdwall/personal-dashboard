@@ -1,0 +1,62 @@
+{
+  "sourceCommit": "c3de40d86940113729416655d6b1b8e9b9c45597",
+  "sourceArchiveSha256": "440e4dc807802ce9a730aaa4b7619710c7b9f5b82ac9af1536dacf908d5abadd",
+  "binarySha256": "7d3781e6cdc1cd93847e2ff2744013d682fb6e7555a1cd05469ffca3e7c5332b",
+  "bundle": "/private/tmp/pdex-refinement-20261013.noindex/candidate-23/Dashboard Refinement 23.app",
+  "bundleIdentifier": "com.tortillaflat.personal-dashboard.refinement23a20261013",
+  "config": {
+    "identifier": "com.tortillaflat.personal-dashboard.refinement23a20261013",
+    "app": {
+      "windows": [
+        {
+          "label": "main",
+          "title": "Dashboard Refinement 23 A",
+          "width": 1280,
+          "height": 720,
+          "minWidth": 640,
+          "minHeight": 520,
+          "resizable": true
+        }
+      ]
+    }
+  },
+  "profile": "/private/tmp/pdex-refinement-20261013.noindex/candidate-23/profile",
+  "vault": "/private/tmp/pdex-refinement-20261013.noindex/candidate-23/vault",
+  "pid": 6874,
+  "buildLogSha256": "bc019de2187525247a7844bc63419d9d2fb230ca76480ebeb44c7934bec5e0fb",
+  "profileQualification": "fresh preferences only; no authentication, personal-data or old session copy",
+  "clock": "2026-09-08 17:05 -0400",
+  "normalInstalledBinarySha256": "4865fc2c4aad16ee82dd30a23a5bc82720b0f8250264e564c7403d996eb33682",
+  "restartPid": 7816,
+  "vaultFilesUnchangedFromFixture": true,
+  "draftReadback": {
+    "draft": "/retro Synthetic PDEX-23 unsent draft. 合成草稿保持可编辑。",
+    "sessionId": "collaboration-session-136b2790-d294-4724-a166-3499175c800e",
+    "date": "2026-09-08",
+    "sameNativeReopenedDraft": true,
+    "sessionCount": 1,
+    "messageCount": 0,
+    "storeSha256": "fc3bd9071fc28d4f1dc2828f789b8cf24f8565f80cd1f347f1d7806f4aad6a67"
+  },
+  "captures": {
+    "unsent-draft-before-restart.png": "64f45e2d23d80a1df3435d969ddb3bb0467c9f8fb50e7ca5bbae6f92c0e36485",
+    "context-open-1280x720.png": "2ad49a58ba6d09a51a65513946c5cd239d7dd89e79f6454377dc7257a11860b0",
+    "context-scrolled-1280x720.png": "d79509515daac783116245052ebc0b8e1d635824e1e7b03a280895ea3554211d",
+    "unsent-draft-after-restart.png": "dd3c5530f4c654ff07c29bb9991f68b8c4463ac5be667330984c77b2dc6cfb80"
+  },
+  "nativeObservations": [
+    "1280x720 actual packaged Tauri window; long context is overlay above composer.",
+    "Bound-app pointer scroll moves context internally while body/input position stays unchanged; sticky Collapse remains visible.",
+    "New chat and Unicode pasted draft saved via real IPC into fresh profile. Unicode paste is not IME composition.",
+    "Production single /retro option; Down+Tab completes only into draft, no sends.",
+    "Same binary quit/relaunch; same session/dated draft displayed in actual App, store retains zero messages."
+  ],
+  "unverified": [
+    "Native long conversation not seeded here; production DOM fixture covers long messages.",
+    "Fresh profile unauthenticated: microphone/start dictation and real context+voice stop combination not exercised natively.",
+    "Real OS IME not exercised; composition covered at controller boundary only.",
+    "Required four-size combined final candidate matrix and preserved regions still pending."
+  ],
+  "normalInstalledBinaryUnchanged": true,
+  "temporaryBundleUnregisterExit": 0
+}
