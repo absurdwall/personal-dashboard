@@ -1,0 +1,305 @@
+{
+  "sourceCommit": "127d92080c15821a994e8c541992ab003034a4c4",
+  "documentationMergeCommit": "5388e354e776ac3e2c616806293c22ddc448918d",
+  "integrationAncestor": "92b9652c8a132cc56c1733710dcb300af48e5227",
+  "branch": "codex/pdex-20-refinement",
+  "build": "passed",
+  "behavioralFrontend": {
+    "passed": 70,
+    "failed": 0
+  },
+  "application": {
+    "task": 40,
+    "today": 8,
+    "calendar": 9,
+    "adapter": 14,
+    "collaborationTask": 105
+  },
+  "organizationDom": [
+    {
+      "commands": [
+        "manage_task_folder",
+        "manage_task_folder",
+        "move_task_list_to_folder",
+        "manage_task_folder",
+        "update_task"
+      ],
+      "ok": true,
+      "width": 1280
+    },
+    {
+      "commands": [
+        "manage_task_folder",
+        "manage_task_folder",
+        "move_task_list_to_folder",
+        "manage_task_folder",
+        "update_task"
+      ],
+      "ok": true,
+      "width": 680
+    }
+  ],
+  "retainedTaskDom": [
+    {
+      "ok": true,
+      "width": 1280
+    },
+    {
+      "ok": true,
+      "width": 680
+    }
+  ],
+  "tagSubmitDom": [
+    {
+      "ok": true,
+      "outcomes": [
+        {
+          "cancelTime": false,
+          "commands": [
+            "update_task"
+          ],
+          "createTag": false,
+          "endOnly": false,
+          "events": [
+            "click",
+            "submit"
+          ],
+          "invalid": [],
+          "invalidEvents": [],
+          "liveAfter": true,
+          "liveBefore": true,
+          "operationCount": 1,
+          "ownerBefore": true,
+          "saveDisabled": true,
+          "state": "ready",
+          "status": "已读取任务正本。",
+          "tagControlsDisabled": 0,
+          "validBefore": true
+        },
+        {
+          "cancelTime": true,
+          "commands": [
+            "update_task"
+          ],
+          "createTag": false,
+          "endOnly": false,
+          "events": [
+            "click",
+            "submit"
+          ],
+          "invalid": [],
+          "invalidEvents": [],
+          "liveAfter": true,
+          "liveBefore": true,
+          "operationCount": 1,
+          "ownerBefore": true,
+          "saveDisabled": true,
+          "state": "ready",
+          "status": "已读取任务正本。",
+          "tagControlsDisabled": 0,
+          "validBefore": true
+        },
+        {
+          "cancelTime": false,
+          "commands": [
+            "update_task"
+          ],
+          "createTag": false,
+          "endOnly": true,
+          "events": [
+            "click",
+            "submit"
+          ],
+          "invalid": [],
+          "invalidEvents": [],
+          "liveAfter": true,
+          "liveBefore": true,
+          "operationCount": 1,
+          "ownerBefore": true,
+          "saveDisabled": true,
+          "state": "ready",
+          "status": "已读取任务正本。",
+          "tagControlsDisabled": 0,
+          "validBefore": true
+        },
+        {
+          "cancelTime": false,
+          "commands": [
+            "manage_task_tag",
+            "update_task"
+          ],
+          "createTag": true,
+          "endOnly": false,
+          "events": [
+            "click",
+            "submit"
+          ],
+          "invalid": [],
+          "invalidEvents": [],
+          "liveAfter": true,
+          "liveBefore": true,
+          "operationCount": 1,
+          "ownerBefore": true,
+          "saveDisabled": true,
+          "state": "ready",
+          "status": "已读取任务正本。",
+          "tagControlsDisabled": 0,
+          "validBefore": true
+        },
+        {
+          "cancelTime": true,
+          "commands": [
+            "manage_task_tag",
+            "update_task"
+          ],
+          "createTag": true,
+          "endOnly": false,
+          "events": [
+            "click",
+            "submit"
+          ],
+          "invalid": [],
+          "invalidEvents": [],
+          "liveAfter": true,
+          "liveBefore": true,
+          "operationCount": 1,
+          "ownerBefore": true,
+          "saveDisabled": true,
+          "state": "ready",
+          "status": "已读取任务正本。",
+          "tagControlsDisabled": 0,
+          "validBefore": true
+        }
+      ],
+      "width": 1280
+    },
+    {
+      "ok": true,
+      "outcomes": [
+        {
+          "cancelTime": false,
+          "commands": [
+            "update_task"
+          ],
+          "createTag": false,
+          "endOnly": false,
+          "events": [
+            "click",
+            "submit"
+          ],
+          "invalid": [],
+          "invalidEvents": [],
+          "liveAfter": true,
+          "liveBefore": true,
+          "operationCount": 1,
+          "ownerBefore": true,
+          "saveDisabled": true,
+          "state": "ready",
+          "status": "已读取任务正本。",
+          "tagControlsDisabled": 0,
+          "validBefore": true
+        },
+        {
+          "cancelTime": true,
+          "commands": [
+            "update_task"
+          ],
+          "createTag": false,
+          "endOnly": false,
+          "events": [
+            "click",
+            "submit"
+          ],
+          "invalid": [],
+          "invalidEvents": [],
+          "liveAfter": true,
+          "liveBefore": true,
+          "operationCount": 1,
+          "ownerBefore": true,
+          "saveDisabled": true,
+          "state": "ready",
+          "status": "已读取任务正本。",
+          "tagControlsDisabled": 0,
+          "validBefore": true
+        },
+        {
+          "cancelTime": false,
+          "commands": [
+            "update_task"
+          ],
+          "createTag": false,
+          "endOnly": true,
+          "events": [
+            "click",
+            "submit"
+          ],
+          "invalid": [],
+          "invalidEvents": [],
+          "liveAfter": true,
+          "liveBefore": true,
+          "operationCount": 1,
+          "ownerBefore": true,
+          "saveDisabled": true,
+          "state": "ready",
+          "status": "已读取任务正本。",
+          "tagControlsDisabled": 0,
+          "validBefore": true
+        },
+        {
+          "cancelTime": false,
+          "commands": [
+            "manage_task_tag",
+            "update_task"
+          ],
+          "createTag": true,
+          "endOnly": false,
+          "events": [
+            "click",
+            "submit"
+          ],
+          "invalid": [],
+          "invalidEvents": [],
+          "liveAfter": true,
+          "liveBefore": true,
+          "operationCount": 1,
+          "ownerBefore": true,
+          "saveDisabled": true,
+          "state": "ready",
+          "status": "已读取任务正本。",
+          "tagControlsDisabled": 0,
+          "validBefore": true
+        },
+        {
+          "cancelTime": true,
+          "commands": [
+            "manage_task_tag",
+            "update_task"
+          ],
+          "createTag": true,
+          "endOnly": false,
+          "events": [
+            "click",
+            "submit"
+          ],
+          "invalid": [],
+          "invalidEvents": [],
+          "liveAfter": true,
+          "liveBefore": true,
+          "operationCount": 1,
+          "ownerBefore": true,
+          "saveDisabled": true,
+          "state": "ready",
+          "status": "已读取任务正本。",
+          "tagControlsDisabled": 0,
+          "validBefore": true
+        }
+      ],
+      "width": 680
+    }
+  ],
+  "limitations": [
+    "Browser command boundary is synthetic; persistence proved independently at real application seam.",
+    "Packaged restart and combined native acceptance remain pending integration.",
+    "Legacy task-surface CSS string assertion fails equally before PDEX-20, 10 of 11 pass."
+  ]
+}

@@ -10532,6 +10532,21 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   background: var(--parity-accent-soft);
 }
 
+/* PDEX-20: one-level list groups and bounded Task indentation. */
+.task-folder-heading { display: flex; align-items: center; gap: 3px; min-width: 0; }
+.task-folder-heading .task-list-button { min-width: 0; flex: 1; }
+.task-folder-toggle { flex: 0 0 20px; padding: 2px; border: 0; background: transparent; color: inherit; }
+.task-folder-lists { padding-inline-start: 15px; }
+.task-folder-lists[hidden] { display: none; }
+.task-row[data-task-depth] { margin-inline-start: var(--task-depth-inset,0px); min-width: 0; }
+.task-folder-task-group { min-width: 0; margin-block: 8px; }
+.task-folder-task-group > h3 { margin-block: 8px; }
+.task-direct-children { display: flex; flex-wrap: wrap; gap: 6px; margin-block: 10px; min-width: 0; }
+.task-direct-children h4 { flex-basis: 100%; margin: 0; }
+.task-direct-children button { max-width: 100%; overflow-wrap: anywhere; text-align: start; }
+.task-folder-management > div, .task-folder-definition { display: flex; flex-wrap: wrap; gap: 6px; margin-block: 6px; }
+.task-folder-management input { min-width: 0; flex: 1; }
+.task-folder-management { min-width: 0; }
 /* PDEX-22 dialogs reuse Task fields while leaving month/date panels in place. */
 .calendar-task-dialog {
   width: min(34rem, calc(100vw - 2rem));

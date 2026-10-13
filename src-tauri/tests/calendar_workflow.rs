@@ -256,6 +256,7 @@ fn create_task(
 ) -> TasksView {
     application
         .create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             execution_end: None,
@@ -289,6 +290,7 @@ fn calendar_month_includes_bounded_task_summaries_and_archived_history() {
         .expect("task target should exist");
     tasks = task_application
         .create_list(TaskListCreateInput {
+            folder_id: None,
             target_binding: binding,
             expected_revision: tasks.revision.clone(),
             list_id: "archive".into(),
@@ -550,6 +552,7 @@ fn compact_calendar_keeps_true_record_state_and_shared_task_interval_after_reope
     let mut view = tasks.read().unwrap();
     for index in 0..7 {
         view = tasks.create(TaskCreateInput {
+            parent_id: None,
             tag_ids: Vec::new(),
             priority: personal_dashboard_lib::tasks::TaskPriority::None,
             target_binding: view.target_binding.clone().unwrap(), expected_revision: view.revision.clone(),
