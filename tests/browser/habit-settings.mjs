@@ -61,3 +61,18 @@ test('edit form displays current and pending goals and retains next-day threshol
     const input=await f.page.evaluate(()=>window.saved[0]);assert.equal(input.habitKey,'sleep');assert.equal(input.settings.startDate,'2026-10-01');assert.equal(input.settings.goal.dayRelation,'next-day');
   }finally{await f.close();}
 });
+
+test('Habit fixed labels and retained byte-limit diagnostic follow interface language without changing user text',async()=>{
+ const f=await fixture();try {
+  await f.page.evaluate(()=>{
+   window.syntheticName='习'.repeat(80);window.openHabitEditor({snapshot:{catalogRevision:null,catalogTargetBinding:'vault-a',habits:[]},livedDate:'2026-10-13',language:'en',save:async()=>{throw Error('习惯名称缺失或过长。');},reread:async()=>({catalogRevision:'r1',catalogTargetBinding:'vault-a',habits:[]}),onSaved:()=>{}});
+  });
+  await f.page.getByRole('textbox',{name:'Name',exact:true}).fill('习'.repeat(80));await f.page.getByRole('button',{name:'Save',exact:true}).click();
+  const status=f.page.getByRole('status');await status.waitFor();assert.match(await status.textContent(),/Habit name is missing or exceeds 200 bytes/);assert.equal(await status.getAttribute('data-i18n-error'),'Error: 习惯名称缺失或过长。');
+  await f.page.evaluate(async()=>{const {applyInterfaceLanguage}=await import('/interface-language.js');applyInterfaceLanguage('zh');});
+  assert.equal(await f.page.getByRole('heading',{name:'新建习惯'}).count(),1);assert.match(await status.textContent(),/习惯名称缺失或过长/);assert.equal(await f.page.getByRole('textbox',{name:'名称',exact:true}).inputValue(),'习'.repeat(80));
+  await f.page.getByRole('button',{name:'保存',exact:true}).click();assert.match(await status.textContent(),/保存失败；草稿保留/);
+  await f.page.evaluate(async()=>{const {applyInterfaceLanguage}=await import('/interface-language.js');applyInterfaceLanguage('en');});
+  assert.equal(await f.page.getByRole('heading',{name:'Create Habit'}).count(),1);assert.match(await status.textContent(),/Habit name is missing or exceeds 200 bytes/);assert.equal(await f.page.getByRole('textbox',{name:'Name',exact:true}).inputValue(),'习'.repeat(80));
+ }finally{await f.close();}
+});

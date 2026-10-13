@@ -42,3 +42,18 @@ Logs: `/private/tmp/pdex-review-calendar-parent-red.log`,
 
 Locale and explicit safe draft recovery repairs continue. These focused checks
 are regression evidence, not full PDEX-26/native acceptance.
+
+## Shared refinement locale repair
+
+All Habit settings/detail fixed copy and Task tag/folder/priority/parent fixed labels now use the shared interface catalog. Standalone captions own localization metadata; fields and user/source values remain separate. Language changes capture Task drafts before translating, restore management text, and retain raw status/error descriptors. Known new backend diagnostics are translated as exact grammar, while the original diagnostic is retained in `data-i18n-error`/application-message metadata.
+
+Red: the English Habit editor with 80 Chinese characters showed the Chinese Rust name-limit diagnostic. The production Task DOM loop also failed on the localized enclosing caption destroying its priority select, and (before management preservation) losing new-tag text. The bounded red replay temporarily restored precisely those old caption/preservation paths, then restored the implementation. Invalid early harness `setError` reference and Swift SDK/compiler mismatch are fixture/environment failures, not product evidence; the corrected production DOM checks use the existing bundled Chromium, with no installation/native app interaction.
+
+Green commands:
+
+- `npm run build` (TypeScript build passed).
+- `PLAYWRIGHT_MODULE_PATH=<existing bundled module> node --test tests/browser/habit-settings.mjs tests/browser/habit-details.mjs`: 6 passed, 0 failed. Both dialog widths, lifecycle/detail behavior, open-dialog/detail language switching, raw user text and byte-limit error retention.
+- `PLAYWRIGHT_MODULE_PATH=<existing bundled module> node scripts/acceptance/refinement-review-locale-dom.mjs`: 2/2 production DOM scenarios (1280×560, 680×560); three language switches retain content, priority, tag, parent, management text, and localized status with raw diagnostic.
+- `CARGO_TARGET_DIR=<existing canonical target> cargo test --manifest-path src-tauri/Cargo.toml --test habit_catalog_workflow eighty_chinese_name_characters_exceed_byte_limit_without_writing_catalog -- --exact`: 1 passed; fresh application confirms no catalog revision/write after the 240-byte name is rejected.
+
+Local logs: `/private/tmp/pdex-review-locale-red.log`, `/private/tmp/pdex-review-locale-task-red.log`, `/private/tmp/pdex-review-locale-browser-green.log`, `/private/tmp/pdex-review-locale-task-green.log`, `/private/tmp/pdex-review-locale-app.log`. No full suite or native acceptance was run. Task explicit re-read/three-way recovery remains the next repair, not covered by this locale commit.

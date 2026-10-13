@@ -20,6 +20,11 @@ for(const width of [1200,560])test(`detail navigation, qualified history and ret
  });
  assert.equal(await f.page.locator('#detail').isHidden(),true);await f.page.getByRole('button',{name:'Reading',exact:true}).click();await f.page.waitForFunction(()=>document.querySelector('#detail h3'));await f.page.getByRole('heading',{name:'Reading'}).waitFor({timeout:3000});assert.equal(await f.page.locator('#default').isHidden(),true);
  assert.match(await f.page.locator('#detail').textContent(),/At least 8 attained days/);assert.match(await f.page.locator('#detail').textContent(),/Highest known.*3 weeks/s);assert.match(await f.page.locator('#detail').textContent(),/2026-09-14.*5 attained days/s);assert.match(await f.page.locator('#detail').textContent(),/2026-01-01/);
+ await f.page.evaluate(async()=>{const {applyInterfaceLanguage}=await import('/interface-language.js');window.ports.language=()=> 'zh';applyInterfaceLanguage('zh');});
+ assert.equal(await f.page.getByRole('button',{name:'编辑',exact:true}).count(),1);
+ assert.match(await f.page.locator('#detail').textContent(),/每周.*5.*达标天/);
+ assert.equal(await f.page.getByRole('heading',{name:'Reading'}).count(),1);
+ await f.page.evaluate(async()=>{const {applyInterfaceLanguage}=await import('/interface-language.js');window.ports.language=()=> 'en';applyInterfaceLanguage('en');});
  await f.page.getByRole('button',{name:'Edit',exact:true}).click();assert.deepEqual(await f.page.evaluate(()=>window.edited),['reading']);
  await f.page.getByRole('button',{name:'Load older records'}).click();await f.page.locator('#detail').getByText('2025-12-31',{exact:true}).waitFor();
  await f.page.getByRole('button',{name:'Deactivate',exact:true}).click();await f.page.getByRole('status').getByText(/Synthetic storage failure/).waitFor();assert.equal(await f.page.getByRole('heading',{name:'Reading'}).count(),1);
