@@ -10460,3 +10460,56 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
 .task-property-filters select { width: auto; max-width: 100%; }
 .task-quick-form #task-quick-list { width: auto; max-width: 130px; min-width: 60px; }
 @media (max-width: 700px) { .task-property-fields { grid-template-columns: minmax(0,1fr); } .task-quick-form { gap: 4px; } }
+
+/* PDEX-23: context shares the message area while the composer keeps its space. */
+.collaboration-layout { position: relative; min-height: 0; }
+.collaboration-layout .collaboration-primary-layout {
+  min-height: 0;
+  grid-template-rows: var(--collaboration-chat-height, 32rem);
+}
+.collaboration-layout[data-narrow="true"] .collaboration-primary-layout {
+  grid-template-rows: var(--collaboration-chat-height, 32rem) auto;
+}
+.collaboration-layout[data-columns="three"] { grid-template-rows: auto; }
+.collaboration-primary-layout > .collaboration-session-pane,
+.collaboration-primary-layout > .collaboration-chat-pane { min-height: 0; }
+.collaboration-layout .collaboration-chat-pane {
+  height: var(--collaboration-chat-height, 32rem);
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: auto;
+}
+.collaboration-layout .collaboration-message-list {
+  flex: 1 1 0;
+  min-height: 3rem;
+  max-height: none;
+}
+.collaboration-layout #collaboration-work-panel {
+  position: absolute;
+  z-index: 9;
+  height: auto;
+  min-height: 0;
+  margin-top: 0;
+  box-sizing: border-box;
+  overflow: auto;
+  box-shadow: 0 5px 16px rgb(20 28 23 / 14%);
+}
+.collaboration-context-pane > .collaboration-pane-heading {
+  position: sticky;
+  top: -0.85rem;
+  z-index: 1;
+  padding-top: 0.4rem;
+  background: var(--parity-surface);
+}
+.collaboration-voice-preview {
+  max-height: min(5rem, 12vh);
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.collaboration-composer > .collaboration-help[open] { max-height: 5rem; overflow: auto; }
+#collaboration-command-menu [aria-selected="true"] {
+  color: var(--parity-ink);
+  background: var(--parity-accent-soft);
+}

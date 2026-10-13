@@ -1,0 +1,56 @@
+{
+  "outcome": "confirmed",
+  "packageVersion": "1.0.3",
+  "workspacePath": "/Users/tingranwang/Documents/Codex/projects/tortilla-flat",
+  "registryRevision": "d47446b2e60e0f84",
+  "projectId": "product-personal-dashboard",
+  "source": {
+    "portfolioRecordId": "product-personal-dashboard",
+    "sourceId": "source-personal-dashboard-experience",
+    "label": "Dashboard experience — local spec and tickets",
+    "kind": "localMarkdown",
+    "enabled": true,
+    "state": "current",
+    "revision": "0f4dda494eded109",
+    "issueCount": 33,
+    "malformedReferences": [],
+    "error": null,
+    "lastSuccessfulRefreshAt": 1791867943284,
+    "capabilities": {
+      "create": true,
+      "creatableFields": [
+        "title",
+        "nativeState",
+        "blockers"
+      ],
+      "edit": true,
+      "claim": true,
+      "close": true,
+      "open": true
+    }
+  },
+  "claimedTicketReadback": [
+    {
+      "sourceReference": "19-task-editing-properties-actions.md",
+      "nativeState": "ready-for-agent",
+      "lifecycle": "active",
+      "revision": "bc16fb946078b715",
+      "assignee": null
+    },
+    {
+      "sourceReference": "23-collaboration-context-input.md",
+      "nativeState": "ready-for-agent",
+      "lifecycle": "active",
+      "revision": "8f5858cbe69c4528",
+      "assignee": null
+    },
+    {
+      "sourceReference": "24-habit-create-edit-goal-cycles.md",
+      "nativeState": "ready-for-agent",
+      "lifecycle": "active",
+      "revision": "b75d43559c09c908",
+      "assignee": null
+    }
+  ],
+  "qualification": "Lifecycle active; Status still historical ready-for-agent at this early receipt. Per-ticket Status will be updated by worker and reread after integration. Individual native claim capability unsupported; own tracker claim is recorded. No remote query: helper PATH /usr/bin:/bin:/usr/sbin:/sbin excludes gh. No summary write."
+}
