@@ -42,9 +42,9 @@ async function webKit(view: any, responses: any[], script: string, language = "z
     writeFileSync(join(directory,'index.html'),html);
     writeFileSync(join(directory,'check.js'),`
       const wait = async(test) => { for(let n=0;n<150;n++){ if(test()) return; await new Promise(r=>setTimeout(r,20)); } throw Error('UI timeout: '+JSON.stringify(window.probeErrors)+' '+document.querySelector('#today-status')?.textContent); };
-      await wait(()=>document.querySelector('.today-axis-entry-detail button'));
-      const planRow=(text='Prepare the project brief')=>[...document.querySelectorAll('.today-axis-entry-detail')].find(row=>row.textContent.includes(text));
-      const open = async(text) => { const row=planRow(text); row.open=true; row.querySelector('button').click(); await wait(()=>document.querySelector('dialog.plan-time-editor[open]')); return document.querySelector('dialog.plan-time-editor'); };
+      await wait(()=>document.querySelector('.today-axis-marker-link'));
+      const planRow=(text='Prepare the project brief')=>[...document.querySelectorAll('.today-axis-marker,.today-axis-entry-detail')].find(row=>row.textContent.includes(text));
+      const open = async(text) => { const row=planRow(text); row.querySelector('.today-axis-marker-link,button').click(); await wait(()=>document.querySelector('dialog.plan-time-editor[open]')); return document.querySelector('dialog.plan-time-editor'); };
       const edits=()=>window.probeCalls.filter(x=>x.command==='edit_plan_time').map(x=>x.args.input);
       ${script}
     `);
@@ -72,15 +72,15 @@ test('clicking an editable Today marker opens the time editor without scrolling 
 
 test('production fuzzy editor retains approximation and renders the saved readback', {skip:process.platform!=='darwin'},async()=>{
   const result=await webKit(views.loaded,[views.fuzzy],`
-    const label=planRow().querySelector('summary').textContent;
+    const label=planRow().querySelector('.today-axis-marker-time').textContent;
     const dialog=await open(); const select=dialog.querySelector('select');
     if(!select) throw Error('Precision choice missing');
     const initial=select.value; const inputs=dialog.querySelectorAll('input[type=time]');
     inputs[0].value='14:00'; dialog.querySelector('form').requestSubmit();
     await wait(()=>edits().length===1 && !document.querySelector('dialog.plan-time-editor'));
-    return JSON.stringify({label,initial,input:edits()[0],saved:planRow().querySelector('summary').textContent,errors:window.probeErrors});
+    return JSON.stringify({label,initial,input:edits()[0],saved:planRow().querySelector('.today-axis-marker-time').textContent,errors:window.probeErrors});
   `);
-  assert.match(result.label,/午后.*约13:00/);
+  assert.match(result.label,/午后/);
   assert.equal(result.initial,'approximatePoint');
   assert.equal(result.input.precision,'approximatePoint');
   assert.equal(result.input.startMinute,840); assert.equal(result.input.endMinute,null);
@@ -94,12 +94,12 @@ test('production precision choices explicitly convert approximate, exact range a
     const endRequired=times[1].required; dialog.querySelector('form').requestSubmit(); const emptyRangeCalls=edits().length;
     times[1].value='16:00'; dialog.querySelector('form').requestSubmit();
     await wait(()=>edits().length===1 && !document.querySelector('dialog.plan-time-editor'));
-    const exactLabel=planRow().querySelector('summary').textContent;
+    const exactLabel=planRow().querySelector('.today-axis-marker-time').textContent;
     dialog=await open(); select=dialog.querySelector('select'); const exactMode=select.value;
     select.value='exactPoint'; select.dispatchEvent(new Event('change')); const hiddenAtPoint=dialog.querySelectorAll('input[type=time]')[1].disabled;
     select.value='approximatePoint'; select.dispatchEvent(new Event('change')); times=dialog.querySelectorAll('input[type=time]'); times[0].value='16:45';
     dialog.querySelector('form').requestSubmit(); await wait(()=>edits().length===2 && !document.querySelector('dialog.plan-time-editor'));
-    return JSON.stringify({endRequired,emptyRangeCalls,exactMode,hiddenAtPoint,exactLabel,inputs:edits(),fuzzyLabel:planRow().querySelector('summary').textContent,errors:window.probeErrors});
+    return JSON.stringify({endRequired,emptyRangeCalls,exactMode,hiddenAtPoint,exactLabel,inputs:edits(),fuzzyLabel:planRow().querySelector('.today-axis-marker-time').textContent,errors:window.probeErrors});
   `);
   assert.equal(result.endRequired,true); assert.equal(result.emptyRangeCalls,0);
   assert.equal(result.exactMode,'exactRange'); assert.equal(result.hiddenAtPoint,true);
@@ -115,7 +115,7 @@ test('production inherited-heading editor uses the captured source and revision 
     const times=dialog.querySelectorAll('input[type=time]'); const original=[...times].map(input=>input.value);
     times[0].value='10:00'; times[1].value='12:00'; dialog.querySelector('form').requestSubmit();
     await wait(()=>edits().length===1 && !document.querySelector('dialog.plan-time-editor'));
-    return JSON.stringify({initial,original,input:edits()[0],saved:planRow('Inherited synthetic plan').querySelector('summary').textContent,errors:window.probeErrors});
+    return JSON.stringify({initial,original,input:edits()[0],saved:planRow('Inherited synthetic plan').querySelector('.today-axis-marker-time').textContent,errors:window.probeErrors});
   `);
   assert.equal(result.initial,'exactRange'); assert.deepEqual(result.original,['08:00','10:00']);
   assert.equal(result.input.planId,inherited.loaded.timeAxis.currentArrangement[0].planId);
@@ -128,10 +128,10 @@ test('production uncertain-save editor retains values, disables repeated submiss
     const dialog=await open(); const times=dialog.querySelectorAll('input[type=time]'); times[0].value='14:30';
     dialog.querySelector('form').requestSubmit(); await wait(()=>dialog.querySelector('[role=status]').textContent.includes('未确认'));
     dialog.querySelector('form').dispatchEvent(new Event('submit',{cancelable:true}));
-    return JSON.stringify({calls:edits().length,value:times[0].value,disabled:times[0].disabled,precisionDisabled:dialog.querySelector('select').disabled,recheck:[...dialog.querySelectorAll('button')].some(b=>b.textContent==='重新读取核对'&&!b.hidden),label:planRow().querySelector('summary').textContent});
+    return JSON.stringify({calls:edits().length,value:times[0].value,disabled:times[0].disabled,precisionDisabled:dialog.querySelector('select').disabled,recheck:[...dialog.querySelectorAll('button')].some(b=>b.textContent==='重新读取核对'&&!b.hidden),label:planRow().querySelector('.today-axis-marker-time').textContent});
   `);
   assert.equal(result.calls,1); assert.equal(result.value,'14:30'); assert.equal(result.disabled,true); assert.equal(result.precisionDisabled,true);
-  assert.equal(result.recheck,true); assert.match(result.label,/午后.*约13:00/);
+  assert.equal(result.recheck,true); assert.match(result.label,/午后/);
 });
 
 test('production exact-point conversion sends no former range end and survives a fresh page', {skip:process.platform!=='darwin'},async()=>{
@@ -139,7 +139,7 @@ test('production exact-point conversion sends no former range end and survives a
     const dialog=await open(); const select=dialog.querySelector('select'); select.value='exactPoint'; select.dispatchEvent(new Event('change'));
     const times=dialog.querySelectorAll('input[type=time]'); times[0].value='16:30'; dialog.querySelectorAll('input[type=checkbox]')[0].checked=false;
     dialog.querySelector('form').requestSubmit(); await wait(()=>edits().length===1&&!document.querySelector('dialog.plan-time-editor'));
-    return JSON.stringify({input:edits()[0],label:planRow().querySelector('summary').textContent});
+    return JSON.stringify({input:edits()[0],label:planRow().querySelector('.today-axis-marker-time').textContent});
   `);
   assert.deepEqual([result.input.precision,result.input.startMinute,result.input.endMinute],['exactPoint',990,null]); assert.match(result.label,/16:30/); assert.doesNotMatch(result.label,/约16:30|16:30–/);
   const reopened=await webKit(views.point,[],`
@@ -158,7 +158,7 @@ test('production failed manual save rereads unchanged source and requires explic
     await wait(()=>!times[0].disabled);
     const afterRead={calls:edits().length,start:times[0].value,precision:dialog.querySelector('select').value};
     dialog.querySelector('form').requestSubmit(); await wait(()=>edits().length===2&&!document.querySelector('dialog.plan-time-editor'));
-    return JSON.stringify({afterRead,inputs:edits(),label:planRow().querySelector('summary').textContent,errors:window.probeErrors});
+    return JSON.stringify({afterRead,inputs:edits(),label:planRow().querySelector('.today-axis-marker-time').textContent,errors:window.probeErrors});
   `);
   assert.deepEqual(result.afterRead,{calls:1,start:'14:00',precision:'approximatePoint'});
   assert.equal(result.inputs[1].expectedRevision,'synthetic-authoritative-new-revision');
@@ -198,7 +198,7 @@ test('production unchanged untimed plan reread enables explicit timing retry aft
     const afterRead={calls:edits().length,start:times[0].value,precision:dialog.querySelector('select').value,disabled:times[0].disabled};
     if(times[0].disabled) return JSON.stringify({original,afterRead,inputs:edits(),errors:window.probeErrors});
     dialog.querySelector('form').requestSubmit(); await wait(()=>edits().length===2&&!document.querySelector('dialog.plan-time-editor'));
-    return JSON.stringify({original,afterRead,inputs:edits(),label:planRow().querySelector('summary').textContent,errors:window.probeErrors});
+    return JSON.stringify({original,afterRead,inputs:edits(),label:planRow().querySelector('.today-axis-marker-time').textContent,errors:window.probeErrors});
   `);
   assert.equal(result.original,'');
   assert.deepEqual(result.afterRead,{calls:1,start:'14:00',precision:'approximatePoint',disabled:false});
@@ -230,11 +230,11 @@ test('production saved readback diagnostic follows English-Chinese-English witho
     const status=dialog.querySelector('[role=status]');const english=status.textContent;
     document.querySelector('#workspace-language').click();await wait(()=>document.documentElement.lang==='zh-CN');const chinese=status.textContent;
     document.querySelector('#workspace-language').click();await wait(()=>document.documentElement.lang==='en');
-    return JSON.stringify({english,chinese,again:status.textContent,calls:edits().length,retained:dialog.contains(time)&&dialog.contains(select),value:time.value,disabled:time.disabled,source:planRow().querySelector('summary').textContent,recheck:[...dialog.querySelectorAll('button')].some(button=>button.textContent==='Read record again'&&!button.hidden)});
+    return JSON.stringify({english,chinese,again:status.textContent,calls:edits().length,retained:dialog.contains(time)&&dialog.contains(select),value:time.value,disabled:time.disabled,source:planRow().querySelector('.today-axis-marker-time').textContent,recheck:[...dialog.querySelectorAll('button')].some(button=>button.textContent==='Read record again'&&!button.hidden)});
   `,'en');
   assert.match(result.english,/Document saved, but the display refresh failed:/);
   assert.doesNotMatch(result.english,/文档已保存|页面刷新失败|\{error\}/);
   assert.match(result.chinese,/文档已保存，但页面刷新失败：/);assert.equal(result.again,result.english);
   for(const text of [result.english,result.chinese])assert.ok(text.includes("Could not read today's daily record: Permission denied (os error 13) at /tmp/合成路径"));
-  assert.equal(result.calls,1);assert.equal(result.retained,true);assert.equal(result.value,'14:30');assert.equal(result.disabled,true);assert.equal(result.recheck,true);assert.match(result.source,/Around 13:00/);
+  assert.equal(result.calls,1);assert.equal(result.retained,true);assert.equal(result.value,'14:30');assert.equal(result.disabled,true);assert.equal(result.recheck,true);assert.match(result.source,/午后/);
 });

@@ -1819,6 +1819,16 @@ pub struct PlanTimeEditInput {
     pub precision: Option<PlanTimePrecision>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PlanEntryCancelInput {
+    pub date: String,
+    pub target_binding: String,
+    pub expected_revision: String,
+    pub plan_id: String,
+    pub operation_id: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanTimeEditResult {
@@ -3896,6 +3906,71 @@ where
         );
         updated = append_to_canonical_section(&updated, "白天更新", &audit, Some("晚间复盘"));
         let marker = format!("<!-- personal-dashboard:plan-operation id={} fingerprint={} transition=manualPlanTime -->", input.operation_id, fingerprint);
+        updated = append_to_named_subsection(
+            &updated,
+            "白天更新",
+            "协作写入收据",
+            &marker,
+            Some("晚间复盘"),
+        )?;
+        validate_writable_daily_record(&updated, &input.date)?;
+        self.record_store
+            .save_if_unchanged(&path, document.as_bytes(), updated.as_bytes())?;
+        Ok(self.plan_time_saved_result(&vault, &input.date, &updated))
+    }
+
+    /// Cancels one revision-bound Current arrangement source. Independent Tasks,
+    /// facts and the Morning baseline are never inferred from its title.
+    pub fn cancel_plan_entry(
+        &self,
+        input: PlanEntryCancelInput,
+    ) -> Result<PlanTimeEditResult, String> {
+        if input.operation_id.is_empty()
+            || input.operation_id.len() > 96
+            || !input
+                .operation_id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        {
+            return Err("计划操作标识无效；未写入任何内容。".into());
+        }
+        let fingerprint = document_revision(
+            serde_json::to_string(&input)
+                .map_err(|e| e.to_string())?
+                .as_bytes(),
+        );
+        let (vault, path) = self.bound_record_target(&input.date, &input.target_binding)?;
+        let document = String::from_utf8(
+            self.record_store
+                .load(&path)?
+                .ok_or("Daily Record 已不存在；请重新读取。")?,
+        )
+        .map_err(|_| "Daily Record 不是有效 UTF-8；未写入。")?;
+        validate_writable_daily_record(&document, &input.date)?;
+        if let Some(saved) = daily_plan_receipt_fingerprint(&document, &input.operation_id)? {
+            if saved != fingerprint {
+                return Err("该操作标识已用于不同内容；未写入任何内容。".into());
+            }
+            return Ok(self.plan_time_saved_result(&vault, &input.date, &document));
+        }
+        require_revision_for_date(&document, &input.expected_revision, &input.date)?;
+        let sources = plan_time_sources(&document);
+        let source = sources
+            .iter()
+            .find(|source| source.id == input.plan_id)
+            .ok_or(
+                "无法安全定位当前安排；请重新读取或在 Daily Record 中明确编辑，未写入任何内容。",
+            )?;
+        let removed = document[source.block_start..source.block_end].trim();
+        let mut updated = document.clone();
+        updated.replace_range(source.block_start..source.block_end, "");
+        let audit = format!(
+            "### {} 当前安排取消\n\n{}",
+            self.clock.current_time_label(),
+            removed
+        );
+        updated = append_to_canonical_section(&updated, "白天更新", &audit, Some("晚间复盘"));
+        let marker = format!("<!-- personal-dashboard:plan-operation id={} fingerprint={} transition=manualPlanCancel -->", input.operation_id, fingerprint);
         updated = append_to_named_subsection(
             &updated,
             "白天更新",
@@ -6197,6 +6272,8 @@ struct PlanTimeSource {
     id: String,
     period_start: usize,
     period_end: usize,
+    block_start: usize,
+    block_end: usize,
     block: MorningBlockView,
 }
 
@@ -6246,6 +6323,8 @@ fn plan_time_sources(document: &str) -> Vec<PlanTimeSource> {
             id,
             period_start,
             period_end,
+            block_start: start + line.start,
+            block_end: start + block_end,
             block,
         });
     }
@@ -6297,6 +6376,8 @@ fn plan_time_sources(document: &str) -> Vec<PlanTimeSource> {
             id,
             period_start,
             period_end,
+            block_start: start + line.start,
+            block_end: start + block_end,
             block,
         });
     }

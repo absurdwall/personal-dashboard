@@ -1225,3 +1225,72 @@ fn direct_plan_moves_and_end_edits_preserve_duration_precision_and_independent_s
         fs::write(Path::new(&directory).join("plan-drag-views.json"), serde_json::to_vec_pretty(&serde_json::json!({"loaded": loaded, "moved": moved, "resized": resized, "fuzzy": fuzzy, "point": point})).unwrap()).unwrap();
     }
 }
+
+#[test]
+fn afternoon_anchor_is_read_only_until_explicit_move_and_cancel_is_revision_bound() {
+    use personal_dashboard_lib::today::{PlanTimeEditInput, PlanTimePrecision};
+    let directory = TempDirectory::new();
+    let vault = directory.vault("afternoon-refinement");
+    let application = app(&vault);
+    let empty = application.read_date(DATE).unwrap();
+    let mut initial = initial_plan_input(empty.target_binding.unwrap(), None);
+    initial.arrangement = vec![
+        DailyPlanBlockInput {
+            period: "下午".into(),
+            title: "Synthetic afternoon".into(),
+            detail: Some("Keep original expression".into()),
+        },
+        DailyPlanBlockInput {
+            period: "约14:00".into(),
+            title: "Synthetic approximate".into(),
+            detail: None,
+        },
+    ];
+    refresh_fingerprint(&mut initial);
+    application.save_daily_plan(initial).unwrap();
+    let path = record_path(&vault);
+    let original = fs::read_to_string(&path).unwrap();
+    let loaded = application.read_date(DATE).unwrap();
+    assert_eq!(loaded.timeline[0].period, "下午");
+    assert_eq!(
+        loaded.time_axis.current_arrangement[0].start_minute,
+        Some(780)
+    );
+    assert_eq!(loaded.timeline[1].period, "约14:00");
+    assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    let input:PlanTimeEditInput=serde_json::from_value(serde_json::json!({"date":DATE,"targetBinding":loaded.target_binding,"expectedRevision":loaded.revision,"planId":loaded.time_axis.current_arrangement[0].plan_id,"operationId":"afternoon-drag","startMinute":960,"endMinute":null,"precision":"approximatePoint"})).unwrap();
+    let moved = application.edit_plan_time(input).unwrap().view.unwrap();
+    assert_eq!(moved.timeline[0].period, "约16:00");
+    assert_eq!(
+        moved.time_axis.current_arrangement[0].plan_precision,
+        Some(PlanTimePrecision::ApproximatePoint)
+    );
+    assert_eq!(moved.time_axis.current_arrangement[0].end_minute, None);
+    assert_eq!(moved.baseline, loaded.baseline);
+    assert_eq!(moved.tasks, loaded.tasks);
+    assert_eq!(
+        moved.time_axis.confirmed_facts,
+        loaded.time_axis.confirmed_facts
+    );
+    assert_eq!(
+        app(&vault).read_date(DATE).unwrap().time_axis,
+        moved.time_axis
+    );
+    let cancel=serde_json::from_value(serde_json::json!({"date":DATE,"targetBinding":moved.target_binding,"expectedRevision":moved.revision,"planId":moved.time_axis.current_arrangement[0].plan_id,"operationId":"afternoon-cancel"})).unwrap();
+    let canceled = application.cancel_plan_entry(cancel).unwrap().view.unwrap();
+    assert_eq!(canceled.timeline.len(), 1);
+    assert_eq!(canceled.timeline[0].period, "约14:00");
+    assert_eq!(canceled.baseline, loaded.baseline);
+    assert_eq!(canceled.tasks, loaded.tasks);
+    assert_eq!(
+        canceled.time_axis.confirmed_facts,
+        loaded.time_axis.confirmed_facts
+    );
+    assert_eq!(
+        app(&vault).read_date(DATE).unwrap().time_axis,
+        canceled.time_axis
+    );
+    assert!(fs::read_to_string(path).unwrap().contains("当前安排取消"));
+    let stale=serde_json::from_value(serde_json::json!({"date":DATE,"targetBinding":loaded.target_binding,"expectedRevision":loaded.revision,"planId":loaded.time_axis.current_arrangement[0].plan_id,"operationId":"stale-cancel"})).unwrap();
+    assert!(application.cancel_plan_entry(stale).is_err());
+}
