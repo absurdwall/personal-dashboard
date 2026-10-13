@@ -821,3 +821,171 @@ fn same_day_pause_keeps_attained_peak_and_restoration_does_not_count_the_existin
     assert!(detail.habit.today.counts_as_completion);
     assert_eq!(detail.activity_changes.len(), 2);
 }
+
+struct CrossingFourClock(std::cell::Cell<usize>);
+impl TodayClock for CrossingFourClock {
+    fn current_date(&self) -> String {
+        "2026-09-09".into()
+    }
+    fn current_time_label(&self) -> String {
+        if self.0.get() <= 1 {
+            "03:59".into()
+        } else {
+            "04:00".into()
+        }
+    }
+    fn current_local_time(&self) -> personal_dashboard_lib::today::TodayClockView {
+        let reads = self.0.get();
+        self.0.set(reads + 1);
+        personal_dashboard_lib::today::TodayClockView {
+            date: "2026-09-09".into(),
+            time: if reads == 0 {
+                "03:59".into()
+            } else {
+                "04:00".into()
+            },
+        }
+    }
+    fn current_timestamp_label(&self) -> String {
+        format!("2026-09-09T{}-04:00", self.current_time_label())
+    }
+}
+#[test]
+fn lifecycle_refuses_mixed_lived_day_at_four_and_same_operation_can_retry_after_reread() {
+    let vault = TempVault::new("lifecycle-four-race");
+    let seeded = app(vault.path());
+    let view = seeded.habits().unwrap();
+    seeded
+        .save_habit_definition(HabitDefinitionMutationInput {
+            habit_key: "local-boundary".into(),
+            change_id: "boundary-create".into(),
+            target_binding: view.catalog_target_binding.unwrap(),
+            expected_revision: view.catalog_revision,
+            settings: HabitSettings {
+                name: "Read".into(),
+                emoji: None,
+                group: None,
+                start_date: "2026-09-08".into(),
+                goal: HabitGoal::DailyCompletion,
+            },
+        })
+        .unwrap();
+    let view = seeded.habits().unwrap();
+    seeded
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "local-boundary".into(),
+            lived_date: "2026-09-08".into(),
+            completed: true,
+            change_id: "boundary-old-day".into(),
+            target_binding: view.completion_target_binding.unwrap(),
+            expected_revision: view.completion_revision,
+        })
+        .unwrap();
+    let before = seeded.habits().unwrap();
+    let input = HabitLifecycleMutationInput {
+        habit_key: "local-boundary".into(),
+        change_id: "boundary-pause".into(),
+        target_binding: before.catalog_target_binding.clone().unwrap(),
+        expected_revision: before.catalog_revision.clone(),
+        active: false,
+    };
+    let crossing = TodayApplication::new(
+        SelectedVault(vault.path().into()),
+        NoSelection,
+        CrossingFourClock(std::cell::Cell::new(0)),
+    );
+    let error = crossing
+        .set_habit_active(input.clone())
+        .err()
+        .expect("A previous-day attained marker must not be saved on the next lived day");
+    assert!(error.contains("日期"));
+    let reread = seeded.habits().unwrap();
+    assert_eq!(reread.catalog_revision, before.catalog_revision);
+    assert_eq!(reread.completion_revision, before.completion_revision);
+    assert!(reread.habit("local-boundary").unwrap().active);
+    assert!(seeded
+        .habit_details("local-boundary", 0, 20)
+        .unwrap()
+        .activity_changes
+        .is_empty());
+    let after = TodayApplication::new(
+        SelectedVault(vault.path().into()),
+        NoSelection,
+        DetailClock(std::rc::Rc::new(std::cell::RefCell::new(
+            "2026-09-09".into(),
+        ))),
+    );
+    after.set_habit_active(input.clone()).unwrap();
+    after.set_habit_active(input).unwrap();
+    let detail = after.habit_details("local-boundary", 0, 20).unwrap();
+    assert_eq!(detail.activity_changes.len(), 1);
+    assert_eq!(detail.activity_changes[0].lived_date, "2026-09-09");
+    assert!(!detail.activity_changes[0].attained_on_transition);
+    assert_eq!(detail.statistics.total_attained_days, 1);
+}
+
+struct ReplaceSourceAfterReading {
+    replacement: Vec<u8>,
+    changed: std::cell::Cell<bool>,
+}
+impl personal_dashboard_lib::habits::HabitSnapshotStore for ReplaceSourceAfterReading {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
+        let bytes = personal_dashboard_lib::habits::FileHabitSnapshotStore.load(path)?;
+        if bytes.is_some() && !self.changed.replace(true) {
+            fs::write(path, &self.replacement).map_err(|error| error.to_string())?;
+        }
+        Ok(bytes)
+    }
+}
+#[test]
+fn lifecycle_refuses_replaced_source_evidence_without_saving_stale_attainment_and_retry_rereads() {
+    use personal_dashboard_lib::today::{
+        FileDayTaskStore, FileHabitCompletionStore, FileTodayRecordStore,
+    };
+    let vault = TempVault::new("lifecycle-source-race");
+    write_snapshot(
+        vault.path(),
+        include_str!("fixtures/habits-v1-complete.json"),
+    );
+    let seeded = app(vault.path());
+    let before = seeded.habits().unwrap();
+    assert!(before.habit("exercise").unwrap().today.counts_as_completion);
+    let input = HabitLifecycleMutationInput {
+        habit_key: "exercise".into(),
+        change_id: "source-race-pause".into(),
+        target_binding: before.catalog_target_binding.clone().unwrap(),
+        expected_revision: before.catalog_revision.clone(),
+        active: false,
+    };
+    let mut replacement: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/habits-v1-complete.json")).unwrap();
+    replacement["habits"][0]["days"] = serde_json::json!([]);
+    let application = TodayApplication::with_every_store(
+        SelectedVault(vault.path().into()),
+        NoSelection,
+        FixedClock,
+        FileTodayRecordStore,
+        ReplaceSourceAfterReading {
+            replacement: replacement.to_string().into_bytes(),
+            changed: std::cell::Cell::new(false),
+        },
+        FileDayTaskStore,
+        FileHabitCompletionStore,
+    );
+    let error = application
+        .set_habit_active(input.clone())
+        .err()
+        .expect("A replaced source must not save a stale attained transition marker");
+    assert!(error.contains("来源"));
+    let reread = app(vault.path()).habits().unwrap();
+    assert_eq!(reread.catalog_revision, before.catalog_revision);
+    assert_eq!(reread.completion_revision, before.completion_revision);
+    assert!(reread.habit("exercise").unwrap().active);
+    assert!(!reread.habit("exercise").unwrap().today.counts_as_completion);
+    let stable = app(vault.path());
+    stable.set_habit_active(input.clone()).unwrap();
+    stable.set_habit_active(input).unwrap();
+    let detail = app(vault.path()).habit_details("exercise", 0, 20).unwrap();
+    assert_eq!(detail.activity_changes.len(), 1);
+    assert!(!detail.activity_changes[0].attained_on_transition);
+}

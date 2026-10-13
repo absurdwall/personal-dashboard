@@ -3251,10 +3251,17 @@ where
         }
         if catalog.receipts.iter().any(|receipt|receipt.input.change_id==input.change_id) {return Err("Habit 操作身份已使用。".into());}
         if current.as_deref().map(document_revision)!=input.expected_revision {return Err("Habit catalog 已变化；请重新读取后重试活动操作。".into());}
+        let today=self.clock.current_local_time().lived_date();
+        let source_expected=if catalog.habits.iter().find(|definition|definition.key==input.habit_key).is_none_or(|definition|definition.sourced) {
+            Some(load_habit_snapshot_from_vault(&self.habit_snapshot_store,&vault)?)
+        } else {None};
         let snapshot=self.habits()?;
         if snapshot.catalog_target_binding.as_ref()!=Some(&input.target_binding) {return Err("Selected Vault 在读取时变化。".into());}
         let habit=snapshot.habit(&input.habit_key).ok_or("Habit 身份不可用。")?;
-        let today=self.clock.current_lived_date();let now=self.clock.current_timestamp_label();validate_timestamp_label(&now)?;
+        if habit.today.date!=today {return Err("日期在读取 Habit 活动证据期间已变化；请重新读取后重试，未写入活动状态。".into());}
+        let now=self.clock.current_timestamp_label();validate_timestamp_label(&now)?;
+        let timestamp_lived_date=TodayClockView {date:now.get(..10).unwrap_or_default().into(),time:now.get(11..16).unwrap_or_default().into()}.lived_date();
+        if timestamp_lived_date!=today {return Err("日期在读取 Habit 活动时间期间已变化；请重新读取后重试，未写入活动状态。".into());}
         if !catalog.habits.iter().any(|definition|definition.key==input.habit_key) {
             catalog.apply(HabitDefinitionMutationInput {habit_key:input.habit_key.clone(),change_id:format!("lifecycle-baseline-{}",document_revision(input.change_id.as_bytes())),target_binding:input.target_binding.clone(),expected_revision:input.expected_revision.clone(),settings:habit.settings.clone().ok_or("Habit 设置不可用。")?},Some(habit),&today,&now)?;
         }
@@ -3272,10 +3279,12 @@ where
             lifecycle_completion_expected=Some((completion_path,completion_bytes));
             definition.activity_changes.push(HabitActivityChange {change_id:input.change_id.clone(),active:input.active,lived_date:today.clone(),changed_at:now.clone(),attained_on_transition:habit.today.counts_as_completion,local_change_count:Some(local_change_count)});definition.active=input.active;
         }
-        catalog.lifecycle_receipts.push(HabitLifecycleReceipt {input,saved_at:now,lived_date:today});
+        catalog.lifecycle_receipts.push(HabitLifecycleReceipt {input,saved_at:now,lived_date:today.clone()});
         let updated=serde_json::to_vec_pretty(&catalog).map_err(|error|error.to_string())?;HabitCatalogDocument::parse(&updated)?;
         if self.persistence.load_selected_vault()?.as_ref()!=Some(&vault) {return Err("Selected Vault 已变化；未写入活动状态。".into());}
         if let Some((completion_path,expected))=lifecycle_completion_expected {if self.habit_completion_store.load(&completion_path)?!=expected {return Err("完成记录在保存活动状态前已变化；请重新读取后重试。".into());}}
+        if self.clock.current_local_time().lived_date()!=today {return Err("日期在保存 Habit 活动状态前已变化；请重新读取后重试，未写入活动状态。".into());}
+        if let Some(expected)=source_expected {if load_habit_snapshot_from_vault(&self.habit_snapshot_store,&vault)?!=expected {return Err("来源快照在读取活动证据期间已变化；请重新读取后重试，未写入活动状态。".into());}}
         match current {Some(bytes)=>self.habit_completion_store.save_if_unchanged(&path,&bytes,&updated)?,None=>self.habit_completion_store.create_new(&path,&updated)?}
         if self.habit_completion_store.load(&path)?.as_deref()!=Some(updated.as_slice()) {return Err("Habit 活动状态保存读回未确认；可安全重试。".into());}
         self.habits()
