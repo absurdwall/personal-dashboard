@@ -1,3 +1,4 @@
+import { calendarHolidaysForDate, defaultCalendarHolidays, isHolidayYearCovered, type CalendarHolidayPreferences } from "./calendar-holidays.js";
 import { showHabitSettingsDialog, habitSettingsGoalLabel, type HabitGoal, type HabitSettings } from "./habit-settings.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
@@ -1247,6 +1248,28 @@ const calendarTaskStatus = document.querySelector<HTMLElement>("#calendar-task-s
 const calendarTaskCount = document.querySelector<HTMLElement>("#calendar-task-count");
 const calendarTaskList = document.querySelector<HTMLElement>("#calendar-task-list");
 const calendarTaskEmpty = document.querySelector<HTMLElement>("#calendar-task-empty");
+const calendarNewTask = document.querySelector<HTMLButtonElement>("#calendar-new-task");
+const calendarTaskCreateDialog = document.querySelector<HTMLDialogElement>("#calendar-task-create-dialog");
+const calendarTaskDetailsDialog = document.querySelector<HTMLDialogElement>("#calendar-task-details-dialog");
+const calendarTaskCreateStatus = document.querySelector<HTMLElement>("#calendar-task-create-status");
+let calendarDialogOrigin: HTMLElement | null = null;
+let calendarTaskDetailsTagSignature = "";
+let calendarDialogScroll: {information: number; summary: number} | null = null;
+
+function rememberCalendarDialogPosition(origin: HTMLElement | null): void {
+  calendarDialogOrigin = origin;
+  calendarDialogScroll = {information: workspaceInformation?.scrollTop ?? 0, summary: calendarSummary?.scrollTop ?? 0};
+}
+function restoreCalendarDialogPosition(): void {
+  if (calendarDialogScroll) {
+    if (workspaceInformation) workspaceInformation.scrollTop = calendarDialogScroll.information;
+    if (calendarSummary) calendarSummary.scrollTop = calendarDialogScroll.summary;
+  }
+  const origin = calendarDialogOrigin?.isConnected ? calendarDialogOrigin :
+    calendarGrid?.querySelector<HTMLElement>(`[data-calendar-task-summary="${CSS.escape(calendarDialogOrigin?.dataset.calendarTaskSummary ?? "")}"]`) ?? calendarNewTask;
+  origin?.focus({preventScroll:true});
+}
+
 const calendarTaskCreateForm = document.querySelector<HTMLFormElement>(
   "#calendar-task-create-form",
 );
@@ -1556,7 +1579,7 @@ type TaskCreateInput = Readonly<{
   executionEnd: Readonly<{date: string; time: string}> | null;
 }>;
 type TaskCreateAttempt = {
-  origin: "quick" | "modal" | "today"; surfaceDate?: string; draft: TaskDraft; input: TaskCreateInput;
+  origin: "quick" | "modal" | "today" | "calendar"; surfaceDate?: string; draft: TaskDraft; input: TaskCreateInput;
   originalInput: TaskCreateInput; listName: string;
   phase: "unverified" | "retry-ready" | "conflict";
 };
@@ -1893,6 +1916,8 @@ function renderAppearance(preferences: AppearancePreferences): void {
   const presentationGeneration = ++backgroundPresentationGeneration;
   applyAccentColor(preferences.accentColor, document.documentElement.style);
   renderBackgroundPresentation(preferences);
+  renderCalendarHolidayControls();
+  if(currentCalendarMonth)renderCalendarGrid(currentCalendarMonth);
   accentColorButtons.forEach((button) => {
     const selected = button.dataset.accentColor === preferences.accentColor;
     button.setAttribute("aria-pressed", String(selected));
@@ -7117,7 +7142,7 @@ function stashTodayTaskCreateDraft(): void {
 }
 
 function calendarTaskCreateDraftKey(binding: string, date: string): string {
-  return `${binding}:${date}`;
+  return `calendar:${binding}:${date}`;
 }
 
 function stashCalendarTaskCreateDraft(): void {
@@ -7262,6 +7287,7 @@ function renderTodayTasks(view: TodayView, openEditors = new Set<string>()): voi
     updateCompactScheduleLabel("today-task-create", todayTaskCreateDate, todayTaskCreateTime);
     todayTaskCreateSubmit?.toggleAttribute("disabled", !writable);
     updateTodayTaskCreationControls();
+  updateCalendarTaskCreationControls();
   }
 }
 
@@ -7996,6 +8022,9 @@ function updateCalendarTaskPreviewRows(): void {
       item.hidden = index >= capacity;
     });
 
+    const holiday=cell.querySelector<HTMLElement>(".calendar-day-holidays");
+    if(holiday)holiday.hidden=!holiday.textContent || available - capacity * (lineHeight + summaryGap) < 12;
+
     const baseOverflow = Number.parseInt(cell.dataset.calendarTaskOverflowBase ?? "0", 10) || 0;
     const overflowCount = baseOverflow + Math.max(0, items.length - capacity);
     const overflow = cell.querySelector<HTMLElement>(".calendar-day-task-overflow");
@@ -8018,7 +8047,31 @@ function updateCalendarTaskPreviewRows(): void {
   }
 }
 
+function renderCalendarHolidayControls(): void {
+  const preferences=currentAppearance.calendarHolidays ?? defaultCalendarHolidays;
+  for(const [id,key] of [["enabled","enabled"],["china","china"],["united-states","unitedStates"]] as const) {
+    const field=document.querySelector<HTMLInputElement>(`#calendar-holiday-${id}`);
+    if(field){field.checked=preferences[key];field.disabled=key!=="enabled"&&!preferences.enabled;}
+  }
+  const year=currentCalendarMonth?.year ?? 2026;
+  setCopy(document.querySelector("#calendar-holiday-coverage"),isHolidayYearCovered(year)?"calendar.holidayCoverage":"calendar.holidayUncovered",{year});
+}
+
+async function chooseCalendarHolidays(preferences: CalendarHolidayPreferences): Promise<void> {
+  renderAppearance({...currentAppearance,calendarHolidays:preferences});
+  await appearanceMutations.enqueue(
+    ()=>window.__TAURI__.core.invoke<AppearancePreferences>("set_calendar_holidays",{preferences}),
+    saved=>{renderAppearance(saved);setCopy(document.querySelector("#calendar-holiday-status"),"tasks.saved");},
+    (error,confirmed)=>{renderAppearance(confirmed);setCopyError(document.querySelector("#calendar-holiday-status"),"appearance.updateFailed",error);},
+  );
+}
+for (const id of ["enabled","china","united-states"])document.querySelector(`#calendar-holiday-${id}`)?.addEventListener("change",()=>{
+  const preferences={enabled:document.querySelector<HTMLInputElement>("#calendar-holiday-enabled")?.checked ?? true,china:document.querySelector<HTMLInputElement>("#calendar-holiday-china")?.checked ?? true,unitedStates:document.querySelector<HTMLInputElement>("#calendar-holiday-united-states")?.checked ?? true};
+  void chooseCalendarHolidays(preferences);
+});
+
 function renderCalendarGrid(month: CalendarMonthView): void {
+  renderCalendarHolidayControls();
   if (calendarMonthHeading) {
     calendarMonthHeading.textContent = formatInterfaceMonth(
       month.year,
@@ -8060,6 +8113,9 @@ function renderCalendarGrid(month: CalendarMonthView): void {
           "has-calendar-tasks",
           day.taskSummaries.length + day.taskOverflowCount > 0,
         );
+        const holidays=calendarHolidaysForDate(day.date,currentAppearance.calendarHolidays ?? defaultCalendarHolidays);
+        const holidayText=holidays.map(holiday=>`${holiday.region === "china" ? currentInterfaceLanguage === "zh" ? "中" : "CN" : currentInterfaceLanguage === "zh" ? "美" : "US"} · ${holiday.name[currentInterfaceLanguage]}`).join(" / ");
+        button.title=holidayText;
         const taskNames = day.taskSummaries
           .map((task) => `${task.name} · ${t(taskStateCopyKey(task.state))}`)
           .join(" · ");
@@ -8072,6 +8128,7 @@ function renderCalendarGrid(month: CalendarMonthView): void {
           day.isToday ? t("calendar.today") : "",
           t(status.label),
           taskNames,
+          holidayText,
         ].filter(Boolean).join(" · ");
         button.dataset.calendarTaskAriaBase = accessibleBase;
         button.dataset.calendarTaskOverflowBase = String(day.taskOverflowCount);
@@ -8096,6 +8153,9 @@ function renderCalendarGrid(month: CalendarMonthView): void {
             const summary = document.createElement("span");
             summary.className = "calendar-day-task-summary";
             summary.dataset.calendarTaskSummary = task.id;
+            summary.setAttribute("role", "button");
+            summary.tabIndex = 0;
+            summary.setAttribute("aria-label", `${t("tasks.details")} · ${task.name}`);
             summary.dataset.taskState = task.state;
             summary.textContent = task.name;
             summary.title = `${task.name} · ${t(taskStateCopyKey(task.state))}`;
@@ -8109,7 +8169,8 @@ function renderCalendarGrid(month: CalendarMonthView): void {
           setCopy(overflow, "calendar.taskOverflow", { count: day.taskOverflowCount });
         }
         top.append(marker, todayLabel, overflow);
-        button.append(top, taskSummaries);
+        const holidayLabel=document.createElement("span");holidayLabel.className="calendar-day-holidays";holidayLabel.textContent=holidayText;holidayLabel.title=holidayText;holidayLabel.setAttribute("aria-hidden","true");
+        button.append(top, taskSummaries, holidayLabel);
         return button;
       }),
     );
@@ -8244,13 +8305,14 @@ function renderCalendarTasks(view: TodayView): void {
   }
   if (calendarTaskList) {
     calendarTaskList.replaceChildren(
-      ...tasks.map((task) => taskEditor(task, writable, shared, "calendar")),
+      ...tasks.map((task) => taskEditor(task, writable, shared, "calendar", false, true)),
     );
   }
   const draftKey = shared.targetBinding
     ? calendarTaskCreateDraftKey(shared.targetBinding, view.date)
     : null;
-  const draft = draftKey ? calendarTaskCreateDrafts.get(draftKey) : undefined;
+  const draft = draftKey ? taskCreateAttempts.get(draftKey)?.draft ?? calendarTaskCreateDrafts.get(draftKey) : undefined;
+  calendarNewTask?.toggleAttribute("disabled", !writable);
   calendarTaskCreateForm?.toggleAttribute("hidden", !writable);
   calendarTaskCreateForm?.querySelectorAll("input, textarea, select, button").forEach((element) => {
     (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement).disabled =
@@ -8273,6 +8335,11 @@ function renderCalendarTasks(view: TodayView): void {
     if (calendarTaskCreateTime) calendarTaskCreateTime.value = draft?.time ?? "";
     normalizeTaskDateTimeFields(calendarTaskCreateDate, calendarTaskCreateTime, !writable);
     calendarTaskCreateSubmit?.toggleAttribute("disabled", !writable);
+    renderTaskCreateProperties(calendarTaskCreateForm,shared,draft);
+  }
+  updateCalendarTaskCreationControls();
+  if(calendarTaskDetailsDialog?.open && calendarTaskDetailsTagSignature!==JSON.stringify(shared.tags??[])) {
+    openCalendarTaskDetails(calendarTaskDetailsDialog.dataset.taskId!);
   }
 }
 
@@ -10794,7 +10861,8 @@ function updateTaskOperationState(delta: number): void {
     currentCalendarSummaryView?.tasks.state !== "error" &&
     currentCalendarSummaryView?.tasks.state !== "unconfigured";
   const calendarWritable = calendarCanOperate && taskOperationCount === 0;
-  calendarTaskCreateForm?.toggleAttribute("hidden", !calendarWritable);
+  calendarTaskCreateForm?.toggleAttribute("hidden", !calendarCanOperate);
+  calendarNewTask?.toggleAttribute("disabled", !calendarWritable);
   calendarTaskCreateForm?.querySelectorAll("input, textarea, select, button").forEach((element) => {
     (element as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement).disabled =
       busy || !calendarCanOperate;
@@ -10815,6 +10883,7 @@ function updateTaskOperationState(delta: number): void {
   updateTaskEditorOperationState("tasks", writable, busy);
   if (currentTasksView) updateTaskCreationControls(currentTasksView, busy);
   updateTodayTaskCreationControls();
+  updateCalendarTaskCreationControls();
   if (!busy && taskRefreshQueued) {
     taskRefreshQueued = false;
     if (currentWorkspaceDestination === "tasks") void refreshTasks();
@@ -10958,7 +11027,7 @@ function renderEndedTaskCreations(view: TasksView, region = taskEndedCreateRegio
       existing.addEventListener("click", () => {
         if (taskOperationCount > 0) return;
         taskFocusRequestId = attempt.originalInput.taskId;
-        if (attempt.origin === "today") showWorkspaceDestination("tasks");
+        if (attempt.origin === "today" || attempt.origin === "calendar") showWorkspaceDestination("tasks");
         else if (currentTasksView) renderTasks(currentTasksView);
       });
       details.append(existing);
@@ -10967,13 +11036,29 @@ function renderEndedTaskCreations(view: TasksView, region = taskEndedCreateRegio
   }));
 }
 
-function taskCreationContext(today = false) {
-  const surface: TaskSurface = today ? "today" : "tasks";
+function taskCreationContext(today: boolean | "calendar" = false) {
+  const surface: TaskSurface = today === "calendar" ? "calendar" : today ? "today" : "tasks";
   const loaded = taskSurfaceView(surface);
   const binding = loaded?.targetBinding;
-  const date = today ? currentTodayView?.date ?? null : null;
-  const key = binding ? today && date ? todayTaskCreateDraftKey(binding, date) : binding : null;
-  return {surface, loaded, binding, date, key, requests: today ? todayTaskRequests : taskRequests};
+  const date = surface === "calendar" ? currentCalendarSummaryView?.date ?? null : surface === "today" ? currentTodayView?.date ?? null : null;
+  const key = binding ? surface === "calendar" && date ? calendarTaskCreateDraftKey(binding,date) : surface === "today" && date ? todayTaskCreateDraftKey(binding,date) : binding : null;
+  return {surface, loaded, binding, date, key, requests: surface === "calendar" ? calendarTaskRequests : surface === "today" ? todayTaskRequests : taskRequests};
+}
+
+function updateCalendarTaskCreationControls(): void {
+  const {loaded,key} = taskCreationContext("calendar");
+  const attempt = key ? taskCreateAttempts.get(key) : undefined;
+  const busy = taskOperationCount > 0;
+  const writable = Boolean(loaded?.targetBinding) && !["error","unconfigured"].includes(loaded?.state ?? "unconfigured");
+  calendarNewTask?.toggleAttribute("disabled", busy || !writable);
+  calendarTaskCreateForm?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input,textarea,select").forEach(field => field.disabled=busy || !writable || Boolean(attempt));
+  calendarTaskCreateSubmit?.toggleAttribute("disabled",busy || !writable || Boolean(attempt));
+  document.querySelector("#calendar-task-create-cancel")?.toggleAttribute("disabled",busy);
+  for (const action of ["recheck","retry","end-attempt"]) {
+    const button=document.querySelector<HTMLButtonElement>(`#calendar-task-create-${action}`);
+    if(button) {button.hidden=!attempt;button.disabled=busy || !writable || (action === "retry" ? attempt?.phase!=="retry-ready" : action === "end-attempt" ? attempt?.phase==="unverified" : false);}
+  }
+  if(loaded)renderEndedTaskCreations(loaded,document.querySelector("#calendar-task-ended-attempts"),key);
 }
 
 function updateTodayTaskCreationControls(): void {
@@ -10990,13 +11075,14 @@ function updateTodayTaskCreationControls(): void {
   if (loaded) renderEndedTaskCreations(loaded, document.querySelector("#today-task-create-ended-attempts"), key);
 }
 
-function endTaskCreationAttempt(today = false): void {
+function endTaskCreationAttempt(today: boolean | "calendar" = false): void {
   const {surface, loaded, binding, key} = taskCreationContext(today);
   const attempt = key ? taskCreateAttempts.get(key) : undefined;
   if (!loaded || !binding || !key || !attempt || taskOperationCount > 0 || attempt.phase === "unverified") return;
   taskEndedCreateAttempts.set(key, [...taskEndedCreateAttempts.get(key) ?? [], attempt]);
   taskCreateAttempts.delete(key);
-  if (today) { todayTaskCreateDrafts.delete(key); todayTaskCreateForm?.reset(); }
+  if (surface === "calendar") {calendarTaskCreateDrafts.delete(key);calendarTaskCreateForm?.reset();calendarTaskCreateDialog?.close();}
+  else if (today) { todayTaskCreateDrafts.delete(key); todayTaskCreateForm?.reset(); }
   else {
     taskQuickDrafts.delete(binding); taskQuickScheduleDrafts.delete(binding);
     taskCreateDrafts.delete(binding); taskQuickForm?.reset(); taskCreateForm?.reset();
@@ -11004,7 +11090,7 @@ function endTaskCreationAttempt(today = false): void {
   }
   renderTaskSurface(surface, loaded);
   setCopy(taskSurfaceStatus(surface), attempt.phase === "conflict" ? "tasks.endedConflict" : "tasks.endedAbsent");
-  (today ? todayTaskCreateName : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus();
+  (surface === "calendar" ? calendarNewTask : today ? todayTaskCreateName : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus({preventScroll:true});
 }
 
 function taskCreateAttemptMatches(task: TaskView, attempt: TaskCreateAttempt): boolean {
@@ -11018,9 +11104,11 @@ function taskCreateAttemptMatches(task: TaskView, attempt: TaskCreateAttempt): b
 }
 
 function finishTaskCreation(binding: string, attempt: TaskCreateAttempt, view: TasksView): void {
-  const key = attempt.origin === "today" ? todayTaskCreateDraftKey(binding, attempt.surfaceDate!) : binding;
+  const key = attempt.origin === "calendar" ? calendarTaskCreateDraftKey(binding,attempt.surfaceDate!) : attempt.origin === "today" ? todayTaskCreateDraftKey(binding, attempt.surfaceDate!) : binding;
   taskCreateAttempts.delete(key);
-  if (attempt.origin === "today") {
+  if (attempt.origin === "calendar") {
+    calendarTaskCreateDrafts.delete(key);calendarTaskCreateForm?.reset();calendarTaskCreateDialog?.close();
+  } else if (attempt.origin === "today") {
     todayTaskCreateDrafts.delete(key); todayTaskCreateForm?.reset();
   } else if (attempt.origin === "quick") {
     taskQuickDrafts.delete(binding);
@@ -11032,18 +11120,18 @@ function finishTaskCreation(binding: string, attempt: TaskCreateAttempt, view: T
     taskCreateOpen = false;
     taskCreateDialog?.close();
   }
-  const surface = attempt.origin === "today" ? "today" : "tasks";
+  const surface = attempt.origin === "calendar" ? "calendar" : attempt.origin === "today" ? "today" : "tasks";
   renderTaskSurface(surface, view);
   const status = taskSurfaceStatus(surface);
   setCopy(status, "tasks.saved");
   if (status) status.dataset.state = "ready";
 }
 
-async function recheckTaskCreation(today = false): Promise<boolean> {
+async function recheckTaskCreation(today: boolean | "calendar" = false): Promise<boolean> {
   const {surface, loaded, binding, key, date, requests} = taskCreationContext(today);
   const attempt = key ? taskCreateAttempts.get(key) : undefined;
   if (!loaded || !binding || !key || !attempt || taskOperationCount > 0) return false;
-  const status = today ? todayTaskStatus : attempt.origin === "quick" ? tasksStatus : taskCreateStatus;
+  const status = surface === "calendar" ? calendarTaskCreateStatus : today ? todayTaskStatus : attempt.origin === "quick" ? tasksStatus : taskCreateStatus;
   const request = requests.begin();
   updateTaskOperationState(1);
   try {
@@ -11067,7 +11155,7 @@ async function recheckTaskCreation(today = false): Promise<boolean> {
     return false;
   } finally {
     updateTaskOperationState(-1);
-    if (!taskCreateAttempts.has(key)) (today ? todayTaskCreateName : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus();
+    if (!taskCreateAttempts.has(key)) (surface === "calendar" ? calendarNewTask : today ? todayTaskCreateName : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus({preventScroll:true});
   }
 }
 
@@ -11114,13 +11202,13 @@ async function createTask(quick = false, retry = false): Promise<boolean> {
 
 async function submitTaskCreation(attempt: TaskCreateAttempt, loaded: TasksView, binding: string): Promise<boolean> {
   const today = attempt.origin === "today";
-  compactScheduleTransactions.get(today ? "today-task-create" : "task-quick")?.invalidate();
-  const surface: TaskSurface = today ? "today" : "tasks";
-  const date = today ? attempt.surfaceDate ?? null : null;
-  const key = today ? todayTaskCreateDraftKey(binding, date!) : binding;
-  const status = today ? todayTaskStatus : attempt.origin === "quick" ? tasksStatus : taskCreateStatus;
+  if(attempt.origin!=="calendar")compactScheduleTransactions.get(today ? "today-task-create" : "task-quick")?.invalidate();
+  const surface: TaskSurface = attempt.origin === "calendar" ? "calendar" : today ? "today" : "tasks";
+  const date = surface !== "tasks" ? attempt.surfaceDate ?? null : null;
+  const key = surface === "calendar" ? calendarTaskCreateDraftKey(binding,date!) : today ? todayTaskCreateDraftKey(binding, date!) : binding;
+  const status = surface === "calendar" ? calendarTaskCreateStatus : today ? todayTaskStatus : attempt.origin === "quick" ? tasksStatus : taskCreateStatus;
   attempt.phase = "unverified";
-  const request = (today ? todayTaskRequests : taskRequests).begin();
+  const request = (surface === "calendar" ? calendarTaskRequests : today ? todayTaskRequests : taskRequests).begin();
   updateTaskOperationState(1);
   try {
     const view = await window.__TAURI__.core.invoke<TasksView>("create_task", {input: attempt.input});
@@ -11139,7 +11227,7 @@ async function submitTaskCreation(attempt: TaskCreateAttempt, loaded: TasksView,
     return false;
   } finally {
     updateTaskOperationState(-1);
-    if (!taskCreateAttempts.has(key)) (today ? todayTaskCreateName : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus();
+    if (!taskCreateAttempts.has(key)) (surface === "calendar" ? calendarNewTask : today ? todayTaskCreateName : attempt.origin === "quick" ? taskQuickName : taskNewButton)?.focus({preventScroll:true});
   }
 }
 
@@ -11162,107 +11250,22 @@ async function createTodayTask(retry = false): Promise<boolean> {
   return submitTaskCreation(attempt, loaded, binding);
 }
 
-async function createCalendarTask(): Promise<boolean> {
-  const calendarView = currentCalendarSummaryView;
-  const loaded = calendarView?.tasks;
-  const binding = loaded?.targetBinding;
-  const date = selectedCalendarDate ?? calendarView?.date ?? null;
-  const status = taskSurfaceStatus("calendar");
-  if (
-    !calendarView ||
-    !loaded ||
-    !binding ||
-    !date ||
-    calendarView.date !== date ||
-    loaded.state === "error" ||
-    loaded.state === "unconfigured" ||
-    taskOperationCount > 0
-  ) {
-    setCopyError(status, "tasks.notSaved", t("tasks.refreshFirst"));
-    if (status) status.dataset.state = "error";
-    return false;
+async function createCalendarTask(retry = false): Promise<boolean> {
+  const {loaded,binding,key,date} = taskCreationContext("calendar");
+  if(!loaded || !binding || !key || !date || ["error","unconfigured"].includes(loaded.state) || taskOperationCount>0 || !calendarTaskCreateForm) return false;
+  let attempt=taskCreateAttempts.get(key);
+  if(attempt) {
+    if(!retry || attempt.phase!=="retry-ready" || attempt.origin!=="calendar")return false;
+  } else {
+    if(retry)return false;
+    const draft=readTaskDraft(calendarTaskCreateForm);
+    if(!draft.name.trim()){setCopy(calendarTaskCreateStatus,"tasks.enterName");calendarTaskCreateName?.focus();return false;}
+    const normalized=normalizeTaskSchedule(draft.date,draft.time);
+    const input: TaskCreateInput = {targetBinding:binding,expectedRevision:loaded.revision,taskId:localOperationId("manual-task"),name:draft.name.trim(),content:draft.content.trim()||null,date:normalized.date,time:normalized.time,listId:draft.listId||"inbox",executionEnd:null,priority:draft.priority,tagIds:draft.tagIds};
+    attempt={origin:"calendar",surfaceDate:date,draft,input,originalInput:input,phase:"unverified",listName:taskListDisplayName(taskListForId(loaded,input.listId)??{id:input.listId,name:input.listId,isSystem:false,archived:false},t("tasks.inbox"))};
+    taskCreateAttempts.set(key,attempt);calendarTaskCreateDrafts.set(key,draft);
   }
-  const name = calendarTaskCreateName?.value.trim() ?? "";
-  if (!name) {
-    setCopy(status, "tasks.enterName");
-    if (status) status.dataset.state = "error";
-    calendarTaskCreateName?.focus();
-    return false;
-  }
-  const normalized = normalizeTaskSchedule(
-    calendarTaskCreateDate?.value,
-    calendarTaskCreateTime?.value,
-  );
-  const content = calendarTaskCreateContent?.value ?? "";
-  const listId = calendarTaskCreateList?.value || "inbox";
-  const operationKey = JSON.stringify([binding, "calendar-create", date]);
-  const taskId = stableTaskOperationId(operationKey, "manual-task");
-  const request = calendarTaskRequests.begin();
-  updateTaskOperationState(1);
-  try {
-    const view = await window.__TAURI__.core.invoke<TasksView>("create_task", {
-      input: {
-        targetBinding: binding,
-        expectedRevision: loaded.revision,
-        taskId,
-        name,
-        content: content.trim() || null,
-        date: normalized.date,
-        time: normalized.time,
-        listId,
-      },
-    });
-    const responseIsCurrent = taskSurfaceIsCurrent(
-      "calendar",
-      request,
-      binding,
-      view.targetBinding,
-      date,
-      loaded.revision,
-    );
-    const savedTask = view.tasks.find(
-      (task) =>
-        task.id === taskId &&
-        task.name === name &&
-        task.content === (content.trim() || null) &&
-        task.date === normalized.date &&
-        task.time === normalized.time &&
-        task.listId === listId,
-    );
-    const confirmed = taskMutationConfirmed(
-      responseIsCurrent,
-      view.state,
-      Boolean(savedTask),
-    );
-    if (confirmed) {
-      taskOperationIds.delete(operationKey);
-      calendarTaskCreateDrafts.delete(calendarTaskCreateDraftKey(binding, date));
-      if (calendarTaskCreateForm) calendarTaskCreateForm.reset();
-      renderTaskSurface("calendar", view);
-      setCopy(status, "tasks.saved");
-      if (status) status.dataset.state = "ready";
-    } else if (responseIsCurrent) {
-      stashCalendarTaskCreateDraft();
-      renderTaskSurface("calendar", view);
-      setCopyError(
-        status,
-        "tasks.notSaved",
-        view.state === "error" ? view.message : t("tasks.confirmationFailed"),
-      );
-      if (status) status.dataset.state = "error";
-    }
-    return confirmed;
-  } catch (error) {
-    if (taskSurfaceIsCurrent("calendar", request, binding, binding, date, loaded.revision)) {
-      stashCalendarTaskCreateDraft();
-      renderTaskSurface("calendar", loaded);
-      setCopyError(status, "tasks.notSaved", error);
-      if (status) status.dataset.state = "error";
-    }
-    return false;
-  } finally {
-    updateTaskOperationState(-1);
-  }
+  return submitTaskCreation(attempt,loaded,binding);
 }
 
 type TaskListCommand =
@@ -11389,7 +11392,7 @@ type TaskSurface = "tasks" | "today" | "calendar";
 function taskSurfaceStatus(surface: TaskSurface): HTMLElement | null {
   if (surface === "tasks") return tasksStatus;
   if (surface === "today") return todayTaskStatus;
-  return calendarTaskStatus;
+  return calendarTaskDetailsDialog?.open ? calendarTaskDetailsDialog.querySelector<HTMLElement>("#calendar-task-details-status") : calendarTaskCreateDialog?.open ? calendarTaskCreateStatus : calendarTaskStatus;
 }
 
 function taskSurfaceIsCurrent(
@@ -12462,6 +12465,52 @@ refreshTodayButton?.addEventListener("click", () => {
   void refreshToday();
 });
 
+function openCalendarTaskDetails(taskId: string, origin: HTMLElement | null = null): boolean {
+  const view = currentCalendarSummaryView?.tasks;
+  const task = view?.tasks.find(task => task.id === taskId);
+  const dialog = calendarTaskDetailsDialog;
+  if (!view || !task || !dialog) {setCopy(calendarTaskStatus,"tasks.refreshFirst");return false;}
+  if(!dialog.open)rememberCalendarDialogPosition(origin);
+  calendarTaskDetailsTagSignature=JSON.stringify(view.tags??[]);
+  const binding = view.targetBinding;
+  const writable = Boolean(binding) && !["error","unconfigured"].includes(view.state) && taskOperationCount===0;
+  const row = taskEditor(task,writable,view,"calendar",true,true);
+  const form = row.querySelector<HTMLFormElement>("form[data-task-editor]")!;
+  form.classList.remove("task-editor-inline");
+  const status=document.createElement("p");status.id="calendar-task-details-status";status.setAttribute("role","status");status.setAttribute("aria-live","polite");form.append(status);
+  dialog.replaceChildren(form);
+  dialog.dataset.taskId=taskId;
+  form.addEventListener("input",()=>stashTaskEditDraft(form));
+  form.addEventListener("change",()=>stashTaskEditDraft(form));
+  form.addEventListener("submit",event=>{
+    event.preventDefault();
+    if(taskSurfaceBinding("calendar")!==binding) {setCopy(status,"tasks.refreshFirst");return;}
+    stashTaskEditDraft(form);
+    void pendingWrites.track((async()=>{const saved=await updateTask(taskId,form,"calendar");if(saved)dialog.close();return saved;})());
+  });
+  form.querySelector<HTMLButtonElement>("[data-task-editor-close]")?.addEventListener("click",()=>dialog.close());
+  // Capture the revision the displayed form came from before an external refresh.
+  if(binding && !taskEditDrafts.has(taskDraftKey(binding,taskId)))stashTaskEditDraft(form);
+  if(!dialog.open)dialog.showModal();
+  form.querySelector<HTMLTextAreaElement>("[data-task-content]")?.focus({preventScroll:true});
+  return true;
+}
+calendarTaskDetailsDialog?.addEventListener("cancel",event=>{if(taskOperationCount>0)event.preventDefault();});
+calendarTaskDetailsDialog?.addEventListener("close",restoreCalendarDialogPosition);
+calendarTaskDetailsDialog?.addEventListener("click",event=>{if(event.target===calendarTaskDetailsDialog && taskOperationCount===0)calendarTaskDetailsDialog.close();});
+calendarTaskPanel?.addEventListener("click",event=>{
+  const opener=(event.target as HTMLElement).closest<HTMLElement>("[data-task-editor-open]");
+  if(opener?.dataset.taskEditorOpen) {event.preventDefault();event.stopPropagation();openCalendarTaskDetails(opener.dataset.taskEditorOpen,opener);}
+},true);
+calendarGrid?.addEventListener("click",event=>{
+  const task=(event.target as HTMLElement).closest<HTMLElement>("[data-calendar-task-summary]");
+  if(task?.dataset.calendarTaskSummary) {event.preventDefault();event.stopPropagation();openCalendarTaskDetails(task.dataset.calendarTaskSummary,task);}
+},true);
+calendarGrid?.addEventListener("keydown",event=>{
+  const task=(event.target as HTMLElement).closest<HTMLElement>("[data-calendar-task-summary]");
+  if(task && (event.key==="Enter" || event.key===" ")) {event.preventDefault();event.stopPropagation();openCalendarTaskDetails(task.dataset.calendarTaskSummary!,task);}
+},true);
+
 calendarGrid?.addEventListener("click", (event) => {
   const target = (event.target as HTMLElement).closest<HTMLButtonElement>(
     "button[data-calendar-date]",
@@ -13164,6 +13213,24 @@ calendarTaskCreateList?.addEventListener("change", () => {
   }
   stashCalendarTaskCreateDraft();
 });
+calendarNewTask?.addEventListener("click", () => {
+  if (calendarNewTask.disabled || !currentCalendarSummaryView) return;
+  rememberCalendarDialogPosition(calendarNewTask);
+  renderCalendarTasks(currentCalendarSummaryView);
+  calendarTaskCreateDialog?.showModal();
+  calendarTaskCreateName?.focus({preventScroll:true});
+});
+document.querySelector("#calendar-task-create-cancel")?.addEventListener("click", () => calendarTaskCreateDialog?.close());
+calendarTaskCreateDialog?.addEventListener("cancel", event => {if(taskOperationCount>0)event.preventDefault();});
+calendarTaskCreateDialog?.addEventListener("close", () => {
+  const {key}=taskCreationContext("calendar");
+  if(key && !taskCreateAttempts.has(key)){calendarTaskCreateDrafts.delete(key);calendarTaskCreateForm?.reset();}
+  restoreCalendarDialogPosition();
+});
+
+document.querySelector("#calendar-task-create-recheck")?.addEventListener("click", () => {void pendingWrites.track(recheckTaskCreation("calendar"));});
+document.querySelector("#calendar-task-create-retry")?.addEventListener("click", () => {void pendingWrites.track(createCalendarTask(true));});
+document.querySelector("#calendar-task-create-end-attempt")?.addEventListener("click", () => endTaskCreationAttempt("calendar"));
 calendarTaskCreateForm?.addEventListener("input", stashCalendarTaskCreateDraft);
 calendarTaskCreateForm?.addEventListener("submit", (event) => {
   event.preventDefault();

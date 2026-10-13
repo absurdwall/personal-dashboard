@@ -407,3 +407,28 @@ fn jpeg_with_trailing_bytes_imports_and_survives_relaunch() {
         .unwrap()
         .starts_with("data:image/jpeg;base64,"));
 }
+
+#[test]
+fn calendar_holiday_display_choices_survive_file_reopen_and_preserve_appearance() {
+    use personal_dashboard_lib::appearance::CalendarHolidayPreferences;
+    struct FilePreferences(std::path::PathBuf);
+    impl AppearancePersistence for FilePreferences {
+        fn load(&self) -> Result<Option<Vec<u8>>, String> { std::fs::read(&self.0).map(Some).map_err(|e|e.to_string()) }
+        fn save(&self, bytes: &[u8]) -> Result<(), String> { std::fs::write(&self.0,bytes).map_err(|e|e.to_string()) }
+    }
+    let directory = std::env::temp_dir().join(format!("pdex22-holiday-prefs-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let file = directory.join("appearance.json");
+    std::fs::write(&file, br#"{"schemaVersion":1,"accentColor":"blue","backgroundImage":null}"#).unwrap();
+    let app = AppearanceApplication::new(FilePreferences(file.clone()));
+    assert_eq!(app.load().unwrap().calendar_holidays, CalendarHolidayPreferences::default());
+    let selected = CalendarHolidayPreferences { enabled: false, china: true, united_states: false };
+    app.set_calendar_holidays(selected).unwrap();
+    let reopened = AppearanceApplication::new(FilePreferences(file));
+    let saved = reopened.load().unwrap();
+    assert_eq!(saved.calendar_holidays, selected);
+    assert_eq!(saved.accent_color, AccentColor::Blue);
+    reopened.set_accent_color(AccentColor::Clay).unwrap();
+    assert_eq!(reopened.load().unwrap().calendar_holidays, selected);
+    std::fs::remove_dir_all(directory).unwrap();
+}
