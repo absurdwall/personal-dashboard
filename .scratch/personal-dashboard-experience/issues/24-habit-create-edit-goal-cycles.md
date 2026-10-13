@@ -4,7 +4,7 @@
 
 **Blocked by:** None
 
-**Status:** implementation-complete/acceptance-pending
+**Status:** in-progress
 
 **Triage:** ready-for-agent
 **ID:** PDEX-24
@@ -81,3 +81,7 @@ The user invoked implement-spec for PDEX-SPEC-02. Tests use the already confirme
 ### Root source-bound native checkpoint — 2026-10-13
 
 [Packaged PDEX-19/24 partial receipt](../evidence/pdex-19-24-native-partial-2026-10-13.json) binds source `2e1c56c10e6b75bb2daaf1a5dbbd94411a549854`, binary SHA-256 `5806c58cef9c046482eb4e858fa8942509e07a7149456c4ef5bf8b80f16045ec`, private synthetic selected Vault/profile and 1280×720 native geometry. Created one stable local weekly3 Habit, recorded a real attained day, renamed immediately, scheduled next-Monday weekly5, reopened pending value, canceled pending by returning to3, rescheduled5, restarted at the same date and then next Monday. File receipts/history and UI agree; prior completion remains. Source snapshot and Daily Record bytes stayed unchanged. This is partial native evidence, not complete ticket/PDEX-26 acceptance or installation. Final review and remaining combinations/widths stay pending.
+
+### Confirmed P2 review repair — 2026-10-13
+
+[Three-finding repair record](../refinement-review-fixes-2026-10-13.md) records the bounded review return. Existing feature/acceptance evidence remains retained; the relevant fixed-copy, Calendar relation or Task draft recovery correction is now in progress. Native acceptance stays delegated/open.

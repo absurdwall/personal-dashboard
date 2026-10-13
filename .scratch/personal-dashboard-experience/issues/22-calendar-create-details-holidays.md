@@ -4,7 +4,7 @@
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口
 
-**Status:** implementation-complete/acceptance-pending
+**Status:** in-progress
 
 **Triage:** ready-for-agent
 **ID:** PDEX-22
@@ -69,3 +69,7 @@ Frontend build passed. Production WebKit/controller and holiday/appearance check
 The top plus defaults to the selected date and opens creation; month/lower Tasks open the reused compact editable form without changing selection/background position. Uncertain creation follows the shared frozen original-request/readback/retry path. Holiday display choices persist in existing local appearance settings; officially sourced Gregorian 2026–2027 annotations remain read-only, with named US observed dates and explicit unavailable years.
 
 Acceptance checkboxes remain open until combined review and source-bound packaged acceptance. This does not close PDEX-22 or PDEX-SPEC-02, install the normal App, merge main or operate on remote Git.
+
+### Confirmed P2 review repair — 2026-10-13
+
+[Three-finding repair record](../refinement-review-fixes-2026-10-13.md) records the bounded review return. Existing feature/acceptance evidence remains retained; the relevant fixed-copy, Calendar relation or Task draft recovery correction is now in progress. Native acceptance stays delegated/open.

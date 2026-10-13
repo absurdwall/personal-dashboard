@@ -4,7 +4,7 @@
 
 **Blocked by:** 24 — Habit 新增、编辑与目标设置
 
-**Status:** implementation-complete/acceptance-pending
+**Status:** in-progress
 
 **Triage:** ready-for-agent
 **ID:** PDEX-25
@@ -82,3 +82,7 @@ Native packaged acceptance is separately pending and remains with the integratio
 - `739d0df901e1a58d5d7acc54dcf636fc325858cf` — sync current `ca266b390cadf47a021ff3e743a2113a5abaff7b` native-receipt precision.
 
 Two real application red cases confirmed that the previous code wrote a stale attained marker across04:00 or after source evidence was replaced with unknown. Both now refuse without changing catalog/completion revisions or active state; rereading allows the same operation identity to save once with current evidence. Final Habit suites pass50/50 (catalog12, completion12, detail/lifecycle11, snapshot15); cargo check passes. Scope is lifecycle evidence/date/revision validation only; native packaged acceptance remains pending. The synchronized native checkpoint describes separate Save actions and does not establish a single-submit combined edit acceptance.
+
+### Confirmed P2 review repair — 2026-10-13
+
+[Three-finding repair record](../refinement-review-fixes-2026-10-13.md) records the bounded review return. Existing feature/acceptance evidence remains retained; the relevant fixed-copy, Calendar relation or Task draft recovery correction is now in progress. Native acceptance stays delegated/open.
