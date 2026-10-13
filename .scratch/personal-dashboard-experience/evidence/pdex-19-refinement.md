@@ -76,3 +76,59 @@ does not claim installed-build acceptance. No normal App/Vault/profile was chang
 - Worker merge `741c54f` retained latest integration `71471a3` (documentation/native acceptance lineage only).
 - After the source merge: `npm run build`, the 33 focused frontend tests and production WebKit checks at both widths pass again. The later merge changes evidence/ticket documents only.
 - No squash, amend or rebase was used. Branch commits remain available for the integration merger; no worker worktree cleanup was attempted by the implementer.
+
+## Native finding → production DOM diagnosis and repair — 2026-10-13
+
+The root's real packaged test found that Task Save after tag creation and cancel
+time arrangement left the Task file unchanged. This supersedes any inference
+that the earlier direct-controller DOM check proved the submit chain.
+The original worker branch was used for this repair; PDEX-20 dirty work remained
+in its separate worktree. Latest integration `b96b77d` was merged as `0170529`
+before diagnosis.
+
+The agent-runnable feedback loop is:
+
+```sh
+npm run build
+node scripts/acceptance/task-tag-save-dom.mjs
+```
+
+It uses compiled production HTML/JS/CSS in actual WebKit at 1280/680 widths,
+clicks the actual Save button, and observes the public IPC boundary. The IPC
+adapter in this DOM test is a synthetic boundary; it proves submission and
+confirmation behavior, while file persistence remains separately verified by
+the real application and the root's packaged write/readback.
+
+Reproducible pre-fix matrix:
+
+- Content/priority edit → Save: submit and `update_task` observed.
+- Same edit + cancel time/collapse → Save: no submit, no `update_task`.
+- Create tag + edit → Save: `manage_task_tag` and `update_task` observed.
+- Create tag + edit + cancel time/collapse → Save: only `manage_task_tag`.
+
+Minimization showed cancellation was load-bearing, matching the root's native
+comparison. The form was live and Save enabled, but `checkValidity()` became
+false and WebKit emitted invalid events for the programmatically emptied
+optional start-time/end-date/end-time controls in the collapsed panel. Native
+validation suppressed submit before the application could save or report an
+error. A targeted date/time→text→original-type reset made the matrix pass; the
+regression test was restored to the pristine production path before the fix.
+
+The fix reinitializes those native controls only at explicit schedule-clearing
+boundaries, including clear-end and Cancel restoration. It preserves normal
+form validation and the existing application validation (no `novalidate`
+bypass). Two additional native findings were fixed in the same bounded editor:
+tag definition controls now participate in busy-state release, and Cancel
+resets list/priority/tag compact captions along with their inputs.
+
+Final production regression now passes all five cases at both widths, including
+clear-end-only preserving the start and successful tag+cancel-time submission
+with the rebased revision. Tag controls reenable after writes and Cancel captions
+match restored fields. The earlier external-revision conflict/preservation DOM
+check still passes. Build and 33 focused frontend tests pass; the two real
+application tag persistence/patch/retry tests pass separately. No temporary
+production debug logging remains.
+
+The root must rerun the original packaged workflow against this repair before
+native acceptance is claimed. No normal installation or personal Vault was
+changed by this repair.
