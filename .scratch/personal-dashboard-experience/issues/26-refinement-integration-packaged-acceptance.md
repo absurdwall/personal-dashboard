@@ -4,13 +4,13 @@
 
 **Blocked by:** 20 — Task 父子关系与清单文件夹; 21 — Today 时间轴与安排交互; 22 — Calendar 新增、详情与节日; 23 — Collaboration 空间与输入体验; 25 — Habit 详情、历史统计与停用恢复
 
-**Status:** in-progress
+**Status:** implementation-complete/acceptance-pending
 
 **Triage:** ready-for-agent
 **ID:** PDEX-26
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** in progress
+**Implementation:** combined source verification complete; qualified broad failures retained; native/review acceptance pending
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -72,3 +72,21 @@ source/date context and refreshes changed sources. Actual four-size regression
 and62 Today/plan/Calendar checks pass; initial broad failures stay documented.
 Both source repairs require the root-owned rebuilt native candidate; this remains
 an implementation/verification increment, not whole-ticket native acceptance.
+
+
+## Source verification delivery — 2026-10-13
+
+Full retained commits: sourced completion repair `159741b`, presentation reading
+repair `b89a216`, cross-feature/four-size checks `ac8b291`. All worker branch tips
+PDEX-19–25 and latest integration `e7a947a` are ancestors. Build/full Rust564 pass
+with6 native gates ignored; final frontend510/538 pass with28 exact failures
+retained; focused production Today/plan/Calendar62 pass and all three Task
+four-size matrices pass. [Machine result](../evidence/pdex-26-source-verification-2026-10-13.json)
+and [failure comparison](../evidence/pdex-26-frontend-comparison-2026-10-13.md)
+qualify broader browser results and source identities. No broad unrelated fixture
+or product rewrite was made to force whole-suite green.
+
+All native, unchanged-area same-window comparisons, independent review and user
+acceptance criteria remain pending root's rebuilt source-bound candidate. No
+checkbox closure, normal installation, main merge, remote operation or parent
+specification closure is performed by this source-verification delivery.

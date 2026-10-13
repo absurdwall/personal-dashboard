@@ -1,0 +1,1018 @@
+{
+  "branch": "codex/pdex-26-refinement",
+  "productCommit": "b89a216",
+  "checksCommit": "ac8b291559f3bd6fb212611d9f04ec5d70ed3e82",
+  "integrationAncestor": "e7a947abb0bb4c3ad9f2904524ae2a652d6b762d",
+  "initialBase": "115a912b76c823b36aeef6ad03a3145a8eceac94",
+  "repairCommits": [
+    "159741b5e28bf7e025e2fc44f5ca01250ee1884f",
+    "b89a2162c92fb175199b1a56708c35cb6b9b73d7"
+  ],
+  "featureLineage": [
+    {
+      "branch": "codex/pdex-19-refinement",
+      "tip": "162067f1169bfc6bfcf2a537eacc850f8ced275a",
+      "reachable": true
+    },
+    {
+      "branch": "codex/pdex-20-refinement",
+      "tip": "51ba75ff3d0640cc7fa2036b6aaffa777caddcf8",
+      "reachable": true
+    },
+    {
+      "branch": "codex/pdex-21-refinement",
+      "tip": "ce5f70424aa9a48a8a57e057db1ecd576b3f9ca7",
+      "reachable": true
+    },
+    {
+      "branch": "codex/pdex-22-refinement",
+      "tip": "380d160a6cb6d80e5afd5294e318f53edb10636d",
+      "reachable": true
+    },
+    {
+      "branch": "codex/pdex-23-refinement",
+      "tip": "2aa96b4d3ea1ce6f7847a44a978ba8d53eee254b",
+      "reachable": true
+    },
+    {
+      "branch": "codex/pdex-24-refinement",
+      "tip": "d5632592765a189dc69f02b607b9a05b6b5e2131",
+      "reachable": true
+    },
+    {
+      "branch": "codex/pdex-25-refinement",
+      "tip": "f645827632044c9df1dab64cce8d4c0905eef417",
+      "reachable": true
+    }
+  ],
+  "build": "passed",
+  "fullRust": {
+    "passed": 564,
+    "failed": 0,
+    "ignored": 6,
+    "resultSuites": 28,
+    "sourceQualification": "Rust production/test files match current checksCommit; later product change only frontend reading-node preservation."
+  },
+  "fullFrontend": {
+    "counts": {
+      "tests": 538,
+      "pass": 510,
+      "fail": 28,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "failures": [
+      {
+        "name": "opening Tasks during a Collaboration turn keeps the source watch and request target",
+        "testLocation": "tests/frontend/collaboration-native-file-refresh.test.ts:111:1",
+        "exactBaselineName": true,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "ReferenceError: compactScheduleTransactions is not defined"
+      },
+      {
+        "name": "a delayed canonical read preserves the explicitly selected record phase",
+        "testLocation": "tests/frontend/collaboration-short-record.test.ts:59:1",
+        "exactBaselineName": true,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "ReferenceError: todaySideRegion is not defined"
+      },
+      {
+        "name": "Daytime keeps the shared time axis in the reading column and notes below tasks in the rail",
+        "testLocation": "tests/frontend/daytime-rail-layout.test.ts:21:1",
+        "exactBaselineName": true,
+        "category": "legacy source/layout assertion; actual production checks retained separately",
+        "signal": "AssertionError [ERR_ASSERTION]: Daily note and Day tasks must share the same right column"
+      },
+      {
+        "name": "Today manual intent, axis/sidebar reading position and expanded details survive resize",
+        "testLocation": "tests/frontend/docked-sidebars.test.ts:171:1",
+        "exactBaselineName": false,
+        "category": "changed-overview-pixel-assumption; independent reading-node regression repaired",
+        "signal": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+      },
+      {
+        "name": "Today quick schedule shows its current date and time within the existing row",
+        "testLocation": "tests/frontend/docked-sidebars.test.ts:228:1",
+        "exactBaselineName": true,
+        "category": "legacy source/layout assertion; actual production checks retained separately",
+        "signal": "AssertionError [ERR_ASSERTION]: {\"hidden\":false,\"text\":\"Today · 09:30\",\"labelFontSize\":10.88,\"labelClientWidth\":76,\"labelScrollWidth\":76,\"title\":\"Schedule date and time · Mon, Aug 10 · 09:30\",\"aria\":\"Schedule date and time · Mon, Aug 10 · 09:30\",\"width\":126,\"rects\":[{\"top\":1026.171875,\"height\":21,\"width\":14},{\"top\":1020.671875,\"height\":32,\"width\":126},{\"top\":1020.671875,\"height\":32,\"width\":38.265625}],\"overflow\":fals"
+      },
+      {
+        "name": "folded 06:00 and 06:50 point cards share reveal controls and retain source labels/anchors",
+        "testLocation": "tests/frontend/lived-day-rendering-regressions.test.ts:76:1",
+        "exactBaselineName": true,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "ReferenceError: todayContinuousAxis is not defined"
+      },
+      {
+        "name": "folded end and clipped short ranges expose collisions without relabeling their times",
+        "testLocation": "tests/frontend/lived-day-rendering-regressions.test.ts:92:1",
+        "exactBaselineName": true,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "ReferenceError: todayContinuousAxis is not defined"
+      },
+      {
+        "name": "expanding quiet hours recomputes stacks and exposes next-day entries",
+        "testLocation": "tests/frontend/lived-day-rendering-regressions.test.ts:106:1",
+        "exactBaselineName": true,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "ReferenceError: todayContinuousAxis is not defined"
+      },
+      {
+        "name": "compiled Today long labels and complete multilingual content keep readable widths in the shipped WebKit layout",
+        "testLocation": "tests/frontend/lived-day-rendering-regressions.test.ts:120:1",
+        "exactBaselineName": false,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "ReferenceError: todayContinuousAxis is not defined"
+      },
+      {
+        "name": "quiet-hour clicks keep the visible reading minute through independent expansion and collapse",
+        "testLocation": "tests/frontend/lived-day-rendering-regressions.test.ts:233:1",
+        "exactBaselineName": false,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "TypeError: document.addEventListener is not a function"
+      },
+      {
+        "name": "shipped WebKit timeline keeps endpoint placement, reading anchors, reveal and detail state",
+        "testLocation": "tests/frontend/lived-day-rendering-regressions.test.ts:250:1",
+        "exactBaselineName": true,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "Error: Command failed: /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/dashboard-rendering-tests-oZWNdP/timeline-webkit /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/dashboard-rendering-tests-oZWNdP/index.html /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/dashboard-rendering-tests-oZWNdP/timeline-geometry.js 1440"
+      },
+      {
+        "name": "closed edited Today draft retains its day, while untouched rows and other surfaces do not block rollover",
+        "testLocation": "tests/frontend/lived-day-rendering-regressions.test.ts:455:1",
+        "exactBaselineName": false,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "TypeError: document.querySelector is not a function"
+      },
+      {
+        "name": "explicit history remains selected and a stale clock from the previous Vault cannot pin the new Vault",
+        "testLocation": "tests/frontend/lived-day-rendering-regressions.test.ts:466:1",
+        "exactBaselineName": false,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "TypeError: document.querySelector is not a function"
+      },
+      {
+        "name": "focus/resume keeps an active Today editor across rollover and still refreshes when idle",
+        "testLocation": "tests/frontend/lived-day-rendering-regressions.test.ts:482:1",
+        "exactBaselineName": false,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "TypeError: document.querySelector is not a function"
+      },
+      {
+        "name": "pending Today and Task writes pin the old day even without an open editor",
+        "testLocation": "tests/frontend/lived-day-rendering-regressions.test.ts:501:1",
+        "exactBaselineName": false,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "TypeError: document.querySelector is not a function"
+      },
+      {
+        "name": "persisted English startup refreshes existing axis controls and derived times without replacing interaction state",
+        "testLocation": "tests/frontend/startup-interface-language.test.ts:10:1",
+        "exactBaselineName": true,
+        "category": "baseline startup fixture null element",
+        "signal": "Error: Command failed: swift /private/tmp/pdex26-refinement.noindex/tests/frontend/helpers/rendered-evening-entry.swift /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-startup-language-eIaUzE/index.html /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-startup-language-eIaUzE/check.js"
+      },
+      {
+        "name": "Tasks keeps the accepted prototype hierarchy and defers heavy controls",
+        "testLocation": "tests/frontend/task-surface.test.ts:31:1",
+        "exactBaselineName": true,
+        "category": "legacy source/layout assertion; actual production checks retained separately",
+        "signal": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /\\.task-row\\[data-task-surface=\"tasks\"\\] \\.task-row-summary\\s*\\{[^}]*grid-template-columns:\\s*15px minmax\\(0,1fr\\) auto;[^}]*gap:\\s*7px/. Input:"
+      },
+      {
+        "name": "Calendar shows task previews and an editable shared task panel",
+        "testLocation": "tests/frontend/task-surface.test.ts:235:1",
+        "exactBaselineName": false,
+        "category": "legacy source/layout assertion; actual production checks retained separately",
+        "signal": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /taskEditor\\(task, writable, shared, \"calendar\"\\)/. Input:"
+      },
+      {
+        "name": "time axis markup uses one full-width lane for arrangement and fact cards",
+        "testLocation": "tests/frontend/today-time-axis.test.ts:206:1",
+        "exactBaselineName": true,
+        "category": "legacy source/layout assertion; actual production checks retained separately",
+        "signal": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:"
+      },
+      {
+        "name": "plans, point Tasks and facts share a scale with separate clickable collision columns and full-width solitary cards",
+        "testLocation": "tests/frontend/unified-today-axis.test.ts:50:1",
+        "exactBaselineName": true,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "Error: Command failed: /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/webkit /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/index.html /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/check.js 1280 720"
+      },
+      {
+        "name": "the Daytime axis scrolls independently and quiet-hour expansion preserves its reading position",
+        "testLocation": "tests/frontend/unified-today-axis.test.ts:83:1",
+        "exactBaselineName": true,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "Error: Command failed: /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/webkit /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/index.html /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/check.js 830 758"
+      },
+      {
+        "name": "existing quiet-hour entries are initially visible and a deliberate fold advertises their count and next-day date",
+        "testLocation": "tests/frontend/unified-today-axis.test.ts:101:1",
+        "exactBaselineName": true,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "Error: Command failed: /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/webkit /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/index.html /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/check.js 830 758"
+      },
+      {
+        "name": "Morning reads original baseline wording as a text document with an explicit source",
+        "testLocation": "tests/frontend/unified-today-axis.test.ts:119:1",
+        "exactBaselineName": false,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "Error: Command failed: /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/webkit /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/index.html /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/check.js 830 758"
+      },
+      {
+        "name": "Locate now targets the inner timeline viewport while preserving the surrounding page",
+        "testLocation": "tests/frontend/unified-today-axis.test.ts:133:1",
+        "exactBaselineName": false,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "Error: Command failed: /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/webkit /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/index.html /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/check.js 830 758"
+      },
+      {
+        "name": "dense collisions remain readable by scrolling the timeline horizontally instead of shrinking targets",
+        "testLocation": "tests/frontend/unified-today-axis.test.ts:145:1",
+        "exactBaselineName": false,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "Error: Command failed: /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/webkit /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/index.html /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/check.js 680 758"
+      },
+      {
+        "name": "temporary collision columns reuse space after an interval ends instead of adding a fixed column",
+        "testLocation": "tests/frontend/unified-today-axis.test.ts:155:1",
+        "exactBaselineName": false,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "Error: Command failed: /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/webkit /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/index.html /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/check.js 830 758"
+      },
+      {
+        "name": "after-midnight cards keep their date, title and source readable within their own collision target",
+        "testLocation": "tests/frontend/unified-today-axis.test.ts:165:1",
+        "exactBaselineName": true,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "Error: Command failed: /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/webkit /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/index.html /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/check.js 830 758"
+      },
+      {
+        "name": "advancing the clock keeps plans, pending Tasks and confirmed facts distinct",
+        "testLocation": "tests/frontend/unified-today-axis.test.ts:179:1",
+        "exactBaselineName": false,
+        "category": "extracted-function fixture lacks production bindings or DOM methods",
+        "signal": "Error: Command failed: /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/webkit /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/index.html /var/folders/1l/xh7kf4ss1rqg3vxjr17q9_0w0000gn/T/pdex-shared-axis-x8grAN/check.js 830 758"
+      }
+    ],
+    "log": "/private/tmp/pdex26-frontend-final.log",
+    "logSha256": "140e6d412adc05c91f35f924a7d945a56452cb59597651ea920a8e99aa4c466f"
+  },
+  "baselineReceipt": "refinement-baseline-tests-2026-10-13.json",
+  "baselineFailedNamesNowPassing": [
+    "long help opens on demand while draft, dictation preview and real status surfaces remain exposed",
+    "selected slash candidate retains readable foreground on its soft background",
+    "empty Collaboration keeps its composer visible with shared headings at 795×720",
+    "selected long Collaboration keeps a readable scrolling history and reachable composer at 795×720",
+    "empty Collaboration keeps its composer visible with shared headings at 874×756",
+    "selected long Collaboration keeps a readable scrolling history and reachable composer at 874×756",
+    "empty Collaboration keeps its composer visible with shared headings at 1280×720",
+    "selected long Collaboration keeps a readable scrolling history and reachable composer at 1280×720",
+    "empty Collaboration keeps its composer visible with shared headings at 1280×756",
+    "selected long Collaboration keeps a readable scrolling history and reachable composer at 1280×756",
+    "long retained notices keep the conversation and composer usable across Collaboration sizes",
+    "expanded input and saving details do not clip the retained composer controls at 795×720",
+    "single-column Collaboration keeps the composer visible when five-session history is expanded at 640×756",
+    "clicking an editable Today marker opens the time editor without scrolling to the detail form",
+    "production fuzzy editor retains approximation and renders the saved readback",
+    "production precision choices explicitly convert approximate, exact range and exact point without fabricated durations",
+    "production inherited-heading editor uses the captured source and revision while confirmed facts stay unchanged",
+    "production uncertain-save editor retains values, disables repeated submission and offers reread",
+    "production exact-point conversion sends no former range end and survives a fresh page",
+    "production failed manual save rereads unchanged source and requires explicit retry with retained values and fresh revision",
+    "production failed manual save cannot rebind changed source by matching title or position",
+    "production unchanged untimed plan reread enables explicit timing retry after a failed save",
+    "production point editors hide unused End geometry and retain controls through language refresh",
+    "production saved readback diagnostic follows English-Chinese-English without replay or losing edit values"
+  ],
+  "exploratoryBrowser": {
+    "counts": {
+      "tests": 55,
+      "pass": 44,
+      "fail": 11,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "failures": [
+      {
+        "name": "sidebar keyboard activation and focus at 640px use the production UI without writes",
+        "testLocation": "tests/browser/docked-sidebars.mjs:18:3",
+        "exactBaselineName": false,
+        "category": "calendar-summary-toggle absent already in918e7e0; retained obsolete selector",
+        "signal": "locator.focus: Timeout 30000ms exceeded."
+      },
+      {
+        "name": "sidebar keyboard activation and focus at 1000px use the production UI without writes",
+        "testLocation": "tests/browser/docked-sidebars.mjs:18:3",
+        "exactBaselineName": false,
+        "category": "calendar-summary-toggle absent already in918e7e0; retained obsolete selector",
+        "signal": "locator.focus: Timeout 30000ms exceeded."
+      },
+      {
+        "name": "sidebar keyboard activation and focus at 1280px use the production UI without writes",
+        "testLocation": "tests/browser/docked-sidebars.mjs:18:3",
+        "exactBaselineName": false,
+        "category": "calendar-summary-toggle absent already in918e7e0; retained obsolete selector",
+        "signal": "locator.focus: Timeout 30000ms exceeded."
+      },
+      {
+        "name": "Tasks compact rows select one full detail while completion stays independent",
+        "testLocation": "tests/browser/task-list-details.mjs:73:1",
+        "exactBaselineName": false,
+        "category": "pre-refinement visible-property/menu/lower-detail selector or obsolete20px checkbox expectation",
+        "signal": "AssertionError [ERR_ASSERTION]: completion has a clear target"
+      },
+      {
+        "name": "selected detail edits one Task and preserves unmodified endpoints and identity",
+        "testLocation": "tests/browser/task-list-details.mjs:96:1",
+        "exactBaselineName": false,
+        "category": "pre-refinement visible-property/menu/lower-detail selector or obsolete20px checkbox expectation",
+        "signal": "locator.selectOption: Timeout 30000ms exceeded."
+      },
+      {
+        "name": "selected detail retains abandon, restore, delete and historical pagination",
+        "testLocation": "tests/browser/task-list-details.mjs:167:1",
+        "exactBaselineName": false,
+        "category": "pre-refinement visible-property/menu/lower-detail selector or obsolete20px checkbox expectation",
+        "signal": "locator.click: Timeout 30000ms exceeded."
+      },
+      {
+        "name": "Today Task deep link opens selected identity even after a different Task list scope",
+        "testLocation": "tests/browser/task-list-details.mjs:194:1",
+        "exactBaselineName": false,
+        "category": "pre-refinement visible-property/menu/lower-detail selector or obsolete20px checkbox expectation",
+        "signal": "locator.click: Timeout 30000ms exceeded."
+      },
+      {
+        "name": "selected detail freezes all edit controls until the submitted save finishes",
+        "testLocation": "tests/browser/task-list-details.mjs:208:1",
+        "exactBaselineName": false,
+        "category": "pre-refinement visible-property/menu/lower-detail selector or obsolete20px checkbox expectation",
+        "signal": "locator.isDisabled: Timeout 30000ms exceeded."
+      },
+      {
+        "name": "production Task pointer moves preserve point/range semantics and explicit completion state",
+        "testLocation": "tests/browser/today-axis-task-gestures.mjs:108:1",
+        "exactBaselineName": false,
+        "category": "transient detached DOM handle during refresh; original suite failure retained; new production Task range/pointer regression passes",
+        "signal": "locator.scrollIntoViewIfNeeded: Element is not attached to the DOM"
+      },
+      {
+        "name": "an ordinary Task card click still opens its existing details",
+        "testLocation": "tests/browser/today-axis-task-gestures.mjs:163:1",
+        "exactBaselineName": false,
+        "category": "old lower-details expectation; nearby production dialog regression passes",
+        "signal": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+      },
+      {
+        "name": "held pointer scrolls the inner axis and Escape removes its preview without a write",
+        "testLocation": "tests/browser/today-axis-task-gestures.mjs:190:1",
+        "exactBaselineName": false,
+        "category": "old scrollable default-scale expectation; actual Fine edge-scroll regression passes",
+        "signal": "page.waitForFunction: Timeout 3000ms exceeded."
+      }
+    ],
+    "log": "/private/tmp/pdex26-browser-full.log",
+    "logSha256": "b5b3352e07071a09943fa5c267804f88a25b34f0cee07747c0d3832f2b9bf46b",
+    "sourceQualification": "Exploratory run started on159741b with test-only edits; final build during its later cases incorporatedb89a216. This full browser sweep is not an immutable packaged-source pass. Scoped current-source production checks are recorded separately."
+  },
+  "focusedProductionAfterReadingRepair": {
+    "passed": 62,
+    "failed": 0,
+    "suites": [
+      "today-refinement",
+      "plan-time-editor",
+      "compact-calendar"
+    ],
+    "scenarios": "Actual Chrome pointer and full production macOS WebKit DOM; synthetic IPC boundary, actual persistence independently proven by application tests."
+  },
+  "taskMatrices": {
+    "organization": [
+      {
+        "commands": [
+          "manage_task_folder",
+          "manage_task_folder",
+          "move_task_list_to_folder",
+          "manage_task_folder",
+          "update_task"
+        ],
+        "height": 800,
+        "ok": true,
+        "width": 1280
+      },
+      {
+        "commands": [
+          "manage_task_folder",
+          "manage_task_folder",
+          "move_task_list_to_folder",
+          "manage_task_folder",
+          "update_task"
+        ],
+        "height": 720,
+        "ok": true,
+        "width": 1280
+      },
+      {
+        "commands": [
+          "manage_task_folder",
+          "manage_task_folder",
+          "move_task_list_to_folder",
+          "manage_task_folder",
+          "update_task"
+        ],
+        "height": 758,
+        "ok": true,
+        "width": 830
+      },
+      {
+        "commands": [
+          "manage_task_folder",
+          "manage_task_folder",
+          "move_task_list_to_folder",
+          "manage_task_folder",
+          "update_task"
+        ],
+        "height": 560,
+        "ok": true,
+        "width": 680
+      }
+    ],
+    "tag-save": [
+      {
+        "height": 800,
+        "ok": true,
+        "outcomes": [
+          {
+            "cancelTime": false,
+            "commands": [
+              "update_task"
+            ],
+            "createTag": false,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": true,
+            "commands": [
+              "update_task"
+            ],
+            "createTag": false,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": false,
+            "commands": [
+              "update_task"
+            ],
+            "createTag": false,
+            "endOnly": true,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": false,
+            "commands": [
+              "manage_task_tag",
+              "update_task"
+            ],
+            "createTag": true,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": true,
+            "commands": [
+              "manage_task_tag",
+              "update_task"
+            ],
+            "createTag": true,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          }
+        ],
+        "width": 1280
+      },
+      {
+        "height": 720,
+        "ok": true,
+        "outcomes": [
+          {
+            "cancelTime": false,
+            "commands": [
+              "update_task"
+            ],
+            "createTag": false,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": true,
+            "commands": [
+              "update_task"
+            ],
+            "createTag": false,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": false,
+            "commands": [
+              "update_task"
+            ],
+            "createTag": false,
+            "endOnly": true,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": false,
+            "commands": [
+              "manage_task_tag",
+              "update_task"
+            ],
+            "createTag": true,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": true,
+            "commands": [
+              "manage_task_tag",
+              "update_task"
+            ],
+            "createTag": true,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          }
+        ],
+        "width": 1280
+      },
+      {
+        "height": 758,
+        "ok": true,
+        "outcomes": [
+          {
+            "cancelTime": false,
+            "commands": [
+              "update_task"
+            ],
+            "createTag": false,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": true,
+            "commands": [
+              "update_task"
+            ],
+            "createTag": false,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": false,
+            "commands": [
+              "update_task"
+            ],
+            "createTag": false,
+            "endOnly": true,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": false,
+            "commands": [
+              "manage_task_tag",
+              "update_task"
+            ],
+            "createTag": true,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": true,
+            "commands": [
+              "manage_task_tag",
+              "update_task"
+            ],
+            "createTag": true,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          }
+        ],
+        "width": 830
+      },
+      {
+        "height": 560,
+        "ok": true,
+        "outcomes": [
+          {
+            "cancelTime": false,
+            "commands": [
+              "update_task"
+            ],
+            "createTag": false,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": true,
+            "commands": [
+              "update_task"
+            ],
+            "createTag": false,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": false,
+            "commands": [
+              "update_task"
+            ],
+            "createTag": false,
+            "endOnly": true,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": false,
+            "commands": [
+              "manage_task_tag",
+              "update_task"
+            ],
+            "createTag": true,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          },
+          {
+            "cancelTime": true,
+            "commands": [
+              "manage_task_tag",
+              "update_task"
+            ],
+            "createTag": true,
+            "endOnly": false,
+            "events": [
+              "click",
+              "submit"
+            ],
+            "invalid": [],
+            "invalidEvents": [],
+            "liveAfter": true,
+            "liveBefore": true,
+            "operationCount": 1,
+            "ownerBefore": true,
+            "saveDisabled": true,
+            "state": "ready",
+            "status": "已读取任务正本。",
+            "tagControlsDisabled": 0,
+            "validBefore": true
+          }
+        ],
+        "width": 680
+      }
+    ],
+    "task-detail": [
+      {
+        "height": 800,
+        "ok": true,
+        "width": 1280
+      },
+      {
+        "height": 720,
+        "ok": true,
+        "width": 1280
+      },
+      {
+        "height": 758,
+        "ok": true,
+        "width": 830
+      },
+      {
+        "height": 560,
+        "ok": true,
+        "width": 680
+      }
+    ]
+  },
+  "retainedLogs": [
+    {
+      "path": "/private/tmp/pdex26-rust-full.log",
+      "sha256": "d50c97c1952f9d99c31825488d73b0bb6f222da09c063200077be9b5cf7857a6"
+    },
+    {
+      "path": "/private/tmp/pdex26-rust-full-repaired.log",
+      "sha256": "25eed4507a61751d037e1931d1282d7ea3e9081489f6777d53c039ed58551e54"
+    },
+    {
+      "path": "/private/tmp/pdex26-habit-gap-red.log",
+      "sha256": "1227d9f51fae7689d31de870b99d6719f34fa224973c81b57d19eb7b3daadc9f"
+    },
+    {
+      "path": "/private/tmp/pdex26-habit-gap-green.log",
+      "sha256": "589551976dad723d96e69080ae01c97a4a4d9dac125d374ba0771536f325e059"
+    },
+    {
+      "path": "/private/tmp/pdex26-untimed-reading-red.log",
+      "sha256": "f21a479077e258fd3a324d4db263745359f72d07221410325ac80fcee9f5ec8c"
+    },
+    {
+      "path": "/private/tmp/pdex26-untimed-reading-green.log",
+      "sha256": "d90211aa4944648fa4ab043d1748556b3c7b0e01ed6ebb98e4db6c419e69f136"
+    },
+    {
+      "path": "/private/tmp/pdex26-followup-source-dom.log",
+      "sha256": "41bb64d59d532477507862d4e1aed07d22ba5ad34a33608059ae01a8a12aecd3"
+    },
+    {
+      "path": "/private/tmp/pdex26-focused-production-dom.log",
+      "sha256": "038aa5798f770e1f4bbc7c75e3b536a04f5a43bdafd735ddbda543525fb31b2b"
+    }
+  ],
+  "nativeAcceptance": "pending root-owned rebuilt source-bound package; current proofs do not establish IPC/restart/IME/microphone/service acceptance",
+  "normalInstall": "not performed",
+  "mainOrRemoteOperation": "not performed",
+  "taskMatrixSourceQualification": "All three four-size matrices rerun after the final stableb89a216 build; dist/main.js SHA256 below.",
+  "builtFrontend": {
+    "main.js": "71f4b8b89f9d1418b0e275e82012bc0675d2a2c7a8dc8f7ad179fbb6a357feea",
+    "styles.css": "6520b1750b044c6d320fa893b7540c09eeb096d5f6f3b143a2abb61acf6e12cf",
+    "index.html": "d146692dbd4444fd4084660af81456cab58f19cd8834defe6fdc17d099a676f3"
+  },
+  "detachedHandleIsolatedRerun": {
+    "command": "node --test --test-name-pattern=production Task pointer moves preserve point/range semantics and explicit completion state tests/browser/today-axis-task-gestures.mjs",
+    "passed": 0,
+    "failed": 1,
+    "signal": "Locator scrollIntoViewIfNeeded held a detached marker during post-save fit redraw; initial full-suite failure remains. Separate current production Task range/pointer checks pass; native combined move acceptance remains pending.",
+    "log": "/private/tmp/pdex26-browser-transient-rerun.log",
+    "sha256": "5c9f90d94c743f11d94e00fd54c42420064f5c167b197c2afbe8c606c69cce54"
+  }
+}
