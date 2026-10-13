@@ -40,3 +40,8 @@ Regression verification: 7 catalog + 12 canonical completion + 15 source snapsho
 
 Red: the public Habit settings controller did not exist.
 Green: new draft defaults to the supplied lived date and daily completion; stable creation key and operation identity survive failure/reread. Existing edits load the stored pending target, preserve the sourced identity and start date, and changed payloads receive a new operation identity. Reread of another Vault rejects retargeting. Two controller tests passed; they complement the real application persistence checks.
+
+## Slice 10 — read consistency at a real day boundary
+
+Red: a boundary clock that advances from Monday03:59 (Sunday lived date) to Monday04:00 during one Habit read caused an overlay panic.
+Green: the application captures one local date/lived day per read and passes it into source projection and local overlays. One read stays on Sunday, and a subsequent read advances to Monday. This is a source/application seam test with time as the system boundary.

@@ -3253,7 +3253,10 @@ where
 
     pub fn habits(&self) -> Result<HabitSnapshotView, String> {
         use crate::habit_catalog::{catalog_binding, overlay_catalog, HabitCatalogDocument, HABIT_CATALOG_RELATIVE_PATH};
-        let mut view = self.sourced_habits()?;
+        let local_time = self.clock.current_local_time();
+        let today = local_time.lived_date();
+        let current_timestamp = self.clock.current_timestamp_label();
+        let mut view = self.sourced_habits_at(&today, &local_time.date, &current_timestamp)?;
         let Some(vault) = self.persistence.load_selected_vault()? else { return Ok(view); };
         if validate_compatible_vault(&vault).is_err() { return Ok(view); }
         let path = vault.join(HABIT_CATALOG_RELATIVE_PATH);
@@ -3269,23 +3272,23 @@ where
             Ok(bytes) => bytes,
             Err(error) => {
                 view.message = format!("{} · {error}", view.message);
-                overlay_catalog(&mut view, &catalog, &self.clock.current_lived_date(), &[]);
+                overlay_catalog(&mut view, &catalog, &today, &[]);
                 view.completion_target_binding = None;
                 return Ok(view);
             }
         };
-        let completions: Vec<_> = match completion_bytes.as_deref().map(|bytes| parse_habit_completion_document(bytes, &self.clock.current_timestamp_label())).transpose() {
+        let completions: Vec<_> = match completion_bytes.as_deref().map(|bytes| parse_habit_completion_document(bytes, &current_timestamp)).transpose() {
             Ok(document) => document.map(|document| document.completions.into_iter().map(local_habit_completion).collect()).unwrap_or_default(),
             Err(error) => {
                 view.message = format!("{} · {error}", view.message);
-                overlay_catalog(&mut view, &catalog, &self.clock.current_lived_date(), &[]);
+                overlay_catalog(&mut view, &catalog, &today, &[]);
                 view.completion_target_binding = None;
                 return Ok(view);
             }
         };
         view.completion_target_binding = Some(habit_completion_target_binding(&completion_path));
         view.completion_revision = completion_bytes.as_deref().map(document_revision);
-        overlay_catalog(&mut view, &catalog, &self.clock.current_lived_date(), &completions);
+        overlay_catalog(&mut view, &catalog, &today, &completions);
         if !catalog.habits.is_empty() && view.state == HabitSnapshotState::Missing {
             view.state = HabitSnapshotState::Ready;
             view.message = "已读取本地 Habit；尚无来源快照，外部历史覆盖未知。".into();
@@ -3293,7 +3296,7 @@ where
         Ok(view)
     }
 
-    fn sourced_habits(&self) -> Result<HabitSnapshotView, String> {
+    fn sourced_habits_at(&self, today: &str, local_date: &str, current_timestamp: &str) -> Result<HabitSnapshotView, String> {
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(HabitSnapshotView::unconfigured());
         };
@@ -3316,9 +3319,7 @@ where
                 return Ok(HabitSnapshotView::error(error));
             }
         };
-        let today = self.clock.current_lived_date();
-        let current_timestamp = self.clock.current_timestamp_label();
-        let dates = match snapshot_dates_at_local_date(&document, &today, &self.clock.current_date()) {
+        let dates = match snapshot_dates_at_local_date(&document, &today, local_date) {
             Ok(dates) => dates,
             Err(error) => return Ok(self.retained_or_error(&path, error)?),
         };
@@ -3371,7 +3372,7 @@ where
         match project_snapshot_with_names_at_local_date(
             &document,
             &today,
-            &self.clock.current_date(),
+            local_date,
             local_records,
             local_completions,
             &names_configuration,
