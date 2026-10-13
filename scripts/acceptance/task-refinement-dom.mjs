@@ -3,6 +3,7 @@ import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {spawnSync,spawn} from 'node:child_process';
 const root=resolve(new URL('../..',import.meta.url).pathname);
+const viewports=process.env.TASK_DOM_VIEWPORTS?JSON.parse(process.env.TASK_DOM_VIEWPORTS):[[1280,560],[680,560]];
 const fixture=mkdtempSync(join(tmpdir(),'pdex19-dom.noindex-'));
 cpSync(join(root,'dist'),fixture,{recursive:true});
 const check=String.raw`
@@ -48,7 +49,7 @@ try {
  const result=await updateTask('dom-task',currentForm,'tasks');
  assert(submittedRevision==='r1','Retained draft must not silently overwrite an external revision');
  assert(result===false&&currentForm.querySelector('[data-task-content]').value==='Draft before external edit','Conflict preserves draft and does not report success');
- window.webkit.messageHandlers.result.postMessage({ok:true,width:innerWidth});
+ window.webkit.messageHandlers.result.postMessage({ok:true,width:innerWidth,height:innerHeight});
 } catch(error) { window.webkit.messageHandlers.result.postMessage({ok:false,error:String(error)}); }
 `;
 writeFileSync(join(fixture,'main.js'),readFileSync(join(fixture,'main.js'),'utf8').replace('void connectToApplication();','')+'\n'+check);
@@ -63,7 +64,8 @@ class Runner:NSObject,WKScriptMessageHandler,WKNavigationDelegate {
   let config=WKWebViewConfiguration();config.userContentController.add(self,name:"result")
   config.userContentController.addUserScript(WKUserScript(source:"window.addEventListener('error',e=>window.webkit.messageHandlers.result.postMessage({ok:false,error:e.message+' '+e.filename+':'+e.lineno}));window.addEventListener('unhandledrejection',e=>window.webkit.messageHandlers.result.postMessage({ok:false,error:String(e.reason)}));",injectionTime:.atDocumentStart,forMainFrameOnly:true))
   let width=CGFloat(Int(CommandLine.arguments[2])!)
-  window=NSWindow(contentRect:NSRect(x:0,y:0,width:width,height:560),styleMask:[.titled],backing:.buffered,defer:false)
+  let height=CGFloat(Int(CommandLine.arguments[4])!)
+  window=NSWindow(contentRect:NSRect(x:0,y:0,width:width,height:height),styleMask:[.titled],backing:.buffered,defer:false)
   let web=WKWebView(frame:window.contentView!.bounds,configuration:config);web.navigationDelegate=self;window.contentView=web
   web.load(URLRequest(url:URL(string:"http://127.0.0.1:"+CommandLine.arguments[3]+"/index.html")!))
   DispatchQueue.main.asyncAfter(deadline:.now()+20){print("WebKit DOM timeout");exit(2)}
@@ -81,8 +83,8 @@ for(let attempts=0;!existsSync(portFile)&&attempts<100;attempts++)await new Prom
 if(!existsSync(portFile)){server.kill();rmSync(fixture,{recursive:true,force:true});throw new Error('Local DOM fixture server failed');}
 const port=readFileSync(portFile,'utf8');
 try {
- for(const width of [1280,680]) {
-  const r=spawnSync('swift',[join(fixture,'dom.swift'),fixture,String(width),port],{encoding:'utf8',timeout:45000});
+ for(const [width,height] of viewports) {
+  const r=spawnSync('swift',[join(fixture,'dom.swift'),fixture,String(width),port,String(height)],{encoding:'utf8',timeout:45000});
   process.stdout.write(r.stdout??'');process.stderr.write(r.stderr??'');if(r.status!==0)process.exitCode=1;
  }
 } finally {server.kill();rmSync(fixture,{recursive:true,force:true});}

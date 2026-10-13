@@ -292,7 +292,7 @@ test('holiday annotations give Tasks priority, keep equal month cells and expose
 
 test('Calendar detail Save keeps stable identity, schedule interval and existing metadata',{skip:process.platform!=='darwin'},()=>{
   const result=webKit(`
-    const view=structuredClone(sourceFixture.selected);view.date='2026-09-12';view.tasks.tags=[{id:'tag-1',name:'Keep tag'}];view.tasks.tasks[0].priority='high';view.tasks.tasks[0].tagIds=['tag-1'];
+    const view=structuredClone(sourceFixture.selected);view.date='2026-09-12';view.tasks.tags=[{id:'tag-1',name:'Keep tag'}];view.tasks.tasks[0].priority='high';view.tasks.tasks[0].tagIds=['tag-1'];view.tasks.tasks[0].parentId='preview-1';view.tasks.tasks[0].listId='work';view.tasks.folders=[{id:'projects',name:'Projects'}];view.tasks.lists.push({id:'work',name:'Work',archived:false,isSystem:false,folderId:'projects'});
     selectedView=structuredClone(view);calendarHarness.render(structuredClone(sourceFixture.month),structuredClone(view));
     window.__TAURI__.core.invoke=async(command,args)=>{commands.push({command,args});if(command==='update_task') {
       const input=args.input;selectedView.tasks={...selectedView.tasks,revision:'edited-revision',tasks:selectedView.tasks.tasks.map(t=>t.id===input.taskId?{...t,...input}:t)};return structuredClone(selectedView.tasks);
@@ -305,7 +305,7 @@ test('Calendar detail Save keeps stable identity, schedule interval and existing
   assert.equal(result.request.taskId,'preview-0');assert.equal(result.request.content,'Calendar changed content');
   assert.equal(result.request.date,'2026-09-09');assert.equal(result.request.time,'23:30');
   assert.deepEqual(result.request.executionEnd,{date:'2026-09-10',time:'00:45'});
-  assert.equal(result.request.priority,'high');assert.deepEqual(result.request.tagIds,['tag-1']);
+  assert.equal(result.request.priority,'high');assert.deepEqual(result.request.tagIds,['tag-1']);assert.equal(result.request.parentId,'preview-1');assert.equal(result.request.listId,'work');
 });
 
 test('Calendar detail write failure leaves an editable draft and visible result without changing the selected day',{skip:process.platform!=='darwin'},()=>{
@@ -332,7 +332,7 @@ test('a Calendar tag change refreshes the shared property controls without dropp
   assert.deepEqual(result.update.tagIds,[result.tag.tagId]);assert.equal(result.update.content,'Draft before tag');
 });
 
-for(const [width,height] of [[1280,720],[830,758],[680,560]]) {
+for(const [width,height] of [[1280,800],[1280,720],[830,758],[680,560]]) {
   test(`Calendar editable and creation overlays remain reachable at ${width}×${height}`,{skip:process.platform!=='darwin'},()=>{
     const result=webKit(`
       const view=structuredClone(sourceFixture.selected);view.date='2026-09-12';selectedView=structuredClone(view);calendarHarness.render(sourceFixture.month,view);

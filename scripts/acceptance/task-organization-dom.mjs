@@ -3,6 +3,7 @@ import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {spawnSync,spawn} from 'node:child_process';
 const root=resolve(new URL('../..',import.meta.url).pathname);
+const viewports=process.env.TASK_DOM_VIEWPORTS?JSON.parse(process.env.TASK_DOM_VIEWPORTS):[[1280,560],[680,560]];
 const fixture=mkdtempSync(join(tmpdir(),'pdex20-dom.noindex-'));
 cpSync(join(root,'dist'),fixture,{recursive:true});
 const check=String.raw`
@@ -78,7 +79,7 @@ try {
  assert(parentUpdate.input.date==='2026-10-14'&&parentUpdate.input.listId==='home'&&parentUpdate.input.priority==='none','Relationship Save retains independent Task properties');
  const currentChild=document.querySelector('form[data-task-editor="child"]');assert(currentChild.querySelector('[data-task-parent]').value==='', 'Relationship readback reopens without parent');
  assert(Array.from(currentChild.querySelectorAll('[data-task-more] button')).filter(button=>['添加子任务','关联父任务'].includes(button.textContent)).every(button=>!button.disabled),'Parent menu actions release after own Save');
- window.webkit.messageHandlers.result.postMessage({ok:true,width:innerWidth,commands:requests.map(request=>request.command)});
+ window.webkit.messageHandlers.result.postMessage({ok:true,width:innerWidth,height:innerHeight,commands:requests.map(request=>request.command)});
 } catch(error) {window.webkit.messageHandlers.result.postMessage({ok:false,error:String(error)});}
 `;
 writeFileSync(join(fixture,'main.js'),readFileSync(join(fixture,'main.js'),'utf8').replace('void connectToApplication();','')+'\n'+check);
@@ -93,7 +94,8 @@ class Runner:NSObject,WKScriptMessageHandler,WKNavigationDelegate {
   let config=WKWebViewConfiguration();config.userContentController.add(self,name:"result")
   config.userContentController.addUserScript(WKUserScript(source:"window.addEventListener('error',e=>window.webkit.messageHandlers.result.postMessage({ok:false,error:e.message+' '+e.filename+':'+e.lineno}));window.addEventListener('unhandledrejection',e=>window.webkit.messageHandlers.result.postMessage({ok:false,error:String(e.reason)}));",injectionTime:.atDocumentStart,forMainFrameOnly:true))
   let width=CGFloat(Int(CommandLine.arguments[2])!)
-  window=NSWindow(contentRect:NSRect(x:0,y:0,width:width,height:560),styleMask:[.titled],backing:.buffered,defer:false)
+  let height=CGFloat(Int(CommandLine.arguments[4])!)
+  window=NSWindow(contentRect:NSRect(x:0,y:0,width:width,height:height),styleMask:[.titled],backing:.buffered,defer:false)
   let web=WKWebView(frame:window.contentView!.bounds,configuration:config);web.navigationDelegate=self;window.contentView=web
   web.load(URLRequest(url:URL(string:"http://127.0.0.1:"+CommandLine.arguments[3]+"/index.html")!))
   DispatchQueue.main.asyncAfter(deadline:.now()+20){print("WebKit DOM timeout");exit(2)}
@@ -111,8 +113,8 @@ for(let attempts=0;!existsSync(portFile)&&attempts<100;attempts++)await new Prom
 if(!existsSync(portFile)){server.kill();rmSync(fixture,{recursive:true,force:true});throw new Error('Local DOM fixture server failed');}
 const port=readFileSync(portFile,'utf8');
 try {
- for(const width of [1280,680]) {
-  const r=spawnSync('swift',[join(fixture,'dom.swift'),fixture,String(width),port],{encoding:'utf8',timeout:45000});
+ for(const [width,height] of viewports) {
+  const r=spawnSync('swift',[join(fixture,'dom.swift'),fixture,String(width),port,String(height)],{encoding:'utf8',timeout:45000});
   process.stdout.write(r.stdout??'');process.stderr.write(r.stderr??'');if(r.status!==0)process.exitCode=1;
  }
 } finally {server.kill();rmSync(fixture,{recursive:true,force:true});}

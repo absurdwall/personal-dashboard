@@ -1043,3 +1043,44 @@ fn cancelling_time_arrangement_keeps_same_dated_task_in_today_and_calendar() {
     let calendar=today_app(vault.path()).calendar_month(2026,9).unwrap();
     assert_eq!(calendar.day("2026-09-17").unwrap().task_summaries[0].id,"cancel-timed");
 }
+
+#[test]
+fn refined_task_relations_groups_properties_and_date_views_survive_combined_writes() {
+    let vault = TempVault::new("refinement-combination");
+    let app = task_app(vault.path());
+    let mut view = app.read().unwrap();
+    view = app.manage_folder(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"folderId":"projects","changeId":"group-create","action":"create","name":"Projects"})).unwrap()).unwrap();
+    view = app.create_list(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"listId":"work","name":"Work","folderId":"projects"})).unwrap()).unwrap();
+    view = app.manage_tag(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"tagId":"review","changeId":"tag-create","action":"create","name":"Review"})).unwrap()).unwrap();
+    view = app.create(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"taskId":"parent","name":"Other-date parent","date":"2026-09-18"})).unwrap()).unwrap();
+    view = app.create(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"taskId":"child","name":"Independent child","date":"2026-09-17","time":"18:00","executionEnd":{"date":"2026-09-17","time":"18:45"},"parentId":"parent","listId":"work","priority":"high","tagIds":["review"]})).unwrap()).unwrap();
+    let before = today_app(vault.path()).read_date("2026-09-17").unwrap();
+    let calendar = today_app(vault.path()).calendar_month(2026, 9).unwrap();
+    assert_eq!(calendar.day("2026-09-17").unwrap().task_summaries[0].id,"child");
+    assert_eq!(calendar.day("2026-09-18").unwrap().task_summaries[0].id,"parent");
+    assert_eq!(before.tasks.lists.iter().find(|list|list.id=="work").unwrap().folder_id.as_deref(),Some("projects"));
+    let cancellation = serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"taskId":"child","changeId":"cancel-child-time","name":"Independent child","date":"2026-09-17","time":null,"executionEnd":null});
+    view = app.update(serde_json::from_value(cancellation.clone()).unwrap()).unwrap();
+    view = app.delete(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"taskId":"parent","changeId":"delete-parent"})).unwrap()).unwrap();
+    let child = view.tasks.iter().find(|task|task.id=="child").unwrap().clone();
+    assert_eq!(child.parent_id.as_deref(),Some("parent"));
+    assert_eq!(child.list_id,"work");
+    assert_eq!(child.tag_ids,vec!["review"]);
+    assert_eq!(serde_json::to_value(&child).unwrap()["priority"],"high");
+    assert_eq!(child.time,None);assert_eq!(child.execution_end,None);assert_eq!(child.state,TaskState::Pending);
+    view = app.manage_folder(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"folderId":"projects","changeId":"group-delete","action":"delete"})).unwrap()).unwrap();
+    assert_eq!(view.tasks.iter().find(|task|task.id=="child").unwrap(),&child);
+    view = app.restore(serde_json::from_value(serde_json::json!({"targetBinding":view.target_binding,"expectedRevision":view.revision,"taskId":"parent","changeId":"restore-parent"})).unwrap()).unwrap();
+    // An uncertain original cancellation retry after unrelated writes never reapplies it.
+    assert_eq!(app.update(serde_json::from_value(cancellation).unwrap()).unwrap().revision,view.revision);
+    let reopened = task_app(vault.path()).read().unwrap();
+    assert_eq!(reopened,view);assert!(reopened.folders.is_empty());
+    assert_eq!(reopened.lists.iter().find(|list|list.id=="work").unwrap().folder_id,None);
+    let today = today_app(vault.path()).read_date("2026-09-17").unwrap();
+    assert_eq!(task_in_today(&today,"child"),&child);
+    assert_eq!(today.baseline,before.baseline);assert_eq!(today.time_axis,before.time_axis);
+    assert_eq!(today.daily_record_availability,before.daily_record_availability);
+    let calendar = today_app(vault.path()).calendar_month(2026,9).unwrap();
+    assert_eq!(calendar.day("2026-09-17").unwrap().task_summaries[0].id,"child");
+    assert_eq!(calendar.day("2026-09-18").unwrap().task_summaries[0].id,"parent");
+}
