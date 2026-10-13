@@ -74,3 +74,11 @@ Implementation commits (full history retained):
 Verification: build and cargo check pass;9 real detail/lifecycle application cases plus39 prior Habit catalog/completion/snapshot cases pass48/48;33 focused frontend language/presentation/historical cases pass;5 actual DOM create/edit/detail cases pass at1200/560, including failed-save same-operation retry and delayed old-Vault rejection. A broad frontend sweep completed473/500 with27 inherited Today/Collaboration/Task probe failures, so it is not a clean full-suite result. Evidence: [PDEX-25 refinement](../evidence/pdex-25-refinement.md).
 
 Native packaged acceptance is separately pending and remains with the integration task. This handoff does not close the ticket, merge main, install the normal App, push remote history or claim end-to-end native acceptance.
+
+## Bounded lifecycle guard repair — 2026-10-13
+
+- `a72b308ece1fa2691b02d9a73e1e3693d0b7fe19` — merge current `7e67ef4` before the bounded repair.
+- `b545e3ed14315bea5923ef948b7e33815013a338` — reject mixed lived-date/source evidence before activity CAS, preserving exact retry/readback contracts.
+- `739d0df901e1a58d5d7acc54dcf636fc325858cf` — sync current `ca266b390cadf47a021ff3e743a2113a5abaff7b` native-receipt precision.
+
+Two real application red cases confirmed that the previous code wrote a stale attained marker across04:00 or after source evidence was replaced with unknown. Both now refuse without changing catalog/completion revisions or active state; rereading allows the same operation identity to save once with current evidence. Final Habit suites pass50/50 (catalog12, completion12, detail/lifecycle11, snapshot15); cargo check passes. Scope is lifecycle evidence/date/revision validation only; native packaged acceptance remains pending. The synchronized native checkpoint describes separate Save actions and does not establish a single-submit combined edit acceptance.
