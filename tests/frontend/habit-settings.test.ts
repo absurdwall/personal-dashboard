@@ -1,6 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HabitSettingsDraft } from "../../frontend/habit-settings.ts";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { stripTypeScriptTypes } from 'node:module';
+const fixture=mkdtempSync(join(tmpdir(),'habit-settings-module-'));
+let HabitSettingsDraft: typeof import('../../frontend/habit-settings.ts').HabitSettingsDraft;
+try {
+  for(const name of ['habit-settings','interface-language']) {
+    writeFileSync(join(fixture,name+'.mjs'),stripTypeScriptTypes(readFileSync(new URL('../../frontend/'+name+'.ts',import.meta.url),'utf8'),{mode:'transform'}).replace('./interface-language.js','./interface-language.mjs'));
+  }
+  ({HabitSettingsDraft}=await import(pathToFileURL(join(fixture,'habit-settings.mjs')).href));
+} finally {rmSync(fixture,{recursive:true,force:true});}
 
 test("create draft defaults to lived date and keeps stable identity/request through a failed save and reread", () => {
   let nextId = 0;

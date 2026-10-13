@@ -5,24 +5,38 @@ export type InterfaceLanguagePreferences = Readonly<{
 }>;
 
 const interfaceCopies = {
+  "habits.detailAttainedCoverageCaption": {zh:"已达标 · 覆盖：",en:"Attained · Coverage: "},
+  "habits.detailUnconfirmedCoverageCaption": {zh:"未确认达标 · 覆盖：",en:"Attainment not confirmed · Coverage: "},
+  "habits.detailCoverageComplete": {zh:"完整",en:"complete"},
+  "habits.detailCoveragePartial": {zh:"部分",en:"partial"},
+  "habits.detailCoverageUnknown": {zh:"未知",en:"unknown"},
+  "habits.dailyNotConfirmed": {zh:"待打卡",en:"Not confirmed"},
+  "habits.snapshotPartialCycle": {zh:"部分周期（不计完整连续）",en:"Partial cycle (excluded from full-cycle streaks)"},
+  "tasks.draftReadAgain": {"zh": "重新读取并保留草稿", "en": "Read again and keep draft"},
+  "tasks.draftReadReady": {"zh": "已对照当前保存值；草稿保留，可再次保存。", "en": "Compared with current saved values; draft retained and ready to save."},
+  "tasks.draftConflict": {"zh": "当前保存值与草稿有冲突；请对照并明确采用冲突字段的当前值，其他草稿保留。", "en": "Saved values conflict with the draft. Compare them and explicitly use current values for conflicting fields; other edits are retained."},
+  "tasks.draftReadUnavailable": {"zh": "任务已删除、Vault 已变化或读取不可用；草稿保留，未保存。请重新读取目标。", "en": "Task was deleted, Vault changed or reading is unavailable. Draft retained; nothing saved. Read the intended target again."},
+  "tasks.draftCurrentValue": {"zh": "当前保存值：{value}", "en": "Current saved value: {value}"},
+  "tasks.draftRetainedValue": {"zh": "保留的草稿：{value}", "en": "Retained draft: {value}"},
+  "tasks.draftUseCurrent": {"zh": "仅对冲突字段采用当前值", "en": "Use current values only for conflicting fields"},
   "habits.detailHideInactive": {"zh": "收起停用", "en": "Hide inactive"},
   "habits.detailViewInactive": {"zh": "查看停用", "en": "View inactive"},
   "habits.detailNoInactiveHabits": {"zh": "没有停用的习惯", "en": "No inactive habits"},
   "habits.detailInactive": {"zh": "已停用", "en": "Inactive"},
-  "habits.detailTheDetailTargetChangedReadAgain": {"zh": "详情目标已变化，请重新读取。", "en": "The detail target changed. Read again."},
-  "habits.detailRecordsChangedReadingTheFirstPageAgain": {"zh": "记录已变化，已重新读取第一页。", "en": "Records changed. Reading the first page again."},
-  "habits.detailSavedReadbackWasNotConfirmedRetrySafely": {"zh": "保存读回未确认；可以安全重试。", "en": "Saved readback was not confirmed. Retry safely."},
-  "habits.detailTheVaultChangedReadAgain": {"zh": "Vault 已变化；请重新读取。", "en": "The Vault changed. Read again."},
+  "habits.detailTargetChanged": {"zh": "详情目标已变化，请重新读取。", "en": "The detail target changed. Read again."},
+  "habits.detailRecordsChanged": {"zh": "记录已变化，已重新读取第一页。", "en": "Records changed. Reading the first page again."},
+  "habits.detailReadbackUnconfirmed": {"zh": "保存读回未确认；可以安全重试。", "en": "Saved readback was not confirmed. Retry safely."},
+  "habits.detailVaultChanged": {"zh": "Vault 已变化；请重新读取。", "en": "The Vault changed. Read again."},
   "habits.detailBackToTodayList": {"zh": "返回今日列表", "en": "Back to today list"},
   "habits.detailReadingDetails": {"zh": "正在读取详情…", "en": "Reading details…"},
   "habits.detailReadAgain": {"zh": "重新读取", "en": "Read again"},
   "habits.detailStartDate": {"zh": "开始日期", "en": "Start date"},
   "habits.detailUnknown": {"zh": "未知", "en": "unknown"},
-  "habits.detailOriginalStartDateNotSuppliedBySource": {"zh": "来源未提供原始开始日期", "en": "Original start date not supplied by source"},
+  "habits.detailStartDateUnknown": {"zh": "来源未提供原始开始日期", "en": "Original start date not supplied by source"},
   "habits.detailCurrentGoal": {"zh": "当前目标", "en": "Current goal"},
   "habits.detailPending": {"zh": "待生效", "en": "Pending"},
-  "habits.detailPartialCycleExcludedFromFullCycleStreaks": {"zh": "部分周期，不计完整连续。", "en": "Partial cycle, excluded from full-cycle streaks."},
-  "habits.detailInactiveNoCheckInIsRequiredDuringThePauseRestoreStartsANewActivitySegment": {"zh": "已停用；停用期间不要求打卡。恢复从新活动段开始。", "en": "Inactive. No check-in is required during the pause. Restore starts a new activity segment."},
+  "habits.detailPartialCycle": {"zh": "部分周期，不计完整连续。", "en": "Partial cycle, excluded from full-cycle streaks."},
+  "habits.detailInactiveHint": {"zh": "已停用；停用期间不要求打卡。恢复从新活动段开始。", "en": "Inactive. No check-in is required during the pause. Restore starts a new activity segment."},
   "habits.detailEdit": {"zh": "编辑", "en": "Edit"},
   "habits.detailDeactivate": {"zh": "停用", "en": "Deactivate"},
   "habits.detailRestore": {"zh": "恢复", "en": "Restore"},
@@ -57,7 +71,7 @@ const interfaceCopies = {
   "habits.detailAttained": {"zh": "已达标", "en": "Attained"},
   "habits.detailAttainmentNotConfirmed": {"zh": "未确认达标", "en": "Attainment not confirmed"},
   "habits.detailCoverage": {"zh": "覆盖", "en": "Coverage"},
-  "habits.detailExternalCompletionEvidenceIsRetainedIndependentlyWithdrawingLocalCompletionDoesNotRem": {"zh": "外部完成证据独立保留，撤回本地完成不会删除外部记录。", "en": "External completion evidence is retained independently. Withdrawing local completion does not remove it."},
+  "habits.detailExternalEvidenceRetained": {"zh": "外部完成证据独立保留，撤回本地完成不会删除外部记录。", "en": "External completion evidence is retained independently. Withdrawing local completion does not remove it."},
   "habits.detailLocalChangeHistory": {"zh": "本地变更记录", "en": "Local change history"},
   "habits.detailCompleted": {"zh": "完成", "en": "Completed"},
   "habits.detailWithdrawn": {"zh": "撤回", "en": "Withdrawn"},
@@ -2427,7 +2441,7 @@ export function localizeApplicationError(
     return language === "zh" ? error : "Document saved, but the readback changed; read the record again to verify.";
   }
   const applicationDiagnostic = error.startsWith("Error: ") ? error.slice("Error: ".length) : error;
-  for(const key of ['habits.settingsUnconfirmed','habits.detailTheDetailTargetChangedReadAgain','habits.detailSavedReadbackWasNotConfirmedRetrySafely','habits.detailTheVaultChangedReadAgain'] as const) {
+  for(const key of ['habits.settingsUnconfirmed','habits.detailTargetChanged','habits.detailReadbackUnconfirmed','habits.detailVaultChanged'] as const) {
     const copy=interfaceCopies[key];
     if(applicationDiagnostic===copy.zh || applicationDiagnostic===copy.en)return copy[language];
   }

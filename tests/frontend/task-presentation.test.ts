@@ -617,3 +617,22 @@ test("interval edits retain distinct retry identities and require confirmed end 
   });
   assert.equal(result.confirmed, false, "unchanged end must not be reported as a saved interval");
 });
+
+test("task update confirms set-like tags and keeps a stable identity through reordered exact retry", async () => {
+  const identities = new TaskOperationIdentityStore(), requests = new LatestRequest();
+  const received: TaskUpdateInput[] = [];
+  let nextId = 0;
+  const edit = {...taskUpdateEdit("Tag draft"),tagIds:["tag-z","tag-a"]};
+  const invoke = async (input: TaskUpdateInput): Promise<TaskUpdateView> => {
+    received.push(input);
+    const view=taskUpdateView("Tag draft");
+    return {...view,tasks:view.tasks.map(task=>({...task,tagIds:["tag-a","tag-z"]}))};
+  };
+  const options={expectedRevision:"r1",requests,identities,createChangeId:()=>`tag-edit-${++nextId}`,invoke,isCurrent:()=>received.length>1};
+  const first=await performTaskUpdateRequest(edit,options);
+  const retry=await performTaskUpdateRequest({...edit,tagIds:["tag-a","tag-z"]},{...options,expectedRevision:"r2"});
+  assert.equal(first.confirmed,false); // Saved response is unread/unconfirmed; retain the operation identity.
+  assert.equal(retry.confirmed,true);
+  assert.deepEqual(received[0].tagIds,["tag-a","tag-z"]);
+  assert.equal(received[0].changeId,received[1].changeId);
+});

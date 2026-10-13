@@ -57,3 +57,37 @@ Green commands:
 - `CARGO_TARGET_DIR=<existing canonical target> cargo test --manifest-path src-tauri/Cargo.toml --test habit_catalog_workflow eighty_chinese_name_characters_exceed_byte_limit_without_writing_catalog -- --exact`: 1 passed; fresh application confirms no catalog revision/write after the 240-byte name is rejected.
 
 Local logs: `/private/tmp/pdex-review-locale-red.log`, `/private/tmp/pdex-review-locale-task-red.log`, `/private/tmp/pdex-review-locale-browser-green.log`, `/private/tmp/pdex-review-locale-task-green.log`, `/private/tmp/pdex-review-locale-app.log`. No full suite or native acceptance was run. Task explicit re-read/three-way recovery remains the next repair, not covered by this locale commit.
+
+## Explicit Task draft recovery and review follow-ups
+
+The shared Task editor captures the opening persisted Task fields independently from the retained draft. Explicit Task Refresh or the editor's “Read again and keep draft” compares opening, local, and observed saved fields. Untouched remote scalar fields are merged; conflicting fields retain the draft and block Save. Parent/list/tag changes require explicit acknowledgement. The comparison exposes raw current and draft values and an action which adopts **only** the observed conflicting fields, preserving other edits. Scheduling is an atomic date/time/end group. A missing/deleted Task or changed Vault refuses recovery and retains the old binding's draft.
+
+Successful recovery advances the baseline and expected revision only to the exact observed read. CAS still rejects another write after that read. No normal rerender, unrelated save, or general “latest revision” silently overrides the draft guard. The base survives Today's separate stash, completion reconciliation, and confirmed own catalog writes. Tag comparisons, update signatures/input, and saved confirmation use stable sorted set order; omitted legacy optional fields preserve values, while null/empty/none remain explicit clears. Saved-but-unread requests retain the original operation identity through exact retry.
+
+A bounded adjacent bug was required to reach the authorized recovery path: Task Save could leave Refresh disabled while a Today read was active; Today's completion now releases the same button. The early production DOM loop exposed this directly. After adding the real synthetic Today view and proper independent Task snapshots/history kinds to the boundary fixture, the old refresh behavior was replayed and failed specifically at “A draft can save after B save and explicit Refresh”; the new comparison path passed. Early malformed boundary fixtures (missing Task change kind, shared mutable snapshot aliases, unsupported Today read) are not persistence evidence.
+
+Review follow-ups repaired in this increment:
+
+- Habit selection progress renders `1 / 3`, with a real left-side controller text assertion. The formatter's single corrupted nested interpolation was removed; other settings/detail template strings were inspected and retained. Multiline code remains readable.
+- Native Node draft tests now transform the real settings and interface-language sources into an isolated temporary module fixture, following the existing repository fixture convention; production `.js` imports and project TypeScript configuration are unchanged. Before this repair the two original tests failed `ERR_MODULE_NOT_FOUND`; afterward both execute and pass.
+- Habit snapshot daily completion status, pending goal, partial-cycle copy, and detail coverage enum labels use the shared catalog/metadata; source and user values remain raw.
+
+Final focused checks (no full suite/native acceptance):
+
+| Check | Result |
+| --- | --- |
+| `npm run build` | passed |
+| `PLAYWRIGHT_MODULE_PATH=<existing bundled module> node scripts/acceptance/refinement-review-task-recovery-dom.mjs` | 12 scenarios × 2 widths (1280×560, 680×560), all passed |
+| `PLAYWRIGHT_MODULE_PATH=<existing bundled module> node scripts/acceptance/refinement-review-locale-dom.mjs` | 2/2 passed |
+| `PLAYWRIGHT_MODULE_PATH=<existing bundled module> node --test tests/browser/habit-settings.mjs tests/browser/habit-details.mjs` | 6 passed, 0 failed |
+| `node --test --test-name-pattern='create draft defaults\|edit draft loads\|task update confirms set-like\|update request seam\|fixed error details\|Habits translates generated\|local habit completion labels' tests/frontend/habit-settings.test.ts tests/frontend/task-presentation.test.ts tests/frontend/interface-language.test.ts` | 8 passed, 0 failed |
+| `CARGO_TARGET_DIR=<existing canonical target> cargo test --manifest-path src-tauri/Cargo.toml --test task_workflow task_identity_survives_edit_and_reschedule_is_explicit_and_idempotent -- --exact` | real application: 1 passed; edit/history/exact retry/fresh read |
+| same command, filter `task_target_binding_conflict_and_corruption_never_overwrite_another_vault_or_file` | real application: 1 passed; stale revision/wrong Vault/corruption do not overwrite |
+| same command, filter `manual_update_retry_rechecks_selected_vault_after_loading_its_receipt` | real application: 1 passed; receipt replay still rechecks Vault |
+| `git diff --check` | passed |
+
+The production DOM boundary supplies synthetic IPC results and proves the actual editor/Refresh/controller request chain, not filesystem persistence. The three Rust checks exercise actual application stores and preserve history/retry/CAS boundaries, separately from the DOM. The earlier locale byte-limit application test and Calendar parent application/DOM tests remain recorded above. No packaged/native acceptance is claimed. The original full-frontend baseline (540 total, 510 passed, 28 failed, 2 skipped) was not repeated or rewritten.
+
+Recovery scenarios: A draft/B save/Refresh/A save; nonconflicting remote merge; divergent same-field current-only resolution; external parent/tag acknowledgement; atomic schedule conflict; saved-but-unread stable-ID retry with one history item and opposite catalog/persisted tag orders; CAS change after read; external deletion; Vault change; explicit clears; legacy omitted fields; opening base retained across own tag-definition write.
+
+Local logs: `/private/tmp/pdex-review-recovery-red.log`, `/private/tmp/pdex-review-recovery-green.log`, `/private/tmp/pdex-review-recovery-tags-red.log`, `/private/tmp/pdex-review-recovery-tags-green.log`, `/private/tmp/pdex-review-recovery-app-receipt.log`, `/private/tmp/pdex-review-recovery-app-cas.log`, `/private/tmp/pdex-review-recovery-app-vault-receipt.log`, `/private/tmp/pdex-review-locale-node-red.log`, `/private/tmp/pdex-review-locale-node-green.log`, `/private/tmp/pdex-review-locale-final-browser.log`, `/private/tmp/pdex-review-locale-final-dom.log`, `/private/tmp/pdex-review-final-frontend-focused.log`.

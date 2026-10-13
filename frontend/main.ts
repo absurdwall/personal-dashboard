@@ -1,6 +1,14 @@
+import {
+  compareTaskDraft,
+  useCurrentConflictingFields,
+  taskDraftConflictValue,
+  type TaskDraftValues,
+  type TaskDraftRecovery,
+  type TaskDraftConflictField,
+} from "./task-draft-recovery.js";
 import {HabitDetailsController} from "./habit-details.js";
 import { calendarHolidaysForDate, defaultCalendarHolidays, isHolidayYearCovered, type CalendarHolidayPreferences } from "./calendar-holidays.js";
-import { showHabitSettingsDialog, habitSettingsGoalLabel, type HabitGoal, type HabitSettings } from "./habit-settings.js";
+import { showHabitSettingsDialog, habitSettingsGoalLabel, setHabitGoalCopy, type HabitGoal, type HabitSettings } from "./habit-settings.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
 import { initializeCollaborationCommandCompletion } from "./collaboration-command-completion.js";
@@ -1567,6 +1575,9 @@ const calendarTaskRequests = new LatestRequest();
 type TaskDraft = Readonly<{
   parentId?: string | null;
   expectedRevision?: string;
+  baseTask?: TaskDraftValues;
+  recovery?: TaskDraftRecovery;
+  recoveryUnavailable?: boolean;
   priority?: string;
   tagIds?: readonly string[];
   endDate: string;
@@ -6973,18 +6984,11 @@ function captureTodayTaskEditors(view: TodayView): Set<string> {
     open.add(id);
     const draft = readTaskDraft(form);
     const key = taskDraftKey(binding, id);
-    if (
-      draft.name !== task.name || draft.content !== (task.content ?? "") ||
-      draft.date !== (task.date ?? "") || draft.time !== (task.time ?? "") ||
-      draft.endDate !== (task.executionEnd?.date ?? "") || draft.endTime !== (task.executionEnd?.time ?? "") ||
-      draft.listId !== task.listId || draft.completionDate !== (task.completion?.completedOn ?? "") ||
-      draft.completionTime !== (task.completion?.completedTime ?? "") ||
-      (draft.parentId !== undefined && draft.parentId !== (task.parentId ?? null))
-    ) {
-      taskEditDrafts.set(key, {...draft,expectedRevision:taskEditDrafts.get(key)?.expectedRevision ?? previous.tasks.revision ?? undefined});
-    } else {
-      taskEditDrafts.delete(key);
-    }
+    const previousDraft=taskEditDrafts.get(key);
+    taskEditDrafts.set(key,{...previousDraft,...draft,
+      expectedRevision:previousDraft?.expectedRevision??previous.tasks.revision??undefined,
+      baseTask:previousDraft?.baseTask??taskDraftValues(task),
+    });
   }
   return open;
 }
@@ -7626,6 +7630,7 @@ function updateTodayOperationState(delta: number): void {
     busy || taskBusy || vaultSelectionInProgress,
   );
   refreshTodayButton?.toggleAttribute("disabled", busy || taskBusy);
+  refreshTasksButton?.toggleAttribute("disabled", busy || taskBusy);
   todayDaytimeForm?.querySelector("button")?.toggleAttribute("disabled", busy || taskBusy);
   todayEveningForm?.querySelector("button")?.toggleAttribute("disabled", busy || taskBusy);
   todayTaskCreateForm?.querySelectorAll("input, textarea, select, button").forEach((element) => {
@@ -8810,7 +8815,7 @@ const habitCompletionExplanationLabels: Record<
 };
 
 function habitProgressLabel(habit: HabitView): string {
-  if (habit.goalKind === "daily-completion") return habit.today.countsAsCompletion ? (currentInterfaceLanguage === "zh" ? "已完成" : "Completed") : (currentInterfaceLanguage === "zh" ? "待打卡" : "Not confirmed");
+  if (habit.goalKind === "daily-completion") return t(habit.today.countsAsCompletion ? "habits.detailCompleted" : "habits.dailyNotConfirmed");
   if (habit.completedCount === null) {
     return habit.today.actualTimeLabel
       ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage)
@@ -8926,8 +8931,16 @@ function habitRow(habit: HabitView): HTMLElement {
     sources: habit.sourceLabels.join(currentInterfaceLanguage === "zh" ? "、" : ", ") || t("habits.notDeclared"),
   });
   if (habit.settings?.group) metadata.textContent += ` · ${habit.settings.group}`;
-  if (habit.pendingGoal) metadata.textContent += ` · ${currentInterfaceLanguage === "zh" ? "待生效" : "Pending"} ${habit.pendingGoal.effectiveDate}: ${habitSettingsGoalLabel(habit.pendingGoal.goal, currentInterfaceLanguage)}`;
-  if (habit.partialCycle) metadata.textContent += ` · ${currentInterfaceLanguage === "zh" ? "部分周期（不计完整连续）" : "Partial cycle (excluded from full-cycle streaks)"}`;
+  if (habit.pendingGoal) {
+    const caption=document.createElement("span"),goal=document.createElement("span");
+    setCopy(caption,"habits.settingsPendingGoal",{date:habit.pendingGoal.effectiveDate});
+    setHabitGoalCopy(goal,habit.pendingGoal.goal,currentInterfaceLanguage);
+    metadata.append(document.createTextNode(" · "),caption,goal);
+  }
+  if (habit.partialCycle) {
+    const partial=document.createElement("span");setCopy(partial,"habits.snapshotPartialCycle");
+    metadata.append(document.createTextNode(" · "),partial);
+  }
   identity.append(name, metadata, sources);
   const edit = document.createElement("button");
   edit.type = "button";
@@ -8941,7 +8954,8 @@ function habitRow(habit: HabitView): HTMLElement {
   value.className = "habit-snapshot-value";
   const progress = document.createElement("strong");
   const todayState = document.createElement("small");
-  progress.textContent = habitProgressLabel(habit);
+  if(habit.goalKind==="daily-completion")setCopy(progress,habit.today.countsAsCompletion?"habits.detailCompleted":"habits.dailyNotConfirmed");
+  else progress.textContent = habitProgressLabel(habit);
   setCopy(todayState, "habits.todayStatus", { status: t(habitStatusLabels[habit.today.status]) });
   value.append(progress, todayState);
 
@@ -9653,7 +9667,7 @@ function readTaskDraft(form: HTMLFormElement): TaskDraft {
   const endTime = form.querySelector<HTMLInputElement>("[data-task-end-time]")?.value ?? "";
   const priorityField=form.querySelector<HTMLSelectElement>("[data-task-priority]");
   const priority=priorityField?.dataset?.taskPriority !== undefined ? priorityField.value : undefined;
-  const tagIds = form.querySelector<HTMLElement>("[data-task-tags]")?.dataset?.taskTags !== undefined ? Array.from(form.querySelectorAll<HTMLInputElement>("[data-task-tag-id]:checked"), input => input.dataset.taskTagId!) : undefined;
+  const tagIds = form.querySelector<HTMLElement>("[data-task-tags]")?.dataset?.taskTags !== undefined ? Array.from(form.querySelectorAll<HTMLInputElement>("[data-task-tag-id]:checked"), input => input.dataset.taskTagId!).sort() : undefined;
   const parentField=form.querySelector<HTMLSelectElement>("[data-task-parent]");
   const parentId=parentField?.dataset?.taskParent !== undefined ? parentField.value || null : undefined;
   return { name, content, date, time, endDate, endTime, listId, completionDate, completionTime, priority, tagIds, parentId };
@@ -9713,6 +9727,135 @@ function taskSurfaceBinding(surface: TaskSurface): string | null {
   return taskSurfaceView(surface)?.targetBinding ?? null;
 }
 
+function taskDraftValues(task: TaskView): TaskDraftValues {
+  return {
+    name: task.name, content: task.content ?? "", listId: task.listId,
+    date: task.date ?? "", time: task.time ?? "",
+    endDate: task.executionEnd?.date ?? "", endTime: task.executionEnd?.time ?? "",
+    priority: task.priority ?? "none", tagIds: task.tagIds ?? [], parentId: task.parentId ?? null,
+  };
+}
+
+function recoverTaskDrafts(view: TasksView): void {
+  if (!view.targetBinding || !view.revision || ["error", "unconfigured"].includes(view.state)) return;
+  const prefix = view.targetBinding + ":";
+  for (const [key, draft] of taskEditDrafts) {
+    if (!key.startsWith(prefix)) continue;
+    const task = view.tasks.find(task => task.id === key.slice(prefix.length));
+    if (!task || task.deletedAt || !draft.baseTask) {
+      taskEditDrafts.set(key, {...draft, recoveryUnavailable: true});
+      continue;
+    }
+    const recovery = compareTaskDraft(draft.baseTask, draft, taskDraftValues(task), view.revision);
+    const conflicts = new Set(recovery.conflicts);
+    if (draft.tagIds?.some(id => !view.tags?.some(tag => tag.id === id))) conflicts.add("tagIds");
+    if (draft.parentId && !view.tasks.some(parent => parent.id === draft.parentId && (!parent.deletedAt || parent.id === task.parentId))) conflicts.add("parentId");
+    if (draft.listId && !view.lists.some(list => list.id === draft.listId && (!list.archived || list.id === task.listId))) conflicts.add("listId");
+    const checked = {...recovery, conflicts: [...conflicts]};
+    taskEditDrafts.set(key, checked.conflicts.length
+      ? {...draft, recovery: checked, recoveryUnavailable: false}
+      : {...draft, ...checked.proposed, baseTask: checked.current, expectedRevision: checked.revision, recovery: undefined, recoveryUnavailable: false});
+  }
+}
+
+function advanceTaskDraftsAfterOwnCatalogWrite(before: TasksView, after: TasksView): void {
+  if (!before.targetBinding || !after.revision || after.targetBinding !== before.targetBinding) return;
+  for (const task of before.tasks) {
+    const key = taskDraftKey(before.targetBinding, task.id), draft = taskEditDrafts.get(key);
+    const saved = after.tasks.find(candidate => candidate.id === task.id);
+    if (draft && saved && !draft.recovery && !draft.recoveryUnavailable && draft.expectedRevision === before.revision &&
+        JSON.stringify(draft.baseTask) === JSON.stringify(taskDraftValues(task))) {
+      taskEditDrafts.set(key, {...draft, baseTask: taskDraftValues(saved), expectedRevision: after.revision});
+    }
+  }
+}
+
+async function rereadTaskDraft(taskId: string, surface: TaskSurface, form: HTMLFormElement): Promise<boolean> {
+  const binding = taskSurfaceBinding(surface), loaded = taskSurfaceView(surface);
+  if (!binding || !loaded || taskOperationCount > 0 || form.dataset.taskTargetBinding!==binding) return false;
+  stashTaskEditDraft(form);
+  const date = surface === "today" ? currentTodayView?.date : surface === "calendar" ? selectedCalendarDate : null;
+  const requests = surface === "tasks" ? taskRequests : surface === "today" ? todayTaskRequests : calendarTaskRequests;
+  const request = requests.begin();
+  updateTaskOperationState(1);
+  try {
+    const view = await window.__TAURI__.core.invoke<TasksView>("tasks_view");
+    const currentDate = surface === "today" ? currentTodayView?.date : surface === "calendar" ? selectedCalendarDate : null;
+    if (!requests.isCurrent(request) || currentWorkspaceDestination !== surface || taskSurfaceBinding(surface) !== binding || currentDate !== date) return false;
+    if (view.targetBinding !== binding || !view.revision || ["error", "unconfigured"].includes(view.state)) {
+      const key=taskDraftKey(binding,taskId),draft=taskEditDrafts.get(key);
+      if(draft)taskEditDrafts.set(key,{...draft,recoveryUnavailable:true});
+      renderTaskSurface(surface,loaded);
+      setCopy(taskSurfaceStatus(surface), "tasks.draftReadUnavailable");
+      return false;
+    }
+    recoverTaskDrafts(view);
+    renderTaskSurface(surface, view);
+    const draft = taskEditDrafts.get(taskDraftKey(binding, taskId));
+    setCopy(taskSurfaceStatus(surface), draft?.recoveryUnavailable ? "tasks.draftReadUnavailable" : draft?.recovery ? "tasks.draftConflict" : "tasks.draftReadReady");
+    return !draft?.recovery && !draft?.recoveryUnavailable;
+  } catch (error) {
+    if (requests.isCurrent(request) && taskSurfaceBinding(surface) === binding) setCopyError(taskSurfaceStatus(surface), "tasks.notSaved", error);
+    return false;
+  } finally {
+    updateTaskOperationState(-1);
+  }
+}
+
+function appendTaskDraftRecovery(
+  form: HTMLFormElement, footer: HTMLElement, task: TaskView, surface: TaskSurface,
+  draft: TaskDraft | undefined, save: HTMLButtonElement,
+): void {
+  const reread = document.createElement("button");
+  reread.type = "button";
+  reread.dataset.taskReread = "";
+  reread.disabled = taskOperationCount > 0;
+  setCopy(reread, "tasks.draftReadAgain");
+  reread.addEventListener("click", () => void pendingWrites.track(rereadTaskDraft(task.id, surface, form)));
+  footer.append(reread);
+  if (!draft?.recovery && !draft?.recoveryUnavailable) return;
+  save.disabled = true;
+  const section = document.createElement("section"), description = document.createElement("p");
+  section.dataset.taskDraftRecovery = "";
+  section.setAttribute("role", "status");
+  setCopy(description, draft.recoveryUnavailable ? "tasks.draftReadUnavailable" : "tasks.draftConflict");
+  section.append(description);
+  if (draft.recovery) {
+    const recovery = draft.recovery;
+    const fieldCopy: Record<TaskDraftConflictField, InterfaceCopyKey> = {
+      name: "tasks.name", content: "tasks.content", schedule: "tasks.schedule", listId: "tasks.list",
+      priority: "tasks.refinementPriority", tagIds: "tasks.refinementTags", parentId: "tasks.refinementParentTask",
+    };
+    for (const field of recovery.conflicts) {
+      const heading = document.createElement("h4"), current = document.createElement("p"), local = document.createElement("p");
+      setCopy(heading, fieldCopy[field]);
+      setCopy(current, "tasks.draftCurrentValue", {value: taskDraftConflictValue(field, recovery.current)});
+      setCopy(local, "tasks.draftRetainedValue", {value: taskDraftConflictValue(field, draft)});
+      section.append(heading, current, local);
+    }
+    const accept = document.createElement("button");
+    accept.type = "button";
+    accept.dataset.taskUseCurrent = "";
+    accept.disabled = taskOperationCount > 0;
+    setCopy(accept, "tasks.draftUseCurrent");
+    accept.addEventListener("click", () => {
+      const binding = taskSurfaceBinding(surface);
+      if (!binding || taskOperationCount > 0) return;
+      stashTaskEditDraft(form);
+      const key = taskDraftKey(binding, task.id), retained = taskEditDrafts.get(key);
+      if (!retained?.baseTask || retained.recovery !== recovery) return;
+      const edited = compareTaskDraft(retained.baseTask, retained, recovery.current, recovery.revision);
+      const resolved = useCurrentConflictingFields({...edited, conflicts: recovery.conflicts});
+      taskEditDrafts.set(key, {...retained, ...resolved, baseTask: recovery.current, expectedRevision: recovery.revision, recovery: undefined, recoveryUnavailable: false});
+      const view = taskSurfaceView(surface);
+      if (view) renderTaskSurface(surface, view);
+      setCopy(taskSurfaceStatus(surface), "tasks.draftReadReady");
+    });
+    section.append(accept);
+  }
+  form.append(section);
+}
+
 function stashTaskEditDraft(form: HTMLFormElement): void {
   const surface: TaskSurface =
     form.dataset.taskSurface === "today"
@@ -9722,14 +9865,16 @@ function stashTaskEditDraft(form: HTMLFormElement): void {
         : "tasks";
   const binding = taskSurfaceBinding(surface);
   const taskId = form.dataset.taskEditor;
-  if (!binding || !taskId) return;
+  if (!binding || !taskId || (form.dataset.taskTargetBinding && form.dataset.taskTargetBinding!==binding)) return;
   const draft = readTaskDraft(form);
   const key = taskDraftKey(binding, taskId);
-  if (isBlankTaskDraft(draft)) {
-    taskEditDrafts.delete(key);
-  } else {
-    taskEditDrafts.set(key, {...draft,expectedRevision:taskEditDrafts.get(key)?.expectedRevision??taskSurfaceView(surface)?.revision??undefined});
-  }
+  const previous = taskEditDrafts.get(key);
+  const task = taskSurfaceView(surface)?.tasks.find(task => task.id === taskId);
+  taskEditDrafts.set(key, {
+    ...previous, ...draft,
+    expectedRevision: previous?.expectedRevision ?? taskSurfaceView(surface)?.revision ?? undefined,
+    baseTask: previous?.baseTask ?? (task ? taskDraftValues(task) : undefined),
+  });
 }
 
 function reconcileTaskCompletionDraft(
@@ -10157,6 +10302,8 @@ function toggleTaskEditorDetails(target: HTMLElement): boolean {
     editor.hidden = !open;
   }
   if (open) {
+    const form=editor.matches("form")?editor as HTMLFormElement:editor.querySelector<HTMLFormElement>("form[data-task-editor]");
+    if(form)stashTaskEditDraft(form);
     editor.querySelector<HTMLTextAreaElement>("[data-task-content]")?.focus();
   }
   row.querySelectorAll<HTMLButtonElement>("button[data-task-editor-open]").forEach((button) => {
@@ -10328,6 +10475,7 @@ function taskEditor(
   if(refined)editorForm.classList.add("task-refined-editor");
   editorForm.dataset.taskEditor = task.id;
   editorForm.dataset.taskSurface = surface;
+  if(binding)editorForm.dataset.taskTargetBinding=binding;
   editorForm.hidden = surface !== "tasks" && !expanded;
   editorForm.setAttribute("aria-label", t("tasks.editLabel", { task: task.name }));
   const grid = document.createElement("div");
@@ -10500,6 +10648,7 @@ function taskEditor(
   save.type = "submit";
   save.disabled = !editable;
   setCopy(save, "tasks.save");
+  appendTaskDraftRecovery(editorForm,footer,task,surface,draft,save);
   if(refined)footer.append(save);else footer.append(schedule,save);
   editorForm.append(grid);
   if(refined&&view)appendTaskRelations(editorForm,task,view,surface,draft,editable);
@@ -11005,11 +11154,14 @@ function updateTaskEditorOperationState(
 ): void {
   taskEditorForms(surface).forEach((form) => {
     form.querySelectorAll(
-      "[data-task-name], [data-task-content], [data-task-parent], [data-task-add-child], [data-task-editor-action], [data-task-priority], [data-task-tag-id], [data-task-tag-management], [data-task-cancel-time], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
+      "[data-task-name], [data-task-content], [data-task-parent], [data-task-add-child], [data-task-editor-action], [data-task-priority], [data-task-tag-id], [data-task-tag-management], [data-task-cancel-time], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], [data-task-reread], [data-task-use-current], button[type=submit]",
     ).forEach((element) => {
       (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
         busy || !writable || (element as HTMLElement).dataset.taskActionApplicable === "false";
     });
+    const draftBinding=taskSurfaceBinding(surface),taskId=form.dataset.taskEditor;
+    const draft=draftBinding&&taskId?taskEditDrafts.get(taskDraftKey(draftBinding,taskId)):undefined;
+    if(draft?.recovery?.conflicts.length || draft?.recoveryUnavailable)form.querySelector<HTMLButtonElement>('button[type=submit]')?.setAttribute('disabled','');
     if (!busy) {
       normalizeTaskDateTimeFields(
         form.querySelector<HTMLInputElement>("[data-task-date]"),
@@ -11112,12 +11264,13 @@ function updateTaskOperationState(delta: number): void {
   }
 }
 
-async function refreshTasks(): Promise<void> {
+async function refreshTasks(recoverDrafts = false): Promise<void> {
   if (taskOperationCount > 0) {
     taskRefreshQueued = true;
     return;
   }
   taskRefreshQueued = false;
+  if(recoverDrafts)taskEditorForms("tasks").forEach(stashTaskEditDraft);
   const request = taskRequests.begin();
   const expectedTargetBinding = currentTasksView?.targetBinding ?? null;
   if (tasksStatus) {
@@ -11140,6 +11293,7 @@ async function refreshTasks(): Promise<void> {
     ) {
       return;
     }
+    if(recoverDrafts)recoverTaskDrafts(view);
     currentTaskLivedDate = clock.livedDate;
     renderTasks(view);
   } catch (error) {
@@ -11776,12 +11930,20 @@ async function updateTask(
     !binding ||
     !revision ||
     !task ||
+    (form.dataset.taskTargetBinding && form.dataset.taskTargetBinding!==binding) ||
     loaded.state === "error" ||
     loaded.state === "unconfigured" ||
     taskOperationCount > 0
   ) {
     setCopyError(status, "tasks.notSaved", t("tasks.refreshFirst"));
     if (status) status.dataset.state = "error";
+    return false;
+  }
+  stashTaskEditDraft(form);
+  const retained=taskEditDrafts.get(taskDraftKey(binding,taskId));
+  if(task.deletedAt || retained?.recovery?.conflicts.length || retained?.recoveryUnavailable) {
+    setCopy(status,'tasks.draftConflict');
+    if(status)status.dataset.state='error';
     return false;
   }
   const draft = readTaskDraft(form);
@@ -12876,7 +13038,7 @@ taskListsManagementClose?.addEventListener("click", () => {
 });
 
 refreshTasksButton?.addEventListener("click", () => {
-  if (taskOperationCount === 0) void refreshTasks();
+  if (taskOperationCount === 0) void refreshTasks(true);
 });
 
 function updateCompactScheduleLabel(prefix: string, date: HTMLInputElement | null, time: HTMLInputElement | null): void {
@@ -13754,7 +13916,7 @@ async function manageTaskTag(action: "create"|"rename"|"delete", tagId: string|n
     const taskId=form.dataset.taskEditor;
     if(taskId&&action==="create"&&tag) {const key=taskDraftKey(binding,taskId);const draft=taskEditDrafts.get(key);if(draft)taskEditDrafts.set(key,{...draft,tagIds:[...new Set([...(draft.tagIds??[]),tag.id])]});}
     if(action==="delete") {for(const [key,draft] of taskEditDrafts)if(key.startsWith(binding+":"))taskEditDrafts.set(key,{...draft,tagIds:draft.tagIds?.filter(value=>value!==id)});}
-    for(const [key,draft] of taskEditDrafts)if(key.startsWith(binding+":")&&draft.expectedRevision===revision)taskEditDrafts.set(key,{...draft,expectedRevision:view.revision??undefined});
+    advanceTaskDraftsAfterOwnCatalogWrite(loaded,view);
     taskOperationIds.delete(signature);renderTaskSurface(surface,view);return true;
   } catch(error) {setCopyError(taskSurfaceStatus(surface),"tasks.notSaved",String(error));return false;}
   finally {updateTaskOperationState(-1);}
@@ -13825,7 +13987,7 @@ async function mutateTaskOrganization(command:"manage_task_folder"|"move_task_li
    const folderId=String((input as Record<string,unknown>).folderId??"");
    const confirmed=["ready","empty"].includes(view.state)&&(command==="move_task_list_to_folder"?view.lists.some(list=>list.id===fields.listId&&(list.folderId??null)===fields.folderId):fields.action==="delete"?!view.folders?.some(folder=>folder.id===folderId):view.folders?.some(folder=>folder.id===folderId&&folder.name===fields.name));
    if(!confirmed)throw new Error(view.message||t("tasks.confirmationFailed"));
-   for(const [key,draft] of taskEditDrafts)if(key.startsWith(binding+":")&&draft.expectedRevision===source.revision)taskEditDrafts.set(key,{...draft,expectedRevision:view.revision??undefined});
+   advanceTaskDraftsAfterOwnCatalogWrite(source,view);
    taskOperationIds.delete(signature);taskOperationIds.delete(signature+":identity");renderTasks(view);setCopy(tasksStatus,"tasks.saved");return true;
  }catch(error){if(currentTasksView?.targetBinding===binding)setCopyError(tasksStatus,"tasks.notSaved",String(error));return false;}finally{updateTaskOperationState(-1);}
 }

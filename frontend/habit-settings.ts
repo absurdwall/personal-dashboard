@@ -20,7 +20,7 @@ export type HabitSettings = {
   startDate: string;
   goal: HabitGoal;
 };
-export type HabitSettingsHabit = Readonly< {
+export type HabitSettingsHabit = Readonly<{
   key: string;
   settings: HabitSettings | null;
   currentGoal: HabitGoal | null;
@@ -29,12 +29,12 @@ export type HabitSettingsHabit = Readonly< {
     goal: HabitGoal
   } | null;
   goalLabel: string;
-} >;
-export type HabitSettingsSnapshot = Readonly< {
+}>;
+export type HabitSettingsSnapshot = Readonly<{
   catalogRevision: string | null;
   catalogTargetBinding: string | null;
   habits: readonly HabitSettingsHabit[];
-} >;
+}>;
 export type HabitDefinitionRequest = {
   habitKey: string;
   changeId: string;
@@ -70,7 +70,8 @@ export class HabitSettingsDraft {
     if (signature !== this.signature) {
       this.signature = signature;
       this.changeId = this.nextId();
-    } return {
+    }
+    return {
       habitKey: this.habitKey, changeId: this.changeId!, targetBinding: this.binding, expectedRevision: this.revision, settings: structuredClone(this.settings)
     };
   } reread(snapshot: HabitSettingsSnapshot): void {
@@ -135,7 +136,7 @@ export function showHabitSettingsDialog<Snapshot extends HabitSettingsSnapshot>(
       else goal.textContent=draft.original.goalLabel;
       current.append(label,goal);
     }
-if(draft.original?.pendingGoal) {
+    if(draft.original?.pendingGoal) {
       const label=document.createElement("span"),goal=document.createElement("span");
       copy(label,"habits.settingsPendingGoal", {
         date:draft.original.pendingGoal.effectiveDate
@@ -160,7 +161,8 @@ if(draft.original?.pendingGoal) {
     label.append(text,input);
     form.append(label);
     return input;
-  } const name=inputField("habits.settingsName","name",draft.settings.name);
+  }
+  const name=inputField("habits.settingsName","name",draft.settings.name);
   name.required=true;
   name.maxLength=100;
   const emoji=inputField("habits.settingsEmoji","emoji",draft.settings.emoji??"");

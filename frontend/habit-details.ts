@@ -11,12 +11,12 @@ import type {
   HabitLocalizedNames
 } from './habit-presentation.js';
 type Language='zh'|'en';
-type GoalRevision=Readonly< {
+type GoalRevision=Readonly<{
   effectiveDate:string;
   validThrough:string|null;
   goal:HabitGoal
-} >;
-type DetailCell=Readonly< {
+}>;
+type DetailCell=Readonly<{
   date:string;
   coverage:string;
   status:string;
@@ -25,8 +25,8 @@ type DetailCell=Readonly< {
   hasExternalCompletion:boolean;
   completionSourceLabels:readonly string[];
   details:readonly HabitDetail[]
-} >;
-export type DetailHabit=Readonly< {
+}>;
+export type DetailHabit=Readonly<{
   key:string;
   name:string;
   localizedNames:HabitLocalizedNames;
@@ -35,39 +35,39 @@ export type DetailHabit=Readonly< {
   goalKind:string;
   settings:HabitSettings|null;
   currentGoal:HabitGoal|null;
-  pendingGoal:Readonly< {
+  pendingGoal:Readonly<{
     effectiveDate:string;
     goal:HabitGoal
-  } >|null;
+  }>|null;
   partialCycle:boolean;
-  today:Readonly< {
+  today:Readonly<{
     date:string;
     localCompletionState:HabitLocalCompletionState
-  } >;
+  }>;
   sourceLabels:readonly string[];
   completedCount?:number|null;
   weeklyTarget?:number|null
-} >;
-type Snapshot=Readonly< {
+}>;
+type Snapshot=Readonly<{
   catalogTargetBinding:string|null;
   catalogRevision:string|null;
   habits:readonly DetailHabit[]
-} >;
-type Streak=Readonly< {
+}>;
+type Streak=Readonly<{
   unit:string;
   current:number;
   currentConfirmed:boolean;
   highestKnown:number;
   highestConfirmed:boolean
-} >;
-export type HabitDetailsView=Readonly< {
+}>;
+export type HabitDetailsView=Readonly<{
   habit:DetailHabit;
   startDateKnown:boolean;
   catalogRevision:string|null;
   catalogTargetBinding:string|null;
   completionRevision:string|null;
   completionTargetBinding:string|null;
-  statistics:Readonly< {
+  statistics:Readonly<{
     totalAttainedDays:number;
     monthAttainedDays:number;
     totalExact:boolean;
@@ -81,36 +81,36 @@ export type HabitDetailsView=Readonly< {
     coverageFrom:string;
     coverageTo:string;
     unknownDays:number
-  } >;
+  }>;
   sourceState:string;
   sourceGeneratedAt:string|null;
   sourceMessage:string;
-  sources:readonly Readonly< {
+  sources:readonly Readonly<{
     generatedAt:string;
     rangeFrom:string;
     rangeTo:string;
     producerLabel:string
-  } >[];
+  }>[];
   sourceWarnings:readonly string[];
-  records:readonly Readonly< {
+  records:readonly Readonly<{
     cell:DetailCell;
     canCorrect:boolean;
-    localChanges:readonly Readonly< {
+    localChanges:readonly Readonly<{
       state:HabitLocalCompletionState;
       changedAt:string
-    } >[]
-  } >[];
+    }>[]
+  }>[];
   recordCount:number;
   offset:number;
   nextOffset:number|null;
   goalRevisions:readonly GoalRevision[];
-  activityChanges:readonly Readonly< {
+  activityChanges:readonly Readonly<{
     active:boolean;
     livedDate:string;
     changedAt:string
-  } >[];
-} >;
-type Ports=Readonly< {
+  }>[];
+}>;
+type Ports=Readonly<{
   selection:HTMLElement;
   defaultPane:HTMLElement;
   detailPane:HTMLElement;
@@ -121,7 +121,7 @@ type Ports=Readonly< {
   completeToday:(key:string,date:string,completed:boolean)=>Promise<boolean>;
   onChanged:()=>Promise<void>;
   track:(operation:Promise<boolean>)=>unknown;
-} >;
+}>;
 /** Owns selected-detail navigation and revision-bound operations; default DOM stays mounted. */
 export class HabitDetailsController {
   private snapshot:Snapshot|null=null;
@@ -136,20 +136,20 @@ export class HabitDetailsController {
   constructor(private ports:Ports) {
     this.ports.detailPane.classList.add('habit-selected-detail');
   }
-private copy(key: InterfaceCopyKey, values: Record<string,string|number> = {}) {
+  private copy(key: InterfaceCopyKey, values: Record<string,string|number> = {}) {
     return interfaceCopy(key, this.ports.language(), values);
   }
-private lineCopy(key: InterfaceCopyKey, tag = 'p', values: Record<string,string|number> = {}) {
+  private lineCopy(key: InterfaceCopyKey, tag = 'p', values: Record<string,string|number> = {}) {
     const element = document.createElement(tag);
     setInterfaceCopy(element, key, this.ports.language(), values);
     return element;
   }
-private buttonCopy(key: InterfaceCopyKey, action: () => void) {
+  private buttonCopy(key: InterfaceCopyKey, action: () => void) {
     const button = this.button('', action);
     setInterfaceCopy(button, key, this.ports.language());
     return button;
   }
-private goalLine(key: InterfaceCopyKey, goal: HabitGoal, values: Record<string,string|number> = {}) {
+  private goalLine(key: InterfaceCopyKey, goal: HabitGoal, values: Record<string,string|number> = {}) {
     const line = document.createElement('p'), caption = this.lineCopy(key, 'span', values), value = document.createElement('span');
     setHabitGoalCopy(value, goal, this.ports.language());
     line.append(caption, value);
@@ -188,19 +188,19 @@ private goalLine(key: InterfaceCopyKey, goal: HabitGoal, values: Record<string,s
     this.ports.detailPane.replaceChildren();
     this.renderSelection();
   }
-private button(label:string,action:()=>void) {
+  private button(label:string,action:()=>void) {
     const button=document.createElement('button');
     button.type='button';
     button.textContent=label;
     button.addEventListener('click',action);
     return button;
   }
-private line(text:string,tag='p') {
+  private line(text:string,tag='p') {
     const element=document.createElement(tag);
     element.textContent=text;
     return element;
   }
-private renderSelection() {
+  private renderSelection() {
     const rows=(this.snapshot?.habits??[]).filter(habit=>habit.active);
     const list=document.createDocumentFragment();
     for(const habit of rows)list.append(this.selectionRow(habit));
@@ -216,7 +216,7 @@ private renderSelection() {
       if(!inactive.length)list.append(this.lineCopy("habits.detailNoInactiveHabits",'small'));
     } this.ports.selection.replaceChildren(list);
   }
-private selectionRow(habit:DetailHabit) {
+  private selectionRow(habit:DetailHabit) {
     const row=this.button(this.ports.name(habit),()=>this.select(habit.key));
     row.className='habits-summary-row habit-detail-selector';
     row.dataset.habitKey=habit.key;
@@ -230,13 +230,12 @@ private selectionRow(habit:DetailHabit) {
     },this.ports.language());
     else setInterfaceCopy(goal,'habits.detailInactive',this.ports.language());
     const value=document.createElement('strong');
-    value.textContent=habit.active&&habit.goalKind==='weekly-count'&&habit.completedCount!==undefined&&habit.completedCount!==null?`${habit.completedCount}${habit.weeklyTarget!==null&&habit.weeklyTarget!==undefined?` / $ {
-      habit.weeklyTarget
-    } `:''}`:'';
+    const hasCount=habit.active && habit.goalKind==='weekly-count' && habit.completedCount!=null;
+    value.textContent=hasCount ? String(habit.completedCount) + (habit.weeklyTarget!=null ? ' / '+habit.weeklyTarget : '') : '';
     row.replaceChildren(label,value,goal);
     return row;
   }
-private async load(offset=0) {
+  private async load(offset=0) {
     const key=this.selected,target=this.snapshot?.catalogTargetBinding;
     if(!key||!target)return;
     const request=++this.generation;
@@ -246,9 +245,9 @@ private async load(offset=0) {
         habitKey:key,offset,limit:30
       });
       if(request!==this.generation||this.selected!==key||this.snapshot?.catalogTargetBinding!==target)return;
-      if(view.habit.key!==key||view.catalogTargetBinding!==target)throw Error(this.copy("habits.detailTheDetailTargetChangedReadAgain"));
+      if(view.habit.key!==key||view.catalogTargetBinding!==target)throw Error(this.copy("habits.detailTargetChanged"));
       if(offset && this.detail && (this.detail.catalogRevision!==view.catalogRevision||this.detail.completionRevision!==view.completionRevision||this.detail.sourceGeneratedAt!==view.sourceGeneratedAt)) {
-        this.messageKey="habits.detailRecordsChangedReadingTheFirstPageAgain";
+        this.messageKey="habits.detailRecordsChanged";
         void this.load();
         return;
       } this.detail=offset&&this.detail? {
@@ -261,14 +260,15 @@ private async load(offset=0) {
       this.renderDetail();
     }
   }
-private operationId(signature:string) {
+  private operationId(signature:string) {
     let id=this.operationIds.get(signature);
     if(!id) {
       id=crypto.randomUUID();
       this.operationIds.set(signature,id);
-    } return id;
+    }
+    return id;
   }
-private mutate(action:()=>Promise<boolean>) {
+  private mutate(action:()=>Promise<boolean>) {
     if(this.busy)return;
     const key=this.selected,target=this.snapshot?.catalogTargetBinding;
     this.busy=true;
@@ -282,7 +282,7 @@ private mutate(action:()=>Promise<boolean>) {
     });
     this.ports.track(operation);
   }
-private async lifecycle() {
+  private async lifecycle() {
     const detail=this.detail,key=this.selected,target=this.snapshot?.catalogTargetBinding;
     if(!detail||!key||!target)return false;
     const active=!detail.habit.active;
@@ -292,14 +292,14 @@ private async lifecycle() {
         habitKey:key,active,changeId:this.operationId(signature),targetBinding:target,expectedRevision:detail.catalogRevision
       }
     });
-    if(saved.catalogTargetBinding!==target||saved.habits.find(habit=>habit.key===key)?.active!==active)throw Error(this.copy("habits.detailSavedReadbackWasNotConfirmedRetrySafely"));
+    if(saved.catalogTargetBinding!==target||saved.habits.find(habit=>habit.key===key)?.active!==active)throw Error(this.copy("habits.detailReadbackUnconfirmed"));
     this.operationIds.delete(signature);
     if(this.selected!==key||this.snapshot?.catalogTargetBinding!==target)return true;
     await this.ports.onChanged();
     await this.load();
     return true;
   }
-private async correction(cell:DetailCell) {
+  private async correction(cell:DetailCell) {
     const detail=this.detail,key=this.selected,target=this.snapshot?.catalogTargetBinding;
     if(!detail||!key||!target||!detail.completionTargetBinding)return false;
     const completed=cell.localCompletionState!=='completed';
@@ -312,7 +312,7 @@ private async correction(cell:DetailCell) {
     const reread=await this.ports.invoke<HabitDetailsView>('habit_details', {
       habitKey:key,offset:0,limit:30
     });
-    if(reread.catalogTargetBinding!==target)throw Error(this.copy("habits.detailTheVaultChangedReadAgain"));
+    if(reread.catalogTargetBinding!==target)throw Error(this.copy("habits.detailVaultChanged"));
     // Historical dates may be on later pages; the command itself verifies persisted canonical bytes.
     this.operationIds.delete(signature);
     if(this.selected!==key||this.snapshot?.catalogTargetBinding!==target)return true;
@@ -321,7 +321,7 @@ private async correction(cell:DetailCell) {
     await this.load();
     return true;
   }
-private renderDetail() {
+  private renderDetail() {
     if(!this.selected)return;
     const pane=this.ports.detailPane;
     pane.hidden=false;
@@ -342,20 +342,21 @@ private renderDetail() {
     if(!detail) {
       pane.replaceChildren(...elements);
       return;
-    } const habit=detail.habit,language=this.ports.language();
+    }
+    const habit=detail.habit,language=this.ports.language();
     const heading=this.line(`${habit.settings?.emoji?habit.settings.emoji+' ':''}${this.ports.name(habit)}`,'h3');
     const identity=document.createElement('header');
     identity.className='habit-detail-identity';
     identity.append(heading, detail.startDateKnown && habit.settings ? this.lineCopy('habits.detailStartDateValue','p', {
       date:habit.settings.startDate
-    }) : this.lineCopy('habits.detailOriginalStartDateNotSuppliedBySource'), this.goalLine('habits.settingsCurrentGoal',habit.currentGoal?? {
+    }) : this.lineCopy('habits.detailStartDateUnknown'), this.goalLine('habits.settingsCurrentGoal',habit.currentGoal?? {
       kind:'unconfigured'
     }));
     if(habit.pendingGoal)identity.append(this.goalLine('habits.settingsPendingGoal',habit.pendingGoal.goal, {
       date:habit.pendingGoal.effectiveDate
     }));
-    if(habit.partialCycle)identity.append(this.lineCopy("habits.detailPartialCycleExcludedFromFullCycleStreaks"));
-    if(!habit.active)identity.append(this.lineCopy("habits.detailInactiveNoCheckInIsRequiredDuringThePauseRestoreStartsANewActivitySegment"));
+    if(habit.partialCycle)identity.append(this.lineCopy("habits.detailPartialCycle"));
+    if(!habit.active)identity.append(this.lineCopy("habits.detailInactiveHint"));
     const actions=document.createElement('div');
     actions.className='habit-detail-actions';
     const edit=this.buttonCopy("habits.detailEdit",()=>this.ports.edit(habit.key));
@@ -413,12 +414,14 @@ private renderDetail() {
       const message=this.line('');
       setApplicationMessage(message,detail.sourceMessage,language);
       provenance.append(message);
-    } for(const source of detail.sources)provenance.append(this.line(`${source.producerLabel} · ${source.rangeFrom} — ${source.rangeTo} · ${source.generatedAt}`));
+    }
+    for(const source of detail.sources)provenance.append(this.line(`${source.producerLabel} · ${source.rangeFrom} — ${source.rangeTo} · ${source.generatedAt}`));
     for(const warning of detail.sourceWarnings) {
       const line=this.line('');
       setApplicationMessage(line,warning,language);
       provenance.append(line);
-    } elements.push(provenance);
+    }
+    elements.push(provenance);
     const history=document.createElement('section');
     history.className='habit-detail-records';
     history.append(this.lineCopy("habits.detailHistoryRecords",'h4'),this.lineCopy('habits.detailRecordCount','small', {
@@ -427,11 +430,13 @@ private renderDetail() {
     for(const record of detail.records) {
       const row=document.createElement('article');
       row.className='habit-detail-record';
-      row.append(this.line(record.cell.date,'strong'),this.lineCopy(record.cell.countsAsCompletion?'habits.detailAttainedCoverage':'habits.detailUnconfirmedCoverage','p', {
-        coverage:record.cell.coverage
-      }));
+      const coverage=document.createElement('p');
+      coverage.append(this.lineCopy(record.cell.countsAsCompletion?'habits.detailAttainedCoverageCaption':'habits.detailUnconfirmedCoverageCaption','span'));
+      const coverageKeys: Record<string,InterfaceCopyKey>={complete:'habits.detailCoverageComplete',partial:'habits.detailCoveragePartial',unknown:'habits.detailCoverageUnknown'};
+      coverage.append(coverageKeys[record.cell.coverage]?this.lineCopy(coverageKeys[record.cell.coverage],'span'):this.line(record.cell.coverage,'span'));
+      row.append(this.line(record.cell.date,'strong'),coverage);
       for(const fact of record.cell.details)row.append(this.line(localizeHabitDetail(fact,language),'small'));
-      if(record.cell.hasExternalCompletion)row.append(this.lineCopy("habits.detailExternalCompletionEvidenceIsRetainedIndependentlyWithdrawingLocalCompletionDoesNotRem",'small'));
+      if(record.cell.hasExternalCompletion)row.append(this.lineCopy("habits.detailExternalEvidenceRetained",'small'));
       if(record.localChanges.length) {
         const changes=document.createElement('details');
         changes.append(this.lineCopy("habits.detailLocalChangeHistory",'summary'));
@@ -440,19 +445,21 @@ private renderDetail() {
         }));
         row.append(changes);
       }
-if(record.canCorrect) {
+      if(record.canCorrect) {
         const correct=this.buttonCopy(record.cell.localCompletionState==='completed'?"habits.detailWithdrawLocalCompletion":"habits.detailRecordLocalCompletion",()=>this.mutate(()=>this.correction(record.cell)));
         correct.disabled=this.busy;
         row.append(correct);
-      } history.append(row);
+      }
+      history.append(row);
     }
-if(detail.nextOffset!==null) {
+    if(detail.nextOffset!==null) {
       const more=this.buttonCopy("habits.detailLoadOlderRecords",()=> {
         void this.load(detail.nextOffset??0);
       });
       more.disabled=this.busy;
       history.append(more);
-    } elements.push(history);
+    }
+    elements.push(history);
     pane.replaceChildren(...elements);
   }
 }
