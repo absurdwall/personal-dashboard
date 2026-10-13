@@ -757,13 +757,16 @@ pub fn project_snapshot_with_names_at_local_date(
             })
             .cloned()
             .collect();
-        let source_goal = habit.goal.as_ref().map(|goal| match goal {
-            Goal::WeeklyCount { standard } => crate::habit_catalog::HabitGoal::WeeklyDays { days: *standard },
-            Goal::DailyTime { standard, day_relation } => crate::habit_catalog::HabitGoal::DailyTime { time: standard.clone(), day_relation: *day_relation },
-        });
+        let source_goal = habit.goal.as_ref().map(catalog_goal);
+        let mut source_revisions: Vec<_> = habit.goal_history.iter().map(|context| crate::habit_catalog::HabitGoalRevision { effective_date: context.week_of.clone(), goal: catalog_goal(&context.goal) }).collect();
+        if let Some(goal) = &source_goal {
+            source_revisions.retain(|r| r.effective_date != week_start.to_string());
+            source_revisions.push(crate::habit_catalog::HabitGoalRevision { effective_date: week_start.to_string(), goal: goal.clone() });
+        }
+        source_revisions.sort_by(|a,b| a.effective_date.cmp(&b.effective_date));
         projected.push(HabitView {
             settings: Some(crate::habit_catalog::HabitSettings { name: habit.name.clone(), emoji: None, group: None, start_date: snapshot.range.from.clone(), goal: source_goal.clone().unwrap_or(crate::habit_catalog::HabitGoal::Unconfigured) }),
-            current_goal: source_goal, pending_goal: None, goal_revisions: vec![],
+            current_goal: source_goal, pending_goal: None, goal_revisions: source_revisions,
             key: habit.key.clone(),
             name: habit.name.clone(),
             localized_names: names_configuration.names_for(&habit.key),
@@ -1546,5 +1549,12 @@ pub(crate) fn project_local_definition(definition: &crate::habit_catalog::HabitD
         coverage_label: "本地记录；未记录日期未知；外部历史覆盖未知".into(), goal_history: definition.source_goal_history.clone(),
         today: history.iter().find(|c| c.date == today).unwrap().clone(),
         recent: history.iter().filter(|c| c.date.as_str() >= date.plus_days(-6).to_string().as_str() && c.date.as_str() <= today).cloned().collect(), history,
+    }
+}
+
+fn catalog_goal(goal: &Goal) -> crate::habit_catalog::HabitGoal {
+    match goal {
+        Goal::WeeklyCount { standard } => crate::habit_catalog::HabitGoal::WeeklyDays { days: *standard },
+        Goal::DailyTime { standard, day_relation } => crate::habit_catalog::HabitGoal::DailyTime { time: standard.clone(), day_relation: *day_relation },
     }
 }

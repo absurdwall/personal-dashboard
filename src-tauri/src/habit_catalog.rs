@@ -85,6 +85,8 @@ pub struct HabitDefinition {
     pub settings: HabitSettings,
     pub active: bool,
     pub sourced: bool,
+    pub source_name: Option<String>,
+    pub source_localized_names: crate::habits::HabitLocalizedNames,
     pub source_labels: Vec<String>,
     pub source_goal_history: Vec<HabitGoalContextView>,
     pub goal_revisions: Vec<HabitGoalRevision>,
@@ -155,11 +157,22 @@ impl HabitCatalogDocument {
             }
             definition.settings = input.settings.clone();
         } else {
+            let mut revisions = source.map(|habit| habit.goal_revisions.clone()).unwrap_or_default();
+            if let Some(source) = source {
+                let current = source.current_goal.clone().unwrap_or(HabitGoal::Unconfigured);
+                if revisions.is_empty() { revisions.push(HabitGoalRevision { effective_date: today.into(), goal: current.clone() }); }
+                if input.settings.goal != current {
+                    revisions.push(HabitGoalRevision { effective_date: current.next_boundary(CalendarDate::parse(today).ok_or("Invalid lived date")?).to_string(), goal: input.settings.goal.clone() });
+                }
+            } else {
+                revisions.push(HabitGoalRevision { effective_date: input.settings.start_date.clone(), goal: input.settings.goal.clone() });
+            }
             self.habits.push(HabitDefinition {
                 key: input.habit_key.clone(), settings: input.settings.clone(), active: source.is_none_or(|s| s.active),
+                source_name: source.map(|s| s.name.clone()), source_localized_names: source.map(|s| s.localized_names.clone()).unwrap_or_default(),
                 sourced: source.is_some(), source_labels: source.map(|s| s.source_labels.clone()).unwrap_or_default(),
                 source_goal_history: source.map(|s| s.goal_history.clone()).unwrap_or_default(),
-                goal_revisions: vec![HabitGoalRevision { effective_date: input.settings.start_date.clone(), goal: input.settings.goal.clone() }],
+                goal_revisions: revisions,
             });
         }
         self.receipts.push(HabitCatalogReceipt { input, saved_at: now.into(), lived_date: today.into() });
@@ -178,7 +191,7 @@ pub fn overlay_catalog(view: &mut HabitSnapshotView, catalog: &HabitCatalogDocum
         }
         let habit = view.habits.iter_mut().find(|habit| habit.key == definition.key).unwrap();
         habit.name = definition.settings.name.clone();
-        habit.localized_names = Default::default(); // explicit local name overrides display-name fallback; language config file is retained
+        habit.localized_names = if definition.source_name.as_ref() == Some(&definition.settings.name) { definition.source_localized_names.clone() } else { Default::default() };
         habit.active = definition.active;
         habit.settings = Some(definition.settings.clone());
         habit.goal_revisions = definition.goal_revisions.clone();

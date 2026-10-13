@@ -184,3 +184,36 @@ fn weekly_goal_edits_preserve_current_cycle_and_replace_or_cancel_pending_revisi
     assert!(advanced.habit("local-exercise").unwrap().pending_goal.is_none());
     assert_eq!(advanced.habit("local-exercise").unwrap().goal_revisions[0].goal, HabitGoal::WeeklyDays { days: 3 });
 }
+
+#[test]
+fn editing_sourced_habit_preserves_goal_segments_languages_mapping_and_refresh_evidence() {
+    let vault = TempVault::new("source-overlay");
+    let mut snapshot: serde_json::Value = serde_json::from_str(include_str!("fixtures/habits-v1-complete.json")).unwrap();
+    snapshot["sources"].as_array_mut().unwrap().push(serde_json::json!({"key":"dida-exercise", "kind":"dida365", "label":"Dida365 explicit mapping exercise=external-exercise"}));
+    write_snapshot(vault.path(), &snapshot.to_string());
+    let names = vault.path().join(personal_dashboard_lib::habits::HABIT_NAMES_RELATIVE_PATH);
+    fs::create_dir_all(names.parent().unwrap()).unwrap();
+    fs::write(&names, r#"{"schemaVersion":1,"habits":{"exercise":{"zh":"运动","en":"Exercise"}}}"#).unwrap();
+    let application = app(vault.path());
+    let initial = application.habits().unwrap();
+    let mut settings = initial.habit("exercise").unwrap().settings.clone().unwrap();
+    settings.goal = HabitGoal::WeeklyDays { days: 5 };
+    let edited = save_settings(&application, "exercise", "edit-existing-goal", settings.clone());
+    assert_eq!(edited.habit("exercise").unwrap().weekly_target, Some(3));
+    assert_eq!(edited.habit("exercise").unwrap().localized_names.zh.as_deref(), Some("运动"));
+    assert!(edited.habit("exercise").unwrap().goal_revisions.iter().any(|revision| revision.effective_date == "2026-08-31" && revision.goal == HabitGoal::WeeklyDays { days: 2 }));
+    settings.name = "Movement".into(); settings.emoji = Some("🚶".into()); settings.group = Some("Health".into());
+    save_settings(&application, "exercise", "rename-existing", settings);
+    snapshot["habits"][0]["name"] = "Producer rename".into();
+    snapshot["habits"][0]["goal"]["standard"] = 7.into();
+    snapshot["habits"][0]["days"].as_array_mut().unwrap().push(serde_json::json!({"livedDate":"2026-09-06", "coverage":"complete", "observations":[{"source":"dida","observedAt":"2026-09-06T18:00:00-04:00","status":"completed","evidence":"check-in"}]}));
+    write_snapshot(vault.path(), &snapshot.to_string());
+    let refreshed = app(vault.path()).habits().unwrap();
+    let habit = refreshed.habit("exercise").unwrap();
+    assert_eq!(habit.name, "Movement");
+    assert_eq!(habit.weekly_target, Some(3));
+    assert_eq!(habit.pending_goal.as_ref().unwrap().goal, HabitGoal::WeeklyDays { days: 5 });
+    assert!(habit.cell("2026-09-06").unwrap().has_external_completion);
+    assert!(habit.source_labels.iter().any(|s| s.contains("external-exercise")));
+    assert_eq!(fs::read_to_string(names).unwrap(), r#"{"schemaVersion":1,"habits":{"exercise":{"zh":"运动","en":"Exercise"}}}"#);
+}
