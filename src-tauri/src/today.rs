@@ -2691,7 +2691,7 @@ where
         let has_verifiable_catalog = matches!(
             catalog.state,
             HabitSnapshotState::Ready | HabitSnapshotState::Stale
-        );
+        ) || (catalog.catalog_target_binding.is_some() && catalog.habit(&input.habit_key).is_some_and(|habit| habit.locally_configured));
         if has_verifiable_catalog {
             let habit = catalog.habit(&input.habit_key).ok_or_else(|| {
                 "Habits catalog 中没有这个稳定习惯 key；未写入任何内容。".to_string()
@@ -3222,8 +3222,84 @@ where
             coverage:"Only explicit local completed/withdrawn changes establish local state. Unrecorded dates remain unknown. Change timestamps record saves, not activity time. Published snapshot goal thresholds, actual event times and source observations remain distinct; its freshness and coverage do not limit canonical local facts. Dated notes are context, not completion evidence. This read makes no writes or external calls." })
     }
 
+    pub fn save_habit_definition(&self, input: crate::habit_catalog::HabitDefinitionMutationInput) -> Result<HabitSnapshotView, String> {
+        use crate::habit_catalog::{catalog_binding, HabitCatalogDocument, HABIT_CATALOG_RELATIVE_PATH};
+        input.settings.validate()?;
+        validate_habit_key(&input.habit_key)?;
+        validate_local_identifier(&input.change_id, "Habit operation")?;
+        let vault = self.persistence.load_selected_vault()?.ok_or_else(|| "请先选择 Vault。".to_string())?;
+        validate_compatible_vault(&vault)?;
+        let path = vault.join(HABIT_CATALOG_RELATIVE_PATH);
+        if catalog_binding(&path) != input.target_binding { return Err("Vault 或 Habit catalog 目标变化；请重新读取后重试。".into()); }
+        let current = self.habit_completion_store.load(&path)?;
+        let mut catalog = current.as_deref().map(HabitCatalogDocument::parse).transpose()?.unwrap_or_default();
+        if let Some(receipt) = catalog.receipts.iter().find(|receipt| receipt.input.change_id == input.change_id) {
+            if receipt.input.habit_key == input.habit_key && receipt.input.change_id == input.change_id && receipt.input.target_binding == input.target_binding && receipt.input.settings == input.settings { return self.habits(); }
+            return Err("Habit 操作身份已用于另一修改；未写入。".into());
+        }
+        if current.as_deref().map(document_revision) != input.expected_revision { return Err("Habit catalog 已变化；草稿保留，请重新读取后重试。".into()); }
+        let source = self.habits()?;
+        if source.catalog_target_binding.as_ref() != Some(&input.target_binding) { return Err("Selected Vault / catalog 在读取设置时变化；未写入。".into()); }
+        catalog.apply(input.clone(), source.habit(&input.habit_key), &self.clock.current_lived_date(), &self.clock.current_timestamp_label())?;
+        let updated = serde_json::to_vec_pretty(&catalog).map_err(|error| error.to_string())?;
+        HabitCatalogDocument::parse(&updated)?;
+        if self.persistence.load_selected_vault()?.as_ref() != Some(&vault) { return Err("Selected Vault 已变化；未写入。".into()); }
+        match current {
+            Some(bytes) => self.habit_completion_store.save_if_unchanged(&path, &bytes, &updated)?,
+            None => self.habit_completion_store.create_new(&path, &updated)?,
+        }
+        if self.habit_completion_store.load(&path)?.as_deref() != Some(updated.as_slice()) { return Err("Habit 保存读回不一致；请重新读取，操作身份可安全重试。".into()); }
+        self.habits()
+    }
+
     pub fn habits(&self) -> Result<HabitSnapshotView, String> {
-        let Some(vault) = self.persistence.load_selected_vault()? else {
+        use crate::habit_catalog::{catalog_binding, overlay_catalog, HabitCatalogDocument, HABIT_CATALOG_RELATIVE_PATH};
+        let local_time = self.clock.current_local_time();
+        let today = local_time.lived_date();
+        let current_timestamp = self.clock.current_timestamp_label();
+        let selected_vault = self.persistence.load_selected_vault()?;
+        let mut view = self.sourced_habits_at(selected_vault.as_deref(), &today, &local_time.date, &current_timestamp)?;
+        let Some(vault) = selected_vault else { return Ok(view); };
+        if validate_compatible_vault(&vault).is_err() { return Ok(view); }
+        let path = vault.join(HABIT_CATALOG_RELATIVE_PATH);
+        let bytes = self.habit_completion_store.load(&path)?;
+        let catalog = match bytes.as_deref().map(HabitCatalogDocument::parse).transpose() {
+            Ok(catalog) => catalog.unwrap_or_default(),
+            Err(error) => { view.message = format!("{} · {error}", view.message); return Ok(view); }
+        };
+        view.catalog_revision = bytes.as_deref().map(document_revision);
+        view.catalog_target_binding = Some(catalog_binding(&path));
+        let completion_path = canonical_habit_completion_path(&vault);
+        let completion_bytes = match self.habit_completion_store.load(&completion_path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                view.message = format!("{} · {error}", view.message);
+                overlay_catalog(&mut view, &catalog, &today, &[]);
+                view.completion_target_binding = None;
+                return Ok(view);
+            }
+        };
+        let completions: Vec<_> = match completion_bytes.as_deref().map(|bytes| parse_habit_completion_document(bytes, &current_timestamp)).transpose() {
+            Ok(document) => document.map(|document| document.completions.into_iter().map(local_habit_completion).collect()).unwrap_or_default(),
+            Err(error) => {
+                view.message = format!("{} · {error}", view.message);
+                overlay_catalog(&mut view, &catalog, &today, &[]);
+                view.completion_target_binding = None;
+                return Ok(view);
+            }
+        };
+        view.completion_target_binding = Some(habit_completion_target_binding(&completion_path));
+        view.completion_revision = completion_bytes.as_deref().map(document_revision);
+        overlay_catalog(&mut view, &catalog, &today, &completions);
+        if !catalog.habits.is_empty() && view.state == HabitSnapshotState::Missing {
+            view.state = HabitSnapshotState::Ready;
+            view.message = "已读取本地 Habit；尚无来源快照，外部历史覆盖未知。".into();
+        }
+        Ok(view)
+    }
+
+    fn sourced_habits_at(&self, vault: Option<&Path>, today: &str, local_date: &str, current_timestamp: &str) -> Result<HabitSnapshotView, String> {
+        let Some(vault) = vault else {
             return Ok(HabitSnapshotView::unconfigured());
         };
         let path = vault.join(SNAPSHOT_RELATIVE_PATH);
@@ -3245,9 +3321,7 @@ where
                 return Ok(HabitSnapshotView::error(error));
             }
         };
-        let today = self.clock.current_lived_date();
-        let current_timestamp = self.clock.current_timestamp_label();
-        let dates = match snapshot_dates_at_local_date(&document, &today, &self.clock.current_date()) {
+        let dates = match snapshot_dates_at_local_date(&document, &today, local_date) {
             Ok(dates) => dates,
             Err(error) => return Ok(self.retained_or_error(&path, error)?),
         };
@@ -3300,7 +3374,7 @@ where
         match project_snapshot_with_names_at_local_date(
             &document,
             &today,
-            &self.clock.current_date(),
+            local_date,
             local_records,
             local_completions,
             &names_configuration,
@@ -4702,7 +4776,7 @@ fn habit_completion_target_binding(path: &Path) -> String {
     )
 }
 
-fn validate_habit_key(value: &str) -> Result<(), String> {
+pub(crate) fn validate_habit_key(value: &str) -> Result<(), String> {
     if value.is_empty()
         || value.len() > 64
         || !value

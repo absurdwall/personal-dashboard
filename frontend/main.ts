@@ -1,3 +1,4 @@
+import { showHabitSettingsDialog, habitSettingsGoalLabel, type HabitGoal, type HabitSettings } from "./habit-settings.js";
 import { attachTodayAxisGestures, taskAxisDateTime, taskAxisMinute, type AxisGestureTarget, type AxisGestureCommit } from "./today-axis-gestures.js";
 import { EveningReviewGuardError, initializeEveningReviewEntry } from "./evening-review-entry.js";
 import { initializeCollaborationCommandCompletion } from "./collaboration-command-completion.js";
@@ -455,12 +456,18 @@ type HabitCellView = Readonly<{
 }>;
 
 type HabitView = Readonly<{
+  locallyConfigured: boolean;
+  partialCycle: boolean;
+  settings: HabitSettings | null;
+  currentGoal: HabitGoal | null;
+  pendingGoal: Readonly<{effectiveDate: string; goal: HabitGoal}> | null;
+  goalRevisions: readonly Readonly<{effectiveDate: string; validThrough: string | null; goal: HabitGoal}>[];
   key: string;
   name: string;
   localizedNames: HabitLocalizedNames;
   active: boolean;
   canRecordCompletion: boolean;
-  goalKind: "weekly-count" | "daily-time";
+  goalKind: "weekly-count" | "daily-time" | "daily-completion";
   goalLabel: string;
   weeklyTarget: number | null;
   completedCount: number | null;
@@ -477,6 +484,8 @@ type HabitView = Readonly<{
 }>;
 
 type HabitSnapshotView = Readonly<{
+  catalogRevision: string | null;
+  catalogTargetBinding: string | null;
   state: HabitSnapshotState;
   message: string;
   readError?: string;
@@ -3543,6 +3552,7 @@ async function refreshCanonicalDateProjections(targetDate: string, evidence?: Co
     unavailable.push(t("destination.habits"));
     habitSnapshotRequests.invalidate();
     renderHabitSnapshot({
+      catalogRevision: null, catalogTargetBinding: null,
       state: "error",
       message: String(habits.error),
       readError: String(habits.error),
@@ -8552,6 +8562,7 @@ const habitCompletionExplanationLabels: Record<
 };
 
 function habitProgressLabel(habit: HabitView): string {
+  if (habit.goalKind === "daily-completion") return habit.today.countsAsCompletion ? (currentInterfaceLanguage === "zh" ? "已完成" : "Completed") : (currentInterfaceLanguage === "zh" ? "待打卡" : "Not confirmed");
   if (habit.completedCount === null) {
     return habit.today.actualTimeLabel
       ? localizeHabitActualTimeLabel(habit.today.actualTimeLabel, currentInterfaceLanguage)
@@ -8622,7 +8633,7 @@ function habitCompletionControl(habit: HabitView): HTMLElement {
   input.disabled =
     habitCompletionOperationCount > 0 ||
     !currentHabitSnapshot?.completionTargetBinding ||
-    !["ready", "stale"].includes(currentHabitSnapshot.state);
+    (!["ready", "stale"].includes(currentHabitSnapshot.state) && !habit.locallyConfigured);
   input.dataset.habitCompletionKey = habit.key;
   input.dataset.habitCompletionDate = habit.today.date;
   input.setAttribute("aria-label", t("habits.recordCompletion", { habit: displayHabitName(habit) }));
@@ -8659,13 +8670,24 @@ function habitRow(habit: HabitView): HTMLElement {
   const metadata = document.createElement("p");
   const sources = document.createElement("small");
   name.textContent = displayHabitName(habit);
-  metadata.textContent = `${localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage)} · ${
+  if (habit.settings?.emoji) name.prepend(`${habit.settings.emoji} `);
+  metadata.textContent = `${(habit.currentGoal ? habitSettingsGoalLabel(habit.currentGoal, currentInterfaceLanguage) : localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage))} · ${
     localizeHabitCoverageLabel(habit.coverageLabel, currentInterfaceLanguage)
   }`;
   setCopy(sources, "habits.sources", {
     sources: habit.sourceLabels.join(currentInterfaceLanguage === "zh" ? "、" : ", ") || t("habits.notDeclared"),
   });
+  if (habit.settings?.group) metadata.textContent += ` · ${habit.settings.group}`;
+  if (habit.pendingGoal) metadata.textContent += ` · ${currentInterfaceLanguage === "zh" ? "待生效" : "Pending"} ${habit.pendingGoal.effectiveDate}: ${habitSettingsGoalLabel(habit.pendingGoal.goal, currentInterfaceLanguage)}`;
+  if (habit.partialCycle) metadata.textContent += ` · ${currentInterfaceLanguage === "zh" ? "部分周期（不计完整连续）" : "Partial cycle (excluded from full-cycle streaks)"}`;
   identity.append(name, metadata, sources);
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.className = "habit-settings-edit";
+  edit.dataset.habitEdit = habit.key;
+  setCopy(edit, "habits.edit");
+  edit.disabled = !currentHabitSnapshot?.catalogTargetBinding;
+  identity.append(edit);
 
   const value = document.createElement("div");
   value.className = "habit-snapshot-value";
@@ -9223,8 +9245,36 @@ async function setLocalHabitCompletion(
   }
 }
 
+let habitSettingsOpening = false;
+async function openHabitSettings(habitKey?: string): Promise<void> {
+  if (habitSettingsOpening || document.querySelector("dialog[data-habit-settings-dialog]")) return;
+  habitSettingsOpening = true;
+  try {
+    const view = await window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot");
+    const clock = await window.__TAURI__.core.invoke<TodayClockView>("today_clock");
+    showHabitSettingsDialog({snapshot: view, livedDate: clock.livedDate, language: currentInterfaceLanguage, habitKey,
+      save: input => {
+        const operation = window.__TAURI__.core.invoke<HabitSnapshotView>("save_habit_definition", {input});
+        void pendingWrites.track(operation.then(() => true, () => false));
+        return operation;
+      },
+      reread: () => window.__TAURI__.core.invoke<HabitSnapshotView>("habit_snapshot"),
+      onSaved: snapshot => {
+        habitCompletionStatus = null;
+        habitSnapshotRequests.invalidate();
+        if (currentHabitSnapshot?.catalogTargetBinding !== snapshot.catalogTargetBinding) { void refreshHabits(); return; }
+        renderHabitSnapshot(snapshot);
+      },
+    });
+  } catch (error) {
+    if (habitsStatus) { habitsStatus.textContent = String(error); habitsStatus.dataset.state = "error"; }
+  } finally { habitSettingsOpening = false; }
+}
+
 function renderHabitSnapshot(view: HabitSnapshotView): void {
   currentHabitSnapshot = view;
+  const create = document.querySelector<HTMLButtonElement>("#create-habit");
+  if (create) create.disabled = !view.catalogTargetBinding;
   renderWorkspaceRailContext("habits");
   renderWorkspaceContextStatus(currentWorkspaceDestination);
   if (habitsStatus) {
@@ -9296,7 +9346,7 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
           row.className = "habits-summary-row";
           label.textContent = displayHabitName(habit);
           value.textContent = habitProgressLabel(habit);
-          kind.textContent = localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage);
+          kind.textContent = habit.currentGoal ? habitSettingsGoalLabel(habit.currentGoal, currentInterfaceLanguage) : localizeHabitGoalLabel(habit.goalLabel, currentInterfaceLanguage);
           row.append(label, value, kind);
           return row;
         }),
@@ -9332,6 +9382,7 @@ async function refreshHabits(): Promise<void> {
   } catch (error) {
     if (!habitSnapshotRequests.isCurrent(request)) return;
     renderHabitSnapshot({
+      catalogRevision: null, catalogTargetBinding: null,
       state: "error",
       message: String(error),
       readError: String(error),
@@ -12844,7 +12895,36 @@ habitsDestination?.addEventListener("change", (event) => {
   void pendingWrites.track(operation);
 });
 
+document.querySelector("#create-habit")?.addEventListener("click", () => { void openHabitSettings(); });
+habitsDestination?.addEventListener("contextmenu", event => {
+  const row = (event.target as HTMLElement).closest<HTMLElement>(".habit-snapshot-row[data-habit-key]");
+  const key = row?.dataset.habitKey;
+  if (!key || !currentHabitSnapshot?.catalogTargetBinding) return;
+  event.preventDefault();
+  document.querySelector(".habit-settings-context-menu")?.remove();
+  const menu = document.createElement("div");
+  menu.className = "habit-settings-context-menu";
+  menu.setAttribute("role", "menu");
+  menu.style.left = `${Math.min(event.clientX, window.innerWidth - 150)}px`;
+  menu.style.top = `${Math.min(event.clientY, window.innerHeight - 60)}px`;
+  const edit = document.createElement("button");
+  edit.type = "button";
+  edit.setAttribute("role", "menuitem");
+  setCopy(edit, "habits.edit");
+  const close = () => { menu.remove(); document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  const outside = (pointer: Event) => { if (!menu.contains(pointer.target as Node)) close(); };
+  const escape = (keyEvent: KeyboardEvent) => { if (keyEvent.key === "Escape") close(); };
+  edit.addEventListener("click", () => { close(); void openHabitSettings(key); });
+  menu.append(edit);
+  document.body.append(menu);
+  edit.focus();
+  document.addEventListener("pointerdown", outside);
+  document.addEventListener("keydown", escape);
+});
+
 habitsDestination?.addEventListener("click", (event) => {
+  const edit = (event.target as HTMLElement).closest<HTMLElement>("[data-habit-edit]");
+  if (edit?.dataset.habitEdit) { void openHabitSettings(edit.dataset.habitEdit); return; }
   const historicalCorrection = (event.target as HTMLElement).closest<HTMLButtonElement>(
     "button[data-habit-correction-date]",
   );

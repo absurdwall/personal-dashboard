@@ -1179,7 +1179,10 @@
                   <h2 id="habits-heading" class="destination-heading" data-i18n="habits.weekly">本周习惯</h2>
                   <p id="habits-range" data-i18n="habits.loadingOnDemand">正在读取按需快照…</p>
                 </div>
-                <button id="refresh-habits" type="button" data-i18n="habits.refresh">刷新快照</button>
+                <div class="habits-header-actions">
+                  <button id="create-habit" type="button" data-i18n-aria-label="habits.create" data-i18n-title="habits.create" aria-label="新增习惯" title="新增习惯" disabled>＋</button>
+                  <button id="refresh-habits" type="button" data-i18n="habits.refresh">刷新快照</button>
+                </div>
               </header>
               <p id="habits-status" class="today-status" role="status" aria-live="polite">
                 <span data-i18n="habits.loading">正在读取 Habits 快照…</span>
