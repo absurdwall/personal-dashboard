@@ -227,7 +227,7 @@ pub struct HabitLocalRecordView {
     pub text: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HabitGoalContextView {
     pub week_of: String,
@@ -238,6 +238,10 @@ pub struct HabitGoalContextView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HabitView {
+    pub settings: Option<crate::habit_catalog::HabitSettings>,
+    pub current_goal: Option<crate::habit_catalog::HabitGoal>,
+    pub pending_goal: Option<crate::habit_catalog::HabitGoalRevision>,
+    pub goal_revisions: Vec<crate::habit_catalog::HabitGoalRevision>,
     pub key: String,
     pub name: String,
     pub localized_names: HabitLocalizedNames,
@@ -273,6 +277,8 @@ pub struct HabitSummaryView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HabitSnapshotView {
+    pub catalog_revision: Option<String>,
+    pub catalog_target_binding: Option<String>,
     pub state: HabitSnapshotState,
     pub message: String,
     pub generated_at: Option<String>,
@@ -368,6 +374,8 @@ impl HabitSnapshotView {
 
     fn empty(state: HabitSnapshotState, message: impl Into<String>) -> Self {
         Self {
+            catalog_revision: None,
+            catalog_target_binding: None,
             state,
             message: message.into(),
             generated_at: None,
@@ -749,7 +757,13 @@ pub fn project_snapshot_with_names_at_local_date(
             })
             .cloned()
             .collect();
+        let source_goal = habit.goal.as_ref().map(|goal| match goal {
+            Goal::WeeklyCount { standard } => crate::habit_catalog::HabitGoal::WeeklyDays { days: *standard },
+            Goal::DailyTime { standard, day_relation } => crate::habit_catalog::HabitGoal::DailyTime { time: standard.clone(), day_relation: *day_relation },
+        });
         projected.push(HabitView {
+            settings: Some(crate::habit_catalog::HabitSettings { name: habit.name.clone(), emoji: None, group: None, start_date: snapshot.range.from.clone(), goal: source_goal.clone().unwrap_or(crate::habit_catalog::HabitGoal::Unconfigured) }),
+            current_goal: source_goal, pending_goal: None, goal_revisions: vec![],
             key: habit.key.clone(),
             name: habit.name.clone(),
             localized_names: names_configuration.names_for(&habit.key),
@@ -800,6 +814,7 @@ pub fn project_snapshot_with_names_at_local_date(
         )
     };
     Ok(HabitSnapshotView {
+        catalog_revision: None, catalog_target_binding: None,
         state,
         message,
         generated_at: Some(snapshot.generated_at.clone()),
@@ -1512,5 +1527,24 @@ fn goal_label(goal: &Goal) -> String {
             DayRelation::NextDay => format!("每日 次日 {standard}"),
             DayRelation::Unresolved => format!("每日 {standard} · 日期归属待解释"),
         },
+    }
+}
+
+
+pub(crate) fn project_local_definition(definition: &crate::habit_catalog::HabitDefinition, today: &str, completions: &[LocalHabitCompletion]) -> HabitView {
+    let date = CalendarDate::parse(today).expect("valid lived date");
+    let start = date.monday().plus_days(-7 * (HISTORY_WEEKS - 1));
+    let history: Vec<_> = (0..HISTORY_WEEKS * 7).map(|offset| {
+        let cell_date = start.plus_days(offset).to_string();
+        project_cell(&cell_date, None, &HashMap::new(), &[], completions.iter().find(|c| c.key == definition.key && c.date == cell_date), date)
+    }).collect();
+    HabitView {
+        key: definition.key.clone(), name: definition.settings.name.clone(), localized_names: Default::default(), active: definition.active,
+        settings: Some(definition.settings.clone()), current_goal: None, pending_goal: None, goal_revisions: vec![],
+        goal_kind: "daily-completion".into(), goal_label: definition.settings.goal.label(), weekly_target: None, completed_count: None,
+        can_record_completion: true, source_labels: definition.source_labels.iter().cloned().chain(std::iter::once("Personal Dashboard local".into())).collect(),
+        coverage_label: "本地记录；未记录日期未知；外部历史覆盖未知".into(), goal_history: definition.source_goal_history.clone(),
+        today: history.iter().find(|c| c.date == today).unwrap().clone(),
+        recent: history.iter().filter(|c| c.date.as_str() >= date.plus_days(-6).to_string().as_str() && c.date.as_str() <= today).cloned().collect(), history,
     }
 }

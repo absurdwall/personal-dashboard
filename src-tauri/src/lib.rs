@@ -13,6 +13,7 @@ pub mod collaboration_memory;
 pub mod cutover;
 pub mod exercise;
 pub mod habits;
+pub mod habit_catalog;
 pub mod habit_producer;
 pub mod interface_language;
 pub mod migration;

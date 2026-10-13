@@ -11195,6 +11195,7 @@ mod capability_tests {
     #[test]
     fn stale_habit_snapshot_warning_is_captured_in_the_review_baseline() {
         let snapshot = HabitSnapshotView {
+            catalog_revision: None, catalog_target_binding: None,
             state: HabitSnapshotState::Stale,
             message: "fixture source snapshot is stale".into(),
             generated_at: Some("2026-09-27T12:00:00Z".into()),
