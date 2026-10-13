@@ -10,6 +10,7 @@ const interfaceCopies = {
   "habits.detailCoverageComplete": {zh:"完整",en:"complete"},
   "habits.detailCoveragePartial": {zh:"部分",en:"partial"},
   "habits.detailCoverageUnknown": {zh:"未知",en:"unknown"},
+  "habits.detailCoverageUnavailable": {zh:"不可用",en:"unavailable"},
   "habits.dailyNotConfirmed": {zh:"待打卡",en:"Not confirmed"},
   "habits.snapshotPartialCycle": {zh:"部分周期（不计完整连续）",en:"Partial cycle (excluded from full-cycle streaks)"},
   "tasks.draftReadAgain": {"zh": "重新读取并保留草稿", "en": "Read again and keep draft"},

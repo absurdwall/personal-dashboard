@@ -432,7 +432,7 @@ export class HabitDetailsController {
       row.className='habit-detail-record';
       const coverage=document.createElement('p');
       coverage.append(this.lineCopy(record.cell.countsAsCompletion?'habits.detailAttainedCoverageCaption':'habits.detailUnconfirmedCoverageCaption','span'));
-      const coverageKeys: Record<string,InterfaceCopyKey>={complete:'habits.detailCoverageComplete',partial:'habits.detailCoveragePartial',unknown:'habits.detailCoverageUnknown'};
+      const coverageKeys: Record<string,InterfaceCopyKey>={complete:'habits.detailCoverageComplete',partial:'habits.detailCoveragePartial',unknown:'habits.detailCoverageUnknown',unavailable:'habits.detailCoverageUnavailable'};
       coverage.append(coverageKeys[record.cell.coverage]?this.lineCopy(coverageKeys[record.cell.coverage],'span'):this.line(record.cell.coverage,'span'));
       row.append(this.line(record.cell.date,'strong'),coverage);
       for(const fact of record.cell.details)row.append(this.line(localizeHabitDetail(fact,language),'small'));

@@ -9845,7 +9845,17 @@ function appendTaskDraftRecovery(
       const key = taskDraftKey(binding, task.id), retained = taskEditDrafts.get(key);
       if (!retained?.baseTask || retained.recovery !== recovery) return;
       const edited = compareTaskDraft(retained.baseTask, retained, recovery.current, recovery.revision);
-      const resolved = useCurrentConflictingFields({...edited, conflicts: recovery.conflicts});
+      const conflicts = [...new Set([...recovery.conflicts, ...edited.conflicts])];
+      if (edited.conflicts.some(field => !recovery.conflicts.includes(field))) {
+        // The retained draft may have changed since the comparison was displayed.
+        // New conflicts must be shown before the next explicit adoption action.
+        taskEditDrafts.set(key, {...retained, recovery: {...edited, conflicts}});
+        const view = taskSurfaceView(surface);
+        if (view) renderTaskSurface(surface, view);
+        setCopy(taskSurfaceStatus(surface), "tasks.draftConflict");
+        return;
+      }
+      const resolved = useCurrentConflictingFields({...edited, conflicts});
       taskEditDrafts.set(key, {...retained, ...resolved, baseTask: recovery.current, expectedRevision: recovery.revision, recovery: undefined, recoveryUnavailable: false});
       const view = taskSurfaceView(surface);
       if (view) renderTaskSurface(surface, view);
