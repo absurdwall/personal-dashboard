@@ -4,8 +4,8 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: PDEX-SPEC-02 authorized implementation; PDEX-19 repairs and PDEX-22/23/24 integrated with remaining acceptance pending; earlier PDEX-SPEC-01, PDEX-FOLLOWUP-01–05 and PDEX-01–18 remain closed
-Implementation: PDEX-19 repairs and PDEX-22/24 implementation integrated, application/DOM verified, review/native acceptance pending; PDEX-23 implementation integrated, review/remaining native acceptance pending; other claims are recorded in their full ticket bodies; prior installed d518332 acceptance and its qualifications remain historical
+Stage: PDEX-SPEC-02 authorized implementation; PDEX-19/20/22/23/24 integrated with remaining acceptance pending; earlier PDEX-SPEC-01, PDEX-FOLLOWUP-01–05 and PDEX-01–18 remain closed
+Implementation: PDEX-19/20/22/24 integrated, application/DOM verified, scoped native results recorded separately, combined acceptance/review pending; PDEX-23 implementation integrated, review/remaining native acceptance pending; PDEX-21/25 claimed and in progress; prior installed d518332 acceptance and its qualifications remain historical
 Working branch: codex/dashboard-experience-refinement-integration from 918e7e0; per-ticket branches and full commits in refinement-execution-2026-10-11.md; spec/prior-round branches retained
 Management source: source-personal-dashboard-experience
 
@@ -15,7 +15,7 @@ Management source: source-personal-dashboard-experience
 | --- | --- | --- | --- | --- | --- | --- |
 | PDEX-SPEC-02 | spec | [Complete refinement specification](refinement-spec-2026-10-11.md) / [same-identity index](issues/00-spec-02.md) | ready-for-agent | open | none | [four confirmed clarifications](requirements-clarifications-2026-10-11.md), [prototype review and preservation boundary](prototype-review-and-scope-2026-10-11.md), [local publication](refinement-publication-2026-10-11.md) |
 | PDEX-19 | ticket | [Task 编辑、属性与操作入口](issues/19-task-editing-properties-actions.md) | ready-for-agent | in-progress | none | More release repair integrated at 0548e6eb4b6d1bb3dd204b74b9c328677d27c9ec; application/DOM and cancellation native restart verified; remaining combined acceptance/review pending; [native](evidence/pdex-19-24-native-partial-2026-10-13.json), [evidence](evidence/pdex-19-refinement.md), [history](refinement-execution-2026-10-11.md) |
-| PDEX-20 | ticket | [Task 父子关系与清单文件夹](issues/20-task-parents-list-folders.md) | ready-for-agent | in-progress | PDEX-19 | claimed on codex/pdex-20-refinement from b96b77d; implementation/testing in its worktree |
+| PDEX-20 | ticket | [Task 父子关系与清单文件夹](issues/20-task-parents-list-folders.md) | ready-for-agent | in-progress | PDEX-19 | implementation integrated at 267647bc1cf44e25a80341350720dd3687e8afcc; application/DOM verified, review/native acceptance pending; [evidence](evidence/pdex-20-refinement.md), [history](refinement-execution-2026-10-11.md) |
 | PDEX-21 | ticket | [Today 时间轴与安排交互](issues/21-today-axis-arrangement-interaction.md) | ready-for-agent | in-progress | PDEX-19 | claimed on codex/pdex-21-refinement from 0230a35; verified shared Task prerequisites |
 | PDEX-22 | ticket | [Calendar 新增、详情与节日](issues/22-calendar-create-details-holidays.md) | ready-for-agent | in-progress | PDEX-19 | implementation integrated at dc4480eea91c699aaa2df2547becf160f7d4fcaa; application/DOM verified, review/native acceptance pending; [evidence](evidence/pdex-22-refinement.md), [history](refinement-execution-2026-10-11.md) |
 | PDEX-23 | ticket | [Collaboration 空间与输入体验](issues/23-collaboration-context-input.md) | ready-for-agent | in-progress | none | implementation integrated at 3cb070737e919c2d9495556a19541bdf3b93c553; review/native acceptance pending; [evidence](evidence/pdex-23-refinement.md), [history](refinement-execution-2026-10-11.md) |
