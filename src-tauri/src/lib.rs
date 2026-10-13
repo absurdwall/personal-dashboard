@@ -13,6 +13,7 @@ pub mod collaboration_memory;
 pub mod cutover;
 pub mod exercise;
 pub mod habits;
+pub mod habit_catalog;
 pub mod habit_producer;
 pub mod interface_language;
 pub mod migration;
@@ -239,7 +240,7 @@ fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), Str
 }
 
 use appearance::{
-    AccentColor, AppearanceApplication, AppearancePreferences, AppearanceSelectionResult,
+    AccentColor, CalendarHolidayPreferences, AppearanceApplication, AppearancePreferences, AppearanceSelectionResult,
 };
 use clock::SystemClock;
 #[cfg(target_os = "macos")]
@@ -654,6 +655,14 @@ fn set_accent_color(
 }
 
 #[tauri::command]
+fn set_calendar_holidays(
+    application: State<'_, DesktopAppearanceApplication>,
+    preferences: CalendarHolidayPreferences,
+) -> Result<AppearancePreferences, String> {
+    application.set_calendar_holidays(preferences)
+}
+
+#[tauri::command]
 fn restore_appearance_defaults(
     application: State<'_, DesktopAppearanceApplication>,
 ) -> Result<AppearancePreferences, String> {
@@ -733,6 +742,11 @@ fn habit_snapshot(
     application: State<'_, DesktopTodayApplication>,
 ) -> Result<HabitSnapshotView, String> {
     application.habits()
+}
+
+#[tauri::command]
+fn save_habit_definition(application: State<'_, DesktopTodayApplication>, input: habit_catalog::HabitDefinitionMutationInput) -> Result<HabitSnapshotView, String> {
+    application.save_habit_definition(input)
 }
 
 #[tauri::command]
@@ -1084,6 +1098,7 @@ pub fn run() {
             collaboration_reject_memory_proposal,
             appearance_preferences,
             set_accent_color,
+            set_calendar_holidays,
             restore_appearance_defaults,
             select_background_image,
             remove_background_image,
@@ -1110,6 +1125,7 @@ pub fn run() {
             restore_task,
             correct_task_completion,
             set_local_habit_completion,
+            save_habit_definition,
             set_historical_habit_completion,
             select_today_vault,
             edit_plan_time,
@@ -1164,6 +1180,7 @@ pub fn run() {
         collaboration_reject_memory_proposal,
         appearance_preferences,
         set_accent_color,
+        set_calendar_holidays,
         restore_appearance_defaults,
         select_background_image,
         remove_background_image,
@@ -1190,6 +1207,7 @@ pub fn run() {
         restore_task,
         correct_task_completion,
         set_local_habit_completion,
+        save_habit_definition,
         set_historical_habit_completion,
         select_today_vault,
         edit_plan_time,

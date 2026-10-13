@@ -227,7 +227,7 @@ pub struct HabitLocalRecordView {
     pub text: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HabitGoalContextView {
     pub week_of: String,
@@ -238,6 +238,12 @@ pub struct HabitGoalContextView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HabitView {
+    pub locally_configured: bool,
+    pub partial_cycle: bool,
+    pub settings: Option<crate::habit_catalog::HabitSettings>,
+    pub current_goal: Option<crate::habit_catalog::HabitGoal>,
+    pub pending_goal: Option<crate::habit_catalog::HabitGoalRevision>,
+    pub goal_revisions: Vec<crate::habit_catalog::HabitGoalRevision>,
     pub key: String,
     pub name: String,
     pub localized_names: HabitLocalizedNames,
@@ -273,6 +279,8 @@ pub struct HabitSummaryView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HabitSnapshotView {
+    pub catalog_revision: Option<String>,
+    pub catalog_target_binding: Option<String>,
     pub state: HabitSnapshotState,
     pub message: String,
     pub generated_at: Option<String>,
@@ -368,6 +376,8 @@ impl HabitSnapshotView {
 
     fn empty(state: HabitSnapshotState, message: impl Into<String>) -> Self {
         Self {
+            catalog_revision: None,
+            catalog_target_binding: None,
             state,
             message: message.into(),
             generated_at: None,
@@ -749,7 +759,18 @@ pub fn project_snapshot_with_names_at_local_date(
             })
             .cloned()
             .collect();
+        let source_goal = habit.goal.as_ref().map(catalog_goal);
+        let mut source_revisions: Vec<_> = habit.goal_history.iter().map(|context| crate::habit_catalog::HabitGoalRevision { effective_date: context.week_of.clone(), valid_through: Some(CalendarDate::parse(&context.week_of).expect("validated source week").plus_days(6).to_string()), goal: catalog_goal(&context.goal) }).collect();
+        if let Some(goal) = &source_goal {
+            source_revisions.retain(|r| r.effective_date != week_start.to_string());
+            source_revisions.push(crate::habit_catalog::HabitGoalRevision { effective_date: week_start.to_string(), valid_through: None, goal: goal.clone() });
+        }
+        source_revisions.sort_by(|a,b| a.effective_date.cmp(&b.effective_date));
         projected.push(HabitView {
+            locally_configured: false,
+            partial_cycle: false,
+            settings: Some(crate::habit_catalog::HabitSettings { name: habit.name.clone(), emoji: None, group: None, start_date: snapshot.range.from.clone(), goal: source_goal.clone().unwrap_or(crate::habit_catalog::HabitGoal::Unconfigured) }),
+            current_goal: source_goal, pending_goal: None, goal_revisions: source_revisions,
             key: habit.key.clone(),
             name: habit.name.clone(),
             localized_names: names_configuration.names_for(&habit.key),
@@ -800,6 +821,7 @@ pub fn project_snapshot_with_names_at_local_date(
         )
     };
     Ok(HabitSnapshotView {
+        catalog_revision: None, catalog_target_binding: None,
         state,
         message,
         generated_at: Some(snapshot.generated_at.clone()),
@@ -1241,6 +1263,34 @@ fn project_cell(
     }
 }
 
+/// Replace only the canonical local endpoint of an already projected source cell.
+/// A retained source read must not retain an older local completion revision.
+pub(crate) fn reconcile_local_completion(cell: &mut HabitCellView, completion: Option<&LocalHabitCompletion>) {
+    cell.local_completion_state = completion.map(|item| item.state).unwrap_or(HabitLocalCompletionState::None);
+    cell.details.retain(|detail| !matches!(detail, HabitDetailView::LocalCompletion { .. }));
+    cell.completion_source_labels.retain(|source| source != "Personal Dashboard local");
+    if let Some(completion) = completion {
+        cell.details.retain(|detail| !matches!(detail, HabitDetailView::NoRecord));
+        cell.details.push(HabitDetailView::LocalCompletion { state: completion.state, changed_at: completion.changed_at.clone() });
+    }
+    if cell.details.is_empty() { cell.details.push(HabitDetailView::NoRecord); }
+    let local_completed = cell.local_completion_state == HabitLocalCompletionState::Completed;
+    if local_completed { cell.completion_source_labels.push("Personal Dashboard local".into()); }
+    let observed = |status| cell.details.iter().any(|detail| matches!(detail, HabitDetailView::Observation { status: actual, .. } if *actual == status));
+    cell.status = if cell.status == HabitCellStatus::Conflict { HabitCellStatus::Conflict }
+        else if cell.actual_time_label.is_some() { HabitCellStatus::ActualTime }
+        else if cell.has_external_completion || local_completed { HabitCellStatus::Completed }
+        else if observed(ObservationStatus::NotDone) { HabitCellStatus::NotDone }
+        else if observed(ObservationStatus::Partial) { HabitCellStatus::Partial }
+        else if observed(ObservationStatus::Baseline) { HabitCellStatus::Baseline }
+        else if observed(ObservationStatus::ThresholdMet) { HabitCellStatus::ThresholdOnly }
+        else if observed(ObservationStatus::Unavailable) || cell.coverage == "unavailable" { HabitCellStatus::Unavailable }
+        else if !cell.local_records.is_empty() { HabitCellStatus::RecordOnly }
+        else { HabitCellStatus::Unknown };
+    cell.counts_as_completion = (cell.has_external_completion || local_completed) && cell.status != HabitCellStatus::Conflict;
+    cell.has_record = cell.details.iter().any(|detail| matches!(detail, HabitDetailView::Observation { .. } | HabitDetailView::LocalRecord { .. })) || cell.local_completion_state != HabitLocalCompletionState::None;
+}
+
 fn parse_and_validate_at_local_date(document: &[u8], today: &str, local_date: &str) -> Result<SnapshotDocument, String> {
     let local_date=CalendarDate::parse(local_date).ok_or_else(|| "Invalid local calendar date".to_string())?;
     let today = CalendarDate::parse(today)
@@ -1512,5 +1562,33 @@ fn goal_label(goal: &Goal) -> String {
             DayRelation::NextDay => format!("每日 次日 {standard}"),
             DayRelation::Unresolved => format!("每日 {standard} · 日期归属待解释"),
         },
+    }
+}
+
+
+pub(crate) fn project_local_definition(definition: &crate::habit_catalog::HabitDefinition, today: &str, completions: &[LocalHabitCompletion]) -> HabitView {
+    let date = CalendarDate::parse(today).expect("valid lived date");
+    let start = date.monday().plus_days(-7 * (HISTORY_WEEKS - 1));
+    let history: Vec<_> = (0..HISTORY_WEEKS * 7).map(|offset| {
+        let cell_date = start.plus_days(offset).to_string();
+        project_cell(&cell_date, None, &HashMap::new(), &[], completions.iter().find(|c| c.key == definition.key && c.date == cell_date), date)
+    }).collect();
+    HabitView {
+        locally_configured: true,
+        partial_cycle: false,
+        key: definition.key.clone(), name: definition.settings.name.clone(), localized_names: Default::default(), active: definition.active,
+        settings: Some(definition.settings.clone()), current_goal: None, pending_goal: None, goal_revisions: vec![],
+        goal_kind: definition.source_tracking_kind.clone().unwrap_or_else(|| "daily-completion".into()), goal_label: definition.settings.goal.label(), weekly_target: None, completed_count: None,
+        can_record_completion: true, source_labels: definition.source_labels.iter().cloned().chain(std::iter::once("Personal Dashboard local".into())).collect(),
+        coverage_label: "本地记录；未记录日期未知；外部历史覆盖未知".into(), goal_history: definition.source_goal_history.clone(),
+        today: history.iter().find(|c| c.date == today).unwrap().clone(),
+        recent: history.iter().filter(|c| c.date.as_str() >= date.plus_days(-6).to_string().as_str() && c.date.as_str() <= today).cloned().collect(), history,
+    }
+}
+
+fn catalog_goal(goal: &Goal) -> crate::habit_catalog::HabitGoal {
+    match goal {
+        Goal::WeeklyCount { standard } => crate::habit_catalog::HabitGoal::WeeklyDays { days: *standard },
+        Goal::DailyTime { standard, day_relation } => crate::habit_catalog::HabitGoal::DailyTime { time: standard.clone(), day_relation: *day_relation },
     }
 }
