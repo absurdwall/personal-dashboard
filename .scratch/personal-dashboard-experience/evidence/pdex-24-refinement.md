@@ -35,3 +35,8 @@ Red: an invalid source refresh blocked an otherwise valid local Habit. Red: an i
 Green: configured local Habits retain check-in availability independently of invalid source evidence. A real file create that then reports interruption is read back by a fresh application; retry uses the same stable key and semantic operation, yielding one object. Changed payload under the same operation identity, stale revision, another selected Vault and corrupt original catalog are rejected without overwriting their bytes. Malformed/future canonical completion files preserve retained/error behavior and disable new writes.
 
 Regression verification: 7 catalog + 12 canonical completion + 15 source snapshot workflow tests passed. The inherited read-only snapshot fallback and weekly no-goal exclusion remain intact.
+
+## Slice 8 — shared create/edit draft controller
+
+Red: the public Habit settings controller did not exist.
+Green: new draft defaults to the supplied lived date and daily completion; stable creation key and operation identity survive failure/reread. Existing edits load the stored pending target, preserve the sourced identity and start date, and changed payloads receive a new operation identity. Reread of another Vault rejects retargeting. Two controller tests passed; they complement the real application persistence checks.
