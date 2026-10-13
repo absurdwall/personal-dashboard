@@ -2697,7 +2697,7 @@ where
                 "Habits catalog 中没有这个稳定习惯 key；未写入任何内容。".to_string()
             })?;
             let can_record=if allow_existing_without_catalog {
-                !input.completed || habit.goal_revisions.iter().rev().find(|revision|revision.applies_on(&input.lived_date)).is_some_and(|revision|matches!(revision.goal,crate::habit_catalog::HabitGoal::DailyCompletion | crate::habit_catalog::HabitGoal::WeeklyDays {..} | crate::habit_catalog::HabitGoal::DailyTime {day_relation:crate::habits::DayRelation::SameDay | crate::habits::DayRelation::NextDay,..})) || (habit.goal_kind=="weekly-count" && habit.current_goal.as_ref().is_none_or(|goal| matches!(goal,crate::habit_catalog::HabitGoal::Unconfigured)))
+                !input.completed || self.habit_details(&input.habit_key,0,1)?.goal_revisions.iter().rev().find(|revision|revision.applies_on(&input.lived_date)).is_some_and(|revision|matches!(revision.goal,crate::habit_catalog::HabitGoal::DailyCompletion | crate::habit_catalog::HabitGoal::WeeklyDays {..} | crate::habit_catalog::HabitGoal::DailyTime {day_relation:crate::habits::DayRelation::SameDay | crate::habits::DayRelation::NextDay,..})) || (habit.goal_kind=="weekly-count" && habit.current_goal.as_ref().is_none_or(|goal| matches!(goal,crate::habit_catalog::HabitGoal::Unconfigured)))
             } else {habit.can_record_completion};
             if !can_record {
                 return Err(
@@ -3145,6 +3145,8 @@ where
                 }
                 Ok(())
             };
+            check_sources().map_err(|error| ("publication".into(),error))?;
+            crate::habit_details::retain_source(&self.habit_completion_store,&vault,&prior,&today,&self.clock.current_date()).map_err(|error|("publication".into(),format!("来源历史未能安全保留；当前快照未被替换：{error}")))?;
             publish_with_source_check(&vault, &prior, &candidate, check_sources)
                 .map_err(|e| ("publication".into(), e))?;
             Ok((today, now, input.mappings.len()))
@@ -3249,6 +3251,7 @@ where
         let definition=catalog.habits.iter_mut().find(|definition|definition.key==input.habit_key).unwrap();
         if definition.activity_changes.iter().any(|change|change.lived_date>today) {return Err("Habit 活动记录包含未来日期；原文件保留。".into());}
         if definition.initial_active.is_none() {definition.initial_active=Some(definition.active);}
+        if definition.activity_baseline_date.is_none() {definition.activity_baseline_date=Some(if definition.sourced {today.clone()} else {definition.goal_revisions.first().map(|revision|revision.effective_date.clone()).unwrap_or_else(||today.clone())});}
         if definition.active!=input.active {definition.activity_changes.push(HabitActivityChange {change_id:input.change_id.clone(),active:input.active,lived_date:today.clone(),changed_at:now.clone()});definition.active=input.active;}
         catalog.lifecycle_receipts.push(HabitLifecycleReceipt {input,saved_at:now,lived_date:today});
         let updated=serde_json::to_vec_pretty(&catalog).map_err(|error|error.to_string())?;HabitCatalogDocument::parse(&updated)?;
@@ -3265,10 +3268,14 @@ where
         let vault=self.persistence.load_selected_vault()?.ok_or("请先选择 Vault。")?;
         validate_compatible_vault(&vault)?;
         let today=self.clock.current_lived_date();
+        let local_date=self.clock.current_date();
         let view=self.habits()?;
+        if view.habits.first().is_some_and(|habit|habit.today.date!=today) {return Err("日期已变化，请重新读取详情。".into());}
         if view.catalog_target_binding.as_deref()!=Some(catalog_binding(&vault.join(HABIT_CATALOG_RELATIVE_PATH)).as_str()) {return Err("Selected Vault / catalog 已变化，请重新读取详情。".into());}
         let mut habit=view.habit(key).ok_or("Habit 身份不可用，请重新读取。")?.clone();
-        let catalog=self.habit_completion_store.load(&vault.join(HABIT_CATALOG_RELATIVE_PATH))?.as_deref().map(HabitCatalogDocument::parse).transpose()?.unwrap_or_default();
+        let catalog_bytes=self.habit_completion_store.load(&vault.join(HABIT_CATALOG_RELATIVE_PATH))?;
+        if catalog_bytes.as_deref().map(document_revision)!=view.catalog_revision {return Err("Habit 设置已变化，请重新读取详情。".into());}
+        let catalog=catalog_bytes.as_deref().map(HabitCatalogDocument::parse).transpose()?.unwrap_or_default();
         let definition=catalog.habits.iter().find(|definition| definition.key==key);
         let sourced=definition.map(|definition| definition.sourced).unwrap_or(true);
         let completion_path=canonical_habit_completion_path(&vault);
@@ -3276,21 +3283,68 @@ where
         let canonical=completion_bytes.as_deref().map(|bytes| parse_habit_completion_document(bytes,&self.clock.current_timestamp_label())).transpose()?;
         if completion_bytes.as_deref().map(document_revision)!=view.completion_revision {return Err("完成记录已变化，请重新读取详情。".into());}
         let mut cells:std::collections::BTreeMap<_,_>=habit.history.iter().filter(|cell| cell.has_record || cell.coverage!="unknown").map(|cell| (cell.date.clone(),cell.clone())).collect();
+        let mut source_goals:std::collections::BTreeMap<String,crate::habit_catalog::HabitGoal>=std::collections::BTreeMap::new();
+        let mut historical_goals:std::collections::BTreeMap<String,crate::habit_catalog::HabitGoalRevision>=std::collections::BTreeMap::new();
+        let mut sources=vec![];let mut source_warnings=vec![];let mut documents=vec![];
+        let archive=vault.join(crate::habit_details::HABIT_SOURCE_HISTORY_RELATIVE_PATH);
+        match fs::read_dir(&archive) {
+            Ok(entries)=>for entry in entries {
+                match entry {
+                    Ok(entry) if entry.path().extension().is_some_and(|extension|extension=="json")=>match self.habit_completion_store.load(&entry.path()) {
+                        Ok(Some(bytes)) if entry.path().file_stem().and_then(|stem|stem.to_str())==Some(document_revision(&bytes).as_str())=>documents.push(bytes),
+                        _=>source_warnings.push("部分保留来源历史无效或不可读取；未将缺口判为失败。".into()),
+                    },
+                    Ok(_)=>{},Err(_)=>source_warnings.push("部分来源历史目录不可读取。".into()),
+                }
+            },
+            Err(error) if error.kind()==std::io::ErrorKind::NotFound=>{},
+            Err(_)=>source_warnings.push("保留的来源历史暂不可读取；全历史覆盖未知。".into()),
+        }
+        match load_habit_snapshot_from_vault(&self.habit_snapshot_store,&vault) {Ok(Some(bytes))=>documents.push(bytes),Ok(None)=>{},Err(error)=>source_warnings.push(error)}
+        let names=load_habit_names(&vault);let mut projections=vec![];
+        for bytes in documents {
+            match crate::habits::project_source_history(&bytes,&today,&local_date,&names) {
+                Ok(projection)=>projections.push(projection),Err(error)=>source_warnings.push(format!("来源历史不可验证：{error}")),
+            }
+        }
+        projections.sort_by(|a,b|a.generated_at.cmp(&b.generated_at));
+        for projection in projections {
+            if let Some(source)=projection.habit(key) {
+                let (range_from,range_to)=projection.range_label.as_deref().and_then(|range|range.split_once(" — ")).unwrap_or(("unknown","unknown"));
+                let metadata=crate::habit_details::HabitSourceCoverageView {generated_at:projection.generated_at.clone().unwrap_or_default(),range_from:range_from.into(),range_to:range_to.into(),producer_label:projection.producer_label.clone().unwrap_or_default()};
+                if !sources.iter().any(|existing:&crate::habit_details::HabitSourceCoverageView|existing.generated_at==metadata.generated_at && existing.range_from==metadata.range_from && existing.range_to==metadata.range_to) {sources.push(metadata);}
+                for revision in &source.goal_revisions {historical_goals.insert(revision.effective_date.clone(),revision.clone());}
+                for cell in &source.history {
+                    if cell.has_record || cell.coverage!="unknown" {
+                        if let Some(revision)=source.goal_revisions.iter().rev().find(|revision|revision.applies_on(&cell.date)) {source_goals.insert(cell.date.clone(),revision.goal.clone());} else {source_goals.remove(&cell.date);}
+                        cells.insert(cell.date.clone(),cell.clone());
+                    }
+                }
+            }
+        }
+        // Source history supplies earlier known periods; saved canonical segments own their applicable dates.
+        let canonical_goals=if definition.is_some(){habit.goal_revisions.clone()}else{vec![]};
+        historical_goals.retain(|_,source_revision| !canonical_goals.iter().any(|canonical| canonical.applies_on(&source_revision.effective_date)));
+        for revision in &canonical_goals {historical_goals.insert(revision.effective_date.clone(),revision.clone());}
+        habit.goal_revisions=historical_goals.into_values().collect();
+        // Split overlapping source windows only in their knowledge boundaries; canonical lookup below has precedence.
         let mut changes=std::collections::BTreeMap::new();
+
         for record in canonical.map(|document|document.completions).unwrap_or_default().into_iter().filter(|record|record.habit_key==key) {
             changes.insert(record.lived_date.clone(),record.changes.iter().map(|change|HabitLocalCompletionChangeView {state:match change.kind {HabitCompletionChangeKind::Completed=>HabitLocalCompletionState::Completed,HabitCompletionChangeKind::Withdrawn=>HabitLocalCompletionState::Withdrawn},changed_at:change.changed_at.clone()}).collect());
             let completion=local_habit_completion(record);
             let cell=cells.entry(completion.date.clone()).or_insert_with(|| crate::habits::project_canonical_cell(&completion.date,&today,None));
             crate::habits::reconcile_local_completion(cell,Some(&completion));
         }
-        for cell in cells.values_mut() { if let Some(revision)=habit.goal_revisions.iter().rev().find(|revision|revision.applies_on(&cell.date)) {crate::habit_catalog::apply_goal_to_cell(cell,&revision.goal,Some(&revision.goal));} }
+        for cell in cells.values_mut() { if let Some(revision)=canonical_goals.iter().rev().find(|revision|revision.applies_on(&cell.date)).or_else(||habit.goal_revisions.iter().rev().find(|revision|revision.applies_on(&cell.date))) {crate::habit_catalog::apply_goal_to_cell(cell,&revision.goal,source_goals.get(&cell.date));} }
         let mut from=habit.settings.as_ref().map(|settings|settings.start_date.clone()).unwrap_or_else(||today.clone());
         for revision in &habit.goal_revisions {from=from.min(revision.effective_date.clone());}
         if let Some(date)=cells.keys().next(){from=from.min(date.clone());}
         if let Some(receipt)=catalog.receipts.iter().find(|receipt|receipt.input.habit_key==key){from=from.min(receipt.input.settings.start_date.clone());}
         if from>today {from=today.clone();}
+        if self.clock.current_lived_date()!=today || self.persistence.load_selected_vault()?.as_ref()!=Some(&vault) || self.habit_completion_store.load(&vault.join(HABIT_CATALOG_RELATIVE_PATH))?!=catalog_bytes || self.habit_completion_store.load(&completion_path)?!=completion_bytes {return Err("Habit 详情读取期间日期、Vault 或记录已变化，请重新读取。".into());}
         habit.history.clear(); // full cells are read on demand; detail does not render all cards.
-        Ok(crate::habit_details::details_view(&view,habit,cells,&changes,&from,&today,sourced,definition,offset,limit))
+        Ok(crate::habit_details::details_view(&view,habit,cells,&changes,&from,&today,sourced,definition,sources,source_warnings,offset,limit))
     }
 
     pub fn save_habit_definition(&self, input: crate::habit_catalog::HabitDefinitionMutationInput) -> Result<HabitSnapshotView, String> {

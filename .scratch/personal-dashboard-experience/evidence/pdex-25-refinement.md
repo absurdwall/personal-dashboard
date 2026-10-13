@@ -15,3 +15,9 @@ Red: lifecycle mutations and retained activity intervals were absent. Green: dea
 ## Slice 3 — achieved open weeks and authorized historical correction
 
 Red: pausing after attaining an open week's target erased its contribution to the old known maximum. Green: the period is evaluated up to its pause boundary and retains an already attained result in its original activity segment; current streaks cannot bridge into a restored segment. Historical local withdrawal while inactive remains authorized and recalculates the affected old week against3, while a pending5 still activates next Monday. No completion fact or goal segment is rewritten by lifecycle edits.
+
+## Slice 4 — retained source history and qualified coverage
+
+Red: the new source window replacement discarded an older June22 fact, and reading only the current daily-time target would backdate it onto earlier actual-time evidence. Green: an authorized real producer refresh retains the prior validated source bytes in an immutable hash-addressed local history before replacing the published snapshot; a fresh application reads its original dated provenance beyond the panel's12 weeks. Complete newer coverage can supersede old external state; missing unknown dates keep earlier verified facts. Canonical goal segments retain precedence over later source refreshes. Lifetime source start remains unknown, so source totals/maxima stay qualified. Daily target knowledge is limited to the generation day unless supplied historical revisions establish more.
+
+The real application confidence cases cover complete local history, explicit withdrawal, unknown gaps/current open day, start-date change without erasing earlier completion, unresolved historical source target, inactive intervals and saved/reopened same identity. Detail reads reject mixed Vault/date/revision state and remain read-only. Historical corrections use full applicable goal history while normal current-day capability remains unchanged.

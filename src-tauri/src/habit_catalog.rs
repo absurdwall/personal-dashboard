@@ -167,6 +167,8 @@ pub struct HabitDefinition {
     #[serde(default)]
     pub initial_active: Option<bool>,
     #[serde(default)]
+    pub activity_baseline_date: Option<String>,
+    #[serde(default)]
     pub activity_changes: Vec<HabitActivityChange>,
     pub sourced: bool,
     #[serde(default)]
@@ -182,7 +184,7 @@ pub struct HabitDefinition {
 
 impl HabitDefinition {
     pub fn active_on(&self, date: &str) -> bool {
-        self.activity_changes.iter().rev().find(|change| change.lived_date.as_str() <= date).map(|change| change.active).unwrap_or(self.initial_active.unwrap_or(self.active))
+        self.activity_changes.iter().rev().find(|change| change.lived_date.as_str() <= date).map(|change| change.active).unwrap_or_else(|| if self.activity_baseline_date.as_deref().is_some_and(|baseline|date<baseline) { self.sourced } else { self.initial_active.unwrap_or(self.active) })
     }
     pub fn activity_boundary_in(&self, from: &str, to: &str) -> bool { self.activity_changes.iter().any(|change| change.lived_date.as_str() >= from && change.lived_date.as_str() <= to) }
 }
@@ -230,6 +232,7 @@ impl HabitCatalogDocument {
                 return Err("Habit catalog 重复身份；原文件保留。".into());
             }
             habit.settings.validate()?;
+            if habit.activity_baseline_date.as_deref().is_some_and(|date|CalendarDate::parse(date).is_none()) {return Err("Habit 活动基准日期无效。".into());}
             let mut previous_activity: Option<&str> = None;
             for change in &habit.activity_changes {
                 validate_local_identifier(&change.change_id,"Habit lifecycle operation")?;
@@ -377,6 +380,7 @@ impl HabitCatalogDocument {
                 settings: input.settings.clone(),
                 active: source.is_none_or(|s| s.active),
                 initial_active: Some(source.is_none_or(|s| s.active)),
+                activity_baseline_date: Some(if source.is_some() {today.into()} else {input.settings.start_date.clone()}),
                 activity_changes: vec![],
                 source_name: source.map(|s| s.name.clone()),
                 source_localized_names: source
