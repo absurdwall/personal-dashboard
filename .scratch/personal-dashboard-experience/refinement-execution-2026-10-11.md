@@ -1,7 +1,7 @@
 # PDEX-SPEC-02 — 本地执行与交接边界
 
 Date: 2026-10-11
-Stage: authorized implementation; all PDEX-19–25 implementations integrated; PDEX-26 not claimed; remaining review/native acceptance pending
+Stage: implementation complete on local integration branch; acceptance pending and delegated by user; PDEX-26/parent not closed
 Current user scope: implementation handoff only; evaluation, native acceptance and independent review deferred to another agent (supersedes earlier evaluation work instructions and stage snapshots below).
 Canonical tracker: [map](map.md)
 Specification: [PDEX-SPEC-02](refinement-spec-2026-10-11.md)
@@ -223,6 +223,15 @@ Clean integration `e046726007fa28ed47bf9078481cf1b7b82b70fb` retained source bra
 The user revised the requested result to implementation handoff only. Stop evaluation, native acceptance and independent review; another agent will perform acceptance. Earlier check results remain historical supporting evidence, not final acceptance. PDEX-26 and PDEX-SPEC-02 remain open/in-progress without acceptance closure.
 
 Clean integration `e7a947abb0bb4c3ad9f2904524ae2a652d6b762d` retained confirmed PDEX-26 source compatibility repair `159741b5e28bf7e025e2fc44f5ca01250ee1884f` from `codex/pdex-26-refinement` via `git merge --no-ff` as `dee139e031b5c3dbc60531116a430c6ae6cc9e4a`. Parent synchronization `a923800a271c4705248ad63bc86248554262e471` remains in full ancestry. Merge completed without conflicts. Source/ticket/evidence history and all other branches/fixtures remain preserved. No new tests, native acceptance or independent review were run by this handoff merge; no build was needed to resolve this conflict-free source merge. Additional committed worker handoffs remain for root's later authorized integration. No main/remote/install operation or personal-data write occurred.
+
+## Final implementation-only handoff merges — 2026-10-13
+
+Canonical integration `57e89146832392666069cff96fa670ce02a0680f` and both final worker checkouts had clean tracked/untracked inventories. The final committed branches were retained with `git merge --no-ff`:
+
+- `codex/pdex-26-refinement`: previously retained repair `159741b5e28bf7e025e2fc44f5ca01250ee1884f`; untimed reading preservation `b89a2162c92fb175199b1a56708c35cb6b9b73d7`; retained test increments `ac8b291559f3bd6fb212611d9f04ec5d70ed3e82`; historical verification/evidence `8c03b9c2dad735c3273d881d45e4e04ab13da43b`. Integration merge `4f0c9a4731b886ec77a5e9f080c14aa192952431` completed without conflicts.
+- `codex/pdex-21-refinement`: source synchronization `a62a37121c8d265de94e6189b5ae80f95ebcd174` retains root source `e7a947abb0bb4c3ad9f2904524ae2a652d6b762d`; localized boundary-count repair `dc67e66d8c530a1764ceed717329645423c060d8`; final synchronization `6b6814dd7f1702ca276db7f17f6f09cc3abcc1a1` retains root `57e89146832392666069cff96fa670ce02a0680f`. Integration merge `89a6e355d13343ed44e76b02b9297c3a9de71ff3` retained both appended regression groups in the sole test-file conflict, inventing no new behavior and preserving the explicit skipped/pending full-boot regressions.
+
+Implementation is complete on the integration branch; acceptance remains pending for the other agent selected by the user. Historical worker check results are retained with their source and qualifications; the final boundary-count regressions were not run and no success is inferred. User stop instruction takes precedence over the resolving-merge-conflicts skill's usual automated-check step. No tests, evaluation, independent review, package build or native interaction ran for these final handoff merges. All source/evidence branches, fixtures and complete ancestry remain retained. PDEX-26 and PDEX-SPEC-02 are not closed. Root prepares the final handoff document and any separately authorized cleanup.
 
 ## PDEX-26 claim — 2026-10-13
 
