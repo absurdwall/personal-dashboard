@@ -16,7 +16,7 @@ Management source: source-personal-dashboard-experience
 | PDEX-SPEC-02 | spec | [Complete refinement specification](refinement-spec-2026-10-11.md) / [same-identity index](issues/00-spec-02.md) | ready-for-agent | open | none | [four confirmed clarifications](requirements-clarifications-2026-10-11.md), [prototype review and preservation boundary](prototype-review-and-scope-2026-10-11.md), [local publication](refinement-publication-2026-10-11.md) |
 | PDEX-19 | ticket | [Task 编辑、属性与操作入口](issues/19-task-editing-properties-actions.md) | ready-for-agent | in-progress | none | More release repair integrated at 0548e6eb4b6d1bb3dd204b74b9c328677d27c9ec; application/DOM verified, packaged restart/review pending; [evidence](evidence/pdex-19-refinement.md), [history](refinement-execution-2026-10-11.md) |
 | PDEX-20 | ticket | [Task 父子关系与清单文件夹](issues/20-task-parents-list-folders.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
-| PDEX-21 | ticket | [Today 时间轴与安排交互](issues/21-today-axis-arrangement-interaction.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
+| PDEX-21 | ticket | [Today 时间轴与安排交互](issues/21-today-axis-arrangement-interaction.md) | ready-for-agent | in-progress | PDEX-19 | claimed on codex/pdex-21-refinement from 0230a35; verified shared Task prerequisites |
 | PDEX-22 | ticket | [Calendar 新增、详情与节日](issues/22-calendar-create-details-holidays.md) | ready-for-agent | in-progress | PDEX-19 | implementation integrated at dc4480eea91c699aaa2df2547becf160f7d4fcaa; application/DOM verified, review/native acceptance pending; [evidence](evidence/pdex-22-refinement.md), [history](refinement-execution-2026-10-11.md) |
 | PDEX-23 | ticket | [Collaboration 空间与输入体验](issues/23-collaboration-context-input.md) | ready-for-agent | in-progress | none | implementation integrated at 3cb070737e919c2d9495556a19541bdf3b93c553; review/native acceptance pending; [evidence](evidence/pdex-23-refinement.md), [history](refinement-execution-2026-10-11.md) |
 | PDEX-24 | ticket | [Habit 新增、编辑与目标设置](issues/24-habit-create-edit-goal-cycles.md) | ready-for-agent | in-progress | none | implementation integrated at 71ebf5d2a8e59aa623115b1c15abae0da890e826; application/DOM verified, review/native acceptance pending; [evidence](evidence/pdex-24-refinement.md), [history](refinement-execution-2026-10-11.md) |
@@ -335,3 +335,7 @@ PDEX-19 integrated at `dc5b09cd5a8ce6d4c45664bc3d610f6b614492e7` with real appli
 ### PDEX-25 implementation frontier — 2026-10-13
 
 PDEX-24 is integrated with 39 real application tests and scoped frontend/DOM checks passing. PDEX-25 claimed from `8bcf66f96ba021e5c7a5c5eac39ac3c8cb9557d0`; work starts in its own worktree. Upstream acceptance remains open; claim permits dependent implementation only.
+
+### PDEX-21 implementation frontier — 2026-10-13
+
+PDEX-21 claimed from `0230a35b0933a0e092fa9175e70932c3c27a6054`, using verified PDEX-19 Task contracts and retained PDEX-22 floating-dialog work. PDEX-20/25 remain in progress, PDEX-26 waits for combined prerequisites. No upstream ticket closure is inferred.

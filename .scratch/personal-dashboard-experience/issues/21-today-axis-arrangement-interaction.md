@@ -4,13 +4,13 @@
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 **Triage:** ready-for-agent
 **ID:** PDEX-21
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** open
-**Implementation:** not started
+**Lifecycle:** in-progress
+**Implementation:** in progress
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -49,3 +49,7 @@ PDEX-SPEC-02 stories 35–47、50；共同承担 1–3、88–91 的保存与保
 - 后续授权claim时记录实际owner、working branch、base commit、增量实现/评审/
   验收commits、结果和限制。每票可多次commit，完整验收前不关闭。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
+
+## Authorized claim — 2026-10-13
+
+Owner: Codex implementer `/root/pdex23` (new PDEX-21 worktree). Working branch `codex/pdex-21-refinement`; starting integration tip `0230a35b0933a0e092fa9175e70932c3c27a6054`, authorized base `918e7e0d9c4b2c524c429bfd309482e328bc4c91`. PDEX-19 editor/application interface and scoped submit repairs are integrated and verified. Root observed real packaged cancellation Save and fresh-process readback; full ticket acceptance/review remains separate. Full spec/ticket unchanged; local Git only and full history.
