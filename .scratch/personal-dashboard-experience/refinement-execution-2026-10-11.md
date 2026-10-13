@@ -38,3 +38,7 @@ PDEX-19、PDEX-23、PDEX-24没有票间依赖。PDEX-20/21/22需要19，25需要
 通过PR整合protected main。Git push不发布Markdown为GitHub Issues；若另行
 迁移tracker，完整保留IDs/body/依赖/状态/评论/验收和映射，明确一个canonical
 目标。当前没有main merge、push、PR、安装或实现结果。
+
+## Implementation authorization — 2026-10-13
+
+User request: implement PDEX-SPEC-02 from `918e7e0` on `codex/dashboard-experience-refinement-integration`, local Git only, full per-ticket branch/commit history retained, explicit spec scope only. Clean initial inventory. PDEX-19/23/24 claimed; worker branch names and full base are in each ticket. No installation, main merge or remote publication authorized.
