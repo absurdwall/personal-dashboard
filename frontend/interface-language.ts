@@ -1055,6 +1055,8 @@ const interfaceCopies = {
   "habits.snapshot": { zh: "习惯快照", en: "Habits snapshot" },
   "habits.weekly": { zh: "本周习惯", en: "Habits this week" },
   "habits.loadingOnDemand": { zh: "正在读取按需快照…", en: "Loading the on-demand snapshot…" },
+  "habits.create": { zh: "新增习惯", en: "Create Habit" },
+  "habits.edit": { zh: "编辑", en: "Edit" },
   "habits.refresh": { zh: "刷新快照", en: "Refresh snapshot" },
   "habits.loading": { zh: "正在读取 Habits 快照…", en: "Loading the Habits snapshot…" },
   "habits.weekStats": { zh: "本周统计", en: "THIS WEEK" },

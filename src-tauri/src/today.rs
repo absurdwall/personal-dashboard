@@ -3239,6 +3239,7 @@ where
         }
         if current.as_deref().map(document_revision) != input.expected_revision { return Err("Habit catalog 已变化；草稿保留，请重新读取后重试。".into()); }
         let source = self.habits()?;
+        if source.catalog_target_binding.as_ref() != Some(&input.target_binding) { return Err("Selected Vault / catalog 在读取设置时变化；未写入。".into()); }
         catalog.apply(input.clone(), source.habit(&input.habit_key), &self.clock.current_lived_date(), &self.clock.current_timestamp_label())?;
         let updated = serde_json::to_vec_pretty(&catalog).map_err(|error| error.to_string())?;
         HabitCatalogDocument::parse(&updated)?;
@@ -3256,8 +3257,9 @@ where
         let local_time = self.clock.current_local_time();
         let today = local_time.lived_date();
         let current_timestamp = self.clock.current_timestamp_label();
-        let mut view = self.sourced_habits_at(&today, &local_time.date, &current_timestamp)?;
-        let Some(vault) = self.persistence.load_selected_vault()? else { return Ok(view); };
+        let selected_vault = self.persistence.load_selected_vault()?;
+        let mut view = self.sourced_habits_at(selected_vault.as_deref(), &today, &local_time.date, &current_timestamp)?;
+        let Some(vault) = selected_vault else { return Ok(view); };
         if validate_compatible_vault(&vault).is_err() { return Ok(view); }
         let path = vault.join(HABIT_CATALOG_RELATIVE_PATH);
         let bytes = self.habit_completion_store.load(&path)?;
@@ -3296,8 +3298,8 @@ where
         Ok(view)
     }
 
-    fn sourced_habits_at(&self, today: &str, local_date: &str, current_timestamp: &str) -> Result<HabitSnapshotView, String> {
-        let Some(vault) = self.persistence.load_selected_vault()? else {
+    fn sourced_habits_at(&self, vault: Option<&Path>, today: &str, local_date: &str, current_timestamp: &str) -> Result<HabitSnapshotView, String> {
+        let Some(vault) = vault else {
             return Ok(HabitSnapshotView::unconfigured());
         };
         let path = vault.join(SNAPSHOT_RELATIVE_PATH);

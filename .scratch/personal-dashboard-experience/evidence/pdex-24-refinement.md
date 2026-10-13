@@ -45,3 +45,30 @@ Green: new draft defaults to the supplied lived date and daily completion; stabl
 
 Red: a boundary clock that advances from Monday03:59 (Sunday lived date) to Monday04:00 during one Habit read caused an overlay panic.
 Green: the application captures one local date/lived day per read and passes it into source projection and local overlays. One read stays on Sunday, and a subsequent read advances to Monday. This is a source/application seam test with time as the system boundary.
+
+## Slice 9 — actual DOM shared form and application command
+
+Red: the production settings dialog was absent, so real browser form probes failed.
+Green: one create/edit dialog exposes name, optional emoji/group, start date and connected daily/weekly/threshold controls. Existing pending targets and next-day relation carry into editing. Wide (1200px) and narrow (560px) DOM probes retain drafts after failed saves, reread the revision and retry the same key/operation; existing edits show current/pending targets independently. Saved response must read back the same definition before closing. Three browser probes passed; synthetic screenshots were inspected at `/private/tmp/pdex24-ui.noindex/`.
+
+The original Habits summary/today/history layout stays in place. A top plus and row edit button/context-menu entry invoke the same editor. Typed weekly labels use distinct attained days in both zh/en. The `save_habit_definition` desktop command delegates to the same application service. The form/controller IPC doubles are UI evidence only; they do not replace the real Vault tests or native acceptance.
+
+## Slices 11–13 — fresh local endpoints, selected Vault and bounded old goals
+
+Red: a local completion saved after a retained source-refresh failure still displayed the older local endpoint. Green: the existing cell projection now replaces only its canonical local endpoint while preserving external evidence, source observations, coverage and actual activity time. Local withdrawal shows the fresh withdrawn state without deleting external facts. Retained projections extend into the new bounded week without a missing-today panic.
+
+Red: a selected-Vault change during a Habit read mixed source evidence from the first Vault with the second Vault's catalog. Green: one captured selected Vault supplies all three reads; another public read can then move to the next Vault. Saves separately recheck their source/catalog binding and selected Vault before atomic activation.
+
+Red: inherited goal-history entries lacked an explicit end to their known coverage. Green: each old source goalHistory week retains `validThrough` at its Sunday; unknown intervening weeks are not silently assigned the preceding target. `HabitGoalRevision::applies_on` is available for PDEX-25 history statistics. Accepted current/local goal segments remain effective until the next revision.
+
+Additional producer regression: `TodayApplication::refresh_habit_snapshot` performs real source publication in the synthetic Vault using captured host read evidence. Catalog bytes remain unchanged; refreshed source completion/mapping and the stable local identity/name/current/pending targets survive a new application instance. No real external query or write is performed by this test.
+
+## Verification disposition
+
+- Catalog application suite: 11 passed, including actual source publication, real canonical file writes/readback, fresh-instance reads, selection changes and cycle progression.
+- Canonical completion/source projection regressions: 12 + 15 passed.
+- Habit frontend/controller regressions: 22 passed; actual DOM form probes: 3 passed; frontend TypeScript build passed.
+- Earlier broad Rust run: 533 passed, 6 pre-existing ignored, across 27 binaries. Final integration rerun recorded below.
+- Broad pre-integration frontend run: 452/492 passed, 40 failed. The one Habit localized-name source assertion was corrected by retaining the existing display-name seam; current focused Habit suite passes. Other failures concern pre-existing Today/Collaboration/Tasks probes. Representative failures reproduce at exact base `1906b87` in `/private/tmp/pdex24-regression-base.noindex`: `compactScheduleTransactions`/`todaySideRegion` VM fixture references, Daytime rail parser assertion, selected slash contrast, empty795 composer assertion, and native plan-editor timeout. Baseline comparison logs are `/private/tmp/pdex24-baseline-regressions.log`, `/private/tmp/pdex24-baseline-layout-regressions.log`, `/private/tmp/pdex24-baseline-plan-regression.log`. The full frontend run is not reported green.
+
+Native packaged save/reopen acceptance and PDEX-25 detail/statistics/lifecycle remain separately pending. No normal App install, remote Git, external write, main merge or dependency change occurred.

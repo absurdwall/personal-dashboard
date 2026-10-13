@@ -4,13 +4,13 @@
 
 **Blocked by:** None
 
-**Status:** in-progress
+**Status:** implementation-complete/acceptance-pending
 
 **Triage:** ready-for-agent
 **ID:** PDEX-24
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** claimed; implementation in progress
+**Implementation:** implemented; native acceptance pending
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -60,3 +60,17 @@ Integration: codex/dashboard-experience-refinement-integration
 Implementation base: 918e7e0d9c4b2c524c429bfd309482e328bc4c91
 Spec/ticket snapshot: 918e7e0d9c4b2c524c429bfd309482e328bc4c91
 The user invoked implement-spec for PDEX-SPEC-02. Tests use the already confirmed application and DOM/WebKit seams in the specification. Native acceptance remains separately pending.
+
+
+## Implementation handover — 2026-10-13
+
+- Branch: `codex/pdex-24-refinement`; isolated worktree `/private/tmp/pdex24-refinement.noindex`.
+- Local catalog and stable completion identity: `66d6046`.
+- Next-cycle target revisions and pending replace/cancel: `2c28f6a`.
+- Sourced baseline, language/mapping retention and refresh overlays: `9e3dc8d`.
+- Partial frequency cycles: `0807569`; threshold evidence: `300ef11`.
+- Independent local writes, conflicts and interrupted-save retries: `b0ed495`.
+- Shared draft controller: `ff01224`; captured lived-day read: `59198eb`.
+- Final UI/safety/history-coverage commits and integration sync are recorded by the local Git history and [implementation evidence](../evidence/pdex-24-refinement.md).
+- Business verification includes real synthetic selected-Vault writes, saved readback, new application instances, real cycle advancement and actual source-snapshot publication. The actual DOM form uses the same settings layout and retains failures/retry drafts.
+- Native packaged acceptance is still pending; this ticket and parent specification are not closed. PDEX-25 connects detail editing and full history/lifecycle to this catalog boundary.

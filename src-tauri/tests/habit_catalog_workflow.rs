@@ -338,6 +338,15 @@ fn editing_sourced_habit_preserves_goal_segments_languages_mapping_and_refresh_e
         .iter()
         .any(|revision| revision.effective_date == "2026-08-31"
             && revision.goal == HabitGoal::WeeklyDays { days: 2 }));
+    let historical = edited
+        .habit("exercise")
+        .unwrap()
+        .goal_revisions
+        .iter()
+        .find(|revision| revision.effective_date == "2026-08-31")
+        .unwrap();
+    assert_eq!(historical.valid_through.as_deref(), Some("2026-09-06"));
+
     settings.name = "Movement".into();
     settings.emoji = Some("🚶".into());
     settings.group = Some("Health".into());
@@ -657,23 +666,235 @@ fn failed_save_retry_keeps_identity_after_reread_and_stale_or_corrupt_catalog_is
 
 struct RolloverClock(Cell<bool>);
 impl TodayClock for RolloverClock {
-    fn current_date(&self)->String { "2026-09-14".into() }
-    fn current_time_label(&self)->String { "04:00".into() }
-    fn current_timestamp_label(&self)->String { "2026-09-14T04:00-04:00".into() }
-    fn current_local_time(&self)->personal_dashboard_lib::today::TodayClockView {
-        personal_dashboard_lib::today::TodayClockView { date:"2026-09-14".into(),time:if self.0.replace(false) {"03:59"} else {"04:00"}.into() }
+    fn current_date(&self) -> String {
+        "2026-09-14".into()
+    }
+    fn current_time_label(&self) -> String {
+        "04:00".into()
+    }
+    fn current_timestamp_label(&self) -> String {
+        "2026-09-14T04:00-04:00".into()
+    }
+    fn current_local_time(&self) -> personal_dashboard_lib::today::TodayClockView {
+        personal_dashboard_lib::today::TodayClockView {
+            date: "2026-09-14".into(),
+            time: if self.0.replace(false) {
+                "03:59"
+            } else {
+                "04:00"
+            }
+            .into(),
+        }
     }
 }
 #[test]
 fn one_read_crossing_four_am_keeps_a_consistent_lived_day_projection() {
-    let vault=TempVault::new("rollover-captured-read");
-    write_snapshot(vault.path(),include_str!("fixtures/habits-v1-complete.json"));
-    let application=app(vault.path());
-    let settings=application.habits().unwrap().habit("exercise").unwrap().settings.clone().unwrap();
-    save_settings(&application,"exercise","configure-rollover",settings);
-    let crossing=TodayApplication::new(SelectedVault(vault.path().into()),NoSelection,RolloverClock(Cell::new(true)));
-    let view=crossing.habits().unwrap();
-    assert_eq!(view.habit("exercise").unwrap().today.date,"2026-09-13");
-    let following=crossing.habits().unwrap();
-    assert_eq!(following.habit("exercise").unwrap().today.date,"2026-09-14");
+    let vault = TempVault::new("rollover-captured-read");
+    write_snapshot(
+        vault.path(),
+        include_str!("fixtures/habits-v1-complete.json"),
+    );
+    let application = app(vault.path());
+    let settings = application
+        .habits()
+        .unwrap()
+        .habit("exercise")
+        .unwrap()
+        .settings
+        .clone()
+        .unwrap();
+    save_settings(&application, "exercise", "configure-rollover", settings);
+    let crossing = TodayApplication::new(
+        SelectedVault(vault.path().into()),
+        NoSelection,
+        RolloverClock(Cell::new(true)),
+    );
+    let view = crossing.habits().unwrap();
+    assert_eq!(view.habit("exercise").unwrap().today.date, "2026-09-13");
+    let following = crossing.habits().unwrap();
+    assert_eq!(
+        following.habit("exercise").unwrap().today.date,
+        "2026-09-14"
+    );
+}
+
+#[test]
+fn local_completion_after_retained_source_refresh_uses_fresh_canonical_evidence() {
+    let vault = TempVault::new("retained-source-local-write");
+    write_snapshot(
+        vault.path(),
+        include_str!("fixtures/habits-v1-complete.json"),
+    );
+    let application = app(vault.path());
+    let settings = application
+        .habits()
+        .unwrap()
+        .habit("reset")
+        .unwrap()
+        .settings
+        .clone()
+        .unwrap();
+    let configured = save_settings(&application, "reset", "configure-retained", settings);
+    write_snapshot(vault.path(), "invalid source refresh");
+    let saved = application
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "reset".into(),
+            lived_date: "2026-09-08".into(),
+            completed: true,
+            change_id: "complete-retained-source".into(),
+            target_binding: configured.completion_target_binding.unwrap(),
+            expected_revision: configured.completion_revision,
+        })
+        .unwrap();
+    assert!(saved.habit("reset").unwrap().today.counts_as_completion);
+    assert_eq!(
+        saved.habit("reset").unwrap().today.local_completion_state,
+        HabitLocalCompletionState::Completed
+    );
+    let withdrawn = application
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "reset".into(),
+            lived_date: "2026-09-08".into(),
+            completed: false,
+            change_id: "withdraw-retained-source".into(),
+            target_binding: saved.completion_target_binding.unwrap(),
+            expected_revision: saved.completion_revision,
+        })
+        .unwrap();
+    assert!(!withdrawn.habit("reset").unwrap().today.counts_as_completion);
+    assert_eq!(
+        withdrawn
+            .habit("reset")
+            .unwrap()
+            .today
+            .local_completion_state,
+        HabitLocalCompletionState::Withdrawn
+    );
+}
+
+#[test]
+fn actual_snapshot_publication_updates_evidence_without_touching_catalog_or_local_identity() {
+    use personal_dashboard_lib::habit_producer::{native_source_read, HabitRefreshInput};
+    let vault = TempVault::new("published-source-overlay");
+    write_snapshot(
+        vault.path(),
+        include_str!("fixtures/habits-v1-complete.json"),
+    );
+    let application = app(vault.path());
+    let mut settings = application
+        .habits()
+        .unwrap()
+        .habit("exercise")
+        .unwrap()
+        .settings
+        .clone()
+        .unwrap();
+    settings.name = "Movement".into();
+    settings.goal = HabitGoal::WeeklyDays { days: 5 };
+    save_settings(
+        &application,
+        "exercise",
+        "edit-before-publication",
+        settings,
+    );
+    save_settings(
+        &application,
+        "local-reading",
+        "create-before-publication",
+        HabitSettings {
+            name: "Reading".into(),
+            emoji: None,
+            group: None,
+            start_date: "2026-09-08".into(),
+            goal: HabitGoal::DailyCompletion,
+        },
+    );
+    let catalog_path = vault
+        .path()
+        .join(personal_dashboard_lib::habit_catalog::HABIT_CATALOG_RELATIVE_PATH);
+    let before = fs::read(&catalog_path).unwrap();
+    let catalog = serde_json::json!({"type":"mcpToolCall","server":"dida365","tool":"list_habits","status":"completed","arguments":{},"result":{"structuredContent":{"result":[{"id":"synthetic-exercise","name":"Producer object name"}]}}});
+    let checkins = serde_json::json!({"type":"mcpToolCall","server":"dida365","tool":"get_habit_checkins","status":"completed","arguments":{"habit_ids":["synthetic-exercise"],"from_stamp":20260621,"to_stamp":20260909,"client_timezone":"America/New_York"},"result":{"structuredContent":{"result":[{"habitId":"synthetic-exercise","year":2026,"checkins":[{"id":"external-confirmed","stamp":20260908,"status":2,"opTime":"2026-09-08T13:00:00-04:00"}]}]}}});
+    let report = application.refresh_habit_snapshot(HabitRefreshInput {
+        mappings: std::collections::BTreeMap::from([(
+            "exercise".into(),
+            "synthetic-exercise".into(),
+        )]),
+        authorization_quote: "Refresh synthetic exercise mapping".into(),
+        execution_mode: "execute".into(),
+        host_source_reads: [catalog, checkins]
+            .iter()
+            .filter_map(native_source_read)
+            .collect(),
+        host_query_error: None,
+    });
+    assert_eq!(report.publication, "published", "{}", report.message);
+    assert_eq!(fs::read(catalog_path).unwrap(), before);
+    let reopened = app(vault.path()).habits().unwrap();
+    let exercise = reopened.habit("exercise").unwrap();
+    assert_eq!(exercise.name, "Movement");
+    assert_eq!(exercise.weekly_target, Some(3));
+    assert_eq!(
+        exercise.pending_goal.as_ref().unwrap().goal,
+        HabitGoal::WeeklyDays { days: 5 }
+    );
+    assert!(exercise.today.has_external_completion);
+    assert!(reopened.habit("local-reading").is_some());
+}
+
+struct ChangingSelection {
+    first: PathBuf,
+    following: PathBuf,
+    first_read: Cell<bool>,
+}
+impl TodayWorkspacePersistence for ChangingSelection {
+    fn load_selected_vault(&self) -> Result<Option<PathBuf>, String> {
+        Ok(Some(if self.first_read.replace(false) {
+            self.first.clone()
+        } else {
+            self.following.clone()
+        }))
+    }
+    fn save_selected_vault(&self, _: &Path) -> Result<(), String> {
+        Ok(())
+    }
+}
+#[test]
+fn a_read_does_not_mix_source_evidence_from_one_vault_with_another_local_catalog() {
+    let a = TempVault::new("selection-a");
+    let b = TempVault::new("selection-b");
+    write_snapshot(a.path(), include_str!("fixtures/habits-v1-complete.json"));
+    for (vault, key) in [(a.path(), "local-a"), (b.path(), "local-b")] {
+        save_settings(
+            &app(vault),
+            key,
+            "create-selected",
+            HabitSettings {
+                name: key.into(),
+                emoji: None,
+                group: None,
+                start_date: "2026-09-08".into(),
+                goal: HabitGoal::DailyCompletion,
+            },
+        );
+    }
+    let crossing = TodayApplication::new(
+        ChangingSelection {
+            first: a.path().into(),
+            following: b.path().into(),
+            first_read: Cell::new(true),
+        },
+        NoSelection,
+        FixedClock,
+    );
+    let first = crossing.habits().unwrap();
+    assert!(first.habit("local-a").is_some());
+    assert!(first.habit("local-b").is_none());
+    let following = crossing.habits().unwrap();
+    assert!(following.habit("local-b").is_some());
+    assert!(following.habit("local-a").is_none());
+    assert_ne!(
+        first.catalog_target_binding,
+        following.catalog_target_binding
+    );
 }

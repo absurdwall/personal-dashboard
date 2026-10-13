@@ -123,7 +123,16 @@ pub struct HabitDefinitionMutationInput {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HabitGoalRevision {
     pub effective_date: String,
+    /// A source history entry establishes only its named week, not intervening gaps.
+    #[serde(default)]
+    pub valid_through: Option<String>,
     pub goal: HabitGoal,
+}
+impl HabitGoalRevision {
+    pub fn applies_on(&self, date: &str) -> bool {
+        self.effective_date.as_str() <= date
+            && self.valid_through.as_deref().is_none_or(|end| date <= end)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -187,6 +196,11 @@ impl HabitCatalogDocument {
             }
             let mut previous: Option<&str> = None;
             for revision in &habit.goal_revisions {
+                if revision.valid_through.as_deref().is_some_and(|end| {
+                    CalendarDate::parse(end).is_none() || end < revision.effective_date.as_str()
+                }) {
+                    return Err("Habit 目标覆盖日期无效。".into());
+                }
                 if CalendarDate::parse(&revision.effective_date).is_none()
                     || previous.is_some_and(|p| p >= revision.effective_date.as_str())
                 {
@@ -231,7 +245,7 @@ impl HabitCatalogDocument {
                 .goal_revisions
                 .iter()
                 .rev()
-                .find(|revision| revision.effective_date.as_str() <= today)
+                .find(|revision| revision.applies_on(today))
                 .cloned();
             if let Some(current) = current {
                 let boundary = current
@@ -243,6 +257,7 @@ impl HabitCatalogDocument {
                     .retain(|revision| revision.effective_date.as_str() <= today);
                 if input.settings.goal != current.goal {
                     definition.goal_revisions.push(HabitGoalRevision {
+                        valid_through: None,
                         effective_date: boundary,
                         goal: input.settings.goal.clone(),
                     });
@@ -250,6 +265,7 @@ impl HabitCatalogDocument {
             } else {
                 // Before first activation, replace the initial plan without claiming a completed cycle.
                 definition.goal_revisions = vec![HabitGoalRevision {
+                    valid_through: None,
                     effective_date: input.settings.start_date.clone(),
                     goal: input.settings.goal.clone(),
                 }];
@@ -266,12 +282,14 @@ impl HabitCatalogDocument {
                     .unwrap_or(HabitGoal::Unconfigured);
                 if revisions.is_empty() {
                     revisions.push(HabitGoalRevision {
+                        valid_through: None,
                         effective_date: today.into(),
                         goal: current.clone(),
                     });
                 }
                 if input.settings.goal != current {
                     revisions.push(HabitGoalRevision {
+                        valid_through: None,
                         effective_date: current
                             .next_boundary(CalendarDate::parse(today).ok_or("Invalid lived date")?)
                             .to_string(),
@@ -280,6 +298,7 @@ impl HabitCatalogDocument {
                 }
             } else {
                 revisions.push(HabitGoalRevision {
+                    valid_through: None,
                     effective_date: input.settings.start_date.clone(),
                     goal: input.settings.goal.clone(),
                 });
@@ -334,16 +353,41 @@ pub fn overlay_catalog(
             .find(|habit| habit.key == definition.key)
             .unwrap();
         let source_revisions = habit.goal_revisions.clone();
+        let date = CalendarDate::parse(today).expect("valid lived date");
+        let window_start = date.monday().plus_days(-77).to_string();
+        let window_end = date.monday().plus_days(6).to_string();
+        let fallback = crate::habits::project_local_definition(definition, today, completions);
+        for cell in fallback.history {
+            if !habit
+                .history
+                .iter()
+                .any(|previous| previous.date == cell.date)
+            {
+                habit.history.push(cell);
+            }
+        }
+        habit
+            .history
+            .retain(|cell| cell.date >= window_start && cell.date <= window_end);
+        habit.history.sort_by(|a, b| a.date.cmp(&b.date));
         for cell in &mut habit.history {
+            if cell.date.as_str() <= today {
+                crate::habits::reconcile_local_completion(
+                    cell,
+                    completions.iter().find(|completion| {
+                        completion.key == definition.key && completion.date == cell.date
+                    }),
+                );
+            }
             let applicable = definition
                 .goal_revisions
                 .iter()
                 .rev()
-                .find(|r| r.effective_date.as_str() <= cell.date.as_str());
+                .find(|r| r.applies_on(&cell.date));
             let source_goal = source_revisions
                 .iter()
                 .rev()
-                .find(|r| r.effective_date.as_str() <= cell.date.as_str())
+                .find(|r| r.applies_on(&cell.date))
                 .map(|r| &r.goal);
             if let Some(revision) = applicable {
                 apply_goal_to_cell(cell, &revision.goal, source_goal);
@@ -356,9 +400,13 @@ pub fn overlay_catalog(
             .unwrap()
             .clone();
         habit.recent = habit
-            .recent
+            .history
             .iter()
-            .filter_map(|c| habit.history.iter().find(|h| h.date == c.date).cloned())
+            .filter(|cell| {
+                cell.date.as_str() >= date.plus_days(-6).to_string().as_str()
+                    && cell.date.as_str() <= today
+            })
+            .cloned()
             .collect();
         habit.name = definition.settings.name.clone();
         habit.localized_names =
@@ -380,7 +428,7 @@ pub fn overlay_catalog(
             .goal_revisions
             .iter()
             .rev()
-            .find(|r| r.effective_date.as_str() <= today)
+            .find(|r| r.applies_on(today))
             .map(|r| r.goal.clone());
         habit.pending_goal = definition
             .goal_revisions
@@ -393,7 +441,7 @@ pub fn overlay_catalog(
                 .goal_revisions
                 .iter()
                 .rev()
-                .find(|r| r.effective_date.as_str() <= today)
+                .find(|r| r.applies_on(today))
                 .unwrap();
             let cycle_start = match goal {
                 HabitGoal::WeeklyDays { .. } => {

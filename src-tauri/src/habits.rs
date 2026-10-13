@@ -760,10 +760,10 @@ pub fn project_snapshot_with_names_at_local_date(
             .cloned()
             .collect();
         let source_goal = habit.goal.as_ref().map(catalog_goal);
-        let mut source_revisions: Vec<_> = habit.goal_history.iter().map(|context| crate::habit_catalog::HabitGoalRevision { effective_date: context.week_of.clone(), goal: catalog_goal(&context.goal) }).collect();
+        let mut source_revisions: Vec<_> = habit.goal_history.iter().map(|context| crate::habit_catalog::HabitGoalRevision { effective_date: context.week_of.clone(), valid_through: Some(CalendarDate::parse(&context.week_of).expect("validated source week").plus_days(6).to_string()), goal: catalog_goal(&context.goal) }).collect();
         if let Some(goal) = &source_goal {
             source_revisions.retain(|r| r.effective_date != week_start.to_string());
-            source_revisions.push(crate::habit_catalog::HabitGoalRevision { effective_date: week_start.to_string(), goal: goal.clone() });
+            source_revisions.push(crate::habit_catalog::HabitGoalRevision { effective_date: week_start.to_string(), valid_through: None, goal: goal.clone() });
         }
         source_revisions.sort_by(|a,b| a.effective_date.cmp(&b.effective_date));
         projected.push(HabitView {
@@ -1261,6 +1261,34 @@ fn project_cell(
             })
             .collect(),
     }
+}
+
+/// Replace only the canonical local endpoint of an already projected source cell.
+/// A retained source read must not retain an older local completion revision.
+pub(crate) fn reconcile_local_completion(cell: &mut HabitCellView, completion: Option<&LocalHabitCompletion>) {
+    cell.local_completion_state = completion.map(|item| item.state).unwrap_or(HabitLocalCompletionState::None);
+    cell.details.retain(|detail| !matches!(detail, HabitDetailView::LocalCompletion { .. }));
+    cell.completion_source_labels.retain(|source| source != "Personal Dashboard local");
+    if let Some(completion) = completion {
+        cell.details.retain(|detail| !matches!(detail, HabitDetailView::NoRecord));
+        cell.details.push(HabitDetailView::LocalCompletion { state: completion.state, changed_at: completion.changed_at.clone() });
+    }
+    if cell.details.is_empty() { cell.details.push(HabitDetailView::NoRecord); }
+    let local_completed = cell.local_completion_state == HabitLocalCompletionState::Completed;
+    if local_completed { cell.completion_source_labels.push("Personal Dashboard local".into()); }
+    let observed = |status| cell.details.iter().any(|detail| matches!(detail, HabitDetailView::Observation { status: actual, .. } if *actual == status));
+    cell.status = if cell.status == HabitCellStatus::Conflict { HabitCellStatus::Conflict }
+        else if cell.actual_time_label.is_some() { HabitCellStatus::ActualTime }
+        else if cell.has_external_completion || local_completed { HabitCellStatus::Completed }
+        else if observed(ObservationStatus::NotDone) { HabitCellStatus::NotDone }
+        else if observed(ObservationStatus::Partial) { HabitCellStatus::Partial }
+        else if observed(ObservationStatus::Baseline) { HabitCellStatus::Baseline }
+        else if observed(ObservationStatus::ThresholdMet) { HabitCellStatus::ThresholdOnly }
+        else if observed(ObservationStatus::Unavailable) || cell.coverage == "unavailable" { HabitCellStatus::Unavailable }
+        else if !cell.local_records.is_empty() { HabitCellStatus::RecordOnly }
+        else { HabitCellStatus::Unknown };
+    cell.counts_as_completion = (cell.has_external_completion || local_completed) && cell.status != HabitCellStatus::Conflict;
+    cell.has_record = cell.details.iter().any(|detail| matches!(detail, HabitDetailView::Observation { .. } | HabitDetailView::LocalRecord { .. })) || cell.local_completion_state != HabitLocalCompletionState::None;
 }
 
 fn parse_and_validate_at_local_date(document: &[u8], today: &str, local_date: &str) -> Result<SnapshotDocument, String> {
