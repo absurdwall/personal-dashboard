@@ -11459,7 +11459,7 @@ async function createCalendarTask(retry = false): Promise<boolean> {
     const draft=readTaskDraft(calendarTaskCreateForm);
     if(!draft.name.trim()){setCopy(calendarTaskCreateStatus,"tasks.enterName");calendarTaskCreateName?.focus();return false;}
     const normalized=normalizeTaskSchedule(draft.date,draft.time);
-    const input: TaskCreateInput = {targetBinding:binding,expectedRevision:loaded.revision,taskId:localOperationId("manual-task"),name:draft.name.trim(),content:draft.content.trim()||null,date:normalized.date,time:normalized.time,listId:draft.listId||"inbox",executionEnd:null,priority:draft.priority,tagIds:draft.tagIds};
+    const input: TaskCreateInput = {targetBinding:binding,expectedRevision:loaded.revision,taskId:localOperationId("manual-task"),name:draft.name.trim(),content:draft.content.trim()||null,date:normalized.date,time:normalized.time,listId:draft.listId||"inbox",executionEnd:null,parentId:draft.parentId,priority:draft.priority,tagIds:draft.tagIds};
     attempt={origin:"calendar",surfaceDate:date,draft,input,originalInput:input,phase:"unverified",listName:taskListDisplayName(taskListForId(loaded,input.listId)??{id:input.listId,name:input.listId,isSystem:false,archived:false},t("tasks.inbox"))};
     taskCreateAttempts.set(key,attempt);calendarTaskCreateDrafts.set(key,draft);
   }
