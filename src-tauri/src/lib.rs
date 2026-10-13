@@ -239,7 +239,7 @@ fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), Str
 }
 
 use appearance::{
-    AccentColor, AppearanceApplication, AppearancePreferences, AppearanceSelectionResult,
+    AccentColor, CalendarHolidayPreferences, AppearanceApplication, AppearancePreferences, AppearanceSelectionResult,
 };
 use clock::SystemClock;
 #[cfg(target_os = "macos")]
@@ -651,6 +651,14 @@ fn set_accent_color(
     accent_color: AccentColor,
 ) -> Result<AppearancePreferences, String> {
     application.set_accent_color(accent_color)
+}
+
+#[tauri::command]
+fn set_calendar_holidays(
+    application: State<'_, DesktopAppearanceApplication>,
+    preferences: CalendarHolidayPreferences,
+) -> Result<AppearancePreferences, String> {
+    application.set_calendar_holidays(preferences)
 }
 
 #[tauri::command]
@@ -1079,6 +1087,7 @@ pub fn run() {
             collaboration_reject_memory_proposal,
             appearance_preferences,
             set_accent_color,
+            set_calendar_holidays,
             restore_appearance_defaults,
             select_background_image,
             remove_background_image,
@@ -1157,6 +1166,7 @@ pub fn run() {
         collaboration_reject_memory_proposal,
         appearance_preferences,
         set_accent_color,
+        set_calendar_holidays,
         restore_appearance_defaults,
         select_background_image,
         remove_background_image,

@@ -1,6 +1,8 @@
+import type { CalendarHolidayPreferences } from "./calendar-holidays.js";
 export type AccentColor = "forest" | "blue" | "clay" | "lilac";
 export type BackgroundImageState = "none" | "ready" | "unavailable";
 export type AppearancePreferences = Readonly<{
+  calendarHolidays?: CalendarHolidayPreferences;
   accentColor: AccentColor;
   backgroundImageState: BackgroundImageState;
   backgroundImageUrl: string | null;

@@ -10513,3 +10513,40 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   color: var(--parity-ink);
   background: var(--parity-accent-soft);
 }
+
+/* PDEX-22 dialogs reuse Task fields while leaving month/date panels in place. */
+.calendar-task-dialog {
+  width: min(34rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  padding: 0.85rem;
+  box-sizing: border-box;
+  overflow: auto;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.62rem;
+  color: var(--parity-ink);
+  background: var(--parity-surface);
+}
+.calendar-task-dialog::backdrop { background: rgb(20 28 23 / 25%); }
+.calendar-task-dialog .task-refined-editor { width: 100%; box-sizing: border-box; }
+.calendar-day-task-summary[role="button"] { cursor: pointer; }
+.calendar-day-task-summary[role="button"]:focus-visible { outline: 2px solid var(--parity-accent); outline-offset: -2px; }
+.calendar-new-task { min-width: 1.8rem; padding: 0.1rem 0.35rem; }
+
+.calendar-holiday-menu { position: relative; font-size: 0.65rem; }
+.calendar-holiday-menu > summary { cursor: pointer; padding: 0.3rem; }
+.calendar-holiday-options {
+  position: absolute; right: 0; top: 100%; z-index: 12;
+  width: min(17rem, calc(100vw - 2rem)); max-height: min(22rem, 60vh); overflow: auto;
+  padding: 0.75rem; border: 1px solid var(--parity-border); border-radius: 0.4rem;
+  background: var(--parity-surface); box-shadow: 0 5px 16px rgb(20 28 23 / 14%);
+}
+.calendar-holiday-options label { display: flex; align-items: center; gap: 0.4rem; }
+.calendar-holiday-options input { width: auto; margin: 0; }
+.calendar-holiday-options p { line-height: 1.4; margin: 0.4rem 0; }
+.calendar-day { position: relative; }
+.calendar-day-holidays {
+  position: absolute; left: 5px; right: 5px; bottom: 5px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  color: var(--parity-muted); font-size: 8px; line-height: 12px; pointer-events: none;
+}
+.calendar-day-holidays[hidden],.calendar-day-holidays:empty { display: none; }
