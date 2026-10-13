@@ -5574,10 +5574,6 @@ function formatAxisMinute(minute: number): string {
 
 type TodayAxisLaneId = "arrangement" | "facts" | "tasks" | "arrangement-unlocated" | "facts-unlocated";
 
-function hasExactPlanTime(entry: TimeAxisEntryView): boolean {
-  return entry.planPrecision === "exactPoint" || entry.planPrecision === "exactRange";
-}
-
 function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): string {
   if(entry.task) {
     const task=currentTodayView?.tasks.tasks.find(task=>task.id===entry.task!.id);
@@ -5972,6 +5968,7 @@ function openPlanTimeEditor(entry: TimeAxisEntryView, recovery?: Readonly<{
       setCopy(status, "today.planInvalidTime");
       return;
     }
+    cancellation=false;
     const operationId = `plan-time-${crypto.randomUUID()}`;
     // A captured source/revision stays bound even when the displayed date or Vault changes.
     submitted = true;
