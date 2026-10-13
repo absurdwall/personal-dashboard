@@ -26,7 +26,7 @@ impl HabitGoal {
             Self::Unconfigured => "未配置目标".into(),
         }
     }
-    pub fn next_boundary(&self, date: CalendarDate) -> CalendarDate {
+    pub(crate) fn next_boundary(&self, date: CalendarDate) -> CalendarDate {
         match self { Self::WeeklyDays { .. } => date.monday().plus_days(7), _ => date.plus_days(1) }
     }
     pub fn validate(&self) -> Result<(), String> {
@@ -142,6 +142,17 @@ impl HabitCatalogDocument {
         validate_local_identifier(&input.habit_key, "Habit key")?;
         validate_local_identifier(&input.change_id, "Habit operation")?;
         if let Some(definition) = self.habits.iter_mut().find(|habit| habit.key == input.habit_key) {
+            let current = definition.goal_revisions.iter().rev().find(|revision| revision.effective_date.as_str() <= today).cloned();
+            if let Some(current) = current {
+                let boundary = current.goal.next_boundary(CalendarDate::parse(today).ok_or("Invalid lived date")?).to_string();
+                definition.goal_revisions.retain(|revision| revision.effective_date.as_str() <= today);
+                if input.settings.goal != current.goal {
+                    definition.goal_revisions.push(HabitGoalRevision { effective_date: boundary, goal: input.settings.goal.clone() });
+                }
+            } else {
+                // Before first activation, replace the initial plan without claiming a completed cycle.
+                definition.goal_revisions = vec![HabitGoalRevision { effective_date: input.settings.start_date.clone(), goal: input.settings.goal.clone() }];
+            }
             definition.settings = input.settings.clone();
         } else {
             self.habits.push(HabitDefinition {

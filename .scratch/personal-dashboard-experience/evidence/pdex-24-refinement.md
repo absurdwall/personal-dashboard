@@ -8,3 +8,8 @@ Red: `habit_catalog_workflow` failed with the missing catalog API, binding and r
 Green: creation without an external snapshot, exact operation retry, immediate canonical completion and fresh application readback pass (1 test). Catalog uses a separate canonical path and the existing atomic CAS/file-create boundary; no source snapshot is written and no external operation occurs.
 
 Native packaged acceptance is pending; passing application checks do not close this ticket.
+
+## Slice 2 — weekly target effective boundaries
+
+Red: editing 3→5 produced no pending revision (test failed).
+Green: Wednesday edit keeps this week at 3, editable settings carry 5, replacing/cancelling pending works, and a fresh instance at Monday 03:59 uses 3 then at 04:00 uses 5. Initial goal segment is retained; accepted operation receipts retain superseded and cancelled edit requests. Application suite: 2 passed.

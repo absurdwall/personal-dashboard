@@ -138,3 +138,49 @@ fn create_local_habit_without_snapshot_complete_and_reopen_with_stable_identity(
     assert!(reopened.habit("local-reading").unwrap().today.counts_as_completion);
     assert!(!snapshot_path(vault.path()).exists());
 }
+
+#[derive(Clone)]
+struct MutableClock(std::rc::Rc<std::cell::RefCell<(String, String)>>);
+impl TodayClock for MutableClock {
+    fn current_date(&self) -> String { self.0.borrow().0.clone() }
+    fn current_time_label(&self) -> String { self.0.borrow().1.clone() }
+    fn current_timestamp_label(&self) -> String { format!("{}T{}-04:00", self.current_date(), self.current_time_label()) }
+}
+fn save_settings<P: TodayWorkspacePersistence, E: TodayWorkspaceExchange, C: TodayClock>(application: &TodayApplication<P,E,C>, key: &str, change: &str, settings: HabitSettings) -> personal_dashboard_lib::habits::HabitSnapshotView {
+    let view = application.habits().unwrap();
+    application.save_habit_definition(HabitDefinitionMutationInput {
+        habit_key: key.into(), change_id: change.into(), target_binding: view.catalog_target_binding.unwrap(),
+        expected_revision: view.catalog_revision, settings,
+    }).unwrap()
+}
+#[test]
+fn weekly_goal_edits_preserve_current_cycle_and_replace_or_cancel_pending_revision_across_reopen() {
+    let vault = TempVault::new("weekly-cycles");
+    let moment = std::rc::Rc::new(std::cell::RefCell::new(("2026-09-09".into(), "14:00".into())));
+    let clock = MutableClock(moment.clone());
+    let application = TodayApplication::new(SelectedVault(vault.path().into()), NoSelection, clock.clone());
+    let initial = HabitSettings { name: "Exercise".into(), emoji: None, group: None, start_date: "2026-09-07".into(), goal: HabitGoal::WeeklyDays { days: 3 } };
+    save_settings(&application, "local-exercise", "create-three", initial.clone());
+    let mut edited = initial.clone(); edited.name = "Movement".into(); edited.goal = HabitGoal::WeeklyDays { days: 5 };
+    let saved = save_settings(&application, "local-exercise", "schedule-five", edited.clone());
+    let habit = saved.habit("local-exercise").unwrap();
+    assert_eq!(habit.weekly_target, Some(3));
+    assert_eq!(habit.name, "Movement");
+    assert_eq!(habit.pending_goal.as_ref().unwrap().effective_date, "2026-09-14");
+    assert_eq!(habit.settings.as_ref().unwrap().goal, HabitGoal::WeeklyDays { days: 5 });
+    edited.goal = HabitGoal::WeeklyDays { days: 4 };
+    let replaced = save_settings(&application, "local-exercise", "replace-five", edited.clone());
+    assert_eq!(replaced.habit("local-exercise").unwrap().goal_revisions.len(), 2);
+    let cancelled = save_settings(&application, "local-exercise", "cancel-pending", initial);
+    assert!(cancelled.habit("local-exercise").unwrap().pending_goal.is_none());
+    edited.goal = HabitGoal::WeeklyDays { days: 5 };
+    save_settings(&application, "local-exercise", "reschedule-five", edited);
+    *moment.borrow_mut() = ("2026-09-14".into(), "03:59".into());
+    let reopened = TodayApplication::new(SelectedVault(vault.path().into()), NoSelection, clock.clone());
+    assert_eq!(reopened.habits().unwrap().habit("local-exercise").unwrap().weekly_target, Some(3));
+    moment.borrow_mut().1 = "04:00".into();
+    let advanced = reopened.habits().unwrap();
+    assert_eq!(advanced.habit("local-exercise").unwrap().weekly_target, Some(5));
+    assert!(advanced.habit("local-exercise").unwrap().pending_goal.is_none());
+    assert_eq!(advanced.habit("local-exercise").unwrap().goal_revisions[0].goal, HabitGoal::WeeklyDays { days: 3 });
+}
