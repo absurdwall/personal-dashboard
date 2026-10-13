@@ -4,7 +4,7 @@
 
 **Blocked by:** None
 
-**Status:** implementation-complete/acceptance-pending
+**Status:** in-progress
 
 **Triage:** ready-for-agent
 **ID:** PDEX-19
@@ -87,3 +87,7 @@ the original PDEX-19 worker branch; native combined acceptance remains pending.
 ### Root source-bound native checkpoint — 2026-10-13
 
 [Packaged PDEX-19/24 partial receipt](../evidence/pdex-19-24-native-partial-2026-10-13.json) binds source `2e1c56c10e6b75bb2daaf1a5dbbd94411a549854`, binary SHA-256 `5806c58cef9c046482eb4e858fa8942509e07a7149456c4ef5bf8b80f16045ec`, private synthetic selected Vault/profile and 1280×720 native geometry. Content/High priority/new tag plus explicit time cancellation saved to the real file and survived fresh-process readback; date retained, start/end cleared, tag controls enabled after their own write. The preceding red binary and recovery are retained separately. More release repair is later and still needs combined native verification. This is partial native evidence, not complete ticket/PDEX-26 acceptance or installation. Final review and remaining combinations/widths stay pending.
+
+### Confirmed P2 review repair — 2026-10-13
+
+[Three-finding repair record](../refinement-review-fixes-2026-10-13.md) records the bounded review return. Existing feature/acceptance evidence remains retained; the relevant fixed-copy, Calendar relation or Task draft recovery correction is now in progress. Native acceptance stays delegated/open.

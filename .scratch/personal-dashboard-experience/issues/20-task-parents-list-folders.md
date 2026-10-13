@@ -4,7 +4,7 @@
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口
 
-**Status:** implementation-complete/acceptance-pending
+**Status:** in-progress
 
 **Triage:** ready-for-agent
 **ID:** PDEX-20
@@ -86,3 +86,7 @@ merge `387c92f`, integration source merge `127d920`; latest integration
 `92b9652` is retained. Post-merge build, 70 frontend behavior checks, 176
 application checks and three wide/narrow WebKit scenarios pass. Native acceptance
 and independent review remain pending; no remote or main operation was performed.
+
+### Confirmed P2 review repair — 2026-10-13
+
+[Three-finding repair record](../refinement-review-fixes-2026-10-13.md) records the bounded review return. Existing feature/acceptance evidence remains retained; the relevant fixed-copy, Calendar relation or Task draft recovery correction is now in progress. Native acceptance stays delegated/open.
