@@ -1,0 +1,96 @@
+{
+  "baseline": {
+    "chat": {
+      "top": 209.203125,
+      "bottom": 573.203125,
+      "left": 176,
+      "right": 627,
+      "width": 451,
+      "height": 364
+    },
+    "composer": {
+      "top": 322.390625,
+      "bottom": 565.8125,
+      "left": 183.390625,
+      "right": 619.609375,
+      "width": 436.21875,
+      "height": 243.421875
+    },
+    "scrollHeight": 634
+  },
+  "chat": {
+    "top": 209.203125,
+    "bottom": 573.203125,
+    "left": 176,
+    "right": 627,
+    "width": 451,
+    "height": 364
+  },
+  "context": {
+    "top": 217.203125,
+    "bottom": 314.390625,
+    "left": 184,
+    "right": 619,
+    "width": 435,
+    "height": 97.1875,
+    "hidden": false,
+    "position": "absolute",
+    "css": "left: 8px; top: 8px; width: 435px; max-height: 97.1875px;",
+    "margin": "0px",
+    "layout": {
+      "top": 209.203125,
+      "bottom": 583.59375,
+      "left": 176,
+      "right": 627,
+      "width": 451,
+      "height": 374.390625
+    },
+    "clientHeight": 95,
+    "scrollHeight": 768
+  },
+  "composer": {
+    "top": 322.390625,
+    "bottom": 565.8125,
+    "left": 183.390625,
+    "right": 619.609375,
+    "width": 436.21875,
+    "height": 243.421875
+  },
+  "scrollHeight": 634,
+  "input": {
+    "top": 360.28125,
+    "bottom": 500.28125,
+    "left": 184.390625,
+    "right": 618.609375,
+    "width": 434.21875,
+    "height": 140
+  },
+  "preview": {
+    "top": 0,
+    "bottom": 0,
+    "left": 0,
+    "right": 0,
+    "width": 0,
+    "height": 0,
+    "clientHeight": 0,
+    "scrollHeight": 0
+  },
+  "stopHit": true,
+  "sendHit": true,
+  "inputHit": true,
+  "closeHit": true,
+  "messageHeight": 56,
+  "contextScrolled": true,
+  "messageScrolled": true,
+  "closeAfterScroll": true,
+  "closed": true,
+  "composerAfterScroll": {
+    "top": 322.390625,
+    "bottom": 565.8125,
+    "left": 183.390625,
+    "right": 619.609375,
+    "width": 436.21875,
+    "height": 243.421875
+  },
+  "draftLength": 20
+}

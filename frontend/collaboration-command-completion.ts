@@ -7,6 +7,8 @@ export function initializeCollaborationCommandCompletion(
   menu: HTMLElement,
   description: () => string,
   submit: () => void,
+  // Calling environments may supply their documented commands; production uses only /retro.
+  commands: readonly string[] = ["/retro"],
 ): { close: () => void } {
   let composing = false;
   let dismissed: string | null = null;
@@ -45,7 +47,7 @@ export function initializeCollaborationCommandCompletion(
       !match || input.selectionStart < match[1].length + 1 || input.selectionStart > tokenEnd ||
       dismissed === input.value) { close(); return; }
     // This is the only slash command documented in the bundled usage skill.
-    candidates = ["/retro"].filter(command => command.startsWith(`/${match[2].toLowerCase()}`));
+    candidates = commands.filter(command => command.startsWith(`/${match[2].toLowerCase()}`));
     if (!candidates.length) { close(); return; }
     selected = Math.min(selected, candidates.length - 1);
     menu.replaceChildren();

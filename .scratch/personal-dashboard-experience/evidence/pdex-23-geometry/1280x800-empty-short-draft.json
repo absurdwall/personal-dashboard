@@ -1,0 +1,96 @@
+{
+  "baseline": {
+    "chat": {
+      "top": 241.046875,
+      "bottom": 784,
+      "left": 466.390625,
+      "right": 1212.609375,
+      "width": 746.21875,
+      "height": 542.953125
+    },
+    "composer": {
+      "top": 502.765625,
+      "bottom": 774.203125,
+      "left": 476.1875,
+      "right": 1202.8125,
+      "width": 726.625,
+      "height": 271.4375
+    },
+    "scrollHeight": 776
+  },
+  "chat": {
+    "top": 241.046875,
+    "bottom": 784,
+    "left": 466.390625,
+    "right": 1212.609375,
+    "width": 746.21875,
+    "height": 542.953125
+  },
+  "context": {
+    "top": 249.046875,
+    "bottom": 494.765625,
+    "left": 474.390625,
+    "right": 1204.609375,
+    "width": 730.21875,
+    "height": 245.71875,
+    "hidden": false,
+    "position": "absolute",
+    "css": "left: 240px; top: 8px; width: 730.21875px; max-height: 245.71875px;",
+    "margin": "0px",
+    "layout": {
+      "top": 241.046875,
+      "bottom": 784,
+      "left": 234.390625,
+      "right": 1212.609375,
+      "width": 978.21875,
+      "height": 542.953125
+    },
+    "clientHeight": 244,
+    "scrollHeight": 760
+  },
+  "composer": {
+    "top": 502.765625,
+    "bottom": 774.203125,
+    "left": 476.1875,
+    "right": 1202.8125,
+    "width": 726.625,
+    "height": 271.4375
+  },
+  "scrollHeight": 776,
+  "input": {
+    "top": 547.0625,
+    "bottom": 707.0625,
+    "left": 477.1875,
+    "right": 1201.8125,
+    "width": 724.625,
+    "height": 160
+  },
+  "preview": {
+    "top": 0,
+    "bottom": 0,
+    "left": 0,
+    "right": 0,
+    "width": 0,
+    "height": 0,
+    "clientHeight": 0,
+    "scrollHeight": 0
+  },
+  "stopHit": true,
+  "sendHit": true,
+  "inputHit": true,
+  "closeHit": true,
+  "messageHeight": 202,
+  "contextScrolled": true,
+  "messageScrolled": true,
+  "closeAfterScroll": true,
+  "closed": true,
+  "composerAfterScroll": {
+    "top": 502.765625,
+    "bottom": 774.203125,
+    "left": 476.1875,
+    "right": 1202.8125,
+    "width": 726.625,
+    "height": 271.4375
+  },
+  "draftLength": 20
+}
