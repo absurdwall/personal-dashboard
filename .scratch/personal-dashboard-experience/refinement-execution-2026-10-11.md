@@ -1,7 +1,7 @@
 # PDEX-SPEC-02 — 本地执行与交接边界
 
 Date: 2026-10-11
-Stage: authorized implementation; PDEX-19/23 integrated, acceptance pending; PDEX-24 in progress
+Stage: authorized implementation; PDEX-19 repair and PDEX-24 integrated; remaining review/native acceptance pending
 Canonical tracker: [map](map.md)
 Specification: [PDEX-SPEC-02](refinement-spec-2026-10-11.md)
 Published ticket range: PDEX-19–26
@@ -45,7 +45,7 @@ User request: implement PDEX-SPEC-02 from `918e7e0` on `codex/dashboard-experien
 
 ## Current frontier — 2026-10-13
 
-PDEX-19 and PDEX-23 implementations are integrated; review and remaining native acceptance are recorded separately, so their tickets remain in-progress. PDEX-24 is in progress on its ticket branch. PDEX-20/21/22 are not started; root may claim them after the integrated PDEX-19 application/DOM prerequisite verification, without inferring PDEX-19 acceptance or closure. PDEX-25/26 are not started and retain their recorded dependencies. The publication-only frontier above is historical.
+PDEX-19, PDEX-23 and PDEX-24 implementations are integrated; review and remaining native acceptance are recorded separately, so their tickets remain in-progress. PDEX-20/22 have root-recorded claims in their full ticket bodies; PDEX-21/25/26 are not started. Root may claim PDEX-25 after the integrated PDEX-24 interface/application/DOM prerequisite verification, without inferring PDEX-24 acceptance or closure. The publication-only frontier above is historical.
 
 ## PDEX-23 integration — 2026-10-13
 
@@ -74,3 +74,46 @@ Integration validation at the merge source: `npm run build` passed; `node --test
 The tracked/untracked inventory was clean before merge. Both ticket-scoped CSS blocks remain. [Application/DOM evidence](evidence/pdex-19-refinement.md) and [WebKit results](evidence/pdex-19-webkit-dom.jsonl) retain implementation verification and limits.
 
 Integration validation at the merge source: `npm run build` passed, including the changed frontend/IPC TypeScript contracts; `node --test tests/frontend/task-refinement.test.ts tests/frontend/task-presentation.test.ts tests/frontend/task-history-render.test.ts tests/frontend/task-history-editing.test.ts` passed 33/33; `node scripts/acceptance/task-refinement-dom.mjs` passed actual production WebKit checks at widths 1280 and 680; `git diff --check` passed. The worker evidence retains the independent real application readback tests. No broad baseline fixture fixes were made. PDEX-19 remains in-progress; root performs the source-bound native checks separately. No ticket/spec closure, normal App installation, personal-data write, main merge or remote operation occurred.
+
+## PDEX-19 repair integration — 2026-10-13
+
+- Source branch: `codex/pdex-19-refinement`.
+- Worker synchronization: `01705298ca018f6bc888d5b4169e0703464ac14f` merges integration `b96b77d74a84309615ab57fdc28055c9ef54b9a3` before diagnosis.
+- Repair/evidence commit: `7e96b0832fa65884dbf67665e81d4123081930bf`.
+- Integration tip before merge: `e53775f99a732eedf9d6b6895259746d7c0d54cb` (retained original packaged Save-failure receipt).
+- Integration merge: `157b8c4de8edf040471649201d88812b45493f26`; `git merge --no-ff`, no conflicts.
+
+[Repair diagnosis and submission matrix](evidence/pdex-19-refinement.md) preserve the original native red finding rather than replacing it with a controller success. Optional date/time controls are reinitialized only on explicit clearing; normal validation remains enabled. Tag busy-state release and Cancel compact captions are repaired within the same editor. The root's original packaged cancellation workflow must be rerun on this source; native repair acceptance is pending.
+
+## PDEX-24 integration — 2026-10-13
+
+Source branch: `codex/pdex-24-refinement`; worker starting tip `1906b875ccded5a77deeff8fcbecc10454733677`; authorized base `918e7e0d9c4b2c524c429bfd309482e328bc4c91`.
+
+Full retained worker implementation lineage, in order:
+
+1. `66d6046372b66eb2c10ee4ef0ef2bf819d8f274f` — local catalog and completion identity.
+2. `2c28f6af45133518a78711a7b24af639446cca59` — next-cycle target revisions.
+3. `9e3dc8d879d9d4d81962331dcac738d0847e3d63` — sourced goals and localized names.
+4. `08075695b45b86bfc20f5e87b48015f6804d00eb` — partial-cycle frequency transitions.
+5. `300ef11915a5d6cda0b365057846b48064d311be` — threshold provenance and attained days.
+6. `b0ed495dd5346a074ae902c57c7a3b283c113451` — independent writes and uncertain retries.
+7. `ff01224b275c38c72ab202243da564793510dad4` — shared create/edit draft controller.
+8. `59198eb27b98ea47229f2a0ac1ff4d1e50ed11e5` — one lived-date capture per read.
+9. `c2b7b5b1d0a0d337c73fc4106f66a2b7946b63aa` — settings UI, selected-Vault read authority and refresh preservation.
+10. `63e045bd914fe824cbd6af6550540962425b0ec4` — worker synchronization with `b96b77d74a84309615ab57fdc28055c9ef54b9a3`, retaining scoped Task/Collaboration/Habit CSS.
+11. `d5632592765a189dc69f02b607b9a05b6b5e2131` — unconfigured sourced weekly frequency/check-in preservation.
+
+Integration merge: `71ebf5d2a8e59aa623115b1c15abae0da890e826`, following PDEX-19 repair merge `157b8c4de8edf040471649201d88812b45493f26`. `git merge --no-ff` completed without conflicts, including the shared `frontend/main.ts` changes. Both source branch tips are reachable; all three scoped CSS blocks remain. Initial tracked/untracked inventory was clean.
+
+[PDEX-24 application/DOM evidence](evidence/pdex-24-refinement.md) records independent catalog/completion identities, cycle boundaries, sourced overlays, safe retries and PDEX-25's goal-history seam.
+
+Combined integration validation at `71ebf5d2a8e59aa623115b1c15abae0da890e826`:
+
+- `npm run build` passed.
+- Eight focused Task/Habit frontend suites passed 50/50 (`task-refinement`, `task-presentation`, `task-history-render`, `task-history-editing`, `habit-settings`, `habit-completion`, `habit-localized-names`, `habit-canonical-navigation`).
+- `node scripts/acceptance/task-tag-save-dom.mjs` passed all five actual-button submission cases at widths 1280/680, including tag creation + cancel time and end-only clearing. Production WebKit emitted submit and `update_task` with no invalid-control events; the synthetic IPC boundary does not establish file persistence.
+- `tests/browser/habit-settings.mjs` passed 3/3 in installed Chrome using bundled Playwright (no added dependency): create/retry at widths 1200/560 and current/pending next-day threshold editing. These DOM checks retain the public UI controller and synthetic save boundary.
+- `cargo test --manifest-path src-tauri/Cargo.toml --test habit_catalog_workflow --test habit_completion_workflow --test habit_snapshot_workflow` passed 39/39 (12 + 12 + 15), including real isolated file writes, fresh-application readback, producer publication, corrupt-file preservation, cycle transitions and selected-Vault consistency.
+- `git diff --check` passed; no broad baseline fixes were attempted.
+
+PDEX-24's implementation prerequisite is verified for root to claim PDEX-25; PDEX-24 remains in-progress pending review/native save/reopen acceptance. Root reruns repaired PDEX-19's original packaged case separately. No installation, remote Git, main merge, dependency addition, normal profile/Vault write or ticket closure occurred.
