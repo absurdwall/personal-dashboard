@@ -83,3 +83,9 @@ Native packaged save/reopen acceptance and PDEX-25 detail/statistics/lifecycle r
 - Post-merge integration workflow binaries: 440 passed, 0 failed (24 binaries).
 - Parallel unit run: 101 passed, 6 ignored, one `DirectoryNotEmpty` cleanup failure in the unchanged `collaboration::history_tests::later_full_history_snapshots_preserve_first_native_readback`. That exact test passed on isolated rerun (1 passed); its function is unchanged from `1906b87`. The whole parallel unit run is not claimed green. Logs: `/private/tmp/pdex24-postmerge-rust.log`, `/private/tmp/pdex24-postmerge-workflows.log`.
 - No unresolved merge markers or whitespace errors. Native packaged acceptance remains pending.
+
+
+## Final preservation guard — unconfigured sourced weekly Habit
+
+Red: editing only the name of a sourced weekly Habit without a configured goal converted its displayed frequency to daily and disabled its existing check-in behavior.
+Green: catalog defaults retain the source tracking kind, known-day count and local check-in capability. Giving that existing weekly Habit a target schedules it for the next Monday; once it activates, the summary's unconfigured-goal exclusion clears. Source tracking kind is validated and defaults safely when absent in older catalog data. Final targeted application checks: 12 catalog + 12 canonical completion + 15 snapshot tests passed (39 total). This final change does not alter the settings UI or unrelated domains.

@@ -74,3 +74,6 @@ The user invoked implement-spec for PDEX-SPEC-02. Tests use the already confirme
 - Final UI/safety/history-coverage commits and integration sync are recorded by the local Git history and [implementation evidence](../evidence/pdex-24-refinement.md).
 - Business verification includes real synthetic selected-Vault writes, saved readback, new application instances, real cycle advancement and actual source-snapshot publication. The actual DOM form uses the same settings layout and retains failures/retry drafts.
 - Native packaged acceptance is still pending; this ticket and parent specification are not closed. PDEX-25 connects detail editing and full history/lifecycle to this catalog boundary.
+
+- Integration synchronization: `63e045b` merged `b96b77d` with both source histories retained. Post-sync focused frontend 29 and actual DOM 3 passed; integration workflows 440 passed. One unchanged parallel unit cleanup race passed its exact isolated rerun; the full parallel run is not reported green.
+- Final unconfigured-source preservation and remaining native acceptance boundary are recorded in the evidence and worker branch tip.

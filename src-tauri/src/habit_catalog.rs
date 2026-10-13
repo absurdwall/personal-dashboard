@@ -53,6 +53,17 @@ impl HabitGoal {
             _ => date.plus_days(1),
         }
     }
+    pub(crate) fn next_boundary_with_tracking(
+        &self,
+        date: CalendarDate,
+        tracking: Option<&str>,
+    ) -> CalendarDate {
+        if matches!(self, Self::Unconfigured) && tracking == Some("weekly-count") {
+            date.monday().plus_days(7)
+        } else {
+            self.next_boundary(date)
+        }
+    }
     pub fn validate(&self) -> Result<(), String> {
         match self {
             Self::WeeklyDays { days } if !(1..=7).contains(days) => {
@@ -143,6 +154,8 @@ pub struct HabitDefinition {
     pub active: bool,
     pub sourced: bool,
     #[serde(default)]
+    pub source_tracking_kind: Option<String>,
+    #[serde(default)]
     pub source_name: Option<String>,
     #[serde(default)]
     pub source_localized_names: crate::habits::HabitLocalizedNames,
@@ -191,6 +204,11 @@ impl HabitCatalogDocument {
                 return Err("Habit catalog 重复身份；原文件保留。".into());
             }
             habit.settings.validate()?;
+            if habit.source_tracking_kind.as_deref().is_some_and(|kind| {
+                !["weekly-count", "daily-time", "daily-completion"].contains(&kind)
+            }) {
+                return Err("Habit 来源频率无效；原文件保留。".into());
+            }
             if habit.goal_revisions.is_empty() {
                 return Err("Habit catalog 缺少目标历史。".into());
             }
@@ -241,6 +259,9 @@ impl HabitCatalogDocument {
             .iter_mut()
             .find(|habit| habit.key == input.habit_key)
         {
+            if definition.sourced && definition.source_tracking_kind.is_none() {
+                definition.source_tracking_kind = source.map(|source| source.goal_kind.clone());
+            }
             let current = definition
                 .goal_revisions
                 .iter()
@@ -250,7 +271,10 @@ impl HabitCatalogDocument {
             if let Some(current) = current {
                 let boundary = current
                     .goal
-                    .next_boundary(CalendarDate::parse(today).ok_or("Invalid lived date")?)
+                    .next_boundary_with_tracking(
+                        CalendarDate::parse(today).ok_or("Invalid lived date")?,
+                        definition.source_tracking_kind.as_deref(),
+                    )
                     .to_string();
                 definition
                     .goal_revisions
@@ -283,7 +307,11 @@ impl HabitCatalogDocument {
                 if revisions.is_empty() {
                     revisions.push(HabitGoalRevision {
                         valid_through: None,
-                        effective_date: today.into(),
+                        effective_date: if source.goal_kind == "weekly-count" {
+                            CalendarDate::parse(today).unwrap().monday().to_string()
+                        } else {
+                            today.into()
+                        },
                         goal: current.clone(),
                     });
                 }
@@ -291,7 +319,10 @@ impl HabitCatalogDocument {
                     revisions.push(HabitGoalRevision {
                         valid_through: None,
                         effective_date: current
-                            .next_boundary(CalendarDate::parse(today).ok_or("Invalid lived date")?)
+                            .next_boundary_with_tracking(
+                                CalendarDate::parse(today).ok_or("Invalid lived date")?,
+                                Some(&source.goal_kind),
+                            )
                             .to_string(),
                         goal: input.settings.goal.clone(),
                     });
@@ -312,6 +343,7 @@ impl HabitCatalogDocument {
                     .map(|s| s.localized_names.clone())
                     .unwrap_or_default(),
                 sourced: source.is_some(),
+                source_tracking_kind: source.map(|source| source.goal_kind.clone()),
                 source_labels: source.map(|s| s.source_labels.clone()).unwrap_or_default(),
                 source_goal_history: source.map(|s| s.goal_history.clone()).unwrap_or_default(),
                 goal_revisions: revisions,
@@ -447,6 +479,11 @@ pub fn overlay_catalog(
                 HabitGoal::WeeklyDays { .. } => {
                     CalendarDate::parse(today).unwrap().monday().to_string()
                 }
+                HabitGoal::Unconfigured
+                    if definition.source_tracking_kind.as_deref() == Some("weekly-count") =>
+                {
+                    CalendarDate::parse(today).unwrap().monday().to_string()
+                }
                 _ => today.into(),
             };
             habit.partial_cycle = applicable.effective_date > cycle_start
@@ -455,6 +492,10 @@ pub fn overlay_catalog(
             habit.goal_kind = match goal {
                 HabitGoal::WeeklyDays { .. } => "weekly-count",
                 HabitGoal::DailyTime { .. } => "daily-time",
+                HabitGoal::Unconfigured => definition
+                    .source_tracking_kind
+                    .as_deref()
+                    .unwrap_or(&habit.goal_kind),
                 _ => "daily-completion",
             }
             .into();
@@ -462,7 +503,7 @@ pub fn overlay_catalog(
                 HabitGoal::WeeklyDays { days } => Some(*days),
                 _ => None,
             };
-            habit.completed_count = habit.weekly_target.map(|_| {
+            habit.completed_count = (habit.goal_kind == "weekly-count").then(|| {
                 habit
                     .history
                     .iter()
@@ -480,14 +521,14 @@ pub fn overlay_catalog(
                     .count() as u32
             });
             habit.can_record_completion = definition.active
+                && (!matches!(goal, HabitGoal::Unconfigured) || habit.goal_kind == "weekly-count")
                 && definition.settings.start_date.as_str() <= today
                 && !matches!(
                     goal,
-                    HabitGoal::Unconfigured
-                        | HabitGoal::DailyTime {
-                            day_relation: DayRelation::Unresolved,
-                            ..
-                        }
+                    HabitGoal::DailyTime {
+                        day_relation: DayRelation::Unresolved,
+                        ..
+                    }
                 );
         }
     }
@@ -497,6 +538,15 @@ pub fn overlay_catalog(
         .filter(|h| h.active && h.weekly_target.is_some())
         .filter_map(|h| h.completed_count)
         .sum();
+    view.summary.excluded_no_goal = view
+        .habits
+        .iter()
+        .filter(|habit| {
+            habit.active
+                && (matches!(habit.current_goal, Some(HabitGoal::Unconfigured))
+                    || (!habit.locally_configured && habit.current_goal.is_none()))
+        })
+        .count() as u32;
     view.summary.target_completions = view
         .habits
         .iter()

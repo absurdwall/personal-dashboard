@@ -898,3 +898,61 @@ fn a_read_does_not_mix_source_evidence_from_one_vault_with_another_local_catalog
         following.catalog_target_binding
     );
 }
+
+#[test]
+fn editing_an_unconfigured_sourced_weekly_habit_retains_tracking_then_activates_target_next_monday()
+{
+    let vault = TempVault::new("no-goal-source-edit");
+    let mut snapshot: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/habits-v1-complete.json")).unwrap();
+    snapshot["habits"][2]["goal"] = serde_json::Value::Null;
+    write_snapshot(vault.path(), &snapshot.to_string());
+    let application = app(vault.path());
+    let mut settings = application
+        .habits()
+        .unwrap()
+        .habit("reset")
+        .unwrap()
+        .settings
+        .clone()
+        .unwrap();
+    settings.name = "Space".into();
+    let edited = save_settings(&application, "reset", "name-no-goal", settings.clone());
+    let habit = edited.habit("reset").unwrap();
+    assert_eq!(habit.goal_kind, "weekly-count");
+    assert!(habit.can_record_completion);
+    assert_eq!(habit.completed_count, Some(0));
+    let completed = application
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "reset".into(),
+            lived_date: "2026-09-08".into(),
+            completed: true,
+            change_id: "complete-no-goal".into(),
+            target_binding: edited.completion_target_binding.unwrap(),
+            expected_revision: edited.completion_revision,
+        })
+        .unwrap();
+    assert_eq!(completed.habit("reset").unwrap().completed_count, Some(1));
+    assert_eq!(completed.summary.excluded_no_goal, 1);
+    settings.goal = HabitGoal::WeeklyDays { days: 5 };
+    let planned = save_settings(&application, "reset", "configure-no-goal-target", settings);
+    assert_eq!(
+        planned
+            .habit("reset")
+            .unwrap()
+            .pending_goal
+            .as_ref()
+            .unwrap()
+            .effective_date,
+        "2026-09-14"
+    );
+    let following = TodayApplication::new(
+        SelectedVault(vault.path().into()),
+        NoSelection,
+        FollowingMondayClock,
+    )
+    .habits()
+    .unwrap();
+    assert_eq!(following.habit("reset").unwrap().weekly_target, Some(5));
+    assert_eq!(following.summary.excluded_no_goal, 0);
+}

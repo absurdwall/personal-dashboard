@@ -1578,7 +1578,7 @@ pub(crate) fn project_local_definition(definition: &crate::habit_catalog::HabitD
         partial_cycle: false,
         key: definition.key.clone(), name: definition.settings.name.clone(), localized_names: Default::default(), active: definition.active,
         settings: Some(definition.settings.clone()), current_goal: None, pending_goal: None, goal_revisions: vec![],
-        goal_kind: "daily-completion".into(), goal_label: definition.settings.goal.label(), weekly_target: None, completed_count: None,
+        goal_kind: definition.source_tracking_kind.clone().unwrap_or_else(|| "daily-completion".into()), goal_label: definition.settings.goal.label(), weekly_target: None, completed_count: None,
         can_record_completion: true, source_labels: definition.source_labels.iter().cloned().chain(std::iter::once("Personal Dashboard local".into())).collect(),
         coverage_label: "本地记录；未记录日期未知；外部历史覆盖未知".into(), goal_history: definition.source_goal_history.clone(),
         today: history.iter().find(|c| c.date == today).unwrap().clone(),
