@@ -327,3 +327,7 @@ Management readback confirmed all five parent indexes plus PDEX-12–18 as `reso
 ## Authorized refinement execution — 2026-10-13
 
 The user invoked implement-spec for PDEX-SPEC-02 with integration branch `codex/dashboard-experience-refinement-integration` from `918e7e0d9c4b2c524c429bfd309482e328bc4c91`. Initial checkout clean; prototype/spec branches and earlier history retained. PDEX-19, PDEX-23 and PDEX-24 are claimed by Codex on separate `codex/pdex-{ID}-refinement` branches/worktrees. The current claim state supersedes the historical publication checkpoint above. Local Git only; no main merge, remote operation or App installation. Remaining tickets stay dependency-gated.
+
+### Dependent implementation frontier — 2026-10-13
+
+PDEX-19 integrated at `dc5b09cd5a8ce6d4c45664bc3d610f6b614492e7` with real application/readback and production-DOM prerequisites verified. PDEX-20 and PDEX-22 now claimed on their own branches/worktrees. PDEX-21 remains ready for a free implementer slot; PDEX-24 remains in progress, PDEX-25 waits for its verified interface, and PDEX-26 remains final combined acceptance. Dependency links are retained; downstream code work does not close upstream native/review gates.
