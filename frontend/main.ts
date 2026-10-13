@@ -9388,6 +9388,14 @@ function isBlankTaskDraft(draft: TaskDraft): boolean {
   );
 }
 
+function clearTaskScheduleField(field: HTMLInputElement): void {
+  field.value="";
+  // Reinitialize WebKit date/time controls after explicit clearing. Otherwise a
+  // collapsed control can keep stale native validity and suppress form submit.
+  const type=field.type;
+  if(type==="date"||type==="time") {field.type="text";field.type=type;}
+}
+
 function normalizeTaskDateTimeFields(
   dateInput: HTMLInputElement | null,
   timeInput: HTMLInputElement | null,
@@ -10093,13 +10101,13 @@ function taskEditor(
   clearEnd.dataset.taskClearEnd = "";
   setCopy(clearEnd, "tasks.clearExecutionEnd");
   clearEnd.addEventListener("click", () => {
-    endDate.value = "";
-    endTime.value = "";
+    clearTaskScheduleField(endDate);
+    clearTaskScheduleField(endTime);
     stashTaskSurfaceDraft(surface, editorForm);
   });
   let openSchedule = (): void => { date.focus(); };
   let openList = (): void => { list.focus(); };
-  let cancelTimeDraft = (): void => { time.value="";endDate.value="";endTime.value="";stashTaskSurfaceDraft(surface,editorForm); };
+  let cancelTimeDraft = (): void => { clearTaskScheduleField(time);clearTaskScheduleField(endDate);clearTaskScheduleField(endTime);stashTaskSurfaceDraft(surface,editorForm); };
   let resetRefinedProperties = (): void => {};
   if(refined) {
   const properties = document.createElement("div"); properties.className = "task-compact-properties task-form-wide";
@@ -10119,7 +10127,7 @@ function taskEditor(
   const cancelTime = document.createElement("button"); cancelTime.type="button";cancelTime.className="secondary-button";
   cancelTime.textContent=currentInterfaceLanguage==="zh"?"取消时间安排":"Cancel time arrangement";cancelTime.disabled=!editable;
   cancelTime.dataset.taskCancelTime="";
-  cancelTime.addEventListener("click",()=> {time.value="";endDate.value="";endTime.value="";clearEnd.hidden=true;stashTaskSurfaceDraft(surface,editorForm);updateScheduleSummary();});
+  cancelTime.addEventListener("click",()=> {clearTaskScheduleField(time);clearTaskScheduleField(endDate);clearTaskScheduleField(endTime);clearEnd.hidden=true;stashTaskSurfaceDraft(surface,editorForm);updateScheduleSummary();});
   schedulePanel.querySelector(".task-property-fields")!.append(cancelTime);
   const updateScheduleSummary=()=> {clearEnd.hidden=!endDate.value&&!endTime.value;schedulePanel.querySelector("summary")!.textContent=taskScheduleText(date.value||null,time.value||null,endDate.value&&endTime.value?{date:endDate.value,time:endTime.value}:null);};
   [date,time,endDate,endTime].forEach(field=>field.addEventListener("change",updateScheduleSummary));
@@ -10146,6 +10154,7 @@ function taskEditor(
     const remove=document.createElement("button");remove.type="button";remove.className="secondary-button";remove.disabled=!editable;
     remove.textContent=currentInterfaceLanguage==="zh"?"删除标签":"Delete tag";
     remove.addEventListener("click",()=>void pendingWrites.track(manageTaskTag("delete",tag.id,null,surface,editorForm)));
+    [renameName,rename,remove].forEach(control=>control.dataset.taskTagManagement="");
     tags.append(renameName,rename,remove);
   }
   const tagName=document.createElement("input");tagName.type="text";tagName.maxLength=80;tagName.disabled=!editable;
@@ -10153,13 +10162,19 @@ function taskEditor(
   const createTag=document.createElement("button");createTag.type="button";createTag.disabled=!editable;
   createTag.textContent=currentInterfaceLanguage==="zh"?"创建标签":"Create tag";
   createTag.addEventListener("click",()=>void pendingWrites.track(manageTaskTag("create",null,tagName.value,surface,editorForm)));
+  [tagName,createTag].forEach(control=>control.dataset.taskTagManagement="");
   tags.append(tagName,createTag);
   const tagPanel=compact((view?.tags??[]).filter(tag=>selectedTags.has(tag.id)).map(tag=>tag.name).join(", ")||(currentInterfaceLanguage==="zh"?"标签":"Tags"),[tags]);
   tags.addEventListener("change",()=>{tagPanel.querySelector("summary")!.textContent=Array.from(tags.querySelectorAll<HTMLInputElement>("[data-task-tag-id]:checked"),input=>(view?.tags??[]).find(tag=>tag.id===input.dataset.taskTagId)?.name??"").join(", ")||(currentInterfaceLanguage==="zh"?"标签":"Tags");});
   grid.append(nameLabel, contentLabel, properties);
   openSchedule=()=>{schedulePanel.open=true;date.focus();};openList=()=>{listPanel.open=true;list.focus();};
   cancelTimeDraft=()=>{cancelTime.click();schedulePanel.open=true;};
-  resetRefinedProperties=()=>{priority.value=task.priority??"none";tags.querySelectorAll<HTMLInputElement>("[data-task-tag-id]").forEach(input=>{input.checked=(task.tagIds??[]).includes(input.dataset.taskTagId!);});updateScheduleSummary();};
+  resetRefinedProperties=()=>{
+    priority.value=task.priority??"none";priorityPanel.querySelector("summary")!.textContent=priority.selectedOptions[0]?.textContent??"";
+    tags.querySelectorAll<HTMLInputElement>("[data-task-tag-id]").forEach(input=>{input.checked=(task.tagIds??[]).includes(input.dataset.taskTagId!);});
+    tagPanel.querySelector("summary")!.textContent=(view?.tags??[]).filter(tag=>(task.tagIds??[]).includes(tag.id)).map(tag=>tag.name).join(", ")||(currentInterfaceLanguage==="zh"?"标签":"Tags");
+    listPanel.querySelector("summary")!.textContent=list.selectedOptions[0]?.textContent??"";updateScheduleSummary();
+  };
   } else {grid.append(nameLabel, contentLabel, listLabel, dateLabel, timeLabel, endDateLabel, endTimeLabel, clearEnd);}
 
   const footer = document.createElement("div");
@@ -10331,8 +10346,9 @@ function taskEditor(
     event.preventDefault();
     event.stopPropagation();
     if(binding)taskEditDrafts.delete(taskDraftKey(binding,task.id));
-    name.value=task.name;content.value=task.content??"";date.value=task.date??"";time.value=task.time??"";
-    endDate.value=task.executionEnd?.date??"";endTime.value=task.executionEnd?.time??"";list.value=task.listId;
+    name.value=task.name;content.value=task.content??"";
+    for(const [field,value] of [[date,task.date],[time,task.time],[endDate,task.executionEnd?.date],[endTime,task.executionEnd?.time]] as const) {if(value)field.value=value;else clearTaskScheduleField(field);}
+    list.value=task.listId;
     resetRefinedProperties();
     closeEditorDialog();
   });
@@ -10647,7 +10663,7 @@ function updateTaskEditorOperationState(
 ): void {
   taskEditorForms(surface).forEach((form) => {
     form.querySelectorAll(
-      "[data-task-name], [data-task-content], [data-task-priority], [data-task-tag-id], [data-task-cancel-time], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
+      "[data-task-name], [data-task-content], [data-task-priority], [data-task-tag-id], [data-task-tag-management], [data-task-cancel-time], [data-task-list], [data-task-date], [data-task-time], [data-task-end-date], [data-task-end-time], [data-task-clear-end], [data-task-completion-date], [data-task-completion-time], button[data-task-correct-completion], button[type=submit]",
     ).forEach((element) => {
       (element as HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement).disabled =
         busy || !writable;
