@@ -10,7 +10,7 @@
 **ID:** PDEX-19
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** claimed for reimplementation; source changes not yet started
+**Implementation:** committed; component verification passed; packaged acceptance pending in PDEX-26
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -53,9 +53,30 @@ PDEX-SPEC-02 stories 4–14、30–34、48–49；共同承担 1–3、88–91 �
 ## Reimplementation claim — 2026-10-13
 
 Owner: Codex implementer `/root/pdex19_reimplementation`. Working branch
-`codex/pdex-19-refinement-reimplementation`; authorized source baseline
-`918e7e0d9c4b2c524c429bfd309482e328bc4c91`. The claim is recorded on the fresh
-integration branch; the implementer worktree starts from its current tip and
-will retain that full history. Earlier rejected source remains on the preserved
-previous integration branch. Local Git only; no installation, main merge, or
-remote operation.
+`codex/pdex-19-refinement-reimplementation`; actual implementation base
+`b7dcd71b50b42de4a706d460d635f99bf059770d`. The worktree was clean at claim
+time. The rejected previous implementation branch was not used. Local Git only;
+no package installation, main merge, or remote operation.
+
+## Implementation evidence — 2026-10-13
+
+Implementation commits on `codex/pdex-19-refinement-reimplementation`:
+
+- `2b321c881e5db8c2161ca86f2fb2dcc9a1e5e528` — schema 3, backward-compatible
+  Task properties, priority/tag persistence and patch workflows, native
+  commands, workflow tests, and the Tasks storage contract.
+- `8ad5ba279911a8cecd23ac1f01a5b8b667824e04` — compact Task editor, quick-add
+  properties, filtering/sorting/context actions, localization, and unit/DOM
+  coverage.
+
+Observed verification and remaining acceptance boundary are recorded in
+[`pdex-19-reimplementation-2026-10-13.md`](../evidence/pdex-19-reimplementation-2026-10-13.md).
+The complete handoff commit set, in order, is
+`2b321c881e5db8c2161ca86f2fb2dcc9a1e5e528`,
+`8ad5ba279911a8cecd23ac1f01a5b8b667824e04`,
+`5c40b6830155981104d88fdaca07247fad09717b`, and
+`60fc6d93d2a1cc556e1b259f6bef1e4c5ddfcdf2` on
+`codex/pdex-19-refinement-reimplementation`. The branch was integrated with
+`--no-ff` into `codex/dashboard-experience-refinement-reimplementation` by
+merge commit `5603d7ced3fa7325f1ea7c2bc83f9c475de938eb`. PDEX-19 remains
+claimed and `in-progress`; PDEX-26 owns the remaining packaged acceptance.

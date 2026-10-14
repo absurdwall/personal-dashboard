@@ -33,9 +33,9 @@ unclaimed until their blockers are integrated with evidence.
 
 | Ticket | Working branch | Authorized source baseline | Implementation commits |
 | --- | --- | --- | --- |
-| PDEX-19 | `codex/pdex-19-refinement-reimplementation` | `918e7e0d9c4b2c524c429bfd309482e328bc4c91` | pending |
+| PDEX-19 | `codex/pdex-19-refinement-reimplementation` | `918e7e0d9c4b2c524c429bfd309482e328bc4c91` | `2b321c881e5db8c2161ca86f2fb2dcc9a1e5e528`, `8ad5ba279911a8cecd23ac1f01a5b8b667824e04`, `5c40b6830155981104d88fdaca07247fad09717b`, `60fc6d93d2a1cc556e1b259f6bef1e4c5ddfcdf2` |
 | PDEX-23 | `codex/pdex-23-refinement-reimplementation` | `918e7e0d9c4b2c524c429bfd309482e328bc4c91` | pending |
-| PDEX-24 | `codex/pdex-24-refinement-reimplementation` | `918e7e0d9c4b2c524c429bfd309482e328bc4c91` | pending |
+| PDEX-24 | `codex/pdex-24-refinement-reimplementation` | `918e7e0d9c4b2c524c429bfd309482e328bc4c91` | `b7fc4f3e118f17fc47f34fdee3be16474108a2a9`, `38214160d23b70f57b68c79363839816ad9758cb`, `5b436f5539995a025046a72d702a71bb63ed50d4`, `8ff52054948897b03f737bb7cc3ed36ae87049ba`, `befded5be81bca8aabf698c80051da98dfe3b9f0`, `6b6edd485a7c73021fc588198351b1ed3ab7f24e`, `fdc401c58e1ba094dca5b47721ef74333dd34613` |
 
 Each worker worktree must start from the integration branch's current tip
 immediately before implementation; record that exact tip with its handoff.
@@ -61,3 +61,27 @@ not substitute for these seams.
   `pdex-23-reimplementation-claim-2026-10-13`, and
   `pdex-24-reimplementation-claim-2026-10-13`. No summary write or GitHub
   operation was made.
+- 2026-10-13: Integrated PDEX-19 from `codex/pdex-19-refinement-reimplementation`
+  with `--no-ff` into `codex/dashboard-experience-refinement-reimplementation`.
+  Feature commits were preserved in order: `2b321c881e5db8c2161ca86f2fb2dcc9a1e5e528`,
+  `8ad5ba279911a8cecd23ac1f01a5b8b667824e04`,
+  `5c40b6830155981104d88fdaca07247fad09717b`, and
+  `60fc6d93d2a1cc556e1b259f6bef1e4c5ddfcdf2`. Integration merge commit:
+  `5603d7ced3fa7325f1ea7c2bc83f9c475de938eb`. PDEX-19 remains claimed and
+  `in-progress` pending final packaged acceptance under PDEX-26.
+- 2026-10-14: Integrated PDEX-24 from `codex/pdex-24-refinement-reimplementation`
+  with `--no-ff`. The integration checkout was clean at
+  `14bd7629f8961516eab7b534703d52f0e9622ae8`; the clean feature tip was
+  `fdc401c58e1ba094dca5b47721ef74333dd34613`. The feature branch retains its
+  original implementation commits `b7fc4f3e118f17fc47f34fdee3be16474108a2a9`
+  and `38214160d23b70f57b68c79363839816ad9758cb`, PDEX-19 dependency merge
+  `befded5be81bca8aabf698c80051da98dfe3b9f0`, and focused integration fix
+  `6b6edd485a7c73021fc588198351b1ed3ab7f24e`. Integration merge commit:
+  `36a13077a3d58dbe90bcf38a0c9230d0b27d6efb`. PDEX-24 remains claimed and
+  `in-progress`; packaged acceptance remains gated under PDEX-26.
+- 2026-10-14: On the integrated source, `npm run build`, the focused Habit
+  frontend tests (8 passed), and the focused Habit definition workflow (8
+  passed) passed. Full `cargo test --manifest-path src-tauri/Cargo.toml` exited
+  0; all unit, integration and doc-test groups passed, with 6 environment-gated
+  tests ignored. The exact commands and inherited limitations are recorded in
+  [PDEX-24 implementation evidence](evidence/pdex-24-reimplementation-2026-10-13.md).
