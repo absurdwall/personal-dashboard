@@ -11628,32 +11628,29 @@ function positionTaskMoreMenu(menu: HTMLDetailsElement): void {
     menuPanel?.style.removeProperty("--task-more-menu-max-height");
     return;
   }
-  window.requestAnimationFrame(() => {
-    if (!menu.open || !menu.isConnected) return;
-    const anchor = moreSummary.getBoundingClientRect();
-    const panel = menuPanel.getBoundingClientRect();
-    const footerBounds = footer.getBoundingClientRect();
-    const margin = 8;
-    const gap = 4;
-    const width = Math.min(panel.width, window.innerWidth - margin * 2);
-    const left = Math.max(margin, Math.min(anchor.right - width, window.innerWidth - width - margin));
-    const footerCoversColumn = left < footerBounds.right && left + width > footerBounds.left;
-    const belowTop = anchor.bottom + gap;
-    const belowLimit = footerCoversColumn && footerBounds.top < window.innerHeight
-      ? Math.min(window.innerHeight - margin, footerBounds.top - margin)
-      : window.innerHeight - margin;
-    const belowSpace = Math.max(0, belowLimit - belowTop);
-    const aboveBottom = anchor.top - gap;
-    const aboveSpace = Math.max(0, aboveBottom - margin);
-    const desiredHeight = Math.min(panel.height, window.innerHeight - margin * 2);
-    const placeAbove = belowSpace < desiredHeight && aboveSpace > belowSpace;
-    const available = placeAbove ? aboveSpace : belowSpace;
-    const height = Math.max(0, Math.min(desiredHeight, available));
-    const top = placeAbove ? aboveBottom - height : belowTop;
-    menuPanel.style.setProperty("--task-more-menu-left", `${left}px`);
-    menuPanel.style.setProperty("--task-more-menu-top", `${Math.max(margin, top)}px`);
-    menuPanel.style.setProperty("--task-more-menu-max-height", `${height}px`);
-  });
+  const anchor = moreSummary.getBoundingClientRect();
+  const panel = menuPanel.getBoundingClientRect();
+  const footerBounds = footer.getBoundingClientRect();
+  const margin = 8;
+  const gap = 4;
+  const width = Math.min(panel.width, window.innerWidth - margin * 2);
+  const left = Math.max(margin, Math.min(anchor.right - width, window.innerWidth - width - margin));
+  const footerCoversColumn = left < footerBounds.right && left + width > footerBounds.left;
+  const belowTop = anchor.bottom + gap;
+  const belowLimit = footerCoversColumn && footerBounds.top < window.innerHeight
+    ? Math.min(window.innerHeight - margin, footerBounds.top - margin)
+    : window.innerHeight - margin;
+  const belowSpace = Math.max(0, belowLimit - belowTop);
+  const aboveBottom = anchor.top - gap;
+  const aboveSpace = Math.max(0, aboveBottom - margin);
+  const desiredHeight = Math.min(panel.height, window.innerHeight - margin * 2);
+  const placeAbove = belowSpace < desiredHeight && aboveSpace > belowSpace;
+  const available = placeAbove ? aboveSpace : belowSpace;
+  const height = Math.max(0, Math.min(desiredHeight, available));
+  const top = placeAbove ? aboveBottom - height : belowTop;
+  menuPanel.style.setProperty("--task-more-menu-left", `${left}px`);
+  menuPanel.style.setProperty("--task-more-menu-top", `${Math.max(margin, top)}px`);
+  menuPanel.style.setProperty("--task-more-menu-max-height", `${height}px`);
 }
 
 function positionOpenTaskMoreMenus(): void {
@@ -12329,7 +12326,11 @@ function taskEditor(
     }
     menuPanel.append(...Array.from(stateActions.children));
     menu.append(moreSummary, menuPanel);
-    menu.addEventListener("toggle", () => positionTaskMoreMenu(menu));
+    const scheduleTaskMoreMenuPosition = (): void => {
+      window.setTimeout(() => positionTaskMoreMenu(menu), 0);
+    };
+    menu.addEventListener("toggle", scheduleTaskMoreMenuPosition);
+    moreSummary.addEventListener("click", scheduleTaskMoreMenuPosition);
     const titlebar = document.createElement("div");
     titlebar.className = "task-editor-titlebar";
     titlebar.append(nameLabel, menu);
