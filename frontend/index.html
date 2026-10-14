@@ -490,8 +490,22 @@
                         <span data-i18n="tasks.newListName">新清单名称</span>
                         <input id="task-list-create-name" type="text" maxlength="80" required placeholder="例如：家庭" data-i18n-placeholder="tasks.newListPlaceholder" />
                       </label>
+                      <label>
+                        <span data-i18n="tasks.folder">文件夹</span>
+                        <select id="task-list-create-folder" aria-label="新清单所属文件夹" data-i18n-aria-label="tasks.newListFolder">
+                          <option value="" data-i18n="tasks.topLevel">顶层清单</option>
+                        </select>
+                      </label>
                       <button id="task-list-create-submit" type="submit" data-i18n="tasks.createList">新建清单</button>
                     </form>
+                    <form id="task-folder-create-form" class="task-list-create-form" hidden>
+                      <label>
+                        <span data-i18n="tasks.newFolderName">新文件夹名称</span>
+                        <input id="task-folder-create-name" type="text" maxlength="80" required placeholder="例如：项目" data-i18n-placeholder="tasks.newFolderPlaceholder" />
+                      </label>
+                      <button type="submit" data-i18n="tasks.createFolder">新建文件夹</button>
+                    </form>
+                    <div id="tasks-folders-management" class="tasks-lists-management" aria-live="polite"></div>
                     <div id="tasks-lists-management" class="tasks-lists-management" aria-live="polite"></div>
                   </section>
                 </aside>
@@ -538,6 +552,7 @@
                       </label>
                     </div>
                   </div>
+                  <p id="task-quick-parent-context" class="task-quick-context" hidden><span id="task-quick-parent-label"></span><button id="task-quick-parent-cancel" type="button" class="secondary-button" data-i18n="tasks.cancelSubtask">取消子任务</button></p>
                   <form id="task-quick-form" class="task-quick-form" hidden>
                     <input id="task-quick-name" type="text" maxlength="160" aria-label="新建任务名称" data-i18n-aria-label="tasks.createLabel" placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" />
                     <select id="task-quick-list" aria-label="新任务的目标清单" data-i18n-aria-label="tasks.list"></select>
