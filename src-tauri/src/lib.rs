@@ -14,6 +14,7 @@ pub mod cutover;
 pub mod exercise;
 pub mod habit_catalog;
 pub mod habit_producer;
+mod habit_statistics;
 pub mod habits;
 pub mod interface_language;
 pub mod migration;

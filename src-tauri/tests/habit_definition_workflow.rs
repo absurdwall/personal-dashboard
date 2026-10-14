@@ -379,6 +379,22 @@ fn selected_habit_detail_reads_canonical_history_older_than_the_twelve_week_proj
         })
         .unwrap();
 
+    let before_start_edit = application.habits().unwrap();
+    application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            operation_id: "move-start-date-after-old-completion".into(),
+            target_binding: before_start_edit.catalog_target_binding.unwrap(),
+            expected_revision: before_start_edit.catalog_revision,
+            habit_key: Some(created.habit_key.clone()),
+            language: "en".into(),
+            name: "Read before breakfast".into(),
+            emoji: None,
+            group: None,
+            start_date: Some("2026-10-14".into()),
+            goal: None,
+        })
+        .unwrap();
+
     let detail = application
         .habit_detail_history(&created.habit_key)
         .unwrap();
@@ -387,6 +403,10 @@ fn selected_habit_detail_reads_canonical_history_older_than_the_twelve_week_proj
     assert_eq!(detail.local_completions.len(), 1);
     assert_eq!(detail.local_completions[0].lived_date, "2026-01-05");
     assert_eq!(detail.local_completions[0].state, personal_dashboard_lib::habits::HabitLocalCompletionState::Completed);
+    assert_eq!(
+        serde_json::to_value(&detail).unwrap()["statistics"]["cumulativeAttainedDays"],
+        1
+    );
     assert!(detail.habit.history.iter().all(|cell| cell.date != "2026-01-05"));
 
     let reopened = app_at(vault.path(), "2026-10-14")
@@ -394,6 +414,10 @@ fn selected_habit_detail_reads_canonical_history_older_than_the_twelve_week_proj
         .unwrap();
     assert_eq!(reopened.local_completions.len(), 1);
     assert_eq!(reopened.local_completions[0].lived_date, "2026-01-05");
+    assert_eq!(
+        serde_json::to_value(&reopened).unwrap()["statistics"]["cumulativeAttainedDays"],
+        1
+    );
 }
 
 #[test]
