@@ -59,3 +59,32 @@ candidate was re-signed, strict signature verification passed, and
 The reviewer had not launched the relocated candidate at this record's
 creation. This packaging change does not establish native acceptance or change
 any ticket lifecycle.
+
+## Calendar cell-preview footer alignment — 2026-10-14
+
+A reviewer reported that clicking a Task preview in a Calendar date cell opens
+an editor whose Cancel button sits 6 CSS pixels below Save, despite equal button
+heights. The regression now drives this exact preview path in
+`Calendar task previews open a compact editor` and checks both footer-button
+rect tops and bottoms. With the reset removed, it failed at top `613.09375` /
+bottom `643.484375` for Cancel versus top `607.09375` / bottom `637.484375`
+for Save. The cause is the inline editor's `margin-top: 12px` on
+`.task-editor-close`, which shifts the button 6 CSS pixels in a centered row.
+
+PDEX-22 repair commit `a5f8b044bb1be0151b19e25b1077074a06620223` resets that
+margin only inside `#calendar-task-editor-dialog-root`, retaining the existing
+primary and secondary button styles. The same focused command then passed:
+
+`node --test --test-name-pattern='Calendar task previews open a compact editor' tests/frontend/compact-calendar.test.ts`
+
+The production macOS candidate was rebuilt incrementally with the existing
+isolated Cargo target. Its existing output bundle path and unique bundle ID were
+retained. `LSEnvironment` still selects the isolated
+`/private/tmp/pdex-visual-repairs-20261014.noindex/preview-runtime/Profile/`,
+that profile still selects the runtime Synthetic Vault, and the fixed
+2026-09-08 14:10 (UTC−4) clock remains configured. The candidate was re-signed,
+strict signature verification passed, and `lsregister -f` completed. The new
+executable SHA-256 is
+`72e835a41f1b8a956d7c9d98b9c9e31bab3c1ddf8bf47dd09cc7f9b69dd32297`.
+The candidate has not been launched after this update; native retest remains
+with the reviewer. Ticket and parent lifecycle states did not change.
