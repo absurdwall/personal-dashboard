@@ -78,10 +78,10 @@ and exercises unavailable-folder recovery. It also selects an accent color,
 relaunches the packaged app, confirms the preference survives the relaunch and
 Vault switch, verifies the active preference from Today, Calendar, and Habits,
 then restores the default while proving both Vault records remain byte-identical.
-The driver samples the rendered theme chips and compares them with the selected
-swatch, so this proves page-level color application rather than only serialized
-preference state. Final whole-interface prototype parity remains a separate
-acceptance concern.
+Today and Calendar compare their accent actions with the selected swatch. Habits
+loads the checked-in synthetic snapshot and compares a completed day cell with
+the same swatch, while proving the snapshot bytes remain unchanged. Final
+whole-interface prototype parity remains a separate acceptance concern.
 
 ## Personal Dashboard 3.0 interface-language scenario
 
