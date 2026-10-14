@@ -2,9 +2,10 @@
 
 Ticket 02 extends the task source from `docs/tasks-v1.md`. The source remains
 Vault-owned and independent from Daily Record Markdown. The stable path is
-still the `v1` task source path, but lifecycle fields require schema version
-`2`. The reader accepts a legacy schema-1 document with defaulted lifecycle
-fields and upgrades it in memory; the next successful write emits schema 2.
+still the `v1` task source path, but lifecycle fields first required schema
+version `2`; the current source schema is `3`. The reader accepts schema 1 and
+2, supplies their later optional fields in memory, and upgrades on read; the
+next successful write emits schema 3.
 
 ## State operations
 
