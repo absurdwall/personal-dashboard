@@ -10,7 +10,7 @@
 **ID:** PDEX-24
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** claimed for reimplementation; source changes not yet started
+**Implementation:** integrated from `codex/pdex-24-refinement-reimplementation` by no-ff merge `36a13077a3d58dbe90bcf38a0c9230d0b27d6efb`; lifecycle remains in-progress pending PDEX-26 packaged acceptance
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -165,3 +165,32 @@ PDEX-26.
   ticket. This was not rerun with the primary toolchain; the focused frontend
   tests and `npm run build` passed. No packaged save/readback acceptance is
   claimed; PDEX-26 owns that gate.
+
+## Integrated branch verification — 2026-10-14
+
+- The clean worker branch tip `fdc401c58e1ba094dca5b47721ef74333dd34613`
+  was integrated into `codex/dashboard-experience-refinement-reimplementation`
+  from clean integration tip `14bd7629f8961516eab7b534703d52f0e9622ae8` by
+  no-ff merge `36a13077a3d58dbe90bcf38a0c9230d0b27d6efb`; full ticket and
+  dependency-merge history is retained.
+- The feature branch includes the local Habit catalog/persistence implementation
+  `b7fc4f3e118f17fc47f34fdee3be16474108a2a9`, compact create/edit UI
+  `38214160d23b70f57b68c79363839816ad9758cb`, its PDEX-19 dependency merge
+  `befded5be81bca8aabf698c80051da98dfe3b9f0`, and integration fix
+  `6b6edd485a7c73021fc588198351b1ed3ab7f24e` for reporting Habit outcomes to
+  the existing Vault-switch pending-write barrier.
+- On the integrated checkout, these checks passed:
+  - `npm run build`.
+  - `node --test tests/frontend/habit-definition-ui.test.ts tests/frontend/habit-localized-names.test.ts`:
+    8 passed, 0 failed.
+  - `cargo test --manifest-path src-tauri/Cargo.toml --test habit_definition_workflow`:
+    8 passed, 0 failed.
+  - `cargo test --manifest-path src-tauri/Cargo.toml`: exit 0; all unit,
+    integration, and doc-test groups passed, with 6 environment-gated tests
+    ignored.
+- The pre-integration broad `npm run test:frontend` failure remains an inherited
+  limitation and was not rerun with the primary toolchain. Packaged UI and
+  save/readback acceptance remain under PDEX-26. This ticket remains claimed
+  and `in-progress` pending that acceptance.
+- [Integrated implementation evidence](../evidence/pdex-24-reimplementation-2026-10-13.md)
+  records the merge and checks.
