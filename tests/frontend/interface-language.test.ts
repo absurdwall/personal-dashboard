@@ -149,7 +149,7 @@ test("Tasks scopes and reviewed backend diagnostics have real bilingual output",
   for (const key of [
     "workspace.tasksDescription",
     "workspace.tasksRail",
-    "calendar.taskCreateDefault",
+    "calendar.addTask",
     "tasks.empty",
     "tasks.emptyAll",
     "tasks.add",

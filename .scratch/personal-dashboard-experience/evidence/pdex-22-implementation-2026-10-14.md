@@ -41,6 +41,12 @@
 - On the integration worktree, `cargo test --manifest-path src-tauri/Cargo.toml calendar_holiday -- --nocapture` passed **1/1** app-local save/reopen test.
 - `git diff --check` passed after merge. The integration worktree was clean before this tracking update.
 
+## Integration test follow-up — 2026-10-14
+
+- The merged branch exposed a bilingual test still calling the removed `calendar.taskCreateDefault` key. PDEX-22 intentionally replaces that bottom-form instruction with the selected-date toolbar action, `calendar.addTask`.
+- Integration commit `13c9bc2c45fdbd67f340d982a660a39d2e3120d9` updates that assertion to the current copy. `node --test tests/frontend/interface-language.test.ts` passed **14/14**.
+- This was a stale test-key correction; the test did not identify a product copy regression.
+
 ## Acceptance boundary
 
 The focused tests use the production frontend with synthetic IPC fixtures; Rust workflow tests exercise app-local persistence. No packaged App install, normal user Vault, remote Git operation, or human App acceptance was performed. PDEX-22 remains `in-progress`; PDEX-26 owns packaged acceptance. No main merge, push, or parent-spec closure is claimed.
