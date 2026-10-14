@@ -92,8 +92,12 @@ no integration merge, install, remote operation or main change was recorded.
   frontend suite was not rerun after the last Cancel repair. See the linked
   evidence file for the earlier full-suite result and qualified baseline checks.
 - PDEX-23 and PDEX-24 remain on their separate local ticket branches pending
-  final review and integration. PDEX-20/21/22 depend on PDEX-19 and have not
-  started. PDEX-25 depends on PDEX-24; PDEX-26 remains the packaged combination
-  acceptance ticket.
+  final review and integration. PDEX-23's final review is now closed and its
+  complete branch was non-fast-forward integrated as
+  `224b42e4052f12f1ea9211a0843f6fa3dc100a0c`; PDEX-24's final Spec and Standards
+  reviews are pending. PDEX-20 began from integration tip
+  `e1b28504e62d28ecbb05c5fa3f499204d7abefe1`; PDEX-21/22 remain unstarted and
+  depend on PDEX-19. PDEX-25 depends on PDEX-24; PDEX-26 remains the packaged
+  combination acceptance ticket.
 - No remote Git operation, protected-main change, app installation, or normal
   user-data write was performed.

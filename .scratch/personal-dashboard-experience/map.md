@@ -4,7 +4,7 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: PDEX-SPEC-02 reimplementation in progress from the verified unimplemented checkpoint `918e7e0`; PDEX-19 code implementation is committed and awaits packaged acceptance under PDEX-26; earlier PDEX-SPEC-01, PDEX-FOLLOWUP-01–05 and PDEX-01–18 remain closed
+Stage: PDEX-SPEC-02 reimplementation in progress from the verified unimplemented checkpoint `918e7e0`; PDEX-19 and PDEX-23 code are locally integrated and await packaged acceptance under PDEX-26; PDEX-24 implementation is committed and under final review; PDEX-20 is in progress; earlier PDEX-SPEC-01, PDEX-FOLLOWUP-01–05 and PDEX-01–18 remain closed
 Implementation: PDEX-19, PDEX-23 and PDEX-24 claimed as the initial dependency frontier; the prior rejected implementation and its complete history are preserved on their existing branches
 Working branch: `codex/dashboard-experience-refinement-restart-20261014`, based directly on `918e7e0`
 Management source: source-personal-dashboard-experience
@@ -18,8 +18,8 @@ Management source: source-personal-dashboard-experience
 | PDEX-20 | ticket | [Task 父子关系与清单文件夹](issues/20-task-parents-list-folders.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
 | PDEX-21 | ticket | [Today 时间轴与安排交互](issues/21-today-axis-arrangement-interaction.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
 | PDEX-22 | ticket | [Calendar 新增、详情与节日](issues/22-calendar-create-details-holidays.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
-| PDEX-23 | ticket | [Collaboration 空间与输入体验](issues/23-collaboration-context-input.md) | ready-for-agent | in-progress | none | Claimed on `codex/pdex-23-restart`; starts from the clean integration branch; commit mapping follows in this record |
-| PDEX-24 | ticket | [Habit 新增、编辑与目标设置](issues/24-habit-create-edit-goal-cycles.md) | ready-for-agent | in-progress | none | Claimed on `codex/pdex-24-restart`; starts from the clean integration branch; commit mapping follows in this record |
+| PDEX-23 | ticket | [Collaboration 空间与输入体验](issues/23-collaboration-context-input.md) | ready-for-agent | in-progress | none | Implemented on `codex/pdex-23-restart`; non-fast-forward integrated as `224b42e4052f12f1ea9211a0843f6fa3dc100a0c`; packaged acceptance remains under PDEX-26 |
+| PDEX-24 | ticket | [Habit 新增、编辑与目标设置](issues/24-habit-create-edit-goal-cycles.md) | ready-for-agent | in-progress | none | Implemented on `codex/pdex-24-restart`; final independent Spec and Standards review pending; packaged acceptance remains under PDEX-26 |
 | PDEX-25 | ticket | [Habit 详情、历史统计与停用恢复](issues/25-habit-details-history-lifecycle.md) | ready-for-agent | open | PDEX-24 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
 | PDEX-26 | ticket | [整合与真实 App 验收](issues/26-refinement-integration-packaged-acceptance.md) | ready-for-agent | open | PDEX-20, PDEX-21, PDEX-22, PDEX-23, PDEX-25 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
 | PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | closed | none | [local human acceptance](evidence/human-acceptance-2026-10-11.md), [retained publication](publication.md) |
