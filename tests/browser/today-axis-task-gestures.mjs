@@ -265,7 +265,7 @@ test('an overnight pointer selection retains both natural dates and fifteen-minu
 });
 
 test('held pointer scrolls the inner axis and Escape removes its preview without a write',async()=>{
-  const fixture=await pageFixture();const {page}=fixture;
+  const fixture=await pageFixture({width:680,height:560});const {page}=fixture;
   try {
     await page.locator('#today-axis-zoom-toggle').click();
     const start=await pointAt(page,660);const surface=page.locator('#today-axis-scroll-surface');
