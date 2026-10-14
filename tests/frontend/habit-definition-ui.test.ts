@@ -50,3 +50,10 @@ test("a stale Habit definition keeps its draft until the same Vault is refreshed
   assert.match(main, /habitDefinitionRefresh\?\.addEventListener\("click"/);
   assert.match(language, /"habits\.definitionConflictRefreshed": \{ zh: .+, en: .+ \}/);
 });
+
+test("Habit saves and conflict refreshes report outcomes to the Vault-switch barrier", () => {
+  assert.match(main, /async function saveHabitDefinitionFromForm\(event: SubmitEvent\): Promise<boolean>/);
+  assert.match(main, /async function refreshHabitDefinitionAfterConflict\(\): Promise<boolean>/);
+  assert.match(main, /pendingWrites\.track\(saveHabitDefinitionFromForm\(event\)\)/);
+  assert.match(main, /pendingWrites\.track\(refreshHabitDefinitionAfterConflict\(\)\)/);
+});

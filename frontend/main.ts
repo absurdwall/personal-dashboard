@@ -3659,6 +3659,7 @@ async function refreshCanonicalDateProjections(targetDate: string, evidence?: Co
     renderHabitSnapshot({
       state: "error",
       message: String(habits.error),
+      livedDate: null,
       readError: String(habits.error),
       generatedAt: null,
       displayRangeLabel: null,
@@ -3666,6 +3667,10 @@ async function refreshCanonicalDateProjections(targetDate: string, evidence?: Co
       producerLabel: null,
       completionRevision: null,
       completionTargetBinding: null,
+      catalogRevision: null,
+      catalogTargetBinding: null,
+      catalogError: null,
+      completionError: null,
       namesConfigurationState: "missing",
       summary: { knownCompletions: 0, targetCompletions: 0, coverageNote: "", excludedNoGoal: 0 },
       habits: [],
@@ -9574,12 +9579,12 @@ function isHabitDefinitionRevisionConflict(error: unknown): boolean {
     message.includes("Habit definition changed elsewhere");
 }
 
-async function refreshHabitDefinitionAfterConflict(): Promise<void> {
+async function refreshHabitDefinitionAfterConflict(): Promise<boolean> {
   const draftKey = activeHabitDefinitionDraftKey;
   const binding = activeHabitDefinitionBinding;
   const draft = draftKey ? habitDefinitionDrafts.get(draftKey) : null;
   const oldInput = draft?.pendingInput;
-  if (!draftKey || !binding || !draft?.needsRefresh || !oldInput || habitDefinitionSaveInFlight) return;
+  if (!draftKey || !binding || !draft?.needsRefresh || !oldInput || habitDefinitionSaveInFlight) return true;
   const retainedValues = readHabitDefinitionForm() ?? draft.values;
   habitDefinitionSaveInFlight = true;
   setHabitDefinitionFormLocked(true);
@@ -9601,12 +9606,14 @@ async function refreshHabitDefinitionAfterConflict(): Promise<void> {
     if (habitDefinitionSubmit) setCopy(habitDefinitionSubmit, "habits.save");
     writeHabitDefinitionForm(retainedValues);
     if (habitDefinitionStatus) setRawText(habitDefinitionStatus, t("habits.definitionConflictRefreshed"));
+    return true;
   } catch (error) {
     draft.error = String(error);
     habitDefinitionDrafts.set(draftKey, draft);
     if (habitDefinitionStatus) {
       setRawText(habitDefinitionStatus, t("habits.definitionSaveFailed", { error: applicationMessage(String(error)) }));
     }
+    return false;
   } finally {
     habitDefinitionSaveInFlight = false;
     if (activeHabitDefinitionDraftKey === draftKey && activeHabitDefinitionBinding === binding) {
@@ -9615,21 +9622,21 @@ async function refreshHabitDefinitionAfterConflict(): Promise<void> {
   }
 }
 
-async function saveHabitDefinitionFromForm(event: SubmitEvent): Promise<void> {
+async function saveHabitDefinitionFromForm(event: SubmitEvent): Promise<boolean> {
   event.preventDefault();
-  if (habitDefinitionSaveInFlight || !activeHabitDefinitionDraftKey || !activeHabitDefinitionBinding) return;
+  if (habitDefinitionSaveInFlight || !activeHabitDefinitionDraftKey || !activeHabitDefinitionBinding) return true;
   const draftKey = activeHabitDefinitionDraftKey;
   const binding = activeHabitDefinitionBinding;
   const snapshot = currentHabitSnapshot;
   const draft = habitDefinitionDrafts.get(draftKey);
   const values = readHabitDefinitionForm();
-  if (!snapshot || !draft || !values) return;
+  if (!snapshot || !draft || !values) return true;
   if (!draft.pendingInput) {
-    if (!habitDefinitionForm?.reportValidity()) return;
+    if (!habitDefinitionForm?.reportValidity()) return true;
     const goal = habitGoalFromValues(values);
     if (goal === undefined || (goal === null && !values.habitKey) || !values.name.trim() || (!values.habitKey && !values.startDate)) {
       if (habitDefinitionStatus) setRawText(habitDefinitionStatus, t("habits.definitionFormInvalid"));
-      return;
+      return true;
     }
     draft.values = values;
     draft.pendingInput = {
@@ -9670,6 +9677,7 @@ async function saveHabitDefinitionFromForm(event: SubmitEvent): Promise<void> {
     } else {
       void refreshHabits();
     }
+    return true;
   } catch (error) {
     draft.error = String(error);
     draft.needsRefresh = isHabitDefinitionRevisionConflict(error);
@@ -9682,6 +9690,7 @@ async function saveHabitDefinitionFromForm(event: SubmitEvent): Promise<void> {
       if (habitDefinitionSubmit) setCopy(habitDefinitionSubmit, "habits.retrySave");
       setHabitDefinitionFormLocked(true);
     }
+    return false;
   } finally {
     habitDefinitionSaveInFlight = false;
     if (activeHabitDefinitionDraftKey === draftKey) {
