@@ -4,18 +4,24 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Triage:** ready-for-agent
 **ID:** PDEX-24
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** open
-**Implementation:** not started
+**Lifecycle:** in-progress
+**Implementation:** reimplementation started on `codex/pdex-24-restart`; packaged acceptance remains pending
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
 **Spec snapshot:** 0b0d727b23166ba1ccf9708656ab2bf00f6188ed
 **Breakdown decision:** 用户在合并为8张票后明确回复“同意”，批准范围、粒度与直接依赖。
+
+## Clean reimplementation tracking — 2026-10-14
+
+- Integration branch: `codex/dashboard-experience-refinement-restart-20261014`, based directly on `918e7e0d9c4b2c524c429bfd309482e328bc4c91`.
+- Ticket branch: `codex/pdex-24-restart`; worker start commit and implementation commits will be recorded after integration.
+- The earlier implementation remains on its previous branch with full history and is not this ticket's source baseline.
 
 ## Acceptance criteria
 
