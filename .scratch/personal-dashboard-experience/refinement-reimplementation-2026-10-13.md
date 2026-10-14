@@ -33,7 +33,7 @@ unclaimed until their blockers are integrated with evidence.
 
 | Ticket | Working branch | Authorized source baseline | Implementation commits |
 | --- | --- | --- | --- |
-| PDEX-19 | `codex/pdex-19-refinement-reimplementation` | `918e7e0d9c4b2c524c429bfd309482e328bc4c91` | pending |
+| PDEX-19 | `codex/pdex-19-refinement-reimplementation` | `918e7e0d9c4b2c524c429bfd309482e328bc4c91` | `2b321c881e5db8c2161ca86f2fb2dcc9a1e5e528`, `8ad5ba279911a8cecd23ac1f01a5b8b667824e04`, `5c40b6830155981104d88fdaca07247fad09717b`, `60fc6d93d2a1cc556e1b259f6bef1e4c5ddfcdf2` |
 | PDEX-23 | `codex/pdex-23-refinement-reimplementation` | `918e7e0d9c4b2c524c429bfd309482e328bc4c91` | pending |
 | PDEX-24 | `codex/pdex-24-refinement-reimplementation` | `918e7e0d9c4b2c524c429bfd309482e328bc4c91` | pending |
 
@@ -61,3 +61,11 @@ not substitute for these seams.
   `pdex-23-reimplementation-claim-2026-10-13`, and
   `pdex-24-reimplementation-claim-2026-10-13`. No summary write or GitHub
   operation was made.
+- 2026-10-13: Integrated PDEX-19 from `codex/pdex-19-refinement-reimplementation`
+  with `--no-ff` into `codex/dashboard-experience-refinement-reimplementation`.
+  Feature commits were preserved in order: `2b321c881e5db8c2161ca86f2fb2dcc9a1e5e528`,
+  `8ad5ba279911a8cecd23ac1f01a5b8b667824e04`,
+  `5c40b6830155981104d88fdaca07247fad09717b`, and
+  `60fc6d93d2a1cc556e1b259f6bef1e4c5ddfcdf2`. Integration merge commit:
+  `5603d7ced3fa7325f1ea7c2bc83f9c475de938eb`. PDEX-19 remains claimed and
+  `in-progress` pending final packaged acceptance under PDEX-26.

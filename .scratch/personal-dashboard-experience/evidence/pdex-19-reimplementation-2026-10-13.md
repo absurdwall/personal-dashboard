@@ -9,11 +9,12 @@
     property APIs, compatibility behavior, workflow tests, and storage docs.
   - `8ad5ba279911a8cecd23ac1f01a5b8b667824e04` — compact Task UI, property
     controls, filters/sorting/context actions, localization, and UI tests.
-- Integration ref `codex/dashboard-experience-refinement-reimplementation`
-  was observed at `b7dcd71b50b42de4a706d460d635f99bf059770d`.
-  `git merge-base HEAD codex/dashboard-experience-refinement-reimplementation`
-  returned the same hash. There was no newer integration commit to merge.
-  No synthetic merge commit was created.
+- The feature branch was integrated into
+  `codex/dashboard-experience-refinement-reimplementation` with `--no-ff` by
+  merge commit `5603d7ced3fa7325f1ea7c2bc83f9c475de938eb`. Its parents are
+  `b7dcd71b50b42de4a706d460d635f99bf059770d` and
+  `60fc6d93d2a1cc556e1b259f6bef1e4c5ddfcdf2`; the complete feature commit set
+  above is preserved in order.
 - The rejected implementation branch was not used. Local Git only; no
   package installation, remote operation, main merge, deployment, or packaged
   app installation.
@@ -74,6 +75,17 @@
 because it reports formatting differences across numerous untouched Rust
 modules and tests in the base repository. The scoped Task source and workflow
 test format check above passes; no repository-wide formatting was applied.
+
+## Integration checkout verification — 2026-10-13
+
+Reran focused checks on integration merge commit
+`5603d7ced3fa7325f1ea7c2bc83f9c475de938eb`:
+
+- `npm run build` — passed.
+- `node --test tests/frontend/task-presentation.test.ts` — 23 passed, 0 failed.
+- `PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.npm/_npx/e41f203b7505f1fb/node_modules/playwright/index.mjs node --test tests/browser/task-list-details.mjs tests/browser/task-quick-create.mjs` — 38 passed, 0 failed, using the existing Playwright module and synthetic Tauri IPC fixtures.
+- `cargo test --manifest-path src-tauri/Cargo.toml --test task_workflow` — 33 passed, 0 failed.
+- `rustfmt --check --edition 2021 src-tauri/src/tasks.rs src-tauri/tests/task_workflow.rs` — passed.
 
 ## Acceptance boundary
 

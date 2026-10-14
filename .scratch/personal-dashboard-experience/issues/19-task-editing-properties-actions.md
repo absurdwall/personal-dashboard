@@ -71,9 +71,12 @@ Implementation commits on `codex/pdex-19-refinement-reimplementation`:
 
 Observed verification and remaining acceptance boundary are recorded in
 [`pdex-19-reimplementation-2026-10-13.md`](../evidence/pdex-19-reimplementation-2026-10-13.md).
-`codex/dashboard-experience-refinement-reimplementation` was observed at
-`b7dcd71b50b42de4a706d460d635f99bf059770d`; `git merge-base HEAD
-codex/dashboard-experience-refinement-reimplementation` returned the same
-hash, so the integration ref has no commits newer than this branch's base.
-No synthetic merge commit was created; the parent integration workflow will
-take this branch next.
+The complete handoff commit set, in order, is
+`2b321c881e5db8c2161ca86f2fb2dcc9a1e5e528`,
+`8ad5ba279911a8cecd23ac1f01a5b8b667824e04`,
+`5c40b6830155981104d88fdaca07247fad09717b`, and
+`60fc6d93d2a1cc556e1b259f6bef1e4c5ddfcdf2` on
+`codex/pdex-19-refinement-reimplementation`. The branch was integrated with
+`--no-ff` into `codex/dashboard-experience-refinement-reimplementation` by
+merge commit `5603d7ced3fa7325f1ea7c2bc83f9c475de938eb`. PDEX-19 remains
+claimed and `in-progress`; PDEX-26 owns the remaining packaged acceptance.
