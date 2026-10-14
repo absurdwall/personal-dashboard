@@ -48,6 +48,19 @@ acceptance is tracked separately under PDEX-26 and uses an isolated synthetic
 profile/Vault. Prototype memory, source-string checks, mocks and save toasts do
 not substitute for these seams.
 
+## Reimplementation claim frontier
+
+The Management helper confirmed each native claim before the local branch was
+created. All four ticket branches start at the exact integration commit below;
+their worktrees were clean at handoff.
+
+| Ticket | Working branch | Start commit | Worktree | Claim operation |
+| --- | --- | --- | --- | --- |
+| PDEX-20 | `codex/pdex-20-refinement-reimplementation` | `7099c0949d61e50254bb6e9fa4e8e61d8dd08f29` | `/Users/tingranwang/.codex/worktrees/pdex-20-refinement-reimplementation/personal-dashboard` | `pdex-20-reimplementation-claim-2026-10-13` |
+| PDEX-21 | `codex/pdex-21-refinement-reimplementation` | `7099c0949d61e50254bb6e9fa4e8e61d8dd08f29` | `/Users/tingranwang/.codex/worktrees/pdex-21-refinement-reimplementation/personal-dashboard` | `pdex-21-reimplementation-claim-2026-10-13` |
+| PDEX-22 | `codex/pdex-22-refinement-reimplementation` | `7099c0949d61e50254bb6e9fa4e8e61d8dd08f29` | `/Users/tingranwang/.codex/worktrees/pdex-22-refinement-reimplementation/personal-dashboard` | `pdex-22-reimplementation-claim-2026-10-13` |
+| PDEX-25 | `codex/pdex-25-refinement-reimplementation` | `7099c0949d61e50254bb6e9fa4e8e61d8dd08f29` | `/Users/tingranwang/.codex/worktrees/pdex-25-refinement-reimplementation/personal-dashboard` | `pdex-25-reimplementation-claim-2026-10-13` |
+
 ## History
 
 - 2026-10-13: Created fresh integration branch at the exact PDEX-SPEC-02
@@ -113,4 +126,11 @@ not substitute for these seams.
   `codex/pdex-21-refinement-reimplementation`,
   `codex/pdex-22-refinement-reimplementation`, and
   `codex/pdex-25-refinement-reimplementation`. Their exact worktree paths and
-  start commits will be recorded immediately after creation.
+  start commits are recorded in the claim-frontier table above.
+- 2026-10-13: Created four clean local worktrees from integration tip
+  `7099c0949d61e50254bb6e9fa4e8e61d8dd08f29`, then attached named local
+  branches `codex/pdex-20-refinement-reimplementation`,
+  `codex/pdex-21-refinement-reimplementation`,
+  `codex/pdex-22-refinement-reimplementation`, and
+  `codex/pdex-25-refinement-reimplementation`. The exact paths and commit are
+  recorded in the claim-frontier table above.
