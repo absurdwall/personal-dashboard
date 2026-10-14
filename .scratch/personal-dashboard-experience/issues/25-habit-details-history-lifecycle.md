@@ -48,5 +48,6 @@ PDEX-SPEC-02 stories 73–74、80–82、86–87；共同承担 1–3、88–91 
 
 - 2026-10-11：经用户批准发布本地完整票体，未分配assignee、未claim、未开始实现。
 - 2026-10-14：授权在独立 `codex/pdex-25-restart` 分支实现本票，owner `/root/implement_pdex21`，claim base `206c98aa11371b8b8f044871baac3de0f9ecde87`，worktree `/private/tmp/pdex-restart-20261014.noindex/pdex-25`。该base已包含PDEX-24集成；parent spec及完整ticket均不修改。
-- 实现、验收与限制逐步补记；完整验收前不关闭本票。
+- 2026-10-14：实现提交 `768c101d5373bcf0efd7426ee1c6a430a84ff4cc`，保留 claim `76652cd9e2765b2926b19496006581ada1d42c3b` 与原始 base 历史；定向统计、Rust持久层、浏览器、WKWebView HTML/CSS检查和构建通过。四种viewport截图及数据边界、限制见[实现证据](../evidence/pdex-25-implementation-2026-10-14.md)。本票仍为in-progress/open，尚未做安装App验收或整合。
+- 完整验收前不关闭本票；不安装正常App、不写入真实Vault、不合入integration或main、不push。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
