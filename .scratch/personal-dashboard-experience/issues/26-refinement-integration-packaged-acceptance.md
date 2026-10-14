@@ -74,10 +74,32 @@ PDEX-SPEC-02 stories 1–3、88–91，以及全部功能票的组合验收。
   This is a local ad-hoc signed build; notarization was not performed.
 - The installed `/Applications/Personal Dashboard.app` executable SHA-256 was
   `8e43beff6cffa2dde5a664eb4ba0182181d81e7746d8eb3c96846f43c87a0ba2` before
-  and after packaging. It was not modified. The candidate was not started.
-  `Open Candidate.command` is syntax-checked and sets an isolated app-data
-  directory; its profile is empty and no synthetic Vault is configured.
-- PDEX-26 remains open: no candidate IPC/save/readback/restart, migration,
-  pointer, cross-feature, real IME/microphone, or human acceptance was run.
-  Detailed identity and boundary are in
-  [candidate build evidence](../evidence/pdex-26-candidate-build-2026-10-14.md).
+  and after packaged checks. It was not modified. `Open Candidate.command` is
+  syntax-checked and sets an isolated app-data directory; its profile remains
+  empty. See [candidate build and packaged acceptance evidence](../evidence/pdex-26-candidate-build-2026-10-14.md)
+  for the two bounded runtime attempts and their exact stopping conditions.
+
+## Packaged acceptance attempt — 2026-10-14
+
+- The evidence update is on `codex/pdex-26-restart` in commit
+  `bfa0f3f`; that ticket branch first synchronized with the current integration
+  tip by merge commit `359537f`.
+- The repository `gate` command launched a relocated candidate copy under
+  synthetic profile/Vault paths. Its first `settings-vault-colors` scenario
+  selected the synthetic Vault, saved the accent, and passed Today and Calendar
+  color checks; the old Habit refresh-control pixel-equality assertion then
+  failed (`#ffffff vs #597897`). Baseline and current CSS preserve the Habit
+  control's surface background, so this is a stale harness expectation. The
+  scenario stopped before restart/readback and Vault-switch checks.
+- The standalone `dashboard-4` scenario loaded its synthetic Vault, but stopped
+  on a stale startup assertion requiring Morning text while the app showed the
+  Day tab at 14:10. Selecting the Morning tab exposed the expected baseline.
+  The rest of that packaged scenario did not run.
+- Manual Accessibility inspection showed the isolated package rendering Today
+  Morning/Day, the Tasks fixture, Habit summary and Habit history detail. A
+  relocated copy using synthetic data is left open at Habit detail for visual
+  review. This does not close any acceptance criterion.
+- PDEX-26 remains `open` / `in-progress`: complete packaged IPC persistence and
+  relaunch, migration, failure/recovery, pointer cross-feature checks, IME,
+  microphone and human acceptance remain outstanding. No installed-app
+  replacement, `main` merge, push, PR or parent-spec closure occurred.

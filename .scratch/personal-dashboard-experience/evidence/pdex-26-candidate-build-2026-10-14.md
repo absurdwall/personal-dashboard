@@ -30,17 +30,43 @@
 
 - Installed app executable SHA-256:
   `8e43beff6cffa2dde5a664eb4ba0182181d81e7746d8eb3c96846f43c87a0ba2`.
-  It was unchanged by this build. The running process observed during the
-  check was `/Applications/Personal Dashboard.app/Contents/MacOS/personal-dashboard`;
-  no candidate process was running.
-- The candidate has not been launched. The provided
-  `Open Candidate.command` passed `bash -n` and sets
+  It remained unchanged through packaging and the packaged attempts. The
+  installed process was not stopped or replaced.
+- `Open Candidate.command` passed `bash -n` and sets
   `PERSONAL_DASHBOARD_DATA_DIR` and `PERSONAL_DASHBOARD_BASELINE_FILE` under
   `/private/tmp/pdex-restart-20261014.noindex/candidate/pdex-spec-02-2026-10-14/isolated-profile`.
-  The folder is empty and no synthetic Vault is selected.
-- Since the candidate was not started, this evidence does not cover actual
-  Tauri IPC, persisted save/readback, relaunch, legacy migration, revision
-  conflicts, alternate Vaults, failures/retry, pointer behavior, responsive
-  cross-feature scenarios, IME, microphone, or human acceptance. PDEX-26 stays
-  open/in-progress. No install, app replacement, remote Git operation, main
-  merge, or PR was performed.
+  That optional profile remains empty. The acceptance harness instead copied
+  the candidate to separate temporary bundles and used synthetic profile/Vault
+  paths; no personal Vault was selected.
+
+## Packaged acceptance attempt — 2026-10-14
+
+- Command:
+  `PERSONAL_DASHBOARD_APP_BUNDLE='/private/tmp/pdex-restart-20261014.noindex/candidate/pdex-spec-02-2026-10-14/Personal Dashboard.app' PERSONAL_DASHBOARD_ACCEPTANCE_SCENARIO=gate scripts/acceptance/macos-ipc-workflow.sh`
+- The first `settings-vault-colors` scenario launched its isolated package,
+  selected a synthetic Vault, saved the blue accent through the app, and passed
+  Today and Calendar rendered-color checks. It then stopped at the Habit
+  refresh-control color assertion with `#ffffff vs #597897`. The assertion
+  compares the refresh control's dominant rendered color to the toolbar accent
+  sample, but both baseline `918e7e0` and the candidate style that control with
+  the surface color. This is a pre-existing harness expectation inconsistent
+  with the preserved app style. The scenario stopped before file readback,
+  restart and Vault-switch checks. No product or acceptance-script change was
+  made to bypass it.
+- A separate `dashboard-4` packaged attempt stopped because its initial
+  assertion expected `Dashboard 4 synthetic morning baseline` to be visible
+  immediately. Its synthetic clock is 14:10 EDT, so the app opened on the
+  `当日` tab and reported that it had read the independent Morning baseline and
+  current arrangement. Selecting `早间` exposed the expected synthetic
+  baseline. The rest of that scenario did not run.
+- Manual Accessibility inspection of that isolated package showed the Today
+  Day/Morning states, the seven-item Tasks fixture, the Habit summary and a
+  Habit detail with three history records. This was a visual/semantic spot
+  check, not full PDEX-26 acceptance. A relocated synthetic-data copy is left
+  open for review at
+  `/private/tmp/personal-dashboard-ipc.pdex26-dashboard4-20261014/`.
+- The gate is incomplete: no successful packaged save/readback/restart cycle,
+  migration, revision-conflict or write-failure recovery, full pointer
+  cross-feature matrix, real IME/microphone use, or human acceptance is claimed.
+  PDEX-26 remains open/in-progress. The installed app was not replaced; no
+  remote Git operation, `main` merge, or PR was performed.

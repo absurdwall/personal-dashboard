@@ -247,14 +247,44 @@ no integration merge, install, remote operation or main change was recorded.
   it is version 4.0.7, arm64, 17 MB, ad-hoc signed, and has executable SHA-256
   `fe9dbbc6933a7778ab90712f6b90623efa172387397c37e54efed9a893d0a30c`.
   `codesign --verify --deep --strict` passed.
-- The candidate was not launched. An isolated launcher and empty data directory
-  are supplied; no Vault or synthetic records are configured. The installed
-  app remains unchanged at executable SHA-256
+- At this build checkpoint the candidate had not been launched. An isolated
+  launcher and empty data directory were supplied; later bounded packaged
+  attempts are recorded below. The installed app remains unchanged at
+  executable SHA-256
   `8e43beff6cffa2dde5a664eb4ba0182181d81e7746d8eb3c96846f43c87a0ba2`.
 - PDEX-26 packaged IPC, persisted save/readback, relaunch, migration,
-  pointer/cross-feature and human acceptance remain untested. The build is a
+  pointer/cross-feature and human acceptance remain incomplete. The build is a
   reviewable candidate, not completion or release acceptance. See
   [candidate build evidence](evidence/pdex-26-candidate-build-2026-10-14.md).
+
+## PDEX-26 packaged acceptance attempt — 2026-10-14
+
+- `codex/pdex-26-restart` was synchronized with integration at
+  `359537f9d51bb213c19df37cebed539beaa49afb`; the packaged-attempt tracker and
+  evidence update is commit `bfa0f3f` on that ticket branch. Product source
+  remains the reviewed PDEX-25 integration at `fe14333`.
+- The `gate` attempt launched a relocated package with synthetic app
+  data/Vaults and selected the synthetic Vault. The settings scenario passed
+  Today and Calendar accent checks, then failed on an old Habit refresh-control
+  pixel assertion (`#ffffff` versus `#597897`). Baseline `918e7e0` and current
+  source both style `#refresh-habits` with `var(--parity-surface)`; the assertion
+  conflicts with the existing style. The run ended before persistence relaunch
+  and Vault-switch assertions.
+- A separate `dashboard-4` attempt opened with its synthetic 2026-09-08 Vault
+  at 14:10 EDT, but the test waited for a Morning-only string before selecting
+  the Morning tab. Accessibility inspection confirmed the Day tab was selected
+  and the app had loaded the independent Morning baseline. Selecting Morning
+  exposed the expected synthetic record. The remaining scenario was not run.
+- Manual Accessibility inspection of the isolated packaged copy covered the
+  current Today Day/Morning distinction, Tasks fixture, Habit summary and
+  Habit history detail. A relocated copy using synthetic data remains open at
+  `/private/tmp/personal-dashboard-ipc.pdex26-dashboard4-20261014/` for review.
+  This is not a successful packaged gate. The installed app SHA remained
+  `8e43beff6cffa2dde5a664eb4ba0182181d81e7746d8eb3c96846f43c87a0ba2`.
+- PDEX-26 remains open/in-progress. Full packaged persistence/relaunch,
+  migration, conflict and recovery, pointer/cross-feature checks, real
+  IME/microphone and human acceptance remain pending. No product code, test
+  harness, normal installation or remote Git state was changed.
 
 ## PDEX-25 ticket-state correction integration — 2026-10-14
 
