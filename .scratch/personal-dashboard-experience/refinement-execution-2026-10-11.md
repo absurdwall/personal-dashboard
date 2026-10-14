@@ -254,3 +254,17 @@ no integration merge, install, remote operation or main change was recorded.
   pointer/cross-feature and human acceptance remain untested. The build is a
   reviewable candidate, not completion or release acceptance. See
   [candidate build evidence](evidence/pdex-26-candidate-build-2026-10-14.md).
+
+## PDEX-25 ticket-state correction integration — 2026-10-14
+
+- After full spec review found stale “不合入integration” text in the PDEX-25
+  ticket, the ticket branch was fast-forwarded to integration `a9f6b739`, and a
+  dated correction was committed on `codex/pdex-25-restart` as
+  `0fe551921464b1229b8610be195e347997bc9bdf`. The earlier notes remain as
+  historical checkpoints and are explicitly superseded by the later
+  `fe14333...` implementation merge.
+- The correction-only ticket branch was non-fast-forward merged into
+  `codex/dashboard-experience-refinement-restart-20261014` as
+  `368571be59092657c55bcef66f12be997e8f0519`, with parents `a9f6b739` and
+  `0fe5519`. This merge changed only the PDEX-25 ticket record; PDEX-25 remains
+  open/in-progress and PDEX-26 still owns packaged acceptance.
