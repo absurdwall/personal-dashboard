@@ -4,13 +4,13 @@
 
 **Blocked by:** 20 — Task 父子关系与清单文件夹; 21 — Today 时间轴与安排交互; 22 — Calendar 新增、详情与节日; 23 — Collaboration 空间与输入体验; 25 — Habit 详情、历史统计与停用恢复
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 **Triage:** ready-for-agent
 **ID:** PDEX-26
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** open
-**Implementation:** not started
+**Implementation:** in progress on the local candidate branch
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -48,3 +48,11 @@ PDEX-SPEC-02 stories 1–3、88–91，以及全部功能票的组合验收。
 - 后续授权claim时记录实际owner、working branch、base commit、增量实现/评审/
   验收commits、结果和限制。每票可多次commit，完整验收前不关闭。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
+
+## Local acceptance claim — 2026-10-14
+
+- Owner `/root`; branch `codex/pdex-26-restart`; worktree
+  `/private/tmp/pdex-restart-20261014.noindex/pdex-26`; exact base
+  `fe14333c8e1269c4c5b14faf89f2d802dd351487`, the non-fast-forward integration
+  of the reviewed PDEX-25 branch. Candidate build and runtime acceptance are
+  tracked separately; the installed application is preserved.
