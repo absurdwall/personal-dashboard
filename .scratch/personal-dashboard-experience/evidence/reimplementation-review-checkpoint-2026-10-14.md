@@ -59,3 +59,12 @@ The reviewer reported two bounded regressions in the preceding candidate. Calend
 The reviewer separately reported a synthetic native save/readback on a `.noindex` copy of the older `e3b7cc` source: a synthetic Current plan changed from 15:00–16:00 to 16:15–17:00 and remained after reopening Morning and Daytime; their reported record SHA-256 was `a88c7594d5026d4223fe7962db9bd99aee057d8ee53e0596ea4517c6d5086929`. They reported changing only that synthetic fixture, with no real Vault/profile mutation. This evidence does not cover commit `20349ae` or either newly repaired issue.
 
 Ticket and parent statuses were not changed. PDEX-21/22/23 remain claimed/in progress; PDEX-26 remains open and dependency-blocked; PDEX-SPEC-02 remains open. The new candidate is not installed-App acceptance or a ticket closeout.
+
+## Context entry icon cleanup — 2026-10-14
+
+The reviewer found that the text-labeled Context floating entry still carried the old split-pane SVG. Source commit `0b08e5de018f2273a67e94e6fa9bf7c10c5c82dc` (parent `46d2c2948042b724067536ace56d3cca2948a2ea`) removes only that SVG and its now-unused local size rule. The Sessions sidebar icon remains. Button text, state behavior, and sizing rules are unchanged.
+
+- `git diff --check` passed. `npm run build:mac` passed, including its frontend build step; tests were not run for this HTML/CSS-only cleanup.
+- The new candidate at `/tmp/pdex-review-20261014.noindex/reimplementation-20261014-calendar-voice-candidate/release/bundle/macos/Personal Dashboard.app` contains the full `0b08e5de018f2273a67e94e6fa9bf7c10c5c82dc` source revision. Bundle identifier: `com.tortillaflat.personal-dashboard`; executable SHA-256: `8e43beff6cffa2dde5a664eb4ba0182181d81e7746d8eb3c96846f43c87a0ba2`; `codesign --verify --deep --strict` passed. Tauri skipped notarization because notarization credentials were not configured.
+- Before rebuilding, the prior `20349ae` candidate was copied to `/tmp/pdex-review-20261014.noindex/candidate-versions/20349aec-calendar-voice/Personal Dashboard.app` and verified intact: SHA-256 `e29fd8670b5bd16e21bbf303ecd84366f2ea3c7c63a61b79a43e1ac075573116`, embedded source revision `20349aec369609ef02a9a1e7947417bc8036f6ac`, and strict signature verification passed.
+- The new candidate was not installed or launched. Ticket and parent statuses remain unchanged; the new icon cleanup does not establish installed-App acceptance or close PDEX-SPEC-02.

@@ -398,3 +398,11 @@ Cancel layout. Commit `20349aec369609ef02a9a1e7947417bc8036f6ac` (parent
 regressions. Its source-bound candidate and verification are recorded in the
 review checkpoint linked above. It remains uninstalled pending review; ticket
 and parent statuses remain unchanged.
+
+The final Context entry icon cleanup is source commit
+`0b08e5de018f2273a67e94e6fa9bf7c10c5c82dc` (parent
+`46d2c2948042b724067536ace56d3cca2948a2ea`) on the same branch. It removes the
+legacy SVG from the text Context control and deletes only its local SVG sizing
+rule; Sessions keeps its icon. The updated candidate and preserved `20349ae`
+bundle identity are recorded in the same review checkpoint. No ticket status
+was changed.
