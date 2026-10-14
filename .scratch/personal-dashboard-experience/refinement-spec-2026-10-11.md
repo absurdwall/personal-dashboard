@@ -5,7 +5,7 @@ Type: spec
 Triage: ready-for-agent
 Status: ready-for-agent
 Lifecycle: open
-Stage: specification published locally; tickets and implementation not started
+Stage: local implementation in progress; packaged acceptance remains pending under PDEX-26
 Date: 2026-10-11
 Canonical tracker: [local map](map.md)
 Working branch: codex/dashboard-experience-refinement-spec

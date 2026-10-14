@@ -369,3 +369,24 @@ closed or otherwise changed. The older partial helper receipt
 `pdex-spec-02-local-publication-summary-20261011` remains pending and was not
 retried, cleared, or treated as evidence for this checkpoint. The current
 summary says the final reviewer readback and user review are still pending.
+
+## Scoped current-plan, Calendar, and Collaboration follow-up — 2026-10-14
+
+The user asked to restart from the verified pre-implementation checkpoint and
+keep changes limited to the published scope. The base audit confirms that
+`918e7e0d9c4b2c524c429bfd309482e328bc4c91` had the spec at `ready-for-agent` /
+`open` and all PDEX-19–26 tickets at `ready-for-agent` / `open` / `not started`.
+The integration branch remains `codex/dashboard-experience-refinement-reimplementation`
+and retains that exact commit as its merge base. No previous feature history
+was rewritten.
+
+Scoped PDEX-21/22/23 corrections are integrated in `e3b7cced4ba58e61bda69f12f520666259ade8f7`
+with parent `fcb5ab0`. The earlier per-ticket branch, feature commit, review
+repair, and merge mapping remains in the tables above. This follow-up uses a
+single integration commit because changes share the Today, Calendar Task, and
+Collaboration presentation seams. Build, focused checks, and the isolated
+source-bound candidate are recorded in
+[the 2026-10-14 review checkpoint](evidence/reimplementation-review-checkpoint-2026-10-14.md).
+PDEX-21/22/23 remain claimed/in progress, PDEX-26 remains open and pending its
+dependencies, and PDEX-SPEC-02 remains open. The candidate is not installed or
+launched; independent native acceptance and user review remain outstanding.
