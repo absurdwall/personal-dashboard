@@ -1,7 +1,7 @@
 use personal_dashboard_lib::habits::{DayRelation, LocalHabitGoal};
 use personal_dashboard_lib::today::{
-    HabitCompletionMutationInput, HabitDefinitionMutationInput, TodayApplication, TodayClock,
-    TodayWorkspaceExchange, TodayWorkspacePersistence,
+    HabitCompletionMutationInput, HabitDefinitionMutationInput, HabitLifecycleMutationInput,
+    TodayApplication, TodayClock, TodayWorkspaceExchange, TodayWorkspacePersistence,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -74,6 +74,26 @@ impl TodayClock for FixedClock {
     }
 }
 
+#[derive(Clone, Copy)]
+struct TimestampClock {
+    date: &'static str,
+    time: &'static str,
+}
+
+impl TodayClock for TimestampClock {
+    fn current_date(&self) -> String {
+        self.date.into()
+    }
+
+    fn current_time_label(&self) -> String {
+        self.time.into()
+    }
+
+    fn current_timestamp_label(&self) -> String {
+        format!("{}T{}:00-04:00", self.date, self.time)
+    }
+}
+
 type App = TodayApplication<SelectedVault, NoSelection, FixedClock>;
 
 fn app(vault: &TempVault, date: &'static str) -> App {
@@ -85,6 +105,76 @@ fn app_with_clock<C: TodayClock>(
     clock: C,
 ) -> TodayApplication<SelectedVault, NoSelection, C> {
     TodayApplication::new(SelectedVault(vault.0.clone()), NoSelection, clock)
+}
+
+fn app_at(
+    vault: &TempVault,
+    date: &'static str,
+    time: &'static str,
+) -> TodayApplication<SelectedVault, NoSelection, TimestampClock> {
+    app_with_clock(vault, TimestampClock { date, time })
+}
+
+fn create_local_habit<C: TodayClock>(
+    application: &TodayApplication<SelectedVault, NoSelection, C>,
+    key: &str,
+    start_date: &str,
+    goal: LocalHabitGoal,
+) -> personal_dashboard_lib::habits::HabitSnapshotView {
+    let empty = application.habits().unwrap();
+    application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "create".into(),
+            key: key.into(),
+            name: key.into(),
+            name_changed: false,
+            emoji: None,
+            group: None,
+            start_date: Some(start_date.into()),
+            goal: Some(goal),
+            change_id: format!("create-{key}"),
+            target_binding: empty.definition_target_binding.unwrap(),
+            expected_revision: empty.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap()
+}
+
+fn complete_local_habit<C: TodayClock>(
+    application: &TodayApplication<SelectedVault, NoSelection, C>,
+    view: personal_dashboard_lib::habits::HabitSnapshotView,
+    key: &str,
+    date: &str,
+) -> personal_dashboard_lib::habits::HabitSnapshotView {
+    application
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: key.into(),
+            lived_date: date.into(),
+            completed: true,
+            change_id: format!("complete-{key}-{date}"),
+            target_binding: view.completion_target_binding.unwrap(),
+            expected_revision: view.completion_revision,
+        })
+        .unwrap()
+}
+
+fn lifecycle_local_habit<C: TodayClock>(
+    application: &TodayApplication<SelectedVault, NoSelection, C>,
+    view: personal_dashboard_lib::habits::HabitSnapshotView,
+    key: &str,
+    active: bool,
+    id: &str,
+) -> personal_dashboard_lib::habits::HabitSnapshotView {
+    application
+        .set_habit_lifecycle(HabitLifecycleMutationInput {
+            habit_key: key.into(),
+            active,
+            change_id: id.into(),
+            target_binding: view.definition_target_binding.unwrap(),
+            expected_revision: view.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap()
 }
 
 #[derive(Clone, Copy)]
@@ -191,6 +281,182 @@ fn locally_created_habit_can_be_checked_and_read_after_a_new_application_instanc
             .0
             .join("life/.personal-dashboard/derived/habits-v1.json")
             .exists()
+    );
+}
+
+#[test]
+fn deactivate_and_restore_upgrades_catalog_and_preserves_goal_revisions_and_completions() {
+    let vault = TempVault::new();
+    let application = app(&vault, "2026-09-08");
+    let empty = application.habits().unwrap();
+    let created = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "create".into(),
+            key: "local-lifecycle-reading".into(),
+            name: "Read".into(),
+            name_changed: false,
+            emoji: Some("📖".into()),
+            group: Some("Quiet".into()),
+            start_date: Some("2026-09-07".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 3 }),
+            change_id: "create-lifecycle-reading".into(),
+            target_binding: empty.definition_target_binding.unwrap(),
+            expected_revision: empty.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    let monday = application
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "local-lifecycle-reading".into(),
+            lived_date: "2026-09-07".into(),
+            completed: true,
+            change_id: "complete-lifecycle-reading-monday".into(),
+            target_binding: created.completion_target_binding.clone().unwrap(),
+            expected_revision: created.completion_revision.clone(),
+        })
+        .unwrap();
+    let edited = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "local-lifecycle-reading".into(),
+            name: "Read".into(),
+            name_changed: false,
+            emoji: Some("📖".into()),
+            group: Some("Quiet".into()),
+            start_date: Some("2026-09-07".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 5 }),
+            change_id: "schedule-lifecycle-reading-goal".into(),
+            target_binding: monday.definition_target_binding.unwrap(),
+            expected_revision: monday.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    assert_eq!(
+        edited.habit("local-lifecycle-reading").unwrap().pending_goal,
+        Some(LocalHabitGoal::WeeklyCount { days: 5 })
+    );
+    let completions_path = vault
+        .0
+        .join("life/.personal-dashboard/habit-completions/v1/completions.json");
+    let completion_bytes = fs::read(&completions_path).unwrap();
+    let catalog_path = vault
+        .0
+        .join("life/.personal-dashboard/habits/v1/catalog.json");
+    let before: serde_json::Value =
+        serde_json::from_slice(&fs::read(&catalog_path).unwrap()).unwrap();
+    assert_eq!(before["schemaVersion"], 1);
+
+    let inactive = application
+        .set_habit_lifecycle(HabitLifecycleMutationInput {
+            habit_key: "local-lifecycle-reading".into(),
+            active: false,
+            change_id: "deactivate-lifecycle-reading".into(),
+            target_binding: edited.definition_target_binding.clone().unwrap(),
+            expected_revision: edited.definition_revision.clone(),
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    let inactive_habit = inactive.habit("local-lifecycle-reading").unwrap();
+    assert!(!inactive_habit.active);
+    assert_eq!(
+        inactive_habit.pending_goal,
+        Some(LocalHabitGoal::WeeklyCount { days: 5 })
+    );
+    assert_eq!(fs::read(&completions_path).unwrap(), completion_bytes);
+    let upgraded: serde_json::Value =
+        serde_json::from_slice(&fs::read(&catalog_path).unwrap()).unwrap();
+    assert_eq!(upgraded["schemaVersion"], 2);
+    assert_eq!(
+        upgraded["habits"][0]["goalRevisions"],
+        before["habits"][0]["goalRevisions"]
+    );
+    assert_eq!(
+        upgraded["habits"][0]["baseGoal"],
+        before["habits"][0]["baseGoal"]
+    );
+    assert_eq!(
+        upgraded["habits"][0]["lifecycleChanges"][0]["kind"],
+        "deactivated"
+    );
+
+    let edited_while_inactive = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "local-lifecycle-reading".into(),
+            name: "Read".into(),
+            name_changed: false,
+            emoji: Some("📖".into()),
+            group: Some("Quiet focus".into()),
+            start_date: Some("2026-09-07".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 5 }),
+            change_id: "edit-lifecycle-reading-after-v2".into(),
+            target_binding: inactive.definition_target_binding.clone().unwrap(),
+            expected_revision: inactive.definition_revision.clone(),
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    assert!(!edited_while_inactive
+        .habit("local-lifecycle-reading")
+        .unwrap()
+        .active);
+    assert_eq!(
+        edited_while_inactive
+            .habit("local-lifecycle-reading")
+            .unwrap()
+            .pending_goal,
+        Some(LocalHabitGoal::WeeklyCount { days: 5 })
+    );
+    let v2_after_definition_edit: serde_json::Value =
+        serde_json::from_slice(&fs::read(&catalog_path).unwrap()).unwrap();
+    assert_eq!(v2_after_definition_edit["schemaVersion"], 2);
+    assert_eq!(
+        v2_after_definition_edit["habits"][0]["lifecycleChanges"],
+        upgraded["habits"][0]["lifecycleChanges"]
+    );
+
+    drop(application);
+    let reopened_during_next_cycle = app(&vault, "2026-09-15").habits().unwrap();
+    let habit = reopened_during_next_cycle
+        .habit("local-lifecycle-reading")
+        .unwrap();
+    assert!(!habit.active);
+    assert_eq!(
+        habit.current_goal,
+        Some(LocalHabitGoal::WeeklyCount { days: 5 })
+    );
+    assert!(habit
+        .history
+        .iter()
+        .any(|cell| cell.date == "2026-09-07" && cell.counts_as_completion));
+
+    let restored = app(&vault, "2026-09-15")
+        .set_habit_lifecycle(HabitLifecycleMutationInput {
+            habit_key: "local-lifecycle-reading".into(),
+            active: true,
+            change_id: "restore-lifecycle-reading".into(),
+            target_binding: reopened_during_next_cycle
+                .definition_target_binding
+                .clone()
+                .unwrap(),
+            expected_revision: reopened_during_next_cycle.definition_revision.clone(),
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    assert!(restored.habit("local-lifecycle-reading").unwrap().active);
+    assert_eq!(
+        restored.habit("local-lifecycle-reading").unwrap().key,
+        "local-lifecycle-reading"
+    );
+    assert_eq!(fs::read(&completions_path).unwrap(), completion_bytes);
+    let final_catalog: serde_json::Value =
+        serde_json::from_slice(&fs::read(&catalog_path).unwrap()).unwrap();
+    assert_eq!(final_catalog["schemaVersion"], 2);
+    assert_eq!(final_catalog["habits"][0]["lifecycleChanges"].as_array().unwrap().len(), 2);
+    assert!(final_catalog["habits"][0]["goalRevisions"].as_array().unwrap().len()
+        >= before["habits"][0]["goalRevisions"].as_array().unwrap().len());
+    assert_eq!(
+        final_catalog["habits"][0]["group"],
+        "Quiet focus"
     );
 }
 
@@ -1381,4 +1647,566 @@ fn created_locally_definition_cannot_claim_a_source_habit_key() {
     );
     assert!(view.habits.is_empty());
     assert!(view.message.contains("exercise"), "{}", view.message);
+}
+
+#[test]
+fn schema_one_catalog_rejects_lifecycle_fields_instead_of_silently_migrating() {
+    let vault = TempVault::new();
+    let catalog_path = vault
+        .0
+        .join("life/.personal-dashboard/habits/v1/catalog.json");
+    fs::create_dir_all(catalog_path.parent().unwrap()).unwrap();
+    let original = br#"{"schemaVersion":1,"habits":[{"key":"local-read","name":"Read","createdLocally":true,"baseGoal":{"kind":"daily-count"},"sourceGoalHistory":[],"goalRevisions":[],"lifecycleChanges":[]}],"operations":[]}"#;
+    fs::write(&catalog_path, original).unwrap();
+
+    let view = app(&vault, "2026-09-08").habits().unwrap();
+    assert_eq!(
+        view.state,
+        personal_dashboard_lib::habits::HabitSnapshotState::Error
+    );
+    assert!(view.message.contains("schemaVersion 1"));
+    assert_eq!(fs::read(&catalog_path).unwrap(), original);
+}
+
+#[test]
+fn detailed_history_reads_canonical_dates_and_goal_context_without_expanding_snapshot_coverage() {
+    let vault = TempVault::new();
+    let application = app(&vault, "2026-09-08");
+    let empty = application.habits().unwrap();
+    let created = application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "create".into(),
+            key: "local-history-reading".into(),
+            name: "Read history".into(),
+            name_changed: false,
+            emoji: None,
+            group: None,
+            start_date: Some("2026-02-01".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 2 }),
+            change_id: "create-history-reading".into(),
+            target_binding: empty.definition_target_binding.unwrap(),
+            expected_revision: empty.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+    application
+        .set_local_habit_completion(HabitCompletionMutationInput {
+            habit_key: "local-history-reading".into(),
+            lived_date: "2026-02-02".into(),
+            completed: true,
+            change_id: "history-reading-complete".into(),
+            target_binding: created.completion_target_binding.unwrap(),
+            expected_revision: created.completion_revision,
+        })
+        .unwrap();
+
+    let history = application
+        .read_habit_completion_history(&["2026-02-02".into()])
+        .unwrap();
+    assert_eq!(history.from_date, "2026-02-02");
+    assert_eq!(history.to_date, "2026-02-02");
+    assert_eq!(history.canonical["state"], "ready");
+    assert_eq!(history.canonical["records"][0]["habitKey"], "local-history-reading");
+    assert_eq!(history.canonical["records"][0]["state"], "completed");
+    assert_eq!(history.canonical["earliestLivedDateByHabit"]["local-history-reading"], "2026-02-02");
+    assert_eq!(history.projection.state, personal_dashboard_lib::habits::HabitSnapshotState::Missing);
+    assert!(history.projection.habits.is_empty());
+    assert_eq!(history.catalog_state, "ready");
+    let context = history
+        .habit_contexts
+        .iter()
+        .find(|context| context.key == "local-history-reading")
+        .unwrap();
+    assert!(context.created_locally);
+    assert_eq!(context.start_date.as_deref(), Some("2026-02-01"));
+    assert_eq!(context.current_goal, Some(LocalHabitGoal::WeeklyCount { days: 2 }));
+
+    let oversized: Vec<String> = vec!["2025-01-01".into(); 367];
+    assert!(application.read_habit_completion_history(&oversized).is_err());
+}
+
+#[test]
+fn weekly_attainment_counts_days_but_lifecycle_transitions_break_streak_continuity() {
+    let vault = TempVault::new();
+    let mut view = create_local_habit(
+        &app(&vault, "2026-08-31"),
+        "local-weekly-transition-walk",
+        "2026-08-31",
+        LocalHabitGoal::WeeklyCount { days: 2 },
+    );
+
+    view = complete_local_habit(&app(&vault, "2026-08-31"), view, "local-weekly-transition-walk", "2026-08-31");
+    view = complete_local_habit(&app(&vault, "2026-09-01"), view, "local-weekly-transition-walk", "2026-09-01");
+    view = complete_local_habit(&app(&vault, "2026-09-07"), view, "local-weekly-transition-walk", "2026-09-07");
+    view = lifecycle_local_habit(&app(&vault, "2026-09-09"), view, "local-weekly-transition-walk", false, "deactivate-transition-week");
+    view = lifecycle_local_habit(&app(&vault, "2026-09-11"), view, "local-weekly-transition-walk", true, "restore-transition-week");
+    view = complete_local_habit(&app(&vault, "2026-09-12"), view, "local-weekly-transition-walk", "2026-09-12");
+    view = complete_local_habit(&app(&vault, "2026-09-14"), view, "local-weekly-transition-walk", "2026-09-14");
+    let _view = complete_local_habit(&app(&vault, "2026-09-15"), view, "local-weekly-transition-walk", "2026-09-15");
+
+    let stats = app(&vault, "2026-09-22")
+        .read_habit_history_statistics("local-weekly-transition-walk")
+        .unwrap();
+    let value = serde_json::to_value(stats).unwrap();
+    assert_eq!(value["stats"]["allTime"]["value"], 6);
+    assert_eq!(value["stats"]["currentStreak"]["unit"], "weeks");
+    assert_eq!(value["stats"]["currentStreak"]["value"], 1);
+    assert_eq!(value["stats"]["highestStreak"]["value"], 1);
+}
+
+#[test]
+fn first_midweek_goal_attainment_counts_days_but_is_not_a_full_week_streak() {
+    let vault = TempVault::new();
+    let view = create_local_habit(
+        &app(&vault, "2026-09-08"),
+        "local-midweek-start-walk",
+        "2026-09-08",
+        LocalHabitGoal::WeeklyCount { days: 2 },
+    );
+    let view = complete_local_habit(&app(&vault, "2026-09-08"), view, "local-midweek-start-walk", "2026-09-08");
+    let _view = complete_local_habit(&app(&vault, "2026-09-09"), view, "local-midweek-start-walk", "2026-09-09");
+
+    let stats = app(&vault, "2026-09-15")
+        .read_habit_history_statistics("local-midweek-start-walk")
+        .unwrap();
+    let value = serde_json::to_value(stats).unwrap();
+    assert_eq!(value["stats"]["allTime"]["value"], 2);
+    assert_eq!(value["stats"]["highestStreak"]["precision"], "unknown");
+}
+
+#[test]
+fn same_day_deactivation_after_completion_keeps_daily_success_in_the_ending_streak() {
+    let vault = TempVault::new();
+    let mut view = create_local_habit(
+        &app_at(&vault, "2026-09-07", "09:00"),
+        "local-same-day-deactivate-after",
+        "2026-09-07",
+        LocalHabitGoal::DailyCount,
+    );
+    view = complete_local_habit(
+        &app_at(&vault, "2026-09-07", "10:00"),
+        view,
+        "local-same-day-deactivate-after",
+        "2026-09-07",
+    );
+    view = complete_local_habit(
+        &app_at(&vault, "2026-09-08", "10:00"),
+        view,
+        "local-same-day-deactivate-after",
+        "2026-09-08",
+    );
+    let _view = lifecycle_local_habit(
+        &app_at(&vault, "2026-09-08", "11:00"),
+        view,
+        "local-same-day-deactivate-after",
+        false,
+        "deactivate-after-completion",
+    );
+
+    let stats = app_at(&vault, "2026-09-08", "12:00")
+        .read_habit_history_statistics("local-same-day-deactivate-after")
+        .unwrap();
+    let value = serde_json::to_value(stats).unwrap();
+    assert_eq!(value["stats"]["allTime"]["value"], 2);
+    assert_eq!(value["stats"]["currentStreak"]["value"], 2);
+    assert_eq!(value["stats"]["highestStreak"]["value"], 2);
+}
+
+#[test]
+fn same_day_deactivation_before_completion_does_not_count_the_lived_date() {
+    let vault = TempVault::new();
+    let view = create_local_habit(
+        &app_at(&vault, "2026-09-07", "09:00"),
+        "local-same-day-deactivate-before",
+        "2026-09-07",
+        LocalHabitGoal::DailyCount,
+    );
+    let view = complete_local_habit(
+        &app_at(&vault, "2026-09-07", "10:00"),
+        view,
+        "local-same-day-deactivate-before",
+        "2026-09-07",
+    );
+    let view = lifecycle_local_habit(
+        &app_at(&vault, "2026-09-08", "10:00"),
+        view,
+        "local-same-day-deactivate-before",
+        false,
+        "deactivate-before-completion",
+    );
+    let _view = complete_local_habit(
+        &app_at(&vault, "2026-09-08", "11:00"),
+        view,
+        "local-same-day-deactivate-before",
+        "2026-09-08",
+    );
+
+    let stats = app_at(&vault, "2026-09-08", "12:00")
+        .read_habit_history_statistics("local-same-day-deactivate-before")
+        .unwrap();
+    let value = serde_json::to_value(stats).unwrap();
+    assert_eq!(value["stats"]["allTime"]["precision"], "at-least");
+    assert_eq!(value["stats"]["allTime"]["value"], 1);
+    assert!(value["stats"]["currentStreak"]["value"].is_null());
+    assert_eq!(value["stats"]["highestStreak"]["value"], 1);
+}
+
+#[test]
+fn same_day_restore_completion_starts_a_new_daily_streak_segment() {
+    let vault = TempVault::new();
+    let mut view = create_local_habit(
+        &app_at(&vault, "2026-09-07", "09:00"),
+        "local-same-day-restore",
+        "2026-09-07",
+        LocalHabitGoal::DailyCount,
+    );
+    view = complete_local_habit(
+        &app_at(&vault, "2026-09-07", "10:00"),
+        view,
+        "local-same-day-restore",
+        "2026-09-07",
+    );
+    view = complete_local_habit(
+        &app_at(&vault, "2026-09-08", "10:00"),
+        view,
+        "local-same-day-restore",
+        "2026-09-08",
+    );
+    view = lifecycle_local_habit(
+        &app_at(&vault, "2026-09-09", "10:00"),
+        view,
+        "local-same-day-restore",
+        false,
+        "deactivate-before-restore",
+    );
+    view = lifecycle_local_habit(
+        &app_at(&vault, "2026-09-10", "10:00"),
+        view,
+        "local-same-day-restore",
+        true,
+        "restore-before-completion",
+    );
+    let _view = complete_local_habit(
+        &app_at(&vault, "2026-09-10", "11:00"),
+        view,
+        "local-same-day-restore",
+        "2026-09-10",
+    );
+
+    let stats = app_at(&vault, "2026-09-10", "12:00")
+        .read_habit_history_statistics("local-same-day-restore")
+        .unwrap();
+    let value = serde_json::to_value(stats).unwrap();
+    assert_eq!(value["stats"]["currentStreak"]["value"], 1);
+    assert_eq!(value["stats"]["highestStreak"]["value"], 2);
+}
+
+#[test]
+fn same_day_weekly_deactivation_keeps_attained_week_in_the_ending_streak() {
+    let vault = TempVault::new();
+    let mut view = create_local_habit(
+        &app_at(&vault, "2026-09-07", "09:00"),
+        "local-same-day-weekly-deactivate",
+        "2026-09-07",
+        LocalHabitGoal::WeeklyCount { days: 2 },
+    );
+    view = complete_local_habit(
+        &app_at(&vault, "2026-09-07", "10:00"),
+        view,
+        "local-same-day-weekly-deactivate",
+        "2026-09-07",
+    );
+    view = complete_local_habit(
+        &app_at(&vault, "2026-09-08", "10:00"),
+        view,
+        "local-same-day-weekly-deactivate",
+        "2026-09-08",
+    );
+    let _view = lifecycle_local_habit(
+        &app_at(&vault, "2026-09-08", "11:00"),
+        view,
+        "local-same-day-weekly-deactivate",
+        false,
+        "deactivate-after-weekly-attainment",
+    );
+
+    let stats = app_at(&vault, "2026-09-08", "12:00")
+        .read_habit_history_statistics("local-same-day-weekly-deactivate")
+        .unwrap();
+    let value = serde_json::to_value(stats).unwrap();
+    assert_eq!(value["stats"]["allTime"]["value"], 2);
+    assert_eq!(value["stats"]["currentStreak"]["value"], 1);
+    assert_eq!(value["stats"]["highestStreak"]["value"], 1);
+}
+
+#[test]
+fn canonical_history_error_keeps_negative_coverage_unknown_but_allows_positive_source_evidence() {
+    let vault = TempVault::new();
+    let mut snapshot: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/habits-v1-complete.json")).unwrap();
+    snapshot["generatedAt"] = serde_json::json!("2026-09-08T14:10:00-04:00");
+    snapshot["range"] = serde_json::json!({"from":"2026-06-22", "to":"2026-09-08"});
+    snapshot["habits"] = serde_json::json!([
+        {
+            "key":"exercise", "name":"Exercise", "active":true,
+            "trackingKind":"weekly-count", "goal":{"kind":"weekly-count", "standard":2},
+            "goalHistory":[], "days":[{"livedDate":"2026-09-07", "coverage":"complete", "observations":[
+                {"source":"dida", "observedAt":"2026-09-07T20:00:00-04:00", "status":"not-done", "evidence":"check-in"}
+            ]}]
+        },
+        {
+            "key":"wake", "name":"Wake", "active":true,
+            "trackingKind":"daily-time", "goal":{"kind":"daily-time", "standard":"07:30", "dayRelation":"same-day"},
+            "goalHistory":[], "days":[{"livedDate":"2026-09-07", "coverage":"complete", "observations":[]}]
+        },
+        {
+            "key":"sleep", "name":"Sleep", "active":true,
+            "trackingKind":"daily-time", "goal":{"kind":"daily-time", "standard":"23:30", "dayRelation":"same-day"},
+            "goalHistory":[], "days":[{"livedDate":"2026-09-07", "coverage":"complete", "observations":[
+                {"source":"dida", "observedAt":"2026-09-07T23:00:00-04:00", "status":"threshold-met", "evidence":"threshold-check-in"}
+            ]}]
+        }
+    ]);
+    write_source_snapshot(&vault, &snapshot.to_string());
+    let completions_path = vault
+        .0
+        .join("life/.personal-dashboard/habit-completions/v1/completions.json");
+    fs::create_dir_all(completions_path.parent().unwrap()).unwrap();
+    fs::write(&completions_path, b"{malformed canonical completion data").unwrap();
+
+    let application = app(&vault, "2026-09-08");
+    for key in ["exercise", "wake"] {
+        let stats = application
+            .read_habit_history_statistics(key)
+            .unwrap();
+        let value = serde_json::to_value(stats).unwrap();
+        assert_eq!(value["canonicalState"], "error");
+        assert_eq!(value["stats"]["allTime"]["value"], serde_json::Value::Null, "{key}");
+        assert_eq!(value["stats"]["allTime"]["precision"], "unknown", "{key}");
+    }
+    let positive = application
+        .read_habit_history_statistics("sleep")
+        .unwrap();
+    let value = serde_json::to_value(positive).unwrap();
+    assert_eq!(value["canonicalState"], "error");
+    assert_eq!(value["stats"]["allTime"]["value"], 1);
+    assert_eq!(value["stats"]["allTime"]["precision"], "at-least");
+}
+
+#[test]
+fn statistics_return_historical_goal_segments_alongside_current_and_pending_goals() {
+    let vault = TempVault::new();
+    let application = app(&vault, "2026-09-08");
+    let created = create_local_habit(
+        &application,
+        "local-goal-segment-walk",
+        "2026-09-07",
+        LocalHabitGoal::WeeklyCount { days: 2 },
+    );
+    application
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "local-goal-segment-walk".into(),
+            name: "local-goal-segment-walk".into(),
+            name_changed: false,
+            emoji: None,
+            group: None,
+            start_date: Some("2026-09-07".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 4 }),
+            change_id: "schedule-goal-segment".into(),
+            target_binding: created.definition_target_binding.unwrap(),
+            expected_revision: created.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+
+    let stats = app(&vault, "2026-09-21")
+        .read_habit_history_statistics("local-goal-segment-walk")
+        .unwrap();
+    let value = serde_json::to_value(stats).unwrap();
+    let segments = value["historicalGoals"].as_array().unwrap();
+    assert!(segments.iter().any(|segment|
+        segment["effectiveOn"] == "2026-09-07"
+            && segment["goal"]["kind"] == "weekly-count"
+            && segment["goal"]["days"] == 2));
+    assert!(segments.iter().any(|segment|
+        segment["effectiveOn"] == "2026-09-14"
+            && segment["goal"]["kind"] == "weekly-count"
+            && segment["goal"]["days"] == 4));
+}
+
+#[test]
+fn historical_source_completion_survives_a_first_local_restore_event() {
+    let vault = TempVault::new();
+    let mut snapshot: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/habits-v1-complete.json")).unwrap();
+    snapshot["habits"][0]["active"] = serde_json::json!(false);
+    snapshot["habits"][0]["goalHistory"] = serde_json::json!([
+        {"weekOf":"2026-08-24", "label":"Historical target", "goal":{"kind":"weekly-count", "standard":2}},
+        {"weekOf":"2026-08-31", "label":"Current target", "goal":{"kind":"weekly-count", "standard":2}}
+    ]);
+    snapshot["habits"][0]["days"] = serde_json::json!([
+        {"livedDate":"2026-08-25", "coverage":"complete", "observations":[
+            {"source":"dida", "observedAt":"2026-08-25T19:00:00-04:00", "status":"completed", "evidence":"check-in"}
+        ]},
+        {"livedDate":"2026-08-26", "coverage":"complete", "observations":[
+            {"source":"dida", "observedAt":"2026-08-26T19:00:00-04:00", "status":"completed", "evidence":"check-in"}
+        ]}
+    ]);
+    write_source_snapshot(&vault, &snapshot.to_string());
+
+    let application = app(&vault, "2026-09-08");
+    let overview = application.habits().unwrap();
+    application
+        .set_habit_lifecycle(HabitLifecycleMutationInput {
+            habit_key: "exercise".into(),
+            active: true,
+            change_id: "restore-source-exercise-first-lifecycle-event".into(),
+            target_binding: overview.definition_target_binding.unwrap(),
+            expected_revision: overview.definition_revision,
+            expected_snapshot_revision: overview.snapshot_revision,
+        })
+        .unwrap();
+
+    let stats = app(&vault, "2026-09-08")
+        .read_habit_history_statistics("exercise")
+        .unwrap();
+    let value = serde_json::to_value(stats).unwrap();
+    assert_eq!(value["stats"]["allTime"]["value"], 2);
+    assert_eq!(value["stats"]["allTime"]["precision"], "at-least");
+    assert_eq!(value["stats"]["highestStreakByUnit"]["weeks"]["value"], 1);
+}
+
+#[test]
+fn historical_start_date_does_not_hide_an_existing_completion() {
+    let vault = TempVault::new();
+    let view = create_local_habit(
+        &app(&vault, "2026-09-07"),
+        "local-start-date-history",
+        "2026-09-07",
+        LocalHabitGoal::DailyCount,
+    );
+    let completed = complete_local_habit(
+        &app(&vault, "2026-09-07"),
+        view,
+        "local-start-date-history",
+        "2026-09-07",
+    );
+    app(&vault, "2026-09-09")
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(),
+            key: "local-start-date-history".into(),
+            name: "Read".into(),
+            name_changed: false,
+            emoji: None,
+            group: None,
+            start_date: Some("2026-09-09".into()),
+            goal: Some(LocalHabitGoal::DailyCount),
+            change_id: "move-start-after-first-completion".into(),
+            target_binding: completed.definition_target_binding.unwrap(),
+            expected_revision: completed.definition_revision,
+            expected_snapshot_revision: None,
+        })
+        .unwrap();
+
+    let value = serde_json::to_value(
+        app(&vault, "2026-09-10")
+            .read_habit_history_statistics("local-start-date-history")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(value["stats"]["allTime"]["value"], 1);
+    assert_eq!(value["stats"]["allTime"]["precision"], "at-least");
+}
+
+#[test]
+fn statistics_read_canonical_history_beyond_the_snapshot_window() {
+    let vault = TempVault::new();
+    let application = app(&vault, "2026-09-08");
+    let created = create_local_habit(
+        &application,
+        "local-long-history-reading",
+        "2024-01-01",
+        LocalHabitGoal::DailyCount,
+    );
+    let _completed = complete_local_habit(
+        &application,
+        created,
+        "local-long-history-reading",
+        "2024-01-03",
+    );
+
+    let value = serde_json::to_value(
+        app(&vault, "2026-09-08")
+            .read_habit_history_statistics("local-long-history-reading")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(value["rangeFrom"], "2024-01-01");
+    assert_eq!(value["rangeTo"], "2026-09-08");
+    assert_eq!(value["stats"]["allTime"]["value"], 1);
+    assert_eq!(value["stats"]["allTime"]["precision"], "at-least");
+    assert_eq!(value["projectionState"], "missing");
+}
+
+#[test]
+fn frequency_changes_keep_daily_and_weekly_streak_units_separate() {
+    let daily_to_weekly_vault = TempVault::new();
+    let mut view = create_local_habit(
+        &app(&daily_to_weekly_vault, "2026-09-07"),
+        "local-daily-to-weekly-history",
+        "2026-09-07",
+        LocalHabitGoal::DailyCount,
+    );
+    view = complete_local_habit(&app(&daily_to_weekly_vault, "2026-09-07"), view, "local-daily-to-weekly-history", "2026-09-07");
+    view = complete_local_habit(&app(&daily_to_weekly_vault, "2026-09-08"), view, "local-daily-to-weekly-history", "2026-09-08");
+    view = app(&daily_to_weekly_vault, "2026-09-08")
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(), key: "local-daily-to-weekly-history".into(), name: "Read".into(),
+            name_changed: false, emoji: None, group: None, start_date: Some("2026-09-07".into()),
+            goal: Some(LocalHabitGoal::WeeklyCount { days: 2 }), change_id: "daily-to-weekly-next-cycle".into(),
+            target_binding: view.definition_target_binding.unwrap(), expected_revision: view.definition_revision,
+            expected_snapshot_revision: None,
+        }).unwrap();
+    view = complete_local_habit(&app(&daily_to_weekly_vault, "2026-09-14"), view, "local-daily-to-weekly-history", "2026-09-14");
+    let _view = complete_local_habit(&app(&daily_to_weekly_vault, "2026-09-15"), view, "local-daily-to-weekly-history", "2026-09-15");
+    let daily_to_weekly = serde_json::to_value(
+        app(&daily_to_weekly_vault, "2026-09-21")
+            .read_habit_history_statistics("local-daily-to-weekly-history")
+            .unwrap(),
+    ).unwrap();
+    assert_eq!(daily_to_weekly["stats"]["allTime"]["value"], 4);
+    assert_eq!(daily_to_weekly["stats"]["highestStreakByUnit"]["days"]["value"], 2);
+    assert_eq!(daily_to_weekly["stats"]["highestStreakByUnit"]["weeks"]["value"], 1);
+
+    let weekly_to_daily_vault = TempVault::new();
+    let mut view = create_local_habit(
+        &app(&weekly_to_daily_vault, "2026-08-31"),
+        "local-weekly-to-daily-history",
+        "2026-08-31",
+        LocalHabitGoal::WeeklyCount { days: 2 },
+    );
+    view = complete_local_habit(&app(&weekly_to_daily_vault, "2026-08-31"), view, "local-weekly-to-daily-history", "2026-08-31");
+    view = complete_local_habit(&app(&weekly_to_daily_vault, "2026-09-01"), view, "local-weekly-to-daily-history", "2026-09-01");
+    view = complete_local_habit(&app(&weekly_to_daily_vault, "2026-09-07"), view, "local-weekly-to-daily-history", "2026-09-07");
+    view = complete_local_habit(&app(&weekly_to_daily_vault, "2026-09-08"), view, "local-weekly-to-daily-history", "2026-09-08");
+    view = app(&weekly_to_daily_vault, "2026-09-08")
+        .save_habit_definition(HabitDefinitionMutationInput {
+            mode: "edit".into(), key: "local-weekly-to-daily-history".into(), name: "Walk".into(),
+            name_changed: false, emoji: None, group: None, start_date: Some("2026-08-31".into()),
+            goal: Some(LocalHabitGoal::DailyCount), change_id: "weekly-to-daily-next-cycle".into(),
+            target_binding: view.definition_target_binding.unwrap(), expected_revision: view.definition_revision,
+            expected_snapshot_revision: None,
+        }).unwrap();
+    view = complete_local_habit(&app(&weekly_to_daily_vault, "2026-09-14"), view, "local-weekly-to-daily-history", "2026-09-14");
+    let _view = complete_local_habit(&app(&weekly_to_daily_vault, "2026-09-15"), view, "local-weekly-to-daily-history", "2026-09-15");
+    let weekly_to_daily = serde_json::to_value(
+        app(&weekly_to_daily_vault, "2026-09-21")
+            .read_habit_history_statistics("local-weekly-to-daily-history")
+            .unwrap(),
+    ).unwrap();
+    assert_eq!(weekly_to_daily["stats"]["allTime"]["value"], 6);
+    assert_eq!(weekly_to_daily["stats"]["highestStreakByUnit"]["weeks"]["value"], 2);
+    assert_eq!(weekly_to_daily["stats"]["highestStreakByUnit"]["days"]["value"], 2);
+    assert_eq!(weekly_to_daily["stats"]["currentStreak"]["unit"], "days");
 }

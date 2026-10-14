@@ -1286,19 +1286,65 @@
                     </div>
                     <small id="habits-today-date">—</small>
                   </div>
-                  <section class="habits-target-section" aria-labelledby="habits-daily-heading">
-                    <div class="habits-target-heading">
-                      <h4 id="habits-daily-heading" data-i18n="habits.dailyAnchors">每日锚点</h4>
-                      <small data-i18n="habits.targetActual">目标 / 明确实际</small>
+                  <div id="habits-today-default">
+                    <section class="habits-target-section" aria-labelledby="habits-daily-heading">
+                      <div class="habits-target-heading">
+                        <h4 id="habits-daily-heading" data-i18n="habits.dailyAnchors">每日锚点</h4>
+                        <small data-i18n="habits.targetActual">目标 / 明确实际</small>
+                      </div>
+                      <div id="habits-daily-list"></div>
+                    </section>
+                    <section class="habits-target-section" aria-labelledby="habits-weekly-heading">
+                      <div class="habits-target-heading">
+                        <h4 id="habits-weekly-heading" data-i18n="habits.weekToday">本周习惯在今天</h4>
+                        <small data-i18n="habits.countToday">周次数 · 今日状态</small>
+                      </div>
+                      <div id="habits-weekly-list"></div>
+                    </section>
+                    <details id="habits-inactive" class="habits-inactive" hidden>
+                      <summary>
+                        <span data-i18n="habits.inactiveHabits">查看停用习惯</span>
+                        <span id="habits-inactive-count"></span>
+                      </summary>
+                      <div id="habits-inactive-list"></div>
+                    </details>
+                  </div>
+                  <section id="habit-detail-view" class="habit-detail-view" hidden aria-labelledby="habit-detail-heading">
+                    <div class="habit-detail-heading-row">
+                      <button id="habit-detail-back" class="habit-quiet-action" type="button" data-i18n="habits.backToToday">回到今日习惯</button>
+                      <div class="habit-detail-heading-copy">
+                        <h4 id="habit-detail-heading">—</h4>
+                        <p id="habit-detail-meta"></p>
+                      </div>
+                      <div class="habit-detail-actions">
+                        <button id="habit-detail-edit" class="habit-edit-button" type="button" data-i18n="habits.edit">编辑</button>
+                        <button id="habit-detail-lifecycle" class="habit-edit-button" type="button"></button>
+                      </div>
                     </div>
-                    <div id="habits-daily-list"></div>
-                  </section>
-                  <section class="habits-target-section" aria-labelledby="habits-weekly-heading">
-                    <div class="habits-target-heading">
-                      <h4 id="habits-weekly-heading" data-i18n="habits.weekToday">本周习惯在今天</h4>
-                      <small data-i18n="habits.countToday">周次数 · 今日状态</small>
+                    <p id="habit-detail-status" class="habit-detail-status" role="status" aria-live="polite"></p>
+                    <div id="habit-detail-checkin" class="habit-detail-checkin">
+                      <small data-i18n="habits.detailCheckIn">今日打卡</small>
+                      <div id="habit-detail-checkin-control"></div>
                     </div>
-                    <div id="habits-weekly-list"></div>
+                    <div class="habit-detail-stats">
+                      <article><small data-i18n="habits.statMonth">本月达标天</small><strong id="habit-detail-month">—</strong></article>
+                      <article><small data-i18n="habits.statAllTime">累计达标天</small><strong id="habit-detail-all-time">—</strong></article>
+                      <article><small data-i18n="habits.statCurrentStreak">当前连续</small><strong id="habit-detail-current-streak">—</strong></article>
+                      <article><small data-i18n="habits.statHighestStreak">最高连续</small><strong id="habit-detail-highest-streak">—</strong></article>
+                    </div>
+                    <p id="habit-detail-coverage" class="habit-detail-coverage"></p>
+                    <section class="habit-detail-goals" aria-labelledby="habit-detail-goals-heading">
+                      <h5 id="habit-detail-goals-heading" data-i18n="habits.historyGoals">历史目标</h5>
+                      <div id="habit-detail-historical-goals"></div>
+                    </section>
+                    <section class="habit-detail-records" aria-labelledby="habit-detail-records-heading">
+                      <div class="habit-detail-record-heading">
+                        <h5 id="habit-detail-records-heading" data-i18n="habits.detailRecords">打卡记录</h5>
+                        <small id="habit-detail-record-count"></small>
+                      </div>
+                      <div id="habit-detail-record-list"></div>
+                      <button id="habit-detail-older" class="habit-quiet-action" type="button" hidden data-i18n="habits.showOlderRecords">查看更早记录</button>
+                    </section>
                   </section>
                 </section>
               </div>

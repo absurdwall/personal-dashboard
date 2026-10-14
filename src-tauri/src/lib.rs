@@ -14,6 +14,7 @@ pub mod collaboration_memory;
 pub mod cutover;
 pub mod exercise;
 pub mod habits;
+pub mod habit_history;
 pub mod habit_producer;
 pub mod interface_language;
 pub mod migration;
@@ -271,7 +272,7 @@ use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
     DayTaskCompletionInput, DayTaskDeleteInput, DayTaskRenameInput, DaytimeUpdateInput,
     EveningUpdateInput, HabitCompletionMutationInput, HabitDefinitionMutationInput,
-    HabitSnapshotView,
+    HabitCompletionHistoryView, HabitLifecycleMutationInput, HabitSnapshotView,
     PlanTimeEditInput, PlanTimeEditResult, PlanningDayTaskContextView, TodayApplication,
     TodayClockView, TodayView, VaultSelectionResult,
 };
@@ -950,6 +951,30 @@ fn save_habit_definition(
 }
 
 #[tauri::command]
+fn set_habit_lifecycle(
+    application: State<'_, DesktopTodayApplication>,
+    input: HabitLifecycleMutationInput,
+) -> Result<HabitSnapshotView, String> {
+    application.set_habit_lifecycle(input)
+}
+
+#[tauri::command]
+fn read_habit_completion_history(
+    application: State<'_, DesktopTodayApplication>,
+    dates: Vec<String>,
+) -> Result<HabitCompletionHistoryView, String> {
+    application.read_habit_completion_history(&dates)
+}
+
+#[tauri::command]
+fn read_habit_history_statistics(
+    application: State<'_, DesktopTodayApplication>,
+    habit_key: String,
+) -> Result<habit_history::HabitHistoryStatisticsView, String> {
+    application.read_habit_history_statistics(&habit_key)
+}
+
+#[tauri::command]
 fn set_historical_habit_completion(
     application: State<'_, DesktopTodayApplication>,
     input: HabitCompletionMutationInput,
@@ -1216,6 +1241,9 @@ pub fn run() {
             calendar_month,
             habit_snapshot,
             save_habit_definition,
+            set_habit_lifecycle,
+            read_habit_completion_history,
+            read_habit_history_statistics,
             tasks_view,
             create_task,
             create_task_subtask,
@@ -1307,6 +1335,8 @@ pub fn run() {
         calendar_month,
         habit_snapshot,
         save_habit_definition,
+        set_habit_lifecycle,
+        read_habit_completion_history,
         tasks_view,
         create_task,
         create_task_subtask,

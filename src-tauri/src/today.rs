@@ -2,12 +2,18 @@ use crate::habits::{
     FileHabitSnapshotStore, HABIT_DEFINITIONS_RELATIVE_PATH, HabitCorrectionView,
     HabitLocalCompletionChangeView, HabitNamesConfiguration, HabitSnapshotStore,
     LEGACY_SNAPSHOT_RELATIVE_PATH, LocalHabitCompletion, LocalHabitDefinition,
-    LocalHabitDefinitionsDocument, LocalHabitGoal, LocalHabitGoalRevision,
-    LocalHabitOperationReceipt, LocalHabitRecord, LocalHabitRevisionDisposition,
+    LocalHabitDefinitionsDocument, LocalHabitGoal, LocalHabitGoalHistory,
+    LocalHabitGoalRevision,
+    LocalHabitLifecycleChange, LocalHabitLifecycleKind, LocalHabitOperationReceipt,
+    LocalHabitRecord, LocalHabitRevisionDisposition,
     SNAPSHOT_RELATIVE_PATH, load_habit_names, merge_local_habit_corrections,
     merge_local_habit_definitions, parse_local_habit_definitions,
     project_habit_corrections_with_recording_limit, project_snapshot_with_names_at_local_date,
     project_uncatalogued_habit_corrections_with_recording_limit, snapshot_dates_at_local_date,
+};
+use crate::habit_history::{
+    derive_habit_history_statistics, historical_goal_segments, CanonicalHistoryState,
+    HabitHistoryFact, HabitHistoryStatisticsView,
 };
 pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
@@ -15,7 +21,7 @@ pub use crate::habits::{
 use crate::interface_language::InterfaceLanguage;
 use crate::tasks::{FileTaskStore, TaskApplication, TaskDataState, TaskState, TasksView};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -1699,6 +1705,17 @@ pub struct HabitDefinitionMutationInput {
     pub expected_snapshot_revision: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitLifecycleMutationInput {
+    pub habit_key: String,
+    pub active: bool,
+    pub change_id: String,
+    pub target_binding: String,
+    pub expected_revision: Option<String>,
+    pub expected_snapshot_revision: Option<String>,
+}
+
 /// Bounded, read-only local completion evidence; snapshot facts remain a separate source.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1706,12 +1723,36 @@ pub struct HabitCompletionHistoryView {
     pub domain: &'static str,
     pub from_date: String,
     pub to_date: String,
+    pub current_lived_date: Option<String>,
     pub requested_dates: Vec<String>,
     pub vault_path: Option<String>,
     pub canonical: serde_json::Value,
     pub projection: HabitHistoryProjectionView,
     pub projection_revision: Option<String>,
+    pub catalog_state: String,
+    pub catalog_revision: Option<String>,
+    pub definition_target_binding: Option<String>,
+    pub habit_contexts: Vec<HabitHistoryHabitContext>,
     pub coverage: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitHistoryHabitContext {
+    pub key: String,
+    pub name: String,
+    pub localized_names: crate::habits::HabitLocalizedNames,
+    pub is_local_definition: bool,
+    pub created_locally: bool,
+    pub source_exists: bool,
+    pub source_active: bool,
+    pub start_date: Option<String>,
+    pub active: bool,
+    pub current_goal: Option<LocalHabitGoal>,
+    pub base_goal: Option<LocalHabitGoal>,
+    pub source_goal_history: Vec<LocalHabitGoalHistory>,
+    pub goal_revisions: Vec<LocalHabitGoalRevision>,
+    pub lifecycle_changes: Vec<LocalHabitLifecycleChange>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3305,68 +3346,428 @@ where
         }
     }
 
-    pub fn read_habit_completion_history(&self, dates: &[String]) -> Result<HabitCompletionHistoryView, String> {
+    pub fn read_habit_completion_history(
+        &self,
+        dates: &[String],
+    ) -> Result<HabitCompletionHistoryView, String> {
         if dates.is_empty() || dates.len() > 366 || dates.windows(2).any(|pair| pair[0] >= pair[1]) {
             return Err("Habit history requires an ordered bounded range of at most 366 dates".into());
         }
-        // Caller supplies the validated inclusive range. Validate all dated source paths too.
-        for date in dates { canonical_record_path(Path::new("history"), date)?; }
-        if dates.windows(2).any(|pair| CalendarDate::parse(&pair[0]).expect("validated date").plus_days(1).to_string() != pair[1]) {
+        for date in dates {
+            canonical_record_path(Path::new("history"), date)?;
+        }
+        if dates.windows(2).any(|pair| {
+            CalendarDate::parse(&pair[0])
+                .expect("validated date")
+                .plus_days(1)
+                .to_string()
+                != pair[1]
+        }) {
             return Err("Habit history dates must form one inclusive consecutive range".into());
         }
         let vault = self.persistence.load_selected_vault()?;
+        let current_lived_date = self.clock.current_lived_date();
+        let current_local_date = self.clock.current_date();
+        let current_timestamp = self.clock.current_timestamp_label();
         let mut canonical = serde_json::json!({"state":"unconfigured", "revision":null,
-            "targetBinding":null, "records":[], "acceptedNoOpReceipts":[], "unrecordedState":"unknown"});
+            "targetBinding":null, "records":[], "acceptedNoOpReceipts":[],
+            "earliestLivedDateByHabit":{}, "unrecordedState":"unknown"});
         let mut projection = HabitSnapshotView::unconfigured();
         let mut projection_revision = None;
+        let mut snapshot_bytes: Option<Vec<u8>> = None;
+        let mut definitions = LocalHabitDefinitionsDocument::default();
+        let mut catalog_state = "unconfigured".to_string();
+        let mut catalog_revision = None;
+        let mut definition_target_binding = None;
+        let mut catalog_error: Option<String> = None;
+        let mut names_configuration = HabitNamesConfiguration::default();
         if let Some(root) = vault.as_ref() {
-            let path = canonical_habit_completion_path(root);
-            canonical["targetBinding"] = serde_json::json!(habit_completion_target_binding(&path));
-            canonical["source"] = serde_json::json!("Dashboard local completion store; scope local-only");
-            match self.habit_completion_store.load(&path) {
+            let completion_path = canonical_habit_completion_path(root);
+            canonical["targetBinding"] =
+                serde_json::json!(habit_completion_target_binding(&completion_path));
+            canonical["source"] =
+                serde_json::json!("Dashboard local completion store; scope local-only");
+            match self.habit_completion_store.load(&completion_path) {
                 Ok(Some(bytes)) => {
                     canonical["revision"] = serde_json::json!(document_revision(&bytes));
-                    match parse_habit_completion_document(&bytes, &self.clock.current_timestamp_label()) {
+                    match parse_habit_completion_document(&bytes, &current_timestamp) {
                         Ok(document) => {
                             canonical["state"] = serde_json::json!("ready");
-                            canonical["records"] = serde_json::json!(document.completions.into_iter()
+                            let mut earliest = BTreeMap::<String, String>::new();
+                            for row in &document.completions {
+                                earliest
+                                    .entry(row.habit_key.clone())
+                                    .and_modify(|date| {
+                                        if row.lived_date < *date {
+                                            *date = row.lived_date.clone();
+                                        }
+                                    })
+                                    .or_insert_with(|| row.lived_date.clone());
+                            }
+                            canonical["earliestLivedDateByHabit"] = serde_json::json!(earliest);
+                            canonical["records"] = serde_json::json!(document.completions
+                                .into_iter()
                                 .filter(|row| dates.binary_search(&row.lived_date).is_ok())
-                                .map(|row| serde_json::json!({"habitKey":row.habit_key,"livedDate":row.lived_date,
+                                .map(|row| serde_json::json!({
+                                    "habitKey":row.habit_key,
+                                    "livedDate":row.lived_date,
                                     "state":if row.completed_at.is_some() {"completed"} else {"withdrawn"},
-                                    "recordedCompletedAt":row.completed_at,"modifiedAt":row.modified_at,"changes":row.changes}))
+                                    "recordedCompletedAt":row.completed_at,
+                                    "modifiedAt":row.modified_at,
+                                    "changes":row.changes
+                                }))
                                 .collect::<Vec<_>>());
-                            canonical["acceptedNoOpReceipts"] = serde_json::json!(document.no_op_receipts.into_iter()
-                                .filter(|row| dates.binary_search(&row.lived_date).is_ok()).collect::<Vec<_>>());
-                        },
-                        Err(error) => { canonical["state"] = serde_json::json!("error"); canonical["errorKind"] = serde_json::json!("damaged"); canonical["message"] = serde_json::json!(error); }
+                            canonical["acceptedNoOpReceipts"] = serde_json::json!(
+                                document.no_op_receipts.into_iter()
+                                    .filter(|row| dates.binary_search(&row.lived_date).is_ok())
+                                    .collect::<Vec<_>>()
+                            );
+                        }
+                        Err(error) => {
+                            canonical["state"] = serde_json::json!("error");
+                            canonical["errorKind"] = serde_json::json!("damaged");
+                            canonical["message"] = serde_json::json!(error);
+                        }
                     }
-                },
+                }
                 Ok(None) => canonical["state"] = serde_json::json!("missing"),
-                Err(error) => { canonical["state"] = serde_json::json!("error"); canonical["errorKind"] = serde_json::json!("unavailable"); canonical["message"] = serde_json::json!(error); }
+                Err(error) => {
+                    canonical["state"] = serde_json::json!("error");
+                    canonical["errorKind"] = serde_json::json!("unavailable");
+                    canonical["message"] = serde_json::json!(error);
+                }
             }
+
+            let definition_path = root.join(HABIT_DEFINITIONS_RELATIVE_PATH);
+            definition_target_binding = Some(habit_definition_target_binding(&definition_path));
+            match self.habit_definition_store.load(&definition_path) {
+                Ok(Some(bytes)) => {
+                    catalog_revision = Some(document_revision(&bytes));
+                    match parse_local_habit_definitions(&bytes, &current_timestamp) {
+                        Ok(parsed) => {
+                            catalog_state = "ready".into();
+                            definitions = parsed;
+                        }
+                        Err(error) => {
+                            catalog_state = "error".into();
+                            catalog_error = Some(error);
+                        }
+                    }
+                }
+                Ok(None) => catalog_state = "missing".into(),
+                Err(error) => {
+                    catalog_state = "error".into();
+                    catalog_error = Some(error);
+                }
+            }
+            names_configuration = load_habit_names(root);
+
             projection = match load_habit_snapshot_from_vault(&self.habit_snapshot_store, root) {
                 Ok(Some(bytes)) => {
                     projection_revision = Some(document_revision(&bytes));
-                    match project_snapshot_with_names_at_local_date(&bytes, &self.clock.current_lived_date(),
-                        &self.clock.current_date(), Vec::new(), Vec::new(), &load_habit_names(root)) {
+                    snapshot_bytes = Some(bytes.clone());
+                    match project_snapshot_with_names_at_local_date(
+                        &bytes,
+                        &current_lived_date,
+                        &current_local_date,
+                        Vec::new(),
+                        Vec::new(),
+                        &names_configuration,
+                    ) {
                         Ok(mut view) => {
                             for habit in &mut view.habits {
                                 habit.history.retain(|cell| dates.binary_search(&cell.date).is_ok());
                                 habit.recent.retain(|cell| dates.binary_search(&cell.date).is_ok());
                             }
                             view
-                        },
+                        }
                         Err(error) => HabitSnapshotView::error(error),
                     }
-                },
+                }
                 Ok(None) => HabitSnapshotView::missing(),
                 Err(error) => HabitSnapshotView::error(error),
             };
+            if let Some(error) = catalog_error {
+                projection.read_error = Some(error);
+            }
         }
-        Ok(HabitCompletionHistoryView { domain:"habits", from_date:dates[0].clone(),
-            to_date:dates[dates.len()-1].clone(), requested_dates:dates.to_vec(),
-            vault_path:vault.as_ref().map(|root| root.to_string_lossy().into_owned()), canonical, projection:HabitHistoryProjectionView::from_snapshot(projection, dates), projection_revision,
-            coverage:"Only explicit local completed/withdrawn changes establish local state. Unrecorded dates remain unknown. Change timestamps record saves, not activity time. Published snapshot goal thresholds, actual event times and source observations remain distinct; its freshness and coverage do not limit canonical local facts. Dated notes are context, not completion evidence. This read makes no writes or external calls." })
+
+        let mut habit_contexts = Vec::new();
+        if catalog_state != "error" {
+            let mut keys: std::collections::BTreeSet<String> = projection
+                .habits
+                .iter()
+                .map(|habit| habit.key.clone())
+                .collect();
+            keys.extend(definitions.habits.iter().map(|habit| habit.key.clone()));
+            for key in keys {
+                let definition = definitions.habits.iter().find(|habit| habit.key == key);
+                let source_view = projection.habit(&key);
+                let source_context = snapshot_bytes.as_deref().and_then(|bytes| {
+                    crate::habits::local_habit_source(
+                        bytes,
+                        &key,
+                        &current_lived_date,
+                        &current_local_date,
+                    )
+                    .ok()
+                    .flatten()
+                });
+                let source_exists = source_view.is_some();
+                let source_active = source_view.map(|habit| habit.active).unwrap_or(true);
+                let name = definition
+                    .filter(|definition| definition.created_locally || definition.name_override)
+                    .map(|definition| definition.name.clone())
+                    .or_else(|| source_context.as_ref().map(|source| source.name.clone()))
+                    .or_else(|| definition.map(|definition| definition.name.clone()))
+                    .unwrap_or_else(|| key.clone());
+                let current_goal = definition
+                    .map(|definition| definition.goal_on(&current_lived_date))
+                    .unwrap_or_else(|| source_context.as_ref().and_then(|source| source.goal.clone()));
+                let source_goal_history = definition
+                    .map(|definition| definition.source_goal_history.clone())
+                    .or_else(|| source_context.map(|source| source.goal_history))
+                    .unwrap_or_default();
+                let active = definition
+                    .map(|definition| definition.active_on(&current_lived_date, source_active))
+                    .unwrap_or(source_active);
+                let localized_names = names_configuration.names_for_history(&key);
+                habit_contexts.push(HabitHistoryHabitContext {
+                    key,
+                    name,
+                    localized_names,
+                    is_local_definition: definition.is_some(),
+                    created_locally: definition.is_some_and(|definition| definition.created_locally),
+                    source_exists,
+                    source_active,
+                    start_date: definition.and_then(|definition| definition.start_date.clone()),
+                    active,
+                    current_goal,
+                    base_goal: definition.and_then(|definition| definition.base_goal.clone()),
+                    source_goal_history,
+                    goal_revisions: definition
+                        .map(|definition| definition.goal_revisions.clone())
+                        .unwrap_or_default(),
+                    lifecycle_changes: definition
+                        .map(|definition| definition.lifecycle_changes.clone())
+                        .unwrap_or_default(),
+                });
+            }
+        }
+
+        Ok(HabitCompletionHistoryView {
+            domain: "habits",
+            from_date: dates[0].clone(),
+            to_date: dates[dates.len() - 1].clone(),
+            current_lived_date: vault.as_ref().map(|_| current_lived_date),
+            requested_dates: dates.to_vec(),
+            vault_path: vault.as_ref().map(|root| root.to_string_lossy().into_owned()),
+            canonical,
+            projection: HabitHistoryProjectionView::from_snapshot(projection, dates),
+            projection_revision,
+            catalog_state,
+            catalog_revision,
+            definition_target_binding,
+            habit_contexts,
+            coverage: "Only explicit local completed/withdrawn changes establish local state. Unrecorded dates remain unknown. Change timestamps record saves, not activity time. Published snapshot goal thresholds, actual event times and source observations remain distinct; its freshness and coverage do not limit canonical local facts. Dated notes are context, not completion evidence. This read makes no writes or external calls.",
+        })
+    }
+
+    /// Read bounded local and projected history pages, then derive product
+    /// statistics here at the Rust application/domain boundary. The web layer
+    /// receives presentation-ready values and does not interpret outcomes.
+    pub fn read_habit_history_statistics(
+        &self,
+        habit_key: &str,
+    ) -> Result<HabitHistoryStatisticsView, String> {
+        let today = self.clock.current_lived_date();
+        let overview = self.read_habit_completion_history(std::slice::from_ref(&today))?;
+        let context = overview
+            .habit_contexts
+            .iter()
+            .find(|context| context.key == habit_key)
+            .cloned()
+            .ok_or_else(|| format!("Habit history context is unavailable: {habit_key}"))?;
+        let earliest_canonical = overview
+            .canonical
+            .get("earliestLivedDateByHabit")
+            .and_then(|dates| dates.get(habit_key))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        let projection_start = overview
+            .projection
+            .range_label
+            .as_deref()
+            .and_then(|range| range.split_once(" — ").map(|(from, _)| from.to_string()));
+        let range_from = [
+            context.start_date.clone(),
+            earliest_canonical,
+            projection_start,
+            Some(today.clone()),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or_else(|| today.clone());
+
+        let canonical_state = overview
+            .canonical
+            .get("state")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("error")
+            .to_string();
+        let canonical_state_for_fact = match canonical_state.as_str() {
+            "ready" => CanonicalHistoryState::Ready,
+            "missing" | "unconfigured" => CanonicalHistoryState::Missing,
+            _ => CanonicalHistoryState::Error,
+        };
+        let canonical_revision = overview
+            .canonical
+            .get("revision")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        let projection_revision = overview.projection_revision.clone();
+        let catalog_revision = overview.catalog_revision.clone();
+        let definition_target_binding = overview.definition_target_binding.clone();
+        let projection_state = overview.projection.state;
+
+        let mut facts = Vec::new();
+        let mut from = range_from.clone();
+        loop {
+            let mut dates = Vec::new();
+            let mut date = CalendarDate::parse(&from)
+                .ok_or_else(|| format!("Invalid Habit history start date: {from}"))?;
+            for _ in 0..366 {
+                let lived_date = date.to_string();
+                if lived_date > today {
+                    break;
+                }
+                dates.push(lived_date.clone());
+                if lived_date == today {
+                    break;
+                }
+                date = date.plus_days(1);
+            }
+            if dates.is_empty() {
+                break;
+            }
+
+            let page = self.read_habit_completion_history(&dates)?;
+            if page.catalog_revision != catalog_revision
+                || page.catalog_state != overview.catalog_state
+                || page.canonical.get("state").and_then(serde_json::Value::as_str)
+                    != Some(canonical_state.as_str())
+                || page.canonical.get("revision").and_then(serde_json::Value::as_str)
+                    != canonical_revision.as_deref()
+                || page.projection_revision != projection_revision
+                || page.projection.state != projection_state
+                || page.definition_target_binding != definition_target_binding
+                || page.current_lived_date.as_deref() != Some(today.as_str())
+            {
+                return Err("Habit history changed while statistics were being read".into());
+            }
+            let mut local_by_date = BTreeMap::<
+                String,
+                (
+                    HabitLocalCompletionState,
+                    Option<String>,
+                    Option<String>,
+                ),
+            >::new();
+            if let Some(records) = page
+                .canonical
+                .get("records")
+                .and_then(serde_json::Value::as_array)
+            {
+                for record in records {
+                    if record.get("habitKey").and_then(serde_json::Value::as_str) != Some(habit_key) {
+                        continue;
+                    }
+                    let Some(lived_date) = record.get("livedDate").and_then(serde_json::Value::as_str) else {
+                        continue;
+                    };
+                    let state = match record.get("state").and_then(serde_json::Value::as_str) {
+                        Some("completed") => HabitLocalCompletionState::Completed,
+                        Some("withdrawn") => HabitLocalCompletionState::Withdrawn,
+                        _ => HabitLocalCompletionState::None,
+                    };
+                    local_by_date.insert(
+                        lived_date.to_string(),
+                        (
+                            state,
+                            record
+                                .get("recordedCompletedAt")
+                                .and_then(serde_json::Value::as_str)
+                                .map(str::to_string),
+                            record
+                                .get("modifiedAt")
+                                .and_then(serde_json::Value::as_str)
+                                .map(str::to_string),
+                        ),
+                    );
+                }
+            }
+            let projected = page
+                .projection
+                .habits
+                .iter()
+                .find(|habit| habit.key == habit_key)
+                .map(|habit| {
+                    habit
+                        .history
+                        .iter()
+                        .map(|cell| (cell.date.clone(), cell.clone()))
+                        .collect::<BTreeMap<_, _>>()
+                })
+                .unwrap_or_default();
+            for date in &dates {
+                let (local_state, completed_at, local_changed_at) = local_by_date
+                    .get(date)
+                    .cloned()
+                    .unwrap_or((HabitLocalCompletionState::None, None, None));
+                facts.push(HabitHistoryFact {
+                    date: date.clone(),
+                    canonical_state: canonical_state_for_fact,
+                    local_state,
+                    completed_at,
+                    local_changed_at,
+                    projected: projected.get(date).cloned(),
+                });
+            }
+
+            let page_end = dates.last().expect("nonempty page");
+            if page_end == &today {
+                break;
+            }
+            from = CalendarDate::parse(page_end)
+                .expect("validated page end")
+                .plus_days(1)
+                .to_string();
+        }
+
+        let stats = derive_habit_history_statistics(
+            &context,
+            &facts,
+            &range_from,
+            &today,
+            &today,
+            projection_state,
+        );
+        Ok(HabitHistoryStatisticsView {
+            habit_key: habit_key.to_string(),
+            stats,
+            historical_goals: historical_goal_segments(&context, &today),
+            range_from,
+            range_to: today.clone(),
+            current_lived_date: today,
+            canonical_state,
+            canonical_revision,
+            projection_state,
+            projection_revision,
+            catalog_revision,
+            definition_target_binding,
+            coverage: overview.coverage,
+        })
     }
 
     pub fn habits(&self) -> Result<HabitSnapshotView, String> {
@@ -3665,6 +4066,7 @@ where
                     base_goal: Some(goal),
                     source_goal_history: Vec::new(),
                     goal_revisions: Vec::new(),
+                    lifecycle_changes: Vec::new(),
                 });
             }
             "edit" => {
@@ -3682,6 +4084,7 @@ where
                         base_goal: source.goal,
                         source_goal_history: source.goal_history,
                         goal_revisions: Vec::new(),
+                        lifecycle_changes: Vec::new(),
                     });
                     document
                         .habits
@@ -3734,6 +4137,157 @@ where
                         .fingerprint
         }) {
             return Err("Habit catalog 已变化，保存结果尚未确认；请重新读取后再操作。".into());
+        }
+        self.habits()
+    }
+
+    pub fn set_habit_lifecycle(
+        &self,
+        input: HabitLifecycleMutationInput,
+    ) -> Result<HabitSnapshotView, String> {
+        validate_habit_key(&input.habit_key)?;
+        validate_local_identifier(&input.change_id, "Habit lifecycle operation id")?;
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or_else(|| "请先选择 Vault，再更新本地 Habit 状态。".to_string())?;
+        validate_compatible_vault(&vault)
+            .map_err(|error| format!("{error}；Habit 状态仍可重试，未写入任何内容。"))?;
+        let path = vault.join(HABIT_DEFINITIONS_RELATIVE_PATH);
+        if habit_definition_target_binding(&path) != input.target_binding {
+            return Err("Vault 或 Habit catalog 目标已经变化。请重新读取 Habits 后再操作。".into());
+        }
+        let current_timestamp = self.clock.current_timestamp_label();
+        validate_timestamp_label(&current_timestamp)?;
+        let current_lived_date = self.clock.current_lived_date();
+        let current = self.habit_definition_store.load(&path)?;
+        let mut document = match current.as_deref() {
+            Some(bytes) => parse_local_habit_definitions(bytes, &current_timestamp)?,
+            None => LocalHabitDefinitionsDocument::default(),
+        };
+        let fingerprint = habit_lifecycle_fingerprint(&input)?;
+        if let Some(receipt) = document
+            .operations
+            .iter()
+            .find(|receipt| receipt.id == input.change_id)
+        {
+            if receipt.fingerprint == fingerprint {
+                return self.habits();
+            }
+            return Err(
+                "Habit 操作标识已用于其他内容；请重新读取后再保存。未写入任何内容。".into(),
+            );
+        }
+        match current.as_deref() {
+            Some(bytes) => {
+                let current_revision = document_revision(bytes);
+                if input.expected_revision.as_deref() != Some(current_revision.as_str()) {
+                    return Err(
+                        "本地 Habit catalog 已在外部变化。请重新读取 Habits 后再操作。".into(),
+                    );
+                }
+            }
+            None if input.expected_revision.is_some() => {
+                return Err(
+                    "本地 Habit catalog 已不存在。请重新读取后再操作；未创建替代数据。".into(),
+                );
+            }
+            None => {}
+        }
+
+        let current_view = self.habits()?;
+        let current_habit = current_view.habit(&input.habit_key).ok_or_else(|| {
+            "没有可验证的 Habit 来源或本地定义；未更新生命周期。".to_string()
+        })?;
+        let existing_index = document
+            .habits
+            .iter()
+            .position(|habit| habit.key == input.habit_key);
+        if existing_index.is_none() {
+            let snapshot = self
+                .habit_snapshot_store
+                .load(&vault.join(SNAPSHOT_RELATIVE_PATH))?
+                .ok_or_else(|| "没有可验证的来源 Habit；未更新生命周期。".to_string())?;
+            let snapshot_revision = document_revision(&snapshot);
+            if input.expected_snapshot_revision.as_deref() != Some(snapshot_revision.as_str())
+                || current_view.snapshot_revision.as_deref() != Some(snapshot_revision.as_str())
+            {
+                return Err("Habits 来源快照已变化。请重新读取后再操作，来源未被覆盖。".into());
+            }
+            let source = crate::habits::local_habit_source(
+                &snapshot,
+                &input.habit_key,
+                &current_lived_date,
+                &self.clock.current_date(),
+            )?
+            .ok_or_else(|| "来源中没有这个稳定 Habit key；未更新生命周期。".to_string())?;
+            document.habits.push(LocalHabitDefinition {
+                key: input.habit_key.clone(),
+                name: source.name,
+                name_override: false,
+                emoji: None,
+                group: None,
+                start_date: None,
+                created_locally: false,
+                base_goal: source.goal,
+                source_goal_history: source.goal_history,
+                goal_revisions: Vec::new(),
+                lifecycle_changes: Vec::new(),
+            });
+        }
+        let definition = document
+            .habits
+            .iter_mut()
+            .find(|habit| habit.key == input.habit_key)
+            .expect("definition was present or created from a verified source");
+        if current_habit.active != input.active {
+            definition.lifecycle_changes.push(LocalHabitLifecycleChange {
+                id: input.change_id.clone(),
+                kind: if input.active {
+                    LocalHabitLifecycleKind::Restored
+                } else {
+                    LocalHabitLifecycleKind::Deactivated
+                },
+                effective_on: current_lived_date,
+                changed_at: current_timestamp.clone(),
+            });
+        }
+        // v1 remains readable and unmodified until an authorized lifecycle write.
+        // The first such write upgrades the same file in place to strict v2.
+        document.schema_version = 2;
+        document.operations.push(LocalHabitOperationReceipt {
+            id: input.change_id,
+            fingerprint,
+        });
+        let encoded = serde_json::to_vec_pretty(&document)
+            .map_err(|error| format!("Habit catalog 编码失败；未写入任何内容：{error}"))?;
+        match current.as_deref() {
+            Some(bytes) => self
+                .habit_definition_store
+                .save_if_unchanged(&path, bytes, &encoded)?,
+            None => self.habit_definition_store.create_new(&path, &encoded)?,
+        }
+        let readback = self
+            .habit_definition_store
+            .load(&path)?
+            .ok_or_else(|| "Habit catalog 保存后无法读回；请重新读取核对。".to_string())?;
+        let verified = parse_local_habit_definitions(&readback, &current_timestamp)?;
+        if verified.schema_version != 2
+            || !verified.operations.iter().any(|receipt| {
+                receipt.id == document.operations.last().expect("operation was added").id
+                    && receipt.fingerprint
+                        == document
+                            .operations
+                            .last()
+                            .expect("operation was added")
+                            .fingerprint
+            })
+            || !verified
+                .habits
+                .iter()
+                .any(|habit| habit.key == input.habit_key)
+        {
+            return Err("Habit 生命周期已写入，但 catalog 读回尚未确认；请重新读取后核对。".into());
         }
         self.habits()
     }
@@ -5147,6 +5701,12 @@ fn habit_definition_fingerprint(
         ))
     }
     .map_err(|error| format!("Habit 操作无法生成稳定指纹：{error}"))?;
+    Ok(document_revision(&canonical))
+}
+
+fn habit_lifecycle_fingerprint(input: &HabitLifecycleMutationInput) -> Result<String, String> {
+    let canonical = serde_json::to_vec(&(input.habit_key.as_str(), input.active))
+        .map_err(|error| format!("Habit 生命周期操作无法生成稳定指纹：{error}"))?;
     Ok(document_revision(&canonical))
 }
 

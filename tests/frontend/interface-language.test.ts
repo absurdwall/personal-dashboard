@@ -521,10 +521,10 @@ test("historical correction copy and catalog boundaries are bilingual", () => {
 });
 
 test("local Habit catalog diagnostics translate labels without changing dynamic values", () => {
-  const unsupported = "本地 Habit catalog schemaVersion 7 不受支持；当前只读取版本 1。";
+  const unsupported = "本地 Habit catalog schemaVersion 7 不受支持；当前只读取版本 1 和 2。";
   assert.equal(
     localizeApplicationError(unsupported, "en"),
-    "Local Habit catalog schemaVersion 7 is unsupported; only version 1 can be read.",
+    "Local Habit catalog schemaVersion 7 is unsupported; only versions 1 and 2 can be read.",
   );
   assert.equal(
     localizeApplicationError(
@@ -549,10 +549,10 @@ test("local Habit catalog diagnostics translate labels without changing dynamic 
   );
   assert.equal(
     localizeApplicationError(
-      "Local Habit catalog schemaVersion 9 is unsupported; only version 1 can be read.",
+      "Local Habit catalog schemaVersion 9 is unsupported; only versions 1 and 2 can be read.",
       "zh",
     ),
-    "本地 Habit catalog schemaVersion 9 不受支持；当前只读取版本 1。",
+    "本地 Habit catalog schemaVersion 9 不受支持；当前只读取版本 1 和 2。",
   );
   assert.equal(
     localizeApplicationError(
