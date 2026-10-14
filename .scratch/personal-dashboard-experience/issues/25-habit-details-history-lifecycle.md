@@ -4,13 +4,13 @@
 
 **Blocked by:** 24 — Habit 新增、编辑与目标设置
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 **Triage:** ready-for-agent
 **ID:** PDEX-25
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** open
-**Implementation:** not started
+**Implementation:** in-progress
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -47,6 +47,6 @@ PDEX-SPEC-02 stories 73–74、80–82、86–87；共同承担 1–3、88–91 
 ## Execution
 
 - 2026-10-11：经用户批准发布本地完整票体，未分配assignee、未claim、未开始实现。
-- 后续授权claim时记录实际owner、working branch、base commit、增量实现/评审/
-  验收commits、结果和限制。每票可多次commit，完整验收前不关闭。
+- 2026-10-14：授权在独立 `codex/pdex-25-restart` 分支实现本票，owner `/root/implement_pdex21`，claim base `206c98aa11371b8b8f044871baac3de0f9ecde87`，worktree `/private/tmp/pdex-restart-20261014.noindex/pdex-25`。该base已包含PDEX-24集成；parent spec及完整ticket均不修改。
+- 实现、验收与限制逐步补记；完整验收前不关闭本票。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。

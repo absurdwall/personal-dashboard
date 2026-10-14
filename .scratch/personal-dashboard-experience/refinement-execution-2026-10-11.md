@@ -202,3 +202,14 @@ no integration merge, install, remote operation or main change was recorded.
 - PDEX-21 remains `in-progress`; no package installation, packaged-App test,
   normal Vault write, remote operation or `main` operation occurred. PDEX-26
   still owns installed-App acceptance.
+
+
+## PDEX-25 local ticket claim — 2026-10-14
+
+- Owner `/root/implement_pdex21`; branch `codex/pdex-25-restart`; isolated
+  worktree `/private/tmp/pdex-restart-20261014.noindex/pdex-25`; exact claim/base
+  commit `206c98aa11371b8b8f044871baac3de0f9ecde87`. This base is the current
+  PDEX-24-integrated restart integration tip.
+- PDEX-25 is limited to Habit selected-detail/history/lifecycle behavior. The
+  parent PDEX-SPEC-02 and published PDEX-25 body are unchanged. The worker branch
+  remains separate; no integration merge has been performed.
