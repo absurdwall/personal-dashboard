@@ -390,3 +390,11 @@ source-bound candidate are recorded in
 PDEX-21/22/23 remain claimed/in progress, PDEX-26 remains open and pending its
 dependencies, and PDEX-SPEC-02 remains open. The candidate is not installed or
 launched; independent native acceptance and user review remain outstanding.
+
+Independent review then identified two scoped fixes on the same integration
+branch: PDEX-22 Calendar draft summaries/clear controls and PDEX-23 recording
+Cancel layout. Commit `20349aec369609ef02a9a1e7947417bc8036f6ac` (parent
+`2b9ea3f9ec638e13cd580c6ea8a7a900db43719c`) adds both fixes and their
+regressions. Its source-bound candidate and verification are recorded in the
+review checkpoint linked above. It remains uninstalled pending review; ticket
+and parent statuses remain unchanged.

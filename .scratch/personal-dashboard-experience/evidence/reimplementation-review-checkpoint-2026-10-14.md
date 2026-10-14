@@ -39,3 +39,23 @@ At 969×723, production WebKit layout checks retain about 172px of message histo
 - Built with the checked-in production config and an isolated Cargo target. No profile, Vault or fixed-clock override was passed. The candidate was not installed or launched. The existing review profile and Synthetic Vault were left in place for the independent reviewer.
 
 PDEX-21/22/23 remain claimed/in progress. PDEX-26 remains `ready-for-agent` / `open` and unclaimed; this source-bound review candidate does not start or satisfy its packaged acceptance gate. PDEX-SPEC-02 remains `ready-for-agent` / `open`, with its stage updated to local implementation in progress. Packaged save/readback, full pointer/drag/IME/voice acceptance, and user acceptance remain outstanding. No ticket or parent status was closed.
+
+## Follow-up after independent review — 2026-10-14
+
+The reviewer reported two bounded regressions in the preceding candidate. Calendar's compact editor updated its saved draft but left collapsed list/schedule summaries and clear controls stale until another action. The recording layout fixture also omitted the production-visible Cancel control, which occupied an extra grid row and reduced history and Context body space.
+
+- Integration fix commit: `20349aec369609ef02a9a1e7947417bc8036f6ac`, parent `2b9ea3f9ec638e13cd580c6ea8a7a900db43719c`, on `codex/dashboard-experience-refinement-reimplementation`.
+- Calendar `input`/`change` now use the compact-surface draft path, which refreshes collapsed summaries and clear actions before Save. The behavioral regression edits list/date/start/end, checks updates on `input`, exercises both clear actions, cancels, and confirms no task write or source mutation.
+- Collaboration places the visible recording Cancel control on the microphone/Send action row. The 969×723 lilac WebKit regression uses a long draft, live preview, stop state, visible Cancel, expanded capability notes, and open Context; it checks that Cancel is pointer-reachable and aligned with the other controls, message history is at least as tall as the composer, and the first Context body has at least 20px of visible, pointer-reachable area.
+- `npm run build` passed. `node --test tests/frontend/collaboration-layout.test.ts` passed 15/15; `node --test tests/frontend/compact-calendar.test.ts` passed 23/23; `git diff --check` passed.
+
+### New source-bound macOS candidate
+
+- Built with `PERSONAL_DASHBOARD_BUILD_REVISION=20349aec369609ef02a9a1e7947417bc8036f6ac` and isolated `CARGO_TARGET_DIR=/tmp/pdex-review-20261014.noindex/reimplementation-20261014-calendar-voice-candidate`. No profile, Vault, or clock override was supplied.
+- Candidate: `/tmp/pdex-review-20261014.noindex/reimplementation-20261014-calendar-voice-candidate/release/bundle/macos/Personal Dashboard.app`. Bundle identifier: `com.tortillaflat.personal-dashboard`; executable: `Contents/MacOS/personal-dashboard`; SHA-256: `e29fd8670b5bd16e21bbf303ecd84366f2ea3c7c63a61b79a43e1ac075573116`.
+- The executable contains the full source revision. `codesign --verify --deep --strict` passed; the bundle has an ad-hoc signature. Tauri skipped notarization because notarization credentials were not configured.
+- This candidate has not been installed or launched. It awaits the reviewer's check of the Calendar and recording-layout fixes. The installed App and user profile remain untouched.
+
+The reviewer separately reported a synthetic native save/readback on a `.noindex` copy of the older `e3b7cc` source: a synthetic Current plan changed from 15:00–16:00 to 16:15–17:00 and remained after reopening Morning and Daytime; their reported record SHA-256 was `a88c7594d5026d4223fe7962db9bd99aee057d8ee53e0596ea4517c6d5086929`. They reported changing only that synthetic fixture, with no real Vault/profile mutation. This evidence does not cover commit `20349ae` or either newly repaired issue.
+
+Ticket and parent statuses were not changed. PDEX-21/22/23 remain claimed/in progress; PDEX-26 remains open and dependency-blocked; PDEX-SPEC-02 remains open. The new candidate is not installed-App acceptance or a ticket closeout.
