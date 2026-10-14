@@ -1,4 +1,7 @@
 export type TaskExecutionEnd = Readonly<{ date: string; time: string }>;
+export type TaskPriority = "high" | "medium" | "low";
+export type TaskPriorityFilter = "all" | TaskPriority | "none";
+export type TaskPrioritySort = "default" | "priority";
 
 export type TaskSchedulePresentation = Readonly<{
   date: string | null;
@@ -50,6 +53,41 @@ export function taskListIdFromScope(scope: TaskListScope): string | null {
   return scope.startsWith("list:") ? scope.slice("list:".length) : null;
 }
 
+/** Filters are presentation-only. Priority sorting keeps incoming order inside each tier. */
+export function taskPropertiesPresentation<T extends Readonly<{
+  priority?: TaskPriority | null;
+  tagIds?: readonly string[];
+}>>(
+  tasks: readonly T[],
+  priorityFilter: TaskPriorityFilter,
+  tagId: string | null,
+  sort: TaskPrioritySort,
+): readonly T[] {
+  const filtered = tasks.filter((task) => {
+    const priority = task.priority ?? null;
+    const matchesPriority = priorityFilter === "all"
+      ? true
+      : priorityFilter === "none"
+        ? priority === null
+        : priority === priorityFilter;
+    return matchesPriority && (tagId === null || task.tagIds?.includes(tagId) === true);
+  });
+  if (sort === "default") return filtered;
+  const rank: Record<TaskPriority | "none", number> = {
+    high: 0,
+    medium: 1,
+    low: 2,
+    none: 3,
+  };
+  return filtered
+    .map((task, index) => ({ task, index }))
+    .sort((left, right) =>
+      rank[left.task.priority ?? "none"] - rank[right.task.priority ?? "none"] ||
+      left.index - right.index,
+    )
+    .map(({ task }) => task);
+}
+
 export function taskEditOperationKey(
   edit: Readonly<{
     targetBinding: string;
@@ -60,6 +98,8 @@ export function taskEditOperationKey(
     time: string | null;
     listId: string;
     executionEnd?: TaskExecutionEnd | null;
+    priority?: TaskPriority | null;
+    tagIds?: readonly string[];
   }>,
 ): string {
   return JSON.stringify([
@@ -72,6 +112,8 @@ export function taskEditOperationKey(
     edit.time,
     edit.listId,
     edit.executionEnd === undefined ? "preserve" : edit.executionEnd,
+    edit.priority === undefined ? "preserve" : edit.priority,
+    edit.tagIds === undefined ? "preserve" : edit.tagIds,
   ]);
 }
 
@@ -160,6 +202,8 @@ export type TaskUpdateEdit = Readonly<{
   time: string | null;
   listId: string;
   executionEnd?: TaskExecutionEnd | null;
+  priority?: TaskPriority | null;
+  tagIds?: readonly string[];
 }>;
 
 export type TaskUpdateInput = TaskUpdateEdit &
@@ -179,6 +223,8 @@ export type TaskUpdateView = Readonly<{
     time: string | null;
     listId: string;
     executionEnd?: TaskExecutionEnd | null;
+    priority?: TaskPriority | null;
+    tagIds?: readonly string[];
   }>[];
 }>;
 
@@ -225,7 +271,10 @@ export async function performTaskUpdateRequest<View extends TaskUpdateView>(
       candidate.listId === edit.listId &&
       (edit.executionEnd === undefined ||
         (candidate.executionEnd?.date === edit.executionEnd?.date &&
-         candidate.executionEnd?.time === edit.executionEnd?.time)),
+         candidate.executionEnd?.time === edit.executionEnd?.time)) &&
+      (edit.priority === undefined || candidate.priority === edit.priority) &&
+      (edit.tagIds === undefined ||
+        JSON.stringify(candidate.tagIds ?? []) === JSON.stringify(edit.tagIds)),
   );
   const confirmed = taskMutationConfirmed(
     responseIsCurrent,
