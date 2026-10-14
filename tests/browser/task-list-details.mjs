@@ -379,6 +379,33 @@ test('Save and Cancel share one action row and Cancel discards the Task draft',a
   } finally { await f.close(); }
 });
 
+test('Cancel restores saved priority and tags before a later unrelated Task save',async()=>{
+  const f=await pageFixture();const {page}=f;
+  try {
+    const row=page.locator('#tasks-list [data-task-editor-row=point]');
+    await row.locator('.task-title-button').click();
+    const panel=page.locator('[data-task-editor-dialog=point]');
+    const priority=panel.locator('select[data-task-priority]');
+    const tags=panel.locator('details[data-task-tags-details]');
+    await panel.locator('details[data-task-priority-details] > summary').click();
+    await priority.selectOption('high');
+    await tags.locator(':scope > summary').click();
+    await panel.locator('input[data-task-tag-id=work]').check();
+    await panel.locator('[data-task-editor-close]').click();
+
+    await row.locator('.task-title-button').click();
+    assert.equal(await priority.inputValue(),'none','Cancel restores the saved priority');
+    assert.equal(await panel.locator('input[data-task-tag-id=work]').isChecked(),false,'Cancel restores the saved tag selection');
+    await panel.locator('[data-task-content]').fill('A later unrelated edit');
+    await panel.locator('button[type=submit]').click();
+    await page.waitForFunction(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point').content==='A later unrelated edit');
+
+    const saved=await page.evaluate(()=>window.__fixture.tasks.tasks.find(x=>x.id==='point'));
+    assert.equal(saved.priority,'none','the later content save does not submit canceled priority');
+    assert.deepEqual(saved.tagIds,[],'the later content save does not submit canceled tags');
+  } finally { await f.close(); }
+});
+
 
 test('selected detail edits one Task and preserves unmodified endpoints and identity',async()=>{
   const f=await pageFixture();const {page}=f;

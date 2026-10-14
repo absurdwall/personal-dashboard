@@ -10502,6 +10502,19 @@ function taskEditor(
       list.value = task.listId;
       endDate.value = task.executionEnd?.date ?? "";
       endTime.value = task.executionEnd?.time ?? "";
+      const savedPriority = task.priority ?? "none";
+      const priorityDetails = editorForm.querySelector<HTMLElement>("[data-task-priority-details]");
+      const prioritySelect = priorityDetails?.querySelector<HTMLSelectElement>("[data-task-priority]");
+      if (prioritySelect) prioritySelect.value = savedPriority;
+      const priorityValue = priorityDetails?.querySelector<HTMLElement>(".task-property-value");
+      if (priorityValue) priorityValue.textContent = t(taskPriorityCopyKey(savedPriority));
+      const savedTagIds = new Set(task.tagIds ?? []);
+      const tagsDetails = editorForm.querySelector<HTMLElement>("[data-task-tags-details]");
+      tagsDetails?.querySelectorAll<HTMLInputElement>("input[data-task-tag-id]").forEach((input) => {
+        input.checked = savedTagIds.has(input.dataset.taskTagId ?? "");
+      });
+      const tagsValue = tagsDetails?.querySelector<HTMLElement>(".task-property-value");
+      if (tagsValue) tagsValue.textContent = taskTagSummary(currentTasksView ?? view, [...savedTagIds]);
       const completionDateInput = editorForm.querySelector<HTMLInputElement>("[data-task-completion-date]");
       if (completionDateInput) completionDateInput.value = task.completion?.completedOn ?? "";
       const completionTimeInput = editorForm.querySelector<HTMLInputElement>("[data-task-completion-time]");
