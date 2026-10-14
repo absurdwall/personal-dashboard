@@ -15,6 +15,7 @@ import {
   refreshTodayPresentation,
 } from "./today-refresh.js";
 import {
+  TODAY_AXIS_LABEL_MINIMUM_MINUTES,
   axisMarkerLayout,
   axisOverlapPlacements,
   clockResultMatchesSession,
@@ -1430,6 +1431,12 @@ const todayBlockCount = document.querySelector<HTMLElement>("#today-block-count"
 const todayPlanEmpty = document.querySelector<HTMLElement>("#today-plan-empty");
 const todayContinuousAxis = document.querySelector<HTMLElement>("#today-continuous-axis");
 const todayAxisScrollSurface = document.querySelector<HTMLElement>("#today-axis-scroll-surface");
+const todayAxisTaskPopup = document.querySelector<HTMLDialogElement>("#today-axis-task-popup");
+const todayAxisTaskPopupHeading = document.querySelector<HTMLElement>("#today-axis-task-popup-heading");
+const todayAxisTaskPopupContent = document.querySelector<HTMLElement>("#today-axis-task-popup-content");
+const todayAxisTaskPopupStatus = document.querySelector<HTMLElement>("#today-axis-task-popup-status");
+const todayAxisTaskPopupClose = document.querySelector<HTMLButtonElement>("#today-axis-task-popup-close");
+let todayAxisTaskPopupOpener: HTMLElement | null = null;
 const todayHourTicks = document.querySelector<HTMLElement>("#today-hour-ticks");
 const todayCurrentArrangementUnlocated = document.querySelector<HTMLElement>("#today-current-arrangement-unlocated");
 const todayUnlocatedTimeRegion = document.querySelector<HTMLElement>("#today-unlocated-time-region");
@@ -5616,7 +5623,9 @@ function todayTimelineItem(block: MorningBlockView): HTMLLIElement {
 
 let todayAxisEarlyExpanded = false;
 let todayAxisLateExpanded = false;
+let todayAxisZoomLevel = 0;
 let todayAxisRenderedDate: string | null = null;
+const todayAxisZoomHeights = [null, "28px", "40px", "56px"] as const;
 function axisBounds(): readonly [number, number] {
   return [todayAxisEarlyExpanded ? 240 : 360, todayAxisLateExpanded ? 1680 : 1440];
 }
@@ -5655,7 +5664,7 @@ function axisEntryTimeLabel(entry: TimeAxisEntryView, lane?: TodayAxisLaneId): s
     return t("today.unlocatedLabel");
   }
   const start = formatAxisMinute(entry.startMinute);
-  if (entry.planPrecision === "broad") return `${entry.period} · ${t("today.planApproximateReference", { time: start })}`;
+  if (entry.planPrecision === "broad") return entry.period || t("today.planApproximatePoint");
   if (entry.planPrecision === "approximatePoint") {
     const label = t("today.planApproximateReference", { time: start });
     return entry.startMinute >= 1440 ? `${label} · ${nextAxisDate(currentTodayView?.date ?? entry.sourceDate)}` : label;
@@ -5677,8 +5686,10 @@ function appendAxisEntryTimeLabel(
     if (entry.period) target.append(`${entry.period} · `);
     key = entry.period ? "today.unlocatedPlanLabel" :
       lane === "facts" || lane === "facts-unlocated" ? "today.unlocatedConfirmedFactLabel" : "today.unlocatedLabel";
-  } else if (!entry.task && (entry.planPrecision === "broad" || entry.planPrecision === "approximatePoint")) {
-    if (entry.planPrecision === "broad") target.append(`${entry.period} · `);
+  } else if (!entry.task && entry.planPrecision === "broad") {
+    target.textContent = entry.period || t("today.planApproximatePoint");
+    return;
+  } else if (!entry.task && entry.planPrecision === "approximatePoint") {
     key = "today.planApproximateReference";
     variables = { time: formatAxisMinute(entry.startMinute!) };
   } else {
@@ -6253,16 +6264,27 @@ function renderTodayTimeAxisEntries(
   ordered.forEach(({ entry, index }) => {
     detailElements.set(index, axisEntryDetails(entry, entry.lane, index));
   });
-  const lowerDetailEntries = ordered.filter(({ entry }) => entry.lane !== "arrangement");
+  const lowerDetailEntries = ordered.filter(({ entry }) => entry.lane === "facts");
   todayTimedDetails.replaceChildren(...lowerDetailEntries.map(({ index }) => detailElements.get(index)!));
   todayTimedDetails.toggleAttribute("hidden", lowerDetailEntries.length === 0);
   const [visibleStart, visibleEnd] = axisBounds();
   const timedEntries = ordered.filter(({ entry }) => entry.startMinute !== null &&
     entry.startMinute < visibleEnd && (entry.endMinute ?? entry.startMinute) >= visibleStart);
+  const hourHeight = Number.parseFloat(
+    getComputedStyle(todayContinuousAxis!).getPropertyValue("--today-axis-hour-height"),
+  );
+  const minimumLabelMinutes = Number.isFinite(hourHeight) && hourHeight > 0
+    ? Math.max(TODAY_AXIS_LABEL_MINIMUM_MINUTES, Math.ceil(32 / hourHeight * 60))
+    : TODAY_AXIS_LABEL_MINIMUM_MINUTES;
   const visibleEntries = timedEntries.map(({ entry: original, index }) => {
     const entry = { ...original, startMinute: Math.max(original.startMinute!, visibleStart),
       endMinute: original.endMinute === null ? null : Math.min(original.endMinute, visibleEnd) };
-    return { original, entry, index, markerLayout: axisMarkerLayout(entry, [visibleStart, visibleEnd]) };
+    return {
+      original,
+      entry,
+      index,
+      markerLayout: axisMarkerLayout(entry, [visibleStart, visibleEnd], minimumLabelMinutes),
+    };
   });
   const stackPlacements = axisOverlapPlacements(
     visibleEntries.map(({ entry }) => ({
@@ -6270,6 +6292,7 @@ function renderTodayTimeAxisEntries(
       endMinute: entry.endMinute,
     })),
     [visibleStart, visibleEnd],
+    minimumLabelMinutes,
   );
   // Dense collisions retain readable targets; the same axis can scroll
   // horizontally in a narrow window rather than clipping every card.
@@ -6293,7 +6316,9 @@ function renderTodayTimeAxisEntries(
       marker.classList.toggle("is-completed", entry.task?.state === "completed");
       marker.classList.toggle("is-time-passed", entry.task?.timePassed === true);
       if (entry.task) marker.dataset.taskId = entry.task.id;
-      const editablePlan = original.lane === "arrangement" && hasExactPlanTime(original) && original.planId && original.timeEditable &&
+      const editablePlan = original.lane === "arrangement" &&
+        (hasExactPlanTime(original) || original.planPrecision === "broad" || original.planPrecision === "approximatePoint") &&
+        original.planId && original.timeEditable &&
         !original.continuesFromPreviousDay && !original.continuesIntoNextDay;
       if (editablePlan) marker.dataset.planId = original.planId!;
       marker.style.setProperty("--axis-top", `${minutePosition(entry.startMinute) * 100}%`);
@@ -6351,6 +6376,10 @@ function renderTodayTimeAxisEntries(
           members.forEach((member) => member.classList.toggle("is-stack-front", member === marker));
           if (editablePlan) {
             openPlanTimeEditor(original);
+            return;
+          }
+          if (entry.task) {
+            openTodayAxisTaskPopup(entry.task.id, marker);
             return;
           }
           const target = detailElements.get(index);
@@ -6438,6 +6467,78 @@ function renderTodayTimeAxisEntries(
   todayTimedEmpty.hidden = entries.length + unlocatedArrangement.length + unlocatedFacts.length > 0;
 }
 
+function positionTodayAxisTaskPopup(): void {
+  if (!todayAxisTaskPopup?.open) return;
+  if (!todayAxisTaskPopupOpener?.isConnected) {
+    closeTodayAxisTaskPopup(false, false);
+    return;
+  }
+  const anchor = todayAxisTaskPopupOpener.getBoundingClientRect();
+  if (anchor.width === 0 && anchor.height === 0) {
+    closeTodayAxisTaskPopup(false, false);
+    return;
+  }
+  const popup = todayAxisTaskPopup.getBoundingClientRect();
+  const margin = 12;
+  const width = popup.width || Math.min(430, window.innerWidth - margin * 2);
+  const height = popup.height || Math.min(340, window.innerHeight - margin * 2);
+  const right = anchor.right + 8;
+  const leftOfAnchor = anchor.left - width - 8;
+  const left = right + width <= window.innerWidth - margin
+    ? right
+    : leftOfAnchor >= margin
+      ? leftOfAnchor
+      : Math.max(margin, Math.min(anchor.left, window.innerWidth - width - margin));
+  const top = Math.max(margin, Math.min(anchor.top, window.innerHeight - height - margin));
+  todayAxisTaskPopup.style.left = `${left}px`;
+  todayAxisTaskPopup.style.top = `${top}px`;
+}
+
+function closeTodayAxisTaskPopup(discardDraft = false, restoreFocus = true): void {
+  if (!todayAxisTaskPopup?.open) return;
+  const taskId = todayAxisTaskPopup.dataset.taskId;
+  const binding = currentTodayView?.tasks.targetBinding;
+  if (discardDraft && taskId && binding) taskEditDrafts.delete(taskDraftKey(binding, taskId));
+  todayAxisTaskPopup.dataset.restoreFocus = String(restoreFocus);
+  todayAxisTaskPopupContent?.replaceChildren();
+  todayAxisTaskPopup.close();
+}
+
+function openTodayAxisTaskPopup(taskId: string, marker: HTMLElement, preserveStatus = false): void {
+  const view = currentTodayView;
+  const stored = view?.tasks.tasks.find((candidate) => candidate.id === taskId);
+  if (!view || !stored || !todayAxisTaskPopup || !todayAxisTaskPopupContent || !todayAxisTaskPopupHeading) return;
+  const writable = canMutateTodayTasks({
+    todayOperationCount,
+    taskOperationCount,
+    hasTargetBinding: Boolean(view.tasks.targetBinding),
+    state: view.tasks.state,
+    isPresentationCurrent: todayPresentationFresh,
+  });
+  const row = taskEditor(stored, writable, view.tasks, "today", true);
+  const form = row.querySelector<HTMLFormElement>("form[data-task-editor]");
+  if (!form) return;
+  if (!preserveStatus && todayAxisTaskPopupStatus) {
+    todayAxisTaskPopupStatus.textContent = "";
+    delete todayAxisTaskPopupStatus.dataset.state;
+  }
+  form.classList.remove("task-editor-inline");
+  form.classList.add("today-axis-task-popup-form");
+  form.querySelector<HTMLButtonElement>("button[data-task-editor-close]")?.remove();
+  todayAxisTaskPopupHeading.removeAttribute("data-i18n");
+  todayAxisTaskPopupHeading.textContent = stored.name;
+  todayAxisTaskPopup.setAttribute("aria-label", t("tasks.editLabel", { task: stored.name }));
+  todayAxisTaskPopup.dataset.taskId = taskId;
+  todayAxisTaskPopup.dataset.restoreFocus = "true";
+  todayAxisTaskPopupOpener = marker.querySelector<HTMLElement>(".today-axis-marker-link") ?? marker;
+  todayAxisTaskPopupContent.replaceChildren(form);
+  if (!todayAxisTaskPopup.open) todayAxisTaskPopup.show();
+  window.requestAnimationFrame(() => {
+    positionTodayAxisTaskPopup();
+    form.querySelector<HTMLInputElement>("[data-task-name]")?.focus({ preventScroll: true });
+  });
+}
+
 function updateTodayTimeAxisClock(view: TodayView, currentTime = view.currentTime): void {
   if (!todayContinuousAxis) return;
   const currentMinute = currentTime ? livedAxisMinute(currentTime) : null;
@@ -6494,10 +6595,17 @@ function renderTodayTimeAxis(view: TodayView, currentTime = view.currentTime): v
     todayUnlocatedOverride = null;
     todaySidebarReadingPosition = null;
     const now = view.isToday && currentTime ? livedAxisMinute(currentTime) : null;
-    todayAxisEarlyExpanded = earlyCount > 0 || (now !== null && now < 360);
-    todayAxisLateExpanded = lateCount > 0 || (now !== null && now >= 1440);
+    todayAxisEarlyExpanded = now !== null && now < 360;
+    todayAxisLateExpanded = now !== null && now >= 1440;
   }
+  const zoomHeight = todayAxisZoomHeights[todayAxisZoomLevel];
+  if (zoomHeight) todayContinuousAxis.style.setProperty("--today-axis-hour-height", zoomHeight);
+  else todayContinuousAxis.style.removeProperty("--today-axis-hour-height");
   todayContinuousAxis.style.setProperty("--today-axis-plot-height", `calc(${(axisBounds()[1] - axisBounds()[0]) / 60} * var(--today-axis-hour-height))`);
+  const zoomOut = document.getElementById("today-axis-zoom-out") as HTMLButtonElement | null;
+  const zoomIn = document.getElementById("today-axis-zoom-in") as HTMLButtonElement | null;
+  if (zoomOut) zoomOut.disabled = todayAxisZoomLevel === 0;
+  if (zoomIn) zoomIn.disabled = todayAxisZoomLevel === todayAxisZoomHeights.length - 1;
   for (const [id, expanded] of [["today-expand-early", todayAxisEarlyExpanded], ["today-expand-late", todayAxisLateExpanded]] as const) {
     const button = document.getElementById(id);
     if (button) {
@@ -6593,6 +6701,28 @@ function toggleTodayAxisSegment(id: string): void {
   if (delta !== 0) {
     scrollSurface.scrollTo({ top: scrollSurface.scrollTop + delta, behavior: "instant" });
   }
+}
+
+function adjustTodayAxisZoom(delta: number): void {
+  if (!currentTodayView || !todayContinuousAxis) return;
+  const scrollSurface = todayAxisScrollSurface ?? workspaceInformation;
+  const viewport = scrollSurface?.getBoundingClientRect();
+  const plot = todayContinuousAxis.querySelector<HTMLElement>(".today-axis-plot");
+  const oldPlot = plot?.getBoundingClientRect();
+  const [start, end] = axisBounds();
+  const anchorY = viewport && oldPlot ? Math.max(viewport.top, oldPlot.top) : null;
+  const anchorMinute = anchorY !== null && oldPlot && viewport && oldPlot.height > 0 &&
+    oldPlot.bottom > viewport.top && oldPlot.top < viewport.bottom
+    ? start + (anchorY - oldPlot.top) / oldPlot.height * (end - start) : null;
+  todayAxisZoomLevel = Math.max(0, Math.min(todayAxisZoomHeights.length - 1, todayAxisZoomLevel + delta));
+  todayAxisFollowState = onManualScroll(todayAxisFollowState);
+  renderTodayTimeAxis(currentTodayView);
+  if (!scrollSurface || anchorMinute === null || anchorY === null || !plot) return;
+  const next = plot.getBoundingClientRect();
+  const [nextStart, nextEnd] = axisBounds();
+  const minute = Math.max(nextStart, Math.min(nextEnd, anchorMinute));
+  const nextY = next.top + (minute - nextStart) / (nextEnd - nextStart) * next.height;
+  scrollSurface.scrollTo({ top: scrollSurface.scrollTop + nextY - anchorY, behavior: "instant" });
 }
 
 function todayEvidenceGroup(group: PlanningEvidenceView): HTMLElement {
@@ -6920,6 +7050,7 @@ function captureTodayTaskEditors(view: TodayView): Set<string> {
 }
 
 function renderToday(view: TodayView, preserveTaskEditors = false): void {
+  closeTodayAxisTaskPopup(false, false);
   const openTaskEditors = preserveTaskEditors ? captureTodayTaskEditors(view) : new Set<string>();
   stashEveningReviewDraft();
   todayPresentationFresh = true;
@@ -7322,7 +7453,12 @@ function renderLegacyDayTasks(dayTasks: DayTaskListView): void {
   );
 }
 
-function renderTodayTasks(view: TodayView, openEditors = new Set<string>()): void {
+function renderTodayTasks(
+  view: TodayView,
+  openEditors = new Set<string>(),
+  preserveAxisPopup = false,
+): void {
+  if (!preserveAxisPopup) closeTodayAxisTaskPopup(false, false);
   clearTaskEditorDialogs("today");
   const shared = view.tasks;
   const archivedListIds = new Set(
@@ -12921,7 +13057,7 @@ type TaskSurface = "tasks" | "today" | "calendar";
 
 function taskSurfaceStatus(surface: TaskSurface): HTMLElement | null {
   if (surface === "tasks") return tasksStatus;
-  if (surface === "today") return todayTaskStatus;
+  if (surface === "today") return todayAxisTaskPopup?.open ? todayAxisTaskPopupStatus : todayTaskStatus;
   return calendarTaskStatus;
 }
 
@@ -12981,12 +13117,22 @@ function updateSharedTaskView(view: TasksView): void {
 }
 
 function renderTaskSurface(surface: TaskSurface, view: TasksView): void {
+  const axisPopupTaskId = surface === "today" && todayAxisTaskPopup?.open
+    ? todayAxisTaskPopup.dataset.taskId ?? null
+    : null;
   updateSharedTaskView(view);
   if (surface === "tasks") {
     renderTasks(view);
   } else if (surface === "today" && currentTodayView) {
-    renderTodayTasks(currentTodayView);
+    renderTodayTasks(currentTodayView, new Set<string>(), axisPopupTaskId !== null);
     renderTodayTimeAxis(currentTodayView);
+    if (axisPopupTaskId) {
+      const marker = todayTimedEvents?.querySelector<HTMLElement>(
+        `[data-task-id="${CSS.escape(axisPopupTaskId)}"]`,
+      );
+      if (marker) openTodayAxisTaskPopup(axisPopupTaskId, marker, true);
+      else closeTodayAxisTaskPopup(false, false);
+    }
   } else if (surface === "calendar" && currentCalendarSummaryView) {
     renderCalendarTasks(currentCalendarSummaryView);
   }
@@ -15102,3 +15248,34 @@ for (const id of ["today-expand-early", "today-expand-late"]) {
     toggleTodayAxisSegment(id);
   });
 }
+
+document.getElementById("today-axis-zoom-out")?.addEventListener("click", () => adjustTodayAxisZoom(-1));
+document.getElementById("today-axis-zoom-in")?.addEventListener("click", () => adjustTodayAxisZoom(1));
+
+todayAxisTaskPopupClose?.addEventListener("click", () => closeTodayAxisTaskPopup(true));
+todayAxisTaskPopup?.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeTodayAxisTaskPopup(true);
+});
+todayAxisTaskPopup?.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  event.preventDefault();
+  closeTodayAxisTaskPopup(true);
+});
+todayAxisTaskPopup?.addEventListener("close", () => {
+  const taskId = todayAxisTaskPopup.dataset.taskId;
+  const restoreFocus = todayAxisTaskPopup.dataset.restoreFocus !== "false";
+  todayAxisTaskPopupContent?.replaceChildren();
+  todayAxisTaskPopup.dataset.taskId = "";
+  todayAxisTaskPopupOpener = null;
+  if (!restoreFocus || !taskId) return;
+  const selector = `[data-task-id="${CSS.escape(taskId)}"] .today-axis-marker-link`;
+  const markerLink = todayTimedEvents?.querySelector<HTMLElement>(selector);
+  const taskRowButton = todayTaskPanel?.querySelector<HTMLButtonElement>(
+    `[data-task-editor-open="${CSS.escape(taskId)}"]`,
+  );
+  (markerLink ?? taskRowButton)?.focus({ preventScroll: true });
+});
+todayAxisScrollSurface?.addEventListener("scroll", positionTodayAxisTaskPopup, { passive: true });
+workspaceInformation?.addEventListener("scroll", positionTodayAxisTaskPopup, { passive: true });
+window.addEventListener("resize", positionTodayAxisTaskPopup);
