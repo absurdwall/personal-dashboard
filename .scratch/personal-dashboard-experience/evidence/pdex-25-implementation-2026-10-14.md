@@ -62,6 +62,14 @@ The browser rendered and checked 1280×800, 1280×720, 830×758 and 680×560; al
 
 Packaged acceptance remains partial/open. Rust checks use synthetic temporary Vaults and persisted readback; browser checks use synthetic IPC; WKWebView checks render production HTML/CSS without app JavaScript or Tauri IPC. There was no installed-App acceptance and no real Vault write. PDEX-25 stays open/in-progress for independent review and later integration.
 
+## Same-day lifecycle streak boundary fix
+
+- Separate follow-up commit: `7b7a3f1` (`fix(habits): preserve same-day lifecycle streaks`), parent `70d68f5`; branch remains `codex/pdex-25-restart` and the earlier claim, implementation and corrective commits remain reachable.
+- Streak periods now distinguish eligibility from boundaries before and after a period. A successful period remains countable; the boundary on its correct side prevents carrying continuity across a lifecycle transition. Completion before same-day deactivation stays in the ending segment, while completion after same-day restoration starts a new segment. Completion after same-day deactivation remains excluded. Weekly attainment remains independent from continuity, with a lifecycle boundary placed before/after the week according to when its successful lived dates occurred. Midweek-start weeks remain ineligible as full weekly streak units.
+- Four application-path regressions were first run against the old implementation and failed, then passed after the change: daily deactivation after completion, daily deactivation before completion, same-day restore completion with no carry from the prior run, and a weekly target attained before same-day deactivation.
+- `cargo test --quiet --manifest-path src-tauri/Cargo.toml --test habit_definition_workflow` — 30 passed. `cargo check --manifest-path src-tauri/Cargo.toml`, focused frontend tests (28), browser lifecycle/viewport tests (2), `npm run build`, `rustfmt --edition 2021 --check src-tauri/src/habit_history.rs` and `git diff --check` passed. The browser test rechecked the same ticket viewports; no UI source changed, so the prior screenshot matrix remains the visual evidence.
+- Acceptance boundary is unchanged: synthetic local Vault and IPC evidence only; no real Vault write, installed-App/package acceptance, or merge. PDEX-25 remains open/in-progress.
+
 ## Coverage limits and remaining acceptance
 
 - Canonical local completion records are the only all-history local facts. The main source projection is the saved, bounded 12-week window. For source-owned evidence outside that projection, no older source fact is inferred. Missing coverage, missing canonical store, stale/error projection or conflicting evidence yields unknown or an at-least result rather than fabricated zero/failure/confirmed maximum.
