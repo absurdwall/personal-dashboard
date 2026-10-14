@@ -142,3 +142,22 @@ their worktrees were clean at handoff.
   each branch was fast-forwarded to the then-current integration tip
   `ad697e01cf5a51a619fb97bbad174ebb50161d91`; each worktree was clean at that
   exact commit. The claim-frontier table records the handoff bases and paths.
+
+## Final local integration — 2026-10-14
+
+The remaining four implementation branches were integrated locally with
+`--no-ff`; each implementation, evidence commit, and branch refresh remains
+reachable. No ticket was closed, no PR or remote operation was made, and no
+normal App was installed.
+
+| Ticket | Working branch and final tip | Implementation and evidence commits | Integration merge |
+| --- | --- | --- | --- |
+| PDEX-20 | `codex/pdex-20-refinement-reimplementation` — `0c19fdfc51a32454c07b25d1833c0fff6c792149` | implementation `38ff29bd961baed78ec11c75627069936bcc1ba2`; evidence `0c19fdfc51a32454c07b25d1833c0fff6c792149`; branch refresh `40871c8105dae24af721139a73b2e34fb2020e26` | `7c65fbcc3276abd2d5879fe5613c10a2b6872d44` |
+| PDEX-21 | `codex/pdex-21-refinement-reimplementation` — `784aafb2b94d9cd3295311673b86e343b33b6617` | implementation `e4fe69fdf2518b7fb98b96339013c3ff3bed50f1` and `34a6361469b0427298dbc608ea553569dfb1879a`; branch refreshes `9728d29d4f95b17d106035bc79b16284ca1db2f7` and `784aafb2b94d9cd3295311673b86e343b33b6617` | `2209343d648862b7477e9949cabffbdd05dd3d52` |
+| PDEX-22 | `codex/pdex-22-refinement-reimplementation` — `cd49d52315e825538da690992d495b05af86a97b` | implementation `16a0b4592f307b94f21c1a38dbac850f5df2b97d`; evidence `0c85c7f30c606d0a4da83d19287d179d9b88dd05` and `cd49d52315e825538da690992d495b05af86a97b`; branch refreshes `f6c319d77d5239bac9c30767ee4157239f569e1b` and `c05c366d36650cc71e3d65139e714c70c70e81ed` | `2f530eb92c743e4f29dfb7f10f35285d93b77af0` |
+| PDEX-25 | `codex/pdex-25-refinement-reimplementation` — `fca60c7b89b446e7fc133e243e5646e507a98290` | implementation `cb527de02e8373ccbb30014b0be0a6c369c13841`; evidence `ceb59200b5264a7ddca56f4bcbedc357129dc17c`; theme-token correction `3c6a1d7194470cc8a18cb10e83c773f83ba2f063`; branch refreshes `82a3586318f30ab8e8313b925bb1f26bdff8ab0d` and `fca60c7b89b446e7fc133e243e5646e507a98290` | `f50ae2df167e53d9707b0b6105a093446b9a5cec` |
+
+The final integration tip is `f50ae2df167e53d9707b0b6105a093446b9a5cec`;
+the integration checkout was clean after all four merges. PDEX-26 packaged
+acceptance remains open. PDEX-22 leaves China 2027 holiday data unspecified
+because the verified official source set has no published 2027 schedule.
