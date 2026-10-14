@@ -19,9 +19,11 @@
 
 ## Clean reimplementation tracking — 2026-10-14
 
-- Integration branch: `codex/dashboard-experience-refinement-restart-20261014`, based directly on `918e7e0d9c4b2c524c429bfd309482e328bc4c91`.
-- Ticket branch: `codex/pdex-19-restart`; worker start commit and implementation commits will be recorded after integration.
-- The earlier implementation remains on its previous branch with full history and is not this ticket's source baseline.
+- Integration branch: `codex/dashboard-experience-refinement-restart-20261014`; exact ticket start tip `8275615a3f3cad2a783d74561472c78c4bbeb493`, whose parent is the requested clean baseline `918e7e0d9c4b2c524c429bfd309482e328bc4c91`.
+- Ticket branch: `codex/pdex-19-restart`; worktree `/tmp/pdex-restart-20261014.noindex/pdex-19`; start commit `8275615a3f3cad2a783d74561472c78c4bbeb493`.
+- Implementation commits: `f0a95909d249535d300ed735a17a603fcd0bcb6b` (persist priority/tags); `d04330c518be1d5dc34e5b689cb126a95bbcc40c` (Task detail/property UI and focused browser/unit coverage); `689b383df3ca235fb0dcdcee3ae4d881b4aa963d` (Today Task test-double compatibility for the property-aware draft reader).
+- [Implementation/test evidence](../evidence/pdex-19-implementation-2026-10-14.md) records exact commands, results, full-suite failures and their scope. PDEX-19 code implementation is complete; lifecycle remains in-progress until its own acceptance is satisfied. Packaged App acceptance is assigned to PDEX-26.
+- The earlier rejected implementation remains on its previous branch with full history and is not this ticket's source baseline.
 
 ## Acceptance criteria
 
@@ -54,4 +56,7 @@ PDEX-SPEC-02 stories 4–14、30–34、48–49；共同承担 1–3、88–91 �
 - 2026-10-11：经用户批准发布本地完整票体，未分配assignee、未claim、未开始实现。
 - 后续授权claim时记录实际owner、working branch、base commit、增量实现/评审/
   验收commits、结果和限制。每票可多次commit，完整验收前不关闭。
+- 2026-10-14 reimplementation: implementation commits and focused verification are
+  recorded in the clean reimplementation section above. Automated PDEX-19 behavior
+  checks are green; lifecycle stays in-progress pending packaged acceptance under PDEX-26.
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
