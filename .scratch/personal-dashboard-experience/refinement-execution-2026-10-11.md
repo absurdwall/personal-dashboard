@@ -97,3 +97,20 @@ main change is recorded here.
   acceptance ticket.
 - No remote Git operation, protected-main change, app installation, or normal
   user-data write was performed.
+
+## PDEX-20 local ticket execution — 2026-10-14
+
+- Claimed after PDEX-19 reached integration tip
+  `e1b28504e62d28ecbb05c5fa3f499204d7abefe1`, on the dedicated branch
+  `codex/pdex-20-restart` in `/private/tmp/pdex-restart-20261014.noindex/pdex-20`.
+  This tip descends from the user-requested clean restart at `918e7e0`; no
+  rejected post-baseline implementation was used as source.
+- Commits retained on the ticket branch: backend/schema/docs and persistence
+  tests `d7ecfda0c1b4590405dbb29da52a8bd7fc9abe0c`; compact parent/folder UI
+  and behavior tests `c0b7aa969196208acc6f73d37d15c8ee09c06c4b`; current
+  lifecycle schema-note update `f1f9c5c7ee6067c67bbe12efb6fbc0d070402ec0`. See the
+  [PDEX-20 implementation record](evidence/pdex-20-implementation-2026-10-14.md)
+  for exact commands, results and remaining acceptance limits.
+- PDEX-20 remains `in-progress`; its ticket branch is not merged or pushed.
+  Packaged App acceptance remains with PDEX-26. PDEX-21/22 and PDEX-25 retain
+  their existing dependency states.

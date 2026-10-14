@@ -4,13 +4,13 @@
 
 **Blocked by:** 19 — Task 编辑、属性与操作入口
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Triage:** ready-for-agent
 **ID:** PDEX-20
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
-**Lifecycle:** open
-**Implementation:** not started
+**Lifecycle:** in-progress
+**Implementation:** code implementation committed on `codex/pdex-20-restart`; local integration and packaged acceptance remain separate
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -45,6 +45,7 @@ PDEX-SPEC-02 stories 15–29；共同承担 1–3、88–91 的保存与保留�
 ## Execution
 
 - 2026-10-11：经用户批准发布本地完整票体，未分配assignee、未claim、未开始实现。
-- 后续授权claim时记录实际owner、working branch、base commit、增量实现/评审/
-  验收commits、结果和限制。每票可多次commit，完整验收前不关闭。
+- 2026-10-14：在父级授权后从干净 integration tip `e1b28504e62d28ecbb05c5fa3f499204d7abefe1` claim；ticket branch `codex/pdex-20-restart`，worktree `/private/tmp/pdex-restart-20261014.noindex/pdex-20`。从用户指定的 `918e7e0d9c4b2c524c429bfd309482e328bc4c91` 重新实现链继续；没有复制或合并此前被拒绝分支的实现。
+- 实现 commits：`d7ecfda0c1b4590405dbb29da52a8bd7fc9abe0c`（schema 3、父子/文件夹原子持久化、迁移及 workflow tests、schema docs）；`c0b7aa969196208acc6f73d37d15c8ee09c06c4b`（紧凑 Tasks UI、直接子任务/文件夹视图、浏览器与单测）；`f1f9c5c7ee6067c67bbe12efb6fbc0d070402ec0`（同步状态历史文档的当前 schema 说明）。[完整实现与验证记录](../evidence/pdex-20-implementation-2026-10-14.md)。
+- Ticket 分支保持未合并、未推送；PDEX-26 的 packaged application 验收仍未完成。完整验收前不关闭。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
