@@ -11629,6 +11629,17 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   }
   #workspace-destination-collaboration #collaboration-voice-start { grid-column: 1; grid-row: 2; }
   #workspace-destination-collaboration #collaboration-send-message { grid-column: 2; grid-row: 2; }
+  #workspace-destination-collaboration .collaboration-composer-input .collaboration-voice-controls {
+    grid-template-columns: repeat(3, auto);
+  }
+  #workspace-destination-collaboration #collaboration-voice-cancel {
+    grid-column: 3;
+    grid-row: 2;
+    min-height: 1.65rem;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.55rem;
+    white-space: nowrap;
+  }
 }
 
 @media (max-height: 600px), (max-height: 740px) and (max-width: 720px) {

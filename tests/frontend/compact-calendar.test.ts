@@ -275,6 +275,68 @@ test('Calendar task previews open a compact editor without selecting another dat
   assert.equal(result.commands.filter((item:any)=>/^(create_|edit_|update_|save_|set_)/.test(item.command)).length,0);
 });
 
+test('Calendar compact editor summaries and clear actions follow the draft until Cancel',{skip:process.platform!=='darwin'},()=>{
+  const result=webKit(`
+    const month=structuredClone(sourceFixture.month),view=structuredClone(sourceFixture.selected);
+    view.tasks.lists.push({id:'project',name:'Project',isSystem:false,archived:false});
+    calendarHarness.render(month,view);
+    const before=Object.fromEntries(['preview-0','preview-1'].map(id=>[id,structuredClone(view.tasks.tasks.find(task=>task.id===id))]));
+    const open=id=>{
+      document.querySelector('#calendar-task-list [data-task-editor-open="'+id+'"]').click();
+      return document.querySelector('#calendar-task-editor-dialog-root [data-task-editor="'+id+'"]');
+    };
+    const change=(input,value)=>{input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));};
+
+    const timed=open('preview-0');
+    const list=timed.querySelector('[data-task-list]');change(list,'project');
+    const date=timed.querySelector('[data-task-date]');change(date,'2026-09-12');
+    change(timed.querySelector('[data-task-time]'),'08:15');
+    const endDate=timed.querySelector('[data-task-end-date]');endDate.value='2026-09-12';endDate.dispatchEvent(new Event('input',{bubbles:true}));
+    const endTime=timed.querySelector('[data-task-end-time]');endTime.value='09:45';endTime.dispatchEvent(new Event('input',{bubbles:true}));
+    const afterEndInput={schedule:timed.querySelector('[data-task-schedule-summary]').textContent,
+      clearEndVisible:!timed.querySelector('[data-task-clear-end]').hidden,clearScheduleVisible:!timed.querySelector('[data-task-clear-timed-schedule]').hidden};
+    endDate.dispatchEvent(new Event('change',{bubbles:true}));endTime.dispatchEvent(new Event('change',{bubbles:true}));
+    const listDisclosure=timed.querySelector('[data-task-list-disclosure]'),scheduleDisclosure=timed.querySelector('[data-task-schedule-disclosure]');
+    listDisclosure.open=false;scheduleDisclosure.open=false;
+    const expectedDate=new Intl.DateTimeFormat('zh-CN',{month:'short',day:'numeric',weekday:'short',timeZone:'UTC'}).format(new Date('2026-09-12T00:00:00Z'));
+    const beforeClearEnd={list:timed.querySelector('[data-task-list-summary]').textContent,schedule:timed.querySelector('[data-task-schedule-summary]').textContent,
+      clearEndVisible:!timed.querySelector('[data-task-clear-end]').hidden,clearScheduleVisible:!timed.querySelector('[data-task-clear-timed-schedule]').hidden,
+      collapsed:!listDisclosure.open&&!scheduleDisclosure.open};
+    timed.querySelector('[data-task-clear-end]').click();
+    const afterClearEnd={schedule:timed.querySelector('[data-task-schedule-summary]').textContent,
+      clearEndHidden:timed.querySelector('[data-task-clear-end]').hidden,clearScheduleVisible:!timed.querySelector('[data-task-clear-timed-schedule]').hidden,
+      endDate:timed.querySelector('[data-task-end-date]').value,endTime:timed.querySelector('[data-task-end-time]').value};
+    timed.querySelector('[data-task-editor-close]').click();
+    const afterTimedCancel=view.tasks.tasks.find(task=>task.id==='preview-0');
+
+    const untimed=open('preview-1');
+    const untimedDate=untimed.querySelector('[data-task-date]');change(untimedDate,'2026-09-14');
+    change(untimed.querySelector('[data-task-time]'),'10:30');
+    change(untimed.querySelector('[data-task-end-date]'),'2026-09-14');
+    change(untimed.querySelector('[data-task-end-time]'),'11:45');
+    const untimedSchedule=untimed.querySelector('[data-task-schedule-disclosure]');untimedSchedule.open=false;
+    const expectedUntimedDate=new Intl.DateTimeFormat('zh-CN',{month:'short',day:'numeric',weekday:'short',timeZone:'UTC'}).format(new Date('2026-09-14T00:00:00Z'));
+    const beforeClearSchedule={schedule:untimed.querySelector('[data-task-schedule-summary]').textContent,
+      clearEndVisible:!untimed.querySelector('[data-task-clear-end]').hidden,clearScheduleVisible:!untimed.querySelector('[data-task-clear-timed-schedule]').hidden,
+      collapsed:!untimedSchedule.open,date:untimedDate.value};
+    untimed.querySelector('[data-task-clear-timed-schedule]').click();
+    const afterClearSchedule={schedule:untimed.querySelector('[data-task-schedule-summary]').textContent,
+      clearEndHidden:untimed.querySelector('[data-task-clear-end]').hidden,clearScheduleHidden:untimed.querySelector('[data-task-clear-timed-schedule]').hidden,
+      date:untimedDate.value,time:untimed.querySelector('[data-task-time]').value,endDate:untimed.querySelector('[data-task-end-date]').value,endTime:untimed.querySelector('[data-task-end-time]').value};
+    untimed.querySelector('[data-task-editor-close]').click();
+    const afterUntimedCancel=view.tasks.tasks.find(task=>task.id==='preview-1');
+    return JSON.stringify({expectedDate,expectedUntimedDate,before,afterTimedCancel,afterUntimedCancel,afterEndInput,beforeClearEnd,afterClearEnd,beforeClearSchedule,afterClearSchedule,commands});
+  `,830,758);
+  assert.deepEqual(result.afterEndInput,{schedule:`${result.expectedDate} 08:15 – 09:45`,clearEndVisible:true,clearScheduleVisible:true});
+  assert.deepEqual(result.beforeClearEnd,{list:'Project',schedule:`${result.expectedDate} 08:15 – 09:45`,clearEndVisible:true,clearScheduleVisible:true,collapsed:true});
+  assert.deepEqual(result.afterClearEnd,{schedule:`${result.expectedDate} · 08:15`,clearEndHidden:true,clearScheduleVisible:true,endDate:'',endTime:''});
+  assert.deepEqual(result.beforeClearSchedule,{schedule:`${result.expectedUntimedDate} 10:30 – 11:45`,clearEndVisible:true,clearScheduleVisible:true,collapsed:true,date:'2026-09-14'});
+  assert.deepEqual(result.afterClearSchedule,{schedule:result.expectedUntimedDate,clearEndHidden:true,clearScheduleHidden:true,date:'2026-09-14',time:'',endDate:'',endTime:''});
+  assert.deepEqual(result.afterTimedCancel,result.before['preview-0']);
+  assert.deepEqual(result.afterUntimedCancel,result.before['preview-1']);
+  assert.deepEqual(result.commands.filter((item:any)=>/^(create_|edit_|update_|save_|set_)/.test(item.command)),[]);
+});
+
 test('Tasks opens directly on spaced Content and leaves Add subtask visible beside the collapsed relationship disclosure',{skip:process.platform!=='darwin'},()=>{
   const result=webKit(`
     const task={id:'synthetic-parent',name:'Synthetic parent task',content:'Synthetic editable context stays in its own content field.',date:'2026-10-14',time:'09:30',executionEnd:null,priority:'medium',tagIds:[],parentTaskId:null,listId:'inbox',source:{kind:'manual',reference:null},state:'pending',deletedAt:null,completion:null,overdue:false,timePassed:false,createdAt:'2026-10-01T12:00:00Z',modifiedAt:'2026-10-01T12:00:00Z',changes:[]};

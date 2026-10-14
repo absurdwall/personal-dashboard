@@ -15850,7 +15850,7 @@ calendarTaskPanel?.addEventListener("input", (event) => {
   const form = (event.target as HTMLElement).closest<HTMLFormElement>(
     "form[data-task-editor]",
   );
-  if (form) stashTaskEditDraft(form);
+  if (form) stashTaskSurfaceDraft("calendar", form);
 });
 
 calendarTaskPanel?.addEventListener("change", (event) => {
@@ -15877,7 +15877,7 @@ calendarTaskPanel?.addEventListener("change", (event) => {
       form.querySelector<HTMLInputElement>("[data-task-time]"),
     );
   }
-  stashTaskEditDraft(form);
+  stashTaskSurfaceDraft("calendar", form);
 });
 
 calendarTaskPanel?.addEventListener("click", (event) => {
