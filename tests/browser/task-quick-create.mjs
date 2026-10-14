@@ -8,11 +8,11 @@ import {pathToFileURL} from 'node:url';
 // Existing browser tooling only: provide its module path; this does not install a dependency.
 const {chromium} = await import(process.env.PLAYWRIGHT_MODULE_PATH ? pathToFileURL(process.env.PLAYWRIGHT_MODULE_PATH).href : 'playwright');
 const root = resolve(import.meta.dirname, '../..');
-const task = (id,name,time,executionEnd=null,state='pending') => ({id,name,content:null,date:'2026-10-10',time,executionEnd,listId:'inbox',
+const task = (id,name,time,executionEnd=null,state='pending') => ({id,name,content:null,date:'2026-10-10',time,executionEnd,listId:'inbox',parentTaskId:null,priority:'none',tagIds:[],
   source:{kind:'manual',reference:null},state,deletedAt:null,completion:state==='completed'?{completedOn:'2026-10-10',completedTime:'08:00',recordedAt:'2026-10-10T08:00-04:00',source:'checkbox'}:null,
   overdue:false,timePassed:false,createdAt:'2026-10-10T08:00-04:00',modifiedAt:'2026-10-10T08:00-04:00',changes:[]});
-const tasks = {state:'ready',errorKind:null,message:'Synthetic Tasks',schemaVersion:2,revision:'r1',targetBinding:'synthetic-task-binding',vaultName:'Synthetic',vaultPath:'/synthetic',currentDate:'2026-10-10',
-  lists:[{id:'inbox',name:'Inbox',isSystem:true,archived:false}],tasks:[task('point','Synthetic point','09:00'),task('interval','Synthetic interval','13:00',{date:'2026-10-10',time:'14:30'},'completed')]};
+const tasks = {state:'ready',errorKind:null,message:'Synthetic Tasks',schemaVersion:3,revision:'r1',targetBinding:'synthetic-task-binding',vaultName:'Synthetic',vaultPath:'/synthetic',currentDate:'2026-10-10',
+  lists:[{id:'inbox',name:'Inbox',isSystem:true,archived:false,folderId:null}],folders:[],tags:[],tasks:[task('point','Synthetic point','09:00'),task('interval','Synthetic interval','13:00',{date:'2026-10-10',time:'14:30'},'completed')]};
 const view = {state:'missing',date:'2026-10-10',isToday:true,currentTime:'09:00',canRecord:true,defaultPhase:'daytime',dailyRecordAvailability:'missing',vaultName:'Synthetic',vaultPath:'/synthetic',vaultAvailability:'available',message:'Synthetic browser IPC fixture',revision:null,targetBinding:'synthetic-record-binding',
   baseline:{availability:'missing',message:'No record',timeline:[],evidence:[]},timeline:[],evidence:[],daytime:{updates:[],shortRecords:[]},
   evening:{account:[],comparison:[],summary:[],questions:[],additions:[],corrections:[],other:[],recordSupplements:[],hasLaterRecordRevision:false},tasks,
@@ -27,7 +27,7 @@ async function pageFixture({width=1280,extraTasks=[],clock=null,selectedDate=nul
   const browser=await chromium.launch({channel:'chrome',headless:true});
   const page=await browser.newPage({viewport:{width,height:758}});
   const errors=[];page.on('pageerror',error=>errors.push(String(error)));
-  const fixtureView=structuredClone(view);if(clock)fixtureView.tasks.currentDate=clock.date;if(selectedDate){fixtureView.date=selectedDate;fixtureView.isToday=false;}fixtureView.tasks.tasks[0].changes=[{id:'synthetic-rename',kind:'renamed',changedAt:'2026-10-10T08:30-04:00',source:'user'}];fixtureView.tasks.tasks.push(...extraTasks);fixtureView.tasks.tasks[0].content='Full synthetic context, only visible in selected detail';fixtureView.tasks.lists.push({id:'home',name:'Home',isSystem:false,archived:false});
+  const fixtureView=structuredClone(view);if(clock)fixtureView.tasks.currentDate=clock.date;if(selectedDate){fixtureView.date=selectedDate;fixtureView.isToday=false;}fixtureView.tasks.tasks[0].changes=[{id:'synthetic-rename',kind:'renamed',changedAt:'2026-10-10T08:30-04:00',source:'user'}];fixtureView.tasks.tasks.push(...extraTasks);fixtureView.tasks.tasks[0].content='Full synthetic context, only visible in selected detail';fixtureView.tasks.lists.push({id:'home',name:'Home',isSystem:false,archived:false,folderId:null});
   await page.addInitScript(({view,clock})=>{
     window.__fixture=view;window.__calls=[];window.__failNext=null;
     window.__TAURI__={core:{invoke:async(command,args)=>{
@@ -44,7 +44,7 @@ async function pageFixture({width=1280,extraTasks=[],clock=null,selectedDate=nul
         const input=args.input;if(input.expectedRevision!==t.revision)throw Error('Synthetic revision conflict');
         if(!t.lists.some(list=>list.id===input.listId&&!list.archived))throw Error('Synthetic list unavailable');
         if(window.__holdCreate)await new Promise(resolve=>window.__releaseCreate=resolve);
-        if(!t.tasks.some(x=>x.id===input.taskId))t.tasks.push({id:input.taskId,...input,source:{kind:'manual',reference:null},state:'pending',deletedAt:null,completion:null,overdue:false,timePassed:false,createdAt:'2026-10-10T09:00-04:00',modifiedAt:'2026-10-10T09:00-04:00',changes:[]});
+        if(!t.tasks.some(x=>x.id===input.taskId))t.tasks.push({id:input.taskId,...input,parentTaskId:null,priority:'none',tagIds:[],source:{kind:'manual',reference:null},state:'pending',deletedAt:null,completion:null,overdue:false,timePassed:false,createdAt:'2026-10-10T09:00-04:00',modifiedAt:'2026-10-10T09:00-04:00',changes:[]});
         t.revision='r'+(Number(t.revision.slice(1))+1);
         if(window.__saveButThrow){window.__saveButThrow=false;throw Error('Synthetic lost response after save');}
         return structuredClone(t);

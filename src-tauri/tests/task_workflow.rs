@@ -1,9 +1,11 @@
 use personal_dashboard_lib::tasks::{
     FileTaskStore, TaskApplication, TaskChangeKind, TaskCompletionCorrectionInput,
-    TaskCompletionSourceKind, TaskCreateInput, TaskDataState, TaskDeleteInput,
-    TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput, TaskListRestoreInput,
-    TaskPriority, TaskRestoreInput, TaskState, TaskStateInput, TaskStore, TaskTagCreateInput,
-    TaskTagDeleteInput, TaskTagRenameInput, TaskUpdateInput, TaskUpdateWithPropertiesInput,
+    TaskCompletionSourceKind, TaskCreateInput, TaskCreateSubtaskInput, TaskDataState,
+    TaskDeleteInput, TaskFolderCreateInput, TaskFolderDeleteInput, TaskFolderRenameInput,
+    TaskListArchiveInput, TaskListCreateInFolderInput, TaskListCreateInput, TaskListFolderInput,
+    TaskListRenameInput, TaskListRestoreInput, TaskParentInput, TaskPriority, TaskRestoreInput,
+    TaskState, TaskStateInput, TaskStore, TaskTagCreateInput, TaskTagDeleteInput,
+    TaskTagRenameInput, TaskUpdateInput, TaskUpdateWithPropertiesInput,
 };
 use personal_dashboard_lib::today::{TodayClock, TodayWorkspacePersistence};
 use std::fs;
@@ -167,7 +169,7 @@ fn recovery_directory(vault: &Path) -> PathBuf {
 }
 
 fn empty_task_document() -> Vec<u8> {
-    br#"{"schemaVersion":2,"lists":[{"id":"inbox","name":"Inbox","system":true,"archived":false}],"tasks":[]}
+    br#"{"schemaVersion":3,"lists":[{"id":"inbox","name":"Inbox","system":true,"archived":false}],"folders":[],"tasks":[]}
 "#
     .to_vec()
 }
@@ -1370,7 +1372,7 @@ fn legacy_task_schema_is_read_and_upgraded_on_the_next_write() {
 
     let application = app(vault.path());
     let legacy = application.read().unwrap();
-    assert_eq!(legacy.schema_version, 2);
+    assert_eq!(legacy.schema_version, 3);
     assert_eq!(legacy.tasks[0].state, TaskState::Pending);
     assert_eq!(legacy.tasks[0].deleted_at, None);
     assert_eq!(legacy.tasks[0].completion, None);
@@ -1384,11 +1386,75 @@ fn legacy_task_schema_is_read_and_upgraded_on_the_next_write() {
             state: TaskState::Completed,
         })
         .unwrap();
-    assert_eq!(upgraded.schema_version, 2);
+    assert_eq!(upgraded.schema_version, 3);
     let document: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-    assert_eq!(document["schemaVersion"], serde_json::json!(2));
+    assert_eq!(document["schemaVersion"], serde_json::json!(3));
     assert!(document["tasks"][0].get("deletedAt").is_some());
     assert!(document["tasks"][0].get("completion").is_some());
+}
+
+#[test]
+fn schema_two_priority_and_tags_gain_parent_folder_defaults_without_data_loss() {
+    let vault = TempVault::new("schema-two-parent-folder-defaults");
+    let path = task_path(vault.path());
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(
+        &path,
+        r#"{
+  "schemaVersion": 2,
+  "lists": [{"id":"inbox","name":"Inbox","system":true,"archived":false}],
+  "tags": [{"id":"work","name":"Work"}],
+  "tasks": [{
+    "id":"schema-two-task",
+    "name":"PDEX-19 属性保留",
+    "content":null,
+    "date":"2026-09-20",
+    "time":null,
+    "listId":"inbox",
+    "priority":"high",
+    "tagIds":["work"],
+    "source":{"kind":"manual","reference":null},
+    "state":"pending",
+    "createdAt":"2026-09-17T14:10-04:00",
+    "modifiedAt":"2026-09-17T14:10-04:00",
+    "changes":[]
+  }]
+}
+"#,
+    )
+    .unwrap();
+
+    let application = app(vault.path());
+    let schema_two = application.read().unwrap();
+    assert_eq!(schema_two.schema_version, 3);
+    assert_eq!(schema_two.tasks[0].parent_task_id, None);
+    assert_eq!(schema_two.tasks[0].priority, TaskPriority::High);
+    assert_eq!(schema_two.tasks[0].tag_ids, vec!["work"]);
+    assert!(schema_two.folders.is_empty());
+    assert_eq!(schema_two.lists[0].folder_id, None);
+
+    let upgraded = application
+        .set_state(TaskStateInput {
+            target_binding: schema_two.target_binding.clone().unwrap(),
+            expected_revision: schema_two.revision.clone().unwrap(),
+            task_id: "schema-two-task".into(),
+            change_id: "complete-schema-two-task".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap();
+    assert_eq!(upgraded.schema_version, 3);
+    assert_eq!(upgraded.tasks[0].priority, TaskPriority::High);
+    assert_eq!(upgraded.tasks[0].tag_ids, vec!["work"]);
+    let document: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    assert_eq!(document["schemaVersion"], serde_json::json!(3));
+    assert_eq!(document["folders"], serde_json::json!([]));
+    assert_eq!(document["lists"][0]["folderId"], serde_json::Value::Null);
+    assert_eq!(
+        document["tasks"][0]["parentTaskId"],
+        serde_json::Value::Null
+    );
+    assert_eq!(document["tasks"][0]["priority"], serde_json::json!("high"));
+    assert_eq!(document["tasks"][0]["tagIds"], serde_json::json!(["work"]));
 }
 
 #[test]
@@ -1652,6 +1718,475 @@ fn task_completion_correction_rejects_a_stale_external_document_without_partial_
 }
 
 #[test]
+fn task_parent_relations_round_trip_and_lifecycle_never_cascades() {
+    let vault = TempVault::new("parent-relations");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let parent = application
+        .create(create_input(&opened, "parent-task", "准备报告", None, None))
+        .unwrap();
+    let list = application
+        .create_list(TaskListCreateInput {
+            target_binding: parent.target_binding.clone().unwrap(),
+            expected_revision: parent.revision.clone(),
+            list_id: "research".into(),
+            name: "研究".into(),
+        })
+        .unwrap();
+    let child = application
+        .create(TaskCreateInput {
+            execution_end: None,
+            target_binding: list.target_binding.clone().unwrap(),
+            expected_revision: list.revision.clone(),
+            task_id: "research-child".into(),
+            name: "核对资料".into(),
+            content: Some("保留自己的说明".into()),
+            date: Some("2026-09-20".into()),
+            time: Some("10:00".into()),
+            list_id: Some("research".into()),
+        })
+        .unwrap();
+    let tagged = application
+        .create_tag(TaskTagCreateInput {
+            target_binding: child.target_binding.clone().unwrap(),
+            expected_revision: child.revision.clone(),
+            tag_id: "focus-tag".into(),
+            name: "专注".into(),
+        })
+        .unwrap();
+    let properties = application
+        .update_with_properties(TaskUpdateWithPropertiesInput {
+            task: TaskUpdateInput {
+                execution_end: None,
+                target_binding: tagged.target_binding.clone().unwrap(),
+                expected_revision: tagged.revision.clone().unwrap(),
+                task_id: "research-child".into(),
+                change_id: "set-child-properties".into(),
+                name: "核对资料".into(),
+                content: Some("保留自己的说明".into()),
+                date: Some("2026-09-20".into()),
+                time: Some("10:00".into()),
+                list_id: None,
+            },
+            priority: TaskPriority::High,
+            tag_ids: vec!["focus-tag".into()],
+        })
+        .unwrap();
+    let linked = application
+        .set_parent(TaskParentInput {
+            target_binding: properties.target_binding.clone().unwrap(),
+            expected_revision: properties.revision.clone().unwrap(),
+            task_id: "research-child".into(),
+            change_id: "attach-child".into(),
+            parent_task_id: Some("parent-task".into()),
+        })
+        .unwrap();
+    let saved_child = linked
+        .tasks
+        .iter()
+        .find(|task| task.id == "research-child")
+        .unwrap();
+    assert_eq!(saved_child.parent_task_id.as_deref(), Some("parent-task"));
+    assert_eq!(saved_child.content.as_deref(), Some("保留自己的说明"));
+    assert_eq!(saved_child.date.as_deref(), Some("2026-09-20"));
+    assert_eq!(saved_child.time.as_deref(), Some("10:00"));
+    assert_eq!(saved_child.list_id, "research");
+    assert_eq!(saved_child.priority, TaskPriority::High);
+    assert_eq!(saved_child.tag_ids, vec!["focus-tag"]);
+    assert_eq!(
+        saved_child.changes.last().unwrap().kind,
+        TaskChangeKind::ParentChanged
+    );
+
+    let relaunched = app(vault.path()).read().unwrap();
+    assert_eq!(
+        relaunched
+            .tasks
+            .iter()
+            .find(|task| task.id == "research-child")
+            .unwrap()
+            .parent_task_id
+            .as_deref(),
+        Some("parent-task")
+    );
+    let before_invalid = fs::read(task_path(vault.path())).unwrap();
+    let cycle = application
+        .set_parent(TaskParentInput {
+            target_binding: relaunched.target_binding.clone().unwrap(),
+            expected_revision: relaunched.revision.clone().unwrap(),
+            task_id: "parent-task".into(),
+            change_id: "make-cycle".into(),
+            parent_task_id: Some("research-child".into()),
+        })
+        .unwrap_err();
+    assert!(cycle.contains("循环"));
+    assert_eq!(fs::read(task_path(vault.path())).unwrap(), before_invalid);
+
+    let completed = application
+        .set_state(TaskStateInput {
+            target_binding: relaunched.target_binding.clone().unwrap(),
+            expected_revision: relaunched.revision.clone().unwrap(),
+            task_id: "parent-task".into(),
+            change_id: "complete-parent-only".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap();
+    let child = completed
+        .tasks
+        .iter()
+        .find(|task| task.id == "research-child")
+        .unwrap();
+    assert_eq!(child.state, TaskState::Pending);
+    assert_eq!(child.parent_task_id.as_deref(), Some("parent-task"));
+    let deleted = application
+        .delete(TaskDeleteInput {
+            target_binding: completed.target_binding.clone().unwrap(),
+            expected_revision: completed.revision.clone().unwrap(),
+            task_id: "parent-task".into(),
+            change_id: "delete-parent-only".into(),
+        })
+        .unwrap();
+    let child = deleted
+        .tasks
+        .iter()
+        .find(|task| task.id == "research-child")
+        .unwrap();
+    assert_eq!(child.deleted_at, None);
+    assert_eq!(child.parent_task_id.as_deref(), Some("parent-task"));
+
+    let restored = application
+        .restore(TaskRestoreInput {
+            target_binding: deleted.target_binding.clone().unwrap(),
+            expected_revision: deleted.revision.clone().unwrap(),
+            task_id: "parent-task".into(),
+            change_id: "restore-parent-with-child-link".into(),
+        })
+        .unwrap();
+    assert_eq!(
+        restored
+            .tasks
+            .iter()
+            .find(|task| task.id == "research-child")
+            .unwrap()
+            .parent_task_id
+            .as_deref(),
+        Some("parent-task")
+    );
+    let deleted_again = application
+        .delete(TaskDeleteInput {
+            target_binding: restored.target_binding.clone().unwrap(),
+            expected_revision: restored.revision.clone().unwrap(),
+            task_id: "parent-task".into(),
+            change_id: "delete-parent-before-reparent".into(),
+        })
+        .unwrap();
+    let replacement = application
+        .create(create_input(
+            &deleted_again,
+            "replacement-parent",
+            "后续负责人",
+            None,
+            None,
+        ))
+        .unwrap();
+    let moved = application
+        .set_parent(TaskParentInput {
+            target_binding: replacement.target_binding.clone().unwrap(),
+            expected_revision: replacement.revision.clone().unwrap(),
+            task_id: "research-child".into(),
+            change_id: "move-child-while-old-parent-deleted".into(),
+            parent_task_id: Some("replacement-parent".into()),
+        })
+        .unwrap();
+    let restored_again = application
+        .restore(TaskRestoreInput {
+            target_binding: moved.target_binding.clone().unwrap(),
+            expected_revision: moved.revision.clone().unwrap(),
+            task_id: "parent-task".into(),
+            change_id: "restore-old-parent-after-reparent".into(),
+        })
+        .unwrap();
+    let child = restored_again
+        .tasks
+        .iter()
+        .find(|task| task.id == "research-child")
+        .unwrap();
+    assert_eq!(child.parent_task_id.as_deref(), Some("replacement-parent"));
+}
+
+#[test]
+fn subtask_creation_keeps_an_ordinary_identity_and_rejects_invalid_parents_atomically() {
+    let vault = TempVault::new("subtask-identity");
+    let foreign_vault = TempVault::new("subtask-foreign-parent");
+    let application = app(vault.path());
+    let foreign_application = app(foreign_vault.path());
+
+    let opened = application.read().unwrap();
+    let parent = application
+        .create(create_input(
+            &opened,
+            "top-task",
+            "计划发布",
+            Some("2026-09-19"),
+            Some("09:00"),
+        ))
+        .unwrap();
+    let foreign_opened = foreign_application.read().unwrap();
+    foreign_application
+        .create(create_input(
+            &foreign_opened,
+            "foreign-parent",
+            "另一 Vault 的任务",
+            None,
+            None,
+        ))
+        .unwrap();
+    let research = application
+        .create_list(TaskListCreateInput {
+            target_binding: parent.target_binding.clone().unwrap(),
+            expected_revision: parent.revision.clone(),
+            list_id: "research".into(),
+            name: "研究".into(),
+        })
+        .unwrap();
+    let child_input = TaskCreateSubtaskInput {
+        task: TaskCreateInput {
+            target_binding: research.target_binding.clone().unwrap(),
+            expected_revision: research.revision.clone(),
+            task_id: "research-child".into(),
+            name: "核对来源".into(),
+            content: Some("保留自己的说明".into()),
+            date: Some("2026-09-20".into()),
+            time: Some("10:15".into()),
+            execution_end: None,
+            list_id: Some("research".into()),
+        },
+        parent_task_id: "top-task".into(),
+    };
+    let created = application.create_subtask(child_input.clone()).unwrap();
+    let child = created
+        .tasks
+        .iter()
+        .find(|task| task.id == "research-child")
+        .unwrap();
+    assert_eq!(child.parent_task_id.as_deref(), Some("top-task"));
+    assert_eq!(child.content.as_deref(), Some("保留自己的说明"));
+    assert_eq!(child.date.as_deref(), Some("2026-09-20"));
+    assert_eq!(child.time.as_deref(), Some("10:15"));
+    assert_eq!(child.list_id, "research");
+
+    let retry = application.create_subtask(child_input).unwrap();
+    assert_eq!(retry.tasks.len(), created.tasks.len());
+    let grandchild = application
+        .create_subtask(TaskCreateSubtaskInput {
+            task: TaskCreateInput {
+                target_binding: retry.target_binding.clone().unwrap(),
+                expected_revision: retry.revision.clone(),
+                task_id: "source-check".into(),
+                name: "检查一个来源".into(),
+                content: None,
+                date: None,
+                time: None,
+                execution_end: None,
+                list_id: Some("inbox".into()),
+            },
+            parent_task_id: "research-child".into(),
+        })
+        .unwrap();
+    assert_eq!(
+        grandchild
+            .tasks
+            .iter()
+            .find(|task| task.id == "source-check")
+            .unwrap()
+            .parent_task_id
+            .as_deref(),
+        Some("research-child")
+    );
+
+    let before_invalid = fs::read(task_path(vault.path())).unwrap();
+    for (change_id, parent_task_id) in [
+        ("reject-self-parent", Some("research-child")),
+        ("reject-missing-parent", Some("missing-parent")),
+        ("reject-foreign-parent", Some("foreign-parent")),
+    ] {
+        let rejected = application
+            .set_parent(TaskParentInput {
+                target_binding: grandchild.target_binding.clone().unwrap(),
+                expected_revision: grandchild.revision.clone().unwrap(),
+                task_id: "research-child".into(),
+                change_id: change_id.into(),
+                parent_task_id: parent_task_id.map(str::to_owned),
+            })
+            .unwrap_err();
+        assert!(rejected.contains("父任务") || rejected.contains("自身"));
+        assert_eq!(fs::read(task_path(vault.path())).unwrap(), before_invalid);
+    }
+}
+
+#[test]
+fn task_folder_operations_keep_list_and_task_identity() {
+    let vault = TempVault::new("task-folders");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let folder = application
+        .create_folder(TaskFolderCreateInput {
+            target_binding: opened.target_binding.clone().unwrap(),
+            expected_revision: opened.revision.clone(),
+            folder_id: "projects".into(),
+            name: "项目".into(),
+        })
+        .unwrap();
+    assert_eq!(
+        folder
+            .folders
+            .iter()
+            .map(|item| item.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["projects"]
+    );
+    let list = application
+        .create_list_in_folder(TaskListCreateInFolderInput {
+            target_binding: folder.target_binding.clone().unwrap(),
+            expected_revision: folder.revision.clone(),
+            list_id: "launch".into(),
+            name: "发布".into(),
+            folder_id: "projects".into(),
+        })
+        .unwrap();
+    assert_eq!(
+        list.lists
+            .iter()
+            .find(|item| item.id == "launch")
+            .unwrap()
+            .folder_id
+            .as_deref(),
+        Some("projects")
+    );
+    let task = application
+        .create(TaskCreateInput {
+            execution_end: None,
+            target_binding: list.target_binding.clone().unwrap(),
+            expected_revision: list.revision.clone(),
+            task_id: "launch-task".into(),
+            name: "整理发布清单".into(),
+            content: None,
+            date: None,
+            time: None,
+            list_id: Some("launch".into()),
+        })
+        .unwrap();
+    let renamed = application
+        .rename_folder(TaskFolderRenameInput {
+            target_binding: task.target_binding.clone().unwrap(),
+            expected_revision: task.revision.clone().unwrap(),
+            folder_id: "projects".into(),
+            name: "工作项目".into(),
+        })
+        .unwrap();
+    assert_eq!(renamed.folders[0].name, "工作项目");
+    let ungrouped = application
+        .set_list_folder(TaskListFolderInput {
+            target_binding: renamed.target_binding.clone().unwrap(),
+            expected_revision: renamed.revision.clone().unwrap(),
+            list_id: "launch".into(),
+            folder_id: None,
+        })
+        .unwrap();
+    assert_eq!(
+        ungrouped
+            .lists
+            .iter()
+            .find(|item| item.id == "launch")
+            .unwrap()
+            .folder_id,
+        None
+    );
+    assert_eq!(ungrouped.tasks[0].id, "launch-task");
+    let regrouped = application
+        .set_list_folder(TaskListFolderInput {
+            target_binding: ungrouped.target_binding.clone().unwrap(),
+            expected_revision: ungrouped.revision.clone().unwrap(),
+            list_id: "launch".into(),
+            folder_id: Some("projects".into()),
+        })
+        .unwrap();
+    let archived = application
+        .archive_list(TaskListArchiveInput {
+            target_binding: regrouped.target_binding.clone().unwrap(),
+            expected_revision: regrouped.revision.clone().unwrap(),
+            list_id: "launch".into(),
+        })
+        .unwrap();
+    assert!(
+        archived
+            .lists
+            .iter()
+            .find(|item| item.id == "launch")
+            .unwrap()
+            .archived
+    );
+    assert_eq!(
+        archived
+            .lists
+            .iter()
+            .find(|item| item.id == "launch")
+            .unwrap()
+            .folder_id
+            .as_deref(),
+        Some("projects")
+    );
+    assert_eq!(archived.tasks[0].id, "launch-task");
+    let restored = application
+        .restore_list(TaskListRestoreInput {
+            target_binding: archived.target_binding.clone().unwrap(),
+            expected_revision: archived.revision.clone().unwrap(),
+            list_id: "launch".into(),
+        })
+        .unwrap();
+    assert!(
+        !restored
+            .lists
+            .iter()
+            .find(|item| item.id == "launch")
+            .unwrap()
+            .archived
+    );
+    assert_eq!(
+        restored
+            .lists
+            .iter()
+            .find(|item| item.id == "launch")
+            .unwrap()
+            .folder_id
+            .as_deref(),
+        Some("projects")
+    );
+    let deleted = application
+        .delete_folder(TaskFolderDeleteInput {
+            target_binding: restored.target_binding.clone().unwrap(),
+            expected_revision: restored.revision.clone().unwrap(),
+            folder_id: "projects".into(),
+        })
+        .unwrap();
+    assert!(deleted.folders.is_empty());
+    assert_eq!(
+        deleted
+            .lists
+            .iter()
+            .find(|item| item.id == "launch")
+            .unwrap()
+            .folder_id,
+        None
+    );
+    assert_eq!(deleted.tasks[0].id, "launch-task");
+    let document: serde_json::Value =
+        serde_json::from_slice(&fs::read(task_path(vault.path())).unwrap()).unwrap();
+    assert_eq!(document["schemaVersion"], serde_json::json!(3));
+    assert_eq!(document["tasks"][0]["id"], serde_json::json!("launch-task"));
+}
+
+#[test]
 fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
     let vault = TempVault::new("lists-identity");
     let application = app(vault.path());
@@ -1798,7 +2333,13 @@ fn task_priority_and_tags_save_read_back_and_keep_task_identity() {
     let application = app(vault.path());
     let opened = application.read().unwrap();
     let created = application
-        .create(create_input(&opened, "priority-task", "复习计划", None, None))
+        .create(create_input(
+            &opened,
+            "priority-task",
+            "复习计划",
+            None,
+            None,
+        ))
         .unwrap();
     assert_eq!(created.tasks[0].priority, TaskPriority::None);
     assert!(created.tasks[0].tag_ids.is_empty());
@@ -1833,21 +2374,21 @@ fn task_priority_and_tags_save_read_back_and_keep_task_identity() {
     assert_eq!(application.read().unwrap().tags.len(), 1);
 
     let property_edit = TaskUpdateWithPropertiesInput {
-            task: TaskUpdateInput {
-                execution_end: None,
-                target_binding: tagged.target_binding.clone().unwrap(),
-                expected_revision: tagged.revision.clone().unwrap(),
-                task_id: "priority-task".into(),
-                change_id: "set-priority-and-tag".into(),
-                name: "复习计划".into(),
-                content: Some("整理今天的重点".into()),
-                date: None,
-                time: None,
-                list_id: None,
-            },
-            priority: TaskPriority::High,
-            tag_ids: vec!["work-context".into()],
-        };
+        task: TaskUpdateInput {
+            execution_end: None,
+            target_binding: tagged.target_binding.clone().unwrap(),
+            expected_revision: tagged.revision.clone().unwrap(),
+            task_id: "priority-task".into(),
+            change_id: "set-priority-and-tag".into(),
+            name: "复习计划".into(),
+            content: Some("整理今天的重点".into()),
+            date: None,
+            time: None,
+            list_id: None,
+        },
+        priority: TaskPriority::High,
+        tag_ids: vec!["work-context".into()],
+    };
     let updated = application
         .update_with_properties(property_edit.clone())
         .unwrap();
