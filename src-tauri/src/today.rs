@@ -1,9 +1,12 @@
 use crate::habits::{
-    load_habit_names, project_habit_corrections_with_recording_limit, project_snapshot_with_names_at_local_date,
+    load_habit_names, merge_local_habit_definitions, parse_local_habit_definitions,
+    project_habit_corrections_with_recording_limit, project_snapshot_with_names_at_local_date,
     project_uncatalogued_habit_corrections_with_recording_limit, snapshot_dates_at_local_date,
     FileHabitSnapshotStore, HabitCorrectionView, HabitLocalCompletionChangeView,
-    HabitSnapshotStore, LocalHabitCompletion, LocalHabitRecord, LEGACY_SNAPSHOT_RELATIVE_PATH,
-    SNAPSHOT_RELATIVE_PATH,
+    HabitSnapshotStore, LocalHabitCompletion, LocalHabitDefinition, LocalHabitDefinitionsDocument,
+    LocalHabitGoal, LocalHabitGoalRevision, LocalHabitOperationReceipt, LocalHabitRecord,
+    LocalHabitRevisionDisposition, HABIT_DEFINITIONS_RELATIVE_PATH,
+    LEGACY_SNAPSHOT_RELATIVE_PATH, SNAPSHOT_RELATIVE_PATH,
 };
 pub use crate::habits::{
     HabitCellStatus, HabitLocalCompletionState, HabitSnapshotState, HabitSnapshotView,
@@ -180,6 +183,50 @@ pub trait HabitCompletionStore {
     fn save_if_unchanged(&self, path: &Path, expected: &[u8], updated: &[u8])
         -> Result<(), String>;
     fn create_new(&self, path: &Path, document: &[u8]) -> Result<(), String>;
+}
+
+#[derive(Clone, Copy)]
+struct FileHabitDefinitionStore;
+
+impl FileHabitDefinitionStore {
+    fn load(&self, path: &Path) -> Result<Option<Vec<u8>>, String> {
+        match fs::read(path) {
+            Ok(document) => Ok(Some(document)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!("无法读取本地 Habit 定义：{error}")),
+        }
+    }
+
+    fn save_if_unchanged(
+        &self,
+        path: &Path,
+        expected: &[u8],
+        updated: &[u8],
+    ) -> Result<(), String> {
+        save_file_if_unchanged(
+            path,
+            expected,
+            updated,
+            StorageDocumentKind::HabitCompletions,
+            |_| Ok(()),
+        )
+        .map_err(translate_habit_definition_storage_error)
+    }
+
+    fn create_new(&self, path: &Path, document: &[u8]) -> Result<(), String> {
+        create_new_file(path, document, StorageDocumentKind::HabitCompletions)
+            .map_err(translate_habit_definition_storage_error)
+    }
+}
+
+fn translate_habit_definition_storage_error(error: String) -> String {
+    error
+        .replace("本地习惯完成正本", "本地 Habit 定义正本")
+        .replace(
+            "local habit-completion document",
+            "local Habit definition document",
+        )
+        .replace("habit-completions", "habits")
 }
 
 #[derive(Clone, Copy)]
@@ -1615,6 +1662,22 @@ pub struct HabitCompletionMutationInput {
     pub expected_revision: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitDefinitionMutationInput {
+    pub mode: String,
+    pub key: String,
+    pub name: String,
+    pub emoji: Option<String>,
+    pub group: Option<String>,
+    pub start_date: Option<String>,
+    pub goal: Option<LocalHabitGoal>,
+    pub change_id: String,
+    pub target_binding: String,
+    pub expected_revision: Option<String>,
+    pub expected_snapshot_revision: Option<String>,
+}
+
 /// Bounded, read-only local completion evidence; snapshot facts remain a separate source.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1866,6 +1929,7 @@ pub struct TodayApplication<
     habit_snapshot_store: H,
     day_task_store: D,
     habit_completion_store: L,
+    habit_definition_store: FileHabitDefinitionStore,
     habit_cache: Mutex<HashMap<PathBuf, HabitSnapshotView>>,
     habit_correction_cache: Mutex<HashMap<(PathBuf, String), HabitCorrectionView>>,
 }
@@ -1894,6 +1958,7 @@ where
             habit_snapshot_store: FileHabitSnapshotStore,
             day_task_store: FileDayTaskStore,
             habit_completion_store: FileHabitCompletionStore,
+            habit_definition_store: FileHabitDefinitionStore,
             habit_cache: Mutex::new(HashMap::new()),
             habit_correction_cache: Mutex::new(HashMap::new()),
         }
@@ -1917,6 +1982,7 @@ where
             habit_snapshot_store: FileHabitSnapshotStore,
             day_task_store: FileDayTaskStore,
             habit_completion_store: FileHabitCompletionStore,
+            habit_definition_store: FileHabitDefinitionStore,
             habit_cache: Mutex::new(HashMap::new()),
             habit_correction_cache: Mutex::new(HashMap::new()),
         }
@@ -1946,6 +2012,7 @@ where
             habit_snapshot_store,
             day_task_store: FileDayTaskStore,
             habit_completion_store: FileHabitCompletionStore,
+            habit_definition_store: FileHabitDefinitionStore,
             habit_cache: Mutex::new(HashMap::new()),
             habit_correction_cache: Mutex::new(HashMap::new()),
         }
@@ -1977,6 +2044,7 @@ where
             habit_snapshot_store,
             day_task_store,
             habit_completion_store: FileHabitCompletionStore,
+            habit_definition_store: FileHabitDefinitionStore,
             habit_cache: Mutex::new(HashMap::new()),
             habit_correction_cache: Mutex::new(HashMap::new()),
         }
@@ -2010,6 +2078,7 @@ where
             habit_snapshot_store,
             day_task_store,
             habit_completion_store,
+            habit_definition_store: FileHabitDefinitionStore,
             habit_cache: Mutex::new(HashMap::new()),
             habit_correction_cache: Mutex::new(HashMap::new()),
         }
@@ -2692,15 +2761,16 @@ where
             catalog.state,
             HabitSnapshotState::Ready | HabitSnapshotState::Stale
         );
-        if has_verifiable_catalog {
-            let habit = catalog.habit(&input.habit_key).ok_or_else(|| {
-                "Habits catalog 中没有这个稳定习惯 key；未写入任何内容。".to_string()
-            })?;
+        let catalog_habit = catalog.habit(&input.habit_key);
+        let has_local_definition = catalog_habit.is_some_and(|habit| habit.is_local_definition);
+        if let Some(habit) = catalog_habit {
             if !habit.can_record_completion {
                 return Err(
                     "该习惯不是 completion 型；时刻和阈值证据不能用本地完成框记录。".into(),
                 );
             }
+        } else if has_verifiable_catalog {
+            return Err("Habits catalog 中没有这个稳定习惯 key；未写入任何内容。".into());
         }
 
         let vault = self
@@ -2762,7 +2832,9 @@ where
         let existing_index = document.completions.iter().position(|record| {
             record.habit_key == input.habit_key && record.lived_date == input.lived_date
         });
-        if !has_verifiable_catalog && !(allow_existing_without_catalog && existing_index.is_some())
+        if !has_verifiable_catalog
+            && !has_local_definition
+            && !(allow_existing_without_catalog && existing_index.is_some())
         {
             return Err("当前没有可验证的 Habits catalog；请刷新有效快照后再记录。".into());
         }
@@ -3226,96 +3298,362 @@ where
         let Some(vault) = self.persistence.load_selected_vault()? else {
             return Ok(HabitSnapshotView::unconfigured());
         };
-        let path = vault.join(SNAPSHOT_RELATIVE_PATH);
-        let document = match load_habit_snapshot_from_vault(&self.habit_snapshot_store, &vault) {
-            Ok(Some(document)) => document,
-            Ok(None) => {
-                if self.has_cached_habit_snapshot(&path)? {
-                    return self.retained_or_error(
-                        &path,
-                        "Habits 快照文件已不存在；可能正在等待下一次原子替换。".into(),
-                    );
-                }
-                return Ok(HabitSnapshotView::missing());
-            }
-            Err(error) => {
-                if self.has_cached_habit_snapshot(&path)? {
-                    return self.retained_or_error(&path, error);
-                }
-                return Ok(HabitSnapshotView::error(error));
-            }
-        };
         let today = self.clock.current_lived_date();
+        let local_date = self.clock.current_date();
         let current_timestamp = self.clock.current_timestamp_label();
-        let dates = match snapshot_dates_at_local_date(&document, &today, &self.clock.current_date()) {
-            Ok(dates) => dates,
-            Err(error) => return Ok(self.retained_or_error(&path, error)?),
-        };
+        let snapshot_path = vault.join(SNAPSHOT_RELATIVE_PATH);
+        let definition_path = vault.join(HABIT_DEFINITIONS_RELATIVE_PATH);
         let completion_path = canonical_habit_completion_path(&vault);
         let completion_target_binding = habit_completion_target_binding(&completion_path);
-        let (completion_revision, local_completions) =
-            match self.habit_completion_store.load(&completion_path) {
-                Ok(Some(bytes)) => {
-                    let completion_document =
-                        match parse_habit_completion_document(&bytes, &current_timestamp) {
-                            Ok(document) => document,
-                            Err(error) => return Ok(self.retained_or_error(&path, error)?),
-                        };
-                    let completions = completion_document
+        let names_configuration = load_habit_names(&vault);
+        let (definitions, definition_revision) = match self
+            .habit_definition_store
+            .load(&definition_path)
+        {
+            Ok(Some(bytes)) => match parse_local_habit_definitions(&bytes, &current_timestamp) {
+                Ok(document) => (Some(document), Some(document_revision(&bytes))),
+                Err(error) => return Ok(self.retained_or_error(
+                    &snapshot_path,
+                    format!("本地 Habit 设置无效：{error}"),
+                )?),
+            },
+            Ok(None) => (Some(LocalHabitDefinitionsDocument::default()), None),
+            Err(error) => return Ok(self.retained_or_error(&snapshot_path, error)?),
+        };
+        let (completion_revision, local_completions) = match self
+            .habit_completion_store
+            .load(&completion_path)
+        {
+            Ok(Some(bytes)) => match parse_habit_completion_document(&bytes, &current_timestamp) {
+                Ok(document) => (
+                    Some(document_revision(&bytes)),
+                    document
                         .completions
                         .into_iter()
                         .map(local_habit_completion)
-                        .collect();
-                    (Some(document_revision(&bytes)), completions)
+                        .collect(),
+                ),
+                Err(error) => return Ok(self.retained_or_error(&snapshot_path, error)?),
+            },
+            Ok(None) => (None, Vec::new()),
+            Err(error) => return Ok(self.retained_or_error(&snapshot_path, error)?),
+        };
+
+        let (mut view, snapshot_revision, cacheable) =
+            match load_habit_snapshot_from_vault(&self.habit_snapshot_store, &vault) {
+                Ok(Some(document)) => {
+                    let revision = Some(document_revision(&document));
+                    let projected = snapshot_dates_at_local_date(&document, &today, &local_date)
+                        .and_then(|dates| {
+                            let mut local_records = Vec::new();
+                            for date in dates {
+                                let record_path = canonical_record_path(&vault, &date)?;
+                                let Ok(Some(bytes)) = self.record_store.load(&record_path) else {
+                                    continue;
+                                };
+                                let Ok(record) = String::from_utf8(bytes) else {
+                                    continue;
+                                };
+                                let Ok(records) = parse_short_records(&record, &date) else {
+                                    continue;
+                                };
+                                local_records.extend(
+                                    records
+                                        .into_iter()
+                                        .filter(|record| {
+                                            record.category == ShortRecordCategory::Exercise
+                                        })
+                                        .map(|record| LocalHabitRecord {
+                                            id: record.id,
+                                            key: "exercise".into(),
+                                            date: record.date,
+                                            source_label: "Dashboard Daily Record".into(),
+                                            text: record.text,
+                                        }),
+                                );
+                            }
+                            project_snapshot_with_names_at_local_date(
+                                &document,
+                                &today,
+                                &local_date,
+                                local_records,
+                                local_completions.clone(),
+                                &names_configuration,
+                            )
+                        });
+                    match projected {
+                        Ok(view) => (view, revision, true),
+                        Err(error) => (
+                            self.retained_or_error(&snapshot_path, error)?,
+                            revision,
+                            false,
+                        ),
+                    }
                 }
-                Ok(None) => (None, Vec::new()),
-                Err(error) => return Ok(self.retained_or_error(&path, error)?),
+                Ok(None) => {
+                    if self.has_cached_habit_snapshot(&snapshot_path)? {
+                        (
+                            self.retained_or_error(
+                                &snapshot_path,
+                                "Habits 快照文件已不存在；可能正在等待下一次原子替换。".into(),
+                            )?,
+                            None,
+                            false,
+                        )
+                    } else {
+                        (HabitSnapshotView::missing(), None, false)
+                    }
+                }
+                Err(error) => {
+                    if self.has_cached_habit_snapshot(&snapshot_path)? {
+                        (self.retained_or_error(&snapshot_path, error)?, None, false)
+                    } else {
+                        (HabitSnapshotView::error(error), None, false)
+                    }
+                }
             };
-        let mut local_records = Vec::new();
-        for date in dates {
-            let record_path = canonical_record_path(&vault, &date)?;
-            let Ok(Some(bytes)) = self.record_store.load(&record_path) else {
-                continue;
-            };
-            let Ok(record) = String::from_utf8(bytes) else {
-                continue;
-            };
-            let Ok(records) = parse_short_records(&record, &date) else {
-                continue;
-            };
-            for record in records
-                .into_iter()
-                .filter(|record| record.category == ShortRecordCategory::Exercise)
+
+        if let Some(definitions) = definitions.as_ref() {
+            if let Err(error) = merge_local_habit_definitions(
+                &mut view,
+                definitions,
+                local_completions,
+                &names_configuration,
+                &today,
+                &local_date,
+                &current_timestamp,
+            ) {
+                return Ok(self.retained_or_error(&snapshot_path, error)?);
+            }
+        }
+        view.current_lived_date = Some(today);
+        view.snapshot_revision = snapshot_revision;
+        view.completion_revision = completion_revision;
+        view.completion_target_binding = Some(completion_target_binding);
+        view.definition_revision = definition_revision;
+        view.definition_target_binding = Some(habit_definition_target_binding(&definition_path));
+        if cacheable {
+            self.habit_cache
+                .lock()
+                .map_err(|_| "Habits 快照缓存不可用。".to_string())?
+                .insert(snapshot_path, view.clone());
+        }
+        Ok(view)
+    }
+
+    pub fn save_habit_definition(
+        &self,
+        input: HabitDefinitionMutationInput,
+    ) -> Result<HabitSnapshotView, String> {
+        validate_habit_key(&input.key)?;
+        validate_local_identifier(&input.change_id, "Habit 操作标识")?;
+        let mode = input.mode.as_str();
+        if mode != "create" && mode != "edit" {
+            return Err("Habit 操作必须是 create 或 edit。未写入任何内容。".into());
+        }
+        let name = input.name.trim();
+        if name.is_empty() || name.chars().count() > 80 {
+            return Err("Habit 名称必须是 1 至 80 个字符。未写入任何内容。".into());
+        }
+        if let Some(emoji) = input.emoji.as_deref() {
+            let emoji = emoji.trim();
+            if emoji.is_empty() || emoji.chars().count() > 8 || emoji.chars().any(char::is_control)
             {
-                local_records.push(LocalHabitRecord {
-                    id: record.id,
-                    key: "exercise".into(),
-                    date: record.date,
-                    source_label: "Dashboard Daily Record".into(),
-                    text: record.text,
+                return Err("Habit emoji 只能是一个简短、非空的图标。未写入任何内容。".into());
+            }
+        }
+        if let Some(group) = input.group.as_deref() {
+            let group = group.trim();
+            if group.is_empty() || group.chars().count() > 48 {
+                return Err("Habit 分组名称必须是 1 至 48 个字符。未写入任何内容。".into());
+            }
+        }
+        if let Some(start_date) = input.start_date.as_deref() {
+            if CalendarDate::parse(start_date).is_none() {
+                return Err("Habit 开始日期无效。未写入任何内容。".into());
+            }
+        }
+        if let Some(goal) = input.goal.as_ref() {
+            goal.validate()?;
+        }
+        if mode == "create" && input.goal.is_none() {
+            return Err("新建 Habit 需要设置每日、每周或时间阈值目标。未写入任何内容。".into());
+        }
+        if mode == "create" && !input.key.starts_with("local-") {
+            return Err("本地新建 Habit 必须使用独立的 local- 稳定 key。未写入任何内容。".into());
+        }
+
+        let vault = self
+            .persistence
+            .load_selected_vault()?
+            .ok_or_else(|| "请先选择 Vault，再保存本地 Habit。".to_string())?;
+        validate_compatible_vault(&vault)
+            .map_err(|error| format!("{error}；Habit 草稿仍可重试，未写入任何内容。"))?;
+        let path = vault.join(HABIT_DEFINITIONS_RELATIVE_PATH);
+        if habit_definition_target_binding(&path) != input.target_binding {
+            return Err("Vault 或 Habit catalog 目标已经变化。请重新读取 Habits 后再保存。".into());
+        }
+        let current_timestamp = self.clock.current_timestamp_label();
+        validate_timestamp_label(&current_timestamp)?;
+        let current_lived_date = self.clock.current_lived_date();
+        let current = self.habit_definition_store.load(&path)?;
+        let mut document = match current.as_deref() {
+            Some(bytes) => parse_local_habit_definitions(bytes, &current_timestamp)?,
+            None => LocalHabitDefinitionsDocument::default(),
+        };
+        let fingerprint = habit_definition_fingerprint(&input, name)?;
+        if let Some(receipt) = document
+            .operations
+            .iter()
+            .find(|receipt| receipt.id == input.change_id)
+        {
+            if receipt.fingerprint == fingerprint {
+                return self.habits();
+            }
+            return Err(
+                "Habit 操作标识已用于其他内容；请重新读取后再保存。未写入任何内容。".into(),
+            );
+        }
+        match current.as_deref() {
+            Some(bytes) => {
+                let current_revision = document_revision(bytes);
+                if input.expected_revision.as_deref() != Some(current_revision.as_str()) {
+                    return Err(
+                        "本地 Habit catalog 已在外部变化。草稿仍保留；请重新读取后再保存。".into(),
+                    );
+                }
+            }
+            None if input.expected_revision.is_some() => {
+                return Err(
+                    "本地 Habit catalog 已不存在。请重新读取后再保存；未创建替代数据。".into(),
+                );
+            }
+            None => {}
+        }
+
+        let existing_index = document
+            .habits
+            .iter()
+            .position(|habit| habit.key == input.key);
+        let mut source = None;
+        if existing_index.is_none() || mode == "create" {
+            if let Some(snapshot) =
+                load_habit_snapshot_from_vault(&self.habit_snapshot_store, &vault)?
+            {
+                let snapshot_revision = document_revision(&snapshot);
+                if mode == "edit"
+                    && input.expected_snapshot_revision.as_deref()
+                        != Some(snapshot_revision.as_str())
+                {
+                    return Err("Habits 来源快照已变化。请重新读取后再编辑，来源未被覆盖。".into());
+                }
+                let source_lookup = crate::habits::local_habit_source(
+                    &snapshot,
+                    &input.key,
+                    &current_lived_date,
+                    &self.clock.current_date(),
+                );
+                match source_lookup {
+                    Ok(Some(found)) => source = Some(found),
+                    Ok(None) if mode == "edit" => {
+                        return Err("来源中没有这个稳定 Habit key；未写入任何内容。".into());
+                    }
+                    Ok(None) => {}
+                    Err(error) if mode == "edit" => {
+                        return Err(format!("无法验证来源 Habit；{error}。未写入任何内容。"));
+                    }
+                    Err(_) => {}
+                }
+            } else if mode == "edit" {
+                return Err(
+                    "没有可验证的来源 Habit；请刷新 Habits 后重试。未写入任何内容。".into(),
+                );
+            }
+        }
+
+        match mode {
+            "create" => {
+                if existing_index.is_some() || source.is_some() {
+                    return Err("该稳定 Habit key 已存在；未创建第二个对象。".into());
+                }
+                let goal = input.goal.clone().expect("create goal was validated");
+                document.habits.push(LocalHabitDefinition {
+                    key: input.key.clone(),
+                    name: name.into(),
+                    emoji: normalized_optional(input.emoji.as_deref()),
+                    group: normalized_optional(input.group.as_deref()),
+                    start_date: input.start_date.clone(),
+                    created_locally: true,
+                    base_goal: Some(goal),
+                    source_goal_history: Vec::new(),
+                    goal_revisions: Vec::new(),
                 });
             }
-        }
-        let names_configuration = load_habit_names(&vault);
-        match project_snapshot_with_names_at_local_date(
-            &document,
-            &today,
-            &self.clock.current_date(),
-            local_records,
-            local_completions,
-            &names_configuration,
-        ) {
-            Ok(mut view) => {
-                view.completion_revision = completion_revision;
-                view.completion_target_binding = Some(completion_target_binding);
-                self.habit_cache
-                    .lock()
-                    .map_err(|_| "Habits 快照缓存不可用。".to_string())?
-                    .insert(path, view.clone());
-                Ok(view)
+            "edit" => {
+                let definition = if let Some(index) = existing_index {
+                    &mut document.habits[index]
+                } else if let Some(source) = source {
+                    document.habits.push(LocalHabitDefinition {
+                        key: input.key.clone(),
+                        name: source.name,
+                        emoji: None,
+                        group: None,
+                        start_date: None,
+                        created_locally: false,
+                        base_goal: source.goal,
+                        source_goal_history: source.goal_history,
+                        goal_revisions: Vec::new(),
+                    });
+                    document
+                        .habits
+                        .last_mut()
+                        .expect("source overlay was added")
+                } else {
+                    return Err("Habit 不存在或已被移除；未写入任何内容。".into());
+                };
+                definition.name = name.into();
+                definition.emoji = normalized_optional(input.emoji.as_deref());
+                definition.group = normalized_optional(input.group.as_deref());
+                definition.start_date = input.start_date.clone();
+                revise_habit_goal(
+                    definition,
+                    input.goal.clone(),
+                    &current_lived_date,
+                    &current_timestamp,
+                    &input.change_id,
+                )?;
             }
-            Err(error) => Ok(self.retained_or_error(&path, error)?),
+            _ => unreachable!("mode was validated"),
         }
+        document.operations.push(LocalHabitOperationReceipt {
+            id: input.change_id,
+            fingerprint,
+        });
+        let encoded = serde_json::to_vec_pretty(&document)
+            .map_err(|error| format!("Habit catalog 编码失败；未写入任何内容：{error}"))?;
+        match current.as_deref() {
+            Some(bytes) => self
+                .habit_definition_store
+                .save_if_unchanged(&path, bytes, &encoded)?,
+            None => self.habit_definition_store.create_new(&path, &encoded)?,
+        }
+        let readback = self
+            .habit_definition_store
+            .load(&path)?
+            .ok_or_else(|| "Habit catalog 保存后无法读回；请重新读取核对。".to_string())?;
+        let verified = parse_local_habit_definitions(&readback, &current_timestamp)?;
+        if !verified.operations.iter().any(|receipt| {
+            receipt.id == document.operations.last().expect("operation was added").id
+                && receipt.fingerprint
+                    == document
+                        .operations
+                        .last()
+                        .expect("operation was added")
+                        .fingerprint
+        }) {
+            return Err("Habit catalog 已变化，保存结果尚未确认；请重新读取后再操作。".into());
+        }
+        self.habits()
     }
 
     fn retained_or_error(&self, path: &Path, error: String) -> Result<HabitSnapshotView, String> {
@@ -4682,6 +5020,85 @@ fn day_task_target_binding(path: &Path) -> String {
 
 fn canonical_habit_completion_path(vault: &Path) -> PathBuf {
     vault.join("life/.personal-dashboard/habit-completions/v1/completions.json")
+}
+
+fn habit_definition_target_binding(path: &Path) -> String {
+    format!(
+        "habit-definition-target-{}",
+        document_revision(path.to_string_lossy().as_bytes())
+    )
+}
+
+fn normalized_optional(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
+fn habit_definition_fingerprint(
+    input: &HabitDefinitionMutationInput,
+    normalized_name: &str,
+) -> Result<String, String> {
+    let canonical = serde_json::to_vec(&(
+        input.mode.as_str(),
+        input.key.as_str(),
+        normalized_name,
+        normalized_optional(input.emoji.as_deref()),
+        normalized_optional(input.group.as_deref()),
+        input.start_date.as_deref(),
+        input.goal.as_ref(),
+    ))
+    .map_err(|error| format!("Habit 操作无法生成稳定指纹：{error}"))?;
+    Ok(document_revision(&canonical))
+}
+
+fn revise_habit_goal(
+    definition: &mut LocalHabitDefinition,
+    desired_goal: Option<LocalHabitGoal>,
+    current_lived_date: &str,
+    changed_at: &str,
+    change_id: &str,
+) -> Result<(), String> {
+    let current_goal = definition.goal_on(current_lived_date);
+    if definition
+        .pending_goal(current_lived_date)
+        .is_some_and(|revision| revision.goal == desired_goal)
+    {
+        return Ok(());
+    }
+    let restores_current = desired_goal == current_goal;
+    for revision in &mut definition.goal_revisions {
+        if revision.disposition == LocalHabitRevisionDisposition::Scheduled
+            && revision.effective_on.as_str() > current_lived_date
+        {
+            revision.disposition = if restores_current {
+                LocalHabitRevisionDisposition::Cancelled
+            } else {
+                LocalHabitRevisionDisposition::Superseded
+            };
+        }
+    }
+    if restores_current {
+        return Ok(());
+    }
+    let today = CalendarDate::parse(current_lived_date)
+        .ok_or_else(|| "当前 lived date 无效；没有保存目标修订。".to_string())?;
+    let effective_on = match current_goal {
+        Some(LocalHabitGoal::WeeklyCount { .. }) => today.monday().plus_days(7),
+        Some(LocalHabitGoal::DailyCount | LocalHabitGoal::DailyTime { .. }) | None => {
+            today.plus_days(1)
+        }
+    };
+    let revision_id = format!("goal-{}", document_revision(change_id.as_bytes()));
+    definition.goal_revisions.push(LocalHabitGoalRevision {
+        id: revision_id,
+        goal: desired_goal,
+        effective_on: effective_on.to_string(),
+        changed_at: changed_at.into(),
+        disposition: LocalHabitRevisionDisposition::Scheduled,
+    });
+    Ok(())
 }
 
 fn load_habit_snapshot_from_vault(

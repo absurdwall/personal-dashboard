@@ -1172,8 +1172,64 @@
                   <h2 id="habits-heading" class="destination-heading" data-i18n="habits.weekly">本周习惯</h2>
                   <p id="habits-range" data-i18n="habits.loadingOnDemand">正在读取按需快照…</p>
                 </div>
-                <button id="refresh-habits" type="button" data-i18n="habits.refresh">刷新快照</button>
+                <div class="habits-header-actions">
+                  <button id="add-habit" type="button" data-i18n="habits.add">＋ 新建习惯</button>
+                  <button id="refresh-habits" type="button" data-i18n="habits.refresh">刷新快照</button>
+                </div>
               </header>
+              <form id="habit-definition-form" class="habit-definition-form" hidden>
+                <div class="habit-definition-heading">
+                  <h3 id="habit-definition-heading" data-i18n="habits.createHeading">新建本地习惯</h3>
+                </div>
+                <div class="habit-definition-fields">
+                  <label class="habit-definition-name">
+                    <span data-i18n="habits.name">名称</span>
+                    <input id="habit-definition-name" type="text" maxlength="80" required data-habit-definition-name />
+                  </label>
+                  <label>
+                    <span data-i18n="habits.frequency">频率与目标</span>
+                    <select id="habit-definition-frequency" required data-habit-definition-frequency>
+                      <option value="" disabled selected data-i18n="habits.chooseFrequency">请选择</option>
+                      <option value="daily-count" data-i18n="habits.dailyGoal">每日完成</option>
+                      <option value="weekly-count" data-i18n="habits.weeklyGoal">每周达标天数</option>
+                      <option value="daily-time" data-i18n="habits.timeGoal">每日时间阈值</option>
+                    </select>
+                  </label>
+                  <label data-habit-definition-weekly hidden>
+                    <span data-i18n="habits.weeklyDays">每周天数</span>
+                    <input id="habit-definition-weekly-days" type="number" min="1" max="7" value="3" data-habit-definition-weekly-days />
+                  </label>
+                  <label data-habit-definition-time hidden>
+                    <span data-i18n="habits.targetTime">目标时刻</span>
+                    <input id="habit-definition-time" type="time" data-habit-definition-time />
+                  </label>
+                  <label data-habit-definition-relation hidden>
+                    <span data-i18n="habits.dayRelation">日期归属</span>
+                    <select id="habit-definition-relation" data-habit-definition-relation-select>
+                      <option value="same-day" data-i18n="habits.sameDay">当天</option>
+                      <option value="next-day" data-i18n="habits.nextDay">次日</option>
+                      <option value="unresolved" data-i18n="habits.unresolved">未确定</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span data-i18n="habits.startDate">开始日期</span>
+                    <input id="habit-definition-start-date" type="date" data-habit-definition-start-date />
+                  </label>
+                  <label>
+                    <span data-i18n="habits.emojiOptional">图标（可选）</span>
+                    <input id="habit-definition-emoji" type="text" maxlength="8" data-habit-definition-emoji />
+                  </label>
+                  <label>
+                    <span data-i18n="habits.groupOptional">分组（可选）</span>
+                    <input id="habit-definition-group" type="text" maxlength="48" data-habit-definition-group />
+                  </label>
+                </div>
+                <div class="habit-definition-actions">
+                  <p id="habit-definition-status" role="status" aria-live="polite"></p>
+                  <button id="habit-definition-cancel" class="secondary-button" type="button" data-i18n="habits.cancel">取消</button>
+                  <button id="habit-definition-submit" type="submit" data-i18n="habits.saveDefinition">保存习惯</button>
+                </div>
+              </form>
               <p id="habits-status" class="today-status" role="status" aria-live="polite">
                 <span data-i18n="habits.loading">正在读取 Habits 快照…</span>
               </p>

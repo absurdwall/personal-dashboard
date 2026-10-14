@@ -1056,6 +1056,34 @@ const interfaceCopies = {
   "habits.weekly": { zh: "本周习惯", en: "Habits this week" },
   "habits.loadingOnDemand": { zh: "正在读取按需快照…", en: "Loading the on-demand snapshot…" },
   "habits.refresh": { zh: "刷新快照", en: "Refresh snapshot" },
+  "habits.add": { zh: "＋ 新建习惯", en: "＋ New habit" },
+  "habits.edit": { zh: "编辑", en: "Edit" },
+  "habits.createHeading": { zh: "新建本地习惯", en: "New local habit" },
+  "habits.editHeading": { zh: "编辑习惯 · {habit}", en: "Edit habit · {habit}" },
+  "habits.cancel": { zh: "取消", en: "Cancel" },
+  "habits.name": { zh: "名称", en: "Name" },
+  "habits.frequency": { zh: "频率与目标", en: "Frequency and goal" },
+  "habits.chooseFrequency": { zh: "请选择", en: "Choose a goal" },
+  "habits.dailyGoal": { zh: "每日完成", en: "Complete daily" },
+  "habits.weeklyGoal": { zh: "每周达标天数", en: "Days per week" },
+  "habits.timeGoal": { zh: "每日时间阈值", en: "Daily time threshold" },
+  "habits.weeklyDays": { zh: "每周天数（1–7）", en: "Days per week (1–7)" },
+  "habits.targetTime": { zh: "目标时刻", en: "Target time" },
+  "habits.dayRelation": { zh: "日期归属", en: "Date attribution" },
+  "habits.sameDay": { zh: "当天", en: "Same day" },
+  "habits.nextDay": { zh: "次日", en: "Next day" },
+  "habits.unresolved": { zh: "未确定", en: "Unresolved" },
+  "habits.startDate": { zh: "开始日期", en: "Start date" },
+  "habits.emojiOptional": { zh: "图标（可选）", en: "Emoji (optional)" },
+  "habits.groupOptional": { zh: "分组（可选）", en: "Group (optional)" },
+  "habits.saveDefinition": { zh: "保存习惯", en: "Save habit" },
+  "habits.definitionSaving": { zh: "正在保存 Habit 定义…", en: "Saving the Habit definition…" },
+  "habits.definitionSaved": { zh: "Habit 已保存到所选 Vault。", en: "Habit saved to the selected Vault." },
+  "habits.definitionUnavailable": { zh: "现在无法保存 Habit；请重新读取 Habits 后重试。", en: "Habit cannot be saved now. Reload Habits and try again." },
+  "habits.invalidGoal": { zh: "请设置有效的频率与目标。", en: "Choose a valid frequency and goal." },
+  "habits.definitionSaveFailed": { zh: "无法保存 Habit：{error}", en: "Could not save the Habit: {error}" },
+  "habits.pendingGoal": { zh: "下周期：{goal}", en: "Next cycle: {goal}" },
+  "habits.goalGroup": { zh: "分组：{group}", en: "Group: {group}" },
   "habits.loading": { zh: "正在读取 Habits 快照…", en: "Loading the Habits snapshot…" },
   "habits.weekStats": { zh: "本周统计", en: "THIS WEEK" },
   "habits.shortSummary": { zh: "简短摘要", en: "Short summary" },
@@ -2386,6 +2414,9 @@ export function localizeHabitGoalLabel(
   language: InterfaceLanguage,
 ): string {
   if (language === "zh") return label;
+  if (label === "每日完成") return "Complete daily";
+  const weeklyDays = /^每周 (\d+) 天$/.exec(label);
+  if (weeklyDays) return `${weeklyDays[1]} days per week`;
   const weekly = /^每周 (\d+) 次$/.exec(label);
   if (weekly) return `${weekly[1]} times per week`;
   const nextDay = /^每日 次日 (.+)$/.exec(label);
