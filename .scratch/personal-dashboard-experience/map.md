@@ -368,3 +368,15 @@ Both second-return findings are implemented at product merge `4ec21fc4457841e87e
 ### 2026-10-13 — authorized local installation
 
 After independent review closure, the user authorized replacing the local App. 4.0.8 is installed at the normal path, native startup/read-only sources verified, data retained, all extra worktrees removed with branch/history preserved. [Release and cleanup evidence](evidence/local-release-4.0.8-2026-10-13.json). Remote push/main PR and PDEX-26 full native combined acceptance remain separate.
+
+### 2026-10-13 — user rejection and exact App rollback
+
+The user rejected the refinement release. The exact previous **4.0.7** App is
+restored and running at the sole normal installation, with current personal
+data retained. The 4.0.8 bundle and fresh data snapshots remain privately
+preserved. Source/history are unchanged; no remote or main operation occurred.
+[Actual prototype audit](evidence/refinement-rejected-prototype-audit-2026-10-13.md)
+confirms three presentation findings in a fresh isolated native candidate.
+PDEX-26 is acceptance-failed/changes-requested and PDEX-SPEC-02 stays open.
+Previous review/installation entries are historical checkpoints. The
+implementation chat is holding changes pending the concrete rejection audit.

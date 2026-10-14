@@ -4,13 +4,14 @@
 
 **Blocked by:** 20 — Task 父子关系与清单文件夹; 21 — Today 时间轴与安排交互; 22 — Calendar 新增、详情与节日; 23 — Collaboration 空间与输入体验; 25 — Habit 详情、历史统计与停用恢复
 
-**Status:** implementation-complete/acceptance-pending
+**Status:** acceptance-failed/changes-requested
 
 **Triage:** ready-for-agent
 **ID:** PDEX-26
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** combined source verification complete; qualified broad failures retained; native/review acceptance pending
+**Implementation:** source delivered; user rejected 4.0.8; actual prototype comparison confirms presentation defects; repair not started
+**Acceptance:** failed — 2026-10-13; normal App restored to the exact previous 4.0.7
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -18,6 +19,11 @@
 **Breakdown decision:** 用户在合并为8张票后明确回复“同意”，批准范围、粒度与直接依赖。
 
 ## Acceptance criteria
+
+Current rejection and source-bound native observations are recorded in
+[rollback and prototype audit](../evidence/refinement-rejected-prototype-audit-2026-10-13.md).
+Previous source review and installation entries remain historical evidence;
+they do not establish product acceptance. No acceptance checkbox is closed.
 
 - [ ] 所有直接阻塞票已有各自完整结果和证据，间接覆盖PDEX-19/24；不能靠本票替未完成功能填实现。
 - [ ] 固定候选branch/base/完整commits、实际构建来源和可执行身份，用私有synthetic profile/Vault验证真实Tauri IPC、保存读回及重新启动。

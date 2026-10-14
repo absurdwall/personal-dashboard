@@ -1,0 +1,41 @@
+{
+  "outcome": "user-rejected; native presentation defects confirmed; app rolled back",
+  "normalAppVersion": "4.0.7",
+  "normalBinarySha256": "4865fc2c4aad16ee82dd30a23a5bc82720b0f8250264e564c7403d996eb33682",
+  "protectedBusinessFileCount": 121,
+  "protectedBusinessFilesUnchanged": true,
+  "soleRegisteredInstallation": [
+    {
+      "identifier": "com.tortillaflat.personal-dashboard",
+      "path": "/Applications/Personal Dashboard.app"
+    }
+  ],
+  "candidateManifest": {
+    "sourceCommit": "b566629be63ff4910982a24d023afa757855e142",
+    "reviewedProduct": "4ec21fc4457841e87ebd4ab986db17c3f02b6588",
+    "isolatedBundle": "/Users/tingranwang/.codex/tmp/prototype-acceptance-vgt8ymtq.noindex/Dashboard Prototype Audit.app",
+    "pid": 91525,
+    "binarySha256": "aa1ea460b4342b32ea64f37fe9837538a10ff446231cd51e46854e780ae08745",
+    "clock": "2026-09-08T17:05:00-04:00",
+    "normalInstallUnchanged": "4.0.7"
+  },
+  "screenshots": {
+    "prototype-tasks-1280x800.png": "e0eb0971f663e282e4f866c65b4128871a2e32ea2acecbc88c824b29cec03608",
+    "native-calendar-task-dialog-1280x800.png": "ea15fac90e23dbac6d3fafba617c4c871a27d1a931e4c57e2456706439cba2c4",
+    "native-context-1280x800.png": "51245e6e7ede206575c23e73d4a11c718572cbe17ba87b9610451dbad704f06b",
+    "native-today-1280x800.png": "daf358d86dbe24571095114eed4b13cc6a4a607e964f17bcbf144d44b4650696",
+    "native-habits-1280x800.png": "c8627faf29501f507a9b10474ac235c899bc8ac65e113b6bfa78534ba0d82ed3",
+    "native-collaboration-1280x800.png": "987322e949db906ff632ef483c597e73fb257d66b3ba8ae298aa73c0dfdf7fa5",
+    "native-today-long-title-1280x800.png": "c4d69adb7b93b3745b45da99cd7c9947c34ece332babeabcbbda8f54a217f99a",
+    "native-calendar-1280x800.png": "4958161a87a14f424d0c78ac4f27870d294973921fb42104b3cb21ea0d252c4a",
+    "prototype-today-1280x800.png": "073d56c0cc07e7fd9cba7cbb1fcc24a1a82047de57224685f4315544364583c9",
+    "native-habit-detail-1280x800.png": "44553bbd4833b6c76b3b5188f3c35eaa038d6494826f8207f8a7122c95ec386a",
+    "native-long-title-dialog.png": "b0a62d8c2c7a1de7676bf2ce0633a887599026fae02734d370f6c3614ef50411",
+    "native-tasks-simple-1280x800.png": "fb7d4ee4ba69e2044fdc8b6459ecbeca009fe9718ab74a72de0e277c24750da2",
+    "native-today-task-dialog-1280x800.png": "3c648902e22e51a6598e21782166c52f3e53502a6b378bec9fb1499636f23e8d",
+    "native-tasks-1280x800.png": "040c1a5eb42ee16454d0edab42dfea7de12aeab156983dac220dd20300f5dd64"
+  },
+  "fullNativeMatrixPassed": false,
+  "sourceReset": false,
+  "remotePush": false
+}
