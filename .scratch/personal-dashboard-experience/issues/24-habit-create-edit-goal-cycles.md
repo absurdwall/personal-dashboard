@@ -19,8 +19,10 @@
 
 ## Clean reimplementation tracking — 2026-10-14
 
-- Integration branch: `codex/dashboard-experience-refinement-restart-20261014`, based directly on `918e7e0d9c4b2c524c429bfd309482e328bc4c91`.
-- Ticket branch: `codex/pdex-24-restart`; worker start commit and implementation commits will be recorded after integration.
+- Integration branch: `codex/dashboard-experience-refinement-restart-20261014`; ticket base is its exact tip `8275615a3f3cad2a783d74561472c78c4bbeb493`.
+- Ticket branch/worktree: `codex/pdex-24-restart` at `/private/tmp/pdex-restart-20261014.noindex/pdex-24`; implementation commits, in order: `ae05611018bd7266c7dc1d1c13e343922e2bd7ee`, `c4bbc2bf1b12caa9af08d31cf71a2aa522f71228`.
+- Verification on the ticket branch: `cargo test --manifest-path src-tauri/Cargo.toml --test habit_completion_workflow --test habit_snapshot_workflow --test habit_definition_workflow` (34 passed); `node --test tests/frontend/habit-completion.test.ts tests/frontend/habit-canonical-navigation.test.ts tests/frontend/habit-localized-names.test.ts tests/frontend/interface-language.test.ts` (29 passed); `PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.npm/_npx/31e32ef8478fbf80/node_modules/playwright/index.mjs node --test tests/browser/habit-definition-workflow.mjs` (1 passed); `npm run build` passed; `git diff --check` passed.
+- The Rust workflow uses temporary Vault files through `TodayApplication`; the browser test uses a local IPC fixture and checks the real DOM flow. Packaged-app acceptance remains pending. Integration merge is waiting for the parent integration sequence; check and merge its latest tip before integration.
 - The earlier implementation remains on its previous branch with full history and is not this ticket's source baseline.
 
 ## Acceptance criteria
