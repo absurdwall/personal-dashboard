@@ -171,3 +171,30 @@ Post-merge checks:
 
 PDEX-23 stays claimed/in-progress. PDEX-26 packaged acceptance, actual dictation
 service and packaged save/readback checks remain outstanding.
+
+## Integration checkout — 2026-10-14
+
+The primary integration branch `codex/dashboard-experience-refinement-reimplementation`
+was clean at `53a7495dcade91e979ef0e3acb58202af7f8e5e3`; the clean worker tip was
+`00e518d7e2c2f4b92333b863f7a54fb364c98bd8`. Integration used `--no-ff` and
+created commit `968746ad4a3b2ab9722befe7bc160bfee07c15a9`, with parents
+`53a7495dcade91e979ef0e3acb58202af7f8e5e3` and
+`00e518d7e2c2f4b92333b863f7a54fb364c98bd8`. The complete worker history is
+preserved: implementation `81c0c5dc25975564e403e71f3366442b341ed101`,
+implementation evidence `606ead3d6f92c6d75083204b8d2917f98e448b14`, dependency
+merge `41a2fd98cbafa5860641a9e587af292601a3ca6a` (second parent exactly
+`53a7495dcade91e979ef0e3acb58202af7f8e5e3`), and branch verification
+`00e518d7e2c2f4b92333b863f7a54fb364c98bd8`. The merge had no conflicts.
+
+On the primary integration checkout, `PATH=node_modules/.bin:$PATH npm run build`
+passed; `node --test tests/frontend/collaboration-layout.test.ts` passed 14/14;
+`node --test tests/frontend/collaboration-panels.test.ts` passed 6/6. The
+command-completion suite passed 8/10 and retained its two documented base
+failures: “long help opens on demand while draft, dictation preview and real
+status surfaces remain exposed” (`false !== true`) and “selected slash candidate
+retains readable foreground on its soft background” (contrast 1.39). No attempt
+was made to alter those baseline failures. The exact run is recorded in
+[PDEX-23 integration evidence](../evidence/pdex-23-reimplementation-2026-10-13.md).
+
+Lifecycle remains `in-progress`; packaged acceptance, real dictation-service
+capture and packaged persistence/readback remain outstanding under PDEX-26.
