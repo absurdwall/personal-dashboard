@@ -134,3 +134,23 @@ no integration merge, install, remote operation or main change was recorded.
   and packaged-acceptance boundary are in
   [PDEX-22 implementation evidence](evidence/pdex-22-implementation-2026-10-14.md).
   No install, push, or normal Vault write was part of that branch work.
+
+### PDEX-20 integration and verification — 2026-10-14
+
+- PDEX-20's ticket branch `codex/pdex-20-restart` first merged integration tip
+  `ebd4354e2e179ab695450a4e1eaf196dc4730062` non-fast-forward as
+  `86e0c4cf2855db6afadf647ef7f872e8a66a26ae`, retaining shared Task/Calendar
+  creation behavior and PDEX-20's folder target and parent-aware child creation.
+- It then merged latest integration tip
+  `2a233c3e4a21d9eaff06b62f1770c86e7671d082` non-fast-forward as
+  `89ab2ca6ae319e9feefcb76fd72da1625d3ba4be`. The integration follow-ups
+  `13c9bc2c45fdbd67f340d982a660a39d2e3120d9` and `2a233c3...` remain reachable;
+  the ticket branch has not been merged back into integration.
+- After the latest merge: build passed; interface-language 14/14, Tasks
+  presentation 23/23, Tasks browser 23/23, Today-create browser 5/5, Calendar
+  focused frontend 16/16, Rust task workflow 36/36, holiday preferences 2/2,
+  app-local holiday readback 1/1, rustfmt and `git diff --check` passed. Exact
+  commands and the pre-test harness fixture update are in the
+  [PDEX-20 implementation record](evidence/pdex-20-implementation-2026-10-14.md).
+- No remote Git operation, main change, app installation, integration-branch
+  merge of PDEX-20, or packaged App acceptance was performed.
