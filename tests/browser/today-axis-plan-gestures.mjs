@@ -80,6 +80,7 @@ async function dragTo(page,text,desiredStart,{long=false}={}) {
 test('production plan drag previews morning-to-evening movement, edge-scrolls and preserves original non-quarter duration',async()=>{
   const fixture=await pageFixture(views.loaded,[views.moved]);const {page}=fixture;
   try{
+    await page.setViewportSize({width:1280,height:760});
     const interaction=await dragTo(page,'Synthetic drag range',1080,{long:true});
     await page.waitForFunction(()=>window.__calls.some(x=>x.command==='edit_plan_time'),null,{timeout:1500});
     const input=await page.evaluate(()=>window.__calls.find(x=>x.command==='edit_plan_time').args.input);

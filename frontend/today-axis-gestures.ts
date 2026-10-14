@@ -61,8 +61,10 @@ export function attachTodayAxisGestures<Context>(options: Readonly<{
   const cleanup=()=>{if(frame)cancelAnimationFrame(frame);frame=0;preview?.remove();preview=null;plot.classList.remove('is-pointer-editing');};
   const down=(event:PointerEvent)=>{
     if(event.button!==0||!event.isPrimary||gesture||!(event.target instanceof Element))return;
+    const markerAction = event.target.closest('.today-axis-marker-link');
+    const resizeHandle = event.target.closest('[data-axis-resize]');
     if(event.target.closest('[data-axis-gesture-ignore],input,select,textarea')||
-      (event.target.closest('button')&&!event.target.closest('[data-axis-resize]')))return;
+      (event.target.closest('button')&&!markerAction&&!resizeHandle))return;
     const context=options.begin();if(context===null)return;
     const target=options.resolveTarget(event.target,context);if(target===false)return;
     const bounds=options.bounds();const minute=position(event.clientY,bounds);
