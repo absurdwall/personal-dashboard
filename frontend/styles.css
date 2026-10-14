@@ -6358,6 +6358,87 @@ body {
   margin-bottom: 12px;
 }
 
+.today-axis-zoom-controls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.today-axis-zoom-controls button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--parity-border);
+  border-radius: 6px;
+  background: var(--parity-surface);
+  color: var(--parity-ink);
+  font: inherit;
+  line-height: 1;
+}
+
+.today-axis-zoom-controls button:not(:disabled) { cursor: pointer; }
+.today-axis-zoom-controls button:not(:disabled):hover { background: var(--parity-accent-soft); }
+.today-axis-zoom-controls button:disabled { color: var(--parity-muted); opacity: 0.55; }
+.today-axis-zoom-controls button:focus-visible {
+  outline: 2px solid var(--parity-accent);
+  outline-offset: 2px;
+}
+
+.today-axis-task-popup {
+  position: fixed;
+  inset: auto;
+  z-index: 1100;
+  width: min(430px, calc(100vw - 24px));
+  max-width: none;
+  max-height: calc(100dvh - 24px);
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid var(--parity-border);
+  border-radius: 12px;
+  background: var(--parity-surface);
+  color: var(--parity-ink);
+  box-shadow: 0 12px 36px rgb(35 39 36 / 20%);
+}
+
+.today-axis-task-popup-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.today-axis-task-popup-heading h3 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.today-axis-task-popup .task-editor-details {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.today-axis-task-popup .day-task-status:empty { display: none; }
+.today-axis-task-popup .task-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.today-axis-task-popup .task-form-wide { grid-column: 1 / -1; }
+.today-axis-task-popup .task-editor-footer { align-items: center; }
+
+@media (max-width: 560px) {
+  .today-axis-task-popup .task-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .today-axis-task-popup .task-form-wide { grid-column: auto; }
+}
+
 .today-time-axis-boundary {
   margin: 0;
   color: var(--parity-muted);
@@ -6368,7 +6449,7 @@ body {
 .today-continuous-axis {
   --today-axis-gutter: 3.7rem;
   --today-axis-heading-height: 3rem;
-  --today-axis-hour-height: 5rem;
+  --today-axis-hour-height: clamp(12px, calc(5.56dvh - 27.78px), 18px);
   --today-axis-plot-height: calc(24 * var(--today-axis-hour-height));
   position: relative;
   display: grid;
@@ -7526,6 +7607,36 @@ body {
   font-size: 10px;
   font-weight: 700;
 }
+
+.task-folder-navigation { min-width: 0; }
+.task-folder-navigation-heading {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 2px;
+}
+.task-folder-navigation-heading > .task-list-button { min-width: 0; }
+.task-folder-toggle {
+  width: 20px;
+  min-width: 20px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--parity-muted) !important;
+  font-size: 15px !important;
+  line-height: 1;
+}
+.task-folder-navigation-children {
+  display: grid;
+  gap: 2px;
+  margin: 1px 0 3px 10px;
+  padding-left: 5px;
+  border-left: 1px solid var(--parity-border);
+}
+.task-folder-navigation-children[hidden] { display: none; }
+.task-folder-navigation-children .task-list-button { min-height: 28px !important; padding-block: 4px !important; }
+.task-list-navigation-item { min-width: 0; }
 
 .tasks-list-note,
 .tasks-boundary {
@@ -10097,6 +10208,95 @@ button.habit-cell:focus-visible {
   .task-row[data-task-surface="tasks"] .task-row-summary { grid-template-columns: 15px minmax(0,1fr); }
   .task-row[data-task-surface="tasks"] .task-row-summary > .task-state-actions { grid-column: 2; }
   .task-row-schedule { grid-column: 2; text-align: left; max-width: none; }
+}
+
+/* PDEX-20 keeps list organization and parent actions inside the existing Tasks controls. */
+.task-folder-create-form {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0 0 0.55rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--parity-border) 70%, transparent);
+}
+.task-folder-create-form[hidden] { display: none; }
+.task-folder-create-form label,
+.task-folder-row-form { display: grid; min-width: 0; gap: 0.25rem; }
+.task-folder-create-form label { color: var(--parity-muted); font-size: 0.62rem; }
+.task-folder-create-form input,
+.task-folder-row-form input,
+.task-list-folder-assignment select {
+  width: 100%;
+  min-width: 0;
+  min-height: 1.8rem;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.35rem;
+  background: var(--parity-surface);
+  color: var(--parity-ink);
+  font: inherit;
+  font-size: 0.62rem;
+}
+.task-folder-create-form button,
+.task-folder-row-form button { min-height: 1.8rem !important; padding: 0.25rem 0.4rem !important; font-size: 0.59rem !important; }
+.task-folder-row,
+.task-list-folder-group {
+  display: grid;
+  min-width: 0;
+  gap: 0.4rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--parity-border) 70%, transparent);
+}
+.task-folder-row-form { grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; }
+.task-folder-row-form input { flex: initial; }
+.task-list-folder-assignment { display: grid; min-width: 0; gap: 0.2rem; color: var(--parity-muted); font-size: 0.58rem; }
+.task-list-folder-assignment select { min-height: 1.75rem; }
+.task-list-folder-group { margin-top: 0.45rem; gap: 0.15rem; }
+.task-list-folder-group-heading { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 0.5rem; padding: 0.25rem 0.2rem; }
+.task-list-folder-group-heading h4 { min-width: 0; margin: 0; overflow: hidden; color: var(--parity-ink); font-size: 0.68rem; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.task-list-folder-group-heading small { flex: 0 0 auto; color: var(--parity-muted); font-size: 0.58rem; }
+.task-list-folder-empty { margin: 0 0.2rem 0.3rem; }
+.task-quick-folder-target {
+  display: grid;
+  flex: 0 1 8.25rem;
+  min-width: 6.5rem;
+  gap: 0.12rem;
+  color: var(--parity-muted);
+  font-size: 0.54rem;
+}
+.task-quick-folder-target[hidden] { display: none; }
+.task-quick-folder-target select {
+  width: 100%;
+  min-width: 0;
+  min-height: 1.85rem;
+  padding: 0.2rem 0.3rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.32rem;
+  background: var(--parity-surface);
+  color: var(--parity-ink);
+  font: inherit;
+  font-size: 0.62rem;
+}
+.task-folder-empty-note { margin: 0.2rem 0 0.5rem; }
+.task-row[data-task-surface="tasks"][data-task-depth] {
+  box-sizing: border-box;
+  min-width: 0;
+  padding-inline-start: calc(4px + var(--task-indent, 0px));
+}
+.task-parent-disclosure > h4 { margin: 0.55rem 0 0.2rem; color: var(--parity-ink); font-size: 0.64rem; font-weight: 650; }
+.task-parent-deleted-hint { display: block; margin: 0.3rem 0; color: var(--parity-muted); }
+.task-parent-link { display: block; max-width: 100%; overflow: hidden; text-align: left; text-overflow: ellipsis; }
+.task-direct-children { display: grid; min-width: 0; gap: 0.18rem; margin: 0; padding: 0; list-style: none; }
+.task-direct-children li { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto auto; align-items: baseline; gap: 0.4rem; }
+.task-child-link { min-width: 0; padding: 0.2rem 0; overflow: hidden; border: 0; background: transparent; color: var(--parity-accent-strong); font: inherit; font-size: 0.62rem; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.task-direct-children .task-meta { font-size: 0.55rem; }
+.task-add-child { margin-top: 0.35rem; }
+@media(max-width:1100px) {
+  .task-folder-navigation { grid-column: 1 / -1; }
+}
+@media(max-width:620px) {
+  .task-quick-folder-target { flex-basis: 7rem; min-width: 5.75rem; }
+  .task-direct-children li { grid-template-columns: minmax(0, 1fr) auto; }
+  .task-direct-children li > :last-child { grid-column: 1 / -1; }
 }
 
 .today-axis-marker[data-plan-id] .today-axis-marker-link { cursor: grab; touch-action: none; }

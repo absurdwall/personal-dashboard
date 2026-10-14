@@ -36,24 +36,30 @@ export function minutePosition(minute: number): number {
 export function axisLabelCenterMinute(
   anchorMinute: number,
   bounds: readonly [number, number] = [240, 1680],
+  minimumLabelMinutes = TODAY_AXIS_LABEL_MINIMUM_MINUTES,
 ): number {
-  const halfLabel = TODAY_AXIS_LABEL_MINIMUM_MINUTES / 2;
+  const halfLabel = minimumLabelMinutes / 2;
   return Math.min(Math.max(anchorMinute, bounds[0] + halfLabel), bounds[1] - halfLabel);
 }
 
 export function axisMarkerLayout(
   entry: TimeAxisEntry,
   bounds: readonly [number, number] = [240, 1680],
+  minimumLabelMinutes?: number,
 ): AxisMarkerLayout {
   const duration = entry.endMinute === null ? null : entry.endMinute - entry.startMinute;
   if (duration !== null && duration < 0) {
     throw new RangeError('Today axis range ends must not precede their start.');
   }
-  const isCenteredLabel = duration === null || duration < TODAY_AXIS_SHORT_RANGE_MAXIMUM_MINUTES;
+  const labelHeight = Math.max(TODAY_AXIS_LABEL_MINIMUM_MINUTES, minimumLabelMinutes ?? TODAY_AXIS_LABEL_MINIMUM_MINUTES);
+  const shortRangeThreshold = minimumLabelMinutes === undefined
+    ? TODAY_AXIS_SHORT_RANGE_MAXIMUM_MINUTES
+    : Math.max(TODAY_AXIS_SHORT_RANGE_MAXIMUM_MINUTES, labelHeight);
+  const isCenteredLabel = duration === null || duration < shortRangeThreshold;
   return {
     isCenteredLabel,
-    heightMinutes: isCenteredLabel ? TODAY_AXIS_LABEL_MINIMUM_MINUTES : duration!,
-    centerMinute: axisLabelCenterMinute(entry.startMinute, bounds),
+    heightMinutes: isCenteredLabel ? labelHeight : duration!,
+    centerMinute: axisLabelCenterMinute(entry.startMinute, bounds, labelHeight),
   };
 }
 
@@ -88,6 +94,7 @@ export function axisGeometry(entry: TimeAxisEntry): Readonly<{ top: number; heig
 export function axisOverlapPlacements(
   entries: readonly TimeAxisEntry[],
   bounds: readonly [number, number] = [240, 1680],
+  minimumLabelMinutes?: number,
 ): readonly AxisOverlapPlacement[] {
   const placements = entries.map(() => ({ stackId: 0, stackIndex: 0, stackSize: 1 }));
   const ordered = entries
@@ -96,7 +103,7 @@ export function axisOverlapPlacements(
       if (duration < 0) {
         throw new RangeError('Today axis range ends must not precede their start.');
       }
-      const marker = axisMarkerLayout(entry, bounds);
+      const marker = axisMarkerLayout(entry, bounds, minimumLabelMinutes);
       const labelStart = marker.centerMinute - marker.heightMinutes / 2;
       const labelEnd = marker.centerMinute + marker.heightMinutes / 2;
       return {

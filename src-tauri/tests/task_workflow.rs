@@ -1,7 +1,8 @@
 use personal_dashboard_lib::tasks::{
     FileTaskStore, TaskApplication, TaskChangeKind, TaskCompletionCorrectionInput,
     TaskCompletionSourceKind, TaskCreateInput, TaskCreateWithPropertiesInput, TaskDataState,
-    TaskDeleteInput, TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput,
+    TaskDeleteInput, TaskFolderCreateInput, TaskFolderDeleteInput, TaskFolderRenameInput,
+    TaskListArchiveInput, TaskListCreateInput, TaskListFolderInput, TaskListRenameInput,
     TaskListRestoreInput, TaskPriority, TaskRestoreInput, TaskState, TaskStateInput, TaskStore,
     TaskTagCreateInput, TaskTagDeleteInput, TaskTagRenameInput, TaskUpdateInput,
     TaskUpdateWithPropertiesInput,
@@ -267,6 +268,7 @@ fn task_priority_and_tags_round_trip_and_partial_updates_preserve_or_clear_expli
             task: create_input(&tagged, "priority-task", "写提案", None, None),
             priority: Some(TaskPriority::High),
             tag_ids: vec!["tag-work".into()],
+            parent_task_id: None,
         })
         .unwrap();
     assert_eq!(created.tasks[0].priority, Some(TaskPriority::High));
@@ -293,6 +295,7 @@ fn task_priority_and_tags_round_trip_and_partial_updates_preserve_or_clear_expli
             },
             priority: None,
             tag_ids: None,
+            parent_task_id: None,
         })
         .unwrap();
     assert_eq!(partial.tasks[0].priority, Some(TaskPriority::High));
@@ -314,6 +317,7 @@ fn task_priority_and_tags_round_trip_and_partial_updates_preserve_or_clear_expli
             },
             priority: Some(None),
             tag_ids: Some(Vec::new()),
+            parent_task_id: None,
         })
         .unwrap();
     assert_eq!(cleared.tasks[0].priority, None);
@@ -349,6 +353,7 @@ fn task_tags_keep_stable_identity_and_deleting_a_tag_only_unlinks_tasks() {
             task: create_input(&duplicate, "tagged-task", "读论文", None, None),
             priority: None,
             tag_ids: vec!["tag-research".into()],
+            parent_task_id: None,
         })
         .unwrap();
     let renamed = application
@@ -1507,12 +1512,13 @@ fn legacy_task_schema_is_read_and_upgraded_on_the_next_write() {
 
     let application = app(vault.path());
     let legacy = application.read().unwrap();
-    assert_eq!(legacy.schema_version, 3);
+    assert_eq!(legacy.schema_version, 4);
     assert_eq!(legacy.tasks[0].state, TaskState::Pending);
     assert_eq!(legacy.tasks[0].deleted_at, None);
     assert_eq!(legacy.tasks[0].completion, None);
     assert_eq!(legacy.tasks[0].priority, None);
     assert!(legacy.tasks[0].tag_ids.is_empty());
+    assert_eq!(legacy.tasks[0].parent_task_id, None);
 
     let upgraded = application
         .set_state(TaskStateInput {
@@ -1523,9 +1529,9 @@ fn legacy_task_schema_is_read_and_upgraded_on_the_next_write() {
             state: TaskState::Completed,
         })
         .unwrap();
-    assert_eq!(upgraded.schema_version, 3);
+    assert_eq!(upgraded.schema_version, 4);
     let document: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-    assert_eq!(document["schemaVersion"], serde_json::json!(3));
+    assert_eq!(document["schemaVersion"], serde_json::json!(4));
     assert!(document["tasks"][0].get("deletedAt").is_some());
     assert!(document["tasks"][0].get("completion").is_some());
 }
@@ -1928,6 +1934,444 @@ fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
             .unwrap()
             .name,
         "本周计划"
+    );
+}
+
+#[test]
+fn task_parent_relations_and_list_folders_round_trip_without_changing_task_identity() {
+    let vault = TempVault::new("parents-folders");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let first_list = application
+        .create_list(TaskListCreateInput {
+            target_binding: opened.target_binding.clone().unwrap(),
+            expected_revision: opened.revision.clone(),
+            list_id: "work-list".into(),
+            name: "工作".into(),
+        })
+        .unwrap();
+    let second_list = application
+        .create_list(TaskListCreateInput {
+            target_binding: first_list.target_binding.clone().unwrap(),
+            expected_revision: first_list.revision.clone(),
+            list_id: "home-list".into(),
+            name: "家庭".into(),
+        })
+        .unwrap();
+    let folder = application
+        .create_folder(TaskFolderCreateInput {
+            target_binding: second_list.target_binding.clone().unwrap(),
+            expected_revision: second_list.revision.clone(),
+            folder_id: "planning-folder".into(),
+            name: "计划".into(),
+        })
+        .unwrap();
+    let renamed_folder = application
+        .rename_folder(TaskFolderRenameInput {
+            target_binding: folder.target_binding.clone().unwrap(),
+            expected_revision: folder.revision.clone().unwrap(),
+            folder_id: "planning-folder".into(),
+            name: "生活安排".into(),
+        })
+        .unwrap();
+    let grouped_work = application
+        .set_list_folder(TaskListFolderInput {
+            target_binding: renamed_folder.target_binding.clone().unwrap(),
+            expected_revision: renamed_folder.revision.clone().unwrap(),
+            list_id: "work-list".into(),
+            folder_id: Some("planning-folder".into()),
+        })
+        .unwrap();
+    let grouped_home = application
+        .set_list_folder(TaskListFolderInput {
+            target_binding: grouped_work.target_binding.clone().unwrap(),
+            expected_revision: grouped_work.revision.clone().unwrap(),
+            list_id: "home-list".into(),
+            folder_id: Some("planning-folder".into()),
+        })
+        .unwrap();
+    let tag = application
+        .create_tag(TaskTagCreateInput {
+            target_binding: grouped_home.target_binding.clone().unwrap(),
+            expected_revision: grouped_home.revision.clone(),
+            tag_id: "retain-on-reparent".into(),
+            name: "保留属性".into(),
+        })
+        .unwrap();
+    let root_a = application
+        .create_with_properties(TaskCreateWithPropertiesInput {
+            task: TaskCreateInput {
+                target_binding: tag.target_binding.clone().unwrap(),
+                expected_revision: tag.revision.clone(),
+                task_id: "root-a".into(),
+                name: "整理项目".into(),
+                content: Some("原有内容".into()),
+                date: Some("2026-09-19".into()),
+                time: None,
+                execution_end: None,
+                list_id: Some("work-list".into()),
+            },
+            priority: Some(TaskPriority::High),
+            tag_ids: vec!["retain-on-reparent".into()],
+            parent_task_id: None,
+        })
+        .unwrap();
+    let root_b = application
+        .create_with_properties(TaskCreateWithPropertiesInput {
+            task: create_input(&root_a, "root-b", "准备家庭安排", None, None),
+            priority: None,
+            tag_ids: Vec::new(),
+            parent_task_id: None,
+        })
+        .unwrap();
+    let child = application
+        .create_with_properties(TaskCreateWithPropertiesInput {
+            task: TaskCreateInput {
+                target_binding: root_b.target_binding.clone().unwrap(),
+                expected_revision: root_b.revision.clone(),
+                task_id: "child-task".into(),
+                name: "准备材料".into(),
+                content: Some("子任务独立内容".into()),
+                date: Some("2026-09-20".into()),
+                time: Some("09:30".into()),
+                execution_end: None,
+                list_id: Some("home-list".into()),
+            },
+            priority: Some(TaskPriority::Medium),
+            tag_ids: vec!["retain-on-reparent".into()],
+            parent_task_id: Some("root-a".into()),
+        })
+        .unwrap();
+    let grandchild = application
+        .create_with_properties(TaskCreateWithPropertiesInput {
+            task: create_input(&child, "grandchild-task", "检查材料", None, None),
+            priority: None,
+            tag_ids: Vec::new(),
+            parent_task_id: Some("child-task".into()),
+        })
+        .unwrap();
+    assert_eq!(grandchild.tasks.len(), 4);
+    assert_eq!(
+        grandchild
+            .tasks
+            .iter()
+            .find(|task| task.id == "child-task")
+            .unwrap()
+            .parent_task_id
+            .as_deref(),
+        Some("root-a")
+    );
+    assert_eq!(
+        grandchild
+            .tasks
+            .iter()
+            .find(|task| task.id == "grandchild-task")
+            .unwrap()
+            .parent_task_id
+            .as_deref(),
+        Some("child-task")
+    );
+
+    let parent_completed = application
+        .set_state(TaskStateInput {
+            target_binding: grandchild.target_binding.clone().unwrap(),
+            expected_revision: grandchild.revision.clone().unwrap(),
+            task_id: "root-a".into(),
+            change_id: "complete-root-a-only".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap();
+    assert_eq!(
+        parent_completed
+            .tasks
+            .iter()
+            .find(|task| task.id == "root-a")
+            .unwrap()
+            .state,
+        TaskState::Completed
+    );
+    assert_eq!(
+        parent_completed
+            .tasks
+            .iter()
+            .find(|task| task.id == "child-task")
+            .unwrap()
+            .state,
+        TaskState::Pending
+    );
+    assert_eq!(
+        parent_completed
+            .tasks
+            .iter()
+            .find(|task| task.id == "grandchild-task")
+            .unwrap()
+            .state,
+        TaskState::Pending
+    );
+    let child_completed = application
+        .set_state(TaskStateInput {
+            target_binding: parent_completed.target_binding.clone().unwrap(),
+            expected_revision: parent_completed.revision.clone().unwrap(),
+            task_id: "child-task".into(),
+            change_id: "complete-child-only".into(),
+            state: TaskState::Completed,
+        })
+        .unwrap();
+    assert_eq!(
+        child_completed
+            .tasks
+            .iter()
+            .find(|task| task.id == "root-a")
+            .unwrap()
+            .state,
+        TaskState::Completed
+    );
+    assert_eq!(
+        child_completed
+            .tasks
+            .iter()
+            .find(|task| task.id == "child-task")
+            .unwrap()
+            .state,
+        TaskState::Completed
+    );
+    assert_eq!(
+        child_completed
+            .tasks
+            .iter()
+            .find(|task| task.id == "grandchild-task")
+            .unwrap()
+            .state,
+        TaskState::Pending
+    );
+
+    let reparented = application
+        .update_with_properties(TaskUpdateWithPropertiesInput {
+            task: TaskUpdateInput {
+                target_binding: child_completed.target_binding.clone().unwrap(),
+                expected_revision: child_completed.revision.clone().unwrap(),
+                task_id: "child-task".into(),
+                change_id: "reparent-child".into(),
+                name: "准备材料".into(),
+                content: Some("子任务独立内容".into()),
+                date: Some("2026-09-20".into()),
+                time: Some("09:30".into()),
+                execution_end: None,
+                list_id: None,
+            },
+            priority: None,
+            tag_ids: None,
+            parent_task_id: Some(Some("root-b".into())),
+        })
+        .unwrap();
+    let child_after_reparent = reparented
+        .tasks
+        .iter()
+        .find(|task| task.id == "child-task")
+        .unwrap();
+    assert_eq!(
+        child_after_reparent.parent_task_id.as_deref(),
+        Some("root-b")
+    );
+    assert_eq!(child_after_reparent.priority, Some(TaskPriority::Medium));
+    assert_eq!(child_after_reparent.tag_ids, ["retain-on-reparent"]);
+    assert_eq!(child_after_reparent.date.as_deref(), Some("2026-09-20"));
+    assert_eq!(child_after_reparent.list_id, "home-list");
+    assert_eq!(child_after_reparent.state, TaskState::Completed);
+    assert_eq!(
+        child_after_reparent.changes.last().unwrap().kind,
+        TaskChangeKind::Edited
+    );
+    assert_eq!(
+        child_after_reparent
+            .changes
+            .last()
+            .unwrap()
+            .previous_parent_task_id
+            .as_deref(),
+        Some("root-a")
+    );
+    assert_eq!(
+        child_after_reparent
+            .changes
+            .last()
+            .unwrap()
+            .new_parent_task_id
+            .as_deref(),
+        Some("root-b")
+    );
+
+    for (change_id, parent_id) in [
+        ("reject-parent-cycle", Some("grandchild-task")),
+        ("reject-parent-self", Some("root-b")),
+        ("reject-parent-missing", Some("outside-vault")),
+    ] {
+        let before = fs::read(task_path(vault.path())).unwrap();
+        let latest = application.read().unwrap();
+        let parent = latest
+            .tasks
+            .iter()
+            .find(|task| task.id == "root-b")
+            .unwrap();
+        let error = application
+            .update_with_properties(TaskUpdateWithPropertiesInput {
+                task: TaskUpdateInput {
+                    target_binding: latest.target_binding.clone().unwrap(),
+                    expected_revision: latest.revision.clone().unwrap(),
+                    task_id: parent.id.clone(),
+                    change_id: change_id.into(),
+                    name: parent.name.clone(),
+                    content: parent.content.clone(),
+                    date: parent.date.clone(),
+                    time: parent.time.clone(),
+                    execution_end: None,
+                    list_id: None,
+                },
+                priority: None,
+                tag_ids: None,
+                parent_task_id: Some(parent_id.map(str::to_owned)),
+            })
+            .unwrap_err();
+        assert!(error.contains("父任务") || error.contains("循环"));
+        assert_eq!(fs::read(task_path(vault.path())).unwrap(), before);
+    }
+
+    let deleted_parent = application
+        .delete(TaskDeleteInput {
+            target_binding: reparented.target_binding.clone().unwrap(),
+            expected_revision: reparented.revision.clone().unwrap(),
+            task_id: "root-b".into(),
+            change_id: "delete-root-b".into(),
+        })
+        .unwrap();
+    assert!(deleted_parent
+        .tasks
+        .iter()
+        .find(|task| task.id == "root-b")
+        .unwrap()
+        .deleted_at
+        .is_some());
+    assert_eq!(
+        deleted_parent
+            .tasks
+            .iter()
+            .find(|task| task.id == "child-task")
+            .unwrap()
+            .parent_task_id
+            .as_deref(),
+        Some("root-b")
+    );
+    let child_unlinked_from_deleted_parent = application
+        .update_with_properties(TaskUpdateWithPropertiesInput {
+            task: TaskUpdateInput {
+                target_binding: deleted_parent.target_binding.clone().unwrap(),
+                expected_revision: deleted_parent.revision.clone().unwrap(),
+                task_id: "child-task".into(),
+                change_id: "move-child-after-parent-delete".into(),
+                name: "准备材料".into(),
+                content: Some("子任务独立内容".into()),
+                date: Some("2026-09-20".into()),
+                time: Some("09:30".into()),
+                execution_end: None,
+                list_id: None,
+            },
+            priority: None,
+            tag_ids: None,
+            parent_task_id: Some(Some("root-a".into())),
+        })
+        .unwrap();
+    let restored_parent = application
+        .restore(TaskRestoreInput {
+            target_binding: child_unlinked_from_deleted_parent
+                .target_binding
+                .clone()
+                .unwrap(),
+            expected_revision: child_unlinked_from_deleted_parent.revision.clone().unwrap(),
+            task_id: "root-b".into(),
+            change_id: "restore-root-b".into(),
+        })
+        .unwrap();
+    assert_eq!(
+        restored_parent
+            .tasks
+            .iter()
+            .find(|task| task.id == "child-task")
+            .unwrap()
+            .parent_task_id
+            .as_deref(),
+        Some("root-a")
+    );
+
+    let archived = application
+        .archive_list(TaskListArchiveInput {
+            target_binding: restored_parent.target_binding.clone().unwrap(),
+            expected_revision: restored_parent.revision.clone().unwrap(),
+            list_id: "home-list".into(),
+        })
+        .unwrap();
+    assert_eq!(
+        archived
+            .lists
+            .iter()
+            .find(|list| list.id == "home-list")
+            .unwrap()
+            .folder_id
+            .as_deref(),
+        Some("planning-folder")
+    );
+    let restored_list = application
+        .restore_list(TaskListRestoreInput {
+            target_binding: archived.target_binding.clone().unwrap(),
+            expected_revision: archived.revision.clone().unwrap(),
+            list_id: "home-list".into(),
+        })
+        .unwrap();
+    assert_eq!(
+        restored_list
+            .lists
+            .iter()
+            .find(|list| list.id == "home-list")
+            .unwrap()
+            .folder_id
+            .as_deref(),
+        Some("planning-folder")
+    );
+    let before_inbox_reject = fs::read(task_path(vault.path())).unwrap();
+    let inbox_error = application
+        .set_list_folder(TaskListFolderInput {
+            target_binding: restored_list.target_binding.clone().unwrap(),
+            expected_revision: restored_list.revision.clone().unwrap(),
+            list_id: "inbox".into(),
+            folder_id: Some("planning-folder".into()),
+        })
+        .unwrap_err();
+    assert!(inbox_error.contains("Inbox"));
+    assert_eq!(
+        fs::read(task_path(vault.path())).unwrap(),
+        before_inbox_reject
+    );
+
+    let deleted_folder = application
+        .delete_folder(TaskFolderDeleteInput {
+            target_binding: restored_list.target_binding.clone().unwrap(),
+            expected_revision: restored_list.revision.clone().unwrap(),
+            folder_id: "planning-folder".into(),
+        })
+        .unwrap();
+    assert!(deleted_folder.folders.is_empty());
+    assert!(deleted_folder
+        .lists
+        .iter()
+        .all(|list| list.folder_id.is_none()));
+    let relaunched = app(vault.path()).read().unwrap();
+    assert_eq!(relaunched.tasks.len(), 4);
+    assert_eq!(
+        relaunched
+            .tasks
+            .iter()
+            .map(|task| task.id.as_str())
+            .collect::<Vec<_>>(),
+        ["root-a", "root-b", "child-task", "grandchild-task"]
     );
 }
 
