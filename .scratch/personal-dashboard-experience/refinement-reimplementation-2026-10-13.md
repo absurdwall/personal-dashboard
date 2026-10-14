@@ -406,3 +406,19 @@ legacy SVG from the text Context control and deletes only its local SVG sizing
 rule; Sessions keeps its icon. The updated candidate and preserved `20349ae`
 bundle identity are recorded in the same review checkpoint. No ticket status
 was changed.
+
+The reviewer then reported atomically installing and launching the source
+`0b08e5de018f2273a67e94e6fa9bf7c10c5c82dc` candidate. The user's sanitized
+[installation receipt](</Users/tingranwang/Documents/Codex/Projectless task folder/2026-10-14/new-chat/outputs/personal-dashboard-review-install-2026-10-14.json>)
+records the installed path, production bundle ID, binary SHA-256
+`8e43beff6cffa2dde5a664eb4ba0182181d81e7746d8eb3c96846f43c87a0ba2`, verified
+backup, atomic replacement, signature, test-environment absence, review finding
+counts, preservation flags, and the pending human/broad-spec acceptance states.
+The reviewer additionally reports zero byte changes across 91 Dashboard files,
+40 Daily Records, and 6 `.obsidian` files; Morning/Daytime agreement; Context
+text-only; retained Collaboration drafts; and native Calendar draft/Cancel
+checks performed on source `20349ae`. The earlier source `e3b7cc` plan
+save/readback/relaunch remains prior-source evidence, not a persistence claim
+for `0b08e5d`. No real message or hardware recording was used; IME and complete
+PDEX-26 acceptance remain open. The App is left in Collaboration for the user's
+visual review. No ticket, parent-spec, or Management lifecycle was closed.
