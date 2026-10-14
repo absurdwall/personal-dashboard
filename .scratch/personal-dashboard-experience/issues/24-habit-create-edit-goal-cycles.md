@@ -107,4 +107,6 @@ PDEX-SPEC-02 stories 68–72、75–79、83–85、87；共同承担 1–3、88�
 - 2026-10-11：经用户批准发布本地完整票体，未分配assignee、未claim、未开始实现。
 - 后续授权claim时记录实际owner、working branch、base commit、增量实现/评审/
   验收commits、结果和限制。每票可多次commit，完整验收前不关闭。
+- 2026-10-14：在先前同步至 `2a233c3e4a21d9eaff06b62f1770c86e7671d082` 的 ticket branch 上，以 non-fast-forward merge `11a1752367e9698808a1b50da811eea446409f83` 同步最新 integration tip `13d3ac5feda6efe9f8dc764fff4207203a95888b`。合并后 PDEX-24 Rust workflows 23/23、cargo check、Habits/locale frontend 30/30、Habit browser 4/4、build 与 diff check 均通过；完整命令和父提交见[同步与验证记录](../evidence/pdex-24-integration-sync-2026-10-14.md)。
+- PDEX-24 branch 尚未合回 integration，未执行 remote、main、App 安装或 packaged acceptance；独立最终 Spec review 和 PDEX-26 acceptance 仍待完成。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
