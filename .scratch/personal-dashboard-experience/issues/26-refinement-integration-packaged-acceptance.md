@@ -145,3 +145,15 @@ PDEX-SPEC-02 stories 1–3、88–91，以及全部功能票的组合验收。
   cross-feature matrix, valid CJK/IME behavior, microphone, and human acceptance
   remain unverified. No installed-app replacement, `main` merge, push, PR, or
   parent-spec closure occurred.
+
+## Local integration of retry record — 2026-10-14
+
+- Ticket branch tip `36c85f8a414b566059cbb995034bf08bdf50054c` was non-fast-forward
+  merged into `codex/dashboard-experience-refinement-restart-20261014` as
+  `0e84aab9db6ea6470062dddff610cfd711d2c3af`, with parents
+  `ff45a91cf056b51d3bee68aadd9f3b2300f0fd89` and
+  `36c85f8a414b566059cbb995034bf08bdf50054c`. This integrates only the
+  acceptance harness repair and retry evidence recorded above; it does not
+  complete this ticket.
+- PDEX-26 remains `open` / `in-progress`. Full Dashboard 4 packaged acceptance
+  and the remaining acceptance criteria are outstanding.

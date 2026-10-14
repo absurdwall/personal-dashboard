@@ -336,3 +336,23 @@ no integration merge, install, remote operation or main change was recorded.
   integration as `fff3c31fb8aab91dfdbd92a0043cde68d7760c30`, with parents
   `17ded48d` and `b254d0b7`. PDEX-25 remains open/in-progress; PDEX-26 owns the
   remaining packaged acceptance.
+
+## PDEX-26 packaged acceptance retry integration — 2026-10-14
+
+- The acceptance-repair and bounded-retry record on `codex/pdex-26-restart`
+  reached ticket tip `36c85f8a414b566059cbb995034bf08bdf50054c`, after sync merge
+  `1c642843f6ff2562999614971355b686e066d913` from integration tip
+  `ff45a91cf056b51d3bee68aadd9f3b2300f0fd89` and acceptance-only commits
+  `e20d53d1b7efd272e060f52a7bd555d94fb9e7d8`,
+  `33caa8f73df3083a1e9465fa9f02159e0427db74`,
+  `323052a7fed1886f83fdf9616c18bf1ff863b2e3`,
+  `0d08ad44029939ae4ca24bd48f5081e3c2190a72`, and
+  `36c85f8a414b566059cbb995034bf08bdf50054c`.
+- The ticket branch was non-fast-forward merged into
+  `codex/dashboard-experience-refinement-restart-20261014` as
+  `0e84aab9db6ea6470062dddff610cfd711d2c3af`, with parents
+  `ff45a91cf056b51d3bee68aadd9f3b2300f0fd89` and
+  `36c85f8a414b566059cbb995034bf08bdf50054c`. The change contains acceptance
+  harness repairs and evidence only; PDEX-26 remains open/in-progress because
+  the complete Dashboard 4 and broader packaged acceptance matrix are not yet
+  established.
