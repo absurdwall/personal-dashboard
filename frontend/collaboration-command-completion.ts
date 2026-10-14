@@ -7,6 +7,7 @@ export function initializeCollaborationCommandCompletion(
   menu: HTMLElement,
   description: () => string,
   submit: () => void,
+  commandCandidates: () => readonly string[] = () => ["/retro"],
 ): { close: () => void } {
   let composing = false;
   let dismissed: string | null = null;
@@ -44,8 +45,11 @@ export function initializeCollaborationCommandCompletion(
     if (composing || input.disabled || input.selectionStart !== input.selectionEnd ||
       !match || input.selectionStart < match[1].length + 1 || input.selectionStart > tokenEnd ||
       dismissed === input.value) { close(); return; }
-    // This is the only slash command documented in the bundled usage skill.
-    candidates = ["/retro"].filter(command => command.startsWith(`/${match[2].toLowerCase()}`));
+    // Production supplies only commands documented by the bundled usage skill.
+    // Tests can inject multiple valid tokens without adding demo commands to UI.
+    const prefix = `/${match[2].toLowerCase()}`;
+    candidates = commandCandidates().filter(command =>
+      /^\/[a-z][a-z0-9_-]*$/.test(command) && command.startsWith(prefix));
     if (!candidates.length) { close(); return; }
     selected = Math.min(selected, candidates.length - 1);
     menu.replaceChildren();

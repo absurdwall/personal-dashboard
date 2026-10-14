@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { stripTypeScriptTypes } from "node:module";
 
-function webKit(script: string): any {
+function webKit(script: string, candidates?: readonly string[]): any {
   const directory = mkdtempSync(join(tmpdir(), "pdex-command-dom-"));
   try {
     const html = readFileSync(new URL("../../frontend/index.html", import.meta.url), "utf8")
@@ -24,7 +24,7 @@ function webKit(script: string): any {
       const composer = document.querySelector('#collaboration-composer');
       composer.addEventListener('submit', event => { event.preventDefault(); submitted++; });
       input.addEventListener('input', () => edited.push(input.value));
-      initializeCollaborationCommandCompletion(input, menu, () => 'Personal retro', () => composer.requestSubmit());
+      initializeCollaborationCommandCompletion(input, menu, () => 'Personal retro', () => composer.requestSubmit()${candidates ? `, () => ${JSON.stringify(candidates)}` : ""});
       const type = text => { input.value = text; input.focus(); input.setSelectionRange(text.length, text.length); input.dispatchEvent(new Event('input', { bubbles: true })); };
       const key = (key, options = {}) => input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...options }));
       ${script}
@@ -64,6 +64,30 @@ test("slash filtering, arrow selection, Tab and pointer completion retain editab
   assert.equal(result.clickDraft, "/retro 昨天的安排");
   assert.equal(result.submitted, 0);
   assert.equal(result.workflow, false);
+});
+
+test("multiple legal test candidates cycle with arrows and composition keeps normal key ownership", { skip: process.platform !== "darwin" }, () => {
+  const result = webKit(`
+    type('/r'); key('ArrowDown'); const second=menu.querySelector('[aria-selected="true"]')?.textContent;
+    key('ArrowDown'); const third=menu.querySelector('[aria-selected="true"]')?.textContent;
+    key('ArrowDown'); const wrapped=menu.querySelector('[aria-selected="true"]')?.textContent;
+    key('ArrowUp'); const reverseWrapped=menu.querySelector('[aria-selected="true"]')?.textContent;
+    input.dispatchEvent(new CompositionEvent('compositionstart'));
+    const arrowNotConsumed=key('ArrowDown'); const closedDuringComposition=menu.hidden;
+    input.dispatchEvent(new CompositionEvent('compositionend'));
+    const restored=input.getAttribute('aria-activedescendant'); key('Enter');
+    return JSON.stringify({second,third,wrapped,reverseWrapped,arrowNotConsumed,closedDuringComposition,restored,draft:input.value,submitted,hidden:menu.hidden});
+  `, ["/retro", "/review", "/restore"]);
+  assert.equal(result.second, "/review Personal retro");
+  assert.equal(result.third, "/restore Personal retro");
+  assert.equal(result.wrapped, "/retro Personal retro");
+  assert.equal(result.reverseWrapped, "/restore Personal retro");
+  assert.equal(result.arrowNotConsumed, true);
+  assert.equal(result.closedDuringComposition, true);
+  assert.equal(result.restored, "collaboration-command-menu-2");
+  assert.equal(result.draft, "/restore ");
+  assert.equal(result.submitted, 0);
+  assert.equal(result.hidden, true);
 });
 
 test("Escape closes discovery, ordinary slash text stays ordinary, and deliberate send still works", { skip: process.platform !== "darwin" }, () => {

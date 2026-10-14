@@ -10885,3 +10885,186 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   .today-axis-lane-legend-item { gap: 4px; font-size: 10px; }
   .today-axis-marker-link { padding-inline: 4px; }
 }
+
+/* PDEX-23: keep the saved conversation in the work area and let Current Work
+   float above the fixed composer instead of adding another page-length row. */
+#workspace-destination-collaboration.collaboration-destination {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 1rem;
+}
+#workspace-destination-collaboration .collaboration-layout {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  padding-bottom: 0;
+}
+#workspace-destination-collaboration .collaboration-primary-layout,
+#workspace-destination-collaboration .collaboration-primary-layout[data-columns="two"],
+#workspace-destination-collaboration .collaboration-primary-layout[data-columns="three"] {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+}
+#workspace-destination-collaboration .collaboration-primary-layout[data-narrow="true"] {
+  position: relative;
+  grid-template-rows: minmax(0, 1fr);
+}
+#workspace-destination-collaboration .collaboration-primary-layout > .collaboration-session-pane,
+#workspace-destination-collaboration .collaboration-primary-layout > .collaboration-chat-pane {
+  min-height: 0;
+  max-height: 100%;
+}
+#workspace-destination-collaboration .collaboration-primary-layout[data-narrow="true"] .collaboration-session-pane {
+  position: absolute;
+  z-index: 6;
+  grid-row: auto;
+  grid-column: auto;
+  right: 0.5rem;
+  width: min(24rem, calc(100% - 1rem));
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  margin: 0;
+  padding: 0.65rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.5rem;
+  background: var(--parity-surface);
+  box-shadow: 0 0.55rem 1.5rem rgb(24 32 29 / 16%);
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+#workspace-destination-collaboration .collaboration-primary-layout[data-narrow="true"] .collaboration-session-pane > .collaboration-session-list {
+  max-height: none;
+  overflow: visible;
+}
+#workspace-destination-collaboration .collaboration-primary-layout[data-narrow="true"] .collaboration-session-pane > .collaboration-pane-heading {
+  flex: 0 0 auto;
+}
+#workspace-destination-collaboration .collaboration-chat-pane {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+#workspace-destination-collaboration .collaboration-chat-pane:has(.collaboration-help[open]) {
+  overflow: auto;
+  scrollbar-width: thin;
+}
+#workspace-destination-collaboration .collaboration-message-list {
+  flex: 1 1 0;
+  min-height: 4rem;
+  max-height: none;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+#workspace-destination-collaboration .collaboration-composer {
+  flex: 0 0 auto;
+}
+#workspace-destination-collaboration .collaboration-context-pane {
+  position: absolute;
+  z-index: 5;
+  top: 3.5rem;
+  right: 0.5rem;
+  bottom: 10rem;
+  display: flex;
+  width: min(30rem, calc(100% - 1rem));
+  height: auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 0 0.85rem 0.85rem;
+  background: var(--parity-surface);
+  box-shadow: 0 0.55rem 1.5rem rgb(24 32 29 / 16%);
+  margin: 0;
+}
+#workspace-destination-collaboration .collaboration-context-pane > .collaboration-pane-heading {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  flex: 0 0 auto;
+  margin-bottom: 0.45rem;
+  padding-top: 0.65rem;
+  background: var(--parity-surface);
+}
+#workspace-destination-collaboration .collaboration-context-close {
+  flex: 0 0 30px;
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+  color: var(--parity-muted);
+  font-size: 1rem;
+  line-height: 1;
+}
+#workspace-destination-collaboration .collaboration-context-panes {
+  max-height: none;
+  overflow: visible;
+}
+#workspace-destination-collaboration .collaboration-status-bar > p {
+  max-height: 2.15rem;
+  overflow: auto;
+  white-space: normal;
+  scrollbar-width: thin;
+}
+#workspace-destination-collaboration #collaboration-task-tool-notice {
+  max-height: 2.5rem;
+  flex: 0 0 auto;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+#workspace-destination-collaboration .collaboration-run-status {
+  max-height: 2.2rem;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+#collaboration-voice-preview {
+  max-height: min(5.5rem, 14vh);
+  margin: 0.2rem 0 0;
+  padding: 0.35rem 0.5rem;
+  overflow: auto;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.35rem;
+  background: var(--parity-surface-soft);
+  color: var(--parity-ink);
+  font-size: 0.62rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  scrollbar-width: thin;
+}
+#collaboration-voice-preview:empty { display: none; }
+
+@media (max-height: 600px), (max-height: 740px) and (max-width: 720px) {
+  #workspace-destination-collaboration.collaboration-destination {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+  #workspace-destination-collaboration .collaboration-layout {
+    flex: 0 0 auto;
+    min-height: 42rem;
+  }
+  #workspace-destination-collaboration .collaboration-primary-layout {
+    height: auto;
+    min-height: 42rem;
+  }
+  #workspace-destination-collaboration .collaboration-primary-layout > .collaboration-chat-pane {
+    height: auto;
+    min-height: 42rem;
+    max-height: none;
+  }
+}
+
+@media (max-height: 600px) { #collaboration-voice-preview { max-height: 10vh; } }
+
+@media (max-height: 740px) {
+  #workspace-destination-collaboration.collaboration-destination { padding-bottom: 0; }
+}
+
+@media (max-width: 720px) {
+  #workspace-destination-collaboration.collaboration-destination { padding-bottom: 0; }
+}
