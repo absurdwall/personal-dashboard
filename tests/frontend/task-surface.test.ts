@@ -82,12 +82,19 @@ test("Tasks fixed copy has Chinese and English counterparts", () => {
     "tasks.namePlaceholder",
     "tasks.timeNeedsDate",
     "tasks.savedToVault",
+    "tasks.nestingLevel",
   ]) {
     const line = copies.split("\n").find((candidate) => candidate.includes(`"${key}"`));
     assert.ok(line, `missing copy ${key}`);
     assert.match(line, /zh:/);
     assert.match(line, /en:/);
   }
+});
+
+test("Tasks retain a compact level cue after the indentation cap", () => {
+  assert.match(main, /row\.dataset\.taskDepth = String\(depth\)/);
+  assert.match(main, /if \(depth > 4\)[\s\S]*?task-nesting-depth/);
+  assert.match(css, /\.task-nesting-depth/);
 });
 
 test("task writes serialize refresh reconciliation and retain retry identity", () => {
