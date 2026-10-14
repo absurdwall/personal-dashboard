@@ -2,7 +2,8 @@ use personal_dashboard_lib::tasks::{
     FileTaskStore, TaskApplication, TaskChangeKind, TaskCompletionCorrectionInput,
     TaskCompletionSourceKind, TaskCreateInput, TaskDataState, TaskDeleteInput,
     TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput, TaskListRestoreInput,
-    TaskRestoreInput, TaskState, TaskStateInput, TaskStore, TaskUpdateInput,
+    TaskPriority, TaskRestoreInput, TaskState, TaskStateInput, TaskStore, TaskTagCreateInput,
+    TaskTagDeleteInput, TaskTagRenameInput, TaskUpdateInput, TaskUpdateWithPropertiesInput,
 };
 use personal_dashboard_lib::today::{TodayClock, TodayWorkspacePersistence};
 use std::fs;
@@ -1789,6 +1790,118 @@ fn task_lists_keep_identity_when_created_renamed_moved_and_relaunched() {
             .name,
         "本周计划"
     );
+}
+
+#[test]
+fn task_priority_and_tags_save_read_back_and_keep_task_identity() {
+    let vault = TempVault::new("priority-tags");
+    let application = app(vault.path());
+    let opened = application.read().unwrap();
+    let created = application
+        .create(create_input(&opened, "priority-task", "复习计划", None, None))
+        .unwrap();
+    assert_eq!(created.tasks[0].priority, TaskPriority::None);
+    assert!(created.tasks[0].tag_ids.is_empty());
+
+    let tagged = application
+        .create_tag(TaskTagCreateInput {
+            target_binding: created.target_binding.clone().unwrap(),
+            expected_revision: created.revision.clone(),
+            tag_id: "work-context".into(),
+            name: "工作".into(),
+        })
+        .unwrap();
+    assert_eq!(tagged.tags.len(), 1);
+    let tag_retry = application
+        .create_tag(TaskTagCreateInput {
+            target_binding: tagged.target_binding.clone().unwrap(),
+            expected_revision: Some("stale-tag-create-retry".into()),
+            tag_id: "work-context".into(),
+            name: "工作".into(),
+        })
+        .unwrap();
+    assert_eq!(tag_retry.tags.len(), 1);
+    let duplicate_name = application
+        .create_tag(TaskTagCreateInput {
+            target_binding: tagged.target_binding.clone().unwrap(),
+            expected_revision: tagged.revision.clone(),
+            tag_id: "another-work-tag".into(),
+            name: "工作".into(),
+        })
+        .unwrap_err();
+    assert!(duplicate_name.contains("同名"));
+    assert_eq!(application.read().unwrap().tags.len(), 1);
+
+    let property_edit = TaskUpdateWithPropertiesInput {
+            task: TaskUpdateInput {
+                execution_end: None,
+                target_binding: tagged.target_binding.clone().unwrap(),
+                expected_revision: tagged.revision.clone().unwrap(),
+                task_id: "priority-task".into(),
+                change_id: "set-priority-and-tag".into(),
+                name: "复习计划".into(),
+                content: Some("整理今天的重点".into()),
+                date: None,
+                time: None,
+                list_id: None,
+            },
+            priority: TaskPriority::High,
+            tag_ids: vec!["work-context".into()],
+        };
+    let updated = application
+        .update_with_properties(property_edit.clone())
+        .unwrap();
+    assert_eq!(updated.tasks[0].id, "priority-task");
+    assert_eq!(updated.tasks[0].priority, TaskPriority::High);
+    assert_eq!(updated.tasks[0].tag_ids, vec!["work-context"]);
+
+    let relaunched = app(vault.path()).read().unwrap();
+    assert_eq!(relaunched.tasks[0].id, "priority-task");
+    assert_eq!(relaunched.tasks[0].priority, TaskPriority::High);
+    assert_eq!(relaunched.tasks[0].tag_ids, vec!["work-context"]);
+
+    let legacy_update = application
+        .update(TaskUpdateInput {
+            execution_end: None,
+            target_binding: relaunched.target_binding.clone().unwrap(),
+            expected_revision: relaunched.revision.clone().unwrap(),
+            task_id: "priority-task".into(),
+            change_id: "legacy-update-keeps-properties".into(),
+            name: "复习计划（今天）".into(),
+            content: Some("整理今天的重点".into()),
+            date: None,
+            time: None,
+            list_id: None,
+        })
+        .unwrap();
+    assert_eq!(legacy_update.tasks[0].priority, TaskPriority::High);
+    assert_eq!(legacy_update.tasks[0].tag_ids, vec!["work-context"]);
+
+    let renamed = application
+        .rename_tag(TaskTagRenameInput {
+            target_binding: legacy_update.target_binding.clone().unwrap(),
+            expected_revision: legacy_update.revision.clone().unwrap(),
+            tag_id: "work-context".into(),
+            name: "深度工作".into(),
+        })
+        .unwrap();
+    assert_eq!(renamed.tags[0].id, "work-context");
+    assert_eq!(renamed.tags[0].name, "深度工作");
+    assert_eq!(renamed.tasks[0].tag_ids, vec!["work-context"]);
+
+    let deleted = application
+        .delete_tag(TaskTagDeleteInput {
+            target_binding: renamed.target_binding.clone().unwrap(),
+            expected_revision: renamed.revision.clone().unwrap(),
+            tag_id: "work-context".into(),
+        })
+        .unwrap();
+    assert!(deleted.tags.is_empty());
+    assert_eq!(deleted.tasks.len(), 1);
+    assert_eq!(deleted.tasks[0].id, "priority-task");
+    assert_eq!(deleted.tasks[0].priority, TaskPriority::High);
+    assert!(deleted.tasks[0].tag_ids.is_empty());
+    assert_eq!(deleted.tasks[0].changes.len(), 2);
 }
 
 #[test]

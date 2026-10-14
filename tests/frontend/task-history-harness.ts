@@ -21,28 +21,35 @@ export class Element {
   replaceChildren(...children: any[]) { this.children = children; }
   addEventListener(name: string, listener: Function) { this.listeners.set(name, listener); }
   querySelector(selector: string): Element | null {
-    const attribute = /\[data-([\w-]+)(?:="([^"]+)")?\]/.exec(selector);
-    if (!attribute) return null;
+    return this.querySelectorAll(selector)[0] ?? null;
+  }
+  querySelectorAll(selector: string): Element[] {
+    const attribute = /\[data-([\w-]+)(?::checked)?(?:="([^"]+)")?\]/.exec(selector);
+    if (!attribute) return [];
     const key = attribute[1].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-    return descendants(this).find(element => element.dataset?.[key] !== undefined &&
-      (attribute[2] === undefined || element.dataset[key] === attribute[2])) ?? null;
+    return descendants(this).filter(element => element.dataset?.[key] !== undefined &&
+      (attribute[2] === undefined || element.dataset[key] === attribute[2]) &&
+      (!selector.includes(":checked") || Boolean((element as any).checked)));
   }
 }
 export function renderer() {
   const context: any = { ...presentation, canMutateTodayTasks: () => true, todayOperationCount: 0,
     todayPresentationFresh: true, document: { createElement: (tag: string) => new Element(tag) },
     CSS: { escape: (value: string) => value }, tasksList: new Element(), tasksCount: new Element(), taskScope: "all", taskStateScope: "all",
-    taskOperationCount: 0, currentTaskLivedDate: null, taskCreateOpen: false, taskListManagementOpen: false,
+    taskOperationCount: 0, currentTaskLivedDate: null, taskCreateOpen: false, taskListManagementOpen: false, taskCreateListDefault: () => "inbox",
+    taskPriorityFilter: "all", taskTagFilter: null, taskSortByPriority: false,
+    taskQuickListDrafts: new Map(),
+    taskPriorityFilterControl: null, taskTagFilterControl: null, taskSortControl: null,
     taskFocusRequestId: null, selectedTaskDetailId: null, selectedTaskDetailBinding: null, taskEditorDialogRoot: null, taskReturnToCollaborationSessionId: null,
     taskCreateDrafts: new Map(), taskCreateAttempts: new Map(), taskListCreateDrafts: new Map(),
     setCopy: (element: any, key: string, params: any) => { element.copyKey = key; element.params = params; },
     taskEditor: (task: any) => ({ tagName: "task", id: task.id }),
-    taskListForId: () => undefined, renderTaskListScopeButtons: () => {},
+    taskListForId: () => undefined, renderTaskListSelect: () => {}, renderTaskListScopeButtons: () => {},
     renderTaskListManagement: () => {}, clearTaskEditorDialogs: () => {},
     updateTaskCreationControls: () => {},
   };
   for (const name of ["taskListScopes", "taskFilter", "tasksStatus", "tasksEmpty", "taskListsManagementPanel",
-    "taskListCreateForm", "taskCreateForm", "taskCreateSubmit", "taskReturnToCollaborationButton", "taskQuickForm", "taskQuickName", "taskQuickSubmit"]) context[name] = null;
+    "taskListCreateForm", "taskCreateForm", "taskCreateSubmit", "taskReturnToCollaborationButton", "taskQuickForm", "taskQuickName", "taskQuickList", "taskQuickSubmit"]) context[name] = null;
   for (const name of ["todayTaskStatus", "todayTaskEmpty", "todayTaskOverdueSection", "todayTaskOverdueEmpty",
     "todayTaskCreateForm", "todayTaskCreateName", "todayTaskCreateContent", "todayTaskCreateDate", "todayTaskCreateTime", "todayTaskCreateSubmit"]) context[name] = null;
   context.todayTaskScheduled = new Element();

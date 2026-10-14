@@ -385,7 +385,8 @@ function noteRefreshHarness(state: 'pending' | 'completed', nextBinding = 'tasks
     'task-date': draft.date, 'task-time': draft.time, 'task-list': draft.listId,
     'task-completion-date': draft.completionDate, 'task-completion-time': draft.completionTime };
   const form = { hidden: false, dataset: { taskEditor: task.id, taskSurface: 'today' },
-    querySelector: (selector: string) => ({ value: fields[selector.slice(6, -1)] ?? '' }) };
+    querySelector: (selector: string) => ({ value: fields[selector.slice(6, -1)] ?? '' }),
+    querySelectorAll: () => [] };
   const view = { date: task.date, targetBinding: 'record-a', isToday: false,
     tasks: { targetBinding: 'tasks-a', tasks: [task] } };
   const next = { ...view, tasks: { ...view.tasks, targetBinding: nextBinding } };

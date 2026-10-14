@@ -7126,6 +7126,60 @@ body {
   resize: vertical;
 }
 
+#task-editor-dialog-root .task-form-grid textarea[data-task-content] {
+  min-height: 7rem;
+}
+
+.task-editor-details .task-form-grid > .task-property-disclosure {
+  grid-column: 1 / -1;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--parity-border);
+}
+
+.task-property-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--parity-muted);
+  cursor: pointer;
+  font-size: 0.64rem;
+}
+
+.task-property-value {
+  min-width: 0;
+  color: var(--parity-ink);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.task-property-disclosure[open] > summary {
+  margin-bottom: 0.65rem;
+}
+
+.task-property-disclosure > label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  color: var(--parity-muted);
+  font-size: 0.62rem;
+}
+
+.task-schedule-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.task-editor-details .task-property-disclosure [data-task-clear-end] {
+  min-height: 1.8rem;
+  justify-self: start;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.62rem;
+}
+
 .task-form-grid input:focus,
 .task-form-grid textarea:focus,
 .task-form-grid select:focus {
@@ -7762,6 +7816,29 @@ body {
   padding: 22px;
 }
 
+.task-editor-title {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 0.45rem;
+  padding: 0.1rem 0.1rem 0.35rem;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--parity-ink);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.task-editor-title:focus {
+  border-bottom-color: var(--parity-accent);
+  outline: 2px solid color-mix(in srgb, var(--parity-accent) 30%, transparent);
+  outline-offset: 1px;
+}
+
 .task-editor-details[hidden] {
   display: none;
 }
@@ -7773,6 +7850,16 @@ body {
 
 .task-editor-details .task-editor-footer {
   margin-top: 12px;
+}
+
+.task-editor-details .task-editor-footer {
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.task-editor-details .task-editor-footer .task-editor-close {
+  display: inline-flex;
+  margin: 0;
 }
 
 .task-form-actions {
@@ -9927,6 +10014,7 @@ button.habit-cell:focus-visible {
 .tasks-selected-detail .task-editor-details { width: 100%; max-height: none; padding: 18px; box-shadow: none; }
 .tasks-selected-detail .task-editor-details h3 { margin: 0 0 10px; overflow-wrap: anywhere; }
 .tasks-selected-detail .task-editor-close { margin: 16px 0 0 auto; }
+.tasks-selected-detail .task-editor-footer .task-editor-close { margin: 0; }
 .tasks-content > #tasks-list { align-content: start; grid-auto-rows: max-content; gap: 0.15rem; }
 .task-row[data-task-surface="tasks"] { padding: 4px 4px; }
 .task-row[data-task-surface="tasks"].is-selected { background: var(--parity-accent-soft); border-radius: 6px; }
@@ -10059,6 +10147,42 @@ button.task-schedule-toggle[data-scheduled="true"] { color:var(--parity-accent, 
 button.task-schedule-toggle { display:flex; align-items:center; justify-content:center; gap:6px; width:fit-content; min-width:126px; max-width:min(184px, 40vw); height:32px; padding:4px 8px; border:1px solid var(--parity-border); border-radius:6px; background:var(--parity-surface); color:var(--parity-ink); }
 .task-schedule-toggle svg { width:20px; height:20px; flex:0 0 20px; fill:none; stroke:currentColor; stroke-width:1.7; }
 .task-schedule-label { min-width:0; overflow:hidden; color:inherit; font-size:.68rem; font-weight:650; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
+
+/* PDEX-19 keeps task properties compact and visually aligned with existing controls. */
+.tasks-toolbar-actions { flex-wrap:wrap; justify-content:flex-end; min-width:0; }
+.tasks-filter select { max-width:clamp(92px, 13vw, 150px); }
+#task-priority-filter { max-width:110px; }
+#task-tag-filter { max-width:132px; }
+#task-sort-order { max-width:154px; }
+.task-quick-form > input { min-width:8rem; }
+.task-quick-form > #task-quick-list { flex:0 1 9rem; width:9rem; max-width:26vw; min-width:6.5rem; padding:.42rem .48rem; font-size:.67rem; }
+.task-editor-details .task-form-grid > .task-property-disclosure { margin:0; }
+.task-property-control { display:grid; grid-template-columns:minmax(5rem, .4fr) minmax(0, 1fr); align-items:center; gap:.5rem; margin-top:.55rem; }
+.task-property-control select { max-width:12rem; }
+.task-tag-options { display:flex; flex-wrap:wrap; gap:.35rem .75rem; margin:.1rem 0 .55rem; }
+.task-tag-option { display:inline-flex !important; grid-template-columns:auto minmax(0,1fr) !important; align-items:center; gap:.35rem !important; color:var(--parity-ink) !important; font-size:.66rem !important; }
+.task-tag-option input { width:14px !important; height:14px; margin:0; accent-color:var(--parity-accent); }
+.task-tag-create-row { display:flex; align-items:center; gap:.4rem; max-width:24rem; }
+.task-tag-create-row input,
+.task-tag-management-row input { min-width:0; flex:1; padding:.38rem .48rem; font-size:.66rem; }
+.task-tag-create-row button,
+.task-tag-management-row button,
+.task-more-disclosure button { min-height:1.65rem !important; padding:.28rem .48rem !important; border-radius:5px !important; font-size:.6rem !important; }
+.task-tag-management { margin-top:.6rem; color:var(--parity-muted); font-size:.62rem; }
+.task-tag-management > summary { cursor:pointer; }
+.task-tag-management-rows { display:grid; gap:.35rem; margin-top:.45rem; }
+.task-tag-management-row { display:flex; align-items:center; gap:.35rem; min-width:0; }
+.task-more-disclosure { margin-top:.7rem; padding-top:.5rem; border-top:1px solid var(--parity-border); }
+.task-more-disclosure > summary { color:var(--parity-muted); cursor:pointer; font-size:.64rem; }
+.task-more-disclosure[open] > summary { margin-bottom:.45rem; }
+.task-more-property-actions { display:flex; flex-wrap:wrap; gap:.35rem; margin-bottom:.45rem; }
+.task-more-disclosure .task-state-actions { display:flex; justify-content:flex-start; gap:.35rem; margin:0; }
+.task-more-disclosure button:disabled { opacity:.5; cursor:not-allowed; }
+@media(max-width:680px) {
+  .tasks-toolbar-actions { justify-content:flex-start; }
+  .task-quick-form > #task-quick-list { flex-basis:7rem; }
+  .task-tag-management-row { flex-wrap:wrap; }
+}
 
 /* Sessions and context use simple divisions; keep selected states and input borders. */
 .collaboration-session-pane,

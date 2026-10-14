@@ -6,7 +6,7 @@ import * as presentation from "../../frontend/task-presentation.ts";
 const pending = { id: "pending", name: "pending", listId: "inbox", state: "pending", deletedAt: null, date: null };
 const completed = { ...pending, id: "done", state: "completed", completion: { completedOn: "2026-10-02" }, modifiedAt: "2026-10-02T12:00:00-04:00" };
 const abandoned = { ...completed, id: "abandoned", state: "abandoned", completion: null };
-const view = (tasks: any[]) => ({ lists: [], tasks, state: "ready", targetBinding: "synthetic", currentDate: "2026-10-03" });
+const view = (tasks: any[]) => ({ lists: [], tags: [], tasks, state: "ready", targetBinding: "synthetic", currentDate: "2026-10-03" });
 
 test("default Tasks rendering removes completed and abandoned rows from the main list immediately", () => {
   const r = renderer();
