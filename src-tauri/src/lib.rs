@@ -13,6 +13,7 @@ pub mod collaboration_memory;
 pub mod cutover;
 pub mod exercise;
 pub mod habits;
+pub mod habit_catalog;
 pub mod habit_producer;
 pub mod interface_language;
 pub mod migration;
@@ -249,6 +250,7 @@ use cutover::{
 use interface_language::{
     InterfaceLanguage, InterfaceLanguageApplication, InterfaceLanguagePreferences,
 };
+use habit_catalog::{HabitDefinitionMutationInput, HabitDefinitionSaveResult};
 use platform::{
     appearance_background_directory_for, appearance_file_for, application_data_directory_for,
     interface_language_file_for, legacy_exercise_directory_for, profile_file_for,
@@ -736,6 +738,14 @@ fn habit_snapshot(
 }
 
 #[tauri::command]
+fn save_habit_definition(
+    application: State<'_, DesktopTodayApplication>,
+    input: HabitDefinitionMutationInput,
+) -> Result<HabitDefinitionSaveResult, String> {
+    application.save_habit_definition(input)
+}
+
+#[tauri::command]
 fn tasks_view(application: State<'_, DesktopTaskApplication>) -> Result<TasksView, String> {
     application.read()
 }
@@ -1087,6 +1097,7 @@ pub fn run() {
             read_daily_view,
             calendar_month,
             habit_snapshot,
+            save_habit_definition,
             tasks_view,
             create_task,
             create_task_list,
@@ -1164,6 +1175,7 @@ pub fn run() {
         read_daily_view,
         calendar_month,
         habit_snapshot,
+        save_habit_definition,
         tasks_view,
         create_task,
         create_task_list,
