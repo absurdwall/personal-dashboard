@@ -20,6 +20,7 @@ import {
   todayTaskGroups,
   todayTaskTimeAxisEntries,
   taskVisibleInScope,
+  taskPropertiesPresentation,
 } from "../../frontend/task-presentation.ts";
 
 test("system task lists use the localized Inbox display while user list names stay unchanged", () => {
@@ -64,6 +65,34 @@ test("clearing a task date also clears its time and disables the time control", 
     time: "09:30",
     timeDisabled: false,
   });
+});
+
+test("Task priority sorting is stable and priority and tag filters compose without changing default order", () => {
+  const tasks = [
+    { id: "none-first", priority: null, tagIds: ["home"] },
+    { id: "low", priority: "low" as const, tagIds: ["work"] },
+    { id: "high-first", priority: "high" as const, tagIds: ["home", "work"] },
+    { id: "medium", priority: "medium" as const, tagIds: ["home"] },
+    { id: "high-second", priority: "high" as const, tagIds: ["home"] },
+    { id: "none-second", priority: undefined, tagIds: ["home"] },
+  ];
+
+  assert.deepEqual(
+    taskPropertiesPresentation(tasks, "all", null, "default").map((task) => task.id),
+    ["none-first", "low", "high-first", "medium", "high-second", "none-second"],
+  );
+  assert.deepEqual(
+    taskPropertiesPresentation(tasks, "all", "home", "priority").map((task) => task.id),
+    ["high-first", "high-second", "medium", "none-first", "none-second"],
+  );
+  assert.deepEqual(
+    taskPropertiesPresentation(tasks, "low", "home", "default").map((task) => task.id),
+    [],
+  );
+  assert.deepEqual(
+    taskPropertiesPresentation(tasks, "high", "work", "default").map((task) => task.id),
+    ["high-first"],
+  );
 });
 
 test("Today projects dated timed shared tasks as identity-preserving points on its existing axis", () => {
@@ -616,4 +645,48 @@ test("interval edits retain distinct retry identities and require confirmed end 
     invoke: async () => ({ state: "ready", targetBinding: "binding", tasks: [{ ...edit, id: edit.taskId, executionEnd: null }] }),
   });
   assert.equal(result.confirmed, false, "unchanged end must not be reported as a saved interval");
+});
+
+test("Task property patches distinguish omitted values from explicitly cleared values", async () => {
+  const requests = new LatestRequest();
+  const identities = new TaskOperationIdentityStore();
+  const base = taskUpdateEdit("Keep legacy caller");
+  const legacy = await performTaskUpdateRequest(base, {
+    expectedRevision: "r1", requests, identities, createChangeId: () => "legacy-change",
+    isCurrent: () => true,
+    invoke: async (input) => {
+      assert.equal("priority" in input, false);
+      assert.equal("tagIds" in input, false);
+      return taskUpdateView(input.name);
+    },
+  });
+  assert.equal(legacy.confirmed, true, "old callers can omit new fields");
+
+  const clear = { ...base, name: "Clear properties", priority: null, tagIds: [] as readonly string[] };
+  assert.notEqual(taskEditOperationKey(base), taskEditOperationKey(clear));
+  const cleared = await performTaskUpdateRequest(clear, {
+    expectedRevision: "r2", requests, identities, createChangeId: () => "clear-change",
+    isCurrent: () => true,
+    invoke: async (input) => {
+      assert.equal(input.priority, null);
+      assert.deepEqual(input.tagIds, []);
+      return {
+        state: "ready",
+        targetBinding: "vault-a",
+        tasks: [{ ...input, id: input.taskId, priority: null, tagIds: [] }],
+      };
+    },
+  });
+  assert.equal(cleared.confirmed, true, "explicit clear is only confirmed after readback");
+
+  const mismatched = await performTaskUpdateRequest({ ...clear, priority: "high", tagIds: ["work"] }, {
+    expectedRevision: "r3", requests, identities, createChangeId: () => "mismatch-change",
+    isCurrent: () => true,
+    invoke: async (input) => ({
+      state: "ready",
+      targetBinding: "vault-a",
+      tasks: [{ ...input, id: input.taskId, priority: null, tagIds: [] }],
+    }),
+  });
+  assert.equal(mismatched.confirmed, false, "different saved properties are not reported as successful");
 });

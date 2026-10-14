@@ -513,10 +513,33 @@
                           <option value="deleted" data-i18n="tasks.stateDeleted">已删除</option>
                         </select>
                       </label>
+                      <label class="tasks-filter">
+                        <span class="visually-hidden" data-i18n="tasks.priorityFilter">按优先级筛选</span>
+                        <select id="task-priority-filter" aria-label="按优先级筛选" data-i18n-aria-label="tasks.priorityFilter">
+                          <option value="all" data-i18n="tasks.priorityAll">所有优先级</option>
+                          <option value="high" data-i18n="tasks.priorityHigh">高</option>
+                          <option value="medium" data-i18n="tasks.priorityMedium">中</option>
+                          <option value="low" data-i18n="tasks.priorityLow">低</option>
+                          <option value="none" data-i18n="tasks.priorityNone">无优先级</option>
+                        </select>
+                      </label>
+                      <label class="tasks-filter">
+                        <span class="visually-hidden" data-i18n="tasks.sort">任务排序</span>
+                        <select id="task-priority-sort" aria-label="任务排序" data-i18n-aria-label="tasks.sort">
+                          <option value="default" data-i18n="tasks.sortDefault">默认顺序</option>
+                          <option value="priority" data-i18n="tasks.sortPriority">优先级</option>
+                        </select>
+                      </label>
+                      <label class="tasks-filter">
+                        <span class="visually-hidden" data-i18n="tasks.tagFilter">按标签筛选</span>
+                        <select id="task-tag-filter" aria-label="按标签筛选" data-i18n-aria-label="tasks.tagFilter">
+                          <option value="all" data-i18n="tasks.tagAll">所有标签</option>
+                        </select>
+                      </label>
                     </div>
                   </div>
                   <form id="task-quick-form" class="task-quick-form" hidden>
-                    <input id="task-quick-name" type="text" maxlength="160" aria-label="新建任务名称" data-i18n-aria-label="tasks.createLabel" placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" />
+                    <input id="task-quick-name" type="text" maxlength="160" aria-label="新建任务名称" data-i18n-aria-label="tasks.createLabel" placeholder="例如：预约牙医" data-i18n-placeholder="tasks.namePlaceholder" data-task-name />
 <div class="task-schedule-wrap">
                       <button id="task-quick-schedule" type="button" class="task-schedule-toggle" aria-expanded="false" aria-controls="task-quick-schedule-picker" data-i18n-aria-label="tasks.schedule" data-i18n-title="tasks.schedule" aria-label="安排日期与时刻" title="安排日期与时刻"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4m8-4v4M4 10h16M8 14h3m-3 3h6"/></svg><span class="task-schedule-label" aria-hidden="true"></span></button>
                       <div id="task-quick-schedule-picker" class="task-schedule-picker" hidden>
@@ -526,6 +549,22 @@
                         <div class="task-schedule-actions"><button id="task-quick-schedule-cancel" type="button" class="secondary-button" data-i18n="tasks.cancel">取消</button><button id="task-quick-schedule-apply" type="button" data-i18n="tasks.scheduleApply">应用</button></div>
                       </div>
                     </div>
+                    <details class="task-quick-properties">
+                      <summary data-i18n="tasks.properties">属性</summary>
+                      <div class="task-quick-properties-panel">
+                        <label><span data-i18n="tasks.list">清单</span><select id="task-quick-list" data-task-list></select></label>
+                        <label><span data-i18n="tasks.priority">优先级</span><select id="task-quick-priority" data-task-priority>
+                          <option value="" data-i18n="tasks.priorityNone">无优先级</option>
+                          <option value="high" data-i18n="tasks.priorityHigh">高</option>
+                          <option value="medium" data-i18n="tasks.priorityMedium">中</option>
+                          <option value="low" data-i18n="tasks.priorityLow">低</option>
+                        </select></label>
+                        <fieldset class="task-tag-choice-set" id="task-quick-tag-choices" data-task-tag-collection>
+                          <legend data-i18n="tasks.tags">标签</legend>
+                          <p class="task-tag-empty" data-i18n="tasks.noTags">尚无标签</p>
+                        </fieldset>
+                      </div>
+                    </details>
                     <button id="task-quick-submit" type="submit" data-i18n="tasks.quickAdd">添加</button>
                   </form>
                   <div id="task-quick-recovery" class="task-create-recovery" hidden>
@@ -552,6 +591,19 @@
                         <span data-i18n="tasks.content">内容（可选）</span>
                         <textarea id="task-create-content" rows="2" placeholder="补充必要背景或下一步" data-i18n-placeholder="tasks.contentPlaceholder" data-task-content></textarea>
                       </label>
+                      <label>
+                        <span data-i18n="tasks.priority">优先级</span>
+                        <select id="task-create-priority" data-task-priority>
+                          <option value="" data-i18n="tasks.priorityNone">无优先级</option>
+                          <option value="high" data-i18n="tasks.priorityHigh">高</option>
+                          <option value="medium" data-i18n="tasks.priorityMedium">中</option>
+                          <option value="low" data-i18n="tasks.priorityLow">低</option>
+                        </select>
+                      </label>
+                      <fieldset class="task-tag-choice-set task-form-wide" id="task-create-tag-choices" data-task-tag-collection>
+                        <legend data-i18n="tasks.tags">标签</legend>
+                        <p class="task-tag-empty" data-i18n="tasks.noTags">尚无标签</p>
+                      </fieldset>
                       <label>
                         <span data-i18n="tasks.list">清单</span>
                         <select id="task-create-list" data-task-list></select>
