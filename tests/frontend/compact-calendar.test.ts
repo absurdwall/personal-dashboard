@@ -254,9 +254,11 @@ test('Calendar task previews open a compact editor without selecting another dat
 test('Calendar holiday controls persist region preferences without writing task or Daily Record data',{skip:process.platform!=='darwin'},()=>{
   const result=webKit(`
     calendarHarness.render(sourceFixture.month,sourceFixture.selected);
-    const dateCell=()=>document.querySelector('[data-calendar-date="2026-09-07"].calendar-day');
-    const before={holiday:dateCell().querySelector('.calendar-day-holidays').textContent,visible:!dateCell().querySelector('.calendar-day-holidays').hidden};
     const unitedStates=document.querySelector('#calendar-holidays-united-states');
+    unitedStates.checked=true;unitedStates.dispatchEvent(new Event('change',{bubbles:true}));
+    const dateCell=()=>document.querySelector('[data-calendar-date="2026-09-07"].calendar-day');
+    const holidayRow=dateCell().querySelector('.calendar-day-holidays');
+    const before={holiday:holidayRow.textContent,visible:!holidayRow.hidden};
     unitedStates.checked=false;unitedStates.dispatchEvent(new Event('change',{bubbles:true}));
     const saved=JSON.parse(localStorage.getItem('personal-dashboard.calendar-holidays.v1'));
     const afterRegionChange={text:dateCell().querySelector('.calendar-day-holidays').textContent,checked:unitedStates.checked};
