@@ -3,6 +3,7 @@ import test from "node:test";
 import { LatestRequest } from "../../frontend/latest-request.ts";
 import {
   calendarTasksForDate,
+  filterAndSortTasksByProperties,
   isCurrentTaskResponse,
   isCurrentTodayTaskResponse,
   normalizeTaskSchedule,
@@ -21,6 +22,28 @@ import {
   todayTaskTimeAxisEntries,
   taskVisibleInScope,
 } from "../../frontend/task-presentation.ts";
+
+test("priority sort is descending and stable while priority/tag filters combine", () => {
+  const tasks = [
+    { id: "low", priority: "low" as const, tagIds: ["work"] },
+    { id: "first-high", priority: "high" as const, tagIds: ["work"] },
+    { id: "none", priority: "none" as const, tagIds: ["home"] },
+    { id: "second-high", priority: "high" as const, tagIds: ["work", "home"] },
+    { id: "medium", priority: "medium" as const, tagIds: ["work"] },
+  ];
+  assert.deepEqual(
+    filterAndSortTasksByProperties(tasks, "all", null, true).map(task => task.id),
+    ["first-high", "second-high", "medium", "low", "none"],
+  );
+  assert.deepEqual(
+    filterAndSortTasksByProperties(tasks, "high", "work", true).map(task => task.id),
+    ["first-high", "second-high"],
+  );
+  assert.deepEqual(
+    filterAndSortTasksByProperties(tasks, "all", "home", false).map(task => task.id),
+    ["none", "second-high"],
+  );
+});
 
 test("system task lists use the localized Inbox display while user list names stay unchanged", () => {
   assert.equal(

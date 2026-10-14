@@ -125,21 +125,22 @@ for(const width of [640,830,1000,1280]) {
 }
 
 for(const width of [640,830,1000,1088,1280]) {
-  test(`Calendar summary is right-docked above 1000px and hidden below without changing its data at ${width}px`, {skip:process.platform!=='darwin'},()=>{
+test(`Calendar summary is right-docked above 1000px and hidden below with compact task entry at ${width}px`, {skip:process.platform!=='darwin'},()=>{
     const result=probe(width,`
       document.querySelector('[data-workspace-destination="calendar"].destination-button').click();
       await until(()=>document.querySelectorAll('#calendar-grid [data-calendar-date]').length>0);
       await until(()=>document.querySelector('#calendar-open-day').disabled===false);
       const toggle=document.querySelector('#calendar-summary-toggle'),summary=document.querySelector('#calendar-summary'),grid=document.querySelector('#calendar-grid');
-      const cells=[...grid.children],selected=grid.querySelector('[data-selected]'),content=summary.textContent,form=document.querySelector('#calendar-task-create-name');form.value='Retained Calendar draft';
+      const cells=[...grid.children],selected=grid.querySelector('[data-selected]'),content=summary.textContent,add=document.querySelector('#calendar-task-new'),dialog=document.querySelector('#task-create-dialog');
       const before={summary:rect(summary),grid:rect(grid),display:getComputedStyle(summary).display};
-      return JSON.stringify({before,togglePresent:Boolean(toggle),summaryHidden:summary.hidden,contentKept:content===summary.textContent,cellsKept:cells.every((c,i)=>grid.children[i]===c),selectionKept:selected===grid.querySelector('[data-selected]'),draft:form.value,dialog:summary.closest('dialog')!==null,overflow:document.documentElement.scrollWidth>innerWidth,calls});
+      return JSON.stringify({before,togglePresent:Boolean(toggle),summaryHidden:summary.hidden,contentKept:content===summary.textContent,cellsKept:cells.every((c,i)=>grid.children[i]===c),selectionKept:selected===grid.querySelector('[data-selected]'),add:{present:Boolean(add),width:rect(add).width,height:rect(add).height},dialog:summary.closest('dialog')!==null||dialog.open,noBottomCreate:!document.querySelector('#calendar-task-create-form'),overflow:document.documentElement.scrollWidth>innerWidth,calls});
     `,true,720);
     const visible=width>1000;
     assert.equal(result.togglePresent,false);assert.equal(result.summaryHidden,false);
     assert.equal(result.before.display,visible?'block':'none');
     assert.equal(result.dialog,false);assert.equal(result.contentKept,true);assert.equal(result.cellsKept,true);assert.equal(result.selectionKept,true);
-    assert.equal(result.draft,'Retained Calendar draft');assert.equal(result.overflow,false,JSON.stringify(result));
+    assert.equal(result.add.present,true);assert.ok(result.add.width<=34&&result.add.height<=34);
+    assert.equal(result.noBottomCreate,true);assert.equal(result.overflow,false,JSON.stringify(result));
     if(visible)assert.ok(result.before.summary.left>=result.before.grid.right&&result.before.summary.right<=width&&result.before.summary.width>80,JSON.stringify(result.before));
     else assert.equal(result.before.summary.width,0,'narrow summary must not stack below the month');
     assert.ok(result.before.grid.width>100,JSON.stringify(result.before));

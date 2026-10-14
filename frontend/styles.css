@@ -3642,6 +3642,61 @@ body {
   padding: 0;
 }
 
+.calendar-toolbar .calendar-task-new {
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.calendar-holiday-preferences {
+  position: relative;
+  align-self: center;
+  color: var(--parity-muted);
+  font-size: 9px;
+}
+
+.calendar-holiday-preferences > summary {
+  padding: 6px 8px;
+  border: 1px solid var(--parity-border);
+  border-radius: 7px;
+  background: #fff;
+  color: #303633;
+  cursor: pointer;
+  list-style-position: inside;
+  white-space: nowrap;
+}
+
+.calendar-holiday-preferences-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  right: 0;
+  display: grid;
+  width: min(230px, calc(100vw - 32px));
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid var(--parity-border);
+  border-radius: 8px;
+  background: var(--parity-surface);
+  box-shadow: 0 10px 24px rgb(35 39 36 / 12%);
+}
+
+.calendar-holiday-preferences-menu label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.calendar-holiday-preferences-menu input { flex: 0 0 auto; }
+.calendar-holiday-preferences-menu small { color: var(--parity-muted); line-height: 1.4; }
+#calendar-holiday-preferences-status[data-state="error"] { color: var(--parity-danger, #a7443a); }
+
 .calendar-destination > .today-status {
   margin: 12px 0 18px;
 }
@@ -3727,16 +3782,31 @@ body {
   display: flex;
   min-width: 0;
   min-height: 66px;
-  align-items: stretch;
-  justify-content: space-between;
   flex-direction: column;
-  padding: 8px;
+  padding: 0;
   border: 0;
   border-right: 1px solid var(--parity-border);
   border-bottom: 1px solid var(--parity-border);
   border-radius: 0;
   background: rgb(255 255 255 / 52%);
   color: #303633;
+  text-align: left;
+}
+
+.calendar-day-select {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  flex: 0 0 auto;
+  align-items: stretch;
+  justify-content: flex-start;
+  flex-direction: column;
+  padding: 7px 8px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
   text-align: left;
 }
 
@@ -3752,7 +3822,7 @@ body {
   background: #fff;
 }
 
-.calendar-day:focus-visible {
+.calendar-day-select:focus-visible {
   z-index: 2;
   outline: 2px solid #315d4b;
   outline-offset: -3px;
@@ -3773,6 +3843,17 @@ body {
   color: var(--parity-accent-strong);
   font-size: 8px;
   font-weight: 750;
+}
+
+.calendar-day-holiday {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--parity-accent-strong);
+  font-size: 8px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .calendar-day-marker {
@@ -7243,6 +7324,60 @@ body {
   resize: vertical;
 }
 
+#task-editor-dialog-root .task-form-grid textarea[data-task-content] {
+  min-height: 7rem;
+}
+
+.task-editor-details .task-form-grid > .task-property-disclosure {
+  grid-column: 1 / -1;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--parity-border);
+}
+
+.task-property-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--parity-muted);
+  cursor: pointer;
+  font-size: 0.64rem;
+}
+
+.task-property-value {
+  min-width: 0;
+  color: var(--parity-ink);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.task-property-disclosure[open] > summary {
+  margin-bottom: 0.65rem;
+}
+
+.task-property-disclosure > label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  color: var(--parity-muted);
+  font-size: 0.62rem;
+}
+
+.task-schedule-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.task-editor-details .task-property-disclosure [data-task-clear-end] {
+  min-height: 1.8rem;
+  justify-self: start;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.62rem;
+}
+
 .task-form-grid input:focus,
 .task-form-grid textarea:focus,
 .task-form-grid select:focus {
@@ -7879,6 +8014,29 @@ body {
   padding: 22px;
 }
 
+.task-editor-title {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 0.45rem;
+  padding: 0.1rem 0.1rem 0.35rem;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--parity-ink);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.task-editor-title:focus {
+  border-bottom-color: var(--parity-accent);
+  outline: 2px solid color-mix(in srgb, var(--parity-accent) 30%, transparent);
+  outline-offset: 1px;
+}
+
 .task-editor-details[hidden] {
   display: none;
 }
@@ -7890,6 +8048,16 @@ body {
 
 .task-editor-details .task-editor-footer {
   margin-top: 12px;
+}
+
+.task-editor-details .task-editor-footer {
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.task-editor-details .task-editor-footer .task-editor-close {
+  display: inline-flex;
+  margin: 0;
 }
 
 .task-form-actions {
@@ -8061,8 +8229,11 @@ body {
   display: grid;
   width: 100%;
   min-width: 0;
+  flex: 1 1 auto;
   gap: 0.15rem;
-  margin-top: 0.25rem;
+  margin-top: 0;
+  padding: 0 8px 8px;
+  overflow: hidden;
 }
 
 .calendar-day-task-summaries:empty,
@@ -8072,15 +8243,28 @@ body {
 
 .calendar-day-task-summary {
   display: block;
+  width: 100%;
   min-width: 0;
+  min-height: 12px;
   overflow: hidden;
-  padding-left: 0.35rem;
+  padding: 0 0 0 0.35rem;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
   border-left: 2px solid var(--parity-accent);
+  border-radius: 0;
+  background: transparent;
   color: var(--parity-ink);
   font-size: 0.56rem;
   line-height: 1.25;
   text-overflow: ellipsis;
+  text-align: left;
   white-space: nowrap;
+}
+
+.calendar-day-task-summary:focus-visible {
+  outline: 2px solid var(--parity-accent-strong);
+  outline-offset: 1px;
 }
 
 .calendar-day-task-summary[data-task-state="completed"] {
@@ -8165,15 +8349,15 @@ body {
   display: none;
 }
 
-.calendar-task-create-form {
-  margin-top: 1rem;
-}
-
 @media (max-width: 680px) {
   .app-shell[data-workspace-destination="calendar"] .calendar-day {
     min-height: 82px;
-    padding: 0.45rem;
+    padding: 0;
   }
+
+  .calendar-day-select { padding: 5px 4px 0; }
+  .calendar-day-task-summaries { padding: 0 4px 5px; }
+  .calendar-day-holiday { font-size: 7px; }
 
   .calendar-day-task-summary,
   .calendar-day-task-overflow {
@@ -9977,7 +10161,11 @@ button.habit-cell:focus-visible {
   min-height: 0;
   overflow: hidden;
   justify-content: flex-start;
-  padding: 5px;
+  padding: 0;
+}
+.calendar-destination .calendar-day-select {
+  min-height: 28px;
+  padding: 5px 7px 0;
 }
 .calendar-destination .calendar-day-top {
   flex-shrink: 0;
@@ -9985,10 +10173,11 @@ button.habit-cell:focus-visible {
   justify-content: flex-start;
   gap: 4px;
   height: 16px;
-  margin-bottom: 2px;
+  margin-bottom: 0;
 }
 .calendar-destination .calendar-day-top strong { font-size: 11px; line-height: 16px; }
 .calendar-destination .calendar-day-top small { margin-left: auto; font-size: 8px; }
+.calendar-destination .calendar-day-holiday { max-width: 55%; font-size: 8px; }
 .calendar-destination .calendar-day-marker {
   width: 13px;
   height: 13px;
@@ -10001,11 +10190,12 @@ button.habit-cell:focus-visible {
 }
 .calendar-destination .calendar-day-marker:empty { display: none; }
 .calendar-destination .calendar-day-task-summaries {
-  flex-shrink: 0;
+  flex-shrink: 1;
   gap: 1px;
   margin-top: 0;
+  padding: 0 7px 5px;
 }
-.calendar-destination .calendar-day-task-summary { height: 12px; font-size: 10px; line-height: 12px; }
+.calendar-destination .calendar-day-task-summary { height: 12px; min-height: 12px; padding-top: 0; padding-bottom: 0; font-size: 10px; line-height: 12px; }
 .calendar-destination .calendar-day-task-summary[hidden] { display: none; }
 .calendar-destination .calendar-day-task-overflow {
   margin: 0 0 0 auto;
@@ -10068,6 +10258,7 @@ button.habit-cell:focus-visible {
 .tasks-selected-detail .task-editor-details { width: 100%; max-height: none; padding: 18px; box-shadow: none; }
 .tasks-selected-detail .task-editor-details h3 { margin: 0 0 10px; overflow-wrap: anywhere; }
 .tasks-selected-detail .task-editor-close { margin: 16px 0 0 auto; }
+.tasks-selected-detail .task-editor-footer .task-editor-close { margin: 0; }
 .tasks-content > #tasks-list { align-content: start; grid-auto-rows: max-content; gap: 0.15rem; }
 .task-row[data-task-surface="tasks"] { padding: 4px 4px; }
 .task-row[data-task-surface="tasks"].is-selected { background: var(--parity-accent-soft); border-radius: 6px; }
@@ -10201,6 +10392,42 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
 .task-schedule-toggle svg { width:20px; height:20px; flex:0 0 20px; fill:none; stroke:currentColor; stroke-width:1.7; }
 .task-schedule-label { min-width:0; overflow:hidden; color:inherit; font-size:.68rem; font-weight:650; line-height:1.2; text-overflow:ellipsis; white-space:nowrap; }
 
+/* PDEX-19 keeps task properties compact and visually aligned with existing controls. */
+.tasks-toolbar-actions { flex-wrap:wrap; justify-content:flex-end; min-width:0; }
+.tasks-filter select { max-width:clamp(92px, 13vw, 150px); }
+#task-priority-filter { max-width:110px; }
+#task-tag-filter { max-width:132px; }
+#task-sort-order { max-width:154px; }
+.task-quick-form > input { min-width:8rem; }
+.task-quick-form > #task-quick-list { flex:0 1 9rem; width:9rem; max-width:26vw; min-width:6.5rem; padding:.42rem .48rem; font-size:.67rem; }
+.task-editor-details .task-form-grid > .task-property-disclosure { margin:0; }
+.task-property-control { display:grid; grid-template-columns:minmax(5rem, .4fr) minmax(0, 1fr); align-items:center; gap:.5rem; margin-top:.55rem; }
+.task-property-control select { max-width:12rem; }
+.task-tag-options { display:flex; flex-wrap:wrap; gap:.35rem .75rem; margin:.1rem 0 .55rem; }
+.task-tag-option { display:inline-flex !important; grid-template-columns:auto minmax(0,1fr) !important; align-items:center; gap:.35rem !important; color:var(--parity-ink) !important; font-size:.66rem !important; }
+.task-tag-option input { width:14px !important; height:14px; margin:0; accent-color:var(--parity-accent); }
+.task-tag-create-row { display:flex; align-items:center; gap:.4rem; max-width:24rem; }
+.task-tag-create-row input,
+.task-tag-management-row input { min-width:0; flex:1; padding:.38rem .48rem; font-size:.66rem; }
+.task-tag-create-row button,
+.task-tag-management-row button,
+.task-more-disclosure button { min-height:1.65rem !important; padding:.28rem .48rem !important; border-radius:5px !important; font-size:.6rem !important; }
+.task-tag-management { margin-top:.6rem; color:var(--parity-muted); font-size:.62rem; }
+.task-tag-management > summary { cursor:pointer; }
+.task-tag-management-rows { display:grid; gap:.35rem; margin-top:.45rem; }
+.task-tag-management-row { display:flex; align-items:center; gap:.35rem; min-width:0; }
+.task-more-disclosure { margin-top:.7rem; padding-top:.5rem; border-top:1px solid var(--parity-border); }
+.task-more-disclosure > summary { color:var(--parity-muted); cursor:pointer; font-size:.64rem; }
+.task-more-disclosure[open] > summary { margin-bottom:.45rem; }
+.task-more-property-actions { display:flex; flex-wrap:wrap; gap:.35rem; margin-bottom:.45rem; }
+.task-more-disclosure .task-state-actions { display:flex; justify-content:flex-start; gap:.35rem; margin:0; }
+.task-more-disclosure button:disabled { opacity:.5; cursor:not-allowed; }
+@media(max-width:680px) {
+  .tasks-toolbar-actions { justify-content:flex-start; }
+  .task-quick-form > #task-quick-list { flex-basis:7rem; }
+  .task-tag-management-row { flex-wrap:wrap; }
+}
+
 /* Sessions and context use simple divisions; keep selected states and input borders. */
 .collaboration-session-pane,
 .collaboration-chat-pane,
@@ -10232,57 +10459,49 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
   letter-spacing: -0.055em;
   line-height: 0.98;
 }
-.collaboration-description { max-width: 36rem; }
+.collaboration-description { max-width: 36rem; line-height: 1.5; }
+.collaboration-header > div:first-child > p:last-child { line-height: 1.5; }
 .collaboration-status-bar { flex: 0 0 auto; margin-bottom: 0.25rem; padding: 0.3rem 0.65rem; }
 .collaboration-layout {
-  flex: 0 0 auto;
-  min-height: 42rem;
+  display: block;
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
   padding-bottom: 0;
 }
 .collaboration-primary-layout {
   display: grid;
-  grid-template-rows: minmax(42rem, auto);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
   min-width: 0;
-  min-height: 42rem;
+  min-height: 0;
 }
 .collaboration-primary-layout > .collaboration-session-pane,
-.collaboration-primary-layout > .collaboration-chat-pane { min-height: 42rem; }
+.collaboration-primary-layout > .collaboration-chat-pane { min-height: 0; }
 .collaboration-primary-layout[data-columns="two"],
 .collaboration-primary-layout[data-columns="three"] {
-  grid-template-rows: minmax(42rem, auto);
+  grid-template-rows: minmax(0, 1fr);
 }
 .collaboration-layout[data-columns="two"],
 .collaboration-layout[data-narrow="true"] {
-  display: flex;
-  flex-direction: column;
+  display: block;
 }
 .collaboration-layout[data-columns="two"] .collaboration-primary-layout,
 .collaboration-layout[data-narrow="true"] .collaboration-primary-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.collaboration-primary-layout[data-narrow="true"] {
+  grid-template-rows: minmax(24rem, auto) auto;
+}
+.collaboration-layout[data-narrow="true"] {
   flex: 0 0 auto;
 }
 .collaboration-layout[data-narrow="true"] .collaboration-primary-layout {
-  flex: 0 0 auto;
+  height: auto;
 }
-.collaboration-primary-layout[data-narrow="true"] {
-  grid-template-rows: minmax(42rem, auto) auto;
-}
-.collaboration-layout[data-columns="three"] {
-  display: grid;
-  grid-template-rows: minmax(42rem, auto);
-}
-.collaboration-layout[data-columns="three"] .collaboration-primary-layout {
-  grid-column: 1;
-  grid-row: 1;
-}
-.collaboration-layout[data-columns="three"] .collaboration-context-pane {
-  height: 100%;
-  min-height: 0;
-  overflow: auto;
-}
-.collaboration-layout[data-columns="two"] .collaboration-context-pane {
-  flex: 0 0 auto;
-  margin-top: 0.65rem;
-}
+.collaboration-primary-layout[data-narrow="true"] > .collaboration-chat-pane { min-height: 0; }
+.collaboration-layout[data-columns="three"] { display: block; min-height: 0; }
 .collaboration-session-pane,
 .collaboration-chat-pane,
 .collaboration-context-pane {
@@ -10291,15 +10510,17 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
   background: var(--parity-surface);
 }
 .collaboration-chat-pane {
+  position: relative;
   display: flex;
-  min-height: 42rem;
+  min-height: 0;
   flex-direction: column;
   overflow: visible;
   padding: 0.55rem;
 }
 .collaboration-message-list {
-  min-height: 14rem;
-  max-height: min(56vh, 39rem);
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none;
   padding-block: 0.35rem;
   overflow: auto;
 }
@@ -10335,10 +10556,9 @@ button.task-schedule-toggle { display:flex; align-items:center; justify-content:
   max-height: max(3.5rem, min(13rem, 12vh));
 }
 .collaboration-composer > .collaboration-help[open] { max-height: none; overflow: visible; }
-.collaboration-message-list { min-height: 14rem; }
+.collaboration-message-list { min-height: 5rem; }
 .collaboration-capability-disclosure { flex: 0 0 auto; margin: 0.2rem 0; color: #674d27; font-size: 0.62rem; }
 .collaboration-capability-disclosure > summary { cursor: pointer; color: var(--parity-muted); }
-#collaboration-task-tool-notice { height: auto; max-height: none; flex: 0 0 auto; margin: 0.3rem 0 0; padding: 0.35rem 0.5rem; overflow: visible; }
 
 @media (max-height: 740px) {
   .collaboration-chat-pane { padding: 0.4rem; }
@@ -10509,6 +10729,10 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   font-weight: 400;
   line-height: inherit;
 }
+#collaboration-command-menu button[aria-selected="true"] {
+  color: var(--parity-ink);
+  background: var(--parity-accent-soft);
+}
 
 #collaboration-open-settings {
   flex: 0 0 auto;
@@ -10518,6 +10742,57 @@ button.task-schedule-toggle { gap:5px; padding:4px 7px; }
   font-size: 0.6rem;
   line-height: 1.15;
   white-space: nowrap;
+}
+
+/* Current Work floats within the conversation and yields its composer space. */
+.collaboration-context-pane {
+  position: absolute;
+  z-index: 12;
+  inset-block-start: var(--collaboration-context-top, 3.2rem);
+  inset-block-end: var(--collaboration-context-bottom, 8rem);
+  inset-inline-end: 0.55rem;
+  width: var(--collaboration-context-width, 304px);
+  max-width: calc(100% - 1rem);
+  min-height: 0;
+  box-sizing: border-box;
+  margin: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  box-shadow: 0 8px 24px rgb(20 28 23 / 16%);
+}
+.collaboration-context-pane .collaboration-pane-heading {
+  position: sticky;
+  z-index: 1;
+  top: -0.85rem;
+  margin: -0.85rem -0.85rem 0;
+  padding: 0.55rem 0.85rem;
+  background: var(--parity-surface);
+}
+.collaboration-context-pane .collaboration-pane-heading > div { min-width: 0; }
+.collaboration-context-pane .collaboration-pane-heading .section-label { margin: 0 0 0.12rem; }
+.collaboration-context-pane .collaboration-pane-heading h3 { margin: 0; }
+.collaboration-context-pane .collaboration-sidebar-toggle { align-self: flex-start; flex: 0 0 auto; }
+#collaboration-context-resizer {
+  position: absolute;
+  z-index: 13;
+  inset-block-start: var(--collaboration-context-top, 3.2rem);
+  inset-block-end: var(--collaboration-context-bottom, 8rem);
+  inset-inline-end: calc(var(--collaboration-context-width, 304px) + 0.55rem);
+  width: 16px;
+}
+.collaboration-context-panes { max-height: none; overflow: visible; }
+.collaboration-voice-preview {
+  max-height: min(8rem, 18vh);
+  margin: 0.25rem 0 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+}
+.collaboration-voice-preview:not(:empty) {
+  padding: 0.25rem 0.4rem;
+  border-radius: 0.3rem;
+  background: var(--parity-surface-soft);
 }
 
 @media (max-width: 720px) {

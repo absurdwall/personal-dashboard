@@ -7,6 +7,7 @@ use tauri::{Manager, RunEvent, State};
 
 pub mod appearance;
 pub mod backup;
+pub mod calendar_holidays;
 mod clock;
 pub mod collaboration;
 pub mod collaboration_memory;
@@ -241,6 +242,7 @@ fn collaboration_voice_runtime_gate(result: serde_json::Value) -> Result<(), Str
 use appearance::{
     AccentColor, AppearanceApplication, AppearancePreferences, AppearanceSelectionResult,
 };
+use calendar_holidays::{CalendarHolidayPreferences, CalendarHolidayPreferencesApplication};
 use clock::SystemClock;
 #[cfg(target_os = "macos")]
 use cutover::{
@@ -251,14 +253,18 @@ use interface_language::{
 };
 use platform::{
     appearance_background_directory_for, appearance_file_for, application_data_directory_for,
-    interface_language_file_for, legacy_exercise_directory_for, profile_file_for,
-    today_workspace_file_for, FileAppearancePersistence, FileInterfaceLanguagePersistence,
-    FileTodayWorkspacePersistence, NativeAppearanceImageLibrary, NativeTodayWorkspaceExchange,
+    calendar_holiday_preferences_file_for, interface_language_file_for,
+    legacy_exercise_directory_for, profile_file_for, today_workspace_file_for,
+    FileAppearancePersistence, FileCalendarHolidayPreferencesPersistence,
+    FileInterfaceLanguagePersistence, FileTodayWorkspacePersistence,
+    NativeAppearanceImageLibrary, NativeTodayWorkspaceExchange,
 };
 use tasks::{
     FileTaskStore, TaskApplication, TaskCompletionCorrectionInput, TaskCreateInput,
     TaskDeleteInput, TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput,
-    TaskListRestoreInput, TaskRestoreInput, TaskStateInput, TaskUpdateInput, TasksView,
+    TaskListRestoreInput, TaskRestoreInput, TaskStateInput, TaskTagCreateInput,
+    TaskTagDeleteInput, TaskTagRenameInput, TaskUpdateInput, TaskUpdateWithPropertiesInput,
+    TasksView,
 };
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
@@ -278,6 +284,8 @@ type DesktopAppearanceApplication =
     AppearanceApplication<FileAppearancePersistence, NativeAppearanceImageLibrary<tauri::Wry>>;
 type DesktopInterfaceLanguageApplication =
     InterfaceLanguageApplication<FileInterfaceLanguagePersistence>;
+type DesktopCalendarHolidayPreferencesApplication =
+    CalendarHolidayPreferencesApplication<FileCalendarHolidayPreferencesPersistence>;
 type DesktopTaskApplication = TaskApplication<FileTodayWorkspacePersistence, SystemClock>;
 
 #[derive(Serialize)]
@@ -692,6 +700,21 @@ fn set_interface_language(
 }
 
 #[tauri::command]
+fn calendar_holiday_preferences(
+    application: State<'_, DesktopCalendarHolidayPreferencesApplication>,
+) -> Result<CalendarHolidayPreferences, String> {
+    application.load()
+}
+
+#[tauri::command]
+fn set_calendar_holiday_preferences(
+    application: State<'_, DesktopCalendarHolidayPreferencesApplication>,
+    preferences: CalendarHolidayPreferences,
+) -> Result<CalendarHolidayPreferences, String> {
+    application.set_preferences(preferences)
+}
+
+#[tauri::command]
 fn today_view(application: State<'_, DesktopTodayApplication>) -> Result<TodayView, String> {
     application.read()
 }
@@ -750,6 +773,30 @@ fn create_task(
 }
 
 #[tauri::command]
+fn create_task_tag(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskTagCreateInput,
+) -> Result<TasksView, String> {
+    application.create_tag(input)
+}
+
+#[tauri::command]
+fn rename_task_tag(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskTagRenameInput,
+) -> Result<TasksView, String> {
+    application.rename_tag(input)
+}
+
+#[tauri::command]
+fn delete_task_tag(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskTagDeleteInput,
+) -> Result<TasksView, String> {
+    application.delete_tag(input)
+}
+
+#[tauri::command]
 fn create_task_list(
     application: State<'_, DesktopTaskApplication>,
     input: TaskListCreateInput,
@@ -787,6 +834,14 @@ fn update_task(
     input: TaskUpdateInput,
 ) -> Result<TasksView, String> {
     application.update(input)
+}
+
+#[tauri::command]
+fn update_task_with_properties(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskUpdateWithPropertiesInput,
+) -> Result<TasksView, String> {
+    application.update_with_properties(input)
 }
 
 #[tauri::command]
@@ -949,6 +1004,8 @@ pub fn run() {
             let appearance_file = appearance_file_for(&app_handle)?;
             let appearance_background_directory = appearance_background_directory_for(&app_handle)?;
             let interface_language_file = interface_language_file_for(&app_handle)?;
+            let calendar_holiday_preferences_file =
+                calendar_holiday_preferences_file_for(&app_handle)?;
             #[cfg(target_os = "macos")]
             if let Some(cutover_mode) = std::env::var_os("PERSONAL_DASHBOARD_2_CUTOVER_MODE") {
                 use crate::notification::Clock;
@@ -1032,6 +1089,9 @@ pub fn run() {
             app.manage(InterfaceLanguageApplication::new(
                 FileInterfaceLanguagePersistence::new(interface_language_file),
             ));
+            app.manage(CalendarHolidayPreferencesApplication::new(
+                FileCalendarHolidayPreferencesPersistence::new(calendar_holiday_preferences_file),
+            ));
             Ok(())
         });
 
@@ -1090,6 +1150,8 @@ pub fn run() {
             remove_background_image,
             interface_language_preferences,
             set_interface_language,
+            calendar_holiday_preferences,
+            set_calendar_holiday_preferences,
             today_view,
             today_clock,
             daily_view,
@@ -1099,11 +1161,15 @@ pub fn run() {
             save_habit_definition,
             tasks_view,
             create_task,
+            create_task_tag,
+            rename_task_tag,
+            delete_task_tag,
             create_task_list,
             rename_task_list,
             archive_task_list,
             restore_task_list,
             update_task,
+            update_task_with_properties,
             set_task_state,
             delete_task,
             restore_task,
@@ -1168,6 +1234,8 @@ pub fn run() {
         remove_background_image,
         interface_language_preferences,
         set_interface_language,
+        calendar_holiday_preferences,
+        set_calendar_holiday_preferences,
         today_view,
         today_clock,
         daily_view,
@@ -1177,11 +1245,15 @@ pub fn run() {
         save_habit_definition,
         tasks_view,
         create_task,
+        create_task_tag,
+        rename_task_tag,
+        delete_task_tag,
         create_task_list,
         rename_task_list,
         archive_task_list,
         restore_task_list,
         update_task,
+        update_task_with_properties,
         set_task_state,
         delete_task,
         restore_task,
