@@ -100,3 +100,17 @@ not substitute for these seams.
   `00e518d7e2c2f4b92333b863f7a54fb364c98bd8`. Production build and focused
   layout/panel tests passed; command-completion retained its two documented
   base failures. See [PDEX-23 integration evidence](evidence/pdex-23-reimplementation-2026-10-13.md).
+- 2026-10-13: After PDEX-19, PDEX-23, and PDEX-24 were integrated, the installed
+  Management helper confirmed local native claims for PDEX-20, PDEX-21,
+  PDEX-22, and PDEX-25 in `source-personal-dashboard-experience`. Their native
+  statuses changed from `ready-for-agent` to `claimed`; the original dependency
+  declarations remain in each ticket. PDEX-19/PDEX-24 packaged acceptance is
+  still gated under PDEX-26. Operation IDs are `pdex-20-reimplementation-claim-2026-10-13`,
+  `pdex-21-reimplementation-claim-2026-10-13`,
+  `pdex-22-reimplementation-claim-2026-10-13`, and
+  `pdex-25-reimplementation-claim-2026-10-13`. Working branches are
+  `codex/pdex-20-refinement-reimplementation`,
+  `codex/pdex-21-refinement-reimplementation`,
+  `codex/pdex-22-refinement-reimplementation`, and
+  `codex/pdex-25-refinement-reimplementation`. Their exact worktree paths and
+  start commits will be recorded immediately after creation.

@@ -4,7 +4,7 @@
 
 **Blocked by:** 24 — Habit 新增、编辑与目标设置
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Triage:** ready-for-agent
 **ID:** PDEX-25
@@ -50,3 +50,13 @@ PDEX-SPEC-02 stories 73–74、80–82、86–87；共同承担 1–3、88–91 
 - 后续授权claim时记录实际owner、working branch、base commit、增量实现/评审/
   验收commits、结果和限制。每票可多次commit，完整验收前不关闭。
 - 本票发布不授权安装正常App、main merge、remote push或关闭父规格。
+
+## Reimplementation claim — 2026-10-13
+
+The installed local Management helper confirmed native claim operation
+`pdex-25-reimplementation-claim-2026-10-13` in
+`source-personal-dashboard-experience`. Working branch:
+`codex/pdex-25-refinement-reimplementation`. PDEX-24 is integrated; its
+packaged acceptance remains under PDEX-26. The exact worktree start commit and
+path are recorded in the shared [restart record](../refinement-reimplementation-2026-10-13.md)
+after worktree creation.
