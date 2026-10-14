@@ -94,10 +94,12 @@ Observed verification:
   the `Daily stretch` / `Health` draft, blocked blind replay, refreshed the same
   binding to `revision-2`, and then enabled a fresh save. Cancel closed an
   unsaved form without invoking a write.
-- `npm run build` cannot run in this checkout because `tsc` / the local
-  `node_modules/.bin/tsc` is absent. No dependency was installed. The frontend
-  source was syntax-checked with the available Node runtime; packaged
-  save/readback acceptance remains PDEX-26.
+- Before integration, `npm run build` in this isolated checkout could not find
+  local `tsc` / `node_modules/.bin/tsc`. No dependency was installed. The
+  frontend source was syntax-checked with the available Node runtime; after
+  integration, the build passed by putting the primary checkout's existing
+  `node_modules/.bin` on `PATH` (recorded below). Packaged save/readback
+  acceptance remains PDEX-26.
 - `npm run test:frontend` was attempted and exited nonzero. Its output includes
   child tests that cannot spawn the absent `node_modules/.bin/tsc`; several
   other checks outside this ticket also reported failures. The focused Habit
@@ -107,17 +109,27 @@ The PDEX-24 implementation commits above preserve the PDEX-24-only scope.
 Selected-Habit detail and lifecycle remain PDEX-25; packaged acceptance remains
 PDEX-26.
 
-## Post-commit ancestry and verification — 2026-10-14
+## Post-integration merge and verification — 2026-10-14
 
-- `codex/dashboard-experience-refinement-reimplementation` was observed at
-  `b7dcd71b50b42de4a706d460d635f99bf059770d`. `git merge-base HEAD
-  codex/dashboard-experience-refinement-reimplementation` returned the same
-  hash. The integration ref therefore had no commits newer than this feature
-  branch's base; no synthetic/redundant merge commit was created. The parent
-  integration workflow will take this branch next.
+- Merged the exact local integration tip
+  `14bd7629f8961516eab7b534703d52f0e9622ae8` from
+  `codex/dashboard-experience-refinement-reimplementation` into this ticket
+  branch with merge commit
+  `befded5be81bca8aabf698c80051da98dfe3b9f0`. Its first parent is the prior
+  PDEX-24 tip `8ff52054948897b03f737bb7cc3ed36ae87049ba`; its second parent is
+  the integration tip. No squash or rebase was used.
+- The only textual merge conflict was the module list in `src-tauri/src/lib.rs`.
+  Resolution retains `habit_catalog`, the shared `habit_producer` and `habits`
+  modules once each, PDEX-24's `save_habit_definition` command registration,
+  and PDEX-19's task-property command registrations. The merge retained both
+  feature histories. A follow-up PDEX-24 integration fix is
+  `6b6edd485a7c73021fc588198351b1ed3ab7f24e`
+  (`fix: report Habit workflow outcomes to vault barrier`): it fills
+  the new Habit fields in the error snapshot and makes save/refresh return the
+  success result expected by the existing Vault-switch pending-write barrier.
 - `cargo test --manifest-path src-tauri/Cargo.toml`: exit 0; 102 unit tests and
-  432 integration tests passed, 6 environment-gated tests ignored, doc tests
-  passed (0 defined). This post-commit run includes all eight
+  434 integration tests passed, 6 environment-gated tests ignored, doc tests
+  passed (0 defined). This run includes all eight
   `habit_definition_workflow` cases, including
   `a_new_local_habit_is_recordable_and_survives_a_fresh_application_without_a_snapshot`
   and
@@ -125,21 +137,31 @@ PDEX-26.
   The create/readback case saves a definition and first local completion to a
   synthetic selected Vault, creates a fresh application service, and verifies
   the definition and completion are read back without an external snapshot.
+- `cargo test --manifest-path src-tauri/Cargo.toml --test
+  habit_definition_workflow`: 8 passed, 0 failed.
 - `node --test tests/frontend/habit-definition-ui.test.ts
-  tests/frontend/habit-localized-names.test.ts`: 7 passed, 0 failed.
+  tests/frontend/habit-localized-names.test.ts`: 8 passed, 0 failed. The added
+  case checks that Habit save and stale-conflict refresh report outcomes to
+  the Vault-switch barrier.
 - `node --experimental-strip-types --check frontend/main.ts` and
   `node --experimental-strip-types --check frontend/interface-language.ts`:
   both passed.
+- `env PATH="/Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/node_modules/.bin:$PATH" npm run build`:
+  exit 0 using the primary checkout's installed tools; no dependency was
+  installed in the ticket worktree.
 - `git diff --check`: passed with no whitespace errors; the worktree was clean
-  before this evidence update.
+  before this evidence update. The initial post-merge build found the missing
+  Habit error-snapshot fields and `Promise<void>`/`Promise<boolean>` mismatch;
+  the focused test was first observed failing, then passed after the narrow fix
+  recorded above.
 - Local Chrome synthetic IPC smoke remains the UI evidence described above;
   the fixture identifiers were `synthetic-habit-target` and
   `synthetic-completions`. It verified the current lived-date default, shared
   compact form, weekly 1–7 control, and draft retention/same-Vault refresh
   after a stale revision. It performed no Vault or external Habit writes.
-- `npm run build` remains unavailable because local `tsc` is missing; no
-  dependency was installed. The broad `npm run test:frontend` attempt remains
-  nonzero because child checks cannot spawn the absent `node_modules/.bin/tsc`
-  and reports additional checks outside this ticket. Neither is presented as
-  a passing packaged or complete frontend acceptance run. PDEX-26 owns
-  packaged save/readback acceptance.
+- The broad `npm run test:frontend` attempt from the isolated pre-integration
+  checkout remains nonzero because child checks cannot spawn its absent local
+  `node_modules/.bin/tsc` and it reported additional checks outside this
+  ticket. This was not rerun with the primary toolchain; the focused frontend
+  tests and `npm run build` passed. No packaged save/readback acceptance is
+  claimed; PDEX-26 owns that gate.
