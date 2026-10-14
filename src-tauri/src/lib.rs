@@ -270,7 +270,8 @@ use tasks::{
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
     DayTaskCompletionInput, DayTaskDeleteInput, DayTaskRenameInput, DaytimeUpdateInput,
-    EveningUpdateInput, HabitCompletionMutationInput, HabitSnapshotView,
+    EveningUpdateInput, HabitCompletionMutationInput, HabitDefinitionMutationInput,
+    HabitSnapshotView,
     PlanTimeEditInput, PlanTimeEditResult, PlanningDayTaskContextView, TodayApplication,
     TodayClockView, TodayView, VaultSelectionResult,
 };
@@ -941,6 +942,14 @@ fn set_local_habit_completion(
 }
 
 #[tauri::command]
+fn save_habit_definition(
+    application: State<'_, DesktopTodayApplication>,
+    input: HabitDefinitionMutationInput,
+) -> Result<HabitSnapshotView, String> {
+    application.save_habit_definition(input)
+}
+
+#[tauri::command]
 fn set_historical_habit_completion(
     application: State<'_, DesktopTodayApplication>,
     input: HabitCompletionMutationInput,
@@ -1206,6 +1215,7 @@ pub fn run() {
             read_daily_view,
             calendar_month,
             habit_snapshot,
+            save_habit_definition,
             tasks_view,
             create_task,
             create_task_subtask,
@@ -1296,6 +1306,7 @@ pub fn run() {
         read_daily_view,
         calendar_month,
         habit_snapshot,
+        save_habit_definition,
         tasks_view,
         create_task,
         create_task_subtask,

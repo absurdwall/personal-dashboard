@@ -4,7 +4,7 @@ ID: PDEX-MAP
 Type: map
 Date: 2026-10-10
 Canonical: this local tracker, explicitly selected by the user
-Stage: PDEX-SPEC-02 reimplementation in progress from the verified unimplemented checkpoint `918e7e0`; PDEX-19, PDEX-20, PDEX-22 and PDEX-23 code are locally integrated and await independent review and PDEX-26 packaged acceptance; PDEX-24 implementation is committed with final independent review pending; earlier PDEX-SPEC-01, PDEX-FOLLOWUP-01–05 and PDEX-01–18 remain closed
+Stage: PDEX-SPEC-02 reimplementation in progress from the verified unimplemented checkpoint `918e7e0`; PDEX-19, PDEX-20, PDEX-22 and PDEX-23 code are locally integrated and await their remaining review and PDEX-26 packaged acceptance; PDEX-24 implementation is committed on its ticket branch and includes current integration through `13d3ac5` with independent final review and packaged acceptance pending; earlier PDEX-SPEC-01, PDEX-FOLLOWUP-01–05 and PDEX-01–18 remain closed
 Implementation: PDEX-19, PDEX-20, PDEX-22, PDEX-23 and PDEX-24 have been claimed; the prior rejected implementation and its complete history are preserved on their existing branches
 Working branch: `codex/dashboard-experience-refinement-restart-20261014`, based directly on `918e7e0`
 Management source: source-personal-dashboard-experience
@@ -19,7 +19,7 @@ Management source: source-personal-dashboard-experience
 | PDEX-21 | ticket | [Today 时间轴与安排交互](issues/21-today-axis-arrangement-interaction.md) | ready-for-agent | open | PDEX-19 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
 | PDEX-22 | ticket | [Calendar 新增、详情与节日](issues/22-calendar-create-details-holidays.md) | ready-for-agent | in-progress | PDEX-19 | Implemented on `codex/pdex-22-restart` in `135add3c` and `41031c5`; non-fast-forward integrated as `071202fb61781436b834bcbdeaac2bce88cbd69c`; [implementation and integration verification record](evidence/pdex-22-implementation-2026-10-14.md); packaged acceptance remains under PDEX-26 |
 | PDEX-23 | ticket | [Collaboration 空间与输入体验](issues/23-collaboration-context-input.md) | ready-for-agent | in-progress | none | Implemented on `codex/pdex-23-restart`; non-fast-forward integrated as `224b42e4052f12f1ea9211a0843f6fa3dc100a0c`; packaged acceptance remains under PDEX-26 |
-| PDEX-24 | ticket | [Habit 新增、编辑与目标设置](issues/24-habit-create-edit-goal-cycles.md) | ready-for-agent | in-progress | none | Implemented on `codex/pdex-24-restart`; final independent Spec and Standards review pending; packaged acceptance remains under PDEX-26 |
+| PDEX-24 | ticket | [Habit 新增、编辑与目标设置](issues/24-habit-create-edit-goal-cycles.md) | ready-for-agent | in-progress | none | Implemented on `codex/pdex-24-restart`; non-fast-forward merges preserve integration tips `ebd4354`, `2a233c3`, and latest `13d3ac5` (`11a17523`); [sync and post-merge verification](evidence/pdex-24-integration-sync-2026-10-14.md); independent final review and packaged acceptance remain pending |
 | PDEX-25 | ticket | [Habit 详情、历史统计与停用恢复](issues/25-habit-details-history-lifecycle.md) | ready-for-agent | open | PDEX-24 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
 | PDEX-26 | ticket | [整合与真实 App 验收](issues/26-refinement-integration-packaged-acceptance.md) | ready-for-agent | open | PDEX-20, PDEX-21, PDEX-22, PDEX-23, PDEX-25 | [publication](refinement-ticket-publication-2026-10-11.md); unassigned/not started |
 | PDEX-SPEC-01 | spec | [Complete specification](spec.md) | ready-for-agent | closed | none | [local human acceptance](evidence/human-acceptance-2026-10-11.md), [retained publication](publication.md) |
@@ -76,6 +76,14 @@ remain unchanged; their original publication-stage text is a historical snapshot
 and this map owns the current child-ticket state. Earlier accepted rounds remain
 closed. [Spec publication and handoff](refinement-publication-2026-10-11.md) retains
 the base/prototype lineage.
+
+### PDEX-24 integration sync — 2026-10-14
+
+PDEX-24 branch `codex/pdex-24-restart` retained both no-fast-forward integration
+merges (`1dee0c8` for `ebd4354`; `a366710` for `2a233c3`). Post-sync Rust,
+frontend, browser, build and diff checks pass. The branch is not merged back to
+integration; independent final review and PDEX-26 packaged acceptance remain
+open. [Exact lineage, commands and results](evidence/pdex-24-integration-sync-2026-10-14.md).
 
 No unrequested App restyling is authorized. Only changes with an explicit
 requirement in PDEX-SPEC-02 may be implemented; the scope record identifies

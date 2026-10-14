@@ -1119,6 +1119,34 @@ const interfaceCopies = {
   "habits.weekly": { zh: "本周习惯", en: "Habits this week" },
   "habits.loadingOnDemand": { zh: "正在读取按需快照…", en: "Loading the on-demand snapshot…" },
   "habits.refresh": { zh: "刷新快照", en: "Refresh snapshot" },
+  "habits.add": { zh: "＋ 新建习惯", en: "＋ New habit" },
+  "habits.edit": { zh: "编辑", en: "Edit" },
+  "habits.createHeading": { zh: "新建本地习惯", en: "New local habit" },
+  "habits.editHeading": { zh: "编辑习惯 · {habit}", en: "Edit habit · {habit}" },
+  "habits.cancel": { zh: "取消", en: "Cancel" },
+  "habits.name": { zh: "名称", en: "Name" },
+  "habits.frequency": { zh: "频率与目标", en: "Frequency and goal" },
+  "habits.chooseFrequency": { zh: "请选择", en: "Choose a goal" },
+  "habits.dailyGoal": { zh: "每日完成", en: "Complete daily" },
+  "habits.weeklyGoal": { zh: "每周达标天数", en: "Days per week" },
+  "habits.timeGoal": { zh: "每日时间阈值", en: "Daily time threshold" },
+  "habits.weeklyDays": { zh: "每周天数（1–7）", en: "Days per week (1–7)" },
+  "habits.targetTime": { zh: "目标时刻", en: "Target time" },
+  "habits.dayRelation": { zh: "日期归属", en: "Date attribution" },
+  "habits.sameDay": { zh: "当天", en: "Same day" },
+  "habits.nextDay": { zh: "次日", en: "Next day" },
+  "habits.unresolved": { zh: "未确定", en: "Unresolved" },
+  "habits.startDate": { zh: "开始日期", en: "Start date" },
+  "habits.emojiOptional": { zh: "图标（可选）", en: "Emoji (optional)" },
+  "habits.groupOptional": { zh: "分组（可选）", en: "Group (optional)" },
+  "habits.saveDefinition": { zh: "保存习惯", en: "Save habit" },
+  "habits.definitionSaving": { zh: "正在保存 Habit 定义…", en: "Saving the Habit definition…" },
+  "habits.definitionSaved": { zh: "Habit 已保存到所选 Vault。", en: "Habit saved to the selected Vault." },
+  "habits.definitionUnavailable": { zh: "现在无法保存 Habit；请重新读取 Habits 后重试。", en: "Habit cannot be saved now. Reload Habits and try again." },
+  "habits.invalidGoal": { zh: "请设置有效的频率与目标。", en: "Choose a valid frequency and goal." },
+  "habits.definitionSaveFailed": { zh: "无法保存 Habit：{error}", en: "Could not save the Habit: {error}" },
+  "habits.pendingGoal": { zh: "下周期：{goal}", en: "Next cycle: {goal}" },
+  "habits.goalGroup": { zh: "分组：{group}", en: "Group: {group}" },
   "habits.loading": { zh: "正在读取 Habits 快照…", en: "Loading the Habits snapshot…" },
   "habits.weekStats": { zh: "本周统计", en: "THIS WEEK" },
   "habits.shortSummary": { zh: "简短摘要", en: "Short summary" },
@@ -1146,6 +1174,14 @@ const interfaceCopies = {
   "habits.recordOnly": { zh: "有文字记录 · 不计次", en: "Text record · Not counted" },
   "habits.actualUnknown": { zh: "实际未知", en: "Actual time unknown" },
   "habits.noGoal": { zh: "{count} 次 · 无目标", en: "{count} · No target" },
+  "habits.partialWeeklyProgress": {
+    zh: "部分周 · 已完成 {count} 天（从 {start} 起；完整周目标 {target} 天）",
+    en: "Partial week · {count} completed since {start}; full-week target {target} days",
+  },
+  "habits.partialWeeksExcluded": {
+    zh: " {count} 个部分周未纳入完整周合计。",
+    en: " Partial weeks excluded from the comparable full-week total: {count}.",
+  },
   "habits.sources": { zh: "来源：{sources}", en: "Sources: {sources}" },
   "habits.notDeclared": { zh: "未声明", en: "Not declared" },
   "habits.todayStatus": { zh: "今天：{status}", en: "Today: {status}" },
@@ -1824,6 +1860,57 @@ function englishHabitValidationDiagnostic(message: string): string | null {
   return null;
 }
 
+function localHabitCatalogDiagnostic(
+  message: string,
+  language: InterfaceLanguage,
+): string | null {
+  const invalidSettingsPrefix = "本地 Habit 设置无效：";
+  if (message.startsWith(invalidSettingsPrefix)) {
+    const detail = localHabitCatalogDiagnostic(
+      message.slice(invalidSettingsPrefix.length),
+      language,
+    ) ?? message.slice(invalidSettingsPrefix.length);
+    return language === "en"
+      ? `Local Habit settings are invalid: ${detail}`
+      : `${invalidSettingsPrefix}${detail}`;
+  }
+  const englishInvalidSettingsPrefix = "Local Habit settings are invalid: ";
+  if (message.startsWith(englishInvalidSettingsPrefix)) {
+    if (language === "en") return message;
+    const detail = localHabitCatalogDiagnostic(
+      message.slice(englishInvalidSettingsPrefix.length),
+      language,
+    ) ?? message.slice(englishInvalidSettingsPrefix.length);
+    return `${invalidSettingsPrefix}${detail}`;
+  }
+
+  const patterns: readonly Readonly<[
+    RegExp,
+    (...values: string[]) => string,
+  ]>[] = language === "en"
+    ? [
+        [/^本地 Habit catalog 不是有效的 schema v1 JSON：([\s\S]+)$/, (reason) => `Local Habit catalog is not valid schema-v1 JSON: ${reason}`],
+        [/^本地 Habit catalog schemaVersion (.+) 不受支持；当前只读取版本 1。$/, (version) => `Local Habit catalog schemaVersion ${version} is unsupported; only version 1 can be read.`],
+        [/^本地 Habit catalog 有重复稳定 key：(.+)。$/, (key) => `Local Habit catalog contains duplicate stable key: ${key}.`],
+        [/^本地 Habit catalog 有重复目标修订 id：(.+)。$/, (id) => `Local Habit catalog contains duplicate goal revision id: ${id}.`],
+        [/^本地 Habit catalog 有重复操作 id：(.+)。$/, (id) => `Local Habit catalog contains duplicate operation id: ${id}.`],
+        [/^本地 Habit catalog 的 createdLocally key 与来源 Habit key 冲突：(.+)。$/, (key) => `Local Habit catalog createdLocally key conflicts with source Habit key: ${key}.`],
+      ]
+    : [
+        [/^Local Habit catalog is not valid schema-v1 JSON: ([\s\S]+)$/, (reason) => `本地 Habit catalog 不是有效的 schema v1 JSON：${reason}`],
+        [/^Local Habit catalog schemaVersion (.+) is unsupported; only version 1 can be read\.$/, (version) => `本地 Habit catalog schemaVersion ${version} 不受支持；当前只读取版本 1。`],
+        [/^Local Habit catalog contains duplicate stable key: (.+)\.$/, (key) => `本地 Habit catalog 有重复稳定 key：${key}。`],
+        [/^Local Habit catalog contains duplicate goal revision id: (.+)\.$/, (id) => `本地 Habit catalog 有重复目标修订 id：${id}。`],
+        [/^Local Habit catalog contains duplicate operation id: (.+)\.$/, (id) => `本地 Habit catalog 有重复操作 id：${id}。`],
+        [/^Local Habit catalog createdLocally key conflicts with source Habit key: (.+)\.$/, (key) => `本地 Habit catalog 的 createdLocally key 与来源 Habit key 冲突：${key}。`],
+      ];
+  for (const [pattern, render] of patterns) {
+    const match = pattern.exec(message);
+    if (match) return render(...match.slice(1));
+  }
+  return null;
+}
+
 function englishTaskDiagnostic(message: string): string | null {
   const exact: Readonly<Record<string, string>> = {
     "请选择 Vault，以读取 Tasks。": "Choose a Vault to read Tasks.",
@@ -2235,6 +2322,8 @@ export function localizeApplicationError(
     return language === "zh" ? error : "Document saved, but the readback changed; read the record again to verify.";
   }
   const applicationDiagnostic = error.startsWith("Error: ") ? error.slice("Error: ".length) : error;
+  const localCatalogDiagnostic = localHabitCatalogDiagnostic(applicationDiagnostic, language);
+  if (localCatalogDiagnostic) return localCatalogDiagnostic;
   const knownCollaborationDiagnostic = chineseApplicationErrors[applicationDiagnostic];
   if (knownCollaborationDiagnostic) {
     return language === "zh" ? knownCollaborationDiagnostic : applicationDiagnostic;
@@ -2289,6 +2378,8 @@ export function localizeApplicationMessage(
   message: string,
   language: InterfaceLanguage,
 ): string {
+  const localCatalogDiagnostic = localHabitCatalogDiagnostic(message, language);
+  if (localCatalogDiagnostic) return localCatalogDiagnostic;
   if (language === "zh") return message;
   const fixedDiagnostic = englishApplicationDiagnostic(message);
   if (fixedDiagnostic) return fixedDiagnostic;
@@ -2449,6 +2540,9 @@ export function localizeHabitGoalLabel(
   language: InterfaceLanguage,
 ): string {
   if (language === "zh") return label;
+  if (label === "每日完成") return "Complete daily";
+  const weeklyDays = /^每周 (\d+) 天$/.exec(label);
+  if (weeklyDays) return `${weeklyDays[1]} days per week`;
   const weekly = /^每周 (\d+) 次$/.exec(label);
   if (weekly) return `${weekly[1]} times per week`;
   const nextDay = /^每日 次日 (.+)$/.exec(label);

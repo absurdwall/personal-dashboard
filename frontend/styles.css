@@ -3099,7 +3099,14 @@ body {
   font-size: 0.58rem;
 }
 
-.habits-header > button {
+.habits-header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.habits-header-actions > button {
   min-height: 1.9rem;
   padding: 0.35rem 0.55rem;
   border: 1px solid #c9d0ca;
@@ -3107,6 +3114,116 @@ body {
   background: var(--parity-surface);
   color: var(--parity-accent-strong);
   font-size: 0.6rem;
+}
+
+#add-habit {
+  border-color: #b9c7bb;
+  background: #edf2eb;
+  color: var(--parity-accent-strong);
+  font-weight: 700;
+}
+
+.habit-definition-form {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0 0 0.9rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--parity-border);
+  border-radius: 0.55rem;
+  background: var(--parity-surface);
+}
+
+.habit-definition-form[hidden] {
+  display: none;
+}
+
+.habit-definition-heading h3 {
+  margin: 0;
+  color: #252a28;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.habit-definition-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem 0.8rem;
+}
+
+.habit-definition-fields label {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+  color: var(--parity-muted);
+  font-size: 0.58rem;
+  font-weight: 650;
+}
+
+.habit-definition-fields input,
+.habit-definition-fields select {
+  width: 100%;
+  min-height: 1.9rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid #c9d0ca;
+  border-radius: 0.35rem;
+  background: #fffefa;
+  color: #252a28;
+  font: inherit;
+  font-size: 0.66rem;
+}
+
+.habit-definition-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.habit-definition-actions p {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--parity-muted);
+  font-size: 0.59rem;
+  line-height: 1.4;
+}
+
+.habit-definition-actions p[data-state="error"] {
+  color: #9a463c;
+}
+
+.habit-identity-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.habit-identity-line > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.habit-identity-emoji {
+  flex: 0 0 auto;
+}
+
+.habit-edit-button {
+  flex: 0 0 auto;
+  min-height: 1.45rem;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--parity-muted);
+  font-size: 0.54rem;
+}
+
+.habit-edit-button:hover,
+.habit-edit-button:focus-visible {
+  border-color: var(--parity-border);
+  color: var(--parity-accent-strong);
 }
 
 #habits-status {
@@ -8699,6 +8816,7 @@ button.habit-cell:focus-visible {
 
   .destination-page-header > .tasks-header-actions,
   .destination-page-header > .calendar-toolbar,
+  .destination-page-header > .habits-header-actions,
   .destination-page-header > button,
   .today-page-header-meta {
     width: 100%;
@@ -8715,6 +8833,29 @@ button.habit-cell:focus-visible {
 
   .today-page-header .today-actions button {
     flex: 1;
+  }
+
+  .habits-header-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .habit-definition-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .habit-definition-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .habit-definition-actions {
+    flex-wrap: wrap;
+  }
+
+  .habit-definition-actions p {
+    flex-basis: 100%;
   }
 }
 
