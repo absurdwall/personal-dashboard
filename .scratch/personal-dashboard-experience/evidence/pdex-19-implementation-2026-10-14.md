@@ -13,17 +13,40 @@
   - `f0a95909d249535d300ed735a17a603fcd0bcb6b` — persist priority and tags on the existing Task identity and verify save/readback.
   - `d04330c518be1d5dc34e5b689cb126a95bbcc40c` — compact Task detail/property controls, list property filtering/sorting, More/context actions, and focused behavior tests.
   - `689b383df3ca235fb0dcdcee3ae4d881b4aa963d` — extend the Today Task test double with the DOM API required by property-aware draft reading.
+  - `d7ac03a0807dcba0cea8c1b2ffe23e78d98634b8` — record initial restart implementation evidence.
+  - `95b1a164f5009e541885d72b8815349a6a2a39ae` — document the schema-contract review.
+  - `f6a47765e91bde430de651b0c8510a8d286ffa3e` — reset priority/tag controls and summaries to saved Task values when Cancel closes the editor; add a regression for reopening and saving a separate edit.
   - `0520e16ee28118f3636ad6c85c7d3377bfdf3570` — document schema-2 priority/tag fields and the schema-1 default-and-upgrade boundary in `docs/tasks-v1.md`.
 - No source was copied from or merged with the rejected post-`918e7e0` implementation branch.
 
 ## Verification
 
 - `npm run build` — passed.
-- `PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs node --test tests/browser/task-list-details.mjs` — 18/18 passed. Covers Content focus and size, one title field, compact property disclosures, priority/tag save/readback, tag lifecycle, stable sort and composed view-only filters, More/right-click action parity, one-row quick add, schedule, Save/Cancel, retry, lifecycle, history and Today Task deep link identity.
+- `PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs node --test tests/browser/task-list-details.mjs` — 19/19 passed after the follow-up Cancel regression was added. Covers Content focus and size, one title field, compact property disclosures, priority/tag save/readback, tag lifecycle, stable sort and composed view-only filters, More/right-click action parity, one-row quick add, schedule, Save/Cancel, retry, lifecycle, history and Today Task deep link identity.
 - `node --test tests/frontend/task-presentation.test.ts tests/frontend/task-history-render.test.ts tests/frontend/task-history-editing.test.ts` — 32/32 passed.
 - `node --test --test-name-pattern='saving a note keeps the open|note refresh keeps an untouched open editor' tests/frontend/lived-day-rendering-regressions.test.ts` — 3/3 passed after adding `querySelectorAll: () => []` to the test-only Today editor form. Before that fixture change, the three full-suite failures raised `TypeError: form.querySelectorAll is not a function`; the real DOM API exists, and Today inline forms contain no tag inputs.
 - `cargo test --manifest-path src-tauri/Cargo.toml --test task_workflow task_priority_and_tags_save_read_back_and_keep_task_identity -- --exact` — 1/1 passed; same Task identity returned with persisted priority/tags.
-- `git diff --check` — passed. Ticket worktree is clean after the commits.
+- `git diff --check` — passed. Ticket worktree is clean after the implementation and evidence commits.
+
+## Follow-up review fix — Cancelled Task properties
+
+An independent PDEX-19 Spec review found that the Tasks editor reused its DOM
+controls after Cancel: the saved draft was removed, but priority and tag
+checkboxes still held their canceled values. A later unrelated Save could then
+persist those values. The fix resets both controls and their compact summary
+text from the saved Task in the same close path used by Cancel, Escape, and
+backdrop close.
+
+The added browser case was run red first with:
+
+`PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs node --test --test-name-pattern='Cancel restores saved priority and tags' tests/browser/task-list-details.mjs`
+
+Before the fix it failed because priority remained `high` instead of returning
+to `none`. After the fix, that focused test passed; the complete
+`tests/browser/task-list-details.mjs` suite passed 19/19, `npm run build` passed,
+and `git diff --check` passed. The full frontend suite was not rerun because
+this follow-up was scoped to the Task Cancel property controls; the historical
+full-suite result and its baseline limitations above are unchanged.
 
 ## Full frontend run and failure classification
 

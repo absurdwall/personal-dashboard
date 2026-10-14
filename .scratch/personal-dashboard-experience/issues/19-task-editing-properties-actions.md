@@ -21,7 +21,7 @@
 
 - Integration branch: `codex/dashboard-experience-refinement-restart-20261014`; exact ticket start tip `8275615a3f3cad2a783d74561472c78c4bbeb493`, whose parent is the requested clean baseline `918e7e0d9c4b2c524c429bfd309482e328bc4c91`.
 - Ticket branch: `codex/pdex-19-restart`; worktree `/tmp/pdex-restart-20261014.noindex/pdex-19`; start commit `8275615a3f3cad2a783d74561472c78c4bbeb493`.
-- Implementation commits: `f0a95909d249535d300ed735a17a603fcd0bcb6b` (persist priority/tags); `d04330c518be1d5dc34e5b689cb126a95bbcc40c` (Task detail/property UI and focused browser/unit coverage); `689b383df3ca235fb0dcdcee3ae4d881b4aa963d` (Today Task test-double compatibility for the property-aware draft reader).
+- Implementation commits: `f0a95909d249535d300ed735a17a603fcd0bcb6b` (persist priority/tags); `d04330c518be1d5dc34e5b689cb126a95bbcc40c` (Task detail/property UI and focused browser/unit coverage); `689b383df3ca235fb0dcdcee3ae4d881b4aa963d` (Today Task test-double compatibility for the property-aware draft reader); `f6a47765e91bde430de651b0c8510a8d286ffa3e` (Cancel restores saved priority/tags; regression coverage).
 - [Implementation/test evidence](../evidence/pdex-19-implementation-2026-10-14.md) records exact commands, results, full-suite failures and their scope. PDEX-19 code implementation is complete; lifecycle remains in-progress until its own acceptance is satisfied. Packaged App acceptance is assigned to PDEX-26.
 - The earlier rejected implementation remains on its previous branch with full history and is not this ticket's source baseline.
 

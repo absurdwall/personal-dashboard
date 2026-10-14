@@ -48,11 +48,15 @@ full local Git history and changing only ticket-specified behavior. PDEX-19 was
 implemented on `codex/pdex-19-restart` in worktree
 `/tmp/pdex-restart-20261014.noindex/pdex-19`, starting at integration tip
 `8275615a3f3cad2a783d74561472c78c4bbeb493` (the integration branch tip whose
-parent is the requested `918e7e0`). Its three implementation/test commits are
+parent is the requested `918e7e0`). Its code/test commits are
 `f0a95909d249535d300ed735a17a603fcd0bcb6b`,
 `d04330c518be1d5dc34e5b689cb126a95bbcc40c`, and
-`689b383df3ca235fb0dcdcee3ae4d881b4aa963d`. The rejected implementation branch
-was not used as a source.
+`689b383df3ca235fb0dcdcee3ae4d881b4aa963d`, plus follow-up fix
+`f6a47765e91bde430de651b0c8510a8d286ffa3e`. Supporting schema/review/evidence
+commits are `0520e16ee28118f3636ad6c85c7d3377bfdf3570`,
+`d7ac03a0807dcba0cea8c1b2ffe23e78d98634b8`, and
+`95b1a164f5009e541885d72b8815349a6a2a39ae`. The rejected implementation
+branch was not used as a source.
 
 PDEX-19 code implementation is committed and its branch worktree is clean. The
 backend priority/tag fields read back under the same Task identity; filters and
@@ -65,6 +69,12 @@ full-suite run before that correction was 449/491 pass, 42 fail; only the
 `task-surface.test.ts` 7px-vs-9px assertion has been confirmed against the
 clean baseline. Other non-PDEX-19 failures are itemized, with baseline status
 left to the integration owner, in [PDEX-19 implementation evidence](evidence/pdex-19-implementation-2026-10-14.md).
+
+An independent Spec review then found that Cancel did not reset the reused
+priority select or tag checkboxes. A browser regression failed first (`high`
+remained after Cancel), then passed after the saved properties and summaries
+were restored by the close path. The current complete Task-detail browser suite
+passes 19/19 and `npm run build` passes; the full frontend suite was not rerun.
 
 PDEX-19 remains `in-progress` because packaged application acceptance is
 separate and belongs to PDEX-26. No branch merge, install, remote operation or
