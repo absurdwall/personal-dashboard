@@ -1,8 +1,9 @@
 pub use crate::habits::HabitGoalTarget;
 use crate::habits::{
     DayRelation, HabitCellStatus, HabitCellView, HabitDefinitionView, HabitDetailView,
-    HabitGoalContextView, HabitLocalCompletionState, HabitLocalizedNames, HabitSnapshotView,
-    HabitView, LocalHabitCompletion,
+    HabitGoalContextView, HabitGoalRevisionView, HabitLifecycleChangeView,
+    HabitLocalCompletionState, HabitLocalizedNames, HabitSnapshotView, HabitView,
+    LocalHabitCompletion,
 };
 use crate::today::CalendarDate;
 use serde::{Deserialize, Serialize};
@@ -46,6 +47,26 @@ pub struct HabitDefinitionSaveResult {
     pub snapshot: HabitSnapshotView,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HabitLifecycleMutationInput {
+    pub operation_id: String,
+    pub target_binding: String,
+    pub expected_revision: Option<String>,
+    pub habit_key: String,
+    pub active: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HabitLifecycleSaveResult {
+    pub operation_id: String,
+    pub habit_key: String,
+    pub active: bool,
+    pub revision: String,
+    pub snapshot: HabitSnapshotView,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct HabitCatalogDocument {
@@ -76,11 +97,24 @@ struct HabitDefinition {
     emoji: Option<String>,
     group: Option<String>,
     start_date: Option<String>,
+    #[serde(default)]
+    lifecycle_active: Option<bool>,
+    #[serde(default)]
+    lifecycle_history: Vec<HabitLifecycleChange>,
     source_goal_target: Option<HabitGoalTarget>,
     source_goal_history: Vec<HabitGoalContextView>,
     goal_revisions: Vec<HabitGoalRevision>,
     created_at: String,
     modified_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HabitLifecycleChange {
+    operation_id: String,
+    active: bool,
+    effective_from: String,
+    changed_at: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -267,6 +301,8 @@ pub(crate) fn apply_mutation(
                     emoji: clean_optional(input.emoji.as_deref()),
                     group: clean_optional(input.group.as_deref()),
                     start_date: Some(start_date),
+                    lifecycle_active: Some(true),
+                    lifecycle_history: Vec::new(),
                     source_goal_target: None,
                     source_goal_history: Vec::new(),
                     goal_revisions: vec![target_revision],
@@ -295,6 +331,8 @@ pub(crate) fn apply_mutation(
                         emoji: None,
                         group: None,
                         start_date: None,
+                        lifecycle_active: None,
+                        lifecycle_history: Vec::new(),
                         source_goal_target: source.goal_target.clone(),
                         source_goal_history: source.goal_history.clone(),
                         goal_revisions: Vec::new(),
@@ -349,6 +387,124 @@ pub(crate) fn apply_mutation(
         outcome,
         changed: true,
     })
+}
+
+pub(crate) fn apply_lifecycle_mutation(
+    existing: Option<HabitCatalogDocument>,
+    current_revision: Option<&str>,
+    input: &HabitLifecycleMutationInput,
+    snapshot: &HabitSnapshotView,
+    today: &str,
+    timestamp: &str,
+) -> Result<HabitCatalogMutation, String> {
+    validate_lifecycle_mutation(input, today)?;
+    let fingerprint = lifecycle_fingerprint(input)?;
+    let mut document = existing.unwrap_or_default();
+
+    if let Some(receipt) = document
+        .operations
+        .iter()
+        .find(|receipt| receipt.id == input.operation_id)
+    {
+        let receipt_fingerprint = receipt.fingerprint.clone();
+        let receipt_habit_key = receipt.habit_key.clone();
+        let receipt_outcome = receipt.outcome;
+        if receipt_fingerprint != fingerprint || receipt_habit_key != input.habit_key {
+            return Err("该 Habit 操作标识已用于不同修改；没有写入任何内容。".into());
+        }
+        return Ok(HabitCatalogMutation {
+            document,
+            habit_key: receipt_habit_key,
+            outcome: receipt_outcome,
+            changed: false,
+        });
+    }
+
+    if input.expected_revision.as_deref() != current_revision {
+        return Err(
+            "Habit 定义已在其他位置改变。请刷新 Habits 后重新编辑；外部内容未被覆盖。".into(),
+        );
+    }
+
+    let source = snapshot.habit(&input.habit_key).ok_or_else(|| {
+        "Habits 中没有可查看的稳定 key；请刷新后重试，没有创建替代对象。".to_string()
+    })?;
+    let definition = document
+        .habits
+        .entry(input.habit_key.clone())
+        .or_insert_with(|| HabitDefinition {
+            key: input.habit_key.clone(),
+            origin: HabitDefinitionOrigin::Sourced,
+            base_name: source.name.clone(),
+            source_localized_names: source.localized_names.clone(),
+            name_overrides: HabitLocalizedNames::default(),
+            emoji: None,
+            group: None,
+            start_date: None,
+            lifecycle_active: None,
+            lifecycle_history: Vec::new(),
+            source_goal_target: source.goal_target.clone(),
+            source_goal_history: source.goal_history.clone(),
+            goal_revisions: Vec::new(),
+            created_at: timestamp.to_string(),
+            modified_at: timestamp.to_string(),
+        });
+
+    let current_active = definition.lifecycle_active.unwrap_or_else(|| {
+        if definition.origin == HabitDefinitionOrigin::Local {
+            true
+        } else {
+            source.active
+        }
+    });
+    if current_active != input.active {
+        definition.lifecycle_history.push(HabitLifecycleChange {
+            operation_id: input.operation_id.clone(),
+            active: input.active,
+            effective_from: today.to_string(),
+            changed_at: timestamp.to_string(),
+        });
+        definition.lifecycle_history.sort_by(|left, right| {
+            left.effective_from
+                .cmp(&right.effective_from)
+                .then_with(|| left.changed_at.cmp(&right.changed_at))
+        });
+    }
+    definition.lifecycle_active = Some(input.active);
+    definition.modified_at = timestamp.to_string();
+    document.operations.push(HabitCatalogOperationReceipt {
+        id: input.operation_id.clone(),
+        fingerprint,
+        habit_key: input.habit_key.clone(),
+        outcome: HabitMutationOutcome::Updated,
+        accepted_at: timestamp.to_string(),
+    });
+    validate_document(&document)?;
+    Ok(HabitCatalogMutation {
+        document,
+        habit_key: input.habit_key.clone(),
+        outcome: HabitMutationOutcome::Updated,
+        changed: true,
+    })
+}
+
+fn lifecycle_fingerprint(input: &HabitLifecycleMutationInput) -> Result<String, String> {
+    serde_json::to_vec(&(&input.habit_key, input.active))
+        .map(|bytes| revision(&bytes))
+        .map_err(|error| format!("无法核对 Habit 生命周期操作身份：{error}"))
+}
+
+fn validate_lifecycle_mutation(
+    input: &HabitLifecycleMutationInput,
+    today: &str,
+) -> Result<(), String> {
+    validate_identifier(&input.operation_id, "Habit 操作标识")?;
+    validate_key(&input.habit_key)?;
+    if input.target_binding.trim().is_empty() || input.target_binding.len() > 160 {
+        return Err("Habit 定义目标绑定无效；没有写入任何内容。".into());
+    }
+    CalendarDate::parse(today).ok_or_else(|| "系统时钟没有提供有效的 lived date。".to_string())?;
+    Ok(())
 }
 
 fn schedule_goal_revision(
@@ -461,6 +617,9 @@ pub(crate) fn merge_catalog_view(
                 emoji: None,
                 group: None,
                 start_date: None,
+                lifecycle_active: habit.active,
+                lifecycle_history: Vec::new(),
+                goal_revisions: Vec::new(),
                 current_goal: habit.goal_target.clone(),
                 current_goal_effective_from: None,
                 pending_goal: None,
@@ -489,6 +648,9 @@ pub(crate) fn merge_catalog_view(
                 emoji: None,
                 group: None,
                 start_date: None,
+                lifecycle_active: habit.active,
+                lifecycle_history: Vec::new(),
+                goal_revisions: Vec::new(),
                 current_goal: habit.goal_target.clone(),
                 current_goal_effective_from: None,
                 pending_goal: None,
@@ -542,6 +704,14 @@ fn apply_definition_to_sourced_habit(
     local_completions: &[LocalHabitCompletion],
     today: &str,
 ) {
+    let lifecycle_active = definition.lifecycle_active.unwrap_or_else(|| {
+        if definition.origin == HabitDefinitionOrigin::Local {
+            true
+        } else {
+            habit.active
+        }
+    });
+    habit.active = lifecycle_active;
     let base_target = if definition.goal_revisions.is_empty() {
         habit
             .goal_target
@@ -600,6 +770,9 @@ fn apply_definition_to_sourced_habit(
         emoji: definition.emoji.clone(),
         group: definition.group.clone(),
         start_date: definition.start_date.clone(),
+        lifecycle_active,
+        lifecycle_history: lifecycle_changes_view(definition),
+        goal_revisions: goal_revisions_view(definition),
         current_goal: current.clone(),
         current_goal_effective_from: current_effective_from,
         pending_goal: pending.map(|revision| revision.goal.clone()),
@@ -608,6 +781,37 @@ fn apply_definition_to_sourced_habit(
     });
     // Local completion evidence is already merged into snapshot rows by TodayApplication.
     let _ = local_completions;
+}
+
+fn lifecycle_changes_view(definition: &HabitDefinition) -> Vec<HabitLifecycleChangeView> {
+    definition
+        .lifecycle_history
+        .iter()
+        .map(|change| HabitLifecycleChangeView {
+            operation_id: change.operation_id.clone(),
+            active: change.active,
+            effective_from: change.effective_from.clone(),
+            changed_at: change.changed_at.clone(),
+        })
+        .collect()
+}
+
+fn goal_revisions_view(definition: &HabitDefinition) -> Vec<HabitGoalRevisionView> {
+    definition
+        .goal_revisions
+        .iter()
+        .map(|revision| HabitGoalRevisionView {
+            id: revision.id.clone(),
+            effective_from: revision.effective_from.clone(),
+            target: revision.goal.clone(),
+            status: match revision.status {
+                HabitGoalRevisionStatus::Active => "active",
+                HabitGoalRevisionStatus::Superseded => "superseded",
+                HabitGoalRevisionStatus::Cancelled => "cancelled",
+            }
+            .into(),
+        })
+        .collect()
 }
 
 fn local_habit_view(
@@ -733,7 +937,7 @@ fn make_habit_view(
             &definition.source_localized_names,
             &definition.name_overrides,
         ),
-        active: true,
+        active: definition.lifecycle_active.unwrap_or(true),
         goal_kind,
         goal_label,
         goal_target: current.clone(),
@@ -747,6 +951,9 @@ fn make_habit_view(
             emoji: definition.emoji.clone(),
             group: definition.group.clone(),
             start_date: definition.start_date.clone(),
+            lifecycle_active: definition.lifecycle_active.unwrap_or(true),
+            lifecycle_history: lifecycle_changes_view(definition),
+            goal_revisions: goal_revisions_view(definition),
             current_goal: current.clone(),
             current_goal_effective_from: current_effective_from,
             pending_goal: pending.map(|revision| revision.goal.clone()),
@@ -993,6 +1200,18 @@ fn validate_document(document: &HabitCatalogDocument) -> Result<(), String> {
                 return Err("本地 Habit 目标修订包含重复标识；未覆盖原文件。".into());
             }
         }
+        let mut lifecycle_operation_ids = HashSet::new();
+        for change in &definition.lifecycle_history {
+            validate_identifier(&change.operation_id, "Habit 生命周期操作标识")?;
+            CalendarDate::parse(&change.effective_from)
+                .ok_or_else(|| "Habit 生命周期历史包含无效生效日期；未覆盖原文件。".to_string())?;
+            if crate::habits::timestamp_epoch_seconds(&change.changed_at).is_none() {
+                return Err("Habit 生命周期历史包含无效保存时间；未覆盖原文件。".into());
+            }
+            if !lifecycle_operation_ids.insert(change.operation_id.as_str()) {
+                return Err("Habit 生命周期历史包含重复操作标识；未覆盖原文件。".into());
+            }
+        }
     }
     let mut operation_ids = HashSet::new();
     for operation in &document.operations {
@@ -1004,6 +1223,14 @@ fn validate_document(document: &HabitCatalogDocument) -> Result<(), String> {
         if !operation_ids.insert(operation.id.as_str()) {
             return Err("本地 Habit 正本包含重复操作标识；未覆盖原文件。".into());
         }
+    }
+    if document.habits.values().any(|definition| {
+        definition
+            .lifecycle_history
+            .iter()
+            .any(|change| !operation_ids.contains(change.operation_id.as_str()))
+    }) {
+        return Err("Habit 生命周期历史缺少操作收据；未覆盖原文件。".into());
     }
     Ok(())
 }

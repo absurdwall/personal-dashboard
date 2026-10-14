@@ -1259,20 +1259,31 @@
                       <h3 id="habits-today-heading" data-i18n="habits.knownUnknown">已知与未知并列</h3>
                     </div>
                     <small id="habits-today-date">—</small>
+                    <button id="habits-inactive-toggle" type="button" class="secondary-button habit-inactive-toggle" data-i18n="habits.viewInactive">查看停用</button>
                   </div>
-                  <section class="habits-target-section" aria-labelledby="habits-daily-heading">
-                    <div class="habits-target-heading">
-                      <h4 id="habits-daily-heading" data-i18n="habits.dailyAnchors">每日锚点</h4>
-                      <small data-i18n="habits.targetActual">目标 / 明确实际</small>
+                  <div id="habits-current-today-view">
+                    <section class="habits-target-section" aria-labelledby="habits-daily-heading">
+                      <div class="habits-target-heading">
+                        <h4 id="habits-daily-heading" data-i18n="habits.dailyAnchors">每日锚点</h4>
+                        <small data-i18n="habits.targetActual">目标 / 明确实际</small>
+                      </div>
+                      <div id="habits-daily-list"></div>
+                    </section>
+                    <section class="habits-target-section" aria-labelledby="habits-weekly-heading">
+                      <div class="habits-target-heading">
+                        <h4 id="habits-weekly-heading" data-i18n="habits.weekToday">本周习惯在今天</h4>
+                        <small data-i18n="habits.countToday">周次数 · 今日状态</small>
+                      </div>
+                      <div id="habits-weekly-list"></div>
+                    </section>
+                  </div>
+                  <section id="habit-detail-panel" class="habit-detail-panel" aria-labelledby="habit-detail-heading" hidden>
+                    <div class="habit-detail-heading">
+                      <button id="habit-detail-back" type="button" class="secondary-button" data-i18n="habits.backToToday">回到今日习惯</button>
+                      <h3 id="habit-detail-heading"></h3>
                     </div>
-                    <div id="habits-daily-list"></div>
-                  </section>
-                  <section class="habits-target-section" aria-labelledby="habits-weekly-heading">
-                    <div class="habits-target-heading">
-                      <h4 id="habits-weekly-heading" data-i18n="habits.weekToday">本周习惯在今天</h4>
-                      <small data-i18n="habits.countToday">周次数 · 今日状态</small>
-                    </div>
-                    <div id="habits-weekly-list"></div>
+                    <p id="habit-detail-status" class="habit-detail-status" role="status" aria-live="polite"></p>
+                    <div id="habit-detail-content"></div>
                   </section>
                 </section>
               </div>
