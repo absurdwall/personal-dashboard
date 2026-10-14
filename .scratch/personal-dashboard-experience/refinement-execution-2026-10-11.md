@@ -160,3 +160,21 @@ no integration merge, install, remote operation or main change was recorded.
 - No remote Git operation, main change, app installation, or packaged App
   acceptance was performed. Independent review and PDEX-26 acceptance remain
   open.
+
+## PDEX-24 local integration and verification — 2026-10-14
+
+- Verified that `codex/pdex-24-restart` at
+  `25c973169aa13d51593ac88887ca5f9dcb29f51d` contains the exact integration
+  tip `13d3ac5feda6efe9f8dc764fff4207203a95888b` as an ancestor. The ticket
+  branch and integration worktree were clean before merge.
+- Integrated the complete ticket branch into
+  `codex/dashboard-experience-refinement-restart-20261014` without conflicts
+  using non-fast-forward merge `59b9d65563ed47b6b930b1e3d8d698609a7a80e1`.
+- Merged-tree verification passed: build; PDEX-24 frontend 30/30 and browser
+  4/4; Habit definition plus historical-correction Rust workflows 23/23 and
+  `cargo check`; Tasks frontend 38/38, browser 23/23 and Rust workflow 36/36;
+  Calendar frontend 16/16, preferences 2/2 and local-file readback 1/1;
+  Collaboration frontend 32/32; `git diff --check`. Exact commands are in the
+  [PDEX-24 integration evidence](evidence/pdex-24-integration-sync-2026-10-14.md).
+- No remote, `main`, installed App, or normal Vault was touched. PDEX-24 remains
+  `in-progress` pending independent review and PDEX-26 packaged acceptance.

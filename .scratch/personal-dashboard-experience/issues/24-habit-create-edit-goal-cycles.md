@@ -4,13 +4,13 @@
 
 **Blocked by:** None
 
-**Status:** claimed
+**Status:** in-progress
 
 **Triage:** ready-for-agent
 **ID:** PDEX-24
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** committed on `codex/pdex-24-restart`; independent review and packaged acceptance remain pending
+**Implementation:** `codex/pdex-24-restart` was locally integrated into `codex/dashboard-experience-refinement-restart-20261014` as `59b9d65563ed47b6b930b1e3d8d698609a7a80e1`; independent review and PDEX-26 packaged acceptance remain pending
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -72,7 +72,7 @@
 - The ticket branch remains rooted at exact initial integration base `8275615a3f3cad2a783d74561472c78c4bbeb493`. To preserve the integration history, it received two no-fast-forward merges: `1dee0c89dd26631fa28d6d035e307f223d2b6da5` merged integration tip `ebd4354e2e179ab695450a4e1eaf196dc4730062`; `a3667100f9a51ab6153277d02255b7279ddef16f` then merged updated integration tip `2a233c3e4a21d9eaff06b62f1770c86e7671d082`.
 - The first sync exposed one stale `interface-language.test.ts` key assertion (`calendar.taskCreateDefault`) removed by PDEX-22. The failure was reproduced on the exact first integration tip; integration commit `13c9bc2c45fdbd67f340d982a660a39d2e3120d9` updates it to `calendar.addTask`, and integration tip `2a233c3e4a21d9eaff06b62f1770c86e7671d082` includes that correction and its evidence. After the second merge, the full file and focused PDEX-24 frontend set pass.
 - Post-sync verification on `a3667100f9a51ab6153277d02255b7279ddef16f`: `cargo test --manifest-path src-tauri/Cargo.toml --test habit_definition_workflow --test historical_correction_workflow` — 23 passed (15 + 8); `cargo check --manifest-path src-tauri/Cargo.toml` — passed; `node --test tests/frontend/habit-completion.test.ts tests/frontend/habit-canonical-navigation.test.ts tests/frontend/habit-localized-names.test.ts tests/frontend/interface-language.test.ts` — 30 passed, including the complete interface-language file; `PLAYWRIGHT_MODULE_PATH=/Users/tingranwang/.npm/_npx/31e32ef8478fbf80/node_modules/playwright/index.mjs node --test tests/browser/habit-definition-workflow.mjs` — 4 passed; `npm run build` — passed; `git diff --check` — passed.
-- Post-sync checks ran on merge commit `a3667100f9a51ab6153277d02255b7279ddef16f`; this tracking record follows it on `codex/pdex-24-restart`. The latest merged integration identity is `2a233c3e4a21d9eaff06b62f1770c86e7671d082`. The ticket branch has not been merged back into integration. PDEX-24 remains `in-progress`; independent review and packaged-app acceptance remain pending.
+- Post-sync checks ran on merge commit `a3667100f9a51ab6153277d02255b7279ddef16f` and then `11a1752367e9698808a1b50da811eea446409f83`; the latter contains exact integration tip `13d3ac5feda6efe9f8dc764fff4207203a95888b`. The complete ticket branch was locally integrated as non-fast-forward merge `59b9d65563ed47b6b930b1e3d8d698609a7a80e1`; merged-tree validation and remaining acceptance boundaries are in the [integration sync and verification record](../evidence/pdex-24-integration-sync-2026-10-14.md). PDEX-24 remains `in-progress`; independent review and packaged-app acceptance remain pending.
 
 ## Acceptance criteria
 
