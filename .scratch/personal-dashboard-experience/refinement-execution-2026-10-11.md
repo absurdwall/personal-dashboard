@@ -286,6 +286,19 @@ no integration merge, install, remote operation or main change was recorded.
   IME/microphone and human acceptance remain pending. No product code, test
   harness, normal installation or remote Git state was changed.
 
+## PDEX-26 acceptance evidence integration — 2026-10-14
+
+- `codex/pdex-26-restart` was synchronized with integration at
+  `359537f9d51bb213c19df37cebed539beaa49afb`; ticket evidence commit
+  `bfa0f3f` and execution-ledger commit
+  `1c549f694a7949ec80a38d93e27b22f92099e731` record the two bounded packaged
+  attempts. No product source or acceptance test was changed.
+- The ticket branch was non-fast-forward integrated as
+  `adff6bf2ac6e72e4413b8eac72cd9d849a11528d`, with parents
+  `97d27dde00078a985e296052a80f2e6e0062d971` and
+  `1c549f694a7949ec80a38d93e27b22f92099e731`. PDEX-26 remains open/in-progress;
+  complete packaged acceptance is not established.
+
 ## PDEX-25 ticket-state correction integration — 2026-10-14
 
 - After full spec review found stale “不合入integration” text in the PDEX-25

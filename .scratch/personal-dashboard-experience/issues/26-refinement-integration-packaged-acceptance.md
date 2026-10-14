@@ -83,7 +83,8 @@ PDEX-SPEC-02 stories 1–3、88–91，以及全部功能票的组合验收。
 
 - The evidence update is on `codex/pdex-26-restart` in commit
   `bfa0f3f`; that ticket branch first synchronized with the current integration
-  tip by merge commit `359537f`.
+  tip by merge commit `359537f`, then was non-fast-forward integrated as
+  `adff6bf2ac6e72e4413b8eac72cd9d849a11528d`.
 - The repository `gate` command launched a relocated candidate copy under
   synthetic profile/Vault paths. Its first `settings-vault-colors` scenario
   selected the synthetic Vault, saved the accent, and passed Today and Calendar
