@@ -84,3 +84,23 @@ after worktree creation.
 - Repository-wide `cargo fmt --check` was not clean on the inherited source
   formatting baseline; broad formatting was not applied to avoid changing
   unrelated code.
+
+## Review repair — 2026-10-13
+
+- Moved Habit detail statistics into the Rust application core in line with
+  ADR-0001. Cumulative attainment now includes retained completion facts before
+  the currently displayed start date; five Rust statistics tests cover
+  deduplication, that date-change case, unknown history, inactive gaps,
+  daily-time units, and an unachieved open week. The detail panel reads the
+  returned statistics view and reloads it after a Habit snapshot change.
+- Verification: all five Rust statistics unit tests and all 10
+  `habit_definition_workflow` tests passed; the focused detail-panel test passed;
+  Node parsed `frontend/main.ts` with type stripping; `git diff --check` passed.
+  `npm run build` reached `tsc` but could not run because `tsc` is unavailable in
+  this environment; no dependency was installed.
+- Remaining source limit: snapshot schema v1 publishes only a rolling 12-week
+  external observation range. Detail can read older canonical local completion
+  records, but older sourced/provenance observations are not present in the
+  current snapshot contract. The PDEX-25 criterion for older sourced history
+  remains unmet; this ticket stays claimed/in-progress pending a supported
+  historical source path and PDEX-26 packaged acceptance.

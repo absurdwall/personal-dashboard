@@ -1652,6 +1652,7 @@ pub struct HabitCompletionHistoryView {
 #[serde(rename_all = "camelCase")]
 pub struct HabitDetailHistoryView {
     pub habit: crate::habits::HabitView,
+    pub(crate) statistics: crate::habit_statistics::HabitDetailStatistics,
     pub canonical_state: String,
     pub canonical_revision: Option<String>,
     pub canonical_target_binding: Option<String>,
@@ -3710,8 +3711,25 @@ where
         if self.persistence.load_selected_vault()?.as_deref() != Some(vault.as_path()) {
             return Err("所选 Vault 在历史读取期间发生变化；请刷新 Habits 后重新读取。".into());
         }
+        let today = snapshot
+            .lived_date
+            .clone()
+            .unwrap_or_else(|| self.clock.current_lived_date());
+        let statistics_completions: Vec<(String, HabitLocalCompletionState)> = local_completions
+            .iter()
+            .map(|completion| (completion.lived_date.clone(), completion.state))
+            .collect();
+        let statistics = crate::habit_statistics::calculate(
+            &habit,
+            &statistics_completions,
+            &today,
+            &canonical_state,
+            snapshot.generated_at.as_deref(),
+            snapshot.state,
+        );
         Ok(HabitDetailHistoryView {
             habit,
+            statistics,
             canonical_state,
             canonical_revision,
             canonical_target_binding: Some(target_binding),

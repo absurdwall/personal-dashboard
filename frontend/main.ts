@@ -119,7 +119,6 @@ import {
   type HabitLocalCompletionState,
 } from "./habit-completion.js";
 import { reconcileHabitCompletionWrite } from "./habit-completion-command.js";
-import { habitDetailStatistics } from "./habit-detail-statistics.js";
 import {
   localizedHabitName,
   type HabitLocalizedNames,
@@ -618,6 +617,7 @@ type HabitCanonicalCompletionView = Readonly<{
 
 type HabitDetailHistoryView = Readonly<{
   habit: HabitView;
+  statistics: HabitDetailStatistics;
   canonicalState: "ready" | "missing" | "error" | string;
   canonicalRevision: string | null;
   canonicalTargetBinding: string | null;
@@ -626,6 +626,19 @@ type HabitDetailHistoryView = Readonly<{
   snapshotState: HabitSnapshotState;
   snapshotGeneratedAt: string | null;
   snapshotRange: string | null;
+}>;
+
+type HabitDetailStatistics = Readonly<{
+  monthAttainedDays: number | null;
+  monthExact: boolean;
+  cumulativeAttainedDays: number | null;
+  cumulativeExact: boolean;
+  currentStreak: number | null;
+  highestConfirmedStreak: number | null;
+  highestHistoryExact: boolean;
+  streakUnit: "days" | "weeks";
+  coverageFrom: string | null;
+  coverageTo: string | null;
 }>;
 
 type HabitDetailRecordItem = Readonly<{
@@ -9439,14 +9452,7 @@ function renderHabitDetailPanel(): void {
   if (!detailView) return;
 
   const definition = detailView.habit.definition;
-  const stats = habitDetailStatistics({
-    habit: detailView.habit,
-    completions: detailView.localCompletions,
-    today: detailView.habit.today.date,
-    canonicalState: detailView.canonicalState,
-    snapshotGeneratedAt: detailView.snapshotGeneratedAt,
-    snapshotState: detailView.snapshotState,
-  });
+  const stats = detailView.statistics;
   const intro = document.createElement("p");
   intro.className = "habit-detail-intro";
   const currentGoal = definition?.currentGoal ?? detailView.habit.goalTarget;
@@ -9722,7 +9728,6 @@ async function setHabitActiveFromDetail(active: boolean): Promise<void> {
     if (active) showInactiveHabits = false;
     habitDetailLifecycleNotice = { error: null };
     renderHabitSnapshot(saved.snapshot);
-    void loadHabitDetailHistory(key);
   } catch (error) {
     habitDetailLifecycleNotice = { error: String(error) };
     renderHabitDetailPanel();
@@ -10514,6 +10519,7 @@ async function saveHabitDefinitionFromForm(event: SubmitEvent): Promise<boolean>
 }
 
 function renderHabitSnapshot(view: HabitSnapshotView): void {
+  const snapshotChanged = currentHabitSnapshot !== view;
   currentHabitSnapshot = view;
   if (selectedHabitDetailKey && currentHabitDetailHistory?.habit.key === selectedHabitDetailKey) {
     const latestHabit = view.habits.find((candidate) => candidate.key === selectedHabitDetailKey);
@@ -10638,6 +10644,14 @@ function renderHabitSnapshot(view: HabitSnapshotView): void {
   }
   renderSelectedHabitCell();
   renderHabitDetailPanel();
+  if (
+    snapshotChanged &&
+    selectedHabitDetailKey &&
+    currentHabitDetailHistory?.habit.key === selectedHabitDetailKey &&
+    !habitDetailLoading
+  ) {
+    void loadHabitDetailHistory(selectedHabitDetailKey);
+  }
 }
 
 async function refreshHabits(): Promise<void> {
