@@ -9,6 +9,7 @@ import {
   normalizeTaskSchedule,
   taskListMutationConfirmed,
   taskListScopeForId,
+  taskFolderIdFromScope,
   taskEditOperationKey,
   taskListDisplayName,
   taskListCount,
@@ -58,6 +59,12 @@ test("system task lists use the localized Inbox display while user list names st
     taskListDisplayName({ name: "我的计划", isSystem: false }, "收集箱"),
     "我的计划",
   );
+});
+
+test("folder scopes resolve only to their folder identity", () => {
+  assert.equal(taskFolderIdFromScope("folder:projects"), "projects");
+  assert.equal(taskFolderIdFromScope("all"), null);
+  assert.equal(taskFolderIdFromScope("list:research"), null);
 });
 
 test("task list management counts follow the selected state filter", () => {

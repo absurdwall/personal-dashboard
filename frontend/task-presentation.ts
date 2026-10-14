@@ -16,7 +16,7 @@ type TodayTaskCandidate = Readonly<{
   overdue: boolean;
 }>;
 
-export type TaskListScope = "all" | "today" | "inbox" | "archived" | `list:${string}`;
+export type TaskListScope = "all" | "today" | "inbox" | "archived" | `list:${string}` | `folder:${string}`;
 
 export function taskListScopeForId(listId: string): TaskListScope {
   return `list:${listId}`;
@@ -48,6 +48,10 @@ export function taskListCount<T extends Readonly<{
 
 export function taskListIdFromScope(scope: TaskListScope): string | null {
   return scope.startsWith("list:") ? scope.slice("list:".length) : null;
+}
+
+export function taskFolderIdFromScope(scope: TaskListScope): string | null {
+  return scope.startsWith("folder:") ? scope.slice("folder:".length) : null;
 }
 
 export function taskEditOperationKey(

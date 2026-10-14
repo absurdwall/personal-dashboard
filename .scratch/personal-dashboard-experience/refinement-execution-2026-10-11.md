@@ -102,6 +102,23 @@ no integration merge, install, remote operation or main change was recorded.
 - No remote Git operation, protected-main change, app installation, or normal
   user-data write was performed.
 
+## PDEX-20 local ticket execution — 2026-10-14
+
+- Claimed after PDEX-19 reached integration tip
+  `e1b28504e62d28ecbb05c5fa3f499204d7abefe1`, on the dedicated branch
+  `codex/pdex-20-restart` in `/private/tmp/pdex-restart-20261014.noindex/pdex-20`.
+  This tip descends from the user-requested clean restart at `918e7e0`; no
+  rejected post-baseline implementation was used as source.
+- Commits retained on the ticket branch: backend/schema/docs and persistence
+  tests `d7ecfda0c1b4590405dbb29da52a8bd7fc9abe0c`; compact parent/folder UI
+  and behavior tests `c0b7aa969196208acc6f73d37d15c8ee09c06c4b`; current
+  lifecycle schema-note update `f1f9c5c7ee6067c67bbe12efb6fbc0d070402ec0`. See the
+  [PDEX-20 implementation record](evidence/pdex-20-implementation-2026-10-14.md)
+  for exact commands, results and remaining acceptance limits.
+- PDEX-20 remains `in-progress`; its ticket branch is not pushed.
+  Packaged App acceptance remains with PDEX-26. PDEX-21/22 and PDEX-25 retain
+  their existing dependency states.
+
 ### PDEX-22 claim — 2026-10-14
 
 - Owner: `/root`; branch `codex/pdex-22-restart`; claim base
@@ -109,9 +126,37 @@ no integration merge, install, remote operation or main change was recorded.
   PDEX-19 and PDEX-23. The PDEX-22 publication snapshot and acceptance criteria
   remain unchanged.
 - Initial source review confirmed the Calendar month shell, selected-date
-  summary, below-month Task panel, and current dedicated create form. The new
-  work will keep those regions and replace only the oversized create entry and
-  add the ticketed holiday labels/settings and Task click editor behavior.
-- Implementation and verification commits will be recorded here and in the
-  ticket before integration. No install, push, or normal Vault write is part of
-  this branch work.
+  summary, below-month Task panel, and dedicated create form. PDEX-22 kept those
+  regions, replaced only the ticketed create entry, and added the holiday labels,
+  settings, and Task click editor behavior.
+- PDEX-22 implementation commits `135add3c` and `41031c5` were non-fast-forward
+  integrated as `071202fb61781436b834bcbdeaac2bce88cbd69c`. Its focused evidence
+  and packaged-acceptance boundary are in
+  [PDEX-22 implementation evidence](evidence/pdex-22-implementation-2026-10-14.md).
+  No install, push, or normal Vault write was part of that branch work.
+
+### PDEX-20 integration and verification — 2026-10-14
+
+- PDEX-20's ticket branch `codex/pdex-20-restart` first merged integration tip
+  `ebd4354e2e179ab695450a4e1eaf196dc4730062` non-fast-forward as
+  `86e0c4cf2855db6afadf647ef7f872e8a66a26ae`, retaining shared Task/Calendar
+  creation behavior and PDEX-20's folder target and parent-aware child creation.
+- It then merged latest integration tip
+  `2a233c3e4a21d9eaff06b62f1770c86e7671d082` non-fast-forward as
+  `89ab2ca6ae319e9feefcb76fd72da1625d3ba4be`. The integration follow-ups
+  `13c9bc2c45fdbd67f340d982a660a39d2e3120d9` and `2a233c3...` remain reachable.
+- The complete ticket branch was subsequently integrated into
+  `codex/dashboard-experience-refinement-restart-20261014` without conflicts by
+  non-fast-forward merge `2c0fe5e21bc1fbe7b5f7667e35dd589ab7ccdd16`.
+  Both PDEX-20 implementation commits and the intermediate integration merges
+  remain reachable in the merge history.
+- Merged-tree verification: `npm run build` passed; selected interface-language
+  and Task presentation frontend tests passed 37/37; PDEX-20 Playwright
+  `task-list-details.mjs` passed 23/23; Calendar-focused frontend tests passed
+  16/16; Rust `task_workflow` passed 36/36; Calendar preferences passed 2/2;
+  app-local holiday save/read passed 1/1; `git diff --check` passed. Exact
+  commands and the browser cache path are in the
+  [PDEX-20 implementation record](evidence/pdex-20-implementation-2026-10-14.md).
+- No remote Git operation, main change, app installation, or packaged App
+  acceptance was performed. Independent review and PDEX-26 acceptance remain
+  open.

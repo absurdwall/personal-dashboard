@@ -264,7 +264,8 @@ use tasks::{
     TaskDeleteInput, TaskListArchiveInput, TaskListCreateInput, TaskListRenameInput,
     TaskListRestoreInput, TaskRestoreInput, TaskStateInput, TaskTagCreateInput,
     TaskTagDeleteInput, TaskTagRenameInput, TaskUpdateInput, TaskUpdateWithPropertiesInput,
-    TasksView,
+    TaskCreateSubtaskInput, TaskFolderCreateInput, TaskFolderDeleteInput, TaskFolderRenameInput,
+    TaskListCreateInFolderInput, TaskListFolderInput, TaskParentInput, TasksView,
 };
 use today::{
     CalendarMonthView, DatedNoteCorrectionInput, DatedNoteInput, DayTaskAddInput,
@@ -773,6 +774,22 @@ fn create_task(
 }
 
 #[tauri::command]
+fn create_task_subtask(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskCreateSubtaskInput,
+) -> Result<TasksView, String> {
+    application.create_subtask(input)
+}
+
+#[tauri::command]
+fn set_task_parent(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskParentInput,
+) -> Result<TasksView, String> {
+    application.set_parent(input)
+}
+
+#[tauri::command]
 fn create_task_tag(
     application: State<'_, DesktopTaskApplication>,
     input: TaskTagCreateInput,
@@ -802,6 +819,46 @@ fn create_task_list(
     input: TaskListCreateInput,
 ) -> Result<TasksView, String> {
     application.create_list(input)
+}
+
+#[tauri::command]
+fn create_task_list_in_folder(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskListCreateInFolderInput,
+) -> Result<TasksView, String> {
+    application.create_list_in_folder(input)
+}
+
+#[tauri::command]
+fn create_task_folder(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskFolderCreateInput,
+) -> Result<TasksView, String> {
+    application.create_folder(input)
+}
+
+#[tauri::command]
+fn rename_task_folder(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskFolderRenameInput,
+) -> Result<TasksView, String> {
+    application.rename_folder(input)
+}
+
+#[tauri::command]
+fn delete_task_folder(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskFolderDeleteInput,
+) -> Result<TasksView, String> {
+    application.delete_folder(input)
+}
+
+#[tauri::command]
+fn set_task_list_folder(
+    application: State<'_, DesktopTaskApplication>,
+    input: TaskListFolderInput,
+) -> Result<TasksView, String> {
+    application.set_list_folder(input)
 }
 
 #[tauri::command]
@@ -1161,10 +1218,17 @@ pub fn run() {
             save_habit_definition,
             tasks_view,
             create_task,
+            create_task_subtask,
+            set_task_parent,
             create_task_tag,
             rename_task_tag,
             delete_task_tag,
             create_task_list,
+            create_task_list_in_folder,
+            create_task_folder,
+            rename_task_folder,
+            delete_task_folder,
+            set_task_list_folder,
             rename_task_list,
             archive_task_list,
             restore_task_list,
@@ -1245,10 +1309,17 @@ pub fn run() {
         save_habit_definition,
         tasks_view,
         create_task,
+        create_task_subtask,
+        set_task_parent,
         create_task_tag,
         rename_task_tag,
         delete_task_tag,
         create_task_list,
+        create_task_list_in_folder,
+        create_task_folder,
+        rename_task_folder,
+        delete_task_folder,
+        set_task_list_folder,
         rename_task_list,
         archive_task_list,
         restore_task_list,

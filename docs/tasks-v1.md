@@ -12,16 +12,19 @@ The canonical source remains:
 life/.personal-dashboard/tasks/v1/tasks.json
 ```
 
-Ticket 01 first wrote schema version `1`; the current document is schema
-version `2` and still contains `lists` and `tasks` at the same stable path.
-The reader accepts a legacy schema-1 document, supplies the new optional
-fields in memory, and the next successful write upgrades it to schema 2.
+Ticket 01 first wrote schema version `1`; PDEX-19 added schema version `2`,
+and the current document is schema version `3`. All versions keep `lists` and
+`tasks` at the same stable path. The reader accepts schema 1 and 2, supplies
+missing fields in memory, and the next successful write upgrades the document
+to schema 3.
 Every document has a permanent, unarchived system list with id `inbox`. Ticket
-03 adds user-owned, single-level lists in the same document. A list has a
-stable id, a display name, and an `archived` flag; renaming never changes the
-id stored on its tasks. Inbox accepts dated and undated tasks. A new task in a
-user list defaults to that list without a date, while global and Inbox entry
-points default to Inbox. There is no nested folder or list-delete operation.
+03 adds user-owned lists and PDEX-20 adds one-level folders in the same
+document. A list has a stable id, a display name, an `archived` flag and an
+optional `folderId`; renaming or regrouping never changes the id stored on its
+tasks. Inbox is never a folder member. Inbox accepts dated and undated tasks.
+A new task in a user list defaults to that list without a date, while global
+and Inbox entry points default to Inbox. Folders organize existing lists and
+do not create nested list identities or delete lists.
 
 ### Schema 2: priorities and tags (PDEX-19)
 
@@ -37,10 +40,11 @@ fields.
 Reading a schema-1 document supplies those defaults in memory and retains all
 Task IDs, source references, schedules, state, completion evidence, and change
 history. It does not rewrite the file just by reading it; the next successful
-mutation writes the upgraded schema-2 document at the same path. Unsupported
-schema versions, unknown fields, duplicate tag IDs, duplicate names (ignoring
-case), invalid tag names, duplicate Task tag references, and references to
-missing tags fail closed rather than dropping or guessing data.
+mutation writes schema 3 at the same path. Schema 2 is also accepted and
+upgraded on the next successful mutation. Unsupported schema versions, unknown
+fields, duplicate tag IDs, duplicate names (ignoring case), invalid tag names,
+duplicate Task tag references, and references to missing tags fail closed
+rather than dropping or guessing data.
 
 Tag IDs are the relationship identity. Renaming a tag keeps its ID and Task
 assignments. Deleting a tag removes that tag and its assignments from Tasks;
@@ -48,6 +52,34 @@ it does not delete Tasks. Priority and tag edits update the existing Task by
 its stable ID. They are stored in the same canonical document and follow the
 same selected-Vault, revision, atomic-write, and readback boundary as other
 Task edits.
+
+### Schema 3: task parents and list folders (PDEX-20)
+
+Schema 3 adds `parentTaskId` to each Task, `folderId` to each list, and a
+top-level `folders` array. Missing parent/folder fields read as `null`, and a
+missing `folders` array reads as empty. Schema 1 and 2 retain their original
+Task, list, tag, scheduling, state, completion, and history data; the next
+successful write stores the schema-3 defaults at the same source path.
+
+A parent is another Task in the same Vault source. Each Task has at most one
+parent, and parent chains may nest to any depth. Parent changes are recorded
+with the previous and new parent IDs. Assignment rejects self-links, cycles,
+missing/inactive parents and invalid references before writing. Parent and
+child remain independent Tasks: relation changes, completion, abandonment,
+restore and deletion do not cascade or clone their identities or properties.
+Deleted parents remain as tombstones so existing relationships retain context;
+restoring one does not overwrite a child's newer parent assignment.
+
+Folders have stable IDs and names; a list belongs to zero or one folder.
+Folders cannot nest, Inbox cannot be grouped, and deleting a folder only clears
+its member lists' `folderId`. Lists and Tasks keep their IDs and content. List
+archive/restore preserves folder membership. A folder scope is a view grouped
+by each Task's original list and does not rewrite `listId` or copy records.
+
+Parent and folder mutations use the same target-Vault, revision, atomic-write,
+stable-identity and saved-readback boundary as Task/list changes. Filter and
+sort preferences are view state; they do not change membership or persisted
+Task properties.
 
 Each Task has a stable `id`, required `name`, optional `content`, optional
 `date` and `time`, `listId`, `source`, `state`, creation and modification
