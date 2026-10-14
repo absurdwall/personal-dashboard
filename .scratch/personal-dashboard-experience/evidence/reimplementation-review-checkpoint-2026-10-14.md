@@ -80,3 +80,7 @@ The reviewer found that the text-labeled Context floating entry still carried th
 - The receipt records zero remaining Spec findings after the two repairs and zero findings for the final text-only Context change on both Standards and Spec review axes. It explicitly leaves `humanAcceptance` pending and `broadSpecAcceptance` open. The installed app remains in Collaboration in the foreground for the user's visual review.
 
 No local ticket or parent lifecycle/claim was changed. PDEX-21/22/23 remain in progress; PDEX-26 and PDEX-SPEC-02 remain open. Full PDEX-26 criteria, including hardware voice and IME, are not inferred complete from this checkpoint.
+
+## Management summary synchronization — 2026-10-14
+
+The local `tortilla-flat-management` helper confirmed operation `pdex02-installed-visual-pending-20261014-01` (`submitSummary`). The canonical Registry now has revision `5d255f2456df4d89`; a subsequent `inspect` confirmed the new progress summary, its source evidence revisions, and the pending user visual acceptance boundary. Coverage is recorded as partial: the collaboration source remains excluded because of three malformed historical references, and GitHub Issues could not be read because authentication was unavailable. No ticket or parent status was changed. The older partial recovery operation `pdex-spec-02-local-publication-summary-20261011` remains present and untouched.
