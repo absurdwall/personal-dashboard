@@ -20,7 +20,10 @@
 ## Clean reimplementation tracking — 2026-10-14
 
 - Integration branch: `codex/dashboard-experience-refinement-restart-20261014`, based directly on `918e7e0d9c4b2c524c429bfd309482e328bc4c91`.
-- Ticket branch: `codex/pdex-23-restart`; worker start commit and implementation commits will be recorded after integration.
+- Ticket branch: `codex/pdex-23-restart`, started from `8275615a3f3cad2a783d74561472c78c4bbeb493`.
+- Source implementation commit: `d65b877c08877c02b4063c82ea09fbfaf5f3667e` (`feat(collaboration): add bounded context overlay`).
+- Focused verification: `node --test tests/frontend/collaboration-layout.test.ts` (12 passed); `node --test tests/frontend/collaboration-dictation.test.ts tests/frontend/collaboration-command-completion.test.ts tests/frontend/collaboration-panels.test.ts` (102 passed); `npm run build` (passed).
+- Verification boundary: macOS WKWebView DOM layout checks and synthetic/unit dictation/command seams only; no packaged Tauri acceptance or physical microphone session. At 640×520 with expanded help/warnings/context, workspace scrolling is needed to reach the full-size composer; after scrolling, input, dictation stop, send, and help hit-test/focus checks pass.
 - The earlier implementation remains on its previous branch with full history and is not this ticket's source baseline.
 
 ## Acceptance criteria
