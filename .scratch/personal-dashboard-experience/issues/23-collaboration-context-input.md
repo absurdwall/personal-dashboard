@@ -10,7 +10,7 @@
 **ID:** PDEX-23
 **Parent:** [PDEX-SPEC-02](../refinement-spec-2026-10-11.md)
 **Lifecycle:** in-progress
-**Implementation:** scoped source implementation committed; integration and packaged acceptance pending
+**Implementation:** scoped source implementation and integration committed; packaged acceptance pending
 **Date:** 2026-10-11
 **Publication branch:** codex/dashboard-experience-refinement-spec
 **Publication base:** d91d636b395d8c42c0c516827db37ca2565260a4
@@ -59,17 +59,18 @@ only; no installation, main merge, or remote operation.
 
 ## Reimplementation evidence — 2026-10-13
 
-**State:** PDEX-23 source implementation is in progress. The branch has one
-coherent implementation commit; final integration and PDEX-26 packaged
-acceptance remain outstanding. The acceptance checklist above is intentionally
-not marked complete.
+**State:** PDEX-23 source implementation and integration are committed. PDEX-26
+packaged acceptance remains outstanding, so the lifecycle stays in progress.
+The acceptance checklist above is intentionally not marked complete.
 
 **Git record**
 
 - Branch: `codex/pdex-23-refinement-reimplementation`
 - Exact starting integration commit: `b7dcd71b50b42de4a706d460d635f99bf059770d`
 - Implementation commit: `81c0c5dc25975564e403e71f3366442b341ed101`
-- Integration merge and evidence commits: to be appended after integration.
+- Ticket and visual-evidence commit: `606ead3d6f92c6d75083204b8d2917f98e448b14`
+- Integrated source tip: `53a7495dcade91e979ef0e3acb58202af7f8e5e3`
+- Integration merge commit: `41a2fd98cbafa5860641a9e587af292601a3ca6a` (parents: evidence commit `606ead3d6f92c6d75083204b8d2917f98e448b14`, integration tip `53a7495dcade91e979ef0e3acb58202af7f8e5e3`).
 
 **Implementation boundary**
 
@@ -141,3 +142,32 @@ retains the same two failures and observations. These are recorded as inherited
 baseline failures, not as fixes delivered by PDEX-23. No real model calls,
 real dictation-service capture, installed app, or packaged save/readback was
 performed; those acceptance checks remain with PDEX-26.
+
+## Integration and post-merge verification — 2026-10-13
+
+The branch merged the then-current local integration commit
+`53a7495dcade91e979ef0e3acb58202af7f8e5e3` using a no-fast-forward merge. Git
+auto-merged `frontend/index.html`, `frontend/interface-language.ts` and
+`frontend/styles.css`; there were no textual conflicts to resolve. Checks after
+the merge confirm the PDEX-23 close control, overlay styles and tests remain,
+and the integrated PDEX-19 task editor and PDEX-24 Habit form/source files are
+present. No Task or Habit implementation was altered during this merge. The
+capture-enabled WK cases were rerun on the merged tree at 640×756 and 680×560;
+both passed and regenerated the linked PNGs.
+
+The first-parent PDEX-23 branch commits, in order, are:
+
+1. `81c0c5dc25975564e403e71f3366442b341ed101` — scoped PDEX-23 source and DOM/panel coverage.
+2. `606ead3d6f92c6d75083204b8d2917f98e448b14` — ticket, base-failure proof and two viewport captures.
+3. `41a2fd98cbafa5860641a9e587af292601a3ca6a` — no-fast-forward merge of integration tip `53a7495dcade91e979ef0e3acb58202af7f8e5e3`.
+
+Post-merge checks:
+
+- `PATH=/Users/tingranwang/Documents/Codex/projects/tortilla-flat/personal-dashboard/node_modules/.bin:$PATH npm run build` — pass, using the primary checkout's existing TypeScript compiler; no package install.
+- `node --test tests/frontend/collaboration-layout.test.ts` — pass, 14/14.
+- `node --test tests/frontend/collaboration-panels.test.ts` — pass, 6/6.
+- `node --test tests/frontend/collaboration-command-completion.test.ts` — 8/10; the same two named inherited failures and messages above remain.
+- `git diff --check` — pass; worktree clean after verification.
+
+PDEX-23 stays claimed/in-progress. PDEX-26 packaged acceptance, actual dictation
+service and packaged save/readback checks remain outstanding.
