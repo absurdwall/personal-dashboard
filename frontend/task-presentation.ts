@@ -60,6 +60,8 @@ export function taskEditOperationKey(
     time: string | null;
     listId: string;
     executionEnd?: TaskExecutionEnd | null;
+    priority?: TaskPriorityValue;
+    tagIds?: readonly string[];
   }>,
 ): string {
   return JSON.stringify([
@@ -72,6 +74,8 @@ export function taskEditOperationKey(
     edit.time,
     edit.listId,
     edit.executionEnd === undefined ? "preserve" : edit.executionEnd,
+    edit.priority ?? "preserve",
+    edit.tagIds === undefined ? "preserve" : [...edit.tagIds].sort(),
   ]);
 }
 
@@ -160,6 +164,8 @@ export type TaskUpdateEdit = Readonly<{
   time: string | null;
   listId: string;
   executionEnd?: TaskExecutionEnd | null;
+  priority?: TaskPriorityValue;
+  tagIds?: readonly string[];
 }>;
 
 export type TaskUpdateInput = TaskUpdateEdit &
@@ -179,6 +185,8 @@ export type TaskUpdateView = Readonly<{
     time: string | null;
     listId: string;
     executionEnd?: TaskExecutionEnd | null;
+    priority?: TaskPriorityValue;
+    tagIds?: readonly string[];
   }>[];
 }>;
 
@@ -225,7 +233,11 @@ export async function performTaskUpdateRequest<View extends TaskUpdateView>(
       candidate.listId === edit.listId &&
       (edit.executionEnd === undefined ||
         (candidate.executionEnd?.date === edit.executionEnd?.date &&
-         candidate.executionEnd?.time === edit.executionEnd?.time)),
+         candidate.executionEnd?.time === edit.executionEnd?.time)) &&
+      (edit.priority === undefined || candidate.priority === edit.priority) &&
+      (edit.tagIds === undefined ||
+        JSON.stringify([...(candidate.tagIds ?? [])].sort()) ===
+          JSON.stringify([...edit.tagIds].sort())),
   );
   const confirmed = taskMutationConfirmed(
     responseIsCurrent,
@@ -471,6 +483,35 @@ export function taskDisplaySections<T extends Readonly<{ state: string }>>(
   return stateFilter === "all"
     ? { main: tasks.filter(task => task.state === "pending"), history: tasks.filter(task => task.state !== "pending") }
     : { main: tasks, history: [] };
+}
+
+export type TaskPriorityValue = "none" | "low" | "medium" | "high";
+export type TaskPriorityFilter = "all" | TaskPriorityValue;
+
+export function filterAndSortTasksByProperties<T extends Readonly<{
+  priority: TaskPriorityValue;
+  tagIds: readonly string[];
+}>>(
+  tasks: readonly T[],
+  priority: TaskPriorityFilter,
+  tagId: string | null,
+  sortByPriority: boolean,
+): readonly T[] {
+  const filtered = tasks.filter(task =>
+    (priority === "all" || task.priority === priority) &&
+    (tagId === null || task.tagIds.includes(tagId))
+  );
+  if (!sortByPriority) return filtered;
+  const rank: Record<TaskPriorityValue, number> = {
+    high: 0,
+    medium: 1,
+    low: 2,
+    none: 3,
+  };
+  return filtered
+    .map((task, index) => ({ task, index }))
+    .sort((left, right) => rank[left.task.priority] - rank[right.task.priority] || left.index - right.index)
+    .map(({ task }) => task);
 }
 
 export function taskHistoryDate(task: Readonly<{
