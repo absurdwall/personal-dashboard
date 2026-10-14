@@ -902,6 +902,10 @@
                           <p class="today-time-axis-boundary" data-i18n="today.axisNote">
                             时间轴只整理明确事实和当前安排；没有记录的活动继续保持未知。
                           </p>
+                          <div class="today-axis-zoom-controls" role="group" aria-label="时间轴缩放" data-i18n-aria-label="today.axisZoomControls">
+                            <button id="today-axis-zoom-out" type="button" aria-label="缩小时间轴" data-i18n-aria-label="today.axisZoomOut" title="缩小时间轴" data-i18n-title="today.axisZoomOut" disabled>−</button>
+                            <button id="today-axis-zoom-in" type="button" aria-label="放大时间轴" data-i18n-aria-label="today.axisZoomIn" title="放大时间轴" data-i18n-title="today.axisZoomIn">+</button>
+                          </div>
                         </div>
                         <div id="today-axis-scroll-surface" class="today-axis-scroll-surface" role="region" aria-label="today axis scroll region" data-i18n-aria-label="today.axisScrollRegion" tabindex="0">
                           <button id="today-expand-early" type="button" class="today-axis-disclosure" aria-expanded="false" aria-controls="today-axis-plot" data-i18n="today.expandEarlyCollapsed">04:00–06:00 · 展开</button>
@@ -1100,6 +1104,14 @@
                       <p class="day-task-boundary" data-i18n="today.tasksBoundary">
                         未勾选表示尚未确认；无日期任务不会自动塞入今天，归档清单不进入日常待办。
                       </p>
+                      <dialog id="today-axis-task-popup" class="today-axis-task-popup" aria-labelledby="today-axis-task-popup-heading">
+                        <header class="today-axis-task-popup-heading">
+                          <h3 id="today-axis-task-popup-heading" data-i18n="today.axisTaskPopupHeading">任务详情</h3>
+                          <button id="today-axis-task-popup-close" type="button" class="text-button" aria-label="关闭任务详情" data-i18n-aria-label="today.axisTaskPopupClose" title="关闭任务详情" data-i18n-title="today.axisTaskPopupClose">×</button>
+                        </header>
+                        <p id="today-axis-task-popup-status" class="day-task-status" role="status" aria-live="polite"></p>
+                        <div id="today-axis-task-popup-content"></div>
+                      </dialog>
                     </section>
 
                     <section id="today-legacy-task-history" class="today-legacy-task-history" aria-labelledby="today-legacy-task-heading" hidden>
